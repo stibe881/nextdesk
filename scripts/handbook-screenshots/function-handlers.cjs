@@ -12,6 +12,25 @@ const REPO_ROOT = path.resolve(__dirname, "../..");
 const HANDBOOK_DIR = path.join(REPO_ROOT, "docs/handbooks");
 
 const ok = (data) => ({ json: { data } });
+
+// People that exist only in the Entra directory (people search).
+const PERSON_DIRECTORY_EXTRA = [
+  {
+    id: "11111111-1111-4111-8111-0000000000a1",
+    name: "Peter Brunner",
+    email: "peter.brunner@muster.ch",
+    jobTitle: "Sachbearbeiter Logistik",
+    departmentLabel: "Logistik",
+  },
+  {
+    id: "11111111-1111-4111-8111-0000000000a2",
+    name: "Rita Brunner-Kunz",
+    email: "rita.brunner@muster.ch",
+    jobTitle: "Empfang",
+    departmentLabel: "Empfang",
+    accountEnabled: false,
+  },
+];
 const fail = (code, status = 400) => ({ status, json: { error: { code } } });
 
 const ENABLED_FEATURES = new Set([
@@ -1397,6 +1416,203 @@ const HANDLERS = {
       });
     }
     return null;
+  },
+  "global-search": (body, { persona }) => {
+    const query = String(body.query ?? "").toLowerCase();
+    const tokens = query.split(/\s+/).filter(Boolean);
+    const matches = (text) =>
+      tokens.every((token) => text.toLowerCase().includes(token));
+    const results = visibleTickets(persona)
+      .filter((ticket) =>
+        matches(
+          `${ticket.ticket_number} ${ticket.subject} ${ticket.description}`,
+        ),
+      )
+      .slice(0, 6)
+      .map((ticket) => ({
+        resultType: "ticket",
+        entityId: ticket.id,
+        title: ticket.subject,
+        detail: `${ticket.ticket_number} · ${ticket.status_label}`,
+        section: "Tickets",
+        ticketId: ticket.id,
+      }));
+    const isAgent = persona.role !== "employee";
+    const people = isAgent
+      ? [...D.USERS, ...PERSON_DIRECTORY_EXTRA]
+          .filter((user) =>
+            matches(`${user.name} ${user.email} ${user.jobTitle ?? ""}`),
+          )
+          .slice(0, 8)
+          .map((user) => ({
+            kind: "entra",
+            id: user.id,
+            displayName: user.name,
+            email: user.email,
+            jobTitle: user.jobTitle ?? null,
+            department: user.departmentLabel ?? "Finanzen",
+            accountEnabled: user.accountEnabled ?? true,
+            openTicketCount: D.TICKETS.filter(
+              (ticket) =>
+                ticket.requester_id === user.id && !ticket.status_is_closed,
+            ).length,
+          }))
+      : [];
+    return ok({ results, people });
+  },
+  "person-overview": (body) => {
+    const id = body.entraObjectId ?? body.requesterContactId ?? body.userId;
+    const user =
+      D.userById(id) ?? PERSON_DIRECTORY_EXTRA.find((item) => item.id === id);
+    if (!user) return fail("person_not_found", 404);
+    const own = D.TICKETS.filter((ticket) => ticket.requester_id === user.id);
+    const closedHistory = [
+      ["Drucker im 2. OG druckt doppelt", "resolved", "Gelöst", 12, "Drucker"],
+      [
+        "Teams-Kalender nicht synchron",
+        "closed",
+        "Geschlossen",
+        27,
+        "Software & Lizenzen",
+      ],
+      [
+        "Neuer Monitor für den Arbeitsplatz",
+        "closed",
+        "Geschlossen",
+        36,
+        "Hardware",
+      ],
+      [
+        "Passwort für Abacus zurücksetzen",
+        "closed",
+        "Geschlossen",
+        58,
+        "Zugriff & Berechtigungen",
+      ],
+    ].map(([subject, statusKey, statusLabel, days, categoryName], index) => ({
+      id: D.uid("99990000", index + 1),
+      ticketNumber: `T-${String(1001 + index).padStart(5, "0")}`,
+      subject,
+      statusKey,
+      statusLabel,
+      isClosed: true,
+      priorityKey: "medium",
+      priorityLabel: "Mittel",
+      categoryName,
+      assignedAgentName: index % 2 ? "Jonas Weber" : "Mara Keller",
+      createdAt: D.ago(days * D.DAY + 3 * D.HOUR),
+      updatedAt: D.ago(days * D.DAY),
+      closedAt: D.ago(days * D.DAY),
+    }));
+    const tickets = [
+      ...own.map((ticket) => ({
+        id: ticket.id,
+        ticketNumber: ticket.ticket_number,
+        subject: ticket.subject,
+        statusKey: ticket.status_key,
+        statusLabel: ticket.status_label,
+        isClosed: ticket.status_is_closed,
+        priorityKey: ticket.priority_key,
+        priorityLabel: ticket.priority_label,
+        categoryName:
+          D.CATEGORIES.find((category) => category.id === ticket.category_id)
+            ?.label ?? null,
+        assignedAgentName: D.userById(ticket.assigned_agent_id)?.name ?? null,
+        createdAt: ticket.created_at,
+        updatedAt: ticket.updated_at,
+        closedAt: ticket.resolved_at,
+      })),
+      ...closedHistory,
+    ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const openTickets = tickets.filter((ticket) => !ticket.isClosed).length;
+    return ok({
+      person: {
+        entraObjectId: user.id,
+        userId: user.id,
+        requesterContactId: user.id,
+        displayName: user.name,
+        email: user.email,
+        jobTitle: user.jobTitle ?? null,
+        department: user.departmentLabel ?? "Finanzen",
+        source: "entra",
+        accountEnabled: true,
+        removedFromDirectory: false,
+        managerName: "Thomas Keller",
+        lastSignInAt: D.ago(2 * D.HOUR),
+        isMember: true,
+      },
+      stats: {
+        openTickets,
+        waitingOnPerson: tickets.filter(
+          (ticket) =>
+            !ticket.isClosed && ticket.statusKey.startsWith("waiting"),
+        ).length,
+        ticketsLast12Months: 14,
+        ticketsPrevious12Months: 11,
+        totalTickets: tickets.length + 12,
+        avgResolutionHours: 6.4,
+        tenantAvgResolutionHours: 9.1,
+      },
+      satisfaction: {
+        ratingCount: 9,
+        minimumRatings: 3,
+        average: 4.3,
+        positiveShare: 89,
+        tenantAverage: 4.1,
+        trend: "up",
+      },
+      topics: [
+        { name: "Hardware", count: 5 },
+        { name: "Software & Lizenzen", count: 4 },
+        { name: "Zugriff & Berechtigungen", count: 3 },
+      ],
+      tickets,
+      devices: [
+        {
+          id: D.ASSETS[0].id,
+          name: "NB-FIN-014",
+          assetTag: D.ASSETS[0].asset_tag,
+          kind: "laptop",
+          manufacturer: "Lenovo",
+          model: "ThinkPad T14 Gen 3",
+          operatingSystem: "Windows",
+          complianceState: "compliant",
+          lastSyncAt: D.ago(3 * D.HOUR),
+          assignedAt: D.ago(120 * D.DAY),
+          source: "intune",
+        },
+        {
+          id: D.uid("12121299", 1),
+          name: "iPhone 15",
+          assetTag: null,
+          kind: "phone",
+          manufacturer: "Apple",
+          model: "iPhone 15",
+          operatingSystem: "iOS",
+          complianceState: "compliant",
+          lastSyncAt: D.ago(5 * D.HOUR),
+          assignedAt: D.ago(200 * D.DAY),
+          source: "intune",
+        },
+      ],
+      licenses: [
+        {
+          id: D.uid("13131313", 1),
+          licenseId: D.uid("13131314", 1),
+          title: "Microsoft 365 E3",
+          vendorName: "Microsoft",
+          assignedAt: D.ago(400 * D.DAY),
+        },
+        {
+          id: D.uid("13131313", 2),
+          licenseId: D.uid("13131314", 2),
+          title: "Abacus Finanzbuchhaltung",
+          vendorName: "Abacus",
+          assignedAt: D.ago(380 * D.DAY),
+        },
+      ],
+      orders: [],
+    });
   },
   "ticket-requesters": (body, { persona }) => {
     if (body.type === "getOwn")

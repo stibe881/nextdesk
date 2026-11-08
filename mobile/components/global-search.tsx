@@ -26,6 +26,13 @@ import {
   type MobileKnowledgeArticle,
 } from "@/lib/mobile-knowledge";
 import { getMobileUserId, type MobileTenant } from "@/lib/nextdesk-client";
+import {
+  personInitials,
+  personRefFromHit,
+  personRoute,
+  searchMobilePeople,
+  type PersonSearchHit,
+} from "@/lib/person-overview";
 import type { MobileTicket } from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
@@ -71,6 +78,8 @@ export function GlobalSearch({
   const [searchingAssets, setSearchingAssets] = useState(false);
   const [assetSearchUnavailable, setAssetSearchUnavailable] = useState(false);
   const [articles, setArticles] = useState<MobileKnowledgeArticle[]>([]);
+  // Agents only (the server returns no people for everyone else).
+  const [people, setPeople] = useState<PersonSearchHit[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const styles = useStyles();
   const colors = useAppColors();
@@ -139,6 +148,25 @@ export function GlobalSearch({
     };
   }, [knowledgeEnabled, open, query, queryLength, tenant]);
 
+  useEffect(() => {
+    if (!open || !tenant || queryLength < 2 || !ticketDetailsEnabled) return;
+    let cancelled = false;
+    const timeout = setTimeout(() => {
+      void searchMobilePeople(tenant.id, query)
+        .then((matches) => {
+          if (!cancelled) setPeople(matches);
+        })
+        .catch(() => {
+          // Personen sind ein optionaler Teil der Suche.
+          if (!cancelled) setPeople([]);
+        });
+    }, 280);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [open, query, queryLength, tenant, ticketDetailsEnabled]);
+
   // Zuletzt verwendete Suchbegriffe werden beim Öffnen geladen.
   useEffect(() => {
     if (!open || !tenant) return;
@@ -197,6 +225,7 @@ export function GlobalSearch({
     setQuery("");
     setAssets([]);
     setArticles([]);
+    setPeople([]);
     setSearchingAssets(false);
     setAssetSearchUnavailable(false);
     setOpen(true);
@@ -207,6 +236,7 @@ export function GlobalSearch({
     if (Array.from(value.trim()).length < 2) {
       setAssets([]);
       setArticles([]);
+      setPeople([]);
       setSearchingAssets(false);
       setAssetSearchUnavailable(false);
     }
@@ -217,6 +247,14 @@ export function GlobalSearch({
     rememberSearch();
     close();
     router.push({ pathname: "/ticket/[id]", params: { id: ticket.id } });
+  }
+
+  function openPerson(person: PersonSearchHit) {
+    const route = personRoute(personRefFromHit(person));
+    if (!route) return;
+    rememberSearch();
+    close();
+    router.push(route as never);
   }
 
   function openArticle(article: MobileKnowledgeArticle) {
@@ -349,6 +387,50 @@ export function GlobalSearch({
                 </>
               ) : (
                 <>
+                  {people.length > 0 ? (
+                    <ResultGroup label={`PERSONEN · ${people.length}`}>
+                      {people.map((person) => (
+                        <Pressable
+                          accessibilityHint="Öffnet die Personenübersicht"
+                          accessibilityRole="button"
+                          key={`${person.kind}:${person.id}`}
+                          onPress={() => openPerson(person)}
+                          style={styles.result}
+                        >
+                          <View style={[styles.resultIcon, styles.ticketIcon]}>
+                            <Text style={styles.personInitials}>
+                              {personInitials(person.displayName)}
+                            </Text>
+                          </View>
+                          <View style={styles.resultCopy}>
+                            <Text style={styles.resultTitle}>
+                              {person.displayName}
+                            </Text>
+                            <Text numberOfLines={1} style={styles.resultMeta}>
+                              {[
+                                person.accountEnabled === false
+                                  ? "Deaktiviert"
+                                  : person.openTicketCount > 0
+                                    ? `${person.openTicketCount} offen`
+                                    : null,
+                                person.jobTitle,
+                                person.department,
+                                person.email,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ") || "Keine weiteren Angaben"}
+                            </Text>
+                          </View>
+                          <Ionicons
+                            color={colors.subtle}
+                            name="chevron-forward"
+                            size={18}
+                          />
+                        </Pressable>
+                      ))}
+                    </ResultGroup>
+                  ) : null}
+
                   {ticketResults.length > 0 ? (
                     <ResultGroup label={`TICKETS · ${ticketResults.length}`}>
                       {ticketResults.map((ticket) => (
@@ -463,6 +545,7 @@ export function GlobalSearch({
                   {!searchingAssets &&
                   (ticketDetailsEnabled || assetsEnabled || knowledgeEnabled) &&
                   ticketResults.length === 0 &&
+                  people.length === 0 &&
                   assets.length === 0 &&
                   articles.length === 0 ? (
                     <Text style={styles.note}>
@@ -588,6 +671,7 @@ const useStyles = makeThemedStyles((c) => ({
   ticketIcon: { backgroundColor: c.primarySoft },
   assetIcon: { backgroundColor: c.infoSoft },
   resultCopy: { flex: 1, gap: 3 },
+  personInitials: { color: c.primaryText, fontSize: 13, fontWeight: "800" },
   resultTitle: { color: c.foreground, fontSize: 14, fontWeight: "800" },
   resultMeta: { color: c.muted, fontSize: 12 },
 }));

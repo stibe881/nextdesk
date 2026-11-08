@@ -1,6 +1,6 @@
 ---
 title: Handbuch für Agenten
-description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Ticketliste, Ticketdetail, Wissensdatenbank und Stellvertretung.
+description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
 updated: 2026-11-08
 ---
@@ -44,6 +44,43 @@ Wartungseinträge mit Datum und optionaler **Uhrzeit**.
 
 Oben rechts stehen **+ (Erfassen)**, die **globale Suche** und die
 **Benachrichtigungen**.
+
+## Personen suchen und Personenübersicht
+
+In der **globalen Suche** finden Sie als Agent auch **Personen**: alle
+Mitarbeitenden aus Microsoft Entra sowie Ticketkontakte, die nicht im
+Verzeichnis stehen. Suchen Sie nach Name, E-Mail-Adresse, Funktion oder
+Abteilung. Die Reiter _Alle / Personen / Tickets …_ filtern die Treffer. Neben
+dem Namen sehen Sie die Anzahl offener Tickets; gesperrte Konten sind als
+**Deaktiviert** markiert. Mitarbeitende ohne Agentenrolle sehen keine Personen.
+
+![Globale Suche mit Personen aus Microsoft Entra](images/ag-personensuche.jpg)
+
+Ein Klick auf eine Person öffnet die **Personenübersicht**. Sie erreichen sie
+auch im Ticket über den Namen unter **Anfragende Person** (in der App:
+**Personenübersicht** unter der anfragenden Person).
+
+- **Kopf**: Funktion, Abteilung, E-Mail, vorgesetzte Person, letzte Anmeldung
+  und Kontostatus aus Entra. Mit **Ticket für … erfassen** öffnet sich das
+  Ticketformular mit der Person als anfragender Person.
+- **Kennzahlen**: offene Tickets (davon wartend auf die Person), Tickets der
+  letzten 12 Monate, durchschnittliche Lösungszeit im Vergleich zum Mandanten
+  und die **Zufriedenheit**.
+- **Reiter**: **Tickets** (alle, auch geschlossene; filterbar nach _Alle /
+  Offen / Geschlossen_), **Geräte** aus Intune und Assets, **Lizenzen**,
+  **Bestellungen** aus dem Shop und der **Verlauf** als Zeitleiste. Geräte,
+  Lizenzen und Bestellungen erscheinen nur, wenn das Modul aktiv ist und Sie
+  die Berechtigung dafür haben.
+- **Häufige Themen**: die Kategorien, zu denen die Person am häufigsten
+  Tickets erfasst.
+
+Sie sehen nur Tickets, die Sie auch sonst öffnen dürfen.
+
+> **Datenschutz:** Einzelne Bewertungen und Kommentare der Person werden nie
+> angezeigt. nextDesk zeigt nur den **Durchschnitt** (mit Anteil zufriedener
+> Bewertungen, Mandantenvergleich und Tendenz) und erst ab **3 Bewertungen**.
+
+![Personenübersicht mit Tickets, Kennzahlen und Zufriedenheit](images/ag-person.jpg)
 
 ## Übersicht
 
@@ -121,7 +158,8 @@ Status. Ziehen Sie eine Karte in eine andere Spalte, um den Status zu ändern.
 
 Öffnen Sie ein Ticket mit einem Klick. Im Kopf- und Infobereich ändern Sie
 direkt **Status**, **Priorität**, **Kategorie**, **Team** und **zugewiesene
-Person**. Der **Verlauf** zeigt alle Nachrichten, Notizen und Änderungen
+Person**. Ein Klick auf den Namen der **anfragenden Person** öffnet ihre
+Personenübersicht. Der **Verlauf** zeigt alle Nachrichten, Notizen und Änderungen
 chronologisch; die SLA-Anzeige zeigt die verbleibende Zeit.
 
 ![Ticketdetail mit Verlauf und Infobereich](images/ag-ticket-detail.jpg)

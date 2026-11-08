@@ -30,6 +30,7 @@ import { RequesterTicketProgress } from "@/components/requester-ticket-progress"
 import { TicketSatisfactionCard } from "@/components/ticket-satisfaction-card";
 import { isRatableTicketStatus } from "@/lib/ticket-satisfaction-model";
 import { reminderAnswerFromParam } from "@/lib/requester-progress";
+import { personRoute } from "@/lib/person-overview";
 import { TicketConversation } from "@/components/ticket-conversation";
 import { loadTicketSnippets } from "@/lib/nextdesk-assistance";
 import type { ReplySnippet, SnippetContext } from "@/lib/reply-snippets";
@@ -1766,6 +1767,29 @@ export default function TicketDetailScreen() {
                   ) : null}
                 </Pressable>
               )}
+              {ticket.canUpdate && ticket.requesterContact?.id ? (
+                <Pressable
+                  accessibilityHint="Zeigt alle Tickets, Geräte und die Zufriedenheit dieser Person."
+                  accessibilityLabel={`Personenübersicht von ${ticket.requesterContact.displayName} öffnen`}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    const route = personRoute({
+                      requesterContactId: ticket.requesterContact?.id ?? null,
+                    });
+                    if (route) router.push(route as never);
+                  }}
+                  style={styles.contactAction}
+                >
+                  <Ionicons
+                    color={colors.info}
+                    name="person-circle-outline"
+                    size={15}
+                  />
+                  <Text numberOfLines={1} style={styles.contactActionText}>
+                    Personenübersicht
+                  </Text>
+                </Pressable>
+              ) : null}
               {ticket.requesterContact?.email ? (
                 <Pressable
                   accessibilityLabel={`${ticket.requesterContact.displayName} per E-Mail kontaktieren`}

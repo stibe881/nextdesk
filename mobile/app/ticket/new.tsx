@@ -71,12 +71,22 @@ export default function NewTicketScreen() {
     assetName?: string;
     description?: string;
     subject?: string;
+    // «Ticket für … erfassen» in the person overview.
+    requesterId?: string;
+    requesterName?: string;
   }>();
   // Gerät aus dem Scanner bzw. der Asset-Ansicht: wird mit dem Ticket verknüpft.
   const [linkedAsset, setLinkedAsset] = useState(() =>
     linkedAssetFromParams(params),
   );
   const [initialPrefill] = useState(() => ({
+    requester:
+      typeof params.requesterId === "string" &&
+      typeof params.requesterName === "string" &&
+      params.requesterId &&
+      params.requesterName
+        ? { id: params.requesterId, displayName: params.requesterName }
+        : null,
     description:
       typeof params.description === "string" ? params.description : "",
     subject: typeof params.subject === "string" ? params.subject : "",
@@ -128,7 +138,7 @@ export default function NewTicketScreen() {
         void loadPhishingConfig(currentTenant.id).then(setPhishing);
         setDepartmentId(formOptions.departments[0]?.id ?? "");
         setPriorityKey(formOptions.priorities[0]?.key ?? "");
-        setRequester(formOptions.currentRequester);
+        setRequester(initialPrefill.requester ?? formOptions.currentRequester);
         if (initialPrefill.subject || initialPrefill.description) {
           setSubject(initialPrefill.subject);
           setDescription(initialPrefill.description);
