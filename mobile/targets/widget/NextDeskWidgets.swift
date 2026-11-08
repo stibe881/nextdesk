@@ -21,6 +21,32 @@ extension Color {
   static let ndDanger = Color("WidgetDanger")
 }
 
+extension Color {
+  /// `#RRGGBB`; nil for anything else.
+  init?(hex: String) {
+    let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+    guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }
+    self.init(
+      red: Double((value >> 16) & 0xFF) / 255,
+      green: Double((value >> 8) & 0xFF) / 255,
+      blue: Double(value & 0xFF) / 255
+    )
+  }
+}
+
+/// Accent and row colour: the tenant design when the app provided it,
+/// otherwise the built-in nextDesk colours.
+struct WidgetPalette {
+  let accent: Color
+  let surface: Color
+
+  init(brand: WidgetBrand?, scheme: ColorScheme) {
+    let colors = scheme == .dark ? brand?.dark : brand?.light
+    accent = colors.flatMap { Color(hex: $0.accent) } ?? .ndAccent
+    surface = colors.flatMap { Color(hex: $0.surface) } ?? .ndSurface
+  }
+}
+
 extension View {
   /// iOS 17 needs containerBackground; older systems get padding + background.
   @ViewBuilder
@@ -50,14 +76,19 @@ struct PrioritiesWidget: Widget {
 
 struct PrioritiesView: View {
   @Environment(\.widgetFamily) private var family
+  @Environment(\.colorScheme) private var scheme
   let entry: SnapshotEntry
+
+  private var palette: WidgetPalette {
+    WidgetPalette(brand: entry.snapshot?.brand, scheme: scheme)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: family == .systemLarge ? 8 : 5) {
       HStack(alignment: .firstTextBaseline) {
         Label("Meine Prioritäten", systemImage: "sparkles")
           .font(.caption.weight(.bold))
-          .foregroundColor(.ndAccent)
+          .foregroundColor(palette.accent)
         Spacer(minLength: 4)
         Text(standLabel(entry.snapshot, now: entry.date))
           .font(.caption2)
@@ -80,7 +111,7 @@ struct PrioritiesView: View {
         } else {
           ForEach(items.prefix(3)) { item in
             Link(destination: ticketURL(item.id)) {
-              PriorityRow(item: item, large: family == .systemLarge)
+              PriorityRow(item: item, large: family == .systemLarge, palette: palette)
             }
           }
         }
@@ -103,13 +134,14 @@ struct PrioritiesView: View {
 struct PriorityRow: View {
   let item: WidgetPriority
   let large: Bool
+  let palette: WidgetPalette
 
   var body: some View {
     VStack(alignment: .leading, spacing: 1) {
       HStack(spacing: 4) {
         Text(item.ticketNumber)
           .font(.caption2.weight(.bold))
-          .foregroundColor(.ndAccent)
+          .foregroundColor(palette.accent)
         Text(item.subject)
           .font(.caption.weight(.semibold))
           .foregroundColor(.ndForeground)
@@ -125,7 +157,7 @@ struct PriorityRow: View {
     .padding(.horizontal, 8)
     .padding(.vertical, large ? 6 : 3)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.ndSurface)
+    .background(palette.surface)
     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
   }
 }
@@ -169,6 +201,7 @@ struct CountersWidget: Widget {
 
 struct CountersView: View {
   @Environment(\.widgetFamily) private var family
+  @Environment(\.colorScheme) private var scheme
   let entry: SnapshotEntry
 
   private var warnings: Int? { entry.snapshot?.slaWarnings(at: entry.date) }
@@ -190,7 +223,9 @@ struct CountersView: View {
         HStack {
           Text("nextDesk")
             .font(.caption.weight(.bold))
-            .foregroundColor(.ndAccent)
+            .foregroundColor(
+              WidgetPalette(brand: entry.snapshot?.brand, scheme: scheme).accent
+            )
           Spacer(minLength: 2)
         }
         CounterTile(

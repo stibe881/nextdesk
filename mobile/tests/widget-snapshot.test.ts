@@ -235,3 +235,60 @@ describe("widgetDeepLink", () => {
     expect(widgetDeepLink(null)).toBe("ch.grossict.nextdesk://priorities");
   });
 });
+
+describe("widget brand colours", () => {
+  const brand = {
+    light: { accent: "#0b6e4f", surface: "#E7F3EE" },
+    dark: { accent: "#7FD8B5", surface: "#1C2B26" },
+  };
+
+  it("stores normalised design colours for the same tenant", () => {
+    const first = mergeWidgetSnapshot(
+      null,
+      { tenantId: "t1", approvals: 1 },
+      NOW,
+    );
+    const next = mergeWidgetSnapshot(first, { tenantId: "t1", brand }, NOW);
+    expect(next.brand).toEqual({
+      light: { accent: "#0B6E4F", surface: "#E7F3EE" },
+      dark: { accent: "#7FD8B5", surface: "#1C2B26" },
+    });
+    expect(next.approvals).toBe(1);
+  });
+
+  it("falls back to the built-in colours without a valid design", () => {
+    const withBrand = mergeWidgetSnapshot(null, { tenantId: "t1", brand }, NOW);
+    expect(
+      mergeWidgetSnapshot(withBrand, { tenantId: "t1", brand: null }, NOW)
+        .brand,
+    ).toBeNull();
+    expect(
+      mergeWidgetSnapshot(
+        null,
+        {
+          tenantId: "t1",
+          brand: {
+            light: { accent: "red", surface: "#FFFFFF" },
+            dark: brand.dark,
+          },
+        },
+        NOW,
+      ).brand,
+    ).toBeNull();
+  });
+
+  it("drops the design of a previous tenant", () => {
+    const withBrand = mergeWidgetSnapshot(null, { tenantId: "t1", brand }, NOW);
+    expect(
+      mergeWidgetSnapshot(withBrand, { tenantId: "t2", approvals: 0 }, NOW)
+        .brand,
+    ).toBeNull();
+  });
+
+  it("round-trips through storage", () => {
+    const stored = mergeWidgetSnapshot(null, { tenantId: "t1", brand }, NOW);
+    expect(parseWidgetSnapshot(JSON.stringify(stored))?.brand).toEqual(
+      stored.brand,
+    );
+  });
+});

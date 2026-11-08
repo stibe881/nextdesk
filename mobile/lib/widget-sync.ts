@@ -7,6 +7,7 @@ import {
   mergeWidgetSnapshot,
   parseWidgetSnapshot,
   WIDGET_SNAPSHOT_STORAGE_KEY,
+  type WidgetBrand,
   type WidgetSnapshot,
   type WidgetSnapshotUpdate,
 } from "@/lib/widget-snapshot";
@@ -51,6 +52,14 @@ function update(change: WidgetSnapshotUpdate): Promise<void> {
     );
     await publishWidgetSnapshot(next);
   });
+}
+
+/** Call whenever the tenant design colours were loaded (null = defaults). */
+export function recordWidgetBrand(
+  tenantId: string,
+  brand: WidgetBrand | null,
+): Promise<void> {
+  return update({ tenantId, brand });
 }
 
 /** Call whenever «Meine Prioritäten» was loaded or changed. */

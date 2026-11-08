@@ -29,6 +29,19 @@ export type WidgetPriority = {
   reason: string | null;
 };
 
+/** Colours from the tenant design (Einstellungen → Design), per scheme. */
+export type WidgetBrandColors = {
+  /** Title and ticket numbers; readable on the widget surfaces. */
+  accent: string;
+  /** Background of the ticket rows. */
+  surface: string;
+};
+
+export type WidgetBrand = {
+  light: WidgetBrandColors;
+  dark: WidgetBrandColors;
+};
+
 export type WidgetSnapshot = {
   version: typeof WIDGET_SNAPSHOT_VERSION;
   /** ISO timestamp of the last change («Stand HH:MM»). */
@@ -44,12 +57,15 @@ export type WidgetSnapshot = {
   slaDueAt: string[] | null;
   /** Open approvals that wait for the user's decision; null while unknown. */
   approvals: number | null;
+  /** Tenant design colours; null uses the built-in nextDesk colours. */
+  brand: WidgetBrand | null;
 };
 
 export type WidgetSnapshotUpdate = {
   tenantId: string;
   priorities?: PriorityList;
   approvals?: number;
+  brand?: WidgetBrand | null;
 };
 
 function clip(value: string, max: number): string {
@@ -102,6 +118,7 @@ export function mergeWidgetSnapshot(
           priorities: null,
           slaDueAt: null,
           approvals: null,
+          brand: null,
         };
   return {
     ...base,
@@ -111,6 +128,7 @@ export function mergeWidgetSnapshot(
     ...(update.approvals !== undefined
       ? { approvals: Math.max(0, Math.floor(update.approvals)) }
       : {}),
+    ...(update.brand !== undefined ? { brand: parseBrand(update.brand) } : {}),
   };
 }
 
@@ -141,6 +159,26 @@ export function countSlaBreaches(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hexColor(value: unknown): string | null {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
+    ? value.toUpperCase()
+    : null;
+}
+
+function parseBrandColors(value: unknown): WidgetBrandColors | null {
+  if (!isRecord(value)) return null;
+  const accent = hexColor(value.accent);
+  const surface = hexColor(value.surface);
+  return accent && surface ? { accent, surface } : null;
+}
+
+export function parseBrand(value: unknown): WidgetBrand | null {
+  if (!isRecord(value)) return null;
+  const light = parseBrandColors(value.light);
+  const dark = parseBrandColors(value.dark);
+  return light && dark ? { light, dark } : null;
 }
 
 function parsePriority(value: unknown): WidgetPriority | null {
@@ -204,6 +242,7 @@ export function parseWidgetSnapshot(
     priorities,
     slaDueAt,
     approvals,
+    brand: parseBrand(value.brand),
   };
 }
 

@@ -10,7 +10,29 @@ import { vars } from "nativewind";
 
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { TenantBrandingScope, useThemeContext } from "@/lib/theme-provider";
-import { loadTenantBranding } from "@/lib/tenant-branding";
+import {
+  loadTenantBranding,
+  type TenantBrandColors,
+} from "@/lib/tenant-branding";
+import { resolveTenantPalette } from "@/lib/tenant-theme";
+import type { WidgetBrand } from "@/lib/widget-snapshot";
+import { recordWidgetBrand } from "@/lib/widget-sync";
+
+/**
+ * Home-screen widget colours from the tenant design, made readable for the
+ * light and dark widget appearance in the same way as the app palette.
+ */
+function widgetBrandFrom(colors: TenantBrandColors): WidgetBrand | null {
+  if (!colors.primaryColor && !colors.secondaryColor && !colors.accentColor) {
+    return null;
+  }
+  const light = resolveTenantPalette("light", colors);
+  const dark = resolveTenantPalette("dark", colors);
+  return {
+    light: { accent: light.primaryText, surface: light.primarySoft },
+    dark: { accent: dark.primaryText, surface: dark.primarySoft },
+  };
+}
 
 /**
  * Loads the web design only for the confirmed active tenant. The surrounding
@@ -53,14 +75,16 @@ function TenantBrandingSynchronizer({
     try {
       const branding = await loadTenantBranding(requestedTenantId);
       if (requestVersion.current !== version) return;
+      const brandColors: TenantBrandColors = {
+        accentColor: branding.accentColor,
+        primaryColor: branding.primaryColor,
+        secondaryColor: branding.secondaryColor,
+      };
       setTenantBrandColors({
         tenantId: requestedTenantId,
-        colors: {
-          accentColor: branding.accentColor,
-          primaryColor: branding.primaryColor,
-          secondaryColor: branding.secondaryColor,
-        },
+        colors: brandColors,
       });
+      void recordWidgetBrand(requestedTenantId, widgetBrandFrom(brandColors));
     } catch {
       if (requestVersion.current === version) setTenantBrandColors(null);
     }
