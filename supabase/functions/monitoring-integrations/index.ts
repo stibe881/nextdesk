@@ -30,6 +30,7 @@ class HttpError extends Error {
 export type ConfigInput = {
   enabled: boolean;
   departmentId: string | null;
+  teamId: string | null;
   createOn: (typeof CREATE_ON)[number];
   autoResolve: boolean;
   setServiceStatus: boolean;
@@ -52,6 +53,12 @@ export function parseConfig(value: unknown): ConfigInput | null {
       : isUuid(value.departmentId)
         ? value.departmentId.toLowerCase()
         : undefined;
+  const teamId =
+    value.teamId === null || value.teamId === undefined || value.teamId === ""
+      ? null
+      : isUuid(value.teamId)
+        ? value.teamId.toLowerCase()
+        : undefined;
   const priorityKey =
     value.priorityKey === null ||
     value.priorityKey === undefined ||
@@ -69,6 +76,7 @@ export function parseConfig(value: unknown): ConfigInput | null {
     typeof value.autoResolve !== "boolean" ||
     typeof value.setServiceStatus !== "boolean" ||
     departmentId === undefined ||
+    teamId === undefined ||
     priorityKey === undefined ||
     !createOn
   ) {
@@ -77,6 +85,7 @@ export function parseConfig(value: unknown): ConfigInput | null {
   return {
     enabled: value.enabled,
     departmentId,
+    teamId,
     createOn,
     autoResolve: value.autoResolve,
     setServiceStatus: value.setServiceStatus,
@@ -184,6 +193,7 @@ function configFromRow(row: Row | null) {
     configured: row !== null,
     enabled: row?.enabled === true,
     departmentId: (row?.department_id as string | null) ?? null,
+    teamId: (row?.team_id as string | null) ?? null,
     createOn: (row?.create_on as string | undefined) ?? "down",
     autoResolve: row?.auto_resolve === true,
     setServiceStatus: row?.set_service_status === true,
@@ -257,7 +267,8 @@ async function listAlerts(admin: Admin, tenantId: string) {
 }
 
 async function get(request: Request, admin: Admin, tenantId: string) {
-  const [integration, departments, priorities, alerts] = await Promise.all([
+  const [integration, departments, teams, priorities, alerts] =
+    await Promise.all([
     loadIntegration(admin, tenantId),
     admin
       .from("departments")
@@ -266,19 +277,31 @@ async function get(request: Request, admin: Admin, tenantId: string) {
       .eq("active", true)
       .order("name"),
     admin
+      .from("teams")
+      .select("id, name, department_id")
+      .eq("tenant_id", tenantId)
+      .eq("active", true)
+      .not("department_id", "is", null)
+      .order("name"),
+    admin
       .from("ticket_priorities")
       .select("key, label, sort_order")
       .eq("tenant_id", tenantId)
       .order("sort_order"),
     listAlerts(admin, tenantId),
   ]);
-  if (departments.error || priorities.error) throw dbFailure();
+  if (departments.error || teams.error || priorities.error) throw dbFailure();
   return json(request, {
     data: {
       config: configFromRow(integration),
       departments: ((departments.data ?? []) as Row[]).map((row) => ({
         id: row.id,
         name: row.name,
+      })),
+      teams: ((teams.data ?? []) as Row[]).map((row) => ({
+        id: row.id,
+        name: row.name,
+        departmentId: row.department_id,
       })),
       priorities: ((priorities.data ?? []) as Row[]).map((row) => ({
         key: row.key,
@@ -313,6 +336,27 @@ async function save(
       );
     }
   }
+  if (config.teamId) {
+    const { data, error } = await admin
+      .from("teams")
+      .select("id, department_id")
+      .eq("tenant_id", tenantId)
+      .eq("id", config.teamId)
+      .eq("active", true)
+      .maybeSingle();
+    if (error) throw dbFailure();
+    if (
+      !data ||
+      !data.department_id ||
+      (config.departmentId && data.department_id !== config.departmentId)
+    ) {
+      throw new HttpError(
+        422,
+        "team_invalid",
+        "Das Team ist nicht verfügbar oder gehört zu einer anderen Abteilung.",
+      );
+    }
+  }
   if (config.priorityKey) {
     const { data, error } = await admin
       .from("ticket_priorities")
@@ -337,6 +381,7 @@ async function save(
         provider: "prtg",
         enabled: config.enabled,
         department_id: config.departmentId,
+        team_id: config.teamId,
         create_on: config.createOn,
         auto_resolve: config.autoResolve,
         set_service_status: config.setServiceStatus,

@@ -16,6 +16,7 @@ export type MonitoringConfig = {
   configured: boolean;
   enabled: boolean;
   departmentId: string | null;
+  teamId: string | null;
   createOn: CreateOn;
   autoResolve: boolean;
   setServiceStatus: boolean;
@@ -39,6 +40,7 @@ export type MonitoringAlert = {
 };
 
 type Option = { id: string; name: string };
+type TeamOption = { id: string; name: string; departmentId: string };
 type PriorityOption = { key: string; label: string };
 
 export const PRTG_POSTDATA =
@@ -71,6 +73,7 @@ export function parseMonitoringConfig(value: unknown): MonitoringConfig | null {
     configured: value.configured === true,
     enabled: value.enabled,
     departmentId: text(value.departmentId),
+    teamId: text(value.teamId),
     createOn: value.createOn,
     autoResolve: value.autoResolve,
     setServiceStatus: value.setServiceStatus,
@@ -144,6 +147,7 @@ async function copyText(value: string): Promise<void> {
 export function MonitoringSettings({ tenantId }: { tenantId: string }) {
   const [config, setConfig] = useState<MonitoringConfig | null>(null);
   const [departments, setDepartments] = useState<Option[]>([]);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [priorities, setPriorities] = useState<PriorityOption[]>([]);
   const [alerts, setAlerts] = useState<MonitoringAlert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -157,6 +161,7 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
 
   const [enabled, setEnabled] = useState(false);
   const [departmentId, setDepartmentId] = useState("");
+  const [teamId, setTeamId] = useState("");
   const [createOn, setCreateOn] = useState<CreateOn>("down");
   const [autoResolve, setAutoResolve] = useState(false);
   const [setServiceStatus, setSetServiceStatus] = useState(false);
@@ -166,6 +171,7 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
     setConfig(next);
     setEnabled(next.enabled);
     setDepartmentId(next.departmentId ?? "");
+    setTeamId(next.teamId ?? "");
     setCreateOn(next.createOn);
     setAutoResolve(next.autoResolve);
     setSetServiceStatus(next.setServiceStatus);
@@ -192,6 +198,24 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
               typeof entry.id === "string" &&
               typeof entry.name === "string"
                 ? [{ id: entry.id, name: entry.name }]
+                : [],
+            )
+          : [],
+      );
+      setTeams(
+        Array.isArray(payload.teams)
+          ? payload.teams.flatMap((entry) =>
+              isRecord(entry) &&
+              typeof entry.id === "string" &&
+              typeof entry.name === "string" &&
+              typeof entry.departmentId === "string"
+                ? [
+                    {
+                      id: entry.id,
+                      name: entry.name,
+                      departmentId: entry.departmentId,
+                    },
+                  ]
                 : [],
             )
           : [],
@@ -237,6 +261,7 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
           config: {
             enabled,
             departmentId: departmentId || null,
+            teamId: teamId || null,
             createOn,
             autoResolve,
             setServiceStatus,
@@ -298,6 +323,14 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
   }
 
   const busy = loading || saving || rotating;
+  const departmentNames = new Map(
+    departments.map((department) => [department.id, department.name]),
+  );
+  // Without a fixed department every team is offered; its department then
+  // decides where the ticket is created.
+  const teamOptions = teams.filter(
+    (team) => !departmentId || team.departmentId === departmentId,
+  );
 
   return (
     <section
@@ -337,13 +370,43 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
                 Abteilung für Tickets
                 <select
                   disabled={saving}
-                  onChange={(event) => setDepartmentId(event.target.value)}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setDepartmentId(next);
+                    const current = teams.find((team) => team.id === teamId);
+                    if (next && current && current.departmentId !== next) {
+                      setTeamId("");
+                    }
+                  }}
                   value={departmentId}
                 >
                   <option value="">Erste aktive Abteilung</option>
                   {departments.map((department) => (
                     <option key={department.id} value={department.id}>
                       {department.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Team für Tickets
+                <select
+                  disabled={saving}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setTeamId(next);
+                    const team = teams.find((entry) => entry.id === next);
+                    if (team) setDepartmentId(team.departmentId);
+                  }}
+                  value={teamId}
+                >
+                  <option value="">Kein Team (Abteilung entscheidet)</option>
+                  {teamOptions.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                      {departmentId || !departmentNames.get(team.departmentId)
+                        ? ""
+                        : ` (${departmentNames.get(team.departmentId)})`}
                     </option>
                   ))}
                 </select>

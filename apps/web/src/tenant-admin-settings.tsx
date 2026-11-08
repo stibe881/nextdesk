@@ -117,6 +117,7 @@ type SettingsArea =
   | "privacy"
   | "users"
   | "roles"
+  | "monitoring"
   | "audit";
 
 type TenantSettings = {
@@ -2689,6 +2690,7 @@ export function TenantAdminSettings({
         ...(slaManagementEnabled ? ([["sla", "SLA"]] as const) : []),
         ["ticket-fields", "Ticketfelder"],
         ["departments", "Abteilungen"],
+        ["monitoring", "Monitoring"],
       ],
     },
     {
@@ -2701,6 +2703,12 @@ export function TenantAdminSettings({
       ],
     },
   ];
+  const assetsManagementEnabled =
+    settings?.tenant_feature_flags.some(
+      (feature) =>
+        feature.feature_key === "assets.management" &&
+        isTenantFeatureActive(feature),
+    ) ?? false;
 
   useEffect(() => {
     if (activeArea === "sla" && !slaManagementEnabled) {
@@ -3006,6 +3014,38 @@ export function TenantAdminSettings({
                   onNavigate={navigateFromOnboarding}
                 />
               </>
+            )}
+
+            {activeArea === "monitoring" && (
+              <section
+                className="tenant-admin-settings__section"
+                aria-labelledby="tenant-monitoring-heading"
+              >
+                <div className="tenant-admin-settings__section-heading">
+                  <div>
+                    <h2 id="tenant-monitoring-heading" tabIndex={-1}>
+                      Monitoring
+                    </h2>
+                    <p>
+                      Überwachung per PRTG, Ablaufdaten und Backups. Meldungen
+                      erzeugen Tickets und passen den Systemstatus an.
+                    </p>
+                  </div>
+                </div>
+                {assetsManagementEnabled ? (
+                  <>
+                    <MonitoringSettings tenantId={tenantId} />
+                    <ExpiryMonitoringSettings tenantId={tenantId} />
+                    <BackupMonitoringSettings tenantId={tenantId} />
+                  </>
+                ) : (
+                  <p className="tenant-admin-settings__feature-detail-note">
+                    Aktivieren Sie zuerst die Funktion «Assets» unter
+                    «Funktionen». Das Monitoring nutzt die Geräte der
+                    Infrastruktur.
+                  </p>
+                )}
+              </section>
             )}
 
             {activeArea === "audit" && (
@@ -3787,15 +3827,11 @@ export function TenantAdminSettings({
                                                 <AssetIntuneSettings
                                                   tenantId={tenantId}
                                                 />
-                                                <MonitoringSettings
-                                                  tenantId={tenantId}
-                                                />
-                                                <ExpiryMonitoringSettings
-                                                  tenantId={tenantId}
-                                                />
-                                                <BackupMonitoringSettings
-                                                  tenantId={tenantId}
-                                                />
+                                                <p className="tenant-admin-settings__feature-detail-note">
+                                                  PRTG-, Ablauf- und
+                                                  Backup-Überwachung finden Sie
+                                                  im Tab «Monitoring».
+                                                </p>
                                               </>
                                             ) : null}
                                             {feature.feature_key ===
