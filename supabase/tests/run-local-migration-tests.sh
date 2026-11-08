@@ -1927,10 +1927,11 @@ begin
     '10000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001'
   ) into v_state;
-  if coalesce((v_state ->> 'required')::boolean, false) is not true
-    or (v_state ->> 'startHour')::integer <> 6
-    or (v_state ->> 'endHour')::integer <> 17 then
-    raise exception 'Push work state did not apply contractual defaults';
+  -- Since 0246 nobody checks in; the personal notification window (quiet
+  -- hours) alone decides when pushes arrive.
+  if coalesce((v_state ->> 'required')::boolean, true) is not false
+    or coalesce((v_state ->> 'active')::boolean, false) is not true then
+    raise exception 'Push work state still requires a check-in';
   end if;
 end;
 $$;
@@ -2252,8 +2253,8 @@ $$;
 reset role;
 commit;
 
--- Ohne Check-in wird ein Eintrag ausserhalb des aktiven Push-Zustands übersprungen.
--- Das Fenster 00:00–24:00 hält den positiven Pfad unabhängig von der Testuhr offen.
+-- Seit 0246 braucht es keinen Check-in mehr: Auch eine alte Mandanten-
+-- konfiguration mit checkInRequired hält die Zustellung nicht zurück.
 update public.tenant_feature_flags
 set configuration = '{"contentLevel":"minimal","checkInRequired":true,"workStartHour":0,"workEndHour":24}'::jsonb
 where tenant_id = '10000000-0000-4000-8000-000000000001'
@@ -2271,20 +2272,12 @@ begin;
 set local role service_role;
 do $$
 begin
-  if exists (
+  if not exists (
     select 1
     from public.push_claim_outbox(50) claim
     where claim.notification_id = '1e100000-0000-4000-8000-000000000003'
   ) then
-    raise exception 'Push claim returned a row without today''s check-in';
-  end if;
-  if not exists (
-    select 1 from public.push_outbox
-    where notification_id = '1e100000-0000-4000-8000-000000000003'
-      and status = 'pending'
-      and last_error = 'deferred_off_shift'
-  ) then
-    raise exception 'Push claim did not defer an unchecked-in user';
+    raise exception 'Push claim still waits for a check-in';
   end if;
 end;
 $$;

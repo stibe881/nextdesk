@@ -25,8 +25,6 @@ import {
 } from "@/lib/mobile-haptics";
 import { getMobileUserId } from "@/lib/nextdesk-client";
 import {
-  checkInForPush,
-  checkOutForPush,
   deviceTimezone,
   disablePushNotifications,
   enablePushNotifications,
@@ -164,7 +162,6 @@ export default function NotificationsScreen() {
   const [masterSaving, setMasterSaving] = useState(false);
   const [preferenceSaving, setPreferenceSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [workHoursSaving, setWorkHoursSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -224,24 +221,13 @@ export default function NotificationsScreen() {
         !status.apnsConfigured ||
         permission === "unsupported"));
   const canSavePreferences = Boolean(tenantId && status?.featureEnabled);
-  const workHours = status?.workHours;
-  const workHoursDescription = (() => {
-    if (!workHours) return "Arbeitszeit wird geprüft";
-    if (!workHours.required) return "Kein Check-in erforderlich";
-    if (!workHours.withinWindow) {
-      return `Ausserhalb der Arbeitszeit (${hourLabel(workHours.startHour)}–${hourLabel(workHours.endHour)} Uhr)`;
-    }
-    if (workHours.checkedIn) {
-      return `Eingecheckt – Push aktiv bis ${hourLabel(workHours.endHour)} Uhr`;
-    }
-    return "Nicht eingecheckt";
-  })();
-  const canCheckInForWorkHours = Boolean(
-    workHours?.required && workHours.withinWindow && !workHours.checkedIn,
-  );
-  const canCheckOutForWorkHours = Boolean(
-    workHours?.required && workHours.checkedIn,
-  );
+  // Personal notification window, stored as quiet hours: "from 06 to 17"
+  // means quiet from 17 to 06.
+  const windowStart = preferences.quietEnd;
+  const windowEnd = preferences.quietStart;
+  const deliveryDescription = preferences.quietHoursEnabled
+    ? `Täglich von ${hourLabel(windowStart)} bis ${hourLabel(windowEnd === 0 ? 24 : windowEnd)} Uhr`
+    : "Jederzeit";
 
   const statusDescription = (() => {
     if (!status) return "Status wird geprüft";
@@ -386,38 +372,6 @@ export default function NotificationsScreen() {
       );
     } finally {
       setTesting(false);
-    }
-  }
-
-  async function updateWorkHours(action: "checkIn" | "checkOut") {
-    if (!tenantId || !workHours || workHoursSaving) return;
-    setWorkHoursSaving(true);
-    setError("");
-    setMessage("");
-    hapticSelection();
-    try {
-      const response =
-        action === "checkIn"
-          ? await checkInForPush(tenantId)
-          : await checkOutForPush(tenantId);
-      setStatus((current) =>
-        current ? { ...current, workHours: response.workHours } : current,
-      );
-      setMessage(
-        action === "checkIn"
-          ? "Du bist für Push-Benachrichtigungen eingecheckt."
-          : "Du bist für Push-Benachrichtigungen ausgecheckt.",
-      );
-      hapticSuccess();
-    } catch (nextError) {
-      hapticError();
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Der Check-in konnte nicht geändert werden. Bitte versuche es erneut.",
-      );
-    } finally {
-      setWorkHoursSaving(false);
     }
   }
 
@@ -611,90 +565,6 @@ export default function NotificationsScreen() {
 
           {status?.featureEnabled && status.apnsConfigured ? (
             <>
-              {workHours ? (
-                <View
-                  style={[
-                    styles.card,
-                    densityStyles.card,
-                    {
-                      backgroundColor: colors.surface,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                >
-                  <View style={styles.cardHeading}>
-                    <View
-                      style={[
-                        styles.cardIcon,
-                        { backgroundColor: colors.infoSoft },
-                      ]}
-                    >
-                      <Ionicons
-                        color={colors.info}
-                        name="time-outline"
-                        size={20}
-                      />
-                    </View>
-                    <View style={styles.cardHeadingCopy}>
-                      <Text
-                        style={[styles.cardTitle, { color: colors.foreground }]}
-                      >
-                        Arbeitszeit
-                      </Text>
-                      <Text
-                        style={[
-                          styles.workHoursStatus,
-                          { color: colors.muted },
-                        ]}
-                      >
-                        {workHoursDescription}
-                      </Text>
-                    </View>
-                  </View>
-                  {canCheckInForWorkHours || canCheckOutForWorkHours ? (
-                    <Pressable
-                      accessibilityLabel={
-                        canCheckInForWorkHours
-                          ? "Für Push-Benachrichtigungen einchecken"
-                          : "Für Push-Benachrichtigungen auschecken"
-                      }
-                      accessibilityRole="button"
-                      accessibilityState={{
-                        busy: workHoursSaving,
-                        disabled: workHoursSaving,
-                      }}
-                      disabled={workHoursSaving}
-                      onPress={() =>
-                        void updateWorkHours(
-                          canCheckInForWorkHours ? "checkIn" : "checkOut",
-                        )
-                      }
-                      style={[
-                        styles.workHoursButton,
-                        { backgroundColor: colors.primary },
-                        workHoursSaving && styles.disabled,
-                      ]}
-                    >
-                      {workHoursSaving ? (
-                        <ActivityIndicator
-                          color={colors.onPrimary}
-                          size="small"
-                        />
-                      ) : (
-                        <Text
-                          style={[
-                            styles.workHoursButtonText,
-                            { color: colors.onPrimary },
-                          ]}
-                        >
-                          {canCheckInForWorkHours ? "Einchecken" : "Auschecken"}
-                        </Text>
-                      )}
-                    </Pressable>
-                  ) : null}
-                </View>
-              ) : null}
-
               <View
                 style={[
                   styles.card,
@@ -814,7 +684,7 @@ export default function NotificationsScreen() {
                   >
                     <Ionicons
                       color={colors.info}
-                      name="moon-outline"
+                      name="time-outline"
                       size={20}
                     />
                   </View>
@@ -822,14 +692,14 @@ export default function NotificationsScreen() {
                     <Text
                       style={[styles.cardTitle, { color: colors.foreground }]}
                     >
-                      Ruhezeit
+                      Benachrichtigungszeit
                     </Text>
                     <Text style={[styles.cardHint, { color: colors.muted }]}>
-                      Plane eine tägliche Pause für Push-Mitteilungen.
+                      {deliveryDescription}
                     </Text>
                   </View>
                   <Switch
-                    accessibilityLabel="Ruhezeit aktivieren"
+                    accessibilityLabel="Nur zu bestimmten Zeiten benachrichtigen"
                     accessibilityRole="switch"
                     accessibilityState={{
                       checked: preferences.quietHoursEnabled,
@@ -847,107 +717,114 @@ export default function NotificationsScreen() {
                   />
                 </View>
                 <Text style={[styles.quietNote, { color: colors.muted }]}>
-                  Während der Ruhezeit werden keine Push-Mitteilungen gesendet.
-                  Hinweise erscheinen weiterhin in nextDesk.
+                  {preferences.quietHoursEnabled
+                    ? "Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit. In nextDesk siehst du alles sofort."
+                    : "Schalte ein, um Push-Mitteilungen nur zu bestimmten Zeiten zu erhalten."}
                 </Text>
-                <Text style={[styles.timeLabel, { color: colors.subtle }]}>
-                  BEGINN
-                </Text>
-                <ScrollView
-                  contentContainerStyle={styles.hourChoices}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                >
-                  {HOURS.map((hour) => {
-                    const selected = preferences.quietStart === hour;
-                    return (
-                      <Pressable
-                        accessibilityLabel={`Ruhezeit beginnt um ${hourLabel(hour)}`}
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          selected,
-                          disabled: preferenceSaving,
-                        }}
-                        disabled={preferenceSaving}
-                        key={`start-${hour}`}
-                        onPress={() => chooseHour("quietStart", hour)}
-                        style={[
-                          styles.hourChoice,
-                          {
-                            backgroundColor: selected
-                              ? colors.primary
-                              : colors.surfaceSubtle,
-                            borderColor: selected
-                              ? colors.primary
-                              : colors.border,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.hourChoiceText,
-                            {
-                              color: selected
-                                ? colors.onPrimary
-                                : colors.foreground,
-                            },
-                          ]}
-                        >
-                          {hourLabel(hour)}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-                <Text style={[styles.timeLabel, { color: colors.subtle }]}>
-                  ENDE
-                </Text>
-                <ScrollView
-                  contentContainerStyle={styles.hourChoices}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                >
-                  {HOURS.map((hour) => {
-                    const selected = preferences.quietEnd === hour;
-                    return (
-                      <Pressable
-                        accessibilityLabel={`Ruhezeit endet um ${hourLabel(hour)}`}
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          selected,
-                          disabled: preferenceSaving,
-                        }}
-                        disabled={preferenceSaving}
-                        key={`end-${hour}`}
-                        onPress={() => chooseHour("quietEnd", hour)}
-                        style={[
-                          styles.hourChoice,
-                          {
-                            backgroundColor: selected
-                              ? colors.primary
-                              : colors.surfaceSubtle,
-                            borderColor: selected
-                              ? colors.primary
-                              : colors.border,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.hourChoiceText,
-                            {
-                              color: selected
-                                ? colors.onPrimary
-                                : colors.foreground,
-                            },
-                          ]}
-                        >
-                          {hourLabel(hour)}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
+                {preferences.quietHoursEnabled ? (
+                  <>
+                    <Text style={[styles.timeLabel, { color: colors.subtle }]}>
+                      VON
+                    </Text>
+                    <ScrollView
+                      contentContainerStyle={styles.hourChoices}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                    >
+                      {HOURS.map((hour) => {
+                        const selected = windowStart === hour;
+                        return (
+                          <Pressable
+                            accessibilityLabel={`Benachrichtigungen ab ${hourLabel(hour)} Uhr`}
+                            accessibilityRole="button"
+                            accessibilityState={{
+                              selected,
+                              disabled: preferenceSaving,
+                            }}
+                            disabled={preferenceSaving}
+                            key={`start-${hour}`}
+                            onPress={() => chooseHour("quietEnd", hour)}
+                            style={[
+                              styles.hourChoice,
+                              {
+                                backgroundColor: selected
+                                  ? colors.primary
+                                  : colors.surfaceSubtle,
+                                borderColor: selected
+                                  ? colors.primary
+                                  : colors.border,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.hourChoiceText,
+                                {
+                                  color: selected
+                                    ? colors.onPrimary
+                                    : colors.foreground,
+                                },
+                              ]}
+                            >
+                              {hourLabel(hour)}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                    <Text style={[styles.timeLabel, { color: colors.subtle }]}>
+                      BIS
+                    </Text>
+                    <ScrollView
+                      contentContainerStyle={styles.hourChoices}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                    >
+                      {[...HOURS.filter((hour) => hour !== 0), 0].map(
+                        (hour) => {
+                          const selected = windowEnd === hour;
+                          return (
+                            <Pressable
+                              accessibilityLabel={`Benachrichtigungen bis ${hourLabel(hour === 0 ? 24 : hour)} Uhr`}
+                              accessibilityRole="button"
+                              accessibilityState={{
+                                selected,
+                                disabled: preferenceSaving,
+                              }}
+                              disabled={preferenceSaving}
+                              key={`end-${hour}`}
+                              onPress={() => chooseHour("quietStart", hour)}
+                              style={[
+                                styles.hourChoice,
+                                {
+                                  backgroundColor: selected
+                                    ? colors.primary
+                                    : colors.surfaceSubtle,
+                                  borderColor: selected
+                                    ? colors.primary
+                                    : colors.border,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.hourChoiceText,
+                                  {
+                                    color: selected
+                                      ? colors.onPrimary
+                                      : colors.foreground,
+                                  },
+                                ]}
+                              >
+                                {hourLabel(hour === 0 ? 24 : hour)}
+                              </Text>
+                            </Pressable>
+                          );
+                        },
+                      )}
+                    </ScrollView>
+                  </>
+                ) : null}
               </View>
 
               <View
