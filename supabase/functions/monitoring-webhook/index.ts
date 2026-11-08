@@ -40,6 +40,7 @@ type Integration = {
   tenant_id: string;
   enabled: boolean;
   department_id: string | null;
+  team_id: string | null;
   create_on: "down" | "down_and_warning";
   auto_resolve: boolean;
   set_service_status: boolean;
@@ -219,6 +220,25 @@ async function resolvePriority(
   return rows[0] ? String(rows[0].id) : null;
 }
 
+/** The configured team with its department, while it is still active. */
+async function resolveTeam(
+  admin: Admin,
+  tenantId: string,
+  teamId: string | null,
+): Promise<{ id: string; departmentId: string } | null> {
+  if (!teamId) return null;
+  const { data } = await admin
+    .from("teams")
+    .select("id, department_id")
+    .eq("tenant_id", tenantId)
+    .eq("id", teamId)
+    .eq("active", true)
+    .maybeSingle();
+  return data && data.department_id
+    ? { id: String(data.id), departmentId: String(data.department_id) }
+    : null;
+}
+
 async function resolveDepartment(
   admin: Admin,
   tenantId: string,
@@ -253,8 +273,14 @@ async function createTicket(
   serviceIdentityId: string,
 ): Promise<string> {
   const tenantId = integration.tenant_id;
+  const team = await resolveTeam(admin, tenantId, integration.team_id);
   const [department, status, priorityId] = await Promise.all([
-    resolveDepartment(admin, tenantId, integration.department_id),
+    // The team's department wins: a ticket's team must match its department.
+    resolveDepartment(
+      admin,
+      tenantId,
+      team?.departmentId ?? integration.department_id,
+    ),
     admin
       .from("ticket_statuses")
       .select("id")
@@ -279,6 +305,7 @@ async function createTicket(
     .insert({
       tenant_id: tenantId,
       department_id: department.id,
+      assigned_team_id: team && team.departmentId === department.id ? team.id : null,
       ticket_number: number.data,
       subject: ticketSubject(event),
       description: ticketDescription(event, device?.name ?? null),
@@ -639,7 +666,7 @@ const handler = withSupabase(
     const { data: integration, error } = await admin
       .from("monitoring_integrations")
       .select(
-        "id, tenant_id, enabled, department_id, create_on, auto_resolve, set_service_status, priority_key",
+        "id, tenant_id, enabled, department_id, team_id, create_on, auto_resolve, set_service_status, priority_key",
       )
       .eq("token_hash", await sha256Hex(token))
       .maybeSingle();

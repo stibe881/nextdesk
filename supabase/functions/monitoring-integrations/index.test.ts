@@ -14,12 +14,24 @@ Deno.test("config needs booleans and a known create-on value", () => {
   const config = parseConfig({
     enabled: true,
     departmentId: "",
+    teamId: "",
     createOn: "down_and_warning",
     autoResolve: true,
     setServiceStatus: false,
     priorityKey: "high",
   });
   assertEquals(config?.departmentId, null);
+  assertEquals(config?.teamId, null);
+  assertEquals(
+    parseConfig({
+      enabled: true,
+      teamId: "not-a-uuid",
+      createOn: "down",
+      autoResolve: true,
+      setServiceStatus: false,
+    }),
+    null,
+  );
   assertEquals(config?.createOn, "down_and_warning");
   assertEquals(
     parseConfig({
