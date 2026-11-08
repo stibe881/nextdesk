@@ -1497,8 +1497,6 @@ function baseNotificationPresentation(
           "shop.order.rejected": "Bestellung abgelehnt",
           "shop.order.cancelled": "Bestellung storniert",
           "shop.order.note": "Nachricht zur Bestellung",
-          "shop.order.software_assigned": "Software zugewiesen",
-          "shop.order.software_failed": "Software-Zuweisung fehlgeschlagen",
         };
         return {
           description: `Shop · Bestellung ${orderNumber}`.trim(),

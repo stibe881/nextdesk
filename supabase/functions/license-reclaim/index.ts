@@ -13,7 +13,7 @@ import {
   removeUserLicense,
   savingsByCurrency,
 } from "../_shared/entra-license-graph.ts";
-import { softwareAccessToken } from "../shop/software.ts";
+import { entraGraphAccessToken } from "../_shared/entra-graph-token.ts";
 import {
   SoftwareDeployError,
   softwareDeployErrorMessage,
@@ -446,7 +446,7 @@ async function release(
       );
     }
     try {
-      const token = await softwareAccessToken(admin, tenantId);
+      const token = await entraGraphAccessToken(admin, tenantId);
       await removeUserLicense(token, seat.entra_object_id, item.m365_sku_id);
       m365Removed = true;
     } catch (graphError) {
@@ -529,7 +529,7 @@ async function refreshSignIns(admin: Admin, tenantId: string) {
   let updated = 0;
   let errorMessage: string | null = null;
   try {
-    const token = await softwareAccessToken(admin, tenantId);
+    const token = await entraGraphAccessToken(admin, tenantId);
     const rows = await fetchSignInActivity(token);
     for (let index = 0; index < rows.length; index += SIGN_IN_CHUNK) {
       const { data, error } = await admin.rpc("apply_entra_sign_in_activity", {
