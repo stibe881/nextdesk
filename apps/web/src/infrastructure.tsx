@@ -1069,24 +1069,28 @@ function DeviceDetail({
               {device.hostname ? ` · ${device.hostname}` : ""}
             </p>
           </div>
-          {canManage ? (
+          <div className="infrastructure__header-actions">
+            {canManage ? (
+              <button
+                aria-label="Bearbeiten"
+                className="infrastructure__icon-button"
+                onClick={onEdit}
+                title="Bearbeiten"
+                type="button"
+              >
+                <Pencil aria-hidden="true" size={16} strokeWidth={1.9} />
+              </button>
+            ) : null}
             <button
-              aria-label="Bearbeiten"
+              aria-label="Schliessen"
               className="infrastructure__icon-button"
-              onClick={onEdit}
+              onClick={onClose}
+              title="Schliessen"
               type="button"
             >
-              <Pencil aria-hidden="true" size={16} />
+              <X aria-hidden="true" size={18} strokeWidth={1.9} />
             </button>
-          ) : null}
-          <button
-            aria-label="Schliessen"
-            className="infrastructure__icon-button"
-            onClick={onClose}
-            type="button"
-          >
-            <X aria-hidden="true" size={17} />
-          </button>
+          </div>
         </header>
 
         <ol className="infrastructure__stepper" aria-label="Lebenszyklus">
@@ -1645,7 +1649,7 @@ function DeviceEditor({
             onClick={onCancel}
             type="button"
           >
-            <X aria-hidden="true" size={17} />
+            <X aria-hidden="true" size={18} strokeWidth={1.9} />
           </button>
         </header>
         <fieldset>

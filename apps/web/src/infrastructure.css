@@ -348,9 +348,16 @@
 
 .infrastructure__drawer > header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
+}
+
+.infrastructure__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  align-self: start;
 }
 
 .infrastructure__editor > header {
@@ -367,16 +374,44 @@
   font-size: 13px;
 }
 
+/* Quiet icon buttons in drawer and editor headers. */
 .infrastructure__icon-button {
-  display: grid;
-  width: 32px;
-  height: 32px;
+  display: inline-grid;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
   place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--surface);
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--muted);
   cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.infrastructure__icon-button:hover {
+  border: 0;
+  background: var(--surface-subtle);
+  color: var(--ink);
+}
+
+.infrastructure__icon-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .infrastructure__icon-button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+  }
 }
 
 .infrastructure__stepper {

@@ -1,6 +1,15 @@
 .ticket-kanban {
   display: grid;
   gap: 12px;
+  /* Same inset as the queue tabs; the board scrolls inside it. */
+  min-width: 0;
+  padding: 0 24px 24px;
+}
+
+@media (max-width: 760px) {
+  .ticket-kanban {
+    padding: 0 20px 20px;
+  }
 }
 
 .ticket-kanban__toolbar {
