@@ -1,5 +1,5 @@
 -- Role-specific handbooks (docs/handbooks). The content is published as
--- docs/handbooks/dist/handbooks.json and loaded into these tables from a
+-- docs/handbooks/handbooks.bundle.json and loaded into these tables from a
 -- pinned commit, so the Edge Function stays small. Only the service role
 -- (the handbooks Function) reads the tables; the Function decides per role
 -- which handbook a person may open.
@@ -42,7 +42,7 @@ begin
   end if;
   return net.http_get(
     url := 'https://raw.githubusercontent.com/stibe881/nextdesk/' || p_ref
-      || '/docs/handbooks/dist/handbooks.json',
+      || '/docs/handbooks/handbooks.bundle.json',
     timeout_milliseconds := 60000
   );
 end;

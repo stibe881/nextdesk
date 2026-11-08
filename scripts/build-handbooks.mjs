@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Bundles the handbooks in docs/handbooks/*.md (plus referenced screenshots
- * in docs/handbooks/images/) into docs/handbooks/dist/handbooks.json.
+ * in docs/handbooks/images/) into docs/handbooks/handbooks.bundle.json.
  *
  *   node scripts/build-handbooks.mjs          regenerate the bundle
  *   node scripts/build-handbooks.mjs --check  fail if the bundle is stale
@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceDir = join(root, "docs", "handbooks");
 const imageDir = join(sourceDir, "images");
-const target = join(sourceDir, "dist", "handbooks.json");
+const target = join(sourceDir, "handbooks.bundle.json");
 
 const ORDER = ["mitarbeitende", "agenten", "administratoren", "installation"];
 const MIME = {
@@ -111,7 +111,7 @@ if (process.argv.includes("--check")) {
   const current = existsSync(target) ? readFileSync(target, "utf8") : "";
   if (current !== output) {
     fail(
-      "docs/handbooks/dist/handbooks.json ist veraltet. Bitte «node scripts/build-handbooks.mjs» ausführen.",
+      "docs/handbooks/handbooks.bundle.json ist veraltet. Bitte «node scripts/build-handbooks.mjs» ausführen.",
     );
   }
   console.log(

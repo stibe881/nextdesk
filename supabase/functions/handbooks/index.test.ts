@@ -17,7 +17,7 @@ type Bundle = {
 async function readBundle(): Promise<Bundle> {
   return JSON.parse(
     await Deno.readTextFile(
-      new URL("../../../docs/handbooks/dist/handbooks.json", import.meta.url),
+      new URL("../../../docs/handbooks/handbooks.bundle.json", import.meta.url),
     ),
   );
 }
