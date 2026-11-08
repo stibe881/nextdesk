@@ -15,7 +15,6 @@ as $$
   select account.id
   from auth.users account
   where lower(account.email) = lower(btrim(p_email))
-  order by account.created_at
   limit 1;
 $$;
 revoke all on function public.find_auth_user_id_by_email(text) from public, anon, authenticated;
