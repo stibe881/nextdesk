@@ -23,7 +23,7 @@
   display: grid;
   gap: 8px;
   grid-template-columns: auto auto minmax(0, 1fr) auto;
-  padding: 6px 8px;
+  padding: 8px 6px 8px 8px;
   transition:
     border-color 120ms ease,
     box-shadow 120ms ease;
@@ -69,19 +69,58 @@
   white-space: nowrap;
 }
 .my-priorities__ticket strong {
-  font-size: 0.86rem;
+  font-size: 0.88rem;
+  font-weight: 700;
 }
 .my-priorities__ticket small {
   color: var(--muted);
   font-size: 0.75rem;
 }
+.my-priorities__number {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+/* Compact up/down control: two small ghost buttons stacked vertically. */
 .my-priorities__move {
+  align-self: center;
   display: inline-flex;
+  flex-direction: column;
   gap: 2px;
 }
-.my-priorities__move .icon-button {
-  height: 26px;
+.my-priorities__move-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  box-shadow: none;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 22px;
+  justify-content: center;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
   width: 26px;
+}
+.my-priorities__move-button:hover:not(:disabled) {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.my-priorities__move-button:focus-visible {
+  border-color: var(--primary);
+  outline: none;
+}
+.my-priorities__move-button:disabled,
+.my-priorities__move-button:disabled:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.25;
 }
 
 /* The panel itself has no padding (only .panel-heading does): give the
