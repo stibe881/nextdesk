@@ -41,7 +41,8 @@ type Action =
   | { type: "get"; tenantId: string }
   | { type: "save"; tenantId: string; config: ConfigInput }
   | { type: "rotateToken"; tenantId: string }
-  | { type: "listAlerts"; tenantId: string };
+  | { type: "listAlerts"; tenantId: string }
+  | { type: "closeAlert"; tenantId: string; alertId: string };
 
 export function parseConfig(value: unknown): ConfigInput | null {
   if (!isRecord(value)) return null;
@@ -105,6 +106,10 @@ export function parseAction(value: unknown): Action | null {
       const config = parseConfig(value.config);
       return config ? { type: "save", tenantId, config } : null;
     }
+    case "closeAlert":
+      return isUuid(value.alertId)
+        ? { type: "closeAlert", tenantId, alertId: value.alertId.toLowerCase() }
+        : null;
     default:
       return null;
   }
@@ -312,6 +317,86 @@ async function get(request: Request, admin: Admin, tenantId: string) {
   });
 }
 
+/**
+ * Closes an open alert by hand, e.g. when PRTG's «Up» never arrived. Services
+ * monitoring had set go back to operational unless another open alert still
+ * holds them; manual outages and maintenance stay untouched.
+ */
+async function closeAlert(
+  request: Request,
+  admin: Admin,
+  actorId: string,
+  tenantId: string,
+  alertId: string,
+) {
+  const { data: alert, error } = await admin
+    .from("monitoring_alerts")
+    .select(
+      "id, state, service_id, service_ids, service_statuses, service_status_applied",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("id", alertId)
+    .maybeSingle();
+  if (error) throw dbFailure();
+  if (!alert) {
+    throw new HttpError(404, "alert_not_found", "Der Alarm ist nicht verfügbar.");
+  }
+  if (alert.state !== "open") {
+    return json(request, { data: { closed: false, restoredServices: 0 } });
+  }
+  const now = new Date().toISOString();
+  const closed = await admin
+    .from("monitoring_alerts")
+    .update({
+      state: "resolved",
+      resolved_at: now,
+      last_message: "Manuell beendet",
+      last_event_at: now,
+    })
+    .eq("tenant_id", tenantId)
+    .eq("id", alertId)
+    .eq("state", "open");
+  if (closed.error) throw dbFailure();
+
+  const applied = (alert.service_statuses ?? {}) as Record<string, string>;
+  const serviceIds = Object.keys(applied).length
+    ? Object.keys(applied)
+    : alert.service_id && alert.service_status_applied
+    ? [String(alert.service_id)]
+    : [];
+  let restored = 0;
+  for (const serviceId of serviceIds) {
+    const others = await admin
+      .from("monitoring_alerts")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("state", "open")
+      .not(`service_statuses->>${serviceId}`, "is", null)
+      .neq("id", alertId)
+      .limit(1);
+    if (others.error) throw dbFailure();
+    if ((others.data ?? []).length > 0) continue;
+    const updated = await admin
+      .from("services")
+      .update({ status: "operational" })
+      .eq("tenant_id", tenantId)
+      .eq("id", serviceId)
+      .in("status", ["degraded", "partial_outage"])
+      .select("id");
+    if (!updated.error) restored += (updated.data ?? []).length;
+  }
+  await admin.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_id: actorId,
+    action: "monitoring.alert.closed",
+    entity_type: "monitoring_alert",
+    entity_id: alertId,
+    severity: "info",
+    metadata: { provider: "prtg", restoredServices: restored },
+  });
+  return json(request, { data: { closed: true, restoredServices: restored } });
+}
+
 async function save(
   request: Request,
   admin: Admin,
@@ -494,6 +579,14 @@ const handler = withSupabase(
           return json(request, {
             data: { alerts: await listAlerts(admin, action.tenantId) },
           });
+        case "closeAlert":
+          return await closeAlert(
+            request,
+            admin,
+            actorId,
+            action.tenantId,
+            action.alertId,
+          );
       }
     } catch (error) {
       if (error instanceof HttpError) {

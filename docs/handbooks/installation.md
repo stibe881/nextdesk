@@ -203,11 +203,32 @@ etwas gelöscht.
    device=%device&host=%host&sensor=%sensor&status=%status&message=%message&down=%down&lastvalue=%lastvalue&datetime=%datetime&group=%group&probe=%probe&sensorid=%sensorid&deviceid=%deviceid
    ```
 
-3. Trigger für _Down_, _Warning_ und _Up_ setzen. Bei _Up_ kann nextDesk das
-   Ticket automatisch lösen.
-4. Blockiert Ihre Firewall die Webhook-Adresse, verwenden Sie die Weiterleitung
-   über die eigene Domain:
-   `https://app.nextdesk.ch/prtg-relay.php?token=<TOKEN>`.
+3. Zustands-Trigger auf der Gruppe oder dem Gerät setzen: _Fehler_ (Down),
+   bei Bedarf _Warnung_ und **zwingend** die Zeile «nicht mehr im Status …»
+   (Up) mit derselben Vorlage. Ohne den Up-Trigger erfährt nextDesk nie, dass
+   die Störung vorbei ist, und der Dienst bleibt im Systemstatus gestört. Bei
+   _Up_ kann nextDesk das Ticket automatisch lösen. nextDesk versteht die
+   Statuswörter deutsch (Fehler, Warnung, OK, Pausiert) und englisch (Down,
+   Warning, Up, Paused).
+4. **Geräte und Dienste verknüpfen** (nur damit ändert sich der Systemstatus):
+   unter **Infrastruktur → Gerät bearbeiten** die **PRTG-Objekt-ID** eintragen
+   (am besten die Geräte-ID aus der PRTG-Adresse `device.htm?id=…`, dann gelten
+   alle Sensoren des Geräts) und bei **Dienste (für Systemstatus)** einen oder
+   **mehrere Dienste** ankreuzen. Ohne ID ordnet nextDesk über Hostname bzw.
+   IP-Adresse und zuletzt über den Gerätenamen zu. Bei Down wechseln alle
+   gewählten Dienste auf «Teilweiser Ausfall» (Warning: «Eingeschränkt»), bei
+   Up zurück auf «Betriebsbereit», sobald kein anderer Alarm sie mehr betrifft.
+5. Blockiert Ihre Firewall die Webhook-Adresse (typisch: Webfilter oder
+   HTTPS-Prüfung, PRTG meldet «403 Forbidden»), geben Sie die Domain
+   `supabase.co` für den PRTG-Server in der Firewall frei oder verwenden Sie
+   die Weiterleitung über die eigene Domain:
+   `https://app.nextdesk.ch/prtg-relay.php?token=<TOKEN>`. Auch diese Domain
+   muss die Firewall für den PRTG-Server zulassen; die Prüfung erfolgt mit
+   `curl.exe -ik …` auf dem PRTG-Server (Antwort 401 mit falschem Token =
+   erreichbar).
+6. Geht ein «Up» verloren, bleibt ein Alarm offen. Im Register **Monitoring**
+   beenden Sie ihn unter **Alarme aus PRTG → Alarm beenden**; dabei werden die
+   gestörten Dienste zurückgesetzt.
 
 ![Monitoring (PRTG) mit Token und Ticketregeln](images/in-monitoring.jpg)
 
@@ -230,14 +251,16 @@ erwartetem Intervall und Toleranz).
 
 ## Fehlerbehebung
 
-| Problem                                         | Lösung                                                                                      |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| SSO-Anmeldung meldet fehlende Zustimmung        | Admin-Consent-Link erneut durch den Microsoft-Admin ausführen lassen                        |
-| Person landet im falschen bzw. keinem Mandanten | Domain unter «Zugelassene E-Mail-Domains» prüfen; eine Domain gehört nur zu einem Mandanten |
-| Postfach lässt sich nicht prüfen                | Vollzugriff und «Senden als» für das Connector-Konto prüfen, danach erneut **Prüfen**       |
-| Keine Tickets aus E-Mails                       | Postfach aktiv? Bis zu 5 Minuten warten; Status im Bereich E-Mail-Kanäle prüfen             |
-| PRTG-Alarme erzeugen keine Tickets              | Token neu erzeugen, Postdaten und Methode POST prüfen, ggf. `prtg-relay.php` verwenden      |
-| Agent sieht keine Tickets                       | Rolle und Ticketzugriffsbereich unter **Personen** bzw. **Rollen** prüfen                   |
+| Problem                                         | Lösung                                                                                       |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| SSO-Anmeldung meldet fehlende Zustimmung        | Admin-Consent-Link erneut durch den Microsoft-Admin ausführen lassen                         |
+| Person landet im falschen bzw. keinem Mandanten | Domain unter «Zugelassene E-Mail-Domains» prüfen; eine Domain gehört nur zu einem Mandanten  |
+| Postfach lässt sich nicht prüfen                | Vollzugriff und «Senden als» für das Connector-Konto prüfen, danach erneut **Prüfen**        |
+| Keine Tickets aus E-Mails                       | Postfach aktiv? Bis zu 5 Minuten warten; Status im Bereich E-Mail-Kanäle prüfen              |
+| PRTG-Alarme erzeugen keine Tickets              | Token neu erzeugen, Postdaten und Methode POST prüfen, ggf. `prtg-relay.php` verwenden       |
+| PRTG meldet «403 Forbidden» beim Zustellen      | Firewall/Webfilter des PRTG-Servers blockiert die Domain; Freigabe oder Weiterleitung nutzen |
+| Dienst bleibt auf «Teilweiser Ausfall»          | Fehlt der Up-Trigger oder kam das Up nicht an? Alarm im Register Monitoring beenden          |
+| Agent sieht keine Tickets                       | Rolle und Ticketzugriffsbereich unter **Personen** bzw. **Rollen** prüfen                    |
 
 ## Anhang: Plattformbetrieb (nur Betreiber)
 

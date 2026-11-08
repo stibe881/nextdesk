@@ -35,6 +35,13 @@ Die linke Navigation ist gegliedert in:
 Welche Einträge Sie sehen, hängt von den freigeschalteten Funktionen und
 Ihren Berechtigungen ab.
 
+Das **Systemstatus-Badge** oben in der Navigation und die Seite
+**Systemstatus** aktualisieren sich selbst (alle 30 Sekunden und beim
+Zurückkehren in den Tab). In der **Infrastruktur** hat ein Gerät einen oder
+mehrere **Dienste (für Systemstatus)**, die bei einer Überwachungsstörung
+(PRTG) ihren Status ändern, die **Höheneinheit** als «von … bis» und
+Wartungseinträge mit Datum und optionaler **Uhrzeit**.
+
 Oben rechts stehen **+ (Erfassen)**, die **globale Suche** und die
 **Benachrichtigungen**.
 

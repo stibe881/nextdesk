@@ -157,6 +157,8 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
   const [newUrl, setNewUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [closeAlertId, setCloseAlertId] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
   const requestVersion = useRef(0);
 
   const [enabled, setEnabled] = useState(false);
@@ -310,6 +312,34 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
       );
     } finally {
       setRotating(false);
+    }
+  }
+
+  async function closeAlert(alertId: string) {
+    setClosing(true);
+    setMessage("");
+    try {
+      const { data, error } = await invokeMonitoring({
+        body: { type: "closeAlert", tenantId, alertId },
+      });
+      if (error) throw error;
+      const result = responseData(data);
+      setCloseAlertId(null);
+      setMessage(
+        result.closed === true
+          ? "Der Alarm wurde beendet. Dienste, die nur dieser Alarm gestört hat, sind wieder betriebsbereit."
+          : "Der Alarm war bereits beendet.",
+      );
+      await load();
+    } catch (error) {
+      setMessage(
+        await functionErrorMessage(
+          error,
+          "Der Alarm konnte nicht beendet werden.",
+        ),
+      );
+    } finally {
+      setClosing(false);
     }
   }
 
@@ -651,6 +681,43 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
                         </p>
                         {alert.lastMessage ? <p>{alert.lastMessage}</p> : null}
                       </div>
+                      {alert.state === "open" ? (
+                        closeAlertId === alert.id ? (
+                          <div
+                            className="monitoring-settings__row-actions"
+                            role="group"
+                            aria-label="Alarm beenden bestätigen"
+                          >
+                            <span>
+                              Alarm beenden und gestörte Dienste zurücksetzen?
+                            </span>
+                            <button
+                              disabled={closing}
+                              onClick={() => void closeAlert(alert.id)}
+                              type="button"
+                            >
+                              {closing ? "Wird beendet …" : "Ja, beenden"}
+                            </button>
+                            <button
+                              className="secondary-button"
+                              disabled={closing}
+                              onClick={() => setCloseAlertId(null)}
+                              type="button"
+                            >
+                              Abbrechen
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            className="secondary-button"
+                            disabled={busy}
+                            onClick={() => setCloseAlertId(alert.id)}
+                            type="button"
+                          >
+                            Alarm beenden
+                          </button>
+                        )
+                      ) : null}
                     </article>
                   </li>
                 ))}

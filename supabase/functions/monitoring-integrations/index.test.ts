@@ -62,3 +62,16 @@ Deno.test("tokens are url-safe and match the webhook pattern", () => {
     "https://abc.supabase.co/functions/v1/monitoring-webhook?token=t0k",
   );
 });
+
+Deno.test("an alert is closed by its id", () => {
+  const alertId = "00000000-0000-4000-8000-0000000000c1";
+  assertEquals(
+    parseAction({ type: "closeAlert", tenantId, alertId })?.type,
+    "closeAlert",
+  );
+  assertEquals(parseAction({ type: "closeAlert", tenantId }), null);
+  assertEquals(
+    parseAction({ type: "closeAlert", tenantId, alertId: "x" }),
+    null,
+  );
+});
