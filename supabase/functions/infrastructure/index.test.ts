@@ -106,3 +106,20 @@ Deno.test("PRTG object id is optional and numeric", () => {
     null,
   );
 });
+
+Deno.test("a device takes several services, the old single one still works", () => {
+  const a = "00000000-0000-4000-8000-0000000000b1";
+  const b = "00000000-0000-4000-8000-0000000000b2";
+  const device = {
+    name: "Core-Switch",
+    category: "switch",
+    lifecycleState: "in_use",
+    criticality: "medium",
+    maintenanceChecklist: [],
+  };
+  const parse = (extra: Record<string, unknown>) =>
+    parseAction({ type: "save", tenantId, device: { ...device, ...extra } });
+  assertEquals(parse({ serviceIds: [a, b] }) !== null, true);
+  assertEquals(parse({ serviceIds: [a, a] }), null);
+  assertEquals(parse({ serviceIds: ["x"] }), null);
+});
