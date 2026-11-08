@@ -4348,23 +4348,6 @@ body:has(.ticket-detail) {
 }
 
 .tenant-admin-settings__header,
-.tenant-admin-settings__monitoring {
-  display: grid;
-  gap: 18px;
-}
-
-.tenant-admin-settings__hint .link-button {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: var(--primary);
-  font: inherit;
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-
 .tenant-admin-settings__section-heading {
   display: flex;
   flex-wrap: wrap;

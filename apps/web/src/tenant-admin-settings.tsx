@@ -112,12 +112,12 @@ type SettingsArea =
   | "branding"
   | "features"
   | "sla"
-  | "monitoring"
   | "ticket-fields"
   | "departments"
   | "privacy"
   | "users"
   | "roles"
+  | "monitoring"
   | "audit";
 
 type TenantSettings = {
@@ -2672,13 +2672,6 @@ export function TenantAdminSettings({
         feature.feature_key === "automation.sla" &&
         isTenantFeatureActive(feature),
     ) ?? false;
-  // PRTG, expiry and backup monitoring belong to asset management.
-  const monitoringEnabled =
-    settings?.tenant_feature_flags.some(
-      (feature) =>
-        feature.feature_key === "assets.management" &&
-        isTenantFeatureActive(feature),
-    ) ?? false;
   const settingsAreaGroups: ReadonlyArray<{
     label: string;
     areas: ReadonlyArray<readonly [SettingsArea, string]>;
@@ -2695,9 +2688,9 @@ export function TenantAdminSettings({
       areas: [
         ["features", "Funktionen"],
         ...(slaManagementEnabled ? ([["sla", "SLA"]] as const) : []),
-        ...(monitoringEnabled ? ([["monitoring", "Monitoring"]] as const) : []),
         ["ticket-fields", "Ticketfelder"],
         ["departments", "Abteilungen"],
+        ["monitoring", "Monitoring"],
       ],
     },
     {
@@ -2710,15 +2703,18 @@ export function TenantAdminSettings({
       ],
     },
   ];
+  const assetsManagementEnabled =
+    settings?.tenant_feature_flags.some(
+      (feature) =>
+        feature.feature_key === "assets.management" &&
+        isTenantFeatureActive(feature),
+    ) ?? false;
 
   useEffect(() => {
     if (activeArea === "sla" && !slaManagementEnabled) {
       setActiveArea("features");
     }
-    if (activeArea === "monitoring" && !monitoringEnabled) {
-      setActiveArea("features");
-    }
-  }, [activeArea, slaManagementEnabled, monitoringEnabled]);
+  }, [activeArea, slaManagementEnabled]);
 
   /** Agent pre-assignment of a synchronised Entra person, laid out like the
    *  agent editor of signed-in members. */
@@ -3020,6 +3016,38 @@ export function TenantAdminSettings({
               </>
             )}
 
+            {activeArea === "monitoring" && (
+              <section
+                className="tenant-admin-settings__section"
+                aria-labelledby="tenant-monitoring-heading"
+              >
+                <div className="tenant-admin-settings__section-heading">
+                  <div>
+                    <h2 id="tenant-monitoring-heading" tabIndex={-1}>
+                      Monitoring
+                    </h2>
+                    <p>
+                      Überwachung per PRTG, Ablaufdaten und Backups. Meldungen
+                      erzeugen Tickets und passen den Systemstatus an.
+                    </p>
+                  </div>
+                </div>
+                {assetsManagementEnabled ? (
+                  <>
+                    <MonitoringSettings tenantId={tenantId} />
+                    <ExpiryMonitoringSettings tenantId={tenantId} />
+                    <BackupMonitoringSettings tenantId={tenantId} />
+                  </>
+                ) : (
+                  <p className="tenant-admin-settings__feature-detail-note">
+                    Aktivieren Sie zuerst die Funktion «Assets» unter
+                    «Funktionen». Das Monitoring nutzt die Geräte der
+                    Infrastruktur.
+                  </p>
+                )}
+              </section>
+            )}
+
             {activeArea === "audit" && (
               <TenantAuditLog
                 tenantId={tenantId}
@@ -3237,28 +3265,6 @@ export function TenantAdminSettings({
 
             {activeArea === "sla" && slaManagementEnabled ? (
               <SlaManagement headingLevel="h2" tenantId={tenantId} />
-            ) : null}
-
-            {activeArea === "monitoring" && monitoringEnabled ? (
-              <section
-                className="tenant-admin-settings__section tenant-admin-settings__monitoring"
-                aria-labelledby="tenant-monitoring-heading"
-              >
-                <div className="tenant-admin-settings__section-heading">
-                  <div>
-                    <h2 id="tenant-monitoring-heading" tabIndex={-1}>
-                      Monitoring
-                    </h2>
-                    <p>
-                      Überwachung von Systemen, Abläufen und Backups. Meldungen
-                      werden automatisch zu Tickets in der gewählten Abteilung.
-                    </p>
-                  </div>
-                </div>
-                <MonitoringSettings tenantId={tenantId} />
-                <ExpiryMonitoringSettings tenantId={tenantId} />
-                <BackupMonitoringSettings tenantId={tenantId} />
-              </section>
             ) : null}
 
             {activeArea === "features" && (
@@ -3821,22 +3827,10 @@ export function TenantAdminSettings({
                                                 <AssetIntuneSettings
                                                   tenantId={tenantId}
                                                 />
-                                                <p className="tenant-admin-settings__hint">
+                                                <p className="tenant-admin-settings__feature-detail-note">
                                                   PRTG-, Ablauf- und
                                                   Backup-Überwachung finden Sie
-                                                  im Bereich{" "}
-                                                  <button
-                                                    className="link-button"
-                                                    onClick={() =>
-                                                      setActiveArea(
-                                                        "monitoring",
-                                                      )
-                                                    }
-                                                    type="button"
-                                                  >
-                                                    Monitoring
-                                                  </button>
-                                                  .
+                                                  im Tab «Monitoring».
                                                 </p>
                                               </>
                                             ) : null}
