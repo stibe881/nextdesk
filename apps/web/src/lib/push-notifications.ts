@@ -529,3 +529,53 @@ export async function declineCheckIn(tenantId: string): Promise<WorkHours> {
     }),
   );
 }
+
+/**
+ * Personal notification window. It is stored as the existing quiet hours:
+ * "deliver from 06 to 17" means "quiet from 17 to 06". The delivery queue
+ * holds messages during quiet hours and sends them once the window opens.
+ */
+export type DeliveryWindow =
+  { mode: "always" } | { mode: "window"; startHour: number; endHour: number };
+
+export const DEFAULT_DELIVERY_WINDOW = { startHour: 6, endHour: 17 } as const;
+
+export function deliveryWindowFromPreferences(
+  preferences: Pick<
+    PushPreferences,
+    "quietHoursEnabled" | "quietStart" | "quietEnd"
+  >,
+): DeliveryWindow {
+  if (
+    !preferences.quietHoursEnabled ||
+    preferences.quietStart === preferences.quietEnd
+  ) {
+    return { mode: "always" };
+  }
+  return {
+    mode: "window",
+    startHour: preferences.quietEnd,
+    // A window ending at midnight is shown as 24:00.
+    endHour: preferences.quietStart === 0 ? 24 : preferences.quietStart,
+  };
+}
+
+export function preferencesWithDeliveryWindow<T extends PushPreferences>(
+  preferences: T,
+  window: DeliveryWindow,
+): T {
+  if (window.mode === "always") {
+    return { ...preferences, quietHoursEnabled: false };
+  }
+  const start = window.startHour % 24;
+  const end = window.endHour % 24;
+  if (start === end) {
+    return { ...preferences, quietHoursEnabled: false };
+  }
+  return {
+    ...preferences,
+    quietHoursEnabled: true,
+    quietStart: end,
+    quietEnd: start,
+  };
+}
