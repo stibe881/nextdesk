@@ -95,8 +95,8 @@ Unter **Mein Bereich → Phishing melden** laden Sie eine verdächtige E-Mail
 
 Unter **Tickets** arbeiten Sie die Warteschlangen ab.
 
-- **Queues**: Register pro Warteschlange; bei Supportstufen zusätzlich
-  _Alle Stufen / 1st / 2nd / 3rd Level_.
+- **Queues**: Register pro Warteschlange. Arbeiten Sie in Teams mehrerer
+  Supportstufen, erscheinen zusätzlich _Alle Stufen / 1st / 2nd / 3rd Level_.
 - **Filter & Sortierung**: Suche, Status, Priorität, Agent (_Mir zugewiesen_,
   _Nicht zugewiesen_), Abteilung, Sortierung. **Filter zurücksetzen** stellt
   alles zurück.
@@ -195,10 +195,16 @@ Status: _Entwurf → Prüfung → Veröffentlicht_.
 ## Benachrichtigungen und Erreichbarkeit
 
 - Die **Glocke** zeigt Zuweisungen, Erwähnungen, Antworten und Eskalationen.
-- **Push-Benachrichtigungen** auf dem iPhone erhalten Sie nur, wenn Sie
-  **eingecheckt** sind (_Persönliche Einstellungen → Push-Benachrichtigungen →
-  Einchecken_, oder morgens in der App). Dort wählen Sie auch die
-  Kategorien, z. B. Zuweisungen, Eskalationen, Erwähnungen.
+- **Push-Benachrichtigungen** auf dem iPhone kommen ohne Einchecken. Unter
+  _Persönliche Einstellungen → Push-Benachrichtigungen →
+  Benachrichtigungszeit_ legen Sie fest, an welchen **Tagen** und zu welchen
+  **Zeiten** Sie Mitteilungen erhalten (z. B. Mo–Fr, 06:00–17:00) oder ob
+  **Jederzeit**. Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der
+  nächsten Benachrichtigungszeit. Dort wählen Sie auch die Kategorien, z. B.
+  Zuweisungen, Eskalationen, Erwähnungen.
+- Das iPhone-Widget **Meine Prioritäten** zeigt Ihre wichtigsten Tickets in
+  den Farben Ihres Unternehmens. Öffnen Sie die App einmal, damit es aktuell
+  ist.
 
 ## Persönliche Einstellungen
 
