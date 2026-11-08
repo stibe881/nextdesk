@@ -3,8 +3,24 @@ import {
   handbookAccessFromAssignments,
   type HandbookRoleAssignment,
 } from "../_shared/handbook-access.ts";
-import { HANDBOOK_IMAGES, HANDBOOKS } from "./content.generated.ts";
-import { inlineHandbookImages, parseHandbookAction } from "./index.ts";
+import {
+  inlineHandbookImages,
+  parseHandbookAction,
+  referencedHandbookImages,
+} from "./index.ts";
+
+type Bundle = {
+  handbooks: Array<{ id: string; markdown: string }>;
+  images: Record<string, { mime: string; data: string }>;
+};
+
+async function readBundle(): Promise<Bundle> {
+  return JSON.parse(
+    await Deno.readTextFile(
+      new URL("../../../docs/handbooks/dist/handbooks.json", import.meta.url),
+    ),
+  );
+}
 
 function assertEquals(actual: unknown, expected: unknown, message = "") {
   const a = JSON.stringify(actual);
@@ -112,20 +128,39 @@ Deno.test("requests are validated strictly", () => {
 });
 
 Deno.test(
-  "generated content covers all handbooks with resolvable images",
-  () => {
+  "the published bundle covers all handbooks with resolvable images",
+  async () => {
+    const { handbooks, images } = await readBundle();
     assertEquals(
-      HANDBOOKS.map((handbook) => handbook.id),
+      handbooks.map((handbook) => handbook.id),
       ["mitarbeitende", "agenten", "administratoren", "installation"],
     );
-    for (const handbook of HANDBOOKS) {
-      const inlined = inlineHandbookImages(handbook.markdown, HANDBOOK_IMAGES);
+    for (const handbook of handbooks) {
+      const names = referencedHandbookImages(handbook.markdown);
+      if (!names.length) throw new Error(`${handbook.id}: no screenshots`);
+      const inlined = inlineHandbookImages(handbook.markdown, images);
       if (/\]\(images\//.test(inlined)) {
         throw new Error(`${handbook.id}: unresolved image reference`);
       }
     }
   },
 );
+
+Deno.test("the handbook tables are closed to clients", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../../migrations/0246_handbooks.sql", import.meta.url),
+  );
+  for (const required of [
+    "alter table public.handbook_documents enable row level security",
+    "alter table public.handbook_images enable row level security",
+    "revoke all on public.handbook_documents from anon, authenticated",
+    "revoke all on public.handbook_images from anon, authenticated",
+    "revoke all on function public.request_handbook_sync(text)",
+    "revoke all on function public.apply_handbook_sync(bigint, text)",
+  ]) {
+    if (!migration.includes(required)) throw new Error(`missing: ${required}`);
+  }
+});
 
 Deno.test("the Function is registered with JWT verification", async () => {
   const config = await Deno.readTextFile(
