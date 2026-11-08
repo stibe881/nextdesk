@@ -181,24 +181,33 @@ Microsoft-Anmeldung übernommen.
 
 ## Rollen und Berechtigungen
 
-Das Register **Rollen** («Rollen & Zugriffe») zeigt oben die Kennzahlen
-_Personen mit Zugriff_, _Aktive Rollen_ und _Eigene Rollen_.
+Das Register **Rollen** («Rollen & Zugriffe») hat zwei Ansichten, die Sie
+oben umschalten:
 
-- **Rollen zuweisen**: In der Matrix setzen Sie pro Person ein Häkchen bei
-  der gewünschten Rolle. Die Änderung wirkt sofort für den ganzen Mandanten.
-  Mit _Alle aktiven Personen zeigen_ sehen Sie auch Personen ohne Rolle.
-- **Wer hat Zugriff?**: Rollen gezielt entziehen (mit Bestätigung).
-- **Neue eigene Rolle erstellen**: Rollenname und unter **Was darf diese
-  Rolle?** die Berechtigungen aus den Gruppen Tickets, Wissensdatenbank,
-  Assets, Verträge, Planung, Zusammenarbeit, Auswertungen und Administration
-  wählen. Geltungsbereich: _Für den ganzen Mandanten_, _Für eine Abteilung_
-  oder _Für ein Team_.
+**Personen zuweisen**
 
-Systemrollen sind geschützt. Die Basisrollen _Requester_ (alle angemeldeten
-Personen) und _Support agent_ (über «Arbeitet als Support-Agent») werden nicht
-direkt vergeben.
+- Suchen Sie über **Person suchen …** und filtern Sie nach **Agenten** oder
+  **Alle Personen**.
+- In der Tabelle setzen Sie pro Person ein Häkchen bei der gewünschten Rolle.
+  Die Änderung wirkt sofort für den ganzen Mandanten.
+- Mit **Entziehen** nehmen Sie eine Rolle wieder weg.
 
-![Rollen zuweisen – Matrix](images/ad-rollen.jpg)
+**Rollen definieren**
+
+- Links wählen Sie eine bestehende Rolle oder **+ Neue Rolle**.
+  Systemrollen sind mit «System» markiert und geschützt.
+- Bei einer neuen Rolle geben Sie den **Namen der neuen Rolle** ein, wählen
+  unter **Berechtigungen** die gewünschten Rechte (je Gruppe mit **Alle
+  auswählen**; selten benötigte Rechte sind als «Erweitert» markiert) und
+  klicken auf **Rolle erstellen**.
+- Bestehende eigene Rollen ändern Sie und speichern mit **Änderungen
+  speichern**; mit **Rolle deaktivieren** bzw. **Rolle aktivieren** schalten
+  Sie sie ab oder wieder ein.
+
+Die Basisrollen _Requester_ (alle angemeldeten Personen) und _Support agent_
+(über «Arbeitet als Support-Agent») werden nicht direkt vergeben.
+
+![Rollen & Zugriffe – Ansicht «Personen zuweisen»](images/ad-rollen.jpg)
 
 > **Handbücher und Rollen:** Welche Handbücher eine Person im Profil sieht,
 > folgt automatisch ihren Rollen: alle Mitglieder das Handbuch für
