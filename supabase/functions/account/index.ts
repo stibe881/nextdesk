@@ -201,7 +201,41 @@ const securedHandler = withSupabase(
       return json(request, { data: { tenantId } }, 201);
     }
 
-    // deleteAccount
+    // deleteAccount: accounts that sign in through the organisation's SSO
+    // are managed by that organisation and cannot delete themselves.
+    const { data: account, error: accountError } =
+      await admin.auth.admin.getUserById(actorId);
+    if (accountError || !account.user) {
+      return json(request, { error: { code: "account_lookup_failed" } }, 500);
+    }
+    const providers = new Set(
+      [
+        ...(Array.isArray(account.user.app_metadata?.providers)
+          ? account.user.app_metadata.providers
+          : []),
+        ...(account.user.identities ?? []).map((identity) => identity.provider),
+      ]
+        .filter((provider): provider is string => typeof provider === "string")
+        .map((provider) => provider.toLowerCase()),
+    );
+    if (
+      providers.has("azure") ||
+      providers.has("saml") ||
+      [...providers].some((provider) => provider.startsWith("sso:"))
+    ) {
+      return json(
+        request,
+        {
+          error: {
+            code: "sso_account_deletion_not_allowed",
+            message:
+              "Dieses Konto wird von Ihrer Organisation über SSO verwaltet und kann nicht selbst gelöscht werden.",
+          },
+        },
+        403,
+      );
+    }
+
     const { data: result, error: deleteError } = await admin.rpc(
       "delete_user_account",
       { p_user_id: actorId },
