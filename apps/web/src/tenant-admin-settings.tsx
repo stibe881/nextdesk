@@ -27,6 +27,7 @@ import {
   Webhook,
   type LucideIcon,
 } from "lucide-react";
+import { TeamPicker, teamsInDepartment, type PickerTeam } from "./team-picker";
 import { supabase } from "./lib/supabase";
 import { functionErrorMessage } from "./lib/function-error";
 import {
@@ -232,6 +233,7 @@ type TenantDirectoryMember = {
   managerUserId?: string | null;
   managerName?: string | null;
   managerSource?: "entra" | "manual" | null;
+  teamIds?: string[];
 };
 
 type TenantInvitation = {
@@ -266,6 +268,7 @@ type TenantEntraDirectoryPerson = {
   lastSyncedAt: string;
   agentDisplayName?: string | null;
   agentManagerUserId?: string | null;
+  agentTeamIds?: string[];
   entraManagerName?: string | null;
 };
 
@@ -290,6 +293,7 @@ type TenantUserDirectory = {
   invitations: TenantInvitation[];
   departments: TenantDepartment[];
   directoryPeople: TenantEntraDirectoryPerson[];
+  teams?: PickerTeam[];
 };
 
 type RoleListData = {
@@ -358,6 +362,7 @@ type TenantUsersRequest =
       enabled: boolean;
       displayName: string | null;
       managerUserId: string | null;
+      teamIds: string[];
     }
   | ({ type: "updatePerson"; tenantId: string; userId: string } & PersonForm)
   | { type: "removeUser"; tenantId: string; userId: string }
@@ -433,6 +438,7 @@ type PersonForm = {
   offer: string;
   departmentId: string;
   isAgent: boolean;
+  teamIds: string[];
 };
 
 type EntraAgentForm = {
@@ -440,6 +446,7 @@ type EntraAgentForm = {
   departmentId: string;
   displayName: string;
   managerUserId: string;
+  teamIds: string[];
 };
 
 const emptyBrandingForm: BrandingForm = {
@@ -475,6 +482,7 @@ const emptyPersonForm: PersonForm = {
   offer: "",
   departmentId: "",
   isAgent: false,
+  teamIds: [],
 };
 
 const WORK_START_HOURS = Array.from({ length: 24 }, (_, hour) => hour);
@@ -1222,6 +1230,7 @@ export function TenantAdminSettings({
   const [entraAgentForm, setEntraAgentForm] = useState<EntraAgentForm>({
     displayName: "",
     managerUserId: "",
+    teamIds: [],
     enabled: false,
     departmentId: "",
   });
@@ -1778,6 +1787,7 @@ export function TenantAdminSettings({
       offer: member.offer ?? "",
       departmentId: member.departmentId ?? "",
       isAgent: member.isAgent,
+      teamIds: member.teamIds ?? [],
     };
   }
 
@@ -2091,6 +2101,11 @@ export function TenantAdminSettings({
         tenantId,
         userId: editingPerson.id,
         ...personEditForm,
+        teamIds: teamsInDepartment(
+          userDirectory.teams ?? [],
+          personEditForm.departmentId,
+          personEditForm.teamIds,
+        ),
       });
       const currentManual =
         editingPerson.managerSource === "manual"
@@ -2130,6 +2145,7 @@ export function TenantAdminSettings({
       departmentId: person.agentDepartmentId ?? "",
       displayName: person.agentDisplayName ?? person.displayName,
       managerUserId: person.agentManagerUserId ?? "",
+      teamIds: person.agentTeamIds ?? [],
     });
   }
 
@@ -2160,6 +2176,13 @@ export function TenantAdminSettings({
             ? entraAgentForm.displayName.trim()
             : null,
         managerUserId: entraAgentForm.managerUserId || null,
+        teamIds: entraAgentForm.enabled
+          ? teamsInDepartment(
+              userDirectory.teams ?? [],
+              entraAgentForm.departmentId,
+              entraAgentForm.teamIds,
+            )
+          : [],
       });
       const departmentName = userDirectory.departments.find(
         (department) => department.id === entraAgentForm.departmentId,
@@ -2170,6 +2193,7 @@ export function TenantAdminSettings({
         departmentId: "",
         displayName: "",
         managerUserId: "",
+        teamIds: [],
       });
       await loadData();
       if (!result.agentRequested) {
@@ -2753,6 +2777,17 @@ export function TenantAdminSettings({
             nie.
           </small>
         </label>
+        {entraAgentForm.enabled ? (
+          <TeamPicker
+            departmentId={entraAgentForm.departmentId}
+            disabled={saving !== null}
+            onChange={(teamIds) =>
+              setEntraAgentForm((current) => ({ ...current, teamIds }))
+            }
+            teams={userDirectory.teams ?? []}
+            value={entraAgentForm.teamIds}
+          />
+        ) : null}
         <label>
           Organisation / Angebot (Entra)
           <input value={person.sourceDepartmentName ?? ""} readOnly />
@@ -4600,6 +4635,22 @@ export function TenantAdminSettings({
                                           Zugriff nie.
                                         </small>
                                       </label>
+                                      {personEditForm.isAgent ? (
+                                        <TeamPicker
+                                          departmentId={
+                                            personEditForm.departmentId
+                                          }
+                                          disabled={saving !== null}
+                                          onChange={(teamIds) =>
+                                            setPersonEditForm((current) => ({
+                                              ...current,
+                                              teamIds,
+                                            }))
+                                          }
+                                          teams={userDirectory.teams ?? []}
+                                          value={personEditForm.teamIds}
+                                        />
+                                      ) : null}
                                       <label>
                                         {offerFromEntra
                                           ? "Organisation / Angebot (Entra)"
