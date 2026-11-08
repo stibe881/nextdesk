@@ -358,7 +358,7 @@ export function LiveBoard({
 type Skill = { id: string; name: string };
 type SkillData = {
   skills: Skill[];
-  agents: { id: string; displayName: string }[];
+  agents: { id: string; displayName: string; pending?: boolean }[];
   levels: { skillId: string; agentId: string; level: number }[];
 };
 
@@ -530,7 +530,17 @@ export function SkillMatrix({ tenantId }: { tenantId: string }) {
             <tbody>
               {data.agents.map((agent) => (
                 <tr key={agent.id}>
-                  <th scope="row">{agent.displayName}</th>
+                  <th scope="row">
+                    {agent.displayName}
+                    {agent.pending ? (
+                      <small
+                        className="skill-matrix__pending"
+                        title="Als Agent vorgemerkt, noch nicht angemeldet. Die Stufen werden bei der ersten Anmeldung übernommen."
+                      >
+                        vorgemerkt
+                      </small>
+                    ) : null}
+                  </th>
                   {data.skills.map((skill) => {
                     const level = levelOf(skill.id, agent.id);
                     return (

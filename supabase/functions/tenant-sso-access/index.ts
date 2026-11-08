@@ -639,6 +639,32 @@ async function applyEntraAgentPrefill(
       .eq("entra_object_id", entraObjectId)
       .maybeSingle();
     if (!person || person.local_user_id !== userId) return;
+    // Skill levels set while the person was only pre-assigned.
+    const { data: pendingSkills } = await admin
+      .from("pending_agent_skill_levels")
+      .select("skill_id, level, updated_by")
+      .eq("tenant_id", tenantId)
+      .eq("entra_object_id", entraObjectId);
+    if (pendingSkills && pendingSkills.length) {
+      const { error: skillError } = await admin.from("agent_skill_levels").upsert(
+        (pendingSkills as { skill_id: string; level: number; updated_by: string | null }[])
+          .map((row) => ({
+            tenant_id: tenantId,
+            skill_id: row.skill_id,
+            user_id: userId,
+            level: row.level,
+            updated_by: row.updated_by,
+          })),
+        { onConflict: "skill_id,user_id" },
+      );
+      if (!skillError) {
+        await admin
+          .from("pending_agent_skill_levels")
+          .delete()
+          .eq("tenant_id", tenantId)
+          .eq("entra_object_id", entraObjectId);
+      }
+    }
     const name =
       typeof person.agent_display_name === "string"
         ? person.agent_display_name.trim()

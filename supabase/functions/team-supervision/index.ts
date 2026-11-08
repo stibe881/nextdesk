@@ -120,8 +120,14 @@ function parseAction(value: unknown): Action | null {
         : null;
     case "setSkillLevel": {
       const level = value.level;
+      // Pre-assigned Entra agents without account: "entra:<object id>".
+      const pendingId = typeof value.agentId === "string" &&
+          value.agentId.startsWith(PENDING_PREFIX)
+        ? value.agentId.slice(PENDING_PREFIX.length)
+        : null;
       if (
-        !isUuid(value.skillId) || !isUuid(value.agentId) ||
+        !isUuid(value.skillId) ||
+        !(isUuid(value.agentId) || (pendingId !== null && isUuid(pendingId))) ||
         typeof level !== "number" || !Number.isInteger(level) || level < 0 ||
         level > 3
       ) {
@@ -131,7 +137,9 @@ function parseAction(value: unknown): Action | null {
         type: "setSkillLevel",
         tenantId,
         skillId: value.skillId.toLowerCase(),
-        agentId: value.agentId.toLowerCase(),
+        agentId: pendingId
+          ? PENDING_PREFIX + pendingId.toLowerCase()
+          : (value.agentId as string).toLowerCase(),
         level,
       };
     }
@@ -1412,9 +1420,44 @@ async function liveBoard(request: Request, admin: Admin, action: Action, actorId
   });
 }
 
+const PENDING_PREFIX = "entra:";
+
+/** Entra people pre-assigned as agents in the given departments, no account yet. */
+async function pendingAgents(
+  admin: Admin,
+  tenantId: string,
+  departmentIds: string[],
+): Promise<{ entraObjectId: string; displayName: string }[]> {
+  if (departmentIds.length === 0) return [];
+  const { data, error } = await admin
+    .from("tenant_entra_directory_people")
+    .select("entra_object_id, display_name, agent_display_name")
+    .eq("tenant_id", tenantId)
+    .eq("agent_requested", true)
+    .eq("account_enabled", true)
+    .is("inactive_at", null)
+    .is("local_user_id", null)
+    .in("agent_department_id", departmentIds)
+    .limit(200);
+  if (error) throw dbFailure();
+  return ((data ?? []) as Row[]).map((row) => ({
+    entraObjectId: String(row.entra_object_id),
+    displayName: String(row.agent_display_name ?? row.display_name ?? ""),
+  }));
+}
+
 async function skills(request: Request, admin: Admin, action: Action, actorId: string) {
   const scope = await loadScope(admin, action.tenantId, actorId);
   const agentIds = scope.agents.map((agent) => agent.id);
+  const pending = await pendingAgents(admin, action.tenantId, scope.departmentIds);
+  const pendingLevels = pending.length
+    ? await admin
+      .from("pending_agent_skill_levels")
+      .select("skill_id, entra_object_id, level")
+      .eq("tenant_id", action.tenantId)
+      .in("entra_object_id", pending.map((agent) => agent.entraObjectId))
+    : { data: [], error: null };
+  if (pendingLevels.error) throw dbFailure();
   const [catalog, levels] = await Promise.all([
     admin
       .from("team_skills")
@@ -1433,15 +1476,30 @@ async function skills(request: Request, admin: Admin, action: Action, actorId: s
   return json(request, {
     data: {
       skills: catalog.data ?? [],
-      agents: scope.agents.map((agent) => ({
-        id: agent.id,
-        displayName: agent.displayName,
-      })),
-      levels: ((levels.data ?? []) as Row[]).map((row) => ({
-        skillId: row.skill_id,
-        agentId: row.user_id,
-        level: row.level,
-      })),
+      agents: [
+        ...scope.agents.map((agent) => ({
+          id: agent.id,
+          displayName: agent.displayName,
+          pending: false,
+        })),
+        ...pending.map((agent) => ({
+          id: PENDING_PREFIX + agent.entraObjectId,
+          displayName: agent.displayName,
+          pending: true,
+        })),
+      ],
+      levels: [
+        ...((levels.data ?? []) as Row[]).map((row) => ({
+          skillId: row.skill_id,
+          agentId: row.user_id,
+          level: row.level,
+        })),
+        ...((pendingLevels.data ?? []) as Row[]).map((row) => ({
+          skillId: row.skill_id,
+          agentId: PENDING_PREFIX + String(row.entra_object_id),
+          level: row.level,
+        })),
+      ],
     },
   });
 }
@@ -1497,7 +1555,22 @@ async function setSkillLevel(
   action: Extract<Action, { type: "setSkillLevel" }>,
   actorId: string,
 ) {
-  await requireSupervisedAgent(admin, action.tenantId, actorId, action.agentId);
+  const pendingId = action.agentId.startsWith(PENDING_PREFIX)
+    ? action.agentId.slice(PENDING_PREFIX.length)
+    : null;
+  if (pendingId) {
+    const scope = await loadScope(admin, action.tenantId, actorId);
+    const pending = await pendingAgents(admin, action.tenantId, scope.departmentIds);
+    if (!pending.some((agent) => agent.entraObjectId === pendingId)) {
+      throw new HttpError(
+        403,
+        "agent_not_supervised",
+        "Diese Person gehört nicht zu Ihrem Team.",
+      );
+    }
+  } else {
+    await requireSupervisedAgent(admin, action.tenantId, actorId, action.agentId);
+  }
   const { data: skill, error: skillError } = await admin
     .from("team_skills")
     .select("id")
@@ -1506,6 +1579,28 @@ async function setSkillLevel(
     .maybeSingle();
   if (skillError) throw dbFailure();
   if (!skill) throw new HttpError(404, "skill_not_found", "Fähigkeit nicht gefunden.");
+  if (pendingId) {
+    const { error: pendingError } = action.level === 0
+      ? await admin
+        .from("pending_agent_skill_levels")
+        .delete()
+        .eq("tenant_id", action.tenantId)
+        .eq("entra_object_id", pendingId)
+        .eq("skill_id", action.skillId)
+      : await admin.from("pending_agent_skill_levels").upsert(
+        {
+          tenant_id: action.tenantId,
+          entra_object_id: pendingId,
+          skill_id: action.skillId,
+          level: action.level,
+          updated_at: new Date().toISOString(),
+          updated_by: actorId,
+        },
+        { onConflict: "tenant_id,entra_object_id,skill_id" },
+      );
+    if (pendingError) throw dbFailure();
+    return json(request, { data: { saved: true } });
+  }
   const { error } = action.level === 0
     ? await admin
       .from("agent_skill_levels")

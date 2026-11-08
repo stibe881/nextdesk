@@ -478,3 +478,13 @@
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+
+.skill-matrix__pending {
+  background: var(--surface-subtle);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-left: 6px;
+  padding: 1px 7px;
+}
