@@ -7,7 +7,6 @@ import {
   type HandbookId,
   type HandbookRoleAssignment,
 } from "../_shared/handbook-access.ts";
-import { HANDBOOK_IMAGES, HANDBOOKS } from "./content.generated.ts";
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const UUID_PATTERN =
@@ -52,6 +51,34 @@ export function parseHandbookAction(value: unknown): Action | null {
     };
   }
   return null;
+}
+
+type DocumentRow = {
+  id: HandbookId;
+  title: string;
+  description: string;
+  audience_label: string;
+  updated_on: string;
+};
+
+function summaryOf(row: DocumentRow) {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    audienceLabel: row.audience_label,
+    updatedAt: row.updated_on,
+  };
+}
+
+export function referencedHandbookImages(markdown: string): string[] {
+  return [
+    ...new Set(
+      [...markdown.matchAll(/\]\(images\/([A-Za-z0-9._-]+)\)/g)].map(
+        (match) => match[1]!,
+      ),
+    ),
+  ];
 }
 
 /** Replaces `](images/<name>)` references with embedded data URLs. */
@@ -127,18 +154,20 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     ),
   );
 
+  // Content lives in public.handbook_documents / handbook_images (migration
+  // 0246), loaded from docs/handbooks/dist/handbooks.json of a pinned commit.
   if (action.type === "list") {
+    const { data: rows, error } = await context.supabaseAdmin
+      .from("handbook_documents")
+      .select("id, title, description, audience_label, updated_on")
+      .in("id", allowed)
+      .order("sort_order", { ascending: true });
+    if (error) {
+      return json(request, { error: { code: "handbook_lookup_failed" } }, 500);
+    }
     return json(request, {
       data: {
-        handbooks: HANDBOOKS.filter((handbook) =>
-          allowed.includes(handbook.id),
-        ).map(({ id, title, description, audienceLabel, updatedAt }) => ({
-          id,
-          title,
-          description,
-          audienceLabel,
-          updatedAt,
-        })),
+        handbooks: (rows ?? []).map((row: DocumentRow) => summaryOf(row)),
       },
     });
   }
@@ -146,19 +175,41 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (!allowed.includes(action.handbookId)) {
     return json(request, { error: { code: "handbook_forbidden" } }, 403);
   }
-  const handbook = HANDBOOKS.find((entry) => entry.id === action.handbookId);
-  if (!handbook) {
+  const { data: row, error: documentError } = await context.supabaseAdmin
+    .from("handbook_documents")
+    .select("id, title, description, audience_label, updated_on, markdown")
+    .eq("id", action.handbookId)
+    .maybeSingle();
+  if (documentError) {
+    return json(request, { error: { code: "handbook_lookup_failed" } }, 500);
+  }
+  if (!row) {
     return json(request, { error: { code: "handbook_not_found" } }, 404);
+  }
+  const document = row as DocumentRow & { markdown: string };
+  const imageNames = referencedHandbookImages(document.markdown);
+  const images: Record<string, { mime: string; data: string }> = {};
+  if (imageNames.length) {
+    const { data: imageRows, error: imageError } = await context.supabaseAdmin
+      .from("handbook_images")
+      .select("name, mime, data")
+      .in("name", imageNames);
+    if (imageError) {
+      return json(request, { error: { code: "handbook_lookup_failed" } }, 500);
+    }
+    for (const image of (imageRows ?? []) as Array<{
+      name: string;
+      mime: string;
+      data: string;
+    }>) {
+      images[image.name] = { mime: image.mime, data: image.data };
+    }
   }
   return json(request, {
     data: {
       handbook: {
-        id: handbook.id,
-        title: handbook.title,
-        description: handbook.description,
-        audienceLabel: handbook.audienceLabel,
-        updatedAt: handbook.updatedAt,
-        markdown: inlineHandbookImages(handbook.markdown, HANDBOOK_IMAGES),
+        ...summaryOf(document),
+        markdown: inlineHandbookImages(document.markdown, images),
       },
     },
   });

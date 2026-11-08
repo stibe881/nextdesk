@@ -1,30 +1,30 @@
 #!/usr/bin/env node
 /**
  * Bundles the handbooks in docs/handbooks/*.md (plus referenced screenshots
- * in docs/handbooks/images/) into
- * supabase/functions/handbooks/content.generated.ts.
+ * in docs/handbooks/images/) into docs/handbooks/dist/handbooks.json.
  *
- *   node scripts/build-handbooks.mjs          regenerate the module
- *   node scripts/build-handbooks.mjs --check  fail if the module is stale
+ *   node scripts/build-handbooks.mjs          regenerate the bundle
+ *   node scripts/build-handbooks.mjs --check  fail if the bundle is stale
  *
- * The Function serves the handbooks only to the roles that may read them, so
- * the Markdown files are the single source of truth and the generated module
- * must never be edited by hand.
+ * The database loads this bundle from a pinned commit
+ * (public.request_handbook_sync / apply_handbook_sync, migration 0246), and
+ * the handbooks Function serves it only to the roles that may read it. The
+ * Markdown files are the single source of truth; never edit the bundle.
  */
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceDir = join(root, "docs", "handbooks");
 const imageDir = join(sourceDir, "images");
-const target = join(
-  root,
-  "supabase",
-  "functions",
-  "handbooks",
-  "content.generated.ts",
-);
+const target = join(sourceDir, "dist", "handbooks.json");
 
 const ORDER = ["mitarbeitende", "agenten", "administratoren", "installation"];
 const MIME = {
@@ -105,34 +105,20 @@ if (unused.length) {
   );
 }
 
-const output = `// Generiert von scripts/build-handbooks.mjs – nicht von Hand bearbeiten.
-// Quelle: docs/handbooks/*.md und docs/handbooks/images/*.
-
-export type HandbookContent = {
-  id: "mitarbeitende" | "agenten" | "administratoren" | "installation";
-  title: string;
-  description: string;
-  audienceLabel: string;
-  updatedAt: string;
-  markdown: string;
-};
-
-export const HANDBOOKS: HandbookContent[] = ${JSON.stringify(handbooks, null, 2)};
-
-export const HANDBOOK_IMAGES: Record<string, { mime: string; data: string }> = ${JSON.stringify(images, null, 1)};
-`;
+const output = JSON.stringify({ handbooks, images }) + "\n";
 
 if (process.argv.includes("--check")) {
   const current = existsSync(target) ? readFileSync(target, "utf8") : "";
   if (current !== output) {
     fail(
-      "supabase/functions/handbooks/content.generated.ts ist veraltet. Bitte «node scripts/build-handbooks.mjs» ausführen.",
+      "docs/handbooks/dist/handbooks.json ist veraltet. Bitte «node scripts/build-handbooks.mjs» ausführen.",
     );
   }
   console.log(
     `Handbücher aktuell (${handbooks.length} Handbücher, ${usedImages.size} Bilder).`,
   );
 } else {
+  mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, output);
   console.log(
     `Handbücher generiert (${handbooks.length} Handbücher, ${usedImages.size} Bilder).`,

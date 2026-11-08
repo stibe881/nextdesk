@@ -10,14 +10,22 @@
 ## So funktioniert die Auslieferung
 
 1. Die Markdown-Dateien und die Bilder in `images/` sind die einzige Quelle.
-2. `pnpm handbooks:build` bündelt sie in
-   `supabase/functions/handbooks/content.generated.ts`.
-3. Die Edge Function `handbooks` prüft bei jedem Aufruf die Mitgliedschaft und
+2. `pnpm handbooks:build` bündelt sie in `dist/handbooks.json`.
+3. Nach dem Merge lädt die Datenbank das Paket des gemergten Commits:
+   `select public.request_handbook_sync('<sha>');`, danach
+   `select public.apply_handbook_sync(<id>, '<sha>');`. Die Tabellen
+   `handbook_documents` und `handbook_images` sind nur für den Service-Role-Zugang
+   lesbar (Migration 0246).
+4. Die Edge Function `handbooks` prüft bei jedem Aufruf die Mitgliedschaft und
    die wirksamen Rollen der angemeldeten Person
    (`supabase/functions/_shared/handbook-access.ts`) und liefert nur die
-   erlaubten Handbücher aus. Die Web-App zeigt sie unter **Persönliche
-   Einstellungen → Handbücher** an; Bilder werden eingebettet mitgeliefert und
-   sind nicht öffentlich abrufbar.
+   erlaubten Handbücher aus – in der Web-App unter **Persönliche Einstellungen
+   → Handbücher**, in der iOS-App unter **Profil → Hilfe und Rechtliches**.
+
+> Das Repository ist öffentlich: Die Markdown-Quellen sind auf GitHub für alle
+> lesbar. Die Rollenprüfung steuert, was in nextDesk angezeigt wird, macht die
+> Inhalte aber nicht geheim. Keine vertraulichen Angaben in die Handbücher
+> schreiben.
 
 ## Pflege
 
@@ -29,7 +37,7 @@
   Kundendaten.
 - `pnpm test:schema` prüft, dass das generierte Modul aktuell ist, alle Bilder
   existieren und keine ungenutzten Bilder herumliegen.
-- Nach dem Merge die Function `handbooks` deployen.
+- Nach dem Merge die Inhalte mit `request_handbook_sync`/`apply_handbook_sync` laden.
 
 Front Matter jedes Handbuchs:
 
