@@ -25,10 +25,13 @@ oder Einrichtungsschritten:
    erzeugen: `pnpm handbooks:screenshots` (ggf. `-- --only <name>`). Neue
    Bildschirme brauchen Demo-Daten in
    `scripts/handbook-screenshots/mock-backend.cjs`.
-3. `pnpm handbooks:build` ausführen. `pnpm test:schema` schlägt fehl, solange
-   `supabase/functions/handbooks/content.generated.ts` nicht zur Quelle passt.
-4. Nach dem Merge die Edge Function `handbooks` deployen (Workflow
-   «Deploy Supabase Edge Functions» mit `handbooks`).
+3. `pnpm handbooks:build` ausführen. Das erzeugt
+   `docs/handbooks/dist/handbooks.json`; `pnpm test:schema` schlägt fehl,
+   solange das Paket nicht zur Quelle passt.
+4. Nach dem Merge die Inhalte in die Datenbank laden (Commit-SHA von `main`):
+   `select public.request_handbook_sync('<sha>');` und danach mit der
+   zurückgegebenen ID `select public.apply_handbook_sync(<id>, '<sha>');`.
+   Die Edge Function `handbooks` muss nur bei Codeänderungen neu deployt werden.
 
 Die App stellt nur einen Markdown-Ausschnitt dar
 (`mobile/lib/handbooks-model.ts`: Überschriften `##`/`###`, Absätze, Listen,
