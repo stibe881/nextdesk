@@ -1,5 +1,10 @@
 import { withSupabase } from "@supabase/server";
 import {
+  ENTRA_PERSON_PREFIX,
+  EntraPersonAccountError,
+  ensureEntraPersonAccount,
+} from "../_shared/entra-person-account.ts";
+import {
   resolveUserFeatureStates,
   userFeatureDepartments,
 } from "../_shared/tenant-features.ts";
@@ -919,13 +924,31 @@ async function listRequesters(admin: Admin, tenantId: string) {
       titles.set(row.user_id, row.job_title);
     }
   }
-  return ids
-    .map((id) => ({
+  // Synchronised Entra people who never signed in can be ordered for too;
+  // their account is prepared when the order is submitted.
+  const { data: entraPeople, error: entraError } = await admin
+    .from("tenant_entra_directory_people")
+    .select("entra_object_id, display_name, job_title")
+    .eq("tenant_id", tenantId)
+    .eq("account_enabled", true)
+    .is("inactive_at", null)
+    .is("local_user_id", null)
+    .limit(3000);
+  if (entraError) throw databaseError(entraError);
+  return [
+    ...ids.map((id) => ({
       id,
       name: people.get(id) ?? "Unbekannte Person",
       jobTitle: titles.get(id) ?? null,
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name, "de"));
+    })),
+    ...((entraPeople ?? []) as Row[])
+      .filter((row) => typeof row.display_name === "string")
+      .map((row) => ({
+        id: ENTRA_PERSON_PREFIX + String(row.entra_object_id),
+        name: String(row.display_name),
+        jobTitle: typeof row.job_title === "string" ? row.job_title : null,
+      })),
+  ].sort((a, b) => a.name.localeCompare(b.name, "de"));
 }
 
 async function listOrders(
@@ -2320,11 +2343,43 @@ const securedHandler = withSupabase(
               }
             }
           }
-          // Agents may order on behalf of an employee.
-          const requesterId =
+          // Agents may order on behalf of an employee, also for an Entra
+          // person who never signed in (an account is prepared for them).
+          const entraRequester =
+            typeof body.requesterId === "string" &&
+              body.requesterId.startsWith(ENTRA_PERSON_PREFIX) &&
+              isUuid(body.requesterId.slice(ENTRA_PERSON_PREFIX.length))
+              ? body.requesterId.slice(ENTRA_PERSON_PREFIX.length).toLowerCase()
+              : null;
+          if (entraRequester && !access.canFulfill) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Nur Agenten können für andere Personen bestellen.",
+            );
+          }
+          let requesterId =
             isUuid(body.requesterId) && body.requesterId !== actorId
               ? body.requesterId.toLowerCase()
               : actorId;
+          if (entraRequester) {
+            try {
+              requesterId = await ensureEntraPersonAccount(
+                admin,
+                tenantId,
+                entraRequester,
+                actorId,
+              );
+            } catch (accountError) {
+              throw new HttpError(
+                422,
+                accountError instanceof EntraPersonAccountError
+                  ? accountError.code
+                  : "entra_person_account_failed",
+                "Für diese Person konnte kein Konto vorbereitet werden.",
+              );
+            }
+          }
           if (requesterId !== actorId && !access.canFulfill) {
             throw new HttpError(
               403,
