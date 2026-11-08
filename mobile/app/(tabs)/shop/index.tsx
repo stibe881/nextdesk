@@ -97,7 +97,6 @@ export default function ShopScreen() {
       {item.requiresApproval ? (
         <Text style={[styles.badge, styles.badgeWarn]}>Mit Freigabe</Text>
       ) : null}
-      {item.isSoftware ? <Text style={styles.badge}>Software</Text> : null}
     </View>
   );
 
