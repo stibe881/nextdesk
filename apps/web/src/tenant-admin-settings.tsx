@@ -112,6 +112,7 @@ type SettingsArea =
   | "branding"
   | "features"
   | "sla"
+  | "monitoring"
   | "ticket-fields"
   | "departments"
   | "privacy"
@@ -2671,6 +2672,13 @@ export function TenantAdminSettings({
         feature.feature_key === "automation.sla" &&
         isTenantFeatureActive(feature),
     ) ?? false;
+  // PRTG, expiry and backup monitoring belong to asset management.
+  const monitoringEnabled =
+    settings?.tenant_feature_flags.some(
+      (feature) =>
+        feature.feature_key === "assets.management" &&
+        isTenantFeatureActive(feature),
+    ) ?? false;
   const settingsAreaGroups: ReadonlyArray<{
     label: string;
     areas: ReadonlyArray<readonly [SettingsArea, string]>;
@@ -2687,6 +2695,7 @@ export function TenantAdminSettings({
       areas: [
         ["features", "Funktionen"],
         ...(slaManagementEnabled ? ([["sla", "SLA"]] as const) : []),
+        ...(monitoringEnabled ? ([["monitoring", "Monitoring"]] as const) : []),
         ["ticket-fields", "Ticketfelder"],
         ["departments", "Abteilungen"],
       ],
@@ -2706,7 +2715,10 @@ export function TenantAdminSettings({
     if (activeArea === "sla" && !slaManagementEnabled) {
       setActiveArea("features");
     }
-  }, [activeArea, slaManagementEnabled]);
+    if (activeArea === "monitoring" && !monitoringEnabled) {
+      setActiveArea("features");
+    }
+  }, [activeArea, slaManagementEnabled, monitoringEnabled]);
 
   /** Agent pre-assignment of a synchronised Entra person, laid out like the
    *  agent editor of signed-in members. */
@@ -3225,6 +3237,28 @@ export function TenantAdminSettings({
 
             {activeArea === "sla" && slaManagementEnabled ? (
               <SlaManagement headingLevel="h2" tenantId={tenantId} />
+            ) : null}
+
+            {activeArea === "monitoring" && monitoringEnabled ? (
+              <section
+                className="tenant-admin-settings__section tenant-admin-settings__monitoring"
+                aria-labelledby="tenant-monitoring-heading"
+              >
+                <div className="tenant-admin-settings__section-heading">
+                  <div>
+                    <h2 id="tenant-monitoring-heading" tabIndex={-1}>
+                      Monitoring
+                    </h2>
+                    <p>
+                      Überwachung von Systemen, Abläufen und Backups. Meldungen
+                      werden automatisch zu Tickets in der gewählten Abteilung.
+                    </p>
+                  </div>
+                </div>
+                <MonitoringSettings tenantId={tenantId} />
+                <ExpiryMonitoringSettings tenantId={tenantId} />
+                <BackupMonitoringSettings tenantId={tenantId} />
+              </section>
             ) : null}
 
             {activeArea === "features" && (
@@ -3787,15 +3821,23 @@ export function TenantAdminSettings({
                                                 <AssetIntuneSettings
                                                   tenantId={tenantId}
                                                 />
-                                                <MonitoringSettings
-                                                  tenantId={tenantId}
-                                                />
-                                                <ExpiryMonitoringSettings
-                                                  tenantId={tenantId}
-                                                />
-                                                <BackupMonitoringSettings
-                                                  tenantId={tenantId}
-                                                />
+                                                <p className="tenant-admin-settings__hint">
+                                                  PRTG-, Ablauf- und
+                                                  Backup-Überwachung finden Sie
+                                                  im Bereich{" "}
+                                                  <button
+                                                    className="link-button"
+                                                    onClick={() =>
+                                                      setActiveArea(
+                                                        "monitoring",
+                                                      )
+                                                    }
+                                                    type="button"
+                                                  >
+                                                    Monitoring
+                                                  </button>
+                                                  .
+                                                </p>
                                               </>
                                             ) : null}
                                             {feature.feature_key ===
