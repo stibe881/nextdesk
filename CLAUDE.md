@@ -3,8 +3,9 @@
 ## Handbücher bei jeder Änderung mitpflegen
 
 Die rollenspezifischen Handbücher liegen in `docs/handbooks/` und werden in der
-Web-App unter **Persönliche Einstellungen → Handbücher** nur den berechtigten
-Rollen ausgeliefert (Edge Function `handbooks`, Regel in
+Web-App unter **Persönliche Einstellungen → Handbücher** und in der iOS-App
+unter **Profil → Hilfe und Rechtliches** (`mobile/app/(tabs)/handbook/[id].tsx`)
+nur den berechtigten Rollen ausgeliefert (Edge Function `handbooks`, Regel in
 `supabase/functions/_shared/handbook-access.ts`).
 
 | Handbuch                            | Zielgruppe                      | Betroffen bei Änderungen an …                                                                                        |
@@ -28,5 +29,10 @@ oder Einrichtungsschritten:
    `supabase/functions/handbooks/content.generated.ts` nicht zur Quelle passt.
 4. Nach dem Merge die Edge Function `handbooks` deployen (Workflow
    «Deploy Supabase Edge Functions» mit `handbooks`).
+
+Die App stellt nur einen Markdown-Ausschnitt dar
+(`mobile/lib/handbooks-model.ts`: Überschriften `##`/`###`, Absätze, Listen,
+Zitate, Tabellen, Codeblöcke, Bilder, **fett**, _kursiv_, `Code`). Neue
+Markdown-Elemente dort ergänzen.
 
 Wenn keine Anpassung nötig ist, das im Pull Request kurz begründen.

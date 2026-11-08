@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as LocalAuthentication from "expo-local-authentication";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -17,6 +17,7 @@ import {
 } from "react-native";
 
 import { getMyAvailability, setMyAvailability } from "@/lib/nextdesk-portal";
+import { listMobileHandbooks, type HandbookSummary } from "@/lib/handbooks";
 import { DeleteAccountButton } from "@/components/delete-account-button";
 import { ScreenContainer } from "@/components/screen-container";
 import { TeamMembersCard } from "@/components/team-members-card";
@@ -159,6 +160,26 @@ export default function SettingsScreen() {
   const [tenants, setTenants] = useState<MobileTenant[]>([]);
   const [currentTenant, setCurrentTenant] = useState<MobileTenant | null>(null);
   const [tenantPickerOpen, setTenantPickerOpen] = useState(false);
+  const [handbooks, setHandbooks] = useState<HandbookSummary[]>([]);
+
+  // The handbooks Function decides per role which handbooks are listed.
+  useEffect(() => {
+    if (!confirmedTenantId) {
+      setHandbooks([]);
+      return;
+    }
+    let active = true;
+    listMobileHandbooks(confirmedTenantId)
+      .then((list) => {
+        if (active) setHandbooks(list);
+      })
+      .catch(() => {
+        if (active) setHandbooks([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [confirmedTenantId]);
   const [tenantChangeSaving, setTenantChangeSaving] = useState(false);
   const tenantChangeInFlight = useRef(false);
   const [loading, setLoading] = useState(true);
@@ -1045,6 +1066,27 @@ export default function SettingsScreen() {
 
           <View style={styles.helpCard}>
             <Text style={styles.helpTitle}>Hilfe und Rechtliches</Text>
+            {handbooks.map((handbook) => (
+              <Pressable
+                accessibilityHint={handbook.description}
+                accessibilityRole="button"
+                key={handbook.id}
+                onPress={() => router.push(`/handbook/${handbook.id}` as never)}
+                style={styles.helpRow}
+              >
+                <Ionicons
+                  color={colors.primaryText}
+                  name="book-outline"
+                  size={19}
+                />
+                <Text style={styles.helpRowText}>{handbook.title}</Text>
+                <Ionicons
+                  color={colors.subtle}
+                  name="chevron-forward"
+                  size={16}
+                />
+              </Pressable>
+            ))}
             {(
               [
                 ["Support", SUPPORT_URL, "help-circle-outline"],

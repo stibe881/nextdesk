@@ -158,6 +158,9 @@ Browser an. Unten finden Sie **Tickets**, **Shop**, **Home**, **Wissen** und
 mit Foto. In den App-Einstellungen aktivieren Sie Benachrichtigungen, z. B.
 für Antworten des Supports.
 
+Die Handbücher finden Sie auch in der App: **Profil → Hilfe und
+Rechtliches**. Bildschirmfotos lassen sich dort antippen und vergrössern.
+
 ## Häufige Fragen
 
 **Ich erhalte keinen Anmeldelink.** Prüfen Sie den Spam-Ordner und ob die
