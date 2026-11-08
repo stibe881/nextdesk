@@ -453,6 +453,7 @@
     grid-column: 1 / -1;
     grid-row: 2;
   }
+}
 /* Drilldown: board figures open the filtered ticket list. */
 .live-board__drill {
   appearance: none;
