@@ -2,3 +2,4 @@
 supabase/migrations/**/*.sql
 # Die Expo-App verwendet ihre eigene, getestete Projektformatierung.
 mobile/**
+supabase/functions/handbooks/content.generated.ts

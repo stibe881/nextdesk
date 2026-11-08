@@ -77,6 +77,7 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen name="knowledge/[id]" options={{ href: null }} />
+        <Tabs.Screen name="handbook/[id]" options={{ href: null }} />
         <Tabs.Screen
           name="scan"
           options={{ href: scanVisible ? undefined : null, title: "Scan" }}
