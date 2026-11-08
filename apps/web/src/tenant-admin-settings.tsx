@@ -60,6 +60,7 @@ import { PortalAssistantSettings } from "./portal-assistant";
 import { ExchangeMailSettings } from "./exchange-mail-settings";
 import { SlaManagement } from "./sla-management";
 import { TenantAuditLog } from "./tenant-audit-log";
+import "./tenant-roles.css";
 
 /**
  * The technical role keys stay unchanged (they are referenced by database
@@ -1196,6 +1197,9 @@ export function TenantAdminSettings({
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [roleEditForm, setRoleEditForm] = useState<RoleForm>(emptyRoleForm);
   const [roleMatrixAllPeople, setRoleMatrixAllPeople] = useState(false);
+  const [rolesView, setRolesView] = useState<"assign" | "define">("assign");
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  const [rolePersonQuery, setRolePersonQuery] = useState("");
   const [roleAssignments, setRoleAssignments] = useState<
     RoleAssignmentWithDetails[]
   >([]);
@@ -1515,6 +1519,8 @@ export function TenantAdminSettings({
     setEditingRoleId(null);
     setRoleEditForm(emptyRoleForm);
     setRoleMatrixAllPeople(false);
+    setSelectedRoleId(null);
+    setRolePersonQuery("");
     setRoleAssignments([]);
     setAssignmentPendingRevocation(null);
   }, [tenantId]);
@@ -1713,57 +1719,6 @@ export function TenantAdminSettings({
       ),
     [roles],
   );
-  const effectiveAccess = useMemo(() => {
-    const rolesById = new Map(roles.map((role) => [role.id, role]));
-    const people = new Map<
-      string,
-      {
-        id: string;
-        displayName: string | null;
-        email: string | null;
-        roleNames: string[];
-        permissionCodes: Set<string>;
-      }
-    >();
-
-    for (const assignment of roleAssignments) {
-      const role = rolesById.get(assignment.role_id);
-      if (!role?.active) continue;
-
-      const current = people.get(assignment.user_id) ?? {
-        id: assignment.user_id,
-        displayName: assignment.user.displayName,
-        email: assignment.user.email,
-        roleNames: [],
-        permissionCodes: new Set<string>(),
-      };
-      if (!current.roleNames.includes(role.name)) {
-        current.roleNames.push(role.name);
-      }
-      for (const permissionCode of role.permissionCodes) {
-        current.permissionCodes.add(permissionCode);
-      }
-      people.set(assignment.user_id, current);
-    }
-
-    return [...people.values()]
-      .map((person) => ({
-        ...person,
-        roleNames: person.roleNames.sort((left, right) =>
-          left.localeCompare(right, "de-CH"),
-        ),
-        permissionCodes: [...person.permissionCodes].sort((left, right) =>
-          left.localeCompare(right, "de-CH"),
-        ),
-      }))
-      .sort((left, right) =>
-        (left.displayName ?? left.email ?? left.id).localeCompare(
-          right.displayName ?? right.email ?? right.id,
-          "de-CH",
-        ),
-      );
-  }, [roleAssignments, roles]);
-
   function beginSave(target: SaveTarget) {
     setSaving(target);
     setError("");
@@ -2309,50 +2264,118 @@ export function TenantAdminSettings({
     );
   }
 
+  function renderRoleMembers(
+    members: { id: string; displayName: string | null; email: string }[],
+  ) {
+    return (
+      <div className="role-editor__members">
+        <h4>
+          {members.length === 1
+            ? "1 Person hat diese Rolle"
+            : `${members.length} Personen haben diese Rolle`}
+        </h4>
+        {members.length > 0 ? (
+          <ul>
+            {members.map((member) => (
+              <li key={member.id}>
+                {member.displayName?.trim() || member.email}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="role-editor__hint">
+            Zuweisen können Sie unter «Personen zuweisen».
+          </p>
+        )}
+      </div>
+    );
+  }
+
   function renderRolePermissionPicker(
     form: RoleForm,
     setForm: (updater: (current: RoleForm) => RoleForm) => void,
   ) {
+    const selected = new Set(form.permissionCodes);
     return (
-      <fieldset
-        className="tenant-admin-settings__role-permission-picker"
-        disabled={saving !== null}
-      >
-        <legend>Was darf diese Rolle?</legend>
-        <p className="tenant-admin-settings__field-hint">
-          Wählen Sie die Aufgaben aus, die diese Rolle im Mandanten erledigen
-          darf. Berechtigungen mit erweitertem Zugriff sind entsprechend
-          gekennzeichnet.
+      <fieldset className="role-editor__permissions" disabled={saving !== null}>
+        <legend>Berechtigungen</legend>
+        <p className="role-editor__hint">
+          {selected.size === 1
+            ? "1 Berechtigung ausgewählt."
+            : `${selected.size} Berechtigungen ausgewählt.`}{" "}
+          Mit «Erweitert» markierte Berechtigungen geben weitreichenden Zugriff.
         </p>
         {rolePermissionGroups.length > 0 ? (
-          <div className="tenant-admin-settings__role-permission-groups">
-            {rolePermissionGroups.map((group) => (
-              <details key={group.id} open={group.id === "tickets"}>
-                <summary>
-                  <span>{group.label}</span>
-                  <span>{group.permissions.length} Berechtigungen</span>
-                </summary>
-                <div>
-                  {group.permissions.map((permission) => (
-                    <label key={permission.code}>
-                      <input
-                        type="checkbox"
-                        checked={form.permissionCodes.includes(permission.code)}
-                        onChange={() =>
-                          toggleRolePermission(permission.code, setForm)
-                        }
-                      />
-                      <span>
-                        <strong>{permission.description}</strong>
-                        {permission.isSensitive ? (
-                          <small>Erweiterter Zugriff</small>
-                        ) : null}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </details>
-            ))}
+          <div className="role-editor__groups">
+            {rolePermissionGroups.map((group) => {
+              const codes = group.permissions.map(
+                (permission) => permission.code,
+              );
+              const count = codes.filter((code) => selected.has(code)).length;
+              const allSelected = count === codes.length;
+              return (
+                <details
+                  className="role-editor__group"
+                  key={group.id}
+                  open={count > 0}
+                >
+                  <summary>
+                    <span className="role-editor__group-name">
+                      {group.label}
+                    </span>
+                    <span
+                      className={
+                        count > 0
+                          ? "role-editor__group-count is-active"
+                          : "role-editor__group-count"
+                      }
+                    >
+                      {count} von {codes.length}
+                    </span>
+                  </summary>
+                  <div className="role-editor__group-body">
+                    <button
+                      className="role-editor__group-toggle"
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          permissionCodes: allSelected
+                            ? current.permissionCodes.filter(
+                                (code) => !codes.includes(code),
+                              )
+                            : [
+                                ...new Set([
+                                  ...current.permissionCodes,
+                                  ...codes,
+                                ]),
+                              ],
+                        }))
+                      }
+                      type="button"
+                    >
+                      {allSelected ? "Alle entfernen" : "Alle auswählen"}
+                    </button>
+                    <div className="role-editor__options">
+                      {group.permissions.map((permission) => (
+                        <label key={permission.code}>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(permission.code)}
+                            onChange={() =>
+                              toggleRolePermission(permission.code, setForm)
+                            }
+                          />
+                          <span>{permission.description}</span>
+                          {permission.isSensitive ? (
+                            <small>Erweitert</small>
+                          ) : null}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+              );
+            })}
           </div>
         ) : (
           <p>Es wurden keine Berechtigungen zurückgegeben.</p>
@@ -2371,7 +2394,7 @@ export function TenantAdminSettings({
 
     beginSave("role:create");
     try {
-      await tenantRoleManagementRequest<{ role: TenantRole }>({
+      const created = await tenantRoleManagementRequest<{ role: TenantRole }>({
         type: "createRole",
         tenantId,
         name,
@@ -2380,6 +2403,14 @@ export function TenantAdminSettings({
       setRoleForm(emptyRoleForm);
       setRoleCreationOpen(false);
       await loadData();
+      if (created?.role?.id) {
+        setSelectedRoleId(created.role.id);
+        setEditingRoleId(created.role.id);
+        setRoleEditForm({
+          name: created.role.name ?? name,
+          permissionCodes: roleForm.permissionCodes,
+        });
+      }
       setSuccess(`Die Rolle „${name}“ wurde erstellt.`);
     } catch (nextError) {
       setError(
@@ -2399,6 +2430,25 @@ export function TenantAdminSettings({
     });
     setError("");
     setSuccess("");
+  }
+
+  function selectRole(roleId: string | "new") {
+    setError("");
+    setSuccess("");
+    setSelectedRoleId(roleId);
+    if (roleId === "new") {
+      setEditingRoleId(null);
+      setRoleForm(emptyRoleForm);
+      setRoleCreationOpen(true);
+      return;
+    }
+    setRoleCreationOpen(false);
+    const role = roles.find((item) => item.id === roleId);
+    if (role && !role.isSystem) {
+      startRoleEdit(role);
+    } else {
+      setEditingRoleId(null);
+    }
   }
 
   async function updateRole(event: FormEvent<HTMLFormElement>) {
@@ -2424,10 +2474,10 @@ export function TenantAdminSettings({
         name,
         permissionCodes: roleEditForm.permissionCodes,
       });
-      setEditingRoleId(null);
-      setRoleEditForm(emptyRoleForm);
+      // The role stays selected so further changes can follow directly.
+      setRoleEditForm({ name, permissionCodes: roleEditForm.permissionCodes });
       await loadData();
-      setSuccess(`Die Rolle „${name}“ wurde aktualisiert.`);
+      setSuccess(`Die Rolle „${name}“ wurde gespeichert.`);
     } catch (nextError) {
       setError(
         messageFromError(
@@ -5050,546 +5100,530 @@ export function TenantAdminSettings({
               </section>
             )}
 
-            {activeArea === "roles" && (
-              <section
-                className="tenant-admin-settings__section tenant-admin-settings__roles-workspace"
-                aria-labelledby="tenant-roles-heading"
-              >
-                <header className="tenant-admin-settings__roles-header">
-                  <div>
-                    <p className="tenant-admin-settings__eyebrow">
-                      ZUGRIFFSVERWALTUNG
-                    </p>
-                    <h2 id="tenant-roles-heading">Rollen & Zugriffe</h2>
-                    <p>
-                      Legen Sie fest, wer im Mandanten welche Aufgaben
-                      übernehmen darf. Systemrollen schützen grundlegende
-                      administrative Funktionen.
-                    </p>
-                  </div>
-                  <dl
-                    className="tenant-admin-settings__role-stats"
-                    aria-label="Zusammenfassung der Zugriffsverwaltung"
-                  >
-                    <div>
-                      <dt>Personen mit Zugriff</dt>
-                      <dd>{effectiveAccess.length}</dd>
-                    </div>
-                    <div>
-                      <dt>Aktive Rollen</dt>
-                      <dd>
-                        {visibleRoles.filter((role) => role.active).length}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Eigene Rollen</dt>
-                      <dd>
-                        {visibleRoles.filter((role) => !role.isSystem).length}
-                      </dd>
-                    </div>
-                  </dl>
-                </header>
-
-                <section
-                  className="tenant-admin-settings__role-matrix"
-                  aria-labelledby="role-matrix-heading"
-                >
-                  <div className="tenant-admin-settings__role-matrix-heading">
-                    <div>
-                      <p className="tenant-admin-settings__eyebrow">
-                        ZUWEISUNG
-                      </p>
-                      <h3 id="role-matrix-heading">Rollen zuweisen</h3>
-                      <p>
-                        Setzen oder entfernen Sie ein Häkchen, um einer Person
-                        eine Rolle im ganzen Mandanten zu geben oder zu
-                        entziehen. Änderungen gelten sofort.
-                      </p>
-                    </div>
-                    <label className="tenant-admin-settings__role-matrix-toggle">
-                      <input
-                        type="checkbox"
-                        checked={roleMatrixAllPeople}
-                        onChange={(event) =>
-                          setRoleMatrixAllPeople(event.target.checked)
-                        }
-                      />
-                      Alle aktiven Personen zeigen
-                    </label>
-                  </div>
-                  {(() => {
-                    const matrixPeople = activeUsers
-                      .filter((person) => roleMatrixAllPeople || person.isAgent)
-                      .sort((left, right) =>
-                        (left.displayName?.trim() || left.email).localeCompare(
-                          right.displayName?.trim() || right.email,
-                          "de-CH",
-                        ),
-                      );
-                    if (assignableRoles.length === 0) {
-                      return (
-                        <p className="tenant-admin-settings__role-empty">
-                          Es gibt noch keine zuweisbaren Rollen. Erstellen Sie
-                          unten eine eigene Rolle.
-                        </p>
-                      );
-                    }
-                    if (matrixPeople.length === 0) {
-                      return (
-                        <p className="tenant-admin-settings__role-empty">
-                          {roleMatrixAllPeople
-                            ? "Es gibt keine aktiven Personen."
-                            : "Es gibt noch keine aktiven Agenten. Zeigen Sie alle aktiven Personen an oder machen Sie unter «Personen» jemanden zum Agenten."}
-                        </p>
-                      );
-                    }
-                    return (
-                      <div className="tenant-admin-settings__role-matrix-scroll">
-                        <table>
-                          <caption className="sr-only">
-                            Rollen je Person
-                          </caption>
-                          <thead>
-                            <tr>
-                              <th scope="col">
-                                {roleMatrixAllPeople ? "Person" : "Agent"}
-                              </th>
-                              {assignableRoles.map((role) => (
-                                <th key={role.id} scope="col">
-                                  {roleLabel(role.name)}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {matrixPeople.map((person) => {
-                              const personLabel =
-                                person.displayName?.trim() || person.email;
-                              return (
-                                <tr key={person.id}>
-                                  <th scope="row">
-                                    <strong>{personLabel}</strong>
-                                    {person.displayName?.trim() ? (
-                                      <span>{person.email}</span>
-                                    ) : null}
-                                  </th>
-                                  {assignableRoles.map((role) => {
-                                    const target: SaveTarget = `matrix-role:${person.id}:${role.id}`;
-                                    const assigned = Boolean(
-                                      matrixAssignment(person.id, role.id),
-                                    );
-                                    return (
-                                      <td
-                                        className={
-                                          saving === target
-                                            ? "is-saving"
-                                            : undefined
-                                        }
-                                        key={role.id}
-                                      >
-                                        <input
-                                          aria-label={`${roleLabel(role.name)} für ${personLabel}`}
-                                          checked={assigned}
-                                          disabled={saving !== null}
-                                          onChange={() =>
-                                            void toggleMatrixRole(person, role)
-                                          }
-                                          type="checkbox"
-                                        />
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+            {activeArea === "roles" &&
+              (() => {
+                const query = rolePersonQuery.trim().toLocaleLowerCase("de-CH");
+                const personLabelOf = (person: {
+                  displayName: string | null;
+                  email: string | null;
+                }) =>
+                  person.displayName?.trim() ||
+                  person.email ||
+                  "Unbekannte Person";
+                const matrixPeople = activeUsers
+                  .filter((person) => roleMatrixAllPeople || person.isAgent)
+                  .filter(
+                    (person) =>
+                      !query ||
+                      `${person.displayName ?? ""} ${person.email}`
+                        .toLocaleLowerCase("de-CH")
+                        .includes(query),
+                  )
+                  .sort((left, right) =>
+                    personLabelOf(left).localeCompare(
+                      personLabelOf(right),
+                      "de-CH",
+                    ),
+                  );
+                const agentCount = activeUsers.filter(
+                  (person) => person.isAgent,
+                ).length;
+                const peopleByRole = new Map<string, Set<string>>();
+                for (const assignment of roleAssignments) {
+                  const current =
+                    peopleByRole.get(assignment.role_id) ?? new Set<string>();
+                  current.add(assignment.user_id);
+                  peopleByRole.set(assignment.role_id, current);
+                }
+                const scopedAssignments = roleAssignments.filter(
+                  (assignment) =>
+                    (assignment.department_id !== null ||
+                      assignment.team_id !== null) &&
+                    isVisibleRole(assignment.roleName),
+                );
+                const sortedRoles = [...visibleRoles].sort((left, right) =>
+                  roleLabel(left.name).localeCompare(
+                    roleLabel(right.name),
+                    "de-CH",
+                  ),
+                );
+                const selectedRole =
+                  selectedRoleId && selectedRoleId !== "new"
+                    ? roles.find((role) => role.id === selectedRoleId)
+                    : undefined;
+                const roleMembers = (roleId: string) =>
+                  [...(peopleByRole.get(roleId) ?? [])]
+                    .map(
+                      (userId) =>
+                        activeUsers.find((person) => person.id === userId) ??
+                        roleAssignments.find(
+                          (assignment) => assignment.user_id === userId,
+                        )?.user,
+                    )
+                    .filter(
+                      (
+                        person,
+                      ): person is {
+                        id: string;
+                        displayName: string | null;
+                        email: string;
+                      } => Boolean(person),
                     );
-                  })()}
-                </section>
 
-                <section
-                  className="tenant-admin-settings__role-people"
-                  aria-labelledby="role-people-heading"
-                >
-                  <div className="tenant-admin-settings__section-heading">
-                    <div>
-                      <p className="tenant-admin-settings__eyebrow">PERSONEN</p>
-                      <h3 id="role-people-heading">Wer hat Zugriff?</h3>
-                      <p>
-                        Diese Übersicht zeigt nur aktuell wirksame Rollen.
-                        Berechtigungsdetails bleiben bei Bedarf einsehbar.
-                      </p>
-                    </div>
-                    <span className="tenant-admin-settings__access-count">
-                      {effectiveAccess.length} Personen
-                    </span>
-                  </div>
-                  {effectiveAccess.length > 0 ? (
-                    <ul className="tenant-admin-settings__role-person-list">
-                      {effectiveAccess.map((person) => (
-                        <li key={person.id}>
-                          <div className="tenant-admin-settings__role-person-heading">
-                            <strong>
-                              {person.displayName?.trim() ||
-                                person.email ||
-                                "Unbekannte Person"}
-                            </strong>
-                            <span>
-                              {person.email ?? "E-Mail nicht hinterlegt"}
-                            </span>
+                return (
+                  <section
+                    className="tenant-admin-settings__section roles-page"
+                    aria-labelledby="tenant-roles-heading"
+                  >
+                    <header className="roles-page__header">
+                      <div>
+                        <h2 id="tenant-roles-heading">Rollen & Zugriffe</h2>
+                        <p>
+                          Wer was im Mandanten darf: Rollen bündeln
+                          Berechtigungen, Personen erhalten Rollen.
+                        </p>
+                      </div>
+                      <div
+                        aria-label="Ansicht"
+                        className="segmented roles-page__views"
+                        role="group"
+                      >
+                        <button
+                          aria-pressed={rolesView === "assign"}
+                          className={
+                            rolesView === "assign" ? "selected" : undefined
+                          }
+                          onClick={() => setRolesView("assign")}
+                          type="button"
+                        >
+                          Personen zuweisen
+                        </button>
+                        <button
+                          aria-pressed={rolesView === "define"}
+                          className={
+                            rolesView === "define" ? "selected" : undefined
+                          }
+                          onClick={() => {
+                            setRolesView("define");
+                            if (!selectedRoleId && sortedRoles[0]) {
+                              selectRole(sortedRoles[0].id);
+                            }
+                          }}
+                          type="button"
+                        >
+                          Rollen definieren
+                        </button>
+                      </div>
+                    </header>
+
+                    {rolesView === "assign" ? (
+                      <div className="roles-assign">
+                        <div className="roles-assign__toolbar">
+                          <label className="roles-assign__search">
+                            <span className="sr-only">Person suchen</span>
+                            <input
+                              onChange={(event) =>
+                                setRolePersonQuery(event.target.value)
+                              }
+                              placeholder="Person suchen …"
+                              type="search"
+                              value={rolePersonQuery}
+                            />
+                          </label>
+                          <div
+                            aria-label="Personen filtern"
+                            className="segmented"
+                            role="group"
+                          >
+                            <button
+                              aria-pressed={!roleMatrixAllPeople}
+                              className={
+                                !roleMatrixAllPeople ? "selected" : undefined
+                              }
+                              onClick={() => setRoleMatrixAllPeople(false)}
+                              type="button"
+                            >
+                              Agenten ({agentCount})
+                            </button>
+                            <button
+                              aria-pressed={roleMatrixAllPeople}
+                              className={
+                                roleMatrixAllPeople ? "selected" : undefined
+                              }
+                              onClick={() => setRoleMatrixAllPeople(true)}
+                              type="button"
+                            >
+                              Alle Personen ({activeUsers.length})
+                            </button>
                           </div>
-                          <div>
-                            <span className="tenant-admin-settings__access-label">
-                              Zugewiesene Rollen
-                            </span>
-                            <div className="tenant-admin-settings__role-chips">
-                              {person.roleNames
-                                .filter(isVisibleRole)
-                                .map((roleName) => (
-                                  <span key={roleName}>
-                                    {roleLabel(roleName)}
-                                  </span>
-                                ))}
-                            </div>
+                        </div>
+
+                        {assignableRoles.length === 0 ? (
+                          <div className="roles-empty">
+                            <strong>Noch keine zuweisbaren Rollen</strong>
+                            <p>
+                              Erstellen Sie unter «Rollen definieren» eine
+                              eigene Rolle.
+                            </p>
                           </div>
-                          <details className="tenant-admin-settings__role-details">
+                        ) : matrixPeople.length === 0 ? (
+                          <div className="roles-empty">
+                            <strong>Keine Personen gefunden</strong>
+                            <p>
+                              {query
+                                ? "Passen Sie die Suche an."
+                                : roleMatrixAllPeople
+                                  ? "Es gibt keine aktiven Personen."
+                                  : "Es gibt noch keine Agenten. Wählen Sie «Alle Personen» oder machen Sie unter «Personen» jemanden zum Agenten."}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="roles-matrix">
+                            <table>
+                              <caption className="sr-only">
+                                Rollen je Person. Ein Häkchen gibt der Person
+                                die Rolle im ganzen Mandanten.
+                              </caption>
+                              <thead>
+                                <tr>
+                                  <th scope="col">Person</th>
+                                  {assignableRoles.map((role) => (
+                                    <th key={role.id} scope="col">
+                                      <span>{roleLabel(role.name)}</span>
+                                      <small>
+                                        {peopleByRole.get(role.id)?.size ?? 0}{" "}
+                                        Pers.
+                                      </small>
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {matrixPeople.map((person) => {
+                                  const personLabel = personLabelOf(person);
+                                  return (
+                                    <tr key={person.id}>
+                                      <th scope="row">
+                                        <div className="roles-matrix__who">
+                                          <span
+                                            aria-hidden="true"
+                                            className="roles-matrix__avatar"
+                                          >
+                                            {personLabel
+                                              .split(/\s+/)
+                                              .slice(0, 2)
+                                              .map((part) => part[0])
+                                              .join("")
+                                              .toUpperCase()}
+                                          </span>
+                                          <span className="roles-matrix__person">
+                                            <strong>{personLabel}</strong>
+                                            <small>
+                                              {person.isAgent
+                                                ? "Agent"
+                                                : "Mitarbeitende"}
+                                              {person.departmentName
+                                                ? ` · ${person.departmentName}`
+                                                : ""}
+                                            </small>
+                                          </span>
+                                        </div>
+                                      </th>
+                                      {assignableRoles.map((role) => {
+                                        const target: SaveTarget = `matrix-role:${person.id}:${role.id}`;
+                                        const assigned = Boolean(
+                                          matrixAssignment(person.id, role.id),
+                                        );
+                                        return (
+                                          <td
+                                            className={
+                                              saving === target
+                                                ? "is-saving"
+                                                : undefined
+                                            }
+                                            key={role.id}
+                                          >
+                                            <label className="roles-matrix__cell">
+                                              <input
+                                                aria-label={`${roleLabel(role.name)} für ${personLabel}`}
+                                                checked={assigned}
+                                                disabled={saving !== null}
+                                                onChange={() =>
+                                                  void toggleMatrixRole(
+                                                    person,
+                                                    role,
+                                                  )
+                                                }
+                                                type="checkbox"
+                                              />
+                                            </label>
+                                          </td>
+                                        );
+                                      })}
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                        <p className="roles-assign__note">
+                          Ein Häkchen gibt die Rolle für den ganzen Mandanten.
+                          Änderungen gelten sofort.
+                        </p>
+
+                        {scopedAssignments.length > 0 ? (
+                          <details className="roles-scoped">
                             <summary>
-                              {person.permissionCodes.length} Berechtigungen
-                              anzeigen
+                              Auf Abteilung oder Team begrenzte Zuweisungen (
+                              {scopedAssignments.length})
                             </summary>
-                            {renderPermissionDescriptions(
-                              person.permissionCodes,
-                            )}
-                            <details className="tenant-admin-settings__role-technical-details">
-                              <summary>Technische Kennungen</summary>
-                              <code>{person.permissionCodes.join(" · ")}</code>
-                            </details>
-                          </details>
-                          <div className="tenant-admin-settings__role-person-actions">
-                            {roleAssignments
-                              .filter(
-                                (assignment) =>
-                                  assignment.user_id === person.id,
-                              )
-                              .map((assignment) => {
+                            <ul>
+                              {scopedAssignments.map((assignment) => {
                                 const target: SaveTarget = `revoke-role:${assignment.id}`;
                                 return (
-                                  <button
-                                    key={assignment.id}
-                                    type="button"
-                                    disabled={saving !== null}
-                                    onClick={(event) =>
-                                      requestRoleRevocation(
-                                        assignment,
-                                        event.currentTarget,
-                                      )
-                                    }
-                                  >
-                                    {saving === target
-                                      ? "Wird entzogen …"
-                                      : `«${roleLabel(assignment.roleName)}» entziehen`}
-                                  </button>
-                                );
-                              })}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="tenant-admin-settings__role-empty">
-                      Es ist noch keiner aktiven Person eine Rolle zugewiesen.
-                      Vergeben Sie den ersten Zugriff oben in dieser Ansicht.
-                    </p>
-                  )}
-                </section>
-
-                <details className="tenant-admin-settings__role-library" open>
-                  <summary>
-                    <span>
-                      <strong>Rollenbibliothek</strong>
-                      <small>
-                        Rollen definieren, prüfen und bei Bedarf anpassen
-                      </small>
-                    </span>
-                    <span>{roles.length} Rollen</span>
-                  </summary>
-                  <div className="tenant-admin-settings__role-library-content">
-                    {roles.length > 0 ? (
-                      <ul className="tenant-admin-settings__role-cards">
-                        {visibleRoles.map((role) => {
-                          const target: SaveTarget = `role:${role.id}`;
-                          return (
-                            <li key={role.id}>
-                              <div className="tenant-admin-settings__role-card-main">
-                                <div className="tenant-admin-settings__role-card-heading">
-                                  <div>
-                                    <strong>{roleLabel(role.name)}</strong>
-                                    <span>{roleScopeLabel(role.scope)}</span>
-                                  </div>
-                                  <div className="tenant-admin-settings__role-chips">
-                                    <span
-                                      className={
-                                        role.active
-                                          ? "tenant-admin-settings__role-chip--active"
-                                          : "tenant-admin-settings__role-chip--inactive"
-                                      }
-                                    >
-                                      {role.active ? "Aktiv" : "Inaktiv"}
+                                  <li key={assignment.id}>
+                                    <span>
+                                      <strong>
+                                        {personLabelOf(assignment.user)}
+                                      </strong>
+                                      {" · "}
+                                      {roleLabel(assignment.roleName)}
                                     </span>
-                                    {role.isSystem ? (
-                                      <span>Geschützt</span>
-                                    ) : (
-                                      <span>Eigene Rolle</span>
-                                    )}
-                                  </div>
-                                </div>
-                                <p>
-                                  {role.permissionCodes.length === 1
-                                    ? "1 Aufgabe freigegeben"
-                                    : `${role.permissionCodes.length} Aufgaben freigegeben`}
-                                </p>
-                                {role.permissionCodes.length > 0 ? (
-                                  <details className="tenant-admin-settings__role-details">
-                                    <summary>Berechtigungen ansehen</summary>
-                                    {renderPermissionDescriptions(
-                                      role.permissionCodes,
-                                    )}
-                                    <details className="tenant-admin-settings__role-technical-details">
-                                      <summary>Technische Kennungen</summary>
-                                      <code>
-                                        {role.permissionCodes.join(" · ")}
-                                      </code>
-                                    </details>
-                                  </details>
-                                ) : (
-                                  <p className="tenant-admin-settings__field-hint">
-                                    Dieser Rolle sind noch keine Aufgaben
-                                    freigegeben.
-                                  </p>
-                                )}
-                              </div>
-                              <div className="tenant-admin-settings__role-card-actions">
-                                {role.isSystem ? (
-                                  <span className="tenant-admin-settings__field-hint">
-                                    Systemrollen werden zentral geschützt.
-                                  </span>
-                                ) : (
-                                  <>
                                     <button
-                                      type="button"
                                       disabled={saving !== null}
-                                      onClick={() => startRoleEdit(role)}
-                                    >
-                                      Bearbeiten
-                                    </button>
-                                    <button
+                                      onClick={(event) =>
+                                        requestRoleRevocation(
+                                          assignment,
+                                          event.currentTarget,
+                                        )
+                                      }
                                       type="button"
-                                      disabled={saving !== null}
-                                      onClick={() => void setRoleActivity(role)}
                                     >
                                       {saving === target
-                                        ? "Wird gespeichert …"
-                                        : role.active
-                                          ? "Deaktivieren"
-                                          : "Aktivieren"}
+                                        ? "Wird entzogen …"
+                                        : "Entziehen"}
                                     </button>
-                                  </>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </details>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="roles-define">
+                        <nav aria-label="Rollen" className="roles-define__list">
+                          <button
+                            className={
+                              selectedRoleId === "new"
+                                ? "roles-define__new is-selected"
+                                : "roles-define__new"
+                            }
+                            disabled={saving !== null}
+                            onClick={() => selectRole("new")}
+                            type="button"
+                          >
+                            + Neue Rolle
+                          </button>
+                          <ul>
+                            {sortedRoles.map((role) => {
+                              const members =
+                                peopleByRole.get(role.id)?.size ?? 0;
+                              return (
+                                <li key={role.id}>
+                                  <button
+                                    aria-current={
+                                      selectedRoleId === role.id
+                                        ? "true"
+                                        : undefined
+                                    }
+                                    className={
+                                      selectedRoleId === role.id
+                                        ? "is-selected"
+                                        : undefined
+                                    }
+                                    onClick={() => selectRole(role.id)}
+                                    type="button"
+                                  >
+                                    <strong>{roleLabel(role.name)}</strong>
+                                    <small>
+                                      {members === 1
+                                        ? "1 Person"
+                                        : `${members} Personen`}{" "}
+                                      ·{" "}
+                                      {role.permissionCodes.length === 1
+                                        ? "1 Berechtigung"
+                                        : `${role.permissionCodes.length} Berechtigungen`}
+                                    </small>
+                                    <span className="roles-define__tags">
+                                      {role.isSystem ? (
+                                        <span>System</span>
+                                      ) : null}
+                                      {!role.active ? (
+                                        <span className="is-muted">
+                                          Inaktiv
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </nav>
+
+                        <div className="roles-define__detail">
+                          {selectedRoleId === "new" && roleCreationOpen ? (
+                            <form className="role-editor" onSubmit={createRole}>
+                              <div className="role-editor__head">
+                                <label className="role-editor__name">
+                                  <span>Name der neuen Rolle</span>
+                                  <input
+                                    autoFocus
+                                    disabled={saving !== null}
+                                    maxLength={120}
+                                    minLength={3}
+                                    onChange={(event) =>
+                                      setRoleForm((current) => ({
+                                        ...current,
+                                        name: event.target.value,
+                                      }))
+                                    }
+                                    placeholder="z. B. Lager"
+                                    required
+                                    type="text"
+                                    value={roleForm.name}
+                                  />
+                                </label>
+                              </div>
+                              {renderRolePermissionPicker(
+                                roleForm,
+                                setRoleForm,
+                              )}
+                              <div className="role-editor__actions">
+                                <button
+                                  className="role-editor__primary"
+                                  disabled={saving !== null}
+                                  type="submit"
+                                >
+                                  {saving === "role:create"
+                                    ? "Wird erstellt …"
+                                    : "Rolle erstellen"}
+                                </button>
+                                <button
+                                  disabled={saving !== null}
+                                  onClick={() => {
+                                    setRoleCreationOpen(false);
+                                    setRoleForm(emptyRoleForm);
+                                    setSelectedRoleId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  Abbrechen
+                                </button>
+                              </div>
+                            </form>
+                          ) : selectedRole && !selectedRole.isSystem ? (
+                            <form className="role-editor" onSubmit={updateRole}>
+                              <div className="role-editor__head">
+                                <label className="role-editor__name">
+                                  <span>Rollenname</span>
+                                  <input
+                                    disabled={saving !== null}
+                                    maxLength={120}
+                                    minLength={3}
+                                    onChange={(event) =>
+                                      setRoleEditForm((current) => ({
+                                        ...current,
+                                        name: event.target.value,
+                                      }))
+                                    }
+                                    required
+                                    type="text"
+                                    value={roleEditForm.name}
+                                  />
+                                </label>
+                                <span
+                                  className={
+                                    selectedRole.active
+                                      ? "role-editor__status"
+                                      : "role-editor__status is-muted"
+                                  }
+                                >
+                                  {selectedRole.active ? "Aktiv" : "Inaktiv"}
+                                </span>
+                              </div>
+                              {renderRoleMembers(roleMembers(selectedRole.id))}
+                              {renderRolePermissionPicker(
+                                roleEditForm,
+                                setRoleEditForm,
+                              )}
+                              <div className="role-editor__actions">
+                                <button
+                                  className="role-editor__primary"
+                                  disabled={saving !== null}
+                                  type="submit"
+                                >
+                                  {saving === `role:${selectedRole.id}`
+                                    ? "Wird gespeichert …"
+                                    : "Änderungen speichern"}
+                                </button>
+                                <button
+                                  disabled={saving !== null}
+                                  onClick={() =>
+                                    void setRoleActivity(selectedRole)
+                                  }
+                                  type="button"
+                                >
+                                  {selectedRole.active
+                                    ? "Rolle deaktivieren"
+                                    : "Rolle aktivieren"}
+                                </button>
+                              </div>
+                            </form>
+                          ) : selectedRole ? (
+                            <div className="role-editor">
+                              <div className="role-editor__head">
+                                <div>
+                                  <h3>{roleLabel(selectedRole.name)}</h3>
+                                  <p className="role-editor__hint">
+                                    Systemrolle ·{" "}
+                                    {roleScopeLabel(selectedRole.scope)}. Sie
+                                    ist geschützt und kann nicht geändert
+                                    werden.
+                                  </p>
+                                </div>
+                                <span className="role-editor__status">
+                                  System
+                                </span>
+                              </div>
+                              {renderRoleMembers(roleMembers(selectedRole.id))}
+                              <div className="role-editor__readonly">
+                                <h4>
+                                  Berechtigungen (
+                                  {selectedRole.permissionCodes.length})
+                                </h4>
+                                {renderPermissionDescriptions(
+                                  selectedRole.permissionCodes,
                                 )}
                               </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : (
-                      <p className="tenant-admin-settings__role-empty">
-                        Für diesen Mandanten wurden keine Rollen zurückgegeben.
-                      </p>
+                            </div>
+                          ) : (
+                            <div className="roles-empty">
+                              <strong>Rolle auswählen</strong>
+                              <p>
+                                Wählen Sie links eine Rolle aus oder erstellen
+                                Sie eine neue.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     )}
-                    <button
-                      className="tenant-admin-settings__role-create-toggle"
-                      type="button"
-                      disabled={saving !== null}
-                      onClick={() => {
-                        setRoleCreationOpen((current) => !current);
-                        setEditingRoleId(null);
-                        setRoleEditForm(emptyRoleForm);
-                      }}
-                    >
-                      {roleCreationOpen
-                        ? "Neue Rolle schliessen"
-                        : "Neue eigene Rolle erstellen"}
-                    </button>
-                  </div>
-                </details>
-
-                {roleCreationOpen ? (
-                  <form
-                    className="tenant-admin-settings__role-editor"
-                    onSubmit={createRole}
-                  >
-                    <div>
-                      <p className="tenant-admin-settings__eyebrow">
-                        EIGENE ROLLE
-                      </p>
-                      <h3>Neue Rolle erstellen</h3>
-                      <p>
-                        Geben Sie der Rolle einen verständlichen Namen und
-                        wählen Sie die erlaubten Aufgaben aus.
-                      </p>
-                    </div>
-                    <label>
-                      Rollenname
-                      <input
-                        type="text"
-                        value={roleForm.name}
-                        minLength={3}
-                        maxLength={120}
-                        required
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setRoleForm((current) => ({
-                            ...current,
-                            name: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    {renderRolePermissionPicker(roleForm, setRoleForm)}
-                    <div className="tenant-admin-settings__form-actions">
-                      <button type="submit" disabled={saving !== null}>
-                        {saving === "role:create"
-                          ? "Rolle wird erstellt …"
-                          : "Rolle erstellen"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={saving !== null}
-                        onClick={() => {
-                          setRoleCreationOpen(false);
-                          setRoleForm(emptyRoleForm);
-                        }}
-                      >
-                        Abbrechen
-                      </button>
-                    </div>
-                  </form>
-                ) : null}
-
-                {editingRoleId &&
-                roles.some(
-                  (role) => role.id === editingRoleId && !role.isSystem,
-                ) ? (
-                  <form
-                    className="tenant-admin-settings__role-editor"
-                    onSubmit={updateRole}
-                  >
-                    <div>
-                      <p className="tenant-admin-settings__eyebrow">
-                        EIGENE ROLLE
-                      </p>
-                      <h3>Rolle bearbeiten</h3>
-                      <p>
-                        Passen Sie Name und erlaubte Aufgaben dieser Rolle an.
-                      </p>
-                    </div>
-                    <label>
-                      Rollenname
-                      <input
-                        type="text"
-                        value={roleEditForm.name}
-                        minLength={3}
-                        maxLength={120}
-                        required
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setRoleEditForm((current) => ({
-                            ...current,
-                            name: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    {renderRolePermissionPicker(roleEditForm, setRoleEditForm)}
-                    <div className="tenant-admin-settings__form-actions">
-                      <button type="submit" disabled={saving !== null}>
-                        {saving === `role:${editingRoleId}`
-                          ? "Änderungen werden gespeichert …"
-                          : "Änderungen speichern"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={saving !== null}
-                        onClick={() => {
-                          setEditingRoleId(null);
-                          setRoleEditForm(emptyRoleForm);
-                        }}
-                      >
-                        Abbrechen
-                      </button>
-                    </div>
-                  </form>
-                ) : null}
-
-                <details className="tenant-admin-settings__role-assignment-management">
-                  <summary>
-                    Einzelne Zuweisungen verwalten ({roleAssignments.length})
-                  </summary>
-                  {roleAssignments.length > 0 ? (
-                    <ul className="tenant-admin-settings__role-assignment-list">
-                      {roleAssignments.map((assignment) => {
-                        const target: SaveTarget = `revoke-role:${assignment.id}`;
-                        return (
-                          <li key={assignment.id}>
-                            <div>
-                              <strong>
-                                {assignment.user.displayName?.trim() ||
-                                  assignment.user.email ||
-                                  "Unbekannte Person"}
-                              </strong>
-                              <span>
-                                {assignment.user.email ??
-                                  "E-Mail nicht hinterlegt"}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="tenant-admin-settings__access-label">
-                                Rolle
-                              </span>
-                              <strong>{roleLabel(assignment.roleName)}</strong>
-                              <span>
-                                Zugewiesen:{" "}
-                                {formatDate(assignment.starts_at) ??
-                                  "Nicht hinterlegt"}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              disabled={saving !== null}
-                              onClick={(event) =>
-                                requestRoleRevocation(
-                                  assignment,
-                                  event.currentTarget,
-                                )
-                              }
-                            >
-                              {saving === target
-                                ? "Wird entzogen …"
-                                : "Zugriff entziehen"}
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : (
-                    <p className="tenant-admin-settings__role-empty">
-                      Es gibt keine einzelnen Rollenzuweisungen zum Verwalten.
-                    </p>
-                  )}
-                </details>
-              </section>
-            )}
+                  </section>
+                );
+              })()}
           </div>
         </>
       ) : null}
