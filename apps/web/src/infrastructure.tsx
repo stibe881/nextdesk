@@ -111,6 +111,7 @@ type Detail = {
   maintenance: {
     id: string;
     performedOn: string;
+    performedTime: string | null;
     kind: string;
     note: string;
     actorName: string | null;
@@ -963,6 +964,7 @@ function DeviceDetail({
   const [reason, setReason] = useState("");
   const [maintenance, setMaintenance] = useState({
     performedOn: new Date().toISOString().slice(0, 10),
+    performedTime: "",
     kind: "maintenance",
     note: "",
   });
@@ -1315,6 +1317,19 @@ function DeviceDetail({
                   />
                 </label>
                 <label>
+                  Uhrzeit
+                  <input
+                    onChange={(event) =>
+                      setMaintenance({
+                        ...maintenance,
+                        performedTime: event.target.value,
+                      })
+                    }
+                    type="time"
+                    value={maintenance.performedTime}
+                  />
+                </label>
+                <label>
                   Art
                   <select
                     onChange={(event) =>
@@ -1359,7 +1374,10 @@ function DeviceDetail({
               <ul className="infrastructure__timeline">
                 {detail.maintenance.map((entry) => (
                   <li key={entry.id}>
-                    <time>{formatDate(entry.performedOn)}</time>
+                    <time>
+                      {formatDate(entry.performedOn)}
+                      {entry.performedTime ? `, ${entry.performedTime}` : ""}
+                    </time>
                     <strong>
                       {MAINTENANCE_LABEL[entry.kind] ?? entry.kind}
                     </strong>

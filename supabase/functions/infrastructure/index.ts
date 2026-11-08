@@ -105,6 +105,7 @@ type Action =
     tenantId: string;
     assetId: string;
     performedOn: string;
+    performedTime: string | null;
     kind: (typeof MAINTENANCE_KINDS)[number];
     note: string;
   }
@@ -180,6 +181,14 @@ function optionalDate(value: unknown): string | null | undefined {
   if (value === null || value === undefined || value === "") return null;
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
       !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
+    ? value
+    : undefined;
+}
+
+/** «HH:MM» (24 h); empty means no time. */
+function optionalTime(value: unknown): string | null | undefined {
+  if (value === null || value === undefined || value === "") return null;
+  return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
     ? value
     : undefined;
 }
@@ -345,14 +354,17 @@ export function parseAction(value: unknown): Action | null {
     }
     case "addMaintenance": {
       const performedOn = optionalDate(value.performedOn);
+      const performedTime = optionalTime(value.performedTime);
       const kind = oneOf(MAINTENANCE_KINDS, value.kind ?? "maintenance");
       const note = optionalText(value.note, 2000);
-      return isUuid(value.assetId) && performedOn && kind && note
+      return isUuid(value.assetId) && performedOn &&
+          performedTime !== undefined && kind && note
         ? {
           type: "addMaintenance",
           tenantId,
           assetId: value.assetId.toLowerCase(),
           performedOn,
+          performedTime,
           kind,
           note,
         }
@@ -585,9 +597,11 @@ async function detail(request: Request, admin: Admin, tenantId: string, assetId:
       .eq("tenant_id", tenantId).eq("asset_id", assetId)
       .order("occurred_at", { ascending: false }).limit(50),
     admin.from("asset_maintenance_log")
-      .select("id, performed_on, kind, note, actor_id, created_at")
+      .select("id, performed_on, performed_time, kind, note, actor_id, created_at")
       .eq("tenant_id", tenantId).eq("asset_id", assetId)
-      .order("performed_on", { ascending: false }).limit(100),
+      .order("performed_on", { ascending: false })
+      .order("performed_time", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false }).limit(100),
     admin.from("asset_infrastructure")
       .select("asset_id, uplink_port, category")
       .eq("tenant_id", tenantId).eq("uplink_asset_id", assetId).limit(500),
@@ -656,6 +670,9 @@ async function detail(request: Request, admin: Admin, tenantId: string, assetId:
       maintenance: ((maintenance.data ?? []) as Row[]).map((row) => ({
         id: row.id,
         performedOn: row.performed_on,
+        performedTime: typeof row.performed_time === "string"
+          ? row.performed_time.slice(0, 5)
+          : null,
         kind: row.kind,
         note: row.note,
         actorName: typeof row.actor_id === "string" ? (actorNames.get(row.actor_id) ?? null) : null,
@@ -831,6 +848,7 @@ async function addMaintenance(
     tenant_id: action.tenantId,
     asset_id: action.assetId,
     performed_on: action.performedOn,
+    performed_time: action.performedTime,
     kind: action.kind,
     note: action.note,
     actor_id: actorId,
