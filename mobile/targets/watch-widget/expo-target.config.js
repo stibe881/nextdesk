@@ -5,7 +5,7 @@ module.exports = (config) => ({
   type: "watch-widget",
   name: "nextDeskComplication",
   displayName: "nextDesk",
-  bundleIdentifier: ".watchkitapp.complication",
+  bundleIdentifier: ".watch.widget",
   deploymentTarget: "10.0",
   colors: {
     $accent: { color: "#ABA6FF", darkColor: "#ABA6FF" },

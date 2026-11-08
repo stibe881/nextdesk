@@ -5,7 +5,7 @@ module.exports = (config) => ({
   type: "watch",
   name: "nextDeskWatch",
   displayName: "nextDesk",
-  bundleIdentifier: ".watchkitapp",
+  bundleIdentifier: ".watch",
   deploymentTarget: "10.0",
   icon: "../../assets/images/icon.png",
   // Die Watch ist immer dunkel: Akzent wie primaryText im dunklen App-Thema.

@@ -33,8 +33,8 @@ Die Targets werden beim Prebuild von `@bacons/apple-targets` erzeugt
 (`ios.appleTeamId` = `QF59FHQ44R`). Beim ersten EAS-Build mit Watch braucht EAS
 Zugangsdaten für die neuen Bundle IDs:
 
-- `ch.grossict.nextdesk.watchkitapp`
-- `ch.grossict.nextdesk.watchkitapp.complication`
+- `ch.grossict.nextdesk.watch`
+- `ch.grossict.nextdesk.watch.widget`
 
 und die App Group `group.ch.grossict.nextdesk.watch`. Am einfachsten einmal
 interaktiv bauen, dann legt EAS Profile und App Group an:
