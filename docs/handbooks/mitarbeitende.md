@@ -24,6 +24,11 @@ brauchen.
   aus der E-Mail **im selben Browser**.
 - **Mit Passwort anmelden**: Falls Sie ein Passwort gesetzt haben, wechseln
   Sie über «Mit Passwort anmelden» zum Passwortfeld.
+- **Konto erstellen**: Ohne Einladung Ihres Unternehmens legen Sie über
+  «Neu bei nextDesk? Konto erstellen» (in der App «Konto erstellen») ein
+  eigenes Konto an. Nach der Bestätigung per E-Mail erstellen Sie Ihren
+  eigenen Arbeitsbereich. Gehört Ihre E-Mail-Domain zu einem Unternehmen mit
+  SSO, melden Sie sich stattdessen mit SSO an.
 
 ![Anmeldeseite mit SSO und Anmeldelink](images/login.jpg)
 
@@ -141,9 +146,14 @@ Einstellungen** zu öffnen:
 - **Profil & Darstellung** → **Darstellung anpassen**: Farbschema (Hell,
   Dunkel, Systemeinstellung), hoher Kontrast, Bewegung reduzieren
 - **Handbücher** – dieses Handbuch (und weitere, falls Ihre Rolle es erlaubt)
-- **Push-Benachrichtigungen** – Ihre registrierten iPhones (falls aktiviert)
+- **Push-Benachrichtigungen** – Ihre registrierten iPhones und die
+  **Benachrichtigungszeit**: **Jederzeit** oder **Nur zu bestimmten Zeiten**
+  mit Tagen (Mo–So) und Uhrzeit von/bis. Was ausserhalb dieser Zeit anfällt,
+  kommt zu Beginn der nächsten Benachrichtigungszeit (falls aktiviert)
 - **Sitzungsverwaltung** – alle anderen Geräte abmelden
-- **Abmelden** und **Konto löschen**
+- **Abmelden** und **Konto löschen**. Melden Sie sich mit SSO Ihres
+  Unternehmens an, wird Ihr Konto von Ihrem Unternehmen verwaltet und kann
+  hier nicht gelöscht werden; wenden Sie sich dafür an Ihre IT.
 
 Jedes Handbuch können Sie mit **Drucken / PDF** ausdrucken oder als PDF
 speichern.
@@ -156,7 +166,8 @@ Laden Sie die **nextDesk-App** aus dem App Store und melden Sie sich wie im
 Browser an. Unten finden Sie **Tickets**, **Shop**, **Home**, **Wissen** und
 **Scan**. Über **Neues Ticket** erfassen Sie Anliegen unterwegs, auf Wunsch
 mit Foto. In den App-Einstellungen aktivieren Sie Benachrichtigungen, z. B.
-für Antworten des Supports.
+für Antworten des Supports, und wählen unter **Benachrichtigungszeit**, an
+welchen Tagen und zu welchen Zeiten sie kommen.
 
 Die Handbücher finden Sie auch in der App: **Profil → Hilfe und
 Rechtliches**. Bildschirmfotos lassen sich dort antippen und vergrössern.

@@ -1336,15 +1336,17 @@ const HANDLERS = {
         featureEnabled: true,
         preferences: {
           enabledCategories: categories,
+          // Notification time Mo–Fr 06:00–17:00 (quiet 17–06).
+          deliveryDays: [1, 2, 3, 4, 5],
           quietHoursEnabled: true,
-          quietStart: 20,
-          quietEnd: 7,
+          quietStart: 17,
+          quietEnd: 6,
           timezone: "Europe/Zurich",
         },
         workHours: {
           required: false,
-          startHour: 7,
-          endHour: 18,
+          startHour: 0,
+          endHour: 24,
           timezone: "Europe/Zurich",
           localDate: D.dateOnly(0),
           withinWindow: true,

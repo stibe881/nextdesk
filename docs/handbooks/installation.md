@@ -183,9 +183,11 @@ etwas gelöscht.
 
 ### Push-Benachrichtigungen (iOS)
 
-- **[Admin]** Funktion **Push-Benachrichtigungen** aktivieren, Inhaltsstufe
-  **Nur Ticketnummer** (empfohlen) wählen und das Arbeitszeitfenster für den
-  Check-in festlegen.
+- **[Admin]** Funktion **Push-Benachrichtigungen** aktivieren und die
+  Inhaltsstufe **Nur Ticketnummer** (empfohlen) wählen. Ein Einchecken ist
+  nicht nötig: Jede Person legt unter _Persönliche Einstellungen →
+  Push-Benachrichtigungen → Benachrichtigungszeit_ selbst fest, an welchen
+  Tagen und zu welchen Zeiten sie Mitteilungen erhält.
 - Anwenderinnen und Anwender testen in der iOS-App unter _Profil →
   Benachrichtigungen → Testmitteilung senden_.
 

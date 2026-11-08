@@ -75,7 +75,7 @@ Wichtige Funktionen und ihre Konfiguration:
 | Ticketvorlagen                                                        | **Vorlagen verwalten → Neue Vorlage**: Name, Betreff- und Beschreibungsvorlage, Abteilung, Priorität, Checklistenpunkte |
 | SLA-Automatisierung                                                   | Erinnerungen, automatisches Lösen/Schliessen, Regeln für neue Tickets, KI-Triage, Drittanbieter (siehe unten)           |
 | E-Mail-Kanal (Exchange Online)                                        | Support-Postfächer und Phishing-Meldungen (siehe Installationsanleitung)                                                |
-| Push-Benachrichtigungen                                               | Inhaltsstufe («Nur Ticketnummer» empfohlen) und Arbeitszeit-Check-in (Standard 06:00–17:00)                             |
+| Push-Benachrichtigungen                                               | Inhaltsstufe («Nur Ticketnummer» empfohlen); wann jemand Mitteilungen erhält, legt jede Person selbst fest              |
 | KI-Assistenz                                                          | Freigabe für Wissensentwürfe mit Claude und Selbstbedienungs-Assistent im Portal                                        |
 | Asset-Management                                                      | Geräte und Microsoft Intune; Monitoring liegt im Register «Monitoring»                                                  |
 | Service-Reporting                                                     | Berichte und Auswertungen                                                                                               |
@@ -193,9 +193,12 @@ oben umschalten:
 
 - Suchen Sie über **Person suchen …** und filtern Sie nach **Agenten** oder
   **Alle Personen**.
-- In der Tabelle setzen Sie pro Person ein Häkchen bei der gewünschten Rolle.
-  Die Änderung wirkt sofort für den ganzen Mandanten.
-- Mit **Entziehen** nehmen Sie eine Rolle wieder weg.
+- In der Tabelle setzen Sie pro Person ein Häkchen bei der gewünschten Rolle;
+  ohne Häkchen ist die Rolle wieder entzogen. Die Änderung wirkt sofort für
+  den ganzen Mandanten.
+- Rollen, die nur für eine Abteilung oder ein Team gelten, stehen unter
+  **Auf Abteilung oder Team begrenzte Zuweisungen**; dort nehmen Sie sie mit
+  **Entziehen** wieder weg.
 
 **Rollen definieren**
 
@@ -203,8 +206,9 @@ oben umschalten:
   Systemrollen sind mit «System» markiert und geschützt.
 - Bei einer neuen Rolle geben Sie den **Namen der neuen Rolle** ein, wählen
   unter **Berechtigungen** die gewünschten Rechte (je Gruppe mit **Alle
-  auswählen**; selten benötigte Rechte sind als «Erweitert» markiert) und
-  klicken auf **Rolle erstellen**.
+  auswählen**) und klicken auf **Rolle erstellen**. Unter jeder Berechtigung
+  steht kurz, was sie erlaubt; Rechte mit weitreichendem Zugriff sind als
+  «Erweitert» markiert.
 - Bestehende eigene Rollen ändern Sie und speichern mit **Änderungen
   speichern**; mit **Rolle deaktivieren** bzw. **Rolle aktivieren** schalten
   Sie sie ab oder wieder ein.
