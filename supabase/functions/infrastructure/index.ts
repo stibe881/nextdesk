@@ -84,7 +84,7 @@ export type DeviceInput = {
   criticality: (typeof CRITICALITY)[number];
   maintenanceIntervalMonths: number | null;
   notes: string | null;
-  serviceId: string | null;
+  serviceIds: string[];
   maintenanceChecklist: string[];
   prtgObjectId: string | null;
 };
@@ -105,6 +105,7 @@ type Action =
     tenantId: string;
     assetId: string;
     performedOn: string;
+    performedTime: string | null;
     kind: (typeof MAINTENANCE_KINDS)[number];
     note: string;
   }
@@ -180,6 +181,14 @@ function optionalDate(value: unknown): string | null | undefined {
   if (value === null || value === undefined || value === "") return null;
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
       !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
+    ? value
+    : undefined;
+}
+
+/** «HH:MM» (24 h); empty means no time. */
+function optionalTime(value: unknown): string | null | undefined {
+  if (value === null || value === undefined || value === "") return null;
+  return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
     ? value
     : undefined;
 }
@@ -283,16 +292,19 @@ export function parseDevice(value: unknown): DeviceInput | null {
   ) {
     return null;
   }
-  const serviceId = value.serviceId === null || value.serviceId === undefined ||
-      value.serviceId === ""
-    ? null
-    : isUuid(value.serviceId)
-    ? value.serviceId.toLowerCase()
-    : undefined;
+  // Several services per device; the old single «serviceId» is still read.
+  const serviceIds = value.serviceIds === undefined || value.serviceIds === null
+    ? value.serviceId === null || value.serviceId === undefined ||
+        value.serviceId === ""
+      ? []
+      : isUuid(value.serviceId)
+      ? [value.serviceId.toLowerCase()]
+      : null
+    : uuidList(value.serviceIds, 0, 30);
   const maintenanceChecklist = parseChecklist(value.maintenanceChecklist);
   const prtgObjectId = parsePrtgObjectId(value.prtgObjectId);
   if (
-    serviceId === undefined || maintenanceChecklist === null ||
+    serviceIds === null || maintenanceChecklist === null ||
     prtgObjectId === undefined
   ) return null;
   return {
@@ -301,7 +313,7 @@ export function parseDevice(value: unknown): DeviceInput | null {
     category,
     lifecycleState,
     locationId,
-    serviceId,
+    serviceIds,
     maintenanceChecklist,
     prtgObjectId,
     uplinkAssetId,
@@ -342,14 +354,17 @@ export function parseAction(value: unknown): Action | null {
     }
     case "addMaintenance": {
       const performedOn = optionalDate(value.performedOn);
+      const performedTime = optionalTime(value.performedTime);
       const kind = oneOf(MAINTENANCE_KINDS, value.kind ?? "maintenance");
       const note = optionalText(value.note, 2000);
-      return isUuid(value.assetId) && performedOn && kind && note
+      return isUuid(value.assetId) && performedOn &&
+          performedTime !== undefined && kind && note
         ? {
           type: "addMaintenance",
           tenantId,
           assetId: value.assetId.toLowerCase(),
           performedOn,
+          performedTime,
           kind,
           note,
         }
@@ -453,7 +468,14 @@ async function loadAsset(admin: Admin, tenantId: string, assetId: string) {
   if (!data) throw new HttpError(404, "device_not_found", "Das Gerät ist nicht verfügbar.");
 }
 
-function deviceFromRows(asset: Row, infra: Row, locations: Map<string, string>, names: Map<string, string>) {
+function deviceFromRows(
+  asset: Row,
+  infra: Row,
+  locations: Map<string, string>,
+  names: Map<string, string>,
+  linkedServiceIds: string[] = [],
+) {
+  const primary = typeof asset.service_id === "string" ? asset.service_id : null;
   return {
     id: asset.id,
     name: asset.name,
@@ -493,7 +515,8 @@ function deviceFromRows(asset: Row, infra: Row, locations: Map<string, string>, 
     maintenanceIntervalMonths: infra.maintenance_interval_months ?? null,
     lastMaintenanceOn: infra.last_maintenance_on ?? null,
     notes: infra.notes ?? null,
-    serviceId: asset.service_id ?? null,
+    serviceId: primary,
+    serviceIds: [...new Set([...(primary ? [primary] : []), ...linkedServiceIds])],
     maintenanceChecklist: Array.isArray(infra.maintenance_checklist)
       ? infra.maintenance_checklist.filter((item): item is string => typeof item === "string")
       : [],
@@ -503,7 +526,7 @@ function deviceFromRows(asset: Row, infra: Row, locations: Map<string, string>, 
 }
 
 async function list(request: Request, admin: Admin, tenantId: string, canManage: boolean) {
-  const [infra, locations, services, alerts] = await Promise.all([
+  const [infra, locations, services, alerts, serviceLinks] = await Promise.all([
     admin.from("asset_infrastructure").select("*").eq("tenant_id", tenantId).limit(5000),
     admin.from("asset_locations").select("id, name").eq("tenant_id", tenantId).eq("active", true)
       .order("name"),
@@ -512,8 +535,16 @@ async function list(request: Request, admin: Admin, tenantId: string, canManage:
     admin.from("monitoring_alerts")
       .select("asset_id, sensor_name, last_status, last_message, last_event_at")
       .eq("tenant_id", tenantId).eq("state", "open").not("asset_id", "is", null).limit(2000),
+    admin.from("asset_services").select("asset_id, service_id").eq("tenant_id", tenantId).limit(20000),
   ]);
-  if (infra.error || locations.error || services.error || alerts.error) throw dbFailure();
+  if (infra.error || locations.error || services.error || alerts.error || serviceLinks.error) {
+    throw dbFailure();
+  }
+  const linkedServices = new Map<string, string[]>();
+  for (const link of (serviceLinks.data ?? []) as Row[]) {
+    const key = String(link.asset_id);
+    linkedServices.set(key, [...(linkedServices.get(key) ?? []), String(link.service_id)]);
+  }
   const rows = (infra.data ?? []) as Row[];
   const ids = rows.map((row) => String(row.asset_id));
   const assets = ids.length
@@ -533,7 +564,9 @@ async function list(request: Request, admin: Admin, tenantId: string, canManage:
   );
   const devices = rows.flatMap((row) => {
     const asset = assetById.get(String(row.asset_id));
-    return asset ? [deviceFromRows(asset, row, locationNames, names)] : [];
+    return asset
+      ? [deviceFromRows(asset, row, locationNames, names, linkedServices.get(String(asset.id)))]
+      : [];
   }).sort((a, b) => String(a.name).localeCompare(String(b.name), "de-CH"));
   const monitoring: Record<string, { sensor: string | null; status: string | null; message: string | null; at: string }[]> = {};
   for (const alert of (alerts.data ?? []) as Row[]) {
@@ -564,9 +597,11 @@ async function detail(request: Request, admin: Admin, tenantId: string, assetId:
       .eq("tenant_id", tenantId).eq("asset_id", assetId)
       .order("occurred_at", { ascending: false }).limit(50),
     admin.from("asset_maintenance_log")
-      .select("id, performed_on, kind, note, actor_id, created_at")
+      .select("id, performed_on, performed_time, kind, note, actor_id, created_at")
       .eq("tenant_id", tenantId).eq("asset_id", assetId)
-      .order("performed_on", { ascending: false }).limit(100),
+      .order("performed_on", { ascending: false })
+      .order("performed_time", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false }).limit(100),
     admin.from("asset_infrastructure")
       .select("asset_id, uplink_port, category")
       .eq("tenant_id", tenantId).eq("uplink_asset_id", assetId).limit(500),
@@ -635,6 +670,9 @@ async function detail(request: Request, admin: Admin, tenantId: string, assetId:
       maintenance: ((maintenance.data ?? []) as Row[]).map((row) => ({
         id: row.id,
         performedOn: row.performed_on,
+        performedTime: typeof row.performed_time === "string"
+          ? row.performed_time.slice(0, 5)
+          : null,
         kind: row.kind,
         note: row.note,
         actorName: typeof row.actor_id === "string" ? (actorNames.get(row.actor_id) ?? null) : null,
@@ -679,14 +717,17 @@ async function save(
     if (!data) throw new HttpError(422, "location_invalid", "Der Standort ist nicht verfügbar.");
   }
   if (device.uplinkAssetId) await loadAsset(admin, tenantId, device.uplinkAssetId);
-  if (device.serviceId) {
+  if (device.serviceIds.length) {
     const { data, error } = await admin.from("services").select("id")
-      .eq("tenant_id", tenantId).eq("id", device.serviceId).maybeSingle();
+      .eq("tenant_id", tenantId).in("id", device.serviceIds);
     if (error) throw dbFailure();
-    if (!data) throw new HttpError(422, "service_invalid", "Der Dienst ist nicht verfügbar.");
+    if ((data ?? []).length !== device.serviceIds.length) {
+      throw new HttpError(422, "service_invalid", "Ein Dienst ist nicht verfügbar.");
+    }
   }
   const assetValues = {
-    service_id: device.serviceId,
+    // The first service stays the primary one for modules that know only one.
+    service_id: device.serviceIds[0] ?? null,
     name: device.name,
     kind: device.category,
     asset_tag: device.assetTag,
@@ -748,6 +789,19 @@ async function save(
     updated_at: new Date().toISOString(),
   }, { onConflict: "asset_id" });
   if (infraError) throw dbFailure();
+  const cleared = await admin.from("asset_services").delete()
+    .eq("tenant_id", tenantId).eq("asset_id", assetId);
+  if (cleared.error) throw dbFailure();
+  if (device.serviceIds.length) {
+    const linked = await admin.from("asset_services").insert(
+      device.serviceIds.map((serviceId) => ({
+        tenant_id: tenantId,
+        asset_id: assetId,
+        service_id: serviceId,
+      })),
+    );
+    if (linked.error) throw dbFailure();
+  }
   await admin.from("audit_logs").insert({
     tenant_id: tenantId,
     actor_id: actorId,
@@ -794,6 +848,7 @@ async function addMaintenance(
     tenant_id: action.tenantId,
     asset_id: action.assetId,
     performed_on: action.performedOn,
+    performed_time: action.performedTime,
     kind: action.kind,
     note: action.note,
     actor_id: actorId,

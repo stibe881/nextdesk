@@ -23,7 +23,7 @@ const devices: DeviceCandidate[] = [
     hostname: "sw-core.example.local",
     ipAddress: "10.0.0.2",
     prtgObjectId: "2045",
-    serviceId: "s1",
+    serviceIds: ["s1", "s2"],
   },
   {
     assetId: "a2",
@@ -31,7 +31,7 @@ const devices: DeviceCandidate[] = [
     hostname: "fw01",
     ipAddress: "10.0.0.1",
     prtgObjectId: null,
-    serviceId: null,
+    serviceIds: [],
   },
   {
     assetId: "a3",
@@ -39,7 +39,7 @@ const devices: DeviceCandidate[] = [
     hostname: null,
     ipAddress: null,
     prtgObjectId: null,
-    serviceId: null,
+    serviceIds: [],
   },
 ];
 

@@ -231,7 +231,7 @@ export type DeviceCandidate = {
   hostname: string | null;
   ipAddress: string | null;
   prtgObjectId: string | null;
-  serviceId: string | null;
+  serviceIds: string[];
 };
 
 function unique(matches: DeviceCandidate[]): DeviceCandidate | null {
