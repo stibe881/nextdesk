@@ -10983,7 +10983,8 @@ body:has(.ticket-list-filter-panel) {
   line-height: 1.5;
 }
 
-.asset-intune-settings__form > label:first-child:not(.asset-intune-settings__check) {
+.asset-intune-settings__form
+  > label:first-child:not(.asset-intune-settings__check) {
   display: grid;
   gap: 6px;
   color: var(--ink);
