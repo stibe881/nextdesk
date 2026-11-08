@@ -14,20 +14,23 @@ import {
 import { useEffect, useState, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 
+import { HandbookCard, HandbookViewer } from "./handbooks";
 import { deleteAccount } from "./lib/account";
+import type { HandbookId } from "./lib/handbooks";
 import { ReplySnippetManager } from "./reply-snippets";
 import { supabase } from "./lib/supabase";
 import {
-  checkIn,
-  checkOut,
+  DEFAULT_DELIVERY_WINDOW,
+  deliveryWindowFromPreferences,
   getStatus,
+  preferencesWithDeliveryWindow,
   pushCategoryMeta,
   pushNotificationsRequest,
   updatePreferences,
+  type DeliveryWindow,
   type PushCategory,
   type PushDevice,
   type PushStatus,
-  type WorkHours,
 } from "./lib/push-notifications";
 
 type PersonalSettingsProps = {
@@ -43,6 +46,8 @@ type PersonalSettingsProps = {
 
 type ProviderSummary = {
   canChangePassword: boolean;
+  /** Accounts managed by the organisation's identity provider. */
+  usesSso: boolean;
   label: string;
   passwordNote: string;
 };
@@ -89,6 +94,7 @@ function providerSummary(user: User, ssoEnforced: boolean): ProviderSummary {
   if (usesSso) {
     return {
       canChangePassword: false,
+      usesSso: true,
       label: "Microsoft Entra SSO",
       passwordNote:
         "Dieses Konto wird über den Unternehmens-Identitätsanbieter geschützt.",
@@ -97,6 +103,7 @@ function providerSummary(user: User, ssoEnforced: boolean): ProviderSummary {
   if (hasEmailIdentity) {
     return {
       canChangePassword: true,
+      usesSso: false,
       label: "E-Mail-Anmeldung",
       passwordNote:
         "Das Passwort gehört nur zu deinem persönlichen nextDesk-Konto.",
@@ -104,6 +111,7 @@ function providerSummary(user: User, ssoEnforced: boolean): ProviderSummary {
   }
   return {
     canChangePassword: false,
+    usesSso: false,
     label: "Externer Identitätsanbieter",
     passwordNote:
       "Die Passwortverwaltung erfolgt über den verwendeten Identitätsanbieter.",
@@ -141,17 +149,6 @@ function workHourLabel(hour: number): string {
   return `${hour.toString().padStart(2, "0")}:00`;
 }
 
-function workHoursStatusLabel(workHours: WorkHours): string {
-  if (!workHours.required) return "Kein Check-in erforderlich";
-  if (!workHours.withinWindow) {
-    return `Ausserhalb der Arbeitszeit (${workHourLabel(workHours.startHour)}–${workHourLabel(workHours.endHour)} Uhr)`;
-  }
-  if (workHours.checkedIn) {
-    return `Eingecheckt – Push aktiv bis ${workHourLabel(workHours.endHour)} Uhr`;
-  }
-  return "Nicht eingecheckt";
-}
-
 export function PersonalSettings({
   employeeView = false,
   onBack,
@@ -161,6 +158,7 @@ export function PersonalSettings({
   tenantId,
   user,
 }: PersonalSettingsProps) {
+  const [openHandbook, setOpenHandbook] = useState<HandbookId | null>(null);
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [saveState, setSaveState] = useState<
@@ -186,9 +184,10 @@ export function PersonalSettings({
   const [pendingDeviceRemoval, setPendingDeviceRemoval] =
     useState<PushDevice | null>(null);
   const [removingDeviceId, setRemovingDeviceId] = useState<string | null>(null);
-  const [pushAction, setPushAction] = useState<"check-in" | "check-out" | null>(
+  const [deliveryDraft, setDeliveryDraft] = useState<DeliveryWindow | null>(
     null,
   );
+  const [deliverySaving, setDeliverySaving] = useState(false);
   const [pushPreferenceSaving, setPushPreferenceSaving] =
     useState<PushCategory | null>(null);
   const provider = providerSummary(user, ssoEnforced);
@@ -200,7 +199,7 @@ export function PersonalSettings({
       setPushStatusState("idle");
       setPushMessage("");
       setPendingDeviceRemoval(null);
-      setPushAction(null);
+      setDeliveryDraft(null);
       setPushPreferenceSaving(null);
       return;
     }
@@ -272,34 +271,38 @@ export function PersonalSettings({
     }
   }
 
-  async function updateCheckIn(action: "check-in" | "check-out") {
-    if (!tenantId || pushAction) return;
-
-    setPushAction(action);
+  async function saveDeliveryWindow(window: DeliveryWindow) {
+    if (!tenantId || !pushStatus || deliverySaving) return;
+    if (
+      window.mode === "window" &&
+      window.startHour % 24 === window.endHour % 24
+    ) {
+      setPushMessageKind("error");
+      setPushMessage("Beginn und Ende dürfen nicht gleich sein.");
+      return;
+    }
+    setDeliverySaving(true);
     setPushMessage("");
     try {
-      const workHours =
-        action === "check-in"
-          ? await checkIn(tenantId)
-          : await checkOut(tenantId);
+      const preferences = await updatePreferences(
+        tenantId,
+        preferencesWithDeliveryWindow(pushStatus.preferences, window),
+      );
       setPushStatus((current) =>
-        current ? { ...current, workHours } : current,
+        current ? { ...current, preferences } : current,
       );
+      setDeliveryDraft(null);
       setPushMessageKind("success");
-      setPushMessage(
-        action === "check-in"
-          ? "Du bist für heute eingecheckt."
-          : "Du bist für heute ausgecheckt.",
-      );
+      setPushMessage("Deine Benachrichtigungszeit wurde gespeichert.");
     } catch (error) {
       setPushMessageKind("error");
       setPushMessage(
         error instanceof Error && error.message
           ? error.message
-          : "Der Check-in-Status konnte nicht aktualisiert werden. Bitte versuche es später erneut.",
+          : "Die Benachrichtigungszeit konnte nicht gespeichert werden. Bitte versuche es später erneut.",
       );
     } finally {
-      setPushAction(null);
+      setDeliverySaving(false);
     }
   }
 
@@ -424,6 +427,16 @@ export function PersonalSettings({
     setOtherSessionsState("success");
     setOtherSessionsMessage(
       "Alle anderen Geräte wurden abgemeldet. Diese Sitzung bleibt aktiv.",
+    );
+  }
+
+  if (openHandbook && tenantId) {
+    return (
+      <HandbookViewer
+        handbookId={openHandbook}
+        onBack={() => setOpenHandbook(null)}
+        tenantId={tenantId}
+      />
     );
   }
 
@@ -590,6 +603,8 @@ export function PersonalSettings({
         )}
       </div>
 
+      <HandbookCard onOpen={setOpenHandbook} tenantId={tenantId} />
+
       {tenantId &&
       (pushStatusState !== "loaded" ||
         pushStatus?.featureEnabled ||
@@ -619,54 +634,136 @@ export function PersonalSettings({
               Registrierte Geräte werden geladen …
             </p>
           ) : null}
-          {pushStatusState === "loaded" && pushStatus ? (
-            <section
-              aria-labelledby="personal-push-work-hours-heading"
-              className="personal-settings__work-hours"
-            >
-              <div>
-                <h4 id="personal-push-work-hours-heading">Heutiger Status</h4>
-                <p
-                  className={
-                    pushStatus.workHours.active
-                      ? "personal-settings__work-hours-status personal-settings__work-hours-status--active"
-                      : pushStatus.workHours.withinWindow
-                        ? "personal-settings__work-hours-status"
-                        : "personal-settings__work-hours-status personal-settings__work-hours-status--outside"
-                  }
-                >
-                  {workHoursStatusLabel(pushStatus.workHours)}
-                </p>
-              </div>
-              {pushStatus.workHours.required ? (
-                <div className="personal-settings__work-hours-actions">
-                  {pushStatus.workHours.checkedIn ? (
-                    <button
-                      className="secondary-button"
-                      disabled={pushAction !== null}
-                      onClick={() => void updateCheckIn("check-out")}
-                      type="button"
+          {pushStatusState === "loaded" && pushStatus
+            ? (() => {
+                const saved = deliveryWindowFromPreferences(
+                  pushStatus.preferences,
+                );
+                const draft = deliveryDraft ?? saved;
+                const draftWindow =
+                  draft.mode === "window" ? draft : DEFAULT_DELIVERY_WINDOW;
+                const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+                return (
+                  <section
+                    aria-labelledby="personal-push-window-heading"
+                    className="personal-settings__delivery"
+                  >
+                    <div>
+                      <h4 id="personal-push-window-heading">
+                        Benachrichtigungszeit
+                      </h4>
+                      <p className="personal-settings__hint">
+                        {saved.mode === "always"
+                          ? "Du erhältst Benachrichtigungen jederzeit."
+                          : `Du erhältst Benachrichtigungen täglich von ${workHourLabel(saved.startHour)} bis ${workHourLabel(saved.endHour)} Uhr. Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit.`}
+                      </p>
+                    </div>
+                    <div
+                      aria-label="Benachrichtigungszeit"
+                      className="segmented"
+                      role="radiogroup"
                     >
-                      {pushAction === "check-out"
-                        ? "Wird ausgecheckt …"
-                        : "Auschecken"}
-                    </button>
-                  ) : (
-                    <button
-                      className="primary-button"
-                      disabled={pushAction !== null}
-                      onClick={() => void updateCheckIn("check-in")}
-                      type="button"
-                    >
-                      {pushAction === "check-in"
-                        ? "Wird eingecheckt …"
-                        : "Einchecken"}
-                    </button>
-                  )}
-                </div>
-              ) : null}
-            </section>
-          ) : null}
+                      <button
+                        aria-checked={draft.mode === "always"}
+                        className={
+                          draft.mode === "always" ? "selected" : undefined
+                        }
+                        disabled={deliverySaving}
+                        onClick={() => setDeliveryDraft({ mode: "always" })}
+                        role="radio"
+                        type="button"
+                      >
+                        Jederzeit
+                      </button>
+                      <button
+                        aria-checked={draft.mode === "window"}
+                        className={
+                          draft.mode === "window" ? "selected" : undefined
+                        }
+                        disabled={deliverySaving}
+                        onClick={() =>
+                          setDeliveryDraft({
+                            mode: "window",
+                            startHour: draftWindow.startHour,
+                            endHour: draftWindow.endHour,
+                          })
+                        }
+                        role="radio"
+                        type="button"
+                      >
+                        Nur zu bestimmten Zeiten
+                      </button>
+                    </div>
+                    {draft.mode === "window" ? (
+                      <div className="personal-settings__delivery-hours">
+                        <label>
+                          Von
+                          <select
+                            disabled={deliverySaving}
+                            onChange={(event) =>
+                              setDeliveryDraft({
+                                ...draft,
+                                startHour: Number(event.target.value),
+                              })
+                            }
+                            value={draft.startHour}
+                          >
+                            {Array.from({ length: 24 }, (_, hour) => (
+                              <option key={hour} value={hour}>
+                                {workHourLabel(hour)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Bis
+                          <select
+                            disabled={deliverySaving}
+                            onChange={(event) =>
+                              setDeliveryDraft({
+                                ...draft,
+                                endHour: Number(event.target.value),
+                              })
+                            }
+                            value={draft.endHour}
+                          >
+                            {Array.from({ length: 24 }, (_, index) => {
+                              const hour = index + 1;
+                              return (
+                                <option key={hour} value={hour}>
+                                  {workHourLabel(hour)}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </label>
+                        <span className="personal-settings__hint">Uhr</span>
+                      </div>
+                    ) : null}
+                    {dirty ? (
+                      <div className="personal-settings__delivery-actions">
+                        <button
+                          className="primary-button"
+                          disabled={deliverySaving}
+                          onClick={() => void saveDeliveryWindow(draft)}
+                          type="button"
+                        >
+                          {deliverySaving ? "Wird gespeichert …" : "Speichern"}
+                        </button>
+                        <button
+                          className="secondary-button"
+                          disabled={deliverySaving}
+                          onClick={() => setDeliveryDraft(null)}
+                          type="button"
+                        >
+                          Abbrechen
+                        </button>
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })()
+            : null}
           {pushStatusState === "loaded" &&
           pushStatus &&
           pushStatus.applicableCategories.length > 0 ? (
@@ -966,7 +1063,19 @@ export function PersonalSettings({
         </button>
       </article>
 
-      <DeleteAccountPanel />
+      {provider.usesSso ? (
+        <article className="personal-settings__signout personal-settings__delete-note">
+          <div>
+            <strong>Konto löschen</strong>
+            <span>
+              Dein Konto wird von deiner Organisation über SSO verwaltet und
+              kann hier nicht gelöscht werden. Wende dich dafür an deine IT.
+            </span>
+          </div>
+        </article>
+      ) : (
+        <DeleteAccountPanel />
+      )}
     </section>
   );
 }

@@ -1,0 +1,295 @@
+/* Handbooks in the personal settings (handbooks.tsx). */
+.handbook-card {
+  grid-column: 1 / -1;
+  min-height: 0;
+}
+
+.handbook-card__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.handbook-card__entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  align-items: center;
+  height: 100%;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 14px 14px 16px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.handbook-card__entry:hover,
+.handbook-card__entry:focus-visible {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.handbook-card__text {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+
+.handbook-card__text strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.handbook-card__text small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.handbook-card__audience {
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.handbook-viewer {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.handbook-viewer__header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.handbook-viewer__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.handbook-viewer__layout {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  align-items: start;
+  gap: 22px;
+}
+
+.handbook-viewer__toc {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.handbook-viewer__toc > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.handbook-viewer__toc ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.handbook-viewer__toc a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.handbook-viewer__toc a:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.handbook-viewer__article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 26px clamp(16px, 3vw, 34px);
+  background: var(--surface);
+}
+
+.handbook-viewer__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.handbook-viewer__article > h2 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 26px;
+}
+
+.handbook-viewer__lead {
+  margin: 0;
+  color: var(--muted);
+}
+
+.knowledge-markdown.handbook-viewer__body {
+  margin-top: 12px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.handbook-viewer__body h2 {
+  margin: 34px 0 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 22px;
+  font-size: 19px;
+  scroll-margin-top: 16px;
+}
+
+.handbook-viewer__body h3 {
+  margin: 22px 0 6px;
+  font-size: 15px;
+}
+
+.handbook-viewer__body table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.handbook-viewer__body th,
+.handbook-viewer__body td {
+  border: 1px solid var(--border);
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.handbook-viewer__body th {
+  background: var(--surface-subtle);
+  color: var(--ink);
+}
+
+.handbook-viewer__body td code {
+  overflow-wrap: anywhere;
+}
+
+.handbook-viewer__body code {
+  border-radius: 6px;
+  padding: 1px 5px;
+  background: var(--surface-subtle);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.handbook-viewer__body pre {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--surface-subtle);
+}
+
+.handbook-viewer__body pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.handbook-viewer__body blockquote {
+  margin: 14px 0;
+  border-left: 3px solid var(--primary);
+  border-radius: 0 10px 10px 0;
+  padding: 8px 14px;
+  background: var(--primary-soft);
+  color: var(--text);
+}
+
+.handbook-viewer__figure {
+  display: block;
+  margin: 14px 0 20px;
+}
+
+.handbook-viewer__figure img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 26px var(--shadow-tint-rgba-32-39-57-0-05, rgb(0 0 0 / 5%));
+}
+
+.handbook-viewer__caption {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+@media (max-width: 860px) {
+  .handbook-viewer__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .handbook-viewer__toc {
+    position: static;
+  }
+}
+
+/* Printing is triggered from the viewer, which sets body.handbook-printing. */
+@media print {
+  body.handbook-printing * {
+    visibility: hidden;
+  }
+
+  body.handbook-printing .handbook-viewer__article,
+  body.handbook-printing .handbook-viewer__article * {
+    visibility: visible;
+  }
+
+  body.handbook-printing .handbook-viewer__article {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    border: 0;
+    padding: 0;
+  }
+
+  body.handbook-printing .handbook-viewer__figure img {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+}

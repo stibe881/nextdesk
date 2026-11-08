@@ -1,0 +1,657 @@
+/* Einstellungen → Rollen: assignment matrix and role editor. */
+
+.roles-page {
+  display: grid;
+  gap: 20px;
+}
+
+.roles-page__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+.roles-page__header h2 {
+  margin: 0;
+}
+
+.roles-page__header p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.roles-empty {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 32px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.roles-empty strong {
+  color: var(--ink);
+}
+
+.roles-empty p {
+  margin: 0;
+}
+
+/* Assignment view */
+.roles-assign {
+  display: grid;
+  gap: 14px;
+}
+
+.roles-assign__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.roles-assign__search {
+  flex: 1 1 240px;
+  max-width: 360px;
+}
+
+.roles-assign__search input {
+  width: 100%;
+}
+
+.roles-assign__note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.roles-matrix {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.roles-matrix table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+
+.roles-matrix th,
+.roles-matrix td {
+  border-bottom: 1px solid var(--border);
+  padding: 0;
+}
+
+.roles-matrix tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.roles-matrix thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 12px 10px;
+  background: var(--surface-subtle);
+  color: var(--ink);
+  font-weight: 650;
+  text-align: center;
+  vertical-align: bottom;
+}
+
+.roles-matrix thead th span {
+  display: block;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: auto;
+}
+
+.roles-matrix thead th small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.roles-matrix thead th:first-child,
+.roles-matrix tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+}
+
+.roles-matrix thead th:first-child {
+  z-index: 3;
+  padding-left: 16px;
+}
+
+.roles-matrix tbody th {
+  min-width: 220px;
+  padding: 10px 16px;
+  background: var(--surface);
+  font-weight: 400;
+}
+
+.roles-matrix__who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.roles-matrix__avatar {
+  display: grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.roles-matrix__person {
+  display: grid;
+  min-width: 0;
+}
+
+.roles-matrix__person strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roles-matrix__person small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roles-matrix td {
+  min-width: 96px;
+  text-align: center;
+}
+
+/* The whole cell is the click target. */
+.roles-matrix__cell {
+  display: grid;
+  min-height: 52px;
+  place-items: center;
+  cursor: pointer;
+}
+
+.roles-matrix__cell input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.roles-matrix tbody tr:hover > * {
+  background: var(--surface-subtle);
+}
+
+.roles-matrix td:has(input:checked) {
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+}
+
+.roles-matrix tbody tr:hover > td:has(input:checked) {
+  background: color-mix(in srgb, var(--primary) 11%, var(--surface));
+}
+
+.roles-matrix td input:disabled {
+  cursor: progress;
+}
+
+.roles-matrix td.is-saving input {
+  opacity: 0.4;
+}
+
+.roles-scoped {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.roles-scoped summary {
+  color: var(--ink);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.roles-scoped ul {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roles-scoped li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.roles-scoped button {
+  min-height: 32px;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+/* Role definition view: list on the left, editor on the right. */
+.roles-define {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.roles-define__list {
+  display: grid;
+  gap: 10px;
+  position: sticky;
+  top: 16px;
+}
+
+.roles-define__list ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roles-define__list li button,
+.roles-define__new {
+  display: grid;
+  width: 100%;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.roles-define__list li button:hover {
+  background: var(--surface-subtle);
+}
+
+.roles-define__list li button.is-selected {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: var(--primary-soft);
+}
+
+.roles-define__list li button strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.roles-define__list li button small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.roles-define__tags {
+  display: flex;
+  gap: 4px;
+}
+
+.roles-define__tags:empty {
+  display: none;
+}
+
+.roles-define__tags span {
+  border-radius: 6px;
+  padding: 1px 6px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.roles-define__tags span.is-muted {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.roles-define__new {
+  border: 1px dashed color-mix(in srgb, var(--primary) 45%, var(--border));
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 650;
+  text-align: center;
+}
+
+.roles-define__new:hover,
+.roles-define__new.is-selected {
+  background: var(--primary-soft);
+}
+
+.roles-define__detail {
+  min-width: 0;
+}
+
+.role-editor {
+  display: grid;
+  gap: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  background: var(--surface);
+}
+
+.role-editor__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.role-editor__head h3 {
+  margin: 0;
+}
+
+.role-editor__name {
+  display: grid;
+  flex: 1 1 auto;
+  max-width: 420px;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.role-editor__status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.role-editor__status.is-muted {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.role-editor__hint {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.role-editor__members h4,
+.role-editor__readonly h4 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.role-editor__members ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.role-editor__members li {
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.role-editor__permissions {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.role-editor__permissions legend {
+  margin-bottom: 2px;
+  padding: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.role-editor__permissions .role-editor__hint {
+  margin: 0;
+}
+
+.role-editor__groups {
+  display: grid;
+  gap: 8px;
+}
+
+.role-editor__group {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.role-editor__group summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.role-editor__group-name {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.role-editor__group-count {
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.role-editor__group-count.is-active {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.role-editor__group-body {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding: 10px 14px 14px;
+}
+
+.role-editor__group-toggle {
+  justify-self: start;
+  min-height: 0;
+  border: 0;
+  padding: 2px 0;
+  background: none;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.role-editor__options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 2px 16px;
+}
+
+.role-editor__options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border-radius: 8px;
+  padding: 6px 6px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.role-editor__options label:hover {
+  background: var(--surface-subtle);
+}
+
+.role-editor__options input {
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+  accent-color: var(--primary);
+}
+
+.role-editor__option-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.role-editor__option-name {
+  color: var(--ink);
+  font-weight: 550;
+}
+
+.role-editor__option-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.role-editor__badge {
+  display: inline-block;
+  margin-left: 6px;
+  border-radius: 6px;
+  padding: 0 6px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.6;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+/* Read-only permission list of system roles. */
+.role-editor__readonly .tenant-admin-settings__role-detail-groups ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  align-items: start;
+  gap: 10px 16px;
+}
+
+.role-editor__readonly .tenant-admin-settings__role-detail-groups li {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.role-editor__actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 -20px -20px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 14px 14px;
+  padding: 14px 20px;
+  background: var(--surface);
+}
+
+.role-editor__actions button {
+  min-height: 40px;
+  border: 1px solid var(--control-border, var(--border));
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 650;
+}
+
+.role-editor__actions .role-editor__primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+@media (max-width: 860px) {
+  .roles-define {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .roles-define__list {
+    position: static;
+  }
+}
+
+@media (max-width: 620px) {
+  .roles-matrix tbody th {
+    min-width: 150px;
+    max-width: 170px;
+    padding: 8px 10px;
+  }
+
+  .roles-matrix__avatar {
+    display: none;
+  }
+
+  .role-editor {
+    padding: 16px;
+  }
+
+  .role-editor__actions {
+    margin: 0 -16px -16px;
+    padding: 12px 16px;
+  }
+
+  .role-editor__actions {
+    flex-wrap: nowrap;
+  }
+
+  .role-editor__actions button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+}
