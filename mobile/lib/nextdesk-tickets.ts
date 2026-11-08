@@ -563,6 +563,8 @@ export async function createMobileTicket(input: {
   requesterContactId: string;
   subject: string;
   description: string;
+  /** Optional category (e.g. suggested by the self-service assistant). */
+  categoryId?: string | null;
 }): Promise<{ ticketId: string; ticketNumber: string }> {
   const data = envelopeData(
     await invokeNextDesk<unknown>("ticket-actions", {
@@ -573,6 +575,7 @@ export async function createMobileTicket(input: {
       requesterContactId: input.requesterContactId,
       subject: input.subject,
       description: input.description,
+      ...(input.categoryId ? { categoryId: input.categoryId } : {}),
     }),
   );
   if (

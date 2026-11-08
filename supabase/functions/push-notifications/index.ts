@@ -9,6 +9,7 @@ import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "notifications.push";
 const INVENTORY_FEATURE = "inventory.management";
+const ASSETS_FEATURE = "assets.management";
 const ALL_CATEGORIES = [
   "assigned",
   "requester_reply",
@@ -22,6 +23,7 @@ const ALL_CATEGORIES = [
   "contract_deadline",
   "inventory_low_stock",
   "shop",
+  "infrastructure",
 ] as const;
 const AGENT_CATEGORIES = [
   "assigned",
@@ -45,52 +47,57 @@ type Row = Record<string, unknown>;
 type Client = SupabaseContext["supabase"];
 type Admin = SupabaseContext["supabaseAdmin"];
 type Environment = "production" | "development";
+// Infrastructure reminders live only in category_modes: the stored
+// enabled_categories list predates them and stays limited to the older set.
+const MODE_ONLY_CATEGORIES: readonly Category[] = ["infrastructure"];
 const DEFAULT_ENABLED_CATEGORIES = ALL_CATEGORIES.filter(
-  (category) => category !== "inventory_low_stock",
+  (category) =>
+    category !== "inventory_low_stock" &&
+    !MODE_ONLY_CATEGORIES.includes(category),
 ) as Category[];
 
 type Action =
   | { type: "getStatus"; tenantId: string }
   | {
-      type: "registerDevice";
-      tenantId: string;
-      token: string;
-      environment: Environment;
-      appVersion?: string;
-      appBuild?: string;
-      deviceName?: string;
-    }
+    type: "registerDevice";
+    tenantId: string;
+    token: string;
+    environment: Environment;
+    appVersion?: string;
+    appBuild?: string;
+    deviceName?: string;
+  }
   | {
-      type: "unregisterDevice";
-      tenantId: string;
-      token?: string;
-      deviceId?: string;
-    }
+    type: "unregisterDevice";
+    tenantId: string;
+    token?: string;
+    deviceId?: string;
+  }
   | {
-      type: "updatePreferences";
-      tenantId: string;
-      enabledCategories: Category[];
-      quietHoursEnabled: boolean;
-      quietStart: number;
-      quietEnd: number;
-      timezone: string;
-      globalEnabled?: boolean;
-      categoryModes?: Partial<Record<Category, DeliveryMode>>;
-      summaryHour?: number;
-    }
+    type: "updatePreferences";
+    tenantId: string;
+    enabledCategories: Category[];
+    quietHoursEnabled: boolean;
+    quietStart: number;
+    quietEnd: number;
+    timezone: string;
+    globalEnabled?: boolean;
+    categoryModes?: Partial<Record<Category, DeliveryMode>>;
+    summaryHour?: number;
+  }
   | { type: "sendTest"; tenantId: string }
   | { type: "checkIn"; tenantId: string }
   | { type: "checkOut"; tenantId: string }
   | { type: "declineCheckIn"; tenantId: string }
   | { type: "getTenantSettings"; tenantId: string }
   | {
-      type: "updateTenantSettings";
-      tenantId: string;
-      contentLevel: "minimal" | "subject";
-      checkInRequired?: boolean;
-      workStartHour?: number;
-      workEndHour?: number;
-    };
+    type: "updateTenantSettings";
+    tenantId: string;
+    contentLevel: "minimal" | "subject";
+    checkInRequired?: boolean;
+    workStartHour?: number;
+    workEndHour?: number;
+  };
 
 type PreferenceRow = {
   enabled_categories: string[];
@@ -165,9 +172,10 @@ function hasOwn(value: Row, key: string): boolean {
 function isUuid(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-      value,
-    )
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
+      .test(
+        value,
+      )
   );
 }
 
@@ -445,8 +453,9 @@ function reply(request: Request, body: Row, status = 200): Response {
 }
 
 function fail(request: Request, error: unknown): Response {
-  const safe =
-    error instanceof HttpError ? error : new HttpError(500, "operation_failed");
+  const safe = error instanceof HttpError
+    ? error
+    : new HttpError(500, "operation_failed");
   return reply(request, { error: { code: safe.code } }, safe.status);
 }
 
@@ -455,7 +464,7 @@ export function defaultPreferences() {
     // Unterbestand braucht immer ein persönliches, nachträgliches Opt-in.
     // Die neue Kategorie darf weder für bestehende noch neue Präferenzen aus
     // einer bisherigen Push-Standardauswahl geerbt werden.
-    enabledCategories: [...DEFAULT_ENABLED_CATEGORIES],
+    enabledCategories: [...DEFAULT_ENABLED_CATEGORIES, ...MODE_ONLY_CATEGORIES],
     globalEnabled: true,
     categoryModes: Object.fromEntries(
       ALL_CATEGORIES.map((category) => [
@@ -485,7 +494,9 @@ export function testPreferenceUpsertValues(preference: PreferenceRow | null) {
   }
   const defaults = defaultPreferences();
   return {
-    enabled_categories: defaults.enabledCategories,
+    enabled_categories: defaults.enabledCategories.filter(
+      (category) => !MODE_ONLY_CATEGORIES.includes(category),
+    ),
     global_enabled: defaults.globalEnabled,
     category_modes: defaults.categoryModes,
     quiet_hours_enabled: defaults.quietHoursEnabled,
@@ -500,16 +511,23 @@ function preferencesForResponse(row: PreferenceRow | null) {
   if (!row) return defaultPreferences();
   const categoryModes = parseCategoryModes(row.category_modes) ?? {};
   const enabled = new Set(row.enabled_categories);
+  const modes = Object.fromEntries(
+    ALL_CATEGORIES.map((category) => [
+      category,
+      categoryModes[category] ??
+        (enabled.has(category) || MODE_ONLY_CATEGORIES.includes(category)
+          ? "immediate"
+          : "off"),
+    ]),
+  ) as Record<Category, DeliveryMode>;
   return {
-    enabledCategories: row.enabled_categories,
+    // Mode-only categories are reported as enabled unless switched off.
+    enabledCategories: [
+      ...row.enabled_categories,
+      ...MODE_ONLY_CATEGORIES.filter((category) => modes[category] !== "off"),
+    ],
     globalEnabled: row.global_enabled !== false,
-    categoryModes: Object.fromEntries(
-      ALL_CATEGORIES.map((category) => [
-        category,
-        categoryModes[category] ??
-          (enabled.has(category) ? "immediate" : "off"),
-      ]),
-    ) as Record<Category, DeliveryMode>,
+    categoryModes: modes,
     quietHoursEnabled: row.quiet_hours_enabled,
     quietStart: row.quiet_start,
     quietEnd: row.quiet_end,
@@ -652,6 +670,7 @@ async function applicableCategories(
     { data: canManageContracts, error: contractsError },
     { data: canManageInventory, error: inventoryPermissionError },
     inventoryFeatures,
+    { data: canManageAssets, error: assetsPermissionError },
   ] = await Promise.all([
     client.rpc("is_tenant_ticket_agent", { p_tenant_id: tenantId }),
     client.rpc("is_contracts_management_client_enabled", {
@@ -661,12 +680,21 @@ async function applicableCategories(
       p_tenant_id: tenantId,
       p_permission_code: "inventory.manage",
     }),
-    resolveTenantFeatureStates(admin, tenantId, [FEATURE, INVENTORY_FEATURE]),
+    resolveTenantFeatureStates(admin, tenantId, [
+      FEATURE,
+      INVENTORY_FEATURE,
+      ASSETS_FEATURE,
+    ]),
+    client.rpc("has_tenant_permission", {
+      p_tenant_id: tenantId,
+      p_permission_code: "asset.manage",
+    }),
   ]);
   if (
     agentError ||
     contractsError ||
     inventoryPermissionError ||
+    assetsPermissionError ||
     !inventoryFeatures ||
     typeof isAgent !== "boolean" ||
     typeof canManageContracts !== "boolean" ||
@@ -686,6 +714,13 @@ async function applicableCategories(
   ) {
     categories.add("inventory_low_stock");
   }
+  if (
+    inventoryFeatures[FEATURE] === true &&
+    inventoryFeatures[ASSETS_FEATURE] === true &&
+    canManageAssets === true
+  ) {
+    categories.add("infrastructure");
+  }
   return [...categories];
 }
 
@@ -701,10 +736,9 @@ function workHoursSettings(configuration: Row): WorkHoursSettings {
     endHour = 17;
   }
   return {
-    required:
-      typeof configuration.checkInRequired === "boolean"
-        ? configuration.checkInRequired
-        : true,
+    required: typeof configuration.checkInRequired === "boolean"
+      ? configuration.checkInRequired
+      : true,
     startHour,
     endHour,
   };
@@ -767,8 +801,7 @@ async function readWorkHours(
   const state = workHoursStateForResponse(stateResult.data);
   return {
     ...state,
-    promptDue:
-      featureEnabled &&
+    promptDue: featureEnabled &&
       state.required &&
       state.withinWindow &&
       state.checkedInAt === null &&
@@ -793,8 +826,9 @@ async function featureConfiguration(
   const configuration = isRecord(data?.configuration) ? data.configuration : {};
   return {
     featureEnabled: flags[FEATURE] === true,
-    contentLevel:
-      configuration.contentLevel === "subject" ? "subject" : "minimal",
+    contentLevel: configuration.contentLevel === "subject"
+      ? "subject"
+      : "minimal",
     configuration,
   };
 }
@@ -936,17 +970,23 @@ async function updatePreferences(
   const fallback = preferencesForResponse(existing);
   const categoryModes = action.categoryModes
     ? ({ ...fallback.categoryModes, ...action.categoryModes } as Record<
-        Category,
-        DeliveryMode
-      >)
+      Category,
+      DeliveryMode
+    >)
     : (Object.fromEntries(
-        ALL_CATEGORIES.map((category) => [
-          category,
-          action.enabledCategories.includes(category) ? "immediate" : "off",
-        ]),
-      ) as Record<Category, DeliveryMode>);
+      ALL_CATEGORIES.map((category) => [
+        category,
+        action.enabledCategories.includes(category)
+          ? "immediate"
+          : MODE_ONLY_CATEGORIES.includes(category)
+          ? fallback.categoryModes[category]
+          : "off",
+      ]),
+    ) as Record<Category, DeliveryMode>);
   const enabledCategories = ALL_CATEGORIES.filter(
-    (category) => categoryModes[category] !== "off",
+    (category) =>
+      categoryModes[category] !== "off" &&
+      !MODE_ONLY_CATEGORIES.includes(category),
   );
   const { data, error } = await admin
     .from("push_preferences")

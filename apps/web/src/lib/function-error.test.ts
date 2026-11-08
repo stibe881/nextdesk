@@ -28,3 +28,11 @@ describe("sichere KI-Fehlerhinweise", () => {
     ).resolves.toContain("Modellkennung");
   });
 });
+
+describe("Teil-Tickets beim Abschluss", () => {
+  it("erklärt, warum das Hauptticket noch nicht gelöst werden kann", async () => {
+    await expect(
+      functionErrorMessage(functionFailure("ticket_children_open"), "Fallback"),
+    ).resolves.toContain("alle Teil-Tickets");
+  });
+});

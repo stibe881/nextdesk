@@ -4,7 +4,7 @@ import {
   assertStringIncludes,
 } from "jsr:@std/assert@1";
 
-import { buildApnsPayload } from "./apns.ts";
+import { APNS_REQUESTER_REMINDER_CATEGORY, buildApnsPayload } from "./apns.ts";
 
 Deno.test(
   "contract deadline payload is neutral and carries only the opaque contract route",
@@ -28,6 +28,30 @@ Deno.test(
     assertFalse(String(alert.body).includes("Vertragsname"));
   },
 );
+
+Deno.test("requester reminder carries the action category and ticket route", () => {
+  const payload = buildApnsPayload({
+    kind: "requester_reminder",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "reminder-1",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    ticketNumber: "ICT-2026-000042",
+  });
+  const aps = payload.aps as Record<string, unknown>;
+  const body = payload.body as Record<string, unknown>;
+  const alert = aps.alert as Record<string, unknown>;
+  assertEquals(aps.category, APNS_REQUESTER_REMINDER_CATEGORY);
+  assertEquals(body.ticketId, "00000000-0000-4000-8000-000000000003");
+  assertEquals(body.kind, "requester_reminder");
+  assertStringIncludes(String(alert.body), "ICT-2026-000042");
+  const other = buildApnsPayload({
+    kind: "support_reply",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "reply-1",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+  });
+  assertFalse("category" in (other.aps as Record<string, unknown>));
+});
 
 Deno.test("summary payload is source-neutral", () => {
   const payload = buildApnsPayload({
@@ -67,14 +91,16 @@ Deno.test("low-stock payload contains no item data or deep link", () => {
   assertFalse("contractId" in body);
   assertFalse("thread-id" in aps);
   const serialized = JSON.stringify(payload);
-  for (const forbidden of [
-    "Adapter",
-    "A-42",
-    "3 Stück",
-    "Hauptlager",
-    "Lieferant",
-    "Beispiel AG",
-  ]) {
+  for (
+    const forbidden of [
+      "Adapter",
+      "A-42",
+      "3 Stück",
+      "Hauptlager",
+      "Lieferant",
+      "Beispiel AG",
+    ]
+  ) {
     assertFalse(serialized.includes(forbidden));
   }
   assertStringIncludes(String(alert.title), "Lagerunterbestand");
@@ -96,8 +122,10 @@ Deno.test("watched ticket payload names the change and opens the ticket", () => 
     string,
     unknown
   >;
-  assertEquals((status.body as Record<string, unknown>).ticketId,
-    "00000000-0000-4000-8000-000000000003");
+  assertEquals(
+    (status.body as Record<string, unknown>).ticketId,
+    "00000000-0000-4000-8000-000000000003",
+  );
   assertStringIncludes(String(statusAlert.title), "In Bearbeitung");
   assertStringIncludes(String(statusAlert.body), "Pascal");
 
@@ -136,6 +164,25 @@ Deno.test("ticket payloads carry the action category for watch and lock screen",
   });
   assertFalse("category" in (summary.aps as Record<string, unknown>));
 
+  const reminder = buildApnsPayload({
+    kind: "requester_reminder",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+  });
+  assertEquals(
+    (reminder.aps as Record<string, unknown>).category,
+    "NEXTDESK_REQUESTER_REMINDER",
+  );
+
+  const reply = buildApnsPayload({
+    kind: "support_reply",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+  });
+  assertFalse("category" in (reply.aps as Record<string, unknown>));
+
   const task = buildApnsPayload({
     kind: "service_task",
     tenantId: "00000000-0000-4000-8000-000000000001",
@@ -147,4 +194,104 @@ Deno.test("ticket payloads carry the action category for watch and lock screen",
     (task.aps as Record<string, unknown>).category,
     "NEXTDESK_SERVICE_TASK",
   );
+});
+
+Deno.test("infrastructure reminders name device, reason and date", () => {
+  const payload = buildApnsPayload({
+    kind: "infrastructure",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    assetId: "00000000-0000-4000-8000-000000000003",
+    assetName: "Core-Switch",
+    infrastructureReason: "warranty",
+    dueOn: "2999-03-31",
+  });
+  const aps = payload.aps as { alert: { title: string; body: string } };
+  assertEquals(aps.alert.title, "Garantie läuft ab");
+  assertEquals(aps.alert.body, "Core-Switch: Garantie endet am 31.03.2999.");
+  assertEquals(
+    (payload.body as Record<string, unknown>).assetId,
+    "00000000-0000-4000-8000-000000000003",
+  );
+});
+
+Deno.test("rule reminders name the rule and open the ticket", () => {
+  const payload = buildApnsPayload({
+    kind: "rule_reminder",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    ticketNumber: "ICT-42",
+    ruleName: "Seit 4 h keine Antwort",
+  });
+  const aps = payload.aps as { alert: { title: string; body: string } };
+  assertEquals(aps.alert.title, "Erinnerung: Seit 4 h keine Antwort");
+  assertStringIncludes(aps.alert.body, "ICT-42");
+  assertEquals(
+    (payload.body as Record<string, unknown>).ticketId,
+    "00000000-0000-4000-8000-000000000003",
+  );
+});
+
+Deno.test("vendor reminders and finished child tickets open the ticket", () => {
+  const reminder = buildApnsPayload({
+    kind: "vendor_reminder",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    ticketNumber: "ICT-7",
+    vendorName: "Swisscom",
+  });
+  const reminderAlert = (reminder.aps as { alert: { title: string; body: string } })
+    .alert;
+  assertEquals(reminderAlert.title, "Drittanbieter nachfassen");
+  assertStringIncludes(reminderAlert.body, "Swisscom");
+  assertStringIncludes(reminderAlert.body, "ICT-7");
+  const done = buildApnsPayload({
+    kind: "children_done",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000004",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    ticketNumber: "ICT-7",
+  });
+  const doneAlert = (done.aps as { alert: { title: string; body: string } }).alert;
+  assertEquals(doneAlert.title, "Teil-Tickets erledigt");
+  assertEquals(
+    (done.body as Record<string, unknown>).ticketId,
+    "00000000-0000-4000-8000-000000000003",
+  );
+});
+
+Deno.test("customer praise names the requester and opens the ticket", () => {
+  const payload = buildApnsPayload({
+    kind: "kudos",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    ticketNumber: "ICT-9",
+    kudosRequesterName: "Anna Muster",
+    kudosScore: 5,
+  });
+  const alert = (payload.aps as { alert: { title: string; body: string } }).alert;
+  assertEquals(alert.title, "Lob von Kund:innen");
+  assertStringIncludes(alert.body, "Anna Muster");
+  assertStringIncludes(alert.body, "ICT-9");
+  assertStringIncludes(alert.body, "5/5");
+  assertEquals(
+    (payload.body as Record<string, unknown>).ticketId,
+    "00000000-0000-4000-8000-000000000003",
+  );
+});
+
+Deno.test("phishing reports alert the security team", () => {
+  const payload = buildApnsPayload({
+    kind: "security_report",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000005",
+    ticketId: "00000000-0000-4000-8000-000000000006",
+    ticketNumber: "SEC-3",
+  });
+  const alert = (payload.aps as { alert: { title: string; body: string } }).alert;
+  assertEquals(alert.title, "Phishing-Meldung");
+  assertStringIncludes(alert.body, "SEC-3");
 });

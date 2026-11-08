@@ -28,6 +28,7 @@ import {
   hapticSuccess,
 } from "@/lib/mobile-haptics";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
+import { PhotoMarkupEditor } from "@/components/photo-markup-editor";
 import { useThemeContext } from "@/lib/theme-provider";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
@@ -120,6 +121,9 @@ export function TicketPhotoAttachments({
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [viewerError, setViewerError] = useState("");
+  // Picked photos wait here so they can be marked up («Markieren») first.
+  const [staged, setStaged] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  const [markupIndex, setMarkupIndex] = useState<number | null>(null);
   const uploading = upload !== undefined;
 
   const load = useCallback(async () => {
@@ -231,6 +235,23 @@ export function TicketPhotoAttachments({
       return;
     }
     if (!assets || assets.length === 0) return;
+    setStaged((current) =>
+      [...current, ...assets].slice(0, MAX_LIBRARY_SELECTION),
+    );
+  }
+
+  async function discardStaged() {
+    const pending = staged;
+    setStaged([]);
+    await Promise.all(pending.map((asset) => deleteCachedFile(asset.uri)));
+  }
+
+  async function uploadStaged() {
+    if (uploading || staged.length === 0) return;
+    const assets = staged;
+    setStaged([]);
+    setNotice(null);
+    hapticSelection();
 
     let uploaded = 0;
     let failure: string | null = null;
@@ -392,6 +413,119 @@ export function TicketPhotoAttachments({
             </Pressable>
           </View>
         ) : null}
+
+        {staged.length > 0 ? (
+          <View style={styles.staged}>
+            <Text style={styles.stagedTitle}>
+              {staged.length === 1
+                ? "1 Foto bereit"
+                : `${staged.length} Fotos bereit`}
+            </Text>
+            <Text style={styles.stagedHint}>
+              Tippe auf «Markieren», um Pfeile, Text oder Schwärzungen
+              hinzuzufügen.
+            </Text>
+            <View style={styles.stagedRow}>
+              {staged.map((asset, index) => (
+                <View key={`${asset.uri}-${index}`} style={styles.stagedThumb}>
+                  <Image
+                    accessibilityLabel={`Ausgewähltes Foto ${index + 1}`}
+                    contentFit="cover"
+                    source={{ uri: asset.uri }}
+                    style={styles.tileImage}
+                  />
+                  <Pressable
+                    accessibilityLabel={`Foto ${index + 1} markieren`}
+                    accessibilityRole="button"
+                    hitSlop={6}
+                    onPress={() => {
+                      hapticSelection();
+                      setMarkupIndex(index);
+                    }}
+                    style={styles.stagedMarkup}
+                  >
+                    <Ionicons color={colors.onPrimary} name="brush" size={12} />
+                    <Text style={styles.stagedMarkupText}>Markieren</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel={`Foto ${index + 1} entfernen`}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={() => {
+                      const removed = staged[index];
+                      setStaged((current) =>
+                        current.filter((_, position) => position !== index),
+                      );
+                      if (removed) void deleteCachedFile(removed.uri);
+                    }}
+                    style={styles.stagedRemove}
+                  >
+                    <Ionicons color={colors.onPrimary} name="close" size={14} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+            <View style={styles.actions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={uploading}
+                onPress={() => void discardStaged()}
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  styles.actionSecondary,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.actionSecondaryText}>Verwerfen</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={uploading}
+                onPress={() => void uploadStaged()}
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  styles.actionPrimary,
+                  pressed && styles.pressed,
+                  uploading && styles.disabled,
+                ]}
+              >
+                <Ionicons
+                  color={colors.onPrimary}
+                  name="cloud-upload-outline"
+                  size={18}
+                />
+                <Text style={styles.actionPrimaryText}>Hochladen</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        <PhotoMarkupEditor
+          onCancel={() => setMarkupIndex(null)}
+          onSave={(result) => {
+            const index = markupIndex;
+            setMarkupIndex(null);
+            if (index === null) return;
+            const original = staged[index];
+            // Das markierte Bild ersetzt das Original; nur es wird hochgeladen.
+            setStaged((current) =>
+              current.map((asset, position) =>
+                position === index
+                  ? {
+                      ...asset,
+                      uri: result.uri,
+                      width: result.width,
+                      height: result.height,
+                    }
+                  : asset,
+              ),
+            );
+            if (original && original.uri !== result.uri) {
+              void deleteCachedFile(original.uri);
+            }
+          }}
+          photo={markupIndex === null ? null : (staged[markupIndex] ?? null)}
+        />
 
         {upload ? (
           <View accessibilityLiveRegion="polite" style={styles.progress}>
@@ -770,6 +904,48 @@ const useStyles = makeThemedStyles((c) => ({
   noticeTextError: { color: c.error },
   noticeLink: { color: c.primaryText, fontSize: 13, fontWeight: "800" },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: GRID_GAP },
+  staged: {
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 8,
+    padding: 12,
+  },
+  stagedTitle: { color: c.foreground, fontSize: 14, fontWeight: "800" },
+  stagedHint: { color: c.muted, fontSize: 12, lineHeight: 17 },
+  stagedRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  stagedThumb: {
+    borderRadius: 12,
+    height: 88,
+    overflow: "hidden",
+    width: 88,
+  },
+  stagedMarkup: {
+    alignItems: "center",
+    backgroundColor: c.overlay,
+    borderRadius: 9,
+    bottom: 4,
+    flexDirection: "row",
+    gap: 3,
+    justifyContent: "center",
+    left: 4,
+    paddingVertical: 3,
+    position: "absolute",
+    right: 4,
+  },
+  stagedMarkupText: { color: c.onPrimary, fontSize: 10, fontWeight: "800" },
+  stagedRemove: {
+    alignItems: "center",
+    backgroundColor: c.overlay,
+    borderRadius: 11,
+    height: 22,
+    justifyContent: "center",
+    position: "absolute",
+    right: 4,
+    top: 4,
+    width: 22,
+  },
   tile: {
     backgroundColor: c.surfaceSubtle,
     borderColor: c.border,

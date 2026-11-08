@@ -26,11 +26,12 @@ type Action =
       viewId?: string;
       name: string;
       filters: Filters;
+      sharedDepartmentId?: string | null;
     }
   | { type: "deleteSavedView"; tenantId: string; viewId: string };
 
 const selectColumns =
-  "id, tenant_id, owner_id, name, visibility, filters, created_at, updated_at";
+  "id, tenant_id, owner_id, name, visibility, filters, created_at, updated_at, shared_department_id";
 
 function headers(request: Request): HeadersInit {
   const origin = request.headers.get("origin");
@@ -146,8 +147,18 @@ function parseAction(value: unknown): Action | null {
   }
   if (
     value.type === "saveSavedView" &&
-    hasOnlyKeys(value, ["type", "tenantId", "viewId", "name", "filters"]) &&
+    hasOnlyKeys(value, [
+      "type",
+      "tenantId",
+      "viewId",
+      "name",
+      "filters",
+      "sharedDepartmentId",
+    ]) &&
     (value.viewId === undefined || isUuid(value.viewId)) &&
+    (value.sharedDepartmentId === undefined ||
+      value.sharedDepartmentId === null ||
+      isUuid(value.sharedDepartmentId)) &&
     typeof value.name === "string"
   ) {
     const name = value.name.trim();
@@ -166,6 +177,13 @@ function parseAction(value: unknown): Action | null {
       ...(value.viewId === undefined ? {} : { viewId: value.viewId }),
       name,
       filters,
+      ...(value.sharedDepartmentId === undefined
+        ? {}
+        : {
+          sharedDepartmentId: value.sharedDepartmentId === null
+            ? null
+            : String(value.sharedDepartmentId).toLowerCase(),
+        }),
     };
   }
   if (
@@ -189,17 +207,50 @@ async function isActiveMember(admin: any, userId: string, tenantId: string) {
   return !error && Boolean(data);
 }
 
-function toResponse(view: any) {
+function toResponse(
+  view: any,
+  names: Map<string, string> = new Map(),
+  departments: Map<string, string> = new Map(),
+) {
   return {
     id: view.id,
     tenantId: view.tenant_id,
     ownerId: view.owner_id,
+    ownerName: names.get(view.owner_id) ?? null,
     name: view.name,
     visibility: "private",
+    sharedDepartmentId: view.shared_department_id ?? null,
+    sharedDepartmentName: view.shared_department_id
+      ? departments.get(view.shared_department_id) ?? null
+      : null,
     filters: view.filters,
     createdAt: view.created_at,
     updatedAt: view.updated_at,
   };
+}
+
+/** Active departments the person belongs to (for sharing and shared views). */
+async function memberDepartments(
+  admin: any,
+  tenantId: string,
+  userId: string,
+): Promise<Map<string, string> | null> {
+  const { data, error } = await admin
+    .from("department_memberships")
+    .select("department_id, departments!inner(id, name, tenant_id, active)")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .eq("departments.tenant_id", tenantId)
+    .eq("departments.active", true);
+  if (error) return null;
+  const result = new Map<string, string>();
+  for (const row of (data ?? []) as any[]) {
+    const department = Array.isArray(row.departments)
+      ? row.departments[0]
+      : row.departments;
+    if (department?.id) result.set(department.id, String(department.name ?? ""));
+  }
+  return result;
 }
 
 function auditData(view: any) {
@@ -273,20 +324,74 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "listSavedViews") {
-    const { data, error } = await context.supabaseAdmin
-      .from("saved_ticket_views")
-      .select(selectColumns)
-      .eq("tenant_id", action.tenantId)
-      .eq("owner_id", actorId)
-      .order("updated_at", { ascending: false });
-    if (error) {
+    const departments = await memberDepartments(
+      context.supabaseAdmin,
+      action.tenantId,
+      actorId,
+    );
+    if (!departments) {
       return json(request, { error: { code: "saved_view_list_failed" } }, 500);
     }
+    const departmentIds = [...departments.keys()];
+    const [own, shared] = await Promise.all([
+      context.supabaseAdmin
+        .from("saved_ticket_views")
+        .select(selectColumns)
+        .eq("tenant_id", action.tenantId)
+        .eq("owner_id", actorId)
+        .order("updated_at", { ascending: false }),
+      departmentIds.length
+        ? context.supabaseAdmin
+          .from("saved_ticket_views")
+          .select(selectColumns)
+          .eq("tenant_id", action.tenantId)
+          .neq("owner_id", actorId)
+          .in("shared_department_id", departmentIds)
+          .order("updated_at", { ascending: false })
+          .limit(200)
+        : { data: [], error: null },
+    ]);
+    if (own.error || shared.error) {
+      return json(request, { error: { code: "saved_view_list_failed" } }, 500);
+    }
+    const ownerIds = [
+      ...new Set(((shared.data ?? []) as any[]).map((row) => row.owner_id)),
+    ];
+    const profiles = ownerIds.length
+      ? await context.supabaseAdmin
+        .from("user_profiles")
+        .select("id, display_name")
+        .in("id", ownerIds)
+      : { data: [], error: null };
+    const names = new Map<string, string>(
+      ((profiles.data ?? []) as any[]).map((row) => [
+        row.id,
+        String(row.display_name ?? "Teammitglied"),
+      ]),
+    );
     return json(request, {
       data: {
-        savedViews: (data ?? []).map(toResponse),
+        savedViews: [...(own.data ?? []), ...(shared.data ?? [])].map((view) =>
+          toResponse(view, names, departments)
+        ),
+        departments: [...departments].map(([id, name]) => ({ id, name })),
       },
     });
+  }
+
+  if (action.type === "saveSavedView" && action.sharedDepartmentId) {
+    const departments = await memberDepartments(
+      context.supabaseAdmin,
+      action.tenantId,
+      actorId,
+    );
+    if (!departments?.has(action.sharedDepartmentId)) {
+      return json(
+        request,
+        { error: { code: "saved_view_department_denied" } },
+        403,
+      );
+    }
   }
 
   if (action.type === "saveSavedView") {
@@ -299,6 +404,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           name: action.name,
           visibility: "private",
           filters: action.filters,
+          shared_department_id: action.sharedDepartmentId ?? null,
         })
         .select(selectColumns)
         .single();
@@ -358,6 +464,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         name: action.name,
         visibility: "private",
         filters: action.filters,
+        ...(action.sharedDepartmentId === undefined
+          ? {}
+          : { shared_department_id: action.sharedDepartmentId }),
       })
       .eq("id", previous.id)
       .eq("tenant_id", action.tenantId)

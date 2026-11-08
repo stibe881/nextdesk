@@ -20,10 +20,17 @@ import {
   EVENT_LABEL,
   ORDER_STATUS_LABEL,
   formatDate,
+  procurementLabel,
   shopApi,
   type OrderAction,
   type OrderDetail,
 } from "@/lib/shop";
+import {
+  softwareHint,
+  softwareStatusLabel,
+  softwareTone,
+} from "@/lib/shop-software";
+import { toneColors } from "@/lib/status-tones";
 import { useAppColors } from "@/lib/themed-styles";
 
 export default function ShopOrderScreen() {
@@ -77,6 +84,24 @@ export default function ShopOrderScreen() {
         nextError instanceof Error
           ? nextError.message
           : "Die Aktion ist fehlgeschlagen.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function retrySoftware(deploymentId: string) {
+    if (!tenantId) return;
+    setPending(true);
+    setError("");
+    try {
+      await shopApi.retrySoftware(tenantId, deploymentId);
+      await load();
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Zuweisung konnte nicht neu gestartet werden.",
       );
     } finally {
       setPending(false);
@@ -263,13 +288,66 @@ export default function ShopOrderScreen() {
                       {line.status === "reserved"
                         ? " · reserviert"
                         : line.status === "backorder"
-                          ? " · nicht an Lager"
+                          ? ` · ${procurementLabel(line) ?? "nicht an Lager"}`
                           : line.status === "issued"
                             ? " · ausgegeben"
                             : line.status === "returned"
                               ? " · zurück"
                               : ""}
                     </Text>
+                    {line.software ? (
+                      <View style={{ gap: 4, marginTop: 4 }}>
+                        <View
+                          accessibilityLabel={`Software: ${softwareStatusLabel(line.software.status)}`}
+                          style={{
+                            alignSelf: "flex-start",
+                            borderRadius: 999,
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            backgroundColor: toneColors(
+                              softwareTone(line.software.status),
+                              colors,
+                            ).background,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: "600",
+                              color: toneColors(
+                                softwareTone(line.software.status),
+                                colors,
+                              ).color,
+                            }}
+                          >
+                            {softwareStatusLabel(line.software.status)}
+                          </Text>
+                        </View>
+                        <Text style={styles.cardMeta}>
+                          {softwareHint(line.software)}
+                        </Text>
+                        {line.software.canRetry ? (
+                          <Pressable
+                            accessibilityRole="button"
+                            disabled={pending}
+                            onPress={() => {
+                              if (line.software) {
+                                void retrySoftware(line.software.deploymentId);
+                              }
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.cardMeta,
+                                { color: colors.primary },
+                              ]}
+                            >
+                              Erneut zuweisen ›
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
                 </View>
                 {canHandOut &&

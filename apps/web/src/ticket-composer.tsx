@@ -9,7 +9,24 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import {
+  PortalAssistantPanel,
+  recordPortalAssistantOutcome,
+  usePortalAssistantEnabled,
+} from "./portal-assistant";
+import type { AssistantDraft } from "./lib/portal-assistant";
 import { TicketAssetPicker, type PickedAsset } from "./ticket-asset-picker";
+import {
+  appendAnswersToDescription,
+  parseCondition,
+  parseTemplateFormField,
+  sanitizeAnswers,
+  validateAnswers,
+  type FormAnswers,
+  type TemplateCondition,
+  type TemplateFormField,
+} from "./lib/ticket-template-form";
+import { TicketTemplateFormFields } from "./ticket-template-form-fields";
 import {
   clearTicketComposerDraft,
   readTicketComposerDraft,
@@ -61,7 +78,17 @@ type AvailableTicketTemplate = {
   subjectTemplate: string;
   descriptionTemplate: string;
   priorityKey: string | null;
-  checklistItems: Array<{ description: string; position: number }>;
+  checklistItems: Array<{
+    description: string;
+    position: number;
+    condition: TemplateCondition | null;
+  }>;
+  formFields: TemplateFormField[];
+};
+type TemplateFormState = {
+  templateId: string;
+  answers: FormAnswers;
+  errors: Record<string, string>;
 };
 type PortalIncidentNotice = {
   categoryId: string | null;
@@ -428,16 +455,30 @@ function parseAvailableTicketTemplate(value: unknown): AvailableTicketTemplate {
     throw new Error("Die Ticketvorlage ist ungültig.");
   }
   const checklistItems = value.checklistItems.map((item) => {
+    const condition = isRecord(item) ? parseCondition(item.condition) : null;
     if (
       !isRecord(item) ||
       !isNonemptyString(item.description) ||
       item.description.length > 1000 ||
       typeof item.position !== "number" ||
-      !Number.isSafeInteger(item.position)
+      !Number.isSafeInteger(item.position) ||
+      condition === undefined
     ) {
       throw new Error("Die Checkliste der Ticketvorlage ist ungültig.");
     }
-    return { description: item.description, position: item.position };
+    return {
+      description: item.description,
+      position: item.position,
+      condition,
+    };
+  });
+  const formFields = (
+    Array.isArray(value.formFields) ? value.formFields : []
+  ).map((field, index) => {
+    const parsed = parseTemplateFormField(field, index);
+    if (!parsed)
+      throw new Error("Die Formularfelder der Vorlage sind ungültig.");
+    return parsed;
   });
   return {
     id: value.id,
@@ -447,6 +488,7 @@ function parseAvailableTicketTemplate(value: unknown): AvailableTicketTemplate {
     priorityKey:
       typeof value.priorityKey === "string" ? value.priorityKey : null,
     checklistItems,
+    formFields,
   };
 }
 
@@ -664,6 +706,9 @@ export function TicketComposer({
     null,
   );
   const [templateId, setTemplateId] = useState("");
+  const [templateFormState, setTemplateFormState] = useState<TemplateFormState>(
+    { templateId: "", answers: {}, errors: {} },
+  );
   const [priorityKey, setPriorityKey] = useState("normal");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
@@ -720,6 +765,15 @@ export function TicketComposer({
   const requesterFormOpen = requesterDraft !== null;
   const [requesterPickerOpen, setRequesterPickerOpen] = useState(false);
   const currentSelectedRequester = formReady ? selectedRequester : null;
+  // «Selbstbedienungs-Assistent» (optional per tenant) for people who
+  // create a ticket for themselves.
+  const portalAssistantEnabled = usePortalAssistantEnabled(tenantId);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantSessionId, setAssistantSessionId] = useState<string | null>(
+    null,
+  );
+  const showPortalAssistant =
+    portalAssistantEnabled && formReady && !canManageRequesters;
   const currentRequesterLookup =
     canManageRequesters &&
     requesterLookup?.tenantId === tenantId &&
@@ -1455,6 +1509,22 @@ export function TicketComposer({
   }
 
   function validateTicketDraft(): boolean {
+    if (selectedTemplate && selectedTemplate.formFields.length > 0) {
+      const formErrors = validateAnswers(
+        selectedTemplate.formFields,
+        templateFormAnswers,
+      );
+      setTemplateFormState({
+        templateId: selectedTemplate.id,
+        answers: templateFormAnswers,
+        errors: formErrors,
+      });
+      const firstKey = Object.keys(formErrors)[0];
+      if (firstKey) {
+        document.getElementById(`ticket-template-field-${firstKey}`)?.focus();
+        return false;
+      }
+    }
     const nextErrors: FieldErrors = {};
     const draftSubject = (selectedTemplatePreview?.subject ?? subject).trim();
     const draftDescription = (
@@ -1595,6 +1665,14 @@ export function TicketComposer({
             subject: selectedTemplatePreview?.subject ?? subject,
             description: selectedTemplatePreview?.description ?? description,
             ...(selectedTemplate ? { templateId: selectedTemplate.id } : {}),
+            ...(selectedTemplate && selectedTemplate.formFields.length > 0
+              ? {
+                  formAnswers: sanitizeAnswers(
+                    selectedTemplate.formFields,
+                    templateFormAnswers,
+                  ),
+                }
+              : {}),
             categoryId: selectedCategory?.id ?? null,
             subcategoryId: selectedSubcategory?.id ?? null,
           },
@@ -1602,6 +1680,15 @@ export function TicketComposer({
       );
       if (requestError) throw requestError;
       const created = parseCreatedTicket(data);
+      if (assistantSessionId) {
+        void recordPortalAssistantOutcome({
+          tenantId,
+          sessionId: assistantSessionId,
+          outcome: "ticket_created",
+          ticketId: created.ticketId,
+        });
+        setAssistantSessionId(null);
+      }
       const expectationPromise = loadSlaExpectation(created.ticketId);
       if (assignedAgentId) {
         const { error: agentAssignmentError } = await supabase.functions.invoke(
@@ -1749,13 +1836,33 @@ export function TicketComposer({
   const selectedDepartmentName =
     options.departments.find((department) => department.id === departmentId)
       ?.name ?? "Abteilung";
-  const selectedTemplatePreview = selectedTemplate
+  const templateFormAnswers: FormAnswers =
+    selectedTemplate && templateFormState.templateId === selectedTemplate.id
+      ? templateFormState.answers
+      : {};
+  const templateFormErrors =
+    selectedTemplate && templateFormState.templateId === selectedTemplate.id
+      ? templateFormState.errors
+      : {};
+  const basicTemplatePreview = selectedTemplate
     ? templatePreview(
         selectedTemplate,
         currentSelectedRequester?.displayName ?? "Anfragende Person",
         selectedDepartmentName,
       )
     : null;
+  // The server appends the same section; the preview shows it up front.
+  const selectedTemplatePreview =
+    selectedTemplate && basicTemplatePreview
+      ? {
+          subject: basicTemplatePreview.subject,
+          description: appendAnswersToDescription(
+            basicTemplatePreview.description,
+            selectedTemplate.formFields,
+            sanitizeAnswers(selectedTemplate.formFields, templateFormAnswers),
+          ),
+        }
+      : null;
   const effectivePriorityKey = selectedTemplate?.priorityKey ?? priorityKey;
   const draftParent = categoryDraft?.parentId
     ? rootCategories.find((category) => category.id === categoryDraft.parentId)
@@ -1912,6 +2019,23 @@ export function TicketComposer({
     ? (articleId: string) => onOpenKnowledgeArticle(articleId, keepDraft())
     : undefined;
 
+  /** Takes the assistant's draft into the form; the person still submits. */
+  function applyAssistantDraft(draft: AssistantDraft, sessionId: string) {
+    setSubject(draft.subject);
+    setDescription(draft.description);
+    setTemplateId("");
+    if (
+      draft.categoryId &&
+      rootCategories.some((category) => category.id === draft.categoryId)
+    ) {
+      setCategoryId(draft.categoryId);
+      setSubcategoryId("");
+    }
+    setFieldErrors({});
+    setAssistantSessionId(sessionId);
+    setAssistantOpen(false);
+  }
+
   function finishWithArticle() {
     // "Hat mein Problem gelöst": no ticket is created, the draft is cleared.
     clearTicketComposerDraft(currentUserId, tenantId);
@@ -1951,6 +2075,39 @@ export function TicketComposer({
               einordnen und anschliessend erstellen. Pflichtfelder sind mit
               einem Stern markiert.
             </p>
+            {showPortalAssistant && !assistantOpen ? (
+              <div className="portal-assistant-entry">
+                <p className="data-caption">
+                  {assistantSessionId
+                    ? "Der Entwurf des Assistenten wurde übernommen. Bitte prüfen und erstellen Sie das Ticket."
+                    : "Vielleicht lässt sich Ihr Problem gleich lösen: Der Assistent sucht passende Anleitungen."}
+                </p>
+                {assistantSessionId ? null : (
+                  <button
+                    className="secondary-button"
+                    disabled={saving}
+                    onClick={() => setAssistantOpen(true)}
+                    type="button"
+                  >
+                    Mit dem Assistenten lösen
+                  </button>
+                )}
+              </div>
+            ) : null}
+            {showPortalAssistant && assistantOpen ? (
+              <PortalAssistantPanel
+                departmentId={departmentId || null}
+                onClose={() => setAssistantOpen(false)}
+                onOpenArticle={openSuggestedArticle}
+                onSolved={() => {
+                  setAssistantOpen(false);
+                  setAssistantSessionId(null);
+                  finishWithArticle();
+                }}
+                onUseDraft={applyAssistantDraft}
+                tenantId={tenantId}
+              />
+            ) : null}
             {draftRestored && (
               <p className="data-caption" role="status">
                 Ihr gespeicherter Entwurf wurde wiederhergestellt.{" "}
@@ -2605,6 +2762,23 @@ export function TicketComposer({
               die gewählte Priorität und Kategorie angezeigt.
             </p>
           </section>
+          {selectedTemplate && selectedTemplate.formFields.length > 0 && (
+            <TicketTemplateFormFields
+              answers={templateFormAnswers}
+              disabled={saving}
+              errors={templateFormErrors}
+              fields={selectedTemplate.formFields}
+              onChange={(key, value) => {
+                const { [key]: _removed, ...remainingErrors } =
+                  templateFormErrors;
+                setTemplateFormState({
+                  templateId: selectedTemplate.id,
+                  answers: { ...templateFormAnswers, [key]: value },
+                  errors: remainingErrors,
+                });
+              }}
+            />
+          )}
           <label className="ticket-compose-description">
             Beschreibung
             <textarea

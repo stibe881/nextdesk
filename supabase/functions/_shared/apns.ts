@@ -1,9 +1,13 @@
 type ApnsEnvironment = "production" | "development";
 
+/** Must match the category the mobile app registers (push-notification-bridge). */
+export const APNS_REQUESTER_REMINDER_CATEGORY = "NEXTDESK_REQUESTER_REMINDER";
+
 export type ApnsPayloadKind =
   | "assigned"
   | "requester_reply"
   | "support_reply"
+  | "requester_reminder"
   | "mention"
   | "resolved"
   | "approval"
@@ -18,7 +22,13 @@ export type ApnsPayloadKind =
   | "inventory_low_stock"
   | "shop"
   | "service_task"
+  | "infrastructure"
   | "watched"
+  | "rule_reminder"
+  | "vendor_reminder"
+  | "children_done"
+  | "kudos"
+  | "security_report"
   | "summary"
   | "test";
 
@@ -37,12 +47,24 @@ export type ApnsPayloadInput = {
   serviceTaskEvent?: string;
   serviceTaskTitle?: string;
   occurrenceId?: string;
+  /** Infrastructure reminder: device, reason and due date (YYYY-MM-DD). */
+  assetId?: string;
+  assetName?: string;
+  infrastructureReason?: string;
+  dueOn?: string;
   /** Watched ticket: status, assigned or comment. */
   watchEvent?: string;
   watchStatusLabel?: string;
   watchAssigneeName?: string;
   watchActorName?: string;
   watchInternal?: boolean;
+  /** Reminder from a time-based ticket rule: the rule's name. */
+  ruleName?: string;
+  /** Vendor case reminder: name of the vendor. */
+  vendorName?: string;
+  /** Customer praise: display name of the requester (never e-mail) and score. */
+  kudosRequesterName?: string;
+  kudosScore?: number;
   /** Forwarded to a stand-in: name of the absent person. */
   delegatedFromName?: string;
 };
@@ -181,6 +203,13 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           ? `Es gibt eine neue Antwort zu deinem Ticket ${ticketNumber}: ${subject}`
           : `Es gibt eine neue Antwort zu deinem Ticket ${ticketNumber}.`,
       };
+    case "requester_reminder":
+      return {
+        title: "Wir warten auf deine Antwort",
+        body: subject
+          ? `${ticketNumber}: ${subject} – Ist dein Problem gelöst? Tippe hier zum Antworten.`
+          : `${ticketNumber} wartet auf deine Rückmeldung. Ist dein Problem gelöst?`,
+      };
     case "mention":
       return {
         title: "Du wurdest erwähnt",
@@ -243,6 +272,48 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         body: subject
           ? `Für ${ticketNumber} ist eine SLA-Frist betroffen: ${subject}`
           : `Für ${ticketNumber} ist eine SLA-Frist betroffen.`,
+      };
+    case "rule_reminder": {
+      const rule = input.ruleName ? truncateSubject(input.ruleName) : null;
+      return {
+        title: rule ? `Erinnerung: ${rule}` : "Erinnerung aus Regel",
+        body: subject
+          ? `${ticketNumber}: ${subject}`
+          : `${ticketNumber} braucht Aufmerksamkeit.`,
+      };
+    }
+    case "vendor_reminder": {
+      const vendor = input.vendorName
+        ? truncateSubject(input.vendorName)
+        : "Der Drittanbieter";
+      return {
+        title: "Drittanbieter nachfassen",
+        body: `${vendor} hat sich zu ${ticketNumber} noch nicht gemeldet.`,
+      };
+    }
+    case "kudos": {
+      const from = input.kudosRequesterName
+        ? truncateSubject(input.kudosRequesterName)
+        : "Eine meldende Person";
+      const score = input.kudosScore ? ` (${input.kudosScore}/5)` : "";
+      return {
+        title: "Lob von Kund:innen",
+        body: `${from} hat ${ticketNumber} sehr gut bewertet${score}. Danke für deinen Einsatz!`,
+      };
+    }
+    case "security_report":
+      return {
+        title: "Phishing-Meldung",
+        body: subject
+          ? `Verdächtige E-Mail gemeldet (${ticketNumber}): ${subject}`
+          : `Eine verdächtige E-Mail wurde gemeldet (${ticketNumber}).`,
+      };
+    case "children_done":
+      return {
+        title: "Teil-Tickets erledigt",
+        body: subject
+          ? `Alle Teil-Tickets von ${ticketNumber} sind erledigt: ${subject}`
+          : `Alle Teil-Tickets von ${ticketNumber} sind erledigt.`,
       };
     case "follow_up":
       return {
@@ -326,6 +397,55 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           body: `${title} ist heute fällig.`,
         };
     }
+    case "infrastructure": {
+      const device = input.assetName?.trim().slice(0, 80) || "Ein Gerät";
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.dueOn ?? "");
+      const day = match ? `${match[3]}.${match[2]}.${match[1]}` : null;
+      const overdue = Boolean(
+        match && input.dueOn! < new Date().toISOString().slice(0, 10),
+      );
+      const on = day ? ` am ${day}` : "";
+      const since = day ? ` seit ${day}` : "";
+      switch (input.infrastructureReason) {
+        case "warranty":
+          return overdue
+            ? {
+              title: "Garantie abgelaufen",
+              body: `${device}: Garantie abgelaufen${since}.`,
+            }
+            : {
+              title: "Garantie läuft ab",
+              body: `${device}: Garantie endet${on}.`,
+            };
+        case "support":
+          return overdue
+            ? {
+              title: "Herstellersupport beendet",
+              body: `${device}: Herstellersupport beendet${since}.`,
+            }
+            : {
+              title: "Support läuft ab",
+              body: `${device}: Herstellersupport endet${on}.`,
+            };
+        case "end_of_life":
+          return {
+            title: "End of Life",
+            body: overdue
+              ? `${device}: End of Life erreicht${since}. Ersatz planen.`
+              : `${device}: End of Life${on}. Ersatz planen.`,
+          };
+        default:
+          return overdue
+            ? {
+              title: "Wartung überfällig",
+              body: `${device}: Wartung überfällig${since}.`,
+            }
+            : {
+              title: "Wartung fällig",
+              body: `${device}: Wartung fällig${on}.`,
+            };
+      }
+    }
     case "watched": {
       const actor = input.watchActorName
         ? truncateSubject(input.watchActorName)
@@ -384,6 +504,20 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
 export const APNS_TICKET_CATEGORY = "NEXTDESK_TICKET";
 export const APNS_SERVICE_TASK_CATEGORY = "NEXTDESK_SERVICE_TASK";
 
+/** Ticket-Mitteilungen an Bearbeitende, die die Antwort-Knöpfe bekommen. */
+const APNS_AGENT_TICKET_KINDS: ReadonlySet<ApnsPayloadKind> = new Set([
+  "assigned",
+  "requester_reply",
+  "mention",
+  "escalation",
+  "sla",
+  "follow_up",
+  "watched",
+  "rule_reminder",
+  "vendor_reminder",
+  "children_done",
+]);
+
 /** Builds only the APNs JSON body; no device token or secret enters this payload. */
 export function buildApnsPayload(
   input: ApnsPayloadInput,
@@ -418,10 +552,18 @@ export function buildApnsPayload(
   if (input.kind === "service_task" && input.occurrenceId) {
     data.occurrenceId = input.occurrenceId;
   }
+  if (input.kind === "infrastructure" && input.assetId) {
+    data.assetId = input.assetId;
+  }
   const aps: Record<string, unknown> = {
     alert,
     sound: "default",
   };
+  // iOS shows «Problem ist gelöst» / «Ich brauche noch Hilfe» as notification
+  // actions; both open the ticket in the app, where the person confirms.
+  if (input.kind === "requester_reminder" && input.ticketId) {
+    aps.category = APNS_REQUESTER_REMINDER_CATEGORY;
+  }
   if (
     input.ticketId &&
     input.kind !== "summary" &&
@@ -430,8 +572,11 @@ export function buildApnsPayload(
   ) {
     aps["thread-id"] = input.ticketId;
     // Antwort-Knöpfe direkt in der Mitteilung (iPhone und Apple Watch); die
-    // App registriert die Kategorie in lib/notification-actions.ts.
-    aps.category = APNS_TICKET_CATEGORY;
+    // App registriert die Kategorie in lib/notification-actions.ts. Nur für
+    // Mitteilungen an Bearbeitende, nicht an Anfragende.
+    if (APNS_AGENT_TICKET_KINDS.has(input.kind)) {
+      aps.category = APNS_TICKET_CATEGORY;
+    }
   } else if (input.kind === "service_task" && input.occurrenceId) {
     aps.category = APNS_SERVICE_TASK_CATEGORY;
   }

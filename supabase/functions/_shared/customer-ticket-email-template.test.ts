@@ -178,3 +178,35 @@ Deno.test("Kundschafts-E-Mail zeigt das öffentliche Logo, wenn kein Inline-Logo
     throw new Error("Logo oder Mandantenname fehlen in der E-Mail.");
   }
 });
+
+Deno.test("Erinnerungsmail zeigt nur sichere Ein-Klick-Aktionen", () => {
+  const html = renderCustomerTicketEmail({
+    actions: [
+      {
+        label: "Problem ist gelöst",
+        url: "https://app.nextdesk.ch/#ticket-aktion=v1.a.b",
+        primary: true,
+      },
+      { label: "Ich brauche noch Hilfe", url: "javascript:alert(1)" },
+      {
+        label: "<b>Hilfe</b>",
+        url: "https://app.nextdesk.ch/#ticket-aktion=v1.c.d",
+      },
+    ],
+    attachmentNotice: false,
+    branding,
+    kind: "agent_reply",
+    subject: "VPN einrichten",
+    text: "Wir warten noch auf Ihre Rückmeldung.",
+    ticketNumber: "ICT-2026-000011",
+  });
+  if (
+    !html.includes("Problem ist gelöst") ||
+    !html.includes("#ticket-aktion=v1.a.b") ||
+    !html.includes("&lt;b&gt;Hilfe&lt;/b&gt;") ||
+    html.includes("javascript:") ||
+    !html.includes("einmal verwendbar")
+  ) {
+    throw new Error("Ein-Klick-Aktionen werden nicht sicher dargestellt.");
+  }
+});

@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import { lookupMobileAsset } from "@/lib/asset-registry";
+import { parseScannedCode } from "@/lib/asset-qr";
 import {
   MobileFeatureLoadingScreen,
   MobileFeatureUnavailableScreen,
@@ -77,6 +78,22 @@ export default function AssetScanScreen() {
     async (rawCode: string) => {
       const code = rawCode.trim();
       if (!code || busy || !assetsEnabled) return;
+      // nextDesk labels carry a link to the asset (or rack); the detail
+      // screen checks access. Other codes are looked up as before.
+      const scanned = parseScannedCode(code);
+      if (scanned.kind === "asset") {
+        hapticSuccess();
+        router.replace(`/assets/${scanned.assetId}` as never);
+        return;
+      }
+      if (scanned.kind === "rack") {
+        hapticSuccess();
+        router.replace({
+          pathname: "/infrastructure",
+          params: { rack: scanned.rack },
+        } as never);
+        return;
+      }
       setBusy(true);
       setError("");
       try {
@@ -143,6 +160,15 @@ export default function AssetScanScreen() {
           <Text style={styles.quickLinkText}>Lager</Text>
         </Pressable>
       ) : null}
+      <Pressable
+        accessibilityLabel="Zur Infrastruktur"
+        accessibilityRole="button"
+        onPress={() => router.replace("/infrastructure" as never)}
+        style={styles.quickLink}
+      >
+        <Ionicons color={colors.onPrimary} name="server-outline" size={18} />
+        <Text style={styles.quickLinkText}>Infrastruktur</Text>
+      </Pressable>
     </View>
   );
 
@@ -364,16 +390,17 @@ const useStyles = makeThemedStyles((c, scheme) => {
       backgroundColor: c.primary,
       borderRadius: 999,
       flexDirection: "row",
-      gap: 7,
-      paddingHorizontal: 16,
+      gap: 6,
+      paddingHorizontal: 12,
       paddingVertical: 11,
     },
-    quickLinkText: { color: c.onPrimary, fontSize: 14, fontWeight: "800" },
+    quickLinkText: { color: c.onPrimary, fontSize: 13, fontWeight: "800" },
     quickLinks: {
       bottom: 14,
       flexDirection: "row",
-      gap: 10,
-      justifyContent: "space-between",
+      flexWrap: "wrap",
+      gap: 8,
+      justifyContent: "center",
       left: 18,
       position: "absolute",
       right: 18,

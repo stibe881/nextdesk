@@ -145,3 +145,24 @@ Deno.test(
     assertEquals(result.agents.total.firstResponseSlaCompliance, 50);
   },
 );
+
+Deno.test("themes count categories and subject words against the previous period", async () => {
+  const { buildThemes, buildRequesterDepartments } = await import("./insights.ts");
+  const current = { startsAt: "2026-10-01T00:00:00Z", endsAt: "2026-10-31T23:59:59Z" };
+  const previous = { startsAt: "2026-09-01T00:00:00Z", endsAt: "2026-09-30T23:59:59Z" };
+  const tickets = [
+    { id: "1", createdAt: "2026-10-02T08:00:00Z", resolvedAt: "2026-10-02T10:00:00Z", subject: "Drucker druckt nicht", categoryName: "Drucker", requesterDepartment: "Pflege" },
+    { id: "2", createdAt: "2026-10-03T08:00:00Z", resolvedAt: null, subject: "Drucker Papierstau", categoryName: "Drucker", requesterDepartment: "Pflege" },
+    { id: "3", createdAt: "2026-10-04T08:00:00Z", resolvedAt: null, subject: "Passwort vergessen", categoryName: null, requesterDepartment: null },
+    { id: "4", createdAt: "2026-09-04T08:00:00Z", resolvedAt: "2026-09-05T08:00:00Z", subject: "Drucker kaputt", categoryName: "Drucker", requesterDepartment: "Pflege" },
+  ];
+  const themes = buildThemes({ current, previous, tickets });
+  if (themes.total !== 3 || themes.categories[0].name !== "Drucker" || themes.categories[0].count !== 2 || themes.categories[0].previous !== 1)
+    throw new Error(JSON.stringify(themes.categories));
+  if (themes.keywords[0]?.name !== "drucker" || themes.keywords[0].count !== 2)
+    throw new Error(JSON.stringify(themes.keywords));
+  const departments = buildRequesterDepartments({ current, previous, tickets });
+  const pflege = departments.find((entry) => entry.name === "Pflege");
+  if (!pflege || pflege.received !== 2 || pflege.previous !== 1 || pflege.resolved !== 1 || pflege.open !== 1)
+    throw new Error(JSON.stringify(departments));
+});

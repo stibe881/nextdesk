@@ -1,5 +1,10 @@
 import { supabase } from "./supabase";
 import { parseTicketSearch } from "./ticket-search";
+import {
+  mergeDrilldownArguments,
+  ticketDrilldownRpcArguments,
+  type TicketDrilldown,
+} from "./ticket-drilldown";
 import type {
   DashboardMetrics,
   DashboardTicket,
@@ -46,10 +51,14 @@ export type LiveTicketScope =
   "all" | "mine" | "unassigned" | "open" | "closed" | "delegated";
 
 export type LiveTicketListControls = {
+  /** Report drilldown («Aus Bericht: …»), filtered server-side. */
+  drilldown?: TicketDrilldown | null;
   metricTicketIds: string[] | null;
   query: string;
   queue: string;
   scope: LiveTicketScope;
+  /** Support level queue (1st/2nd/3rd Level); null or missing = all. */
+  supportLevel?: 1 | 2 | 3 | null;
 };
 
 export interface LiveDashboardSnapshot {
@@ -197,7 +206,7 @@ export function ticketListRpcArguments(
         ? activeRefinement.agent
         : null;
 
-  return {
+  const base = {
     p_assigned_agent_id: selectedAgentId,
     p_agent_sort_order: agentSortOrder
       .filter((agentId) => UUID_PATTERN.test(agentId))
@@ -226,6 +235,14 @@ export function ticketListRpcArguments(
     p_status_ids: statusIds,
     p_tenant_id: tenantId,
   };
+  return mergeDrilldownArguments(
+    base,
+    ticketDrilldownRpcArguments(
+      activeControls.drilldown ?? null,
+      statuses,
+      priorities,
+    ),
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -522,19 +539,25 @@ export async function loadLiveDashboard(
   ]);
   // Avoid an unhandled rejection if the list query throws first.
   countsPromise.catch(() => undefined);
+  const supportLevel = ticketListControls?.supportLevel ?? null;
+  // v2 (0232) carries the report drilldown filters and the support level
+  // queue filter (0230) in one function.
   const ticketsResult = await client.rpc(
-    "list_authorized_ticket_list_page",
-    ticketListRpcArguments(
-      tenant.id,
-      ticketListRefinement,
-      user?.id,
-      statuses,
-      priorities,
-      departments,
-      ticketPage,
-      ticketListControls,
-      ticketAgents.map((agent) => agent.id),
-    ),
+    "list_authorized_ticket_list_page_v2",
+    {
+      ...ticketListRpcArguments(
+        tenant.id,
+        ticketListRefinement,
+        user?.id,
+        statuses,
+        priorities,
+        departments,
+        ticketPage,
+        ticketListControls,
+        ticketAgents.map((agent) => agent.id),
+      ),
+      ...(supportLevel ? { p_support_level: supportLevel } : {}),
+    },
   );
   if (ticketsResult.error) throw ticketsResult.error;
 

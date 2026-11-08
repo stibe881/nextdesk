@@ -1,4 +1,12 @@
+import { useTicketHoverPreview } from "./ticket-hover-preview";
 import {
+  AGENT_TOUR,
+  markTourSeen,
+  OnboardingTour,
+  tourSeen,
+} from "./onboarding-tour";
+import {
+  Fragment,
   useEffect,
   useMemo,
   useRef,
@@ -25,6 +33,7 @@ import {
   CalendarClock,
   CalendarDays,
   ChartNoAxesCombined,
+  Columns3,
   ChevronDown,
   ClipboardList,
   CircleCheck,
@@ -38,6 +47,7 @@ import {
   MessageSquareText,
   Minus,
   MonitorCog,
+  Network,
   Plus,
   Settings,
   SlidersHorizontal,
@@ -46,6 +56,7 @@ import {
   UsersRound,
   Boxes,
   ShoppingBag,
+  List,
   ListChecks,
   Package,
   X,
@@ -77,7 +88,13 @@ import {
   type TicketFilterCatalog,
   type TenantOption,
 } from "./lib/live-dashboard";
+import {
+  drilldownChipLabel,
+  normalizeTicketDrilldown,
+  type TicketDrilldown,
+} from "./lib/ticket-drilldown";
 import { createPersonalWorkspace, deleteAccount } from "./lib/account";
+import { assetIdFromSearch, rackFromSearch } from "./lib/asset-labels";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import { normalizeQueueSelection, shouldShowQueueTabs } from "./lib/queue-tabs";
 import {
@@ -94,6 +111,21 @@ import { KnowledgeBase } from "./knowledge-base";
 import { GlobalSearch, type GlobalSearchResult } from "./global-search";
 import { ServiceReporting } from "./service-reporting";
 import { TeamSupervision } from "./team-supervision";
+import { MyPrioritiesCard } from "./my-priorities";
+import { ProblemCandidates } from "./problem-insights";
+import { TicketKanban } from "./ticket-kanban";
+import { SupportLevelQueueFilter } from "./support-level-queue-filter";
+import {
+  supportLevelOfFilter,
+  type SupportLevelFilter,
+} from "./lib/support-levels";
+import { Infrastructure } from "./infrastructure";
+import {
+  HomeLayoutEditor,
+  loadHomeLayout,
+  saveHomeLayout,
+  type HomeLayout,
+} from "./home-layout";
 import { absenceLabel, loadActiveAbsences } from "./lib/active-absences";
 import { ServiceAssets } from "./service-assets";
 import {
@@ -186,6 +218,7 @@ type Section =
   | "Serviceaufgaben"
   | "Systemstatus"
   | "Assets"
+  | "Infrastruktur"
   | "Lager"
   | "Fälle"
   | "Verträge"
@@ -285,6 +318,9 @@ type SavedTicketView = {
   id: string;
   name: string;
   ownerId: string;
+  ownerName?: string | null;
+  sharedDepartmentId?: string | null;
+  sharedDepartmentName?: string | null;
   updatedAt: string;
   visibility: "private";
 };
@@ -320,6 +356,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Services", Icon: MonitorCog },
     { label: "Serviceaufgaben", Icon: ListChecks },
     { label: "Assets", Icon: Boxes },
+    { label: "Infrastruktur", Icon: Network },
     { label: "Lager", Icon: Boxes },
     { label: "Systemstatus", Icon: CircleCheck },
     { label: "Raumplanung", Icon: CalendarDays },
@@ -354,7 +391,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "DIENSTE & ÜBERWACHUNG",
     id: "navigation-category-services",
     navigationLabel: "Dienste und Überwachung",
-    sectionLabels: ["Services", "Systemstatus"],
+    sectionLabels: ["Services", "Infrastruktur", "Systemstatus"],
   },
 ] as const satisfies readonly {
   heading: string;
@@ -859,6 +896,15 @@ function savedTicketViewFromValue(value: unknown): SavedTicketView | null {
     id: value.id,
     name: value.name,
     ownerId: value.ownerId,
+    ownerName: typeof value.ownerName === "string" ? value.ownerName : null,
+    sharedDepartmentId:
+      typeof value.sharedDepartmentId === "string"
+        ? value.sharedDepartmentId
+        : null,
+    sharedDepartmentName:
+      typeof value.sharedDepartmentName === "string"
+        ? value.sharedDepartmentName
+        : null,
     updatedAt: value.updatedAt,
     visibility: value.visibility,
   };
@@ -988,6 +1034,15 @@ function notificationTicketNumber(
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return notification.ticket?.ticketNumber ?? null;
+}
+
+function notificationPayloadNumber(
+  notification: NotificationItem,
+  key: string,
+): number | null {
+  if (!isRecord(notification.payload)) return null;
+  const value = notification.payload[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function notificationPayloadText(
@@ -1142,6 +1197,12 @@ function baseNotificationPresentation(
         Icon: MessageSquareText,
         title: "Antwort vom Support",
       };
+    case "ticket.requester_reminder":
+      return {
+        description: `${ticketLabel} wartet auf Ihre Rückmeldung. Ist Ihr Problem gelöst?`,
+        Icon: MessageSquareText,
+        title: "Erinnerung: Ihre Rückmeldung fehlt",
+      };
     case "ticket.mention":
       return {
         description: `Du wurdest in ${ticketLabel} erwähnt.`,
@@ -1196,6 +1257,128 @@ function baseNotificationPresentation(
         title: "Antwort auf deine Anfrage",
       };
     }
+    case "infrastructure.due": {
+      const asset =
+        notificationPayloadText(notification, "assetName", 200) ?? "Ein Gerät";
+      const reason = notificationPayloadText(notification, "reason", 40);
+      const dueOn = notificationPayloadText(notification, "dueOn", 20);
+      const what =
+        reason === "warranty"
+          ? "Die Garantie"
+          : reason === "support"
+            ? "Der Herstellersupport"
+            : reason === "end_of_life"
+              ? "Das End of Life"
+              : "Die Wartung";
+      const date = dueOn
+        ? new Date(`${dueOn}T00:00:00`).toLocaleDateString("de-CH")
+        : "bald";
+      return {
+        description: `${what} von ${asset} ist am ${date} fällig.`,
+        Icon: AlertTriangle,
+        title: "Infrastruktur: Fälligkeit",
+      };
+    }
+    case "problem.recurring_detected": {
+      const asset =
+        notificationPayloadText(notification, "assetName", 200) ?? "Ein Gerät";
+      const count = notificationPayloadNumber(notification, "alertCount");
+      return {
+        description: `${asset} hatte ${count ?? "mehrere"} Störungen in 30 Tagen. Ein Problemfall wurde eröffnet.`,
+        Icon: AlertTriangle,
+        title: "Wiederkehrende Störung",
+      };
+    }
+    case "ticket.children_done": {
+      const childCount = notificationPayloadNumber(notification, "childCount");
+      return {
+        description:
+          childCount && childCount > 1
+            ? `Alle ${childCount} Teil-Tickets von ${ticketLabel} sind erledigt. Das Hauptticket kann jetzt abgeschlossen werden.`
+            : `Die Teil-Tickets von ${ticketLabel} sind erledigt. Das Hauptticket kann jetzt abgeschlossen werden.`,
+        Icon: CheckCircle2,
+        title: "Teil-Tickets erledigt",
+      };
+    }
+    case "ticket.kudos": {
+      const rawName = notificationPayloadText(
+        notification,
+        "requesterName",
+        120,
+      );
+      const name =
+        rawName && !rawName.includes("@") ? rawName : "Die meldende Person";
+      const score = notificationPayloadNumber(notification, "score");
+      const excerpt = notificationPayloadText(notification, "excerpt", 200);
+      return {
+        description: `${name} hat ${ticketLabel} ${score ? `mit ${score}/5 ` : ""}bewertet${excerpt ? `: «${excerpt}»` : "."}`,
+        Icon: BadgeCheck,
+        title: "Lob von Kund:innen",
+      };
+    }
+    case "ticket.vendor_reminder": {
+      const vendor =
+        notificationPayloadText(notification, "vendorName", 160) ??
+        "Der Drittanbieter";
+      const caseNumber = notificationPayloadText(
+        notification,
+        "externalCaseNumber",
+        120,
+      );
+      const silentSince = notificationPayloadDateTime(
+        notification,
+        "silentSince",
+      );
+      return {
+        description: `${vendor}${caseNumber ? ` (Fall ${caseNumber})` : ""} hat sich zu ${ticketLabel} ${silentSince ? `seit ${notificationTime(silentSince)} ` : ""}nicht mehr gemeldet. Bitte nachfassen.`,
+        Icon: CalendarClock,
+        title: "Drittanbieter nachfassen",
+      };
+    }
+    case "ticket.rule_reminder": {
+      const rule =
+        notificationPayloadText(notification, "ruleName", 160) ?? "Regel";
+      return {
+        description: `${ticketLabel}: ausgelöst durch die Regel «${rule}».`,
+        Icon: AlertTriangle,
+        title: "Erinnerung aus Regel",
+      };
+    }
+    case "maintenance.upcoming": {
+      const title =
+        notificationPayloadText(notification, "title", 200) ?? "Wartung";
+      const startsAt = notificationPayloadText(notification, "startsAt", 40);
+      const services = notificationPayloadText(notification, "services", 400);
+      const when = startsAt
+        ? new Intl.DateTimeFormat("de-CH", {
+            dateStyle: "short",
+            timeStyle: "short",
+            timeZone: "Europe/Zurich",
+          }).format(new Date(startsAt))
+        : "demnächst";
+      return {
+        description: `${title} beginnt am ${when}${services ? `. Betroffen: ${services}` : ""}.`,
+        Icon: CalendarClock,
+        title: "Geplante Wartung",
+      };
+    }
+    case "team.overload": {
+      const agent =
+        notificationPayloadText(notification, "agentName", 120) ??
+        "Ein Teammitglied";
+      const department = notificationPayloadText(
+        notification,
+        "departmentName",
+        120,
+      );
+      const open = notificationPayloadNumber(notification, "openTickets");
+      const overdue = notificationPayloadNumber(notification, "overdueTickets");
+      return {
+        description: `${agent}${department ? ` (${department})` : ""} trägt ${open ?? "viele"} offene Tickets${overdue ? `, davon ${overdue} mit überschrittener SLA` : ""}. Prüfen Sie eine Umverteilung.`,
+        Icon: AlertTriangle,
+        title: "Frühwarnung: Überlastung",
+      };
+    }
     case "ticket.watch.status": {
       const status = notificationPayloadText(notification, "statusLabel", 80);
       const actor = notificationPayloadText(notification, "actorName", 120);
@@ -1242,6 +1425,14 @@ function baseNotificationPresentation(
         Icon: ArrowUp,
         title: "Ticket eskaliert",
       };
+    case "ticket.security_report": {
+      const risk = notificationPayloadText(notification, "riskLabel", 20);
+      return {
+        description: `Eine verdächtige E-Mail wurde gemeldet (${ticketLabel}${risk ? `, Risiko ${risk}` : ""}).`,
+        Icon: AlertTriangle,
+        title: "Phishing-Meldung",
+      };
+    }
     case "ticket.sla.supervisor_risk": {
       const agent = notificationPayloadText(notification, "agentName", 200);
       return {
@@ -1306,11 +1497,32 @@ function baseNotificationPresentation(
           "shop.order.rejected": "Bestellung abgelehnt",
           "shop.order.cancelled": "Bestellung storniert",
           "shop.order.note": "Nachricht zur Bestellung",
+          "shop.order.software_assigned": "Software zugewiesen",
+          "shop.order.software_failed": "Software-Zuweisung fehlgeschlagen",
         };
         return {
           description: `Shop · Bestellung ${orderNumber}`.trim(),
           Icon: ShoppingBag,
           title: shopTitles[notification.kind] ?? "Shop",
+        };
+      }
+      if (notification.kind === "license.reclaim_candidates") {
+        const payload = isRecord(notification.payload)
+          ? notification.payload
+          : {};
+        const count = typeof payload.count === "number" ? payload.count : 0;
+        const saving =
+          typeof payload.monthlySaving === "number" ? payload.monthlySaving : 0;
+        const currency =
+          typeof payload.currency === "string" ? payload.currency : "CHF";
+        return {
+          description: `${count} Lizenzplatz/-plätze ungenutzt${
+            saving > 0
+              ? ` · ca. ${currency} ${saving.toFixed(2)} pro Monat`
+              : ""
+          }. Siehe Lizenzen › Rückgewinnung.`,
+          Icon: Bell,
+          title: "Lizenzen zurückgewinnen",
         };
       }
       if (notification.kind.startsWith("service_task.")) {
@@ -2256,6 +2468,28 @@ const initialKnowledgeDeepLink: string | null = (() => {
   }
 })();
 
+// "?asset=<uuid>" and "?rack=<name>" are the web fallback of printed asset
+// labels (QR code). They open the asset list or the rack view.
+const initialAssetLabelDeepLink: {
+  assetId: string | null;
+  rack: string | null;
+} = (() => {
+  if (typeof window === "undefined") return { assetId: null, rack: null };
+  try {
+    const url = new URL(window.location.href);
+    const assetId = assetIdFromSearch(url.search);
+    const rack = assetId ? null : rackFromSearch(url.search);
+    if (url.searchParams.has("asset") || url.searchParams.has("rack")) {
+      url.searchParams.delete("asset");
+      url.searchParams.delete("rack");
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
+    return { assetId, rack };
+  } catch {
+    return { assetId: null, rack: null };
+  }
+})();
+
 function TicketList({
   assignment,
   loading = false,
@@ -2279,6 +2513,7 @@ function TicketList({
   onSelectionChange?: (ticketId: string, selected: boolean) => void;
   selectedTicketIds?: ReadonlySet<string>;
 }) {
+  const hoverPreview = useTicketHoverPreview();
   if (loading && tickets.length === 0) {
     return (
       <div className="ticket-list-skeleton" aria-busy="true" role="status">
@@ -2326,6 +2561,7 @@ function TicketList({
 
   return (
     <div className="ticket-list">
+      {hoverPreview.overlay}
       {tickets.map((ticket) => {
         const ticketId = ticket.recordId ?? ticket.id;
         const keyboardActive = keyboardActiveTicketId === ticketId;
@@ -2346,6 +2582,9 @@ function TicketList({
             }${keyboardActive ? " ticket-row--keyboard-active" : ""}`}
             id={onOpen ? `ticket-shortcut-${ticketId}` : undefined}
             key={ticket.id}
+            {...(onOpen
+              ? hoverPreview.bind(ticketId, `${ticket.id} · ${ticket.subject}`)
+              : {})}
             onClick={onOpen ? () => onOpen(ticketId) : undefined}
             onKeyDown={
               onOpen
@@ -2549,15 +2788,41 @@ function useDebouncedValue(value: string, delayMs: number): string {
 
 function AuthenticatedApp() {
   const [section, setRequestedSection] = useState<Section>("Übersicht");
+  const [tourOpen, setTourOpen] = useState(false);
   const [globalSearchTarget, setGlobalSearchTarget] =
     useState<GlobalSearchResult | null>(null);
   const [workplaceRequestedView, setWorkplaceRequestedView] =
     useState<WorkplaceRequestedView | null>(null);
   const [period, setPeriod] = useState<Period>("Heute");
   const [queue, setQueue] = useState("alle");
+  const [supportLevelFilter, setSupportLevelFilter] =
+    useState<SupportLevelFilter>("all");
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
   const [delegatedForIds, setDelegatedForIds] = useState<string[]>([]);
   // Departments the user supervises (role "Vorgesetzter Agent").
+  const [problemListVersion, setProblemListVersion] = useState(0);
+  const [homeLayout, setHomeLayout] = useState<HomeLayout>(loadHomeLayout);
+  const changeHomeLayout = (next: HomeLayout) => {
+    setHomeLayout(next);
+    saveHomeLayout(next);
+  };
+  const [ticketLayout, setTicketLayout] = useState<"list" | "kanban">(() => {
+    try {
+      return window.localStorage.getItem("nextdesk.ticketLayout") === "kanban"
+        ? "kanban"
+        : "list";
+    } catch {
+      return "list";
+    }
+  });
+  const changeTicketLayout = (layout: "list" | "kanban") => {
+    setTicketLayout(layout);
+    try {
+      window.localStorage.setItem("nextdesk.ticketLayout", layout);
+    } catch {
+      // Only a convenience; the list stays the default.
+    }
+  };
   const [supervisedDepartmentIds, setSupervisedDepartmentIds] = useState<
     string[]
   >([]);
@@ -2565,6 +2830,9 @@ function AuthenticatedApp() {
     useState<TicketListRefinement>(DEFAULT_TICKET_LIST_REFINEMENT);
   const [metricTicketFilter, setMetricTicketFilter] =
     useState<MetricTicketFilter | null>(null);
+  // «Aus Bericht: …»: drilldown from a report, filtered server-side.
+  const [reportDrilldown, setReportDrilldown] =
+    useState<TicketDrilldown | null>(null);
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 300);
   const [savedTicketViews, setSavedTicketViews] = useState<SavedTicketView[]>(
@@ -2791,6 +3059,7 @@ function AuthenticatedApp() {
 
   useEffect(() => {
     setMetricTicketFilter(null);
+    setReportDrilldown(null);
   }, [activeTenantId]);
 
   useEffect(() => {
@@ -3069,6 +3338,16 @@ function AuthenticatedApp() {
       canManageServiceStatus,
     });
   const knowledgeDeepLinkConsumedRef = useRef(false);
+  const assetLabelDeepLinkConsumedRef = useRef(false);
+  // Rack from a label QR code; only for the first visit of the rack view.
+  const [infrastructureRackFocus, setInfrastructureRackFocus] = useState<
+    string | null
+  >(initialAssetLabelDeepLink.rack);
+  useEffect(() => {
+    if (section !== "Infrastruktur" && assetLabelDeepLinkConsumedRef.current) {
+      setInfrastructureRackFocus(null);
+    }
+  }, [section]);
   const workspaceNavigationReady = isWorkspaceNavigationReady({
     activeTenantAvailable: activeTenant !== null,
     isSupabaseConfigured,
@@ -3093,6 +3372,22 @@ function AuthenticatedApp() {
       setKnowledgeFocusArticleId(initialKnowledgeDeepLink);
       setSection("Wissen");
       return;
+    }
+    // Asset label QR code (web fallback): open the asset or the rack.
+    if (!assetLabelDeepLinkConsumedRef.current) {
+      assetLabelDeepLinkConsumedRef.current = true;
+      if (initialAssetLabelDeepLink.assetId) {
+        setAssetFocusQuery({
+          query: initialAssetLabelDeepLink.assetId,
+          id: Date.now(),
+        });
+        setSection("Assets");
+        return;
+      }
+      if (initialAssetLabelDeepLink.rack) {
+        setSection("Infrastruktur");
+        return;
+      }
     }
     setSection(workspacePreferences.startSection);
   }, [
@@ -3618,8 +3913,10 @@ function AuthenticatedApp() {
     canWorkTickets,
     debouncedQuery,
     metricTicketFilter,
+    reportDrilldown,
     period,
     queue,
+    supportLevelFilter,
     ticketListRefinement,
     ticketScope,
   ]);
@@ -3628,6 +3925,7 @@ function AuthenticatedApp() {
     setSelectedTicketIds(new Set());
     setTicketActionStatus("");
     setSplitSelectedTicketId(null);
+    setSupportLevelFilter("all");
   }, [activeTenant?.id]);
 
   useEffect(() => {
@@ -3647,9 +3945,11 @@ function AuthenticatedApp() {
       ticketPage,
       ticketListRefinement,
       {
+        drilldown: reportDrilldown,
         metricTicketIds: metricTicketFilter?.ticketIds ?? null,
         query: debouncedQuery,
         queue,
+        supportLevel: supportLevelOfFilter(supportLevelFilter),
         // Employees see every ticket they may read: their own and those of
         // their direct reports.
         scope: canWorkTickets ? ticketScope : "all",
@@ -3713,9 +4013,11 @@ function AuthenticatedApp() {
     canWorkTickets,
     debouncedQuery,
     metricTicketFilter,
+    reportDrilldown,
     period,
     queue,
     session,
+    supportLevelFilter,
     ticketListRefinement,
     ticketPage,
     ticketScope,
@@ -3784,6 +4086,20 @@ function AuthenticatedApp() {
     setNotificationPanelOpen(true);
   }
 
+  const setSectionRef = useRef<(section: Section) => void>(() => {});
+  const navigateForTour = useMemo(
+    () => (target: string) => setSectionRef.current(target as Section),
+    [],
+  );
+
+  // New agents see the introduction once (per browser and person).
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!userId || !canWorkTickets || tourSeen(userId)) return;
+    setTourOpen(true);
+    markTourSeen(userId, true);
+  }, [canWorkTickets, session?.user.id]);
+
   function setSection(requestedSection: Section) {
     // "Mein Portal" is now the "Mein Bereich" view of the workplace.
     if (requestedSection === "Mein Portal") {
@@ -3807,6 +4123,7 @@ function AuthenticatedApp() {
     }
     setRequestedSection(nextSection);
   }
+  setSectionRef.current = setSection;
 
   async function handleNotificationClick(notification: NotificationItem) {
     if (!supabase) return;
@@ -3843,6 +4160,18 @@ function AuthenticatedApp() {
       setNotificationPanelOpen(false);
     } else if (notification.kind.startsWith("shop.order.")) {
       setSection("Shop");
+      setNotificationPanelOpen(false);
+    } else if (notification.kind === "team.overload") {
+      setSection("Teamführung");
+      setNotificationPanelOpen(false);
+    } else if (notification.kind === "problem.recurring_detected") {
+      setSection("Fälle");
+      setNotificationPanelOpen(false);
+    } else if (notification.kind === "maintenance.upcoming") {
+      setSection("Systemstatus");
+      setNotificationPanelOpen(false);
+    } else if (notification.kind === "infrastructure.due") {
+      setSection("Infrastruktur");
       setNotificationPanelOpen(false);
     } else if (notification.kind.startsWith("service_task.")) {
       const occurrenceId = notificationPayloadText(
@@ -4218,6 +4547,7 @@ function AuthenticatedApp() {
     view.tickets.filter((ticket) => ticket.queue === queueKey).length;
   const openTicketScope = (scope: TicketScope) => {
     setMetricTicketFilter(null);
+    setReportDrilldown(null);
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setTicketScope(canWorkTickets ? scope : "mine");
     setQueue("alle");
@@ -4239,6 +4569,7 @@ function AuthenticatedApp() {
       return;
     }
     setMetricTicketFilter(null);
+    setReportDrilldown(null);
     setQuery("");
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue(department.key);
@@ -4269,6 +4600,7 @@ function AuthenticatedApp() {
   const clearTicketFilters = () => {
     clearTicketSelection();
     setMetricTicketFilter(null);
+    setReportDrilldown(null);
     setQuery("");
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue("alle");
@@ -4284,9 +4616,25 @@ function AuthenticatedApp() {
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue("alle");
     setTicketScope(canWorkTickets ? "all" : "mine");
+    setReportDrilldown(null);
     setMetricTicketFilter(filter);
     setSection("Tickets");
     setSplitSelectedTicketId(null);
+  };
+  /** Report drilldown: opens the ticket list with only the report filter. */
+  const openReportDrilldown = (drilldown: TicketDrilldown) => {
+    const normalized = normalizeTicketDrilldown(drilldown);
+    if (!normalized) return;
+    clearTicketSelection();
+    setQuery("");
+    setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
+    setQueue("alle");
+    setTicketScope(canWorkTickets ? "all" : "mine");
+    setMetricTicketFilter(null);
+    setReportDrilldown(normalized);
+    setSelectedTicketId(null);
+    setSplitSelectedTicketId(null);
+    setSection("Tickets");
   };
   const ticketScopeLabel: Record<TicketScope, string> = {
     all: "Alle sichtbaren Tickets",
@@ -4334,6 +4682,9 @@ function AuthenticatedApp() {
     ) {
       return isFeatureEnabled("assets.management");
     }
+    if (item.label === "Infrastruktur") {
+      return isFeatureEnabled("assets.management");
+    }
     if (item.label === "Lager") return isFeatureEnabled("inventory.management");
     if (item.label === "Shop") return isFeatureEnabled("self_service.shop");
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
@@ -4369,6 +4720,7 @@ function AuthenticatedApp() {
   // inventory or workplace; the status is a badge on top of the menu.
   const employeeHiddenSections: readonly Section[] = [
     "Raumplanung",
+    "Infrastruktur",
     "Lager",
     "Arbeitsplatz",
     "Systemstatus",
@@ -4939,6 +5291,7 @@ function AuthenticatedApp() {
         <OwnerConsoleScreen
           onOpenTenant={(tenantId) => {
             setMetricTicketFilter(null);
+            setReportDrilldown(null);
             activateTenant(tenantId);
             setOwnerView("tenant");
           }}
@@ -5343,6 +5696,7 @@ function AuthenticatedApp() {
                   <select
                     onChange={(event) => {
                       setMetricTicketFilter(null);
+                      setReportDrilldown(null);
                       activateTenant(event.target.value);
                     }}
                     value={activeTenantId}
@@ -5448,6 +5802,25 @@ function AuthenticatedApp() {
                     return;
                   }
                   setSection(sectionFromGlobalSearchResult(result));
+                }}
+                onSelectRecent={(item) => {
+                  setGlobalSearchTarget(null);
+                  if (item.itemType === "ticket") {
+                    setSection("Tickets");
+                    setSelectedTicketId(item.itemId);
+                    return;
+                  }
+                  if (!canWorkTickets) return;
+                  setSelectedTicketId(null);
+                  if (item.itemType === "knowledge_article") {
+                    setKnowledgeFocusArticleId(item.itemId);
+                    setSection("Wissen");
+                    return;
+                  }
+                  if (isFeatureEnabled("assets.management")) {
+                    setAssetFocusQuery({ query: item.title, id: Date.now() });
+                    setSection("Assets");
+                  }
                 }}
                 scope={
                   canWorkTickets || eventSpaceNavigationAccess
@@ -5646,6 +6019,7 @@ function AuthenticatedApp() {
                 setTenantFeatureRevision((revision) => revision + 1)
               }
               onClose={() => setSection("Übersicht")}
+              onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
               tenantId={activeTenant.id}
             />
           </>
@@ -5664,6 +6038,7 @@ function AuthenticatedApp() {
                 : knowledgeFocusArticleId
             }
             onCreateArticleRequestConsumed={consumeQuickCreateRequest}
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             readOnly={isSupabaseConfigured && !canWorkTickets}
             tenantId={activeTenant.id}
           />
@@ -5694,6 +6069,22 @@ function AuthenticatedApp() {
             assetQueryRequest={assetFocusQuery ?? undefined}
             fixedTab="assets"
             key={`service-assets:${activeTenant.id}:assets`}
+            labelBranding={{
+              name: workspaceBrandName,
+              logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
+            }}
+            tenantId={activeTenant.id}
+          />
+        ) : section === "Infrastruktur" &&
+          activeTenant &&
+          isFeatureEnabled("assets.management") ? (
+          <Infrastructure
+            initialRack={infrastructureRackFocus ?? undefined}
+            labelBranding={{
+              name: workspaceBrandName,
+              logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
+            }}
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             tenantId={activeTenant.id}
           />
         ) : section === "Lager" &&
@@ -5779,17 +6170,24 @@ function AuthenticatedApp() {
         ) : section === "Fälle" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
-          <ServiceAssets
-            createProblemRequestId={
-              activeQuickCreateRequest?.action === "problem"
-                ? activeQuickCreateRequest.id
-                : undefined
-            }
-            fixedTab="problems"
-            key={`service-assets:${activeTenant.id}:problems`}
-            onCreateProblemRequestConsumed={consumeQuickCreateRequest}
-            tenantId={activeTenant.id}
-          />
+          <>
+            <ProblemCandidates
+              onCreated={() => setProblemListVersion((current) => current + 1)}
+              onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
+              tenantId={activeTenant.id}
+            />
+            <ServiceAssets
+              createProblemRequestId={
+                activeQuickCreateRequest?.action === "problem"
+                  ? activeQuickCreateRequest.id
+                  : undefined
+              }
+              fixedTab="problems"
+              key={`service-assets:${activeTenant.id}:problems:${problemListVersion}`}
+              onCreateProblemRequestConsumed={consumeQuickCreateRequest}
+              tenantId={activeTenant.id}
+            />
+          </>
         ) : section === "Teamführung" &&
           activeTenant &&
           supervisedDepartmentIds.length > 0 ? (
@@ -5797,10 +6195,12 @@ function AuthenticatedApp() {
             onOpenTicket={(ticketId) => {
               setSelectedTicketId(ticketId);
             }}
+            onOpenTicketList={openReportDrilldown}
             tenantId={activeTenant.id}
           />
         ) : section === "Berichte" && activeTenant && reportsAvailable ? (
           <ServiceReporting
+            onOpenTicketList={openReportDrilldown}
             branding={{
               accentColor: activeWorkspaceBranding?.accentColor ?? "#075985",
               logoUrl: workspaceBrandLogo,
@@ -5902,7 +6302,9 @@ function AuthenticatedApp() {
                   <p className="eyebrow">Autorisierte Vorgänge</p>
                   <h2>
                     {metricTicketFilter?.label ??
-                      ticketScopeLabel[effectiveTicketScope]}
+                      (reportDrilldown
+                        ? "Tickets aus Bericht"
+                        : ticketScopeLabel[effectiveTicketScope])}
                   </h2>
                 </div>
                 <div className="ticket-list-heading-actions">
@@ -5919,7 +6321,11 @@ function AuthenticatedApp() {
                 loading={dashboardMetricsLoading}
                 metrics={view.metrics}
                 onOpenScope={openTicketScope}
-                selectedScope={metricTicketFilter ? null : effectiveTicketScope}
+                selectedScope={
+                  metricTicketFilter || reportDrilldown
+                    ? null
+                    : effectiveTicketScope
+                }
                 trends={dashboardTrends}
               />
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
@@ -5934,6 +6340,7 @@ function AuthenticatedApp() {
                   onSavedViewApply={(filters) => {
                     clearTicketSelection();
                     setMetricTicketFilter(null);
+                    setReportDrilldown(null);
                     setQuery(filters.query);
                     setQueue(filters.queue);
                     setTicketScope(filters.ticketScope);
@@ -5994,12 +6401,39 @@ function AuthenticatedApp() {
                 setQueue={setQueue}
               />
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
+                <SupportLevelQueueFilter
+                  onChange={setSupportLevelFilter}
+                  tenantId={activeTenant.id}
+                  value={supportLevelFilter}
+                />
+              )}
+              {activeTenant && isSupabaseConfigured && canWorkTickets && (
                 <TicketListIncidentHint
                   onShowTickets={(incident, label) =>
                     openMetricTickets({ label, ticketIds: incident.ticketIds })
                   }
                   tenantId={activeTenant.id}
                 />
+              )}
+              {reportDrilldown && (
+                <div
+                  aria-label="Filter aus Bericht"
+                  className="ticket-drilldown-chips"
+                  role="group"
+                >
+                  <span className="ticket-drilldown-chip">
+                    <span>{drilldownChipLabel(reportDrilldown)}</span>
+                    <button
+                      aria-label={`Filter «${drilldownChipLabel(reportDrilldown)}» entfernen`}
+                      className="ticket-drilldown-chip__remove"
+                      onClick={() => setReportDrilldown(null)}
+                      title="Filter entfernen"
+                      type="button"
+                    >
+                      <X aria-hidden="true" size={14} strokeWidth={2.2} />
+                    </button>
+                  </span>
+                </div>
               )}
               {metricTicketFilter && (
                 <div className="ticket-search-summary ticket-metrics-filter">
@@ -6064,73 +6498,113 @@ function AuthenticatedApp() {
                   Einige Tickets sind in der aktuellen Liste nicht geladen.
                 </p>
               )}
-              <div
-                className={
-                  workspacePreferences.ticketSplitView &&
-                  isSupabaseConfigured &&
-                  canWorkTickets
-                    ? "ticket-list-detail ticket-list-detail--enabled"
-                    : "ticket-list-detail"
-                }
-              >
-                <div className="ticket-list-detail__list">
-                  <TicketList
-                    {...(isSupabaseConfigured && canWorkTickets && activeTenant
-                      ? {
-                          assignment: {
-                            currentUserId: session?.user.id ?? null,
-                            onChanged: () =>
-                              setDashboardRevision((current) => current + 1),
-                            tenantId: activeTenant.id,
-                          },
-                        }
-                      : {})}
-                    {...(isSupabaseConfigured && canWorkTickets
-                      ? {
-                          onOpen: openTicketFromList,
-                          onSelectionChange: updateTicketSelection,
-                          selectedTicketIds,
-                        }
-                      : isSupabaseConfigured
-                        ? { onOpen: setSelectedTicketId }
+              {isSupabaseConfigured && canWorkTickets && activeTenant ? (
+                <div
+                  aria-label="Darstellung der Tickets"
+                  className="ticket-layout-switch"
+                  role="group"
+                >
+                  {(["list", "kanban"] as const).map((layout) => (
+                    <button
+                      aria-pressed={ticketLayout === layout}
+                      className={ticketLayout === layout ? "is-active" : ""}
+                      key={layout}
+                      onClick={() => changeTicketLayout(layout)}
+                      type="button"
+                    >
+                      {layout === "list" ? (
+                        <List aria-hidden="true" size={15} />
+                      ) : (
+                        <Columns3 aria-hidden="true" size={15} />
+                      )}
+                      {layout === "list" ? "Liste" : "Kanban"}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {ticketLayout === "kanban" &&
+              isSupabaseConfigured &&
+              canWorkTickets &&
+              activeTenant ? (
+                <TicketKanban
+                  onChanged={() =>
+                    setDashboardRevision((current) => current + 1)
+                  }
+                  onOpen={(ticketId) => setSelectedTicketId(ticketId)}
+                  tenantId={activeTenant.id}
+                  tickets={filteredTickets}
+                />
+              ) : (
+                <div
+                  className={
+                    workspacePreferences.ticketSplitView &&
+                    isSupabaseConfigured &&
+                    canWorkTickets
+                      ? "ticket-list-detail ticket-list-detail--enabled"
+                      : "ticket-list-detail"
+                  }
+                >
+                  <div className="ticket-list-detail__list">
+                    <TicketList
+                      {...(isSupabaseConfigured &&
+                      canWorkTickets &&
+                      activeTenant
+                        ? {
+                            assignment: {
+                              currentUserId: session?.user.id ?? null,
+                              onChanged: () =>
+                                setDashboardRevision((current) => current + 1),
+                              tenantId: activeTenant.id,
+                            },
+                          }
                         : {})}
-                    {...(query.trim() ||
-                    queue !== "alle" ||
-                    (canWorkTickets && ticketScope !== "all") ||
-                    metricTicketFilter ||
-                    hasTicketListRefinement
-                      ? { onClearFilters: clearTicketFilters }
-                      : {})}
-                    hasActiveFilters={Boolean(
-                      query.trim() ||
+                      {...(isSupabaseConfigured && canWorkTickets
+                        ? {
+                            onOpen: openTicketFromList,
+                            onSelectionChange: updateTicketSelection,
+                            selectedTicketIds,
+                          }
+                        : isSupabaseConfigured
+                          ? { onOpen: setSelectedTicketId }
+                          : {})}
+                      {...(query.trim() ||
                       queue !== "alle" ||
                       (canWorkTickets && ticketScope !== "all") ||
                       metricTicketFilter ||
-                      hasTicketListRefinement,
-                    )}
-                    keyboardActiveTicketId={keyboardActiveTicketId}
-                    loading={dashboardLoading && snapshot === null}
-                    {...(activeTenant
-                      ? { onCreateTicket: () => setTicketComposerOpen(true) }
-                      : {})}
-                    tickets={filteredTickets}
-                  />
-                </div>
-                {workspacePreferences.ticketSplitView &&
-                  isSupabaseConfigured &&
-                  canWorkTickets && (
-                    <TicketListDetailPreview
-                      onOpenFull={() =>
-                        splitSelectedTicket &&
-                        setSelectedTicketId(
-                          splitSelectedTicket.recordId ??
-                            splitSelectedTicket.id,
-                        )
-                      }
-                      ticket={splitSelectedTicket}
+                      hasTicketListRefinement
+                        ? { onClearFilters: clearTicketFilters }
+                        : {})}
+                      hasActiveFilters={Boolean(
+                        query.trim() ||
+                        queue !== "alle" ||
+                        (canWorkTickets && ticketScope !== "all") ||
+                        metricTicketFilter ||
+                        hasTicketListRefinement,
+                      )}
+                      keyboardActiveTicketId={keyboardActiveTicketId}
+                      loading={dashboardLoading && snapshot === null}
+                      {...(activeTenant
+                        ? { onCreateTicket: () => setTicketComposerOpen(true) }
+                        : {})}
+                      tickets={filteredTickets}
                     />
-                  )}
-              </div>
+                  </div>
+                  {workspacePreferences.ticketSplitView &&
+                    isSupabaseConfigured &&
+                    canWorkTickets && (
+                      <TicketListDetailPreview
+                        onOpenFull={() =>
+                          splitSelectedTicket &&
+                          setSelectedTicketId(
+                            splitSelectedTicket.recordId ??
+                              splitSelectedTicket.id,
+                          )
+                        }
+                        ticket={splitSelectedTicket}
+                      />
+                    )}
+                </div>
+              )}
               {isSupabaseConfigured && view.hasMoreTickets && (
                 <div className="ticket-load-more">
                   <button
@@ -6184,134 +6658,183 @@ function AuthenticatedApp() {
               </div>
             </section>
 
-            <TicketScopeMetricTiles
-              canWorkTickets={canWorkTickets}
-              delegatedForNames={delegatedForNames}
-              loading={dashboardMetricsLoading}
-              metrics={view.metrics}
-              onOpenScope={openTicketScope}
-              selectedScope={null}
-              trends={dashboardTrends}
-            />
+            <HomeLayoutEditor layout={homeLayout} onChange={changeHomeLayout} />
+            {homeLayout.hidden.includes("metrics") ? null : (
+              <TicketScopeMetricTiles
+                canWorkTickets={canWorkTickets}
+                delegatedForNames={delegatedForNames}
+                loading={dashboardMetricsLoading}
+                metrics={view.metrics}
+                onOpenScope={openTicketScope}
+                selectedScope={null}
+                trends={dashboardTrends}
+              />
+            )}
 
-            <section className="content-grid">
-              <article className="ticket-panel panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">Aktive Arbeit</p>
-                    <h2>Priorisierte Tickets</h2>
-                  </div>
-                  <button
-                    className="text-button"
-                    onClick={() => setSection("Tickets")}
-                    type="button"
-                  >
-                    Alle Tickets
-                    <ArrowRight
-                      aria-hidden="true"
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                  </button>
-                </div>
-                <QueueTabs
-                  queue={queue}
-                  queueCount={queueCount}
-                  queueOptions={queueOptions}
-                  setQueue={setQueue}
-                />
-                {view.ticketListNote && (
-                  <p className="list-note">{view.ticketListNote}</p>
-                )}
-                <TicketList
-                  {...(isSupabaseConfigured
-                    ? { onOpen: setSelectedTicketId }
-                    : {})}
-                  {...(isSupabaseConfigured && canWorkTickets && activeTenant
-                    ? {
-                        assignment: {
-                          currentUserId: session?.user.id ?? null,
-                          onChanged: () =>
-                            setDashboardRevision((current) => current + 1),
-                          tenantId: activeTenant.id,
-                        },
-                      }
-                    : {})}
-                  keyboardActiveTicketId={keyboardActiveTicketId}
-                  {...(activeTenant
-                    ? { onCreateTicket: () => setTicketComposerOpen(true) }
-                    : {})}
-                  tickets={filteredTickets}
-                />
-              </article>
-
-              <aside className="side-stack">
-                {activeTenant && isFeatureEnabled("ticketing.detail") && (
-                  <ApprovalInboxCard
-                    onOpenTicket={(ticketId) => {
-                      setSection("Tickets");
-                      setSelectedTicketId(ticketId);
-                    }}
-                    tenantId={activeTenant.id}
-                  />
-                )}
-                {activeTenant && agentWorkbenchEnabled && (
-                  <AgentMetricsCard
-                    onOpenTickets={openMetricTickets}
-                    tenantId={activeTenant.id}
-                  />
-                )}
-                {activeTenant &&
-                  canWorkTickets &&
-                  experienceWorkspaceEnabled && (
-                    <MyDayCard
-                      onOpenFollowUps={() => {
-                        setWorkplaceRequestedView("followUps");
-                        setSection("Arbeitsplatz");
-                      }}
-                      onOpenTicket={(ticketId) => {
-                        setSection("Tickets");
-                        setSelectedTicketId(ticketId);
-                      }}
-                      refreshKey={experienceFollowUpsRevision}
-                      tenantId={activeTenant.id}
-                      tickets={view.tickets}
-                    />
-                  )}
-                <article className="panel activity-panel">
+            <section
+              className={`content-grid${homeLayout.hidden.includes("tickets") ? " content-grid--no-tickets" : ""}`}
+            >
+              {homeLayout.hidden.includes("tickets") ? null : (
+                <article className="ticket-panel panel">
                   <div className="panel-heading">
                     <div>
-                      <p className="eyebrow">Ereignisse</p>
-                      <h2>Gerade passiert</h2>
+                      <p className="eyebrow">Aktive Arbeit</p>
+                      <h2>Priorisierte Tickets</h2>
                     </div>
+                    <button
+                      className="text-button"
+                      onClick={() => setSection("Tickets")}
+                      type="button"
+                    >
+                      Alle Tickets
+                      <ArrowRight
+                        aria-hidden="true"
+                        size={16}
+                        strokeWidth={1.8}
+                      />
+                    </button>
                   </div>
-                  {view.activity.length === 0 ? (
-                    <p className="empty-state">
-                      Keine autorisierten Ereignisse im gewählten Zeitraum.
-                    </p>
-                  ) : (
-                    <ol>
-                      {view.activity.map((item) => (
-                        <li key={`${item.time}-${item.text}`}>
-                          <time>{item.time}</time>
-                          <span
-                            className={
-                              item.tone === "critical"
-                                ? "activity-marker critical"
-                                : "activity-marker"
-                            }
-                          />
-                          <p>{item.text}</p>
-                        </li>
-                      ))}
-                    </ol>
+                  <QueueTabs
+                    queue={queue}
+                    queueCount={queueCount}
+                    queueOptions={queueOptions}
+                    setQueue={setQueue}
+                  />
+                  {view.ticketListNote && (
+                    <p className="list-note">{view.ticketListNote}</p>
                   )}
+                  <TicketList
+                    {...(isSupabaseConfigured
+                      ? { onOpen: setSelectedTicketId }
+                      : {})}
+                    {...(isSupabaseConfigured && canWorkTickets && activeTenant
+                      ? {
+                          assignment: {
+                            currentUserId: session?.user.id ?? null,
+                            onChanged: () =>
+                              setDashboardRevision((current) => current + 1),
+                            tenantId: activeTenant.id,
+                          },
+                        }
+                      : {})}
+                    keyboardActiveTicketId={keyboardActiveTicketId}
+                    {...(activeTenant
+                      ? { onCreateTicket: () => setTicketComposerOpen(true) }
+                      : {})}
+                    tickets={filteredTickets}
+                  />
                 </article>
+              )}
+
+              <aside className="side-stack">
+                {homeLayout.order
+                  .filter((key) => !homeLayout.hidden.includes(key))
+                  .map((key) => (
+                    <Fragment key={key}>
+                      {key === "myPriorities" ? (
+                        <>
+                          {activeTenant && canWorkTickets && (
+                            <MyPrioritiesCard
+                              onOpenTicket={(ticketId) => {
+                                setSection("Tickets");
+                                setSelectedTicketId(ticketId);
+                              }}
+                              refreshKey={dashboardRevision}
+                              tenantId={activeTenant.id}
+                            />
+                          )}
+                        </>
+                      ) : key === "approvals" ? (
+                        <>
+                          {activeTenant &&
+                            isFeatureEnabled("ticketing.detail") && (
+                              <ApprovalInboxCard
+                                onOpenTicket={(ticketId) => {
+                                  setSection("Tickets");
+                                  setSelectedTicketId(ticketId);
+                                }}
+                                tenantId={activeTenant.id}
+                              />
+                            )}
+                        </>
+                      ) : key === "agentMetrics" ? (
+                        <>
+                          {activeTenant && agentWorkbenchEnabled && (
+                            <AgentMetricsCard
+                              onOpenTickets={openMetricTickets}
+                              tenantId={activeTenant.id}
+                            />
+                          )}
+                        </>
+                      ) : key === "myDay" ? (
+                        <>
+                          {activeTenant &&
+                            canWorkTickets &&
+                            experienceWorkspaceEnabled && (
+                              <MyDayCard
+                                onOpenFollowUps={() => {
+                                  setWorkplaceRequestedView("followUps");
+                                  setSection("Arbeitsplatz");
+                                }}
+                                onOpenTicket={(ticketId) => {
+                                  setSection("Tickets");
+                                  setSelectedTicketId(ticketId);
+                                }}
+                                refreshKey={experienceFollowUpsRevision}
+                                tenantId={activeTenant.id}
+                                tickets={view.tickets}
+                              />
+                            )}
+                        </>
+                      ) : key === "activity" ? (
+                        <article className="panel activity-panel">
+                          <div className="panel-heading">
+                            <div>
+                              <p className="eyebrow">Ereignisse</p>
+                              <h2>Gerade passiert</h2>
+                            </div>
+                          </div>
+                          {view.activity.length === 0 ? (
+                            <p className="empty-state">
+                              Keine autorisierten Ereignisse im gewählten
+                              Zeitraum.
+                            </p>
+                          ) : (
+                            <ol>
+                              {view.activity.map((item) => (
+                                <li key={`${item.time}-${item.text}`}>
+                                  <time>{item.time}</time>
+                                  <span
+                                    className={
+                                      item.tone === "critical"
+                                        ? "activity-marker critical"
+                                        : "activity-marker"
+                                    }
+                                  />
+                                  <p>{item.text}</p>
+                                </li>
+                              ))}
+                            </ol>
+                          )}
+                        </article>
+                      ) : null}
+                    </Fragment>
+                  ))}
               </aside>
             </section>
           </>
         )}
       </main>
+      {tourOpen ? (
+        <OnboardingTour
+          onClose={() => {
+            setTourOpen(false);
+            if (session?.user.id) markTourSeen(session.user.id, true);
+          }}
+          onNavigate={navigateForTour}
+          steps={AGENT_TOUR}
+        />
+      ) : null}
       {workspaceLiveMessage &&
         dismissedLiveMessage !== workspaceLiveMessage.id && (
           <section
@@ -6498,6 +7021,15 @@ function AuthenticatedApp() {
                       des Geräts.
                     </span>
                   </label>
+                  {canWorkTickets ? (
+                    <button
+                      className="text-button"
+                      onClick={() => setTourOpen(true)}
+                      type="button"
+                    >
+                      Einführung erneut starten
+                    </button>
+                  ) : null}
                 </>
               )}
               {!isPersonalAppearanceDialog &&
@@ -6724,6 +7256,7 @@ function AuthenticatedApp() {
                   }
                 : undefined
             }
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             requesterView={!canWorkTickets}
             tenantId={activeTenant.id}
             ticketId={selectedTicketId}
@@ -7096,8 +7629,43 @@ function SavedTicketViews({
   const [status, setStatus] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
+  const [shareDepartmentId, setShareDepartmentId] = useState("");
+  const [shareDepartments, setShareDepartments] = useState<
+    { id: string; name: string }[]
+  >([]);
   const selectedView =
     savedViews.find((savedView) => savedView.id === selectedViewId) ?? null;
+  const ownViews = savedViews.filter(
+    (savedView) => savedView.ownerId === currentUserId,
+  );
+  const sharedViews = savedViews.filter(
+    (savedView) => savedView.ownerId !== currentUserId,
+  );
+
+  useEffect(() => {
+    if (!editorOpen || !supabase || shareDepartments.length) return;
+    let active = true;
+    void supabase.functions
+      .invoke("ticket-saved-views", {
+        body: { type: "listSavedViews", tenantId },
+      })
+      .then(({ data }) => {
+        const departments =
+          isRecord(data) && isRecord(data.data) ? data.data.departments : null;
+        if (!active || !Array.isArray(departments)) return;
+        setShareDepartments(
+          departments.filter(
+            (entry): entry is { id: string; name: string } =>
+              isRecord(entry) &&
+              typeof entry.id === "string" &&
+              typeof entry.name === "string",
+          ),
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [editorOpen, shareDepartments.length, tenantId]);
   const canDelete = Boolean(
     selectedView && selectedView.ownerId === currentUserId,
   );
@@ -7131,13 +7699,15 @@ function SavedTicketViews({
   function startNewView() {
     setSelectedViewId("");
     setName("");
+    setShareDepartmentId("");
     setErrorMessage("");
     setEditorOpen(true);
     setStatus("Neue Ansicht aus den aktuellen Filtern anlegen.");
   }
 
   function startEditView() {
-    if (!selectedView) return;
+    if (!selectedView || selectedView.ownerId !== currentUserId) return;
+    setShareDepartmentId(selectedView.sharedDepartmentId ?? "");
     setErrorMessage("");
     setEditorOpen(true);
     setStatus(`Ansicht „${selectedView.name}“ bearbeiten.`);
@@ -7167,6 +7737,7 @@ function SavedTicketViews({
             ...(selectedView ? { viewId: selectedView.id } : {}),
             name: trimmedName,
             filters,
+            sharedDepartmentId: shareDepartmentId || null,
           },
         },
       );
@@ -7240,7 +7811,7 @@ function SavedTicketViews({
       <div className="saved-ticket-views__heading">
         <div>
           <p className="eyebrow">GESPEICHERTE ANSICHTEN</p>
-          <p>Nur für Sie sichtbar.</p>
+          <p>Eigene Ansichten und Ansichten, die Ihr Team mit Ihnen teilt.</p>
         </div>
       </div>
       <div className="saved-ticket-views__picker">
@@ -7255,11 +7826,28 @@ function SavedTicketViews({
             <option value="">
               {loading ? "Ansichten werden geladen …" : "Aktuelle Filter"}
             </option>
-            {savedViews.map((savedView) => (
-              <option key={savedView.id} value={savedView.id}>
-                {savedView.name}
-              </option>
-            ))}
+            {ownViews.length ? (
+              <optgroup label="Meine Ansichten">
+                {ownViews.map((savedView) => (
+                  <option key={savedView.id} value={savedView.id}>
+                    {savedView.name}
+                    {savedView.sharedDepartmentName
+                      ? ` (geteilt mit ${savedView.sharedDepartmentName})`
+                      : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {sharedViews.length ? (
+              <optgroup label="Vom Team geteilt">
+                {sharedViews.map((savedView) => (
+                  <option key={savedView.id} value={savedView.id}>
+                    {savedView.name}
+                    {savedView.ownerName ? ` · ${savedView.ownerName}` : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
           </select>
         </label>
         <button
@@ -7270,7 +7858,7 @@ function SavedTicketViews({
         >
           Neue Ansicht
         </button>
-        {selectedView && (
+        {selectedView && selectedView.ownerId === currentUserId && (
           <button
             className="text-button"
             disabled={pending !== null}
@@ -7293,6 +7881,21 @@ function SavedTicketViews({
               required
               value={name}
             />
+          </label>
+          <label>
+            <span>Teilen mit</span>
+            <select
+              disabled={loading || pending !== null}
+              onChange={(event) => setShareDepartmentId(event.target.value)}
+              value={shareDepartmentId}
+            >
+              <option value="">Niemandem (nur für mich)</option>
+              {shareDepartments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  Abteilung {department.name}
+                </option>
+              ))}
+            </select>
           </label>
           <div className="saved-ticket-views__actions">
             <button

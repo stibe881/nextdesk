@@ -445,3 +445,161 @@ export function buildInsights(input: {
     },
   };
 }
+
+/** Ticket attributes used only by the theme and requester reports. */
+export type ThemeTicket = {
+  id: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  subject: string | null;
+  categoryName: string | null;
+  requesterDepartment: string | null;
+};
+
+// Common German filler words that say nothing about the topic of a ticket.
+const STOP_WORDS = new Set(
+  (
+    "der die das und oder ein eine einer einem einen nicht ist sind bei mit " +
+    "von vom zum zur für auf aus nach wie was wer wo im in am an es ich wir " +
+    "sie er mein meine meinem unser bitte hallo danke frage problem problemen " +
+    "probleme fehler geht funktioniert nicht mehr neue neuer neues kein keine " +
+    "auch noch schon ticket hilfe re aw fw wg betreff anfrage"
+  ).split(" "),
+);
+
+function words(subject: string | null): string[] {
+  if (!subject) return [];
+  return [
+    ...new Set(
+      subject
+        .toLocaleLowerCase("de-CH")
+        .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+        .split(/\s+/)
+        .map((word) => word.replace(/^-+|-+$/g, ""))
+        .filter(
+          (word) =>
+            word.length >= 3 && !STOP_WORDS.has(word) && !/^\d+$/.test(word),
+        ),
+    ),
+  ];
+}
+
+function countBy<T>(items: T[], key: (item: T) => string[]) {
+  const counts = new Map<string, number>();
+  for (const item of items)
+    for (const value of key(item)) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return counts;
+}
+
+/**
+ * Top themes of the period: categories and frequent words in subjects, each
+ * with the count of the previous period, to show where a knowledge article
+ * or an automation is missing.
+ */
+export function buildThemes(input: {
+  current: InsightRange;
+  previous: InsightRange;
+  tickets: ThemeTicket[];
+}) {
+  const inCurrent = input.tickets.filter((ticket) =>
+    within(ticket.createdAt, input.current),
+  );
+  const inPrevious = input.tickets.filter((ticket) =>
+    within(ticket.createdAt, input.previous),
+  );
+  const category = (ticket: ThemeTicket) => [
+    ticket.categoryName ?? "Ohne Kategorie",
+  ];
+  const currentCategories = countBy(inCurrent, category);
+  const previousCategories = countBy(inPrevious, category);
+  const currentWords = countBy(inCurrent, (ticket) => words(ticket.subject));
+  const previousWords = countBy(inPrevious, (ticket) => words(ticket.subject));
+  const top = (
+    current: Map<string, number>,
+    previous: Map<string, number>,
+    limit: number,
+    minimum: number,
+  ) =>
+    [...current.entries()]
+      .filter(([, count]) => count >= minimum)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "de-CH"))
+      .slice(0, limit)
+      .map(([name, count]) => ({
+        name,
+        count,
+        previous: previous.get(name) ?? 0,
+        share: inCurrent.length
+          ? Math.round((count / inCurrent.length) * 1000) / 10
+          : 0,
+      }));
+  return {
+    total: inCurrent.length,
+    previousTotal: inPrevious.length,
+    categories: top(currentCategories, previousCategories, 10, 1),
+    keywords: top(currentWords, previousWords, 15, 2),
+  };
+}
+
+/** Tickets per requesting department (from the requester profile). */
+export function buildRequesterDepartments(input: {
+  current: InsightRange;
+  previous: InsightRange;
+  tickets: ThemeTicket[];
+}) {
+  const end = Date.parse(input.current.endsAt);
+  const groups = new Map<
+    string,
+    {
+      name: string;
+      received: number;
+      previous: number;
+      resolved: number;
+      open: number;
+      resolutionMinutes: number[];
+    }
+  >();
+  const group = (name: string) => {
+    const existing = groups.get(name);
+    if (existing) return existing;
+    const created = {
+      name,
+      received: 0,
+      previous: 0,
+      resolved: 0,
+      open: 0,
+      resolutionMinutes: [] as number[],
+    };
+    groups.set(name, created);
+    return created;
+  };
+  for (const ticket of input.tickets) {
+    const name = ticket.requesterDepartment ?? "Ohne Abteilung";
+    if (within(ticket.createdAt, input.current)) group(name).received += 1;
+    if (within(ticket.createdAt, input.previous)) group(name).previous += 1;
+    if (within(ticket.resolvedAt, input.current)) {
+      const entry = group(name);
+      entry.resolved += 1;
+      const minutes = minutesBetween(ticket.createdAt, ticket.resolvedAt);
+      if (minutes !== null) entry.resolutionMinutes.push(minutes);
+    }
+    const created = time(ticket.createdAt);
+    const resolvedAt = time(ticket.resolvedAt);
+    if (
+      created !== null &&
+      created <= end &&
+      (resolvedAt === null || resolvedAt > end)
+    )
+      group(name).open += 1;
+  }
+  return [...groups.values()]
+    .filter((entry) => entry.received + entry.resolved + entry.open > 0)
+    .map((entry) => ({
+      name: entry.name,
+      received: entry.received,
+      previous: entry.previous,
+      resolved: entry.resolved,
+      open: entry.open,
+      averageResolutionMinutes: average(entry.resolutionMinutes),
+    }))
+    .sort((a, b) => b.received - a.received || a.name.localeCompare(b.name));
+}

@@ -10,6 +10,12 @@ import {
 } from "@/lib/nextdesk-client";
 import { reregisterPushTokenIfEnabled } from "@/lib/push-notifications";
 import {
+  REMINDER_ACTION_NEED_HELP,
+  REMINDER_ACTION_RESOLVED,
+  REQUESTER_REMINDER_CATEGORY,
+  reminderAnswerFromNotificationAction,
+} from "@/lib/requester-progress";
+import {
   isNotificationAction,
   startNotificationActions,
 } from "@/lib/notification-actions";
@@ -22,6 +28,21 @@ startNotificationActions();
 startWatchBridge();
 
 if (Platform.OS === "ios") {
+  // Reminder pushes (category set by push-dispatch) offer two buttons. Both
+  // open the ticket; the person confirms there, nothing changes from the
+  // lock screen alone.
+  void Notifications.setNotificationCategoryAsync(REQUESTER_REMINDER_CATEGORY, [
+    {
+      identifier: REMINDER_ACTION_RESOLVED,
+      buttonTitle: "Problem ist gelöst",
+      options: { opensAppToForeground: true },
+    },
+    {
+      identifier: REMINDER_ACTION_NEED_HELP,
+      buttonTitle: "Ich brauche noch Hilfe",
+      options: { opensAppToForeground: true },
+    },
+  ]).catch(() => undefined);
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldPlaySound: false,
@@ -36,6 +57,7 @@ type PushNavigationData = {
   tenantId: string;
   ticketId?: string;
   orderId?: string;
+  assetId?: string;
   notificationId?: string;
   kind?: string;
 };
@@ -57,6 +79,9 @@ function parsePushNavigationData(value: unknown): PushNavigationData | null {
       : {}),
     ...(typeof nestedBody.orderId === "string" && nestedBody.orderId
       ? { orderId: nestedBody.orderId }
+      : {}),
+    ...(typeof nestedBody.assetId === "string" && nestedBody.assetId
+      ? { assetId: nestedBody.assetId }
       : {}),
     ...(typeof nestedBody.notificationId === "string" &&
     nestedBody.notificationId
@@ -117,15 +142,22 @@ export function PushNotificationBridge() {
         if (!active || tenant.id !== data.tenantId) return;
 
         if (data.ticketId) {
+          const reminderAnswer = reminderAnswerFromNotificationAction(
+            response.actionIdentifier,
+          );
           router.push({
             pathname: "/ticket/[id]",
-            params: { id: data.ticketId },
+            params: reminderAnswer
+              ? { id: data.ticketId, reminderAnswer }
+              : { id: data.ticketId },
           });
         } else if (data.kind === "shop" && data.orderId) {
           router.push({
             pathname: "/shop/order/[id]",
             params: { id: data.orderId },
           } as never);
+        } else if (data.kind === "infrastructure" && data.assetId) {
+          router.push(`/infrastructure/${data.assetId}` as never);
         } else if (data.kind === "summary") {
           router.push("/tickets");
         } else {

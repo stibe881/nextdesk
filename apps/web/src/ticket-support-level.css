@@ -1,0 +1,201 @@
+/*
+ * Supportstufe im Ticketdetail (1st/2nd/3rd Level). Farben nur aus Theme- und
+ * Status-Tokens, damit helles, dunkles und System-Theme funktionieren.
+ */
+
+.ticket-detail-layout .ticket-detail-primary.ticket-support-level {
+  order: 3;
+}
+
+.ticket-support-level h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.ticket-support-level__team {
+  border-radius: 999px;
+  padding: 2px 10px;
+  background: var(--tone-info-soft);
+  color: var(--tone-info);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.ticket-support-level__actions,
+.ticket-support-level__dialog-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ticket-support-level__dialog-footer {
+  justify-content: flex-end;
+}
+
+.ticket-support-level__actions .primary-button,
+.ticket-support-level__actions .secondary-button,
+.ticket-support-level__dialog-footer .primary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ticket-support-level__muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.ticket-support-level__error {
+  color: var(--tone-danger);
+  font-weight: 500;
+}
+
+.ticket-support-level__handover {
+  margin: 0 0 10px;
+  border-left: 4px solid var(--tone-warning);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--tone-warning-soft);
+  color: var(--text);
+}
+
+.ticket-support-level__handover--returned {
+  border-left-color: var(--tone-info);
+  background: var(--tone-info-soft);
+}
+
+.ticket-support-level__handover-title {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.ticket-support-level__handover-meta {
+  margin: 2px 0 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.ticket-support-level__note {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ticket-support-level__history summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.ticket-support-level__history ol {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket-support-level__history li {
+  display: grid;
+  gap: 2px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+
+.ticket-support-level__history li span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.ticket-support-level__backdrop {
+  position: fixed;
+  z-index: 95;
+  inset: 0;
+  display: grid;
+  overflow-y: auto;
+  place-items: center;
+  padding: 24px 16px;
+  background: var(--overlay);
+}
+
+.ticket-support-level__dialog {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 560px);
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+}
+
+.ticket-support-level__dialog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ticket-support-level__dialog-heading h3 {
+  margin: 0 0 4px;
+  color: var(--ink);
+}
+
+.ticket-support-level__dialog-heading .eyebrow {
+  margin: 0 0 2px;
+  color: var(--primary);
+}
+
+.ticket-support-level__form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ticket-support-level__form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ticket-support-level__form select,
+.ticket-support-level__form textarea {
+  font: inherit;
+  font-weight: 400;
+}
+
+.ticket-support-level__note-field,
+.ticket-support-level__dialog-footer {
+  grid-column: 1 / -1;
+}
+
+.ticket-support-level__spin {
+  animation: ticket-support-level-spin 1s linear infinite;
+}
+
+@keyframes ticket-support-level-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 640px) {
+  .ticket-support-level__form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticket-support-level__spin {
+    animation: none;
+  }
+}

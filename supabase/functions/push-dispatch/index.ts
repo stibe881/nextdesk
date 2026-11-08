@@ -70,10 +70,12 @@ function category(
   | "inventory_low_stock"
   | "shop"
   | "service_task"
+  | "infrastructure"
   | null {
   if (kind === "ticket.assigned") return "assigned";
   if (kind === "ticket.requester_reply") return "requester_reply";
   if (kind === "ticket.support_reply") return "support_reply";
+  if (kind === "ticket.requester_reminder") return "support_reply";
   if (kind === "ticket.mention") return "mention";
   if (
     kind === "ticket.supervisor_request" ||
@@ -82,6 +84,7 @@ function category(
     return "mention";
   }
   if (kind === "ticket.resolved") return "resolved";
+  if (kind === "ticket.kudos") return "resolved";
   if (kind === "ticket.approval.requested") return "approval";
   if (
     kind === "ticket.department_question.asked" ||
@@ -90,11 +93,16 @@ function category(
     return "approval";
   }
   if (kind === "ticket.escalation_opened") return "escalation";
+  if (kind === "ticket.security_report") return "escalation";
   if (kind === "ticket.follow_up_due") return "follow_up";
+  if (kind === "ticket.rule_reminder") return "follow_up";
+  if (kind === "ticket.vendor_reminder") return "follow_up";
+  if (kind === "ticket.children_done") return "follow_up";
   if (kind === "contract.deadline") return "contract_deadline";
   if (kind === "inventory.low_stock") return "inventory_low_stock";
   if (kind.startsWith("shop.order.")) return "shop";
   if (kind.startsWith("service_task.")) return "service_task";
+  if (kind === "infrastructure.due") return "infrastructure";
   if (kind.startsWith("ticket.watch.")) return "mention";
   return kind.startsWith("ticket.sla.") ? "sla" : null;
 }
@@ -108,7 +116,13 @@ function payloadKind(
   | "department_question_answered"
   | "supervisor_request"
   | "supervisor_answer"
-  | "watched" {
+  | "watched"
+  | "rule_reminder"
+  | "vendor_reminder"
+  | "requester_reminder"
+  | "children_done"
+  | "kudos"
+  | "security_report" {
   if (kind === "ticket.department_question.asked") {
     return "department_question_asked";
   }
@@ -118,6 +132,12 @@ function payloadKind(
   if (kind === "ticket.supervisor_request") return "supervisor_request";
   if (kind === "ticket.supervisor_answer") return "supervisor_answer";
   if (kind.startsWith("ticket.watch.")) return "watched";
+  if (kind === "ticket.rule_reminder") return "rule_reminder";
+  if (kind === "ticket.vendor_reminder") return "vendor_reminder";
+  if (kind === "ticket.requester_reminder") return "requester_reminder";
+  if (kind === "ticket.children_done") return "children_done";
+  if (kind === "ticket.kudos") return "kudos";
+  if (kind === "ticket.security_report") return "security_report";
   return fallback;
 }
 
@@ -251,6 +271,15 @@ export async function ticketNotificationRecipientAuthorized(
         .maybeSingle();
       return Boolean(membership);
     }
+    if (row.kind === "infrastructure.due") {
+      // Only people who may manage assets get infrastructure reminders.
+      const { data, error } = await admin.rpc("user_has_tenant_permission", {
+        p_user_id: row.user_id,
+        p_tenant_id: row.tenant_id,
+        p_permission_code: "asset.manage",
+      });
+      return !error && data === true;
+    }
     if (row.kind !== "inventory.low_stock") return false;
     const { data, error } = await admin.rpc(
       "inventory_low_stock_delivery_authorized",
@@ -349,7 +378,69 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
         : {}),
     };
   }
+  let infrastructure: Record<string, string> = {};
+  if (preferenceCategory === "infrastructure" && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const payload = notification?.payload ?? {};
+    for (
+      const [from, to] of [
+        ["assetId", "assetId"],
+        ["assetName", "assetName"],
+        ["reason", "infrastructureReason"],
+        ["dueOn", "dueOn"],
+      ]
+    ) {
+      if (typeof payload[from] === "string") infrastructure[to] = payload[from];
+    }
+  }
   // Watched tickets: what changed, and by whom.
+  let ruleReminder: { ruleName?: string } = {};
+  if (row.kind === "ticket.rule_reminder" && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const name = notification?.payload?.ruleName;
+    if (typeof name === "string" && name.trim()) {
+      ruleReminder = { ruleName: name.trim() };
+    }
+  }
+  let vendorReminder: { vendorName?: string } = {};
+  if (row.kind === "ticket.vendor_reminder" && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const name = notification?.payload?.vendorName;
+    if (typeof name === "string" && name.trim()) {
+      vendorReminder = { vendorName: name.trim() };
+    }
+  }
+  let kudos: { kudosRequesterName?: string; kudosScore?: number } = {};
+  if (row.kind === "ticket.kudos" && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const name = notification?.payload?.requesterName;
+    const score = notification?.payload?.score;
+    kudos = {
+      ...(typeof name === "string" && name.trim()
+        ? { kudosRequesterName: name.trim() }
+        : {}),
+      ...(typeof score === "number" && Number.isInteger(score) && score >= 1 &&
+          score <= 5
+        ? { kudosScore: score }
+        : {}),
+    };
+  }
   let watched: Record<string, string | boolean> = {};
   if (row.kind.startsWith("ticket.watch.") && row.notification_id) {
     const { data: notification } = await admin
@@ -389,7 +480,11 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
   const payload = buildApnsPayload({
     ...shop,
     ...serviceTask,
+    ...infrastructure,
     ...watched,
+    ...ruleReminder,
+    ...vendorReminder,
+    ...kudos,
     ...delegated,
     kind: payloadKind(row.kind, preferenceCategory),
     tenantId: row.tenant_id,

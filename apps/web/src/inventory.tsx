@@ -17,6 +17,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
+import { InventoryProcurement } from "./inventory-procurement";
 import { functionErrorMessage } from "./lib/function-error";
 import { shopApi } from "./lib/shop";
 import { supabase } from "./lib/supabase";
@@ -28,7 +29,8 @@ type InventorySection =
   | "Lagerorte"
   | "Bewegungen"
   | "Reservationen"
-  | "Inventur";
+  | "Inventur"
+  | "Beschaffung";
 
 type InventoryPermissions = {
   canAdjust: boolean;
@@ -312,6 +314,7 @@ const sections: readonly InventorySection[] = [
   "Bewegungen",
   "Reservationen",
   "Inventur",
+  "Beschaffung",
 ];
 
 function isRecord(value: unknown): value is RecordValue {
@@ -1317,17 +1320,24 @@ export function Inventory({
         role="tablist"
         aria-label="Lagerbereiche"
       >
-        {sections.map((section) => (
-          <button
-            aria-selected={activeSection === section}
-            key={section}
-            onClick={() => setActiveSection(section)}
-            role="tab"
-            type="button"
-          >
-            {section}
-          </button>
-        ))}
+        {sections
+          // Beschaffung nur für die Lagerverwaltung.
+          .filter(
+            (section) =>
+              section !== "Beschaffung" ||
+              workspace?.permissions.canManage === true,
+          )
+          .map((section) => (
+            <button
+              aria-selected={activeSection === section}
+              key={section}
+              onClick={() => setActiveSection(section)}
+              role="tab"
+              type="button"
+            >
+              {section}
+            </button>
+          ))}
       </div>
 
       {loading ? (
@@ -1396,6 +1406,10 @@ export function Inventory({
               sourceReservationRules={sourceReservationRules}
               tenantId={tenantId}
             />
+          ) : null}
+          {activeSection === "Beschaffung" &&
+          workspace.permissions.canManage ? (
+            <InventoryProcurement tenantId={tenantId} />
           ) : null}
           {activeSection === "Inventur" ? (
             <InventoryCounts

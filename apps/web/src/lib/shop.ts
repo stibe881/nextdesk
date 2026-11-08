@@ -65,6 +65,43 @@ export type CatalogItem = {
   images?: { id: string; url: string }[];
   stockLevel: StockLevel;
   availableQuantity: number | null;
+  /** Software: wird nach der Freigabe über Intune zugewiesen. */
+  isSoftware?: boolean;
+  /** Intune-Verknüpfung (nur für Agenten). */
+  software?: SoftwareLink | null;
+};
+
+export type SoftwareAssignmentMode = "user_group" | "device_group";
+
+/** Verknüpfung eines Shop-Artikels mit einer Intune-App. */
+export type SoftwareLink = {
+  appId: string;
+  appName: string | null;
+  mode: SoftwareAssignmentMode;
+  groupId: string;
+  ensureAppAssignment: boolean;
+};
+
+export type SoftwareStatus = "pending" | "installing" | "assigned" | "failed";
+
+/** Stand der Intune-Zuweisung einer Bestellzeile. */
+export type LineSoftware = {
+  deploymentId: string;
+  status: SoftwareStatus;
+  label: string;
+  appName: string;
+  errorMessage: string | null;
+  assignedAt: string | null;
+  attempts?: number;
+  canRetry: boolean;
+};
+
+export type IntuneApp = {
+  id: string;
+  displayName: string;
+  publisher: string | null;
+  appType: string | null;
+  isAssigned: boolean | null;
 };
 
 export type ShopCategory = {
@@ -136,6 +173,10 @@ export type OrderLine = {
   loanUntil?: string | null;
   /** Cover photo of the article, if any. */
   imageUrl?: string | null;
+  /** Beschaffungsstand, wenn die Zeile nicht an Lager ist. */
+  procurement?: LineProcurement | null;
+  /** Intune-Zuweisung (Software-Artikel nach der Freigabe). */
+  software?: LineSoftware | null;
   /** Internal, only sent to agents. */
   articleNumber?: string | null;
   /** Internal, only sent to agents. */
@@ -273,6 +314,22 @@ export const shopApi = {
       itemId,
       imageId,
     }),
+  intuneApps: (tenantId: string) =>
+    call<{ apps: IntuneApp[] }>({ type: "listIntuneApps", tenantId }).then(
+      (data) => data.apps,
+    ),
+  entraGroup: (tenantId: string, groupId: string) =>
+    call<{
+      group: { id: string; displayName: string; securityEnabled: boolean };
+    }>({ type: "lookupEntraGroup", tenantId, groupId }).then(
+      (data) => data.group,
+    ),
+  retrySoftware: (tenantId: string, deploymentId: string) =>
+    call<{ retried: true }>({
+      type: "retrySoftwareDeployment",
+      tenantId,
+      deploymentId,
+    }),
   submit: (tenantId: string, order: Record<string, unknown>) =>
     call<{ orderId: string }>({ type: "submitOrder", tenantId, ...order }),
   orders: (
@@ -337,7 +394,39 @@ export const EVENT_LABEL: Record<string, string> = {
   rejected: "Abgelehnt",
   cancelled: "Storniert",
   note: "Notiz",
+  backordered: "Nicht an Lager – wird beschafft",
+  backorder_ordered: "Beim Lieferanten bestellt",
+  backorder_received: "Ware eingetroffen und reserviert",
+  backorder_cancelled: "Beschaffung storniert",
+  software_queued: "Software wird zugewiesen",
+  software_assigned: "Software zugewiesen",
+  software_failed: "Software-Zuweisung fehlgeschlagen",
+  software_retry: "Software-Zuweisung neu gestartet",
 };
+
+/** Beschaffungsstand einer Bestellzeile, die nicht an Lager ist. */
+export type LineProcurement = {
+  status: "open" | "ordered";
+  /** Voraussichtliches Lieferdatum (YYYY-MM-DD), sobald bestellt. */
+  expectedOn: string | null;
+};
+
+/**
+ * Hinweis für eine Bestellzeile im Rückstand, z. B.
+ * «Wird beschafft, voraussichtlich am 20.11.2026».
+ */
+export function procurementLabel(line: {
+  status: string;
+  procurement?: LineProcurement | null;
+}): string | null {
+  if (line.status !== "backorder") return null;
+  const expectedOn = line.procurement?.expectedOn ?? null;
+  if (!expectedOn) return "Wird beschafft";
+  const formatted = formatDate(expectedOn);
+  return formatted === "–"
+    ? "Wird beschafft"
+    : `Wird beschafft, voraussichtlich am ${formatted}`;
+}
 
 export function newRequestId(): string {
   return crypto.randomUUID();

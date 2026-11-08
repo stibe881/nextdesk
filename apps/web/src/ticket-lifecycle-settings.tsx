@@ -6,6 +6,8 @@ import { supabase } from "./lib/supabase";
 type LifecycleSettings = {
   waitingReminderEnabled: boolean;
   waitingReminderDays: number;
+  waitingReminderMaxCount: number;
+  waitingReminderActionsEnabled: boolean;
   waitingResolveEnabled: boolean;
   waitingResolveDays: number;
   resolvedCloseEnabled: boolean;
@@ -15,6 +17,8 @@ type LifecycleSettings = {
 const DEFAULTS: LifecycleSettings = {
   waitingReminderEnabled: false,
   waitingReminderDays: 3,
+  waitingReminderMaxCount: 1,
+  waitingReminderActionsEnabled: true,
   waitingResolveEnabled: false,
   waitingResolveDays: 7,
   resolvedCloseEnabled: false,
@@ -31,6 +35,10 @@ function parse(value: unknown): LifecycleSettings {
   return {
     waitingReminderEnabled: bool("waitingReminderEnabled") as boolean,
     waitingReminderDays: num("waitingReminderDays") as number,
+    waitingReminderMaxCount: num("waitingReminderMaxCount") as number,
+    waitingReminderActionsEnabled: bool(
+      "waitingReminderActionsEnabled",
+    ) as boolean,
     waitingResolveEnabled: bool("waitingResolveEnabled") as boolean,
     waitingResolveDays: num("waitingResolveDays") as number,
     resolvedCloseEnabled: bool("resolvedCloseEnabled") as boolean,
@@ -93,11 +101,15 @@ export function TicketLifecycleSettings({ tenantId }: { tenantId: string }) {
   }
 
   const days = (
-    key: "waitingReminderDays" | "waitingResolveDays" | "resolvedCloseDays",
+    key:
+      | "waitingReminderDays"
+      | "waitingReminderMaxCount"
+      | "waitingResolveDays"
+      | "resolvedCloseDays",
     max: number,
   ) => (
     <input
-      aria-label="Tage"
+      aria-label={key === "waitingReminderMaxCount" ? "Anzahl" : "Tage"}
       disabled={saving || loading}
       max={max}
       min={1}
@@ -112,6 +124,7 @@ export function TicketLifecycleSettings({ tenantId }: { tenantId: string }) {
   const toggle = (
     key:
       | "waitingReminderEnabled"
+      | "waitingReminderActionsEnabled"
       | "waitingResolveEnabled"
       | "resolvedCloseEnabled",
   ) => (
@@ -178,6 +191,29 @@ export function TicketLifecycleSettings({ tenantId }: { tenantId: string }) {
               Erinnern nach Tagen
               {days("waitingReminderDays", 60)}
             </label>
+            <label>
+              Höchstens so viele Erinnerungen
+              {days("waitingReminderMaxCount", 5)}
+            </label>
+          </div>
+          <p className="data-caption">
+            Weitere Erinnerungen folgen jeweils nach derselben Anzahl Tage. Die
+            meldende Person erhält sie per E-Mail und als Push-Mitteilung in der
+            App.
+          </p>
+        </li>
+        <li>
+          <div className="tenant-automation__policy">
+            <div>
+              <strong>Antworten mit einem Klick</strong>
+              <span>
+                Erinnerungen enthalten «Problem ist gelöst» und «Ich brauche
+                noch Hilfe». Die Links in der E-Mail sind persönlich, einmal
+                verwendbar und 14 Tage gültig; in der App und im Portal
+                erscheinen dieselben Schaltflächen.
+              </span>
+            </div>
+            {toggle("waitingReminderActionsEnabled")}
           </div>
         </li>
         <li>

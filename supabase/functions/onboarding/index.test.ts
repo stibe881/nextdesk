@@ -1,5 +1,9 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import onboardingFunction from "./index.ts";
+import onboardingFunction, {
+  namesMatch,
+  parseAction,
+  returnTaskTitle,
+} from "./index.ts";
 
 const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 const functionConfig = await Deno.readTextFile(
@@ -84,3 +88,140 @@ Deno.test(
     );
   },
 );
+
+const TENANT = "10000000-0000-4000-8000-000000000001";
+const ENTRY = "20000000-0000-4000-8000-000000000002";
+const ASSIGNMENT_A = "30000000-0000-4000-8000-000000000003";
+const ASSIGNMENT_B = "40000000-0000-4000-8000-000000000004";
+
+Deno.test("offboardingAssets parses an optional requester", () => {
+  assertEquals(
+    parseAction({
+      type: "offboardingAssets",
+      tenantId: TENANT,
+      entryId: ENTRY,
+    }),
+    {
+      type: "offboardingAssets",
+      tenantId: TENANT,
+      entryId: ENTRY,
+      requesterId: null,
+    },
+  );
+  assertEquals(
+    parseAction({
+      type: "offboardingAssets",
+      tenantId: TENANT.toUpperCase(),
+      entryId: ENTRY,
+      requesterId: ASSIGNMENT_A.toUpperCase(),
+    }),
+    {
+      type: "offboardingAssets",
+      tenantId: TENANT,
+      entryId: ENTRY,
+      requesterId: ASSIGNMENT_A,
+    },
+  );
+  assertEquals(
+    parseAction({
+      type: "offboardingAssets",
+      tenantId: TENANT,
+      entryId: ENTRY,
+      requesterId: "nicht-gueltig",
+    }),
+    null,
+  );
+  assertEquals(
+    parseAction({
+      type: "offboardingAssets",
+      tenantId: TENANT,
+      entryId: ENTRY,
+      extra: true,
+    }),
+    null,
+  );
+});
+
+Deno.test("createReturnTasks requires a bounded list of assignment ids", () => {
+  assertEquals(
+    parseAction({
+      type: "createReturnTasks",
+      tenantId: TENANT,
+      entryId: ENTRY,
+      assignmentIds: [ASSIGNMENT_A, ASSIGNMENT_B, ASSIGNMENT_A.toUpperCase()],
+    }),
+    {
+      type: "createReturnTasks",
+      tenantId: TENANT,
+      entryId: ENTRY,
+      assignmentIds: [ASSIGNMENT_A, ASSIGNMENT_B],
+    },
+  );
+  for (const assignmentIds of [
+    [],
+    "nicht-liste",
+    [ASSIGNMENT_A, "kaputt"],
+    Array.from({ length: 51 }, () => ASSIGNMENT_A),
+  ])
+    assertEquals(
+      parseAction({
+        type: "createReturnTasks",
+        tenantId: TENANT,
+        entryId: ENTRY,
+        assignmentIds,
+      }),
+      null,
+    );
+  assertEquals(
+    parseAction({
+      type: "createReturnTasks",
+      tenantId: TENANT,
+      entryId: ENTRY,
+      assignmentIds: [ASSIGNMENT_A],
+      requesterId: ASSIGNMENT_B,
+    }),
+    null,
+  );
+});
+
+Deno.test("requester names match trimmed and case-insensitively", () => {
+  assert(namesMatch("  Anna   Muster ", "anna muster"));
+  assert(namesMatch("ÄRNI Müller", "ärni müller"));
+  assert(!namesMatch("Anna Muster", "Anna Mustermann"));
+  assert(!namesMatch("", ""));
+  assert(!namesMatch(null, "Anna"));
+});
+
+Deno.test("return task titles name the device and its reference", () => {
+  assertEquals(
+    returnTaskTitle({
+      name: "Notebook HP 840",
+      inventoryNumber: "INV-1001",
+      serialNumber: "SN-1",
+    }),
+    "Rückgabe: Notebook HP 840 (INV-1001)",
+  );
+  assertEquals(
+    returnTaskTitle({
+      name: "iPhone",
+      inventoryNumber: " ",
+      serialNumber: "F2X",
+    }),
+    "Rückgabe: iPhone (F2X)",
+  );
+  assertEquals(
+    returnTaskTitle({
+      name: "Monitor",
+      inventoryNumber: null,
+      serialNumber: null,
+    }),
+    "Rückgabe: Monitor",
+  );
+  const long = returnTaskTitle({
+    name: "x".repeat(400),
+    inventoryNumber: "INV-9",
+    serialNumber: null,
+  });
+  assert(Array.from(long).length <= 240);
+  assert(long.endsWith("… (INV-9)"));
+});

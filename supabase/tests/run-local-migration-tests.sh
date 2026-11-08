@@ -8999,7 +8999,7 @@ begin
   -- 4. Loan: out and back in.
   v_order := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
     jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_beamer, 'quantity', 1)),
-    'pickup', null, null, current_date, current_date + 2, null);
+    'pickup', null, null, (timezone('Europe/Zurich', now()))::date, (timezone('Europe/Zurich', now()))::date + 2, null);
   v_status := public.shop_update_order(v_owner, v_tenant, v_order, 'issue', '{}'::jsonb);
   select physical_quantity into v_physical from public.inventory_stock_balances
   where tenant_id = v_tenant and item_id = v_beamer;
@@ -9015,7 +9015,7 @@ begin
   begin
     perform public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
       jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_beamer, 'quantity', 1)),
-      'pickup', null, null, current_date, current_date + 30, null);
+      'pickup', null, null, (timezone('Europe/Zurich', now()))::date, (timezone('Europe/Zurich', now()))::date + 30, null);
     raise exception 'A too long loan was accepted';
   exception when invalid_parameter_value then null;
   end;
@@ -10171,6 +10171,2782 @@ begin
 end;
 $$;
 rollback;
+SQL
+
+# 0211: infrastructure devices with lifecycle dates create due notices once.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_asset uuid;
+  v_switch uuid;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Core-Switch', 'switch', 'active') returning id into v_switch;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'AP Büro 1', 'access_point', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category)
+  values (v_switch, v_tenant, 'switch');
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address,
+    uplink_asset_id, uplink_port, warranty_until, maintenance_interval_months, last_maintenance_on)
+  values (v_asset, v_tenant, 'access_point', '10.0.0.21', v_switch, 'Gi1/0/12',
+    current_date + 10, 12, current_date - 400);
+  perform public.infrastructure_send_due_notices();
+  if (select count(*) from public.infrastructure_due_notices where asset_id = v_asset) <> 2 then
+    raise exception 'infrastructure test: expected warranty and maintenance notices';
+  end if;
+  perform public.infrastructure_send_due_notices();
+  if (select count(*) from public.infrastructure_due_notices where asset_id = v_asset) <> 2 then
+    raise exception 'infrastructure test: notices repeated';
+  end if;
+  begin
+    update public.asset_infrastructure set uplink_asset_id = v_asset where asset_id = v_asset;
+    raise exception 'infrastructure test: own uplink accepted';
+  exception when check_violation then
+    null;
+  end;
+  raise notice 'infrastructure checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0213: overload warnings mark agents with a clear excess of open tickets once.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template public.tickets;
+  v_agent uuid;
+  v_index integer;
+begin
+  select ticket.* into v_template
+  from public.tickets ticket
+  join public.ticket_statuses status on status.id = ticket.status_id and not status.is_closed
+  where ticket.department_id is not null
+  limit 1;
+  select dm.user_id into v_agent from public.department_memberships dm
+  where dm.department_id = v_template.department_id and dm.status = 'active' limit 1;
+  if v_agent is null then
+    raise exception 'overload test: no department member';
+  end if;
+  for v_index in 1..12 loop
+    insert into public.tickets (tenant_id, department_id, ticket_number, subject, description,
+      status_id, priority_id, requester_id, assigned_agent_id)
+    values (v_template.tenant_id, v_template.department_id, 'LOAD-' || v_index,
+      'Last ' || v_index, 'Test', v_template.status_id, v_template.priority_id,
+      v_template.requester_id, v_agent);
+  end loop;
+  perform public.team_overload_warnings_run();
+  if not exists (
+    select 1 from public.team_overload_notices
+    where agent_id = v_agent and department_id = v_template.department_id
+  ) then
+    raise exception 'overload test: no warning recorded';
+  end if;
+  perform public.team_overload_warnings_run();
+  if (select count(*) from public.team_overload_notices
+      where agent_id = v_agent and department_id = v_template.department_id) <> 1 then
+    raise exception 'overload test: warning repeated';
+  end if;
+  insert into public.team_skills (tenant_id, name) values (v_template.tenant_id, 'Netzwerk');
+  begin
+    insert into public.team_skills (tenant_id, name) values (v_template.tenant_id, ' netzwerk ');
+    raise exception 'overload test: duplicate skill accepted';
+  exception when unique_violation then
+    null;
+  end;
+  raise notice 'team leadership checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0215: maintenance windows are announced once; done device tasks log maintenance.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_service uuid;
+  v_window uuid;
+  v_asset uuid;
+  v_template uuid;
+  v_occurrence uuid;
+begin
+  select tenant_id into v_tenant from public.tenant_memberships
+  where status = 'active' order by created_at limit 1;
+  select id into v_service from public.services where tenant_id = v_tenant limit 1;
+  if v_service is null then
+    insert into public.services (tenant_id, name) values (v_tenant, 'Netzwerk')
+    returning id into v_service;
+  end if;
+  insert into public.service_status_maintenances (tenant_id, title, starts_at, ends_at, public_enabled)
+  values (v_tenant, 'Firmware Core-Switch', timezone('utc', now()) + interval '2 hours',
+    timezone('utc', now()) + interval '4 hours', true)
+  returning id into v_window;
+  insert into public.service_status_maintenance_services (tenant_id, maintenance_id, service_id)
+  values (v_tenant, v_window, v_service);
+  perform public.maintenance_announce_run();
+  if not exists (
+    select 1 from public.ticket_notifications
+    where kind = 'maintenance.upcoming' and payload ->> 'maintenanceId' = v_window::text
+  ) then
+    raise exception 'maintenance test: no announcement';
+  end if;
+  if (select announced_at from public.service_status_maintenances where id = v_window) is null then
+    raise exception 'maintenance test: announced_at not set';
+  end if;
+  if public.maintenance_announce_run() <> 0 then
+    raise exception 'maintenance test: announced twice';
+  end if;
+
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Firewall', 'firewall', 'active') returning id into v_asset;
+  insert into public.service_task_templates (tenant_id, title, recurrence, starts_on, checklist)
+  values (v_tenant, 'Wartung: Firewall', '{"frequency":"monthly","interval":6}'::jsonb,
+    current_date, '[{"id":"w1","label":"Firmware"}]'::jsonb)
+  returning id into v_template;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, service_task_template_id,
+    maintenance_checklist)
+  values (v_asset, v_tenant, 'firewall', v_template, '["Firmware"]'::jsonb);
+  insert into public.service_task_occurrences (tenant_id, template_id, scheduled_on, due_on, due_at,
+    visible_from, checklist)
+  values (v_tenant, v_template, current_date, current_date, timezone('utc', now()),
+    current_date, '[{"id":"w1","label":"Firmware","done":true}]'::jsonb)
+  returning id into v_occurrence;
+  update public.service_task_occurrences
+  set status = 'done', completed_at = timezone('utc', now()), note = 'Version 7.2'
+  where id = v_occurrence;
+  if not exists (
+    select 1 from public.asset_maintenance_log
+    where asset_id = v_asset and note like 'Wartung gemäss Checkliste erledigt%1/1 Punkte%Version 7.2'
+  ) then
+    raise exception 'maintenance test: service task not logged';
+  end if;
+  if (select last_maintenance_on from public.asset_infrastructure where asset_id = v_asset) is null then
+    raise exception 'maintenance test: last maintenance not updated';
+  end if;
+  raise notice 'infrastructure workflow checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0216: completing an offboarding return task closes the device assignment
+# and moves the device back to stock with a documented reason.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid := '10000000-0000-4000-8000-000000000001';
+  v_user uuid := '00000000-0000-4000-8000-000000000002';
+  v_template uuid;
+  v_entry uuid;
+  v_requester uuid;
+  v_other_requester uuid;
+  v_notebook uuid;
+  v_phone uuid;
+  v_monitor uuid;
+  v_notebook_assignment uuid;
+  v_phone_assignment uuid;
+  v_monitor_assignment uuid;
+  v_monitor_new_assignment uuid;
+  v_task_notebook uuid := gen_random_uuid();
+  v_task_phone uuid := gen_random_uuid();
+  v_task_monitor uuid := gen_random_uuid();
+  v_position integer;
+begin
+  select id into v_template from public.onboarding_templates
+  where tenant_id = v_tenant and template_key = 'standard';
+  v_entry := public.create_onboarding_entry_with_kind(
+    v_tenant, 'Rückgabe Test', current_date + 5, 'ICT', 'Test',
+    v_user, v_user, v_template, v_user, 'offboarding');
+  set constraints all immediate;
+  insert into public.ticket_requesters (tenant_id, display_name, source)
+  values (v_tenant, 'Rückgabe Test', 'manual') returning id into v_requester;
+  insert into public.ticket_requesters (tenant_id, display_name, source)
+  values (v_tenant, 'Nachfolge Test', 'manual') returning id into v_other_requester;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Notebook Rückgabe', 'other', 'active') returning id into v_notebook;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Telefon Rückgabe', 'other', 'repair') returning id into v_phone;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Monitor Rückgabe', 'other', 'active') returning id into v_monitor;
+  insert into public.asset_assignments (tenant_id, asset_id, requester_id)
+  values (v_tenant, v_notebook, v_requester) returning id into v_notebook_assignment;
+  insert into public.asset_assignments (tenant_id, asset_id, requester_id)
+  values (v_tenant, v_phone, v_requester) returning id into v_phone_assignment;
+  insert into public.asset_assignments (tenant_id, asset_id, requester_id)
+  values (v_tenant, v_monitor, v_requester) returning id into v_monitor_assignment;
+  select max(position) into v_position from public.onboarding_tasks where entry_id = v_entry;
+  insert into public.onboarding_tasks (id, tenant_id, entry_id, title, due_on, responsible_user_id, position)
+  values
+    (v_task_notebook, v_tenant, v_entry, 'Rückgabe: Notebook', current_date + 5, v_user, v_position + 1),
+    (v_task_phone, v_tenant, v_entry, 'Rückgabe: Telefon', current_date + 5, v_user, v_position + 2),
+    (v_task_monitor, v_tenant, v_entry, 'Rückgabe: Monitor', current_date + 5, v_user, v_position + 3);
+  insert into public.onboarding_asset_returns (tenant_id, task_id, assignment_id, asset_id) values
+    (v_tenant, v_task_notebook, v_notebook_assignment, v_notebook),
+    (v_tenant, v_task_phone, v_phone_assignment, v_phone),
+    (v_tenant, v_task_monitor, v_monitor_assignment, v_monitor);
+
+  begin
+    insert into public.onboarding_asset_returns (tenant_id, task_id, assignment_id, asset_id)
+    values (v_tenant, v_task_phone, v_notebook_assignment, v_notebook);
+    raise exception 'offboarding return test: duplicate return link accepted';
+  exception when unique_violation then
+    null;
+  end;
+
+  -- Status changes short of completion leave the device untouched.
+  update public.onboarding_tasks set status = 'in_progress' where id = v_task_notebook;
+  if (select returned_at from public.asset_assignments where id = v_notebook_assignment) is not null then
+    raise exception 'offboarding return test: in-progress task returned the device';
+  end if;
+
+  update public.onboarding_tasks set status = 'completed', completed_at = now()
+  where id in (v_task_notebook, v_task_phone);
+  if exists (select 1 from public.asset_assignments
+      where id in (v_notebook_assignment, v_phone_assignment) and returned_at is null) then
+    raise exception 'offboarding return test: assignment not returned';
+  end if;
+  if (select lifecycle_state from public.assets where id = v_notebook) <> 'stock'
+    or (select lifecycle_state from public.assets where id = v_phone) <> 'stock' then
+    raise exception 'offboarding return test: device not back in stock';
+  end if;
+  if (select count(*) from public.asset_lifecycle_events
+      where asset_id in (v_notebook, v_phone) and next_state = 'stock'
+        and reason = 'Rückgabe beim Austritt') <> 2 then
+    raise exception 'offboarding return test: lifecycle history without reason';
+  end if;
+  if (select previous_state from public.asset_lifecycle_events
+      where asset_id = v_phone and next_state = 'stock') <> 'repair' then
+    raise exception 'offboarding return test: lifecycle history lost previous state';
+  end if;
+
+  -- The monitor came back earlier and went to somebody else: completing the
+  -- late task must not take it away from the new holder.
+  update public.asset_assignments set returned_at = now() where id = v_monitor_assignment;
+  insert into public.asset_assignments (tenant_id, asset_id, requester_id)
+  values (v_tenant, v_monitor, v_other_requester) returning id into v_monitor_new_assignment;
+  update public.onboarding_tasks set status = 'completed', completed_at = now()
+  where id = v_task_monitor;
+  if (select returned_at from public.asset_assignments where id = v_monitor_new_assignment) is not null
+    or (select lifecycle_state from public.assets where id = v_monitor) <> 'active' then
+    raise exception 'offboarding return test: reassigned device was touched';
+  end if;
+
+  -- Reopening and completing again stays idempotent.
+  update public.onboarding_tasks set status = 'open', completed_at = null where id = v_task_notebook;
+  update public.onboarding_tasks set status = 'completed', completed_at = now() where id = v_task_notebook;
+  if (select count(*) from public.asset_lifecycle_events
+      where asset_id = v_notebook and next_state = 'stock') <> 1 then
+    raise exception 'offboarding return test: repeated completion changed history';
+  end if;
+  raise notice 'offboarding return checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0217: ticket templates with form fields, conditional checklist items and
+# stored answers.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_ticket record;
+  v_other_tenant uuid;
+  v_template uuid;
+  v_answers jsonb := '{"person": "Erika Muster", "modell": "Standard", "docking": true}'::jsonb;
+  v_created integer;
+begin
+  select * into v_ticket from public.tickets limit 1;
+  select id into v_other_tenant from public.tenants where id <> v_ticket.tenant_id limit 1;
+  insert into public.ticket_templates (tenant_id, name, subject_template, description_template)
+  values (v_ticket.tenant_id, 'Neuer Laptop (Formulartest)', 'Neuer Laptop', 'Bitte vorbereiten.')
+  returning id into v_template;
+  insert into public.ticket_template_fields
+    (tenant_id, template_id, key, label, field_type, required, options, position, condition)
+  values
+    (v_ticket.tenant_id, v_template, 'person', 'Name der Person', 'text', true, '{}', 0, null),
+    (v_ticket.tenant_id, v_template, 'modell', 'Modell', 'select', true,
+      array['Standard', 'Entwickler'], 1, null),
+    (v_ticket.tenant_id, v_template, 'docking', 'Docking-Station nötig', 'checkbox', false, '{}', 2, null),
+    (v_ticket.tenant_id, v_template, 'docking_typ', 'Typ', 'text', false, '{}', 3,
+      '{"fieldKey": "docking", "equals": "true"}'::jsonb);
+  insert into public.ticket_template_checklist_items (tenant_id, template_id, description, position, condition)
+  values
+    (v_ticket.tenant_id, v_template, 'Laptop bestellen', 0, null),
+    (v_ticket.tenant_id, v_template, 'Docking-Station bestellen', 1,
+      '{"fieldKey": "docking", "equals": "true"}'::jsonb),
+    (v_ticket.tenant_id, v_template, 'Entwicklerlizenz', 2,
+      '{"fieldKey": "modell", "equals": "Entwickler"}'::jsonb);
+
+  select count(*) into v_created from public.ticket_template_checklist_items
+  where template_id = v_template and public.ticket_template_condition_holds(condition, v_answers);
+  if v_created <> 2 then
+    raise exception 'template form test: expected 2 applicable checklist items, got %', v_created;
+  end if;
+  if public.ticket_template_condition_holds('{"fieldKey": "docking", "equals": "true"}'::jsonb, '{}'::jsonb) then
+    raise exception 'template form test: missing answer matched';
+  end if;
+  if not public.ticket_template_condition_holds('{"fieldKey": "modell", "equals": "Standard"}'::jsonb,
+      '{"modell": " Standard "}'::jsonb) then
+    raise exception 'template form test: trimmed text did not match';
+  end if;
+
+  begin
+    insert into public.ticket_template_fields (tenant_id, template_id, key, label, field_type)
+    values (v_ticket.tenant_id, v_template, 'person', 'Doppelt', 'text');
+    raise exception 'template form test: duplicate key accepted';
+  exception when unique_violation then null;
+  end;
+  begin
+    insert into public.ticket_template_fields (tenant_id, template_id, key, label, field_type)
+    values (v_ticket.tenant_id, v_template, 'auswahl', 'Auswahl', 'select');
+    raise exception 'template form test: select without options accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.ticket_template_fields (tenant_id, template_id, key, label, field_type, condition)
+    values (v_ticket.tenant_id, v_template, 'kaputt', 'Kaputt', 'text', '{"fieldKey": "x"}'::jsonb);
+    raise exception 'template form test: invalid condition accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.ticket_template_fields (tenant_id, template_id, key, label, field_type, condition)
+    values (v_ticket.tenant_id, v_template, 'selbst', 'Selbst', 'text',
+      '{"fieldKey": "selbst", "equals": "x"}'::jsonb);
+    raise exception 'template form test: self condition accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    update public.ticket_template_checklist_items set condition = '[]'::jsonb
+    where template_id = v_template and position = 0;
+    raise exception 'template form test: invalid checklist condition accepted';
+  exception when check_violation then null;
+  end;
+  if v_other_tenant is not null then
+    begin
+      insert into public.ticket_template_fields (tenant_id, template_id, key, label, field_type)
+      values (v_other_tenant, v_template, 'fremd', 'Fremd', 'text');
+      raise exception 'template form test: cross-tenant field accepted';
+    exception when foreign_key_violation then null;
+    end;
+    begin
+      insert into public.ticket_form_answers (ticket_id, tenant_id, template_id, answers)
+      values (v_ticket.id, v_other_tenant, null, '{}'::jsonb);
+      raise exception 'template form test: cross-tenant answers accepted';
+    exception when foreign_key_violation then null;
+    end;
+  end if;
+
+  insert into public.ticket_form_answers (ticket_id, tenant_id, template_id, answers, fields)
+  values (v_ticket.id, v_ticket.tenant_id, v_template, v_answers,
+    '[{"key": "person", "label": "Name der Person", "fieldType": "text"}]'::jsonb);
+  begin
+    insert into public.ticket_form_answers (ticket_id, tenant_id, template_id, answers)
+    values (v_ticket.id, v_ticket.tenant_id, v_template, '[]'::jsonb);
+    raise exception 'template form test: second or non-object answers accepted';
+  exception when unique_violation or check_violation then null;
+  end;
+
+  if has_table_privilege('authenticated', 'public.ticket_template_fields', 'select')
+    or has_table_privilege('anon', 'public.ticket_template_fields', 'select')
+    or has_table_privilege('authenticated', 'public.ticket_form_answers', 'insert')
+    or has_table_privilege('anon', 'public.ticket_form_answers', 'select')
+    or not has_table_privilege('authenticated', 'public.ticket_form_answers', 'select') then
+    raise exception 'template form test: unexpected browser privileges';
+  end if;
+  if (
+    select count(*) from pg_class
+    where oid in ('public.ticket_template_fields'::regclass, 'public.ticket_form_answers'::regclass)
+      and relrowsecurity and relforcerowsecurity
+  ) <> 2 then
+    raise exception 'template form test: row level security not forced';
+  end if;
+
+  -- Deleting the template removes its fields and keeps the answers.
+  delete from public.ticket_templates where id = v_template;
+  if exists (select 1 from public.ticket_template_fields where template_id = v_template) then
+    raise exception 'template form test: fields survived template deletion';
+  end if;
+  if (select template_id from public.ticket_form_answers where ticket_id = v_ticket.id) is not null then
+    raise exception 'template form test: answers kept a deleted template';
+  end if;
+  raise notice 'ticket template form checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0219: time rules apply once, renewals create one ticket, triage queues tickets.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template public.tickets;
+  v_priority uuid;
+  v_rule uuid;
+  v_ticket uuid := gen_random_uuid();
+  v_asset uuid;
+  v_requester_exists boolean;
+begin
+  select ticket.* into v_template
+  from public.tickets ticket
+  join public.ticket_statuses status on status.id = ticket.status_id and not status.is_closed
+  where ticket.department_id is not null
+  limit 1;
+  select id into v_priority from public.ticket_priorities
+  where tenant_id = v_template.tenant_id and id <> v_template.priority_id limit 1;
+
+  insert into public.ticket_rules (tenant_id, name, conditions, actions)
+  values (v_template.tenant_id, 'Nicht zugewiesen nach 1 h',
+    jsonb_build_object('trigger', 'time', 'time', jsonb_build_object('kind', 'unassigned', 'hours', 1),
+      'departmentIds', jsonb_build_array(v_template.department_id)),
+    jsonb_build_object('priorityId', v_priority, 'notify', jsonb_build_array('supervisors')))
+  returning id into v_rule;
+
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id, created_at)
+  values (v_ticket, v_template.tenant_id, v_template.department_id, 'TIME-1', 'Alt',
+    'Test', v_template.status_id, v_template.priority_id, v_template.requester_id,
+    timezone('utc', now()) - interval '2 hours');
+  if (select priority_id from public.tickets where id = v_ticket) <> v_template.priority_id then
+    raise exception 'time rule test: time rule applied on insert';
+  end if;
+  perform public.ticket_time_rules_run();
+  if (select priority_id from public.tickets where id = v_ticket) <> v_priority then
+    raise exception 'time rule test: priority not changed';
+  end if;
+  if not exists (select 1 from public.ticket_rule_time_runs where rule_id = v_rule and ticket_id = v_ticket) then
+    raise exception 'time rule test: run not recorded';
+  end if;
+  update public.tickets set priority_id = v_template.priority_id where id = v_ticket;
+  perform public.ticket_time_rules_run();
+  if (select priority_id from public.tickets where id = v_ticket) <> v_template.priority_id then
+    raise exception 'time rule test: rule applied twice';
+  end if;
+  if (select status_changed_at from public.tickets where id = v_ticket) is null then
+    raise exception 'time rule test: status_changed_at not set';
+  end if;
+
+  -- Renewal tickets
+  insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+  values (v_template.tenant_id, 'assets.management', true)
+  on conflict (tenant_id, feature_key) do update set enabled = true;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_template.tenant_id, 'Firewall Haupt', 'firewall', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, warranty_until, supplier)
+  values (v_asset, v_template.tenant_id, 'firewall', current_date + 30, 'Muster AG');
+  select exists (
+    select 1 from public.user_role_assignments assignment
+    join public.role_permissions permission
+      on permission.role_id = assignment.role_id and permission.permission_code = 'asset.manage'
+    where assignment.tenant_id = v_template.tenant_id
+  ) into v_requester_exists;
+  perform public.infrastructure_create_renewal_tickets();
+  perform public.infrastructure_create_renewal_tickets();
+  if v_requester_exists then
+    if (select count(*) from public.infrastructure_renewal_tickets where asset_id = v_asset) <> 1 then
+      raise exception 'renewal test: expected exactly one renewal';
+    end if;
+    if not exists (
+      select 1 from public.ticket_assets link
+      join public.infrastructure_renewal_tickets renewal on renewal.ticket_id = link.ticket_id
+      where renewal.asset_id = v_asset and link.asset_id = v_asset
+    ) then
+      raise exception 'renewal test: ticket not linked to device';
+    end if;
+  end if;
+
+  -- Triage queue
+  insert into public.ticket_triage_settings (tenant_id, enabled) values (v_template.tenant_id, true);
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values (v_template.tenant_id, v_template.department_id, 'TRIAGE-1', 'Drucker', 'Test',
+    v_template.status_id, v_template.priority_id, v_template.requester_id)
+  returning id into v_ticket;
+  if not exists (select 1 from public.ticket_ai_triage where ticket_id = v_ticket and state = 'queued') then
+    raise exception 'triage test: ticket not queued';
+  end if;
+  raise notice 'time rule, renewal and triage checks ran (renewal requester: %)', v_requester_exists;
+end;
+$$;
+rollback;
+SQL
+
+# 0221: knowledge suggestions are service-role only, unique per fingerprint,
+# and the source tickets skip unsolved, merged, uncommented and covered tickets.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template record;
+  v_member uuid;
+  v_ids uuid[] := array[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(),
+    gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+  v_article uuid := gen_random_uuid();
+  v_index integer;
+  v_found uuid[];
+begin
+  if has_table_privilege('authenticated', 'public.knowledge_suggestions', 'select')
+    or has_table_privilege('anon', 'public.knowledge_suggestions', 'select')
+    or has_table_privilege('authenticated', 'public.knowledge_suggestion_refreshes', 'select') then
+    raise exception 'knowledge suggestion test: table readable by browsers';
+  end if;
+  if has_function_privilege('authenticated',
+      'public.knowledge_suggestion_source_tickets(uuid, timestamptz, integer)', 'execute') then
+    raise exception 'knowledge suggestion test: source function callable by browsers';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.knowledge_suggestions'::regclass) then
+    raise exception 'knowledge suggestion test: RLS disabled';
+  end if;
+
+  select * into v_template from public.tickets limit 1;
+  select user_id into v_member from public.tenant_memberships
+  where tenant_id = v_template.tenant_id and status = 'active' limit 1;
+  for v_index in 1..6 loop
+    insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+      status_id, priority_id, requester_id)
+    values (v_ids[v_index], v_template.tenant_id, v_template.department_id,
+      'KS-TEST-' || v_index, 'VPN Verbindung bricht ab', 'Seit heute',
+      v_template.status_id, v_template.priority_id, v_template.requester_id);
+  end loop;
+  update public.tickets set resolved_at = timezone('utc', now()) - interval '2 days'
+  where id = any(v_ids[1:5]);
+  update public.tickets set merged_into_ticket_id = v_ids[1] where id = v_ids[4];
+  insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+  select ticket_id, v_member, 'external', 'Client neu installiert'
+  from unnest(array[v_ids[1], v_ids[2], v_ids[3], v_ids[4], v_ids[6]]) ticket_id;
+  -- Ticket 3 was solved with a published article: covered.
+  insert into public.knowledge_articles (id, tenant_id, title, slug, visibility, status,
+    current_revision, created_by)
+  values (v_article, v_template.tenant_id, 'VPN neu verbinden', 'ks-test-vpn', 'internal',
+    'published', 1, v_member);
+  insert into public.ticket_knowledge_links (ticket_id, article_id, linked_by)
+  values (v_ids[3], v_article, v_member);
+
+  select array_agg(ticket_id) into v_found
+  from public.knowledge_suggestion_source_tickets(
+    v_template.tenant_id, timezone('utc', now()) - interval '120 days', 2000)
+  where ticket_id = any(v_ids);
+  -- 1 and 2 qualify; 3 covered, 4 merged, 5 without comment, 6 unsolved.
+  if coalesce(array_length(v_found, 1), 0) <> 2
+    or not (v_found @> array[v_ids[1], v_ids[2]]) then
+    raise exception 'knowledge suggestion test: unexpected source tickets %', v_found;
+  end if;
+
+  insert into public.knowledge_suggestions (tenant_id, department_id, fingerprint, title_hint,
+    ticket_ids, ticket_count)
+  values (v_template.tenant_id, v_template.department_id, 'v1|-|pair:verbindung+vpn',
+    'Verbindung · Vpn', v_ids[1:3], 3);
+  begin
+    insert into public.knowledge_suggestions (tenant_id, fingerprint, title_hint)
+    values (v_template.tenant_id, 'v1|-|pair:verbindung+vpn', 'Doppelt');
+    raise exception 'knowledge suggestion test: duplicate fingerprint accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    insert into public.knowledge_suggestions (tenant_id, fingerprint, title_hint, status)
+    values (v_template.tenant_id, 'v1|-|word:vpn', 'Vpn', 'stale');
+    raise exception 'knowledge suggestion test: invalid status accepted';
+  exception when check_violation then
+    null;
+  end;
+  raise notice 'knowledge suggestion checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0220: PRTG monitoring tables are service-role only; one open alert per object.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_integration uuid;
+  v_asset uuid;
+begin
+  select tenant_id into v_tenant from public.tenant_memberships
+  where status = 'active' order by created_at limit 1;
+  if has_table_privilege('authenticated', 'public.monitoring_integrations', 'select')
+     or has_table_privilege('anon', 'public.monitoring_alerts', 'select')
+     or has_table_privilege('authenticated', 'public.monitoring_service_identity', 'select') then
+    raise exception 'monitoring test: browser roles can read monitoring tables';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.monitoring_alerts'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.monitoring_integrations'::regclass) then
+    raise exception 'monitoring test: RLS disabled';
+  end if;
+
+  insert into public.monitoring_integrations (tenant_id, token_hash, enabled)
+  values (v_tenant, repeat('a', 64), true)
+  returning id into v_integration;
+  begin
+    insert into public.monitoring_integrations (tenant_id) values (v_tenant);
+    raise exception 'monitoring test: second integration per tenant accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    update public.monitoring_integrations set token_hash = 'not-a-hash'
+    where id = v_integration;
+    raise exception 'monitoring test: invalid token hash accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    update public.monitoring_integrations set create_on = 'always'
+    where id = v_integration;
+    raise exception 'monitoring test: invalid create_on accepted';
+  exception when check_violation then
+    null;
+  end;
+
+  insert into public.monitoring_alerts (tenant_id, integration_id, external_key, last_status)
+  values (v_tenant, v_integration, 'prtg:obj:2045', 'Down');
+  begin
+    insert into public.monitoring_alerts (tenant_id, integration_id, external_key)
+    values (v_tenant, v_integration, 'prtg:obj:2045');
+    raise exception 'monitoring test: second open alert accepted';
+  exception when unique_violation then
+    null;
+  end;
+  update public.monitoring_alerts
+  set state = 'resolved', resolved_at = timezone('utc', now())
+  where tenant_id = v_tenant and external_key = 'prtg:obj:2045';
+  insert into public.monitoring_alerts (tenant_id, integration_id, external_key)
+  values (v_tenant, v_integration, 'prtg:obj:2045');
+  if (select count(*) from public.monitoring_alerts
+      where tenant_id = v_tenant and external_key = 'prtg:obj:2045') <> 2 then
+    raise exception 'monitoring test: reopening after resolve failed';
+  end if;
+
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Core-Switch PRTG', 'switch', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, prtg_object_id)
+  values (v_asset, v_tenant, 'switch', '2045');
+  begin
+    update public.asset_infrastructure set prtg_object_id = 'abc' where asset_id = v_asset;
+    raise exception 'monitoring test: non-numeric PRTG object id accepted';
+  exception when check_violation then
+    null;
+  end;
+  raise notice 'monitoring checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0222: rule reminders map to the follow-up push category; draft claim columns exist.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+begin
+  if public.push_notification_category('ticket.rule_reminder') <> 'follow_up' then
+    raise exception 'rule push test: wrong category';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'knowledge_suggestions'
+      and column_name = 'drafting_started_at'
+  ) then
+    raise exception 'draft claim test: column missing';
+  end if;
+  raise notice 'rule push and draft claim checks ran';
+end;
+$$;
+SQL
+
+# 0228: three PRTG alerts on one device within 30 days open one problem.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_asset uuid;
+  v_integration uuid;
+  v_has_manager boolean;
+begin
+  v_tenant := '10000000-0000-4000-8000-000000000001';
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Access Point Aula', 'access_point', 'active') returning id into v_asset;
+  select id into v_integration from public.monitoring_integrations where tenant_id = v_tenant;
+  if v_integration is null then
+    insert into public.monitoring_integrations (tenant_id, token_hash, enabled)
+    values (v_tenant, repeat('b', 64), true) returning id into v_integration;
+  end if;
+  insert into public.monitoring_alerts (tenant_id, integration_id, external_key, asset_id, sensor_name,
+    state, opened_at, resolved_at)
+  select v_tenant, v_integration, 'recurring-' || n, v_asset, 'Ping', 'resolved',
+    timezone('utc', now()) - make_interval(days => n), timezone('utc', now()) - make_interval(days => n)
+  from generate_series(1, 3) n;
+  insert into public.role_permissions (role_id, permission_code)
+  values ('16500000-0000-4000-8000-000000000002', 'asset.manage')
+  on conflict do nothing;
+  select exists (
+    select 1 from public.user_role_assignments assignment
+    join public.role_permissions permission
+      on permission.role_id = assignment.role_id and permission.permission_code = 'asset.manage'
+    join public.tenant_memberships membership
+      on membership.tenant_id = assignment.tenant_id and membership.user_id = assignment.user_id
+     and membership.status = 'active'
+    where assignment.tenant_id = v_tenant
+  ) into v_has_manager;
+  perform public.monitoring_detect_recurring_problems();
+  if v_has_manager and not exists (
+    select 1 from public.monitoring_recurring_problems where asset_id = v_asset
+  ) then
+    raise exception 'recurring outage test: no problem opened';
+  end if;
+  perform public.monitoring_detect_recurring_problems();
+  if (select count(*) from public.monitoring_recurring_problems where asset_id = v_asset) > 1 then
+    raise exception 'recurring outage test: problem opened twice';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'ticket_triage_settings'
+      and column_name = 'auto_merge_duplicates'
+  ) then
+    raise exception 'triage settings test: auto merge column missing';
+  end if;
+  raise notice 'recurring outage checks ran (manager present: %)', v_has_manager;
+end;
+$$;
+rollback;
+SQL
+
+# 0224: shop backorders become procurement needs; goods receipts reserve them
+# in order of creation and move complete orders to «Bereit zur Abholung».
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f2240000-0000-4000-8000-000000000001';
+  v_employee constant uuid := 'f2240000-0000-4000-8000-000000000002';
+  v_tenant uuid;
+  v_requester_role uuid;
+  v_location uuid;
+  v_toner uuid;
+  v_cat_toner uuid;
+  v_order1 uuid;
+  v_order2 uuid;
+  v_order3 uuid;
+  v_order4 uuid;
+  v_bo1 uuid;
+  v_bo2 uuid;
+  v_bo4 uuid;
+  v_backorder public.shop_backorders%rowtype;
+  v_status text;
+  v_count integer;
+  v_physical numeric;
+  v_reserved numeric;
+begin
+  if has_table_privilege('authenticated', 'public.shop_backorders', 'select')
+     or has_table_privilege('anon', 'public.shop_backorders', 'select') then
+    raise exception 'backorder test: browser roles can read backorders';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.shop_backorders'::regclass) then
+    raise exception 'backorder test: RLS disabled';
+  end if;
+  if has_function_privilege('authenticated',
+       'public.shop_backorder_update(uuid, uuid, uuid[], text, text, date, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.shop_allocate_backorders(uuid, uuid, uuid)', 'execute') then
+    raise exception 'backorder test: functions callable from the browser';
+  end if;
+
+  insert into auth.users (id) values (v_owner), (v_employee);
+  v_tenant := public.provision_personal_workspace(v_owner, 'owner@backorder.example', 'Backorder Test');
+  select id into v_requester_role from public.roles where tenant_id = v_tenant and name = 'Requester';
+  insert into public.user_profiles (id, display_name) values (v_employee, 'Erika Beschaffung');
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_tenant, v_employee, 'active', now());
+  insert into public.user_role_assignments (tenant_id, user_id, role_id, assigned_by)
+  values (v_tenant, v_employee, v_requester_role, v_owner);
+  update public.tenant_feature_flags set enabled = true
+  where tenant_id = v_tenant and feature_key = 'inventory.management';
+
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'lager', 'Lager')
+  returning id into v_location;
+  insert into public.inventory_items (tenant_id, article_number, name, supplier)
+  values (v_tenant, 'toner-sw', 'Toner schwarz', 'Office AG') returning id into v_toner;
+  insert into public.shop_catalog_items (tenant_id, inventory_item_id, name, kind)
+  values (v_tenant, v_toner, 'Toner schwarz', 'order') returning id into v_cat_toner;
+
+  -- Out of stock: the approved (no approval needed) line becomes a backorder.
+  v_order1 := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_toner, 'quantity', 2)),
+    'pickup', null, null, null, null, 'Drucker leer');
+  v_order2 := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_toner, 'quantity', 1)),
+    'pickup', null, null, null, null, 'Reserve');
+  select * into v_backorder from public.shop_backorders where order_id = v_order1;
+  if not found or v_backorder.status <> 'open' or v_backorder.quantity <> 2
+     or v_backorder.supplier is distinct from 'Office AG' or v_backorder.requester_id <> v_employee
+     or v_backorder.inventory_item_id <> v_toner then
+    raise exception 'backorder test: procurement need not created: %', row_to_json(v_backorder);
+  end if;
+  v_bo1 := v_backorder.id;
+  select id into v_bo2 from public.shop_backorders where order_id = v_order2 and status = 'open';
+  if v_bo2 is null or not exists (
+    select 1 from public.shop_order_events where order_id = v_order1 and event_type = 'backordered'
+  ) then
+    raise exception 'backorder test: second need or backordered event missing';
+  end if;
+  -- Re-trying the reservation must not create a second need.
+  perform public.shop_try_reserve_line(v_owner,
+    (select id from public.shop_order_lines where order_id = v_order1));
+  if (select count(*) from public.shop_backorders where order_id = v_order1) <> 1 then
+    raise exception 'backorder test: duplicate need for one line';
+  end if;
+
+  begin
+    perform public.shop_backorder_update(v_employee, v_tenant, array[v_bo1], 'order',
+      'Office AG', current_date + 3, null);
+    raise exception 'backorder test: an employee could order';
+  exception when insufficient_privilege then null;
+  end;
+  v_count := public.shop_backorder_update(v_owner, v_tenant, array[v_bo1, v_bo2, v_bo1], 'order',
+    'Büro Shop GmbH', current_date + 3, 'Bestellung 4711');
+  select * into v_backorder from public.shop_backorders where id = v_bo1;
+  if v_count <> 2 or v_backorder.status <> 'ordered' or v_backorder.expected_on <> current_date + 3
+     or v_backorder.supplier <> 'Büro Shop GmbH' or v_backorder.ordered_by <> v_owner then
+    raise exception 'backorder test: marking as ordered failed: %', row_to_json(v_backorder);
+  end if;
+
+  -- Receipt of 1: the older need (2) cannot be served yet, the newer one (1) can.
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(jsonb_build_object('item_id', v_toner, 'location_id', v_location,
+      'physical_delta', 1, 'reserved_delta', 0)), null, null);
+  if (select status from public.shop_backorders where id = v_bo1) <> 'ordered'
+     or (select status from public.shop_backorders where id = v_bo2) <> 'received'
+     or (select status from public.shop_orders where id = v_order2) <> 'ready'
+     or (select status from public.shop_orders where id = v_order1) <> 'submitted'
+     or (select status from public.shop_order_lines where order_id = v_order2) <> 'reserved' then
+    raise exception 'backorder test: first receipt allocated wrongly';
+  end if;
+  if not exists (
+    select 1 from public.ticket_notifications
+    where user_id = v_employee and kind = 'shop.order.ready' and payload ->> 'orderId' = v_order2::text
+  ) then
+    raise exception 'backorder test: requester was not notified';
+  end if;
+
+  -- Receipt of 2: now the older need is served as well.
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(jsonb_build_object('item_id', v_toner, 'location_id', v_location,
+      'physical_delta', 2, 'reserved_delta', 0)), null, null);
+  select physical_quantity, reserved_quantity into v_physical, v_reserved
+  from public.inventory_stock_balances where tenant_id = v_tenant and item_id = v_toner;
+  if (select status from public.shop_backorders where id = v_bo1) <> 'received'
+     or (select status from public.shop_orders where id = v_order1) <> 'ready'
+     or v_physical <> 3 or v_reserved <> 3 then
+    raise exception 'backorder test: second receipt failed: % / %', v_physical, v_reserved;
+  end if;
+  v_status := public.shop_update_order(v_owner, v_tenant, v_order1, 'issue', '{}'::jsonb);
+  if v_status <> 'issued' then
+    raise exception 'backorder test: received order could not be handed out: %', v_status;
+  end if;
+
+  -- Cancelling the order cancels its need.
+  v_order3 := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_toner, 'quantity', 1)),
+    'pickup', null, null, null, null, 'Später');
+  v_status := public.shop_update_order(v_employee, v_tenant, v_order3, 'cancel', '{}'::jsonb);
+  if (select status from public.shop_backorders where order_id = v_order3) <> 'cancelled' then
+    raise exception 'backorder test: cancelled order kept its need';
+  end if;
+
+  -- A cancelled need is not served by a later receipt.
+  v_order4 := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_toner, 'quantity', 1)),
+    'pickup', null, null, null, null, 'Nicht beschaffen');
+  select id into v_bo4 from public.shop_backorders where order_id = v_order4 and status = 'open';
+  perform public.shop_backorder_update(v_owner, v_tenant, array[v_bo4], 'cancel', null, null, 'Ausverkauft');
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(jsonb_build_object('item_id', v_toner, 'location_id', v_location,
+      'physical_delta', 1, 'reserved_delta', 0)), null, null);
+  if (select status from public.shop_order_lines where order_id = v_order4) <> 'backorder'
+     or (select status from public.shop_orders where id = v_order4) <> 'submitted' then
+    raise exception 'backorder test: cancelled need was allocated';
+  end if;
+  begin
+    perform public.shop_backorder_update(v_owner, v_tenant, array[v_bo4], 'order', null, null, null);
+    raise exception 'backorder test: closed need could be ordered';
+  exception when check_violation then null;
+  end;
+  -- Manual allocation serves the line once a need is waiting again.
+  if public.shop_allocate_backorders(v_tenant, v_toner, v_owner) <> 0 then
+    raise exception 'backorder test: manual allocation served a cancelled need';
+  end if;
+  raise notice 'shop backorder checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0227: audit view search, keyset pagination, area prefixes, redacted free
+# text, actor search and service_role-only execution.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := 'f2270000-0000-4000-8000-000000000001';
+  v_other_tenant constant uuid := 'f2270000-0000-4000-8000-000000000002';
+  v_actor constant uuid := 'f2270000-0000-4000-8000-000000000011';
+  v_second constant uuid := 'f2270000-0000-4000-8000-000000000012';
+  v_rows public.audit_logs[];
+  v_last public.audit_logs;
+  v_count integer;
+begin
+  insert into public.tenants (id, slug, name) values
+    (v_tenant, 'audit-view-test', 'Audit View Test'),
+    (v_other_tenant, 'audit-view-other', 'Audit View Other');
+  insert into auth.users (id, email) values
+    (v_actor, 'verantwortlich@firma.ch'), (v_second, 'zweite@firma.ch');
+  insert into public.user_profiles (id, display_name) values
+    (v_actor, 'Vera Verantwortlich'), (v_second, 'Zora Zweite')
+    on conflict (id) do nothing;
+  insert into public.tenant_memberships (tenant_id, user_id, status) values
+    (v_tenant, v_actor, 'active'), (v_tenant, v_second, 'active');
+
+  insert into public.audit_logs (tenant_id, actor_id, action, entity_type, severity, metadata, occurred_at)
+  select v_tenant, case when n % 2 = 0 then v_actor else v_second end,
+    case when n % 3 = 0 then 'tenant.role.assigned' when n % 3 = 1 then 'tenant.settings.updated' else 'ticket.updated' end,
+    case when n % 3 = 2 then 'ticket' else 'tenant' end,
+    case when n = 5 then 'security'::public.audit_severity else 'info'::public.audit_severity end,
+    jsonb_build_object('note', 'Eintrag ' || n, 'api_token', 'geheimwert-' || n),
+    timestamptz '2026-01-01 10:00:00+00' + (n / 2) * interval '1 minute'
+  from generate_series(1, 12) n;
+  insert into public.audit_logs (tenant_id, actor_id, action, entity_type, metadata)
+  values (v_other_tenant, v_actor, 'tenant.settings.updated', 'tenant', '{"note":"fremd"}');
+
+  select count(*) into v_count from public.audit_log_search(v_tenant, p_limit => 500);
+  if v_count <> 12 then
+    raise exception 'audit view test: expected 12 tenant rows, got %', v_count;
+  end if;
+
+  -- Keyset pagination with duplicate timestamps visits every row exactly once.
+  v_count := 0;
+  v_last := null;
+  loop
+    select array_agg(row_value) into v_rows
+    from public.audit_log_search(
+      v_tenant, p_cursor_at => v_last.occurred_at, p_cursor_id => v_last.id, p_limit => 5
+    ) row_value;
+    exit when v_rows is null;
+    v_count := v_count + cardinality(v_rows);
+    v_last := v_rows[cardinality(v_rows)];
+  end loop;
+  if v_count <> 12 then
+    raise exception 'audit view test: keyset pagination returned % rows', v_count;
+  end if;
+
+  select count(*) into v_count from public.audit_log_search(v_tenant, p_actor_id => v_actor);
+  if v_count <> 6 then
+    raise exception 'audit view test: actor filter returned %', v_count;
+  end if;
+  select count(*) into v_count from public.audit_log_search(v_tenant, p_severity => 'security');
+  if v_count <> 1 then
+    raise exception 'audit view test: severity filter returned %', v_count;
+  end if;
+  -- Area «Einstellungen»: tenant. prefix, excluding tenant.role. (Benutzer).
+  select count(*) into v_count from public.audit_log_search(
+    v_tenant, p_action_prefixes => array['tenant.'], p_excluded_prefixes => array['tenant.role.']);
+  if v_count <> 4 then
+    raise exception 'audit view test: area prefix filter returned %', v_count;
+  end if;
+  select count(*) into v_count from public.audit_log_search(v_tenant, p_query => 'Eintrag 1');
+  if v_count <> 4 then
+    raise exception 'audit view test: free text returned % (expected 1, 10, 11, 12)', v_count;
+  end if;
+  -- Secrets in metadata are not searchable; LIKE wildcards are literal.
+  select count(*) into v_count from public.audit_log_search(v_tenant, p_query => 'geheimwert');
+  if v_count <> 0 then
+    raise exception 'audit view test: secret metadata value is searchable';
+  end if;
+  select count(*) into v_count from public.audit_log_search(v_tenant, p_query => '%');
+  if v_count <> 0 then
+    raise exception 'audit view test: wildcard query was not escaped';
+  end if;
+  if public.audit_redact_jsonb('{"a":{"clientSecret":"x","list":[{"password":"y","ok":1}]},"b":2}'::jsonb)
+     <> '{"a":{"clientSecret":"[verborgen]","list":[{"password":"[verborgen]","ok":1}]},"b":2}'::jsonb then
+    raise exception 'audit view test: redaction failed';
+  end if;
+
+  select count(*) into v_count from public.audit_log_actor_search(v_tenant, 'zweite');
+  if v_count <> 1 then
+    raise exception 'audit view test: actor search returned %', v_count;
+  end if;
+  select count(*) into v_count from public.audit_log_actor_search(v_other_tenant, null);
+  if v_count <> 0 then
+    raise exception 'audit view test: actor search leaked another tenant';
+  end if;
+  select count(*) into v_count from public.audit_log_entity_types(v_tenant);
+  if v_count <> 2 then
+    raise exception 'audit view test: entity types returned %', v_count;
+  end if;
+
+  if has_function_privilege('authenticated', 'public.audit_log_search(uuid, uuid, text, text[], text[], text, uuid, text, timestamptz, timestamptz, text, timestamptz, uuid, integer)', 'execute')
+     or has_function_privilege('anon', 'public.audit_log_actor_search(uuid, text, integer)', 'execute')
+     or has_function_privilege('authenticated', 'public.audit_log_entity_types(uuid)', 'execute')
+     or not has_function_privilege('service_role', 'public.audit_log_search(uuid, uuid, text, text[], text[], text, uuid, text, timestamptz, timestamptz, text, timestamptz, uuid, integer)', 'execute') then
+    raise exception 'audit view test: function privileges are wrong';
+  end if;
+  raise notice 'audit view checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0226: Intune device actions: permission, default grant, log table and RPCs.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_entra constant uuid := '11111111-1111-4111-8111-111111111111';
+  v_actor uuid;
+  v_outsider uuid;
+  v_ticket uuid;
+  v_asset uuid;
+  v_plain_asset uuid;
+  v_role uuid;
+  v_custom_role uuid;
+  v_begin record;
+  v_finish record;
+  v_targets integer;
+begin
+  if not exists (
+    select 1 from public.permissions
+    where code = 'asset.intune.actions' and is_sensitive
+  ) then
+    raise exception 'intune action test: permission missing';
+  end if;
+  if exists (
+    select 1
+    from public.role_permissions manage
+    join public.roles role on role.id = manage.role_id and role.is_system and role.active
+    where manage.permission_code = 'asset.manage'
+      and not exists (
+        select 1 from public.role_permissions action
+        where action.role_id = manage.role_id
+          and action.permission_code = 'asset.intune.actions'
+      )
+  ) then
+    raise exception 'intune action test: system role with asset.manage lacks asset.intune.actions';
+  end if;
+
+  insert into public.roles (tenant_id, name, scope, is_system)
+  values (v_tenant, 'Intune-Test System', 'tenant', true) returning id into v_role;
+  insert into public.role_permissions (role_id, permission_code) values (v_role, 'asset.manage');
+  if not exists (
+    select 1 from public.role_permissions
+    where role_id = v_role and permission_code = 'asset.intune.actions'
+  ) then
+    raise exception 'intune action test: new system role not granted';
+  end if;
+  insert into public.roles (tenant_id, name, scope, is_system)
+  values (v_tenant, 'Intune-Test Eigene Rolle', 'tenant', false) returning id into v_custom_role;
+  insert into public.role_permissions (role_id, permission_code) values (v_custom_role, 'asset.manage');
+  if exists (
+    select 1 from public.role_permissions
+    where role_id = v_custom_role and permission_code = 'asset.intune.actions'
+  ) then
+    raise exception 'intune action test: custom role granted implicitly';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.intune_device_actions', 'insert')
+     or has_table_privilege('authenticated', 'public.intune_device_actions', 'update')
+     or has_table_privilege('anon', 'public.intune_device_actions', 'select')
+     or not (select relrowsecurity from pg_class where oid = 'public.intune_device_actions'::regclass)
+     or has_function_privilege('authenticated', 'public.begin_intune_device_action(uuid, uuid, uuid, uuid, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.finish_intune_device_action(uuid, uuid, boolean, text, integer, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.intune_device_action_targets(uuid, uuid, uuid[])', 'execute') then
+    raise exception 'intune action test: browser roles can write the action log or call the RPCs';
+  end if;
+
+  v_actor := '00000000-0000-4000-8000-000000000002';
+  insert into public.user_role_assignments (tenant_id, user_id, role_id)
+  values (v_tenant, v_actor, v_role);
+  if not public.user_has_tenant_permission(v_actor, v_tenant, 'asset.intune.actions') then
+    raise exception 'intune action test: member of the system role lacks asset.intune.actions';
+  end if;
+  select membership.user_id into v_outsider
+  from public.tenant_memberships membership
+  where membership.tenant_id = v_tenant and membership.status = 'active'
+    and not public.user_has_tenant_permission(membership.user_id, v_tenant, 'asset.intune.actions')
+  limit 1;
+  select id into v_ticket from public.tickets where tenant_id = v_tenant limit 1;
+
+  insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+  values (v_tenant, 'assets.management', true)
+  on conflict (tenant_id, feature_key) do update set enabled = true, pilot_ends_at = null;
+
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'NB-INTUNE-ACTION', 'laptop', 'active') returning id into v_asset;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'NB-OHNE-INTUNE', 'laptop', 'active') returning id into v_plain_asset;
+  insert into public.asset_intune_asset_links (tenant_id, asset_id, canonical_external_device_id)
+  values (v_tenant, v_asset, 'aaaaaaaa-1111-4222-8333-444444444444');
+  insert into public.asset_intune_devices (tenant_id, asset_id, external_device_id, operating_system)
+  values (v_tenant, v_asset, 'AAAAAAAA-1111-4222-8333-444444444444', 'Windows')
+  on conflict (tenant_id, external_device_id) do update
+  set asset_id = excluded.asset_id, operating_system = excluded.operating_system;
+
+  -- Without an active, SSO-bound connection the action is refused.
+  update public.asset_intune_connections set enabled = false, sync_enabled = false
+  where tenant_id = v_tenant;
+  select count(*) into v_targets
+  from public.intune_device_action_targets(v_actor, v_tenant, array[v_asset, v_plain_asset])
+  where not connection_ready and operating_system = 'Windows';
+  if v_targets <> 1 then
+    raise exception 'intune action test: targets wrong (%)', v_targets;
+  end if;
+  begin
+    perform public.begin_intune_device_action(v_actor, v_tenant, v_asset, v_ticket, 'syncDevice');
+    raise exception 'intune action test: disabled connection accepted';
+  exception when sqlstate 'P0001' then
+    if sqlerrm <> 'Intune connection is not ready' then
+      raise;
+    end if;
+  end;
+
+  update public.tenant_sso_configurations
+  set provider = 'azure_ad', enabled = true,
+      issuer_url = 'https://login.microsoftonline.com/' || v_entra::text || '/v2.0'
+  where tenant_id = v_tenant;
+  insert into public.asset_intune_connections (tenant_id, enabled, directory_tenant_id)
+  values (v_tenant, true, v_entra)
+  on conflict (tenant_id) do update set enabled = true, directory_tenant_id = v_entra;
+  if public.intune_device_action_entra_tenant(v_tenant) is distinct from v_entra then
+    raise exception 'intune action test: connection not ready';
+  end if;
+
+  begin
+    perform public.begin_intune_device_action(v_actor, v_tenant, v_plain_asset, v_ticket, 'syncDevice');
+    raise exception 'intune action test: asset without Intune link accepted';
+  exception when sqlstate 'P0002' then
+    null;
+  end;
+  begin
+    perform public.begin_intune_device_action(v_actor, v_tenant, v_asset, v_ticket, 'wipe');
+    raise exception 'intune action test: unknown action accepted';
+  exception when sqlstate '22023' then
+    null;
+  end;
+  if v_outsider is not null then
+    begin
+      perform public.begin_intune_device_action(v_outsider, v_tenant, v_asset, v_ticket, 'syncDevice');
+      raise exception 'intune action test: member without permission accepted';
+    exception when insufficient_privilege then
+      null;
+    end;
+  end if;
+
+  select * into v_begin
+  from public.begin_intune_device_action(v_actor, v_tenant, v_asset, v_ticket, 'windowsDefenderScan');
+  if v_begin.managed_device_id <> 'aaaaaaaa-1111-4222-8333-444444444444'
+     or v_begin.entra_tenant_id <> v_entra
+     or v_begin.operating_system <> 'Windows' then
+    raise exception 'intune action test: begin returned wrong target';
+  end if;
+  if not exists (
+    select 1 from public.intune_device_actions
+    where id = v_begin.action_id and status = 'pending' and requested_by = v_actor
+      and ticket_id is not distinct from v_ticket
+  ) then
+    raise exception 'intune action test: pending log row missing';
+  end if;
+  begin
+    perform public.finish_intune_device_action(v_tenant, v_begin.action_id, true, 'v1.0', 204, 'provider_unavailable');
+    raise exception 'intune action test: success with error code accepted';
+  exception when sqlstate '22023' then
+    null;
+  end;
+  select * into v_finish
+  from public.finish_intune_device_action(v_tenant, v_begin.action_id, false, 'v1.0', 403, 'permission_missing');
+  if v_finish.status <> 'failed' or v_finish.graph_status <> 403
+     or v_finish.error_code <> 'permission_missing' then
+    raise exception 'intune action test: finish did not record the result';
+  end if;
+  begin
+    perform public.finish_intune_device_action(v_tenant, v_begin.action_id, true, 'v1.0', 204, null);
+    raise exception 'intune action test: finished action finished twice';
+  exception when sqlstate 'P0002' then
+    null;
+  end;
+  if v_ticket is not null and not exists (
+    select 1 from public.ticket_events
+    where ticket_id = v_ticket and event_type = 'asset.intune_action'
+      and payload ->> 'actionId' = v_begin.action_id::text
+      and payload ->> 'status' = 'failed'
+      and payload ->> 'errorCode' = 'permission_missing'
+  ) then
+    raise exception 'intune action test: ticket history entry missing';
+  end if;
+  if not exists (
+    select 1 from public.audit_logs
+    where tenant_id = v_tenant and action = 'asset.intune_action.failed'
+      and entity_id = v_asset
+  ) then
+    raise exception 'intune action test: audit entry missing';
+  end if;
+
+  update public.tenant_feature_flags set enabled = false
+  where tenant_id = v_tenant and feature_key = 'assets.management';
+  begin
+    perform public.begin_intune_device_action(v_actor, v_tenant, v_asset, null, 'syncDevice');
+    raise exception 'intune action test: disabled module accepted';
+  exception when insufficient_privilege then
+    null;
+  end;
+  raise notice 'intune action checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0223: ticket split (children block resolving the parent, last child adds an
+# event), vendor cases (waiting status, reminders, closing) are service-role only.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template record;
+  v_member uuid;
+  v_in_progress uuid;
+  v_resolved uuid;
+  v_waiting_vendor uuid;
+  v_parent uuid := gen_random_uuid();
+  v_ticket uuid := gen_random_uuid();
+  v_children jsonb;
+  v_child_ids uuid[];
+  v_hint text;
+  v_vendor uuid;
+  v_result jsonb;
+  v_case uuid;
+  v_status uuid;
+  v_count integer;
+begin
+  if has_table_privilege('authenticated', 'public.ticket_vendors', 'select')
+    or has_table_privilege('anon', 'public.ticket_vendor_cases', 'select')
+    or has_table_privilege('authenticated', 'public.ticket_vendor_cases', 'insert') then
+    raise exception 'split vendor test: vendor tables readable by browsers';
+  end if;
+  if has_function_privilege('authenticated',
+      'public.ticket_split_create_children(uuid, uuid, uuid, jsonb)', 'execute')
+    or has_function_privilege('authenticated',
+      'public.ticket_vendor_case_open(uuid, uuid, uuid, uuid, text, text)', 'execute')
+    or has_function_privilege('authenticated', 'public.ticket_vendor_send_reminders()', 'execute') then
+    raise exception 'split vendor test: service functions callable by browsers';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.ticket_vendor_cases'::regclass) then
+    raise exception 'split vendor test: RLS disabled';
+  end if;
+  if public.push_notification_category('ticket.vendor_reminder') <> 'follow_up'
+    or public.push_notification_category('ticket.children_done') <> 'follow_up' then
+    raise exception 'split vendor test: wrong push category';
+  end if;
+
+  select * into v_template from public.tickets limit 1;
+  select user_id into v_member from public.tenant_memberships
+  where tenant_id = v_template.tenant_id and status = 'active' limit 1;
+  select id into v_in_progress from public.ticket_statuses
+  where tenant_id = v_template.tenant_id and key = 'in_progress';
+  select id into v_resolved from public.ticket_statuses
+  where tenant_id = v_template.tenant_id and key = 'resolved';
+  select id into v_waiting_vendor from public.ticket_statuses
+  where tenant_id = v_template.tenant_id and key = 'waiting_vendor';
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values
+    (v_parent, v_template.tenant_id, v_template.department_id, 'SPLIT-TEST-1',
+      'Neue Mitarbeiterin', 'Arbeitsplatz einrichten', v_in_progress,
+      v_template.priority_id, v_template.requester_id),
+    (v_ticket, v_template.tenant_id, v_template.department_id, 'VENDOR-TEST-1',
+      'Glasfaser gestört', 'Leitung tot', v_in_progress,
+      v_template.priority_id, v_template.requester_id);
+
+  -- Split into two children.
+  v_children := public.ticket_split_create_children(v_template.tenant_id, v_parent, v_member,
+    jsonb_build_array(
+      jsonb_build_object('subject', 'Notebook bereitstellen', 'description', 'Teil 1',
+        'departmentId', v_template.department_id),
+      jsonb_build_object('subject', 'Badge erstellen', 'description', 'Teil 2',
+        'departmentId', v_template.department_id)
+    ));
+  select array_agg((child ->> 'id')::uuid) into v_child_ids
+  from jsonb_array_elements(v_children) child;
+  if coalesce(array_length(v_child_ids, 1), 0) <> 2
+    or (select count(*) from public.tickets
+        where parent_ticket_id = v_parent and requester_id = v_member
+          and affected_user_id = v_template.requester_id) <> 2
+    or (select count(*) from public.ticket_relations
+        where related_ticket_id = v_parent and relation_type = 'parent') <> 2
+    or not exists (select 1 from public.ticket_events
+                   where ticket_id = v_parent and event_type = 'ticket.split') then
+    raise exception 'split vendor test: children not created as expected';
+  end if;
+  begin
+    perform public.ticket_split_create_children(v_template.tenant_id, v_parent, v_member, '[]'::jsonb);
+    raise exception 'split vendor test: empty split accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+
+  -- The parent cannot be resolved while a child is open.
+  v_hint := null;
+  begin
+    update public.tickets set status_id = v_resolved where id = v_parent;
+  exception when check_violation then
+    get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  if v_hint is distinct from 'ticket_children_open' then
+    raise exception 'split vendor test: open children did not block resolving (hint %)', v_hint;
+  end if;
+  update public.tickets set assigned_agent_id = v_member, status_id = v_resolved
+  where id = v_child_ids[1];
+  if exists (select 1 from public.ticket_events
+             where ticket_id = v_parent and event_type = 'ticket.children_done') then
+    raise exception 'split vendor test: children_done before the last child';
+  end if;
+  update public.tickets set assigned_agent_id = v_member, status_id = v_resolved
+  where id = v_child_ids[2];
+  if not exists (select 1 from public.ticket_events
+                 where ticket_id = v_parent and event_type = 'ticket.children_done') then
+    raise exception 'split vendor test: children_done event missing';
+  end if;
+  update public.tickets set status_id = v_resolved where id = v_parent;
+
+  -- Vendors and vendor cases.
+  begin
+    insert into public.ticket_vendors (tenant_id, name) values (v_template.tenant_id, 'X');
+    raise exception 'split vendor test: too short vendor name accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.ticket_vendors (tenant_id, name, contact_email)
+  values (v_template.tenant_id, 'Swisscom', 'support@swisscom.example')
+  returning id into v_vendor;
+  begin
+    insert into public.ticket_vendors (tenant_id, name) values (v_template.tenant_id, ' swisscom ');
+    raise exception 'split vendor test: duplicate vendor name accepted';
+  exception when unique_violation then
+    null;
+  end;
+  if (select reminder_after_hours from public.ticket_vendors where id = v_vendor) <> 48 then
+    raise exception 'split vendor test: reminder default is not 48 hours';
+  end if;
+
+  v_result := public.ticket_vendor_case_open(v_template.tenant_id, v_ticket, v_vendor, v_member,
+    'SC-12345', 'Störung gemeldet');
+  v_case := (v_result ->> 'caseId')::uuid;
+  select status_id into v_status from public.tickets where id = v_ticket;
+  if v_waiting_vendor is not null and (v_status <> v_waiting_vendor
+      or (v_result ->> 'statusChanged')::boolean is not true) then
+    raise exception 'split vendor test: ticket not waiting for vendor';
+  end if;
+  begin
+    perform public.ticket_vendor_case_open(v_template.tenant_id, v_ticket, v_vendor, v_member, null, null);
+    raise exception 'split vendor test: second open case accepted';
+  exception when unique_violation then
+    null;
+  end;
+
+  update public.ticket_vendor_cases
+  set opened_at = timezone('utc', now()) - interval '50 hours'
+  where id = v_case;
+  v_count := public.ticket_vendor_send_reminders();
+  if v_count < 1 or (select reminder_sent_at from public.ticket_vendor_cases where id = v_case) is null
+    or not exists (select 1 from public.ticket_events
+                   where ticket_id = v_ticket and event_type = 'ticket.vendor_reminder') then
+    raise exception 'split vendor test: reminder not sent';
+  end if;
+  perform public.ticket_vendor_send_reminders();
+  if (select count(*) from public.ticket_events
+      where ticket_id = v_ticket and event_type = 'ticket.vendor_reminder') <> 1 then
+    raise exception 'split vendor test: reminder repeated too early';
+  end if;
+
+  perform public.ticket_vendor_case_record_update(v_template.tenant_id, v_ticket, v_case, v_member,
+    'Techniker kommt morgen');
+  if (select last_vendor_update_at from public.ticket_vendor_cases where id = v_case) is null then
+    raise exception 'split vendor test: vendor update not recorded';
+  end if;
+  v_result := public.ticket_vendor_case_close(v_template.tenant_id, v_ticket, v_case, v_member, null);
+  if (select closed_at from public.ticket_vendor_cases where id = v_case) is null then
+    raise exception 'split vendor test: case not closed';
+  end if;
+  if v_waiting_vendor is not null
+    and (select status_id from public.tickets where id = v_ticket) <> v_in_progress then
+    raise exception 'split vendor test: ticket not back in progress';
+  end if;
+  raise notice 'ticket split and vendor case checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0225: reply snippets and portal assistant tables are service-role only;
+# shortcuts are unique per scope; the assistant is off by default.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_user uuid;
+  v_session uuid;
+  v_summary record;
+begin
+  select tenant_id, user_id into v_tenant, v_user from public.tenant_memberships
+  where status = 'active' order by created_at limit 1;
+  if has_table_privilege('authenticated', 'public.reply_snippets', 'select')
+     or has_table_privilege('anon', 'public.reply_snippets', 'select')
+     or has_table_privilege('authenticated', 'public.portal_assistant_settings', 'select')
+     or has_table_privilege('authenticated', 'public.portal_assistant_sessions', 'select') then
+    raise exception 'snippet test: browser roles can read the new tables';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.reply_snippets'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.portal_assistant_sessions'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.portal_assistant_settings'::regclass) then
+    raise exception 'snippet test: RLS disabled';
+  end if;
+  if has_function_privilege('authenticated',
+       'public.portal_assistant_outcome_summary(uuid, timestamptz)', 'execute') then
+    raise exception 'assistant test: browser roles can run the summary';
+  end if;
+
+  insert into public.reply_snippets (tenant_id, owner_id, name, shortcut, body, created_by)
+  values (v_tenant, null, 'Begrüssung', 'hallo', 'Guten Tag {Vorname}', v_user);
+  -- A personal snippet may use the same shortcut as a shared one.
+  insert into public.reply_snippets (tenant_id, owner_id, name, shortcut, body, created_by)
+  values (v_tenant, v_user, 'Meine Begrüssung', 'hallo', 'Hoi {Vorname}', v_user);
+  begin
+    insert into public.reply_snippets (tenant_id, owner_id, name, shortcut, body)
+    values (v_tenant, null, 'Doppelt', 'hallo', 'Text');
+    raise exception 'snippet test: duplicate shared shortcut accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    insert into public.reply_snippets (tenant_id, name, shortcut, body)
+    values (v_tenant, 'Ungültig', 'Mit Leerzeichen', 'Text');
+    raise exception 'snippet test: invalid shortcut accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    insert into public.reply_snippets (tenant_id, name, body)
+    values (v_tenant, 'Leer', '   ');
+    raise exception 'snippet test: empty body accepted';
+  exception when check_violation then
+    null;
+  end;
+  -- An archived snippet frees its shortcut.
+  update public.reply_snippets set active = false
+  where tenant_id = v_tenant and owner_id is null and shortcut = 'hallo';
+  insert into public.reply_snippets (tenant_id, owner_id, name, shortcut, body)
+  values (v_tenant, null, 'Neue Begrüssung', 'hallo', 'Grüezi {Name}');
+
+  if exists (select 1 from public.portal_assistant_settings where tenant_id = v_tenant and enabled) then
+    raise exception 'assistant test: enabled without opt-in';
+  end if;
+  insert into public.portal_assistant_settings (tenant_id) values (v_tenant);
+  if (select enabled from public.portal_assistant_settings where tenant_id = v_tenant) then
+    raise exception 'assistant test: default is not off';
+  end if;
+
+  insert into public.portal_assistant_sessions (tenant_id, user_id, mode)
+  values (v_tenant, v_user, 'ai') returning id into v_session;
+  begin
+    update public.portal_assistant_sessions set question_count = 3 where id = v_session;
+    raise exception 'assistant test: more than two questions accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    update public.portal_assistant_sessions set outcome = 'ticket_created' where id = v_session;
+    raise exception 'assistant test: finished session without finished_at accepted';
+  exception when check_violation then
+    null;
+  end;
+  update public.portal_assistant_sessions
+  set outcome = 'solved_by_article', finished_at = timezone('utc', now())
+  where id = v_session;
+  insert into public.portal_assistant_sessions (tenant_id, user_id) values (v_tenant, v_user);
+  select * into v_summary
+  from public.portal_assistant_outcome_summary(v_tenant, timezone('utc', now()) - interval '1 day');
+  if v_summary.total < 2 or v_summary.solved_by_article < 1 or v_summary.open < 1
+     or v_summary.ai_sessions < 1 then
+    raise exception 'assistant test: wrong outcome summary';
+  end if;
+  raise notice 'reply snippet and portal assistant checks ran';
+end;
+$$;
+rollback;
+SQL
+
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template record;
+  v_agent uuid;
+  v_resolved uuid;
+  v_ticket uuid := gen_random_uuid();
+  v_ticket_two uuid := gen_random_uuid();
+  v_count integer;
+  v_payload jsonb;
+begin
+  if has_table_privilege('authenticated', 'public.ticket_sla_breach_reasons', 'select')
+    or has_table_privilege('anon', 'public.ticket_sla_breach_reasons', 'select')
+    or has_table_privilege('authenticated', 'public.ticket_kudos', 'select')
+    or has_table_privilege('authenticated', 'public.ticket_kudos', 'insert') then
+    raise exception 'sla reason kudos test: tables readable by browsers';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.ticket_sla_breach_reasons'::regclass)
+    or not (select relrowsecurity from pg_class where oid = 'public.ticket_kudos'::regclass) then
+    raise exception 'sla reason kudos test: RLS disabled';
+  end if;
+  if has_function_privilege('authenticated', 'public.record_ticket_kudos()', 'execute') then
+    raise exception 'sla reason kudos test: trigger function callable by browsers';
+  end if;
+  if public.push_notification_category('ticket.kudos') <> 'resolved'
+    or public.push_notification_category('ticket.vendor_reminder') <> 'follow_up'
+    or public.push_notification_category('infrastructure.due') <> 'infrastructure' then
+    raise exception 'sla reason kudos test: wrong push category';
+  end if;
+  if not public.ticket_satisfaction_is_praise(5::smallint, null)
+    or public.ticket_satisfaction_is_praise(4::smallint, '  ')
+    or not public.ticket_satisfaction_is_praise(4::smallint, 'Danke!')
+    or public.ticket_satisfaction_is_praise(3::smallint, 'Super') then
+    raise exception 'sla reason kudos test: wrong praise band';
+  end if;
+
+  select * into v_template from public.tickets
+  where tenant_id = '10000000-0000-4000-8000-000000000001'
+  order by created_at limit 1;
+  if v_template.id is null then
+    select * into v_template from public.tickets order by created_at limit 1;
+  end if;
+  v_agent := gen_random_uuid();
+  insert into auth.users (id) values (v_agent);
+  insert into public.user_profiles (id, display_name) values (v_agent, 'Kudos Agentin')
+  on conflict (id) do update set display_name = excluded.display_name;
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_template.tenant_id, v_agent, 'active', timezone('utc', now()));
+  -- The agent must be allowed to read the ticket, otherwise notifications are suppressed.
+  insert into public.roles (id, tenant_id, name, scope)
+  values ('f2290000-0000-4000-8000-0000000000aa', v_template.tenant_id, 'Kudos Testrolle', 'tenant');
+  insert into public.role_permissions (role_id, permission_code)
+  values ('f2290000-0000-4000-8000-0000000000aa', 'ticket.read.assigned'),
+         ('f2290000-0000-4000-8000-0000000000aa', 'ticket.read.department');
+  insert into public.user_role_assignments (tenant_id, user_id, role_id)
+  values (v_template.tenant_id, v_agent, 'f2290000-0000-4000-8000-0000000000aa');
+  insert into public.department_memberships (tenant_id, user_id, department_id, status)
+  values (v_template.tenant_id, v_agent, v_template.department_id, 'active');
+  select id into v_resolved from public.ticket_statuses
+  where tenant_id = v_template.tenant_id and is_closed
+  order by (key = 'resolved') desc, sort_order limit 1;
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id, assigned_agent_id)
+  values
+    (v_ticket, v_template.tenant_id, v_template.department_id, 'KUDOS-TEST-1',
+      'Drucker', 'Druckt nicht', v_resolved, v_template.priority_id,
+      v_template.requester_id, v_agent),
+    (v_ticket_two, v_template.tenant_id, v_template.department_id, 'KUDOS-TEST-2',
+      'Mail', 'Kein Empfang', v_resolved, v_template.priority_id,
+      v_template.requester_id, v_agent);
+  update public.user_profiles set display_name = 'Beat Muster'
+  where id = v_template.requester_id;
+
+  -- SLA breach reasons: validation.
+  begin
+    insert into public.ticket_sla_breach_reasons (ticket_id, tenant_id, breach_kind, reason_code)
+    values (v_ticket, v_template.tenant_id, 'resolution', 'other');
+    raise exception 'sla reason kudos test: other without note accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    insert into public.ticket_sla_breach_reasons (ticket_id, tenant_id, breach_kind, reason_code)
+    values (v_ticket, v_template.tenant_id, 'lunch', 'capacity');
+    raise exception 'sla reason kudos test: invalid breach kind accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    insert into public.ticket_sla_breach_reasons (ticket_id, tenant_id, breach_kind, reason_code)
+    values (v_ticket, v_template.tenant_id, 'response', 'bored');
+    raise exception 'sla reason kudos test: invalid reason accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.ticket_sla_breach_reasons (ticket_id, tenant_id, breach_kind, reason_code, note, recorded_by)
+  values (v_ticket, v_template.tenant_id, 'resolution', 'third_party', 'Lieferant langsam', v_agent);
+  insert into public.ticket_sla_breach_reasons (ticket_id, tenant_id, breach_kind, reason_code, note)
+  values (v_ticket, v_template.tenant_id, 'response', 'other', 'Stromausfall');
+  begin
+    insert into public.ticket_sla_breach_reasons (ticket_id, tenant_id, breach_kind, reason_code)
+    values (v_ticket, v_template.tenant_id, 'resolution', 'capacity');
+    raise exception 'sla reason kudos test: second reason for same breach accepted';
+  exception when unique_violation then
+    null;
+  end;
+
+  -- Kudos: top rating creates praise and notifies the agent once.
+  insert into public.ticket_satisfaction (ticket_id, score, comment, submitted_by)
+  values (v_ticket, 5, 'Super schnell, vielen Dank!', v_template.requester_id);
+  if not exists (
+    select 1 from public.ticket_kudos
+    where ticket_id = v_ticket and agent_id = v_agent and score = 5
+      and has_comment and withdrawn_at is null and notified_at is not null
+  ) then
+    raise exception 'sla reason kudos test: praise not recorded';
+  end if;
+  select count(*), max(payload::text)::jsonb into v_count, v_payload
+  from public.ticket_notifications
+  where ticket_id = v_ticket and user_id = v_agent and kind = 'ticket.kudos';
+  if v_count <> 1 or v_payload ->> 'requesterName' <> 'Beat Muster'
+     or (v_payload ->> 'score')::int <> 5 or v_payload ->> 'excerpt' is null
+     or v_payload::text like '%@%' then
+    raise exception 'sla reason kudos test: wrong kudos notification %', v_payload;
+  end if;
+
+  -- Lowered rating withdraws the praise; raising it again does not notify twice.
+  update public.ticket_satisfaction set score = 2 where ticket_id = v_ticket;
+  if not exists (select 1 from public.ticket_kudos where ticket_id = v_ticket and withdrawn_at is not null) then
+    raise exception 'sla reason kudos test: praise not withdrawn';
+  end if;
+  update public.ticket_satisfaction set score = 5 where ticket_id = v_ticket;
+  if not exists (select 1 from public.ticket_kudos where ticket_id = v_ticket and withdrawn_at is null)
+     or (select count(*) from public.ticket_notifications
+         where ticket_id = v_ticket and kind = 'ticket.kudos') <> 1 then
+    raise exception 'sla reason kudos test: praise restore wrong';
+  end if;
+
+  -- A 4 without comment is not praise.
+  insert into public.ticket_satisfaction (ticket_id, score, comment, submitted_by)
+  values (v_ticket_two, 4, null, v_template.requester_id);
+  if exists (select 1 from public.ticket_kudos where ticket_id = v_ticket_two)
+     or exists (select 1 from public.ticket_notifications
+                where ticket_id = v_ticket_two and kind = 'ticket.kudos') then
+    raise exception 'sla reason kudos test: 4 without comment counted as praise';
+  end if;
+  -- Display names that are e-mail addresses are never passed on.
+  update public.user_profiles set display_name = 'beat@example.ch'
+  where id = v_template.requester_id;
+  update public.ticket_satisfaction set comment = 'Danke' where ticket_id = v_ticket_two;
+  select payload into v_payload from public.ticket_notifications
+  where ticket_id = v_ticket_two and kind = 'ticket.kudos';
+  if v_payload is null or v_payload ? 'requesterName' then
+    raise exception 'sla reason kudos test: e-mail display name leaked %', v_payload;
+  end if;
+  raise notice 'sla breach reason and kudos checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0234: certificate/domain expiry and backup monitoring tables are
+# service-role only; targets and jobs are unique per tenant; the cron wake-up
+# is not callable by browser roles.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_job uuid;
+begin
+  select tenant_id into v_tenant from public.tenant_memberships
+  where status = 'active' order by created_at limit 1;
+  if has_table_privilege('authenticated', 'public.monitoring_expiry_targets', 'select')
+     or has_table_privilege('anon', 'public.monitoring_expiry_settings', 'select')
+     or has_table_privilege('authenticated', 'public.monitoring_backup_settings', 'select')
+     or has_table_privilege('authenticated', 'public.monitoring_backup_jobs', 'select')
+     or has_table_privilege('anon', 'public.monitoring_backup_reports', 'select') then
+    raise exception 'expiry/backup test: browser roles can read the new tables';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.monitoring_expiry_targets'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.monitoring_backup_jobs'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.monitoring_backup_reports'::regclass) then
+    raise exception 'expiry/backup test: RLS disabled';
+  end if;
+  if has_function_privilege('authenticated', 'public.monitoring_automation_wake(text)', 'execute')
+     or has_function_privilege('anon', 'public.monitoring_automation_verify_dispatch_secret(text)', 'execute') then
+    raise exception 'expiry/backup test: browser roles can call the dispatch functions';
+  end if;
+  if public.monitoring_automation_verify_dispatch_secret('wrong-secret-wrong-secret-wrong-secret') then
+    raise exception 'expiry/backup test: wrong dispatch secret accepted';
+  end if;
+  -- No enabled tenant: the wake-up returns without calling out.
+  perform public.monitoring_automation_wake('expiry-monitoring');
+  perform public.monitoring_automation_wake('backup-monitoring');
+  perform public.monitoring_automation_wake('unknown');
+
+  insert into public.monitoring_expiry_settings (tenant_id, enabled) values (v_tenant, true);
+  begin
+    update public.monitoring_expiry_settings set reminder_days = 30 where tenant_id = v_tenant;
+    raise exception 'expiry test: reminder not before warning accepted';
+  exception when check_violation then
+    null;
+  end;
+
+  insert into public.monitoring_expiry_targets (tenant_id, kind, host, port)
+  values (v_tenant, 'certificate', 'mail.example.ch', 443);
+  insert into public.monitoring_expiry_targets (tenant_id, kind, host, port)
+  values (v_tenant, 'certificate', 'mail.example.ch', 993);
+  insert into public.monitoring_expiry_targets (tenant_id, kind, host)
+  values (v_tenant, 'domain', 'example.ch');
+  begin
+    insert into public.monitoring_expiry_targets (tenant_id, kind, host, port)
+    values (v_tenant, 'certificate', 'mail.example.ch', 443);
+    raise exception 'expiry test: duplicate target accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    insert into public.monitoring_expiry_targets (tenant_id, kind, host)
+    values (v_tenant, 'domain', 'example.ch');
+    raise exception 'expiry test: duplicate domain accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    insert into public.monitoring_expiry_targets (tenant_id, kind, host, port)
+    values (v_tenant, 'domain', 'example.org', 443);
+    raise exception 'expiry test: domain with port accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    insert into public.monitoring_expiry_targets (tenant_id, kind, host, port)
+    values (v_tenant, 'certificate', 'Mail.Example.ch', 443);
+    raise exception 'expiry test: uppercase host accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    update public.monitoring_expiry_targets set status = 'unknown'
+    where tenant_id = v_tenant and kind = 'domain';
+    raise exception 'expiry test: invalid status accepted';
+  exception when check_violation then
+    null;
+  end;
+  update public.monitoring_expiry_targets
+  set status = 'expiring', expires_at = timezone('utc', now()) + interval '20 days',
+      ticket_stage = 'warned', ticket_expires_at = timezone('utc', now()) + interval '20 days',
+      san = array['mail.example.ch', 'autodiscover.example.ch'], check_method = 'tls'
+  where tenant_id = v_tenant and port = 443;
+
+  insert into public.monitoring_backup_settings (tenant_id, enabled, sender_patterns, token_hash)
+  values (v_tenant, true, array['veeam@example.ch'], repeat('b', 64));
+  begin
+    update public.monitoring_backup_settings set warning_action = 'comment' where tenant_id = v_tenant;
+    raise exception 'backup test: invalid warning action accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    update public.monitoring_backup_settings set token_hash = 'plain' where tenant_id = v_tenant;
+    raise exception 'backup test: invalid token hash accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.monitoring_backup_jobs (tenant_id, name, name_key, expected_interval_hours)
+  values (v_tenant, 'Daily VMs', 'daily vms', 24)
+  returning id into v_job;
+  begin
+    insert into public.monitoring_backup_jobs (tenant_id, name, name_key)
+    values (v_tenant, 'DAILY VMs', 'daily vms');
+    raise exception 'backup test: duplicate job accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    insert into public.monitoring_backup_jobs (tenant_id, name, name_key)
+    values (v_tenant, 'Other', 'Other');
+    raise exception 'backup test: uppercase job key accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.monitoring_backup_reports (tenant_id, job_id, result, source, dedupe_key)
+  values (v_tenant, v_job, 'failed', 'email', 'email:<abc@example.ch>');
+  begin
+    insert into public.monitoring_backup_reports (tenant_id, job_id, result, source, dedupe_key)
+    values (v_tenant, v_job, 'failed', 'email', 'email:<abc@example.ch>');
+    raise exception 'backup test: duplicate report accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    insert into public.monitoring_backup_reports (tenant_id, job_id, result, source)
+    values (v_tenant, v_job, 'unknown', 'email');
+    raise exception 'backup test: invalid result accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.monitoring_backup_reports (tenant_id, job_id, result, source)
+  values (v_tenant, v_job, 'success', 'webhook');
+  update public.monitoring_backup_jobs
+  set last_result = 'success', last_report_at = timezone('utc', now()), report_count = 2,
+      ticket_reason = 'missing'
+  where id = v_job;
+  begin
+    update public.monitoring_backup_jobs set ticket_reason = 'other' where id = v_job;
+    raise exception 'backup test: invalid ticket reason accepted';
+  exception when check_violation then
+    null;
+  end;
+  raise notice 'expiry and backup monitoring checks ran';
+end;
+$$;
+rollback;
+SQL
+
+
+# 0230: support levels (1st/2nd/3rd Level) on teams, level history from the
+# assigned team, handover RPC with mandatory note, level queue list function.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template record;
+  v_member uuid;
+  v_in_progress uuid;
+  v_ticket uuid := gen_random_uuid();
+  v_l1 uuid := gen_random_uuid();
+  v_l2 uuid := gen_random_uuid();
+  v_l3 uuid := gen_random_uuid();
+  v_plain uuid := gen_random_uuid();
+  v_result jsonb;
+  v_hint text;
+  v_change record;
+begin
+  if not (select relrowsecurity from pg_class where oid = 'public.ticket_support_level_changes'::regclass) then
+    raise exception 'support level test: RLS disabled';
+  end if;
+  if has_table_privilege('authenticated', 'public.ticket_support_level_changes', 'select')
+    or has_function_privilege('authenticated',
+      'public.ticket_support_level_handover(uuid, uuid, uuid, uuid, uuid, text, smallint)', 'execute')
+    or has_function_privilege('anon',
+      'public.list_authorized_ticket_list_page_by_level(uuid, uuid[], uuid[], uuid[], uuid, boolean, text, text, integer, integer, text, text, text[], text[], text[], text[], text[], text, text[], uuid[], uuid[], smallint)', 'execute') then
+    raise exception 'support level test: browser roles have too much access';
+  end if;
+  if not has_function_privilege('authenticated',
+      'public.list_authorized_ticket_list_page_by_level(uuid, uuid[], uuid[], uuid[], uuid, boolean, text, text, integer, integer, text, text, text[], text[], text[], text[], text[], text, text[], uuid[], uuid[], smallint)', 'execute') then
+    raise exception 'support level test: level queue not callable by agents';
+  end if;
+
+  select * into v_template from public.tickets limit 1;
+  select membership.user_id into v_member
+  from public.department_memberships membership
+  join public.tenant_memberships tenant_membership
+    on tenant_membership.tenant_id = membership.tenant_id
+   and tenant_membership.user_id = membership.user_id
+   and tenant_membership.status = 'active'
+  where membership.tenant_id = v_template.tenant_id
+    and membership.department_id = v_template.department_id
+    and membership.status = 'active'
+  limit 1;
+  select id into v_in_progress from public.ticket_statuses
+  where tenant_id = v_template.tenant_id and key = 'in_progress';
+
+  begin
+    insert into public.teams (id, tenant_id, department_id, name, active, support_level)
+    values (gen_random_uuid(), v_template.tenant_id, v_template.department_id, 'Level 4', true, 4);
+    raise exception 'support level test: level 4 accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.teams (id, tenant_id, department_id, name, active, support_level)
+  values
+    (v_l1, v_template.tenant_id, v_template.department_id, 'Service Desk L1', true, 1),
+    (v_l2, v_template.tenant_id, v_template.department_id, 'Systemtechnik L2', true, 2),
+    (v_l3, v_template.tenant_id, v_template.department_id, 'Spezialisten L3', true, 3),
+    (v_plain, v_template.tenant_id, v_template.department_id, 'Projektteam', true, null);
+  insert into public.team_memberships (team_id, user_id) values (v_l2, v_member);
+
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id, assigned_team_id)
+  values (v_ticket, v_template.tenant_id, v_template.department_id, 'LEVEL-TEST-1',
+    'VPN bricht ab', 'Seit heute Morgen', v_in_progress, v_template.priority_id,
+    v_template.requester_id, v_l1);
+  if not exists (select 1 from public.ticket_support_level_changes
+                 where ticket_id = v_ticket and kind = 'initial' and to_level = 1 and from_level is null) then
+    raise exception 'support level test: initial level not recorded';
+  end if;
+
+  v_hint := null;
+  begin
+    perform public.ticket_support_level_handover(v_template.tenant_id, v_ticket, v_member, v_l2, null, 'kurz', 1::smallint);
+  exception when invalid_parameter_value then
+    get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  if v_hint is distinct from 'support_level_handover_invalid' then
+    raise exception 'support level test: short note accepted (hint %)', v_hint;
+  end if;
+  v_hint := null;
+  begin
+    perform public.ticket_support_level_handover(v_template.tenant_id, v_ticket, v_member, v_l3, null,
+      'Neustart und Treiber geprüft, Problem bleibt.', 1::smallint);
+  exception when invalid_parameter_value then
+    get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  if v_hint is distinct from 'support_level_target_invalid' then
+    raise exception 'support level test: level skipped (hint %)', v_hint;
+  end if;
+  v_hint := null;
+  begin
+    perform public.ticket_support_level_handover(v_template.tenant_id, v_ticket, v_member, v_l2, null,
+      'Neustart und Treiber geprüft, Problem bleibt.', 2::smallint);
+  exception when serialization_failure then
+    get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  if v_hint is distinct from 'support_level_changed' then
+    raise exception 'support level test: stale level accepted (hint %)', v_hint;
+  end if;
+
+  v_result := public.ticket_support_level_handover(v_template.tenant_id, v_ticket, v_member, v_l2, v_member,
+    'Neustart und Treiber geprüft, Problem bleibt.', 1::smallint);
+  if v_result ->> 'direction' <> 'escalated' or (v_result ->> 'toLevel')::int <> 2 then
+    raise exception 'support level test: wrong handover result %', v_result;
+  end if;
+  select * into v_change from public.ticket_support_level_changes
+  where ticket_id = v_ticket order by seq desc limit 1;
+  if v_change.kind <> 'escalated' or v_change.from_level <> 1 or v_change.to_level <> 2
+    or v_change.handover_note is null or v_change.comment_id is null
+    or v_change.actor_id is distinct from v_member
+    or v_change.id::text <> v_result ->> 'changeId' then
+    raise exception 'support level test: escalation not recorded with note';
+  end if;
+  if not exists (select 1 from public.ticket_comments
+                 where id = v_change.comment_id and visibility = 'internal'
+                   and body like 'Übergabe an 2nd Level%')
+    or not exists (select 1 from public.ticket_events
+                   where ticket_id = v_ticket and event_type = 'ticket.support_level_changed')
+    or (select assigned_team_id from public.tickets where id = v_ticket) <> v_l2
+    or (select assigned_agent_id from public.tickets where id = v_ticket) <> v_member then
+    raise exception 'support level test: handover side effects missing';
+  end if;
+  if current_setting('nextdesk.support_level_handover', true) <> '' then
+    raise exception 'support level test: handover context leaked';
+  end if;
+
+  v_result := public.ticket_support_level_handover(v_template.tenant_id, v_ticket, v_member, v_l1, null,
+    'Benutzerkonto war gesperrt, bitte Rückmeldung an Kundin.', 2::smallint);
+  if v_result ->> 'direction' <> 'returned' then
+    raise exception 'support level test: return not accepted';
+  end if;
+
+  -- A plain team change without a level clears the level (no note needed).
+  update public.tickets set assigned_team_id = v_plain where id = v_ticket;
+  select * into v_change from public.ticket_support_level_changes
+  where ticket_id = v_ticket order by seq desc limit 1;
+  if v_change.kind <> 'cleared' or v_change.from_level <> 1 or v_change.to_level is not null
+    or v_change.handover_note is not null then
+    raise exception 'support level test: cleared level not recorded';
+  end if;
+  if (select count(*) from public.ticket_support_level_changes where ticket_id = v_ticket) <> 4 then
+    raise exception 'support level test: unexpected history length';
+  end if;
+  v_hint := null;
+  begin
+    perform public.ticket_support_level_handover(v_template.tenant_id, v_ticket, v_member, v_l2, null,
+      'Neustart und Treiber geprüft, Problem bleibt.', null);
+  exception when invalid_parameter_value then
+    get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  if v_hint is distinct from 'support_level_current_missing' then
+    raise exception 'support level test: handover without current level (hint %)', v_hint;
+  end if;
+
+  perform * from public.list_authorized_ticket_list_page_by_level(
+    p_tenant_id => v_template.tenant_id, p_support_level => 2::smallint);
+  begin
+    perform * from public.list_authorized_ticket_list_page_by_level(
+      p_tenant_id => v_template.tenant_id, p_support_level => 5::smallint);
+    raise exception 'support level test: invalid level queue accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+  raise notice 'support level checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0233: repeated reminders with push, one-click answers, resolution median.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_ticket record;
+  v_agent uuid;
+  v_waiting uuid;
+  v_result jsonb;
+  v_key text;
+  v_reminder uuid;
+  v_count integer;
+  v_median jsonb;
+begin
+  select ticket.id, ticket.tenant_id, ticket.department_id, ticket.requester_id,
+         ticket.priority_id
+  into v_ticket
+  from public.tickets ticket
+  where ticket.closed_at is null
+    and exists (select 1 from public.department_memberships dm
+      where dm.department_id = ticket.department_id and dm.status = 'active')
+  order by (ticket.tenant_id = '10000000-0000-4000-8000-000000000001') desc, ticket.created_at
+  limit 1;
+  select dm.user_id into v_agent from public.department_memberships dm
+  where dm.department_id = v_ticket.department_id and dm.status = 'active'
+  limit 1;
+  select id into v_waiting from public.ticket_statuses
+  where tenant_id = v_ticket.tenant_id and key = 'waiting_customer';
+  if v_ticket.id is null or v_agent is null or v_waiting is null then
+    raise exception 'reminder action test: fixtures missing (%, %, %)',
+      v_ticket.id, v_agent, v_waiting;
+  end if;
+  -- The requester must be another active member than the agent.
+  if v_ticket.requester_id = v_agent then
+    select membership.user_id into v_ticket.requester_id
+    from public.tenant_memberships membership
+    where membership.tenant_id = v_ticket.tenant_id and membership.status = 'active'
+      and membership.user_id <> v_agent
+    limit 1;
+    if v_ticket.requester_id is null then
+      insert into auth.users (id) values ('02330000-0000-4000-8000-000000000001');
+      insert into public.user_profiles (id, display_name)
+      values ('02330000-0000-4000-8000-000000000001', 'Erinnerung Anfragende');
+      insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+      values (v_ticket.tenant_id, '02330000-0000-4000-8000-000000000001', 'active', now());
+      v_ticket.requester_id := '02330000-0000-4000-8000-000000000001';
+    end if;
+  end if;
+  update public.tickets set requester_id = v_ticket.requester_id, affected_user_id = null
+  where id = v_ticket.id;
+  update public.tickets set assigned_agent_id = v_agent where id = v_ticket.id;
+  update public.tickets set status_id = v_waiting,
+    waiting_since = timezone('utc', now()) - interval '10 days',
+    waiting_reminder_sent_at = null, waiting_reminder_count = 0
+  where id = v_ticket.id;
+  insert into public.ticket_lifecycle_settings (tenant_id, waiting_reminder_enabled,
+    waiting_reminder_days, waiting_reminder_max_count, waiting_resolve_enabled,
+    resolved_close_enabled)
+  values (v_ticket.tenant_id, true, 3, 2, false, false)
+  on conflict (tenant_id) do update set waiting_reminder_enabled = true,
+    waiting_reminder_days = 3, waiting_reminder_max_count = 2,
+    waiting_reminder_actions_enabled = true,
+    waiting_resolve_enabled = false, resolved_close_enabled = false;
+
+  begin
+    update public.ticket_lifecycle_settings set waiting_reminder_max_count = 9
+    where tenant_id = v_ticket.tenant_id;
+    raise exception 'reminder action test: max count 9 accepted';
+  exception when check_violation then
+    null;
+  end;
+
+  -- First reminder: recorded, with push but without a second support_reply push.
+  select count(*) into v_count from public.ticket_notifications
+  where ticket_id = v_ticket.id and kind = 'ticket.support_reply';
+  v_result := public.ticket_lifecycle_run();
+  select id into v_reminder from public.ticket_requester_reminders
+  where ticket_id = v_ticket.id and reminder_number = 1;
+  if v_reminder is null then
+    raise exception 'reminder action test: no reminder record (%)', v_result;
+  end if;
+  if public.push_notification_category('ticket.requester_reminder') <> 'support_reply' then
+    raise exception 'reminder action test: no push category';
+  end if;
+  if not exists (select 1 from public.ticket_notifications
+      where ticket_id = v_ticket.id and kind = 'ticket.requester_reminder'
+        and user_id = v_ticket.requester_id) then
+    raise exception 'reminder action test: no reminder push';
+  end if;
+  if (select count(*) from public.ticket_notifications
+      where ticket_id = v_ticket.id and kind = 'ticket.support_reply') <> v_count then
+    raise exception 'reminder action test: reminder created a support_reply push';
+  end if;
+  if public.ticket_requester_reminder_for_comment(
+       (select comment_id from public.ticket_requester_reminders where id = v_reminder)) is null then
+    raise exception 'reminder action test: no e-mail actions for the reminder';
+  end if;
+  if (public.ticket_requester_reminder_preview(v_reminder, v_ticket.id) ->> 'state') <> 'open' then
+    raise exception 'reminder action test: preview not open';
+  end if;
+
+  -- Not again right away; a second reminder after another interval; never a third.
+  perform public.ticket_lifecycle_run();
+  if (select count(*) from public.ticket_requester_reminders where ticket_id = v_ticket.id) <> 1 then
+    raise exception 'reminder action test: reminded again too early';
+  end if;
+  update public.tickets set waiting_reminder_sent_at = timezone('utc', now()) - interval '4 days'
+  where id = v_ticket.id;
+  perform public.ticket_lifecycle_run();
+  update public.tickets set waiting_reminder_sent_at = timezone('utc', now()) - interval '4 days'
+  where id = v_ticket.id;
+  perform public.ticket_lifecycle_run();
+  if (select count(*) from public.ticket_requester_reminders where ticket_id = v_ticket.id) <> 2
+     or (select waiting_reminder_count from public.tickets where id = v_ticket.id) <> 2 then
+    raise exception 'reminder action test: max count not respected';
+  end if;
+
+  -- Someone else cannot answer for the requester.
+  begin
+    perform public.ticket_requester_respond(v_ticket.tenant_id, v_ticket.id, v_agent,
+      'resolved', 'portal', null, null);
+    raise exception 'reminder action test: agent answered as requester';
+  exception when no_data_found then
+    null;
+  end;
+
+  -- One click: resolved by the requester, event recorded, link used up.
+  v_result := public.ticket_requester_respond(v_ticket.tenant_id, v_ticket.id, null,
+    'resolved', 'email', v_reminder, null);
+  select status.key into v_key from public.tickets ticket
+  join public.ticket_statuses status on status.id = ticket.status_id where ticket.id = v_ticket.id;
+  if v_key <> 'resolved' or (select resolved_at from public.tickets where id = v_ticket.id) is null then
+    raise exception 'reminder action test: not resolved (%)', v_key;
+  end if;
+  if not exists (select 1 from public.ticket_events where ticket_id = v_ticket.id
+      and event_type = 'ticket.resolved_by_requester' and actor_id = v_ticket.requester_id) then
+    raise exception 'reminder action test: event missing';
+  end if;
+  begin
+    perform public.ticket_requester_respond(v_ticket.tenant_id, v_ticket.id, null,
+      'resolved', 'email', v_reminder, null);
+    raise exception 'reminder action test: token used twice';
+  exception when invalid_parameter_value then
+    if sqlerrm <> 'token_used' then raise; end if;
+  end;
+  if (public.ticket_requester_reminder_preview(v_reminder, v_ticket.id) ->> 'state') <> 'used' then
+    raise exception 'reminder action test: preview not used';
+  end if;
+
+  -- «Ich brauche noch Hilfe» in the portal: back to «In Bearbeitung» with a reply.
+  update public.tickets set status_id = v_waiting, resolved_at = null,
+    waiting_since = timezone('utc', now())
+  where id = v_ticket.id;
+  perform public.ticket_requester_respond(v_ticket.tenant_id, v_ticket.id,
+    v_ticket.requester_id, 'need_help', 'portal', null, 'Es geht immer noch nicht.');
+  select status.key into v_key from public.tickets ticket
+  join public.ticket_statuses status on status.id = ticket.status_id where ticket.id = v_ticket.id;
+  if v_key <> 'in_progress' or not exists (
+      select 1 from public.ticket_comments where ticket_id = v_ticket.id
+        and author_id = v_ticket.requester_id and body = 'Es geht immer noch nicht.') then
+    raise exception 'reminder action test: need help not applied (%)', v_key;
+  end if;
+  begin
+    perform public.ticket_requester_respond(v_ticket.tenant_id, v_ticket.id,
+      v_ticket.requester_id, 'resolved', 'portal', null, null);
+    raise exception 'reminder action test: answered a ticket that is not waiting';
+  exception when invalid_parameter_value then
+    if sqlerrm <> 'ticket_not_waiting' then raise; end if;
+  end;
+
+  -- Expired links are refused.
+  update public.tickets set status_id = v_waiting, waiting_since = timezone('utc', now())
+  where id = v_ticket.id;
+  insert into public.ticket_requester_reminders (tenant_id, ticket_id, recipient_id,
+    reminder_number, sent_at, actions_expire_at)
+  values (v_ticket.tenant_id, v_ticket.id, v_ticket.requester_id, 1,
+    timezone('utc', now()) - interval '20 days', timezone('utc', now()) - interval '6 days')
+  returning id into v_reminder;
+  begin
+    perform public.ticket_requester_respond(v_ticket.tenant_id, v_ticket.id, null,
+      'resolved', 'email', v_reminder, null);
+    raise exception 'reminder action test: expired token accepted';
+  exception when invalid_parameter_value then
+    if sqlerrm <> 'token_expired' then raise; end if;
+  end;
+
+  -- Median of similar tickets (five or more) solved in the last 90 days.
+  select count(*) into v_count from public.tickets
+  where tenant_id = v_ticket.tenant_id and id <> v_ticket.id;
+  if v_count >= 5 then
+    update public.tickets
+    set priority_id = v_ticket.priority_id,
+        created_at = timezone('utc', now()) - interval '1 day 2 hours',
+        resolved_at = timezone('utc', now()) - interval '1 day'
+    where id in (
+      select id from public.tickets
+      where tenant_id = v_ticket.tenant_id and id <> v_ticket.id
+      order by id limit 5
+    );
+    update public.tickets set resolved_at = null
+    where tenant_id = v_ticket.tenant_id and priority_id = v_ticket.priority_id
+      and resolved_at is not null
+      and resolved_at <> timezone('utc', now()) - interval '1 day';
+    v_median := public.ticket_resolution_median(v_ticket.tenant_id, v_ticket.priority_id, null);
+    if v_median is null or (v_median ->> 'seconds')::numeric <> 7200
+       or v_median ->> 'basis' <> 'priority' then
+      raise exception 'reminder action test: wrong median %', v_median;
+    end if;
+  end if;
+  if public.ticket_requester_action_secret() is null
+     or char_length(public.ticket_requester_action_secret()) < 64 then
+    raise exception 'reminder action test: no signing secret';
+  end if;
+  raise notice 'requester progress and reminder action checks ran';
+end;
+$$;
+rollback;
+SQL
+
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid := '10000000-0000-4000-8000-000000000001';
+  v_ticket uuid;
+  v_user uuid;
+  v_count integer;
+  v_kept uuid;
+  i integer;
+begin
+  -- Storage of «Zuletzt angesehen» is service_role only.
+  if has_table_privilege('authenticated', 'public.user_recent_items', 'select')
+     or has_table_privilege('anon', 'public.user_recent_items', 'select')
+     or has_table_privilege('authenticated', 'public.user_recent_items', 'insert') then
+    raise exception 'recent items test: browser roles can access the table';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.user_recent_items'::regclass) then
+    raise exception 'recent items test: RLS disabled';
+  end if;
+  if has_function_privilege('authenticated',
+       'public.record_user_recent_item(uuid, uuid, text, uuid, integer)', 'execute')
+     or has_function_privilege('authenticated',
+       'public.purge_stale_personal_workspace_state()', 'execute') then
+    raise exception 'recent items test: browser roles can run service functions';
+  end if;
+  if not has_function_privilege('authenticated',
+       'public.list_authorized_ticket_list_page_v2(uuid, uuid[], uuid[], uuid[], uuid, boolean, text, text, integer, integer, text, text, text[], text[], text[], text[], text[], text, text[], uuid[], uuid[], uuid[], uuid[], timestamptz, timestamptz, timestamptz, timestamptz, boolean, smallint)',
+       'execute') then
+    raise exception 'drilldown test: list v2 not executable for authenticated';
+  end if;
+
+  select ticket.id, ticket.requester_id into v_ticket, v_user
+  from public.tickets ticket
+  where ticket.tenant_id = v_tenant
+  order by ticket.created_at
+  limit 1;
+
+  -- Recording keeps the newest p_keep entries and refreshes repeated views.
+  for i in 1..35 loop
+    perform public.record_user_recent_item(v_user, v_tenant, 'asset', gen_random_uuid(), 30);
+  end loop;
+  perform public.record_user_recent_item(v_user, v_tenant, 'ticket', v_ticket, 30);
+  perform public.record_user_recent_item(v_user, v_tenant, 'ticket', v_ticket, 30);
+  select count(*) into v_count from public.user_recent_items
+  where user_id = v_user and tenant_id = v_tenant;
+  if v_count <> 30 then
+    raise exception 'recent items test: expected 30 kept entries, got %', v_count;
+  end if;
+  select item_id into v_kept from public.user_recent_items
+  where user_id = v_user and tenant_id = v_tenant
+  order by viewed_at desc limit 1;
+  if v_kept <> v_ticket then
+    raise exception 'recent items test: newest view not first';
+  end if;
+  begin
+    perform public.record_user_recent_item(v_user, v_tenant, 'user', v_ticket, 30);
+    raise exception 'recent items test: invalid item type accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+
+  -- A posted comment removes the author's matching draft only.
+  insert into public.ticket_drafts (ticket_id, author_id, visibility, body)
+  values (v_ticket, v_user, 'internal', 'Notiz-Entwurf'),
+         (v_ticket, v_user, 'external', 'Antwort-Entwurf')
+  on conflict (ticket_id, author_id, visibility) do update set body = excluded.body;
+  insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+  values (v_ticket, v_user, 'external', 'Antwort gesendet');
+  if exists (select 1 from public.ticket_drafts
+             where ticket_id = v_ticket and author_id = v_user and visibility = 'external') then
+    raise exception 'draft test: draft kept after sending';
+  end if;
+  if not exists (select 1 from public.ticket_drafts
+                 where ticket_id = v_ticket and author_id = v_user and visibility = 'internal') then
+    raise exception 'draft test: other visibility draft removed';
+  end if;
+
+  -- Retention: drafts older than 30 days and empty drafts expire.
+  update public.ticket_drafts set updated_at = timezone('utc', now()) - interval '31 days'
+  where ticket_id = v_ticket and author_id = v_user;
+  insert into public.ticket_drafts (ticket_id, author_id, visibility, body)
+  values (v_ticket, v_user, 'external', 'Frischer Entwurf');
+  perform public.purge_stale_personal_workspace_state();
+  if exists (select 1 from public.ticket_drafts
+             where ticket_id = v_ticket and author_id = v_user and visibility = 'internal') then
+    raise exception 'draft test: stale draft not purged';
+  end if;
+  if not exists (select 1 from public.ticket_drafts
+                 where ticket_id = v_ticket and author_id = v_user and visibility = 'external') then
+    raise exception 'draft test: fresh draft purged';
+  end if;
+
+  if public.ticket_resolution_sla_breached(null, null, null)
+     or public.ticket_resolution_sla_breached(timezone('utc', now()) + interval '1 day', null, null)
+     or not public.ticket_resolution_sla_breached(timezone('utc', now()) - interval '1 hour', null, null)
+     or not public.ticket_resolution_sla_breached('2026-01-01T10:00:00Z', '2026-01-01T11:00:00Z', null)
+     or public.ticket_resolution_sla_breached('2026-01-01T10:00:00Z', '2026-01-01T09:00:00Z', null) then
+    raise exception 'drilldown test: wrong SLA breach rule';
+  end if;
+end;
+$$;
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+do $$
+declare
+  v_tenant uuid := '10000000-0000-4000-8000-000000000001';
+  v_all bigint;
+  v_v2 bigint;
+  v_expected bigint;
+  v_found bigint;
+begin
+  select count(*) into v_all
+  from public.list_authorized_ticket_list_page(v_tenant, p_limit => 100);
+  select count(*) into v_v2
+  from public.list_authorized_ticket_list_page_v2(v_tenant, p_limit => 100);
+  if v_all <> v_v2 then
+    raise exception 'drilldown test: v2 without filters differs (% vs %)', v_all, v_v2;
+  end if;
+
+  select count(*) into v_found
+  from public.list_authorized_ticket_list_page_v2(
+    v_tenant, p_limit => 100, p_created_from => '2999-01-01T00:00:00Z');
+  if v_found <> 0 then
+    raise exception 'drilldown test: created range not applied';
+  end if;
+
+  select count(*) into v_found
+  from public.list_authorized_ticket_list_page_v2(
+    v_tenant, p_limit => 100, p_team_ids => array[gen_random_uuid()]);
+  if v_found <> 0 then
+    raise exception 'drilldown test: team filter not applied';
+  end if;
+
+  select count(*) into v_expected
+  from public.tickets ticket
+  where ticket.tenant_id = v_tenant
+    and public.can_read_ticket(ticket.id)
+    and public.ticket_resolution_sla_breached(ticket.resolution_due_at, ticket.resolved_at, ticket.closed_at);
+  select count(*) into v_found
+  from public.list_authorized_ticket_list_page_v2(v_tenant, p_limit => 100, p_sla_breached => true);
+  if v_found <> least(v_expected, 100) then
+    raise exception 'drilldown test: SLA filter returned % instead of %', v_found, v_expected;
+  end if;
+
+  begin
+    perform public.list_authorized_ticket_list_page_v2(
+      v_tenant,
+      p_created_from => '2026-02-01T00:00:00Z',
+      p_created_to => '2026-01-01T00:00:00Z');
+    raise exception 'drilldown test: reversed range accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+  raise notice 'report drilldown, recent items and reply draft checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0231: software articles are assigned through Intune after approval; license
+# seats of people who left or stopped signing in become reclaim candidates.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f2310000-0000-4000-8000-000000000001';
+  v_employee constant uuid := 'f2310000-0000-4000-8000-000000000002';
+  v_leaver constant uuid := 'f2310000-0000-4000-8000-000000000003';
+  v_entra_employee constant uuid := 'f2310000-0000-4000-8000-0000000000e2';
+  v_entra_leaver constant uuid := 'f2310000-0000-4000-8000-0000000000e3';
+  v_tenant uuid;
+  v_requester_role uuid;
+  v_software uuid;
+  v_other uuid;
+  v_order uuid;
+  v_mixed uuid;
+  v_claim record;
+  v_count integer;
+  v_status text;
+  v_license uuid;
+  v_seat_employee uuid;
+  v_seat_leaver uuid;
+  v_seat_external uuid;
+  v_candidate record;
+begin
+  if has_table_privilege('authenticated', 'public.shop_software_deployments', 'select')
+     or has_table_privilege('anon', 'public.shop_software_deployments', 'select')
+     or has_table_privilege('authenticated', 'public.license_assignments', 'select')
+     or has_table_privilege('authenticated', 'public.license_reclaim_settings', 'select') then
+    raise exception 'software test: browser roles can read the new tables';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.shop_software_deployments'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.license_assignments'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.license_reclaim_settings'::regclass) then
+    raise exception 'software test: RLS disabled';
+  end if;
+  if has_function_privilege('authenticated', 'public.shop_software_deployments_claim(uuid, uuid)', 'execute')
+     or has_function_privilege('authenticated',
+       'public.shop_software_deployment_record(uuid, uuid, boolean, uuid, integer, text, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.license_reclaim_candidates(uuid, integer)', 'execute')
+     or has_function_privilege('authenticated', 'public.license_reclaim_notify_new_candidates()', 'execute') then
+    raise exception 'software test: functions callable from the browser';
+  end if;
+
+  insert into auth.users (id) values (v_owner), (v_employee), (v_leaver);
+  v_tenant := public.provision_personal_workspace(v_owner, 'owner@software.example', 'Software Test');
+  select id into v_requester_role from public.roles where tenant_id = v_tenant and name = 'Requester';
+  insert into public.user_profiles (id, display_name)
+  values (v_employee, 'Erika Software'), (v_leaver, 'Max Austritt');
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_tenant, v_employee, 'active', now()), (v_tenant, v_leaver, 'active', now());
+  insert into public.user_role_assignments (tenant_id, user_id, role_id, assigned_by)
+  values (v_tenant, v_employee, v_requester_role, v_owner);
+  insert into public.tenant_entra_directory_people (tenant_id, entra_object_id, email, display_name, local_user_id)
+  values (v_tenant, v_entra_employee, 'erika@software.example', 'Erika Software', v_employee),
+         (v_tenant, v_entra_leaver, 'max@software.example', 'Max Austritt', v_leaver);
+
+  -- A software article needs app, mode and group, and must be an order article.
+  begin
+    insert into public.shop_catalog_items (tenant_id, name, kind, intune_app_id)
+    values (v_tenant, 'Halbe Software', 'order', gen_random_uuid());
+    raise exception 'software test: incomplete Intune link accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.shop_catalog_items (tenant_id, name, kind, intune_app_id,
+      intune_assignment_mode, intune_target_group_id)
+    values (v_tenant, 'Leih-Software', 'loan', gen_random_uuid(), 'user_group', gen_random_uuid());
+    raise exception 'software test: loan software accepted';
+  exception when check_violation then null;
+  end;
+  insert into public.shop_catalog_items (tenant_id, name, kind, intune_app_id, intune_app_name,
+    intune_assignment_mode, intune_target_group_id)
+  values (v_tenant, 'Visio', 'order', gen_random_uuid(), 'Microsoft Visio', 'user_group', gen_random_uuid())
+  returning id into v_software;
+  insert into public.shop_catalog_items (tenant_id, name, kind)
+  values (v_tenant, 'Headset', 'order') returning id into v_other;
+
+  -- Software only: claim creates the deployment with the Entra object id.
+  v_order := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_software, 'quantity', 1)),
+    'pickup', null, null, null, null, 'Diagramme zeichnen');
+  select * into v_claim from public.shop_software_deployments_claim(v_tenant, v_order);
+  if v_claim.deployment_id is null or v_claim.entra_object_id <> v_entra_employee
+     or v_claim.app_name <> 'Microsoft Visio' or v_claim.attempts <> 1
+     or v_claim.assignment_mode <> 'user_group' then
+    raise exception 'software test: claim wrong: %', row_to_json(v_claim);
+  end if;
+  -- A second claim does not hand out the running deployment again.
+  select count(*) into v_count from public.shop_software_deployments_claim(v_tenant, v_order);
+  if v_count <> 0 or (select count(*) from public.shop_software_deployments where order_id = v_order) <> 1 then
+    raise exception 'software test: deployment claimed twice';
+  end if;
+
+  v_status := public.shop_software_deployment_record(v_tenant, v_claim.deployment_id, false,
+    v_entra_employee, 0, 'permission_missing', 'Berechtigung fehlt');
+  if v_status <> 'failed' or not exists (
+    select 1 from public.shop_order_events where order_id = v_order and event_type = 'software_failed'
+  ) then
+    raise exception 'software test: failure not logged';
+  end if;
+  begin
+    perform public.shop_software_deployment_retry(v_employee, v_tenant, v_claim.deployment_id);
+    raise exception 'software test: employee could retry';
+  exception when insufficient_privilege then null;
+  end;
+  perform public.shop_software_deployment_retry(v_owner, v_tenant, v_claim.deployment_id);
+  select * into v_claim from public.shop_software_deployments_claim(v_tenant, v_order);
+  if v_claim.attempts <> 2 then
+    raise exception 'software test: retry not claimed';
+  end if;
+  v_status := public.shop_software_deployment_record(v_tenant, v_claim.deployment_id, true,
+    v_entra_employee, 1, null, null);
+  if v_status <> 'assigned'
+     or (select status from public.shop_orders where id = v_order) <> 'issued'
+     or (select status from public.shop_order_lines where order_id = v_order) <> 'issued'
+     or not exists (select 1 from public.shop_order_events where order_id = v_order and event_type = 'software_assigned')
+     or not exists (select 1 from public.ticket_notifications
+                    where user_id = v_employee and kind = 'shop.order.software_assigned') then
+    raise exception 'software test: success did not complete the order';
+  end if;
+
+  -- Mixed order: the hardware line keeps the order open for the agents.
+  v_mixed := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_software, 'quantity', 1),
+                      jsonb_build_object('catalog_item_id', v_other, 'quantity', 1)),
+    'pickup', null, null, null, null, 'Neuer Arbeitsplatz');
+  select * into v_claim from public.shop_software_deployments_claim(v_tenant, v_mixed);
+  perform public.shop_software_deployment_record(v_tenant, v_claim.deployment_id, true, null, 1, null, null);
+  if (select status from public.shop_orders where id = v_mixed) <> 'submitted' then
+    raise exception 'software test: mixed order closed too early';
+  end if;
+
+  -- Licenses: seat cost and reclaim candidates.
+  update public.tenant_feature_flags set enabled = true
+  where tenant_id = v_tenant and feature_key = 'contracts.management';
+  begin
+    insert into public.licenses (tenant_id, title, vendor_name, status, seat_cost_amount, created_by, updated_by)
+    values (v_tenant, 'Ohne Periode', 'Hersteller AG', 'active', 10, v_owner, v_owner);
+    raise exception 'license test: cost without period accepted';
+  exception when check_violation then null;
+  end;
+  insert into public.licenses (tenant_id, title, vendor_name, status, seat_cost_amount, seat_cost_period,
+    created_by, updated_by)
+  values (v_tenant, 'Microsoft 365 E3', 'Microsoft', 'active', 360, 'yearly', v_owner, v_owner)
+  returning id into v_license;
+  insert into public.license_assignments (tenant_id, license_id, user_id, assignee_label, assigned_by)
+  values (v_tenant, v_license, v_employee, 'Erika Software', v_owner) returning id into v_seat_employee;
+  insert into public.license_assignments (tenant_id, license_id, user_id, assignee_label, assigned_by)
+  values (v_tenant, v_license, v_leaver, 'Max Austritt', v_owner) returning id into v_seat_leaver;
+  insert into public.license_assignments (tenant_id, license_id, entra_object_id, assignee_label, assigned_by)
+  values (v_tenant, v_license, gen_random_uuid(), 'Extern', v_owner)
+  returning id into v_seat_external;
+  begin
+    insert into public.license_assignments (tenant_id, license_id, user_id, assignee_label)
+    values (v_tenant, v_license, v_employee, 'Doppelt');
+    raise exception 'license test: duplicate active seat accepted';
+  exception when unique_violation then null;
+  end;
+
+  -- Nobody is a candidate yet (recent assignments, active people).
+  if exists (select 1 from public.license_reclaim_candidates(v_tenant, 60) where cardinality(reasons) > 0) then
+    raise exception 'license test: candidates without reason';
+  end if;
+  update public.tenant_memberships set status = 'suspended' where tenant_id = v_tenant and user_id = v_leaver;
+  perform public.apply_entra_sign_in_activity(v_tenant, jsonb_build_array(
+    jsonb_build_object('entra_object_id', v_entra_employee,
+      'last_sign_in_at', (now() - interval '90 days')::text, 'account_enabled', true)));
+  select * into v_candidate from public.license_reclaim_candidates(v_tenant, 60)
+  where assignment_id = v_seat_leaver;
+  if not ('membership_inactive' = any(v_candidate.reasons)) or v_candidate.monthly_saving <> 30 then
+    raise exception 'license test: leaver not detected: %', row_to_json(v_candidate);
+  end if;
+  select * into v_candidate from public.license_reclaim_candidates(v_tenant, 60)
+  where assignment_id = v_seat_employee;
+  if v_candidate.reasons <> array['inactive'] or v_candidate.sign_in_source <> 'entra'
+     or v_candidate.entra_object_id <> v_entra_employee then
+    raise exception 'license test: inactive employee not detected: %', row_to_json(v_candidate);
+  end if;
+  if exists (select 1 from public.license_reclaim_candidates(v_tenant, 120)
+             where assignment_id = v_seat_employee and cardinality(reasons) > 0) then
+    raise exception 'license test: threshold ignored';
+  end if;
+  update public.tenant_entra_directory_people set account_enabled = false
+  where tenant_id = v_tenant and entra_object_id = v_entra_leaver;
+  select * into v_candidate from public.license_reclaim_candidates(v_tenant, 60)
+  where assignment_id = v_seat_leaver;
+  if not ('entra_disabled' = any(v_candidate.reasons)) then
+    raise exception 'license test: disabled Entra account not detected';
+  end if;
+  if public.license_seat_monthly_cost(90, 'quarterly') <> 30
+     or public.license_seat_monthly_cost(5, 'one_time') <> 0 then
+    raise exception 'license test: monthly cost wrong';
+  end if;
+
+  -- Weekly notification: once per seat.
+  v_count := public.license_reclaim_notify_new_candidates();
+  if v_count < 1 or not exists (
+    select 1 from public.ticket_notifications
+    where tenant_id = v_tenant and user_id = v_owner and kind = 'license.reclaim_candidates'
+      and (payload ->> 'count')::integer = 2
+  ) then
+    raise exception 'license test: managers not notified (%)', v_count;
+  end if;
+  select count(*) into v_count from public.ticket_notifications
+  where tenant_id = v_tenant and kind = 'license.reclaim_candidates';
+  perform public.license_reclaim_notify_new_candidates();
+  if (select count(*) from public.ticket_notifications
+      where tenant_id = v_tenant and kind = 'license.reclaim_candidates') <> v_count then
+    raise exception 'license test: candidates notified twice';
+  end if;
+  -- Returned seats are no candidates.
+  update public.license_assignments set released_at = now(), released_by = v_owner where id = v_seat_leaver;
+  if exists (select 1 from public.license_reclaim_candidates(v_tenant, 60) where assignment_id = v_seat_leaver) then
+    raise exception 'license test: returned seat still listed';
+  end if;
+  raise notice 'software deployment and license reclaim checks ran';
+end;
+$$;
+rollback;
+SQL
+
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template record;
+  v_ticket uuid := gen_random_uuid();
+  v_pending record;
+  v_count integer;
+  v_team uuid;
+begin
+  if has_table_privilege('authenticated', 'public.feedback_comment_themes', 'select')
+    or has_table_privilege('anon', 'public.feedback_theme_monthly', 'select')
+    or has_table_privilege('authenticated', 'public.phishing_reports', 'select')
+    or has_table_privilege('authenticated', 'public.phishing_report_settings', 'insert') then
+    raise exception 'feedback phishing test: tables readable by browsers';
+  end if;
+  if has_function_privilege('authenticated', 'public.feedback_theme_pending(uuid, integer)', 'execute')
+    or has_function_privilege('authenticated', 'public.feedback_theme_refresh_monthly(uuid)', 'execute')
+    or has_function_privilege('authenticated', 'public.feedback_insights_verify_dispatch_secret(text)', 'execute')
+    or has_function_privilege('authenticated', 'public.phishing_report_notify(uuid, uuid, jsonb)', 'execute') then
+    raise exception 'feedback phishing test: service functions callable by browsers';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.feedback_comment_themes'::regclass)
+    or not (select relrowsecurity from pg_class where oid = 'public.feedback_theme_monthly'::regclass)
+    or not (select relrowsecurity from pg_class where oid = 'public.phishing_reports'::regclass)
+    or not (select relrowsecurity from pg_class where oid = 'public.phishing_report_settings'::regclass) then
+    raise exception 'feedback phishing test: RLS disabled';
+  end if;
+  if public.push_notification_category('ticket.security_report') <> 'escalation'
+    or public.push_notification_category('ticket.vendor_reminder') <> 'follow_up' then
+    raise exception 'feedback phishing test: wrong push category';
+  end if;
+
+  select * into v_template from public.tickets limit 1;
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values (v_ticket, v_template.tenant_id, v_template.department_id, 'FEEDBACK-TEST-1',
+    'Drucker', 'Druckt nicht', v_template.status_id, v_template.priority_id, v_template.requester_id);
+  insert into public.ticket_satisfaction (ticket_id, score, comment, submitted_by, submitted_at)
+  values (v_ticket, 2, 'Ich musste sehr lange warten.', v_template.requester_id,
+    timezone('utc', now()) - interval '2 hours');
+
+  select * into v_pending from public.feedback_theme_pending(v_template.tenant_id, 50)
+  where ticket_id = v_ticket;
+  if v_pending.ticket_id is null or v_pending.comment_hash !~ '^[0-9a-f]{64}$'
+    or v_pending.actor_id is null then
+    raise exception 'feedback phishing test: new comment not pending';
+  end if;
+  if not exists (select 1 from public.feedback_theme_pending_tenants(500) tenant_id
+                 where tenant_id = v_template.tenant_id) then
+    raise exception 'feedback phishing test: tenant not pending';
+  end if;
+
+  begin
+    insert into public.feedback_comment_themes (ticket_id, tenant_id, comment_hash, state, themes, sentiment)
+    values (v_ticket, v_template.tenant_id, v_pending.comment_hash, 'analyzed', array['erfunden'], 'negative');
+    raise exception 'feedback phishing test: unknown theme accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    insert into public.feedback_comment_themes (ticket_id, tenant_id, comment_hash, state, themes)
+    values (v_ticket, v_template.tenant_id, v_pending.comment_hash, 'analyzed', '{}');
+    raise exception 'feedback phishing test: analyzed without theme accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.feedback_comment_themes (ticket_id, tenant_id, comment_hash, state, themes, sentiment, quote)
+  values (v_ticket, v_template.tenant_id, v_pending.comment_hash, 'analyzed',
+    array['long_wait', 'communication'], 'negative', 'Ich musste sehr lange warten.');
+  if exists (select 1 from public.feedback_theme_pending(v_template.tenant_id, 200) where ticket_id = v_ticket) then
+    raise exception 'feedback phishing test: analysed comment still pending';
+  end if;
+
+  perform public.feedback_theme_refresh_monthly(v_template.tenant_id);
+  select coalesce(sum(comment_count), 0) into v_count from public.feedback_theme_monthly
+  where tenant_id = v_template.tenant_id and department_id = v_template.department_id
+    and theme_key in ('long_wait', 'communication') and sentiment = 'negative';
+  if v_count < 2 then
+    raise exception 'feedback phishing test: monthly aggregate missing (%)', v_count;
+  end if;
+
+  -- A changed comment is analysed again and leaves the aggregates.
+  update public.ticket_satisfaction set comment = 'Doch alles gut, sehr freundlich.' where ticket_id = v_ticket;
+  if not exists (select 1 from public.feedback_theme_pending(v_template.tenant_id, 200) where ticket_id = v_ticket) then
+    raise exception 'feedback phishing test: changed comment not pending';
+  end if;
+  perform public.feedback_theme_refresh_monthly(v_template.tenant_id);
+  if exists (select 1 from public.feedback_theme_monthly
+             where tenant_id = v_template.tenant_id and theme_key = 'communication' and comment_count > 0) then
+    raise exception 'feedback phishing test: stale aggregate kept';
+  end if;
+  -- Failed analyses are retried at most three times.
+  update public.feedback_comment_themes
+  set state = 'failed', themes = '{}', sentiment = null, attempts = 3,
+      comment_hash = encode(sha256(convert_to('Doch alles gut, sehr freundlich.', 'UTF8')), 'hex'),
+      analyzed_at = timezone('utc', now()) - interval '2 hours'
+  where ticket_id = v_ticket;
+  if exists (select 1 from public.feedback_theme_pending(v_template.tenant_id, 200) where ticket_id = v_ticket) then
+    raise exception 'feedback phishing test: exhausted retry still pending';
+  end if;
+
+  -- Phishing settings and reports.
+  begin
+    insert into public.phishing_report_settings (tenant_id, enabled, report_address)
+    values (v_template.tenant_id, true, 'Phishing@Example.CH');
+    raise exception 'feedback phishing test: mixed-case report address accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.teams (tenant_id, department_id, name)
+  values (v_template.tenant_id, v_template.department_id, 'Security Test Team') returning id into v_team;
+  insert into public.phishing_report_settings (tenant_id, enabled, report_address, department_id, notify_team_id)
+  values (v_template.tenant_id, true, 'phishing@example.ch', v_template.department_id, v_team);
+  if (select priority_key from public.phishing_report_settings where tenant_id = v_template.tenant_id) <> 'high' then
+    raise exception 'feedback phishing test: default priority is not high';
+  end if;
+  insert into public.phishing_reports (tenant_id, ticket_id, reporter_id, channel, source, risk_score,
+    risk_level, fingerprint, analysis)
+  values (v_template.tenant_id, v_ticket, v_template.requester_id, 'portal', 'eml', 75, 'high',
+    repeat('a', 64), '{"findings": []}'::jsonb);
+  begin
+    insert into public.phishing_reports (tenant_id, channel, source, risk_score, risk_level, fingerprint)
+    values (v_template.tenant_id, 'fax', 'eml', 10, 'low', repeat('b', 64));
+    raise exception 'feedback phishing test: unknown channel accepted';
+  exception when check_violation then
+    null;
+  end;
+  -- Notification: an empty team falls back to department readers; never fails.
+  v_count := public.phishing_report_notify(v_template.tenant_id, v_ticket, '{"riskLevel": "high"}'::jsonb);
+  if v_count < 0 then
+    raise exception 'feedback phishing test: negative notification count';
+  end if;
+  begin
+    perform public.phishing_report_notify(v_template.tenant_id, gen_random_uuid(), '{}'::jsonb);
+    raise exception 'feedback phishing test: foreign ticket accepted';
+  exception when no_data_found then
+    null;
+  end;
+  raise notice 'feedback theme and phishing report checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# After all migrations: every push kind added in 0223-0235 keeps its category.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+begin
+  if public.push_notification_category('ticket.kudos') is distinct from 'resolved'
+     or public.push_notification_category('ticket.requester_reminder') is distinct from 'support_reply'
+     or public.push_notification_category('ticket.security_report') is distinct from 'escalation'
+     or public.push_notification_category('ticket.vendor_reminder') is distinct from 'follow_up'
+     or public.push_notification_category('ticket.rule_reminder') is distinct from 'follow_up'
+     or public.push_notification_category('infrastructure.due') is distinct from 'infrastructure' then
+    raise exception 'push category test: a category got lost';
+  end if;
+  raise notice 'combined push category checks ran';
+end;
+$$;
 SQL
 
 echo "PostgreSQL 16 migration and RLS integration checks passed."

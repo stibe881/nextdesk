@@ -1,5 +1,9 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  buildRequesterTicketProgress,
+  statusChangesFromEvents,
+} from "../_shared/requester-ticket-progress.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "requester.portal";
@@ -20,6 +24,8 @@ const ACTIONS = [
   "setMyAvailability",
   "departmentTickets",
   "searchColleagues",
+  "ticketProgress",
+  "respondToWaiting",
 ] as const;
 type ActionName = (typeof ACTIONS)[number];
 type Row = Record<string, unknown>;
@@ -717,6 +723,145 @@ async function slaExpectation(
     },
   });
 }
+// Step tracker for the requester. Only technical status keys and timestamps
+// are used; labels, internal notes and agent data are never returned.
+async function ticketProgress(
+  request: Request,
+  admin: Admin,
+  item: Action,
+  actorId: string,
+): Promise<Response> {
+  const current = await ownTicket(admin, item.tenantId, item.ticketId, actorId);
+  const detail = await admin
+    .from("tickets")
+    .select(
+      "status_id, first_responded_at, waiting_since, ticket_statuses!inner(key, is_closed)",
+    )
+    .eq("tenant_id", item.tenantId)
+    .eq("id", current.id as string)
+    .maybeSingle();
+  if (detail.error) db(detail.error);
+  const status = isRecord(detail.data?.ticket_statuses)
+    ? detail.data.ticket_statuses
+    : null;
+  if (!detail.data || !status || typeof status.key !== "string")
+    throw new HttpError(
+      500,
+      "invalid_stored_data",
+      "Der Ticketfortschritt konnte nicht sicher gelesen werden.",
+    );
+  const events = await admin
+    .from("ticket_events")
+    .select("created_at, payload")
+    .eq("ticket_id", current.id as string)
+    .in("event_type", [
+      "ticket.updated",
+      "ticket.closed",
+      "ticket.lifecycle.waiting_answered",
+      "ticket.lifecycle.reopened_by_reply",
+      "ticket.lifecycle.auto_resolved",
+      "ticket.lifecycle.auto_closed",
+      "ticket.resolved_by_requester",
+      "ticket.requester_needs_help",
+    ])
+    .order("created_at")
+    .limit(500);
+  if (events.error) db(events.error);
+  let medianSeconds: number | null = null;
+  const open =
+    current.resolved_at === null &&
+    current.closed_at === null &&
+    status.is_closed !== true;
+  if (open && !current.resolution_due_at && isUuid(current.priority_id)) {
+    const median = await admin.rpc("ticket_resolution_median", {
+      p_tenant_id: item.tenantId,
+      p_priority_id: current.priority_id,
+      p_category_id: isUuid(current.category_id) ? current.category_id : null,
+    });
+    // The estimate is optional; a failed lookup only hides it.
+    if (!median.error && isRecord(median.data)) {
+      const seconds = median.data.seconds;
+      if (typeof seconds === "number" && Number.isFinite(seconds))
+        medianSeconds = seconds;
+    }
+  }
+  const str = (value: unknown) => (typeof value === "string" ? value : null);
+  const progress = buildRequesterTicketProgress({
+    statusKey: status.key,
+    statusIsClosed: status.is_closed === true,
+    createdAt: String(current.created_at),
+    firstRespondedAt: str(detail.data.first_responded_at),
+    waitingSince: str(detail.data.waiting_since),
+    resolvedAt: str(current.resolved_at),
+    closedAt: str(current.closed_at),
+    resolutionDueAt: str(current.resolution_due_at),
+    medianResolutionSeconds: medianSeconds,
+    statusChanges: statusChangesFromEvents(events.data ?? []),
+    now: Date.now(),
+  });
+  return reply(request, { data: { progress } });
+}
+const RESPOND_ERRORS: Record<string, [number, string]> = {
+  ticket_not_waiting: [
+    409,
+    "Das Ticket wartet nicht mehr auf Ihre Rückmeldung.",
+  ],
+  ticket_not_available: [404, "Das Ticket ist nicht verfügbar."],
+  status_missing: [
+    422,
+    "Der benötigte Status ist für diesen Mandanten nicht eingerichtet.",
+  ],
+  message_too_long: [422, "Die Nachricht ist zu lang."],
+};
+// «Problem ist gelöst» / «Ich brauche noch Hilfe» while the ticket waits for
+// the requester. The database function enforces ownership and status rules.
+async function respondToWaiting(
+  request: Request,
+  admin: Admin,
+  item: Action,
+  actorId: string,
+): Promise<Response> {
+  const current = await ownTicket(admin, item.tenantId, item.ticketId, actorId);
+  if (item.response !== "resolved" && item.response !== "need_help")
+    throw new HttpError(400, "invalid_request", "Die Antwort ist ungültig.");
+  const channel = item.channel === "app" ? "app" : "portal";
+  const message =
+    item.message === undefined || item.message === null
+      ? null
+      : clean(item.message, 1, 5000);
+  if (item.message !== undefined && item.message !== null && message === null)
+    throw new HttpError(400, "invalid_request", "Die Nachricht ist ungültig.");
+  const result = await admin.rpc("ticket_requester_respond", {
+    p_tenant_id: item.tenantId,
+    p_ticket_id: current.id,
+    p_actor_id: actorId,
+    p_response: item.response,
+    p_channel: channel,
+    p_reminder_id: null,
+    p_message: message,
+  });
+  if (result.error) {
+    const hint =
+      typeof (result.error as { hint?: unknown }).hint === "string"
+        ? (result.error as { hint: string }).hint
+        : "";
+    const known = RESPOND_ERRORS[hint];
+    if (known) throw new HttpError(known[0], hint, known[1]);
+    if (result.error.code === "23514")
+      throw new HttpError(
+        409,
+        "status_rule",
+        "Der Status kann gerade nicht geändert werden. Bitte antworten Sie mit einer Nachricht.",
+      );
+    db(result.error);
+  }
+  return reply(request, {
+    data: {
+      statusKey: isRecord(result.data) ? result.data.statusKey : null,
+      response: item.response,
+    },
+  });
+}
 async function myDevices(
   request: Request,
   admin: Admin,
@@ -1003,6 +1148,20 @@ const handler = withSupabase(
         );
       if (item.type === "searchColleagues")
         return await searchColleagues(
+          request,
+          context.supabaseAdmin,
+          item,
+          actorId,
+        );
+      if (item.type === "ticketProgress")
+        return await ticketProgress(
+          request,
+          context.supabaseAdmin,
+          item,
+          actorId,
+        );
+      if (item.type === "respondToWaiting")
+        return await respondToWaiting(
           request,
           context.supabaseAdmin,
           item,

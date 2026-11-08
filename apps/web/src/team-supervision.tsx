@@ -10,11 +10,30 @@ import {
   CalendarClock,
   ClipboardCheck,
   FileBarChart,
+  GraduationCap,
+  Heart,
   LayoutDashboard,
+  MonitorPlay,
+  MessageSquareHeart,
   Printer,
   Shuffle,
+  TimerOff,
   UserRound,
 } from "lucide-react";
+import {
+  KudosBoard,
+  LiveBoard,
+  SkillMatrix,
+  SlaBreachCauses,
+} from "./team-leadership";
+import {
+  kudosAuthor,
+  scoreStars,
+  type KudosEntry,
+} from "./lib/sla-breach-reasons";
+import type { TicketDrilldown } from "./lib/ticket-drilldown";
+import { callTeamSupervision } from "./team-supervision-api";
+import { buildOneOnOneSheet } from "./lib/one-on-one-sheet";
 import { supabase } from "./lib/supabase";
 import "./team-supervision.css";
 
@@ -32,7 +51,22 @@ type TeamAgent = {
   atRisk: number;
   noFirstResponse: number;
   resolvedLast30Days: number;
+  loadScore: number;
   absence: Absence | null;
+};
+type OverloadWarning = {
+  agentId: string;
+  agentName: string;
+  openTickets: number;
+  overdue: number;
+  averageOpen: number;
+  reason: "load" | "overdue";
+};
+type RebalanceMove = {
+  ticketId: string;
+  fromAgentId: string;
+  toAgentId: string;
+  toAgentName: string;
 };
 type TeamTicket = {
   id: string;
@@ -53,6 +87,8 @@ type Overview = {
   agents: TeamAgent[];
   tickets: TeamTicket[];
   truncated: boolean;
+  warnings: OverloadWarning[];
+  suggestions: RebalanceMove[];
 };
 type ReviewTicket = {
   id: string;
@@ -77,6 +113,14 @@ type ReportAgent = {
   qualityReviews: number;
   externalReplies: number;
   knowledgeArticles: number;
+  previous?: {
+    ticketsResolved: number;
+    averageResolutionMinutes: number | null;
+    averageFirstResponseMinutes: number | null;
+    slaCompliancePercent: number | null;
+    satisfactionAverage: number | null;
+    qualityAverage: number | null;
+  } | null;
 };
 type Report = {
   month: string;
@@ -84,25 +128,18 @@ type Report = {
   agents: ReportAgent[];
 };
 
-type View = "overview" | "redistribute" | "quality" | "report";
+type View =
+  | "live"
+  | "overview"
+  | "redistribute"
+  | "quality"
+  | "skills"
+  | "coaching"
+  | "kudos"
+  | "sla"
+  | "report";
 
-async function call<T>(body: Record<string, unknown>): Promise<T> {
-  if (!supabase) throw new Error("Die Verbindung ist nicht konfiguriert.");
-  const { data, error } = await supabase.functions.invoke("team-supervision", {
-    body,
-  });
-  if (error) {
-    const context = (error as { context?: unknown }).context;
-    if (context instanceof Response) {
-      const payload = (await context.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      if (payload?.error?.message) throw new Error(payload.error.message);
-    }
-    throw new Error("Die Teamdaten konnten nicht geladen werden.");
-  }
-  return (data as { data: T }).data;
-}
+const call = callTeamSupervision;
 
 const dateTime = (value: string) =>
   new Intl.DateTimeFormat("de-CH", {
@@ -140,11 +177,14 @@ function monthLabel(month: string): string {
 export function TeamSupervision({
   tenantId,
   onOpenTicket,
+  onOpenTicketList,
 }: {
   tenantId: string;
   onOpenTicket: (ticketId: string) => void;
+  /** Drilldown from the board figures into the filtered ticket list. */
+  onOpenTicketList?: ((drilldown: TicketDrilldown) => void) | undefined;
 }) {
-  const [view, setView] = useState<View>("overview");
+  const [view, setView] = useState<View>("live");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -169,9 +209,14 @@ export function TeamSupervision({
   }, [load]);
 
   const views: { value: View; label: string; Icon: typeof UserRound }[] = [
+    { value: "live", label: "Leitstand", Icon: MonitorPlay },
     { value: "overview", label: "Team-Übersicht", Icon: LayoutDashboard },
     { value: "redistribute", label: "Umverteilen", Icon: Shuffle },
     { value: "quality", label: "Qualitätsprüfung", Icon: ClipboardCheck },
+    { value: "skills", label: "Skill-Matrix", Icon: GraduationCap },
+    { value: "coaching", label: "Coaching", Icon: MessageSquareHeart },
+    { value: "kudos", label: "Pinnwand", Icon: Heart },
+    { value: "sla", label: "SLA-Ursachen", Icon: TimerOff },
     { value: "report", label: "Monatsbericht", Icon: FileBarChart },
   ];
 
@@ -222,6 +267,14 @@ export function TeamSupervision({
         <p className="empty-state">Teamdaten werden geladen …</p>
       ) : overview ? (
         <>
+          {view === "live" ? (
+            <LiveBoard
+              onOpenTicket={onOpenTicket}
+              onOpenTicketList={onOpenTicketList}
+              tenantId={tenantId}
+            />
+          ) : null}
+          {view === "skills" ? <SkillMatrix tenantId={tenantId} /> : null}
           {view === "overview" ? (
             <TeamOverview overview={overview} onOpenTicket={onOpenTicket} />
           ) : null}
@@ -240,6 +293,20 @@ export function TeamSupervision({
           {view === "quality" ? (
             <QualityReview onSaved={setNotice} tenantId={tenantId} />
           ) : null}
+          {view === "coaching" ? (
+            <Coaching
+              agents={overview.agents.map((agent) => ({
+                id: agent.id,
+                displayName: agent.displayName,
+              }))}
+              onOpenTicket={onOpenTicket}
+              tenantId={tenantId}
+            />
+          ) : null}
+          {view === "kudos" ? (
+            <KudosBoard onOpenTicket={onOpenTicket} tenantId={tenantId} />
+          ) : null}
+          {view === "sla" ? <SlaBreachCauses tenantId={tenantId} /> : null}
           {view === "report" ? <MonthlyReport tenantId={tenantId} /> : null}
         </>
       ) : null}
@@ -269,12 +336,28 @@ function TeamOverview({
     noResponse: overview.tickets.filter((ticket) => ticket.noFirstResponse)
       .length,
   };
-  const maxOpen = Math.max(
+  const maxLoad = Math.max(
     1,
-    ...overview.agents.map((agent) => agent.openTickets),
+    ...overview.agents.map((agent) => agent.loadScore),
   );
   return (
     <div className="team-supervision__overview">
+      {overview.warnings.length ? (
+        <section
+          aria-label="Frühwarnung Überlastung"
+          className="team-supervision__warnings"
+        >
+          {overview.warnings.map((warning) => (
+            <p key={warning.agentId}>
+              <AlertTriangle aria-hidden="true" size={15} />
+              <strong>{warning.agentName}</strong>
+              {warning.reason === "overdue"
+                ? ` hat ${warning.overdue} Tickets mit überschrittener SLA.`
+                : ` trägt ${warning.openTickets} offene Tickets (Teamschnitt ${warning.averageOpen}).`}
+            </p>
+          ))}
+        </section>
+      ) : null}
       <div className="team-supervision__kpis">
         <article>
           <p>Offene Tickets</p>
@@ -315,12 +398,12 @@ function TeamOverview({
               </div>
             </header>
             <div
-              aria-label={`${agent.openTickets} offene Tickets`}
+              aria-label={`Auslastung ${agent.loadScore} Punkte, ${agent.openTickets} offene Tickets`}
               className="team-supervision__load"
               role="img"
             >
               <span
-                style={{ width: `${(agent.openTickets / maxOpen) * 100}%` }}
+                style={{ width: `${(agent.loadScore / maxLoad) * 100}%` }}
               />
             </div>
             <dl>
@@ -343,6 +426,10 @@ function TeamOverview({
               <div>
                 <dt>Gelöst (30 T.)</dt>
                 <dd>{agent.resolvedLast30Days}</dd>
+              </div>
+              <div title="Offene Tickets gewichtet nach Priorität und SLA-Risiko">
+                <dt>Last</dt>
+                <dd>{agent.loadScore}</dd>
               </div>
             </dl>
           </article>
@@ -448,8 +535,86 @@ function Redistribute({
     void reassign(ids.split(","), agentId);
   }
 
+  async function applySuggestions() {
+    const groups = new Map<string, string[]>();
+    for (const move of overview.suggestions) {
+      groups.set(move.toAgentId, [
+        ...(groups.get(move.toAgentId) ?? []),
+        move.ticketId,
+      ]);
+    }
+    setBusy(true);
+    try {
+      for (const [agentId, ticketIds] of groups) {
+        await call({ type: "reassign", tenantId, ticketIds, agentId });
+      }
+      onChanged(
+        `${overview.suggestions.length} Tickets nach dem Vorschlag umverteilt.`,
+      );
+    } catch (nextError) {
+      onError(
+        nextError instanceof Error ? nextError.message : String(nextError),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const ticketById = new Map(
+    overview.tickets.map((ticket) => [ticket.id, ticket]),
+  );
+  const nameById = new Map(
+    overview.agents.map((agent) => [agent.id, agent.displayName]),
+  );
+
   return (
     <div className="team-supervision__redistribute">
+      {overview.suggestions.length ? (
+        <section
+          aria-label="Vorschlag zur Lastverteilung"
+          className="panel team-supervision__suggestions"
+        >
+          <header>
+            <div>
+              <h3>
+                <Shuffle aria-hidden="true" size={16} /> Vorschlag zur
+                Lastverteilung
+              </h3>
+              <p className="data-caption">
+                Gewichtet nach Priorität und SLA-Risiko. Tickets abwesender
+                Personen und die neuesten Tickets überlasteter Personen gehen an
+                Kolleg:innen derselben Abteilung mit wenig Last.
+              </p>
+            </div>
+            <button
+              className="primary-button"
+              disabled={busy}
+              onClick={() => void applySuggestions()}
+              type="button"
+            >
+              {busy ? "Wird umverteilt …" : "Vorschlag übernehmen"}
+            </button>
+          </header>
+          <ul>
+            {overview.suggestions.map((move) => {
+              const ticket = ticketById.get(move.ticketId);
+              return (
+                <li key={move.ticketId}>
+                  <code>{ticket?.ticketNumber}</code>
+                  <span>{ticket?.subject}</span>
+                  <small>
+                    {nameById.get(move.fromAgentId)} → {move.toAgentName}
+                  </small>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : (
+        <p className="data-caption">
+          Die Last ist ausgeglichen – kein Umverteilungsvorschlag.
+        </p>
+      )}
       <div
         className="team-supervision__bulk"
         role="group"
@@ -592,6 +757,7 @@ function QualityReview({
         rating: number;
         solutionCorrect: boolean;
         toneAppropriate: boolean;
+        documentationOk: boolean;
         comment: string;
       }
     >
@@ -622,6 +788,7 @@ function QualityReview({
       rating: 4,
       solutionCorrect: true,
       toneAppropriate: true,
+      documentationOk: true,
       comment: "",
     };
     setSaving(ticket.id);
@@ -633,6 +800,7 @@ function QualityReview({
         rating: form.rating,
         solutionCorrect: form.solutionCorrect,
         toneAppropriate: form.toneAppropriate,
+        documentationOk: form.documentationOk,
         comment: form.comment.trim() || null,
       });
       setTickets(
@@ -676,6 +844,7 @@ function QualityReview({
             rating: 4,
             solutionCorrect: true,
             toneAppropriate: true,
+            documentationOk: true,
             comment: "",
           };
           const update = (patch: Partial<typeof form>) =>
@@ -735,6 +904,16 @@ function QualityReview({
                     type="checkbox"
                   />
                   Ton passend
+                </label>
+                <label className="team-supervision__check">
+                  <input
+                    checked={form.documentationOk}
+                    onChange={(event) =>
+                      update({ documentationOk: event.target.checked })
+                    }
+                    type="checkbox"
+                  />
+                  Dokumentation vollständig
                 </label>
                 <label className="team-supervision__wide">
                   Feedback (optional)
@@ -853,23 +1032,55 @@ function MonthlyReport({ tenantId }: { tenantId: string }) {
                   <tr key={agent.id}>
                     <th scope="row">{agent.displayName}</th>
                     <td>{agent.ticketsAssigned}</td>
-                    <td>{agent.ticketsResolved}</td>
-                    <td>{duration(agent.averageFirstResponseMinutes)}</td>
-                    <td>{duration(agent.averageResolutionMinutes)}</td>
+                    <td>
+                      {agent.ticketsResolved}
+                      <Trend
+                        current={agent.ticketsResolved}
+                        previous={agent.previous?.ticketsResolved}
+                      />
+                    </td>
+                    <td>
+                      {duration(agent.averageFirstResponseMinutes)}
+                      <Trend
+                        current={agent.averageFirstResponseMinutes}
+                        lowerIsBetter
+                        previous={agent.previous?.averageFirstResponseMinutes}
+                      />
+                    </td>
+                    <td>
+                      {duration(agent.averageResolutionMinutes)}
+                      <Trend
+                        current={agent.averageResolutionMinutes}
+                        lowerIsBetter
+                        previous={agent.previous?.averageResolutionMinutes}
+                      />
+                    </td>
                     <td>
                       {agent.slaCompliancePercent === null
                         ? "–"
                         : `${agent.slaCompliancePercent} %`}
+                      <Trend
+                        current={agent.slaCompliancePercent}
+                        previous={agent.previous?.slaCompliancePercent}
+                      />
                     </td>
                     <td>
                       {agent.satisfactionAverage === null
                         ? "–"
                         : `${agent.satisfactionAverage} (${agent.satisfactionResponses})`}
+                      <Trend
+                        current={agent.satisfactionAverage}
+                        previous={agent.previous?.satisfactionAverage}
+                      />
                     </td>
                     <td>
                       {agent.qualityAverage === null
                         ? "–"
                         : `${agent.qualityAverage} / 5 (${agent.qualityReviews})`}
+                      <Trend
+                        current={agent.qualityAverage}
+                        previous={agent.previous?.qualityAverage}
+                      />
                     </td>
                     <td>{agent.externalReplies}</td>
                     <td>{agent.knowledgeArticles}</td>
@@ -880,10 +1091,382 @@ function MonthlyReport({ tenantId }: { tenantId: string }) {
           </div>
           <p className="data-caption">
             Zugewiesen = im Monat erstellte Tickets der Person. Gelöst = im
-            Monat gelöste Tickets. Qualität aus der Qualitätsprüfung.
+            Monat gelöste Tickets. Qualität aus der Qualitätsprüfung. Pfeile
+            zeigen die Veränderung zum Vormonat (grün = besser).
           </p>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function Trend({
+  current,
+  previous,
+  lowerIsBetter = false,
+}: {
+  current: number | null;
+  previous: number | null | undefined;
+  lowerIsBetter?: boolean;
+}) {
+  if (current === null || previous === null || previous === undefined) {
+    return null;
+  }
+  if (current === previous) {
+    return (
+      <span className="team-supervision__trend" title="Wie im Vormonat">
+        →
+      </span>
+    );
+  }
+  const up = current > previous;
+  const good = lowerIsBetter ? !up : up;
+  return (
+    <span
+      className={`team-supervision__trend ${good ? "is-good" : "is-bad"}`}
+      title={`Vormonat: ${previous}`}
+    >
+      {up ? "↑" : "↓"}
+    </span>
+  );
+}
+
+type CoachingKind = "note" | "praise" | "goal" | "concern";
+const COACHING_LABEL: Record<CoachingKind, string> = {
+  note: "Notiz",
+  praise: "Lob",
+  goal: "Ziel",
+  concern: "Beobachtung",
+};
+type CoachingNote = {
+  id: string;
+  body: string;
+  kind: CoachingKind;
+  createdAt: string;
+};
+type CoachingReview = {
+  id: string;
+  rating: number;
+  solutionCorrect: boolean;
+  toneAppropriate: boolean;
+  documentationOk: boolean | null;
+  comment: string | null;
+  createdAt: string;
+  ticketId: string;
+  ticketNumber: string | null;
+  subject: string | null;
+};
+
+function Coaching({
+  agents,
+  tenantId,
+  onOpenTicket,
+}: {
+  agents: { id: string; displayName: string }[];
+  tenantId: string;
+  onOpenTicket?: (ticketId: string) => void;
+}) {
+  const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
+  const [notes, setNotes] = useState<CoachingNote[]>([]);
+  const [reviews, setReviews] = useState<CoachingReview[]>([]);
+  const [kudos, setKudos] = useState<KudosEntry[]>([]);
+  const [draft, setDraft] = useState("");
+  const [kind, setKind] = useState<CoachingKind>("note");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    if (!agentId) return;
+    setError("");
+    try {
+      const data = await call<{
+        notes: CoachingNote[];
+        reviews: CoachingReview[];
+        kudos?: KudosEntry[];
+      }>({ type: "coachingNotes", tenantId, agentId });
+      setNotes(data.notes);
+      setReviews(data.reviews);
+      setKudos(data.kudos ?? []);
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Notizen konnten nicht geladen werden.",
+      );
+    }
+  }, [agentId, tenantId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function add() {
+    if (!draft.trim()) return;
+    setBusy(true);
+    try {
+      await call({
+        type: "addCoachingNote",
+        tenantId,
+        agentId,
+        body: draft.trim(),
+        kind,
+      });
+      setDraft("");
+      await load();
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Notiz konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(noteId: string) {
+    if (!window.confirm("Notiz löschen?")) return;
+    setBusy(true);
+    try {
+      await call({ type: "deleteCoachingNote", tenantId, noteId });
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Opens a print view (save as PDF) with metrics, goals, notes and reviews. */
+  async function printSheet() {
+    const sheetWindow = window.open("", "_blank");
+    if (!sheetWindow) {
+      setError("Bitte erlauben Sie Pop-ups, um das Gesprächsblatt zu öffnen.");
+      return;
+    }
+    sheetWindow.document.write(
+      '<p style="font-family:sans-serif">Wird vorbereitet …</p>',
+    );
+    try {
+      const month = currentMonth();
+      const report = await call<Report>({
+        type: "monthlyReport",
+        tenantId,
+        month,
+      });
+      const agentReport =
+        report.agents.find((entry) => entry.id === agentId) ?? null;
+      const { data: session } = supabase
+        ? await supabase.auth.getUser()
+        : { data: { user: null } };
+      const html = buildOneOnOneSheet({
+        agentName:
+          agents.find((entry) => entry.id === agentId)?.displayName ?? "",
+        supervisorName:
+          (session.user?.user_metadata?.full_name as string | undefined) ??
+          session.user?.email ??
+          "Vorgesetzte Person",
+        monthLabel: monthLabel(month),
+        current: agentReport,
+        previous: agentReport?.previous
+          ? { ...agentReport.previous, knowledgeArticles: 0 }
+          : null,
+        notes,
+        reviews,
+        kudos,
+      });
+      sheetWindow.document.open();
+      sheetWindow.document.write(html);
+      sheetWindow.document.close();
+      sheetWindow.focus();
+      window.setTimeout(() => sheetWindow.print(), 300);
+    } catch (nextError) {
+      sheetWindow.close();
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Das Gesprächsblatt konnte nicht erstellt werden.",
+      );
+    }
+  }
+
+  if (!agents.length) {
+    return <p className="empty-state">Noch keine Agent:innen im Team.</p>;
+  }
+  const date = (value: string) =>
+    new Date(value).toLocaleDateString("de-CH", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+
+  return (
+    <div className="team-supervision__coaching">
+      <p className="data-caption">
+        Private Notizen für Mitarbeitergespräche. Nur Sie sehen Ihre Notizen;
+        daneben die letzten Qualitätsprüfungen und das Lob von Kund:innen.
+      </p>
+      <div className="team-supervision__coaching-toolbar">
+        <label className="team-supervision__coaching-agent">
+          Agent:in
+          <select
+            onChange={(event) => setAgentId(event.target.value)}
+            value={agentId}
+          >
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="secondary-button"
+          disabled={busy || !agentId}
+          onClick={() => void printSheet()}
+          type="button"
+        >
+          <Printer aria-hidden="true" size={15} /> Gesprächsblatt (PDF)
+        </button>
+      </div>
+      {error ? (
+        <p className="form-message form-message--error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="team-supervision__coaching-grid">
+        <section className="team-supervision__coaching-panel">
+          <h3>Notizen</h3>
+          <div className="team-supervision__coaching-form">
+            <div
+              aria-label="Art der Notiz"
+              className="team-supervision__coaching-kinds"
+              role="radiogroup"
+            >
+              {(Object.keys(COACHING_LABEL) as CoachingKind[]).map((value) => (
+                <button
+                  aria-checked={kind === value}
+                  className={`is-${value}${kind === value ? " is-active" : ""}`}
+                  key={value}
+                  onClick={() => setKind(value)}
+                  role="radio"
+                  type="button"
+                >
+                  {COACHING_LABEL[value]}
+                </button>
+              ))}
+            </div>
+            <textarea
+              maxLength={4000}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="z. B. «Sehr freundliche Antworten bei ICT-2026-000025» oder Ziel für das nächste Gespräch"
+              rows={3}
+              value={draft}
+            />
+            <button
+              className="primary-button"
+              disabled={busy || !draft.trim()}
+              onClick={() => void add()}
+              type="button"
+            >
+              Notiz speichern
+            </button>
+          </div>
+          {notes.length ? (
+            <ul className="team-supervision__coaching-list">
+              {notes.map((note) => (
+                <li className={`is-${note.kind}`} key={note.id}>
+                  <div>
+                    <span className="team-supervision__coaching-kind">
+                      {COACHING_LABEL[note.kind] ?? "Notiz"}
+                    </span>
+                    <time>{date(note.createdAt)}</time>
+                  </div>
+                  <p>{note.body}</p>
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => void remove(note.id)}
+                    type="button"
+                  >
+                    Löschen
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-state">Noch keine Notizen.</p>
+          )}
+        </section>
+        <section className="team-supervision__coaching-panel">
+          <h3>Letzte Qualitätsprüfungen</h3>
+          {reviews.length ? (
+            <ul className="team-supervision__coaching-list">
+              {reviews.map((review) => (
+                <li key={review.id}>
+                  <div>
+                    <strong>{review.rating} / 5</strong>
+                    <time>{date(review.createdAt)}</time>
+                  </div>
+                  <button
+                    className="text-button"
+                    onClick={() => onOpenTicket?.(review.ticketId)}
+                    type="button"
+                  >
+                    {review.ticketNumber ?? "Ticket"} {review.subject ?? ""}
+                  </button>
+                  <p>
+                    {review.solutionCorrect
+                      ? "Lösung korrekt"
+                      : "Lösung prüfen"}{" "}
+                    · {review.toneAppropriate ? "Ton passend" : "Ton prüfen"}
+                    {review.documentationOk === null
+                      ? ""
+                      : review.documentationOk
+                        ? " · Dokumentation vollständig"
+                        : " · Dokumentation lückenhaft"}
+                    {review.comment ? ` · ${review.comment}` : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-state">Noch keine Qualitätsprüfungen.</p>
+          )}
+        </section>
+        <section className="team-supervision__coaching-panel">
+          <h3>Lob von Kund:innen</h3>
+          {kudos.length ? (
+            <ul className="team-supervision__coaching-list">
+              {kudos.map((entry) => (
+                <li className="is-praise" key={entry.ticketId}>
+                  <div>
+                    <strong aria-label={`${entry.score} von 5`}>
+                      {scoreStars(entry.score)}
+                    </strong>
+                    <time>{date(entry.createdAt)}</time>
+                  </div>
+                  <button
+                    className="text-button"
+                    onClick={() => onOpenTicket?.(entry.ticketId)}
+                    type="button"
+                  >
+                    {entry.ticketNumber ?? "Ticket"} {entry.subject ?? ""}
+                  </button>
+                  <p>
+                    {entry.comment
+                      ? `«${entry.comment}»`
+                      : "Top-Bewertung ohne Kommentar"}{" "}
+                    – {kudosAuthor(entry.requesterName)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-state">
+              Noch kein Lob in den letzten sechs Monaten.
+            </p>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

@@ -38,6 +38,7 @@ function parse(value: unknown):
       id?: string;
       departmentId: string;
       name: string;
+      supportLevel?: 1 | 2 | 3 | null;
     }
   | { type: "archive"; tenantId: string; id: string }
   | {
@@ -57,11 +58,23 @@ function parse(value: unknown):
   if (
     value.type === "save" &&
     Object.keys(value).every((key) =>
-      ["type", "tenantId", "id", "departmentId", "name"].includes(key),
+      [
+        "type",
+        "tenantId",
+        "id",
+        "departmentId",
+        "name",
+        "supportLevel",
+      ].includes(key),
     ) &&
     uuid(value.departmentId) &&
     (!Object.hasOwn(value, "id") || uuid(value.id)) &&
-    typeof value.name === "string"
+    typeof value.name === "string" &&
+    (value.supportLevel === undefined ||
+      value.supportLevel === null ||
+      value.supportLevel === 1 ||
+      value.supportLevel === 2 ||
+      value.supportLevel === 3)
   ) {
     const name = value.name.trim();
     return NAME.test(name)
@@ -71,6 +84,10 @@ function parse(value: unknown):
           departmentId: value.departmentId,
           name,
           ...(uuid(value.id) ? { id: value.id } : {}),
+          // Support level (1st/2nd/3rd Level); omitted keeps the stored value.
+          ...(value.supportLevel !== undefined
+            ? { supportLevel: value.supportLevel as 1 | 2 | 3 | null }
+            : {}),
         }
       : null;
   }
@@ -184,7 +201,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .limit(200),
       context.supabaseAdmin
         .from("teams")
-        .select("id,department_id,name,active")
+        .select("id,department_id,name,active,support_level")
         .eq("tenant_id", action.tenantId)
         .order("name")
         .limit(300),
@@ -287,6 +304,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
                   departmentId: team.department_id,
                   name: team.name,
                   active: team.active,
+                  supportLevel: [1, 2, 3].includes(team.support_level)
+                    ? team.support_level
+                    : null,
                   members: memberByTeam.get(team.id) ?? [],
                 },
               ]
@@ -360,7 +380,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const query = action.id
       ? context.supabaseAdmin
           .from("teams")
-          .update({ name: action.name, department_id: action.departmentId })
+          .update({
+            name: action.name,
+            department_id: action.departmentId,
+            ...(action.supportLevel !== undefined
+              ? { support_level: action.supportLevel }
+              : {}),
+          })
           .eq("id", action.id)
           .eq("tenant_id", action.tenantId)
       : context.supabaseAdmin.from("teams").insert({
@@ -368,9 +394,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           department_id: action.departmentId,
           name: action.name,
           active: true,
+          support_level: action.supportLevel ?? null,
         });
     const { data, error } = await query
-      .select("id,department_id,name,active")
+      .select("id,department_id,name,active,support_level")
       .maybeSingle();
     if (error || !data)
       return json(request, { error: { code: "team_save_failed" } }, 422);
@@ -380,7 +407,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       action: action.id ? "team.updated" : "team.created",
       entity_type: "team",
       entity_id: data.id,
-      metadata: { department_id: data.department_id },
+      metadata: {
+        department_id: data.department_id,
+        support_level: data.support_level ?? null,
+      },
     });
     return json(request, {
       data: {
@@ -389,6 +419,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           departmentId: data.department_id,
           name: data.name,
           active: data.active,
+          supportLevel: data.support_level ?? null,
           members: [],
         },
       },

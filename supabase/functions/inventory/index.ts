@@ -11,6 +11,15 @@ import {
   resolveRecordDepartment,
   scopeDepartmentOptions,
 } from "../_shared/department-scope.ts";
+import {
+  type BackorderAction,
+  type BackorderEntry,
+  type BackorderItem,
+  groupBackorders,
+  isBackorderActionType,
+  type LocationStock,
+  parseBackorderAction,
+} from "./backorders.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "inventory.management";
@@ -4450,6 +4459,246 @@ async function deleteInventoryItemImage(
   return json(request, { data: { itemId: action.itemId, deleted: true } });
 }
 
+// Beschaffung (Rückstände aus dem Shop, Migration 0224)
+// ------------------------------------------------------
+const MAX_BACKORDERS = 1_000;
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+async function handleBackorderAction(
+  request: Request,
+  admin: AdminClient,
+  actorId: string,
+  scope: DepartmentScope,
+  action: BackorderAction,
+): Promise<Response> {
+  if (action.type === "listBackorders") {
+    return await listBackorders(request, admin, scope, action.tenantId);
+  }
+  if (action.type === "allocateBackorders") {
+    await requireVisibleItem(admin, action.tenantId, action.itemId, scope);
+    const reserved = await serviceRpc(admin, "shop_allocate_backorders", {
+      p_tenant_id: action.tenantId,
+      p_item_id: action.itemId,
+      p_actor_id: actorId,
+    });
+    return json(request, {
+      data: { reserved: typeof reserved === "number" ? reserved : 0 },
+    });
+  }
+  // Alle Bedarfe müssen zu Artikeln im eigenen Bereich gehören.
+  const rows = await serviceRows(
+    admin
+      .from("shop_backorders")
+      .select("id,inventory_item_id")
+      .eq("tenant_id", action.tenantId)
+      .in("id", action.backorderIds),
+  );
+  const itemIds = [
+    ...new Set(
+      rows.flatMap((row) =>
+        isRecord(row) && isUuid(row.inventory_item_id)
+          ? [row.inventory_item_id.toLowerCase()]
+          : [],
+      ),
+    ),
+  ];
+  const visibleItems =
+    itemIds.length === 0
+      ? []
+      : await serviceRows(
+          applyDepartmentScope(
+            admin
+              .from("inventory_items")
+              .select("id")
+              .eq("tenant_id", action.tenantId)
+              .in("id", itemIds),
+            scope,
+          ),
+        );
+  if (
+    rows.length !== action.backorderIds.length ||
+    visibleItems.length !== itemIds.length
+  ) {
+    throw new HttpError(
+      404,
+      "not_found",
+      "Der Beschaffungsbedarf wurde nicht gefunden.",
+    );
+  }
+  const updated = await serviceRpc(admin, "shop_backorder_update", {
+    p_actor_id: actorId,
+    p_tenant_id: action.tenantId,
+    p_backorder_ids: action.backorderIds,
+    p_action: action.operation,
+    p_supplier: action.supplier,
+    p_expected_on: action.expectedOn,
+    p_note: action.note,
+  });
+  return json(request, {
+    data: { updated: typeof updated === "number" ? updated : 0 },
+  });
+}
+
+async function listBackorders(
+  request: Request,
+  admin: AdminClient,
+  scope: DepartmentScope,
+  tenantId: string,
+): Promise<Response> {
+  const rows = await serviceRows(
+    admin
+      .from("shop_backorders")
+      .select(
+        "id,inventory_item_id,order_id,requester_id,quantity,status,supplier,expected_on,note,created_at,ordered_at",
+      )
+      .eq("tenant_id", tenantId)
+      .in("status", ["open", "ordered"])
+      .order("created_at", { ascending: true })
+      .limit(MAX_BACKORDERS + 1),
+  );
+  if (rows.length > MAX_BACKORDERS) {
+    throw new HttpError(
+      422,
+      "inventory_list_limit_exceeded",
+      "Die Beschaffungsliste kann nicht sicher vollständig geladen werden.",
+    );
+  }
+  const records = rows.filter(isRecord);
+  const unique = (column: string) => [
+    ...new Set(
+      records.flatMap((row) =>
+        isUuid(row[column]) ? [String(row[column]).toLowerCase()] : [],
+      ),
+    ),
+  ];
+  const itemIds = unique("inventory_item_id");
+  const orderIds = unique("order_id");
+  const requesterIds = unique("requester_id");
+  const none = Promise.resolve([] as unknown[]);
+  const [itemRows, orderRows, peopleRows, balanceRows] =
+    itemIds.length === 0
+      ? [[], [], [], []]
+      : await Promise.all([
+          serviceRows(
+            applyDepartmentScope(
+              admin
+                .from("inventory_items")
+                .select("id,name,article_number,unit,supplier")
+                .eq("tenant_id", tenantId)
+                .in("id", itemIds),
+              scope,
+            ),
+          ),
+          orderIds.length === 0
+            ? none
+            : serviceRows(
+                admin
+                  .from("shop_orders")
+                  .select("id,order_number")
+                  .eq("tenant_id", tenantId)
+                  .in("id", orderIds),
+              ),
+          requesterIds.length === 0
+            ? none
+            : serviceRows(
+                admin
+                  .from("user_profiles")
+                  .select("id,display_name")
+                  .in("id", requesterIds),
+              ),
+          serviceRows(
+            admin
+              .from("inventory_stock_balances")
+              .select(
+                "item_id,location_id,physical_quantity,reserved_quantity,inventory_locations(name,active)",
+              )
+              .eq("tenant_id", tenantId)
+              .in("item_id", itemIds)
+              .limit(MAX_BALANCES),
+          ),
+        ]);
+
+  const items = new Map<string, BackorderItem>();
+  for (const row of itemRows.filter(isRecord)) {
+    if (!isUuid(row.id) || typeof row.name !== "string") continue;
+    items.set(row.id.toLowerCase(), {
+      id: row.id.toLowerCase(),
+      name: row.name,
+      articleNumber: optionalString(row.article_number),
+      unit: typeof row.unit === "string" ? row.unit : "each",
+      defaultSupplier: optionalString(row.supplier),
+    });
+  }
+  const orderNumbers = new Map<string, string>();
+  for (const row of orderRows.filter(isRecord)) {
+    if (isUuid(row.id) && typeof row.order_number === "string") {
+      orderNumbers.set(row.id.toLowerCase(), row.order_number);
+    }
+  }
+  const people = new Map<string, string>();
+  for (const row of peopleRows.filter(isRecord)) {
+    if (isUuid(row.id) && typeof row.display_name === "string") {
+      people.set(row.id.toLowerCase(), row.display_name);
+    }
+  }
+  const stock = new Map<string, LocationStock[]>();
+  for (const row of balanceRows.filter(isRecord)) {
+    if (!isUuid(row.item_id) || !isUuid(row.location_id)) continue;
+    const location = Array.isArray(row.inventory_locations)
+      ? row.inventory_locations[0]
+      : row.inventory_locations;
+    // Wie shop_try_reserve_line: nur aktive Lagerorte zählen.
+    if (!isRecord(location) || location.active !== true) continue;
+    const itemId = row.item_id.toLowerCase();
+    const list = stock.get(itemId) ?? [];
+    list.push({
+      locationId: row.location_id.toLowerCase(),
+      name: typeof location.name === "string" ? location.name : "",
+      available: Math.max(
+        0,
+        Number(row.physical_quantity) - Number(row.reserved_quantity),
+      ),
+    });
+    stock.set(itemId, list);
+  }
+  const entries: BackorderEntry[] = records.flatMap((row) => {
+    if (
+      !isUuid(row.id) ||
+      !isUuid(row.inventory_item_id) ||
+      !isUuid(row.order_id) ||
+      typeof row.quantity !== "number" ||
+      (row.status !== "open" && row.status !== "ordered") ||
+      typeof row.created_at !== "string"
+    ) {
+      return [];
+    }
+    const orderId = row.order_id.toLowerCase();
+    return [
+      {
+        id: row.id.toLowerCase(),
+        itemId: row.inventory_item_id.toLowerCase(),
+        quantity: row.quantity,
+        status: row.status,
+        supplier: optionalString(row.supplier),
+        expectedOn: optionalString(row.expected_on),
+        note: optionalString(row.note),
+        orderId,
+        orderNumber: orderNumbers.get(orderId) ?? null,
+        requesterName: isUuid(row.requester_id)
+          ? (people.get(row.requester_id.toLowerCase()) ?? null)
+          : null,
+        createdAt: row.created_at,
+        orderedAt: optionalString(row.ordered_at),
+      },
+    ];
+  });
+  const groups = groupBackorders(entries, items, stock);
+  return json(request, { data: { groups } });
+}
+
 const securedHandler = withSupabase(
   { auth: "user", cors: "disabled", errors: { detailed: false } },
   async (request, context) => {
@@ -4462,8 +4711,13 @@ const securedHandler = withSupabase(
           "Eine gültige Benutzeranmeldung ist erforderlich.",
         );
       }
-      const action = parseAction(await request.json().catch(() => null));
-      if (!action) {
+      const body = await request.json().catch(() => null);
+      const parsed: Action | BackorderAction | null = isBackorderActionType(
+        body,
+      )
+        ? parseBackorderAction(body)
+        : parseAction(body);
+      if (!parsed) {
         throw new HttpError(
           400,
           "invalid_request",
@@ -4473,12 +4727,12 @@ const securedHandler = withSupabase(
       await requireEnabledInventory(
         context.supabase,
         context.supabaseAdmin,
-        action.tenantId,
+        parsed.tenantId,
         actorId,
       );
       const scope = await loadDepartmentScope(
         context.supabaseAdmin,
-        action.tenantId,
+        parsed.tenantId,
         actorId.toLowerCase(),
         FEATURE,
       );
@@ -4489,6 +4743,26 @@ const securedHandler = withSupabase(
           "Die Abteilungen konnten nicht geprüft werden.",
         );
       }
+      if (
+        parsed.type === "listBackorders" ||
+        parsed.type === "manageBackorders" ||
+        parsed.type === "allocateBackorders"
+      ) {
+        // Beschaffung ist Aufgabe der Lagerverwaltung.
+        await requirePermission(
+          context.supabase,
+          parsed.tenantId,
+          "inventory.manage",
+        );
+        return await handleBackorderAction(
+          request,
+          context.supabaseAdmin,
+          actorId.toLowerCase(),
+          scope,
+          parsed,
+        );
+      }
+      const action: Action = parsed;
       if (action.type === "workspace") {
         return await workspace(
           request,

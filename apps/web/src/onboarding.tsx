@@ -38,6 +38,7 @@ type Entry = {
   ictResponsibleName: string;
   templateId: string;
   kind?: "onboarding" | "offboarding";
+  canEdit?: boolean;
   source?: "email" | "manual";
   sourceTicketNumber?: string | null;
   details?: Record<string, unknown>;
@@ -154,6 +155,333 @@ function departmentProgress(tasks: Task[]) {
     groups.set(task.departmentName, group);
   }
   return [...groups.values()];
+}
+
+type ReturnRequester = {
+  id: string;
+  displayName: string;
+  email: string | null;
+};
+type ReturnAsset = {
+  assignmentId: string;
+  assetId: string;
+  name: string;
+  inventoryNumber: string | null;
+  serialNumber: string | null;
+  assignedAt: string;
+  returnedAt: string | null;
+  returnTask: { taskId: string; status: string; sameEntry: boolean } | null;
+};
+type ReturnOverview = {
+  matches: ReturnRequester[];
+  requesters: ReturnRequester[];
+  selectedRequesterId: string | null;
+  assets: ReturnAsset[];
+};
+function isReturnOverview(value: unknown): value is ReturnOverview {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    Array.isArray((value as ReturnOverview).matches) &&
+    Array.isArray((value as ReturnOverview).requesters) &&
+    Array.isArray((value as ReturnOverview).assets),
+  );
+}
+function requesterLabel(requester: ReturnRequester) {
+  return requester.email
+    ? `${requester.displayName} (${requester.email})`
+    : requester.displayName;
+}
+function returnStateLabel(asset: ReturnAsset) {
+  if (asset.returnedAt) return "Zurückgegeben";
+  if (!asset.returnTask) return null;
+  if (!asset.returnTask.sameEntry)
+    return "Rückgabe-Aufgabe in anderem Austritt";
+  const labels: Record<string, string> = {
+    open: "Rückgabe-Aufgabe offen",
+    in_progress: "Rückgabe-Aufgabe in Arbeit",
+    blocked: "Rückgabe-Aufgabe blockiert",
+    completed: "Rückgabe-Aufgabe erledigt",
+  };
+  return labels[asset.returnTask.status] ?? "Rückgabe-Aufgabe offen";
+}
+
+/**
+ * Geräte der austretenden Person. Pro gewähltem Gerät entsteht eine
+ * Rückgabe-Aufgabe; ist sie erledigt, kommt das Gerät wieder an Lager.
+ */
+function AssetReturnsPanel({
+  entry,
+  onCreated,
+  tenantId,
+}: {
+  entry: Entry;
+  onCreated: () => Promise<void>;
+  tenantId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [overview, setOverview] = useState<ReturnOverview | null>(null);
+  const [requesterId, setRequesterId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const taskSignature = entry.tasks
+    .map((task) => `${task.id}:${task.status}`)
+    .join(",");
+  const load = async (nextRequesterId: string | null) => {
+    if (!supabase) return;
+    setBusy(true);
+    setError("");
+    try {
+      const { data, error: loadError } = await supabase.functions.invoke(
+        "onboarding",
+        {
+          body: {
+            type: "offboardingAssets",
+            tenantId,
+            entryId: entry.id,
+            ...(nextRequesterId ? { requesterId: nextRequesterId } : {}),
+          },
+        },
+      );
+      if (loadError) throw loadError;
+      const value =
+        data && typeof data === "object"
+          ? (data as { data?: unknown }).data
+          : null;
+      if (!isReturnOverview(value)) throw new Error("invalid_asset_returns");
+      setOverview(value);
+      setRequesterId(value.selectedRequesterId);
+      setSelected((current) =>
+        current.filter((id) =>
+          value.assets.some(
+            (asset) => asset.assignmentId === id && !asset.returnTask,
+          ),
+        ),
+      );
+    } catch (loadError) {
+      setError(
+        await functionErrorMessage(
+          loadError,
+          "Die Geräte konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+        ),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  useEffect(() => {
+    if (open) void load(requesterId);
+    // Reload when the panel opens or a task of this entry changed state.
+  }, [open, taskSignature]);
+  async function createTasks() {
+    if (!supabase || !selected.length) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const { data, error: createError } = await supabase.functions.invoke(
+        "onboarding",
+        {
+          body: {
+            type: "createReturnTasks",
+            tenantId,
+            entryId: entry.id,
+            assignmentIds: selected,
+          },
+        },
+      );
+      if (createError) throw createError;
+      const created =
+        data && typeof data === "object"
+          ? Number(
+              (data as { data?: { created?: unknown } }).data?.created ?? 0,
+            )
+          : 0;
+      setSelected([]);
+      setNotice(
+        created === 1
+          ? "Eine Rückgabe-Aufgabe wurde erstellt."
+          : `${created} Rückgabe-Aufgaben wurden erstellt.`,
+      );
+      // New tasks change the entry's task list, which reloads this panel.
+      await onCreated();
+      if (created === 0) await load(requesterId);
+    } catch (createError) {
+      setError(
+        await functionErrorMessage(
+          createError,
+          "Die Rückgabe-Aufgaben konnten nicht erstellt werden.",
+        ),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  const pickerOptions = overview
+    ? overview.matches.length > 1
+      ? overview.matches
+      : overview.requesters
+    : [];
+  const showPicker = Boolean(overview && overview.matches.length !== 1);
+  const selectable = (overview?.assets ?? []).filter(
+    (asset) => !asset.returnTask && !asset.returnedAt,
+  );
+  return (
+    <details
+      className="onboarding__details onboarding__returns"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>Geräte-Rückgabe</summary>
+      {error ? (
+        <p
+          className="onboarding__message onboarding__message--error"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
+      {notice ? (
+        <p
+          className="onboarding__message onboarding__message--success"
+          role="status"
+        >
+          {notice}
+        </p>
+      ) : null}
+      {!overview ? (
+        <p className="onboarding__hint" aria-busy={busy}>
+          {busy ? "Geräte werden geladen …" : ""}
+        </p>
+      ) : (
+        <>
+          {showPicker ? (
+            <div className="onboarding__returns-picker">
+              <p className="onboarding__hint">
+                {overview.matches.length > 1
+                  ? `Mehrere Personen heissen «${entry.employeeName}». Bitte wählen Sie die richtige Person aus.`
+                  : `Zu «${entry.employeeName}» wurde keine Person mit Geräten gefunden. Bitte wählen Sie die Person aus, deren Geräte zurückgegeben werden.`}
+              </p>
+              <label>
+                Person
+                <select
+                  disabled={busy}
+                  value={requesterId ?? ""}
+                  onChange={(event) => {
+                    const next = event.target.value || null;
+                    setRequesterId(next);
+                    setSelected([]);
+                    void load(next);
+                  }}
+                >
+                  <option value="">Person auswählen …</option>
+                  {pickerOptions.map((requester) => (
+                    <option key={requester.id} value={requester.id}>
+                      {requesterLabel(requester)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
+          {overview.assets.length ? (
+            <ul className="onboarding__returns-list">
+              {overview.assets.map((asset) => {
+                const state = returnStateLabel(asset);
+                const checkable = !asset.returnTask && !asset.returnedAt;
+                return (
+                  <li key={asset.assignmentId}>
+                    <label>
+                      <input
+                        checked={selected.includes(asset.assignmentId)}
+                        disabled={!checkable || busy}
+                        onChange={(event) =>
+                          setSelected((current) =>
+                            event.target.checked
+                              ? [...current, asset.assignmentId]
+                              : current.filter(
+                                  (id) => id !== asset.assignmentId,
+                                ),
+                          )
+                        }
+                        type="checkbox"
+                      />
+                      <span>
+                        <strong>{asset.name}</strong>
+                        <small>
+                          {[
+                            asset.inventoryNumber
+                              ? `Inventar ${asset.inventoryNumber}`
+                              : null,
+                            asset.serialNumber
+                              ? `Seriennummer ${asset.serialNumber}`
+                              : null,
+                            `zugewiesen seit ${dateLabel(asset.assignedAt.slice(0, 10))}`,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </small>
+                      </span>
+                    </label>
+                    {state ? (
+                      <em
+                        className={
+                          asset.returnedAt ||
+                          asset.returnTask?.status === "completed"
+                            ? "is-done"
+                            : ""
+                        }
+                      >
+                        {state}
+                      </em>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : requesterId ? (
+            <p className="onboarding__hint">
+              Dieser Person sind keine Geräte zugewiesen.
+            </p>
+          ) : null}
+          {selectable.length ? (
+            <div className="onboarding__actions">
+              <button
+                className="secondary-button"
+                disabled={busy}
+                onClick={() =>
+                  setSelected(
+                    selected.length === selectable.length
+                      ? []
+                      : selectable.map((asset) => asset.assignmentId),
+                  )
+                }
+                type="button"
+              >
+                {selected.length === selectable.length
+                  ? "Auswahl aufheben"
+                  : "Alle auswählen"}
+              </button>
+              <button
+                className="primary-button"
+                disabled={busy || !selected.length}
+                onClick={() => void createTasks()}
+                type="button"
+              >
+                {busy ? "Wird erstellt …" : "Rückgabe-Aufgaben erstellen"}
+              </button>
+            </div>
+          ) : null}
+          <p className="onboarding__hint">
+            Die Aufgaben sind am Austrittsdatum fällig und gehen an die
+            ICT-Verantwortung. Sobald eine Rückgabe erledigt ist, gilt das Gerät
+            als zurückgegeben und kommt wieder an Lager.
+          </p>
+        </>
+      )}
+    </details>
+  );
 }
 
 function progress(tasks: Task[]) {
@@ -829,6 +1157,13 @@ export function Onboarding({
                       </div>
                     ))}
                   </div>
+                  {entry.kind === "offboarding" && entry.canEdit ? (
+                    <AssetReturnsPanel
+                      entry={entry}
+                      onCreated={() => load(true)}
+                      tenantId={tenantId}
+                    />
+                  ) : null}
                   <p className="onboarding__exception">
                     <Wrench size={15} /> Bei einer Ausnahme oder Verzögerung
                     wird ein Ticket bewusst im Bereich «Tickets» erstellt und

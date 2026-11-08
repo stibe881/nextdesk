@@ -15,14 +15,25 @@ import {
 import {
   normalizeCustomerTicketEmailBranding,
   renderCustomerTicketEmail,
+  type CustomerTicketEmailAction,
   type CustomerTicketEmailBrand,
   type CustomerTicketEmailKind,
 } from "./customer-ticket-email-template.ts";
+import {
+  requesterActionUrl,
+  signRequesterActionToken,
+} from "./requester-action-token.ts";
 import { processEventSpaceEmailTicketIntake } from "./event-space-email-ticket-intake.ts";
 import { processOnboardingEmailTicketIntake } from "./onboarding-email-intake.ts";
+import {
+  phishingReportSettingsFor,
+  processPhishingEmailReport,
+} from "./phishing-email-intake.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
+import { routeBackupEmail } from "./backup-monitoring.ts";
 
 const SERVICE_EMAIL = "exchange-mail-service@app.nextdesk.ch";
+const APP_ORIGIN = "https://app.nextdesk.ch";
 const SERVICE_NAME = "nextDesk E-Mail-Dienst";
 const MAX_BODY = 48_000;
 const MAX_INBOUND_ATTACHMENTS = 10;
@@ -93,6 +104,61 @@ type InboundAttachment = {
   filename: string;
   size: number;
 };
+
+/**
+ * Automatic reminders (ticket lifecycle) carry signed one-click links
+ * «Problem ist gelöst» / «Ich brauche noch Hilfe». Missing secrets or a
+ * reminder that can no longer be answered simply send the mail without them.
+ */
+async function reminderEmailActions(
+  admin: any,
+  commentId: unknown,
+): Promise<CustomerTicketEmailAction[]> {
+  if (typeof commentId !== "string" || !commentId) return [];
+  try {
+    const reminder = await admin.rpc("ticket_requester_reminder_for_comment", {
+      p_comment_id: commentId,
+    });
+    const data = reminder.data;
+    if (
+      reminder.error ||
+      typeof data !== "object" ||
+      data === null ||
+      typeof data.reminderId !== "string" ||
+      typeof data.ticketId !== "string" ||
+      typeof data.tenantId !== "string" ||
+      typeof data.expiresAt !== "string"
+    )
+      return [];
+    const secret = await admin.rpc("ticket_requester_action_secret");
+    if (secret.error || typeof secret.data !== "string") return [];
+    const expiresAt = Math.floor(Date.parse(data.expiresAt) / 1000);
+    if (!Number.isFinite(expiresAt)) return [];
+    const claims = {
+      reminderId: data.reminderId,
+      ticketId: data.ticketId,
+      tenantId: data.tenantId,
+      expiresAt,
+    };
+    const [resolved, needHelp] = await Promise.all([
+      signRequesterActionToken({ ...claims, action: "resolved" }, secret.data),
+      signRequesterActionToken({ ...claims, action: "need_help" }, secret.data),
+    ]);
+    return [
+      {
+        label: "Problem ist gelöst",
+        url: requesterActionUrl(APP_ORIGIN, resolved),
+        primary: true,
+      },
+      {
+        label: "Ich brauche noch Hilfe",
+        url: requesterActionUrl(APP_ORIGIN, needHelp),
+      },
+    ];
+  } catch {
+    return [];
+  }
+}
 
 export function customerTicketEmailKindForOutbound(
   messageKind: string | null,
@@ -1298,6 +1364,35 @@ export async function processInboundMessage(
       return;
     }
     const sender = emailFromPerson(graph.from) ?? emailFromPerson(graph.sender);
+    // Backup reports (e.g. Veeam) from configured senders go to backup
+    // monitoring instead of becoming tickets; checked before the auto-reply
+    // filters because report mails are often marked as auto-submitted.
+    if (
+      sender &&
+      graph.isDraft !== true &&
+      sender !== channel.mailbox_address
+    ) {
+      stage = "backup_monitoring";
+      const consumed = await routeBackupEmail(admin, {
+        tenantId: channel.tenant_id,
+        sender,
+        subject: subject(graph.subject),
+        body: record(graph.body) ? (asString(graph.body.content) ?? "") : "",
+        messageId: asString(graph.internetMessageId),
+        receivedAt: asString(graph.receivedDateTime),
+      });
+      if (consumed) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "backup_monitoring",
+          internet_message_id: asString(graph.internetMessageId),
+          conversation_id: asString(graph.conversationId),
+          from_address: sender,
+          occurred_at: asString(graph.receivedDateTime),
+        });
+        return;
+      }
+    }
     let reason = ignoredReason(channel, graph, sender);
     if (!reason && sender && (await isOtherChannelMailbox(admin, sender)))
       reason = "nextdesk_channel_mailbox";
@@ -1412,7 +1507,23 @@ export async function processInboundMessage(
       (kind !== "new_ticket" && kind !== "reply")
     )
       throw new Error("inbound_commit_invalid");
-    if (kind === "new_ticket") {
+    // Forwarded to the phishing report address: becomes a security ticket
+    // instead of an ordinary one (no event space / onboarding intake).
+    const phishingSettings =
+      kind === "new_ticket"
+        ? await phishingReportSettingsFor(admin, {
+            tenantId: channel.tenant_id,
+            mailboxAddress: channel.mailbox_address,
+            subject: subject(graph.subject),
+            recipients: [
+              ...array(graph.toRecipients),
+              ...array(graph.ccRecipients),
+            ]
+              .map(emailFromPerson)
+              .filter((value): value is string => value !== null),
+          })
+        : null;
+    if (kind === "new_ticket" && !phishingSettings) {
       await processEventSpaceEmailTicketIntake(admin, {
         tenantId: channel.tenant_id,
         ticketId,
@@ -1420,7 +1531,7 @@ export async function processInboundMessage(
         description: body,
       });
     }
-    if (kind === "new_ticket") {
+    if (kind === "new_ticket" && !phishingSettings) {
       await storeEmailSignature(admin, {
         channel,
         graphMessageId: message.graph_message_id,
@@ -1498,7 +1609,34 @@ export async function processInboundMessage(
       if (hasInlineMedia)
         await updateInlineMediaStatus(admin, message, "completed");
     }
-    if (kind === "new_ticket") {
+    if (kind === "new_ticket" && phishingSettings) {
+      // Wirft nie; bei Fehlern bleibt das gewöhnliche Mail-Ticket bestehen.
+      await processPhishingEmailReport(admin, {
+        tenantId: channel.tenant_id,
+        ticketId,
+        ticketNumber,
+        settings: phishingSettings,
+        graphMessage: graph,
+        graph: async (path, init) =>
+          (
+            await graphRequestForChannel<Row>(
+              admin,
+              channel,
+              `/users/${mailbox}${path}`,
+              init,
+            )
+          ).data,
+        sender,
+        serviceIdentityId,
+        thankYou: channel.send_agent_replies
+          ? {
+              channelId: channel.id,
+              configurationVersion: channel.configuration_version,
+              mailboxAddress: channel.mailbox_address,
+            }
+          : null,
+      });
+    } else if (kind === "new_ticket") {
       // Eintrittsmeldung der Personal-App (PDF): ersetzt das Ticket durch einen
       // Eintritt mit Checkliste. Wirft nie; bei Fehlern bleibt das Ticket.
       await processOnboardingEmailTicketIntake(admin, {
@@ -1901,6 +2039,10 @@ export async function dispatchOutboundMessage(
           attachmentNotice: attachments.omitted,
         })
       : renderCustomerTicketEmail({
+          actions:
+            message.kind === "agent_reply"
+              ? await reminderEmailActions(admin, message.comment_id)
+              : [],
           text: bodyText,
           ticketNumber,
           subject: ticketSubject,

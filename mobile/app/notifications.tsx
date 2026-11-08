@@ -87,7 +87,8 @@ const CATEGORY_DETAILS: readonly {
   {
     key: "follow_up",
     label: "Wiedervorlagen",
-    description: "Erinnerung zum gesetzten Termin.",
+    description:
+      "Erinnerungen zu Wiedervorlagen und aus zeitgesteuerten Regeln.",
   },
   {
     key: "sla",
@@ -104,6 +105,12 @@ const CATEGORY_DETAILS: readonly {
     label: "Lagerunterbestand",
     description:
       "Wenn die Verfügbarkeit eines Artikels den Mindestbestand erreicht.",
+  },
+  {
+    key: "infrastructure",
+    label: "Infrastruktur",
+    description:
+      "Wenn Garantie, Support, End of Life oder Wartung eines Geräts fällig werden.",
   },
 ];
 

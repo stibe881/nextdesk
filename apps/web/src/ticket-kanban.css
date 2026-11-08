@@ -1,0 +1,149 @@
+.ticket-kanban {
+  display: grid;
+  gap: 12px;
+}
+
+.ticket-kanban__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ticket-kanban__toolbar p {
+  margin: 0;
+}
+
+.ticket-kanban__toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ticket-kanban__board {
+  display: grid;
+  grid-auto-columns: minmax(250px, 1fr);
+  grid-auto-flow: column;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.ticket-kanban__column {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 220px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px;
+  background: var(--surface-subtle, #f6f8fb);
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.ticket-kanban__column.is-drop-target {
+  border-color: var(--primary);
+  border-style: dashed;
+  background: var(--primary-soft);
+}
+
+.ticket-kanban__column header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px;
+  font-weight: 700;
+}
+
+.ticket-kanban__column header strong {
+  display: grid;
+  min-width: 24px;
+  height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ticket-kanban__column ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket-kanban__card {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--success, #16a34a);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px var(--shadow-tint-rgb-15-23-42-3, rgb(15 23 42 / 3%));
+  cursor: grab;
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease,
+    opacity 150ms ease;
+}
+
+.ticket-kanban__card:hover {
+  box-shadow: 0 8px 20px var(--shadow-tint-rgb-15-23-42-7, rgb(15 23 42 / 7%));
+  transform: translateY(-1px);
+}
+
+.ticket-kanban__card:active {
+  cursor: grabbing;
+}
+
+.ticket-kanban__card.is-moving {
+  opacity: 0.5;
+}
+
+.ticket-kanban__card--warnung {
+  border-left-color: var(--tone-warning);
+}
+
+.ticket-kanban__card--kritisch {
+  border-left-color: var(--tone-danger);
+}
+
+.ticket-kanban__card button {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  border: 0;
+  padding: 10px 12px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: inherit;
+}
+
+.ticket-kanban__card code {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ticket-kanban__card strong {
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.ticket-kanban__card span,
+.ticket-kanban__card small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ticket-kanban__empty {
+  margin: 8px 4px;
+  color: var(--muted);
+  font-size: 12px;
+}

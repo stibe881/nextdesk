@@ -146,6 +146,9 @@ verify_jwt = true
 [functions.intune-asset-sync]
 verify_jwt = true
 
+[functions.intune-actions]
+verify_jwt = true
+
 [functions.inventory]
 verify_jwt = true
 
@@ -153,6 +156,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.ticket-handovers]
+verify_jwt = true
+
+[functions.ticket-coordination]
 verify_jwt = true
 
 [functions.ticket-knowledge]
@@ -193,3 +199,60 @@ verify_jwt = false
 
 [functions.health]
 verify_jwt = false
+
+[functions.problem-management]
+verify_jwt = true
+
+[functions.infrastructure]
+verify_jwt = true
+
+[functions.knowledge-suggestions]
+verify_jwt = true
+
+[functions.monitoring-webhook]
+verify_jwt = false
+
+[functions.monitoring-integrations]
+verify_jwt = true
+
+# Admin calls authenticate inside the function; the hourly/15-minute wake-up
+# uses the dispatch secret header and the backup webhook a per-tenant token.
+[functions.expiry-monitoring]
+verify_jwt = false
+
+[functions.backup-monitoring]
+verify_jwt = false
+
+[functions.my-priorities]
+verify_jwt = true
+
+[functions.recent-items]
+verify_jwt = true
+
+[functions.ticket-triage]
+verify_jwt = false
+
+[functions.reply-snippets]
+verify_jwt = true
+
+[functions.portal-assistant]
+verify_jwt = true
+
+[functions.sla-breach-reasons]
+verify_jwt = true
+
+[functions.ticket-support-levels]
+verify_jwt = true
+
+[functions.requester-reminder-action]
+verify_jwt = false
+
+[functions.license-reclaim]
+verify_jwt = true
+
+[functions.feedback-insights]
+# Nightly wake-up via dispatch secret; the user path verifies the JWT itself.
+verify_jwt = false
+
+[functions.phishing-reports]
+verify_jwt = true

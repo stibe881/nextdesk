@@ -1,0 +1,173 @@
+.portal-assistant-entry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--primary-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.portal-assistant-entry p {
+  flex: 1 1 260px;
+  margin: 0;
+}
+
+.portal-assistant {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.portal-assistant__heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.portal-assistant__heading h3 {
+  margin: 0 0 2px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.portal-assistant__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-radius: 999px;
+}
+
+.portal-assistant__messages {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.portal-assistant__message {
+  max-width: min(520px, 90%);
+  padding: 8px 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+  border-radius: 12px;
+}
+
+.portal-assistant__message--user {
+  justify-self: end;
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.portal-assistant__message--assistant {
+  justify-self: start;
+  color: var(--text);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+}
+
+.portal-assistant__result {
+  display: grid;
+  gap: 10px;
+}
+
+.portal-assistant__result p {
+  margin: 0;
+}
+
+.portal-assistant__articles {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.portal-assistant__articles li {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.portal-assistant__articles strong {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--ink);
+}
+
+.portal-assistant__articles p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.portal-assistant__article-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.portal-assistant__draft {
+  display: grid;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.portal-assistant__draft .primary-button {
+  justify-self: start;
+}
+
+.portal-assistant__form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+@media (max-width: 560px) {
+  .portal-assistant__form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.portal-assistant-settings__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.portal-assistant-settings__summary div {
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.portal-assistant-settings__summary dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.portal-assistant-settings__summary dd {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}

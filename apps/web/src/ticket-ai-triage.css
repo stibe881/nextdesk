@@ -1,0 +1,53 @@
+.ticket-ai-triage {
+  align-items: flex-start;
+  background: var(--tone-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--tone-accent) 30%, transparent);
+  border-radius: var(--radius-card, 12px);
+  color: var(--ink);
+  display: flex;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 10px 12px;
+}
+.ticket-ai-triage > svg {
+  color: var(--tone-accent);
+  flex: none;
+  margin-top: 2px;
+}
+.ticket-ai-triage > div {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.ticket-ai-triage small {
+  color: var(--muted);
+}
+.ticket-ai-triage__error {
+  color: var(--tone-danger) !important;
+}
+.ticket-ai-triage__actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+.ticket-ai-triage--applied {
+  background: var(--surface-subtle);
+}
+.ticket-ai-triage-settings__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+.ticket-ai-triage-settings__form label {
+  display: grid;
+  gap: 4px;
+}
+.ticket-ai-triage--flags {
+  background: var(--surface-subtle);
+}
+.ticket-ai-triage__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

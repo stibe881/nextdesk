@@ -1,5 +1,7 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -7,9 +9,40 @@ import {
 } from "react";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
+import {
+  drilldownLabel,
+  drilldownPeriodLabel,
+  type TicketDrilldown,
+} from "./lib/ticket-drilldown";
+
+/**
+ * Drilldown into the ticket list: the open handler plus the report's own
+ * team/agent filter, so the list shows the same subset as the figure.
+ */
+type ReportDrill = {
+  open: (drilldown: TicketDrilldown) => void;
+  scope: Pick<TicketDrilldown, "teamIds" | "agent">;
+  scopeLabel: string;
+};
+const ReportDrillContext = createContext<ReportDrill | null>(null);
+
+function useReportDrill(): ReportDrill | null {
+  return useContext(ReportDrillContext);
+}
+
+function withScope(
+  drill: ReportDrill,
+  drilldown: TicketDrilldown,
+): TicketDrilldown {
+  return {
+    ...drill.scope,
+    ...drilldown,
+    label: drilldownLabel(drilldown.label, drill.scopeLabel),
+  };
+}
 
 export type PredefinedReportKey =
-  "trends" | "overview" | "satisfaction" | "agents";
+  "trends" | "overview" | "satisfaction" | "agents" | "themes" | "requesters";
 
 export const PREDEFINED_REPORTS: readonly {
   key: PredefinedReportKey;
@@ -39,6 +72,18 @@ export const PREDEFINED_REPORTS: readonly {
     label: "Agentenleistung",
     description:
       "SLA-Einhaltung, Bearbeitungszeiten und Zufriedenheit pro Agent.",
+  },
+  {
+    key: "themes",
+    label: "Top-Themen",
+    description:
+      "Häufigste Kategorien und Stichworte im Vergleich zur Vorperiode – Hinweise auf fehlende Wissensartikel oder Automatisierungen.",
+  },
+  {
+    key: "requesters",
+    label: "Anfragende Abteilungen",
+    description:
+      "Tickets pro anfragender Abteilung mit Vorperiode, offenen Tickets und Lösungszeit.",
   },
 ];
 
@@ -104,6 +149,26 @@ type Insights = {
     byTeam: (MoodShares & { id: string | null; name: string | null })[];
   };
   agents: { rows: AgentRow[]; total: AgentRow };
+  themes?: {
+    total: number;
+    previousTotal: number;
+    categories: ThemeRow[];
+    keywords: ThemeRow[];
+  };
+  requesterDepartments?: {
+    name: string;
+    received: number;
+    previous: number;
+    resolved: number;
+    open: number;
+    averageResolutionMinutes: number | null;
+  }[];
+};
+type ThemeRow = {
+  name: string;
+  count: number;
+  previous: number;
+  share: number;
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -113,18 +178,19 @@ const SOURCE_LABELS: Record<string, string> = {
   api: "API",
   automation: "Automation",
 };
+// Theme tokens (status-tokens.css) so the charts follow brand and dark mode.
 const COLORS = {
-  received: "#3b82f6",
-  resolved: "#16a34a",
-  unresolved: "#f59e0b",
-  happy: "#16a34a",
-  neutral: "#f59e0b",
-  unhappy: "#dc2626",
-  email: "#d4a72c",
-  portal: "#3b82f6",
-  phone: "#a21caf",
-  api: "#64748b",
-  automation: "#0d9488",
+  received: "var(--chart-2)",
+  resolved: "var(--chart-3)",
+  unresolved: "var(--chart-4)",
+  happy: "var(--chart-3)",
+  neutral: "var(--chart-4)",
+  unhappy: "var(--chart-6)",
+  email: "var(--chart-8)",
+  portal: "var(--chart-2)",
+  phone: "var(--chart-5)",
+  api: "var(--chart-label)",
+  automation: "var(--chart-7)",
 };
 const numberFormat = new Intl.NumberFormat("de-CH");
 const percentFormat = new Intl.NumberFormat("de-CH", {
@@ -321,13 +387,18 @@ function LineChart({
               points={entry.values
                 .map((value, index) => `${x(index)},${y(value)}`)
                 .join(" ")}
-              stroke={entry.color}
+              style={{ stroke: entry.color }}
               strokeLinejoin="round"
               strokeWidth={2.2}
             />
             {entry.values.map((value, index) => (
               <g key={index}>
-                <circle cx={x(index)} cy={y(value)} fill={entry.color} r={3}>
+                <circle
+                  cx={x(index)}
+                  cy={y(value)}
+                  r={3}
+                  style={{ fill: entry.color }}
+                >
                   <title>{`${labels[index]} · ${entry.label}: ${value}`}</title>
                 </circle>
                 {showValues && value > 0 ? (
@@ -409,7 +480,7 @@ function StackedBars({
                 offset += barH;
                 return value > 0 ? (
                   <rect
-                    fill={entry.color}
+                    style={{ fill: entry.color }}
                     height={barH}
                     key={entry.label}
                     width={barW}
@@ -466,6 +537,7 @@ function Kpi({
   previous,
   kind = "relative",
   higherIsBetter = true,
+  drilldown,
 }: {
   label: string;
   value: string;
@@ -473,11 +545,24 @@ function Kpi({
   previous?: number | null;
   kind?: "relative" | "points";
   higherIsBetter?: boolean;
+  drilldown?: TicketDrilldown | undefined;
 }) {
+  const drill = useReportDrill();
   return (
     <article className="predefined-report__kpi">
       <p>{label}</p>
-      <strong>{value}</strong>
+      {drill && drilldown ? (
+        <button
+          aria-label={`${label}: ${value} – Tickets anzeigen`}
+          className="predefined-report__drill"
+          onClick={() => drill.open(withScope(drill, drilldown))}
+          type="button"
+        >
+          <strong>{value}</strong>
+        </button>
+      ) : (
+        <strong>{value}</strong>
+      )}
       {current !== undefined && previous !== undefined ? (
         <Delta
           current={current}
@@ -546,6 +631,8 @@ function TrendsReport({ insights }: { insights: Insights }) {
 
 function OverviewReport({ insights }: { insights: Insights }) {
   const { current, previous } = insights.overview;
+  const { startsAt, endsAt } = insights.period;
+  const period = drilldownPeriodLabel(startsAt, endsAt);
   return (
     <div className="predefined-report__kpis">
       <Kpi
@@ -553,6 +640,11 @@ function OverviewReport({ insights }: { insights: Insights }) {
         value={numberFormat.format(current.received)}
         current={current.received}
         previous={previous.received}
+        drilldown={{
+          label: drilldownLabel("Erhalten", period),
+          createdFrom: startsAt,
+          createdTo: endsAt,
+        }}
       />
       <Kpi
         label="Nicht gelöste Tickets"
@@ -560,12 +652,22 @@ function OverviewReport({ insights }: { insights: Insights }) {
         current={current.unresolved}
         previous={previous.unresolved}
         higherIsBetter={false}
+        drilldown={{
+          label: drilldownLabel("Nicht gelöst", period),
+          statusClosed: false,
+          createdTo: endsAt,
+        }}
       />
       <Kpi
         label="Gelöste Tickets"
         value={numberFormat.format(current.resolved)}
         current={current.resolved}
         previous={previous.resolved}
+        drilldown={{
+          label: drilldownLabel("Gelöst", period),
+          resolvedFrom: startsAt,
+          resolvedTo: endsAt,
+        }}
       />
       <Kpi
         label="Erstkontakt-Lösungsrate"
@@ -580,6 +682,12 @@ function OverviewReport({ insights }: { insights: Insights }) {
         current={current.resolutionSlaCompliance}
         previous={previous.resolutionSlaCompliance}
         kind="points"
+        drilldown={{
+          label: drilldownLabel("Lösungs-SLA verletzt", period),
+          resolvedFrom: startsAt,
+          resolvedTo: endsAt,
+          slaBreached: true,
+        }}
       />
       <Kpi
         label="Durchschnittliche Lösungszeit"
@@ -733,6 +841,8 @@ const AGENT_TABS: { key: AgentTab; label: string; title: string }[] = [
 ];
 
 function AgentTable({ insights, tab }: { insights: Insights; tab: AgentTab }) {
+  const drill = useReportDrill();
+  const { startsAt, endsAt } = insights.period;
   const rows = [...insights.agents.rows, insights.agents.total];
   const columns: { label: string; value: (row: AgentRow) => string }[] =
     tab === "compliance"
@@ -812,7 +922,32 @@ function AgentTable({ insights, tab }: { insights: Insights; tab: AgentTab }) {
                   : (row.id ?? "unassigned")
               }
             >
-              <th scope="row">{row.name ?? "Nicht zugewiesen"}</th>
+              <th scope="row">
+                {drill && row !== insights.agents.total && row.resolved > 0 ? (
+                  <button
+                    aria-label={`Gelöste Tickets von ${row.name ?? "nicht zugewiesen"} anzeigen`}
+                    className="predefined-report__drill predefined-report__drill--inline"
+                    onClick={() =>
+                      drill.open(
+                        withScope(drill, {
+                          label: drilldownLabel(
+                            `Gelöst von ${row.name ?? "nicht zugewiesen"}`,
+                            drilldownPeriodLabel(startsAt, endsAt),
+                          ),
+                          agent: row.id ?? "unassigned",
+                          resolvedFrom: startsAt,
+                          resolvedTo: endsAt,
+                        }),
+                      )
+                    }
+                    type="button"
+                  >
+                    {row.name ?? "Nicht zugewiesen"}
+                  </button>
+                ) : (
+                  (row.name ?? "Nicht zugewiesen")
+                )}
+              </th>
               {columns.map((column) => (
                 <td key={column.label}>{column.value(row)}</td>
               ))}
@@ -867,6 +1002,176 @@ function AgentsReport({
   );
 }
 
+function ChangeBadge({
+  current,
+  previous,
+  higherIsWorse = true,
+}: {
+  current: number;
+  previous: number;
+  higherIsWorse?: boolean;
+}) {
+  if (previous === 0 && current === 0) return null;
+  if (previous === 0)
+    return (
+      <span className="predefined-report__delta predefined-report__delta--flat">
+        neu
+      </span>
+    );
+  return (
+    <Delta
+      current={current}
+      higherIsBetter={!higherIsWorse}
+      kind="relative"
+      previous={previous}
+    />
+  );
+}
+
+function ThemeTable({ rows, label }: { rows: ThemeRow[]; label: string }) {
+  if (!rows.length)
+    return <p className="predefined-report__empty">Keine Daten im Zeitraum.</p>;
+  const max = Math.max(...rows.map((row) => row.count), 1);
+  return (
+    <div className="predefined-report__table-wrap">
+      <table className="predefined-report__table predefined-report__themes">
+        <thead>
+          <tr>
+            <th scope="col">{label}</th>
+            <th scope="col">Tickets</th>
+            <th scope="col">Anteil</th>
+            <th scope="col">Vorperiode</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.name}>
+              <th scope="row">
+                <span className="predefined-report__theme-name">
+                  {row.name}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="predefined-report__theme-bar"
+                  style={{ width: `${Math.round((row.count / max) * 100)}%` }}
+                />
+              </th>
+              <td>{numberFormat.format(row.count)}</td>
+              <td>{formatPercent(row.share)}</td>
+              <td>
+                {numberFormat.format(row.previous)}{" "}
+                <ChangeBadge current={row.count} previous={row.previous} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ThemesReport({ insights }: { insights: Insights }) {
+  const themes = insights.themes;
+  if (!themes)
+    return (
+      <p className="predefined-report__empty">
+        Dieser Bericht ist nach dem nächsten Update verfügbar.
+      </p>
+    );
+  return (
+    <>
+      <div className="predefined-report__kpis">
+        <Kpi
+          current={themes.total}
+          higherIsBetter={false}
+          label="Tickets im Zeitraum"
+          previous={themes.previousTotal}
+          value={numberFormat.format(themes.total)}
+        />
+        <Kpi
+          label="Häufigste Kategorie"
+          value={themes.categories[0]?.name ?? "–"}
+        />
+        <Kpi
+          label="Häufigstes Stichwort"
+          value={themes.keywords[0]?.name ?? "–"}
+        />
+      </div>
+      <Panel title="Top-Kategorien">
+        <ThemeTable label="Kategorie" rows={themes.categories} />
+      </Panel>
+      <Panel title="Häufige Stichworte im Betreff">
+        <ThemeTable label="Stichwort" rows={themes.keywords} />
+        <p className="predefined-report__note">
+          Wiederkehrende Stichworte sind gute Kandidaten für einen
+          Wissensartikel, eine Ticketvorlage oder eine Regel im Regel-Baukasten.
+        </p>
+      </Panel>
+    </>
+  );
+}
+
+function RequesterDepartmentsReport({ insights }: { insights: Insights }) {
+  const rows = insights.requesterDepartments;
+  if (!rows)
+    return (
+      <p className="predefined-report__empty">
+        Dieser Bericht ist nach dem nächsten Update verfügbar.
+      </p>
+    );
+  if (!rows.length)
+    return <p className="predefined-report__empty">Keine Daten im Zeitraum.</p>;
+  const max = Math.max(...rows.map((row) => row.received), 1);
+  return (
+    <Panel title="Tickets pro anfragender Abteilung">
+      <div className="predefined-report__table-wrap">
+        <table className="predefined-report__table predefined-report__themes">
+          <thead>
+            <tr>
+              <th scope="col">Abteilung</th>
+              <th scope="col">Erhalten</th>
+              <th scope="col">Vorperiode</th>
+              <th scope="col">Gelöst</th>
+              <th scope="col">Offen</th>
+              <th scope="col">Ø Lösungszeit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.name}>
+                <th scope="row">
+                  <span className="predefined-report__theme-name">
+                    {row.name}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="predefined-report__theme-bar"
+                    style={{
+                      width: `${Math.round((row.received / max) * 100)}%`,
+                    }}
+                  />
+                </th>
+                <td>{numberFormat.format(row.received)}</td>
+                <td>
+                  {numberFormat.format(row.previous)}{" "}
+                  <ChangeBadge current={row.received} previous={row.previous} />
+                </td>
+                <td>{numberFormat.format(row.resolved)}</td>
+                <td>{numberFormat.format(row.open)}</td>
+                <td>{formatCompactDuration(row.averageResolutionMinutes)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="predefined-report__note">
+        Die Abteilung stammt aus dem Profil der anfragenden Person (z. B. aus
+        Entra ID). Tickets ohne diese Angabe erscheinen unter «Ohne Abteilung».
+      </p>
+    </Panel>
+  );
+}
+
 export function ReportBody({
   report,
   insights,
@@ -880,10 +1185,15 @@ export function ReportBody({
   if (report === "overview") return <OverviewReport insights={insights} />;
   if (report === "satisfaction")
     return <SatisfactionReport insights={insights} />;
+  if (report === "themes") return <ThemesReport insights={insights} />;
+  if (report === "requesters")
+    return <RequesterDepartmentsReport insights={insights} />;
   return <AgentsReport insights={insights} printing={printing} />;
 }
 
 export type PredefinedReportsProps = {
+  /** Drilldown into the filtered ticket list. */
+  onOpenTicketList?: ((drilldown: TicketDrilldown) => void) | undefined;
   tenantId: string;
   report: PredefinedReportKey;
   period: Period;
@@ -894,6 +1204,7 @@ export type PredefinedReportsProps = {
 };
 
 export function PredefinedReports({
+  onOpenTicketList,
   tenantId,
   report,
   period,
@@ -915,6 +1226,8 @@ export function PredefinedReports({
     overview: false,
     satisfaction: false,
     agents: false,
+    themes: false,
+    requesters: false,
   });
   const [printReports, setPrintReports] = useState<
     PredefinedReportKey[] | null
@@ -989,6 +1302,8 @@ export function PredefinedReports({
       overview: report === "overview",
       satisfaction: report === "satisfaction",
       agents: report === "agents",
+      themes: report === "themes",
+      requesters: report === "requesters",
     });
     setPdfOpen(true);
   }
@@ -1151,11 +1466,26 @@ export function PredefinedReports({
                   Erstellt: {longDate.format(new Date())}
                 </small>
               </header>
-              <ReportBody
-                insights={insights}
-                printing={printReports !== null}
-                report={key}
-              />
+              <ReportDrillContext.Provider
+                value={
+                  onOpenTicketList && printReports === null
+                    ? {
+                        open: onOpenTicketList,
+                        scope: {
+                          ...(teamId ? { teamIds: [teamId] } : {}),
+                          ...(agentId ? { agent: agentId } : {}),
+                        },
+                        scopeLabel: filterText,
+                      }
+                    : null
+                }
+              >
+                <ReportBody
+                  insights={insights}
+                  printing={printReports !== null}
+                  report={key}
+                />
+              </ReportDrillContext.Provider>
             </section>
           ))
         : null}
@@ -1172,6 +1502,10 @@ export const predefinedReportStyles = `
   .predefined-report__button { appearance: none; min-height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
   .predefined-report__button--primary { background: var(--report-primary, #4338ca); border-color: var(--report-primary, #4338ca); color: #fff; }
   .predefined-report__button:disabled { opacity: .6; cursor: not-allowed; }
+  .predefined-report__drill { appearance: none; background: none; border: 0; border-radius: 6px; color: inherit; cursor: pointer; font: inherit; padding: 0; text-align: left; text-decoration: underline dotted; text-underline-offset: 4px; }
+  .predefined-report__drill:hover { text-decoration-style: solid; }
+  .predefined-report__drill:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 40%, transparent); outline-offset: 2px; }
+  .predefined-report__drill--inline { font-weight: inherit; }
   .predefined-report__pdf, .predefined-report__panel, .predefined-report__kpi, .predefined-report__masthead { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card, 12px); }
   .predefined-report__pdf { display: grid; gap: 12px; padding: 16px; }
   .predefined-report__pdf h3, .predefined-report__panel h3 { margin: 0; color: var(--ink); font-size: 15px; }
@@ -1222,6 +1556,9 @@ export const predefinedReportStyles = `
   .predefined-report__table thead th { background: var(--surface-subtle, var(--surface)); color: var(--text); font-size: 12px; }
   .predefined-report__table tbody th { color: var(--ink); font-weight: 600; }
   .predefined-report__table td { color: var(--text); font-variant-numeric: tabular-nums; }
+  .predefined-report__themes tbody th { position: relative; min-width: 180px; }
+  .predefined-report__theme-name { position: relative; z-index: 1; }
+  .predefined-report__theme-bar { position: absolute; left: 0; bottom: 3px; height: 3px; border-radius: 99px; background: var(--report-primary, #4338ca); opacity: 0.35; }
   .predefined-report__total th, .predefined-report__total td { background: var(--surface-subtle, var(--surface)); font-weight: 800; }
   @media (max-width: 920px) { .predefined-report__kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .predefined-report__grid { grid-template-columns: 1fr; } }
   @media (max-width: 560px) { .predefined-report__kpis, .predefined-report__kpis--two { grid-template-columns: 1fr; } .predefined-report__masthead { grid-template-columns: auto 1fr; } .predefined-report__masthead small { grid-column: 1 / -1; text-align: left; } }

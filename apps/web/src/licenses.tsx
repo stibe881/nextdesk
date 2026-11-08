@@ -6,8 +6,10 @@ import {
   CalendarClock,
   FileText,
   Paperclip,
+  PiggyBank,
   Plus,
   RefreshCw,
+  Users,
   X,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
@@ -21,6 +23,8 @@ import {
   parseDepartmentOptions,
   type DepartmentOption,
 } from "./lib/contract-departments";
+import { COST_PERIOD_LABEL, formatMoney } from "./lib/license-reclaim";
+import { LicenseReclaimPanel, LicenseSeatsDialog } from "./license-reclaim";
 
 type LicenseStatus = "draft" | "active" | "terminated" | "archived";
 type LicenseType = string;
@@ -40,6 +44,12 @@ type License = {
   departmentId: string | null;
   responsibleUserId: string | null;
   notes: string | null;
+  /** Kosten eines Platzes pro Periode (für die Rückgewinnung). */
+  seatCostAmount?: number | null;
+  seatCostCurrency?: "CHF" | "EUR" | "USD";
+  seatCostPeriod?: "monthly" | "quarterly" | "yearly" | "one_time" | null;
+  /** Microsoft-365-SKU (optional, für das Entfernen in Entra). */
+  m365SkuId?: string | null;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -60,6 +70,10 @@ type Form = {
   departmentId: string;
   responsibleUserId: string;
   notes: string;
+  seatCostAmount: string;
+  seatCostCurrency: "CHF" | "EUR" | "USD";
+  seatCostPeriod: "" | "monthly" | "quarterly" | "yearly" | "one_time";
+  m365SkuId: string;
 };
 const EMPTY: Form = {
   id: null,
@@ -76,6 +90,10 @@ const EMPTY: Form = {
   departmentId: "",
   responsibleUserId: "",
   notes: "",
+  seatCostAmount: "",
+  seatCostCurrency: "CHF",
+  seatCostPeriod: "",
+  m365SkuId: "",
 };
 const statusLabel: Record<LicenseStatus, string> = {
   draft: "Entwurf",
@@ -149,6 +167,13 @@ function formFor(contract: License): Form {
     departmentId: contract.departmentId ?? "",
     responsibleUserId: contract.responsibleUserId ?? "",
     notes: contract.notes ?? "",
+    seatCostAmount:
+      contract.seatCostAmount === null || contract.seatCostAmount === undefined
+        ? ""
+        : String(contract.seatCostAmount),
+    seatCostCurrency: contract.seatCostCurrency ?? "CHF",
+    seatCostPeriod: contract.seatCostPeriod ?? "",
+    m365SkuId: contract.m365SkuId ?? "",
   };
 }
 function responseData(value: unknown): Record<string, unknown> | null {
@@ -198,6 +223,8 @@ export function Licenses({
   const [newTypeName, setNewTypeName] = useState("");
   const [queuedFiles, setQueuedFiles] = useState<File[]>([]);
   const [documentsFor, setDocumentsFor] = useState<License | null>(null);
+  const [seatsFor, setSeatsFor] = useState<License | null>(null);
+  const [reclaimOpen, setReclaimOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
   const load = async () => {
@@ -370,6 +397,24 @@ export function Licenses({
         (!Number.isInteger(noticeDays) || noticeDays < 0 || noticeDays > 3650)
       )
         throw new Error("invalid_notice");
+      const seatCostAmount =
+        form.seatCostAmount.trim() === ""
+          ? null
+          : Number(form.seatCostAmount.replace(",", "."));
+      if (
+        seatCostAmount !== null &&
+        (!Number.isFinite(seatCostAmount) || seatCostAmount < 0)
+      )
+        throw new Error("invalid_cost");
+      if (seatCostAmount !== null && !form.seatCostPeriod)
+        throw new Error("cost_period_missing");
+      if (
+        form.m365SkuId.trim() &&
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          form.m365SkuId.trim(),
+        )
+      )
+        throw new Error("invalid_sku");
       const values = {
         title: form.title,
         vendorName: form.vendorName,
@@ -387,6 +432,10 @@ export function Licenses({
         departmentId: form.departmentId || null,
         responsibleUserId: form.responsibleUserId || null,
         notes: form.notes || null,
+        seatCostAmount,
+        seatCostCurrency: form.seatCostCurrency,
+        seatCostPeriod: seatCostAmount === null ? null : form.seatCostPeriod,
+        m365SkuId: form.m365SkuId.trim() || null,
       };
       if (values.startsOn && values.endsOn && values.endsOn < values.startsOn)
         throw new Error("invalid_dates");
@@ -446,9 +495,17 @@ export function Licenses({
             ? "Die Anzahl muss eine ganze Zahl zwischen 1 und 1 000 000 sein."
             : reason instanceof Error && reason.message === "invalid_notice"
               ? "Die Kündigungsfrist muss zwischen 0 und 3650 Tagen liegen."
-              : reason instanceof Error && reason.message.startsWith("server:")
-                ? reason.message.slice(7)
-                : "Die Lizenz konnte nicht gespeichert werden.",
+              : reason instanceof Error && reason.message === "invalid_cost"
+                ? "Die Kosten pro Platz müssen eine positive Zahl sein."
+                : reason instanceof Error &&
+                    reason.message === "cost_period_missing"
+                  ? "Bitte angeben, für welchen Zeitraum die Kosten pro Platz gelten."
+                  : reason instanceof Error && reason.message === "invalid_sku"
+                    ? "Die Microsoft-365-SKU-ID muss eine GUID sein."
+                    : reason instanceof Error &&
+                        reason.message.startsWith("server:")
+                      ? reason.message.slice(7)
+                      : "Die Lizenz konnte nicht gespeichert werden.",
       );
     } finally {
       setPending(false);
@@ -503,6 +560,14 @@ export function Licenses({
         </div>
         <div className="contracts__actions">
           <button
+            aria-pressed={reclaimOpen}
+            className="secondary-button"
+            onClick={() => setReclaimOpen((current) => !current)}
+            type="button"
+          >
+            <PiggyBank size={16} /> Rückgewinnung
+          </button>
+          <button
             className="primary-button"
             onClick={(event) => {
               triggerRef.current = event.currentTarget;
@@ -524,6 +589,7 @@ export function Licenses({
           {notice}
         </p>
       )}
+      {reclaimOpen ? <LicenseReclaimPanel tenantId={tenantId} /> : null}
       <fieldset className="contracts__filters">
         <label>
           Suche
@@ -651,6 +717,20 @@ export function Licenses({
                           : `${contract.noticePeriodDays} Tage`}
                       </dd>
                     </div>
+                    {contract.seatCostAmount !== null &&
+                    contract.seatCostAmount !== undefined ? (
+                      <div>
+                        <dt>Kosten pro Platz</dt>
+                        <dd>
+                          {formatMoney(
+                            contract.seatCostAmount,
+                            contract.seatCostCurrency ?? "CHF",
+                          )}{" "}
+                          {COST_PERIOD_LABEL[contract.seatCostPeriod ?? ""] ??
+                            ""}
+                        </dd>
+                      </div>
+                    ) : null}
                   </dl>
                   {contract.reminderDaysBefore !== null && (
                     <p className="contracts__deadline contracts__deadline--neutral">
@@ -675,6 +755,13 @@ export function Licenses({
                       type="button"
                     >
                       <Paperclip size={16} /> Dokumente
+                    </button>
+                    <button
+                      className="secondary-button"
+                      onClick={() => setSeatsFor(contract)}
+                      type="button"
+                    >
+                      <Users size={16} /> Plätze
                     </button>
                     <button
                       className="secondary-button"
@@ -969,6 +1056,75 @@ export function Licenses({
                     Nur bei aktiven Einträgen mit Ablaufdatum.
                   </small>
                 </label>
+                <label>
+                  Kosten pro Platz
+                  <input
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    type="number"
+                    value={form.seatCostAmount}
+                    onChange={(event) =>
+                      setForm({ ...form, seatCostAmount: event.target.value })
+                    }
+                  />
+                  <small>
+                    Für die geschätzte Einsparung der Rückgewinnung.
+                  </small>
+                </label>
+                <label>
+                  Zeitraum der Kosten
+                  <span className="contracts__new-type">
+                    <select
+                      aria-label="Währung"
+                      value={form.seatCostCurrency}
+                      onChange={(event) =>
+                        setForm({
+                          ...form,
+                          seatCostCurrency: event.target
+                            .value as Form["seatCostCurrency"],
+                        })
+                      }
+                    >
+                      <option value="CHF">CHF</option>
+                      <option value="EUR">EUR</option>
+                      <option value="USD">USD</option>
+                    </select>
+                    <select
+                      aria-label="Zeitraum"
+                      value={form.seatCostPeriod}
+                      onChange={(event) =>
+                        setForm({
+                          ...form,
+                          seatCostPeriod: event.target
+                            .value as Form["seatCostPeriod"],
+                        })
+                      }
+                    >
+                      <option value="">Zeitraum wählen</option>
+                      <option value="monthly">pro Monat</option>
+                      <option value="quarterly">pro Quartal</option>
+                      <option value="yearly">pro Jahr</option>
+                      <option value="one_time">einmalig</option>
+                    </select>
+                  </span>
+                </label>
+                <label>
+                  Microsoft-365-SKU-ID (optional)
+                  <input
+                    maxLength={36}
+                    placeholder="z. B. 05e9a617-0261-4cee-bb44-138d3ef5d965"
+                    spellCheck={false}
+                    value={form.m365SkuId}
+                    onChange={(event) =>
+                      setForm({ ...form, m365SkuId: event.target.value })
+                    }
+                  />
+                  <small>
+                    Nur nötig, wenn beim Zurückgeben auch die Lizenz in
+                    Microsoft 365 entfernt werden soll.
+                  </small>
+                </label>
                 <label className="contracts__notes">
                   Notiz
                   <textarea
@@ -1011,6 +1167,15 @@ export function Licenses({
           </div>,
           document.body,
         )}
+      {seatsFor ? (
+        <LicenseSeatsDialog
+          licenseId={seatsFor.id}
+          onClose={() => setSeatsFor(null)}
+          readOnly={seatsFor.status === "archived"}
+          tenantId={tenantId}
+          title={seatsFor.title}
+        />
+      ) : null}
       {documentsFor &&
         createPortal(
           <div

@@ -2781,6 +2781,23 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "internal_note_denied" } },
         403,
       );
+    // An empty body discards the draft on every device ("Verwerfen", or a
+    // posted message) instead of keeping an empty row around.
+    if (!action.body.trim()) {
+      const { error: discardError } = await context.supabaseAdmin
+        .from("ticket_drafts")
+        .delete()
+        .eq("ticket_id", ticket.id)
+        .eq("author_id", actorId)
+        .eq("visibility", action.visibility);
+      if (discardError)
+        return response(
+          request,
+          { error: { code: "draft_save_failed" } },
+          422,
+        );
+      return response(request, { data: { draft: null } });
+    }
     const { data: draft, error } = await context.supabaseAdmin
       .from("ticket_drafts")
       .upsert(
@@ -3388,6 +3405,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       "x-nextdesk-actor-id",
       typeof actorId === "string" ? actorId : "",
     );
+  if (error?.hint === "ticket_children_open")
+    return response(request, { error: { code: "ticket_children_open" } }, 409);
   if (error)
     return response(request, { error: { code: "ticket_update_failed" } }, 422);
   await context.supabaseAdmin.from("ticket_events").insert({

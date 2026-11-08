@@ -2374,6 +2374,48 @@ time,
   color: var(--primary-hover);
 }
 
+/* «Aus Bericht: …» – report drilldown filter above the ticket list. */
+.ticket-drilldown-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 12px 0;
+}
+
+.ticket-drilldown-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  max-width: 100%;
+  border: 1px solid var(--border-tint-d8dcff, var(--border));
+  border-radius: 999px;
+  padding: 4px 4px 4px 12px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.ticket-drilldown-chip__remove {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.ticket-drilldown-chip__remove:hover {
+  background: var(--surface);
+}
+
 .ticket-list {
   padding: 0 12px;
 }
@@ -10939,6 +10981,149 @@ body:has(.ticket-list-filter-panel) {
   gap: 7px;
 }
 
+/* Monitoring (PRTG): webhook settings share the asset integration layout. */
+.monitoring-settings__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.monitoring-settings__grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.monitoring-settings__secret {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.monitoring-settings__secret p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.monitoring-settings__copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.monitoring-settings__copy code {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-tint-f7f6ff);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.monitoring-settings__copy button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Certificate/domain expiry and backup monitoring. */
+.monitoring-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 4px 0 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.monitoring-chip--success {
+  background: var(--tone-success-soft);
+  color: var(--tone-success);
+}
+
+.monitoring-chip--warning {
+  background: var(--tone-warning-soft);
+  color: var(--tone-warning);
+}
+
+.monitoring-chip--danger {
+  background: var(--tone-danger-soft);
+  color: var(--tone-danger);
+}
+
+.monitoring-chip--info {
+  background: var(--tone-info-soft);
+  color: var(--tone-info);
+}
+
+.monitoring-chip--neutral {
+  background: var(--tone-neutral-soft);
+  color: var(--tone-neutral);
+}
+
+.monitoring-settings__error,
+.asset-intune-settings__history li p.monitoring-settings__error {
+  color: var(--tone-danger);
+}
+
+.monitoring-settings__row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.monitoring-settings__grid textarea {
+  min-height: 72px;
+  font: inherit;
+  font-weight: 400;
+  resize: vertical;
+}
+
+.monitoring-settings__history {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.monitoring-settings__history p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+
+.monitoring-settings__setup ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+@media (max-width: 620px) {
+  .monitoring-settings__copy {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 @media (max-width: 620px) {
   .asset-intune-settings {
     padding: 16px;
@@ -15956,6 +16141,20 @@ body:has(.knowledge-base__editor-backdrop) {
   line-height: 1.5;
 }
 
+/* «Zuletzt angesehen» heading in the empty search dropdown. */
+.global-search__heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 @keyframes global-search-spin {
   to {
     transform: rotate(360deg);
@@ -17997,6 +18196,38 @@ body:has(.knowledge-base__editor-backdrop) {
   color: var(--primary);
   font-size: 1.55rem;
   margin-right: 6px;
+}
+
+/* Beschaffung: Bedarfe je Artikel und Lieferant */
+.inventory__procurement-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 17px 0 0;
+  padding: 16px;
+}
+
+.inventory__procurement-item > header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.inventory__procurement-item h3 {
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+
+.inventory__procurement-supplier {
+  border-top: 1px solid var(--border);
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.inventory__procurement-supplier h4 {
+  font-size: 0.86rem;
+  margin: 0;
 }
 
 .inventory__empty {
@@ -20926,4 +21157,415 @@ html:has(.embed-status-badge) body {
 
 .ticket-number {
   white-space: nowrap;
+}
+
+.ticket-collision-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 10px;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: var(--warning-soft, #fef3c7);
+  color: var(--warning, #92400e);
+  font-size: 13px;
+  font-weight: 600;
+  animation: ticket-collision-in 220ms ease-out;
+}
+
+.ticket-collision-warning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+@keyframes ticket-collision-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ticket-ai-summary__trigger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.ticket-ai-summary__error {
+  color: #b45309;
+  font-size: 13px;
+}
+
+.ticket-ai-summary {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  border: 1px solid var(--primary-soft-border, var(--border));
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(
+    135deg,
+    var(--primary-soft) 0%,
+    var(--surface) 70%
+  );
+  animation: ticket-collision-in 260ms ease-out;
+}
+
+.ticket-ai-summary header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary);
+}
+
+.ticket-ai-summary header strong {
+  color: var(--ink);
+}
+
+.ticket-ai-summary__close {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.ticket-ai-summary__body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px 18px;
+}
+
+.ticket-ai-summary__body h4 {
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ticket-ai-summary__body ul {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 13px;
+}
+
+.ticket-ai-summary__note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ticket-layout-switch {
+  display: inline-flex;
+  justify-self: start;
+  margin: 0 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+  background: var(--surface-subtle);
+}
+
+.ticket-layout-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 13px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.ticket-layout-switch button.is-active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.home-layout {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  margin: -4px 0 12px;
+}
+
+.home-layout__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.home-layout__panel {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 380px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  animation: ticket-collision-in 200ms ease-out;
+}
+
+.home-layout__panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.home-layout__panel ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-layout__panel li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.home-layout__panel label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-layout__move {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.home-layout__move button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.home-layout__move button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.home-layout__panel .text-button {
+  justify-self: start;
+}
+
+.content-grid.content-grid--no-tickets {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ---------------------------------------------------------------------------
+   Einheitliche Chips: Status, SLA, Zuweisung, Team und Queue haben überall
+   dieselbe Höhe, Schrift und Rundung (Ticketliste, Kanban, Teamführung).
+   ------------------------------------------------------------------------ */
+.state-badge,
+.ticket-state .sla,
+.ticket-assign-chip,
+.ticket-status-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+/* ---------------------------------------------------------------------------
+   Kleine Animationen: Popover blenden weich ein, Erfolgsmeldungen gleiten
+   herein, Karten reagieren auf Hover. Ausgeschaltet bei «Bewegung
+   reduzieren».
+   ------------------------------------------------------------------------ */
+@keyframes nextdesk-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nextdesk-success-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(1px);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+.ticket-quick-assign__popover,
+.home-layout__panel,
+.team-supervision__coaching-list li,
+.ticket-rules__editor,
+.problem-candidates__detail {
+  animation: nextdesk-pop-in 180ms ease-out;
+}
+
+.form-message--success,
+.tenant-automation__message {
+  animation: nextdesk-success-in 320ms ease-out;
+}
+
+.team-supervision__agent,
+.team-supervision__card,
+.onboarding__entry {
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.team-supervision__agent:hover,
+.onboarding__entry:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px var(--shadow-tint-rgb-15-23-42-7, rgb(15 23 42 / 7%));
+}
+
+.onboarding__progress span,
+.team-supervision__load span {
+  transition: width 400ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* Ticketvorlagen mit Formularfeldern */
+.ticket-template-answers > label,
+.ticket-template-answers > .ticket-template-answers__checkbox {
+  align-self: start;
+}
+
+.ticket-template-answers > .ticket-compose-description {
+  grid-column: 1 / -1;
+}
+
+.ticket-template-answers__req {
+  color: var(--danger);
+}
+
+.ticket-template-answers__checkbox {
+  display: grid;
+  gap: 4px;
+}
+
+.ticket-compose-form .ticket-template-answers__checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ticket-template-answers__checkbox input {
+  width: 16px;
+  height: 16px;
+}
+
+.ticket-form-answers {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--surface-subtle);
+}
+
+.ticket-form-answers h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.ticket-form-answers dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.ticket-form-answers dl > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 34%) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.ticket-form-answers dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ticket-form-answers dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 680px) {
+  .ticket-form-answers dl > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
+/* Supportstufe eines Teams (1st/2nd/3rd Level) */
+.department-management__item-main strong .department-management__level-badge {
+  display: inline-block;
+  margin-left: 8px;
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: var(--tone-info-soft);
+  color: var(--tone-info);
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.department-management__team-form label small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
 }

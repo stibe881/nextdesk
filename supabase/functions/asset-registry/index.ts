@@ -1,5 +1,10 @@
 import { withSupabase, type SupabaseContext } from "@supabase/server";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  type TicketPersonAssets,
+  TicketPersonAssetsError,
+  ticketPersonAssetIds,
+} from "../_shared/ticket-person-assets.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 32 * 1024;
@@ -648,69 +653,17 @@ async function ticketPersonDevices(
       "Für diese Aktion fehlt die Berechtigung.",
     );
   }
-  const userIds = [ticket.requester_id, ticket.affected_user_id].filter(isUuid);
-  const [requesters, directoryPeople] = await Promise.all([
-    userIds.length
-      ? admin
-          .from("ticket_requesters")
-          .select("id")
-          .eq("tenant_id", action.tenantId)
-          .in("user_id", userIds)
-          .limit(20)
-      : Promise.resolve({ data: [], error: null }),
-    userIds.length
-      ? admin
-          .from("tenant_entra_directory_people")
-          .select("entra_object_id")
-          .eq("tenant_id", action.tenantId)
-          .in("local_user_id", userIds)
-          .limit(20)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (requesters.error) databaseFailure(requesters.error);
-  if (directoryPeople.error) databaseFailure(directoryPeople.error);
-  const requesterIds = [
-    ...new Set(
-      [
-        ticket.requester_contact_id,
-        ...(requesters.data ?? []).map((row: Row) => row.id),
-      ].filter(isUuid),
-    ),
-  ];
-  const entraObjectIds = [
-    ...new Set(
-      (directoryPeople.data ?? [])
-        .map((row: Row) => row.entra_object_id)
-        .filter(isUuid),
-    ),
-  ];
-  const [assignments, primaryLinks] = await Promise.all([
-    requesterIds.length
-      ? admin
-          .from("asset_assignments")
-          .select("asset_id")
-          .eq("tenant_id", action.tenantId)
-          .in("requester_id", requesterIds)
-          .is("returned_at", null)
-          .limit(100)
-      : Promise.resolve({ data: [], error: null }),
-    entraObjectIds.length
-      ? admin
-          .from("asset_intune_primary_person_links")
-          .select("asset_id")
-          .eq("tenant_id", action.tenantId)
-          .in("entra_object_id", entraObjectIds)
-          .limit(100)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (assignments.error) databaseFailure(assignments.error);
-  if (primaryLinks.error) databaseFailure(primaryLinks.error);
-  const assignedIds = new Set(
-    (assignments.data ?? []).map((row: Row) => row.asset_id).filter(isUuid),
-  );
-  const intuneIds = new Set(
-    (primaryLinks.data ?? []).map((row: Row) => row.asset_id).filter(isUuid),
-  );
+  let personAssets: TicketPersonAssets;
+  try {
+    personAssets = await ticketPersonAssetIds(admin, action.tenantId, ticket);
+  } catch (error) {
+    databaseFailure(
+      error instanceof TicketPersonAssetsError
+        ? (error.dbError as { code?: string } | null)
+        : null,
+    );
+  }
+  const { assignedIds, intuneIds } = personAssets;
   const assetIds = [...new Set([...assignedIds, ...intuneIds])].slice(0, 100);
   if (assetIds.length === 0) {
     return response(request, { data: { devices: [] } });

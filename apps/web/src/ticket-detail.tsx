@@ -1,3 +1,6 @@
+import { TicketAiTriage } from "./ticket-ai-triage";
+import { TicketAiSummary } from "./ticket-ai-summary";
+import { RequesterTicketProgress } from "./requester-ticket-progress";
 import {
   absenceLabel,
   loadActiveAbsences,
@@ -14,6 +17,7 @@ import {
 } from "react";
 import {
   AlertCircle,
+  AlertTriangle,
   Circle,
   BookOpen,
   CircleCheck,
@@ -65,6 +69,7 @@ import {
   shouldLoadTicketCatalog,
 } from "./lib/ticket-catalog-search";
 import { supabase } from "./lib/supabase";
+import { recordRecentItem } from "./lib/recent-items";
 import { functionErrorMessage } from "./lib/function-error";
 import { TicketControlPanel } from "./ticket-control";
 import { knowledgeErrorBackendMessage } from "./lib/knowledge-errors";
@@ -85,12 +90,23 @@ import {
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
 import { TicketCustomFields } from "./ticket-custom-fields";
+import { TicketIntuneActions } from "./intune-actions";
+import { intuneActionEventLabel } from "./lib/intune-actions";
 import {
   TicketFollowUps,
   TicketResolutionExperience,
 } from "./ticket-experience";
 import "./ticket-experience.css";
 import { TicketPdfRecord } from "./ticket-pdf-record";
+import { TicketCoordination } from "./ticket-coordination";
+import { TicketSlaBreachReason } from "./ticket-sla-breach-reason";
+import { TicketSupportLevel } from "./ticket-support-level";
+import { useReplySnippetAssist } from "./reply-snippets";
+import {
+  TicketFormAnswersBlock,
+  parseStoredFormAnswers,
+  type StoredFormAnswers,
+} from "./ticket-template-form-fields";
 import {
   TicketCopyRecipients,
   TicketMentionPicker,
@@ -221,6 +237,7 @@ type TicketPresenceAction =
       tenantId: string;
       ticketId: string;
       editing: boolean;
+      composing: "external" | "internal" | null;
     };
 
 type AddCommentAction = {
@@ -231,6 +248,14 @@ type AddCommentAction = {
   visibility: CommentVisibility;
   attachmentIds?: string[];
   copyEmails?: string[];
+};
+
+type SaveDraftAction = {
+  type: "saveDraft";
+  tenantId: string;
+  ticketId: string;
+  body: string;
+  visibility: CommentVisibility;
 };
 
 type ToggleWatchAction = {
@@ -275,6 +300,7 @@ type TicketOperation =
   | SearchMergeTargetsAction
   | UpdateTicketAction
   | AddCommentAction
+  | SaveDraftAction
   | ToggleWatchAction
   | AddChecklistItemAction
   | ToggleChecklistItemAction
@@ -397,6 +423,7 @@ type TicketEvent = {
   id: string;
   event_type: string;
   created_at: string;
+  payload?: Record<string, unknown> | null;
 };
 
 type TicketEscalation = {
@@ -437,6 +464,7 @@ type TicketAgent = {
 type TicketPresencePerson = {
   displayName: string;
   editing: boolean;
+  composing: "external" | "internal" | null;
   lastSeenAt: string;
 };
 
@@ -673,6 +701,31 @@ type ServiceAssetsAction =
       targetId: string;
     };
 
+type TicketServerDraft = {
+  visibility: CommentVisibility;
+  body: string;
+  updatedAt: string;
+};
+
+function toTicketServerDraft(value: unknown): TicketServerDraft | null {
+  const record = asRecord(value);
+  if (
+    !record ||
+    (record.visibility !== "internal" && record.visibility !== "external") ||
+    typeof record.body !== "string" ||
+    record.body.length > 50_000 ||
+    typeof record.updated_at !== "string" ||
+    !Number.isFinite(Date.parse(record.updated_at))
+  ) {
+    return null;
+  }
+  return {
+    visibility: record.visibility,
+    body: record.body,
+    updatedAt: record.updated_at,
+  };
+}
+
 type TicketDetailData = {
   ticket: TicketRecord;
   assignedAgent: TicketAgent | null;
@@ -689,6 +742,8 @@ type TicketDetailData = {
   agents: TicketAgent[];
   checklistItems: TicketChecklistItem[];
   timeEntries: TicketTimeEntry[];
+  /** The caller's own server reply drafts (one per visibility). */
+  drafts: TicketServerDraft[];
   relations: TicketRelation[];
   similarTickets: SimilarTicket[];
   ticketModules: {
@@ -746,6 +801,8 @@ type TicketDetailProps = {
   onOpenAsset?: ((query: string) => void) | undefined;
   /** Requesters without ticket work see only what matters to them. */
   requesterView?: boolean;
+  /** Opens another ticket (e.g. a child or parent ticket of a split). */
+  onOpenTicket?: ((ticketId: string) => void) | undefined;
 };
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -1079,6 +1136,10 @@ function toTicketPresencePerson(value: unknown): TicketPresencePerson | null {
   return {
     displayName: person.displayName.trim(),
     editing: person.editing,
+    composing:
+      person.composing === "external" || person.composing === "internal"
+        ? person.composing
+        : null,
     lastSeenAt: person.lastSeenAt,
   };
 }
@@ -2071,6 +2132,12 @@ function parseTicketDetail(
       (first, second) => first.position - second.position,
     ),
     timeEntries: valuesOf(data.timeEntries, isTicketTimeEntry),
+    drafts: Array.isArray(data.drafts)
+      ? data.drafts
+          .slice(0, 4)
+          .map(toTicketServerDraft)
+          .filter((draft): draft is TicketServerDraft => draft !== null)
+      : [],
     relations,
     similarTickets,
     ticketModules,
@@ -2226,7 +2293,13 @@ function relationActionKey(relation: TicketRelation): string {
   return `${relation.relationType}:${relation.relatedTicketId}`;
 }
 
-function eventLabel(eventType: string): string {
+function eventLabel(
+  eventType: string,
+  payload?: Record<string, unknown> | null,
+): string {
+  if (eventType === "asset.intune_action") {
+    return intuneActionEventLabel(payload ?? null);
+  }
   const labels: Record<string, string> = {
     "ticket.created": "Ticket erstellt",
     "comment.external_added": "Externer Kommentar hinzugefügt",
@@ -2234,6 +2307,8 @@ function eventLabel(eventType: string): string {
     "ticket.updated": "Ticket aktualisiert",
     "ticket.closed": "Ticket abgeschlossen",
     "ticket.category_changed": "Kategorie aktualisiert",
+    "ticket.support_level_changed":
+      "Supportstufe gewechselt (mit Übergabenotiz)",
     "ticket.knowledge.sent":
       "Wissensartikel als externe Ticketantwort versendet",
   };
@@ -3750,8 +3825,32 @@ export function TicketDetail({
   onOpenKnowledgeArticle,
   onOpenAsset,
   requesterView = false,
+  onOpenTicket,
 }: TicketDetailProps) {
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
+  // Answers from a ticket template form (only tickets created with one).
+  const [storedFormAnswers, setStoredFormAnswers] = useState<{
+    ticketId: string;
+    stored: StoredFormAnswers;
+  } | null>(null);
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    void supabase
+      .from("ticket_form_answers")
+      .select("answers, fields")
+      .eq("tenant_id", tenantId)
+      .eq("ticket_id", ticketId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        const stored = !error && data ? parseStoredFormAnswers(data) : null;
+        setStoredFormAnswers(stored ? { ticketId, stored } : null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [tenantId, ticketId]);
   // Absent agents in the assignment picker (new assignments go to the stand-in).
   const [activeAbsences, setActiveAbsences] = useState<
     Map<string, ActiveAbsence>
@@ -4027,8 +4126,32 @@ export function TicketDetail({
     commentDrafts,
     commentVisibility,
   );
+  const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  // «Antwort-Bausteine»: «/» in the reply field opens the snippet picker.
+  const snippetAssist = useReplySnippetAssist({
+    enabled:
+      !requesterView &&
+      Boolean(
+        detail &&
+        (detail.canCommentExternal || detail.canWriteInternalNotes) &&
+        detail.ticket.id === ticketId,
+      ),
+    tenantId,
+    ticketId,
+    departmentId: detail?.ticket.department_id ?? null,
+    text: commentBody,
+    onTextChange: (value) =>
+      setCommentDrafts((current) =>
+        updateTicketCommentDraft(current, commentVisibility, value),
+      ),
+    textareaRef: commentTextareaRef,
+  });
   const activeCommentImageAttachments =
     commentImageAttachments[commentVisibility];
+  // Shared with colleagues so nobody answers the same ticket twice.
+  const composingVisibility: "external" | "internal" | null =
+    !requesterView && commentBody.trim() ? commentVisibility : null;
+  const colleaguesComposing = presence.filter((person) => person.composing);
   const canAttachCommentImages = Boolean(
     detail &&
     (commentVisibility === "internal"
@@ -4064,9 +4187,76 @@ export function TicketDetail({
       updateTicketCommentDraft(current, "external", body),
     );
   }, []);
+  // Server drafts follow the user to other devices (mobile shares them).
+  const draftDetailReady = Boolean(detail && detail.ticket.id === ticketId);
+  const serverDrafts = draftDetailReady ? detail?.drafts : undefined;
+  const canSyncInternalDraft = Boolean(
+    draftDetailReady && detail?.canWriteInternalNotes,
+  );
+  const canSyncExternalDraft = Boolean(
+    draftDetailReady && detail?.canCommentExternal,
+  );
+  const saveInternalServerDraft = useCallback(
+    async (body: string) => {
+      await invokeTicketOperation({
+        type: "saveDraft",
+        tenantId,
+        ticketId,
+        body,
+        visibility: "internal",
+      });
+    },
+    [tenantId, ticketId],
+  );
+  const saveExternalServerDraft = useCallback(
+    async (body: string) => {
+      await invokeTicketOperation({
+        type: "saveDraft",
+        tenantId,
+        ticketId,
+        body,
+        visibility: "external",
+      });
+    },
+    [tenantId, ticketId],
+  );
+  const internalDraftRemote = useMemo(() => {
+    if (!draftDetailReady) return undefined;
+    if (!canSyncInternalDraft) return null;
+    const draft =
+      serverDrafts?.find((entry) => entry.visibility === "internal") ?? null;
+    return { draft, save: saveInternalServerDraft };
+  }, [
+    canSyncInternalDraft,
+    draftDetailReady,
+    saveInternalServerDraft,
+    serverDrafts,
+  ]);
+  const externalDraftRemote = useMemo(() => {
+    if (!draftDetailReady) return undefined;
+    if (!canSyncExternalDraft) return null;
+    const draft =
+      serverDrafts?.find((entry) => entry.visibility === "external") ?? null;
+    return { draft, save: saveExternalServerDraft };
+  }, [
+    canSyncExternalDraft,
+    draftDetailReady,
+    saveExternalServerDraft,
+    serverDrafts,
+  ]);
+  // «Zuletzt angesehen»: once per opened ticket.
+  const recordedRecentTicketRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!draftDetailReady || recordedRecentTicketRef.current === ticketId) {
+      return;
+    }
+    recordedRecentTicketRef.current = ticketId;
+    recordRecentItem(tenantId, "ticket", ticketId);
+  }, [draftDetailReady, tenantId, ticketId]);
   const internalNoteDraft = useTicketReplyDraft({
     body: commentDrafts.internal,
     onRestore: restoreInternalNoteDraft,
+    remote: internalDraftRemote,
     tenantId,
     ticketId,
     userId: currentUserId,
@@ -4075,6 +4265,7 @@ export function TicketDetail({
   const externalReplyDraft = useTicketReplyDraft({
     body: commentDrafts.external,
     onRestore: restoreExternalReplyDraft,
+    remote: externalDraftRemote,
     tenantId,
     ticketId,
     userId: currentUserId,
@@ -4436,6 +4627,27 @@ export function TicketDetail({
     ],
   );
 
+  // After an Intune action: reload only the ticket history, so open edits
+  // in the form are kept.
+  const refreshTicketEvents = useCallback(async () => {
+    try {
+      const nextDetail = parseTicketDetail(
+        await invokeTicketOperation({ type: "getTicket", tenantId, ticketId }),
+      );
+      if (!nextDetail) return;
+      setDetail((current) => {
+        if (!current || current.ticket.id !== nextDetail.ticket.id) {
+          return current;
+        }
+        const updated = { ...current, events: nextDetail.events };
+        detailRef.current = updated;
+        return updated;
+      });
+    } catch {
+      // The history updates with the next regular reload.
+    }
+  }, [tenantId, ticketId]);
+
   const loadAttachments = useCallback(async () => {
     const requestId = ++attachmentRequestSequence.current;
     setAttachmentsLoading(true);
@@ -4774,6 +4986,7 @@ export function TicketDetail({
           tenantId,
           ticketId,
           editing: isEditingTicket,
+          composing: composingVisibility,
         });
         const response = await invokeTicketPresence({
           type: "list",
@@ -4791,9 +5004,13 @@ export function TicketDetail({
     };
 
     void refreshPresence();
-    const interval = window.setInterval(() => {
-      void refreshPresence();
-    }, 30_000);
+    // Shorter while someone writes, so a second reply is noticed in time.
+    const interval = window.setInterval(
+      () => {
+        void refreshPresence();
+      },
+      composingVisibility ? 10_000 : 20_000,
+    );
     const onVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         setPresence([]);
@@ -4808,7 +5025,13 @@ export function TicketDetail({
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [detail?.ticket.id, isEditingTicket, tenantId, ticketId]);
+  }, [
+    detail?.ticket.id,
+    isEditingTicket,
+    composingVisibility,
+    tenantId,
+    ticketId,
+  ]);
 
   useEffect(() => {
     if (!isClosureContextOpen || !ticketIsClosed) {
@@ -6838,7 +7061,38 @@ export function TicketDetail({
                 <EmailSignatureFrame html={emailSignatureHtml} />
               ) : null}
             </div>
+            {storedFormAnswers?.ticketId === detail.ticket.id && (
+              <TicketFormAnswersBlock stored={storedFormAnswers.stored} />
+            )}
           </section>
+
+          {requesterView ? null : (
+            <TicketSupportLevel
+              onChanged={() => {
+                onChanged();
+                void loadTicket();
+              }}
+              refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}|${detail.events[0]?.id ?? ""}`}
+              tenantId={tenantId}
+              ticketId={detail.ticket.id}
+            />
+          )}
+
+          {requesterView ? null : (
+            <TicketCoordination
+              description={detail.ticket.description}
+              onChanged={() => {
+                onChanged();
+                void loadTicket();
+              }}
+              onOpenTicket={onOpenTicket}
+              refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
+              subject={detail.ticket.subject}
+              tenantId={tenantId}
+              ticketId={detail.ticket.id}
+              ticketNumber={detail.ticket.ticket_number}
+            />
+          )}
 
           <section
             className="ticket-detail-comments ticket-detail-primary"
@@ -7001,6 +7255,22 @@ export function TicketDetail({
               </ol>
             )}
 
+            {colleaguesComposing.length > 0 ? (
+              <p className="ticket-collision-warning" role="status">
+                <AlertTriangle aria-hidden="true" size={16} />
+                {colleaguesComposing
+                  .map(
+                    (person) =>
+                      `${person.displayName} schreibt gerade ${
+                        person.composing === "internal"
+                          ? "eine interne Notiz"
+                          : "eine Antwort"
+                      }`,
+                  )
+                  .join(" · ")}
+                . Stimmen Sie sich ab, bevor Sie ebenfalls antworten.
+              </p>
+            ) : null}
             <form className="ticket-comment-form" onSubmit={saveComment}>
               {requesterView ? null : (
                 <div
@@ -7041,9 +7311,11 @@ export function TicketDetail({
               <label className="ticket-comment-body">
                 {commentComposer.bodyLabel}
                 <textarea
+                  {...snippetAssist.textareaProps}
                   aria-describedby="ticket-comment-visibility-hint"
                   disabled={busy || attachmentBusy}
                   maxLength={50_000}
+                  ref={commentTextareaRef}
                   onChange={(event) =>
                     setCommentDrafts((current) =>
                       updateTicketCommentDraft(
@@ -7058,6 +7330,8 @@ export function TicketDetail({
                   value={commentBody}
                 />
               </label>
+              {snippetAssist.picker}
+              {snippetAssist.browser}
               {canAttachCommentImages ? (
                 <div
                   className={`ticket-comment-image-dropzone${isCommentImageDropActive ? " ticket-comment-image-dropzone--active" : ""}`}
@@ -7136,7 +7410,14 @@ export function TicketDetail({
               ) : null}
               {activeCommunicationDraft.restored && (
                 <p className="ticket-workbench__notice" role="status">
-                  Entwurf wiederhergestellt.
+                  {activeCommunicationDraft.restoredLabel}
+                  <button
+                    className="text-button"
+                    onClick={activeCommunicationDraft.discard}
+                    type="button"
+                  >
+                    Verwerfen
+                  </button>
                   <button
                     className="text-button"
                     onClick={activeCommunicationDraft.clearRestoredNotice}
@@ -7275,6 +7556,13 @@ export function TicketDetail({
                     {pendingCloseConfirmation.statusLabel}“ verschoben. Offene
                     Bearbeitung wird damit beendet.
                   </p>
+                  {!requesterView && (
+                    <TicketSlaBreachReason
+                      tenantId={tenantId}
+                      ticketId={ticketId}
+                      variant="closing"
+                    />
+                  )}
                   <div className="ticket-detail-actions">
                     <button
                       className="primary-button"
@@ -7296,6 +7584,13 @@ export function TicketDetail({
                 </div>
               </div>
             )}
+            {!requesterView && !pendingCloseConfirmation && (
+              <TicketSlaBreachReason
+                refreshKey={`${detail.ticket.status_id}:${detail.ticket.resolved_at ?? ""}`}
+                tenantId={tenantId}
+                ticketId={ticketId}
+              />
+            )}
             {solutionPromptOpen && ticketIsClosed && (
               <TicketSolutionPrompt
                 onDismiss={() => setSolutionPromptOpen(false)}
@@ -7310,6 +7605,17 @@ export function TicketDetail({
                 requestDraft={() => requestAiTicketDraft(tenantId, ticketId)}
               />
             )}
+            {requesterView ? (
+              <RequesterTicketProgress
+                onChanged={() => {
+                  void loadTicket();
+                  onChanged();
+                }}
+                refreshKey={`${detail.ticket.status_id}:${detail.ticket.resolved_at ?? ""}:${detail.comments.length}`}
+                tenantId={tenantId}
+                ticketId={detail.ticket.id}
+              />
+            ) : null}
             {requesterView ? (
               <dl className="ticket-detail-facts-grid">
                 <div>
@@ -8052,6 +8358,14 @@ export function TicketDetail({
                     ticketId={ticketId}
                   />
                 )}
+                {detail.canUpdate && (
+                  <TicketIntuneActions
+                    onCompleted={() => void refreshTicketEvents()}
+                    refreshKey={`${detail.ticket.requester_id ?? ""}:${detail.ticket.affected_user_id ?? ""}`}
+                    tenantId={tenantId}
+                    ticketId={ticketId}
+                  />
+                )}
               </dl>
             )}
           </section>
@@ -8061,6 +8375,22 @@ export function TicketDetail({
             tenantId={tenantId}
             ticketId={detail.ticket.id}
           />
+
+          {!requesterView ? (
+            <TicketAiTriage
+              canUpdate={detail.canUpdate}
+              key={`triage-${detail.ticket.id}`}
+              onChanged={() => {
+                void loadTicket();
+                onChanged();
+              }}
+              tenantId={tenantId}
+              ticketId={detail.ticket.id}
+            />
+          ) : null}
+          {!requesterView ? (
+            <TicketAiSummary tenantId={tenantId} ticketId={detail.ticket.id} />
+          ) : null}
 
           {!requesterView && presence.length > 0 && (
             <aside
@@ -8947,7 +9277,9 @@ export function TicketDetail({
                             strokeWidth={1.8}
                           />
                           <div>
-                            <strong>{eventLabel(event.event_type)}</strong>
+                            <strong>
+                              {eventLabel(event.event_type, event.payload)}
+                            </strong>
                             <time dateTime={event.created_at}>
                               {formatDateTime(event.created_at)}
                             </time>

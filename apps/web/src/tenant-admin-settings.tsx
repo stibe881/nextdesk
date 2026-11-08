@@ -1,3 +1,4 @@
+import { TicketTriageSettings } from "./ticket-ai-triage";
 import {
   Fragment,
   useCallback,
@@ -40,17 +41,24 @@ import {
 } from "./lib/push-notifications";
 import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
 import { AssetIntuneSettings } from "./asset-intune-settings";
+import { MonitoringSettings } from "./monitoring-settings";
+import { ExpiryMonitoringSettings } from "./expiry-monitoring-settings";
+import { BackupMonitoringSettings } from "./backup-monitoring-settings";
 import { DepartmentManagement } from "./department-management";
 import { DepartmentModules } from "./department-modules";
 import { TicketTemplates } from "./ticket-templates";
 import { TenantAutomation } from "./tenant-automation";
+import { TicketVendors } from "./ticket-vendors";
 import { TicketLifecycleSettings } from "./ticket-lifecycle-settings";
 import { TicketRules } from "./ticket-rules";
 import { TenantDataRetention } from "./tenant-data-retention";
 import { TenantOnboarding, type OnboardingTarget } from "./tenant-onboarding";
 import { AiGovernancePanel } from "./ai-governance-panel";
+import { PhishingReportSettings } from "./phishing-report";
+import { PortalAssistantSettings } from "./portal-assistant";
 import { ExchangeMailSettings } from "./exchange-mail-settings";
 import { SlaManagement } from "./sla-management";
+import { TenantAuditLog } from "./tenant-audit-log";
 
 /**
  * The technical role keys stay unchanged (they are referenced by database
@@ -76,6 +84,7 @@ export type TenantAdminSettingsProps = {
   onClose: () => void;
   onBrandingUpdated?: () => void;
   onFeaturesUpdated?: () => void;
+  onOpenTicket?: (ticketId: string) => void;
 };
 
 type SsoProvider = "oidc" | "saml" | "azure_ad";
@@ -280,21 +289,6 @@ type TenantUserDirectory = {
   directoryPeople: TenantEntraDirectoryPerson[];
 };
 
-type AuditEntry = {
-  id: string;
-  action: string;
-  entityType: string;
-  entityId: string | null;
-  severity: string;
-  occurredAt: string;
-  actorName: string;
-};
-
-type AuditListData = {
-  entries: AuditEntry[];
-  truncated: boolean;
-};
-
 type RoleListData = {
   roles: TenantRole[];
   roleAssignments: RoleAssignmentWithDetails[];
@@ -373,8 +367,6 @@ type TenantUsersRequest =
       tenantId: string;
       invitationId: string;
     };
-
-type TenantAuditRequest = { type: "list"; tenantId: string; limit: number };
 
 type TenantRoleManagementRequest =
   | { type: "listRoles"; tenantId: string }
@@ -601,32 +593,6 @@ async function tenantUsersRequest<T>(body: TenantUsersRequest): Promise<T> {
   if (!isRecord(data) || !("data" in data)) {
     throw new Error(
       "Die Benutzeraktion hat keine verwertbaren Daten geliefert.",
-    );
-  }
-
-  return data.data as T;
-}
-
-async function tenantAuditRequest<T>(body: TenantAuditRequest): Promise<T> {
-  if (!supabase) {
-    throw new Error("Die Verbindung zu Supabase ist nicht konfiguriert.");
-  }
-
-  const { data, error } = await supabase.functions.invoke<FunctionEnvelope<T>>(
-    "tenant-audit-log",
-    { body },
-  );
-  if (error) {
-    throw new Error(
-      await functionErrorMessage(
-        error,
-        "Das Änderungsprotokoll ist nicht erreichbar.",
-      ),
-    );
-  }
-  if (!isRecord(data) || !("data" in data)) {
-    throw new Error(
-      "Das Änderungsprotokoll hat keine verwertbaren Daten geliefert.",
     );
   }
 
@@ -1187,6 +1153,7 @@ export function TenantAdminSettings({
   onClose,
   onBrandingUpdated,
   onFeaturesUpdated,
+  onOpenTicket,
 }: TenantAdminSettingsProps) {
   const [settings, setSettings] = useState<SettingsData | null>(null);
   // Personal (self-registered) workspaces have no SSO or directory sync.
@@ -1268,12 +1235,6 @@ export function TenantAdminSettings({
   const [ssoForm, setSsoForm] = useState<SsoForm>(emptySsoForm);
   const [entraDirectoryEnabled, setEntraDirectoryEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [audit, setAudit] = useState<AuditListData>({
-    entries: [],
-    truncated: false,
-  });
-  const [auditLoading, setAuditLoading] = useState(true);
-  const [auditError, setAuditError] = useState("");
   const [saving, setSaving] = useState<SaveTarget | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -1539,33 +1500,6 @@ export function TenantAdminSettings({
       setSaving(null);
     }
   };
-
-  const loadAudit = useCallback(async () => {
-    setAuditLoading(true);
-    setAuditError("");
-    try {
-      const nextAudit = await tenantAuditRequest<AuditListData>({
-        type: "list",
-        tenantId,
-        limit: 50,
-      });
-      setAudit(nextAudit);
-    } catch (nextError) {
-      setAudit({ entries: [], truncated: false });
-      setAuditError(
-        messageFromError(
-          nextError,
-          "Das Änderungsprotokoll konnte nicht geladen werden.",
-        ),
-      );
-    } finally {
-      setAuditLoading(false);
-    }
-  }, [tenantId]);
-
-  useEffect(() => {
-    void loadAudit();
-  }, [loadAudit]);
 
   useEffect(() => {
     setRoleForm(emptyRoleForm);
@@ -2828,65 +2762,10 @@ export function TenantAdminSettings({
             )}
 
             {activeArea === "audit" && (
-              <section
-                className="tenant-admin-settings__section"
-                aria-labelledby="tenant-audit-heading"
-              >
-                <div className="tenant-admin-settings__section-heading">
-                  <div>
-                    <h2 id="tenant-audit-heading">Änderungsprotokoll</h2>
-                    <p>
-                      Die letzten sicherheitsrelevanten Änderungen dieses
-                      Mandanten.
-                    </p>
-                  </div>
-                </div>
-                {auditError ? (
-                  <p
-                    className="tenant-admin-settings__notice tenant-admin-settings__notice--error"
-                    role="status"
-                  >
-                    {auditError}
-                  </p>
-                ) : auditLoading ? (
-                  <p
-                    className="tenant-admin-settings__loading"
-                    aria-live="polite"
-                  >
-                    Änderungsprotokoll wird geladen …
-                  </p>
-                ) : audit.entries.length > 0 ? (
-                  <ol className="tenant-admin-settings__audit-list">
-                    {audit.entries.map((entry) => (
-                      <li key={entry.id}>
-                        <span
-                          className={`tenant-admin-settings__audit-severity tenant-admin-settings__audit-severity--${entry.severity}`}
-                        >
-                          {entry.severity}
-                        </span>
-                        <div>
-                          <strong>{entry.action.replaceAll(".", " · ")}</strong>
-                          <span>
-                            {entry.entityType.replaceAll("_", " ")} ·{" "}
-                            {entry.actorName}
-                          </span>
-                        </div>
-                        <time dateTime={entry.occurredAt}>
-                          {formatDate(entry.occurredAt) ??
-                            "Unbekannter Zeitpunkt"}
-                        </time>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <p>Für diesen Mandanten liegen noch keine Änderungen vor.</p>
-                )}
-                {audit.truncated ? (
-                  <p className="tenant-admin-settings__hint">
-                    Es werden die 50 aktuellsten Einträge angezeigt.
-                  </p>
-                ) : null}
-              </section>
+              <TenantAuditLog
+                tenantId={tenantId}
+                {...(onOpenTicket ? { onOpenTicket } : {})}
+              />
             )}
 
             {activeArea === "branding" && (
@@ -3212,6 +3091,7 @@ export function TenantAdminSettings({
                                   "notifications.push",
                                   "integrations.email",
                                   "ai.assist",
+                                  "knowledge.base",
                                   "ticketing.templates",
                                   "assets.management",
                                   "automation.sla",
@@ -3622,13 +3502,29 @@ export function TenantAdminSettings({
                                           <>
                                             {feature.feature_key ===
                                             "integrations.email" ? (
-                                              <ExchangeMailSettings
-                                                tenantId={tenantId}
-                                              />
+                                              <>
+                                                <ExchangeMailSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <PhishingReportSettings
+                                                  tenantId={tenantId}
+                                                />
+                                              </>
                                             ) : null}
                                             {feature.feature_key ===
                                             "ai.assist" ? (
-                                              <AiGovernancePanel
+                                              <>
+                                                <AiGovernancePanel
+                                                  tenantId={tenantId}
+                                                />
+                                                <PortalAssistantSettings
+                                                  tenantId={tenantId}
+                                                />
+                                              </>
+                                            ) : null}
+                                            {feature.feature_key ===
+                                            "knowledge.base" ? (
+                                              <PortalAssistantSettings
                                                 tenantId={tenantId}
                                               />
                                             ) : null}
@@ -3640,9 +3536,20 @@ export function TenantAdminSettings({
                                             ) : null}
                                             {feature.feature_key ===
                                             "assets.management" ? (
-                                              <AssetIntuneSettings
-                                                tenantId={tenantId}
-                                              />
+                                              <>
+                                                <AssetIntuneSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <MonitoringSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <ExpiryMonitoringSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <BackupMonitoringSettings
+                                                  tenantId={tenantId}
+                                                />
+                                              </>
                                             ) : null}
                                             {feature.feature_key ===
                                             "automation.sla" ? (
@@ -3653,7 +3560,13 @@ export function TenantAdminSettings({
                                                 <TicketRules
                                                   tenantId={tenantId}
                                                 />
+                                                <TicketTriageSettings
+                                                  tenantId={tenantId}
+                                                />
                                                 <TenantAutomation
+                                                  tenantId={tenantId}
+                                                />
+                                                <TicketVendors
                                                   tenantId={tenantId}
                                                 />
                                               </>

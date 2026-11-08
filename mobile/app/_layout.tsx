@@ -32,6 +32,7 @@ import {
 } from "@/components/offline-status";
 import { PushNotificationBridge } from "@/components/push-notification-bridge";
 import { QuickActionsBridge } from "@/components/quick-actions-bridge";
+import { WidgetSnapshotBridge } from "@/components/widget-snapshot-bridge";
 import {
   initManusRuntime,
   subscribeSafeAreaInsets,
@@ -46,6 +47,7 @@ import {
   nextDesk,
   nextDeskAuthFailureCode,
 } from "@/lib/nextdesk-client";
+import { clearWidgetSnapshot } from "@/lib/widget-sync";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -94,6 +96,8 @@ function NextDeskSessionNavigator() {
     const leaveWorkspace = () => {
       queryClient.clear();
       void clearMobilePrivateState();
+      // Signed out: the home-screen widgets must not keep showing tickets.
+      void clearWidgetSnapshot();
       if (topLevelRoute !== "auth") {
         router.replace("/auth");
       }
@@ -217,6 +221,7 @@ export default function RootLayout() {
                 <NextDeskSessionNavigator />
                 <PushNotificationBridge />
                 <QuickActionsBridge />
+                <WidgetSnapshotBridge />
                 <OfflineStatus />
                 <DeviceProtection />
                 <ThemedStatusBar />

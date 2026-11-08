@@ -1,0 +1,213 @@
+.reply-snippet-picker {
+  display: grid;
+  gap: 2px;
+  max-height: 280px;
+  margin: 4px 0 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+
+.reply-snippet-picker__item {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.reply-snippet-picker__item--active {
+  background: var(--primary-soft);
+}
+
+.reply-snippet-picker__name {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.reply-snippet-picker__name small,
+.reply-snippet-manager__list small {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.reply-snippet-picker code,
+.reply-snippet-browser code,
+.reply-snippet-manager code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--primary);
+}
+
+.reply-snippet-picker__preview {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.reply-snippet-browser {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+}
+
+.reply-snippet-browser__panel {
+  display: grid;
+  flex-basis: 100%;
+  gap: 8px;
+  padding: 10px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.reply-snippet-browser__panel ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reply-snippet-browser__panel li button {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  padding: 6px 8px;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.reply-snippet-browser__panel li button:hover,
+.reply-snippet-browser__panel li button:focus-visible {
+  border-color: var(--primary);
+}
+
+.reply-snippet-manager {
+  display: grid;
+  gap: 12px;
+}
+
+.reply-snippet-manager__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.reply-snippet-manager__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.reply-snippet-manager__form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.reply-snippet-manager__body,
+.reply-snippet-manager__placeholders,
+.reply-snippet-manager__actions,
+.reply-snippet-manager__form > p {
+  grid-column: 1 / -1;
+}
+
+.reply-snippet-manager__placeholders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reply-snippet-manager__placeholders button {
+  padding: 3px 8px;
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--primary-soft);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.reply-snippet-manager__placeholders button:focus-visible {
+  border-color: var(--primary);
+}
+
+.reply-snippet-manager__shared {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.reply-snippet-manager__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reply-snippet-manager__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reply-snippet-manager__list li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.reply-snippet-manager__list li > div:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.reply-snippet-manager__list p {
+  flex-basis: 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: pre-line;
+}
+
+.reply-snippet-manager__item-actions {
+  display: flex;
+  gap: 4px;
+}

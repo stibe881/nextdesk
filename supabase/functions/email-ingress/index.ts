@@ -1,5 +1,6 @@
 import { withSupabase } from "@supabase/server";
 import { processEventSpaceEmailTicketIntake } from "../_shared/event-space-email-ticket-intake.ts";
+import { routeBackupEmail } from "../_shared/backup-monitoring.ts";
 
 /**
  * Deployment requirements (kept here because this task must not change config.toml):
@@ -471,6 +472,34 @@ const handler = withSupabase(
       return json(
         { error: { code: "email_ingress_disabled" } },
         403,
+        requestId,
+      );
+    }
+
+    // Backup reports from senders configured in backup monitoring are
+    // recorded there instead of becoming tickets (explicit sender rule, so
+    // the ticket domain allowlist does not apply).
+    try {
+      if (
+        await routeBackupEmail(context.supabaseAdmin, {
+          tenantId: tenant.id,
+          sender: payload.from,
+          subject: payload.subject,
+          body: payload.text,
+          messageId: payload.messageId,
+          receivedAt: null,
+        })
+      ) {
+        return json(
+          { data: { accepted: true, routedTo: "backup_monitoring" } },
+          200,
+          requestId,
+        );
+      }
+    } catch {
+      return json(
+        { error: { code: "backup_monitoring_failed" } },
+        500,
         requestId,
       );
     }

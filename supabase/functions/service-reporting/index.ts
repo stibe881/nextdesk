@@ -3,9 +3,12 @@ import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 import { deflectionArticleFilter } from "./deflections.ts";
 import {
   buildInsights,
+  buildRequesterDepartments,
+  buildThemes,
   type InsightComment,
   type InsightRating,
   type InsightTicket,
+  type ThemeTicket,
 } from "./insights.ts";
 
 type Period = "7d" | "30d" | "90d" | "custom";
@@ -547,7 +550,7 @@ async function insightsResponse(
       admin
         .from("tickets")
         .select(
-          "id, assigned_team_id, assigned_agent_id, requester_id, source, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
+          "id, assigned_team_id, assigned_agent_id, requester_id, requester_contact_id, category_id, subject, source, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
         )
         .eq("tenant_id", action.tenantId)
         .lte("created_at", until)
@@ -691,6 +694,67 @@ async function insightsResponse(
       ),
     ),
   ];
+  // Themes and requesting departments.
+  const visibleRows = (ticketsResult.data ?? []).filter((row: any) =>
+    tickets.some((ticket) => ticket.id === row.id),
+  );
+  const categoryIds = [
+    ...new Set(
+      visibleRows.flatMap((row: any) =>
+        typeof row.category_id === "string" ? [row.category_id] : [],
+      ),
+    ),
+  ];
+  const contactIds = [
+    ...new Set(
+      visibleRows.flatMap((row: any) =>
+        typeof row.requester_contact_id === "string"
+          ? [row.requester_contact_id]
+          : [],
+      ),
+    ),
+  ];
+  const [categoryRows, profilePages] = await Promise.all([
+    categoryIds.length
+      ? admin
+          .from("ticket_categories")
+          .select("id, name")
+          .eq("tenant_id", action.tenantId)
+          .in("id", categoryIds)
+      : Promise.resolve({ data: [], error: null }),
+    Promise.all(
+      chunks(contactIds, ID_CHUNK).map((part) =>
+        admin
+          .from("ticket_requester_profiles")
+          .select("requester_id, department")
+          .eq("tenant_id", action.tenantId)
+          .in("requester_id", part),
+      ),
+    ),
+  ]);
+  const categoryNames = new Map<string, string>(
+    (categoryRows.data ?? []).map((row: any) => [row.id, row.name]),
+  );
+  const departmentByContact = new Map<string, string>();
+  for (const page of profilePages as any[])
+    for (const row of page.data ?? [])
+      if (typeof row.department === "string" && row.department.trim())
+        departmentByContact.set(row.requester_id, row.department.trim());
+  const themeTickets: ThemeTicket[] = visibleRows.map((row: any) => ({
+    id: row.id,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at ?? null,
+    subject: typeof row.subject === "string" ? row.subject : null,
+    categoryName:
+      typeof row.category_id === "string"
+        ? (categoryNames.get(row.category_id) ?? null)
+        : null,
+    requesterDepartment:
+      typeof row.requester_contact_id === "string"
+        ? (departmentByContact.get(row.requester_contact_id) ?? null)
+        : null,
+  }));
+
   const byName = (a: { name: string }, b: { name: string }) =>
     a.name.localeCompare(b.name, "de-CH");
   return response(request, {
@@ -716,6 +780,16 @@ async function insightsResponse(
         ratings,
         teamNames,
         agentNames,
+      }),
+      themes: buildThemes({
+        current: ranges.current,
+        previous: ranges.previous,
+        tickets: themeTickets,
+      }),
+      requesterDepartments: buildRequesterDepartments({
+        current: ranges.current,
+        previous: ranges.previous,
+        tickets: themeTickets,
       }),
     },
   });

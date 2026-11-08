@@ -1,0 +1,95 @@
+/*
+ * Central tokens for status, priority, SLA, lifecycle and charts. They build on
+ * the theme colours (light, dark, system) and the tenant brand, so every module
+ * and chart looks the same and follows the dark mode.
+ */
+:root,
+.app-shell {
+  --tone-danger: var(--danger);
+  --tone-danger-soft: var(--danger-soft);
+  --tone-warning: var(--warning);
+  --tone-warning-soft: var(--warning-soft);
+  --tone-success: var(--success);
+  --tone-success-soft: var(--success-soft);
+  --tone-info: var(--info);
+  --tone-info-soft: var(--info-soft);
+  --tone-neutral: var(--muted);
+  --tone-neutral-soft: var(--surface-subtle);
+  --tone-accent: #6d28d9;
+  --tone-accent-soft: color-mix(
+    in srgb,
+    var(--tone-accent) 14%,
+    var(--surface)
+  );
+
+  --priority-critical: var(--tone-danger);
+  --priority-high: var(--tone-warning);
+  --priority-medium: var(--tone-info);
+  --priority-low: var(--tone-neutral);
+
+  --sla-breached: var(--tone-danger);
+  --sla-at-risk: var(--tone-warning);
+  --sla-ok: var(--tone-success);
+
+  --chart-1: var(--primary);
+  --chart-2: var(--tone-info);
+  --chart-3: var(--tone-success);
+  --chart-4: var(--tone-warning);
+  --chart-5: var(--tone-accent);
+  --chart-6: var(--tone-danger);
+  --chart-7: #0f766e;
+  --chart-8: #a16207;
+  --chart-grid: var(--border);
+  --chart-label: var(--muted);
+}
+
+.app-shell--theme-dark {
+  --tone-accent: #c4b5fd;
+  --chart-7: #5eead4;
+  --chart-8: #fcd34d;
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-shell.app-shell--theme-system {
+    --tone-accent: #c4b5fd;
+    --chart-7: #5eead4;
+    --chart-8: #fcd34d;
+  }
+}
+
+/* Shared chips: <span class="tone-chip tone-chip--danger">…</span> */
+.tone-chip {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 700;
+  gap: 4px;
+  line-height: 1.4;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.tone-chip--danger {
+  background: var(--tone-danger-soft);
+  color: var(--tone-danger);
+}
+.tone-chip--warning {
+  background: var(--tone-warning-soft);
+  color: var(--tone-warning);
+}
+.tone-chip--success {
+  background: var(--tone-success-soft);
+  color: var(--tone-success);
+}
+.tone-chip--info {
+  background: var(--tone-info-soft);
+  color: var(--tone-info);
+}
+.tone-chip--neutral {
+  background: var(--tone-neutral-soft);
+  color: var(--tone-neutral);
+}
+.tone-chip--accent {
+  background: var(--tone-accent-soft);
+  color: var(--tone-accent);
+}
