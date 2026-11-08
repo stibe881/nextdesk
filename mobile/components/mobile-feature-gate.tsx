@@ -73,6 +73,10 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
   const [error, setError] = useState<string | null>(null);
   const [switchingTenant, setSwitchingTenant] = useState(false);
   const [needsWorkspace, setNeedsWorkspace] = useState(false);
+  const needsWorkspaceRef = useRef(false);
+  useEffect(() => {
+    needsWorkspaceRef.current = needsWorkspace;
+  }, [needsWorkspace]);
   const refreshRequest = useRef(0);
   // Zuletzt vollständig bestätigter Arbeitsbereich, für stille Aktualisierungen.
   const confirmedTenant = useRef<{ at: number; id: string } | null>(null);
@@ -232,6 +236,9 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
     return subscribeMobileTenantContextInvalidation((message) => {
       // Eine Datenabfrage hat eine nicht mehr zulässige gespeicherte Auswahl
       // erkannt. Der gesamte Arbeitsbereich wird sofort fail-closed gesperrt.
+      // Ohne Mitgliedschaft gibt es nichts zu sperren: Die Seite zum Erstellen
+      // des Arbeitsbereichs bleibt sichtbar.
+      if (needsWorkspaceRef.current) return;
       refreshRequest.current += 1;
       confirmedTenant.current = null;
       setFlags(null);
