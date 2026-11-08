@@ -3409,6 +3409,40 @@ time,
   font-size: 12px;
 }
 
+.tenant-row strong .tenant-kind-badge {
+  display: inline-flex;
+  margin-left: 8px;
+  border-radius: 6px;
+  padding: 2px 7px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+
+.tenant-row .tenant-owner {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.owner-tenant-filter {
+  margin-bottom: 14px;
+}
+
+.tenant-list-count {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tenant-list-more {
+  margin-top: 10px;
+}
+
 .tenant-row select {
   min-width: 0;
   max-width: 100%;
