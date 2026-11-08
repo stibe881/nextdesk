@@ -155,7 +155,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   );
 
   // Content lives in public.handbook_documents / handbook_images (migration
-  // 0246), loaded from docs/handbooks/dist/handbooks.json of a pinned commit.
+  // 0246), loaded from docs/handbooks/handbooks.bundle.json of a pinned commit.
   if (action.type === "list") {
     const { data: rows, error } = await context.supabaseAdmin
       .from("handbook_documents")
