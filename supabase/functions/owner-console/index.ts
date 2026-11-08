@@ -139,11 +139,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       403,
     );
   if (action.type === "listTenants") {
-    const { data, error } = await context.supabaseAdmin
-      .from("tenants")
-      .select("id, slug, name, status, created_at, updated_at")
-      .order("name", { ascending: true })
-      .limit(200);
+    // All tenants, newest first, including self-registered personal
+    // workspaces with their owner's e-mail address.
+    const { data, error } = await context.supabaseAdmin.rpc(
+      "platform_list_tenants",
+    );
     if (error)
       return json(request, { error: { code: "tenant_list_failed" } }, 500);
     return json(request, {
