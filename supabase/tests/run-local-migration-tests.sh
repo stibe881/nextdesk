@@ -12932,4 +12932,21 @@ $$;
 rollback;
 SQL
 
+# After all migrations: every push kind added in 0223-0235 keeps its category.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+begin
+  if public.push_notification_category('ticket.kudos') is distinct from 'resolved'
+     or public.push_notification_category('ticket.requester_reminder') is distinct from 'support_reply'
+     or public.push_notification_category('ticket.security_report') is distinct from 'escalation'
+     or public.push_notification_category('ticket.vendor_reminder') is distinct from 'follow_up'
+     or public.push_notification_category('ticket.rule_reminder') is distinct from 'follow_up'
+     or public.push_notification_category('infrastructure.due') is distinct from 'infrastructure' then
+    raise exception 'push category test: a category got lost';
+  end if;
+  raise notice 'combined push category checks ran';
+end;
+$$;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
