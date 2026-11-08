@@ -6857,6 +6857,11 @@ body:has(.ticket-detail) {
     padding-left: 20px;
   }
 
+  .ticket-layout-switch {
+    margin-right: 20px;
+    margin-left: 20px;
+  }
+
   .ticket-compose-form,
   .knowledge-base .knowledge-base__form-panel,
   .ticket-templates .ticket-templates__form-panel,
@@ -10935,6 +10940,7 @@ body:has(.ticket-list-filter-panel) {
   display: grid;
   gap: 18px;
   margin-bottom: 18px;
+  padding: 24px;
   border-color: var(--border-tint-d9d4ff);
   background: linear-gradient(
     135deg,
@@ -10943,7 +10949,13 @@ body:has(.ticket-list-filter-panel) {
   );
 }
 
+/* The card carries the padding; headings inside it align with the content. */
+.asset-intune-settings .panel-heading {
+  padding: 0;
+}
+
 .asset-intune-settings__heading {
+  flex-wrap: nowrap;
   align-items: flex-start;
 }
 
@@ -10976,7 +10988,8 @@ body:has(.ticket-list-filter-panel) {
   line-height: 1.5;
 }
 
-.asset-intune-settings__form > label:first-child {
+.asset-intune-settings__form
+  > label:first-child:not(.asset-intune-settings__check) {
   display: grid;
   gap: 6px;
   color: var(--ink);
@@ -11035,7 +11048,7 @@ body:has(.ticket-list-filter-panel) {
 .asset-intune-settings__history {
   display: grid;
   gap: 12px;
-  padding-top: 4px;
+  padding-top: 18px;
   border-top: 1px solid var(--border);
 }
 
@@ -11091,6 +11104,9 @@ body:has(.ticket-list-filter-panel) {
 
 .monitoring-settings__grid label {
   display: grid;
+  /* Fields in one row line up even when a label wraps to two lines. */
+  grid-template-rows: 1fr auto;
+  align-items: end;
   gap: 6px;
   color: var(--ink);
   font-size: 13px;
@@ -21372,7 +21388,8 @@ html:has(.embed-status-badge) body {
 .ticket-layout-switch {
   display: inline-flex;
   justify-self: start;
-  margin: 0 0 12px;
+  /* Same side inset as the queue tabs and notes of the ticket panel. */
+  margin: 0 24px 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 3px;
