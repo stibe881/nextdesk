@@ -2971,7 +2971,7 @@ function AuthenticatedApp() {
   const [onboardingAttentionCount, setOnboardingAttentionCount] = useState<
     number | null
   >(null);
-  // Agents: tickets without team and agent, and cases waiting for a verdict.
+  // Agents: tickets without team and agent, security cases without an agent.
   const [ticketAttentionCount, setTicketAttentionCount] = useState<
     number | null
   >(null);
@@ -5347,7 +5347,7 @@ function AuthenticatedApp() {
         : label === "Tickets"
           ? "Tickets haben noch kein Team und keine Bearbeitung"
           : label === "Sicherheitsfälle"
-            ? "Sicherheitsfälle warten auf ein Urteil"
+            ? "Sicherheitsfälle sind noch niemandem zugewiesen"
             : "Eintritte sind noch nicht in Bearbeitung";
   // Berichte stands on its own below the categories.
   const reportsNavigationItem = navigationItemsBySection.get("Berichte");
