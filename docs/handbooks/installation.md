@@ -146,7 +146,8 @@ Support-Postfach die Rechte **Vollzugriff** und **Senden als**.
 Neue E-Mails werden etwa alle 5 Minuten abgeholt. Ein Postfach kann nur einem
 Mandanten gehören. Über das aktive Postfach verschickt nextDesk auch die
 **E-Mail-Benachrichtigungen**, die Personen unter _Persönliche Einstellungen →
-Benachrichtigungen_ pro Benachrichtigung einschalten. Optional aktivieren Sie im selben Bereich die
+Benachrichtigungen_ pro Benachrichtigung einschalten. Für Agenten sind
+anfangs alle Benachrichtigungen per Push und E-Mail eingeschaltet. Optional aktivieren Sie im selben Bereich die
 **Phishing-Meldungen** mit eigener Meldeadresse und Zielabteilung.
 
 ![E-Mail-Kanäle mit Support-Postfächern](images/in-exchange.jpg)
