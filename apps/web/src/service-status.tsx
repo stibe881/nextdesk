@@ -2298,14 +2298,16 @@ export function PublicServiceStatusPage({
         ) : null}
         {payload ? (
           <>
-            <header className="public-service-status__heading">
-              <p className="eyebrow">Live-Übersicht</p>
-              <h1 id="public-service-status-title">{payload.title}</h1>
-              <p>Zuletzt aktualisiert: {dateLabel(payload.generatedAt)}</p>
-            </header>
+            <div className="public-service-status__top">
+              <header className="public-service-status__heading">
+                <p className="eyebrow">Live-Übersicht</p>
+                <h1 id="public-service-status-title">{payload.title}</h1>
+                <p>Zuletzt aktualisiert: {dateLabel(payload.generatedAt)}</p>
+              </header>
+              <StatusSubscriptionPanel publicId={publicId} />
+            </div>
             <StatusPresentation payload={payload} publicView />
             <PublicMaintenanceList maintenances={payload.maintenances} />
-            <StatusSubscriptionPanel publicId={publicId} />
             <p className="public-service-status__footer">
               Bereitgestellt mit nextDesk
             </p>
