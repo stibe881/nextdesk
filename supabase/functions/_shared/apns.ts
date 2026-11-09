@@ -67,6 +67,8 @@ export type ApnsPayloadInput = {
   kudosScore?: number;
   /** Forwarded to a stand-in: name of the absent person. */
   delegatedFromName?: string;
+  /** Security case: a reporter said they clicked or entered data. */
+  securityEvent?: "clicked";
 };
 
 type ApnsConfiguration = {
@@ -302,6 +304,12 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
       };
     }
     case "security_report":
+      if (input.securityEvent === "clicked") {
+        return {
+          title: "Melder hat geklickt",
+          body: `Eine meldende Person hat in der Phishing-Mail geklickt oder Daten eingegeben (${ticketNumber}). Bitte Passwort zurücksetzen.`,
+        };
+      }
       return {
         title: "Phishing-Meldung",
         body: subject

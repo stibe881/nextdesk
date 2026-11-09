@@ -15,6 +15,12 @@ export type NotificationEmailText = {
   subject: string;
   /** Plain text body, one or more paragraphs. */
   body: string;
+  /** Headline of the event (e.g. «Ticket zugewiesen»). */
+  title: string;
+  /** The message without the hint why the mail was sent. */
+  message: string;
+  /** Why the person receives this mail. */
+  hint: string;
 };
 
 function text(value: unknown, max = 120): string | null {
@@ -184,14 +190,36 @@ export function notificationEmailText(
     if (vendor) {
       lines = [`${vendor} hat sich zu einem Ticket noch nicht gemeldet.`];
     }
+    if (kind === "ticket.security_report") {
+      if (payload.event === "clicked") {
+        title = "Melder hat geklickt";
+        const reporter = text(payload.reporterEmail, 200);
+        lines = [
+          `${reporter ?? "Eine meldende Person"} hat angegeben, in der gemeldeten E-Mail einen Link oder Anhang geöffnet oder Daten eingegeben zu haben.`,
+          "Bitte Passwort zurücksetzen und Anmeldungen prüfen.",
+        ];
+      } else {
+        const risk = text(payload.riskLabel, 40);
+        const score =
+          typeof payload.riskScore === "number" ? ` (${payload.riskScore})` : "";
+        lines = [
+          "Eine verdächtige E-Mail wurde gemeldet. Sie wartet unter «Sicherheitsfälle» auf Ihr Urteil.",
+          ...(risk ? [`Automatische Risikoeinschätzung: ${risk}${score}`] : []),
+        ];
+      }
+    }
   }
 
+  const message = lines.join("\n\n");
   if (ticket) lines.push(`Ticket: ${ticket}`);
-  lines.push(
-    "Sie erhalten diese E-Mail, weil Sie diese Benachrichtigung in nextDesk unter «Persönliche Einstellungen → Benachrichtigungen» per E-Mail eingeschaltet haben.",
-  );
+  const hint =
+    "Sie erhalten diese E-Mail, weil Sie diese Benachrichtigung in nextDesk unter «Persönliche Einstellungen → Benachrichtigungen» per E-Mail eingeschaltet haben.";
+  lines.push(hint);
   return {
     subject: input.ticketNumber ? `[${input.ticketNumber}] ${title}` : title,
     body: lines.join("\n\n"),
+    title,
+    message,
+    hint,
   };
 }

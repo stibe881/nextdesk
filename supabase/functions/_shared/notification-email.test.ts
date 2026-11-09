@@ -46,3 +46,27 @@ Deno.test("shop, infrastructure and unknown events", () => {
     "Benachrichtigung",
   );
 });
+
+Deno.test("Phishing: eigene Texte für neue Meldung und «Melder hat geklickt»", () => {
+  const reported = notificationEmailText({
+    kind: "ticket.security_report",
+    payload: { riskLabel: "hoch", riskScore: 82 },
+    ticketNumber: "ICT-1",
+    ticketSubject: "Phishing-Meldung: Test",
+  });
+  if (!reported.message.includes("Sicherheitsfälle") || !reported.message.includes("hoch (82)")) {
+    throw new Error(`Meldungstext falsch: ${reported.message}`);
+  }
+  const clicked = notificationEmailText({
+    kind: "ticket.security_report",
+    payload: { event: "clicked", reporterEmail: "anna@muster.ch" },
+    ticketNumber: "ICT-1",
+    ticketSubject: "Phishing-Meldung: Test",
+  });
+  if (clicked.title !== "Melder hat geklickt" || !clicked.message.includes("anna@muster.ch")) {
+    throw new Error(`Klicktext falsch: ${clicked.title} ${clicked.message}`);
+  }
+  if (clicked.message.includes("Sie erhalten diese E-Mail") || !clicked.body.includes("Sie erhalten diese E-Mail")) {
+    throw new Error("Hinweis gehört nur in body/hint");
+  }
+});
