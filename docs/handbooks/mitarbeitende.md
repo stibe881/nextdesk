@@ -133,6 +133,22 @@ Fortschritt.
 
 ![Bewertung eines gelösten Tickets mit Sternen und Kommentar](images/ma-bewertung.jpg)
 
+## Verdächtige E-Mail melden (Phishing)
+
+Kommt Ihnen eine E-Mail verdächtig vor, klicken Sie keine Links an und öffnen
+Sie keine Anhänge. Melden Sie sie stattdessen:
+
+- in **Outlook** mit **Melden → Phishing melden** (die Mail verschwindet danach
+  aus Ihrem Posteingang) oder
+- im Portal und in der App unter **Phishing melden**.
+
+Sie erhalten eine kurze Dankesnachricht. Sobald das Sicherheitsteam die Mail
+geprüft hat, bekommen Sie per E-Mail das Ergebnis, zum Beispiel «harmlos» oder
+«Phishing». Manchmal fragt das Team zusätzlich, ob Sie einen Link geöffnet oder
+Daten eingegeben haben; antworten Sie bitte ehrlich über die Schaltfläche in
+der E-Mail. Haben Sie bereits Ihr Passwort eingegeben, melden Sie sich sofort
+beim Support.
+
 ## Wissensdatenbank
 
 In der **Wissensdatenbank** finden Sie Anleitungen, z. B. «VPN einrichten»

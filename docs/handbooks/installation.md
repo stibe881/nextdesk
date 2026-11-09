@@ -151,8 +151,17 @@ anfangs alle Benachrichtigungen per Push und E-Mail eingeschaltet. Optional akti
 **Phishing-Meldungen** mit eigener Meldeadresse und Zielabteilung. Kategorie
 und Unterkategorie des Sicherheitstickets wählen Sie dort aus oder erfassen sie
 über **+ Neue Kategorie …** bzw. **+ Neue Unterkategorie …** direkt neu. Das
-**Sicherheitsteam** bekommt die Tickets zugewiesen und wird benachrichtigt; sie
-erscheinen damit auch in seiner Supportstufe.
+**Sicherheitsteam** bekommt die Fälle zugewiesen und wird benachrichtigt.
+Meldungen werden als **Sicherheitsfälle** bearbeitet (eigener Menüpunkt,
+nicht in der Ticketliste). Unter **Massnahmen je Urteil** legen Sie fest,
+welche Checkliste nach dem Urteil _Harmlos_, _Spam_, _Phishing_ oder
+_Gezielter Angriff_ erscheint; ohne eigene Liste gelten Standard-Checklisten.
+
+Damit Mitarbeitende in Outlook mit **Melden → Phishing melden** direkt an
+nextDesk melden können, tragen Sie in Microsoft Defender unter
+_Einstellungen → E-Mail und Zusammenarbeit → Von Benutzern gemeldete
+Einstellungen_ die Meldeadresse als **Meldepostfach** ein (_Nur mein
+Berichtspostfach_). Die Meldeadresse muss beim verbundenen Postfach ankommen.
 
 ![E-Mail-Kanäle mit Support-Postfächern](images/in-exchange.jpg)
 

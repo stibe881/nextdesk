@@ -506,16 +506,19 @@ export async function loadLiveDashboard(
   const closedStatusIds = statuses
     .filter((status) => status.is_closed)
     .map((status) => status.id);
+  // Security cases (phishing reports) are not counted with the tickets.
   const countsPromise = Promise.all([
     client
       .from("tickets")
       .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenant.id),
+      .eq("tenant_id", tenant.id)
+      .eq("is_security_case", false),
     closedStatusIds.length > 0
       ? client
           .from("tickets")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenant.id)
+          .eq("is_security_case", false)
           .in("status_id", closedStatusIds)
       : Promise.resolve({ count: 0, error: null }),
     user
@@ -523,12 +526,14 @@ export async function loadLiveDashboard(
           .from("tickets")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenant.id)
+          .eq("is_security_case", false)
           .eq("assigned_agent_id", user.id)
       : Promise.resolve({ count: 0, error: null }),
     client
       .from("tickets")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenant.id)
+      .eq("is_security_case", false)
       .is("assigned_agent_id", null),
     client
       .from("ticket_events")

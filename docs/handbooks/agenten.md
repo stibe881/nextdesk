@@ -138,7 +138,46 @@ Stellvertretung.
 
 Unter **Mein Bereich → Phishing melden** laden Sie eine verdächtige E-Mail
 (.eml oder .msg) hoch oder fügen die Kopfzeilen ein und klicken auf
-**Melden**. Daraus entsteht automatisch ein Sicherheitsticket.
+**Melden**. In Outlook geht es auch mit **Melden → Phishing melden**. Daraus
+entsteht ein Sicherheitsfall (siehe unten).
+
+## Sicherheitsfälle
+
+Gemeldete Phishing-Mails erscheinen nicht in der Ticketliste, sondern unter
+**Sicherheitsfälle**. Meldet mehr als eine Person dieselbe E-Mail, entsteht
+nur ein Fall; alle Melder hängen daran (Kennzeichen **Kampagne**). Die Kacheln
+zeigen, was zu beurteilen ist, wie viele Fälle noch Massnahmen haben, die
+Meldungen von heute, die mittlere Zeit bis zum Urteil und wie oft Melder
+angegeben haben, geklickt zu haben.
+
+![Liste der Sicherheitsfälle](images/ag-sicherheitsfaelle.jpg)
+
+Ein Klick öffnet den Fall. Die gemeldete E-Mail steht in einer **sicheren
+Ansicht**: Links sind entschärft (`hxxps`, `[.]`) und nicht anklickbar, Bilder
+werden nicht geladen und Anhänge erscheinen nur mit Name und Grösse. Daneben
+stehen die Befunde der automatischen Analyse (SPF, DKIM, DMARC, Absender,
+Links, Anhänge) und die Risikoeinschätzung. Bei hohem Risiko soll das Urteil
+innerhalb von 30 Minuten fallen, bei mittlerem innerhalb von 4 Stunden,
+sonst innerhalb eines Tages.
+
+![Sicherheitsfall mit sicherer Ansicht und Urteil](images/ag-sicherheitsfall.jpg)
+
+So bearbeiten Sie einen Fall:
+
+1. **Urteil fällen**: _Harmlos_, _Spam_, _Phishing_ oder _Gezielter Angriff_
+   wählen und bestätigen. Alle Melder erhalten danach automatisch eine E-Mail
+   mit dem Ergebnis.
+2. **Massnahmen abarbeiten**: Je nach Urteil erscheint eine Checkliste (z. B.
+   Absender sperren, Mail aus allen Postfächern entfernen). Haken Sie erledigte
+   Schritte ab.
+3. **Melder fragen: geklickt?** schickt allen Meldern eine kurze Rückfrage.
+   Ihre Antwort (_Geklickt_ / _Nicht geklickt_) erscheint bei der Person; wer
+   geklickt hat, löst eine Benachrichtigung an das Sicherheitsteam aus.
+4. **Fall abschliessen**, sobald alles erledigt ist. Bei _Harmlos_ ohne
+   Massnahmen schliesst sich der Fall direkt nach dem Urteil.
+
+Melder bekommen für Phishing-Meldungen keine Eingangsbestätigung, nur eine
+Dankesnachricht und später das Ergebnis.
 
 ## Ticketliste
 
