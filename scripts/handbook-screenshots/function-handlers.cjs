@@ -1364,48 +1364,6 @@ const HANDLERS = {
       ],
     });
   },
-  "reply-snippets": (body, { persona }) => {
-    if (body.type !== "list" && body.type !== "listForTicket") return null;
-    const snippet = (n, name, shortcut, text, personal) => ({
-      id: D.uid("33333334", n),
-      name,
-      shortcut,
-      body: text,
-      departmentId: D.DEP.ict.id,
-      departmentName: "ICT",
-      personal,
-      canEdit: personal || persona.isTenantAdmin,
-    });
-    return ok({
-      snippets: [
-        snippet(
-          1,
-          "Begrüssung",
-          "hallo",
-          "Guten Tag {{anfragende_person}}\n\n",
-          false,
-        ),
-        snippet(
-          2,
-          "Neustart erbeten",
-          "neustart",
-          "Bitte starten Sie Ihr Gerät einmal vollständig neu und melden Sie sich, falls das Problem weiterhin besteht.",
-          false,
-        ),
-        snippet(3, "Abschluss", "gruss", "Freundliche Grüsse\n{{agent}}", true),
-      ],
-      context: {
-        requesterName: "Reto Baumann",
-        ticketNumber: null,
-        subject: null,
-        device: null,
-        agentName: persona.name,
-        departmentName: "ICT",
-      },
-      canManageShared: persona.isTenantAdmin,
-      departments: D.DEPARTMENTS.map((d) => ({ id: d.id, name: d.name })),
-    });
-  },
   "sla-breach-reasons": (body) =>
     body.type === "list" ? ok({ breaches: [], canRecord: true }) : null,
   "ticket-presence": (body) => {

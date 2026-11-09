@@ -14,11 +14,9 @@ vi.mock("../lib/nextdesk-client", () => ({
 
 const {
   loadPortalAssistantEnabled,
-  loadTicketSnippets,
   recordAssistantOutcome,
   sendAssistantTurn,
 } = await import("../lib/nextdesk-assistance");
-const { resolveSnippetPlaceholders } = await import("../lib/reply-snippets");
 
 beforeEach(() => {
   calls.length = 0;
@@ -63,23 +61,5 @@ describe("mobile assistance calls", () => {
         outcome: "abandoned",
       }),
     ).resolves.toBeUndefined();
-  });
-
-  it("loads snippets with the ticket's placeholder values", async () => {
-    response = {
-      data: {
-        snippets: [{ id: "1", name: "Gruss", body: "Hoi {Vorname}" }],
-        context: { requesterName: "Anna Muster" },
-      },
-    };
-    const { snippets, context } = await loadTicketSnippets("t", "ticket");
-    expect(resolveSnippetPlaceholders(snippets[0]!.body, context)).toBe(
-      "Hoi Anna",
-    );
-    expect(calls[0]?.body).toEqual({
-      type: "listForTicket",
-      tenantId: "t",
-      ticketId: "ticket",
-    });
   });
 });
