@@ -290,6 +290,19 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-artikel",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Wissensdatenbank");
+      await h.page
+        .getByRole("button", { name: /VPN im Homeoffice einrichten/ })
+        .first()
+        .click();
+      await h.settle(900);
+    },
+  },
+  {
     name: "ag-wissen",
     persona: "agent",
     async run(h) {

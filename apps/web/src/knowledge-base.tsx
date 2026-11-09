@@ -68,7 +68,10 @@ import {
 } from "./lib/knowledge-images";
 import { supabase } from "./lib/supabase";
 import { recordRecentItem } from "./lib/recent-items";
-import { KnowledgeMarkdown, knowledgeHeadings } from "./knowledge-markdown";
+import {
+  KnowledgeArticleView,
+  knowledgeArticleStyles,
+} from "./knowledge-article";
 import { KnowledgeSuggestions } from "./knowledge-suggestions";
 
 export type KnowledgeBaseProps = {
@@ -155,6 +158,8 @@ type ArticleDetailResponse = ArticleDetail & { imageUrls: KnowledgeImageUrls };
 
 type ArticleDraft = {
   title: string;
+  /** «Kurz gesagt» (optional; otherwise the first paragraph is used). */
+  summary: string;
   bodyMarkdown: string;
   visibility: ArticleVisibility;
   status: EditableArticleStatus;
@@ -268,6 +273,7 @@ type PreparedKnowledgeArticle = {
 
 const EMPTY_DRAFT: ArticleDraft = {
   title: "",
+  summary: "",
   bodyMarkdown: "",
   visibility: "internal",
   status: "draft",
@@ -710,7 +716,7 @@ const knowledgeBaseStyles = `
     min-height: 36px;
     padding: 0;
   }
-  .knowledge-base .knowledge-base__reader > * { max-width: 760px; }
+  .knowledge-base .knowledge-base__reader > * { max-width: 900px; }
   .knowledge-base .knowledge-base__reader-header { display: grid; gap: 8px; }
   .knowledge-base .knowledge-base__reader-header h2 {
     margin: 0;
@@ -727,35 +733,6 @@ const knowledgeBaseStyles = `
     font-size: 13px;
     font-weight: 700;
   }
-  .knowledge-base .knowledge-base__toc {
-    border: 1px solid #e3e9ee;
-    border-radius: 12px;
-    background: #f7f9fb;
-    padding: 12px 16px;
-  }
-  .knowledge-base .knowledge-base__toc-title {
-    margin: 0 0 6px;
-    color: #5d6f7a;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  .knowledge-base .knowledge-base__toc ol {
-    display: grid;
-    gap: 4px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  .knowledge-base .knowledge-base__toc a {
-    color: #1c4f86;
-    font-size: 14px;
-    font-weight: 600;
-    text-decoration: none;
-  }
-  .knowledge-base .knowledge-base__toc a:hover { text-decoration: underline; }
-  .knowledge-base .knowledge-base__toc-sub { padding-left: 14px; }
   .knowledge-base .knowledge-base__reader-meta { margin: 0; color: #6c7d87; font-size: 13px; }
   .knowledge-base__badge {
     display: inline-flex;
@@ -1411,6 +1388,7 @@ async function invokeAiAssist<T>(
 function draftFromDetail(detail: ArticleDetail): ArticleDraft {
   return {
     title: detail.article.title,
+    summary: detail.revision.summary ?? "",
     bodyMarkdown: detail.revision.body,
     visibility: detail.article.visibility,
     status:
@@ -1444,11 +1422,6 @@ function shortBody(body: string | null): string {
     .trim();
   if (!plain) return "Noch kein Inhalt";
   return plain.length > 160 ? `${plain.slice(0, 159).trimEnd()}…` : plain;
-}
-
-function readingMinutes(body: string): number {
-  const words = body.trim().split(/\s+/).filter(Boolean).length;
-  return Math.max(1, Math.round(words / 200));
 }
 
 function formatShortDate(value: string): string {
@@ -2696,6 +2669,7 @@ export function KnowledgeBase({
           ...(editingArticleId ? { articleId: editingArticleId } : {}),
           title,
           bodyMarkdown: draft.bodyMarkdown,
+          ...(draft.summary.trim() ? { summary: draft.summary.trim() } : {}),
           visibility: draft.visibility,
           // Only a real choice is sent; with one department the server
           // assigns it to new articles and keeps it on edits.
@@ -3146,10 +3120,6 @@ export function KnowledgeBase({
     articleCategoryFilterId.length > 0 ||
     articleSubcategoryFilterId.length > 0;
   const showReader = Boolean(selected) || loadingDetail;
-  const readerHeadings = useMemo(
-    () => knowledgeHeadings(selected?.revision.body ?? ""),
-    [selected?.revision.body],
-  );
   // Start page (no search, no filter): the newest articles as cards.
   const showBento =
     !activeQuery && !isListFiltered && visibleArticles.length >= 4;
@@ -3208,7 +3178,7 @@ export function KnowledgeBase({
 
   return (
     <div className="knowledge-base">
-      <style>{knowledgeBaseStyles}</style>
+      <style>{knowledgeBaseStyles + knowledgeArticleStyles}</style>
 
       {showReader ? (
         <section
@@ -3228,134 +3198,79 @@ export function KnowledgeBase({
             <p className="knowledge-base__empty">Artikel wird geladen …</p>
           ) : detailArticle && selected ? (
             <>
-              <header className="knowledge-base__reader-header">
-                {detailCollectionPaths.length > 0 ? (
-                  <p className="knowledge-base__reader-topic">
-                    <FolderOpen
-                      aria-hidden="true"
-                      size={15}
-                      strokeWidth={1.8}
-                    />
-                    {detailCollectionPaths.join(" · ")}
-                  </p>
-                ) : null}
-                <h2 id="knowledge-article-detail-heading">
-                  {detailArticle.title}
-                </h2>
-                <p className="knowledge-base__reader-meta">
-                  Aktualisiert {formatShortDate(detailArticle.updatedAt)}
-                  {selected.revision.body
-                    ? ` · ${readingMinutes(selected.revision.body)} Min. Lesezeit`
-                    : ""}
-                </p>
-                {readOnly ? null : (
-                  <p className="knowledge-base__meta">
-                    <span
-                      className={`knowledge-base__badge knowledge-base__badge--${detailArticle.status}`}
-                    >
-                      {statusLabels[detailArticle.status]}
-                    </span>
-                    <span
-                      className={`knowledge-base__badge${detailArticle.visibility === "external" ? " knowledge-base__badge--external" : ""}`}
-                    >
-                      {visibilityLabels[detailArticle.visibility]}
-                    </span>
-                    {detailDepartmentLabel ? (
-                      <span className="knowledge-base__badge">
-                        {detailDepartmentLabel}
-                      </span>
-                    ) : null}
-                    {detailRevision !== null ? (
-                      <span className="knowledge-base__detail-version">
-                        Version {detailRevision}
-                      </span>
-                    ) : null}
-                    {detailArticle.publishedRevision ? (
-                      <span>
-                        Veröffentlichte Revision{" "}
-                        {detailArticle.publishedRevision}
-                      </span>
-                    ) : null}
-                  </p>
-                )}
-                {detailArticle.outcomes ? (
-                  <p
-                    aria-label="Wirkung des Artikels"
-                    className="knowledge-base__meta"
-                  >
-                    <span>
-                      Letzte {detailArticle.outcomes.windowDays} Tage:{" "}
-                      {formatOutcomes(
-                        detailArticle.outcomes.resolvedRecent,
-                        detailArticle.outcomes.deflectedRecent,
-                        detailArticle.outcomes.notHelpfulRecent,
+              <KnowledgeArticleView
+                body={selected.revision.body}
+                extra={
+                  readOnly && !detailArticle.outcomes ? null : (
+                    <>
+                      {readOnly ? null : (
+                        <p className="knowledge-base__meta">
+                          <span
+                            className={`knowledge-base__badge knowledge-base__badge--${detailArticle.status}`}
+                          >
+                            {statusLabels[detailArticle.status]}
+                          </span>
+                          <span
+                            className={`knowledge-base__badge${detailArticle.visibility === "external" ? " knowledge-base__badge--external" : ""}`}
+                          >
+                            {visibilityLabels[detailArticle.visibility]}
+                          </span>
+                          {detailDepartmentLabel ? (
+                            <span className="knowledge-base__badge">
+                              {detailDepartmentLabel}
+                            </span>
+                          ) : null}
+                          {detailRevision !== null ? (
+                            <span className="knowledge-base__detail-version">
+                              Version {detailRevision}
+                            </span>
+                          ) : null}
+                          {detailArticle.publishedRevision ? (
+                            <span>
+                              Veröffentlichte Revision{" "}
+                              {detailArticle.publishedRevision}
+                            </span>
+                          ) : null}
+                        </p>
                       )}
-                    </span>
-                    <span>
-                      Insgesamt:{" "}
-                      {formatOutcomes(
-                        detailArticle.outcomes.resolvedTotal,
-                        detailArticle.outcomes.deflectedTotal,
-                        detailArticle.outcomes.notHelpfulTotal,
-                      )}
-                    </span>
-                    {detailArticle.outcomes.needsRevision ? (
-                      <span className="knowledge-base__badge knowledge-base__badge--review">
-                        Überarbeiten?
-                      </span>
-                    ) : null}
-                  </p>
-                ) : null}
-              </header>
-              {readerHeadings.length >= 3 ? (
-                <nav
-                  aria-label="Inhalt dieses Artikels"
-                  className="knowledge-base__toc"
-                >
-                  <p className="knowledge-base__toc-title">Auf dieser Seite</p>
-                  <ol>
-                    {readerHeadings.map((heading) => (
-                      <li
-                        className={
-                          heading.level === 3
-                            ? "knowledge-base__toc-sub"
-                            : undefined
-                        }
-                        key={heading.id}
-                      >
-                        <a
-                          href={`#${heading.id}`}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            document
-                              .getElementById(heading.id)
-                              ?.scrollIntoView({
-                                behavior: "smooth",
-                                block: "start",
-                              });
-                          }}
+                      {detailArticle.outcomes ? (
+                        <p
+                          aria-label="Wirkung des Artikels"
+                          className="knowledge-base__meta"
                         >
-                          {heading.text}
-                        </a>
-                      </li>
-                    ))}
-                  </ol>
-                </nav>
-              ) : null}
-              <article
-                aria-label="Artikelinhalt"
-                className="knowledge-base__markdown"
-              >
-                {selected.revision.body ? (
-                  <KnowledgeMarkdown
-                    anchors
-                    body={selected.revision.body}
-                    imageUrls={imageUrls}
-                  />
-                ) : (
-                  "Dieser Artikel enthält noch keinen Inhalt."
-                )}
-              </article>
+                          <span>
+                            Letzte {detailArticle.outcomes.windowDays} Tage:{" "}
+                            {formatOutcomes(
+                              detailArticle.outcomes.resolvedRecent,
+                              detailArticle.outcomes.deflectedRecent,
+                              detailArticle.outcomes.notHelpfulRecent,
+                            )}
+                          </span>
+                          <span>
+                            Insgesamt:{" "}
+                            {formatOutcomes(
+                              detailArticle.outcomes.resolvedTotal,
+                              detailArticle.outcomes.deflectedTotal,
+                              detailArticle.outcomes.notHelpfulTotal,
+                            )}
+                          </span>
+                          {detailArticle.outcomes.needsRevision ? (
+                            <span className="knowledge-base__badge knowledge-base__badge--review">
+                              Überarbeiten?
+                            </span>
+                          ) : null}
+                        </p>
+                      ) : null}
+                    </>
+                  )
+                }
+                imageUrls={imageUrls}
+                key={detailArticle.id}
+                summary={selected.revision.summary}
+                title={detailArticle.title}
+                topic={detailCollectionPaths.join(" · ")}
+                updatedLabel={formatShortDate(detailArticle.updatedAt)}
+              />
               {readOnly ? null : (
                 <div className="knowledge-base__actions knowledge-base__article-actions">
                   <button
@@ -4241,6 +4156,23 @@ export function KnowledgeBase({
               </div>
 
               <label className="knowledge-base__full-width">
+                Kurzfassung (optional)
+                <textarea
+                  disabled={isBusy}
+                  maxLength={500}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      summary: event.target.value,
+                    }))
+                  }
+                  placeholder="Ein bis zwei Sätze: worum geht es, was bringt es? Erscheint oben als «Kurz gesagt»."
+                  rows={2}
+                  value={draft.summary}
+                />
+              </label>
+
+              <label className="knowledge-base__full-width">
                 Markdown-Inhalt
                 <textarea
                   aria-busy={imageUploading}
@@ -4272,20 +4204,12 @@ export function KnowledgeBase({
                   <p className="eyebrow">Live-Vorschau</p>
                   <span>{visibilityLabels[draft.visibility]}</span>
                 </div>
-                <h3>{previewTitle}</h3>
-                <article className="knowledge-base__markdown knowledge-base__markdown--preview">
-                  {draft.bodyMarkdown ? (
-                    <KnowledgeMarkdown
-                      body={draft.bodyMarkdown}
-                      imageUrls={imageUrls}
-                    />
-                  ) : (
-                    <p>
-                      Beginnen Sie mit einer kurzen Einleitung. Die Vorschau
-                      zeigt die spätere Artikelansicht direkt an.
-                    </p>
-                  )}
-                </article>
+                <KnowledgeArticleView
+                  body={draft.bodyMarkdown}
+                  imageUrls={imageUrls}
+                  summary={draft.summary}
+                  title={previewTitle}
+                />
               </aside>
 
               <div className="knowledge-base__form-actions knowledge-base__full-width">

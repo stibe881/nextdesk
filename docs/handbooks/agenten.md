@@ -359,17 +359,33 @@ Suche und Filter zeigt die Startseite die neusten Artikel als Karten. Status, Si
 Agenten. Ein Klick öffnet den Artikel auf einer eigenen Leseseite mit
 **Bearbeiten**, **Veröffentlichen**, **Archivieren** und **Löschen**.
 
+![Artikelansicht mit Banner, «Kurz gesagt» und Abschnitten](images/ag-artikel.jpg)
+
+Der Artikel erscheint im Verlauf der Farben aus **Einstellungen → Design**
+(Verlauf von der Primärfarbe zur Akzentfarbe). Oben stehen die
+Art (z. B. Anleitung, FAQ, Störung, Referenz, Information), Thema, Datum und
+Lesezeit, darunter **Kurz gesagt**. Ab drei Abschnitten (Überschriften mit
+`##`) klappen die Abschnitte auf und zu; **Alle aufklappen** öffnet alle. Die
+Art ergibt sich aus dem Text: nummerierte Listen werden Schritte, Überschriften
+mit Fragezeichen werden Fragen und Antworten, «Symptom», «Ursache» und «Lösung»
+werden Störung, Tabellen werden Referenz. Absätze, die mit **Hinweis:**,
+**Tipp:** oder **Achtung:** beginnen, werden farbige Hinweisboxen.
+
 Als Agent lesen Sie nicht nur Artikel, sondern schreiben sie auch:
 
-1. **Neuer Artikel** – Titel, Inhalt (Markdown mit Bildern), Kategorie und
-   Sichtbarkeit (_Intern_ oder _Extern_ für Mitarbeitende).
+1. **Neuer Artikel** – Titel, optional eine **Kurzfassung** (ein bis zwei Sätze,
+   erscheint als «Kurz gesagt»; ohne Kurzfassung gilt der erste Absatz),
+   Inhalt (Markdown mit Bildern), Kategorie und Sichtbarkeit (_Intern_ oder
+   _Extern_ für Mitarbeitende). Die **Live-Vorschau** zeigt den Artikel schon
+   im späteren Design.
 2. Optional **Mit KI aufbereiten** oder direkt aus einem gelösten Ticket
    **Entwurf mit KI erstellen**.
 3. **Speichern** – der Artikel ist sofort **veröffentlicht**, eine Freigabe ist
    nicht nötig. Frühere Fassungen bleiben im Verlauf erhalten. Veraltete
    Artikel **archivieren**.
 
-KI-Entwürfe aus Tickets erscheinen zuerst als _Entwurf_; mit **Speichern** oder
+Die KI schreibt Artikel so, dass sie in diesem Design gut aussehen (kurze
+Einleitung, Abschnitte, Schritte, Hinweise). KI-Entwürfe aus Tickets erscheinen zuerst als _Entwurf_; mit **Speichern** oder
 **Veröffentlichen** gehen sie live.
 
 ![Wissensdatenbank aus Sicht der Agenten](images/ag-wissen.jpg)
