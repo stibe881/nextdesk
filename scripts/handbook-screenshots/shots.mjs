@@ -230,6 +230,16 @@ export const SHOTS = [
     },
   },
   {
+    name: "ma-benachrichtigungen",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.openPersonalSettings();
+      await h.waitText("Benachrichtigungszeit");
+      await h.scrollToText("Benachrichtigungszeit", 20);
+    },
+  },
+  {
     name: "ag-neues-ticket",
     persona: "agent",
     async run(h) {

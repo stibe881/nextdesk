@@ -63,6 +63,8 @@ export type PushPreferences = {
   enabledCategories: PushCategory[];
   /** ISO weekdays 1 (Monday) to 7 (Sunday) on which pushes arrive. */
   deliveryDays: number[];
+  /** Categories also sent by e-mail through the tenant's Exchange mailbox. */
+  emailCategories: PushCategory[];
   quietEnd: number;
   quietHoursEnabled: boolean;
   quietStart: number;
@@ -106,6 +108,8 @@ export type PushStatus = {
   apnsConfigured: boolean;
   contentLevel: PushContentLevel;
   devices: PushDevice[];
+  /** E-mail notifications possible (e-mail module and active mailbox). */
+  emailAvailable: boolean;
   featureEnabled: boolean;
   preferences: PushPreferences;
   workHours: WorkHours;
@@ -250,6 +254,13 @@ function parsePreferences(value: unknown): PushPreferences {
     // Omit those values instead of rendering an unlabelled preference row.
     enabledCategories: knownCategories(enabledCategories),
     deliveryDays: parseDeliveryDays(value.deliveryDays),
+    emailCategories: Array.isArray(value.emailCategories)
+      ? knownCategories(
+          value.emailCategories.filter(
+            (category): category is string => typeof category === "string",
+          ),
+        )
+      : [],
     quietEnd,
     quietHoursEnabled,
     quietStart,
@@ -380,6 +391,7 @@ function parseStatus(value: unknown): PushStatus {
     apnsConfigured,
     contentLevel,
     devices: devices.map(parseDevice),
+    emailAvailable: value.emailAvailable === true,
     featureEnabled,
     preferences: parsePreferences(preferences),
     workHours: parseWorkHours(workHours),

@@ -188,8 +188,9 @@ export function PersonalSettings({
     null,
   );
   const [deliverySaving, setDeliverySaving] = useState(false);
-  const [pushPreferenceSaving, setPushPreferenceSaving] =
-    useState<PushCategory | null>(null);
+  const [pushPreferenceSaving, setPushPreferenceSaving] = useState<
+    string | null
+  >(null);
   const provider = providerSummary(user, ssoEnforced);
   const email = user.email?.trim() || "Keine E-Mail-Adresse hinterlegt";
 
@@ -304,34 +305,34 @@ export function PersonalSettings({
     }
   }
 
-  async function togglePushCategory(category: PushCategory) {
+  async function toggleNotification(
+    category: PushCategory,
+    channel: "push" | "email",
+  ) {
     if (!tenantId || !pushStatus || pushPreferenceSaving !== null) return;
+    const key = channel === "push" ? "enabledCategories" : "emailCategories";
+    const selected = new Set(pushStatus.preferences[key]);
+    if (selected.has(category)) selected.delete(category);
+    else selected.add(category);
 
-    const enabledCategories = new Set(pushStatus.preferences.enabledCategories);
-    if (enabledCategories.has(category)) {
-      enabledCategories.delete(category);
-    } else {
-      enabledCategories.add(category);
-    }
-
-    setPushPreferenceSaving(category);
+    setPushPreferenceSaving(`${category}:${channel}`);
     setPushMessage("");
     try {
       const preferences = await updatePreferences(tenantId, {
         ...pushStatus.preferences,
-        enabledCategories: [...enabledCategories],
+        [key]: [...selected],
       });
       setPushStatus((current) =>
         current ? { ...current, preferences } : current,
       );
       setPushMessageKind("success");
-      setPushMessage("Ihre Push-Einstellungen wurden gespeichert.");
+      setPushMessage("Deine Benachrichtigungen wurden gespeichert.");
     } catch (error) {
       setPushMessageKind("error");
       setPushMessage(
         error instanceof Error && error.message
           ? error.message
-          : "Die Push-Einstellungen konnten nicht gespeichert werden. Bitte versuchen Sie es später erneut.",
+          : "Die Benachrichtigungen konnten nicht gespeichert werden. Bitte versuche es später erneut.",
       );
     } finally {
       setPushPreferenceSaving(null);
@@ -564,6 +565,7 @@ export function PersonalSettings({
       {tenantId &&
       (pushStatusState !== "loaded" ||
         pushStatus?.featureEnabled ||
+        pushStatus?.emailAvailable ||
         (pushStatus?.devices.length ?? 0) > 0) ? (
         <section
           aria-labelledby="personal-push-heading"
@@ -577,10 +579,10 @@ export function PersonalSettings({
               <Smartphone size={19} strokeWidth={1.9} />
             </span>
             <div>
-              <h3 id="personal-push-heading">Push-Benachrichtigungen</h3>
+              <h3 id="personal-push-heading">Benachrichtigungen</h3>
               <p>
-                Verwalte die iOS-Geräte, die mit deinem nextDesk-Konto
-                registriert sind.
+                Wann und wie du informiert wirst: per Push auf dein iPhone oder
+                per E-Mail.
               </p>
             </div>
           </div>
@@ -773,37 +775,86 @@ export function PersonalSettings({
                   Benachrichtigungen
                 </h4>
                 <p className="personal-settings__hint">
-                  Wählen Sie, worüber Sie auf Ihren registrierten Geräten
-                  informiert werden möchten.
+                  Wähle pro Benachrichtigung, ob du sie als Push auf deinem
+                  iPhone, per E-Mail oder auf beiden Wegen erhältst.
                 </p>
+                {!pushStatus.emailAvailable ? (
+                  <p className="personal-settings__hint">
+                    E-Mail-Benachrichtigungen stehen zur Verfügung, sobald euer
+                    Unternehmen ein Exchange-Postfach mit nextDesk verbunden
+                    hat.
+                  </p>
+                ) : null}
               </div>
-              <ul>
-                {pushStatus.applicableCategories.map((category) => {
-                  const meta = pushCategoryMeta[category];
-                  const enabled =
-                    pushStatus.preferences.enabledCategories.includes(category);
-                  const saving = pushPreferenceSaving === category;
-                  return (
-                    <li key={category}>
-                      <label>
-                        <input
-                          checked={enabled}
-                          disabled={pushPreferenceSaving !== null}
-                          onChange={() => void togglePushCategory(category)}
-                          type="checkbox"
-                        />
-                        <span>
+              <table className="personal-settings__notification-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Benachrichtigung</th>
+                    <th scope="col">Push</th>
+                    <th scope="col">E-Mail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pushStatus.applicableCategories.map((category) => {
+                    const meta = pushCategoryMeta[category];
+                    const channels = [
+                      {
+                        channel: "push" as const,
+                        label: "Push",
+                        on: pushStatus.preferences.enabledCategories.includes(
+                          category,
+                        ),
+                        available: true,
+                      },
+                      {
+                        channel: "email" as const,
+                        label: "E-Mail",
+                        on: pushStatus.preferences.emailCategories.includes(
+                          category,
+                        ),
+                        available: pushStatus.emailAvailable,
+                      },
+                    ];
+                    return (
+                      <tr key={category}>
+                        <th scope="row">
                           <strong>{meta.label}</strong>
                           <small>{meta.description}</small>
-                        </span>
-                      </label>
-                      {saving ? (
-                        <span aria-live="polite">Speichert …</span>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
+                        </th>
+                        {channels.map((entry) => (
+                          <td key={entry.channel}>
+                            <button
+                              aria-checked={entry.available && entry.on}
+                              aria-label={`${meta.label} per ${entry.label}`}
+                              className="personal-settings__switch"
+                              disabled={
+                                !entry.available ||
+                                pushPreferenceSaving !== null
+                              }
+                              onClick={() =>
+                                void toggleNotification(category, entry.channel)
+                              }
+                              role="switch"
+                              type="button"
+                            >
+                              <span aria-hidden="true" />
+                            </button>
+                            {pushPreferenceSaving ===
+                            `${category}:${entry.channel}` ? (
+                              <span
+                                aria-live="polite"
+                                className="personal-settings__switch-state"
+                              >
+                                Speichert …
+                              </span>
+                            ) : null}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </section>
           ) : null}
           {pushStatusState === "loaded" && pushStatus?.devices.length === 0 ? (

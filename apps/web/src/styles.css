@@ -21521,3 +21521,94 @@ svg.ticket-satisfaction__star.is-active {
   ):hover:not(:disabled) {
   color: var(--danger) !important;
 }
+
+/* Notifications: one switch per category for push and for e-mail. */
+.personal-settings__notification-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.personal-settings__notification-table th,
+.personal-settings__notification-table td {
+  border-top: 1px solid var(--border);
+  padding: 9px 6px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.personal-settings__notification-table thead th {
+  border-top: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.personal-settings__notification-table thead th:not(:first-child),
+.personal-settings__notification-table td {
+  width: 76px;
+  text-align: center;
+}
+
+.personal-settings__notification-table tbody th {
+  display: grid;
+  gap: 1px;
+  font-weight: 400;
+}
+
+.personal-settings__switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  min-width: 40px;
+  height: 22px;
+  min-height: 0;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: var(--control-border);
+  vertical-align: middle;
+  transition: background-color 150ms ease;
+}
+
+.personal-settings__switch span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 25%);
+  transition: transform 150ms ease;
+}
+
+.personal-settings__switch[aria-checked="true"] {
+  background: var(--primary);
+}
+
+.personal-settings__switch[aria-checked="true"] span {
+  transform: translateX(18px);
+}
+
+.personal-settings__switch:hover:not(:disabled) {
+  border: 0;
+  background: color-mix(in srgb, var(--control-border) 80%, var(--ink));
+}
+
+.personal-settings__switch[aria-checked="true"]:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.personal-settings__switch:disabled {
+  opacity: 0.45;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.personal-settings__switch-state {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}

@@ -171,10 +171,15 @@ Einstellungen** zu öffnen:
 - **Profil & Darstellung** → **Darstellung anpassen**: Farbschema (Hell,
   Dunkel, Systemeinstellung), hoher Kontrast, Bewegung reduzieren
 - **Handbücher** – dieses Handbuch (und weitere, falls Ihre Rolle es erlaubt)
-- **Push-Benachrichtigungen** – Ihre registrierten iPhones und die
-  **Benachrichtigungszeit**: **Jederzeit** oder **Nur zu bestimmten Zeiten**
-  mit Tagen (Mo–So) und Uhrzeit von/bis. Was ausserhalb dieser Zeit anfällt,
-  kommt zu Beginn der nächsten Benachrichtigungszeit (falls aktiviert)
+- **Benachrichtigungen** – die **Benachrichtigungszeit** (**Jederzeit** oder
+  **Nur zu bestimmten Zeiten** mit Tagen Mo–So und Uhrzeit von/bis; was
+  ausserhalb anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit),
+  pro Benachrichtigung je ein Schalter für **Push** und **E-Mail** sowie Ihre
+  registrierten iPhones. E-Mail-Benachrichtigungen gibt es, sobald Ihr
+  Unternehmen ein Exchange-Postfach verbunden hat.
+
+![Benachrichtigungen: Push und E-Mail pro Benachrichtigung](images/ma-benachrichtigungen.jpg)
+
 - **Sitzungsverwaltung** – alle anderen Geräte abmelden
 - **Abmelden** und **Konto löschen**. Melden Sie sich mit SSO Ihres
   Unternehmens an, wird Ihr Konto von Ihrem Unternehmen verwaltet und kann

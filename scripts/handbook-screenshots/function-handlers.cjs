@@ -1438,9 +1438,16 @@ const HANDLERS = {
             lastSentAt: D.ago(3 * D.HOUR),
           },
         ],
+        emailAvailable: true,
         featureEnabled: true,
         preferences: {
           enabledCategories: categories,
+          // Some categories also by e-mail.
+          emailCategories: categories.filter((category) =>
+            ["assigned", "escalation", "approval", "resolved"].includes(
+              category,
+            ),
+          ),
           // Notification time Mo–Fr 06:00–17:00 (quiet 17–06).
           deliveryDays: [1, 2, 3, 4, 5],
           quietHoursEnabled: true,
