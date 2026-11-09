@@ -164,6 +164,7 @@ Deno.test("racks: actions and occupied units", () => {
       type: "saveRack",
       tenantId,
       id: null,
+      source: null,
       name: "Rack 01",
       locationId: null,
       heightUnits: 24,
@@ -175,4 +176,15 @@ Deno.test("racks: actions and occupied units", () => {
     null,
   );
   assertEquals(parseAction({ type: "deleteRack", tenantId, id: "x" }), null);
+  const adopted = parseAction({
+    type: "saveRack",
+    tenantId,
+    name: "Rack A",
+    heightUnits: 24,
+    sourceName: "Rack 01",
+  });
+  assertEquals(
+    adopted?.type === "saveRack" ? adopted.source : undefined,
+    { name: "Rack 01", locationId: null },
+  );
 });

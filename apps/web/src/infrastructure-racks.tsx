@@ -9,6 +9,9 @@ import {
 
 export type RackInput = {
   id: string | null;
+  /** Rack so far only known from its devices: these move with it. */
+  sourceName?: string | null;
+  sourceLocationId?: string | null;
   name: string;
   locationId: string | null;
   heightUnits: number;
@@ -110,7 +113,7 @@ function RackForm({
           value={form.notes ?? ""}
         />
       </label>
-      {initial.id && deviceCount > 0 ? (
+      {(initial.id || initial.sourceName) && deviceCount > 0 ? (
         <p className="rack-form__hint rack-form__wide">
           Neuer Name oder Standort gilt auch für{" "}
           {deviceCount === 1 ? "das Gerät" : `die ${deviceCount} Geräte`} im
@@ -153,7 +156,9 @@ function RackForm({
           disabled={busy || !form.name.trim() || tooSmall}
           type="submit"
         >
-          {initial.id ? "Rack speichern" : "Rack erfassen"}
+          {initial.id || initial.sourceName
+            ? "Rack speichern"
+            : "Rack erfassen"}
         </button>
       </div>
     </form>
@@ -177,15 +182,20 @@ function rackInput<T extends RackDevice>(
         heightUnits: rack.definition.heightUnits,
         notes: rack.definition.notes,
       }
-    : {
-        id: null,
-        name: rack.name,
-        locationId:
+    : (() => {
+        const locationId =
           locations.find((location) => location.name === rack.locationName)
-            ?.id ?? null,
-        heightUnits: rack.units,
-        notes: null,
-      };
+            ?.id ?? null;
+        return {
+          id: null,
+          sourceName: rack.name,
+          sourceLocationId: locationId,
+          name: rack.name,
+          locationId,
+          heightUnits: rack.units,
+          notes: null,
+        };
+      })();
 }
 
 const UNIT_PX = 18;
@@ -224,27 +234,36 @@ export function RackView<T extends RackDevice>({
 }) {
   const racks = buildRacks(devices, definitions);
   const [editing, setEditing] = useState<string | null>(null);
-  const toolbar = onSaveRack ? (
-    <div className="rack-view__toolbar">
-      {editing === "new" ? (
-        <div className="rack-view__new">
-          <strong>Neues Rack</strong>
-          <RackForm
-            deviceCount={0}
-            initial={{
-              id: null,
-              name: "",
-              locationId: null,
-              heightUnits: 42,
-              notes: null,
-            }}
-            locations={locations}
-            minUnits={1}
-            onCancel={() => setEditing(null)}
-            onSave={onSaveRack}
-          />
-        </div>
-      ) : (
+  const newRackForm =
+    onSaveRack && editing === "new" ? (
+      <figure className="rack-view__rack rack-view__rack--new">
+        <figcaption>
+          <div className="rack-view__head">
+            <div className="rack-view__title">
+              <strong>Neues Rack</strong>
+              <small>Name, Standort und Höhe</small>
+            </div>
+          </div>
+        </figcaption>
+        <RackForm
+          deviceCount={0}
+          initial={{
+            id: null,
+            name: "",
+            locationId: null,
+            heightUnits: 42,
+            notes: null,
+          }}
+          locations={locations}
+          minUnits={1}
+          onCancel={() => setEditing(null)}
+          onSave={onSaveRack}
+        />
+      </figure>
+    ) : null;
+  const toolbar =
+    onSaveRack && editing !== "new" ? (
+      <div className="rack-view__toolbar">
         <button
           className="secondary-button"
           onClick={() => setEditing("new")}
@@ -252,10 +271,9 @@ export function RackView<T extends RackDevice>({
         >
           <Plus aria-hidden="true" size={16} /> Rack erfassen
         </button>
-      )}
-    </div>
-  ) : null;
-  if (racks.length === 0) {
+      </div>
+    ) : null;
+  if (racks.length === 0 && !newRackForm) {
     return (
       <>
         {toolbar}
@@ -270,6 +288,7 @@ export function RackView<T extends RackDevice>({
     <>
       {toolbar}
       <div className="rack-view">
+        {newRackForm}
         {racks.map((rack) => {
           const usedUnits = Math.max(
             0,
@@ -296,23 +315,31 @@ export function RackView<T extends RackDevice>({
           return (
             <figure className="rack-view__rack" key={rack.key}>
               <figcaption>
-                <strong>{rackTitle(rack.name)}</strong>
-                {onSaveRack && editing !== rack.key ? (
-                  <button
-                    aria-label={`Rack ${rack.name} bearbeiten`}
-                    className="rack-view__edit"
-                    onClick={() => setEditing(rack.key)}
-                    title="Rack bearbeiten"
-                    type="button"
-                  >
-                    <Pencil aria-hidden="true" size={14} />
-                  </button>
-                ) : null}
-                {rack.locationName ? <span>{rack.locationName}</span> : null}
-                <small>
-                  {rack.units} HE · {deviceCount}{" "}
-                  {deviceCount === 1 ? "Gerät" : "Geräte"}
-                </small>
+                <div className="rack-view__head">
+                  <div className="rack-view__title">
+                    <strong>{rackTitle(rack.name)}</strong>
+                    <small>
+                      {[
+                        rack.locationName,
+                        `${rack.units} HE`,
+                        `${deviceCount} ${deviceCount === 1 ? "Gerät" : "Geräte"}`,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </small>
+                  </div>
+                  {onSaveRack && editing !== rack.key ? (
+                    <button
+                      aria-label={`Rack ${rack.name} bearbeiten`}
+                      className="rack-view__edit"
+                      onClick={() => setEditing(rack.key)}
+                      title="Rack bearbeiten"
+                      type="button"
+                    >
+                      <Pencil aria-hidden="true" size={14} />
+                    </button>
+                  ) : null}
+                </div>
                 {rack.definition?.notes ? (
                   <span className="rack-view__notes">
                     {rack.definition.notes}

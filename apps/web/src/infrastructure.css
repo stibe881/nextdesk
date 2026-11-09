@@ -1132,14 +1132,27 @@
   margin-bottom: 12px;
 }
 
-.rack-view__new {
+.rack-view__head {
+  display: flex;
+  flex-basis: 100%;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rack-view__title {
   display: grid;
-  gap: 10px;
-  width: min(100%, 560px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  padding: 14px 16px;
-  background: var(--surface);
+  gap: 2px;
+}
+
+.rack-view__title strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.rack-view__rack--new {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
 }
 
 .rack-view__edit {
