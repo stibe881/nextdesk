@@ -171,6 +171,12 @@ Offene Einladungen sehen Sie unter **Offene Einladungen** und können sie dort
 widerrufen. Darunter stehen die Listen **Agenten** (mit Suche) und
 **Angemeldete Personen**.
 
+Mit **Bearbeiten** ändern Sie bei einer Person Name, vorgesetzte Person,
+Ticketzugriffsbereich und **Team** (z. B. _Servicedesk_ oder _System
+Engineer_). Die Teams erscheinen, sobald der Ticketzugriffsbereich gewählt
+ist – bei Agenten und bei Mandantenadministratoren, die automatisch
+Agentenzugang haben. Speichern mit **Person speichern**.
+
 > Mit aktivem SSO werden Personen aus zugelassenen Domains beim ersten Login
 > automatisch als _anfragende Person_ angelegt. Agentenrechte gibt es nur per
 > Einladung, Vormerkung oder Rollenzuweisung.
