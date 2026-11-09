@@ -34,3 +34,45 @@ describe("rack layout", () => {
     expect(racks[0]!.unplaced.map((entry) => entry.id)).toEqual(["ups"]);
   });
 });
+
+describe("buildRacks with recorded racks", () => {
+  const device = {
+    id: "d1",
+    name: "SW-01",
+    category: "switch",
+    rack: "rack 01",
+    rackUnit: "12-14",
+    locationName: "Baar",
+    uplinkAssetId: null,
+  };
+  it("uses the recorded height and shows empty racks", () => {
+    const racks = buildRacks(
+      [device],
+      [
+        {
+          id: "r1",
+          name: "Rack 01",
+          locationId: "l1",
+          locationName: "Baar",
+          heightUnits: 20,
+          notes: "UG",
+        },
+        {
+          id: "r2",
+          name: "Rack 02",
+          locationId: null,
+          locationName: null,
+          heightUnits: 12,
+          notes: null,
+        },
+      ],
+    );
+    expect(
+      racks.map((rack) => [rack.name, rack.units, rack.placed.length]),
+    ).toEqual([
+      ["Rack 02", 12, 0],
+      ["Rack 01", 20, 1],
+    ]);
+    expect(racks[1]?.definition?.id).toBe("r1");
+  });
+});

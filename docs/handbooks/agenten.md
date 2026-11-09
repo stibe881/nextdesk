@@ -43,7 +43,11 @@ mehrere **Dienste (für Systemstatus)**, die bei einer Überwachungsstörung
 Wartungseinträge mit Datum und optionaler **Uhrzeit**. In der
 **Wartungscheckliste** erfassen Sie jeden Punkt in einer eigenen Zeile mit
 einem eigenen **Datum** (z. B. wann er erledigt wurde oder wann er dran ist);
-**Punkt hinzufügen** ergänzt eine Zeile, × entfernt sie.
+**Punkt hinzufügen** ergänzt eine Zeile, × entfernt sie. In der Ansicht **Racks**
+erfassen Sie mit **Rack erfassen** ein Rack (Name, Standort, Höhe in HE,
+Notizen) und ändern es über den **Stift** am Rack. Ein neuer Name oder
+Standort gilt auch für die Geräte im Rack; die Höhe muss mindestens bis zum
+obersten Gerät reichen. Leere Racks lassen sich löschen.
 
 Oben rechts stehen **+ (Erfassen)**, die **globale Suche** und die
 **Benachrichtigungen**.

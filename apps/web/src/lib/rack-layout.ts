@@ -17,8 +17,20 @@ export type PlacedDevice<T extends RackDevice> = {
   height: number;
 };
 
+/** A rack recorded by the user (infrastructure_racks). */
+export type RackDefinition = {
+  id: string;
+  name: string;
+  locationId: string | null;
+  locationName: string | null;
+  heightUnits: number;
+  notes: string | null;
+};
+
 export type Rack<T extends RackDevice> = {
   key: string;
+  /** Recorded rack; null for a rack only derived from device data. */
+  definition: RackDefinition | null;
   name: string;
   locationName: string | null;
   units: number;
@@ -41,15 +53,32 @@ export function parseRackUnits(
   return { start: first, height: 1 };
 }
 
-export function buildRacks<T extends RackDevice>(devices: T[]): Rack<T>[] {
+export function rackKey(locationName: string | null, name: string): string {
+  return `${locationName ?? ""}\u0000${name.trim().toLocaleLowerCase("de-CH")}`;
+}
+
+export function buildRacks<T extends RackDevice>(
+  devices: T[],
+  definitions: readonly RackDefinition[] = [],
+): Rack<T>[] {
   const groups = new Map<string, T[]>();
   for (const device of devices) {
     if (!device.rack?.trim()) continue;
-    const key = `${device.locationName ?? ""}\u0000${device.rack.trim()}`;
+    const key = rackKey(device.locationName, device.rack);
     groups.set(key, [...(groups.get(key) ?? []), device]);
+  }
+  const definedByKey = new Map(
+    definitions.map((definition) => [
+      rackKey(definition.locationName, definition.name),
+      definition,
+    ]),
+  );
+  for (const key of definedByKey.keys()) {
+    if (!groups.has(key)) groups.set(key, []);
   }
   return [...groups.entries()]
     .map(([key, members]) => {
+      const definition = definedByKey.get(key) ?? null;
       const placed: PlacedDevice<T>[] = [];
       const unplaced: T[] = [];
       for (const device of members) {
@@ -63,10 +92,16 @@ export function buildRacks<T extends RackDevice>(devices: T[]): Rack<T>[] {
       );
       return {
         key,
-        name: members[0]!.rack!.trim(),
-        locationName: members[0]!.locationName,
-        // Standard heights, at least as tall as the highest device.
-        units: [12, 24, 42, 48].find((size) => size >= top) ?? top,
+        definition,
+        name: definition?.name ?? members[0]!.rack!.trim(),
+        locationName: definition
+          ? definition.locationName
+          : members[0]!.locationName,
+        // Recorded height, else a standard height at least as tall as the
+        // highest device.
+        units: definition
+          ? Math.max(definition.heightUnits, top)
+          : ([12, 24, 42, 48].find((size) => size >= top) ?? top),
         placed: placed.sort((a, b) => b.start - a.start),
         unplaced,
       };

@@ -6,6 +6,7 @@ import {
   parseChecklist,
   parseDevice,
   parsePrtgObjectId,
+  topRackUnit,
   validIp,
   validMac,
 } from "./index.ts";
@@ -151,4 +152,27 @@ Deno.test("a maintenance entry takes an optional time of day", () => {
   assertEquals(parseAction({ ...base, performedTime: "" }) !== null, true);
   assertEquals(parseAction({ ...base, performedTime: "25:00" }), null);
   assertEquals(parseAction({ ...base, performedTime: "9:5" }), null);
+});
+
+Deno.test("racks: actions and occupied units", () => {
+  assertEquals(topRackUnit("12"), 12);
+  assertEquals(topRackUnit("HE 10-11"), 11);
+  assertEquals(topRackUnit(""), null);
+  assertEquals(
+    parseAction({ type: "saveRack", tenantId, name: "Rack 01", heightUnits: 24 }),
+    {
+      type: "saveRack",
+      tenantId,
+      id: null,
+      name: "Rack 01",
+      locationId: null,
+      heightUnits: 24,
+      notes: null,
+    },
+  );
+  assertEquals(
+    parseAction({ type: "saveRack", tenantId, name: "Rack", heightUnits: 61 }),
+    null,
+  );
+  assertEquals(parseAction({ type: "deleteRack", tenantId, id: "x" }), null);
 });
