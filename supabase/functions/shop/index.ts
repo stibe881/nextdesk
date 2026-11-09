@@ -1,8 +1,8 @@
 import { withSupabase } from "@supabase/server";
 import {
+  ensureEntraPersonAccount,
   ENTRA_PERSON_PREFIX,
   EntraPersonAccountError,
-  ensureEntraPersonAccount,
 } from "../_shared/entra-person-account.ts";
 import {
   resolveUserFeatureStates,
@@ -22,6 +22,15 @@ import {
   resolveRecordDepartment,
   scopeDepartmentOptions,
 } from "../_shared/department-scope.ts";
+import {
+  cadreLevelOf,
+  type CadreRules,
+  cadreTitleKey,
+  cleanStoredLevels,
+  isCadreLevel,
+  parseVisibleCadreLevels,
+  visibleForCadre,
+} from "../_shared/cadre-levels.ts";
 
 /**
  * Self-service shop.
@@ -160,6 +169,16 @@ function databaseError(error: { code?: string; message?: string }): HttpError {
       403,
       "shop_disabled",
       "Der Shop ist in diesem Arbeitsbereich nicht aktiviert.",
+    );
+  }
+  if (
+    error.code === "42501" &&
+    error.message?.includes("shop_item_not_for_cadre")
+  ) {
+    return new HttpError(
+      403,
+      "item_not_for_cadre",
+      "Ein Artikel im Warenkorb ist für Sie nicht freigegeben.",
     );
   }
   switch (error.code) {
@@ -612,7 +631,9 @@ async function addCatalogItemImage(
     );
   }
   const { bytes, contentType } = decodeImage(image);
-  const path = `${tenantId}/shop/${itemId}/${crypto.randomUUID()}.${IMAGE_TYPES[contentType]}`;
+  const path = `${tenantId}/shop/${itemId}/${crypto.randomUUID()}.${
+    IMAGE_TYPES[contentType]
+  }`;
   const { error: uploadError } = await admin.storage
     .from(IMAGE_BUCKET)
     .upload(path, bytes, { contentType, upsert: false });
@@ -706,17 +727,286 @@ async function borrowedQuantities(
   return result;
 }
 
+/**
+ * Kaderstufen-Verwaltung: Regeln Funktion → Stufe, alle Funktionen des
+ * Arbeitsbereichs (mit Anzahl Personen) und die Mitglieder mit ihrer Stufe.
+ */
+async function getCadreSettings(admin: Admin, tenantId: string) {
+  const [
+    rules,
+    { data: ruleRows, error: ruleError },
+    { data: memberRows, error: memberError },
+    { data: entraRows, error: entraError },
+  ] = await Promise.all([
+    loadCadreRules(admin, tenantId),
+    admin
+      .from("tenant_cadre_title_rules")
+      .select("job_title, cadre_level")
+      .eq("tenant_id", tenantId)
+      .order("cadre_level")
+      .order("job_title"),
+    admin
+      .from("tenant_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .limit(2000),
+    admin
+      .from("tenant_entra_directory_people")
+      .select("job_title, local_user_id")
+      .eq("tenant_id", tenantId)
+      .eq("account_enabled", true)
+      .is("inactive_at", null)
+      .not("job_title", "is", null)
+      .limit(5000),
+  ]);
+  if (ruleError) throw databaseError(ruleError);
+  if (memberError) throw databaseError(memberError);
+  if (entraError) throw databaseError(entraError);
+  const ids = ((memberRows ?? []) as Row[])
+    .map((row) => row.user_id)
+    .filter((id): id is string => isUuid(id));
+  const [people, titles] = await Promise.all([
+    names(admin, ids),
+    memberJobTitles(admin, tenantId, ids),
+  ]);
+  // Funktionen aus Entra und vom Personenverzeichnis, gezählt pro Person.
+  const counts = new Map<string, { title: string; count: number }>();
+  const countTitle = (title: unknown) => {
+    const key = cadreTitleKey(title);
+    if (!key) return;
+    const entry = counts.get(key) ?? { title: String(title).trim(), count: 0 };
+    entry.count += 1;
+    counts.set(key, entry);
+  };
+  for (const row of (entraRows ?? []) as Row[]) countTitle(row.job_title);
+  const entraLinked = new Set(
+    ((entraRows ?? []) as Row[])
+      .map((row) => row.local_user_id)
+      .filter((id): id is string => isUuid(id)),
+  );
+  for (const id of ids) {
+    if (!entraLinked.has(id)) countTitle(titles.get(id));
+  }
+  return {
+    rules: ((ruleRows ?? []) as Row[]).map((row) => ({
+      jobTitle: String(row.job_title),
+      cadreLevel: Number(row.cadre_level),
+      people: counts.get(cadreTitleKey(row.job_title) ?? "")?.count ?? 0,
+    })),
+    jobTitles: [...counts.values()]
+      .sort((a, b) => b.count - a.count || a.title.localeCompare(b.title, "de"))
+      .slice(0, 300)
+      .map((entry) => ({ jobTitle: entry.title, people: entry.count })),
+    members: ids
+      .map((id) => {
+        const manual = rules.overrides.get(id);
+        return {
+          id,
+          name: people.get(id) ?? "Unbekannte Person",
+          jobTitle: titles.get(id) ?? null,
+          cadreLevel: cadreLevelOf(rules, id, titles.get(id)),
+          titleLevel: cadreLevelOf(
+            { titles: rules.titles, overrides: new Map() },
+            null,
+            titles.get(id),
+          ),
+          manualLevel: isCadreLevel(manual) ? manual : null,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "de")),
+  };
+}
+
+async function saveCadreRule(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  input: Row,
+) {
+  const jobTitle = text(input.jobTitle, 160);
+  if (!jobTitle || Array.from(jobTitle).length < 2) {
+    throw new HttpError(400, "invalid_request", "Bitte die Funktion angeben.");
+  }
+  const key = cadreTitleKey(jobTitle) as string;
+  if (input.cadreLevel === null || input.cadreLevel === 0) {
+    const { error } = await admin
+      .from("tenant_cadre_title_rules")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("job_title_key", key);
+    if (error) throw databaseError(error);
+    return;
+  }
+  if (
+    input.cadreLevel !== 1 &&
+    input.cadreLevel !== 2 &&
+    input.cadreLevel !== 3
+  ) {
+    throw new HttpError(400, "invalid_request", "Die Kaderstufe ist ungültig.");
+  }
+  const { error } = await admin.from("tenant_cadre_title_rules").upsert(
+    {
+      tenant_id: tenantId,
+      job_title: jobTitle,
+      cadre_level: input.cadreLevel,
+      updated_by: actorId,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "tenant_id,job_title_key" },
+  );
+  if (error) throw databaseError(error);
+}
+
+async function setCadreOverride(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  input: Row,
+) {
+  if (!isUuid(input.userId)) {
+    throw new HttpError(400, "invalid_request", "Die Person ist ungültig.");
+  }
+  const userId = input.userId.toLowerCase();
+  if (input.cadreLevel === null) {
+    const { error } = await admin
+      .from("tenant_member_cadre_overrides")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("user_id", userId);
+    if (error) throw databaseError(error);
+    return;
+  }
+  if (!isCadreLevel(input.cadreLevel)) {
+    throw new HttpError(400, "invalid_request", "Die Kaderstufe ist ungültig.");
+  }
+  const { error } = await admin.from("tenant_member_cadre_overrides").upsert(
+    {
+      tenant_id: tenantId,
+      user_id: userId,
+      cadre_level: input.cadreLevel,
+      updated_by: actorId,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "tenant_id,user_id" },
+  );
+  // 23503: Die Person ist kein Mitglied dieses Arbeitsbereichs.
+  if (error?.code === "23503") {
+    throw new HttpError(404, "not_found", "Die Person wurde nicht gefunden.");
+  }
+  if (error) throw databaseError(error);
+}
+
+/** Kaderstufen-Regeln (Funktion → Stufe) und manuelle Festlegungen. */
+async function loadCadreRules(
+  admin: Admin,
+  tenantId: string,
+): Promise<CadreRules> {
+  const [
+    { data: titleRows, error: titleError },
+    { data: overrideRows, error: overrideError },
+  ] = await Promise.all([
+    admin
+      .from("tenant_cadre_title_rules")
+      .select("job_title_key, cadre_level")
+      .eq("tenant_id", tenantId),
+    admin
+      .from("tenant_member_cadre_overrides")
+      .select("user_id, cadre_level")
+      .eq("tenant_id", tenantId),
+  ]);
+  if (titleError) throw databaseError(titleError);
+  if (overrideError) throw databaseError(overrideError);
+  return {
+    titles: new Map(
+      ((titleRows ?? []) as Row[]).map((row) => [
+        String(row.job_title_key),
+        Number(row.cadre_level),
+      ]),
+    ),
+    overrides: new Map(
+      ((overrideRows ?? []) as Row[]).map((row) => [
+        String(row.user_id),
+        Number(row.cadre_level),
+      ]),
+    ),
+  };
+}
+
+/** Kaderstufe einer Person (0 = kein Kader), berechnet in der Datenbank. */
+async function memberCadreLevel(
+  admin: Admin,
+  tenantId: string,
+  userId: string,
+): Promise<number> {
+  const { data, error } = await admin.rpc("tenant_member_cadre_level", {
+    p_tenant_id: tenantId,
+    p_user_id: userId,
+  });
+  if (error) throw databaseError(error);
+  return typeof data === "number" ? data : 0;
+}
+
+/** Funktion der Mitglieder: Entra hat Vorrang vor dem Personenverzeichnis. */
+async function memberJobTitles(
+  admin: Admin,
+  tenantId: string,
+  ids: string[],
+): Promise<Map<string, string>> {
+  const titles = new Map<string, string>();
+  for (let index = 0; index < ids.length; index += 150) {
+    const chunk = ids.slice(index, index + 150);
+    const [
+      { data: directory, error: directoryError },
+      { data: entra, error: entraError },
+    ] = await Promise.all([
+      admin
+        .from("tenant_member_directory")
+        .select("user_id, job_title")
+        .eq("tenant_id", tenantId)
+        .in("user_id", chunk),
+      admin
+        .from("tenant_entra_directory_people")
+        .select("local_user_id, job_title, inactive_at")
+        .eq("tenant_id", tenantId)
+        .in("local_user_id", chunk),
+    ]);
+    if (directoryError) throw databaseError(directoryError);
+    if (entraError) throw databaseError(entraError);
+    for (const row of (directory ?? []) as Row[]) {
+      if (typeof row.job_title === "string" && row.job_title.trim()) {
+        titles.set(String(row.user_id), row.job_title.trim());
+      }
+    }
+    const entraRows = ((entra ?? []) as Row[]).sort(
+      (a, b) => Number(a.inactive_at !== null) - Number(b.inactive_at !== null),
+    );
+    const seen = new Set<string>();
+    for (const row of entraRows) {
+      const id = String(row.local_user_id);
+      if (seen.has(id)) continue;
+      if (typeof row.job_title === "string" && row.job_title.trim()) {
+        titles.set(id, row.job_title.trim());
+        seen.add(id);
+      }
+    }
+  }
+  return titles;
+}
+
 async function listCatalog(
   admin: Admin,
   tenantId: string,
   includeInactive: boolean,
   exact: boolean,
   editor: { canManage: boolean; scope: DepartmentScope },
+  // Kaderstufe der Person; null = sieht alle Artikel (Agenten).
+  viewerCadre: number | null,
 ) {
   let query = admin
     .from("shop_catalog_items")
     .select(
-      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids, specifications, category_ids, loan_quantity, department_id",
+      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids, specifications, category_ids, loan_quantity, department_id, visible_cadre_levels",
     )
     .eq("tenant_id", tenantId)
     .order("category")
@@ -729,8 +1019,15 @@ async function listCatalog(
   ]);
   if (error) throw databaseError(error);
   // Articles of departments in which the shop is off are not offered.
+  // Articles limited to other cadre levels are not shown either.
   const rows = ((data ?? []) as Row[]).filter(
-    (row) => !isUuid(row.department_id) || shopOn.has(row.department_id),
+    (row) =>
+      (!isUuid(row.department_id) || shopOn.has(row.department_id)) &&
+      (viewerCadre === null ||
+        visibleForCadre(
+          cleanStoredLevels(row.visible_cadre_levels),
+          viewerCadre,
+        )),
   );
   const itemIds = rows
     .map((row) => row.inventory_item_id)
@@ -827,6 +1124,10 @@ async function listCatalog(
       specifications: cleanSpecifications(row.specifications) ?? {},
       inventoryItemId: itemId,
       departmentId: isUuid(row.department_id) ? row.department_id : null,
+      // Für wen der Artikel sichtbar ist (leer = alle); nur für Agenten.
+      ...(exact
+        ? { visibleCadreLevels: cleanStoredLevels(row.visible_cadre_levels) }
+        : {}),
       // Managers edit only the articles of their own departments.
       canEdit:
         editor.canManage && departmentVisible(editor.scope, row.department_id),
@@ -908,22 +1209,11 @@ async function listRequesters(admin: Admin, tenantId: string) {
   const ids = ((data ?? []) as Row[])
     .map((row) => row.user_id)
     .filter((id): id is string => isUuid(id));
-  const [people, { data: directory }] = await Promise.all([
+  const [people, titles, rules] = await Promise.all([
     names(admin, ids),
-    ids.length > 0
-      ? admin
-          .from("tenant_member_directory")
-          .select("user_id, job_title")
-          .eq("tenant_id", tenantId)
-          .in("user_id", ids)
-      : Promise.resolve({ data: [] }),
+    memberJobTitles(admin, tenantId, ids),
+    loadCadreRules(admin, tenantId),
   ]);
-  const titles = new Map<string, string>();
-  for (const row of (directory ?? []) as Row[]) {
-    if (typeof row.user_id === "string" && typeof row.job_title === "string") {
-      titles.set(row.user_id, row.job_title);
-    }
-  }
   // Synchronised Entra people who never signed in can be ordered for too;
   // their account is prepared when the order is submitted.
   const { data: entraPeople, error: entraError } = await admin
@@ -940,6 +1230,7 @@ async function listRequesters(admin: Admin, tenantId: string) {
       id,
       name: people.get(id) ?? "Unbekannte Person",
       jobTitle: titles.get(id) ?? null,
+      cadreLevel: cadreLevelOf(rules, id, titles.get(id)),
     })),
     ...((entraPeople ?? []) as Row[])
       .filter((row) => typeof row.display_name === "string")
@@ -947,6 +1238,7 @@ async function listRequesters(admin: Admin, tenantId: string) {
         id: ENTRA_PERSON_PREFIX + String(row.entra_object_id),
         name: String(row.display_name),
         jobTitle: typeof row.job_title === "string" ? row.job_title : null,
+        cadreLevel: cadreLevelOf(rules, null, row.job_title),
       })),
   ].sort((a, b) => a.name.localeCompare(b.name, "de"));
 }
@@ -1047,12 +1339,13 @@ async function getOrder(
     .eq("id", orderId)
     .maybeSingle();
   if (error) throw databaseError(error);
-  if (!order)
+  if (!order) {
     throw new HttpError(
       404,
       "not_found",
       "Die Bestellung wurde nicht gefunden.",
     );
+  }
   const row = order as Row;
   // Agents process only orders with articles of their departments; approving
   // stays as before.
@@ -1689,6 +1982,14 @@ async function saveCatalogItem(
       "Bitte angeben, wie viele Stück zum Ausleihen vorhanden sind.",
     );
   }
+  const visibleCadreLevels = parseVisibleCadreLevels(input.visibleCadreLevels);
+  if (visibleCadreLevels === null) {
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "Bitte die Sichtbarkeit des Artikels prüfen.",
+    );
+  }
   const specifications = cleanSpecifications(input.specifications);
   if (specifications === null) {
     throw new HttpError(
@@ -1786,6 +2087,10 @@ async function saveCatalogItem(
     option_item_ids: optionItemIds,
     loan_quantity: loanQuantity,
     specifications,
+    // Ältere Clients senden das Feld nicht: dann bleibt die Sichtbarkeit.
+    ...(input.visibleCadreLevels === undefined
+      ? {}
+      : { visible_cadre_levels: visibleCadreLevels }),
     active: input.active,
     sort_order: int(input.sortOrder, -1000, 1000) ?? 0,
     department_id: departmentId,
@@ -1800,12 +2105,13 @@ async function saveCatalogItem(
       .select("id")
       .maybeSingle();
     if (error) throw databaseError(error);
-    if (!data)
+    if (!data) {
       throw new HttpError(
         404,
         "not_found",
         "Der Artikel wurde nicht gefunden.",
       );
+    }
     await audit(admin, tenantId, actorId, "shop.catalog.updated", input.id);
     return input.id;
   }
@@ -2053,6 +2359,9 @@ const securedHandler = withSupabase(
                 includeInactive,
                 access.canFulfill || access.canManage,
                 access,
+                access.canFulfill || access.canManage
+                  ? null
+                  : await memberCadreLevel(admin, tenantId, actorId),
               ),
             },
           });
@@ -2117,6 +2426,30 @@ const securedHandler = withSupabase(
         case "listCategories": {
           return json(request, {
             data: { categories: await listCategories(admin, tenantId) },
+          });
+        }
+        case "getCadreSettings":
+        case "saveCadreRule":
+        case "setCadreOverride": {
+          if (!access.canManage) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Für diese Aktion fehlt die Berechtigung.",
+            );
+          }
+          if (body.type === "saveCadreRule") {
+            await saveCadreRule(
+              admin,
+              tenantId,
+              actorId,
+              isRecord(body.rule) ? body.rule : {},
+            );
+          } else if (body.type === "setCadreOverride") {
+            await setCadreOverride(admin, tenantId, actorId, body);
+          }
+          return json(request, {
+            data: await getCadreSettings(admin, tenantId),
           });
         }
         case "saveCategory":
@@ -2347,8 +2680,8 @@ const securedHandler = withSupabase(
           // person who never signed in (an account is prepared for them).
           const entraRequester =
             typeof body.requesterId === "string" &&
-              body.requesterId.startsWith(ENTRA_PERSON_PREFIX) &&
-              isUuid(body.requesterId.slice(ENTRA_PERSON_PREFIX.length))
+            body.requesterId.startsWith(ENTRA_PERSON_PREFIX) &&
+            isUuid(body.requesterId.slice(ENTRA_PERSON_PREFIX.length))
               ? body.requesterId.slice(ENTRA_PERSON_PREFIX.length).toLowerCase()
               : null;
           if (entraRequester && !access.canFulfill) {
@@ -2386,6 +2719,41 @@ const securedHandler = withSupabase(
               "forbidden",
               "Nur Agenten können für andere Personen bestellen.",
             );
+          }
+          // Eigene Bestellung: nur Artikel der eigenen Kaderstufe. Agenten
+          // sehen und bestellen alle Artikel (auch für andere Personen).
+          if (
+            requesterId === actorId &&
+            !access.canFulfill &&
+            !access.canManage
+          ) {
+            const ids = [
+              ...new Set(lines.map((line) => line.catalog_item_id as string)),
+            ];
+            const [{ data: limitedRows, error: limitedError }, level] =
+              await Promise.all([
+                admin
+                  .from("shop_catalog_items")
+                  .select("id, name, visible_cadre_levels")
+                  .eq("tenant_id", tenantId)
+                  .in("id", ids),
+                memberCadreLevel(admin, tenantId, actorId),
+              ]);
+            if (limitedError) throw databaseError(limitedError);
+            const blocked = ((limitedRows ?? []) as Row[]).find(
+              (row) =>
+                !visibleForCadre(
+                  cleanStoredLevels(row.visible_cadre_levels),
+                  level,
+                ),
+            );
+            if (blocked) {
+              throw new HttpError(
+                403,
+                "item_not_for_cadre",
+                `«${blocked.name}» ist für Sie nicht freigegeben.`,
+              );
+            }
           }
           const { data, error } = await admin.rpc("shop_submit_order_for", {
             p_actor_id: actorId,

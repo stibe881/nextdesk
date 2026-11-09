@@ -54,6 +54,8 @@ export type CatalogItem = {
   departmentId?: string | null;
   /** Darf die Person den Artikel bearbeiten (eigene Abteilung)? */
   canEdit?: boolean;
+  /** Kaderstufen, für die der Artikel sichtbar ist (leer: alle). Nur Agenten. */
+  visibleCadreLevels?: number[];
   /** Technische Angaben (Lieferumfang, Anwendungsbereich, …). */
   specifications?: Record<string, string>;
   /** Artikel, die beim Bestellen dieses Artikels dazugewählt werden können. */
@@ -121,6 +123,21 @@ export type ShopPerson = {
   id: string;
   name: string;
   jobTitle: string | null;
+  /** Kaderstufe 1–3, 0 = kein Kader. */
+  cadreLevel?: number;
+};
+
+export type CadreSettings = {
+  rules: { jobTitle: string; cadreLevel: number; people: number }[];
+  jobTitles: { jobTitle: string; people: number }[];
+  members: {
+    id: string;
+    name: string;
+    jobTitle: string | null;
+    cadreLevel: number;
+    titleLevel: number;
+    manualLevel: number | null;
+  }[];
 };
 
 export type OrderLine = {
@@ -232,6 +249,23 @@ export const shopApi = {
     }).then((data) => data.items),
   saveItem: (tenantId: string, item: Record<string, unknown>) =>
     call<{ id: string }>({ type: "saveCatalogItem", tenantId, item }),
+  cadreSettings: (tenantId: string) =>
+    call<CadreSettings>({ type: "getCadreSettings", tenantId }),
+  saveCadreRule: (
+    tenantId: string,
+    rule: { jobTitle: string; cadreLevel: number | null },
+  ) => call<CadreSettings>({ type: "saveCadreRule", tenantId, rule }),
+  setCadreOverride: (
+    tenantId: string,
+    userId: string,
+    cadreLevel: number | null,
+  ) =>
+    call<CadreSettings>({
+      type: "setCadreOverride",
+      tenantId,
+      userId,
+      cadreLevel,
+    }),
   people: (tenantId: string) =>
     call<{ people: ShopPerson[] }>({ type: "listRequesters", tenantId }).then(
       (data) => data.people,
@@ -381,4 +415,22 @@ export function formatDate(value: string | null): string {
     dateStyle: "medium",
     ...(value.length > 10 ? { timeStyle: "short" } : {}),
   }).format(date);
+}
+
+/** Text für die Sichtbarkeit eines Artikels («Alle» oder die Kaderstufen). */
+export function cadreVisibilityLabel(
+  levels: readonly number[] | undefined,
+): string {
+  if (!levels || levels.length === 0) return "Alle";
+  return levels.length === 1
+    ? `Kaderstufe ${levels[0]}`
+    : `Kaderstufen ${[...levels].sort((a, b) => a - b).join(", ")}`;
+}
+
+/** Darf eine Person dieser Kaderstufe den Artikel bestellen? */
+export function visibleForCadre(
+  levels: readonly number[] | undefined,
+  cadreLevel: number,
+): boolean {
+  return !levels || levels.length === 0 || levels.includes(cadreLevel);
 }

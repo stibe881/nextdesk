@@ -11,8 +11,10 @@ import {
   Search,
   ShoppingCart,
   Trash2,
+  UserCog,
   X,
 } from "lucide-react";
+import { ShopCadreDialog } from "./shop-cadre";
 import {
   useCallback,
   useEffect,
@@ -26,11 +28,13 @@ import {
   EVENT_LABEL,
   ORDER_STATUS_LABEL,
   STOCK_LABEL,
+  cadreVisibilityLabel,
   formatDate,
   newRequestId,
   procurementLabel,
   shopApi,
   SPEC_FIELDS,
+  visibleForCadre,
   type CatalogItem,
   type InventoryOption,
   type OrderAction,
@@ -234,6 +238,11 @@ function ShopBadges({ item }: { item: CatalogItem }) {
       ) : null}
       {item.requiresApproval ? (
         <span className="shop__badge shop__badge--approval">Mit Freigabe</span>
+      ) : null}
+      {item.visibleCadreLevels && item.visibleCadreLevels.length > 0 ? (
+        <span className="shop__badge shop__badge--cadre">
+          Nur {cadreVisibilityLabel(item.visibleCadreLevels)}
+        </span>
       ) : null}
     </div>
   );
@@ -516,6 +525,7 @@ function CatalogView({
   const [editorRequest, setEditorRequest] = useState<EditorRequest | null>(
     null,
   );
+  const [cadreOpen, setCadreOpen] = useState(false);
 
   const setLayout = (next: CatalogLayout) => {
     setLayoutState(next);
@@ -689,6 +699,13 @@ function CatalogView({
                 type="button"
               >
                 <Pencil aria-hidden="true" size={15} /> Kategorien
+              </button>
+              <button
+                className="secondary-button"
+                onClick={() => setCadreOpen(true)}
+                type="button"
+              >
+                <UserCog aria-hidden="true" size={15} /> Kaderstufen
               </button>
             </div>
           ) : null}
@@ -948,6 +965,15 @@ function CatalogView({
           }
         />
       ) : null}
+      {canManage && cadreOpen ? (
+        <ShopCadreDialog
+          onClose={(changed) => {
+            setCadreOpen(false);
+            if (changed) setNotice("Kaderstufen aktualisiert.");
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
       {canManage ? (
         <CatalogEditor
           departments={departments}
@@ -983,6 +1009,19 @@ function CartPanel({
   const [requesterId, setRequesterId] = useState("");
   const [people, setPeople] = useState<ShopPerson[] | null>(null);
   const forOther = canOrderForOthers && requesterId !== "";
+  // Artikel, die für die gewählte Person (Kaderstufe) nicht freigegeben sind.
+  const otherPerson = forOther
+    ? (people ?? []).find((person) => person.id === requesterId)
+    : undefined;
+  const notForPerson = otherPerson
+    ? cart.filter(
+        (line) =>
+          !visibleForCadre(
+            line.item.visibleCadreLevels,
+            otherPerson.cadreLevel ?? 0,
+          ),
+      )
+    : [];
   const [deliveryMethod, setDeliveryMethod] = useState<"pickup" | "desk">(
     "pickup",
   );
@@ -1067,6 +1106,17 @@ function CartPanel({
               people={people ?? []}
               value={requesterId}
             />
+          ) : null}
+          {otherPerson && notForPerson.length > 0 ? (
+            <p className="shop__cadre-warning" role="status">
+              Nicht für {otherPerson.name}
+              {otherPerson.cadreLevel
+                ? ` (Kaderstufe ${otherPerson.cadreLevel})`
+                : " (kein Kader)"}{" "}
+              freigegeben:{" "}
+              {notForPerson.map((line) => line.item.name).join(", ")}. Sie
+              können trotzdem bestellen.
+            </p>
           ) : null}
           <ul className="shop__cart-lines">
             {cart.map((line) => (
@@ -1841,6 +1891,8 @@ type Draft = {
   /** Artikel, die dazu bestellt werden können (Optionen). */
   optionItemIds: string[];
   active: boolean;
+  /** Kaderstufen, die den Artikel sehen (leer: alle Mitarbeitenden). */
+  visibleCadreLevels: number[];
   sortOrder: number;
   /** Saved photos that stay. */
   images: { id: string; url: string }[];
@@ -1954,6 +2006,7 @@ const EMPTY_DRAFT: Draft = {
   inventoryItemId: "",
   optionItemIds: [],
   active: true,
+  visibleCadreLevels: [],
   sortOrder: 0,
   images: [],
   removedImageIds: [],
@@ -2092,6 +2145,7 @@ function draftFromItem(item: CatalogItem): Draft {
         : "",
     optionItemIds: item.optionItemIds ?? [],
     active: item.active,
+    visibleCadreLevels: item.visibleCadreLevels ?? [],
     sortOrder: item.sortOrder,
     images: item.images ?? [],
     removedImageIds: [],
@@ -2289,6 +2343,7 @@ function CatalogEditor({
         loanQuantity: draft.kind === "loan" ? Number(draft.loanQuantity) : null,
         optionItemIds: draft.optionItemIds,
         active: draft.active,
+        visibleCadreLevels: draft.visibleCadreLevels,
         sortOrder: draft.sortOrder,
         // Ohne Auswahl bestimmt der Server die Abteilung (die einzige eigene
         // bzw. bei bestehenden Artikeln die bisherige).
@@ -2955,6 +3010,45 @@ function CatalogEditor({
               />
               Im Shop sichtbar
             </label>
+            <fieldset className="shop__cadre-visibility">
+              <legend>Sichtbar für</legend>
+              <label className="shop__check">
+                <input
+                  checked={draft.visibleCadreLevels.length === 0}
+                  onChange={() =>
+                    setDraft({ ...draft, visibleCadreLevels: [] })
+                  }
+                  type="checkbox"
+                />
+                Alle Mitarbeitenden
+              </label>
+              {[1, 2, 3].map((level) => (
+                <label className="shop__check" key={level}>
+                  <input
+                    checked={draft.visibleCadreLevels.includes(level)}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        visibleCadreLevels: event.target.checked
+                          ? [...draft.visibleCadreLevels, level].sort(
+                              (a, b) => a - b,
+                            )
+                          : draft.visibleCadreLevels.filter(
+                              (entry) => entry !== level,
+                            ),
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  Kaderstufe {level}
+                </label>
+              ))}
+              <small>
+                Ohne Auswahl sehen alle den Artikel. Mit Auswahl sehen und
+                bestellen ihn nur Personen genau dieser Kaderstufen; Agenten
+                sehen immer alle Artikel.
+              </small>
+            </fieldset>
             {error ? (
               <p className="form-error" role="alert">
                 {error}
