@@ -595,3 +595,33 @@
 .security-assign select {
   width: 100%;
 }
+
+/* Tiles are buttons that filter the list below. */
+button.security-tile {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.security-tile:hover,
+button.security-tile:focus-visible {
+  border-color: var(--primary);
+}
+
+.security-tile--active {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+  background: var(--primary-soft);
+}
+
+.security-cases__tile-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}

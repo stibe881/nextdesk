@@ -156,6 +156,11 @@ zeigen, was zu beurteilen ist, wie viele Fälle noch Massnahmen haben, die
 Meldungen von heute, die mittlere Zeit bis zum Urteil und wie oft Melder
 angegeben haben, geklickt zu haben.
 
+Ein Klick auf eine Kachel zeigt darunter die passenden Fälle: _Meldungen
+heute_ die heute gemeldeten, _Zeit bis Urteil_ die in den letzten 30 Tagen
+beurteilten, _Geklickt_ die Fälle, bei denen jemand angegeben hat, geklickt zu
+haben. **Filter aufheben** führt zurück zu den Fällen, die zu beurteilen sind.
+
 ![Liste der Sicherheitsfälle](images/ag-sicherheitsfaelle.jpg)
 
 Ein Klick öffnet den Fall. Die gemeldete E-Mail steht in einer **sicheren

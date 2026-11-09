@@ -65,6 +65,51 @@ const FILTERS: { key: SecurityStateFilter; label: string }[] = [
   { key: "all", label: "Alle" },
 ];
 
+const TILE_FILTER_LABELS: Partial<Record<SecurityStateFilter, string>> = {
+  today: "Fälle mit Meldungen von heute",
+  decided: "Fälle mit Urteil in den letzten 30 Tagen",
+  clicked: "Fälle, bei denen jemand angegeben hat, geklickt zu haben (30 Tage)",
+};
+
+const EMPTY_TEXT: Record<SecurityStateFilter, string> = {
+  triage: "Keine Meldungen zu beurteilen.",
+  actions: "Keine Fälle mit offenen Massnahmen.",
+  closed: "Keine abgeschlossenen Fälle.",
+  all: "Noch keine Sicherheitsfälle.",
+  today: "Heute wurde noch nichts gemeldet.",
+  decided: "In den letzten 30 Tagen wurde kein Fall beurteilt.",
+  clicked: "Niemand hat angegeben, geklickt zu haben.",
+};
+
+function SecurityTile({
+  active,
+  detail,
+  hot = false,
+  label,
+  onClick,
+  value,
+}: {
+  active: boolean;
+  detail: string;
+  hot?: boolean;
+  label: string;
+  onClick: () => void;
+  value: number | string;
+}) {
+  return (
+    <button
+      aria-pressed={active}
+      className={`security-tile${hot ? " security-tile--hot" : ""}${active ? " security-tile--active" : ""}`}
+      onClick={onClick}
+      type="button"
+    >
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </button>
+  );
+}
+
 const CHANNEL_LABELS: Record<string, string> = {
   email: "Outlook / E-Mail",
   portal: "Portal",
@@ -133,50 +178,56 @@ export function SecurityCases({ tenantId }: { tenantId: string }) {
 
       {stats ? (
         <div className="security-cases__tiles">
-          <div
-            className={`security-tile${stats.triageHigh || stats.overdue ? " security-tile--hot" : ""}`}
-          >
-            <span>Zu beurteilen</span>
-            <strong>{stats.triage}</strong>
-            <small>
-              {stats.overdue
+          <SecurityTile
+            active={filter === "triage"}
+            hot={stats.triageHigh > 0 || stats.overdue > 0}
+            label="Zu beurteilen"
+            onClick={() => setFilter("triage")}
+            value={stats.triage}
+            detail={
+              stats.overdue
                 ? `${stats.overdue} überfällig`
                 : stats.triageHigh
                   ? `${stats.triageHigh} mit hohem Risiko`
-                  : "keine dringenden"}
-            </small>
-          </div>
-          <div className="security-tile">
-            <span>Massnahmen offen</span>
-            <strong>{stats.actions}</strong>
-            <small>Fälle in Arbeit</small>
-          </div>
-          <div className="security-tile">
-            <span>Meldungen heute</span>
-            <strong>{stats.reportsToday}</strong>
-            <small>
-              von {stats.reportersToday}{" "}
-              {stats.reportersToday === 1 ? "Person" : "Personen"}
-            </small>
-          </div>
-          <div className="security-tile">
-            <span>Zeit bis Urteil</span>
-            <strong>{formatMinutes(stats.medianVerdictMinutes)}</strong>
-            <small>Median, 30 Tage</small>
-          </div>
-          <div className="security-tile">
-            <span>Geklickt</span>
-            <strong>
-              {stats.clickAnswers
+                  : "keine dringenden"
+            }
+          />
+          <SecurityTile
+            active={filter === "actions"}
+            label="Massnahmen offen"
+            onClick={() => setFilter("actions")}
+            value={stats.actions}
+            detail="Fälle in Arbeit"
+          />
+          <SecurityTile
+            active={filter === "today"}
+            label="Meldungen heute"
+            onClick={() => setFilter("today")}
+            value={stats.reportsToday}
+            detail={`von ${stats.reportersToday} ${stats.reportersToday === 1 ? "Person" : "Personen"}`}
+          />
+          <SecurityTile
+            active={filter === "decided"}
+            label="Zeit bis Urteil"
+            onClick={() => setFilter("decided")}
+            value={formatMinutes(stats.medianVerdictMinutes)}
+            detail="Median, 30 Tage"
+          />
+          <SecurityTile
+            active={filter === "clicked"}
+            label="Geklickt"
+            onClick={() => setFilter("clicked")}
+            value={
+              stats.clickAnswers
                 ? `${Math.round((stats.clickYes / stats.clickAnswers) * 100)} %`
-                : "–"}
-            </strong>
-            <small>
-              {stats.clickAnswers
+                : "–"
+            }
+            detail={
+              stats.clickAnswers
                 ? `${stats.clickYes} von ${stats.clickAnswers} Antworten`
-                : "noch keine Antworten"}
-            </small>
-          </div>
+                : "noch keine Antworten"
+            }
+          />
         </div>
       ) : null}
 
@@ -199,6 +250,18 @@ export function SecurityCases({ tenantId }: { tenantId: string }) {
           </button>
         ))}
       </div>
+      {TILE_FILTER_LABELS[filter] ? (
+        <p className="security-cases__tile-filter" role="status">
+          {TILE_FILTER_LABELS[filter]}
+          <button
+            className="text-button"
+            onClick={() => setFilter("triage")}
+            type="button"
+          >
+            Filter aufheben
+          </button>
+        </p>
+      ) : null}
 
       {error ? (
         <p className="ticket-detail-message error" role="alert">
@@ -219,9 +282,7 @@ export function SecurityCases({ tenantId }: { tenantId: string }) {
       {cases && cases.length === 0 ? (
         <p className="security-cases__empty">
           <ShieldCheck aria-hidden="true" size={18} />
-          {filter === "triage"
-            ? "Keine Meldungen zu beurteilen."
-            : "Keine Sicherheitsfälle in dieser Ansicht."}
+          {EMPTY_TEXT[filter]}
         </p>
       ) : null}
       {cases && cases.length > 0 ? (
