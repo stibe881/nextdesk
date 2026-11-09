@@ -3,10 +3,7 @@
  * handbooks the signed-in person may read; the app only shows what it returns.
  */
 export type HandbookId =
-  | "mitarbeitende"
-  | "agenten"
-  | "administratoren"
-  | "installation";
+  "mitarbeitende" | "agenten" | "administratoren" | "installation";
 
 export type HandbookSummary = {
   id: HandbookId;
@@ -100,8 +97,10 @@ export type HandbookBlock =
   | { kind: "image"; alt: string; uri: string }
   | { kind: "table"; header: string[]; rows: string[][] };
 
+// Handbook screenshots (data URIs) and uploaded knowledge article images
+// (kb-image:<id>, resolved to signed URLs by the article screen).
 const IMAGE_PATTERN =
-  /^!\[([^\]]*)\]\((data:image\/(?:png|jpeg|webp);base64,[^)]+)\)$/;
+  /^!\[([^\]]*)\]\((data:image\/(?:png|jpeg|webp);base64,[^)]+|kb-image:[0-9a-fA-F-]+)\)$/;
 
 function tableCells(line: string): string[] {
   return line
