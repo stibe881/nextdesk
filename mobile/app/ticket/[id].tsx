@@ -31,6 +31,7 @@ import { TicketSatisfactionCard } from "@/components/ticket-satisfaction-card";
 import { isRatableTicketStatus } from "@/lib/ticket-satisfaction-model";
 import { reminderAnswerFromParam } from "@/lib/requester-progress";
 import { personRoute } from "@/lib/person-overview";
+import { formatRequesterName } from "@/lib/person-name";
 import { TicketConversation } from "@/components/ticket-conversation";
 import { TicketPhotoAttachments } from "@/components/ticket-photo-attachments";
 import { TicketSupportLevelCard } from "@/components/ticket-support-level-card";
@@ -1008,7 +1009,9 @@ export default function TicketDetailScreen() {
         statusId: nextStatus.id,
         priorityId: nextPriority.id,
         requesterContact: nextRequester,
-        requesterName: nextRequester?.displayName ?? null,
+        requesterName: nextRequester
+          ? formatRequesterName(nextRequester.displayName)
+          : null,
       });
       setSubject(nextSubject);
       setDescription(nextDescription);

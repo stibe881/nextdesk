@@ -430,7 +430,13 @@ function displayNameFromAddress(address: string): string {
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
     .replace(/\s+/g, " ")
-    .slice(0, 120);
+    .slice(0, 120)
+    // «gabriela leone» → «Gabriela Leone»
+    .replace(
+      /(^|[\s-])(\p{L})/gu,
+      (_match, start: string, letter: string) =>
+        `${start}${letter.toLocaleUpperCase("de-CH")}`,
+    );
   return label || "E-Mail-Kontakt";
 }
 
@@ -817,26 +823,41 @@ async function requesterContact(
   tenantId: string,
   address: string,
 ): Promise<{ id: string; email: string }> {
-  const upsert = await admin
+  // A known contact keeps its name (it may have been corrected by hand). A new
+  // contact gets the name from the Entra directory, otherwise it is derived
+  // from the address.
+  const directory = await admin
+    .from("tenant_entra_directory_people")
+    .select("display_name")
+    .eq("tenant_id", tenantId)
+    .ilike("email", address)
+    .limit(1)
+    .maybeSingle();
+  const created = await admin.from("ticket_requesters").upsert(
+    {
+      tenant_id: tenantId,
+      email: address,
+      display_name:
+        asString(directory.data?.display_name)?.trim() ||
+        displayNameFromAddress(address),
+      source: "email",
+    },
+    { onConflict: "tenant_id,email", ignoreDuplicates: true },
+  );
+  if (created.error) throw new Error("requester_contact_upsert_failed");
+  const stored = await admin
     .from("ticket_requesters")
-    .upsert(
-      {
-        tenant_id: tenantId,
-        email: address,
-        display_name: displayNameFromAddress(address),
-        source: "email",
-      },
-      { onConflict: "tenant_id,email" },
-    )
     .select("id, email")
+    .eq("tenant_id", tenantId)
+    .eq("email", address)
     .single();
   if (
-    upsert.error ||
-    !asString(upsert.data?.id) ||
-    !emailAddress(upsert.data?.email)
+    stored.error ||
+    !asString(stored.data?.id) ||
+    !emailAddress(stored.data?.email)
   )
     throw new Error("requester_contact_upsert_failed");
-  return { id: upsert.data.id, email: upsert.data.email };
+  return { id: stored.data.id, email: stored.data.email };
 }
 
 async function findInboundTicket(

@@ -705,7 +705,9 @@ export async function loadMobileTicketDetail(
     description: record.description,
     requesterId:
       typeof record.requester_id === "string" ? record.requester_id : null,
-    requesterName: requesterContact?.displayName ?? null,
+    requesterName: requesterContact
+      ? formatRequesterName(requesterContact.displayName)
+      : null,
     requesterContact,
     assignedAgentId:
       typeof record.assigned_agent_id === "string"
