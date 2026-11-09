@@ -519,7 +519,8 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
             (die Adresse muss beim verbundenen Exchange-Postfach ankommen, z. B.
             als Alias). Daraus entsteht ein Sicherheitsticket mit automatischer
             Risikoeinschätzung (interne Notiz); Links und Anhänge werden dabei
-            nicht geöffnet. Das Sicherheitsteam erhält eine Benachrichtigung.
+            nicht geöffnet. Das Ticket wird dem Sicherheitsteam zugewiesen, und
+            das Team erhält eine Benachrichtigung.
           </p>
         </div>
       </div>
@@ -647,19 +648,27 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
             </select>
           </label>
           <label>
-            Sicherheitsteam (Benachrichtigung)
+            Sicherheitsteam (Zuweisung und Benachrichtigung)
             <select
               onChange={(event) =>
                 update({ notifyTeamId: event.target.value || null })
               }
               value={settings.notifyTeamId ?? ""}
             >
-              <option value="">Alle mit Zugriff auf die Zielabteilung</option>
-              {options.teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
+              <option value="">
+                Kein Team – alle mit Zugriff auf die Zielabteilung
+              </option>
+              {options.teams
+                .filter(
+                  (team) =>
+                    !team.departmentId ||
+                    team.departmentId === settings.departmentId,
+                )
+                .map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
             </select>
           </label>
           <div>

@@ -203,7 +203,7 @@ async function settingsOptions(admin: Client, tenantId: string) {
       .order("name").limit(200),
     admin.from("ticket_categories").select("id, name, department_id, parent_id").eq("tenant_id", tenantId)
       .eq("active", true).order("name").limit(1000),
-    admin.from("teams").select("id, name").eq("tenant_id", tenantId).eq("active", true)
+    admin.from("teams").select("id, name, department_id").eq("tenant_id", tenantId).eq("active", true)
       .order("name").limit(200),
   ]);
   if (departments.error || categories.error || teams.error) throw unavailable();
@@ -219,7 +219,11 @@ async function settingsOptions(admin: Client, tenantId: string) {
       name: row.name,
       categoryId: row.parent_id,
     })),
-    teams: ((teams.data ?? []) as Row[]).map((row) => ({ id: row.id, name: row.name })),
+    teams: ((teams.data ?? []) as Row[]).map((row) => ({
+      id: row.id,
+      name: row.name,
+      departmentId: row.department_id ?? null,
+    })),
   };
 }
 

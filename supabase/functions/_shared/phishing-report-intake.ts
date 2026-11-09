@@ -198,6 +198,23 @@ async function validCategory(
   return text((data as Row | null)?.id);
 }
 
+/**
+ * The security team also gets the ticket assigned (so it shows in its queue
+ * and support level), provided it belongs to the target department.
+ */
+async function validTeam(
+  admin: Admin,
+  tenantId: string,
+  departmentId: string,
+  teamId: string | null,
+): Promise<string | null> {
+  if (!teamId) return null;
+  const { data } = await admin.from("teams").select("id")
+    .eq("id", teamId).eq("tenant_id", tenantId).eq("department_id", departmentId)
+    .eq("active", true).maybeSingle();
+  return text((data as Row | null)?.id);
+}
+
 async function validSubcategory(
   admin: Admin,
   tenantId: string,
@@ -285,6 +302,12 @@ export async function createSecurityTicket(
       category,
       input.settings.subcategoryId,
     ),
+    assigned_team_id: await validTeam(
+      admin,
+      input.tenantId,
+      department.id,
+      input.settings.notifyTeamId,
+    ),
     requester_id: input.reporterId,
     requester_contact_id: contact.id,
     source: "portal",
@@ -335,7 +358,12 @@ export async function convertToSecurityTicket(
         category,
         input.settings.subcategoryId,
       ),
-      assigned_team_id: null,
+      assigned_team_id: await validTeam(
+        admin,
+        input.tenantId,
+        department.id,
+        input.settings.notifyTeamId,
+      ),
       assigned_agent_id: null,
     });
   }

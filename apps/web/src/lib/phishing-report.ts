@@ -31,7 +31,7 @@ export type PhishingSettingsOptions = {
   departments: { id: string; name: string }[];
   categories: { id: string; name: string; departmentId: string | null }[];
   subcategories: { id: string; name: string; categoryId: string }[];
-  teams: { id: string; name: string }[];
+  teams: { id: string; name: string; departmentId: string | null }[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -136,7 +136,9 @@ export function parsePhishingSettings(
       teams: list(options.teams).flatMap((row) => {
         const id = text(row.id, 64);
         const name = text(row.name, 200);
-        return id && name ? [{ id, name }] : [];
+        return id && name
+          ? [{ id, name, departmentId: text(row.departmentId, 64) }]
+          : [];
       }),
     },
   };

@@ -150,7 +150,9 @@ Benachrichtigungen_ pro Benachrichtigung einschalten. Für Agenten sind
 anfangs alle Benachrichtigungen per Push und E-Mail eingeschaltet. Optional aktivieren Sie im selben Bereich die
 **Phishing-Meldungen** mit eigener Meldeadresse und Zielabteilung. Kategorie
 und Unterkategorie des Sicherheitstickets wählen Sie dort aus oder erfassen sie
-über **+ Neue Kategorie …** bzw. **+ Neue Unterkategorie …** direkt neu.
+über **+ Neue Kategorie …** bzw. **+ Neue Unterkategorie …** direkt neu. Das
+**Sicherheitsteam** bekommt die Tickets zugewiesen und wird benachrichtigt; sie
+erscheinen damit auch in seiner Supportstufe.
 
 ![E-Mail-Kanäle mit Support-Postfächern](images/in-exchange.jpg)
 
