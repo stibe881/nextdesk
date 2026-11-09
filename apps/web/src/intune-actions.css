@@ -86,7 +86,7 @@
 
 .intune-actions__backdrop {
   position: fixed;
-  z-index: 60;
+  z-index: 1000;
   inset: 0;
   display: grid;
   place-items: center;
@@ -169,4 +169,23 @@
     right: auto;
     left: 0;
   }
+}
+
+/* In the ticket detail the actions sit in a narrow fact cell that clips
+   overflowing content: open the menu in the flow below the button. */
+.intune-actions__devices .intune-actions {
+  display: block;
+  width: 100%;
+}
+
+.intune-actions__devices .intune-actions__trigger {
+  justify-content: center;
+  width: 100%;
+}
+
+.intune-actions__devices .intune-actions__menu {
+  position: static;
+  min-width: 0;
+  margin-top: 6px;
+  box-shadow: var(--shadow-sm);
 }
