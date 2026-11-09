@@ -24,6 +24,8 @@ export type OfflineTicketListCache = {
     ticketNumber: string;
     /** Fehlt in älteren Caches; diese bleiben gültig. */
     unassigned?: boolean;
+    /** Fehlt in älteren Caches; diese bleiben gültig. */
+    createdAt?: string;
   }>;
 };
 
@@ -427,7 +429,9 @@ export async function loadOfflineTicketListCache(input: {
         typeof ticket.resolved === "boolean" &&
         typeof ticket.assignedToCurrentUser === "boolean" &&
         (ticket.unassigned === undefined ||
-          typeof ticket.unassigned === "boolean"),
+          typeof ticket.unassigned === "boolean") &&
+        (ticket.createdAt === undefined ||
+          typeof ticket.createdAt === "string"),
     );
     if (tickets.length !== parsed.tickets.length) {
       throw new Error("invalid_ticket_cache");

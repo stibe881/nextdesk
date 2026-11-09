@@ -31,6 +31,7 @@ import { RecentItemsCard } from "@/components/recent-items-card";
 import { ScreenContainer } from "@/components/screen-container";
 import { UndoToast } from "@/components/undo-toast";
 import {
+  TicketCreatedText,
   TicketPriorityText,
   TicketRequesterText,
   TicketStatusBadge,
@@ -1154,6 +1155,7 @@ export default function HomeScreen() {
                       </Text>
                       <TicketRequesterText name={ticket.requesterName} />
                       <TicketPriorityText priority={ticket.priority} />
+                      <TicketCreatedText createdAt={ticket.createdAt} />
                     </View>
                     <View style={styles.ticketRight}>
                       <TicketStatusBadge ticket={ticket} />
