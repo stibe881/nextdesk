@@ -390,35 +390,94 @@ const knowledgeBaseStyles = `
     font: 700 11px var(--font-sans);
     padding: 1px 6px;
   }
-  .knowledge-base .knowledge-base__tiles {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-    gap: 10px;
-  }
-  .knowledge-base .knowledge-base__tile {
-    display: grid;
-    gap: 2px;
-    border: 1px solid #dfe8ea;
-    border-radius: 10px;
-    background: #fff;
-    color: #173246;
-    cursor: pointer;
-    font: inherit;
-    padding: 12px 14px;
-    text-align: left;
-  }
-  .knowledge-base .knowledge-base__tile small { color: #5d6f7a; font-size: 12px; }
-  .knowledge-base .knowledge-base__tile:hover,
-  .knowledge-base .knowledge-base__tile[aria-pressed="true"] {
-    border-color: #1c4f86;
-    background: #edf3fa;
-  }
   .knowledge-base .knowledge-base__chips {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
   }
+  .knowledge-base .knowledge-base__dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 50%;
+  }
+  .knowledge-base .knowledge-base__chip-count {
+    color: #6c7d87;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .knowledge-base .knowledge-base__chip--more {
+    border-style: dashed;
+    color: #1c4f86;
+  }
+  .knowledge-base .knowledge-base__bento {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .knowledge-base button.knowledge-base__card {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-height: 0;
+    border: 1px solid #e3e9ee;
+    border-radius: 14px;
+    background: #fff;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    padding: 16px;
+    text-align: left;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  }
+  .knowledge-base button.knowledge-base__card:hover:not(:disabled),
+  .knowledge-base button.knowledge-base__card:focus-visible {
+    border-color: #9db5e8;
+    box-shadow: 0 8px 24px -12px rgba(28, 79, 134, 0.35);
+    transform: translateY(-1px);
+  }
+  .knowledge-base .knowledge-base__card strong {
+    color: #173246;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+  .knowledge-base .knowledge-base__card-topic {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #5d6f7a;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .knowledge-base button.knowledge-base__card--hero {
+    grid-column: span 3;
+    grid-row: span 2;
+    align-content: end;
+    padding: 22px;
+    background: linear-gradient(145deg, #e9effb, #fff 70%);
+  }
+  .knowledge-base .knowledge-base__card--hero strong {
+    font-size: 24px;
+  }
+  .knowledge-base .knowledge-base__card--hero .knowledge-base__result-excerpt {
+    -webkit-line-clamp: 4;
+    font-size: 14px;
+  }
+  .knowledge-base button.knowledge-base__card--wide { grid-column: span 3; }
+  .knowledge-base button.knowledge-base__card--third { grid-column: span 2; }
+  @media (max-width: 800px) {
+    .knowledge-base button.knowledge-base__card--hero,
+    .knowledge-base button.knowledge-base__card--wide,
+    .knowledge-base button.knowledge-base__card--third {
+      grid-column: 1 / -1;
+      grid-row: auto;
+    }
+  }
   .knowledge-base .knowledge-base__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     border: 1px solid #c9d8dd;
     border-radius: 999px;
     background: #fff;
@@ -1259,6 +1318,23 @@ function highlightText(text: string, query: string): ReactNode {
   );
 }
 
+/** Stable accent colour per topic (a dot in front of the name). */
+const TOPIC_COLORS = [
+  "#3b5bfd",
+  "#0f9d6b",
+  "#d9480f",
+  "#9333ea",
+  "#0891b2",
+  "#be185d",
+];
+function topicColor(name: string): string {
+  let hash = 0;
+  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return TOPIC_COLORS[hash % TOPIC_COLORS.length] ?? "#3b5bfd";
+}
+
+const VISIBLE_TOPIC_CHIPS = 8;
+
 type ArticleListResult = ArticleList;
 
 // Lists and articles already seen: shown at once while a fresh copy loads.
@@ -1459,6 +1535,22 @@ export function KnowledgeBase({
         .filter((tile) => tile.count > 0),
     [articleFilterCategories, articleListFilter, articles, collections],
   );
+  const [showAllTopics, setShowAllTopics] = useState(false);
+  // The busiest topics as chips; the selected one always stays visible.
+  const topicChips = useMemo(() => {
+    const sorted = [...categoryTiles].sort(
+      (left, right) =>
+        right.count - left.count ||
+        left.collection.name.localeCompare(right.collection.name, "de-CH"),
+    );
+    if (showAllTopics) return { shown: sorted, hidden: 0 };
+    const shown = sorted.slice(0, VISIBLE_TOPIC_CHIPS);
+    const selectedTile = sorted.find(
+      (tile) => tile.collection.id === articleCategoryFilterId,
+    );
+    if (selectedTile && !shown.includes(selectedTile)) shown.push(selectedTile);
+    return { shown, hidden: sorted.length - shown.length };
+  }, [articleCategoryFilterId, categoryTiles, showAllTopics]);
   const [resultLimit, setResultLimit] = useState(30);
   useEffect(() => {
     setResultLimit(30);
@@ -2864,11 +2956,54 @@ export function KnowledgeBase({
     ? visibleKnowledgeArticleRevision(detailArticle, selected?.revision)
     : null;
   const articleCountLabel = `${visibleArticles.length} Artikel`;
-  const showReader = Boolean(selected) || loadingDetail;
   const isListFiltered =
     articleListFilter !== "all" ||
     articleCategoryFilterId.length > 0 ||
     articleSubcategoryFilterId.length > 0;
+  const showReader = Boolean(selected) || loadingDetail;
+  // Start page (no search, no filter): the newest articles as cards.
+  const showBento =
+    !activeQuery && !isListFiltered && visibleArticles.length >= 4;
+  const bentoArticles = showBento ? visibleArticles.slice(0, 6) : [];
+  const listArticles = showBento ? visibleArticles.slice(6) : visibleArticles;
+  function articleCard(item: ArticleListItem, className: string) {
+    const { article, revision } = item;
+    const topic =
+      formatKnowledgeCollectionPaths(article.collectionIds, collections)[0] ??
+      "";
+    return (
+      <button
+        className={`knowledge-base__card ${className}`}
+        disabled={isBusy}
+        key={article.id}
+        onClick={() => void openArticle(article.id)}
+        onFocus={() => prefetchArticle(article.id)}
+        onPointerEnter={() => prefetchArticle(article.id)}
+        type="button"
+      >
+        {topic ? (
+          <span className="knowledge-base__card-topic">
+            <span
+              aria-hidden="true"
+              className="knowledge-base__dot"
+              style={{ background: topicColor(topic) }}
+            />
+            {topic}
+          </span>
+        ) : null}
+        <strong>{article.title}</strong>
+        <span className="knowledge-base__result-excerpt">
+          {shortBody(revision?.body ?? null)}
+        </span>
+        <span className="knowledge-base__result-meta">
+          Aktualisiert {formatShortDate(article.updatedAt)}
+          {readOnly || article.status === "published"
+            ? ""
+            : ` · ${statusLabels[article.status]}`}
+        </span>
+      </button>
+    );
+  }
   const previewTitle = draft.title.trim() || "Titel des Artikels";
 
   return (
@@ -3099,22 +3234,21 @@ export function KnowledgeBase({
           {categoryTiles.length > 0 ? (
             <div
               aria-label="Themen"
-              className="knowledge-base__tiles"
+              className="knowledge-base__chips knowledge-base__topics"
               role="group"
             >
               <button
                 aria-pressed={articleCategoryFilterId === ""}
-                className="knowledge-base__tile"
+                className="knowledge-base__chip"
                 onClick={() => changeArticleCategoryFilter("")}
                 type="button"
               >
-                <strong>Alle Themen</strong>
-                <small>{articleCountLabel}</small>
+                Alle
               </button>
-              {categoryTiles.map(({ collection, count }) => (
+              {topicChips.shown.map(({ collection, count }) => (
                 <button
                   aria-pressed={articleCategoryFilterId === collection.id}
-                  className="knowledge-base__tile"
+                  className="knowledge-base__chip"
                   key={collection.id}
                   onClick={() =>
                     changeArticleCategoryFilter(
@@ -3125,12 +3259,33 @@ export function KnowledgeBase({
                   }
                   type="button"
                 >
-                  <strong>{collection.name}</strong>
-                  <small>
-                    {count === 1 ? "1 Artikel" : `${count} Artikel`}
-                  </small>
+                  <span
+                    aria-hidden="true"
+                    className="knowledge-base__dot"
+                    style={{ background: topicColor(collection.name) }}
+                  />
+                  {collection.name}
+                  <span className="knowledge-base__chip-count">{count}</span>
                 </button>
               ))}
+              {topicChips.hidden > 0 ? (
+                <button
+                  className="knowledge-base__chip knowledge-base__chip--more"
+                  onClick={() => setShowAllTopics(true)}
+                  type="button"
+                >
+                  + {topicChips.hidden} weitere
+                </button>
+              ) : showAllTopics &&
+                categoryTiles.length > VISIBLE_TOPIC_CHIPS ? (
+                <button
+                  className="knowledge-base__chip knowledge-base__chip--more"
+                  onClick={() => setShowAllTopics(false)}
+                  type="button"
+                >
+                  Weniger
+                </button>
+              ) : null}
             </div>
           ) : null}
 
@@ -3191,7 +3346,9 @@ export function KnowledgeBase({
                   ? `${articleCountLabel} für «${activeQuery}»`
                   : isListFiltered
                     ? `${articleCountLabel} gefunden`
-                    : "Zuletzt aktualisiert"}
+                    : showBento
+                      ? "Neu und aktualisiert"
+                      : "Zuletzt aktualisiert"}
             </h3>
             {loadingList && articles.length === 0 ? (
               <ul aria-hidden="true" className="knowledge-base__list">
@@ -3207,8 +3364,27 @@ export function KnowledgeBase({
               </p>
             ) : (
               <>
+                {showBento ? (
+                  <div className="knowledge-base__bento">
+                    {bentoArticles.map((item, index) =>
+                      articleCard(
+                        item,
+                        index === 0
+                          ? "knowledge-base__card--hero"
+                          : index < 3
+                            ? "knowledge-base__card--wide"
+                            : "knowledge-base__card--third",
+                      ),
+                    )}
+                  </div>
+                ) : null}
+                {showBento && listArticles.length > 0 ? (
+                  <h3 className="knowledge-base__results-heading">
+                    Weitere Artikel
+                  </h3>
+                ) : null}
                 <ul className="knowledge-base__list">
-                  {visibleArticles
+                  {listArticles
                     .slice(0, resultLimit)
                     .map(({ article, revision }) => {
                       const collectionPaths = formatKnowledgeCollectionPaths(
@@ -3272,13 +3448,13 @@ export function KnowledgeBase({
                       );
                     })}
                 </ul>
-                {visibleArticles.length > resultLimit ? (
+                {listArticles.length > resultLimit ? (
                   <button
                     className="knowledge-base__button knowledge-base__more"
                     onClick={() => setResultLimit((limit) => limit + 30)}
                     type="button"
                   >
-                    Weitere {Math.min(30, visibleArticles.length - resultLimit)}{" "}
+                    Weitere {Math.min(30, listArticles.length - resultLimit)}{" "}
                     anzeigen
                   </button>
                 ) : null}
