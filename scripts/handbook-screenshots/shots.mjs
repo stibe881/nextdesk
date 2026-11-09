@@ -86,10 +86,17 @@ export const SHOTS = [
       const card = h.page.locator(".ticket-satisfaction");
       await card.waitFor();
       await card.getByRole("radio", { name: "4 von 5 Sternen" }).click();
-      await card
-        .getByRole("textbox")
-        .fill("Schnelle Lieferung, vielen Dank!");
+      await card.getByRole("textbox").fill("Schnelle Lieferung, vielen Dank!");
       await card.scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: "ma-shop",
+    persona: "employee",
+    async run(h) {
+      await h.open();
+      await h.nav("Shop");
+      await h.waitText("Headset Jabra Evolve2 65");
     },
   },
   {
