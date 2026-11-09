@@ -19,7 +19,6 @@ create table if not exists public.mobile_home_layouts (
   )
 );
 
-drop trigger if exists mobile_home_layouts_updated_at on public.mobile_home_layouts;
 create trigger mobile_home_layouts_updated_at
   before update on public.mobile_home_layouts
   for each row execute function public.set_updated_at();
@@ -30,26 +29,22 @@ revoke all on table public.mobile_home_layouts from public, anon, authenticated;
 grant select, insert, update, delete on table public.mobile_home_layouts to authenticated;
 grant select, insert, update, delete on table public.mobile_home_layouts to service_role;
 
-drop policy if exists mobile_home_layouts_select_own on public.mobile_home_layouts;
 create policy mobile_home_layouts_select_own
   on public.mobile_home_layouts
   for select to authenticated
   using (user_id = auth.uid());
 
-drop policy if exists mobile_home_layouts_insert_own on public.mobile_home_layouts;
 create policy mobile_home_layouts_insert_own
   on public.mobile_home_layouts
   for insert to authenticated
   with check (user_id = auth.uid());
 
-drop policy if exists mobile_home_layouts_update_own on public.mobile_home_layouts;
 create policy mobile_home_layouts_update_own
   on public.mobile_home_layouts
   for update to authenticated
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
-drop policy if exists mobile_home_layouts_delete_own on public.mobile_home_layouts;
 create policy mobile_home_layouts_delete_own
   on public.mobile_home_layouts
   for delete to authenticated
