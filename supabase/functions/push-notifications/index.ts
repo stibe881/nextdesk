@@ -24,6 +24,7 @@ const ALL_CATEGORIES = [
   "inventory_low_stock",
   "shop",
   "infrastructure",
+  "security_report",
 ] as const;
 const AGENT_CATEGORIES = [
   "assigned",
@@ -33,6 +34,7 @@ const AGENT_CATEGORIES = [
   "escalation",
   "approval",
   "follow_up",
+  "security_report",
 ] as const;
 const REQUESTER_CATEGORIES = [
   "support_reply",
@@ -49,7 +51,10 @@ type Admin = SupabaseContext["supabaseAdmin"];
 type Environment = "production" | "development";
 // Infrastructure reminders live only in category_modes: the stored
 // enabled_categories list predates them and stays limited to the older set.
-const MODE_ONLY_CATEGORIES: readonly Category[] = ["infrastructure"];
+const MODE_ONLY_CATEGORIES: readonly Category[] = [
+  "infrastructure",
+  "security_report",
+];
 const DEFAULT_ENABLED_CATEGORIES = ALL_CATEGORIES.filter(
   (category) =>
     category !== "inventory_low_stock" &&

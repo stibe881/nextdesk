@@ -57,7 +57,13 @@ type Action =
       collectionId: string;
       name: string;
     }
-  | { type: "listArticles"; tenantId: string; query?: string }
+  | {
+      type: "listArticles";
+      tenantId: string;
+      query?: string;
+      /** Web list: excerpts instead of full bodies, no image URLs. */
+      compact?: boolean;
+    }
   | { type: "getArticle"; tenantId: string; articleId: string }
   | { type: "listRevisions"; tenantId: string; articleId: string }
   | {
@@ -182,6 +188,7 @@ function parseAction(value: unknown): Action | null {
       type: value.type,
       tenantId: value.tenantId,
       ...(query !== undefined && query.length > 0 ? { query } : {}),
+      ...(value.compact === true ? { compact: true } : {}),
     };
   }
 
@@ -481,12 +488,80 @@ async function fetchCurrentRevision(
   return { data: data ?? null, error: Boolean(error) };
 }
 
+/** Plain-text teaser of an article body (no markdown syntax, no images). */
+export function articleExcerpt(body: unknown, maxLength = 160): string {
+  if (typeof body !== "string") return "";
+  const plain = body
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s*>+\s?/gm, "")
+    .replace(/^\s*([-*+]|\d+[.)])\s+/gm, "")
+    .replace(/^\s*\|?[\s:|-]+\|[\s:|-]*$/gm, " ")
+    .replace(/[*_`~|]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return plain.length > maxLength
+    ? `${plain.slice(0, maxLength - 1).trimEnd()}…`
+    : plain;
+}
+
+/**
+ * The shown revision of every article, fetched by exact (article, revision)
+ * pair instead of loading every revision body of every article. Null when an
+ * article has no usable revision number (the caller falls back).
+ */
+async function fetchShownRevisions(
+  admin: any,
+  articles: any[],
+  publishedOnly: boolean,
+): Promise<{ data: Map<string, any>; error: boolean } | null> {
+  const pairs: string[] = [];
+  for (const article of articles) {
+    const revision = publishedOnly
+      ? article.published_revision
+      : article.current_revision;
+    if (!Number.isInteger(revision) || typeof article.id !== "string") {
+      return null;
+    }
+    pairs.push(`and(article_id.eq.${article.id},revision.eq.${revision})`);
+  }
+  const chunks: string[][] = [];
+  for (let index = 0; index < pairs.length; index += 40) {
+    chunks.push(pairs.slice(index, index + 40));
+  }
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      admin
+        .from("knowledge_article_revisions")
+        .select(REVISION_SELECT)
+        .or(chunk.join(",")),
+    ),
+  );
+  const byArticle = new Map<string, any>();
+  for (const result of results) {
+    if (result.error) return null;
+    for (const revision of result.data ?? []) {
+      if (typeof revision.article_id === "string") {
+        byArticle.set(revision.article_id, revision);
+      }
+    }
+  }
+  return { data: byArticle, error: false };
+}
+
 async function fetchLatestRevisions(
   admin: any,
   articles: any[],
   publishedOnly = false,
+  compact = false,
 ): Promise<{ data: Map<string, any>; error: boolean }> {
   if (articles.length === 0) return { data: new Map(), error: false };
+  if (compact) {
+    const shown = await fetchShownRevisions(admin, articles, publishedOnly);
+    if (shown) return shown;
+  }
 
   const articleIds = articles.map((article) => article.id);
   const { data, error } = await admin
@@ -1451,10 +1526,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             (ranks.get(right.id) ?? 0) - (ranks.get(left.id) ?? 0),
         );
       }
+      const compact = action.compact === true;
       const revisions = await fetchLatestRevisions(
         admin,
         articles,
         !canReadInternal,
+        compact,
       );
       if (revisions.error)
         return json(
@@ -1491,15 +1568,28 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
               ? { outcomes: outcomes.get(article.id) }
               : {}),
             revision: revisions.data.has(article.id)
-              ? revisionResponse(revisions.data.get(article.id))
+              ? {
+                  ...revisionResponse(revisions.data.get(article.id)),
+                  ...(compact
+                    ? {
+                        body: articleExcerpt(
+                          revisions.data.get(article.id).body,
+                        ),
+                      }
+                    : {}),
+                }
               : null,
           })),
           departments,
-          imageUrls: await resolveImageUrls(
-            admin,
-            action.tenantId,
-            [...revisions.data.values()].map((revision: any) => revision.body),
-          ),
+          imageUrls: compact
+            ? {}
+            : await resolveImageUrls(
+                admin,
+                action.tenantId,
+                [...revisions.data.values()].map(
+                  (revision: any) => revision.body,
+                ),
+              ),
         },
       });
     }

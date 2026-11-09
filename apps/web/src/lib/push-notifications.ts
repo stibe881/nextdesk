@@ -43,6 +43,10 @@ export const pushCategoryMeta = {
     description: "Wenn ein Ticket als gelöst markiert wird",
     label: "Ticketlösungen",
   },
+  security_report: {
+    description: "Wenn eine verdächtige E-Mail als Phishing gemeldet wird",
+    label: "Phishing-Meldungen",
+  },
   shop: {
     description: "Freigaben, Bereitstellung und Status Ihrer Bestellungen",
     label: "Shop",
