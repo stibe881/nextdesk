@@ -130,7 +130,9 @@ Unter **Mein Bereich → Phishing melden** laden Sie eine verdächtige E-Mail
 
 ## Ticketliste
 
-Unter **Tickets** arbeiten Sie die Warteschlangen ab.
+Unter **Tickets** arbeiten Sie die Warteschlangen ab. Jede Ticketkarte zeigt
+neben Nummer und Betreff auch die **anfragende Person** – in der Liste, auf
+der Übersicht, im Kanban und in der App.
 
 - **Queues**: Register pro Warteschlange. Arbeiten Sie in Teams mehrerer
   Supportstufen, erscheinen zusätzlich _Alle Stufen / 1st / 2nd / 3rd Level_.

@@ -151,6 +151,11 @@
   font-size: 12px;
 }
 
+.ticket-kanban__card .ticket-kanban__requester {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .ticket-kanban__empty {
   margin: 8px 4px;
   color: var(--muted);

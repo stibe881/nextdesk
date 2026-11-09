@@ -176,6 +176,12 @@ export function TicketKanban({
                     >
                       <code>{ticket.id}</code>
                       <strong>{ticket.subject}</strong>
+                      {ticket.requesterName ? (
+                        <span className="ticket-kanban__requester">
+                          <span className="sr-only">Anfragende Person: </span>
+                          {ticket.requesterName}
+                        </span>
+                      ) : null}
                       <span>
                         {ticket.isUnassigned
                           ? "Nicht zugewiesen"

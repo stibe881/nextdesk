@@ -14,6 +14,8 @@ export interface DashboardTicket {
   isUnassigned: boolean;
   id: string;
   recordId?: string;
+  /** Name of the requesting person (live data only). */
+  requesterName?: string | null;
   priority?: string;
   priorityOrder?: number;
   queue: QueueKey;

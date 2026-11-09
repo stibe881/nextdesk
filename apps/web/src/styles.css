@@ -9109,6 +9109,20 @@ body:has(.ticket-list-filter-panel) {
   color: var(--text-tint-a9b3c2);
 }
 
+/* Requesting person on ticket cards (list, overview). */
+.ticket-meta .ticket-meta__requester {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ticket-meta .ticket-meta__requester svg {
+  flex: none;
+  color: var(--muted);
+}
+
 .ticket-state {
   display: flex;
   align-items: center;

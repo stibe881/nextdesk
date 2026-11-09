@@ -404,6 +404,14 @@ const RPCS = {
     listTickets(args, ctx.persona),
   list_authorized_ticket_list_page: (args, ctx) =>
     listTickets(args, ctx.persona),
+  ticket_requester_names: (args) =>
+    (args.p_ticket_ids ?? []).flatMap((id) => {
+      const ticket = D.ticketById(id);
+      const requester = ticket ? D.userById(ticket.requester_id) : null;
+      return requester
+        ? [{ ticket_id: id, requester_name: requester.name }]
+        : [];
+    }),
   list_active_delegations: () => [],
   list_ticket_rule_statuses: () =>
     D.STATUSES.map((s) => ({ key: s.key, label: s.label })),

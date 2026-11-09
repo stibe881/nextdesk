@@ -166,6 +166,7 @@ export function matchesTicketSearch(
     ticket.sla,
     ticket.state,
     ticket.subject,
+    ticket.requesterName ?? "",
   ].join(" ");
   return search.freeText.every((term) => includes(haystack, term));
 }
