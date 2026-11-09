@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { Children, isValidElement, useMemo, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   knowledgeImageUrlTransform,
@@ -6,75 +6,67 @@ import {
 } from "./lib/knowledge-images";
 import "./knowledge-markdown.css";
 
-export type KnowledgeHeading = { id: string; level: 2 | 3; text: string };
-
-function headingSlug(text: string): string {
-  return (
-    text
-      .toLowerCase()
-      .replace(/ä/g, "ae")
-      .replace(/ö/g, "oe")
-      .replace(/ü/g, "ue")
-      .replace(/ß/g, "ss")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "abschnitt"
-  );
-}
-
-function plainHeadingText(text: string): string {
-  return text
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[*_`~]+/g, "")
-    .trim();
-}
+const NOTE_LABEL = /^\s*(Hinweis|Tipp|Wichtig|Achtung|Warnung)\s*:\s*/i;
 
 function nodeText(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
   if (Array.isArray(node)) return node.map(nodeText).join("");
-  if (node && typeof node === "object" && "props" in node) {
+  if (isValidElement(node)) {
     return nodeText((node.props as { children?: ReactNode }).children);
   }
   return "";
 }
 
-/** Level 2 and 3 headings of an article (for the table of contents). */
-export function knowledgeHeadings(body: string): KnowledgeHeading[] {
-  const headings: KnowledgeHeading[] = [];
-  let inFence = false;
-  for (const line of body.split("\n")) {
-    if (/^\s*```/.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-    const match = /^(#{2,3})\s+(.+?)\s*#*\s*$/.exec(line);
-    if (!match?.[1] || !match[2]) continue;
-    const text = plainHeadingText(match[2]);
-    if (!text) continue;
-    headings.push({
-      id: `kb-${headingSlug(text)}`,
-      level: match[1].length === 2 ? 2 : 3,
-      text,
-    });
+/**
+ * A paragraph that starts with «Hinweis:», «Tipp:», «Achtung:» … becomes a
+ * coloured note. Returns null for every other paragraph.
+ */
+function noteParts(
+  children: ReactNode,
+): { label: string; tone: "info" | "warn"; rest: ReactNode[] } | null {
+  const items = Children.toArray(children);
+  const first = items[0];
+  let label: string | null = null;
+  let rest: ReactNode[] = items.slice(1);
+  if (typeof first === "string") {
+    const match = NOTE_LABEL.exec(first);
+    if (!match?.[1]) return null;
+    label = match[1];
+    rest = [first.slice(match[0].length), ...rest];
+  } else if (isValidElement(first)) {
+    // «**Hinweis:** Text»
+    const match = /^\s*(Hinweis|Tipp|Wichtig|Achtung|Warnung)\s*:?\s*$/i.exec(
+      nodeText(first),
+    );
+    if (!match?.[1]) return null;
+    label = match[1];
+    const next = rest[0];
+    if (typeof next === "string")
+      rest = [next.replace(/^\s+/, ""), ...rest.slice(1)];
   }
-  return headings;
+  if (!label) return null;
+  const tone = /^(achtung|warnung)$/i.test(label) ? "warn" : "info";
+  return {
+    label: label.charAt(0).toUpperCase() + label.slice(1).toLowerCase(),
+    tone,
+    rest,
+  };
 }
 
 /**
  * Article Markdown with uploaded images (kb-image:) resolved to the signed
  * URLs delivered with the article (imageUrls). Used by the knowledge base and
- * the ticket view.
+ * the ticket view. With `notes`, lines starting with «Hinweis:», «Tipp:»,
+ * «Achtung:» are shown as coloured notes (article view).
  */
 export function KnowledgeMarkdown({
-  anchors = false,
   body,
   imageUrls,
+  notes = false,
 }: {
-  /** Gives level 2 and 3 headings the ids of knowledgeHeadings(). */
-  anchors?: boolean;
   body: string;
   imageUrls: KnowledgeImageUrls;
+  notes?: boolean;
 }) {
   const urlTransform = useMemo(
     () => knowledgeImageUrlTransform(imageUrls),
@@ -83,14 +75,21 @@ export function KnowledgeMarkdown({
   return (
     <ReactMarkdown
       components={{
-        ...(anchors
+        ...(notes
           ? {
-              h2: ({ children }: { children?: ReactNode }) => (
-                <h2 id={`kb-${headingSlug(nodeText(children))}`}>{children}</h2>
-              ),
-              h3: ({ children }: { children?: ReactNode }) => (
-                <h3 id={`kb-${headingSlug(nodeText(children))}`}>{children}</h3>
-              ),
+              p: ({ children }: { children?: ReactNode }) => {
+                const note = noteParts(children);
+                return note ? (
+                  <div
+                    className={`knowledge-article__note knowledge-article__note--${note.tone}`}
+                  >
+                    <strong>{note.label}</strong>
+                    <span>{note.rest}</span>
+                  </div>
+                ) : (
+                  <p>{children}</p>
+                );
+              },
             }
           : {}),
         img: ({ src, alt }) =>

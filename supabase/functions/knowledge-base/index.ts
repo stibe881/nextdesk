@@ -20,6 +20,7 @@ const KNOWLEDGE_READ_PERMISSION = "knowledge.read";
 const KNOWLEDGE_PUBLISH_PERMISSION = "knowledge.publish";
 const KNOWLEDGE_FEATURE = "knowledge.base";
 const MAX_TITLE_LENGTH = 240;
+const MAX_SUMMARY_LENGTH = 500;
 const MAX_BODY_LENGTH = 100_000;
 const MAX_QUERY_LENGTH = 120;
 /** Request bodies: article texts stay well below 1 MB; images up to 5 MB. */
@@ -87,6 +88,8 @@ type Action =
       articleId?: string;
       title: string;
       bodyMarkdown: string;
+      /** «Kurz gesagt» of the article (optional, up to 500 characters). */
+      summary?: string;
       visibility: Visibility;
       departmentId?: string;
     }
@@ -290,10 +293,18 @@ function parseAction(value: unknown): Action | null {
     const article = optionalUuid(value.articleId);
     const department = optionalUuid(value.departmentId);
     const title = requiredText(value.title, 3, MAX_TITLE_LENGTH);
+    const summary =
+      value.summary === undefined || value.summary === null
+        ? ""
+        : typeof value.summary === "string" &&
+            value.summary.trim().length <= MAX_SUMMARY_LENGTH
+          ? value.summary.trim()
+          : null;
     if (
       !article.valid ||
       !department.valid ||
       title === null ||
+      summary === null ||
       typeof value.bodyMarkdown !== "string" ||
       value.bodyMarkdown.length > MAX_BODY_LENGTH ||
       (value.visibility !== "internal" && value.visibility !== "external")
@@ -308,6 +319,7 @@ function parseAction(value: unknown): Action | null {
         : {}),
       title,
       bodyMarkdown: value.bodyMarkdown,
+      ...(summary ? { summary } : {}),
       visibility: value.visibility,
       ...(typeof department.value === "string"
         ? { departmentId: department.value.toLowerCase() }
@@ -1596,11 +1608,21 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
                   ...revisionResponse(revisions.data.get(article.id)),
                   ...(compact
                     ? {
-                        body: articleExcerpt(
-                          revisions.data.get(article.id).body,
-                          160,
-                          action.query,
-                        ),
+                        // The written summary is the best teaser, unless a search
+                        // should show the passage around the hit.
+                        body:
+                          !action.query &&
+                          typeof revisions.data.get(article.id).summary ===
+                            "string" &&
+                          revisions.data.get(article.id).summary.trim()
+                            ? articleExcerpt(
+                                revisions.data.get(article.id).summary,
+                              )
+                            : articleExcerpt(
+                                revisions.data.get(article.id).body,
+                                160,
+                                action.query,
+                              ),
                       }
                     : {}),
                 }
@@ -1736,6 +1758,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           revision: 1,
           title_snapshot: action.title,
           body: action.bodyMarkdown,
+          summary: action.summary ?? null,
           author_id: actorId,
         })
         .select(REVISION_SELECT)
@@ -1825,6 +1848,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         revision: nextRevision,
         title_snapshot: action.title,
         body: action.bodyMarkdown,
+        summary: action.summary ?? null,
         author_id: actorId,
       })
       .select(REVISION_SELECT)
