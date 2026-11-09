@@ -85,9 +85,34 @@ export type DeviceInput = {
   maintenanceIntervalMonths: number | null;
   notes: string | null;
   serviceIds: string[];
-  maintenanceChecklist: string[];
+  maintenanceChecklist: ChecklistItem[];
   prtgObjectId: string | null;
 };
+
+/** One maintenance checklist point with an optional date the user sets
+ * (when it was done or when it is due). Older rows store plain strings. */
+export type ChecklistItem = { label: string; date: string | null };
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Stored checklist (strings or objects) → items; invalid entries dropped. */
+export function checklistItems(value: unknown): ChecklistItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry): ChecklistItem[] => {
+    if (typeof entry === "string") {
+      return entry.trim() ? [{ label: entry.trim(), date: null }] : [];
+    }
+    if (typeof entry !== "object" || entry === null) return [];
+    const record = entry as Record<string, unknown>;
+    const label = typeof record.label === "string" ? record.label.trim() : "";
+    if (!label) return [];
+    const date = typeof record.date === "string" && ISO_DAY.test(record.date) &&
+        !Number.isNaN(Date.parse(record.date))
+      ? record.date
+      : null;
+    return [{ label, date }];
+  });
+}
 
 type Action =
   | { type: "list"; tenantId: string }
@@ -144,15 +169,34 @@ function isoMoment(value: unknown): string | null {
 }
 
 /** Checklist items: trimmed, non-empty, at most 40 items of 300 characters. */
-export function parseChecklist(value: unknown): string[] | null {
+export function parseChecklist(value: unknown): ChecklistItem[] | null {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || value.length > 40) return null;
-  const items: string[] = [];
+  const items: ChecklistItem[] = [];
   for (const entry of value) {
-    if (typeof entry !== "string") return null;
-    const item = entry.trim();
+    let label: string;
+    let date: string | null = null;
+    if (typeof entry === "string") {
+      label = entry;
+    } else if (typeof entry === "object" && entry !== null && !Array.isArray(entry)) {
+      const record = entry as Record<string, unknown>;
+      if (typeof record.label !== "string") return null;
+      label = record.label;
+      if (record.date !== undefined && record.date !== null && record.date !== "") {
+        if (
+          typeof record.date !== "string" || !ISO_DAY.test(record.date) ||
+          Number.isNaN(Date.parse(record.date))
+        ) {
+          return null;
+        }
+        date = record.date;
+      }
+    } else {
+      return null;
+    }
+    const item = label.trim();
     if (item.length > 300 || /[\u0000-\u001f]/.test(item)) return null;
-    if (item) items.push(item);
+    if (item) items.push({ label: item, date });
   }
   return items;
 }
@@ -517,9 +561,7 @@ function deviceFromRows(
     notes: infra.notes ?? null,
     serviceId: primary,
     serviceIds: [...new Set([...(primary ? [primary] : []), ...linkedServiceIds])],
-    maintenanceChecklist: Array.isArray(infra.maintenance_checklist)
-      ? infra.maintenance_checklist.filter((item): item is string => typeof item === "string")
-      : [],
+    maintenanceChecklist: checklistItems(infra.maintenance_checklist),
     serviceTaskTemplateId: infra.service_task_template_id ?? null,
     prtgObjectId: infra.prtg_object_id ?? null,
   };
@@ -939,9 +981,7 @@ async function scheduleChecklist(
   ]);
   if (assetError || infraError) throw dbFailure();
   if (!asset || !infra) throw new HttpError(404, "device_not_found", "Das Gerät ist nicht verfügbar.");
-  const checklist = Array.isArray(infra.maintenance_checklist)
-    ? (infra.maintenance_checklist as unknown[]).filter((item): item is string => typeof item === "string")
-    : [];
+  const checklist = checklistItems(infra.maintenance_checklist).map((item) => item.label);
   if (checklist.length === 0) {
     throw new HttpError(422, "checklist_empty", "Erfassen Sie zuerst die Punkte der Wartungscheckliste.");
   }

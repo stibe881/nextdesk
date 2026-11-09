@@ -2,6 +2,7 @@ import { assertEquals } from "jsr:@std/assert@1";
 
 import {
   parseAction,
+  checklistItems,
   parseChecklist,
   parseDevice,
   parsePrtgObjectId,
@@ -74,9 +75,18 @@ Deno.test("maintenance windows need devices, services and a valid period", () =>
 
 Deno.test("checklist items are trimmed and limited", () => {
   assertEquals(parseChecklist([" Firmware prüfen ", "", "Backup testen"]), [
-    "Firmware prüfen",
-    "Backup testen",
+    { label: "Firmware prüfen", date: null },
+    { label: "Backup testen", date: null },
   ]);
+  assertEquals(
+    parseChecklist([{ label: "Konfiguration sichern", date: "2026-11-30" }]),
+    [{ label: "Konfiguration sichern", date: "2026-11-30" }],
+  );
+  assertEquals(parseChecklist([{ label: "x", date: "30.11.2026" }]), null);
+  assertEquals(
+    checklistItems(["Alt", { label: "Neu", date: "2026-01-02" }, 3]),
+    [{ label: "Alt", date: null }, { label: "Neu", date: "2026-01-02" }],
+  );
   assertEquals(parseChecklist(new Array(41).fill("x")), null);
   assertEquals(
     parseAction({

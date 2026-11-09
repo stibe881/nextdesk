@@ -7,6 +7,22 @@ import { RequesterReminderActionPage } from "./requester-reminder-action";
 import "./styles.css";
 import "./status-tokens.css";
 
+// After a deploy, a tab opened earlier may ask for a lazy chunk of the
+// previous build. Reload once to get the current build instead of failing
+// (e.g. «Failed to fetch dynamically imported module» when printing labels).
+window.addEventListener("vite:preloadError", (event) => {
+  const key = "nextdesk:chunk-reload";
+  try {
+    const last = Number(window.sessionStorage.getItem(key) ?? "0");
+    if (Date.now() - last < 60_000) return;
+    window.sessionStorage.setItem(key, String(Date.now()));
+  } catch {
+    // Without session storage, still reload once per page view.
+  }
+  event.preventDefault();
+  window.location.reload();
+});
+
 // Muss vor dem Start der App laufen, bevor die Anmeldung die Adresse ändert.
 captureOAuthAuthorizationId();
 
