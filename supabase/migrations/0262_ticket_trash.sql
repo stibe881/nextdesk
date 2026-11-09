@@ -6,7 +6,7 @@ set local search_path = pg_catalog, public;
 -- Löschen markiert ein Ticket nur noch (deleted_at). Gelöschte Tickets sind
 -- überall ausgeblendet (can_read_ticket, RLS, Benachrichtigungen, ausgehende
 -- Mails) und lassen sich 90 Tage lang wiederherstellen. Danach werden sie
--- endgültig entfernt (Edge Function ticket-bulk-status / 0256).
+-- endgültig entfernt (Migration 0263).
 
 alter table public.tickets
   add column if not exists deleted_at timestamptz,
