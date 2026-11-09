@@ -285,6 +285,7 @@ async function ticket(
     .select(
       "id, tenant_id, department_id, requester_id, affected_user_id, assigned_agent_id, category_id, priority_id, status_id, subject, description, ticket_number, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", tenantId)
     .eq("id", ticketId)
     .maybeSingle();
@@ -1095,6 +1096,7 @@ async function suggestAssignees(
     const open = await admin
       .from("tickets")
       .select("id", { count: "exact", head: true })
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .eq("assigned_agent_id", userId)
       .is("closed_at", null);
@@ -1102,6 +1104,7 @@ async function suggestAssignees(
       ? await admin
           .from("tickets")
           .select("id", { count: "exact", head: true })
+          .is("deleted_at", null)
           .eq("tenant_id", action.tenantId)
           .eq("assigned_agent_id", userId)
           .eq("category_id", info.category_id as string)
@@ -1303,6 +1306,7 @@ async function myMetrics(
       .select(
         "id, assigned_agent_id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
       )
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .eq("assigned_agent_id", actorId)
       .order("updated_at", { ascending: false })
@@ -1368,6 +1372,7 @@ async function myMetrics(
       .select(
         "id, assigned_agent_id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
       )
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .in("id", extraTicketIds);
     if (extra.error) db(extra.error);
@@ -1609,6 +1614,7 @@ async function ticketContext(
   const related = await admin
     .from("tickets")
     .select("id, ticket_number, subject, resolved_at, created_at")
+    .is("deleted_at", null)
     .eq("tenant_id", action.tenantId)
     .eq("requester_id", info.requester_id as string)
     .neq("id", info.id as string)

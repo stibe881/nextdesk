@@ -67,6 +67,7 @@ type Action =
       collectionIds: string[];
     }
   | { type: "requestReview"; tenantId: string; articleId: string }
+  | { type: "publishArticle"; tenantId: string; articleId: string }
   | {
       type: "decideReview";
       tenantId: string;
@@ -214,7 +215,10 @@ function parseAction(value: unknown): Action | null {
     };
   }
 
-  if (value.type === "requestReview" && isUuid(value.articleId))
+  if (
+    (value.type === "requestReview" || value.type === "publishArticle") &&
+    isUuid(value.articleId)
+  )
     return {
       type: value.type,
       tenantId: value.tenantId,
@@ -835,6 +839,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     action.type === "updateCollection" ||
     action.type === "setArticleCollections" ||
     action.type === "requestReview" ||
+    action.type === "publishArticle" ||
     action.type === "decideReview";
   // The feature lookup is independent of the authorization check, so both run
   // at once; an authorization failure is still reported first.
@@ -1137,6 +1142,54 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         collectionIds: data,
       },
     });
+  }
+
+  // Entwurf ohne Freigabe-Schritt veröffentlichen (z. B. KI-Entwürfe).
+  if (action.type === "publishArticle") {
+    const { data: article, error: articleError } = await admin
+      .from("knowledge_articles")
+      .select(ARTICLE_SELECT)
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.articleId)
+      .in("status", ["draft", "review"])
+      .maybeSingle();
+    if (articleError)
+      return json(request, { error: { code: "article_read_failed" } }, 500);
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
+    if (!article || !departmentVisible(scope, article.department_id))
+      return articleNotFound();
+    const now = new Date().toISOString();
+    const { data: updated, error: updateError } = await admin
+      .from("knowledge_articles")
+      .update({
+        status: "published",
+        published_revision: article.current_revision,
+        published_at: now,
+        review_requested_at: null,
+        review_requested_by: null,
+        reviewed_at: null,
+        reviewed_by: null,
+        updated_at: now,
+      })
+      .eq("tenant_id", action.tenantId)
+      .eq("id", article.id)
+      .eq("current_revision", article.current_revision)
+      .in("status", ["draft", "review"])
+      .select(ARTICLE_SELECT)
+      .maybeSingle();
+    if (updateError || !updated)
+      return json(request, { error: { code: "article_update_conflict" } }, 409);
+    await writeAudit(
+      admin,
+      action.tenantId,
+      actorId,
+      "knowledge.article.published",
+      article.id,
+      auditData(article, null),
+      auditData(updated, null),
+    );
+    return json(request, { data: { article: updated } });
   }
 
   if (action.type === "requestReview") {
@@ -1547,8 +1600,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           title: action.title,
           slug: createSlug(action.title),
           visibility: action.visibility,
-          status: "draft",
+          // Gespeicherte Artikel sind sofort veröffentlicht (kein Freigabe-Schritt).
+          status: "published",
           current_revision: 1,
+          published_revision: 1,
+          published_at: updatedAt,
           created_by: actorId,
           updated_at: updatedAt,
         })
@@ -1671,9 +1727,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         visibility: action.visibility,
         ...(departmentChange ?? {}),
         current_revision: nextRevision,
-        // A previous published revision remains readable to customers. The new
-        // text always returns to a draft and requires a fresh review.
-        status: "draft",
+        // Speichern veröffentlicht die neue Revision direkt.
+        status: "published",
+        published_revision: nextRevision,
+        published_at: updatedAt,
         review_requested_at: null,
         review_requested_by: null,
         reviewed_at: null,

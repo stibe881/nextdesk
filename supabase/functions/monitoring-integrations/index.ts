@@ -241,6 +241,7 @@ async function listAlerts(admin: Admin, tenantId: string) {
     ? await admin
         .from("tickets")
         .select("id, ticket_number")
+        .is("deleted_at", null)
         .eq("tenant_id", tenantId)
         .in("id", ticketIds)
     : { data: [], error: null };

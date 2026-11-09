@@ -275,6 +275,7 @@ async function loadTicketContext(
     .select(
       "id, tenant_id, department_id, assigned_team_id, assigned_agent_id, merged_into_ticket_id, status:ticket_statuses!tickets_status_tenant_fk(is_closed)",
     )
+    .is("deleted_at", null)
     .eq("id", ticketId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -756,6 +757,7 @@ async function report(
       .select(
         "id, department_id, category_id, assigned_team_id, resolved_at, closed_at",
       )
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .or(
         `and(resolved_at.gte.${startsAt},resolved_at.lte.${endsAt}),and(resolved_at.is.null,closed_at.gte.${startsAt},closed_at.lte.${endsAt})`,
@@ -845,6 +847,7 @@ async function report(
     )
     .eq("tenant_id", action.tenantId)
     .in("kind", ["escalated", "returned"])
+    .is("tickets.deleted_at", null)
     .gte("created_at", startsAt)
     .lte("created_at", endsAt)
     .limit(MAX_REPORT_TICKETS);

@@ -1943,9 +1943,15 @@ async function dispatchNotificationMail(
       const ticket = await admin
         .from("tickets")
         .select("ticket_number, subject")
+        .is("deleted_at", null)
         .eq("id", message.ticket_id)
         .eq("tenant_id", message.tenant_id)
         .maybeSingle();
+      // Tickets im Papierkorb lösen keine Benachrichtigungen mehr aus.
+      if (!ticket.error && !ticket.data) {
+        await ignore("ticket_unavailable");
+        return;
+      }
       ticketNumber = asString(ticket.data?.ticket_number);
       ticketSubject = asString(ticket.data?.subject);
     }
@@ -2144,6 +2150,7 @@ export async function dispatchOutboundMessage(
       const ticketResult = await admin
         .from("tickets")
         .select("id, ticket_number, subject, requester_contact_id, is_security_case")
+        .is("deleted_at", null)
         .eq("id", message.ticket_id)
         .eq("tenant_id", message.tenant_id)
         .maybeSingle();

@@ -259,6 +259,8 @@ Unter **Datenschutz** («Aufbewahrung & Datenschutz») legen Sie Fristen in
 Tagen fest für _Geschlossene Tickets_, _Private Anhänge_ und das
 _Audit-Protokoll_. Die **Rechtliche Aufbewahrungssperre** verhindert jede
 Bereinigung. Die Werte sind Richtlinien – nextDesk löscht nie automatisch.
+Ausnahme: Gelöschte Tickets liegen 90 Tage im Papierkorb und werden danach
+endgültig entfernt; die Aufbewahrungssperre hält auch das an.
 
 ## Protokoll
 

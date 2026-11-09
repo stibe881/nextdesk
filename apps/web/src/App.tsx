@@ -60,6 +60,7 @@ import {
   List,
   ListChecks,
   Package,
+  Trash2,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -170,6 +171,7 @@ import {
   type OwnerAccess,
 } from "./platform-owner";
 import { functionErrorMessage } from "./lib/function-error";
+import { TicketTrashDialog } from "./ticket-trash";
 import {
   bootstrapBrowserAuthSession,
   cleanBrowserAuthCallbackUrl,
@@ -5434,14 +5436,18 @@ function AuthenticatedApp() {
                   const label = sectionDisplayLabel(item.label);
                   return (
                     <button
-                      aria-current={navSection === item.label ? "page" : undefined}
+                      aria-current={
+                        navSection === item.label ? "page" : undefined
+                      }
                       aria-label={
                         hasAttention
                           ? `${label} – ${attentionCount} ${navigationAttentionDescription(item.label)}`
                           : label
                       }
                       className={
-                        navSection === item.label ? "nav-item active" : "nav-item"
+                        navSection === item.label
+                          ? "nav-item active"
+                          : "nav-item"
                       }
                       key={item.label}
                       onClick={() => {
@@ -5613,7 +5619,9 @@ function AuthenticatedApp() {
               >
                 <button
                   aria-current={
-                    navSection === reportsNavigationItem.label ? "page" : undefined
+                    navSection === reportsNavigationItem.label
+                      ? "page"
+                      : undefined
                   }
                   className={
                     navSection === reportsNavigationItem.label
@@ -6396,6 +6404,10 @@ function AuthenticatedApp() {
               />
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
                 <TicketListFilters
+                  onTicketsRestored={() => {
+                    setTicketPage(0);
+                    setDashboardRevision((current) => current + 1);
+                  }}
                   agents={ticketFilterOptions.agents}
                   departments={ticketFilterOptions.departments}
                   filters={ticketListRefinement}
@@ -6452,7 +6464,7 @@ function AuthenticatedApp() {
                     setTicketActionStatus(
                       cleanupPending > 0
                         ? `${deleted} Tickets wurden gelöscht. Die Bereinigung von ${cleanupPending} Dateianhängen ist protokolliert.`
-                        : `${deleted} Tickets wurden endgültig gelöscht.`,
+                        : `${deleted} Tickets wurden in den Papierkorb verschoben. Sie lassen sich 90 Tage lang über den Filter «Gelöschte Tickets» wiederherstellen.`,
                     );
                   }}
                   onClearSelection={clearTicketSelection}
@@ -7665,11 +7677,12 @@ function BulkTicketStatusActions({
         >
           <div>
             <strong id="bulk-delete-confirmation-title">
-              {deleteTicketIds.length} Tickets endgültig löschen?
+              {deleteTicketIds.length} Tickets löschen?
             </strong>
             <p>
-              Tickets, Kommentare und zugehörige Einträge werden unwiderruflich
-              entfernt.
+              Die Tickets kommen in den Papierkorb und sind nirgends mehr
+              sichtbar. Sie lassen sich 90 Tage lang wiederherstellen und werden
+              danach endgültig entfernt.
             </p>
           </div>
           <div className="ticket-bulk-actions__confirmation-buttons">
@@ -7679,7 +7692,7 @@ function BulkTicketStatusActions({
               onClick={() => void deleteTickets()}
               type="button"
             >
-              {deleteTicketIds.length} Tickets endgültig löschen
+              {deleteTicketIds.length} Tickets löschen
             </button>
             <button
               className="secondary-button"
@@ -8067,7 +8080,9 @@ function TicketListFilters({
   savedViewsLoading,
   statuses,
   tenantId,
+  onTicketsRestored,
 }: {
+  onTicketsRestored?: (count: number) => void;
   agents: readonly TicketAgentOption[];
   currentUserId: string | undefined;
   departments: readonly { key: string; label: string }[];
@@ -8087,6 +8102,7 @@ function TicketListFilters({
   tenantId: string;
 }) {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [isTrashOpen, setIsTrashOpen] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const savedViewsSelectRef = useRef<HTMLSelectElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -8340,6 +8356,22 @@ function TicketListFilters({
                 </label>
               </div>
             </div>
+            <div className="ticket-list-filter-panel__trash">
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  setIsPanelOpen(false);
+                  setIsTrashOpen(true);
+                }}
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={16} /> Gelöschte Tickets
+                anzeigen
+              </button>
+              <small>
+                Gelöschte Tickets 90 Tage lang ansehen und wiederherstellen.
+              </small>
+            </div>
             <footer className="ticket-list-filter-panel__footer">
               <button
                 className="secondary-button"
@@ -8359,6 +8391,16 @@ function TicketListFilters({
             </footer>
           </section>
         </div>
+      )}
+      {isTrashOpen && (
+        <TicketTrashDialog
+          onClose={() => {
+            setIsTrashOpen(false);
+            window.requestAnimationFrame(() => triggerRef.current?.focus());
+          }}
+          onRestored={(count) => onTicketsRestored?.(count)}
+          tenantId={tenantId}
+        />
       )}
     </>
   );

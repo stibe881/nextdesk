@@ -300,6 +300,7 @@ async function previewPolicies(
       .select(
         "id, ticket_number, subject, status_id, created_at, updated_at, resolved_at, closed_at, requester_contact_id, category_id",
       )
+      .is("deleted_at", null)
       .eq("tenant_id", tenantId)
       .order("updated_at", { ascending: false })
       .limit(500),

@@ -344,6 +344,7 @@ async function overview(request: Request, admin: Admin, action: Action, actorId:
       .select(
         "id, ticket_number, subject, department_id, assigned_agent_id, created_at, first_responded_at, resolution_due_at, status:ticket_statuses!inner(label, is_closed), priority:ticket_priorities(label, sort_order)",
       )
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .in("department_id", scope.departmentIds)
       .eq("status.is_closed", false)
@@ -353,6 +354,7 @@ async function overview(request: Request, admin: Admin, action: Action, actorId:
     admin
       .from("tickets")
       .select("assigned_agent_id")
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .in("department_id", scope.departmentIds)
       .gte("resolved_at", new Date(now - 30 * 86_400_000).toISOString())
@@ -448,6 +450,7 @@ async function reassign(
   const { data, error } = await admin
     .from("tickets")
     .select("id, department_id")
+    .is("deleted_at", null)
     .eq("tenant_id", action.tenantId)
     .in("id", action.ticketIds);
   if (error) throw dbFailure();
@@ -502,6 +505,7 @@ async function reviewQueue(request: Request, admin: Admin, action: Action, actor
     admin
       .from("tickets")
       .select("id, ticket_number, subject, description, assigned_agent_id, resolved_at")
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .in("department_id", scope.departmentIds)
       .not("assigned_agent_id", "is", null)
@@ -568,6 +572,7 @@ async function saveReview(
   const { data: ticket, error } = await admin
     .from("tickets")
     .select("id, department_id, assigned_agent_id")
+    .is("deleted_at", null)
     .eq("tenant_id", action.tenantId)
     .eq("id", action.ticketId)
     .maybeSingle();
@@ -822,6 +827,7 @@ async function slaBreachCauses(
     .select(
       "id, department_id, assigned_team_id, response_due_at, first_responded_at, resolution_due_at, resolved_at, closed_at",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", action.tenantId)
     .in("department_id", scope.departmentIds)
     .is("merged_into_ticket_id", null)
@@ -1041,6 +1047,7 @@ async function monthStats(
     admin
       .from("tickets")
       .select("id, assigned_agent_id, created_at, first_responded_at")
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .in("department_id", scope.departmentIds)
       .in("assigned_agent_id", agentIds)
@@ -1050,6 +1057,7 @@ async function monthStats(
     admin
       .from("tickets")
       .select("id, assigned_agent_id, created_at, resolved_at, resolution_due_at")
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .in("department_id", scope.departmentIds)
       .in("assigned_agent_id", agentIds)
@@ -1074,6 +1082,7 @@ async function monthStats(
       .from("ticket_comments")
       .select("author_id, tickets!inner(tenant_id)")
       .eq("tickets.tenant_id", action.tenantId)
+      .is("tickets.deleted_at", null)
       .in("author_id", agentIds)
       .eq("visibility", "external")
       .gte("created_at", from)
@@ -1281,6 +1290,7 @@ async function liveBoard(request: Request, admin: Admin, action: Action, actorId
       .select(
         "id, ticket_number, subject, department_id, assigned_agent_id, created_at, resolution_due_at, status:ticket_statuses!inner(is_closed)",
       )
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .in("department_id", scope.departmentIds)
       .eq("status.is_closed", false)
@@ -1314,6 +1324,7 @@ async function liveBoard(request: Request, admin: Admin, action: Action, actorId
       ? admin
         .from("tickets")
         .select("assigned_agent_id")
+        .is("deleted_at", null)
         .eq("tenant_id", action.tenantId)
         .in("assigned_agent_id", agentIds)
         .gte("resolved_at", new Date(dayStart).toISOString())
@@ -1335,6 +1346,7 @@ async function liveBoard(request: Request, admin: Admin, action: Action, actorId
     ? await admin
       .from("tickets")
       .select("id, ticket_number, subject")
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .in("id", presenceIds)
     : { data: [], error: null };

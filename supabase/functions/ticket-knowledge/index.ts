@@ -441,6 +441,7 @@ const handler = withSupabase(
         const { data: ticket, error: ticketFailure } = await admin
           .from("tickets")
           .select("department_id")
+          .is("deleted_at", null)
           .eq("tenant_id", action.tenantId)
           .eq("id", action.ticketId)
           .maybeSingle();

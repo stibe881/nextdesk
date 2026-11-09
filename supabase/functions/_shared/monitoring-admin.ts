@@ -193,6 +193,7 @@ export async function ticketNumbers(
   const { data, error } = await admin
     .from("tickets")
     .select("id, ticket_number")
+    .is("deleted_at", null)
     .eq("tenant_id", tenantId)
     .in("id", unique);
   if (error) throw dbFailure();

@@ -752,6 +752,7 @@ async function detail(request: Request, admin: Admin, tenantId: string, assetId:
     ticketIds.length
       ? admin.from("tickets")
         .select("id, ticket_number, subject, closed_at, resolved_at, created_at")
+        .is("deleted_at", null)
         .eq("tenant_id", tenantId).in("id", ticketIds)
         .order("created_at", { ascending: false })
       : { data: [], error: null },

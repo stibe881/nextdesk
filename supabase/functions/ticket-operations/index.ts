@@ -884,6 +884,7 @@ async function getTicket(admin: any, tenantId: string, ticketId: string) {
   const { data } = await admin
     .from("tickets")
     .select("*")
+    .is("deleted_at", null)
     .eq("id", ticketId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -1221,6 +1222,7 @@ async function similarTicketsWithSolutions(
   const { data: tenantTickets } = await admin
     .from("tickets")
     .select("id")
+    .is("deleted_at", null)
     .eq("tenant_id", tenantId)
     .in(
       "id",
@@ -1552,6 +1554,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .select(
           "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, customer_organization_id, parent_ticket_id, merged_into_ticket_id, status:ticket_statuses(id, key, label, is_closed)",
         )
+        .is("deleted_at", null)
         .eq("tenant_id", ticket.tenant_id)
         .or(
           `parent_ticket_id.eq.${ticket.id},merged_into_ticket_id.eq.${ticket.id}`,
@@ -1807,6 +1810,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           .select(
             "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, customer_organization_id, status:ticket_statuses(id, key, label, is_closed)",
           )
+          .is("deleted_at", null)
           .eq("tenant_id", ticket.tenant_id)
           .in("id", relatedTicketIds)
       : { data: [] };
@@ -2112,6 +2116,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .select(
         "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, customer_organization_id, status:ticket_statuses(label)",
       )
+      .is("deleted_at", null)
       .eq("tenant_id", ticket.tenant_id)
       .neq("id", ticket.id)
       .is("merged_into_ticket_id", null)
