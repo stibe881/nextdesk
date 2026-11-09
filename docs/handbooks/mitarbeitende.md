@@ -157,7 +157,9 @@ Taste `/` springen Sie direkt hinein). Die Treffer erscheinen beim Tippen,
 die Suchbegriffe sind markiert. Oder wählen Sie ein **Thema** (Chips; **+ weitere**
 zeigt die übrigen) und bei Bedarf ein Unterthema. Ohne Suche zeigt die Seite
 die neusten Artikel als Karten. Ein Klick auf einen Treffer öffnet den Artikel; mit **Alle
-Artikel** bzw. **Zurück zu den Treffern** kehren Sie zur Liste zurück. Prüfen
+Artikel** bzw. **Zurück zu den Treffern** kehren Sie zur Liste zurück. Lange
+Artikel haben oben ein Inhaltsverzeichnis **Auf dieser Seite**, das zum
+Abschnitt springt. Prüfen
 Sie hier zuerst, ob es eine Lösung gibt – das geht oft schneller als ein
 Ticket.
 

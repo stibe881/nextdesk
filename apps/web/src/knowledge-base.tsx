@@ -53,7 +53,7 @@ import {
 } from "./lib/knowledge-images";
 import { supabase } from "./lib/supabase";
 import { recordRecentItem } from "./lib/recent-items";
-import { KnowledgeMarkdown } from "./knowledge-markdown";
+import { KnowledgeMarkdown, knowledgeHeadings } from "./knowledge-markdown";
 import { KnowledgeSuggestions } from "./knowledge-suggestions";
 
 export type KnowledgeBaseProps = {
@@ -591,6 +591,35 @@ const knowledgeBaseStyles = `
     font-size: 13px;
     font-weight: 700;
   }
+  .knowledge-base .knowledge-base__toc {
+    border: 1px solid #e3e9ee;
+    border-radius: 12px;
+    background: #f7f9fb;
+    padding: 12px 16px;
+  }
+  .knowledge-base .knowledge-base__toc-title {
+    margin: 0 0 6px;
+    color: #5d6f7a;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .knowledge-base .knowledge-base__toc ol {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .knowledge-base .knowledge-base__toc a {
+    color: #1c4f86;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .knowledge-base .knowledge-base__toc a:hover { text-decoration: underline; }
+  .knowledge-base .knowledge-base__toc-sub { padding-left: 14px; }
   .knowledge-base .knowledge-base__reader-meta { margin: 0; color: #6c7d87; font-size: 13px; }
   .knowledge-base__badge {
     display: inline-flex;
@@ -2961,6 +2990,10 @@ export function KnowledgeBase({
     articleCategoryFilterId.length > 0 ||
     articleSubcategoryFilterId.length > 0;
   const showReader = Boolean(selected) || loadingDetail;
+  const readerHeadings = useMemo(
+    () => knowledgeHeadings(selected?.revision.body ?? ""),
+    [selected?.revision.body],
+  );
   // Start page (no search, no filter): the newest articles as cards.
   const showBento =
     !activeQuery && !isListFiltered && visibleArticles.length >= 4;
@@ -3107,12 +3140,48 @@ export function KnowledgeBase({
                   </p>
                 ) : null}
               </header>
+              {readerHeadings.length >= 3 ? (
+                <nav
+                  aria-label="Inhalt dieses Artikels"
+                  className="knowledge-base__toc"
+                >
+                  <p className="knowledge-base__toc-title">Auf dieser Seite</p>
+                  <ol>
+                    {readerHeadings.map((heading) => (
+                      <li
+                        className={
+                          heading.level === 3
+                            ? "knowledge-base__toc-sub"
+                            : undefined
+                        }
+                        key={heading.id}
+                      >
+                        <a
+                          href={`#${heading.id}`}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            document
+                              .getElementById(heading.id)
+                              ?.scrollIntoView({
+                                behavior: "smooth",
+                                block: "start",
+                              });
+                          }}
+                        >
+                          {heading.text}
+                        </a>
+                      </li>
+                    ))}
+                  </ol>
+                </nav>
+              ) : null}
               <article
                 aria-label="Artikelinhalt"
                 className="knowledge-base__markdown"
               >
                 {selected.revision.body ? (
                   <KnowledgeMarkdown
+                    anchors
                     body={selected.revision.body}
                     imageUrls={imageUrls}
                   />
