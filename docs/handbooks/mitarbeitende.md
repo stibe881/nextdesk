@@ -153,6 +153,10 @@ Falls Ihr Unternehmen den Shop nutzt:
 3. **Jetzt bestellen** bzw. **Zur Freigabe senden**, wenn eine Freigabe nötig
    ist.
 
+Manche Artikel sind nur für bestimmte Kaderstufen freigegeben und erscheinen
+deshalb nicht bei allen Mitarbeitenden. Fehlt Ihnen ein Artikel, wenden Sie
+sich an den Support.
+
 Unter **Meine Bestellungen** sehen Sie den Stand. Als vorgesetzte Person
 entscheiden Sie im Register **Freigaben** über Bestellungen Ihres Teams.
 
