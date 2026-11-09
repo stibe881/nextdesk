@@ -349,6 +349,7 @@ const knowledgeBaseStyles = `
   .knowledge-base .knowledge-base__hub,
   .knowledge-base .knowledge-base__reader {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
     padding: 24px;
   }
@@ -410,8 +411,13 @@ const knowledgeBaseStyles = `
     flex-wrap: wrap;
     gap: 6px;
   }
+  .knowledge-base .knowledge-base__hub > *,
+  .knowledge-base .knowledge-base__reader > * {
+    min-width: 0;
+  }
   .knowledge-base .knowledge-base__topic-wrap {
     position: relative;
+    min-width: 0;
   }
   .knowledge-base .knowledge-base__topic-row {
     display: flex;
@@ -3155,8 +3161,19 @@ export function KnowledgeBase({
   // Start page (no search, no filter): the newest articles as cards.
   const showBento =
     !activeQuery && !isListFiltered && visibleArticles.length >= 4;
-  const bentoArticles = showBento ? visibleArticles.slice(0, 6) : [];
-  const listArticles = showBento ? visibleArticles.slice(6) : visibleArticles;
+  // Published articles lead the cards; drafts follow.
+  const bentoOrder = showBento
+    ? [
+        ...visibleArticles.filter(
+          (item) => item.article.status === "published",
+        ),
+        ...visibleArticles.filter(
+          (item) => item.article.status !== "published",
+        ),
+      ]
+    : visibleArticles;
+  const bentoArticles = showBento ? bentoOrder.slice(0, 6) : [];
+  const listArticles = showBento ? bentoOrder.slice(6) : visibleArticles;
   function articleCard(item: ArticleListItem, className: string) {
     const { article, revision } = item;
     const topic =
