@@ -591,3 +591,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.security-assign select {
+  width: 100%;
+}

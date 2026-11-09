@@ -167,6 +167,11 @@ sonst innerhalb eines Tages.
 
 ![Sicherheitsfall mit sicherer Ansicht und Urteil](images/ag-sicherheitsfall.jpg)
 
+Unter **Zuständig** weisen Sie den Fall einer Person zu (oder mit **Mir
+zuweisen** sich selbst). Zur Auswahl stehen die Agenten, die den Fall
+bearbeiten dürfen, bei einem Team die Mitglieder dieses Teams. In der Liste
+steht bei jedem Fall, wer zuständig ist.
+
 So bearbeiten Sie einen Fall:
 
 1. **Urteil fällen**: _Harmlos_, _Spam_, _Phishing_ oder _Gezielter Angriff_
