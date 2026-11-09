@@ -154,8 +154,8 @@ beim Support.
 In der **Wissensdatenbank** finden Sie Anleitungen, z. B. «VPN einrichten»
 oder «Passwort zurücksetzen». Tippen Sie ein Stichwort ins Suchfeld (mit der
 Taste `/` springen Sie direkt hinein). Die Treffer erscheinen beim Tippen,
-die Suchbegriffe sind markiert. Oder wählen Sie ein **Thema** (Chips; **+ weitere**
-zeigt die übrigen) und bei Bedarf ein Unterthema. Ohne Suche zeigt die Seite
+die Suchbegriffe sind markiert. Oder wählen Sie ein **Thema** (die Reihe mit Symbolen
+scrollt seitlich, die häufigsten Themen stehen vorne) und bei Bedarf ein Unterthema. Ohne Suche zeigt die Seite
 die neusten Artikel als Karten. Ein Klick auf einen Treffer öffnet den Artikel; mit **Alle
 Artikel** bzw. **Zurück zu den Treffern** kehren Sie zur Liste zurück. Lange
 Artikel haben oben ein Inhaltsverzeichnis **Auf dieser Seite**, das zum
