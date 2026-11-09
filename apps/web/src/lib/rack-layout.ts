@@ -76,39 +76,45 @@ export function buildRacks<T extends RackDevice>(
   for (const key of definedByKey.keys()) {
     if (!groups.has(key)) groups.set(key, []);
   }
-  return [...groups.entries()]
-    .map(([key, members]) => {
-      const definition = definedByKey.get(key) ?? null;
-      const placed: PlacedDevice<T>[] = [];
-      const unplaced: T[] = [];
-      for (const device of members) {
-        const units = parseRackUnits(device.rackUnit);
-        if (units) placed.push({ device, ...units });
-        else unplaced.push(device);
-      }
-      const top = Math.max(
-        0,
-        ...placed.map((entry) => entry.start + entry.height - 1),
-      );
-      return {
-        key,
-        definition,
-        name: definition?.name ?? members[0]!.rack!.trim(),
-        locationName: definition
-          ? definition.locationName
-          : members[0]!.locationName,
-        // Recorded height, else a standard height at least as tall as the
-        // highest device.
-        units: definition
-          ? Math.max(definition.heightUnits, top)
-          : ([12, 24, 42, 48].find((size) => size >= top) ?? top),
-        placed: placed.sort((a, b) => b.start - a.start),
-        unplaced,
-      };
-    })
-    .sort(
-      (a, b) =>
-        (a.locationName ?? "").localeCompare(b.locationName ?? "", "de-CH") ||
-        a.name.localeCompare(b.name, "de-CH", { numeric: true }),
-    );
+  return (
+    [...groups.entries()]
+      .map(([key, members]) => {
+        const definition = definedByKey.get(key) ?? null;
+        const placed: PlacedDevice<T>[] = [];
+        const unplaced: T[] = [];
+        for (const device of members) {
+          const units = parseRackUnits(device.rackUnit);
+          if (units) placed.push({ device, ...units });
+          else unplaced.push(device);
+        }
+        const top = Math.max(
+          0,
+          ...placed.map((entry) => entry.start + entry.height - 1),
+        );
+        return {
+          key,
+          definition,
+          name: definition?.name ?? members[0]!.rack!.trim(),
+          locationName: definition
+            ? definition.locationName
+            : members[0]!.locationName,
+          // Recorded height, else a standard height at least as tall as the
+          // highest device.
+          units: definition
+            ? Math.max(definition.heightUnits, top)
+            : ([12, 24, 42, 48].find((size) => size >= top) ?? top),
+          placed: placed.sort((a, b) => b.start - a.start),
+          unplaced,
+        };
+      })
+      // Alphabetical by name («Rack 2» before «Rack 10»), then location.
+      .sort(
+        (a, b) =>
+          a.name.localeCompare(b.name, "de-CH", {
+            numeric: true,
+            sensitivity: "base",
+          }) ||
+          (a.locationName ?? "").localeCompare(b.locationName ?? "", "de-CH"),
+      )
+  );
 }

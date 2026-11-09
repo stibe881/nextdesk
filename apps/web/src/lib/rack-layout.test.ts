@@ -70,9 +70,9 @@ describe("buildRacks with recorded racks", () => {
     expect(
       racks.map((rack) => [rack.name, rack.units, rack.placed.length]),
     ).toEqual([
-      ["Rack 02", 12, 0],
       ["Rack 01", 20, 1],
+      ["Rack 02", 12, 0],
     ]);
-    expect(racks[1]?.definition?.id).toBe("r1");
+    expect(racks[0]?.definition?.id).toBe("r1");
   });
 });
