@@ -10,7 +10,9 @@ import { assetLabelItem, rackLabelItem } from "./lib/asset-labels";
 import { buildRacks } from "./lib/rack-layout";
 import { NetworkMap, type MonitoringEntry } from "./infrastructure-network-map";
 import {
+  checklistItems,
   MaintenancePlanning,
+  type ChecklistItem,
   type MaintenanceWindow,
 } from "./infrastructure-planning";
 import {
@@ -92,7 +94,7 @@ type Device = {
   notes: string | null;
   serviceId: string | null;
   serviceIds: string[];
-  maintenanceChecklist: string[];
+  maintenanceChecklist: ChecklistItem[];
   serviceTaskTemplateId: string | null;
   prtgObjectId: string | null;
 };
@@ -394,7 +396,12 @@ export function Infrastructure({
         monitoring?: Record<string, MonitoringEntry[]>;
       }>({ type: "list", tenantId });
       setMonitoring(data.monitoring ?? {});
-      setDevices(data.devices);
+      setDevices(
+        data.devices.map((device) => ({
+          ...device,
+          maintenanceChecklist: checklistItems(device.maintenanceChecklist),
+        })),
+      );
       setLocations(data.locations);
       setServices(data.services ?? []);
       setCanManage(data.canManage);
@@ -1601,8 +1608,8 @@ function DeviceEditor({
           ...form,
           serviceIds: selectedServiceIds,
           maintenanceChecklist: (form.maintenanceChecklist ?? [])
-            .map((item) => item.trim())
-            .filter(Boolean),
+            .map((item) => ({ label: item.label.trim(), date: item.date }))
+            .filter((item) => item.label),
         },
       });
       onSaved(data.assetId, !form.id);
@@ -1891,30 +1898,88 @@ function DeviceEditor({
             </label>
           </div>
         </fieldset>
-        <label className="infrastructure__notes-field">
-          Wartungscheckliste (ein Punkt pro Zeile)
-          <textarea
-            onChange={(event) =>
-              set(
-                "maintenanceChecklist",
-                event.target.value.split("\n").slice(0, 40),
-              )
-            }
-            onBlur={() =>
-              set(
-                "maintenanceChecklist",
-                (form.maintenanceChecklist ?? [])
-                  .map((item) => item.trim())
-                  .filter(Boolean),
-              )
-            }
-            placeholder={
-              "Firmware prüfen\nKonfiguration sichern\nLüfter und Staub kontrollieren"
-            }
-            rows={4}
-            value={(form.maintenanceChecklist ?? []).join("\n")}
-          />
-        </label>
+        <fieldset className="infrastructure__checklist-editor">
+          <legend>Wartungscheckliste</legend>
+          <p className="infrastructure__checklist-hint">
+            Pro Punkt können Sie ein Datum eintragen, z. B. wann er erledigt
+            wurde oder wann er dran ist.
+          </p>
+          {(form.maintenanceChecklist ?? []).length === 0 ? (
+            <p className="infrastructure__checklist-hint">
+              Noch keine Punkte, z. B. «Firmware prüfen» oder «Konfiguration
+              sichern».
+            </p>
+          ) : (
+            <ol>
+              {(form.maintenanceChecklist ?? []).map((item, index) => (
+                <li key={index}>
+                  <input
+                    aria-label={`Checklistenpunkt ${index + 1}`}
+                    maxLength={300}
+                    onChange={(event) =>
+                      set(
+                        "maintenanceChecklist",
+                        (form.maintenanceChecklist ?? []).map((entry, at) =>
+                          at === index
+                            ? { ...entry, label: event.target.value }
+                            : entry,
+                        ),
+                      )
+                    }
+                    placeholder="z. B. Firmware prüfen"
+                    value={item.label}
+                  />
+                  <input
+                    aria-label={`Datum für Punkt ${index + 1}`}
+                    onChange={(event) =>
+                      set(
+                        "maintenanceChecklist",
+                        (form.maintenanceChecklist ?? []).map((entry, at) =>
+                          at === index
+                            ? { ...entry, date: event.target.value || null }
+                            : entry,
+                        ),
+                      )
+                    }
+                    type="date"
+                    value={item.date ?? ""}
+                  />
+                  <button
+                    aria-label={`Punkt ${index + 1} entfernen`}
+                    className="infrastructure__checklist-remove"
+                    onClick={() =>
+                      set(
+                        "maintenanceChecklist",
+                        (form.maintenanceChecklist ?? []).filter(
+                          (_entry, at) => at !== index,
+                        ),
+                      )
+                    }
+                    title="Punkt entfernen"
+                    type="button"
+                  >
+                    <X aria-hidden="true" size={16} />
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+          {(form.maintenanceChecklist ?? []).length < 40 ? (
+            <button
+              className="secondary-button infrastructure__checklist-add"
+              onClick={() =>
+                set("maintenanceChecklist", [
+                  ...(form.maintenanceChecklist ?? []),
+                  { label: "", date: null },
+                ])
+              }
+              type="button"
+            >
+              <Plus aria-hidden="true" size={16} />
+              Punkt hinzufügen
+            </button>
+          ) : null}
+        </fieldset>
         <label className="infrastructure__notes-field">
           Notizen
           <textarea

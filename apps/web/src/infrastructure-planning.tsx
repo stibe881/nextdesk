@@ -1,6 +1,33 @@
 import { useState, type FormEvent } from "react";
 import { CalendarClock, ClipboardList } from "lucide-react";
 
+/** One point of the maintenance checklist with the date the user set. */
+export type ChecklistItem = { label: string; date: string | null };
+
+/** Checklist from the API: plain strings (older devices) or items. */
+export function checklistItems(value: unknown): ChecklistItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry): ChecklistItem[] => {
+    if (typeof entry === "string") {
+      return entry.trim() ? [{ label: entry.trim(), date: null }] : [];
+    }
+    if (typeof entry !== "object" || entry === null) return [];
+    const record = entry as Record<string, unknown>;
+    const label = typeof record.label === "string" ? record.label.trim() : "";
+    if (!label) return [];
+    const date =
+      typeof record.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(record.date)
+        ? record.date
+        : null;
+    return [{ label, date }];
+  });
+}
+
+export function formatChecklistDate(value: string): string {
+  const [year, month, day] = value.split("-");
+  return `${day}.${month}.${year}`;
+}
+
 export type MaintenanceWindow = {
   id: string;
   title: string;
@@ -52,7 +79,7 @@ export function MaintenancePlanning({
   deviceId: string;
   deviceName: string;
   serviceId: string | null;
-  checklist: string[];
+  checklist: ChecklistItem[];
   intervalMonths: number | null;
   hasServiceTask: boolean;
   services: Service[];
@@ -224,8 +251,15 @@ export function MaintenancePlanning({
         </h4>
         {checklist.length ? (
           <ol className="infrastructure__checklist">
-            {checklist.map((item) => (
-              <li key={item}>{item}</li>
+            {checklist.map((item, index) => (
+              <li key={`${index}:${item.label}`}>
+                {item.label}
+                {item.date ? (
+                  <span className="infrastructure__checklist-date">
+                    {formatChecklistDate(item.date)}
+                  </span>
+                ) : null}
+              </li>
             ))}
           </ol>
         ) : (

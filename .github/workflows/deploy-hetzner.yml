@@ -71,6 +71,13 @@ jobs:
         run: |
           test -n "$HETZNER_SSH_USER"
           test -n "$HETZNER_WEB_ROOT"
-          rsync --archive --delete \
-            -e "ssh -i ~/.ssh/id_ed25519 -p $HETZNER_SSH_PORT -o BatchMode=yes" \
+          ssh_cmd="ssh -i ~/.ssh/id_ed25519 -p $HETZNER_SSH_PORT -o BatchMode=yes"
+          # Hashed assets of earlier builds stay for a while: browser tabs
+          # opened before this deploy still load their lazy chunks from them.
+          rsync --archive -e "$ssh_cmd" \
+            apps/web/dist/assets/ "$HETZNER_SSH_USER@$HETZNER_SSH_HOST:$HETZNER_WEB_ROOT/assets/"
+          rsync --archive --delete --exclude '/assets/' -e "$ssh_cmd" \
             apps/web/dist/ "$HETZNER_SSH_USER@$HETZNER_SSH_HOST:$HETZNER_WEB_ROOT/"
+          remote_assets=$(printf '%q' "$HETZNER_WEB_ROOT/assets")
+          $ssh_cmd "$HETZNER_SSH_USER@$HETZNER_SSH_HOST" \
+            "find $remote_assets -type f -mtime +14 -delete"

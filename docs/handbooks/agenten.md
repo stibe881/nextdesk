@@ -40,7 +40,10 @@ Das **Systemstatus-Badge** oben in der Navigation und die Seite
 Zurückkehren in den Tab). In der **Infrastruktur** hat ein Gerät einen oder
 mehrere **Dienste (für Systemstatus)**, die bei einer Überwachungsstörung
 (PRTG) ihren Status ändern, die **Höheneinheit** als «von … bis» und
-Wartungseinträge mit Datum und optionaler **Uhrzeit**.
+Wartungseinträge mit Datum und optionaler **Uhrzeit**. In der
+**Wartungscheckliste** erfassen Sie jeden Punkt in einer eigenen Zeile mit
+einem eigenen **Datum** (z. B. wann er erledigt wurde oder wann er dran ist);
+**Punkt hinzufügen** ergänzt eine Zeile, × entfernt sie.
 
 Oben rechts stehen **+ (Erfassen)**, die **globale Suche** und die
 **Benachrichtigungen**.
