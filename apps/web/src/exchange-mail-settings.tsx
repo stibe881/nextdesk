@@ -56,6 +56,8 @@ type ExchangeMailChannel = {
   mailboxAddress: string;
   mailboxObjectId: string | null;
   defaultDepartmentId: string | null;
+  /** Team that receives every new ticket of this mailbox. */
+  defaultTeamId: string | null;
   sendAcknowledgement: boolean;
   sendAgentReplies: boolean;
   sendResolution: boolean;
@@ -75,6 +77,7 @@ type ExchangeMailStatus = {
   connections: ExchangeConnection[];
   channels: ExchangeMailChannel[];
   departments: { id: string; name: string }[];
+  teams: { id: string; name: string; departmentId: string | null }[];
   stats: { inbound24h: number; outbound24h: number; failed24h: number };
 };
 
@@ -82,6 +85,7 @@ type ExchangeSettingsForm = {
   connectionId: string;
   mailboxAddress: string;
   defaultDepartmentId: string;
+  defaultTeamId: string;
   sendAcknowledgement: boolean;
   sendAgentReplies: boolean;
   sendResolution: boolean;
@@ -105,6 +109,7 @@ type ExchangeMailRequest =
       mailboxAddress: string;
       mailboxObjectId: string | null;
       defaultDepartmentId: string | null;
+      defaultTeamId: string | null;
       sendAcknowledgement: boolean;
       sendAgentReplies: boolean;
       sendResolution: boolean;
@@ -124,6 +129,7 @@ const emptyForm: ExchangeSettingsForm = {
   connectionId: "",
   mailboxAddress: "",
   defaultDepartmentId: "",
+  defaultTeamId: "",
   sendAcknowledgement: true,
   sendAgentReplies: true,
   sendResolution: false,
@@ -245,6 +251,7 @@ function toChannel(value: unknown): ExchangeMailChannel | null {
     value.lastInboundAt,
     value.lastOutboundAt,
     value.activatedAt,
+    value.defaultTeamId ?? null,
   ].map(nullableString);
   if (nullable.some((entry) => entry === undefined)) return null;
   return {
@@ -265,6 +272,7 @@ function toChannel(value: unknown): ExchangeMailChannel | null {
     lastInboundAt: nullable[6] ?? null,
     lastOutboundAt: nullable[7] ?? null,
     activatedAt: nullable[8] ?? null,
+    defaultTeamId: nullable[9] ?? null,
   };
 }
 
@@ -304,6 +312,24 @@ function toStatus(value: unknown): ExchangeMailStatus | null {
           : [],
       )
     : [];
+  const teams = Array.isArray(value.teams)
+    ? value.teams.flatMap((item) =>
+        isRecord(item) &&
+        typeof item.id === "string" &&
+        typeof item.name === "string"
+          ? [
+              {
+                id: item.id,
+                name: item.name,
+                departmentId:
+                  typeof item.departmentId === "string"
+                    ? item.departmentId
+                    : null,
+              },
+            ]
+          : [],
+      )
+    : [];
   const stats = isRecord(value.stats) ? value.stats : null;
   return {
     platformConfigured: value.platformConfigured,
@@ -312,6 +338,7 @@ function toStatus(value: unknown): ExchangeMailStatus | null {
     connections,
     channels,
     departments,
+    teams,
     stats: {
       inbound24h: safeCount(stats?.inbound24h),
       outbound24h: safeCount(stats?.outbound24h),
@@ -408,6 +435,7 @@ function formFromChannel(
     connectionId: channel.connectionId ?? "",
     mailboxAddress: channel.mailboxAddress,
     defaultDepartmentId: channel.defaultDepartmentId ?? "",
+    defaultTeamId: channel.defaultTeamId ?? "",
     sendAcknowledgement: channel.sendAcknowledgement,
     sendAgentReplies: channel.sendAgentReplies,
     sendResolution: channel.sendResolution,
@@ -565,6 +593,7 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
           mailboxAddress: form.mailboxAddress.trim(),
           mailboxObjectId: null,
           defaultDepartmentId: form.defaultDepartmentId || null,
+          defaultTeamId: form.defaultTeamId || null,
           sendAcknowledgement: form.sendAcknowledgement,
           sendAgentReplies: form.sendAgentReplies,
           sendResolution: form.sendResolution,
@@ -1079,6 +1108,32 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
                         </option>
                       ))}
                     </select>
+                  </label>
+                  <label>
+                    Team für neue Tickets
+                    <select
+                      onChange={(event) =>
+                        updateForm("defaultTeamId", event.target.value)
+                      }
+                      value={form.defaultTeamId}
+                    >
+                      <option value="">Kein Team</option>
+                      {status.teams
+                        .filter(
+                          (team) =>
+                            !form.defaultDepartmentId ||
+                            team.departmentId === form.defaultDepartmentId,
+                        )
+                        .map((team) => (
+                          <option key={team.id} value={team.id}>
+                            {team.name}
+                          </option>
+                        ))}
+                    </select>
+                    <small>
+                      Jedes neue E-Mail-Ticket dieses Postfachs wird diesem Team
+                      zugeordnet. Das Team muss zur Ziel-Abteilung gehören.
+                    </small>
                   </label>
                 </div>
                 <div className="exchange-mail-settings__switches">

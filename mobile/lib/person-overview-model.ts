@@ -82,6 +82,8 @@ export type PersonOverview = {
     managerName: string | null;
     lastSignInAt: string | null;
     isMember: boolean;
+    /** Short-lived signed URL of the profile photo (Entra), if there is one. */
+    photoUrl: string | null;
   };
   stats: {
     openTickets: number;
@@ -257,6 +259,11 @@ export function parsePersonOverview(value: unknown): PersonOverview | null {
       managerName: str(person.managerName),
       lastSignInAt: str(person.lastSignInAt),
       isMember: person.isMember === true,
+      photoUrl:
+        typeof person.photoUrl === "string" &&
+        person.photoUrl.startsWith("https://")
+          ? person.photoUrl
+          : null,
     },
     stats: {
       openTickets: num(stats.openTickets) ?? 0,

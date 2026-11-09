@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, View } from "react-native";
 
 import type { MobileTicket } from "@/lib/nextdesk-tickets";
+import { formatTicketCreatedAt } from "@/lib/ticket-created-at";
 import { useAppColors } from "@/lib/themed-styles";
 
 type StatusTone = "error" | "info" | "primary" | "success" | "warning";
@@ -94,6 +95,23 @@ export function TicketPriorityText({
   );
 }
 
+/** When the ticket was created (ticket cards); nothing when unknown. */
+export function TicketCreatedText({
+  createdAt,
+}: {
+  createdAt: MobileTicket["createdAt"];
+}) {
+  const colors = useAppColors();
+  const label = formatTicketCreatedAt(createdAt);
+  if (!label) return null;
+  return (
+    <View accessibilityLabel={label} style={styles.priority}>
+      <Ionicons color={colors.muted} name="time-outline" size={12} />
+      <Text style={[styles.createdText, { color: colors.muted }]}>{label}</Text>
+    </View>
+  );
+}
+
 /** Requesting person on ticket cards (agents); nothing for own tickets. */
 export function TicketRequesterText({
   name,
@@ -130,6 +148,7 @@ const styles = StyleSheet.create({
   },
   priority: { alignItems: "center", flexDirection: "row", gap: 3 },
   priorityText: { fontSize: 11 },
+  createdText: { fontSize: 11 },
   requesterText: { flexShrink: 1, fontSize: 12, fontWeight: "600" },
   text: { fontSize: 11, fontWeight: "800" },
 });

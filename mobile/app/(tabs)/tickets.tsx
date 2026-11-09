@@ -16,6 +16,7 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import {
+  TicketCreatedText,
   TicketPriorityText,
   TicketRequesterText,
   TicketStatusBadge,
@@ -1226,6 +1227,7 @@ function TicketRow({
           </Text>
           <TicketRequesterText name={ticket.requesterName} />
           <TicketPriorityText priority={ticket.priority} />
+          <TicketCreatedText createdAt={ticket.createdAt} />
         </View>
         <View style={styles.ticketState}>
           {watched ? (

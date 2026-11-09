@@ -138,7 +138,9 @@ Support-Postfach die Rechte **Vollzugriff** und **Senden als**.
    und **Konfigurieren** öffnen.
 2. **Microsoft 365 verbinden** und mit dem Connector-Konto anmelden.
 3. **Postfach hinzufügen**: Support-Postfach, _Ziel-Abteilung für neue
-   Tickets_ und die gewünschten Mitteilungen (Eingangsbestätigung,
+   Tickets_, optional das _Team für neue Tickets_ (jedes neue E-Mail-Ticket
+   dieses Postfachs wird diesem Team zugeordnet; das Team muss zur
+   Ziel-Abteilung gehören) und die gewünschten Mitteilungen (Eingangsbestätigung,
    Agentenantworten per E-Mail, Lösungsmitteilung) wählen →
    **Postfach speichern**.
 4. **Prüfen** → **Aktivieren** → **Testmail** senden.

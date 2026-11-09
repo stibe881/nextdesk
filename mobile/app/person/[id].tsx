@@ -3,6 +3,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Linking,
   Platform,
   Pressable,
@@ -283,7 +284,16 @@ export default function PersonScreen() {
             <View style={styles.card}>
               <View style={styles.headRow}>
                 <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{personInitials(name)}</Text>
+                  {data.person.photoUrl ? (
+                    <Image
+                      accessibilityIgnoresInvertColors
+                      accessibilityLabel={`Foto von ${name}`}
+                      source={{ uri: data.person.photoUrl }}
+                      style={styles.avatarPhoto}
+                    />
+                  ) : (
+                    <Text style={styles.avatarText}>{personInitials(name)}</Text>
+                  )}
                 </View>
                 <View style={styles.headCopy}>
                   <Text accessibilityRole="header" style={styles.name}>
@@ -792,8 +802,10 @@ const useStyles = makeThemedStyles((c) => ({
     borderRadius: 30,
     height: 60,
     justifyContent: "center",
+    overflow: "hidden",
     width: 60,
   },
+  avatarPhoto: { height: 60, width: 60 },
   avatarText: { color: c.primaryText, fontSize: 21, fontWeight: "800" },
   name: { color: c.foreground, fontSize: 22, fontWeight: "800" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },

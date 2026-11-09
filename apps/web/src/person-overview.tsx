@@ -329,7 +329,16 @@ export function PersonOverview({
                 className="person-avatar person-avatar--big"
                 aria-hidden="true"
               >
-                {personInitials(name)}
+                {data.person.photoUrl ? (
+                  <img
+                    alt=""
+                    className="person-avatar__photo"
+                    referrerPolicy="no-referrer"
+                    src={data.person.photoUrl}
+                  />
+                ) : (
+                  personInitials(name)
+                )}
               </div>
               <div className="person-head__main">
                 <h1>

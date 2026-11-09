@@ -23,6 +23,8 @@ export type MobileTicket = {
   /** Ticket ohne zugewiesene Agentin bzw. zugewiesenen Agenten (wie im Web). */
   unassigned: boolean;
   requesterId: string;
+  /** When the ticket was created (ISO); missing in older offline copies. */
+  createdAt?: string | null;
   /** Name of the requesting person; null for own tickets or when unknown. */
   requesterName?: string | null;
 };
@@ -364,6 +366,7 @@ export async function loadMobileDashboard(input: {
       resolved: Boolean(statusById.get(ticket.status_id)?.is_closed),
       unassigned: !ticket.assigned_agent_id,
       requesterId: ticket.requester_id,
+      createdAt: ticket.created_at,
     }));
     const tickets = await withRequesterNames(
       client,
@@ -415,6 +418,7 @@ export async function loadMobileDashboard(input: {
         tickets: tickets.map(
           ({
             assignedToCurrentUser,
+            createdAt,
             id,
             priority,
             resolved,
@@ -424,6 +428,7 @@ export async function loadMobileDashboard(input: {
             unassigned,
           }) => ({
             assignedToCurrentUser,
+            createdAt: createdAt ?? undefined,
             id,
             priority,
             resolved,
@@ -534,6 +539,7 @@ export async function loadMobileTicketsByIds(
     resolved: Boolean(statusById.get(ticket.status_id)?.is_closed),
     unassigned: !ticket.assigned_agent_id,
     requesterId: ticket.requester_id,
+    createdAt: ticket.created_at,
   }));
   return withRequesterNames(client, tenant.id, userId, tickets);
 }
