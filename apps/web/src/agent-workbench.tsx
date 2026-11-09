@@ -6,6 +6,7 @@ import {
   CircleHelp,
   Clock3,
   House,
+  Inbox,
   ListTodo,
   LoaderCircle,
   ShieldCheck,
@@ -35,8 +36,12 @@ type TeamQueue = {
   departmentId: string;
   departmentName?: string | null;
   openTickets: number;
+  /** Open tickets of the queue without an assigned agent. */
+  unassignedTickets: number;
   teamId: string | null;
   teamName?: string | null;
+  /** The signed-in agent is a member of this team. */
+  isMyTeam: boolean;
 };
 type Mention = {
   authorId: string;
@@ -343,8 +348,14 @@ function queueFromValue(value: unknown): TeamQueue | null {
     departmentName:
       typeof value.departmentName === "string" ? value.departmentName : null,
     openTickets: value.openTickets,
+    unassignedTickets:
+      typeof value.unassignedTickets === "number" &&
+      value.unassignedTickets >= 0
+        ? value.unassignedTickets
+        : 0,
     teamId: value.teamId,
     teamName: typeof value.teamName === "string" ? value.teamName : null,
+    isMyTeam: value.isMyTeam === true,
   };
 }
 
@@ -411,6 +422,12 @@ function HelpHint({ children, label }: { children: ReactNode; label: string }) {
   );
 }
 
+function queueTitle(queue: TeamQueue): string {
+  return queue.teamId
+    ? `Team ${queue.teamName?.trim() || "ohne Namen"}`
+    : "Ohne Teamzuordnung";
+}
+
 function TeamQueuesPanel({
   onOpenQueue,
   tenantId,
@@ -435,8 +452,11 @@ function TeamQueuesPanel({
         }
         if (!mounted) return;
         setQueues(
+          // Own teams first, then the largest queues.
           [...nextQueues].sort(
-            (left, right) => right.openTickets - left.openTickets,
+            (left, right) =>
+              Number(right.isMyTeam) - Number(left.isMyTeam) ||
+              right.openTickets - left.openTickets,
           ),
         );
         setState("ready");
@@ -463,13 +483,16 @@ function TeamQueuesPanel({
           <p className="eyebrow">TEAM</p>
           <h2 id="workbench-team-heading">Team-Warteschlangen</h2>
           <p>
-            Öffnen Sie eine Abteilung, um die bereits für Sie sichtbare
-            Ticketliste einzugrenzen.
+            Offene Tickets pro Team. Ein Klick zeigt genau diese Tickets in der
+            Ticketliste.
           </p>
         </div>
         <HelpHint label="Team-Warteschlangen">
-          Die Ticketrechte werden weiterhin serverseitig geprüft. Eine
-          Warteschlange führt nie zu einer automatischen Zuweisung.
+          Ihre eigenen Teams stehen oben. «Ohne Teamzuordnung» sind offene
+          Tickets, die noch keinem Team zugeteilt sind – verteilen Sie sie,
+          damit sich jemand zuständig fühlt. «ohne Bearbeiter» zählt Tickets,
+          die noch niemandem zugewiesen sind. Sie sehen nur Tickets, die Sie
+          öffnen dürfen; eine Warteschlange weist nichts automatisch zu.
         </HelpHint>
       </div>
       {state === "loading" ? (
@@ -484,25 +507,56 @@ function TeamQueuesPanel({
         <ul className="workbench-queue-list">
           {queues.map((queue) => (
             <li key={`${queue.departmentId}:${queue.teamId ?? "ohne-team"}`}>
-              <button onClick={() => onOpenQueue(queue)} type="button">
+              <button
+                aria-label={`${queueTitle(queue)}, ${queue.departmentName?.trim() || "Abteilung"}: ${queue.openTickets} offen${queue.unassignedTickets ? `, ${queue.unassignedTickets} ohne Bearbeiter` : ""}. Tickets anzeigen`}
+                className={
+                  [
+                    queue.isMyTeam ? "is-my-team" : "",
+                    queue.teamId ? "" : "is-without-team",
+                  ]
+                    .filter(Boolean)
+                    .join(" ") || undefined
+                }
+                onClick={() => onOpenQueue(queue)}
+                type="button"
+              >
                 <span className="workbench-queue-list__icon">
-                  <UsersRound aria-hidden="true" size={18} strokeWidth={1.8} />
+                  {queue.teamId ? (
+                    <UsersRound
+                      aria-hidden="true"
+                      size={18}
+                      strokeWidth={1.8}
+                    />
+                  ) : (
+                    <Inbox aria-hidden="true" size={18} strokeWidth={1.8} />
+                  )}
                 </span>
                 <span>
                   <strong>
+                    {queueTitle(queue)}
+                    {queue.isMyTeam ? (
+                      <span className="workbench-queue-list__mine">
+                        Mein Team
+                      </span>
+                    ) : null}
+                  </strong>
+                  <small>
                     {queue.departmentName?.trim() ||
                       (queue.departmentId
                         ? "Unbekannte Abteilung"
                         : "Ohne Abteilung")}
-                  </strong>
-                  <small>
-                    {queue.teamId
-                      ? `Team ${queue.teamName?.trim() || "unbekannt"}`
-                      : "Ohne Teamzuordnung"}
+                    {queue.teamId ? "" : " · noch keinem Team zugeteilt"}
                   </small>
                 </span>
-                <span className="workbench-count">
-                  {queue.openTickets} offen
+                <span className="workbench-queue-list__counts">
+                  <span className="workbench-count">
+                    {queue.openTickets} offen
+                  </span>
+                  {queue.unassignedTickets > 0 ? (
+                    <span className="workbench-count workbench-count--warn">
+                      {queue.unassignedTickets} ohne Bearbeiter
+                    </span>
+                  ) : null}
                 </span>
               </button>
             </li>

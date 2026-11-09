@@ -416,7 +416,7 @@ const TICKETS = [
     dep: "ict",
     requester: U.claudia,
     agent: null,
-    team: TEAMS[0].id,
+    team: null, // shows «Ohne Teamzuordnung» in the team queues
     category: CATEGORIES[0].id,
     created: 1 * HOUR + 35 * MIN,
     updated: 1 * HOUR + 35 * MIN,

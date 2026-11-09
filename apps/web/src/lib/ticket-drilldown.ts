@@ -8,6 +8,8 @@
 export type TicketDrilldown = {
   /** Human readable description, shown as «Aus Bericht: <label>». */
   label: string;
+  /** Where the filter comes from; «queue»: team queue in the workbench. */
+  source?: "report" | "queue";
   /** true: closed/resolved status, false: open status. */
   statusClosed?: boolean;
   statusLabels?: string[];
@@ -245,7 +247,9 @@ export function mergeDrilldownArguments<
 }
 
 export function drilldownChipLabel(drilldown: TicketDrilldown): string {
-  return `Aus Bericht: ${drilldown.label}`;
+  return drilldown.source === "queue"
+    ? `Warteschlange: ${drilldown.label}`
+    : `Aus Bericht: ${drilldown.label}`;
 }
 
 const dayFormatter = new Intl.DateTimeFormat("de-CH", {

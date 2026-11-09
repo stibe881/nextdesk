@@ -1969,20 +1969,35 @@ const HANDLERS = {
   "agent-workbench": (body, { persona }) => {
     if (body.type === "teamQueues") {
       const open = D.TICKETS.filter((t) => !t.status_is_closed);
+      const queueOf = (department, team, tickets) => ({
+        departmentId: department.id,
+        departmentName: department.name,
+        teamId: team ? team.id : null,
+        teamName: team ? team.name : null,
+        openTickets: tickets.length,
+        unassignedTickets: tickets.filter((t) => !t.assigned_agent_id).length,
+        isMyTeam: Boolean(team && persona.teamId === team.id),
+      });
+      const teamQueues = D.TEAMS.map((team) =>
+        queueOf(
+          D.DEPARTMENTS.find((d) => d.id === team.departmentId),
+          team,
+          open.filter((t) => t.assigned_team_id === team.id),
+        ),
+      );
+      const withoutTeam = D.DEPARTMENTS.map((department) =>
+        queueOf(
+          department,
+          null,
+          open.filter(
+            (t) => !t.assigned_team_id && t.department_id === department.id,
+          ),
+        ),
+      );
       return ok({
-        queues: D.TEAMS.map((team) => {
-          const department = D.DEPARTMENTS.find(
-            (d) => d.id === team.departmentId,
-          );
-          return {
-            departmentId: department.id,
-            departmentName: department.name,
-            teamId: team.id,
-            teamName: team.name,
-            openTickets: open.filter((t) => t.assigned_team_id === team.id)
-              .length,
-          };
-        }).filter((queue) => queue.openTickets > 0),
+        queues: [...teamQueues, ...withoutTeam].filter(
+          (queue) => queue.openTickets > 0,
+        ),
       });
     }
     if (body.type === "myMetrics") {

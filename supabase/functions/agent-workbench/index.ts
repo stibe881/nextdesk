@@ -1184,32 +1184,38 @@ async function listTicketAssignableAgents(
 async function teamQueues(
   request: Request,
   client: Client,
+  admin: Admin,
   action: Action,
+  actorId: string,
 ): Promise<Response> {
   const { data, error } = await client
     .from("tickets")
     .select(
-      "department_id, assigned_team_id, status_id, ticket_statuses!inner(is_closed)",
+      "department_id, assigned_team_id, assigned_agent_id, status_id, ticket_statuses!inner(is_closed)",
     )
     .eq("tenant_id", action.tenantId)
     .is("closed_at", null)
     .limit(5000);
   if (error) db(error);
-  const counts = new Map<string, number>();
+  const counts = new Map<string, { open: number; unassigned: number }>();
   for (const entry of data ?? []) {
     const row = entry as Row;
     const status = row.ticket_statuses;
     const closed = isRecord(status) && status.is_closed === true;
     if (closed) continue;
     const key = `${typeof row.department_id === "string" ? row.department_id : ""}:${typeof row.assigned_team_id === "string" ? row.assigned_team_id : "unassigned"}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    const count = counts.get(key) ?? { open: 0, unassigned: 0 };
+    count.open += 1;
+    if (typeof row.assigned_agent_id !== "string") count.unassigned += 1;
+    counts.set(key, count);
   }
-  const entries = [...counts.entries()].map(([key, openTickets]) => {
+  const entries = [...counts.entries()].map(([key, count]) => {
     const [departmentId, teamId] = key.split(":");
     return {
       departmentId,
       teamId: teamId === "unassigned" ? null : teamId,
-      openTickets,
+      openTickets: count.open,
+      unassignedTickets: count.unassigned,
     };
   });
   // Names for the labels (the caller sees these tickets, so their
@@ -1230,14 +1236,26 @@ async function teamQueues(
         .eq("tenant_id", action.tenantId)
         .in("id", departmentIds)
       : Promise.resolve({ data: [], error: null }),
+    // Team names via the service role: the caller sees tickets of these
+    // teams, but row level security hides the teams table from agents.
     teamIds.length
-      ? client
+      ? admin
         .from("teams")
         .select("id, name")
         .eq("tenant_id", action.tenantId)
         .in("id", teamIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
+  const { data: memberships } = await admin
+    .from("team_memberships")
+    .select("team_id")
+    .eq("tenant_id", action.tenantId)
+    .eq("user_id", actorId);
+  const myTeamIds = new Set(
+    (Array.isArray(memberships) ? memberships : []).flatMap((row) =>
+      isRecord(row) && typeof row.team_id === "string" ? [row.team_id] : []
+    ),
+  );
   const nameMap = (rows: unknown) =>
     new Map(
       (Array.isArray(rows) ? rows : []).flatMap((row) =>
@@ -1251,11 +1269,19 @@ async function teamQueues(
   const teamNames = nameMap(teams.data);
   return reply(request, {
     data: {
-      queues: entries.map((entry) => ({
-        ...entry,
-        departmentName: departmentNames.get(entry.departmentId) ?? null,
-        teamName: entry.teamId ? teamNames.get(entry.teamId) ?? null : null,
-      })),
+      queues: entries
+        .map((entry) => ({
+          ...entry,
+          departmentName: departmentNames.get(entry.departmentId) ?? null,
+          teamName: entry.teamId ? teamNames.get(entry.teamId) ?? null : null,
+          isMyTeam: entry.teamId !== null && myTeamIds.has(entry.teamId),
+        }))
+        // Own teams first, then the largest queues.
+        .sort((a, b) =>
+          Number(b.isMyTeam) - Number(a.isMyTeam) ||
+          b.openTickets - a.openTickets ||
+          (a.teamName ?? "").localeCompare(b.teamName ?? "", "de-CH")
+        ),
     },
   });
 }
@@ -2070,7 +2096,7 @@ const handler = withSupabase(
       if (action.type === "suggestAssignees")
         return await suggestAssignees(request, client, admin, action);
       if (action.type === "teamQueues")
-        return await teamQueues(request, client, action);
+        return await teamQueues(request, client, admin, action, actorId);
       if (action.type === "myMetrics")
         return await myMetrics(request, client, admin, action, actorId);
       if (action.type === "ticketContext")

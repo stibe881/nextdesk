@@ -370,6 +370,12 @@ function listTickets(args, persona) {
     rows = rows.filter((t) => args.p_priority_ids.includes(t.priority_id));
   if (args.p_department_ids)
     rows = rows.filter((t) => args.p_department_ids.includes(t.department_id));
+  if (args.p_team_ids)
+    rows = rows.filter((t) =>
+      t.assigned_team_id
+        ? args.p_team_ids.includes(t.assigned_team_id)
+        : args.p_team_ids.includes("00000000-0000-0000-0000-000000000000"),
+    );
   if (args.p_metric_ticket_ids)
     rows = rows.filter((t) => args.p_metric_ticket_ids.includes(t.id));
   for (const term of args.p_search_free_text ?? []) {
