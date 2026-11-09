@@ -248,6 +248,7 @@ async function loadTickets(admin: Admin, tenantId: string, actorId: string) {
     .select(
       "id, ticket_number, subject, description, created_at, updated_at, resolution_due_at, response_due_at, first_responded_at, waiting_since, status:ticket_statuses!inner(key, label, is_closed), priority:ticket_priorities(label)",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", tenantId)
     .eq("assigned_agent_id", actorId)
     .eq("status.is_closed", false)

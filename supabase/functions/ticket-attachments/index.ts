@@ -344,6 +344,7 @@ async function resolveReadableTicket(
   const { data: ticket, error: ticketError } = await admin
     .from("tickets")
     .select("id, tenant_id, department_id, requester_id")
+    .is("deleted_at", null)
     .eq("id", ticketId)
     .eq("tenant_id", tenantId)
     .maybeSingle();

@@ -322,6 +322,7 @@ async function listApprovalInbox(
     .select(
       "id, tenant_id, department_id, assigned_team_id, requester_id, affected_user_id, assigned_agent_id, customer_organization_id, ticket_number, subject",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", tenantId)
     .in("id", ticketIds);
   if (ticketsError)
@@ -438,6 +439,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     .select(
       "id, tenant_id, department_id, assigned_team_id, requester_id, affected_user_id, assigned_agent_id, customer_organization_id",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", action.tenantId)
     .eq("id", action.ticketId)
     .maybeSingle();

@@ -858,6 +858,7 @@ async function listEscalations(
       "id, ticket_id, level, kind, reason, opened_by, resolved_by, opened_at, resolved_at, tickets!inner(id, tenant_id, department_id, ticket_number, subject)",
     )
     .eq("tickets.tenant_id", tenantId)
+    .is("tickets.deleted_at", null)
     .order("opened_at", { ascending: false })
     .limit(limit);
   query = query.in("tickets.department_id", [...scopes.departmentIds]);

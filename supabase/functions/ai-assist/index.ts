@@ -728,6 +728,7 @@ async function draftArticleFromTicket(
   const { data: ticketRow, error: ticketError } = await admin
     .from("tickets")
     .select("department_id")
+    .is("deleted_at", null)
     .eq("tenant_id", action.tenantId)
     .eq("id", action.ticketId)
     .maybeSingle();

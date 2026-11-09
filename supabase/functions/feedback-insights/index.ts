@@ -237,6 +237,7 @@ async function report(admin: Admin, action: ReportAction) {
     let query = admin.from("ticket_satisfaction")
       .select("score, comment, submitted_at, tickets!inner(tenant_id, department_id, assigned_team_id)")
       .eq("tickets.tenant_id", action.tenantId)
+      .is("tickets.deleted_at", null)
       .gte("submitted_at", since)
       .order("submitted_at", { ascending: true })
       .range(from, to);
@@ -284,6 +285,7 @@ async function report(admin: Admin, action: ReportAction) {
       .select("themes, sentiment, quote, analyzed_at, tickets!inner(department_id, assigned_team_id)")
       .eq("tenant_id", action.tenantId)
       .eq("state", "analyzed")
+      .is("tickets.deleted_at", null)
       .not("quote", "is", null)
       .gte("analyzed_at", since)
       .order("analyzed_at", { ascending: false })

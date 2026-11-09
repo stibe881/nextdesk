@@ -552,6 +552,7 @@ async function insightsResponse(
         .select(
           "id, assigned_team_id, assigned_agent_id, requester_id, requester_contact_id, category_id, subject, source, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
         )
+        .is("deleted_at", null)
         .eq("tenant_id", action.tenantId)
         .lte("created_at", until)
         .or(`resolved_at.is.null,resolved_at.gte.${since}`)
@@ -911,6 +912,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .select(
           "id, assigned_team_id, created_at, first_responded_at, resolved_at, status:ticket_statuses!tickets_status_tenant_fk(key, label, is_closed), priority:ticket_priorities!tickets_priority_tenant_fk(key, label), department:departments!tickets_department_tenant_fk(id, name)",
         )
+        .is("deleted_at", null)
         .eq("tenant_id", action.tenantId)
         .gte("created_at", since)
         .lte("created_at", until)
@@ -924,6 +926,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           "created_at, minutes, billing_kind, tickets!inner(tenant_id, assigned_team_id)",
         )
         .eq("tickets.tenant_id", action.tenantId)
+        .is("tickets.deleted_at", null)
         .gte("created_at", since)
         .lte("created_at", until)
         .order("created_at", { ascending: true })
@@ -936,6 +939,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           "submitted_at, score, tickets!inner(tenant_id, assigned_team_id)",
         )
         .eq("tickets.tenant_id", action.tenantId)
+        .is("tickets.deleted_at", null)
         .gte("submitted_at", since)
         .lte("submitted_at", until)
         .order("submitted_at", { ascending: true })
@@ -948,6 +952,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           "opened_at, resolved_at, tickets!inner(tenant_id, assigned_team_id)",
         )
         .eq("tickets.tenant_id", action.tenantId)
+        .is("tickets.deleted_at", null)
         .gte("opened_at", since)
         .lte("opened_at", until)
         .is("resolved_at", null)
