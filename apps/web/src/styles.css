@@ -21515,48 +21515,56 @@ button.predefined-report__drill:hover:not(:disabled) strong {
   grid-column: 1 / -1;
 }
 
-/* Öffentliche Statusseite: E-Mail-Abo */
+/* Öffentliche Statusseite: E-Mail-Abo (im Kopfbereich rechts) */
+.public-service-status__top {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.public-service-status__top .public-service-status__heading {
+  margin-bottom: 0;
+}
 .status-subscription {
-  align-items: center;
-  background: var(--surface, #fff);
-  border: 1px solid var(--border, #dce5f2);
-  border-radius: 16px;
   display: grid;
-  gap: 12px 24px;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
-  margin-top: 28px;
-  padding: 20px 24px;
+  flex: 0 1 420px;
+  gap: 8px;
+  min-width: min(100%, 300px);
+  padding-top: 6px;
 }
 .status-subscription__text h2 {
   align-items: center;
+  color: #17233c;
   display: flex;
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   gap: 8px;
-  margin: 0 0 4px;
+  margin: 0;
 }
 .status-subscription__text p {
-  color: var(--ink-muted, #65758f);
-  font-size: 14px;
-  margin: 0;
+  color: #65758f;
+  font-size: 13px;
+  margin: 2px 0 0;
 }
 .status-subscription__form {
   display: flex;
   gap: 8px;
 }
 .status-subscription__form input {
-  border: 1px solid var(--border, #dce5f2);
+  background: #fff;
+  border: 1px solid #dce5f2;
   border-radius: 10px;
   flex: 1;
   font: inherit;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 9px 12px;
 }
 .status-subscription__message {
   border-radius: 10px;
-  font-size: 14px;
-  grid-column: 1 / -1;
+  font-size: 13px;
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 10px;
 }
 .status-subscription__message--success {
   background: var(--tone-success-soft, #dcfce7);
@@ -21568,7 +21576,6 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 }
 @media (max-width: 720px) {
   .status-subscription {
-    grid-template-columns: 1fr;
-    padding: 18px 20px;
+    flex-basis: 100%;
   }
 }

@@ -92,8 +92,7 @@ export function StatusSubscriptionPanel({ publicId }: { publicId: string }) {
           <BellRing aria-hidden="true" size={18} /> Per E-Mail benachrichtigen
         </h2>
         <p>
-          Erhalten Sie eine E-Mail, sobald sich der Status eines Dienstes
-          ändert. Sie können sich jederzeit wieder abmelden.
+          Bei jeder Statusänderung eine E-Mail erhalten – jederzeit abmeldbar.
         </p>
       </div>
       <form
