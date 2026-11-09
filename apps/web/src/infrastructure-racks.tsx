@@ -256,9 +256,18 @@ function rackInput<T extends RackDevice>(
       })();
 }
 
+// Geometry of the drawn 19" cabinet (SVG units).
 const UNIT_PX = 18;
-const RACK_WIDTH = 260;
-const LABEL_WIDTH = 28;
+const CAB_X = 2;
+const SIDE = 7; // cabinet side wall
+const RAIL = 20; // mounting rail with unit numbers and holes
+const INNER = 222; // 19" mounting width between the rails
+const TOP = 18; // top cover with ventilation
+const BOTTOM = 14; // plinth
+const FOOT = 6;
+const INNER_X = CAB_X + SIDE + RAIL;
+const CAB_WIDTH = SIDE * 2 + RAIL * 2 + INNER;
+const LINK_SPACE = 34;
 
 /**
  * Graphical rack view: devices at their height units, coloured by category,
@@ -357,10 +366,12 @@ export function RackView<T extends RackDevice>({
           );
           const deviceCount = rack.placed.length + rack.unplaced.length;
           const height = rack.units * UNIT_PX;
+          const cabinetHeight = TOP + height + BOTTOM;
           const center = new Map(
             rack.placed.map((entry) => [
               entry.device.id,
-              (rack.units - (entry.start + entry.height - 1)) * UNIT_PX +
+              TOP +
+                (rack.units - (entry.start + entry.height - 1)) * UNIT_PX +
                 (entry.height * UNIT_PX) / 2,
             ]),
           );
@@ -451,33 +462,115 @@ export function RackView<T extends RackDevice>({
               ) : null}
               <svg
                 aria-label={`Rack ${rack.name}`}
-                height={height + 2}
+                className="rack-view__svg"
                 role="img"
-                viewBox={`0 0 ${RACK_WIDTH + LABEL_WIDTH + 40} ${height + 2}`}
+                viewBox={`0 0 ${CAB_X * 2 + CAB_WIDTH + LINK_SPACE} ${cabinetHeight + FOOT}`}
                 width="100%"
               >
-                {Array.from({ length: rack.units }, (_, index) => (
-                  <g key={index}>
-                    <rect
-                      className="rack-view__slot"
-                      height={UNIT_PX}
-                      width={RACK_WIDTH}
-                      x={LABEL_WIDTH}
-                      y={index * UNIT_PX + 1}
-                    />
-                    <text
-                      className="rack-view__unit"
-                      x={LABEL_WIDTH - 6}
-                      y={index * UNIT_PX + UNIT_PX * 0.7 + 1}
-                    >
-                      {rack.units - index}
-                    </text>
-                  </g>
+                {/* Cabinet body, top cover with vents, plinth and feet. */}
+                <rect
+                  className="rack-view__cabinet"
+                  height={cabinetHeight}
+                  rx={5}
+                  width={CAB_WIDTH}
+                  x={CAB_X}
+                  y={0}
+                />
+                {Array.from({ length: 9 }, (_, index) => (
+                  <rect
+                    className="rack-view__vent"
+                    height={2}
+                    key={`vent-${index}`}
+                    rx={1}
+                    width={14}
+                    x={INNER_X + 20 + index * 21}
+                    y={TOP / 2 - 1}
+                  />
                 ))}
+                <rect
+                  className="rack-view__plinth"
+                  height={BOTTOM - 4}
+                  rx={2}
+                  width={CAB_WIDTH - SIDE * 2}
+                  x={CAB_X + SIDE}
+                  y={TOP + height + 2}
+                />
+                {[CAB_X + 10, CAB_X + CAB_WIDTH - 30].map((x) => (
+                  <rect
+                    className="rack-view__foot"
+                    height={FOOT}
+                    key={`foot-${x}`}
+                    rx={1.5}
+                    width={20}
+                    x={x}
+                    y={cabinetHeight}
+                  />
+                ))}
+                {/* Mounting bay between the rails. */}
+                <rect
+                  className="rack-view__bay"
+                  height={height}
+                  width={INNER}
+                  x={INNER_X}
+                  y={TOP}
+                />
+                {[INNER_X - RAIL, INNER_X + INNER].map((x) => (
+                  <rect
+                    className="rack-view__rail"
+                    height={height}
+                    key={`rail-${x}`}
+                    width={RAIL}
+                    x={x}
+                    y={TOP}
+                  />
+                ))}
+                {Array.from({ length: rack.units }, (_, index) => {
+                  const y = TOP + index * UNIT_PX;
+                  return (
+                    <g key={index}>
+                      {index > 0 ? (
+                        <line
+                          className="rack-view__slot"
+                          x1={INNER_X}
+                          x2={INNER_X + INNER}
+                          y1={y}
+                          y2={y}
+                        />
+                      ) : null}
+                      <text
+                        className="rack-view__unit"
+                        x={INNER_X - RAIL + 9}
+                        y={y + UNIT_PX * 0.68}
+                      >
+                        {rack.units - index}
+                      </text>
+                      {[0.25, 0.75].map((offset) => (
+                        <g key={offset}>
+                          <rect
+                            className="rack-view__hole"
+                            height={3}
+                            width={3}
+                            x={INNER_X - 6}
+                            y={y + UNIT_PX * offset - 1.5}
+                          />
+                          <rect
+                            className="rack-view__hole"
+                            height={3}
+                            width={3}
+                            x={INNER_X + INNER + 3}
+                            y={y + UNIT_PX * offset - 1.5}
+                          />
+                        </g>
+                      ))}
+                    </g>
+                  );
+                })}
                 {rack.placed.map((entry) => {
                   const top =
-                    (rack.units - (entry.start + entry.height - 1)) * UNIT_PX +
-                    1;
+                    TOP +
+                    (rack.units - (entry.start + entry.height - 1)) * UNIT_PX;
+                  const deviceHeight = entry.height * UNIT_PX - 1;
+                  const textY = top + Math.min(deviceHeight, UNIT_PX) * 0.68;
                   return (
                     <g
                       className={`rack-view__device rack-view__device--${entry.device.category}`}
@@ -493,25 +586,89 @@ export function RackView<T extends RackDevice>({
                       tabIndex={0}
                     >
                       <title>{`${entry.device.name} · ${categoryLabel(entry.device.category)} · HE ${entry.start}${entry.height > 1 ? `–${entry.start + entry.height - 1}` : ""}`}</title>
+                      {/* Rack ears screwed to the rails. */}
                       <rect
-                        height={entry.height * UNIT_PX - 2}
-                        rx={3}
-                        width={RACK_WIDTH - 4}
-                        x={LABEL_WIDTH + 2}
-                        y={top + 1}
+                        className="rack-view__ear"
+                        height={deviceHeight}
+                        rx={1}
+                        width={INNER + 16}
+                        x={INNER_X - 8}
+                        y={top + 0.5}
                       />
-                      <text x={LABEL_WIDTH + 10} y={top + UNIT_PX * 0.7}>
-                        {entry.device.name.slice(0, 34)}
+                      <rect
+                        className="rack-view__face"
+                        height={deviceHeight}
+                        rx={1.5}
+                        width={INNER}
+                        x={INNER_X}
+                        y={top + 0.5}
+                      />
+                      <rect
+                        className="rack-view__accent"
+                        height={deviceHeight}
+                        width={4}
+                        x={INNER_X}
+                        y={top + 0.5}
+                      />
+                      {entry.height > 1
+                        ? Array.from(
+                            { length: entry.height * 2 - 1 },
+                            (_, line) => (
+                              <line
+                                className="rack-view__grille"
+                                key={line}
+                                x1={INNER_X + 150}
+                                x2={INNER_X + INNER - 22}
+                                y1={top + 4 + line * (UNIT_PX / 2)}
+                                y2={top + 4 + line * (UNIT_PX / 2)}
+                              />
+                            ),
+                          )
+                        : Array.from({ length: 8 }, (_, port) => (
+                            <rect
+                              className="rack-view__port"
+                              height={5}
+                              key={port}
+                              rx={0.5}
+                              width={6}
+                              x={INNER_X + 132 + port * 8}
+                              y={top + UNIT_PX / 2 - 2}
+                            />
+                          ))}
+                      <circle
+                        className="rack-view__led"
+                        cx={INNER_X + INNER - 10}
+                        cy={top + 6}
+                        r={1.8}
+                      />
+                      <circle
+                        className="rack-view__led rack-view__led--activity"
+                        cx={INNER_X + INNER - 10}
+                        cy={top + 11}
+                        r={1.8}
+                      />
+                      {[INNER_X - 5, INNER_X + INNER + 4].map((x) => (
+                        <circle
+                          className="rack-view__screw"
+                          cx={x}
+                          cy={top + deviceHeight / 2 + 0.5}
+                          key={x}
+                          r={1.6}
+                        />
+                      ))}
+                      <text x={INNER_X + 10} y={textY}>
+                        {entry.device.name.slice(0, entry.height > 1 ? 24 : 20)}
                       </text>
                     </g>
                   );
                 })}
                 {links.map((link, index) => {
-                  const x = LABEL_WIDTH + RACK_WIDTH + 8 + (index % 4) * 7;
+                  const edge = CAB_X + CAB_WIDTH;
+                  const x = edge + 8 + (index % 4) * 6;
                   return (
                     <path
                       className="rack-view__link"
-                      d={`M ${LABEL_WIDTH + RACK_WIDTH - 2} ${link.from} H ${x} V ${link.to} H ${LABEL_WIDTH + RACK_WIDTH - 2}`}
+                      d={`M ${INNER_X + INNER} ${link.from} H ${x} V ${link.to} H ${INNER_X + INNER}`}
                       key={link.id}
                     />
                   );
