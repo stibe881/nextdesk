@@ -7865,7 +7865,13 @@ export function TicketDetail({
             ) : (
               <dl className="ticket-detail-facts-grid">
                 {detail.requesterContact && (
-                  <div>
+                  <div
+                    className={
+                      emailSenderContacts && !requesterView
+                        ? "ticket-requester-fact ticket-requester-fact--contacts"
+                        : "ticket-requester-fact"
+                    }
+                  >
                     <dt>Anfragende Person</dt>
                     <dd>
                       {onOpenPerson && !requesterView ? (
@@ -7917,41 +7923,20 @@ export function TicketDetail({
                     </dd>
                   </div>
                 )}
-                <div
-                  className={
-                    detail.canUpdate && requesterProfile
-                      ? "ticket-detail-fact--editable ticket-requester-context"
-                      : undefined
-                  }
-                >
-                  <dt>Abteilung / Angebot</dt>
-                  <dd>
-                    {detail.canUpdate && requesterProfile ? (
-                      <span className="ticket-requester-context-fields">
-                        {requesterDepartment.trim() ? (
-                          <input
-                            aria-label="Abteilung der anfragenden Person"
-                            disabled={busy || requesterProfileBusy}
-                            onBlur={() => void saveRequesterContext()}
-                            onChange={(event) =>
-                              setRequesterDepartment(event.target.value)
-                            }
-                            placeholder="Abteilung"
-                            value={requesterDepartment}
-                          />
-                        ) : requesterOffer.trim() ? (
-                          <input
-                            aria-label="Angebot der anfragenden Person"
-                            disabled={busy || requesterProfileBusy}
-                            onBlur={() => void saveRequesterContext()}
-                            onChange={(event) =>
-                              setRequesterOffer(event.target.value)
-                            }
-                            placeholder="Angebot"
-                            value={requesterOffer}
-                          />
-                        ) : (
-                          <>
+                {/* Externe Absender: Abteilung / Angebot ist nicht relevant. */}
+                {emailSenderContacts ? null : (
+                  <div
+                    className={
+                      detail.canUpdate && requesterProfile
+                        ? "ticket-detail-fact--editable ticket-requester-context"
+                        : undefined
+                    }
+                  >
+                    <dt>Abteilung / Angebot</dt>
+                    <dd>
+                      {detail.canUpdate && requesterProfile ? (
+                        <span className="ticket-requester-context-fields">
+                          {requesterDepartment.trim() ? (
                             <input
                               aria-label="Abteilung der anfragenden Person"
                               disabled={busy || requesterProfileBusy}
@@ -7962,6 +7947,7 @@ export function TicketDetail({
                               placeholder="Abteilung"
                               value={requesterDepartment}
                             />
+                          ) : requesterOffer.trim() ? (
                             <input
                               aria-label="Angebot der anfragenden Person"
                               disabled={busy || requesterProfileBusy}
@@ -7972,16 +7958,39 @@ export function TicketDetail({
                               placeholder="Angebot"
                               value={requesterOffer}
                             />
-                          </>
-                        )}
-                      </span>
-                    ) : requesterContext.length > 0 ? (
-                      requesterContext.join(" · ")
-                    ) : (
-                      "Nicht hinterlegt"
-                    )}
-                  </dd>
-                </div>
+                          ) : (
+                            <>
+                              <input
+                                aria-label="Abteilung der anfragenden Person"
+                                disabled={busy || requesterProfileBusy}
+                                onBlur={() => void saveRequesterContext()}
+                                onChange={(event) =>
+                                  setRequesterDepartment(event.target.value)
+                                }
+                                placeholder="Abteilung"
+                                value={requesterDepartment}
+                              />
+                              <input
+                                aria-label="Angebot der anfragenden Person"
+                                disabled={busy || requesterProfileBusy}
+                                onBlur={() => void saveRequesterContext()}
+                                onChange={(event) =>
+                                  setRequesterOffer(event.target.value)
+                                }
+                                placeholder="Angebot"
+                                value={requesterOffer}
+                              />
+                            </>
+                          )}
+                        </span>
+                      ) : requesterContext.length > 0 ? (
+                        requesterContext.join(" · ")
+                      ) : (
+                        "Nicht hinterlegt"
+                      )}
+                    </dd>
+                  </div>
+                )}
                 <div
                   className={
                     detail.canUpdate

@@ -28,20 +28,35 @@ const PROFILE_OR_REACTION_PREFIX =
   /^\[(?:profile image|like|love|laugh|sad|angry)\]\s*/iu;
 const OUTLOOK_FOOTER_START =
   /^(?:führen sie jetzt ein upgrade auf das neueste outlook|diese e-mail wird durch die verwendung microsoft(?: 365| outlook)?)/iu;
+// Outlook safety banner for unfamiliar senders.
+const OUTLOOK_FIRST_CONTACT_BANNER =
+  /^(?:sie erhalten nicht häufig e-mails von|you don't often get email from)\b/iu;
 const OUTLOOK_LINK_LINE =
   /^(?:zu nachricht wechseln|abonnement kündigen|mac|ios|android)\s*<https?:\/\/[^>]+>\s*$/iu;
 // A farewell either stands on its own line ("Liebe Grüsse") or ends a short
 // closing sentence ("Danke für eure Hilfe und e liebe Gruess"); Swiss German
 // spellings (Gruess, Grüess, Grüessli) count too.
-const SIGNATURE_FAREWELL =
-  /(?:^|\s)(?:(?:(?:mit\s+)?freundliche[nr]?|liebe[nr]?|liebi|beste[nr]?|herzliche[nr]?|herzlichi|viele[nr]?|vieli)\s+)?gr(?:uss|üsse|uesse|üess|uess)(?:li)?[,!\.\s]*$/iu;
+// English farewells ("Best regards", "Kind regards") and bilingual lines
+// ("Freundliche Grüsse / Best regards") count as well.
+const GERMAN_FAREWELL =
+  "(?:(?:(?:mit\\s+)?freundliche[nr]?|liebe[nr]?|liebi|beste[nr]?|herzliche[nr]?|herzlichi|viele[nr]?|vieli)\\s+)?gr(?:uss|üsse|üssen|uesse|uessen|üess|uess)(?:li)?";
+const ENGLISH_FAREWELL =
+  "(?:(?:best|kind|warm|warmest|many)\\s+)?regards|cheers|sincerely|best\\s+wishes";
+const FAREWELL_CORE = `(?:${GERMAN_FAREWELL}|${ENGLISH_FAREWELL})`;
+const SIGNATURE_FAREWELL = new RegExp(
+  `(?:^|\\s)${FAREWELL_CORE}(?:\\s*[/|]\\s*${FAREWELL_CORE})?[,!\\.\\s]*$`,
+  "iu",
+);
 const SIGNATURE_FAREWELL_MAX_LENGTH = 80;
-const SIGNATURE_FAREWELL_WITH_NAME =
-  /(?:^|\s)(?:(?:(?:mit\s+)?freundliche[nr]?|liebe[nr]?|liebi|beste[nr]?|herzliche[nr]?|herzlichi|viele[nr]?|vieli)\s+)?gr(?:uss|üsse|uesse|üess|uess)(?:li)?\s*,\s*\p{L}[\p{L}.' -]{0,40}$/iu;
+const SIGNATURE_FAREWELL_WITH_NAME = new RegExp(
+  `(?:^|\\s)${FAREWELL_CORE}\\s*,\\s*\\p{L}[\\p{L}.' -]{0,40}$`,
+  "iu",
+);
 const SIGNATURE_BRACKETED_LINK = /\[https?:\/\/[^\]\s]*\]/giu;
 const SIGNATURE_IMAGE_FILE =
   /^\s*\[(?!cid:)([^\]]+\.(?:png|jpe?g|gif|webp|svg))\]\s*$/iu;
-const SIGNATURE_CONTACT = /^(?:tel(?:efon)?|mobile?|handy|t|m|f|w)\s*:\s*\S+/iu;
+const SIGNATURE_CONTACT =
+  /^(?:(?:tel(?:efon)?|mobile?|handy|t|m|f|w)\s*:\s*\S+|(?:phone|natel|direkt|direct|helpdesk|hotline|support|zentrale|p)\s*:?\s*\+?\d[\d\s()./-]{6,})/iu;
 const SIGNATURE_EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
 const SIGNATURE_LINK =
   /(?:<https?:\/\/[^>]+>|https?:\/\/\S+|(?:linkedin|facebook|instagram)\.com)/iu;
@@ -49,6 +64,10 @@ const SIGNATURE_POSTAL_ADDRESS = /\b(?:CH-)?\d{4}\s+[\p{L}.-]+/iu;
 const PERSONAL_POSTSCRIPT = /^(?:p\.?\s*s\.?|nachtrag|hinweis)\b/iu;
 const RAW_SIGNATURE_LINK = /(?:<https?:\/\/[^>]+>|https?:\/\/[^\s<]+)/giu;
 const SIGNATURE_SCAN_LIMIT = 18;
+const COMPANY_LINE =
+  /\b(?:AG|GmbH|SA|Sàrl|Sarl|KG|AB|Ltd\.?|Inc\.?|LLC|S\.p\.A\.|Genossenschaft|Stiftung|Verein)$/u;
+const PERSON_NAME_LINE =
+  /^\p{Lu}[\p{L}'’-]+(?:\s+(?:von|van|de|der|da|di|\p{Lu}[\p{L}'’.-]*)){1,3}$/u;
 
 function decodeEntitiesOnce(value: string): string {
   const named: Record<string, string> = {
@@ -220,6 +239,7 @@ function shouldRemoveLine(value: string): boolean {
   const line = value.trim();
   return (
     line === "Microsoft Outlook" ||
+    OUTLOOK_FIRST_CONTACT_BANNER.test(line) ||
     OUTLOOK_LINK_LINE.test(line) ||
     /^\[?(?:profile image|like|love|laugh|sad|angry)\]?$/iu.test(line)
   );
@@ -288,6 +308,21 @@ function locateCorporateSignature(lines: string[]): SignatureLocation | null {
         !lines[closingIndex].trim()
       ) {
         continue;
+      }
+    }
+
+    // "dormakaba Schweiz AG" above "Philippe Ramel": keep the name as well.
+    if (!sameLineName && COMPANY_LINE.test(lines[closingIndex].trim())) {
+      let nameIndex = closingIndex + 1;
+      while (nameIndex < lines.length && !lines[nameIndex].trim()) {
+        nameIndex += 1;
+      }
+      if (
+        nameIndex < lines.length &&
+        nameIndex - closingIndex <= 2 &&
+        PERSON_NAME_LINE.test(lines[nameIndex].trim())
+      ) {
+        closingIndex = nameIndex;
       }
     }
 

@@ -1,3 +1,4 @@
+import { assertEquals } from "jsr:@std/assert@1";
 import {
   corporateSignatureAnchors,
   extractSignatureContacts,
@@ -360,3 +361,90 @@ m: info@sonnenberg-baar.ch`;
     throw new Error(`Kontaktdaten falsch: ${JSON.stringify(contacts)}`);
   }
 });
+
+Deno.test(
+  "erkennt zweisprachige Grussformel, Firmenzeile vor Namen und Outlook-Hinweis",
+  () => {
+    const mail = [
+      "Sie erhalten nicht häufig E-Mails von philippe.ramel@dormakaba.com. Erfahren Sie, warum dies wichtig ist<https://aka.ms/LearnAboutSenderIdentification>",
+      "",
+      "Guten Tag Herr Petrovic",
+      "",
+      "Für heute sind wir fertig mit der Inbetriebnahme.",
+      "",
+      "Freundliche Grüsse / Best regards",
+      "",
+      "dormakaba Schweiz AG",
+      "",
+      "Philippe Ramel",
+      "",
+      "SW-Installationen Zutritt",
+      "",
+      "Helpdesk: +41 (0)44 818 91 50",
+      "",
+      "philippe.ramel@dormakaba.com",
+      "",
+      "www.dormakaba.com<http://www.dormakaba.com/>",
+      "",
+      "dormakaba Schweiz AG | Mühlebühlstrasse 23 | 8620 Wetzikon | Schweiz | T +41 848 85 86 87",
+      "",
+      "This e-mail may contain confidential information.",
+    ].join("\n");
+    const text = normalizeInboundEmailText(mail, "x", {
+      formatCorporateSignature: true,
+    });
+    assertEquals(
+      text,
+      [
+        "Guten Tag Herr Petrovic",
+        "",
+        "Für heute sind wir fertig mit der Inbetriebnahme.",
+        "",
+        "Freundliche Grüsse / Best regards",
+        "",
+        "dormakaba Schweiz AG",
+        "",
+        "Philippe Ramel",
+      ].join("\n"),
+    );
+    assertEquals(extractSignatureContacts(mail), {
+      phones: ["+41 (0)44 818 91 50", "+41 848 85 86 87"],
+      emails: ["philippe.ramel@dormakaba.com"],
+    });
+  },
+);
+
+Deno.test(
+  "erkennt englische Grussformeln und «Mit freundlichen Grüssen»",
+  () => {
+    for (const farewell of [
+      "Kind regards",
+      "Best regards,",
+      "Mit freundlichen Grüssen",
+    ]) {
+      const mail = [
+        "Hallo",
+        "",
+        "Der Drucker geht nicht.",
+        "",
+        farewell,
+        "Anna Muster",
+        "Tel: +41 41 123 45 67",
+        "anna@example.com",
+      ].join("\n");
+      assertEquals(
+        normalizeInboundEmailText(mail, "x", {
+          formatCorporateSignature: true,
+        }),
+        [
+          "Hallo",
+          "",
+          "Der Drucker geht nicht.",
+          "",
+          farewell,
+          "Anna Muster",
+        ].join("\n"),
+      );
+    }
+  },
+);
