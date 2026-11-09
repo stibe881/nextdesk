@@ -148,7 +148,9 @@ Mandanten gehören. Über das aktive Postfach verschickt nextDesk auch die
 **E-Mail-Benachrichtigungen**, die Personen unter _Persönliche Einstellungen →
 Benachrichtigungen_ pro Benachrichtigung einschalten. Für Agenten sind
 anfangs alle Benachrichtigungen per Push und E-Mail eingeschaltet. Optional aktivieren Sie im selben Bereich die
-**Phishing-Meldungen** mit eigener Meldeadresse und Zielabteilung.
+**Phishing-Meldungen** mit eigener Meldeadresse und Zielabteilung. Kategorie
+und Unterkategorie des Sicherheitstickets wählen Sie dort aus oder erfassen sie
+über **+ Neue Kategorie …** bzw. **+ Neue Unterkategorie …** direkt neu.
 
 ![E-Mail-Kanäle mit Support-Postfächern](images/in-exchange.jpg)
 

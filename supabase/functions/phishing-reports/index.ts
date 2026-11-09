@@ -50,13 +50,22 @@ type SettingsInput = {
   reportAddress: string | null;
   departmentId: string | null;
   categoryId: string | null;
+  subcategoryId: string | null;
   priorityKey: "low" | "normal" | "high" | "urgent";
   notifyTeamId: string | null;
+};
+type CreateCategoryAction = {
+  type: "createCategory";
+  tenantId: string;
+  departmentId: string;
+  parentId: string | null;
+  name: string;
 };
 type Action =
   | { type: "getConfig"; tenantId: string }
   | { type: "getSettings"; tenantId: string }
   | ({ type: "saveSettings"; tenantId: string } & SettingsInput)
+  | CreateCategoryAction
   | SubmitAction;
 
 class HttpError extends Error {
@@ -87,12 +96,14 @@ export function parseAction(value: unknown): Action | null {
       : null;
     const departmentId = optionalUuid(value.departmentId);
     const categoryId = optionalUuid(value.categoryId);
+    const subcategoryId = optionalUuid(value.subcategoryId);
     const notifyTeamId = optionalUuid(value.notifyTeamId);
     const priorityKey = value.priorityKey;
     if (
       typeof value.enabled !== "boolean" ||
       (reportAddress !== null && (!EMAIL.test(reportAddress) || reportAddress.length > 320)) ||
-      departmentId === undefined || categoryId === undefined || notifyTeamId === undefined ||
+      departmentId === undefined || categoryId === undefined || subcategoryId === undefined ||
+      notifyTeamId === undefined ||
       (priorityKey !== "low" && priorityKey !== "normal" && priorityKey !== "high" &&
         priorityKey !== "urgent")
     ) {
@@ -105,9 +116,19 @@ export function parseAction(value: unknown): Action | null {
       reportAddress,
       departmentId,
       categoryId,
+      subcategoryId: categoryId ? subcategoryId : null,
       priorityKey,
       notifyTeamId,
     };
+  }
+  if (value.type === "createCategory") {
+    const departmentId = optionalUuid(value.departmentId);
+    const parentId = optionalUuid(value.parentId);
+    const name = typeof value.name === "string" ? value.name.trim().replace(/\s+/g, " ") : "";
+    if (!departmentId || parentId === undefined || name.length < 1 || name.length > 80) {
+      return null;
+    }
+    return { type: "createCategory", tenantId, departmentId, parentId, name };
   }
   if (value.type === "submit") {
     const channel = value.channel === "mobile" ? "mobile" : value.channel === "portal" ? "portal" : null;
@@ -180,18 +201,23 @@ async function settingsOptions(admin: Client, tenantId: string) {
   const [departments, categories, teams] = await Promise.all([
     admin.from("departments").select("id, name").eq("tenant_id", tenantId).eq("active", true)
       .order("name").limit(200),
-    admin.from("ticket_categories").select("id, name, department_id").eq("tenant_id", tenantId)
-      .eq("active", true).is("parent_id", null).order("name").limit(500),
+    admin.from("ticket_categories").select("id, name, department_id, parent_id").eq("tenant_id", tenantId)
+      .eq("active", true).order("name").limit(1000),
     admin.from("teams").select("id, name").eq("tenant_id", tenantId).eq("active", true)
       .order("name").limit(200),
   ]);
   if (departments.error || categories.error || teams.error) throw unavailable();
   return {
     departments: ((departments.data ?? []) as Row[]).map((row) => ({ id: row.id, name: row.name })),
-    categories: ((categories.data ?? []) as Row[]).map((row) => ({
+    categories: ((categories.data ?? []) as Row[]).filter((row) => !row.parent_id).map((row) => ({
       id: row.id,
       name: row.name,
       departmentId: row.department_id,
+    })),
+    subcategories: ((categories.data ?? []) as Row[]).filter((row) => row.parent_id).map((row) => ({
+      id: row.id,
+      name: row.name,
+      categoryId: row.parent_id,
     })),
     teams: ((teams.data ?? []) as Row[]).map((row) => ({ id: row.id, name: row.name })),
   };
@@ -214,6 +240,61 @@ async function handle(
     });
   }
 
+  if (action.type === "createCategory") {
+    if (!(await canManage(client, action.tenantId))) {
+      throw new HttpError(
+        403,
+        "settings_manage_required",
+        "Dafür fehlt Ihnen die Berechtigung «Mandanteneinstellungen verwalten».",
+      );
+    }
+    const options = await settingsOptions(admin, action.tenantId);
+    if (
+      !options.departments.some((entry) => entry.id === action.departmentId) ||
+      (action.parentId && !options.categories.some((entry) =>
+        entry.id === action.parentId && entry.departmentId === action.departmentId
+      ))
+    ) {
+      throw new HttpError(422, "category_invalid", "Abteilung oder Kategorie ist ungültig.");
+    }
+    const siblings = action.parentId
+      ? options.subcategories.filter((entry) => entry.categoryId === action.parentId)
+      : options.categories.filter((entry) => entry.departmentId === action.departmentId);
+    const existing = siblings.find((entry) =>
+      String(entry.name).toLocaleLowerCase("de-CH") === action.name.toLocaleLowerCase("de-CH")
+    );
+    let id = existing ? String(existing.id) : null;
+    if (!id) {
+      const created = await admin.from("ticket_categories").insert({
+        tenant_id: action.tenantId,
+        department_id: action.departmentId,
+        parent_id: action.parentId,
+        name: action.name,
+      }).select("id").single();
+      if (created.error || !created.data?.id) {
+        throw new HttpError(
+          409,
+          "category_exists",
+          "Die Kategorie konnte nicht erstellt werden. Gibt es sie vielleicht schon (inaktiv)?",
+        );
+      }
+      id = String(created.data.id);
+      await admin.from("audit_logs").insert({
+        tenant_id: action.tenantId,
+        actor_id: actorId,
+        action: action.parentId ? "ticket_subcategory.created" : "ticket_category.created",
+        entity_type: "ticket_categories",
+        entity_id: id,
+        severity: "info",
+        after_data: { name: action.name, departmentId: action.departmentId, parentId: action.parentId },
+        metadata: { source: "phishing_report_settings" },
+      });
+    }
+    return json(request, {
+      data: { id, options: await settingsOptions(admin, action.tenantId) },
+    });
+  }
+
   if (action.type === "getSettings" || action.type === "saveSettings") {
     if (!(await canManage(client, action.tenantId))) {
       throw new HttpError(
@@ -229,6 +310,9 @@ async function handle(
         (action.categoryId && !options.categories.some((entry) =>
           entry.id === action.categoryId && entry.departmentId === action.departmentId
         )) ||
+        (action.subcategoryId && !options.subcategories.some((entry) =>
+          entry.id === action.subcategoryId && entry.categoryId === action.categoryId
+        )) ||
         (action.notifyTeamId && !options.teams.some((entry) => entry.id === action.notifyTeamId))
       ) {
         throw new HttpError(422, "settings_invalid", "Abteilung, Kategorie oder Team ist ungültig.");
@@ -242,6 +326,7 @@ async function handle(
         report_address: action.reportAddress,
         department_id: action.departmentId,
         category_id: action.categoryId,
+        subcategory_id: action.subcategoryId,
         priority_key: action.priorityKey,
         notify_team_id: action.notifyTeamId,
         updated_by: actorId,
@@ -270,6 +355,7 @@ async function handle(
         reportAddress: action.reportAddress,
         departmentId: action.departmentId,
         categoryId: action.categoryId,
+        subcategoryId: action.subcategoryId,
         priorityKey: action.priorityKey,
         notifyTeamId: action.notifyTeamId,
       }

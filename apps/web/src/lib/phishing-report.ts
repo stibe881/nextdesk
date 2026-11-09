@@ -22,6 +22,7 @@ export type PhishingSettings = {
   reportAddress: string | null;
   departmentId: string | null;
   categoryId: string | null;
+  subcategoryId: string | null;
   priorityKey: PhishingPriority;
   notifyTeamId: string | null;
 };
@@ -29,6 +30,7 @@ export type PhishingSettings = {
 export type PhishingSettingsOptions = {
   departments: { id: string; name: string }[];
   categories: { id: string; name: string; departmentId: string | null }[];
+  subcategories: { id: string; name: string; categoryId: string }[];
   teams: { id: string; name: string }[];
 };
 
@@ -108,6 +110,7 @@ export function parsePhishingSettings(
       reportAddress: text(settings.reportAddress, 320),
       departmentId: text(settings.departmentId, 64),
       categoryId: text(settings.categoryId, 64),
+      subcategoryId: text(settings.subcategoryId, 64),
       priorityKey: priority(settings.priorityKey),
       notifyTeamId: text(settings.notifyTeamId, 64),
     },
@@ -123,6 +126,12 @@ export function parsePhishingSettings(
         return id && name
           ? [{ id, name, departmentId: text(row.departmentId, 64) }]
           : [];
+      }),
+      subcategories: list(options.subcategories).flatMap((row) => {
+        const id = text(row.id, 64);
+        const name = text(row.name, 200);
+        const categoryId = text(row.categoryId, 64);
+        return id && name && categoryId ? [{ id, name, categoryId }] : [];
       }),
       teams: list(options.teams).flatMap((row) => {
         const id = text(row.id, 64);
