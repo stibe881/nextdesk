@@ -21338,3 +21338,108 @@ svg.ticket-satisfaction__star.is-active {
   color: var(--text);
   font-size: 13px;
 }
+
+/* Shop: Sichtbarkeit nach Kaderstufe */
+.shop__badge--cadre {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.shop__cadre-visibility {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px 12px;
+}
+.shop__cadre-visibility legend {
+  font-size: 13px;
+  font-weight: 650;
+  padding: 0 4px;
+}
+.shop__cadre-visibility small {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+.shop__cadre-warning {
+  background: var(--tone-warning-soft, #fef3c7);
+  border-radius: 8px;
+  color: var(--tone-warning);
+  font-size: 13px;
+  margin: 0;
+  padding: 8px 10px;
+}
+.shop__cadre-dialog {
+  max-width: 640px;
+  width: min(640px, calc(100vw - 32px));
+}
+.shop__cadre-body {
+  display: grid;
+  gap: 10px;
+  max-height: min(70vh, 720px);
+  overflow-y: auto;
+  padding: 0 24px 24px;
+}
+.shop__cadre-body h3 {
+  font-size: 14px;
+  margin: 8px 0 0;
+}
+.shop__cadre-rules,
+.shop__cadre-members {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.shop__cadre-rules li,
+.shop__cadre-members li {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 6px 8px 6px 12px;
+}
+.shop__cadre-members li {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.shop__cadre-rules li > span,
+.shop__cadre-members li > span {
+  display: grid;
+  min-width: 0;
+}
+.shop__cadre-rules small,
+.shop__cadre-members small {
+  color: var(--ink-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shop__cadre-add {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.shop__cadre-search {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  gap: 6px;
+  padding: 0 10px;
+}
+.shop__cadre-search input {
+  border: 0;
+  flex: 1;
+  min-width: 0;
+  outline: none;
+  padding: 8px 0;
+}
+@media (max-width: 560px) {
+  .shop__cadre-add {
+    grid-template-columns: 1fr;
+  }
+}

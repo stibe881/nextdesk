@@ -12942,4 +12942,115 @@ end;
 $$;
 SQL
 
+# 0252: Shop-Artikel nach Kaderstufe.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f2510000-0000-4000-8000-000000000001';
+  v_plain constant uuid := 'f2510000-0000-4000-8000-000000000002';
+  v_lead constant uuid := 'f2510000-0000-4000-8000-000000000003';
+  v_boss constant uuid := 'f2510000-0000-4000-8000-000000000004';
+  v_tenant uuid;
+  v_role uuid;
+  v_ceo_item uuid;
+  v_lead_item uuid;
+  v_open_item uuid;
+  v_order uuid;
+begin
+  insert into auth.users (id) values (v_owner), (v_plain), (v_lead), (v_boss);
+  v_tenant := public.provision_personal_workspace(v_owner, 'owner@cadre.example', 'Kader Test');
+  select id into v_role from public.roles where tenant_id = v_tenant and name = 'Requester';
+  insert into public.user_profiles (id, display_name)
+  values (v_plain, 'Paula Plain'), (v_lead, 'Lea Lead'), (v_boss, 'Bruno Boss');
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_tenant, v_plain, 'active', now()), (v_tenant, v_lead, 'active', now()),
+         (v_tenant, v_boss, 'active', now());
+  insert into public.user_role_assignments (tenant_id, user_id, role_id, assigned_by)
+  values (v_tenant, v_plain, v_role, v_owner), (v_tenant, v_lead, v_role, v_owner),
+         (v_tenant, v_boss, v_role, v_owner);
+  -- Lea: Funktion aus Entra; Bruno: Funktion im Personenverzeichnis.
+  insert into public.tenant_entra_directory_people
+    (tenant_id, entra_object_id, email, display_name, job_title, local_user_id)
+  values (v_tenant, gen_random_uuid(), 'lea@cadre.example', 'Lea Lead', ' teamleitung ', v_lead);
+  insert into public.tenant_member_directory (tenant_id, user_id, job_title)
+  values (v_tenant, v_boss, 'Geschäftsleitung'), (v_tenant, v_lead, 'Lehrperson');
+  insert into public.tenant_cadre_title_rules (tenant_id, job_title, cadre_level)
+  values (v_tenant, 'Geschäftsleitung', 1), (v_tenant, 'Teamleitung', 3);
+
+  if public.tenant_member_cadre_level(v_tenant, v_plain) <> 0
+     or public.tenant_member_cadre_level(v_tenant, v_lead) <> 3
+     or public.tenant_member_cadre_level(v_tenant, v_boss) <> 1 then
+    raise exception 'cadre test: wrong level from job title';
+  end if;
+  insert into public.tenant_member_cadre_overrides (tenant_id, user_id, cadre_level)
+  values (v_tenant, v_plain, 2);
+  if public.tenant_member_cadre_level(v_tenant, v_plain) <> 2 then
+    raise exception 'cadre test: manual level ignored';
+  end if;
+  update public.tenant_member_cadre_overrides set cadre_level = 0
+  where tenant_id = v_tenant and user_id = v_plain;
+
+  insert into public.shop_catalog_items (tenant_id, name, kind, visible_cadre_levels)
+  values (v_tenant, 'GL-Handy', 'order', array[1]::smallint[]) returning id into v_ceo_item;
+  insert into public.shop_catalog_items (tenant_id, name, kind, visible_cadre_levels)
+  values (v_tenant, 'Teamleitungs-Tablet', 'order', array[3]::smallint[]) returning id into v_lead_item;
+  insert into public.shop_catalog_items (tenant_id, name, kind)
+  values (v_tenant, 'Maus', 'order') returning id into v_open_item;
+
+  begin
+    update public.shop_catalog_items set visible_cadre_levels = array[4]::smallint[]
+    where id = v_open_item;
+    raise exception 'cadre test: level 4 accepted';
+  exception when check_violation then
+    null;
+  end;
+
+  -- Eigene Bestellung: freigegeben bzw. für alle.
+  v_order := public.shop_submit_order_for(v_lead, v_tenant, v_lead, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_lead_item, 'quantity', 1),
+                      jsonb_build_object('catalog_item_id', v_open_item, 'quantity', 1)),
+    'pickup', null, null, null, null, null);
+  v_order := public.shop_submit_order_for(v_boss, v_tenant, v_boss, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_ceo_item, 'quantity', 1)),
+    'pickup', null, null, null, null, null);
+
+  -- Keine Vererbung: Stufe 1 bestellt keinen Artikel nur für Stufe 3.
+  begin
+    v_order := public.shop_submit_order_for(v_boss, v_tenant, v_boss, gen_random_uuid(),
+      jsonb_build_array(jsonb_build_object('catalog_item_id', v_lead_item, 'quantity', 1)),
+      'pickup', null, null, null, null, null);
+    raise exception 'cadre test: level 1 ordered a level 3 article';
+  exception when insufficient_privilege then
+    if sqlerrm <> 'shop_item_not_for_cadre' then raise; end if;
+  end;
+  -- Kein Kader (manuell 0 trotz Regel): gesperrt.
+  begin
+    v_order := public.shop_submit_order_for(v_plain, v_tenant, v_plain, gen_random_uuid(),
+      jsonb_build_array(jsonb_build_object('catalog_item_id', v_ceo_item, 'quantity', 1)),
+      'pickup', null, null, null, null, null);
+    raise exception 'cadre test: employee without cadre ordered a cadre article';
+  exception when insufficient_privilege then
+    if sqlerrm <> 'shop_item_not_for_cadre' then raise; end if;
+  end;
+
+  -- Agent: für sich selbst und für andere Personen erlaubt.
+  v_order := public.shop_submit_order_for(v_owner, v_tenant, v_owner, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_ceo_item, 'quantity', 1)),
+    'pickup', null, null, null, null, null);
+  v_order := public.shop_submit_order_for(v_owner, v_tenant, v_plain, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_ceo_item, 'quantity', 1)),
+    'pickup', null, null, null, null, null);
+
+  if public.shop_item_visible_for_cadre('{}'::smallint[], 0) is not true
+     or public.shop_item_visible_for_cadre(array[2, 3]::smallint[], 3) is not true
+     or public.shop_item_visible_for_cadre(array[2]::smallint[], 1) is not false then
+    raise exception 'cadre test: visibility helper wrong';
+  end if;
+  raise notice 'shop cadre visibility checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

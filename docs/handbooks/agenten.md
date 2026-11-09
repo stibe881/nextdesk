@@ -244,6 +244,28 @@ Status: _Entwurf → Prüfung → Veröffentlicht_.
 
 ![Wissensdatenbank aus Sicht der Agenten](images/ag-wissen.jpg)
 
+## Shop: Artikel nur für Kaderstufen
+
+Im Shop legen Sie beim **Artikel hinzufügen** bzw. **Bearbeiten** unter
+**Sichtbar für** fest, wer den Artikel sieht:
+
+- **Alle Mitarbeitenden** (Standard) – keine Einschränkung.
+- **Kaderstufe 1**, **2** und/oder **3** – nur Personen genau dieser Stufen
+  sehen und bestellen den Artikel. Eine höhere Stufe sieht die Artikel tieferer
+  Stufen nicht automatisch; kreuzen Sie dafür mehrere Stufen an.
+
+Agenten sehen immer alle Artikel; eingeschränkte Artikel tragen das Etikett
+«Nur Kaderstufe …». Bestellen Sie für eine andere Person, weist der Warenkorb
+darauf hin, wenn ein Artikel für deren Kaderstufe nicht freigegeben ist – die
+Bestellung ist trotzdem möglich.
+
+Die Stufe einer Person ergibt sich aus ihrer **Funktion in Entra**. Die
+Zuordnung pflegen Sie im Shop über **Kaderstufen** (z. B. Geschäftsleitung →
+Kaderstufe 1, Fachbereichsleitung und Angebotsleitung → Kaderstufe 2,
+Teamleitung → Kaderstufe 3). Dort können Sie für einzelne Personen eine Stufe
+auch von Hand festlegen oder «Kein Kader» setzen. Ändert sich die Funktion in
+Entra, gilt die neue Stufe nach dem nächsten Abgleich automatisch.
+
 ## Benachrichtigungen und Erreichbarkeit
 
 - Die **Glocke** zeigt Zuweisungen, Erwähnungen, Antworten und Eskalationen.
