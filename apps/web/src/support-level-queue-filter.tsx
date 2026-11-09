@@ -75,10 +75,10 @@ export function SupportLevelQueueFilter({
             className={value === key ? "queue-tab selected" : "queue-tab"}
             key={level}
             onClick={() => onChange(key)}
-            title={`${supportLevelLabel(level)} Warteschlange: Tickets der Teams mit dieser Stufe`}
+            title={`${supportLevelLabel(level)}: Tickets der Teams mit dieser Stufe`}
             type="button"
           >
-            {supportLevelLabel(level)} Warteschlange
+            {supportLevelLabel(level)}
           </button>
         );
       })}
