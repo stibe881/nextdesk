@@ -48,6 +48,7 @@ const ENABLED_FEATURES = new Set([
   "agent.workbench",
   "ai.assist",
   "notifications.push",
+  "self_service.shop",
 ]);
 const ALL_FEATURES = [
   "ticketing.detail",
@@ -109,6 +110,109 @@ const HANDBOOKS = [
   },
 ];
 const ROLE_RANK = { employee: 0, agent: 1, admin: 2 };
+
+// Shop catalogue for the handbook screenshots (Self-Service-Shop).
+const SHOP_CATEGORIES = [
+  { id: "66666666-6666-4666-8666-000000000001", name: "Bildschirme" },
+  { id: "66666666-6666-4666-8666-000000000002", name: "Zubehör" },
+  { id: "66666666-6666-4666-8666-000000000003", name: "Leihgeräte" },
+];
+function shopItem(index, fields) {
+  const category = SHOP_CATEGORIES.find((c) => c.name === fields.category);
+  return {
+    id: `77777777-7777-4777-8777-${String(index).padStart(12, "0")}`,
+    description: null,
+    categoryId: category.id,
+    categoryIds: [category.id],
+    categoryNames: [category.name],
+    articleNumber: `ART-${1000 + index}`,
+    supplierUrl: null,
+    kind: "order",
+    requiresApproval: false,
+    maxQuantity: 2,
+    maxLoanDays: null,
+    loanQuantity: null,
+    active: true,
+    sortOrder: index,
+    inventoryItemId: null,
+    departmentId: null,
+    canEdit: false,
+    specifications: {},
+    optionItemIds: [],
+    imageUrl: null,
+    imageUrls: [],
+    images: [],
+    stockLevel: "in_stock",
+    availableQuantity: 8,
+    ...fields,
+  };
+}
+const SHOP_ITEMS = [
+  shopItem(1, {
+    name: "Monitor 27 Zoll (Dell P2723D)",
+    description: "QHD-Monitor mit USB-C, höhenverstellbar.",
+    category: "Bildschirme",
+    requiresApproval: true,
+    maxQuantity: 1,
+    stockLevel: "low",
+    availableQuantity: 2,
+  }),
+  shopItem(2, {
+    name: "Headset Jabra Evolve2 65",
+    description: "Kabelloses Headset für Teams-Anrufe.",
+    category: "Zubehör",
+  }),
+  shopItem(3, {
+    name: "Maus Logitech MX Master 3S",
+    description: "Ergonomische Maus mit USB-Empfänger.",
+    category: "Zubehör",
+  }),
+  shopItem(4, {
+    name: "USB-C-Dockingstation",
+    description: "Für Laptop, zwei Bildschirme und Netzwerk.",
+    category: "Zubehör",
+    stockLevel: "on_request",
+    availableQuantity: null,
+  }),
+  shopItem(5, {
+    name: "Beamer (Leihgerät)",
+    description: "Mobiler Beamer für Präsentationen, mit HDMI-Kabel.",
+    category: "Leihgeräte",
+    kind: "loan",
+    maxQuantity: 1,
+    maxLoanDays: 14,
+    loanQuantity: 2,
+    availableQuantity: 2,
+  }),
+];
+function shopOrders(persona) {
+  const now = Date.now();
+  return [
+    {
+      id: "88888888-8888-4888-8888-000000000001",
+      orderNumber: "B-2026-0042",
+      status: "in_progress",
+      overdue: false,
+      requesterId: persona.id,
+      requesterName: persona.name,
+      placedByName: persona.name,
+      approverName: "Daniel Frei",
+      handledByName: "Mara Keller",
+      deliveryMethod: "desk",
+      deliveryLocation: "2. OG, Büro 2.14",
+      neededBy: null,
+      loanFrom: null,
+      loanUntil: null,
+      comment: null,
+      decisionReason: null,
+      reason: "Zweiter Bildschirm für Homeoffice",
+      lineCount: 1,
+      itemsLabel: "Monitor 27 Zoll (Dell P2723D)",
+      createdAt: new Date(now - 3 * 86400000).toISOString(),
+      updatedAt: new Date(now - 86400000).toISOString(),
+    },
+  ];
+}
 
 // Prefer the real front matter so the screenshots match the shipped texts.
 function handbookFrontMatter(id) {
@@ -1713,8 +1817,36 @@ const HANDLERS = {
     body.type === "getSettings" ? ok({ enabled: false }) : null,
   "ticket-attachments": (body) =>
     body.type === "list" ? ok({ attachments: [] }) : null,
-  shop: (body) =>
-    body.type === "getContext" ? ok({ canFulfill: false, newOrders: 0 }) : null,
+  shop: (body, { persona }) => {
+    if (body.type === "getContext") {
+      return ok({
+        canOrder: true,
+        canFulfill: persona.canWorkTickets,
+        canManage: persona.isTenantAdmin,
+        pendingApprovals: 0,
+        openOrders: 1,
+        newOrders: 0,
+        managerName: "Daniel Frei",
+        departments: D.DEPARTMENTS.map((d) => ({ id: d.id, name: d.name })),
+      });
+    }
+    if (body.type === "listCategories") {
+      return ok({
+        categories: SHOP_CATEGORIES.map((category) => ({
+          ...category,
+          itemCount: SHOP_ITEMS.filter(
+            (item) => item.category === category.name,
+          ).length,
+        })),
+      });
+    }
+    if (body.type === "listCatalog") return ok({ items: SHOP_ITEMS });
+    if (body.type === "listOrders") {
+      return ok({ orders: body.scope === "mine" ? shopOrders(persona) : [] });
+    }
+    if (body.type === "listRequesters") return ok({ people: [] });
+    return null;
+  },
   onboarding: (body) =>
     body.type === "navigationSummary" ? ok({ attentionCount: 0 }) : null,
   "event-spaces": (body) =>

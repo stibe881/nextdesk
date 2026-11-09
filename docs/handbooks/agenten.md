@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-08
+updated: 2026-11-09
 ---
 
 # Handbuch für Agenten

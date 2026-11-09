@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-08
+updated: 2026-11-09
 ---
 
 # Handbuch für Mitarbeitende
@@ -155,6 +155,8 @@ Falls Ihr Unternehmen den Shop nutzt:
 
 Unter **Meine Bestellungen** sehen Sie den Stand. Als vorgesetzte Person
 entscheiden Sie im Register **Freigaben** über Bestellungen Ihres Teams.
+
+![Shop mit Katalog, Suche und Warenkorb](images/ma-shop.jpg)
 
 ## Persönliche Einstellungen und Handbücher
 
