@@ -158,6 +158,8 @@ type Action =
     type: "saveRack";
     tenantId: string;
     id: string | null;
+    /** Adopting a rack so far only known from its devices. */
+    source: { name: string; locationId: string | null } | null;
     name: string;
     locationId: string | null;
     heightUnits: number;
@@ -500,9 +502,18 @@ export function parseAction(value: unknown): Action | null {
         : isUuid(value.id)
         ? value.id.toLowerCase()
         : undefined;
+      const sourceName = optionalText(value.sourceName, 80);
+      const sourceLocationId = value.sourceLocationId === null ||
+          value.sourceLocationId === undefined || value.sourceLocationId === ""
+        ? null
+        : isUuid(value.sourceLocationId)
+        ? value.sourceLocationId.toLowerCase()
+        : undefined;
+      if (sourceName === undefined || sourceLocationId === undefined) return null;
+      const source = !id && sourceName ? { name: sourceName, locationId: sourceLocationId } : null;
       return name && notes !== undefined && locationId !== undefined && id !== undefined &&
           Number.isInteger(heightUnits) && heightUnits >= 1 && heightUnits <= 60
-        ? { type: "saveRack", tenantId, id, name, locationId, heightUnits, notes }
+        ? { type: "saveRack", tenantId, id, source, name, locationId, heightUnits, notes }
         : null;
     }
     case "deleteRack":
@@ -1012,6 +1023,8 @@ async function saveRack(
     if (error) throw dbFailure();
     if (!data) throw new HttpError(404, "rack_not_found", "Das Rack ist nicht verfügbar.");
     previous = { name: String(data.name), locationId: (data.location_id as string | null) ?? null };
+  } else if (action.source) {
+    previous = action.source;
   }
   // Devices that move with the rack: those of the saved rack, or for a new
   // rack the devices that already name it.
