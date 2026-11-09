@@ -325,8 +325,9 @@ Entra, gilt die neue Stufe nach dem nächsten Abgleich automatisch.
   Benachrichtigungszeit.
 - In der Tabelle **Benachrichtigungen** schalten Sie pro Benachrichtigung
   (z. B. Zuweisungen, Eskalationen, Erwähnungen) einzeln **Push** und
-  **E-Mail** ein oder aus. E-Mails kommen über das Exchange-Postfach Ihres
-  Unternehmens und sind verfügbar, sobald eines verbunden ist.
+  **E-Mail** ein oder aus. Für Agenten sind zu Beginn alle Benachrichtigungen
+  per Push und E-Mail eingeschaltet. E-Mails kommen über das Exchange-Postfach
+  Ihres Unternehmens und sind verfügbar, sobald eines verbunden ist.
 - Das iPhone-Widget **Meine Prioritäten** zeigt Ihre wichtigsten Tickets in
   den Farben Ihres Unternehmens. Öffnen Sie die App einmal, damit es aktuell
   ist.
