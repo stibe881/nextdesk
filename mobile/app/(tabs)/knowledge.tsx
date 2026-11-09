@@ -79,8 +79,15 @@ export default function KnowledgeScreen() {
   );
   // Start page: the newest article as a large card, the rest as a list.
   const showHero = !query.trim() && !topic && visible.length >= 4;
-  const hero = showHero ? (visible[0] ?? null) : null;
-  const listed = showHero ? visible.slice(1) : visible;
+  // The large card is a published article; drafts never lead the page.
+  const hero = showHero
+    ? (visible.find((item) => item.status === "published") ??
+      visible[0] ??
+      null)
+    : null;
+  const listed = showHero
+    ? visible.filter((item) => item.id !== hero?.id)
+    : visible;
 
   const loadArticles = useCallback(async () => {
     try {
@@ -299,9 +306,13 @@ export default function KnowledgeScreen() {
                     ) : null}
                     <View style={styles.articleMetaRow}>
                       <Text style={styles.articleMeta}>
-                        {article.visibility === "internal"
-                          ? "Intern"
-                          : "Extern freigegeben"}
+                        {article.status === "draft"
+                          ? "Entwurf"
+                          : article.status === "review"
+                            ? "In Prüfung"
+                            : article.visibility === "internal"
+                              ? "Intern"
+                              : "Extern freigegeben"}
                       </Text>
                       {article.revision ? (
                         <Text style={styles.articleVersion}>

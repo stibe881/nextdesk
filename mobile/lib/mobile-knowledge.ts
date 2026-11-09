@@ -10,6 +10,8 @@ export type MobileKnowledgeArticle = {
   id: string;
   title: string;
   visibility: "internal" | "external";
+  /** draft, review or published (readers only get published articles). */
+  status: string;
   updatedAt: string;
   summary: string;
   /** Plain-text teaser of the body (used when there is no summary). */
@@ -110,6 +112,7 @@ function article(value: unknown): ParsedMobileKnowledgeArticle | null {
     id: item.id,
     title: item.title.trim(),
     visibility: item.visibility,
+    status: typeof item.status === "string" ? item.status : "published",
     updatedAt: item.updated_at,
     summary:
       typeof revision?.summary === "string" ? revision.summary.trim() : "",
