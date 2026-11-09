@@ -4617,7 +4617,8 @@ export function TenantAdminSettings({
                                           Zugriff nie.
                                         </small>
                                       </label>
-                                      {personEditForm.isAgent ? (
+                                      {personEditForm.isAgent ||
+                                      member.isTenantAdmin ? (
                                         <TeamPicker
                                           departmentId={
                                             personEditForm.departmentId
@@ -4694,7 +4695,10 @@ export function TenantAdminSettings({
                                       <label className="tenant-admin-settings__agent-toggle">
                                         <input
                                           type="checkbox"
-                                          checked={personEditForm.isAgent}
+                                          checked={
+                                            personEditForm.isAgent ||
+                                            member.isTenantAdmin
+                                          }
                                           disabled={
                                             saving !== null ||
                                             member.isTenantAdmin

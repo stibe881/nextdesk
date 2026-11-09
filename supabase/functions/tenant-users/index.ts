@@ -1624,9 +1624,16 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         agentResult.status,
       );
     }
+    // Tenant administrators work as agents without the support agent role,
+    // so their teams are kept as well.
     if (
-      action.isAgent &&
       action.teamIds !== undefined &&
+      (action.isAgent ||
+        (await isTenantAdministrator(
+          context.supabaseAdmin,
+          action.userId,
+          action.tenantId,
+        ))) &&
       !(await syncAgentTeams(
         context.supabaseAdmin,
         action.tenantId,
