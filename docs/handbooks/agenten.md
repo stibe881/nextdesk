@@ -278,12 +278,15 @@ Entra, gilt die neue Stufe nach dem nächsten Abgleich automatisch.
 
 - Die **Glocke** zeigt Zuweisungen, Erwähnungen, Antworten und Eskalationen.
 - **Push-Benachrichtigungen** auf dem iPhone kommen ohne Einchecken. Unter
-  _Persönliche Einstellungen → Push-Benachrichtigungen →
-  Benachrichtigungszeit_ legen Sie fest, an welchen **Tagen** und zu welchen
-  **Zeiten** Sie Mitteilungen erhalten (z. B. Mo–Fr, 06:00–17:00) oder ob
-  **Jederzeit**. Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der
-  nächsten Benachrichtigungszeit. Dort wählen Sie auch die Kategorien, z. B.
-  Zuweisungen, Eskalationen, Erwähnungen.
+  _Persönliche Einstellungen → Benachrichtigungen → Benachrichtigungszeit_
+  legen Sie fest, an welchen **Tagen** und zu welchen **Zeiten** Sie
+  Mitteilungen erhalten (z. B. Mo–Fr, 06:00–17:00) oder ob **Jederzeit**. Was
+  ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten
+  Benachrichtigungszeit.
+- In der Tabelle **Benachrichtigungen** schalten Sie pro Benachrichtigung
+  (z. B. Zuweisungen, Eskalationen, Erwähnungen) einzeln **Push** und
+  **E-Mail** ein oder aus. E-Mails kommen über das Exchange-Postfach Ihres
+  Unternehmens und sind verfügbar, sobald eines verbunden ist.
 - Das iPhone-Widget **Meine Prioritäten** zeigt Ihre wichtigsten Tickets in
   den Farben Ihres Unternehmens. Öffnen Sie die App einmal, damit es aktuell
   ist.

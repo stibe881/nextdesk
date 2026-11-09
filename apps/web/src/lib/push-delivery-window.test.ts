@@ -7,6 +7,7 @@ import {
 
 const base: PushPreferences = {
   enabledCategories: [],
+  emailCategories: [],
   deliveryDays: [1, 2, 3, 4, 5, 6, 7],
   quietHoursEnabled: false,
   quietStart: 22,

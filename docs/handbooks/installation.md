@@ -144,7 +144,9 @@ Support-Postfach die Rechte **Vollzugriff** und **Senden als**.
 4. **Prüfen** → **Aktivieren** → **Testmail** senden.
 
 Neue E-Mails werden etwa alle 5 Minuten abgeholt. Ein Postfach kann nur einem
-Mandanten gehören. Optional aktivieren Sie im selben Bereich die
+Mandanten gehören. Über das aktive Postfach verschickt nextDesk auch die
+**E-Mail-Benachrichtigungen**, die Personen unter _Persönliche Einstellungen →
+Benachrichtigungen_ pro Benachrichtigung einschalten. Optional aktivieren Sie im selben Bereich die
 **Phishing-Meldungen** mit eigener Meldeadresse und Zielabteilung.
 
 ![E-Mail-Kanäle mit Support-Postfächern](images/in-exchange.jpg)
@@ -186,8 +188,9 @@ etwas gelöscht.
 - **[Admin]** Funktion **Push-Benachrichtigungen** aktivieren und die
   Inhaltsstufe **Nur Ticketnummer** (empfohlen) wählen. Ein Einchecken ist
   nicht nötig: Jede Person legt unter _Persönliche Einstellungen →
-  Push-Benachrichtigungen → Benachrichtigungszeit_ selbst fest, an welchen
-  Tagen und zu welchen Zeiten sie Mitteilungen erhält.
+  Benachrichtigungen → Benachrichtigungszeit_ selbst fest, an welchen Tagen
+  und zu welchen Zeiten sie Mitteilungen erhält, und schaltet pro
+  Benachrichtigung Push und E-Mail ein.
 - Anwenderinnen und Anwender testen in der iOS-App unter _Profil →
   Benachrichtigungen → Testmitteilung senden_.
 
