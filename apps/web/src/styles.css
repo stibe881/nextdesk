@@ -21503,3 +21503,14 @@ button.predefined-report__drill:hover:not(:disabled) strong {
     grid-template-columns: 1fr;
   }
 }
+
+/* «Anfragende Person»: Kontaktdaten vollständig zeigen (nicht kürzen). */
+.ticket-detail-facts-grid .ticket-requester-fact dd {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.ticket-detail-facts-grid .ticket-requester-fact--contacts {
+  grid-column: 1 / -1;
+}
