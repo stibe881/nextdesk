@@ -37,7 +37,8 @@ Ihren Berechtigungen ab.
 
 Zahlen neben den Einträgen zeigen, was auf Sie wartet: bei **Tickets** die
 offenen Tickets, die weder einem Team noch einer Person zugewiesen sind, bei
-**Sicherheitsfällen** die Fälle ohne Urteil, bei **Raumplanung**, **Shop** und
+**Sicherheitsfällen** die offenen Fälle, die noch niemandem zugewiesen
+sind, bei **Raumplanung**, **Shop** und
 **Eintritte** die offenen Anfragen. Die Zahlen aktualisieren sich jede Minute.
 
 Das **Systemstatus-Badge** oben in der Navigation und die Seite
