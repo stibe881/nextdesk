@@ -194,10 +194,20 @@ export async function queueSecurityNotice(
     ticket_id: input.ticketId,
     author_id: input.authorId,
     visibility: "internal",
-    body: input.note ? `${input.note}\n\n${input.body}` : input.body,
+    // The comment is the mail body, so it holds only what the person reads;
+    // the internal context goes into the ticket history instead.
+    body: input.body,
   }).select("id").single();
   const commentId = text(comment.data?.id);
   if (!commentId) return { commentId: null, queued: 0 };
+  if (input.note) {
+    await admin.from("ticket_events").insert({
+      ticket_id: input.ticketId,
+      actor_id: input.authorId,
+      event_type: "ticket.security_notice",
+      payload: { note: input.note.slice(0, 300), commentId },
+    });
+  }
   if (input.beforeQueue) await input.beforeQueue(commentId);
   const channel = await activeChannel(admin, input.tenantId, input.ticketId);
   if (!channel) return { commentId, queued: 0 };
