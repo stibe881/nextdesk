@@ -20,6 +20,8 @@ export type RackInput = {
 
 type RackLocation = { id: string; name: string };
 
+const NEW_LOCATION = "__new_location__";
+
 /** Create or edit a rack: name, location, height (HE), notes. */
 function RackForm({
   initial,
@@ -29,8 +31,11 @@ function RackForm({
   onSave,
   onDelete,
   onCancel,
+  onAddLocation,
 }: {
   initial: RackInput;
+  /** Creates a location and returns it (null on failure). */
+  onAddLocation?: ((name: string) => Promise<RackLocation | null>) | undefined;
   locations: RackLocation[];
   /** Highest unit used by a device; the rack cannot be smaller. */
   minUnits: number;
@@ -41,7 +46,19 @@ function RackForm({
 }) {
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
+  const [newLocation, setNewLocation] = useState<string | null>(null);
   const tooSmall = form.heightUnits < minUnits;
+
+  async function addLocation() {
+    const name = newLocation?.trim();
+    if (!name || !onAddLocation || busy) return;
+    setBusy(true);
+    const created = await onAddLocation(name);
+    setBusy(false);
+    if (!created) return;
+    setForm((current) => ({ ...current, locationId: created.id }));
+    setNewLocation(null);
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -72,10 +89,14 @@ function RackForm({
       <label>
         Standort
         <select
-          onChange={(event) =>
-            setForm({ ...form, locationId: event.target.value || null })
-          }
-          value={form.locationId ?? ""}
+          onChange={(event) => {
+            if (event.target.value === NEW_LOCATION) {
+              setNewLocation("");
+              return;
+            }
+            setForm({ ...form, locationId: event.target.value || null });
+          }}
+          value={newLocation !== null ? NEW_LOCATION : (form.locationId ?? "")}
         >
           <option value="">Ohne Standort</option>
           {locations.map((location) => (
@@ -83,8 +104,45 @@ function RackForm({
               {location.name}
             </option>
           ))}
+          {onAddLocation ? (
+            <option value={NEW_LOCATION}>+ Neuer Standort …</option>
+          ) : null}
         </select>
       </label>
+      {newLocation !== null && onAddLocation ? (
+        <div className="rack-form__new-location rack-form__wide">
+          <input
+            aria-label="Name des neuen Standorts"
+            autoFocus
+            maxLength={160}
+            onChange={(event) => setNewLocation(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void addLocation();
+              }
+              if (event.key === "Escape") setNewLocation(null);
+            }}
+            placeholder="z. B. Zug, Serverraum UG"
+            value={newLocation}
+          />
+          <button
+            className="secondary-button"
+            disabled={busy || !newLocation.trim()}
+            onClick={() => void addLocation()}
+            type="button"
+          >
+            Standort anlegen
+          </button>
+          <button
+            className="text-button"
+            onClick={() => setNewLocation(null)}
+            type="button"
+          >
+            Abbrechen
+          </button>
+        </div>
+      ) : null}
       <label>
         Höhe (HE)
         <input
@@ -217,6 +275,7 @@ export function RackView<T extends RackDevice>({
   locations = [],
   onSaveRack,
   onDeleteRack,
+  onAddLocation,
 }: {
   devices: T[];
   /** Racks recorded by the user, shown even without devices. */
@@ -224,6 +283,7 @@ export function RackView<T extends RackDevice>({
   locations?: RackLocation[];
   /** Managers only: create and edit racks. */
   onSaveRack?: ((input: RackInput) => Promise<boolean>) | undefined;
+  onAddLocation?: ((name: string) => Promise<RackLocation | null>) | undefined;
   onDeleteRack?: ((id: string) => Promise<boolean>) | undefined;
   categoryLabel: (category: string) => string;
   onOpen: (deviceId: string) => void;
@@ -257,6 +317,7 @@ export function RackView<T extends RackDevice>({
           locations={locations}
           minUnits={1}
           onCancel={() => setEditing(null)}
+          onAddLocation={onAddLocation}
           onSave={onSaveRack}
         />
       </figure>
@@ -384,6 +445,7 @@ export function RackView<T extends RackDevice>({
                       ? () => onDeleteRack(rack.definition!.id)
                       : undefined
                   }
+                  onAddLocation={onAddLocation}
                   onSave={onSaveRack}
                 />
               ) : null}

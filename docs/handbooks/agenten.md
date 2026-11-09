@@ -45,7 +45,8 @@ Wartungseinträge mit Datum und optionaler **Uhrzeit**. In der
 einem eigenen **Datum** (z. B. wann er erledigt wurde oder wann er dran ist);
 **Punkt hinzufügen** ergänzt eine Zeile, × entfernt sie. In der Ansicht **Racks**
 erfassen Sie mit **Rack erfassen** ein Rack (Name, Standort, Höhe in HE,
-Notizen) und ändern es über den **Stift** am Rack. Ein neuer Name oder
+Notizen; einen fehlenden Standort legen Sie dort mit **+ Neuer Standort …**
+an) und ändern es über den **Stift** am Rack. Ein neuer Name oder
 Standort gilt auch für die Geräte im Rack; die Höhe muss mindestens bis zum
 obersten Gerät reichen. Leere Racks lassen sich löschen.
 
