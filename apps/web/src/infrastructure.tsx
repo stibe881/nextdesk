@@ -526,6 +526,31 @@ export function Infrastructure({
     }
   }
 
+  async function addRackLocation(name: string): Promise<Location | null> {
+    setError("");
+    try {
+      const data = await call<{ location: Location }>({
+        type: "addLocation",
+        tenantId,
+        name,
+      });
+      setLocations((current) =>
+        [
+          ...current.filter((location) => location.id !== data.location.id),
+          data.location,
+        ].sort((a, b) => a.name.localeCompare(b.name, "de-CH")),
+      );
+      return data.location;
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Der Standort konnte nicht angelegt werden.",
+      );
+      return null;
+    }
+  }
+
   async function deleteRack(id: string): Promise<boolean> {
     setError("");
     try {
@@ -862,6 +887,7 @@ export function Infrastructure({
           locations={locations}
           onSaveRack={canManage ? saveRack : undefined}
           onDeleteRack={canManage ? deleteRack : undefined}
+          onAddLocation={canManage ? addRackLocation : undefined}
         />
       ) : (
         <ul className="infrastructure__list">

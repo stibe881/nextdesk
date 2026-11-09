@@ -1221,3 +1221,14 @@
   margin-right: auto;
   color: var(--danger);
 }
+
+.rack-form__new-location {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.rack-form__new-location input {
+  flex: 1 1 180px;
+}
