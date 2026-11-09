@@ -6,6 +6,8 @@ import {
   moveHomeSection,
   normalizeHomeLayout,
   parseStoredHomeLayout,
+  parseStoredHomeLayoutRecord,
+  resolveHomeLayoutSync,
   toggleHomeSection,
   visibleHomeSections,
 } from "../lib/home-layout";
@@ -52,5 +54,39 @@ describe("Home-Layout der App", () => {
     expect(parseStoredHomeLayout("42").order).toEqual(
       DEFAULT_HOME_LAYOUT.order,
     );
+  });
+
+  it("gleicht Geräte nach der letzten Änderung ab", () => {
+    const older = {
+      layout: DEFAULT_HOME_LAYOUT,
+      changedAt: "2026-11-09T10:00:00.000Z",
+    };
+    const newer = {
+      layout: toggleHomeSection(DEFAULT_HOME_LAYOUT, "devices"),
+      changedAt: "2026-11-09T12:00:00.000Z",
+    };
+    expect(resolveHomeLayoutSync(null, null)).toBe("none");
+    expect(resolveHomeLayoutSync(null, older)).toBe("adopt-remote");
+    expect(resolveHomeLayoutSync(newer, null)).toBe("push-local");
+    expect(resolveHomeLayoutSync(newer, older)).toBe("push-local");
+    expect(resolveHomeLayoutSync(older, newer)).toBe("adopt-remote");
+    expect(resolveHomeLayoutSync(older, older)).toBe("adopt-remote");
+  });
+
+  it("liest die Geräte-Kopie, auch im älteren Format", () => {
+    expect(parseStoredHomeLayoutRecord(null)).toBeNull();
+    expect(parseStoredHomeLayoutRecord("{kaputt")).toBeNull();
+    const legacy = parseStoredHomeLayoutRecord(
+      JSON.stringify({ order: ["tickets"], hidden: ["search"] }),
+    );
+    expect(legacy?.layout.order[0]).toBe("tickets");
+    expect(legacy?.changedAt).toBe("1970-01-01T00:00:00.000Z");
+    const current = parseStoredHomeLayoutRecord(
+      JSON.stringify({
+        layout: DEFAULT_HOME_LAYOUT,
+        changedAt: "2026-11-09T12:00:00.000Z",
+      }),
+    );
+    expect(current?.changedAt).toBe("2026-11-09T12:00:00.000Z");
   });
 });

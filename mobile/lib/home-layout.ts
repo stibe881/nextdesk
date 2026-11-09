@@ -147,3 +147,52 @@ export function isHomeLayoutDefault(layout: HomeLayout): boolean {
     layout.order.every((id, index) => id === IDS[index])
   );
 }
+
+/** A layout with the time of its last change (used to compare devices). */
+export type StoredHomeLayout = { layout: HomeLayout; changedAt: string };
+
+export type HomeLayoutSyncAction = "adopt-remote" | "push-local" | "none";
+
+const LEGACY_CHANGED_AT = "1970-01-01T00:00:00.000Z";
+
+/** Reads the device copy. Older copies without a time count as very old. */
+export function parseStoredHomeLayoutRecord(
+  raw: string | null,
+): StoredHomeLayout | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (typeof value !== "object" || value === null) return null;
+    const record = value as { layout?: unknown; changedAt?: unknown };
+    if (record.layout !== undefined) {
+      return {
+        layout: normalizeHomeLayout(record.layout),
+        changedAt:
+          typeof record.changedAt === "string" &&
+          Number.isFinite(Date.parse(record.changedAt))
+            ? record.changedAt
+            : LEGACY_CHANGED_AT,
+      };
+    }
+    return { layout: normalizeHomeLayout(value), changedAt: LEGACY_CHANGED_AT };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Last change wins: the copy on this device and the copy on the server are
+ * compared by their time of change.
+ */
+export function resolveHomeLayoutSync(
+  local: StoredHomeLayout | null,
+  remote: StoredHomeLayout | null,
+): HomeLayoutSyncAction {
+  if (!remote) return local ? "push-local" : "none";
+  if (!local) return "adopt-remote";
+  const localTime = Date.parse(local.changedAt);
+  const remoteTime = Date.parse(remote.changedAt);
+  if (!Number.isFinite(remoteTime)) return "push-local";
+  if (!Number.isFinite(localTime)) return "adopt-remote";
+  return localTime > remoteTime ? "push-local" : "adopt-remote";
+}

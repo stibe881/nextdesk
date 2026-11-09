@@ -62,7 +62,11 @@ import {
   type HomeLayout,
   type HomeSectionId,
 } from "@/lib/home-layout";
-import { loadHomeLayout, saveHomeLayout } from "@/lib/home-layout-storage";
+import {
+  commitHomeLayout,
+  loadLocalHomeLayout,
+  syncHomeLayout,
+} from "@/lib/home-layout-storage";
 import { listRecentTicketIds } from "@/lib/mobile-private-state";
 import {
   listWatchedTicketIds,
@@ -193,28 +197,40 @@ export default function HomeScreen() {
   const [homeLayout, setHomeLayout] = useState<HomeLayout>(DEFAULT_HOME_LAYOUT);
   const [homeLayoutUserId, setHomeLayoutUserId] = useState<string | null>(null);
   const [layoutSheetOpen, setLayoutSheetOpen] = useState(false);
+  // First the copy on this device, then the one from the server (other devices).
+  const syncLayout = useCallback(async () => {
+    try {
+      const userId = await getMobileUserId();
+      setHomeLayoutUserId(userId);
+      const stored = await syncHomeLayout(userId);
+      if (stored) setHomeLayout(stored.layout);
+    } catch {
+      // Without a stored layout the standard home screen is shown.
+    }
+  }, []);
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const userId = await getMobileUserId();
-        const stored = await loadHomeLayout(userId);
+        const local = await loadLocalHomeLayout(userId);
         if (cancelled) return;
         setHomeLayoutUserId(userId);
-        setHomeLayout(stored);
+        if (local) setHomeLayout(local.layout);
       } catch {
         // Without a stored layout the standard home screen is shown.
       }
+      if (!cancelled) await syncLayout();
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [syncLayout]);
   const changeHomeLayout = useCallback(
     (next: HomeLayout) => {
       setHomeLayout(next);
       if (homeLayoutUserId) {
-        void saveHomeLayout(homeLayoutUserId, next).catch(() => undefined);
+        void commitHomeLayout(homeLayoutUserId, next).catch(() => undefined);
       }
     },
     [homeLayoutUserId],
@@ -1395,6 +1411,7 @@ export default function HomeScreen() {
               setRefreshing(true);
               void load();
               void loadSupplementaryData();
+              void syncLayout();
               if (brandingTenantId) void loadBranding(brandingTenantId);
             }}
           />
