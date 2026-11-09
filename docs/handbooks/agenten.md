@@ -362,7 +362,7 @@ Agenten. Ein Klick öffnet den Artikel auf einer eigenen Leseseite mit
 ![Artikelansicht mit Banner, «Kurz gesagt» und Abschnitten](images/ag-artikel.jpg)
 
 Der Artikel erscheint im Verlauf der Farben aus **Einstellungen → Design**
-(Akzentfarbe als Hauptfarbe, Primärfarbe als Verlaufsende). Oben stehen die
+(Verlauf von der Primärfarbe zur Akzentfarbe). Oben stehen die
 Art (z. B. Anleitung, FAQ, Störung, Referenz, Information), Thema, Datum und
 Lesezeit, darunter **Kurz gesagt**. Ab drei Abschnitten (Überschriften mit
 `##`) klappen die Abschnitte auf und zu; **Alle aufklappen** öffnet alle. Die

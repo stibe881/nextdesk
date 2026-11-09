@@ -151,11 +151,11 @@ export function KnowledgeArticleView({
   );
 }
 
-/** Colours: the tenant's design (Einstellungen → Design), accent as the main colour. */
+/** Colours: the tenant's design (Einstellungen → Design), gradient from primary to accent. */
 export const knowledgeArticleStyles = `
   .knowledge-article {
-    --kb-main: var(--brand-accent, #075985);
-    --kb-detail: var(--brand-primary, #4338ca);
+    --kb-main: var(--brand-primary, #4338ca);
+    --kb-detail: var(--brand-accent, #075985);
     display: grid;
     gap: 14px;
     min-width: 0;
