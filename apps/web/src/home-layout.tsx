@@ -117,6 +117,7 @@ export function HomeLayoutEditor({
                   {block.movable ? (
                     <span className="home-layout__move">
                       <button
+                        className="icon-button"
                         aria-label={`${block.label} nach oben`}
                         disabled={index <= 0}
                         onClick={() => move(block.key, -1)}
@@ -125,6 +126,7 @@ export function HomeLayoutEditor({
                         <ArrowUp aria-hidden="true" size={14} />
                       </button>
                       <button
+                        className="icon-button"
                         aria-label={`${block.label} nach unten`}
                         disabled={index >= layout.order.length - 1}
                         onClick={() => move(block.key, 1)}

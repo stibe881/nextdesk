@@ -21443,3 +21443,81 @@ svg.ticket-satisfaction__star.is-active {
     grid-template-columns: 1fr;
   }
 }
+
+/*
+ * Icon-only buttons (edit, delete, close, move, refresh, copy …) show only
+ * the icon: no frame and no background, also on hover. Hover colours the
+ * icon; delete icons turn red. Keyboard focus keeps its outline.
+ */
+:is(
+  .icon-button,
+  .more-button,
+  .my-priorities__move-button,
+  .infrastructure__icon-button,
+  .infrastructure__checklist-remove,
+  .rack-view__edit,
+  .ticket-toast-dismiss,
+  .ticket-list-filter-panel__close,
+  .ticket-description-edit,
+  .ticket-compose-dialog__close,
+  .person-overview__close,
+  .workspace-preferences__close,
+  .workspace-live-message__dismiss,
+  .ticket-overview-linked-catalog__remove,
+  .ticket-drilldown-chip__remove,
+  .ticket-catalog-picker__clear,
+  .keyboard-help__close,
+  .intro-tip__dismiss,
+  .global-search__clear,
+  .audit-view__close,
+  .ticket-experience__close,
+  .ticket-ai-summary__close,
+  .phishing-report__close,
+  .experience-dialog__close,
+  .workbench-help,
+  .service-status__copy-row button
+) {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:is(
+    .icon-button,
+    .more-button,
+    .my-priorities__move-button,
+    .infrastructure__icon-button,
+    .infrastructure__checklist-remove,
+    .rack-view__edit,
+    .ticket-toast-dismiss,
+    .ticket-list-filter-panel__close,
+    .ticket-description-edit,
+    .ticket-compose-dialog__close,
+    .person-overview__close,
+    .workspace-preferences__close,
+    .workspace-live-message__dismiss,
+    .ticket-overview-linked-catalog__remove,
+    .ticket-drilldown-chip__remove,
+    .ticket-catalog-picker__clear,
+    .keyboard-help__close,
+    .intro-tip__dismiss,
+    .global-search__clear,
+    .audit-view__close,
+    .ticket-experience__close,
+    .ticket-ai-summary__close,
+    .phishing-report__close,
+    .experience-dialog__close,
+    .workbench-help,
+    .service-status__copy-row button
+  ):hover:not(:disabled) {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--primary) !important;
+}
+
+:is(
+    .icon-button:has(svg[class*="trash"]),
+    .infrastructure__checklist-remove
+  ):hover:not(:disabled) {
+  color: var(--danger) !important;
+}
