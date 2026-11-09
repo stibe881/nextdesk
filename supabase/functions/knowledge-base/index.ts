@@ -489,7 +489,11 @@ async function fetchCurrentRevision(
 }
 
 /** Plain-text teaser of an article body (no markdown syntax, no images). */
-export function articleExcerpt(body: unknown, maxLength = 160): string {
+export function articleExcerpt(
+  body: unknown,
+  maxLength = 160,
+  query?: string,
+): string {
   if (typeof body !== "string") return "";
   const plain = body
     .replace(/```[\s\S]*?```/g, " ")
@@ -502,9 +506,29 @@ export function articleExcerpt(body: unknown, maxLength = 160): string {
     .replace(/[*_`~|]+/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  return plain.length > maxLength
-    ? `${plain.slice(0, maxLength - 1).trimEnd()}…`
-    : plain;
+  // With a search, show the passage around the first hit.
+  let start = 0;
+  if (query) {
+    const lower = plain.toLowerCase();
+    const hits = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((term) => term.length >= 2)
+      .map((term) => lower.indexOf(term))
+      .filter((index) => index >= 0);
+    const first = hits.length > 0 ? Math.min(...hits) : -1;
+    if (first > 60) {
+      const from = Math.max(0, first - 40);
+      const space = plain.indexOf(" ", from);
+      start = space >= 0 && space < first ? space + 1 : from;
+    }
+  }
+  const text = start > 0 ? plain.slice(start) : plain;
+  const shown =
+    text.length > maxLength
+      ? `${text.slice(0, maxLength - 1).trimEnd()}…`
+      : text;
+  return start > 0 ? `…${shown}` : shown;
 }
 
 /**
@@ -1574,6 +1598,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
                     ? {
                         body: articleExcerpt(
                           revisions.data.get(article.id).body,
+                          160,
+                          action.query,
                         ),
                       }
                     : {}),
