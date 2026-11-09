@@ -13245,4 +13245,31 @@ $$;
 rollback;
 SQL
 
+# 0274: Home-Layout der App pro Person (nur die eigene Zeile).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+begin
+  if not (select relrowsecurity from pg_class where oid = 'public.mobile_home_layouts'::regclass) then
+    raise exception 'home layout test: RLS disabled';
+  end if;
+  if (select count(*) from pg_policies
+       where schemaname = 'public' and tablename = 'mobile_home_layouts'
+         and 'authenticated' = any(roles)) <> 4 then
+    raise exception 'home layout test: expected four owner policies';
+  end if;
+  if has_table_privilege('anon', 'public.mobile_home_layouts', 'select') then
+    raise exception 'home layout test: anon may read layouts';
+  end if;
+  begin
+    insert into public.mobile_home_layouts (user_id, layout)
+    values ('00000000-0000-4000-8000-0000000000ff', '{"order": "falsch", "hidden": []}'::jsonb);
+    raise exception 'home layout test: invalid layout accepted';
+  exception when check_violation or foreign_key_violation then
+    null;
+  end;
+  raise notice 'home layout checks ran';
+end;
+$$;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

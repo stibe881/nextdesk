@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -12,6 +12,11 @@ import {
   View,
 } from "react-native";
 
+import { KnowledgeCarousel } from "@/components/knowledge-carousel";
+import {
+  KnowledgeTopicRow,
+  knowledgeTopicColor,
+} from "@/components/knowledge-topics";
 import { ScreenContainer } from "@/components/screen-container";
 import {
   MobileFeatureLoadingScreen,
@@ -43,6 +48,50 @@ export default function KnowledgeScreen() {
   const styles = useStyles();
   const colors = useAppColors();
   const wideLayout = width >= 768;
+  const [topic, setTopic] = useState<string | null>(null);
+  // Topics come from the articles' categories; the busiest first.
+  const topics = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of articles)
+      for (const collection of item.collections)
+        counts.set(collection.name, (counts.get(collection.name) ?? 0) + 1);
+    return [...counts]
+      .map(([name, count]) => ({ name, count }))
+      .sort(
+        (left, right) =>
+          right.count - left.count ||
+          left.name.localeCompare(right.name, "de-CH"),
+      );
+  }, [articles]);
+  const visible = useMemo(
+    () =>
+      topic
+        ? articles.filter((item) =>
+            item.collections.some((collection) => collection.name === topic),
+          )
+        : articles,
+    [articles, topic],
+  );
+  // Start page: the newest article as a large card, the rest as a list.
+  const showHero = !query.trim() && !topic && visible.length >= 4;
+  // Start page: the 7 newest or most recently edited published articles as
+  // cards to swipe through; the rest follows as a list.
+  const carousel = useMemo(() => {
+    if (!showHero) return [];
+    const published = visible.filter((item) => item.status === "published");
+    const pool = published.length >= 3 ? published : visible;
+    return [...pool]
+      .sort(
+        (left, right) =>
+          Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+      )
+      .slice(0, 7);
+  }, [showHero, visible]);
+  const listed = showHero
+    ? visible.filter(
+        (item) => !carousel.some((featured) => featured.id === item.id),
+      )
+    : visible;
 
   const loadArticles = useCallback(async () => {
     try {
@@ -110,7 +159,6 @@ export default function KnowledgeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View>
-          <Text style={styles.eyebrow}>WISSEN</Text>
           <Text style={styles.title}>Wissen</Text>
           <Text style={styles.subtitle}>
             Durchsuche freigegebene Anleitungen, Lösungen und Hinweise.
@@ -177,14 +225,31 @@ export default function KnowledgeScreen() {
           </View>
         ) : (
           <View style={styles.list}>
+            <KnowledgeTopicRow
+              onSelect={setTopic}
+              selected={topic}
+              topics={topics}
+              total={articles.length}
+            />
+            {carousel.length > 0 ? (
+              <KnowledgeCarousel articles={carousel} onOpen={openArticle} />
+            ) : null}
             <View style={styles.listHeader}>
-              <Text style={styles.listTitle}>Artikel</Text>
-              <Text style={styles.resultCount}>{articles.length}</Text>
+              <Text style={styles.listTitle}>
+                {showHero
+                  ? "Weitere Artikel"
+                  : query.trim()
+                    ? "Treffer"
+                    : (topic ?? "Artikel")}
+              </Text>
+              <Text style={styles.resultCount}>
+                {showHero ? listed.length : visible.length}
+              </Text>
             </View>
             <View
               style={[styles.articleGrid, wideLayout && styles.articleGridWide]}
             >
-              {articles.map((article) => (
+              {listed.map((article) => (
                 <Pressable
                   accessibilityLabel={`Artikel ${article.title} öffnen`}
                   accessibilityRole="button"
@@ -192,9 +257,20 @@ export default function KnowledgeScreen() {
                   onPress={() => openArticle(article.id)}
                   style={[styles.article, wideLayout && styles.articleWide]}
                 >
-                  <View style={styles.articleIcon}>
+                  <View
+                    style={[
+                      styles.articleIcon,
+                      article.collections[0]
+                        ? {
+                            backgroundColor: knowledgeTopicColor(
+                              article.collections[0].name,
+                            ),
+                          }
+                        : null,
+                    ]}
+                  >
                     <Ionicons
-                      color={colors.info}
+                      color={article.collections[0] ? "#FFFFFF" : colors.info}
                       name="document-text-outline"
                       size={20}
                     />
@@ -203,16 +279,20 @@ export default function KnowledgeScreen() {
                     <Text numberOfLines={2} style={styles.articleTitle}>
                       {article.title}
                     </Text>
-                    {article.summary ? (
+                    {article.summary || article.excerpt ? (
                       <Text numberOfLines={2} style={styles.articleSummary}>
-                        {article.summary}
+                        {article.summary || article.excerpt}
                       </Text>
                     ) : null}
                     <View style={styles.articleMetaRow}>
                       <Text style={styles.articleMeta}>
-                        {article.visibility === "internal"
-                          ? "Intern"
-                          : "Extern freigegeben"}
+                        {article.status === "draft"
+                          ? "Entwurf"
+                          : article.status === "review"
+                            ? "In Prüfung"
+                            : article.visibility === "internal"
+                              ? "Intern"
+                              : "Extern freigegeben"}
                       </Text>
                       {article.revision ? (
                         <Text style={styles.articleVersion}>
@@ -257,12 +337,6 @@ const useStyles = makeThemedStyles((c) => ({
   articleGrid: { gap: 9 },
   articleGridWide: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   centered: { alignItems: "center", flex: 1, justifyContent: "center" },
-  eyebrow: {
-    color: c.muted,
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-  },
   title: {
     color: c.foreground,
     fontSize: 29,
@@ -323,7 +397,7 @@ const useStyles = makeThemedStyles((c) => ({
     lineHeight: 20,
     textAlign: "center",
   },
-  list: { gap: 9 },
+  list: { gap: 12 },
   listHeader: {
     alignItems: "center",
     flexDirection: "row",
