@@ -827,55 +827,108 @@
 .rack-view__rack figcaption small {
   color: var(--muted);
 }
+/* Drawn 19" cabinet: the colours are those of a real (black) rack and stay
+   the same in light and dark themes; device types keep a coloured accent. */
+.rack-view__svg {
+  display: block;
+  max-width: 340px;
+  margin-inline: auto;
+  overflow: visible;
+}
+.rack-view__cabinet {
+  fill: #2a2e35;
+  stroke: #15181c;
+  stroke-width: 1;
+}
+.rack-view__vent {
+  fill: #121418;
+}
+.rack-view__plinth {
+  fill: #1b1e23;
+}
+.rack-view__foot {
+  fill: #121418;
+}
+.rack-view__bay {
+  fill: #101215;
+}
+.rack-view__rail {
+  fill: #6f7680;
+}
+.rack-view__hole {
+  fill: #23272d;
+}
 .rack-view__slot {
-  fill: var(--surface-subtle);
-  stroke: var(--border);
-  stroke-width: 0.5;
+  stroke: #1f2329;
+  stroke-width: 1;
 }
 .rack-view__unit {
-  fill: var(--chart-label);
-  font-size: 9px;
-  text-anchor: end;
+  fill: #e9edf2;
+  font-size: 7.5px;
+  font-weight: 700;
+  text-anchor: middle;
 }
 .rack-view__device {
   cursor: pointer;
+  outline: none;
 }
-.rack-view__device rect {
-  fill: var(--chart-1);
-  opacity: 0.9;
+.rack-view__ear {
+  fill: #4a5059;
+}
+.rack-view__face {
+  fill: #3a3f47;
+  stroke: #15181c;
+  stroke-width: 0.6;
+}
+.rack-view__accent {
+  fill: var(--chart-7);
+}
+.rack-view__grille {
+  stroke: #262a30;
+  stroke-width: 1.4;
+}
+.rack-view__port {
+  fill: #16191d;
+  stroke: #575e68;
+  stroke-width: 0.5;
+}
+.rack-view__led {
+  fill: #3ddc84;
+}
+.rack-view__led--activity {
+  fill: #f5b942;
+}
+.rack-view__screw {
+  fill: #9aa1aa;
 }
 .rack-view__device text {
-  fill: var(--on-primary);
-  font-size: 10px;
+  fill: #f2f4f7;
+  font-size: 9.5px;
   font-weight: 700;
   pointer-events: none;
 }
-.rack-view__device:hover rect,
-.rack-view__device:focus-visible rect {
-  opacity: 1;
-  stroke: var(--ink);
+.rack-view__device:hover .rack-view__face,
+.rack-view__device:focus-visible .rack-view__face {
+  fill: #474d57;
+  stroke: var(--primary);
   stroke-width: 1.5;
 }
-.rack-view__device--server rect,
-.rack-view__device--virtual_host rect {
+.rack-view__device--server .rack-view__accent,
+.rack-view__device--virtual_host .rack-view__accent {
   fill: var(--chart-1);
 }
-.rack-view__device--switch rect,
-.rack-view__device--router rect {
+.rack-view__device--switch .rack-view__accent,
+.rack-view__device--router .rack-view__accent {
   fill: var(--chart-2);
 }
-.rack-view__device--firewall rect {
+.rack-view__device--firewall .rack-view__accent {
   fill: var(--chart-6);
 }
-.rack-view__device--storage rect {
+.rack-view__device--storage .rack-view__accent {
   fill: var(--chart-5);
 }
-.rack-view__device--ups rect {
+.rack-view__device--ups .rack-view__accent {
   fill: var(--chart-4);
-}
-.rack-view__device--access_point rect,
-.rack-view__device--other rect {
-  fill: var(--chart-7);
 }
 .rack-view__link {
   fill: none;
