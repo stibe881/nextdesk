@@ -21514,3 +21514,61 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 .ticket-detail-facts-grid .ticket-requester-fact--contacts {
   grid-column: 1 / -1;
 }
+
+/* Öffentliche Statusseite: E-Mail-Abo */
+.status-subscription {
+  align-items: center;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #dce5f2);
+  border-radius: 16px;
+  display: grid;
+  gap: 12px 24px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  margin-top: 28px;
+  padding: 20px 24px;
+}
+.status-subscription__text h2 {
+  align-items: center;
+  display: flex;
+  font-size: 1.05rem;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+.status-subscription__text p {
+  color: var(--ink-muted, #65758f);
+  font-size: 14px;
+  margin: 0;
+}
+.status-subscription__form {
+  display: flex;
+  gap: 8px;
+}
+.status-subscription__form input {
+  border: 1px solid var(--border, #dce5f2);
+  border-radius: 10px;
+  flex: 1;
+  font: inherit;
+  min-width: 0;
+  padding: 10px 12px;
+}
+.status-subscription__message {
+  border-radius: 10px;
+  font-size: 14px;
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 12px;
+}
+.status-subscription__message--success {
+  background: var(--tone-success-soft, #dcfce7);
+  color: var(--tone-success, #166534);
+}
+.status-subscription__message--error {
+  background: var(--tone-danger-soft, #fee2e2);
+  color: var(--tone-danger, #991b1b);
+}
+@media (max-width: 720px) {
+  .status-subscription {
+    grid-template-columns: 1fr;
+    padding: 18px 20px;
+  }
+}

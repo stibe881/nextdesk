@@ -1,3 +1,4 @@
+import { StatusSubscriptionPanel } from "./status-subscription";
 import {
   useCallback,
   useEffect,
@@ -2304,6 +2305,7 @@ export function PublicServiceStatusPage({
             </header>
             <StatusPresentation payload={payload} publicView />
             <PublicMaintenanceList maintenances={payload.maintenances} />
+            <StatusSubscriptionPanel publicId={publicId} />
             <p className="public-service-status__footer">
               Bereitgestellt mit nextDesk
             </p>

@@ -2045,6 +2045,242 @@ async function dispatchNotificationMail(
   }
 }
 
+const SERVICE_STATUS_LABEL: Record<string, string> = {
+  operational: "In Betrieb",
+  degraded: "Eingeschränkt",
+  partial_outage: "Teilausfall",
+  major_outage: "Ausfall",
+  maintenance: "Wartung",
+};
+
+/** Link auf die öffentliche Statusseite (optional mit Abo-Aktion). */
+export function serviceStatusPageUrl(
+  publicId: string,
+  action?: { token: string; kind: "confirm" | "unsubscribe" },
+): string {
+  const url = new URL(APP_ORIGIN);
+  url.searchParams.set("system-status", publicId);
+  if (action) {
+    url.searchParams.set("status-subscription", action.token);
+    url.searchParams.set("status-action", action.kind);
+  }
+  return url.toString();
+}
+
+/**
+ * Systemstatus-Abo: Bestätigungsmail (Double-Opt-in) und Meldung bei einer
+ * Statusänderung eines öffentlichen Dienstes, jeweils mit Abmeldelink.
+ */
+async function dispatchServiceStatusMail(
+  admin: Admin,
+  message: Message,
+  channel: Channel,
+): Promise<void> {
+  const ignore = (reason: string) =>
+    updateMessage(admin, message.id, {
+      processing_status: "ignored",
+      ignore_reason: reason,
+    });
+  try {
+    if (!(await claimMessage(admin, message.id))) return;
+    const row = await admin
+      .from("mail_messages")
+      .select("status_subscription_id, service_status_event_id")
+      .eq("id", message.id)
+      .maybeSingle();
+    const subscriptionId = asString(row.data?.status_subscription_id);
+    if (!subscriptionId) {
+      await ignore("status_subscription_unavailable");
+      return;
+    }
+    const [subscription, page] = await Promise.all([
+      admin
+        .from("service_status_subscriptions")
+        .select("email, token, confirmed_at")
+        .eq("id", subscriptionId)
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle(),
+      admin
+        .from("service_status_pages")
+        .select("public_id, title, public_enabled")
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle(),
+    ]);
+    const recipient = emailAddress(subscription.data?.email);
+    const token = asString(subscription.data?.token);
+    const publicId = asString(page.data?.public_id);
+    if (
+      !recipient ||
+      !token ||
+      !publicId ||
+      page.data?.public_enabled !== true
+    ) {
+      await ignore("status_subscription_unavailable");
+      return;
+    }
+    const pageTitle = asString(page.data?.title) ?? "Systemstatus";
+    const unsubscribeUrl = serviceStatusPageUrl(publicId, {
+      token,
+      kind: "unsubscribe",
+    });
+    let subject: string;
+    let intro: string;
+    let text: string;
+    let actions: { label: string; url: string; primary?: boolean }[];
+    if (message.kind === "status_confirmation") {
+      if (subscription.data?.confirmed_at) {
+        await ignore("status_subscription_already_confirmed");
+        return;
+      }
+      subject = `Anmeldung bestätigen – ${pageTitle}`;
+      intro = "Bitte bestätigen Sie Ihre Anmeldung";
+      text =
+        `Sie möchten per E-Mail informiert werden, wenn sich der Status eines Dienstes auf «${pageTitle}» ändert.\n\n` +
+        "Bestätigen Sie die Anmeldung mit dem Knopf unten. Wenn Sie sich nicht angemeldet haben, können Sie diese E-Mail ignorieren.";
+      actions = [
+        {
+          label: "Anmeldung bestätigen",
+          url: serviceStatusPageUrl(publicId, { token, kind: "confirm" }),
+          primary: true,
+        },
+      ];
+    } else {
+      if (!subscription.data?.confirmed_at) {
+        await ignore("status_subscription_not_confirmed");
+        return;
+      }
+      const eventId = asString(row.data?.service_status_event_id);
+      const event = eventId
+        ? await admin
+            .from("service_status_events")
+            .select("service_id, status, changed_at")
+            .eq("id", eventId)
+            .eq("tenant_id", message.tenant_id)
+            .maybeSingle()
+        : { data: null };
+      const serviceId = asString(event.data?.service_id);
+      const service = serviceId
+        ? await admin
+            .from("services")
+            .select("name, status_public, active")
+            .eq("id", serviceId)
+            .eq("tenant_id", message.tenant_id)
+            .maybeSingle()
+        : { data: null };
+      const serviceName = asString(service.data?.name);
+      if (
+        !event.data ||
+        !serviceName ||
+        service.data?.status_public !== true ||
+        service.data?.active !== true
+      ) {
+        await ignore("status_event_unavailable");
+        return;
+      }
+      const previous = await admin
+        .from("service_status_events")
+        .select("status")
+        .eq("tenant_id", message.tenant_id)
+        .eq("service_id", serviceId)
+        .lt("changed_at", event.data.changed_at)
+        .order("changed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const now = SERVICE_STATUS_LABEL[String(event.data.status)] ?? "Geändert";
+      const before = previous.data
+        ? (SERVICE_STATUS_LABEL[String(previous.data.status)] ?? null)
+        : null;
+      const changedAt = new Intl.DateTimeFormat("de-CH", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "Europe/Zurich",
+      }).format(new Date(String(event.data.changed_at)));
+      subject = `${serviceName}: ${now}`;
+      intro = `${serviceName} – ${now}`;
+      text =
+        (before
+          ? `Der Status von «${serviceName}» hat sich von «${before}» zu «${now}» geändert.`
+          : `Der Status von «${serviceName}» ist jetzt «${now}».`) +
+        `\n\nGeändert am ${changedAt}.`;
+      actions = [
+        {
+          label: "Systemstatus ansehen",
+          url: serviceStatusPageUrl(publicId),
+          primary: true,
+        },
+      ];
+    }
+    actions.push({ label: "Abmelden", url: unsubscribeUrl });
+    const [tenant, settings] = await Promise.all([
+      admin
+        .from("tenants")
+        .select("name")
+        .eq("id", message.tenant_id)
+        .maybeSingle(),
+      admin
+        .from("tenant_settings")
+        .select("portal_name")
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle(),
+    ]);
+    const portalName =
+      asString(settings.data?.portal_name) ??
+      asString(tenant.data?.name) ??
+      "nextDesk";
+    const branding = await customerEmailBranding(
+      admin,
+      message.tenant_id,
+      portalName,
+      true,
+    );
+    const html = renderCustomerTicketEmail({
+      kind: "notification",
+      subject: pageTitle,
+      ticketNumber: null,
+      intro,
+      text,
+      replyHint:
+        "Sie erhalten diese E-Mail, weil Sie den Systemstatus abonniert haben. Über «Abmelden» beenden Sie das Abo jederzeit.",
+      actions,
+      branding: branding.branding,
+      attachmentNotice: false,
+    });
+    if (!(await activeChannel(admin, channel))) {
+      await ignore("channel_reconfigured");
+      return;
+    }
+    const mailbox = graphMailboxIdentifier(
+      channel.mailbox_object_id,
+      channel.mailbox_address,
+    );
+    await graphRequestForChannel(admin, channel, `/users/${mailbox}/sendMail`, {
+      method: "POST",
+      body: JSON.stringify({
+        message: {
+          subject: `${subject} – ${portalName}`.slice(0, 250),
+          body: { contentType: "HTML", content: html },
+          toRecipients: [{ emailAddress: { address: recipient } }],
+          internetMessageHeaders: [
+            { name: "X-Auto-Response-Suppress", value: "All" },
+            { name: "X-nextDesk-Status-Subscription", value: subscriptionId },
+          ],
+          ...(branding.logoAttachment
+            ? { attachments: [branding.logoAttachment] }
+            : {}),
+        },
+        saveToSentItems: false,
+      }),
+    });
+    await markProcessed(admin, message);
+    await admin
+      .from("exchange_mail_channels")
+      .update({ last_outbound_at: new Date().toISOString() })
+      .eq("id", channel.id);
+  } catch (error) {
+    await retryOrFail(admin, message, error);
+  }
+}
+
 export async function dispatchOutboundMessage(
   admin: Admin,
   rawMessage: Message,
@@ -2095,6 +2331,13 @@ export async function dispatchOutboundMessage(
   }
   if (message.kind === "notification") {
     await dispatchNotificationMail(admin, message, channel);
+    return;
+  }
+  if (
+    message.kind === "status_confirmation" ||
+    message.kind === "status_change"
+  ) {
+    await dispatchServiceStatusMail(admin, message, channel);
     return;
   }
   try {

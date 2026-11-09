@@ -1,5 +1,8 @@
 import { withSupabase } from "@supabase/server";
-import { readServiceCategoryPaths, serviceCategoryPath } from "../_shared/service-category-paths.ts";
+import {
+  readServiceCategoryPaths,
+  serviceCategoryPath,
+} from "../_shared/service-category-paths.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
@@ -140,7 +143,8 @@ function corsHeaders(request: Request, { badge = false } = {}): Headers {
     headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
   } else if (request.headers.get("origin") === ALLOWED_ORIGIN) {
     headers.set("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
-    headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "content-type");
   }
   return headers;
 }
@@ -152,7 +156,7 @@ function json(
 ): Response {
   const headers = corsHeaders(request);
   headers.set("Content-Type", "application/json; charset=utf-8");
-  if (status === 405) headers.set("Allow", "GET, OPTIONS");
+  if (status === 405) headers.set("Allow", "GET, POST, OPTIONS");
   return new Response(JSON.stringify(body), { status, headers });
 }
 
@@ -568,6 +572,184 @@ async function readPublicStatus(
   };
 }
 
+// ---------------------------------------------------------------------------
+// E-Mail-Abo für Statusänderungen (Double-Opt-in, Abmeldelink in jeder Mail).
+// ---------------------------------------------------------------------------
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+/** Keine zweite Bestätigungsmail an dieselbe Adresse innert 10 Minuten. */
+const CONFIRMATION_RESEND_MS = 10 * 60 * 1000;
+/** Schutz vor Missbrauch: höchstens so viele Bestätigungsmails pro Stunde. */
+const MAX_CONFIRMATIONS_PER_HOUR = 200;
+
+export function normalizeSubscriberEmail(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 320) return null;
+  const email = value.trim().toLowerCase();
+  return email.length >= 3 && EMAIL_PATTERN.test(email) ? email : null;
+}
+
+async function subscribe(
+  admin: any,
+  publicId: string,
+  email: string,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const pageResult = await admin
+    .from("service_status_pages")
+    .select("tenant_id")
+    .eq("public_id", publicId)
+    .eq("public_enabled", true)
+    .maybeSingle();
+  if (pageResult.error) throw new Error("page_lookup_failed");
+  const tenantId = pageResult.data?.tenant_id;
+  if (!isUuid(tenantId)) {
+    return {
+      status: 404,
+      body: { error: { code: "status_page_unavailable" } },
+    };
+  }
+  const featureStates = await resolveTenantFeatureStates(admin, tenantId, [
+    "assets.management",
+  ]);
+  if (featureStates?.["assets.management"] !== true) {
+    return {
+      status: 404,
+      body: { error: { code: "status_page_unavailable" } },
+    };
+  }
+  const existing = await admin
+    .from("service_status_subscriptions")
+    .select("id, confirmed_at, confirmation_sent_at")
+    .eq("tenant_id", tenantId)
+    .eq("email", email)
+    .maybeSingle();
+  if (existing.error) throw new Error("subscription_lookup_failed");
+  // Gleiche Antwort für alle Fälle: verrät nicht, ob eine Adresse schon
+  // angemeldet ist.
+  const accepted = { status: 202, body: { data: { status: "pending" } } };
+  if (existing.data?.confirmed_at) return accepted;
+  const lastSent = Date.parse(
+    String(existing.data?.confirmation_sent_at ?? ""),
+  );
+  if (
+    Number.isFinite(lastSent) &&
+    Date.now() - lastSent < CONFIRMATION_RESEND_MS
+  ) {
+    return accepted;
+  }
+  const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const recent = await admin
+    .from("service_status_subscriptions")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .gte("confirmation_sent_at", hourAgo);
+  if ((recent.count ?? 0) >= MAX_CONFIRMATIONS_PER_HOUR) {
+    return {
+      status: 429,
+      body: { error: { code: "status_subscription_busy" } },
+    };
+  }
+  let subscriptionId = existing.data?.id as string | undefined;
+  if (!subscriptionId) {
+    const inserted = await admin
+      .from("service_status_subscriptions")
+      .insert({ tenant_id: tenantId, email })
+      .select("id")
+      .single();
+    if (inserted.error || !inserted.data) {
+      throw new Error("subscription_insert_failed");
+    }
+    subscriptionId = inserted.data.id;
+  }
+  const queued = await admin.rpc("enqueue_service_status_confirmation", {
+    p_subscription_id: subscriptionId,
+  });
+  if (queued.error) throw new Error("confirmation_queue_failed");
+  if (queued.data !== true) {
+    return {
+      status: 503,
+      body: { error: { code: "status_mail_unavailable" } },
+    };
+  }
+  return accepted;
+}
+
+async function changeSubscription(
+  admin: any,
+  token: string,
+  action: "confirm" | "unsubscribe",
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  if (action === "unsubscribe") {
+    const removed = await admin
+      .from("service_status_subscriptions")
+      .delete()
+      .eq("token", token)
+      .select("id");
+    if (removed.error) throw new Error("unsubscribe_failed");
+    // Auch ein bereits abgemeldeter Link gilt als erledigt.
+    return { status: 200, body: { data: { status: "unsubscribed" } } };
+  }
+  const confirmed = await admin
+    .from("service_status_subscriptions")
+    .update({ confirmed_at: new Date().toISOString() })
+    .eq("token", token)
+    .is("confirmed_at", null)
+    .select("id");
+  if (confirmed.error) throw new Error("confirm_failed");
+  if ((confirmed.data ?? []).length === 0) {
+    const current = await admin
+      .from("service_status_subscriptions")
+      .select("id")
+      .eq("token", token)
+      .maybeSingle();
+    if (!current.data) {
+      return {
+        status: 404,
+        body: { error: { code: "status_subscription_not_found" } },
+      };
+    }
+  }
+  return { status: 200, body: { data: { status: "confirmed" } } };
+}
+
+const subscriptionHandler = withSupabase(
+  { auth: "none", cors: "disabled", errors: { detailed: false } },
+  async (request, context) => {
+    const body = await request.json().catch(() => null);
+    try {
+      if (isRecord(body) && body.type === "subscribe") {
+        const email = normalizeSubscriberEmail(body.email);
+        if (!isUuid(body.id) || !email) {
+          return json(request, { error: { code: "invalid_email" } }, 400);
+        }
+        const result = await subscribe(
+          context.supabaseAdmin,
+          body.id.toLowerCase(),
+          email,
+        );
+        return json(request, result.body, result.status);
+      }
+      if (
+        isRecord(body) &&
+        (body.type === "confirm" || body.type === "unsubscribe") &&
+        isUuid(body.token)
+      ) {
+        const result = await changeSubscription(
+          context.supabaseAdmin,
+          body.token.toLowerCase(),
+          body.type,
+        );
+        return json(request, result.body, result.status);
+      }
+      return json(request, { error: { code: "invalid_request" } }, 400);
+    } catch {
+      return json(
+        request,
+        { error: { code: "status_subscription_failed" } },
+        503,
+      );
+    }
+  },
+);
+
 const handler = withSupabase(
   { auth: "none", cors: "disabled", errors: { detailed: false } },
   async (request, context) => {
@@ -616,6 +798,11 @@ export default {
         status: 204,
         headers: corsHeaders(request, { badge: isBadgeRequest }),
       });
+    }
+    if (request.method === "POST") {
+      // Abo-Aktionen nur von der eigenen App aus.
+      if (origin !== ALLOWED_ORIGIN) return unavailable(request, 403);
+      return subscriptionHandler(request);
     }
     if (request.method !== "GET") {
       return json(request, { error: { code: "method_not_allowed" } }, 405);
