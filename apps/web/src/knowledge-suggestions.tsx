@@ -72,10 +72,11 @@ function formatDate(value: string | null): string {
 }
 
 const styles = `
-  .knowledge-suggestions { display: grid; gap: 12px; }
+  .knowledge-suggestions { display: grid; gap: 14px; padding: 22px 24px 24px; }
+  .knowledge-suggestions .eyebrow { margin: 0 0 4px; }
   .knowledge-suggestions__header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .knowledge-suggestions__header h2 { margin: 0; }
-  .knowledge-suggestions__intro { margin: 4px 0 0; color: var(--muted, #64748b); max-width: 60ch; }
+  .knowledge-suggestions__intro { margin: 6px 0 0; color: var(--muted, #64748b); max-width: 60ch; }
   .knowledge-suggestions__note { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--surface-muted, #f1f5f9); }
   .knowledge-suggestions__error { margin: 0; color: var(--danger, #b91c1c); }
   .knowledge-suggestions__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
@@ -83,9 +84,13 @@ const styles = `
   .knowledge-suggestions__item-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
   .knowledge-suggestions__item-head h3 { margin: 0; font-size: 1rem; }
   .knowledge-suggestions__meta { color: var(--muted, #64748b); font-size: 0.875rem; }
+  p.knowledge-suggestions__meta { margin: 0; }
   .knowledge-suggestions__tickets { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
   .knowledge-suggestions__ticket { background: none; border: 0; padding: 0; color: var(--accent, #075985); cursor: pointer; text-align: left; font: inherit; text-decoration: underline; }
   .knowledge-suggestions__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  @media (max-width: 760px) {
+    .knowledge-suggestions { padding: 18px 20px 20px; }
+  }
   @media (max-width: 640px) {
     .knowledge-suggestions__actions > button { flex: 1 1 100%; }
   }
@@ -259,7 +264,7 @@ export function KnowledgeSuggestions({
             Ähnliche Tickets, die in den letzten {list?.windowDays ?? 120} Tagen
             mehrmals gleich gelöst wurden und noch keinen veröffentlichten
             Artikel haben. Die KI schreibt einen Entwurf, den Sie prüfen und
-            freigeben.
+            speichern.
           </p>
         </div>
         <button
