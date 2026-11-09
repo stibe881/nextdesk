@@ -106,13 +106,9 @@ export const SHOTS = [
       await h.open();
       await h.nav("Wissensdatenbank");
       await h.page
-        .locator("article, li, div")
-        .filter({ hasText: /^.*VPN im Homeoffice einrichten/ })
-        .getByRole("button", { name: /Artikel lesen/ })
-        .first()
-        .click();
-      await h.settle();
-      await h.scrollToText("Bibliothek");
+        .getByRole("searchbox", { name: "Wissensdatenbank durchsuchen" })
+        .fill("VPN");
+      await h.settle(1200);
     },
   },
   {

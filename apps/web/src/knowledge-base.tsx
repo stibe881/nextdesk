@@ -331,29 +331,29 @@ const knowledgeBaseStyles = `
   .knowledge-base__form-panel {
     padding: 0 24px 24px;
   }
-  .knowledge-base__hub,
-  .knowledge-base__reader {
+  .knowledge-base .knowledge-base__hub,
+  .knowledge-base .knowledge-base__reader {
     display: grid;
     gap: 16px;
     padding: 24px;
   }
-  .knowledge-base__hero {
+  .knowledge-base .knowledge-base__hero {
     display: grid;
     gap: 14px;
   }
-  .knowledge-base__hero-top {
+  .knowledge-base .knowledge-base__hero-top {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
     gap: 12px;
   }
-  .knowledge-base__hero h2 {
+  .knowledge-base .knowledge-base__hero h2 {
     margin: 0;
     color: #173246;
     font-size: 26px;
     line-height: 1.2;
   }
-  .knowledge-base__search {
+  .knowledge-base .knowledge-base__finder {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -364,22 +364,25 @@ const knowledgeBaseStyles = `
     color: #5d6f7a;
     padding: 0 14px;
   }
-  .knowledge-base__search:focus-within {
+  .knowledge-base .knowledge-base__finder:focus-within {
     border-color: #1c4f86;
     box-shadow: 0 0 0 3px #e3edf8;
   }
-  .knowledge-base__search input {
+  .knowledge-base .knowledge-base__finder input[type="search"] {
     flex: 1;
     min-width: 0;
     border: 0;
+    box-shadow: none;
     outline: 0;
+    min-height: 0;
+    height: auto;
     background: transparent;
     color: #12283a;
     font: inherit;
     font-size: 15px;
     padding: 12px 0;
   }
-  .knowledge-base__kbd {
+  .knowledge-base .knowledge-base__kbd {
     border: 1px solid #c9d8dd;
     border-bottom-width: 2px;
     border-radius: 4px;
@@ -387,12 +390,12 @@ const knowledgeBaseStyles = `
     font: 700 11px var(--font-sans);
     padding: 1px 6px;
   }
-  .knowledge-base__tiles {
+  .knowledge-base .knowledge-base__tiles {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
     gap: 10px;
   }
-  .knowledge-base__tile {
+  .knowledge-base .knowledge-base__tile {
     display: grid;
     gap: 2px;
     border: 1px solid #dfe8ea;
@@ -404,18 +407,18 @@ const knowledgeBaseStyles = `
     padding: 12px 14px;
     text-align: left;
   }
-  .knowledge-base__tile small { color: #5d6f7a; font-size: 12px; }
-  .knowledge-base__tile:hover,
-  .knowledge-base__tile[aria-pressed="true"] {
+  .knowledge-base .knowledge-base__tile small { color: #5d6f7a; font-size: 12px; }
+  .knowledge-base .knowledge-base__tile:hover,
+  .knowledge-base .knowledge-base__tile[aria-pressed="true"] {
     border-color: #1c4f86;
     background: #edf3fa;
   }
-  .knowledge-base__chips {
+  .knowledge-base .knowledge-base__chips {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
   }
-  .knowledge-base__chip {
+  .knowledge-base .knowledge-base__chip {
     border: 1px solid #c9d8dd;
     border-radius: 999px;
     background: #fff;
@@ -427,33 +430,35 @@ const knowledgeBaseStyles = `
     min-height: 32px;
     padding: 4px 12px;
   }
-  .knowledge-base__chip[aria-pressed="true"] {
+  .knowledge-base .knowledge-base__chip[aria-pressed="true"] {
     border-color: #1c4f86;
     background: #1c4f86;
     color: #fff;
   }
-  .knowledge-base__results { display: grid; gap: 8px; }
-  .knowledge-base__results-heading {
+  .knowledge-base .knowledge-base__results { display: grid; gap: 8px; }
+  .knowledge-base .knowledge-base__results-heading {
     margin: 4px 0 0;
     color: #5d6f7a;
     font-size: 12px;
     letter-spacing: .06em;
     text-transform: uppercase;
   }
-  .knowledge-base__list {
+  .knowledge-base .knowledge-base__list {
     display: grid;
     gap: 2px;
     margin: 0;
     padding: 0;
     list-style: none;
   }
-  .knowledge-base__result {
+  .knowledge-base button.knowledge-base__result {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
     width: 100%;
     border: 0;
+    box-shadow: none;
+    min-height: 0;
     border-radius: 8px;
     background: transparent;
     color: inherit;
@@ -462,11 +467,11 @@ const knowledgeBaseStyles = `
     padding: 10px 12px;
     text-align: left;
   }
-  .knowledge-base__result:hover:not(:disabled),
-  .knowledge-base__result:focus-visible { background: #edf3fa; }
-  .knowledge-base__result-main { display: grid; gap: 2px; min-width: 0; }
-  .knowledge-base__result-main strong { color: #173246; font-size: 14.5px; }
-  .knowledge-base__article-excerpt {
+  .knowledge-base button.knowledge-base__result:hover:not(:disabled),
+  .knowledge-base button.knowledge-base__result:focus-visible { background: #edf3fa; }
+  .knowledge-base .knowledge-base__result-main { display: grid; gap: 2px; min-width: 0; }
+  .knowledge-base .knowledge-base__result-main strong { color: #173246; font-size: 14.5px; }
+  .knowledge-base .knowledge-base__result-excerpt {
     display: -webkit-box;
     overflow: hidden;
     color: #4e6270;
@@ -475,15 +480,15 @@ const knowledgeBaseStyles = `
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
-  .knowledge-base__result-meta { color: #6c7d87; font-size: 12px; }
-  .knowledge-base__result-badges { display: flex; flex-wrap: wrap; gap: 4px; flex: none; }
-  .knowledge-base__mark {
+  .knowledge-base .knowledge-base__result-meta { color: #6c7d87; font-size: 12px; }
+  .knowledge-base .knowledge-base__result-badges { display: flex; flex-wrap: wrap; gap: 4px; flex: none; }
+  .knowledge-base .knowledge-base__mark {
     border-radius: 2px;
     background: #fde58a;
     color: #3a2e00;
     padding: 0 1px;
   }
-  .knowledge-base__skeleton {
+  .knowledge-base .knowledge-base__skeleton {
     height: 68px;
     border-radius: 8px;
     background: linear-gradient(90deg, #eef3f6, #f7fafb, #eef3f6);
@@ -494,8 +499,8 @@ const knowledgeBaseStyles = `
   @media (prefers-reduced-motion: reduce) {
     .knowledge-base__skeleton { animation: none; }
   }
-  .knowledge-base__more { justify-self: start; }
-  .knowledge-base__back {
+  .knowledge-base .knowledge-base__more { justify-self: start; }
+  .knowledge-base .knowledge-base__back {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -510,15 +515,15 @@ const knowledgeBaseStyles = `
     min-height: 36px;
     padding: 0;
   }
-  .knowledge-base__reader > * { max-width: 760px; }
-  .knowledge-base__reader-header { display: grid; gap: 8px; }
-  .knowledge-base__reader-header h2 {
+  .knowledge-base .knowledge-base__reader > * { max-width: 760px; }
+  .knowledge-base .knowledge-base__reader-header { display: grid; gap: 8px; }
+  .knowledge-base .knowledge-base__reader-header h2 {
     margin: 0;
     color: #173246;
     font-size: 30px;
     line-height: 1.2;
   }
-  .knowledge-base__reader-topic {
+  .knowledge-base .knowledge-base__reader-topic {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -527,7 +532,7 @@ const knowledgeBaseStyles = `
     font-size: 13px;
     font-weight: 700;
   }
-  .knowledge-base__reader-meta { margin: 0; color: #6c7d87; font-size: 13px; }
+  .knowledge-base .knowledge-base__reader-meta { margin: 0; color: #6c7d87; font-size: 13px; }
   .knowledge-base__badge {
     display: inline-flex;
     align-items: center;
@@ -546,17 +551,6 @@ const knowledgeBaseStyles = `
   .knowledge-base__badge--review {
     background: #fff4dc;
     color: #95620e;
-  }
-  .knowledge-base__detail-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .knowledge-base__detail h3 {
-    margin: 0;
-    color: #173246;
-    font-size: 18px;
   }
   .knowledge-base__meta {
     margin: 8px 0 0;
@@ -754,7 +748,6 @@ const knowledgeBaseStyles = `
     line-height: 1.5;
   }
   @media (max-width: 640px) {
-    .knowledge-base__toolbar,
     .knowledge-base__form-panel { padding-left: 16px; padding-right: 16px; }
     .knowledge-base__hub,
     .knowledge-base__reader { padding: 16px; }
@@ -3080,7 +3073,7 @@ export function KnowledgeBase({
               )}
             </div>
             <form
-              className="knowledge-base__search"
+              className="knowledge-base__finder"
               onSubmit={(event) => void submitSearch(event)}
               role="search"
             >
@@ -3236,7 +3229,7 @@ export function KnowledgeBase({
                               <strong>
                                 {highlightText(article.title, activeQuery)}
                               </strong>
-                              <span className="knowledge-base__article-excerpt">
+                              <span className="knowledge-base__result-excerpt">
                                 {highlightText(
                                   shortBody(revision?.body ?? null),
                                   activeQuery,
