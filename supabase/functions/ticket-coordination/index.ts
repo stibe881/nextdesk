@@ -217,6 +217,7 @@ async function overview(
       .select(
         "id, ticket_number, subject, status_id, department_id, assigned_agent_id, created_at, resolved_at, closed_at",
       )
+      .is("deleted_at", null)
       .eq("tenant_id", ticket.tenant_id)
       .eq("parent_ticket_id", ticket.id)
       .is("merged_into_ticket_id", null)
@@ -226,6 +227,7 @@ async function overview(
       ? admin
         .from("tickets")
         .select("id, ticket_number, subject, status_id")
+        .is("deleted_at", null)
         .eq("tenant_id", ticket.tenant_id)
         .eq("id", ticket.parent_ticket_id)
         .maybeSingle()

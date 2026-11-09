@@ -145,7 +145,7 @@ type ArticleDraft = {
   departmentId: string | null;
 };
 type ReviewRequest = {
-  type: "requestReview";
+  type: "requestReview" | "publishArticle";
   tenantId: string;
   articleId: string;
 };
@@ -2213,8 +2213,8 @@ export function KnowledgeBase({
       setEditorOpen(false);
       setSuccess(
         isEditing
-          ? "Der Wissensartikel wurde gespeichert."
-          : "Der Wissensartikel wurde angelegt.",
+          ? "Der Wissensartikel wurde gespeichert und ist veröffentlicht."
+          : "Der Wissensartikel wurde angelegt und ist veröffentlicht.",
       );
     } catch (nextError) {
       setError(writeErrorMessage(nextError, "save"));
@@ -2466,7 +2466,7 @@ export function KnowledgeBase({
     setSuccess("");
     try {
       const article = await invokeKnowledgeBase(
-        { type: "requestReview", tenantId, articleId: selected.article.id },
+        { type: "publishArticle", tenantId, articleId: selected.article.id },
         parseReturnedArticle,
       );
       setSelected((current) =>
@@ -2495,12 +2495,12 @@ export function KnowledgeBase({
             : item,
         ),
       );
-      setSuccess("Der Artikel wurde zur Freigabe eingereicht.");
+      setSuccess("Der Artikel wurde veröffentlicht.");
     } catch (nextError) {
       setError(
         errorMessage(
           nextError,
-          "Der Artikel konnte nicht zur Freigabe eingereicht werden.",
+          "Der Artikel konnte nicht veröffentlicht werden.",
         ),
       );
     } finally {
@@ -2982,8 +2982,8 @@ export function KnowledgeBase({
                           type="button"
                         >
                           {saving === "review"
-                            ? "Wird eingereicht …"
-                            : "Zur Freigabe einreichen"}
+                            ? "Wird veröffentlicht …"
+                            : "Veröffentlichen"}
                         </button>
                       ) : null}
                       {detailArticle.status === "review" ? (
@@ -3169,9 +3169,8 @@ export function KnowledgeBase({
               ) : null}
 
               <p className="knowledge-base__hint">
-                Speichern erstellt immer einen Entwurf; für externe Artikel
-                bleibt die letzte freigegebene Revision sichtbar, bis die neue
-                Revision erneut freigegeben wird.
+                Speichern veröffentlicht den Artikel sofort, eine Freigabe ist
+                nicht nötig. Frühere Fassungen bleiben im Verlauf erhalten.
               </p>
 
               <fieldset className="knowledge-base__collection-fieldset knowledge-base__full-width">

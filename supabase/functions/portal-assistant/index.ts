@@ -402,6 +402,7 @@ async function handle(request: Request, admin: Client, client: Client, action: A
   // finish: a created ticket must be the caller's own ticket of this tenant.
   if (action.ticketId) {
     const { data, error } = await admin.from("tickets").select("id")
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId).eq("id", action.ticketId).eq("requester_id", actorId)
       .maybeSingle();
     if (error) throw unavailable();

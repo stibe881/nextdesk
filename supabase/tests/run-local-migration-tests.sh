@@ -3083,8 +3083,26 @@ begin
   );
   if (result->>'requested')::integer <> 1
     or (result->>'deleted')::integer <> 1
-    or (result->>'cleanupQueued')::integer <> 1 then
+    or (result->>'cleanupQueued')::integer <> 0 then
     raise exception 'Authorized bulk deletion returned an incomplete result';
+  end if;
+  -- 0255: Löschen verschiebt in den Papierkorb; Daten bleiben erhalten.
+  if not exists (
+    select 1 from public.tickets
+    where id = '1f000000-0000-4000-8000-000000000001'
+      and deleted_at is not null
+      and deleted_by = '00000000-0000-4000-8000-000000000002'
+  ) or not exists (
+    select 1 from public.ticket_comments
+    where ticket_id = '1f000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Bulk deletion did not move the ticket to the trash';
+  end if;
+  -- Nach 90 Tagen endgültig entfernen (0256).
+  update public.tickets set deleted_at = timezone('utc', now()) - interval '91 days'
+  where id = '1f000000-0000-4000-8000-000000000001';
+  if public.purge_expired_deleted_tickets(500) < 1 then
+    raise exception 'Expired trash ticket was not purged';
   end if;
   if exists (
     select 1 from public.tickets
@@ -3208,9 +3226,10 @@ begin
     true
   );
   if (v_result->>'deleted')::integer <> 1
-    or exists (
+    or not exists (
       select 1 from public.tickets
       where id = '1f000000-0000-4000-8000-000000000006'
+        and deleted_at is not null
     ) then
     raise exception 'Tenant administrator could not delete an authorized tenant ticket';
   end if;
@@ -13048,6 +13067,95 @@ begin
     raise exception 'cadre test: visibility helper wrong';
   end if;
   raise notice 'shop cadre visibility checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0255/0256: Papierkorb für Tickets.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_agent constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_ticket uuid;
+  v_result jsonb;
+begin
+  select ticket.id into v_ticket
+  from public.tickets ticket
+  where ticket.tenant_id = v_tenant
+    and ticket.deleted_at is null
+    and public.ticket_trash_allowed(v_agent, v_tenant, ticket.department_id)
+  order by ticket.created_at
+  limit 1;
+  if v_ticket is null then
+    raise exception 'trash test: no deletable fixture ticket';
+  end if;
+
+  perform set_config('request.jwt.claim.sub', v_agent::text, true);
+  if not public.can_read_ticket(v_ticket) then
+    raise exception 'trash test: agent cannot read the fixture ticket';
+  end if;
+
+  v_result := public.bulk_delete_tickets(v_agent, v_tenant, array[v_ticket], true);
+  if (v_result->>'deleted')::integer <> 1 then
+    raise exception 'trash test: ticket not moved to trash';
+  end if;
+  if public.can_read_ticket(v_ticket) then
+    raise exception 'trash test: deleted ticket still readable';
+  end if;
+  if not exists (
+    select 1 from public.list_deleted_tickets(v_agent, v_tenant, 50) trash
+    where trash.id = v_ticket and trash.purge_at > timezone('utc', now()) + interval '89 days'
+  ) then
+    raise exception 'trash test: deleted ticket missing from trash list';
+  end if;
+  -- Zweimal löschen geht nicht.
+  begin
+    perform public.bulk_delete_tickets(v_agent, v_tenant, array[v_ticket], true);
+    raise exception 'trash test: deleted twice';
+  exception when no_data_found then
+    null;
+  end;
+
+  -- Keine Benachrichtigungen zu Tickets im Papierkorb.
+  insert into public.ticket_notifications (tenant_id, user_id, ticket_id, kind, payload)
+  values (v_tenant, v_agent, v_ticket, 'ticket.assigned', '{}'::jsonb);
+  if exists (
+    select 1 from public.ticket_notifications
+    where ticket_id = v_ticket and kind = 'ticket.assigned' and user_id = v_agent
+      and created_at >= timezone('utc', now()) - interval '1 minute'
+  ) then
+    raise exception 'trash test: notification for a deleted ticket was stored';
+  end if;
+
+  -- Fremde ohne Recht dürfen nicht wiederherstellen.
+  begin
+    perform public.restore_deleted_tickets(
+      '00000000-0000-4000-8000-000000000005', v_tenant, array[v_ticket]);
+    raise exception 'trash test: restore without permission';
+  exception when insufficient_privilege then
+    null;
+  end;
+
+  v_result := public.restore_deleted_tickets(v_agent, v_tenant, array[v_ticket]);
+  if (v_result->>'restored')::integer <> 1 or not public.can_read_ticket(v_ticket) then
+    raise exception 'trash test: restore failed';
+  end if;
+  if not exists (
+    select 1 from public.audit_logs
+    where entity_id = v_ticket and action = 'ticket.restored'
+  ) then
+    raise exception 'trash test: restore not audited';
+  end if;
+  -- Frisch gelöschte Tickets werden nicht vorzeitig entfernt.
+  perform public.bulk_delete_tickets(v_agent, v_tenant, array[v_ticket], true);
+  perform public.purge_expired_deleted_tickets(500);
+  if not exists (select 1 from public.tickets where id = v_ticket) then
+    raise exception 'trash test: ticket purged before 90 days';
+  end if;
+  raise notice 'ticket trash checks ran';
 end;
 $$;
 rollback;

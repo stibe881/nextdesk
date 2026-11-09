@@ -88,6 +88,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     context.supabaseAdmin
       .from("tickets")
       .select("id,tenant_id,department_id,assigned_agent_id")
+      .is("deleted_at", null)
       .eq("id", input.ticketId)
       .eq("tenant_id", input.tenantId)
       .maybeSingle(),

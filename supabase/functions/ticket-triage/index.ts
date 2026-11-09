@@ -154,6 +154,7 @@ async function candidatesFor(admin: Admin, ticket: Row): Promise<TriageCandidate
       .is("returned_at", null).limit(30),
     admin.from("tickets")
       .select("id, ticket_number, subject, description, status:ticket_statuses!inner(is_closed)")
+      .is("deleted_at", null)
       .eq("tenant_id", ticket.tenant_id).eq("requester_id", ticket.requester_id)
       .eq("status.is_closed", false).is("merged_into_ticket_id", null)
       .neq("id", ticket.id).gte("created_at", since)
@@ -287,6 +288,7 @@ async function applySuggestion(
 async function processOne(admin: Admin, ticketId: string): Promise<void> {
   const { data: ticket, error } = await admin.from("tickets")
     .select("id, tenant_id, department_id, category_id, assigned_team_id, priority_id, requester_id, subject, description, created_at")
+    .is("deleted_at", null)
     .eq("id", ticketId).maybeSingle();
   if (error || !ticket) {
     await setState(admin, ticketId, { state: "failed", error_code: "ticket_unavailable" });

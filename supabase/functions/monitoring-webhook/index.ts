@@ -459,6 +459,7 @@ async function resolveTicket(
     admin
       .from("tickets")
       .select("id, status_id, assigned_agent_id, closed_at")
+      .is("deleted_at", null)
       .eq("tenant_id", tenantId)
       .eq("id", ticketId)
       .maybeSingle(),

@@ -205,6 +205,7 @@ async function ownTicket(
     .select(
       "id, tenant_id, requester_id, affected_user_id, priority_id, category_id, response_due_at, resolution_due_at, resolved_at, closed_at, subject, ticket_number, created_at",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", tenantId)
     .eq("id", ticketId)
     .maybeSingle();
@@ -589,6 +590,7 @@ async function departmentTickets(
     .select(
       "ticket_number, subject, created_at, updated_at, ticket_statuses!inner(label)",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", item.tenantId)
     .eq("department_id", directory.data.department_id)
     .order("updated_at", { ascending: false })
@@ -737,6 +739,7 @@ async function ticketProgress(
     .select(
       "status_id, first_responded_at, waiting_since, ticket_statuses!inner(key, is_closed)",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", item.tenantId)
     .eq("id", current.id as string)
     .maybeSingle();
@@ -1005,6 +1008,7 @@ async function exportMyData(
     .select(
       "id, ticket_number, subject, description, created_at, updated_at, resolved_at, closed_at, requester_id, affected_user_id",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", item.tenantId)
     .or(`requester_id.eq.${actorId},affected_user_id.eq.${actorId}`)
     .order("created_at", { ascending: false })

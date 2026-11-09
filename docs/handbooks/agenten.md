@@ -160,6 +160,19 @@ der Übersicht, im Kanban und in der App.
 - **Mehrfachauswahl**: mehrere Tickets markieren → **Neuer Status** →
   **Status für Auswahl setzen**.
 
+### Gelöschte Tickets (Papierkorb)
+
+Mit der Berechtigung zum Löschen können Sie markierte Tickets über
+**Löschen** entfernen. Sie kommen in den **Papierkorb**: Sie sind nirgends mehr
+sichtbar (Listen, Suche, Berichte, App), lösen keine Benachrichtigungen oder
+Mails mehr aus und lassen sich **90 Tage lang wiederherstellen**. Danach werden
+sie automatisch endgültig entfernt, samt Kommentaren und Anhängen.
+
+Den Papierkorb öffnen Sie in der Ticketliste über **Filter & Sortierung →
+Gelöschte Tickets anzeigen**. Dort sehen Sie, wer ein Ticket wann gelöscht hat
+und wie lange es noch wiederherstellbar ist. Ein Klick zeigt das Ticket mit
+Beschreibung und Verlauf; **Wiederherstellen** holt es unverändert zurück.
+
 **Tastenkürzel:** `?` zeigt die Hilfe, `J`/`K` springen zum nächsten bzw.
 vorherigen Ticket, `Enter` öffnet, `Esc` schliesst.
 
@@ -287,10 +300,12 @@ Als Agent lesen Sie nicht nur Artikel, sondern schreiben sie auch:
    Sichtbarkeit (_Intern_ oder _Extern_ für Mitarbeitende).
 2. Optional **Mit KI aufbereiten** oder direkt aus einem gelösten Ticket
    **Entwurf mit KI erstellen**.
-3. **Zur Freigabe einreichen** – nach der Prüfung wird der Artikel
-   **veröffentlicht**. Veraltete Artikel **archivieren**.
+3. **Speichern** – der Artikel ist sofort **veröffentlicht**, eine Freigabe ist
+   nicht nötig. Frühere Fassungen bleiben im Verlauf erhalten. Veraltete
+   Artikel **archivieren**.
 
-Status: _Entwurf → Prüfung → Veröffentlicht_.
+KI-Entwürfe aus Tickets erscheinen zuerst als _Entwurf_; mit **Speichern** oder
+**Veröffentlichen** gehen sie live.
 
 ![Wissensdatenbank aus Sicht der Agenten](images/ag-wissen.jpg)
 
