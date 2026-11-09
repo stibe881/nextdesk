@@ -541,6 +541,15 @@ export async function loadLiveDashboard(
   // Avoid an unhandled rejection if the list query throws first.
   countsPromise.catch(() => undefined);
   const supportLevel = ticketListControls?.supportLevel ?? null;
+  // With a support level queue (1st/2nd/3rd Level) the tiles count only the
+  // tickets of that level, like the list below them (0260).
+  const levelCountsPromise = supportLevel
+    ? client.rpc("ticket_level_counts", {
+        p_tenant_id: tenant.id,
+        p_support_level: supportLevel,
+      })
+    : null;
+  levelCountsPromise?.then(undefined, () => undefined);
   // v2 (0232) carries the report drilldown filters and the support level
   // queue filter (0230) in one function.
   const ticketsResult = await client.rpc(
@@ -701,10 +710,21 @@ export async function loadLiveDashboard(
   if (unassignedCountResult.error) throw unassignedCountResult.error;
   if (eventsResult.error) throw eventsResult.error;
 
-  const totalTicketCount = totalCountResult.count ?? 0;
-  const closedCount = closedCountResult.count ?? 0;
-  const mineCount = mineCountResult.count ?? 0;
-  const unassignedCount = unassignedCountResult.count ?? 0;
+  let totalTicketCount = totalCountResult.count ?? 0;
+  let closedCount = closedCountResult.count ?? 0;
+  let mineCount = mineCountResult.count ?? 0;
+  let unassignedCount = unassignedCountResult.count ?? 0;
+  if (levelCountsPromise) {
+    const levelCounts = await levelCountsPromise;
+    if (levelCounts.error) throw levelCounts.error;
+    const row = (
+      Array.isArray(levelCounts.data) ? levelCounts.data[0] : levelCounts.data
+    ) as Record<string, unknown> | null | undefined;
+    totalTicketCount = Number(row?.total ?? 0);
+    closedCount = Number(row?.closed ?? 0);
+    mineCount = Number(row?.mine ?? 0);
+    unassignedCount = Number(row?.unassigned ?? 0);
+  }
   const matchingTicketCount = Number(tickets[0]?.matching_ticket_count ?? 0);
   const ticketListCount =
     Number.isSafeInteger(matchingTicketCount) && matchingTicketCount >= 0
