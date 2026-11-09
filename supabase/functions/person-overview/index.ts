@@ -90,6 +90,39 @@ async function readBody(request: Request): Promise<unknown> {
   }
 }
 
+/**
+ * Profile photo of the person (copied from Entra into a private bucket) as a
+ * short-lived signed URL. Null without a photo or on any error: the overview
+ * works without it.
+ */
+async function personPhotoUrl(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  tenantId: string,
+  entraObjectId: string,
+): Promise<string | null> {
+  try {
+    const { data: row } = await admin
+      .from("tenant_entra_directory_people")
+      .select("photo_path")
+      .eq("tenant_id", tenantId)
+      .eq("entra_object_id", entraObjectId)
+      .maybeSingle();
+    const path =
+      typeof row?.photo_path === "string" &&
+      row.photo_path.startsWith(`${tenantId}/`)
+        ? row.photo_path
+        : null;
+    if (!path) return null;
+    const { data: signed } = await admin.storage
+      .from("entra-avatars")
+      .createSignedUrl(path, 3600);
+    return typeof signed?.signedUrl === "string" ? signed.signedUrl : null;
+  } catch {
+    return null;
+  }
+}
+
 const handler = withSupabase(
   { auth: "user", cors: "disabled", errors: { detailed: false } },
   async (request, context) => {
@@ -119,6 +152,23 @@ const handler = withSupabase(
     }
     if (typeof data !== "object" || data === null || Array.isArray(data)) {
       return fail(request, "person_overview_failed", 500);
+    }
+    // The database function has checked that the caller may see this person.
+    const person = (data as Record<string, unknown>).person;
+    const entraObjectId =
+      typeof person === "object" && person !== null
+        ? (person as Record<string, unknown>).entraObjectId
+        : null;
+    if (isUuid(entraObjectId)) {
+      const photoUrl = await personPhotoUrl(
+        context.supabaseAdmin,
+        action.tenantId,
+        entraObjectId,
+      );
+      (data as Record<string, Record<string, unknown>>).person = {
+        ...(person as Record<string, unknown>),
+        photoUrl,
+      };
     }
     return respond(request, { data });
   },

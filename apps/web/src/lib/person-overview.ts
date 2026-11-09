@@ -82,6 +82,8 @@ export type PersonOverview = {
     managerName: string | null;
     lastSignInAt: string | null;
     isMember: boolean;
+    /** Short-lived signed URL of the profile photo (Entra), if there is one. */
+    photoUrl: string | null;
   };
   stats: {
     openTickets: number;
@@ -233,6 +235,12 @@ function parseOrder(item: Record<string, unknown>): PersonOrder | null {
   };
 }
 
+function photoUrlOf(value: unknown): string | null {
+  return typeof value === "string" && value.startsWith("https://")
+    ? value
+    : null;
+}
+
 export function parsePersonOverview(value: unknown): PersonOverview | null {
   if (!isRecord(value) || !isRecord(value.data)) return null;
   const data = value.data;
@@ -257,6 +265,7 @@ export function parsePersonOverview(value: unknown): PersonOverview | null {
       managerName: str(person.managerName),
       lastSignInAt: str(person.lastSignInAt),
       isMember: person.isMember === true,
+      photoUrl: photoUrlOf(person.photoUrl),
     },
     stats: {
       openTickets: num(stats.openTickets) ?? 0,

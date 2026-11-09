@@ -72,4 +72,26 @@ describe("person overview", () => {
     expect(formatDuration(6.4)).toBe("6.4 h");
     expect(formatDuration(72)).toBe("3.0 Tage");
   });
+
+  it("übernimmt nur https-Fotolinks", () => {
+    const withPhoto = parsePersonOverview({
+      data: {
+        person: {
+          displayName: "Anna Müller",
+          photoUrl: "https://example.supabase.co/storage/v1/object/sign/a.jpg",
+        },
+      },
+    });
+    expect(withPhoto?.person.photoUrl).toMatch(/^https:\/\//);
+    const unsafe = parsePersonOverview({
+      data: {
+        person: { displayName: "Anna Müller", photoUrl: "javascript:x" },
+      },
+    });
+    expect(unsafe?.person.photoUrl).toBeNull();
+    expect(
+      parsePersonOverview({ data: { person: { displayName: "A" } } })?.person
+        .photoUrl,
+    ).toBeNull();
+  });
 });

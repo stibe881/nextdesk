@@ -76,8 +76,9 @@ Ein Klick auf eine Person öffnet die **Personenübersicht**. Sie erreichen sie
 auch im Ticket über den Namen unter **Anfragende Person** (in der App:
 **Personenübersicht** unter der anfragenden Person).
 
-- **Kopf**: Funktion, Abteilung, E-Mail, vorgesetzte Person, letzte Anmeldung
-  und Kontostatus aus Entra. Mit **Ticket für … erfassen** öffnet sich das
+- **Kopf**: Foto (aus Microsoft Entra, sonst die Initialen), Funktion,
+  Abteilung, E-Mail, vorgesetzte Person, letzte Anmeldung und Kontostatus aus
+  Entra. Mit **Ticket für … erfassen** öffnet sich das
   Ticketformular mit der Person als anfragender Person.
 - **Kennzahlen**: offene Tickets (davon wartend auf die Person), Tickets der
   letzten 12 Monate, durchschnittliche Lösungszeit im Vergleich zum Mandanten
