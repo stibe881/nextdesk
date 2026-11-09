@@ -3086,7 +3086,7 @@ begin
     or (result->>'cleanupQueued')::integer <> 0 then
     raise exception 'Authorized bulk deletion returned an incomplete result';
   end if;
-  -- 0255: Löschen verschiebt in den Papierkorb; Daten bleiben erhalten.
+  -- 0262: Löschen verschiebt in den Papierkorb; Daten bleiben erhalten.
   if not exists (
     select 1 from public.tickets
     where id = '1f000000-0000-4000-8000-000000000001'
@@ -3098,7 +3098,7 @@ begin
   ) then
     raise exception 'Bulk deletion did not move the ticket to the trash';
   end if;
-  -- Nach 90 Tagen endgültig entfernen (0256).
+  -- Nach 90 Tagen endgültig entfernen (0263).
   update public.tickets set deleted_at = timezone('utc', now()) - interval '91 days'
   where id = '1f000000-0000-4000-8000-000000000001';
   if public.purge_expired_deleted_tickets(500) < 1 then
@@ -13072,7 +13072,7 @@ $$;
 rollback;
 SQL
 
-# 0255/0256: Papierkorb für Tickets.
+# 0262/0263: Papierkorb für Tickets.
 psql -v ON_ERROR_STOP=1 <<'SQL'
 begin;
 do $$
