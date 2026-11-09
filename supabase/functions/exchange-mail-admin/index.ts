@@ -29,6 +29,7 @@ type Channel = Row & {
   mailbox_address: string;
   mailbox_object_id: string | null;
   default_department_id: string | null;
+  default_team_id: string | null;
   send_acknowledgement: boolean;
   send_agent_replies: boolean;
   send_resolution: boolean;
@@ -54,6 +55,8 @@ type Action =
       mailboxAddress: string;
       mailboxObjectId: string | null;
       defaultDepartmentId: string | null;
+      /** Team for new tickets; absent = keep the current team. */
+      defaultTeamId?: string | null;
       sendAcknowledgement: boolean;
       sendAgentReplies: boolean;
       sendResolution: boolean;
@@ -159,6 +162,7 @@ function parseAction(value: unknown): Action | null {
       "mailboxAddress",
       "mailboxObjectId",
       "defaultDepartmentId",
+      "defaultTeamId",
       "sendAcknowledgement",
       "sendAgentReplies",
       "sendResolution",
@@ -176,6 +180,9 @@ function parseAction(value: unknown): Action | null {
   const defaultDepartmentId = nullableUuid(value.defaultDepartmentId);
   if (mailboxObjectId === undefined || defaultDepartmentId === undefined)
     return null;
+  const hasTeam = Object.prototype.hasOwnProperty.call(value, "defaultTeamId");
+  const defaultTeamId = hasTeam ? nullableUuid(value.defaultTeamId) : null;
+  if (hasTeam && defaultTeamId === undefined) return null;
   return {
     action: "saveMailbox",
     tenantId: base.tenantId,
@@ -184,6 +191,7 @@ function parseAction(value: unknown): Action | null {
     mailboxAddress: mailbox(value.mailboxAddress) as string,
     mailboxObjectId,
     defaultDepartmentId,
+    ...(hasTeam ? { defaultTeamId } : {}),
     sendAcknowledgement: value.sendAcknowledgement,
     sendAgentReplies: value.sendAgentReplies,
     sendResolution: value.sendResolution,
@@ -200,6 +208,8 @@ function message(code: string): string {
     tenant_access_denied: "Sie haben keinen Zugriff auf diesen Mandanten.",
     invalid_settings:
       "Die Einstellungen für dieses Support-Postfach sind ungültig.",
+    team_department_mismatch:
+      "Das gewählte Team gehört zu einer anderen Abteilung als die Ziel-Abteilung dieses Postfachs.",
     exchange_verification_required:
       "Bitte prüfen Sie dieses Support-Postfach erfolgreich, bevor Sie es aktivieren.",
     exchange_configuration_changed:
@@ -358,6 +368,7 @@ function channelPayload(channel: Channel) {
     mailboxAddress: channel.mailbox_address,
     mailboxObjectId: channel.mailbox_object_id,
     defaultDepartmentId: channel.default_department_id,
+    defaultTeamId: channel.default_team_id ?? null,
     sendAcknowledgement: channel.send_acknowledgement,
     sendAgentReplies: channel.send_agent_replies,
     sendResolution: channel.send_resolution,
@@ -376,7 +387,7 @@ async function getStatus(
   admin: Admin,
   tenantId: string,
 ): Promise<Response> {
-  const [feature, connections, channels, departments, stats] =
+  const [feature, connections, channels, departments, teams, stats] =
     await Promise.all([
       resolveTenantFeatureStates(admin, tenantId, [FEATURE]),
       admin
@@ -399,6 +410,12 @@ async function getStatus(
         .eq("active", true)
         .order("name"),
       admin
+        .from("teams")
+        .select("id, name, department_id")
+        .eq("tenant_id", tenantId)
+        .eq("active", true)
+        .order("name"),
+      admin
         .from("mail_messages")
         .select("direction, processing_status")
         .eq("tenant_id", tenantId)
@@ -412,6 +429,7 @@ async function getStatus(
     connections.error ||
     channels.error ||
     departments.error ||
+    teams.error ||
     stats.error
   )
     throw new HttpError(500, "operation_failed");
@@ -434,6 +452,11 @@ async function getStatus(
         channelPayload(item as Channel),
       ),
       departments: departments.data ?? [],
+      teams: (teams.data ?? []).map((team: any) => ({
+        id: team.id,
+        name: team.name,
+        departmentId: team.department_id ?? null,
+      })),
       stats: {
         inbound24h: rows.filter((row: any) => row.direction === "inbound")
           .length,
@@ -522,6 +545,23 @@ async function saveMailbox(
     if (department.error || !department.data)
       throw new HttpError(422, "invalid_settings");
   }
+  if (action.defaultTeamId) {
+    const team = await admin
+      .from("teams")
+      .select("id, department_id")
+      .eq("id", action.defaultTeamId)
+      .eq("tenant_id", action.tenantId)
+      .eq("active", true)
+      .maybeSingle();
+    if (team.error || !team.data) throw new HttpError(422, "invalid_settings");
+    // New tickets of this mailbox go to the chosen department; the team can
+    // only receive them when it belongs to that department.
+    if (
+      action.defaultDepartmentId &&
+      team.data.department_id !== action.defaultDepartmentId
+    )
+      throw new HttpError(422, "team_department_mismatch");
+  }
   const existing = action.channelId
     ? await getChannel(admin, action.tenantId, action.channelId)
     : null;
@@ -542,6 +582,9 @@ async function saveMailbox(
     mailbox_address: action.mailboxAddress,
     mailbox_object_id: action.mailboxObjectId,
     default_department_id: action.defaultDepartmentId,
+    ...(action.defaultTeamId !== undefined
+      ? { default_team_id: action.defaultTeamId }
+      : {}),
     send_acknowledgement: action.sendAcknowledgement,
     send_agent_replies: action.sendAgentReplies,
     send_resolution: action.sendResolution,

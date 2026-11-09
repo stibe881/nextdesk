@@ -71,6 +71,7 @@ type Channel = {
   mailbox_address: string;
   mailbox_object_id: string | null;
   default_department_id: string | null;
+  default_team_id?: string | null;
   send_acknowledgement: boolean;
   send_agent_replies: boolean;
   send_resolution: boolean;
@@ -667,6 +668,52 @@ async function markProcessed(
     occurred_at: new Date().toISOString(),
     ...values,
   });
+}
+
+/**
+ * New tickets of a mailbox go to its team (Einstellungen → Funktionen →
+ * E-Mail-Kanäle). Runs after the intakes (security report, event space,
+ * onboarding), which may change the department: the team is only assigned
+ * while it is active and belongs to the ticket's department. Never throws.
+ */
+async function assignChannelTeam(
+  admin: Admin,
+  channel: Channel,
+  ticketId: string,
+): Promise<void> {
+  if (!channel.default_team_id) return;
+  try {
+    const ticket = await admin
+      .from("tickets")
+      .select("department_id, assigned_team_id")
+      .eq("id", ticketId)
+      .eq("tenant_id", channel.tenant_id)
+      .maybeSingle();
+    if (
+      ticket.error ||
+      !ticket.data ||
+      ticket.data.assigned_team_id ||
+      !ticket.data.department_id
+    )
+      return;
+    const team = await admin
+      .from("teams")
+      .select("id")
+      .eq("id", channel.default_team_id)
+      .eq("tenant_id", channel.tenant_id)
+      .eq("active", true)
+      .eq("department_id", ticket.data.department_id)
+      .maybeSingle();
+    if (team.error || !team.data) return;
+    await admin
+      .from("tickets")
+      .update({ assigned_team_id: team.data.id })
+      .eq("id", ticketId)
+      .eq("tenant_id", channel.tenant_id)
+      .is("assigned_team_id", null);
+  } catch {
+    // The ticket stays as created; the team can be assigned by hand.
+  }
 }
 
 async function audit(
@@ -1697,6 +1744,9 @@ export async function processInboundMessage(
         ticketNumber,
         attachments: inboundAttachments,
       });
+    }
+    if (kind === "new_ticket") {
+      await assignChannelTeam(admin, channel, ticketId);
     }
     await audit(
       admin,
