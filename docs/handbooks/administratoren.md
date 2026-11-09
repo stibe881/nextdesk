@@ -278,6 +278,18 @@ Das Badge in der Navigation und die Seiten aktualisieren sich selbst (intern
 alle 30 Sekunden, öffentlich jede Minute); ein manuelles Neuladen ist nicht
 nötig.
 
+### Statusmeldungen per E-Mail
+
+Auf der öffentlichen Statusseite können sich Besucherinnen und Besucher unter
+**Per E-Mail benachrichtigen** mit ihrer Adresse anmelden. Sie erhalten zuerst
+eine Mail mit dem Knopf **Anmeldung bestätigen** (Schutz davor, dass fremde
+Adressen eingetragen werden). Danach bekommen sie bei jeder Statusänderung
+eines öffentlich sichtbaren Dienstes eine E-Mail mit altem und neuem Status.
+Jede Mail enthält einen Link **Abmelden**.
+
+Voraussetzung ist ein aktives Exchange-Postfach (Einstellungen → E-Mail); die
+Mails gehen über dieses Postfach.
+
 ## Eigenes Profil und Handbücher
 
 Ihre persönlichen Einstellungen öffnen Sie unten links über Ihren Namen →

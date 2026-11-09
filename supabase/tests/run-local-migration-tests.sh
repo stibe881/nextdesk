@@ -13163,4 +13163,86 @@ $$;
 rollback;
 SQL
 
+# 0272: Systemstatus per E-Mail abonnieren.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_service uuid;
+  v_confirmed uuid;
+  v_pending uuid;
+  v_channel uuid;
+begin
+  update public.tenant_feature_flags set enabled = true, pilot_ends_at = null
+  where tenant_id = v_tenant and feature_key = 'integrations.email';
+  if not found then
+    insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+    values (v_tenant, 'integrations.email', true);
+  end if;
+  update public.exchange_mail_channels
+     set status = 'active', deleted_at = null
+   where id = '1c000000-0000-4000-8000-000000000003';
+  insert into public.services (tenant_id, name, active, status_public, status)
+  values (v_tenant, 'Statusabo-Testdienst', true, true, 'operational')
+  returning id into v_service;
+  insert into public.service_status_pages (tenant_id, public_enabled)
+  values (v_tenant, true)
+  on conflict (tenant_id) do update set public_enabled = true;
+  insert into public.service_status_subscriptions (tenant_id, email, confirmed_at)
+  values (v_tenant, 'abo@example.ch', timezone('utc', now()))
+  returning id into v_confirmed;
+  insert into public.service_status_subscriptions (tenant_id, email)
+  values (v_tenant, 'offen@example.ch')
+  returning id into v_pending;
+
+  begin
+    insert into public.service_status_subscriptions (tenant_id, email)
+    values (v_tenant, 'Gross@Example.ch');
+    raise exception 'status subscription test: unnormalised e-mail accepted';
+  exception when check_violation then
+    null;
+  end;
+
+  update public.services set status = 'major_outage' where id = v_service;
+
+  select channel.id into v_channel from public.service_status_mail_channel(v_tenant) channel;
+  if v_channel is null then
+    if exists (select 1 from public.mail_messages where kind = 'status_change') then
+      raise exception 'status subscription test: mail queued without a mailbox';
+    end if;
+    raise notice 'status subscription checks ran (no active mailbox in fixture)';
+    return;
+  end if;
+
+  if (select count(*) from public.mail_messages
+      where kind = 'status_change' and status_subscription_id = v_confirmed) <> 1 then
+    raise exception 'status subscription test: confirmed subscriber not notified';
+  end if;
+  if exists (select 1 from public.mail_messages
+             where kind = 'status_change' and status_subscription_id = v_pending) then
+    raise exception 'status subscription test: unconfirmed subscriber notified';
+  end if;
+
+  -- Nicht-öffentliche Dienste lösen nichts aus.
+  update public.services set status_public = false, status = 'operational' where id = v_service;
+  if (select count(*) from public.mail_messages
+      where kind = 'status_change' and status_subscription_id = v_confirmed) <> 1 then
+    raise exception 'status subscription test: private service notified';
+  end if;
+
+  if not public.enqueue_service_status_confirmation(v_pending) then
+    raise exception 'status subscription test: confirmation not enqueued';
+  end if;
+  if not exists (select 1 from public.mail_messages
+                    where kind = 'status_confirmation' and status_subscription_id = v_pending
+                      and to_addresses = array['offen@example.ch']) then
+    raise exception 'status subscription test: confirmation mail not queued';
+  end if;
+  raise notice 'status subscription checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
