@@ -93,6 +93,7 @@ type Message = {
   department_question_id: string | null;
   recipient_user_id: string | null;
   to_addresses: string[];
+  subject?: string | null;
   attempt_count: number;
   inline_media_status?: string | null;
   inline_media_attempt_count?: number | null;
@@ -111,6 +112,30 @@ type InboundAttachment = {
  * «Problem ist gelöst» / «Ich brauche noch Hilfe». Missing secrets or a
  * reminder that can no longer be answered simply send the mail without them.
  */
+/** Answer button for the «did you click?» question of a security case. */
+async function securityNoticeActions(
+  admin: any,
+  commentId: unknown,
+  recipient: string | null,
+): Promise<CustomerTicketEmailAction[]> {
+  if (typeof commentId !== "string" || !commentId || !recipient) return [];
+  const { data } = await admin
+    .from("security_click_questions")
+    .select("token, answer")
+    .eq("comment_id", commentId)
+    .eq("email", recipient.toLowerCase())
+    .maybeSingle();
+  const token = typeof data?.token === "string" ? data.token : null;
+  if (!token || data?.answer) return [];
+  return [
+    {
+      label: "Jetzt antworten",
+      url: `${APP_ORIGIN}/#sicherheit-antwort=${encodeURIComponent(token)}`,
+      primary: true,
+    },
+  ];
+}
+
 async function reminderEmailActions(
   admin: any,
   commentId: unknown,
@@ -166,6 +191,8 @@ export function customerTicketEmailKindForOutbound(
 ): CustomerTicketEmailKind | null {
   // Kopien einer Antwort an weitere Personen sehen aus wie die Antwort selbst.
   if (messageKind === "ticket_copy") return "agent_reply";
+  // Thanks, verdict and «did you click?» for phishing reporters.
+  if (messageKind === "security_notice") return "agent_reply";
   if (
     messageKind === "agent_reply" ||
     messageKind === "acknowledgement" ||
@@ -2116,12 +2143,20 @@ export async function dispatchOutboundMessage(
     if (message.ticket_id) {
       const ticketResult = await admin
         .from("tickets")
-        .select("id, ticket_number, subject, requester_contact_id")
+        .select("id, ticket_number, subject, requester_contact_id, is_security_case")
         .eq("id", message.ticket_id)
         .eq("tenant_id", message.tenant_id)
         .maybeSingle();
       ticket = ticketResult.data;
       if (ticketResult.error || !ticket) throw new Error("ticket_unavailable");
+      // Phishing reports get the thank-you note instead.
+      if (message.kind === "acknowledgement" && ticket.is_security_case) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "security_case",
+        });
+        return;
+      }
       const contact = await admin
         .from("ticket_requesters")
         .select("email")
@@ -2198,7 +2233,13 @@ export async function dispatchOutboundMessage(
           actions:
             message.kind === "agent_reply"
               ? await reminderEmailActions(admin, message.comment_id)
-              : [],
+              : message.kind === "security_notice"
+                ? await securityNoticeActions(
+                    admin,
+                    message.comment_id,
+                    recipient,
+                  )
+                : [],
           text: bodyText,
           ticketNumber,
           subject: ticketSubject,
@@ -2214,9 +2255,11 @@ export async function dispatchOutboundMessage(
     ];
     const graphMessage: Row = {
       subject:
-        message.kind === "agent_reply"
-          ? `AW: [${ticketNumber}] ${ticketSubject}`
-          : `[${ticketNumber}] ${ticketSubject}`,
+        message.kind === "security_notice" && asString(message.subject)
+          ? `[${ticketNumber}] ${asString(message.subject)}`
+          : message.kind === "agent_reply"
+            ? `AW: [${ticketNumber}] ${ticketSubject}`
+            : `[${ticketNumber}] ${ticketSubject}`,
       body: { contentType: "HTML", content: html },
       toRecipients: [{ emailAddress: { address: recipient } }],
       internetMessageHeaders: [
@@ -2391,7 +2434,7 @@ export async function maintenance(admin: Admin): Promise<void> {
   const due = await admin
     .from("mail_messages")
     .select(
-      "id, tenant_id, channel_id, exchange_configuration_version, direction, kind, graph_message_id, ticket_id, comment_id, department_question_id, recipient_user_id, to_addresses, attempt_count",
+      "id, tenant_id, channel_id, exchange_configuration_version, direction, kind, graph_message_id, ticket_id, comment_id, department_question_id, recipient_user_id, to_addresses, subject, attempt_count",
     )
     .in("processing_status", ["pending", "failed"])
     .lte("next_attempt_at", new Date().toISOString())

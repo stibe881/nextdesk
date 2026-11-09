@@ -5,6 +5,13 @@
 // (to get their headers); nothing is executed, rendered or followed.
 
 import {
+  ensureSecurityCase,
+  mergeIntoSecurityCase,
+  openSecurityCaseFor,
+  queueSecurityNotice,
+  suppressAcknowledgement,
+} from "./security-cases.ts";
+import {
   analyzeMail,
   bytesToBinary,
   decodeEncodedWords,
@@ -206,46 +213,58 @@ export async function processPhishingEmailReport(
     const analysis = analyzeMail(selected.mail, { source: selected.source, referenceDomains: references });
     const fingerprint = await reportFingerprint(selected.mail);
     const quoted = defangText(selected.mail.text || textBody).slice(0, 20_000);
-    await convertToSecurityTicket(admin, {
-      tenantId: input.tenantId,
-      ticketId: input.ticketId,
-      settings: input.settings,
-      analysis,
-      description: `${securityTicketDescription(analysis, input.sender)}\n\nInhalt der gemeldeten E-Mail (Links entschärft):\n\n${quoted || "–"}`,
-    });
+    // A phishing report never gets the «we received your request» mail.
+    await suppressAcknowledgement(admin, input.ticketId);
+    // The same mail reported again: attach the report to the open case.
+    const existing = await openSecurityCaseFor(admin, input.tenantId, fingerprint);
+    let caseTicketId = input.ticketId;
+    let caseTicketNumber = input.ticketNumber;
+    if (existing && existing.id !== input.ticketId) {
+      await mergeIntoSecurityCase(admin, {
+        tenantId: input.tenantId,
+        duplicateTicketId: input.ticketId,
+        caseTicketId: existing.id,
+        actorId: input.serviceIdentityId,
+      });
+      caseTicketId = existing.id;
+      caseTicketNumber = existing.ticketNumber;
+    } else {
+      await convertToSecurityTicket(admin, {
+        tenantId: input.tenantId,
+        ticketId: input.ticketId,
+        settings: input.settings,
+        analysis,
+        description: `${securityTicketDescription(analysis, input.sender)}\n\nInhalt der gemeldeten E-Mail (Links entschärft):\n\n${quoted || "–"}`,
+      });
+      await ensureSecurityCase(admin, {
+        tenantId: input.tenantId,
+        ticketId: input.ticketId,
+        fingerprint,
+        riskLevel: analysis.level,
+      });
+    }
     await finalizePhishingReport(admin, {
       tenantId: input.tenantId,
-      ticketId: input.ticketId,
-      ticketNumber: input.ticketNumber,
+      ticketId: caseTicketId,
+      ticketNumber: caseTicketNumber,
       noteAuthorId: input.serviceIdentityId,
       reporterId: null,
       reporterEmail: input.sender,
       channel: "email",
       analysis,
       fingerprint,
+      bundled: caseTicketId !== input.ticketId,
     });
     if (input.thankYou) {
-      const comment = await admin.from("ticket_comments").insert({
-        ticket_id: input.ticketId,
-        author_id: input.serviceIdentityId,
-        visibility: "external",
+      await queueSecurityNotice(admin, {
+        tenantId: input.tenantId,
+        ticketId: caseTicketId,
+        authorId: input.serviceIdentityId,
+        subject: "Danke für Ihre Phishing-Meldung",
         body: THANK_YOU_TEXT,
-      }).select("id, ticket_id").maybeSingle();
-      const commentId = str(comment.data?.id);
-      if (commentId) {
-        await admin.from("mail_messages").insert({
-          tenant_id: input.tenantId,
-          channel_id: input.thankYou.channelId,
-          exchange_configuration_version: input.thankYou.configurationVersion,
-          direction: "outbound",
-          kind: "agent_reply",
-          ticket_id: input.ticketId,
-          comment_id: commentId,
-          from_address: input.thankYou.mailboxAddress,
-          to_addresses: [input.sender],
-          subject: `Phishing-Meldung ${input.ticketNumber}`,
-        });
-      }
+        recipients: [input.sender],
+        note: `Dankesnachricht an ${input.sender}:`,
+      });
     }
     return true;
   } catch (error) {
