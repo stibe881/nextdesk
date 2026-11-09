@@ -33,6 +33,7 @@ import {
   LoaderCircle,
   Mail,
   MessageSquare,
+  Phone,
   RefreshCw,
   Save,
   Search,
@@ -85,8 +86,10 @@ import {
   TicketSolutionPrompt,
 } from "./ticket-learning";
 import {
-  EmailSignatureFrame,
+  parseEmailSenderContacts,
+  phoneHref,
   splitPlainTextSignature,
+  type EmailSenderContacts,
 } from "./email-signature-frame";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
@@ -3893,6 +3896,7 @@ export function TicketDetail({
   const [isEditingTicket, setIsEditingTicket] = useState(false);
   // Description edited in place via the pencil in the «Beschreibung» card.
   const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [timelineHost, setTimelineHost] = useState<HTMLDivElement | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [editSubject, setEditSubject] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -3960,29 +3964,26 @@ export function TicketDetail({
     Record<string, TicketInlineImage>
   >({});
   const [inlineImagesLoading, setInlineImagesLoading] = useState(false);
-  const [emailSignatureHtml, setEmailSignatureHtml] = useState<string | null>(
-    null,
-  );
+  const [emailSenderContacts, setEmailSenderContacts] =
+    useState<EmailSenderContacts | null>(null);
   const [selectedAttachmentFile, setSelectedAttachmentFile] =
     useState<File | null>(null);
 
   useEffect(() => {
-    // The signature of an e-mail ticket is read directly under RLS
-    // (can_read_ticket); a missing row simply means "no HTML signature".
+    // Contact details of an external e-mail sender (phone numbers and
+    // addresses from the signature) are read directly under RLS
+    // (can_read_ticket); a missing row simply means "nothing to show".
     let active = true;
-    setEmailSignatureHtml(null);
+    setEmailSenderContacts(null);
     if (!supabase) return;
     void supabase
       .from("ticket_email_signatures")
-      .select("html")
+      .select("phones, emails")
       .eq("ticket_id", ticketId)
       .maybeSingle()
-      .then(({ data, error: signatureError }) => {
-        if (!active || signatureError) return;
-        const html = (data as { html?: unknown } | null)?.html;
-        setEmailSignatureHtml(
-          typeof html === "string" && html.trim() ? html : null,
-        );
+      .then(({ data, error: contactsError }) => {
+        if (!active || contactsError) return;
+        setEmailSenderContacts(parseEmailSenderContacts(data));
       });
     return () => {
       active = false;
@@ -7060,6 +7061,9 @@ export function TicketDetail({
 
       <div className="ticket-detail-layout">
         <div className="ticket-detail-main">
+          {requesterView ? null : (
+            <div className="ticket-timeline-slot" ref={setTimelineHost} />
+          )}
           <section
             className="ticket-detail-summary ticket-detail-primary"
             aria-labelledby="ticket-description-heading"
@@ -7153,52 +7157,18 @@ export function TicketDetail({
               <div className="ticket-detail-description">
                 <TicketTextWithInlineImages
                   body={
-                    emailSignatureHtml
-                      ? splitPlainTextSignature(detail.ticket.description)
-                          .message
-                      : detail.ticket.description
+                    splitPlainTextSignature(detail.ticket.description).message
                   }
                   imagesByAttachmentId={inlineImagesByAttachmentId}
                   loading={inlineImagesLoading}
                   onImageError={refreshInlineImageAfterError}
                 />
-                {emailSignatureHtml ? (
-                  <EmailSignatureFrame html={emailSignatureHtml} />
-                ) : null}
               </div>
             )}
             {storedFormAnswers?.ticketId === detail.ticket.id && (
               <TicketFormAnswersBlock stored={storedFormAnswers.stored} />
             )}
           </section>
-
-          {requesterView ? null : (
-            <TicketSupportLevel
-              onChanged={() => {
-                onChanged();
-                void loadTicket();
-              }}
-              refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}|${detail.events[0]?.id ?? ""}`}
-              tenantId={tenantId}
-              ticketId={detail.ticket.id}
-            />
-          )}
-
-          {requesterView ? null : (
-            <TicketCoordination
-              description={detail.ticket.description}
-              onChanged={() => {
-                onChanged();
-                void loadTicket();
-              }}
-              onOpenTicket={onOpenTicket}
-              refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
-              subject={detail.ticket.subject}
-              tenantId={tenantId}
-              ticketId={detail.ticket.id}
-              ticketNumber={detail.ticket.ticket_number}
-            />
-          )}
 
           <section
             className="ticket-detail-comments ticket-detail-primary"
@@ -7897,6 +7867,25 @@ export function TicketDetail({
                           detail.requesterContact.displayName,
                         )
                       )}
+                      {emailSenderContacts && !requesterView ? (
+                        <ul
+                          aria-label="Kontaktdaten aus der E-Mail"
+                          className="ticket-requester-contacts"
+                        >
+                          {emailSenderContacts.phones.map((phone) => (
+                            <li key={`phone:${phone}`}>
+                              <Phone aria-hidden="true" size={13} />
+                              <a href={phoneHref(phone)}>{phone}</a>
+                            </li>
+                          ))}
+                          {emailSenderContacts.emails.map((email) => (
+                            <li key={`email:${email}`}>
+                              <Mail aria-hidden="true" size={13} />
+                              <a href={`mailto:${email}`}>{email}</a>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </dd>
                   </div>
                 )}
@@ -8611,6 +8600,35 @@ export function TicketDetail({
               </dl>
             )}
           </section>
+
+          {requesterView ? null : (
+            <TicketCoordination
+              description={detail.ticket.description}
+              onChanged={() => {
+                onChanged();
+                void loadTicket();
+              }}
+              onOpenTicket={onOpenTicket}
+              refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
+              subject={detail.ticket.subject}
+              tenantId={tenantId}
+              ticketId={detail.ticket.id}
+              ticketNumber={detail.ticket.ticket_number}
+              timelineHost={timelineHost}
+              supportLevel={
+                <TicketSupportLevel
+                  embedded
+                  onChanged={() => {
+                    onChanged();
+                    void loadTicket();
+                  }}
+                  refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}|${detail.events[0]?.id ?? ""}`}
+                  tenantId={tenantId}
+                  ticketId={detail.ticket.id}
+                />
+              }
+            />
+          )}
 
           <TicketCustomFields
             canUpdate={detail.canUpdate}

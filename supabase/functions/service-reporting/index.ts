@@ -602,12 +602,28 @@ async function insightsResponse(
   );
 
   const ids = tickets.map((ticket) => ticket.id);
+  // Agent filter: every member of the readable teams (or of the chosen
+  // team), plus anyone with an assigned ticket in the period.
+  const memberTeamIds = action.teamId
+    ? [action.teamId].filter((id) => teamIds.has(id))
+    : [...teamIds];
+  const teamMembers = memberTeamIds.length
+    ? await admin
+        .from("team_memberships")
+        .select("user_id")
+        .eq("tenant_id", action.tenantId)
+        .in("team_id", memberTeamIds)
+        .limit(2000)
+    : { data: [] as { user_id: string }[], error: null };
   const agentIds = [
-    ...new Set(
-      visible.flatMap((ticket) =>
+    ...new Set([
+      ...visible.flatMap((ticket) =>
         ticket.assignedAgentId ? [ticket.assignedAgentId] : [],
       ),
-    ),
+      ...((teamMembers.data ?? []) as { user_id: string }[]).map(
+        (row) => row.user_id,
+      ),
+    ]),
   ];
   const [commentPages, ratingPages, teams, profiles] = await Promise.all([
     Promise.all(

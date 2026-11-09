@@ -3896,33 +3896,34 @@ body:has(.ticket-detail) {
   line-height: 1.8;
 }
 
-/* HTML e-mail signature in its own design, isolated in a sandboxed frame. */
-.ticket-email-signature {
+/* Contact details of an external e-mail sender under «Anfragende Person». */
+.ticket-requester-contacts {
   display: grid;
-  gap: 8px;
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border);
-  white-space: normal;
+  gap: 3px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.82rem;
+  font-weight: 500;
 }
 
-.ticket-email-signature__label {
-  margin: 0;
+.ticket-requester-contacts li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1.4;
-  text-transform: uppercase;
 }
 
-.ticket-email-signature__frame {
-  display: block;
-  width: 100%;
-  max-width: 720px;
-  border: 0;
-  border-radius: 8px;
-  background: #ffffff;
+.ticket-requester-contacts a {
+  min-width: 0;
+  color: var(--primary);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.ticket-requester-contacts a:hover {
+  text-decoration: underline;
 }
 
 .ticket-rendered-body__text {
@@ -21611,4 +21612,19 @@ svg.ticket-satisfaction__star.is-active {
   margin-top: 2px;
   color: var(--muted);
   font-size: 11px;
+}
+
+/* Report figures that open the matching tickets: no frame, no underline. */
+button.predefined-report__drill,
+button.predefined-report__drill:hover:not(:disabled) {
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  text-decoration: none;
+}
+
+button.predefined-report__drill:hover:not(:disabled) strong {
+  color: var(--primary);
 }

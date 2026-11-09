@@ -1,5 +1,6 @@
 import {
   corporateSignatureAnchors,
+  extractSignatureContacts,
   normalizeInboundEmailText,
 } from "./exchange-inbound-text.ts";
 
@@ -99,7 +100,7 @@ Deno.test(
 );
 
 Deno.test(
-  "zeigt eindeutige Unternehmenssignaturen nur in neuen Ticketbeschreibungen bereinigt an",
+  "entfernt eindeutige Unternehmenssignaturen nur aus neuen Ticketbeschreibungen",
   () => {
     const input = `Hallo zusammen
 
@@ -127,19 +128,16 @@ w: beispiel.ch<https://www.beispiel.ch/>
 Bitte helfen Sie beim Anmelden am Laptop.
 
 Lieber Gruss
-Mara
-
-E-Mail-Signatur
-Mara Muster
-Sozialpädagogik
-t: 041 000 00 00
-BEISPIEL
-CH-6340 Baar
-m: info@beispiel.ch
-w: beispiel.ch
-Bildanhang: Skizze.png`;
+Mara`;
     if (result !== expected) {
-      throw new Error(`Signatur wurde nicht sauber dargestellt: ${result}`);
+      throw new Error(`Signatur wurde nicht entfernt: ${result}`);
+    }
+    const contacts = extractSignatureContacts(input);
+    if (
+      JSON.stringify(contacts) !==
+      JSON.stringify({ phones: ["041 000 00 00"], emails: ["info@beispiel.ch"] })
+    ) {
+      throw new Error(`Kontaktdaten falsch: ${JSON.stringify(contacts)}`);
     }
 
     const replyResult = normalizeInboundEmailText(input);
@@ -230,11 +228,6 @@ PS: Der Ablauf steht unter https://beispiel.ch/ablauf.`;
 Freundliche Grüsse
 Mara
 
-E-Mail-Signatur
-Mara Muster
-t: 041 000 00 00
-m: mara@beispiel.ch
-
 PS: Der Ablauf steht unter https://beispiel.ch/ablauf.`;
     if (result !== expected) {
       throw new Error(
@@ -244,21 +237,28 @@ PS: Der Ablauf steht unter https://beispiel.ch/ablauf.`;
   },
 );
 
-Deno.test("bewahrt CID-Bilder in einer erkannten sichtbaren Signatur", () => {
+Deno.test("entfernt auch Bilder einer erkannten Signatur", () => {
   const input = `Freundliche Grüsse
 Mara
 
 Mara Muster
 t: 041 000 00 00
-m: mara@beispiel.ch
+m: +41 79 123 45 67
+mara@beispiel.ch
 [cid:logo@message]`;
   const result = normalizeInboundEmailText(input, undefined, {
     formatCorporateSignature: true,
   });
-  if (!result.includes("[cid:logo@message]")) {
-    throw new Error(
-      `CID-Bild ging in der sichtbaren Signatur verloren: ${result}`,
-    );
+  if (result !== "Freundliche Grüsse\nMara") {
+    throw new Error(`Signatur wurde nicht entfernt: ${result}`);
+  }
+  const contacts = extractSignatureContacts(input);
+  if (
+    JSON.stringify(contacts.phones) !==
+      JSON.stringify(["041 000 00 00", "+41 79 123 45 67"]) ||
+    JSON.stringify(contacts.emails) !== JSON.stringify(["mara@beispiel.ch"])
+  ) {
+    throw new Error(`Kontaktdaten falsch: ${JSON.stringify(contacts)}`);
   }
 });
 
@@ -290,7 +290,8 @@ w: sonnenberg-baar.ch<https://www.sonnenberg-baar.ch/>`;
       formatCorporateSignature: true,
     });
     if (
-      !result.includes("E-Mail-Signatur\nSozialpädagoge*in") ||
+      !result.endsWith("e liebe Gruess\n\nMelanie Sauter") ||
+      result.includes("Sozialpädagoge*in") ||
       result.includes("freshservice") ||
       result.includes("Logo_Sonnenberg")
     ) {

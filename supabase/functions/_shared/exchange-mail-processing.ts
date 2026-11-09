@@ -9,7 +9,7 @@ import {
   resolveInboundInlineMarkers,
 } from "./exchange-inline-media.ts";
 import {
-  corporateSignatureAnchors,
+  extractSignatureContacts,
   normalizeInboundEmailText,
 } from "./exchange-inbound-text.ts";
 import {
@@ -1220,70 +1220,90 @@ async function enqueueAcknowledgement(
   });
 }
 
+function emailDomain(address: string): string | null {
+  const at = address.lastIndexOf("@");
+  return at > 0 ? address.slice(at + 1).toLowerCase() : null;
+}
+
 /**
- * Stores the sanitised HTML signature of a new e-mail ticket. Best effort: the
- * module is loaded lazily and every failure is swallowed, so a problem with a
- * signature can never block or retry the ticket itself.
+ * Domains that belong to the tenant: the SSO domains plus the domains of its
+ * Exchange mailboxes. Subdomains count as well.
  */
-async function storeEmailSignature(
+async function tenantMailDomains(
+  admin: Admin,
+  tenantId: string,
+): Promise<Set<string>> {
+  const [sso, channels] = await Promise.all([
+    admin
+      .from("tenant_sso_allowed_domains")
+      .select("domain")
+      .eq("tenant_id", tenantId),
+    admin
+      .from("exchange_mail_channels")
+      .select("mailbox_address")
+      .eq("tenant_id", tenantId),
+  ]);
+  const domains = new Set<string>();
+  for (const row of (sso.data ?? []) as Row[]) {
+    const domain = asString(row.domain)?.toLowerCase();
+    if (domain) domains.add(domain);
+  }
+  for (const row of (channels.data ?? []) as Row[]) {
+    const address = asString(row.mailbox_address);
+    const domain = address ? emailDomain(address) : null;
+    if (domain) domains.add(domain);
+  }
+  return domains;
+}
+
+export function isTenantMailDomain(
+  address: string,
+  domains: ReadonlySet<string>,
+): boolean {
+  const domain = emailDomain(address);
+  if (!domain) return false;
+  for (const tenantDomain of domains) {
+    if (domain === tenantDomain || domain.endsWith(`.${tenantDomain}`))
+      return true;
+  }
+  return false;
+}
+
+/**
+ * The signature itself is removed from a new e-mail ticket. For external
+ * senders (not a domain of the tenant) the phone numbers and e-mail addresses
+ * of the signature are kept for the ticket overview. Best effort: a failure
+ * can never block or retry the ticket itself.
+ */
+async function storeSenderContacts(
   admin: Admin,
   input: {
-    channel: Channel;
-    graphMessageId: string;
     tenantId: string;
     ticketId: string;
+    sender: string;
     text: string | null;
-    attachments: InboundAttachment[];
   },
 ): Promise<void> {
-  if (!input.text) return;
   try {
-    // Only fetch the HTML body when the text shows a corporate signature.
-    if (!corporateSignatureAnchors(input.text)) return;
-    const mailbox = graphMailboxIdentifier(
-      input.channel.mailbox_object_id,
-      input.channel.mailbox_address,
-    );
-    const response = await graphRequestForChannel<Row>(
-      admin,
-      input.channel,
-      `/users/${mailbox}/messages/${encodeURIComponent(input.graphMessageId)}?$select=uniqueBody,body`,
-      { headers: { Prefer: 'outlook.body-content-type="html"' } },
-    );
-    const graphBody = response.data;
-    const sourceHtml = record(graphBody.uniqueBody)
-      ? asString(graphBody.uniqueBody.content)
-      : record(graphBody.body)
-        ? asString(graphBody.body.content)
-        : null;
-    if (!sourceHtml) return;
-    const { extractEmailSignatureHtml } =
-      await import("./email-signature-html.ts");
-    const html = await extractEmailSignatureHtml({
-      html: sourceHtml,
-      text: input.text,
-      inlineImages: input.attachments.flatMap((attachment) =>
-        attachment.contentId
-          ? [
-              {
-                contentId: attachment.contentId,
-                contentType: attachment.contentType,
-                bytes: attachment.bytes,
-              },
-            ]
-          : [],
-      ),
-    });
-    if (!html) return;
+    const domains = await tenantMailDomains(admin, input.tenantId);
+    if (isTenantMailDomain(input.sender, domains)) return;
+    const contacts = extractSignatureContacts(input.text);
+    const sender = input.sender.toLowerCase();
+    const emails = [
+      sender,
+      ...contacts.emails.filter((email) => email !== sender),
+    ].slice(0, 10);
     const { error } = await admin.from("ticket_email_signatures").upsert({
       ticket_id: input.ticketId,
       tenant_id: input.tenantId,
-      html,
+      html: null,
+      phones: contacts.phones.slice(0, 10),
+      emails,
     });
-    if (error) console.error("email_signature_store_failed", error.code);
+    if (error) console.error("email_sender_contacts_store_failed", error.code);
   } catch (error) {
     console.error(
-      "email_signature_extract_failed",
+      "email_sender_contacts_failed",
       error instanceof Error ? error.name : typeof error,
     );
   }
@@ -1533,17 +1553,15 @@ export async function processInboundMessage(
       });
     }
     if (kind === "new_ticket" && !phishingSettings) {
-      await storeEmailSignature(admin, {
-        channel,
-        graphMessageId: message.graph_message_id,
+      await storeSenderContacts(admin, {
         tenantId: channel.tenant_id,
         ticketId,
+        sender,
         text: record(graph.uniqueBody)
           ? asString(graph.uniqueBody.content)
           : record(graph.body)
             ? asString(graph.body.content)
             : null,
-        attachments: inboundAttachments,
       });
     }
     if (inboundAttachments.length > 0) {

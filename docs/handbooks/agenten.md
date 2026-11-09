@@ -75,7 +75,7 @@ auch im Ticket über den Namen unter **Anfragende Person** (in der App:
   letzten 12 Monate, durchschnittliche Lösungszeit im Vergleich zum Mandanten
   und die **Zufriedenheit**.
 - **Reiter**: **Tickets** (alle, auch geschlossene; filterbar nach _Alle /
-  Offen / Geschlossen_), **Geräte** aus Intune und Assets, **Lizenzen**,
+  Offen / Geschlossen_), **Geräte** aus Intune und Assets (ein Klick öffnet das Gerät), **Lizenzen**,
   **Bestellungen** aus dem Shop und der **Verlauf** als Zeitleiste. Geräte,
   Lizenzen und Bestellungen erscheinen nur, wenn das Modul aktiv ist und Sie
   die Berechtigung dafür haben.
@@ -86,7 +86,7 @@ Sie sehen nur Tickets, die Sie auch sonst öffnen dürfen.
 
 > **Datenschutz:** Einzelne Bewertungen und Kommentare der Person werden nie
 > angezeigt. nextDesk zeigt nur den **Durchschnitt** (mit Anteil zufriedener
-> Bewertungen, Mandantenvergleich und Tendenz) und erst ab **3 Bewertungen**.
+> Bewertungen, Mandantenvergleich und Tendenz), schon ab der ersten Bewertung.
 
 ![Personenübersicht mit Tickets, Kennzahlen und Zufriedenheit](images/ag-person.jpg)
 

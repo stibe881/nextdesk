@@ -2749,7 +2749,9 @@ export default function TicketDetailScreen() {
                   setEditingField("description");
                 }}
               >
-                <Text style={styles.description}>{ticket.description}</Text>
+                <Text style={styles.description}>
+                  {withoutEmailSignature(ticket.description)}
+                </Text>
               </Pressable>
             )}
           </View>
@@ -5124,3 +5126,9 @@ const useStyles = makeThemedStyles((c) => ({
     fontWeight: "800",
   },
 }));
+
+/** Older e-mail tickets carry the signature under «E-Mail-Signatur». */
+function withoutEmailSignature(description: string): string {
+  const index = description.indexOf("\n\nE-Mail-Signatur\n");
+  return index < 0 ? description : description.slice(0, index).trimEnd();
+}
