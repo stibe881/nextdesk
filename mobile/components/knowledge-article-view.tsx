@@ -312,9 +312,11 @@ export function KnowledgeArticleView({
       {structure.lead ? (
         <View accessibilityLabel="Kurz gesagt" style={styles.lead}>
           <Text style={styles.leadLabel}>KURZ GESAGT</Text>
-          <Text selectable style={styles.leadText}>
-            {structure.lead}
-          </Text>
+          <InlineText
+            codeStyle={styles.inlineCode}
+            style={styles.leadText}
+            text={structure.lead}
+          />
         </View>
       ) : null}
 
