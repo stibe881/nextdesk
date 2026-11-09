@@ -2971,7 +2971,7 @@ function AuthenticatedApp() {
   const [onboardingAttentionCount, setOnboardingAttentionCount] = useState<
     number | null
   >(null);
-  // Agents: unassigned tickets of their teams and cases waiting for a verdict.
+  // Agents: tickets without team and agent, and cases waiting for a verdict.
   const [ticketAttentionCount, setTicketAttentionCount] = useState<
     number | null
   >(null);
@@ -5345,7 +5345,7 @@ function AuthenticatedApp() {
       : label === "Shop"
         ? "neue Bestellungen warten auf Bearbeitung"
         : label === "Tickets"
-          ? "Tickets Ihrer Teams sind noch niemandem zugewiesen"
+          ? "Tickets haben noch kein Team und keine Bearbeitung"
           : label === "Sicherheitsfälle"
             ? "Sicherheitsfälle warten auf ein Urteil"
             : "Eintritte sind noch nicht in Bearbeitung";
