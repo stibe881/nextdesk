@@ -1,3 +1,4 @@
+import { formatRequesterName } from "./person-name";
 import {
   invokeNextDesk,
   loadCurrentTenant,
@@ -22,7 +23,48 @@ export type MobileTicket = {
   /** Ticket ohne zugewiesene Agentin bzw. zugewiesenen Agenten (wie im Web). */
   unassigned: boolean;
   requesterId: string;
+  /** Name of the requesting person; null for own tickets or when unknown. */
+  requesterName?: string | null;
 };
+
+/**
+ * Adds the requester names to ticket cards (0250, only readable tickets).
+ * Best effort: the cards work without them.
+ */
+async function withRequesterNames(
+  client: ReturnType<typeof requireNextDesk>,
+  tenantId: string,
+  userId: string,
+  tickets: MobileTicket[],
+): Promise<MobileTicket[]> {
+  const ids = tickets
+    .filter((ticket) => ticket.requesterId !== userId)
+    .map((ticket) => ticket.id);
+  if (ids.length === 0) return tickets;
+  const { data, error } = await client.rpc("ticket_requester_names", {
+    p_tenant_id: tenantId,
+    p_ticket_ids: ids.slice(0, 200),
+  });
+  if (error || !Array.isArray(data)) return tickets;
+  const names = new Map<string, string>();
+  for (const row of data as {
+    ticket_id?: unknown;
+    requester_name?: unknown;
+  }[]) {
+    if (
+      typeof row.ticket_id === "string" &&
+      typeof row.requester_name === "string" &&
+      row.requester_name.trim()
+    ) {
+      names.set(row.ticket_id, formatRequesterName(row.requester_name));
+    }
+  }
+  return tickets.map((ticket) => ({
+    ...ticket,
+    requesterName:
+      ticket.requesterId === userId ? null : (names.get(ticket.id) ?? null),
+  }));
+}
 
 export type MobileDashboardMetrics = {
   mine: number;
@@ -309,7 +351,7 @@ export async function loadMobileDashboard(input: {
     const priorityById = new Map(
       (prioritiesResult.data ?? []).map((priority) => [priority.id, priority]),
     );
-    const tickets = (ticketsResult.data ?? []).map((ticket) => ({
+    const baseTickets = (ticketsResult.data ?? []).map((ticket) => ({
       id: ticket.id,
       ticketNumber: ticket.ticket_number,
       subject: ticket.subject,
@@ -323,6 +365,12 @@ export async function loadMobileDashboard(input: {
       unassigned: !ticket.assigned_agent_id,
       requesterId: ticket.requester_id,
     }));
+    const tickets = await withRequesterNames(
+      client,
+      tenant.id,
+      activeUser.id,
+      baseTickets,
+    );
     const closedStatusIds = (statusesResult.data ?? [])
       .filter((status) => status.is_closed)
       .map((status) => status.id);
@@ -474,7 +522,7 @@ export async function loadMobileTicketsByIds(
   const priorityById = new Map(
     (prioritiesResult.data ?? []).map((priority) => [priority.id, priority]),
   );
-  return (ticketsResult.data ?? []).map((ticket) => ({
+  const tickets = (ticketsResult.data ?? []).map((ticket) => ({
     id: ticket.id,
     ticketNumber: ticket.ticket_number,
     subject: ticket.subject,
@@ -487,6 +535,7 @@ export async function loadMobileTicketsByIds(
     unassigned: !ticket.assigned_agent_id,
     requesterId: ticket.requester_id,
   }));
+  return withRequesterNames(client, tenant.id, userId, tickets);
 }
 
 export async function loadTicketFormOptions(

@@ -24,6 +24,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { UndoToast } from "@/components/undo-toast";
 import {
   TicketPriorityText,
+  TicketRequesterText,
   TicketStatusBadge,
 } from "@/components/ticket-status-badge";
 import { TicketSwipeActions } from "@/components/ticket-swipe-actions";
@@ -69,11 +70,7 @@ import { loadOwnProfilePhotoUrl } from "@/lib/nextdesk-assets-photo";
 import { loadTenantBranding, type TenantBranding } from "@/lib/tenant-branding";
 
 type FocusScope =
-  | "assigned"
-  | "solvedToday"
-  | "firstResponse"
-  | "resolution"
-  | "slaDue";
+  "assigned" | "solvedToday" | "firstResponse" | "resolution" | "slaDue";
 type TicketScope = "all" | "mine" | "open" | "unassigned" | FocusScope;
 
 const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
@@ -1065,7 +1062,9 @@ export default function HomeScreen() {
           <MyPrioritiesCard refreshKey={priorityRevision} tenantId={tenantId} />
         ) : null}
 
-        {tenantId && !isOffline ? <RecentItemsCard tenantId={tenantId} /> : null}
+        {tenantId && !isOffline ? (
+          <RecentItemsCard tenantId={tenantId} />
+        ) : null}
 
         <Text style={[styles.sectionEyebrow, tokenStyles.muted]}>
           ÜBERSICHT
@@ -1230,6 +1229,7 @@ export default function HomeScreen() {
                       >
                         {ticket.subject}
                       </Text>
+                      <TicketRequesterText name={ticket.requesterName} />
                       <TicketPriorityText priority={ticket.priority} />
                     </View>
                     <View style={styles.ticketRight}>

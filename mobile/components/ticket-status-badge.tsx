@@ -94,6 +94,30 @@ export function TicketPriorityText({
   );
 }
 
+/** Requesting person on ticket cards (agents); nothing for own tickets. */
+export function TicketRequesterText({
+  name,
+}: {
+  name: MobileTicket["requesterName"];
+}) {
+  const colors = useAppColors();
+  if (!name) return null;
+  return (
+    <View
+      accessibilityLabel={`Anfragende Person: ${name}`}
+      style={styles.priority}
+    >
+      <Ionicons color={colors.muted} name="person-outline" size={12} />
+      <Text
+        numberOfLines={1}
+        style={[styles.requesterText, { color: colors.text }]}
+      >
+        {name}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   badge: {
     alignItems: "center",
@@ -106,5 +130,6 @@ const styles = StyleSheet.create({
   },
   priority: { alignItems: "center", flexDirection: "row", gap: 3 },
   priorityText: { fontSize: 11 },
+  requesterText: { flexShrink: 1, fontSize: 12, fontWeight: "600" },
   text: { fontSize: 11, fontWeight: "800" },
 });

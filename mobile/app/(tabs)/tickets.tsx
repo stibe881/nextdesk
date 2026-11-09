@@ -17,6 +17,7 @@ import {
 import { ScreenContainer } from "@/components/screen-container";
 import {
   TicketPriorityText,
+  TicketRequesterText,
   TicketStatusBadge,
 } from "@/components/ticket-status-badge";
 import { TicketSwipeActions } from "@/components/ticket-swipe-actions";
@@ -48,12 +49,7 @@ import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 
 type TicketScope =
-  | "all"
-  | "mine"
-  | "watched"
-  | "open"
-  | "resolved"
-  | "unassigned";
+  "all" | "mine" | "watched" | "open" | "resolved" | "unassigned";
 
 const scopes: { key: TicketScope; label: string }[] = [
   { key: "all", label: "Alle" },
@@ -1228,6 +1224,7 @@ function TicketRow({
           >
             {ticket.subject}
           </Text>
+          <TicketRequesterText name={ticket.requesterName} />
           <TicketPriorityText priority={ticket.priority} />
         </View>
         <View style={styles.ticketState}>

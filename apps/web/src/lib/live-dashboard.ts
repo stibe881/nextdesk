@@ -1,3 +1,4 @@
+import { formatPersonDisplayName } from "./person-display-name";
 import { supabase } from "./supabase";
 import { parseTicketSearch } from "./ticket-search";
 import {
@@ -606,8 +607,9 @@ export async function loadLiveDashboard(
     .map((ticket) => ticket.id);
   const ticketTeamIds = new Map<string, string | null>();
   const teamNames = new Map<string, string>();
+  const requesterNames = new Map<string, string>();
   if (listedTicketIds.length > 0) {
-    const [teamRowsResult, teamsResult] = await Promise.all([
+    const [teamRowsResult, teamsResult, requesterResult] = await Promise.all([
       client
         .from("tickets")
         .select("id, assigned_team_id")
@@ -615,7 +617,23 @@ export async function loadLiveDashboard(
       client.functions.invoke("ticket-agent-assignment", {
         body: { tenantId: tenant.id, type: "listTeams" },
       }),
+      // Requester names for the ticket cards (0250); best effort.
+      client.rpc("ticket_requester_names", {
+        p_tenant_id: tenant.id,
+        p_ticket_ids: listedTicketIds,
+      }),
     ]);
+    for (const row of (requesterResult.data ?? []) as {
+      ticket_id: string;
+      requester_name: string | null;
+    }[]) {
+      if (row.requester_name) {
+        requesterNames.set(
+          row.ticket_id,
+          formatPersonDisplayName(row.requester_name),
+        );
+      }
+    }
     for (const row of (teamRowsResult.data ?? []) as {
       id: string;
       assigned_team_id: string | null;
@@ -649,6 +667,11 @@ export async function loadLiveDashboard(
       createdAt: ticket.created_at,
       id: ticket.ticket_number,
       recordId: ticket.id,
+      // Own tickets need no name (e.g. the list of an employee).
+      requesterName:
+        ticket.requester_id === user?.id
+          ? null
+          : (requesterNames.get(ticket.id) ?? null),
       isClosed: ticket.status_is_closed,
       isUnassigned: ticket.assigned_agent_id === null,
       priority: ticket.priority_label,

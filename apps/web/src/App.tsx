@@ -2646,6 +2646,16 @@ function TicketList({
               </div>
               <h3>{ticket.subject}</h3>
               <p className="ticket-meta">
+                {ticket.requesterName ? (
+                  <span
+                    className="ticket-meta__requester"
+                    title="Anfragende Person"
+                  >
+                    <UserRound aria-hidden="true" size={12} strokeWidth={2} />
+                    <span className="sr-only">Anfragende Person: </span>
+                    {ticket.requesterName}
+                  </span>
+                ) : null}
                 {ticket.priority ? <span>{ticket.priority}</span> : null}
                 <span>vor {ticket.age}</span>
               </p>
@@ -2762,6 +2772,12 @@ function TicketListDetailPreview({
       </div>
       <h3 id="ticket-list-detail-heading">{ticket.subject}</h3>
       <dl>
+        {ticket.requesterName ? (
+          <div>
+            <dt>Anfragende Person</dt>
+            <dd>{ticket.requesterName}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>Queue</dt>
           <dd>{ticket.queueLabel}</dd>
