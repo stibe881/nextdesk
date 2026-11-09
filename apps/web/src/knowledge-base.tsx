@@ -8,8 +8,9 @@ import {
   type DragEvent as ReactDragEvent,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from "react";
-import { FolderOpen } from "lucide-react";
+import { ArrowLeft, FolderOpen, Search } from "lucide-react";
 import { functionErrorMessage } from "./lib/function-error";
 import { knowledgeErrorBackendMessage } from "./lib/knowledge-errors";
 import {
@@ -160,6 +161,8 @@ type ListArticlesRequest = {
   type: "listArticles";
   tenantId: string;
   query?: string;
+  /** Excerpts instead of full bodies and no image URLs (the list view). */
+  compact?: boolean;
 };
 
 type GetArticleRequest = {
@@ -280,7 +283,6 @@ const knowledgeBaseStyles = `
     display: grid;
     gap: 18px;
   }
-  .knowledge-base__toolbar,
   .knowledge-base__actions,
   .knowledge-base__form-actions,
   .knowledge-base__meta {
@@ -289,52 +291,6 @@ const knowledgeBaseStyles = `
     flex-wrap: wrap;
     gap: 8px;
   }
-  .knowledge-base__toolbar {
-    justify-content: space-between;
-    padding: 0 24px 18px;
-    gap: 14px;
-  }
-  .knowledge-base__search {
-    display: flex;
-    flex: 1 1 280px;
-    max-width: 560px;
-    gap: 8px;
-  }
-  .knowledge-base__filters {
-    display: flex;
-    align-items: end;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .knowledge-base__filter {
-    display: grid;
-    gap: 4px;
-    color: #49616d;
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-  }
-  .knowledge-base__filter select {
-    min-height: 44px;
-    min-width: 150px;
-    border: 1px solid #c9d8dd;
-    border-radius: 5px;
-    background: #fff;
-    color: #173246;
-    font: inherit;
-    font-size: 12px;
-    font-weight: 700;
-    padding: 8px 28px 8px 10px;
-  }
-  .knowledge-base__search-help {
-    flex: 1 0 100%;
-    margin: -2px 0 0;
-    color: #5d6f7a;
-    font-size: 12px;
-    line-height: 1.45;
-  }
-  .knowledge-base__search input,
   .knowledge-base__form input,
   .knowledge-base__form select,
   .knowledge-base__form textarea {
@@ -372,48 +328,211 @@ const knowledgeBaseStyles = `
     border-color: #efc7bd;
     color: #a03422;
   }
-  .knowledge-base__content,
-  .knowledge-base__detail,
   .knowledge-base__form-panel {
     padding: 0 24px 24px;
   }
-  .knowledge-base__grid {
+  .knowledge-base .knowledge-base__hub,
+  .knowledge-base .knowledge-base__reader {
     display: grid;
-    grid-template-columns: minmax(230px, .85fr) minmax(0, 1.45fr);
     gap: 16px;
+    padding: 24px;
   }
-  .knowledge-base__list {
+  .knowledge-base .knowledge-base__hero {
     display: grid;
-    gap: 8px;
+    gap: 14px;
+  }
+  .knowledge-base .knowledge-base__hero-top {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .knowledge-base .knowledge-base__hero h2 {
+    margin: 0;
+    color: #173246;
+    font-size: 26px;
+    line-height: 1.2;
+  }
+  .knowledge-base .knowledge-base__finder {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 52px;
+    border: 1px solid #c9d8dd;
+    border-radius: 10px;
+    background: #fff;
+    color: #5d6f7a;
+    padding: 0 14px;
+  }
+  .knowledge-base .knowledge-base__finder:focus-within {
+    border-color: #1c4f86;
+    box-shadow: 0 0 0 3px #e3edf8;
+  }
+  .knowledge-base .knowledge-base__finder input[type="search"] {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    box-shadow: none;
+    outline: 0;
+    min-height: 0;
+    height: auto;
+    background: transparent;
+    color: #12283a;
+    font: inherit;
+    font-size: 15px;
+    padding: 12px 0;
+  }
+  .knowledge-base .knowledge-base__kbd {
+    border: 1px solid #c9d8dd;
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    color: #5d6f7a;
+    font: 700 11px var(--font-sans);
+    padding: 1px 6px;
+  }
+  .knowledge-base .knowledge-base__tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 10px;
+  }
+  .knowledge-base .knowledge-base__tile {
+    display: grid;
+    gap: 2px;
+    border: 1px solid #dfe8ea;
+    border-radius: 10px;
+    background: #fff;
+    color: #173246;
+    cursor: pointer;
+    font: inherit;
+    padding: 12px 14px;
+    text-align: left;
+  }
+  .knowledge-base .knowledge-base__tile small { color: #5d6f7a; font-size: 12px; }
+  .knowledge-base .knowledge-base__tile:hover,
+  .knowledge-base .knowledge-base__tile[aria-pressed="true"] {
+    border-color: #1c4f86;
+    background: #edf3fa;
+  }
+  .knowledge-base .knowledge-base__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .knowledge-base .knowledge-base__chip {
+    border: 1px solid #c9d8dd;
+    border-radius: 999px;
+    background: #fff;
+    color: #49616d;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 32px;
+    padding: 4px 12px;
+  }
+  .knowledge-base .knowledge-base__chip[aria-pressed="true"] {
+    border-color: #1c4f86;
+    background: #1c4f86;
+    color: #fff;
+  }
+  .knowledge-base .knowledge-base__results { display: grid; gap: 8px; }
+  .knowledge-base .knowledge-base__results-heading {
+    margin: 4px 0 0;
+    color: #5d6f7a;
+    font-size: 12px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .knowledge-base .knowledge-base__list {
+    display: grid;
+    gap: 2px;
     margin: 0;
     padding: 0;
     list-style: none;
   }
-  .knowledge-base__article-button {
+  .knowledge-base button.knowledge-base__result {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     width: 100%;
-    border: 1px solid #dfe8ea;
-    border-radius: 7px;
-    background: #fff;
+    border: 0;
+    box-shadow: none;
+    min-height: 0;
+    border-radius: 8px;
+    background: transparent;
     color: inherit;
-    padding: 13px;
+    cursor: pointer;
+    font: inherit;
+    padding: 10px 12px;
     text-align: left;
   }
-  .knowledge-base__article-button:hover:not(:disabled),
-  .knowledge-base__article-button[aria-current="true"] {
-    border-color: #8cb9c2;
-    background: #f1f7f8;
+  .knowledge-base button.knowledge-base__result:hover:not(:disabled),
+  .knowledge-base button.knowledge-base__result:focus-visible { background: #edf3fa; }
+  .knowledge-base .knowledge-base__result-main { display: grid; gap: 2px; min-width: 0; }
+  .knowledge-base .knowledge-base__result-main strong { color: #173246; font-size: 14.5px; }
+  .knowledge-base .knowledge-base__result-excerpt {
+    display: -webkit-box;
+    overflow: hidden;
+    color: #4e6270;
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
-  .knowledge-base__article-button h3 {
+  .knowledge-base .knowledge-base__result-meta { color: #6c7d87; font-size: 12px; }
+  .knowledge-base .knowledge-base__result-badges { display: flex; flex-wrap: wrap; gap: 4px; flex: none; }
+  .knowledge-base .knowledge-base__mark {
+    border-radius: 2px;
+    background: #fde58a;
+    color: #3a2e00;
+    padding: 0 1px;
+  }
+  .knowledge-base .knowledge-base__skeleton {
+    height: 68px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, #eef3f6, #f7fafb, #eef3f6);
+    background-size: 200% 100%;
+    animation: knowledge-base-shimmer 1.2s linear infinite;
+  }
+  @keyframes knowledge-base-shimmer { to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .knowledge-base__skeleton { animation: none; }
+  }
+  .knowledge-base .knowledge-base__more { justify-self: start; }
+  .knowledge-base .knowledge-base__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    justify-self: start;
+    border: 0;
+    background: transparent;
+    color: #1c4f86;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    min-height: 36px;
+    padding: 0;
+  }
+  .knowledge-base .knowledge-base__reader > * { max-width: 760px; }
+  .knowledge-base .knowledge-base__reader-header { display: grid; gap: 8px; }
+  .knowledge-base .knowledge-base__reader-header h2 {
     margin: 0;
     color: #173246;
-    font-size: 14px;
-    line-height: 1.3;
+    font-size: 30px;
+    line-height: 1.2;
   }
-  .knowledge-base__article-button p {
-    margin: 7px 0 0;
-    color: #687b84;
-    font-size: 11px;
+  .knowledge-base .knowledge-base__reader-topic {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: #1c4f86;
+    font-size: 13px;
+    font-weight: 700;
   }
+  .knowledge-base .knowledge-base__reader-meta { margin: 0; color: #6c7d87; font-size: 13px; }
   .knowledge-base__badge {
     display: inline-flex;
     align-items: center;
@@ -433,17 +552,6 @@ const knowledgeBaseStyles = `
     background: #fff4dc;
     color: #95620e;
   }
-  .knowledge-base__detail-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .knowledge-base__detail h3 {
-    margin: 0;
-    color: #173246;
-    font-size: 18px;
-  }
   .knowledge-base__meta {
     margin: 8px 0 0;
     color: #627780;
@@ -452,13 +560,11 @@ const knowledgeBaseStyles = `
   .knowledge-base__markdown {
     max-height: none;
     overflow: visible;
-    margin: 16px 0 0;
-    border: 1px solid #e0e8ea;
-    border-radius: 6px;
-    background: #f9fbfb;
+    margin: 8px 0 0;
+    border-top: 1px solid #e0e8ea;
     color: #294657;
-    padding: 14px;
-    font: 14px/1.7 var(--font-sans);
+    padding: 16px 0 0;
+    font: 16px/1.75 var(--font-sans);
     overflow-wrap: anywhere;
   }
   .knowledge-base__markdown img {
@@ -641,15 +747,12 @@ const knowledgeBaseStyles = `
     font-size: 13px;
     line-height: 1.5;
   }
-  @media (max-width: 800px) {
-    .knowledge-base__grid { grid-template-columns: 1fr; }
-  }
   @media (max-width: 640px) {
-    .knowledge-base__toolbar,
-    .knowledge-base__content,
-    .knowledge-base__detail,
     .knowledge-base__form-panel { padding-left: 16px; padding-right: 16px; }
-    .knowledge-base__search { max-width: none; }
+    .knowledge-base__hub,
+    .knowledge-base__reader { padding: 16px; }
+    .knowledge-base__result { align-items: flex-start; flex-direction: column; }
+    .knowledge-base__reader-header h2 { font-size: 24px; }
     .knowledge-base__form { grid-template-columns: 1fr; }
     .knowledge-base__full-width { grid-column: auto; }
     .knowledge-base__ai-assist { align-items: flex-start; flex-direction: column; }
@@ -1102,10 +1205,83 @@ function formatDate(value: string): string {
   }).format(date);
 }
 
+/** Plain-text teaser: markdown syntax and images are not shown in the list. */
 function shortBody(body: string | null): string {
   if (!body) return "Noch kein Inhalt";
-  const normalized = body.replace(/\s+/g, " ").trim();
-  return normalized.length > 118 ? `${normalized.slice(0, 115)}…` : normalized;
+  const plain = body
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s*>+\s?/gm, "")
+    .replace(/^\s*([-*+]|\d+[.)])\s+/gm, "")
+    .replace(/[*_`~|]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!plain) return "Noch kein Inhalt";
+  return plain.length > 160 ? `${plain.slice(0, 159).trimEnd()}…` : plain;
+}
+
+function readingMinutes(body: string): number {
+  const words = body.trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 200));
+}
+
+function formatShortDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("de-CH", {
+    dateStyle: "medium",
+    timeZone: "Europe/Zurich",
+  }).format(date);
+}
+
+/** Marks the first occurrence of each search word (case-insensitive). */
+function highlightText(text: string, query: string): ReactNode {
+  const words = query
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter((word) => word.length >= 2)
+    .slice(0, 5);
+  if (words.length === 0) return text;
+  const escaped = words.map((word) =>
+    word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+  );
+  const pattern = new RegExp(`(${escaped.join("|")})`, "gi");
+  return text.split(pattern).map((part, index) =>
+    index % 2 === 1 ? (
+      <mark className="knowledge-base__mark" key={index}>
+        {part}
+      </mark>
+    ) : (
+      part
+    ),
+  );
+}
+
+type ArticleListResult = ArticleList;
+
+// Lists and articles already seen: shown at once while a fresh copy loads.
+// They are dropped when another person signs in.
+const articleListCache = new Map<string, ArticleListResult>();
+const articleDetailCache = new Map<string, ArticleDetailResponse>();
+let cacheUserId: string | null | undefined;
+supabase?.auth.onAuthStateChange((_event, session) => {
+  const userId = session?.user.id ?? null;
+  if (cacheUserId !== undefined && cacheUserId !== userId) {
+    articleListCache.clear();
+    articleDetailCache.clear();
+  }
+  cacheUserId = userId;
+});
+
+function rememberInCache<T>(cache: Map<string, T>, key: string, value: T) {
+  cache.delete(key);
+  cache.set(key, value);
+  if (cache.size > 60) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
 }
 
 function writeErrorMessage(error: unknown, action: "save" | "archive"): string {
@@ -1264,6 +1440,34 @@ export function KnowledgeBase({
       ),
     [activeCollections, articleFilterCategory],
   );
+  // Topic tiles: categories with their article count (empty ones are hidden).
+  const categoryTiles = useMemo(
+    () =>
+      articleFilterCategories
+        .map((collection) => ({
+          collection,
+          count: articles.filter(
+            ({ article }) =>
+              articleMatchesListFilter(article, articleListFilter) &&
+              articleMatchesKnowledgeCollectionFilter(
+                article.collectionIds,
+                collections,
+                { categoryId: collection.id, subcategoryId: "" },
+              ),
+          ).length,
+        }))
+        .filter((tile) => tile.count > 0),
+    [articleFilterCategories, articleListFilter, articles, collections],
+  );
+  const [resultLimit, setResultLimit] = useState(30);
+  useEffect(() => {
+    setResultLimit(30);
+  }, [
+    activeQuery,
+    articleCategoryFilterId,
+    articleListFilter,
+    articleSubcategoryFilterId,
+  ]);
   const editorTopicCategories = useMemo(
     () => knowledgeTopicCategories(activeCollections),
     [activeCollections],
@@ -1317,7 +1521,15 @@ export function KnowledgeBase({
     async (query: string) => {
       const requestVersion = listRequestVersion.current + 1;
       listRequestVersion.current = requestVersion;
-      setLoadingList(true);
+      const cacheKey = `${tenantId}|${query.trim()}`;
+      const cached = articleListCache.get(cacheKey);
+      if (cached) {
+        setArticles(cached.articles);
+        setDepartments(cached.departments);
+        setLoadingList(false);
+      } else {
+        setLoadingList(true);
+      }
       setError("");
 
       try {
@@ -1325,11 +1537,13 @@ export function KnowledgeBase({
           {
             type: "listArticles",
             tenantId,
+            compact: true,
             ...(query.trim() ? { query: query.trim() } : {}),
           },
           parseArticleList,
         );
         if (listRequestVersion.current !== requestVersion) return;
+        rememberInCache(articleListCache, cacheKey, nextList);
         setArticles(nextList.articles);
         setDepartments(nextList.departments);
         mergeImageUrls(nextList.imageUrls);
@@ -1539,7 +1753,15 @@ export function KnowledgeBase({
     async (articleId: string) => {
       const requestVersion = detailRequestVersion.current + 1;
       detailRequestVersion.current = requestVersion;
-      setLoadingDetail(true);
+      const cacheKey = `${tenantId}|${articleId}`;
+      const cached = articleDetailCache.get(cacheKey);
+      if (cached) {
+        mergeImageUrls(cached.imageUrls);
+        setSelected(cached);
+        setLoadingDetail(false);
+      } else {
+        setLoadingDetail(true);
+      }
       setError("");
       setSuccess("");
 
@@ -1549,6 +1771,7 @@ export function KnowledgeBase({
           parseArticleDetail,
         );
         if (detailRequestVersion.current !== requestVersion) return;
+        rememberInCache(articleDetailCache, cacheKey, detail);
         mergeImageUrls(detail.imageUrls);
         setSelected(detail);
         recordRecentItem(tenantId, "knowledge_article", articleId);
@@ -1570,6 +1793,66 @@ export function KnowledgeBase({
     },
     [mergeImageUrls, tenantId],
   );
+
+  // Loads an article in the background while the pointer is over its row, so
+  // the click shows it without a wait.
+  const prefetchArticle = useCallback(
+    (articleId: string) => {
+      const cacheKey = `${tenantId}|${articleId}`;
+      if (articleDetailCache.has(cacheKey)) return;
+      void invokeKnowledgeBase(
+        { type: "getArticle", tenantId, articleId },
+        parseArticleDetail,
+      )
+        .then((detail) => {
+          rememberInCache(articleDetailCache, cacheKey, detail);
+          mergeImageUrls(detail.imageUrls);
+        })
+        .catch(() => undefined);
+    },
+    [mergeImageUrls, tenantId],
+  );
+
+  function closeArticle() {
+    detailRequestVersion.current += 1;
+    setLoadingDetail(false);
+    setSelected(null);
+    setSuccess("");
+  }
+
+  // Live search: the list follows the typing after a short pause.
+  useEffect(() => {
+    const query = searchInput.trim();
+    if (query === activeQuery) return;
+    const timer = window.setTimeout(() => {
+      setActiveQuery(query);
+      void loadArticles(query);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [activeQuery, loadArticles, searchInput]);
+
+  // «/» jumps to the search field.
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+      if (!searchInputRef.current) return;
+      event.preventDefault();
+      searchInputRef.current.focus();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // An article to open from outside (deep link, ticket). It stays pending
   // until it is shown: the initial reload of the list cancels open requests.
@@ -2581,6 +2864,7 @@ export function KnowledgeBase({
     ? visibleKnowledgeArticleRevision(detailArticle, selected?.revision)
     : null;
   const articleCountLabel = `${visibleArticles.length} Artikel`;
+  const showReader = Boolean(selected) || loadingDetail;
   const isListFiltered =
     articleListFilter !== "all" ||
     articleCategoryFilterId.length > 0 ||
@@ -2591,460 +2875,420 @@ export function KnowledgeBase({
     <div className="knowledge-base">
       <style>{knowledgeBaseStyles}</style>
 
-      <section
-        className="panel knowledge-base__library"
-        aria-labelledby="knowledge-base-heading"
-      >
-        <div className="knowledge-base__library-heading">
-          <div>
-            <p className="eyebrow">Wissensdatenbank</p>
-            <h2 id="knowledge-base-heading">Wissen, das weiterhilft</h2>
-            <p className="knowledge-base__intro">
-              Anleitungen, Abläufe und Lösungen für den Arbeitsalltag.
-            </p>
-          </div>
-          <div className="knowledge-base__library-summary">
-            <span className="knowledge-base__count">
-              {activeQuery || isListFiltered
-                ? `${articleCountLabel} gefunden`
-                : articleCountLabel}
-            </span>
-            {readOnly ? null : (
-              <button
-                className="primary-button knowledge-base__button knowledge-base__create-button"
-                disabled={isBusy}
-                onClick={beginNewArticle}
-                type="button"
-              >
-                Neuer Artikel
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="knowledge-base__toolbar">
-          <form
-            className="knowledge-base__search"
-            onSubmit={(event) => void submitSearch(event)}
+      {showReader ? (
+        <section
+          aria-labelledby="knowledge-article-detail-heading"
+          aria-live="polite"
+          className="panel knowledge-base__reader"
+        >
+          <button
+            className="knowledge-base__back"
+            onClick={closeArticle}
+            type="button"
           >
-            <input
-              aria-describedby="knowledge-search-help"
-              aria-label="Wissensdatenbank durchsuchen"
-              disabled={loadingList || isBusy}
-              maxLength={120}
-              onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Titel und Artikelinhalt durchsuchen"
-              type="search"
-              value={searchInput}
-            />
-            <div className="knowledge-base__search-controls">
-              <button
-                className="knowledge-base__button"
-                disabled={loadingList || isBusy}
-                type="submit"
+            <ArrowLeft aria-hidden="true" size={16} />
+            {activeQuery ? "Zurück zu den Treffern" : "Alle Artikel"}
+          </button>
+          {loadingDetail && !detailArticle ? (
+            <p className="knowledge-base__empty">Artikel wird geladen …</p>
+          ) : detailArticle && selected ? (
+            <>
+              <header className="knowledge-base__reader-header">
+                {detailCollectionPaths.length > 0 ? (
+                  <p className="knowledge-base__reader-topic">
+                    <FolderOpen
+                      aria-hidden="true"
+                      size={15}
+                      strokeWidth={1.8}
+                    />
+                    {detailCollectionPaths.join(" · ")}
+                  </p>
+                ) : null}
+                <h2 id="knowledge-article-detail-heading">
+                  {detailArticle.title}
+                </h2>
+                <p className="knowledge-base__reader-meta">
+                  Aktualisiert {formatShortDate(detailArticle.updatedAt)}
+                  {selected.revision.body
+                    ? ` · ${readingMinutes(selected.revision.body)} Min. Lesezeit`
+                    : ""}
+                </p>
+                {readOnly ? null : (
+                  <p className="knowledge-base__meta">
+                    <span
+                      className={`knowledge-base__badge knowledge-base__badge--${detailArticle.status}`}
+                    >
+                      {statusLabels[detailArticle.status]}
+                    </span>
+                    <span
+                      className={`knowledge-base__badge${detailArticle.visibility === "external" ? " knowledge-base__badge--external" : ""}`}
+                    >
+                      {visibilityLabels[detailArticle.visibility]}
+                    </span>
+                    {detailDepartmentLabel ? (
+                      <span className="knowledge-base__badge">
+                        {detailDepartmentLabel}
+                      </span>
+                    ) : null}
+                    {detailRevision !== null ? (
+                      <span className="knowledge-base__detail-version">
+                        Version {detailRevision}
+                      </span>
+                    ) : null}
+                    {detailArticle.publishedRevision ? (
+                      <span>
+                        Veröffentlichte Revision{" "}
+                        {detailArticle.publishedRevision}
+                      </span>
+                    ) : null}
+                  </p>
+                )}
+                {detailArticle.outcomes ? (
+                  <p
+                    aria-label="Wirkung des Artikels"
+                    className="knowledge-base__meta"
+                  >
+                    <span>
+                      Letzte {detailArticle.outcomes.windowDays} Tage:{" "}
+                      {formatOutcomes(
+                        detailArticle.outcomes.resolvedRecent,
+                        detailArticle.outcomes.deflectedRecent,
+                        detailArticle.outcomes.notHelpfulRecent,
+                      )}
+                    </span>
+                    <span>
+                      Insgesamt:{" "}
+                      {formatOutcomes(
+                        detailArticle.outcomes.resolvedTotal,
+                        detailArticle.outcomes.deflectedTotal,
+                        detailArticle.outcomes.notHelpfulTotal,
+                      )}
+                    </span>
+                    {detailArticle.outcomes.needsRevision ? (
+                      <span className="knowledge-base__badge knowledge-base__badge--review">
+                        Überarbeiten?
+                      </span>
+                    ) : null}
+                  </p>
+                ) : null}
+              </header>
+              <article
+                aria-label="Artikelinhalt"
+                className="knowledge-base__markdown"
               >
-                Suchen
-              </button>
-              {activeQuery ? (
-                <button
-                  className="knowledge-base__button"
-                  disabled={loadingList || isBusy}
-                  onClick={() => void clearSearch()}
-                  type="button"
-                >
-                  Suche löschen
-                </button>
-              ) : null}
-            </div>
-            <p
-              className="knowledge-base__search-help"
-              id="knowledge-search-help"
-            >
-              Durchsucht Titel, Zusammenfassung und Artikelinhalt.
-            </p>
-          </form>
-          <div className="knowledge-base__filter-region">
-            <p className="knowledge-base__filter-heading">Artikel filtern</p>
-            <div className="knowledge-base__filters">
+                {selected.revision.body ? (
+                  <KnowledgeMarkdown
+                    body={selected.revision.body}
+                    imageUrls={imageUrls}
+                  />
+                ) : (
+                  "Dieser Artikel enthält noch keinen Inhalt."
+                )}
+              </article>
               {readOnly ? null : (
-                <label className="knowledge-base__filter">
-                  Anzeigen
-                  <select
-                    aria-label="Wissensartikel nach Sichtbarkeit oder Status filtern"
-                    disabled={loadingList || isBusy}
-                    onChange={(event) =>
-                      changeArticleListFilter(
-                        event.target.value as ArticleListFilter,
-                      )
-                    }
-                    value={articleListFilter}
+                <div className="knowledge-base__actions knowledge-base__article-actions">
+                  <button
+                    className="knowledge-base__button"
+                    disabled={isBusy}
+                    onClick={beginEditArticle}
+                    type="button"
                   >
-                    {(
-                      Object.keys(
-                        articleListFilterLabels,
-                      ) as ArticleListFilter[]
-                    ).map((filter) => (
-                      <option key={filter} value={filter}>
-                        {articleListFilterLabels[filter]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {collectionAssignmentReady ? (
-                <>
-                  <label className="knowledge-base__filter">
-                    Kategorie
-                    <select
-                      aria-label="Wissensartikel nach Kategorie filtern"
-                      disabled={
-                        loadingList ||
-                        isBusy ||
-                        articleFilterCategories.length === 0
-                      }
-                      onChange={(event) =>
-                        changeArticleCategoryFilter(event.target.value)
-                      }
-                      value={articleCategoryFilterId}
+                    Bearbeiten
+                  </button>
+                  {detailArticle.status === "draft" ? (
+                    <button
+                      className="knowledge-base__button"
+                      disabled={isBusy}
+                      onClick={() => void requestReview()}
+                      type="button"
                     >
-                      <option value="">
-                        {articleFilterCategories.length > 0
-                          ? "Alle Kategorien"
-                          : "Keine Kategorien vorhanden"}
-                      </option>
-                      {articleFilterCategories.map((collection) => (
-                        <option key={collection.id} value={collection.id}>
-                          {collection.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="knowledge-base__filter">
-                    Unterkategorie
-                    <select
-                      aria-label="Wissensartikel nach Unterkategorie filtern"
-                      disabled={
-                        loadingList ||
-                        isBusy ||
-                        !articleFilterCategory ||
-                        articleFilterSubcategoryCollections.length === 0
-                      }
-                      onChange={(event) =>
-                        changeArticleSubcategoryFilter(event.target.value)
-                      }
-                      value={articleSubcategoryFilterId}
-                    >
-                      <option value="">
-                        {articleFilterCategory
-                          ? articleFilterSubcategoryCollections.length > 0
-                            ? "Alle Unterkategorien"
-                            : "Keine Unterkategorien vorhanden"
-                          : "Zuerst Kategorie wählen"}
-                      </option>
-                      {articleFilterSubcategoryCollections.map((collection) => (
-                        <option key={collection.id} value={collection.id}>
-                          {collection.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        <div className="knowledge-base__content">
-          <div className="knowledge-base__grid">
-            <div className="knowledge-base__list-column">
-              <div className="knowledge-base__list-heading">
-                <div>
-                  <p className="eyebrow">Bibliothek</p>
-                  <h3>Artikel</h3>
-                </div>
-                <span aria-hidden="true" className="knowledge-base__count">
-                  {visibleArticles.length}
-                </span>
-              </div>
-              {loadingList ? (
-                <p className="knowledge-base__empty" aria-live="polite">
-                  Wissensartikel werden geladen …
-                </p>
-              ) : visibleArticles.length === 0 ? (
-                <p className="knowledge-base__empty">
-                  {activeQuery || isListFiltered
-                    ? "Für diese Suche und Filterauswahl wurden keine Artikel gefunden."
-                    : "Es sind noch keine Wissensartikel vorhanden."}
-                </p>
-              ) : (
-                <ul
-                  className="knowledge-base__list"
-                  aria-label="Wissensartikel"
-                >
-                  {visibleArticles.map(({ article, revision }) => {
-                    const departmentLabel = knowledgeDepartmentLabel(
-                      article.departmentId,
-                      departments,
-                    );
-                    const collectionPaths = formatKnowledgeCollectionPaths(
-                      article.collectionIds,
-                      collections,
-                    );
-                    const visibleRevision = visibleKnowledgeArticleRevision(
-                      article,
-                      revision,
-                    );
-
-                    return (
-                      <li key={article.id}>
-                        <button
-                          aria-current={
-                            selectedArticleId === article.id || undefined
-                          }
-                          className="knowledge-base__article-button"
-                          disabled={isBusy}
-                          onClick={() => void openArticle(article.id)}
-                          type="button"
-                        >
-                          <span className="knowledge-base__article-card-top">
-                            <span className="knowledge-base__article-card-badges">
-                              <span
-                                className={`knowledge-base__badge knowledge-base__badge--${article.status}`}
-                              >
-                                {statusLabels[article.status]}
-                              </span>
-                              <span
-                                className={`knowledge-base__badge${article.visibility === "external" ? " knowledge-base__badge--external" : ""}`}
-                              >
-                                {visibilityLabels[article.visibility]}
-                              </span>
-                              {departmentLabel ? (
-                                <span className="knowledge-base__badge">
-                                  {departmentLabel}
-                                </span>
-                              ) : null}
-                              {article.outcomes?.needsRevision ? (
-                                <span
-                                  className="knowledge-base__badge knowledge-base__badge--review"
-                                  title={`In den letzten ${article.outcomes.windowDays} Tagen ${article.outcomes.notHelpfulRecent}× als nicht hilfreich markiert und kein Ticket gelöst oder vermieden`}
-                                >
-                                  Überarbeiten?
-                                </span>
-                              ) : null}
-                            </span>
-                            {visibleRevision !== null ? (
-                              <span className="knowledge-base__article-version">
-                                Version {visibleRevision}
-                              </span>
-                            ) : null}
-                          </span>
-                          <h3>{article.title}</h3>
-                          <p className="knowledge-base__article-excerpt">
-                            {shortBody(revision?.body ?? null)}
-                          </p>
-                          {collectionPaths.length > 0 ? (
-                            <span className="knowledge-base__article-collections">
-                              <FolderOpen
-                                aria-hidden="true"
-                                size={14}
-                                strokeWidth={1.8}
-                              />
-                              <span>{collectionPaths.join(" · ")}</span>
-                            </span>
-                          ) : null}
-                          <span className="knowledge-base__article-link">
-                            Artikel lesen <span aria-hidden="true">→</span>
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
-            <section
-              className="knowledge-base__detail"
-              aria-live="polite"
-              aria-labelledby="knowledge-article-detail-heading"
-            >
-              {loadingDetail ? (
-                <p className="knowledge-base__empty">Artikel wird geladen …</p>
-              ) : detailArticle && selected ? (
-                <>
-                  <div className="knowledge-base__detail-header">
-                    <div>
-                      <p className="eyebrow">
-                        Wissensdatenbank · Wissensartikel
-                      </p>
-                      <p className="knowledge-base__meta">
-                        <span
-                          className={`knowledge-base__badge knowledge-base__badge--${detailArticle.status}`}
-                        >
-                          {statusLabels[detailArticle.status]}
-                        </span>
-                        <span
-                          className={`knowledge-base__badge${detailArticle.visibility === "external" ? " knowledge-base__badge--external" : ""}`}
-                        >
-                          {visibilityLabels[detailArticle.visibility]}
-                        </span>
-                        {detailDepartmentLabel ? (
-                          <span className="knowledge-base__badge">
-                            {detailDepartmentLabel}
-                          </span>
-                        ) : null}
-                        {detailRevision !== null ? (
-                          <span className="knowledge-base__detail-version">
-                            Version {detailRevision}
-                          </span>
-                        ) : null}
-                        <span>
-                          Aktualisiert {formatDate(detailArticle.updatedAt)}
-                        </span>
-                        {detailArticle.publishedRevision ? (
-                          <span>
-                            Veröffentlichte Revision{" "}
-                            {detailArticle.publishedRevision}
-                          </span>
-                        ) : null}
-                      </p>
-                      {detailArticle.outcomes ? (
-                        <p
-                          aria-label="Wirkung des Artikels"
-                          className="knowledge-base__meta"
-                        >
-                          <span>
-                            Letzte {detailArticle.outcomes.windowDays} Tage:{" "}
-                            {formatOutcomes(
-                              detailArticle.outcomes.resolvedRecent,
-                              detailArticle.outcomes.deflectedRecent,
-                              detailArticle.outcomes.notHelpfulRecent,
-                            )}
-                          </span>
-                          <span>
-                            Insgesamt:{" "}
-                            {formatOutcomes(
-                              detailArticle.outcomes.resolvedTotal,
-                              detailArticle.outcomes.deflectedTotal,
-                              detailArticle.outcomes.notHelpfulTotal,
-                            )}
-                          </span>
-                          {detailArticle.outcomes.needsRevision ? (
-                            <span className="knowledge-base__badge knowledge-base__badge--review">
-                              Überarbeiten?
-                            </span>
-                          ) : null}
-                        </p>
-                      ) : null}
-                      {detailCollectionPaths.length > 0 ? (
-                        <p className="knowledge-base__detail-collections">
-                          <FolderOpen
-                            aria-hidden="true"
-                            size={16}
-                            strokeWidth={1.8}
-                          />
-                          <span>{detailCollectionPaths.join(" · ")}</span>
-                        </p>
-                      ) : null}
-                      <h3 id="knowledge-article-detail-heading">
-                        {detailArticle.title}
-                      </h3>
-                    </div>
-                  </div>
-                  <article
-                    className="knowledge-base__markdown"
-                    aria-label="Artikelinhalt"
-                  >
-                    {selected.revision.body ? (
-                      <KnowledgeMarkdown
-                        body={selected.revision.body}
-                        imageUrls={imageUrls}
-                      />
-                    ) : (
-                      "Dieser Artikel enthält noch keinen Inhalt."
-                    )}
-                  </article>
-                  {readOnly ? null : (
-                    <div className="knowledge-base__actions knowledge-base__article-actions">
+                      {saving === "review"
+                        ? "Wird veröffentlicht …"
+                        : "Veröffentlichen"}
+                    </button>
+                  ) : null}
+                  {detailArticle.status === "review" ? (
+                    <>
                       <button
                         className="knowledge-base__button"
                         disabled={isBusy}
-                        onClick={beginEditArticle}
+                        onClick={() => void decideReview("approved")}
                         type="button"
                       >
-                        Bearbeiten
-                      </button>
-                      {detailArticle.status === "draft" ? (
-                        <button
-                          className="knowledge-base__button"
-                          disabled={isBusy}
-                          onClick={() => void requestReview()}
-                          type="button"
-                        >
-                          {saving === "review"
-                            ? "Wird veröffentlicht …"
-                            : "Veröffentlichen"}
-                        </button>
-                      ) : null}
-                      {detailArticle.status === "review" ? (
-                        <>
-                          <button
-                            className="knowledge-base__button"
-                            disabled={isBusy}
-                            onClick={() => void decideReview("approved")}
-                            type="button"
-                          >
-                            {saving === "decision"
-                              ? "Wird gespeichert …"
-                              : "Freigeben"}
-                          </button>
-                          <button
-                            className="knowledge-base__button knowledge-base__button--danger"
-                            disabled={isBusy}
-                            onClick={() => void decideReview("rejected")}
-                            type="button"
-                          >
-                            Ablehnen
-                          </button>
-                        </>
-                      ) : null}
-                      <button
-                        className="knowledge-base__button knowledge-base__button--danger"
-                        disabled={isBusy}
-                        onClick={() => void archiveArticle()}
-                        type="button"
-                      >
-                        {saving === "archive"
-                          ? "Wird archiviert …"
-                          : "Archivieren"}
+                        {saving === "decision"
+                          ? "Wird gespeichert …"
+                          : "Freigeben"}
                       </button>
                       <button
                         className="knowledge-base__button knowledge-base__button--danger"
                         disabled={isBusy}
-                        onClick={() => void deleteArticle()}
+                        onClick={() => void decideReview("rejected")}
                         type="button"
                       >
-                        {saving === "delete" ? "Wird gelöscht …" : "Löschen"}
+                        Ablehnen
                       </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="knowledge-base__reader-empty">
-                  <p className="eyebrow">Artikelansicht</p>
-                  <h3>Wählen Sie einen Artikel</h3>
-                  <p>
-                    Öffnen Sie einen Eintrag aus der Bibliothek, um ihn ruhig
-                    und gut lesbar anzuzeigen.
-                  </p>
+                    </>
+                  ) : null}
+                  <button
+                    className="knowledge-base__button knowledge-base__button--danger"
+                    disabled={isBusy}
+                    onClick={() => void archiveArticle()}
+                    type="button"
+                  >
+                    {saving === "archive" ? "Wird archiviert …" : "Archivieren"}
+                  </button>
+                  <button
+                    className="knowledge-base__button knowledge-base__button--danger"
+                    disabled={isBusy}
+                    onClick={() => void deleteArticle()}
+                    type="button"
+                  >
+                    {saving === "delete" ? "Wird gelöscht …" : "Löschen"}
+                  </button>
                 </div>
               )}
-            </section>
+            </>
+          ) : null}
+        </section>
+      ) : (
+        <section
+          aria-labelledby="knowledge-base-heading"
+          className="panel knowledge-base__hub"
+        >
+          <div className="knowledge-base__hero">
+            <div className="knowledge-base__hero-top">
+              <div>
+                <p className="eyebrow">Wissensdatenbank</p>
+                <h2 id="knowledge-base-heading">Wie können wir helfen?</h2>
+              </div>
+              {readOnly ? null : (
+                <button
+                  className="primary-button knowledge-base__button knowledge-base__create-button"
+                  disabled={isBusy}
+                  onClick={beginNewArticle}
+                  type="button"
+                >
+                  Neuer Artikel
+                </button>
+              )}
+            </div>
+            <form
+              className="knowledge-base__finder"
+              onSubmit={(event) => void submitSearch(event)}
+              role="search"
+            >
+              <Search aria-hidden="true" size={18} />
+              <input
+                aria-label="Wissensdatenbank durchsuchen"
+                autoComplete="off"
+                maxLength={120}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Problem oder Stichwort eingeben"
+                ref={searchInputRef}
+                type="search"
+                value={searchInput}
+              />
+              {searchInput ? null : (
+                <kbd aria-hidden="true" className="knowledge-base__kbd">
+                  /
+                </kbd>
+              )}
+            </form>
           </div>
-        </div>
-      </section>
 
-      {readOnly ? null : (
+          {categoryTiles.length > 0 ? (
+            <div
+              aria-label="Themen"
+              className="knowledge-base__tiles"
+              role="group"
+            >
+              <button
+                aria-pressed={articleCategoryFilterId === ""}
+                className="knowledge-base__tile"
+                onClick={() => changeArticleCategoryFilter("")}
+                type="button"
+              >
+                <strong>Alle Themen</strong>
+                <small>{articleCountLabel}</small>
+              </button>
+              {categoryTiles.map(({ collection, count }) => (
+                <button
+                  aria-pressed={articleCategoryFilterId === collection.id}
+                  className="knowledge-base__tile"
+                  key={collection.id}
+                  onClick={() =>
+                    changeArticleCategoryFilter(
+                      articleCategoryFilterId === collection.id
+                        ? ""
+                        : collection.id,
+                    )
+                  }
+                  type="button"
+                >
+                  <strong>{collection.name}</strong>
+                  <small>
+                    {count === 1 ? "1 Artikel" : `${count} Artikel`}
+                  </small>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {articleFilterCategory &&
+          articleFilterSubcategoryCollections.length > 0 ? (
+            <div
+              aria-label="Unterthemen"
+              className="knowledge-base__chips"
+              role="group"
+            >
+              {articleFilterSubcategoryCollections.map((collection) => (
+                <button
+                  aria-pressed={articleSubcategoryFilterId === collection.id}
+                  className="knowledge-base__chip"
+                  key={collection.id}
+                  onClick={() =>
+                    changeArticleSubcategoryFilter(
+                      articleSubcategoryFilterId === collection.id
+                        ? ""
+                        : collection.id,
+                    )
+                  }
+                  type="button"
+                >
+                  {collection.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {readOnly ? null : (
+            <div
+              aria-label="Artikel nach Sichtbarkeit oder Status filtern"
+              className="knowledge-base__chips"
+              role="group"
+            >
+              {(
+                Object.keys(articleListFilterLabels) as ArticleListFilter[]
+              ).map((filter) => (
+                <button
+                  aria-pressed={articleListFilter === filter}
+                  className="knowledge-base__chip"
+                  key={filter}
+                  onClick={() => changeArticleListFilter(filter)}
+                  type="button"
+                >
+                  {articleListFilterLabels[filter]}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="knowledge-base__results">
+            <h3 aria-live="polite" className="knowledge-base__results-heading">
+              {loadingList && articles.length === 0
+                ? "Wird geladen …"
+                : activeQuery
+                  ? `${articleCountLabel} für «${activeQuery}»`
+                  : isListFiltered
+                    ? `${articleCountLabel} gefunden`
+                    : "Zuletzt aktualisiert"}
+            </h3>
+            {loadingList && articles.length === 0 ? (
+              <ul aria-hidden="true" className="knowledge-base__list">
+                {[0, 1, 2, 3, 4].map((index) => (
+                  <li className="knowledge-base__skeleton" key={index} />
+                ))}
+              </ul>
+            ) : visibleArticles.length === 0 ? (
+              <p className="knowledge-base__empty">
+                {activeQuery || isListFiltered
+                  ? "Nichts gefunden. Versuchen Sie ein anderes Stichwort oder erstellen Sie ein Ticket."
+                  : "Es sind noch keine Wissensartikel vorhanden."}
+              </p>
+            ) : (
+              <>
+                <ul className="knowledge-base__list">
+                  {visibleArticles
+                    .slice(0, resultLimit)
+                    .map(({ article, revision }) => {
+                      const collectionPaths = formatKnowledgeCollectionPaths(
+                        article.collectionIds,
+                        collections,
+                      );
+                      return (
+                        <li key={article.id}>
+                          <button
+                            className="knowledge-base__result"
+                            disabled={isBusy}
+                            onClick={() => void openArticle(article.id)}
+                            onFocus={() => prefetchArticle(article.id)}
+                            onPointerEnter={() => prefetchArticle(article.id)}
+                            type="button"
+                          >
+                            <span className="knowledge-base__result-main">
+                              <strong>
+                                {highlightText(article.title, activeQuery)}
+                              </strong>
+                              <span className="knowledge-base__result-excerpt">
+                                {highlightText(
+                                  shortBody(revision?.body ?? null),
+                                  activeQuery,
+                                )}
+                              </span>
+                              <span className="knowledge-base__result-meta">
+                                {collectionPaths.length > 0
+                                  ? `${collectionPaths.join(" · ")} · `
+                                  : ""}
+                                Aktualisiert{" "}
+                                {formatShortDate(article.updatedAt)}
+                              </span>
+                            </span>
+                            {readOnly ? null : (
+                              <span className="knowledge-base__result-badges">
+                                {article.status !== "published" ? (
+                                  <span
+                                    className={`knowledge-base__badge knowledge-base__badge--${article.status}`}
+                                  >
+                                    {statusLabels[article.status]}
+                                  </span>
+                                ) : null}
+                                <span
+                                  className={`knowledge-base__badge${article.visibility === "external" ? " knowledge-base__badge--external" : ""}`}
+                                >
+                                  {visibilityLabels[article.visibility]}
+                                </span>
+                                {article.outcomes?.needsRevision ? (
+                                  <span
+                                    className="knowledge-base__badge knowledge-base__badge--review"
+                                    title={`In den letzten ${article.outcomes.windowDays} Tagen ${article.outcomes.notHelpfulRecent}× als nicht hilfreich markiert und kein Ticket gelöst oder vermieden`}
+                                  >
+                                    Überarbeiten?
+                                  </span>
+                                ) : null}
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                </ul>
+                {visibleArticles.length > resultLimit ? (
+                  <button
+                    className="knowledge-base__button knowledge-base__more"
+                    onClick={() => setResultLimit((limit) => limit + 30)}
+                    type="button"
+                  >
+                    Weitere {Math.min(30, visibleArticles.length - resultLimit)}{" "}
+                    anzeigen
+                  </button>
+                ) : null}
+              </>
+            )}
+          </div>
+        </section>
+      )}
+
+      {readOnly || showReader ? null : (
         <KnowledgeSuggestions
           disabled={isBusy}
           onOpenDraft={openSuggestedDraft}

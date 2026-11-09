@@ -1521,6 +1521,22 @@ export async function processInboundMessage(
         .filter((contentId): contentId is string => contentId !== null),
     );
     const persistedBody = resolveInboundInlineMarkers(preparedBody, new Map());
+    // Forwarded to the phishing report address: becomes a security ticket
+    // instead of an ordinary one. Decided before the commit, so the generic
+    // acknowledgement can be left out (the thank-you reply replaces it).
+    const phishingCandidate = !linkedTicket
+      ? await phishingReportSettingsFor(admin, {
+          tenantId: channel.tenant_id,
+          mailboxAddress: channel.mailbox_address,
+          subject: subject(graph.subject),
+          recipients: [
+            ...array(graph.toRecipients),
+            ...array(graph.ccRecipients),
+          ]
+            .map(emailFromPerson)
+            .filter((value): value is string => value !== null),
+        })
+      : null;
     stage = "commit_inbound";
     const committed = await admin.rpc("exchange_mail_commit_inbound", {
       p_tenant_id: channel.tenant_id,
@@ -1543,12 +1559,14 @@ export async function processInboundMessage(
       p_cc_addresses: array(graph.ccRecipients)
         .map(emailFromPerson)
         .filter((value): value is string => value !== null),
+      p_acknowledge: !(phishingCandidate && channel.send_agent_replies),
     });
     const result = Array.isArray(committed.data) ? committed.data[0] : null;
     const ticketId = asString(result?.ticket_id);
     const ticketNumber = asString(result?.ticket_number);
     const commentId = asString(result?.comment_id);
     const kind = asString(result?.kind);
+    const phishingSettings = kind === "new_ticket" ? phishingCandidate : null;
     if (committed.error || !result) throw new Error("inbound_commit_failed");
     if (result.outcome === "ignored" || result.outcome === "already_processed")
       return;
@@ -1559,22 +1577,6 @@ export async function processInboundMessage(
       (kind !== "new_ticket" && kind !== "reply")
     )
       throw new Error("inbound_commit_invalid");
-    // Forwarded to the phishing report address: becomes a security ticket
-    // instead of an ordinary one (no event space / onboarding intake).
-    const phishingSettings =
-      kind === "new_ticket"
-        ? await phishingReportSettingsFor(admin, {
-            tenantId: channel.tenant_id,
-            mailboxAddress: channel.mailbox_address,
-            subject: subject(graph.subject),
-            recipients: [
-              ...array(graph.toRecipients),
-              ...array(graph.ccRecipients),
-            ]
-              .map(emailFromPerson)
-              .filter((value): value is string => value !== null),
-          })
-        : null;
     if (kind === "new_ticket" && !phishingSettings) {
       await processEventSpaceEmailTicketIntake(admin, {
         tenantId: channel.tenant_id,
@@ -1962,15 +1964,21 @@ async function dispatchNotificationMail(
       return;
     }
     const [tenant, settings] = await Promise.all([
-      admin.from("tenants").select("name").eq("id", message.tenant_id).maybeSingle(),
+      admin
+        .from("tenants")
+        .select("name")
+        .eq("id", message.tenant_id)
+        .maybeSingle(),
       admin
         .from("tenant_settings")
         .select("portal_name")
         .eq("tenant_id", message.tenant_id)
         .maybeSingle(),
     ]);
-    const portalName = asString(settings.data?.portal_name) ??
-      asString(tenant.data?.name) ?? "nextDesk";
+    const portalName =
+      asString(settings.data?.portal_name) ??
+      asString(tenant.data?.name) ??
+      "nextDesk";
     const mail = notificationEmailText({
       kind: String(notification.data.kind),
       payload: (notification.data.payload ?? {}) as Record<string, unknown>,
@@ -2168,7 +2176,9 @@ export async function dispatchOutboundMessage(
     if (message.ticket_id) {
       const ticketResult = await admin
         .from("tickets")
-        .select("id, ticket_number, subject, requester_contact_id, is_security_case")
+        .select(
+          "id, ticket_number, subject, requester_contact_id, is_security_case",
+        )
         .is("deleted_at", null)
         .eq("id", message.ticket_id)
         .eq("tenant_id", message.tenant_id)

@@ -84,6 +84,11 @@ const CATEGORY_DETAILS: readonly {
     description: "Wenn ein relevantes Ticket eskaliert wird.",
   },
   {
+    key: "security_report",
+    label: "Phishing-Meldungen",
+    description: "Wenn eine verdächtige E-Mail als Phishing gemeldet wird.",
+  },
+  {
     key: "follow_up",
     label: "Wiedervorlagen",
     description:

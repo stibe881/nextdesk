@@ -12950,7 +12950,9 @@ do $$
 begin
   if public.push_notification_category('ticket.kudos') is distinct from 'resolved'
      or public.push_notification_category('ticket.requester_reminder') is distinct from 'support_reply'
-     or public.push_notification_category('ticket.security_report') is distinct from 'escalation'
+     or public.push_notification_category('ticket.security_report') is distinct from 'security_report'
+     or not public.push_delivery_modes_valid('{"security_report":"summary"}'::jsonb)
+     or public.push_notification_category('ticket.escalation_opened') is distinct from 'escalation'
      or public.push_notification_category('ticket.vendor_reminder') is distinct from 'follow_up'
      or public.push_notification_category('ticket.rule_reminder') is distinct from 'follow_up'
      or public.push_notification_category('infrastructure.due') is distinct from 'infrastructure' then

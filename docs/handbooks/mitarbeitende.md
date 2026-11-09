@@ -152,9 +152,13 @@ beim Support.
 ## Wissensdatenbank
 
 In der **Wissensdatenbank** finden Sie Anleitungen, z. B. «VPN einrichten»
-oder «Passwort zurücksetzen». Suchen Sie über **Wissensdatenbank
-durchsuchen** oder filtern Sie nach Kategorie. Prüfen Sie hier zuerst, ob es
-eine Lösung gibt – das geht oft schneller als ein Ticket.
+oder «Passwort zurücksetzen». Tippen Sie ein Stichwort ins Suchfeld (mit der
+Taste `/` springen Sie direkt hinein). Die Treffer erscheinen beim Tippen,
+die Suchbegriffe sind markiert. Oder wählen Sie ein **Thema** und bei Bedarf
+ein Unterthema. Ein Klick auf einen Treffer öffnet den Artikel; mit **Alle
+Artikel** bzw. **Zurück zu den Treffern** kehren Sie zur Liste zurück. Prüfen
+Sie hier zuerst, ob es eine Lösung gibt – das geht oft schneller als ein
+Ticket.
 
 ![Wissensdatenbank mit Suche und Artikeln](images/ma-wissen.jpg)
 

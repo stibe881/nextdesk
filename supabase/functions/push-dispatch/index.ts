@@ -71,6 +71,7 @@ function category(
   | "shop"
   | "service_task"
   | "infrastructure"
+  | "security_report"
   | null {
   if (kind === "ticket.assigned") return "assigned";
   if (kind === "ticket.requester_reply") return "requester_reply";
@@ -93,7 +94,7 @@ function category(
     return "approval";
   }
   if (kind === "ticket.escalation_opened") return "escalation";
-  if (kind === "ticket.security_report") return "escalation";
+  if (kind === "ticket.security_report") return "security_report";
   if (kind === "ticket.follow_up_due") return "follow_up";
   if (kind === "ticket.rule_reminder") return "follow_up";
   if (kind === "ticket.vendor_reminder") return "follow_up";

@@ -338,6 +338,13 @@ Fälle, Serviceaufgaben, Wissensartikel, Lagerartikel, Verträge und Lizenzen.
 
 ## Wissensdatenbank pflegen
 
+Die Wissensdatenbank ist eine Suchzentrale: Tippen Sie ein Stichwort ins
+Suchfeld (Taste `/` springt hinein), die Treffer erscheinen beim Tippen. Mit
+den Themenkacheln und den Chips **Alle Artikel / Intern / Extern / Entwurf**
+grenzen Sie die Liste ein. Status, Sichtbarkeit und «Überarbeiten?» sehen nur
+Agenten. Ein Klick öffnet den Artikel auf einer eigenen Leseseite mit
+**Bearbeiten**, **Veröffentlichen**, **Archivieren** und **Löschen**.
+
 Als Agent lesen Sie nicht nur Artikel, sondern schreiben sie auch:
 
 1. **Neuer Artikel** – Titel, Inhalt (Markdown mit Bildern), Kategorie und
@@ -385,8 +392,8 @@ Entra, gilt die neue Stufe nach dem nächsten Abgleich automatisch.
   ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten
   Benachrichtigungszeit.
 - In der Tabelle **Benachrichtigungen** schalten Sie pro Benachrichtigung
-  (z. B. Zuweisungen, Eskalationen, Erwähnungen) einzeln **Push** und
-  **E-Mail** ein oder aus. Für Agenten sind zu Beginn alle Benachrichtigungen
+  (z. B. Zuweisungen, Eskalationen, Erwähnungen, Phishing-Meldungen)
+  einzeln **Push** und **E-Mail** ein oder aus. Für Agenten sind zu Beginn alle Benachrichtigungen
   per Push und E-Mail eingeschaltet. E-Mails kommen über das Exchange-Postfach
   Ihres Unternehmens und sind verfügbar, sobald eines verbunden ist.
 - Das iPhone-Widget **Meine Prioritäten** zeigt Ihre wichtigsten Tickets in
