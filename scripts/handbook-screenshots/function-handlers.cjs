@@ -1049,14 +1049,31 @@ const HANDLERS = {
     if (body.type === "queueLevels") return ok({ levels: [] });
     if (body.type === "getTicket")
       return ok({
-        levelsConfigured: false,
-        currentLevel: null,
-        currentTeam: null,
+        levelsConfigured: true,
+        currentLevel: 1,
+        currentTeam: { id: "team-servicedesk", name: "ICT Servicedesk" },
         ticketClosed: false,
-        canHandover: false,
-        targets: { next: null, back: [] },
+        canHandover: true,
+        targets: {
+          next: {
+            level: 2,
+            teams: [{ id: "team-system", name: "System Engineering" }],
+          },
+          back: [],
+        },
         currentHandover: null,
-        history: [],
+        history: [
+          {
+            id: "level-1",
+            kind: "initial",
+            fromLevel: null,
+            toLevel: 1,
+            teamName: "ICT Servicedesk",
+            note: null,
+            actorName: "Mara Keller",
+            createdAt: "2026-11-09T07:50:00Z",
+          },
+        ],
       });
     return null;
   },

@@ -33,6 +33,8 @@ import {
   LoaderCircle,
   Mail,
   MessageSquare,
+  Phone,
+  Plus,
   RefreshCw,
   Save,
   Search,
@@ -85,8 +87,10 @@ import {
   TicketSolutionPrompt,
 } from "./ticket-learning";
 import {
-  EmailSignatureFrame,
+  parseEmailSenderContacts,
+  phoneHref,
   splitPlainTextSignature,
+  type EmailSenderContacts,
 } from "./email-signature-frame";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
@@ -3893,6 +3897,7 @@ export function TicketDetail({
   const [isEditingTicket, setIsEditingTicket] = useState(false);
   // Description edited in place via the pencil in the «Beschreibung» card.
   const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [timelineHost, setTimelineHost] = useState<HTMLDivElement | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [editSubject, setEditSubject] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -3960,29 +3965,26 @@ export function TicketDetail({
     Record<string, TicketInlineImage>
   >({});
   const [inlineImagesLoading, setInlineImagesLoading] = useState(false);
-  const [emailSignatureHtml, setEmailSignatureHtml] = useState<string | null>(
-    null,
-  );
+  const [emailSenderContacts, setEmailSenderContacts] =
+    useState<EmailSenderContacts | null>(null);
   const [selectedAttachmentFile, setSelectedAttachmentFile] =
     useState<File | null>(null);
 
   useEffect(() => {
-    // The signature of an e-mail ticket is read directly under RLS
-    // (can_read_ticket); a missing row simply means "no HTML signature".
+    // Contact details of an external e-mail sender (phone numbers and
+    // addresses from the signature) are read directly under RLS
+    // (can_read_ticket); a missing row simply means "nothing to show".
     let active = true;
-    setEmailSignatureHtml(null);
+    setEmailSenderContacts(null);
     if (!supabase) return;
     void supabase
       .from("ticket_email_signatures")
-      .select("html")
+      .select("phones, emails")
       .eq("ticket_id", ticketId)
       .maybeSingle()
-      .then(({ data, error: signatureError }) => {
-        if (!active || signatureError) return;
-        const html = (data as { html?: unknown } | null)?.html;
-        setEmailSignatureHtml(
-          typeof html === "string" && html.trim() ? html : null,
-        );
+      .then(({ data, error: contactsError }) => {
+        if (!active || contactsError) return;
+        setEmailSenderContacts(parseEmailSenderContacts(data));
       });
     return () => {
       active = false;
@@ -4029,6 +4031,7 @@ export function TicketDetail({
     null,
   );
   const [catalog, setCatalog] = useState<TicketCatalog>(emptyTicketCatalog);
+  const [requesterDeviceIds, setRequesterDeviceIds] = useState<string[]>([]);
   const [linkedCatalogItems, setLinkedCatalogItems] = useState<
     LinkedCatalogItem[]
   >([]);
@@ -4792,6 +4795,20 @@ export function TicketDetail({
       if (requestId !== affectedItemsRequestSequence.current) return false;
 
       setCatalog(nextCatalog);
+      // Devices of the requesting person as link suggestions (best effort).
+      void client
+        .rpc("ticket_requester_devices", {
+          p_tenant_id: tenantId,
+          p_ticket_id: ticketId,
+        })
+        .then(({ data, error: devicesError }) => {
+          if (requestId !== affectedItemsRequestSequence.current) return;
+          setRequesterDeviceIds(
+            !devicesError && Array.isArray(data)
+              ? data.filter((id): id is string => typeof id === "string")
+              : [],
+          );
+        });
       // Linked assets show their primary person, like the asset picker.
       const primaryPersonByAssetId = new Map(
         nextCatalog.assets.map((asset) => [asset.id, asset.primaryPersonName]),
@@ -5108,6 +5125,7 @@ export function TicketDetail({
     ) {
       setCatalog(emptyTicketCatalog());
       setLinkedCatalogItems([]);
+      setRequesterDeviceIds([]);
       setAffectedItemsLoaded(false);
       setAffectedItemsError("");
       setSelectedCatalogItemKey("");
@@ -5115,6 +5133,7 @@ export function TicketDetail({
     }
     setCatalog(emptyTicketCatalog());
     setLinkedCatalogItems([]);
+    setRequesterDeviceIds([]);
     setAffectedItemsLoaded(false);
     setAffectedItemsError("");
     setSelectedCatalogItemKey("");
@@ -5384,6 +5403,22 @@ export function TicketDetail({
         );
       });
   }, [catalog, linkedCatalogItems]);
+
+  // With several devices nothing is linked automatically; offer them here
+  // until one of the person's devices is linked.
+  const requesterDeviceSuggestions = useMemo(() => {
+    if (requesterDeviceIds.length < 2) return [];
+    const deviceIds = new Set(requesterDeviceIds);
+    if (
+      linkedCatalogItems.some(
+        (item) => item.kind === "asset" && deviceIds.has(item.targetId),
+      )
+    )
+      return [];
+    return availableCatalogItems.filter(
+      (item) => item.kind === "asset" && deviceIds.has(item.id),
+    );
+  }, [availableCatalogItems, linkedCatalogItems, requesterDeviceIds]);
   const selectedCatalogItem = useMemo(
     () =>
       availableCatalogItems.find(
@@ -5875,17 +5910,6 @@ export function TicketDetail({
     event.preventDefault();
     setIsCommentImageDropActive(false);
     void addCommentImages([...event.dataTransfer.files]);
-  }
-
-  function startTicketEdit() {
-    if (!detail || !detail.canUpdate || busy) return;
-    setFocusMode(false);
-    setIsWorkToolsOpen(true);
-    setEditSubject(detail.ticket.subject);
-    setEditDescription(detail.ticket.description);
-    setIsEditingDescription(false);
-    setIsEditingTicket(true);
-    setError("");
   }
 
   function startDescriptionEdit() {
@@ -6980,18 +7004,6 @@ export function TicketDetail({
               </span>
             </button>
           )}
-          {detail.canUpdate && (
-            <button
-              aria-expanded={isEditingTicket}
-              className="secondary-button"
-              disabled={busy}
-              onClick={startTicketEdit}
-              title="Betreff und Beschreibung bearbeiten"
-              type="button"
-            >
-              Inhalt bearbeiten
-            </button>
-          )}
           <button
             aria-label="Ticketdetails schliessen"
             className="more-button"
@@ -7060,6 +7072,9 @@ export function TicketDetail({
 
       <div className="ticket-detail-layout">
         <div className="ticket-detail-main">
+          {requesterView ? null : (
+            <div className="ticket-timeline-slot" ref={setTimelineHost} />
+          )}
           <section
             className="ticket-detail-summary ticket-detail-primary"
             aria-labelledby="ticket-description-heading"
@@ -7090,6 +7105,23 @@ export function TicketDetail({
                   void saveTicketContent();
                 }}
               >
+                <label className="ticket-description-editor__subject">
+                  <span>Betreff</span>
+                  <input
+                    disabled={busy}
+                    maxLength={240}
+                    onChange={(event) => setEditSubject(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.stopPropagation();
+                        cancelDescriptionEdit();
+                      }
+                    }}
+                    required
+                    type="text"
+                    value={editSubject}
+                  />
+                </label>
                 <label className="ticket-comment-body">
                   <span className="sr-only">Beschreibung</span>
                   <textarea
@@ -7153,52 +7185,18 @@ export function TicketDetail({
               <div className="ticket-detail-description">
                 <TicketTextWithInlineImages
                   body={
-                    emailSignatureHtml
-                      ? splitPlainTextSignature(detail.ticket.description)
-                          .message
-                      : detail.ticket.description
+                    splitPlainTextSignature(detail.ticket.description).message
                   }
                   imagesByAttachmentId={inlineImagesByAttachmentId}
                   loading={inlineImagesLoading}
                   onImageError={refreshInlineImageAfterError}
                 />
-                {emailSignatureHtml ? (
-                  <EmailSignatureFrame html={emailSignatureHtml} />
-                ) : null}
               </div>
             )}
             {storedFormAnswers?.ticketId === detail.ticket.id && (
               <TicketFormAnswersBlock stored={storedFormAnswers.stored} />
             )}
           </section>
-
-          {requesterView ? null : (
-            <TicketSupportLevel
-              onChanged={() => {
-                onChanged();
-                void loadTicket();
-              }}
-              refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}|${detail.events[0]?.id ?? ""}`}
-              tenantId={tenantId}
-              ticketId={detail.ticket.id}
-            />
-          )}
-
-          {requesterView ? null : (
-            <TicketCoordination
-              description={detail.ticket.description}
-              onChanged={() => {
-                onChanged();
-                void loadTicket();
-              }}
-              onOpenTicket={onOpenTicket}
-              refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
-              subject={detail.ticket.subject}
-              tenantId={tenantId}
-              ticketId={detail.ticket.id}
-              ticketNumber={detail.ticket.ticket_number}
-            />
-          )}
 
           <section
             className="ticket-detail-comments ticket-detail-primary"
@@ -7897,6 +7895,25 @@ export function TicketDetail({
                           detail.requesterContact.displayName,
                         )
                       )}
+                      {emailSenderContacts && !requesterView ? (
+                        <ul
+                          aria-label="Kontaktdaten aus der E-Mail"
+                          className="ticket-requester-contacts"
+                        >
+                          {emailSenderContacts.phones.map((phone) => (
+                            <li key={`phone:${phone}`}>
+                              <Phone aria-hidden="true" size={13} />
+                              <a href={phoneHref(phone)}>{phone}</a>
+                            </li>
+                          ))}
+                          {emailSenderContacts.emails.map((email) => (
+                            <li key={`email:${email}`}>
+                              <Mail aria-hidden="true" size={13} />
+                              <a href={`mailto:${email}`}>{email}</a>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </dd>
                   </div>
                 )}
@@ -8542,6 +8559,36 @@ export function TicketDetail({
                         ) : null}
                       </form>
                     ) : null}
+                    {detail.canUpdate &&
+                    requesterDeviceSuggestions.length > 0 ? (
+                      <div
+                        aria-label="Geräte der anfragenden Person"
+                        className="ticket-device-suggestions"
+                      >
+                        <p className="data-caption">
+                          Geräte der anfragenden Person
+                        </p>
+                        <ul>
+                          {requesterDeviceSuggestions.map((item) => (
+                            <li key={catalogSelectionKey(item)}>
+                              <button
+                                disabled={catalogBusy}
+                                onClick={() =>
+                                  void linkCatalogItemByKey(
+                                    catalogSelectionKey(item),
+                                  )
+                                }
+                                title={item.description}
+                                type="button"
+                              >
+                                <Plus aria-hidden="true" size={14} />
+                                {item.label}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
                     {linkedCatalogItems.length > 0 ? (
                       <div
                         aria-label="Verknüpfte Assets und Katalogeinträge"
@@ -8612,6 +8659,35 @@ export function TicketDetail({
             )}
           </section>
 
+          {requesterView ? null : (
+            <TicketCoordination
+              description={detail.ticket.description}
+              onChanged={() => {
+                onChanged();
+                void loadTicket();
+              }}
+              onOpenTicket={onOpenTicket}
+              refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
+              subject={detail.ticket.subject}
+              tenantId={tenantId}
+              ticketId={detail.ticket.id}
+              ticketNumber={detail.ticket.ticket_number}
+              timelineHost={timelineHost}
+              supportLevel={
+                <TicketSupportLevel
+                  embedded
+                  onChanged={() => {
+                    onChanged();
+                    void loadTicket();
+                  }}
+                  refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}|${detail.events[0]?.id ?? ""}`}
+                  tenantId={tenantId}
+                  ticketId={detail.ticket.id}
+                />
+              }
+            />
+          )}
+
           <TicketCustomFields
             canUpdate={detail.canUpdate}
             tenantId={tenantId}
@@ -8665,78 +8741,6 @@ export function TicketDetail({
               bleiben im Blick. Weitere Ticketbereiche können über „Alle
               Bereiche“ eingeblendet werden.
             </p>
-          )}
-
-          {detail.canUpdate && isEditingTicket && (
-            <section
-              className="ticket-detail-editor"
-              aria-labelledby="ticket-content-heading"
-              id="ticket-editor"
-            >
-              <div className="ticket-detail-section-heading">
-                <div>
-                  <p className="eyebrow">BEARBEITEN</p>
-                  <h3 id="ticket-content-heading">Ticketinhalt bearbeiten</h3>
-                </div>
-              </div>
-              <div className="ticket-comment-form">
-                <label className="ticket-comment-body">
-                  Titel
-                  <input
-                    autoFocus
-                    disabled={busy}
-                    maxLength={240}
-                    minLength={3}
-                    onChange={(event) => setEditSubject(event.target.value)}
-                    required
-                    value={editSubject}
-                  />
-                </label>
-                <p className="data-caption" aria-live="polite">
-                  {[...editSubject].length}/240 Zeichen
-                </p>
-                <label className="ticket-comment-body">
-                  Beschreibung
-                  <textarea
-                    disabled={busy}
-                    maxLength={10_000}
-                    minLength={1}
-                    onChange={(event) => setEditDescription(event.target.value)}
-                    required
-                    rows={5}
-                    value={editDescription}
-                  />
-                </label>
-                <p className="data-caption" aria-live="polite">
-                  {[...editDescription].length}/10&apos;000 Zeichen
-                </p>
-                <button
-                  className="secondary-button"
-                  disabled={busy}
-                  onClick={cancelTicketEdit}
-                  type="button"
-                >
-                  Abbrechen
-                </button>
-                <button
-                  className="secondary-button"
-                  disabled={busy || !hasContentChanges}
-                  onClick={() => void saveTicketContent()}
-                  type="button"
-                >
-                  {pendingAction === "update" ? (
-                    <LoaderCircle
-                      aria-hidden="true"
-                      className="ticket-detail-spinner"
-                      size={16}
-                    />
-                  ) : (
-                    <Save aria-hidden="true" size={16} strokeWidth={1.8} />
-                  )}
-                  Ticketinhalt speichern
-                </button>
-              </div>
-            </section>
           )}
 
           {!requesterView && detail.ticketModules.checklists ? (
