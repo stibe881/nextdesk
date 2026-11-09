@@ -1,5 +1,12 @@
 export type CustomerTicketEmailKind =
-  "acknowledgement" | "agent_reply" | "resolution" | "test";
+  | "acknowledgement"
+  | "agent_reply"
+  | "resolution"
+  | "test"
+  /** nextDesk notification to an agent or member (no reply expected). */
+  | "notification"
+  /** Thanks, result or question to a person who reported a phishing mail. */
+  | "security_notice";
 
 export type CustomerTicketEmailBrand = {
   accentColor: string;
@@ -25,7 +32,12 @@ type CustomerTicketEmailInput = {
   kind: CustomerTicketEmailKind;
   subject: string;
   text: string;
-  ticketNumber: string;
+  /** Omitted for notifications without a ticket (e.g. shop, infrastructure). */
+  ticketNumber: string | null;
+  /** Overrides the highlighted first line (e.g. the notification title). */
+  intro?: string;
+  /** Overrides the hint below the message. */
+  replyHint?: string;
 };
 
 type EmailPresentation = {
@@ -127,6 +139,19 @@ function presentation(kind: CustomerTicketEmailKind): EmailPresentation {
         replyHint:
           "Diese Testmail bestätigt die Zustellung über das konfigurierte Support-Postfach.",
       };
+    case "notification":
+      return {
+        eyebrow: "Benachrichtigung",
+        intro: "Es gibt eine Neuigkeit.",
+        replyHint: "Bitte antworten Sie nicht auf diese E-Mail.",
+      };
+    case "security_notice":
+      return {
+        eyebrow: "Sicherheit",
+        intro: "Nachricht zu Ihrer Phishing-Meldung",
+        replyHint:
+          "Bitte antworten Sie nicht auf diese E-Mail. Bei Fragen wenden Sie sich an den Support.",
+      };
     case "agent_reply":
     default:
       return {
@@ -211,7 +236,17 @@ export function renderCustomerTicketEmail(
   input: CustomerTicketEmailInput,
 ): string {
   const branding = normalizeCustomerTicketEmailBranding(input.branding);
-  const copy = presentation(input.kind);
+  const base = presentation(input.kind);
+  const copy = {
+    ...base,
+    intro: input.intro ?? base.intro,
+    replyHint: input.replyHint ?? base.replyHint,
+  };
+  const ticketNumber = input.ticketNumber;
+  const ticketLabel =
+    input.kind === "notification" || input.kind === "security_notice"
+      ? "Ticket"
+      : "Ihr Ticket";
   const attachmentNotice = input.attachmentNotice
     ? `<tr><td style="padding:0 32px 24px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #F2CD74;border-radius:10px;background:#FFF8E8;"><tr><td style="padding:14px 16px;color:#6F4E12;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:19px;"><strong>Anhänge im Portal</strong><br>Einige Anhänge sind für den E-Mail-Versand zu gross. Sie stehen im Ticketportal bereit.</td></tr></table></td></tr>`
     : "";
@@ -233,7 +268,7 @@ export function renderCustomerTicketEmail(
                 <td valign="top" style="padding:0 18px 0 0;">
                   <p style="margin:0;color:#DCE7FF;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:1.1px;line-height:16px;text-transform:uppercase;">${escapeHtml(copy.eyebrow)}</p>
                   <h1 style="margin:8px 0 0;color:#FFFFFF;font-family:Arial,Helvetica,sans-serif;font-size:25px;font-weight:700;line-height:32px;mso-line-height-rule:exactly;">${escapeHtml(input.subject)}</h1>
-                  <p style="margin:10px 0 0;color:#DCE7FF;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;line-height:18px;">Ticket ${escapeHtml(input.ticketNumber)}</p>
+                  ${ticketNumber ? `<p style="margin:10px 0 0;color:#DCE7FF;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;line-height:18px;">Ticket ${escapeHtml(ticketNumber)}</p>` : ""}
                 </td>
                 <td width="112" align="right" valign="top" style="width:112px;padding:2px 0 0;">${brandMark(branding)}</td>
               </tr>
@@ -254,16 +289,16 @@ export function renderCustomerTicketEmail(
               <tr><td style="padding:15px 17px;color:${branding.secondaryColor};font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;">${escapeHtml(copy.replyHint)}</td></tr>
             </table>
           </td></tr>
-          <tr><td style="padding:0 32px 28px;">
+          ${ticketNumber ? `<tr><td style="padding:0 32px 28px;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #E0E8F2;border-radius:10px;background:#F8FAFD;">
               <tr><td style="padding:15px 17px;">
-                <p style="margin:0 0 4px;color:#607089;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:.8px;line-height:16px;text-transform:uppercase;">Ihr Ticket</p>
-                <p style="margin:0;color:${branding.secondaryColor};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:20px;">${escapeHtml(input.ticketNumber)} · ${escapeHtml(input.subject)}</p>
+                <p style="margin:0 0 4px;color:#607089;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:.8px;line-height:16px;text-transform:uppercase;">${escapeHtml(ticketLabel)}</p>
+                <p style="margin:0;color:${branding.secondaryColor};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:20px;">${escapeHtml(ticketNumber ?? "")} · ${escapeHtml(input.subject)}</p>
               </td></tr>
             </table>
-          </td></tr>
+          </td></tr>` : ""}
           <tr><td style="padding:18px 32px;border-top:1px solid #E5EBF4;background:#FBFCFE;">
-            <p style="margin:0;color:#71809A;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;">Ticketbenachrichtigung über ${escapeHtml(branding.displayName)}</p>
+            <p style="margin:0;color:#71809A;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;">${input.kind === "notification" ? "Benachrichtigung" : "Ticketbenachrichtigung"} über ${escapeHtml(branding.displayName)}</p>
           </td></tr>
         </table>
       </td></tr>

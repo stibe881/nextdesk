@@ -442,6 +442,18 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
         : {}),
     };
   }
+  // Security case: a reporter said they clicked (own wording, no address).
+  let securityEvent: { securityEvent?: "clicked" } = {};
+  if (row.kind === "ticket.security_report" && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    if (notification?.payload?.event === "clicked") {
+      securityEvent = { securityEvent: "clicked" };
+    }
+  }
   let watched: Record<string, string | boolean> = {};
   if (row.kind.startsWith("ticket.watch.") && row.notification_id) {
     const { data: notification } = await admin
@@ -486,6 +498,7 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     ...ruleReminder,
     ...vendorReminder,
     ...kudos,
+    ...securityEvent,
     ...delegated,
     kind: payloadKind(row.kind, preferenceCategory),
     tenantId: row.tenant_id,

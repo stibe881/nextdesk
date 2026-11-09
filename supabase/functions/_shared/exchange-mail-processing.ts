@@ -192,7 +192,7 @@ export function customerTicketEmailKindForOutbound(
   // Kopien einer Antwort an weitere Personen sehen aus wie die Antwort selbst.
   if (messageKind === "ticket_copy") return "agent_reply";
   // Thanks, verdict and «did you click?» for phishing reporters.
-  if (messageKind === "security_notice") return "agent_reply";
+  if (messageKind === "security_notice") return "security_notice";
   if (
     messageKind === "agent_reply" ||
     messageKind === "acknowledgement" ||
@@ -1985,14 +1985,30 @@ async function dispatchNotificationMail(
       ticketNumber,
       ticketSubject,
     });
-    const paragraphs = mail.body
-      .split("\n\n")
-      .map(
-        (paragraph) =>
-          `<p style="margin:0 0 12px">${escapeHtml(paragraph)}</p>`,
-      )
-      .join("");
-    const html = `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">${paragraphs}<p style="margin:16px 0"><a href="${APP_ORIGIN}" style="color:#4338ca;font-weight:bold">In ${escapeHtml(portalName)} öffnen</a></p><hr style="border:0;border-top:1px solid #ddd;margin:24px 0"><p style="color:#666;font-size:12px">${escapeHtml(portalName)} · Benachrichtigung · Bitte nicht auf diese E-Mail antworten.</p></div>`;
+    // Same branded layout as the other nextDesk mails.
+    const branding = await customerEmailBranding(
+      admin,
+      message.tenant_id,
+      portalName,
+      true,
+    );
+    const html = renderCustomerTicketEmail({
+      kind: "notification",
+      subject: ticketSubject ?? mail.title,
+      ticketNumber,
+      intro: mail.title,
+      text: mail.message,
+      replyHint: mail.hint,
+      actions: [
+        {
+          label: `In ${portalName} öffnen`,
+          url: APP_ORIGIN,
+          primary: true,
+        },
+      ],
+      branding: branding.branding,
+      attachmentNotice: false,
+    });
     if (!(await activeChannel(admin, channel))) {
       await ignore("channel_reconfigured");
       return;
@@ -2012,6 +2028,9 @@ async function dispatchNotificationMail(
             { name: "X-nextDesk-Notification", value: notificationId },
             { name: "X-Auto-Response-Suppress", value: "All" },
           ],
+          ...(branding.logoAttachment
+            ? { attachments: [branding.logoAttachment] }
+            : {}),
         },
         saveToSentItems: false,
       }),

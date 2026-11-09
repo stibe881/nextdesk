@@ -2971,6 +2971,13 @@ function AuthenticatedApp() {
   const [onboardingAttentionCount, setOnboardingAttentionCount] = useState<
     number | null
   >(null);
+  // Agents: unassigned tickets of their teams and cases waiting for a verdict.
+  const [ticketAttentionCount, setTicketAttentionCount] = useState<
+    number | null
+  >(null);
+  const [securityAttentionCount, setSecurityAttentionCount] = useState<
+    number | null
+  >(null);
   const [navigationAttentionTick, setNavigationAttentionTick] = useState(0);
   const [canManageContracts, setCanManageContracts] = useState(false);
   const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
@@ -3716,6 +3723,8 @@ function AuthenticatedApp() {
     if (!supabase || !session || !activeTenant) {
       setShopAttentionCount(null);
       setOnboardingAttentionCount(null);
+      setTicketAttentionCount(null);
+      setSecurityAttentionCount(null);
       return;
     }
     let mounted = true;
@@ -3747,6 +3756,26 @@ function AuthenticatedApp() {
         );
       })
       .catch(() => mounted && setShopAttentionCount(null));
+    if (canWorkTickets) {
+      void supabase
+        .rpc("navigation_ticket_attention", { p_tenant_id: tenantId })
+        .then(({ data, error }) => {
+          if (!mounted) return;
+          const summary =
+            !error && data && typeof data === "object"
+              ? (data as Record<string, unknown>)
+              : null;
+          const count = (value: unknown) =>
+            typeof value === "number" && Number.isSafeInteger(value)
+              ? value
+              : null;
+          setTicketAttentionCount(count(summary?.unassignedTickets));
+          setSecurityAttentionCount(count(summary?.securityTriage));
+        });
+    } else {
+      setTicketAttentionCount(null);
+      setSecurityAttentionCount(null);
+    }
     void supabase.functions
       .invoke("onboarding", { body: { type: "navigationSummary", tenantId } })
       .then(({ data, error }) => {
@@ -3759,7 +3788,14 @@ function AuthenticatedApp() {
     return () => {
       mounted = false;
     };
-  }, [activeTenant?.id, navigationAttentionTick, section, session?.user.id]);
+  }, [
+    activeTenant?.id,
+    canWorkTickets,
+    dashboardRevision,
+    navigationAttentionTick,
+    section,
+    session?.user.id,
+  ]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !session || !activeTenant) {
@@ -5297,14 +5333,22 @@ function AuthenticatedApp() {
           ? shopAttentionCount
           : label === "Eintritte"
             ? onboardingAttentionCount
-            : null,
+            : label === "Tickets"
+              ? ticketAttentionCount
+              : label === "Sicherheitsfälle"
+                ? securityAttentionCount
+                : null,
     );
   const navigationAttentionDescription = (label: Section): string =>
     label === "Raumplanung"
       ? "Raumaufträge benötigen Zuweisung oder Klärung"
       : label === "Shop"
         ? "neue Bestellungen warten auf Bearbeitung"
-        : "Eintritte sind noch nicht in Bearbeitung";
+        : label === "Tickets"
+          ? "Tickets Ihrer Teams sind noch niemandem zugewiesen"
+          : label === "Sicherheitsfälle"
+            ? "Sicherheitsfälle warten auf ein Urteil"
+            : "Eintritte sind noch nicht in Bearbeitung";
   // Berichte stands on its own below the categories.
   const reportsNavigationItem = navigationItemsBySection.get("Berichte");
   const navigationGroups = NAVIGATION_CATEGORIES.map((category) => ({

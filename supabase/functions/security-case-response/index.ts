@@ -104,10 +104,10 @@ const handler = withSupabase(
             p_tenant_id: question.tenant_id,
             p_ticket_id: question.ticket_id,
             p_payload: {
+              event: "clicked",
+              reporterEmail: question.email,
               riskLevel: "high",
               riskLabel: "Melder hat geklickt",
-              riskScore: 100,
-              subject: `Geklickt: ${question.email}`,
             },
           }).then(() => undefined, () => undefined);
         }
