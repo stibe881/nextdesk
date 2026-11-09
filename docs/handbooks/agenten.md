@@ -36,7 +36,9 @@ Welche Einträge Sie sehen, hängt von den freigeschalteten Funktionen und
 Ihren Berechtigungen ab.
 
 Zahlen neben den Einträgen zeigen, was auf Sie wartet: bei **Tickets** die
-offenen Tickets, die weder einem Team noch einer Person zugewiesen sind, bei
+offenen Tickets, die noch keinem Agenten zugewiesen sind (auch wenn schon ein
+Team gesetzt ist) – dieselbe Zahl wie in der Kachel «Nicht zugewiesene
+Tickets» –, bei
 **Sicherheitsfällen** die offenen Fälle, die noch niemandem zugewiesen
 sind, bei **Raumplanung**, **Shop** und
 **Eintritte** die offenen Anfragen. Die Zahlen aktualisieren sich jede Minute.
