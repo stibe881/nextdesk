@@ -385,3 +385,46 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Pencil in the «Beschreibung» card: edit the description in place. */
+.ticket-description-edit {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.ticket-description-edit:hover:not(:disabled),
+.ticket-description-edit:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.ticket-description-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.ticket-description-editor textarea {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.ticket-description-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ticket-description-editor__actions .data-caption {
+  margin-right: auto;
+}
