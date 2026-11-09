@@ -135,7 +135,10 @@ Mara`;
     const contacts = extractSignatureContacts(input);
     if (
       JSON.stringify(contacts) !==
-      JSON.stringify({ phones: ["041 000 00 00"], emails: ["info@beispiel.ch"] })
+      JSON.stringify({
+        phones: ["041 000 00 00"],
+        emails: ["info@beispiel.ch"],
+      })
     ) {
       throw new Error(`Kontaktdaten falsch: ${JSON.stringify(contacts)}`);
     }
@@ -300,15 +303,60 @@ w: sonnenberg-baar.ch<https://www.sonnenberg-baar.ch/>`;
   },
 );
 
-Deno.test("hält einen langen Satz mit «Gruss» nicht für eine Grussformel", () => {
-  const anchors = corporateSignatureAnchors(`Hallo
+Deno.test(
+  "hält einen langen Satz mit «Gruss» nicht für eine Grussformel",
+  () => {
+    const anchors = corporateSignatureAnchors(`Hallo
 
 Bitte richte der ganzen Abteilung im zweiten Stock einen herzlichen Gruss aus
 
 Anna
 t: 041 000 00 00
 m: anna@example.ch`);
-  if (anchors !== null) {
-    throw new Error(`Unerwartete Signatur: ${JSON.stringify(anchors)}`);
+    if (anchors !== null) {
+      throw new Error(`Unerwartete Signatur: ${JSON.stringify(anchors)}`);
+    }
+  },
+);
+
+Deno.test("erkennt Grussformel und Namen auf derselben Zeile", () => {
+  const mail = `Salut zusammen
+
+Wie kann ich Dateien auf meinem OneDrive privat halten?
+
+Danke für eure Rückmeldung.
+
+Beste Grüsse, Gabriela
+
+
+Gabriela Leone
+Heilpädagoge*in
+Zyklus 3
+t:
+[Logo_Sonnenberg_Baar_CMYK.png]
+<https://www.linkedin.com/company/x>  <https://www.facebook.com/SonnenbergBaar>
+SONNENBERG
+Landhausstrasse 20
+CH-6340 Baar (ZG)
+t:   +41 41 767 78 33
+m: info@sonnenberg-baar.ch`;
+  const result = normalizeInboundEmailText(mail, undefined, {
+    formatCorporateSignature: true,
+  });
+  if (
+    !result.endsWith("Beste Grüsse, Gabriela") ||
+    result.includes("SONNENBERG")
+  ) {
+    throw new Error(`Signatur nicht entfernt: ${result}`);
+  }
+  const contacts = extractSignatureContacts(mail);
+  if (
+    JSON.stringify(contacts) !==
+    JSON.stringify({
+      phones: ["+41 41 767 78 33"],
+      emails: ["info@sonnenberg-baar.ch"],
+    })
+  ) {
+    throw new Error(`Kontaktdaten falsch: ${JSON.stringify(contacts)}`);
   }
 });

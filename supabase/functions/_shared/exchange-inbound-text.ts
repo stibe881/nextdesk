@@ -36,6 +36,8 @@ const OUTLOOK_LINK_LINE =
 const SIGNATURE_FAREWELL =
   /(?:^|\s)(?:(?:(?:mit\s+)?freundliche[nr]?|liebe[nr]?|liebi|beste[nr]?|herzliche[nr]?|herzlichi|viele[nr]?|vieli)\s+)?gr(?:uss|üsse|uesse|üess|uess)(?:li)?[,!\.\s]*$/iu;
 const SIGNATURE_FAREWELL_MAX_LENGTH = 80;
+const SIGNATURE_FAREWELL_WITH_NAME =
+  /(?:^|\s)(?:(?:(?:mit\s+)?freundliche[nr]?|liebe[nr]?|liebi|beste[nr]?|herzliche[nr]?|herzlichi|viele[nr]?|vieli)\s+)?gr(?:uss|üsse|uesse|üess|uess)(?:li)?\s*,\s*\p{L}[\p{L}.' -]{0,40}$/iu;
 const SIGNATURE_BRACKETED_LINK = /\[https?:\/\/[^\]\s]*\]/giu;
 const SIGNATURE_IMAGE_FILE =
   /^\s*\[(?!cid:)([^\]]+\.(?:png|jpe?g|gif|webp|svg))\]\s*$/iu;
@@ -67,8 +69,8 @@ function decodeEntitiesOnce(value: string): string {
         ? Number.parseInt(encoded.slice(1), 16)
         : Number.parseInt(encoded, 10);
       return Number.isSafeInteger(codePoint) &&
-          codePoint > 0 &&
-          codePoint <= 0x10ffff
+        codePoint > 0 &&
+        codePoint <= 0x10ffff
         ? String.fromCodePoint(codePoint)
         : match;
     });
@@ -92,8 +94,8 @@ function decodeMarkupDelimiters(value: string): string {
         return name.toLowerCase() === "amp"
           ? "&"
           : name.toLowerCase() === "lt"
-          ? "<"
-          : ">";
+            ? "<"
+            : ">";
       })
       .replace(/&#(x[0-9a-f]+|\d+);/giu, (match, encoded: string) => {
         const codePoint = encoded.toLowerCase().startsWith("x")
@@ -102,10 +104,10 @@ function decodeMarkupDelimiters(value: string): string {
         return codePoint === 38
           ? "&"
           : codePoint === 60
-          ? "<"
-          : codePoint === 62
-          ? ">"
-          : match;
+            ? "<"
+            : codePoint === 62
+              ? ">"
+              : match;
       });
     if (next === decoded) break;
     decoded = next;
@@ -270,22 +272,23 @@ function locateCorporateSignature(lines: string[]): SignatureLocation | null {
     farewellIndex += 1
   ) {
     const farewell = lines[farewellIndex].trim();
-    if (
-      farewell.length > SIGNATURE_FAREWELL_MAX_LENGTH ||
-      !SIGNATURE_FAREWELL.test(farewell)
-    ) {
-      continue;
-    }
-    let closingIndex = farewellIndex + 1;
-    while (closingIndex < lines.length && !lines[closingIndex].trim()) {
-      closingIndex += 1;
-    }
-    if (
-      closingIndex >= lines.length ||
-      closingIndex - farewellIndex > 3 ||
-      !lines[closingIndex].trim()
-    ) {
-      continue;
+    if (farewell.length > SIGNATURE_FAREWELL_MAX_LENGTH) continue;
+    // "Beste Grüsse, Gabriela": farewell and name on one line.
+    const sameLineName = SIGNATURE_FAREWELL_WITH_NAME.test(farewell);
+    if (!sameLineName && !SIGNATURE_FAREWELL.test(farewell)) continue;
+    let closingIndex = farewellIndex;
+    if (!sameLineName) {
+      closingIndex = farewellIndex + 1;
+      while (closingIndex < lines.length && !lines[closingIndex].trim()) {
+        closingIndex += 1;
+      }
+      if (
+        closingIndex >= lines.length ||
+        closingIndex - farewellIndex > 3 ||
+        !lines[closingIndex].trim()
+      ) {
+        continue;
+      }
     }
 
     const signals = new Set<string>();

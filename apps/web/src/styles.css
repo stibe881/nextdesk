@@ -9879,6 +9879,45 @@ body:has(.ticket-list-filter-panel) {
   white-space: nowrap;
 }
 
+/* Devices of the requesting person, linked with one click. */
+.ticket-device-suggestions {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.ticket-device-suggestions > .data-caption {
+  margin: 0;
+}
+
+.ticket-device-suggestions ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket-device-suggestions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  border: 1px dashed var(--control-border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.ticket-device-suggestions button:hover:not(:disabled) {
+  border-style: solid;
+  border-color: var(--primary);
+}
+
 .ticket-overview-linked-catalog {
   display: grid;
   gap: 5px;

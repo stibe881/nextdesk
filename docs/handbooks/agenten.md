@@ -173,10 +173,28 @@ Status. Ziehen Sie eine Karte in eine andere Spalte, um den Status zu ändern.
 Öffnen Sie ein Ticket mit einem Klick. Im Kopf- und Infobereich ändern Sie
 direkt **Status**, **Priorität**, **Kategorie**, **Team** und **zugewiesene
 Person**. Ein Klick auf den Namen der **anfragenden Person** öffnet ihre
-Personenübersicht. Mit dem **Stift** in der Karte **Beschreibung** bearbeiten Sie die
-Beschreibung direkt dort (**Beschreibung speichern** oder Strg/⌘ + Enter);
-Betreff und Beschreibung zusammen ändern Sie über **Inhalt bearbeiten**. Der **Verlauf** zeigt alle Nachrichten, Notizen und Änderungen
-chronologisch; die SLA-Anzeige zeigt die verbleibende Zeit.
+Personenübersicht. Mit dem **Stift** in der Karte **Beschreibung** bearbeiten
+Sie Betreff und Beschreibung direkt dort (**Beschreibung speichern** oder
+Strg/⌘ + Enter).
+
+Über der Beschreibung zeigt die kompakte **Ticket-Zeitachse** alle
+Ereignisse, die Reaktions- und Lösungsfrist sowie längere Lücken. Darunter
+folgt die **Unterhaltung** mit allen Nachrichten und Notizen.
+
+Rechts unter der **Übersicht** liegt die Karte **Koordination**. Sie zeigt die
+**Supportstufe** mit dem zuständigen Team (**An nächste Stufe übergeben**,
+**Verlauf der Stufen**) sowie Teil-Tickets und Drittanbieter (**Aufteilen**,
+**An Drittanbieter übergeben**).
+
+Tickets aus E-Mails enthalten die E-Mail-Signatur nicht mehr. Stammt die Mail
+von einer Adresse ausserhalb Ihrer Organisation, stehen unter **Anfragende
+Person** zusätzlich die E-Mail-Adresse und alle Telefonnummern aus der
+Signatur; ein Klick startet Anruf oder E-Mail.
+
+Hat die anfragende Person genau ein Gerät (zugewiesen oder als primäre Person
+in Intune), verknüpft nextDesk es beim Erstellen des Tickets automatisch. Bei
+mehreren Geräten erscheinen sie unter **Asset / Katalogeintrag verknüpfen**
+als **Geräte der anfragenden Person**; ein Klick verknüpft das passende Gerät.
 
 ![Ticketdetail mit Verlauf und Infobereich](images/ag-ticket-detail.jpg)
 
