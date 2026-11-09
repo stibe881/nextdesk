@@ -10,7 +10,22 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { ArrowLeft, FolderOpen, Search } from "lucide-react";
+import {
+  ArrowLeft,
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  FolderOpen,
+  type LucideIcon,
+  Mail,
+  MessagesSquare,
+  Monitor,
+  Printer,
+  Search,
+  Shield,
+  Smartphone,
+  Wifi,
+} from "lucide-react";
 import { functionErrorMessage } from "./lib/function-error";
 import { knowledgeErrorBackendMessage } from "./lib/knowledge-errors";
 import {
@@ -394,6 +409,129 @@ const knowledgeBaseStyles = `
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+  }
+  .knowledge-base .knowledge-base__topic-wrap {
+    position: relative;
+  }
+  .knowledge-base .knowledge-base__topic-row {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 2px 1px 6px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .knowledge-base .knowledge-base__topic-row::-webkit-scrollbar {
+    display: none;
+  }
+  .knowledge-base .knowledge-base__topic-row[data-fade-right] {
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent);
+  }
+  .knowledge-base .knowledge-base__topic-row[data-fade-left] {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 64px);
+    mask-image: linear-gradient(90deg, transparent, #000 64px);
+  }
+  .knowledge-base .knowledge-base__topic-row[data-fade-left][data-fade-right] {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 64px, #000 calc(100% - 64px), transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 64px, #000 calc(100% - 64px), transparent);
+  }
+  .knowledge-base button.knowledge-base__topic {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 10px;
+    min-height: 0;
+    border: 1px solid #e3e9ee;
+    border-radius: 12px;
+    background: #fff;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    padding: 9px 16px 9px 10px;
+    scroll-snap-align: start;
+    text-align: left;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .knowledge-base button.knowledge-base__topic:hover {
+    border-color: #9db5e8;
+  }
+  .knowledge-base button.knowledge-base__topic[aria-pressed="true"] {
+    border-color: #173246;
+    background: #f2f5f9;
+    box-shadow: inset 0 0 0 1px #173246;
+  }
+  .knowledge-base .knowledge-base__topic-icon {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    flex: none;
+    place-items: center;
+    border-radius: 9px;
+    color: #fff;
+  }
+  .knowledge-base .knowledge-base__topic-icon--all {
+    background: #173246;
+  }
+  .knowledge-base .knowledge-base__topic-text {
+    display: grid;
+    gap: 1px;
+    white-space: nowrap;
+  }
+  .knowledge-base .knowledge-base__topic-text strong {
+    color: #173246;
+    font-size: 13px;
+    line-height: 1.2;
+  }
+  .knowledge-base .knowledge-base__topic-text small {
+    color: #6c7d87;
+    font-size: 11.5px;
+  }
+  .knowledge-base button.knowledge-base__topic-arrow {
+    position: absolute;
+    top: 50%;
+    z-index: 1;
+    display: grid;
+    width: 32px;
+    height: 32px;
+    min-height: 0;
+    padding: 0;
+    place-items: center;
+    border: 1px solid #dfe5ea;
+    border-radius: 50%;
+    background: #fff;
+    color: #173246;
+    cursor: pointer;
+    box-shadow: 0 4px 12px -4px rgba(15, 23, 42, 0.3);
+    transform: translateY(-60%);
+  }
+  .knowledge-base .knowledge-base__topic-arrow--left { left: -6px; }
+  .knowledge-base .knowledge-base__topic-arrow--right { right: -6px; }
+  .knowledge-base .knowledge-base__segmented {
+    display: inline-flex;
+    justify-self: start;
+    gap: 2px;
+    border-radius: 10px;
+    background: #eef1f5;
+    padding: 3px;
+  }
+  .knowledge-base button.knowledge-base__segment {
+    min-height: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #5d6f7a;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 14px;
+  }
+  .knowledge-base button.knowledge-base__segment[aria-pressed="true"] {
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.14);
+    color: #173246;
+    font-weight: 700;
   }
   .knowledge-base .knowledge-base__dot {
     display: inline-block;
@@ -1362,7 +1500,18 @@ function topicColor(name: string): string {
   return TOPIC_COLORS[hash % TOPIC_COLORS.length] ?? "#3b5bfd";
 }
 
-const VISIBLE_TOPIC_CHIPS = 8;
+/** A matching symbol for well-known topics; a book for the others. */
+function topicIcon(name: string): LucideIcon {
+  const text = name.toLowerCase();
+  if (/drucker|print|scan/.test(text)) return Printer;
+  if (/outlook|mail|exchange/.test(text)) return Mail;
+  if (/w-?lan|wifi|netz|vpn/.test(text)) return Wifi;
+  if (/teams|chat|telefon/.test(text)) return MessagesSquare;
+  if (/firewall|sicherheit|passwort|zugang|wipe/.test(text)) return Shield;
+  if (/intune|handy|mobil|iphone|ios|android/.test(text)) return Smartphone;
+  if (/sccm|windows|software|client|pc|laptop|hyper/.test(text)) return Monitor;
+  return BookOpen;
+}
 
 type ArticleListResult = ArticleList;
 
@@ -1564,22 +1713,31 @@ export function KnowledgeBase({
         .filter((tile) => tile.count > 0),
     [articleFilterCategories, articleListFilter, articles, collections],
   );
-  const [showAllTopics, setShowAllTopics] = useState(false);
-  // The busiest topics as chips; the selected one always stays visible.
-  const topicChips = useMemo(() => {
-    const sorted = [...categoryTiles].sort(
-      (left, right) =>
-        right.count - left.count ||
-        left.collection.name.localeCompare(right.collection.name, "de-CH"),
-    );
-    if (showAllTopics) return { shown: sorted, hidden: 0 };
-    const shown = sorted.slice(0, VISIBLE_TOPIC_CHIPS);
-    const selectedTile = sorted.find(
-      (tile) => tile.collection.id === articleCategoryFilterId,
-    );
-    if (selectedTile && !shown.includes(selectedTile)) shown.push(selectedTile);
-    return { shown, hidden: sorted.length - shown.length };
-  }, [articleCategoryFilterId, categoryTiles, showAllTopics]);
+  // The busiest topics first; the row scrolls sideways.
+  const sortedTopics = useMemo(
+    () =>
+      [...categoryTiles].sort(
+        (left, right) =>
+          right.count - left.count ||
+          left.collection.name.localeCompare(right.collection.name, "de-CH"),
+      ),
+    [categoryTiles],
+  );
+  const topicRowRef = useRef<HTMLDivElement | null>(null);
+  const [topicScroll, setTopicScroll] = useState({ left: false, right: false });
+  const updateTopicScroll = useCallback(() => {
+    const row = topicRowRef.current;
+    if (!row) return;
+    setTopicScroll({
+      left: row.scrollLeft > 4,
+      right: row.scrollLeft + row.clientWidth < row.scrollWidth - 4,
+    });
+  }, []);
+  useEffect(() => {
+    updateTopicScroll();
+    window.addEventListener("resize", updateTopicScroll);
+    return () => window.removeEventListener("resize", updateTopicScroll);
+  }, [sortedTopics, updateTopicScroll]);
   const [resultLimit, setResultLimit] = useState(30);
   useEffect(() => {
     setResultLimit(30);
@@ -3301,58 +3459,94 @@ export function KnowledgeBase({
           </div>
 
           {categoryTiles.length > 0 ? (
-            <div
-              aria-label="Themen"
-              className="knowledge-base__chips knowledge-base__topics"
-              role="group"
-            >
-              <button
-                aria-pressed={articleCategoryFilterId === ""}
-                className="knowledge-base__chip"
-                onClick={() => changeArticleCategoryFilter("")}
-                type="button"
-              >
-                Alle
-              </button>
-              {topicChips.shown.map(({ collection, count }) => (
+            <div className="knowledge-base__topic-wrap">
+              {topicScroll.left ? (
                 <button
-                  aria-pressed={articleCategoryFilterId === collection.id}
-                  className="knowledge-base__chip"
-                  key={collection.id}
+                  aria-label="Themen nach links"
+                  className="knowledge-base__topic-arrow knowledge-base__topic-arrow--left"
                   onClick={() =>
-                    changeArticleCategoryFilter(
-                      articleCategoryFilterId === collection.id
-                        ? ""
-                        : collection.id,
-                    )
+                    topicRowRef.current?.scrollBy({
+                      left: -320,
+                      behavior: "smooth",
+                    })
                   }
+                  type="button"
+                >
+                  <ChevronLeft aria-hidden="true" size={18} />
+                </button>
+              ) : null}
+              <div
+                aria-label="Themen"
+                className="knowledge-base__topic-row"
+                data-fade-left={topicScroll.left || undefined}
+                data-fade-right={topicScroll.right || undefined}
+                onScroll={updateTopicScroll}
+                ref={topicRowRef}
+                role="group"
+              >
+                <button
+                  aria-pressed={articleCategoryFilterId === ""}
+                  className="knowledge-base__topic"
+                  onClick={() => changeArticleCategoryFilter("")}
                   type="button"
                 >
                   <span
                     aria-hidden="true"
-                    className="knowledge-base__dot"
-                    style={{ background: topicColor(collection.name) }}
-                  />
-                  {collection.name}
-                  <span className="knowledge-base__chip-count">{count}</span>
+                    className="knowledge-base__topic-icon knowledge-base__topic-icon--all"
+                  >
+                    <BookOpen size={16} />
+                  </span>
+                  <span className="knowledge-base__topic-text">
+                    <strong>Alle</strong>
+                    <small>{articleCountLabel}</small>
+                  </span>
                 </button>
-              ))}
-              {topicChips.hidden > 0 ? (
+                {sortedTopics.map(({ collection, count }) => {
+                  const Icon = topicIcon(collection.name);
+                  return (
+                    <button
+                      aria-pressed={articleCategoryFilterId === collection.id}
+                      className="knowledge-base__topic"
+                      key={collection.id}
+                      onClick={() =>
+                        changeArticleCategoryFilter(
+                          articleCategoryFilterId === collection.id
+                            ? ""
+                            : collection.id,
+                        )
+                      }
+                      type="button"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="knowledge-base__topic-icon"
+                        style={{ background: topicColor(collection.name) }}
+                      >
+                        <Icon size={16} />
+                      </span>
+                      <span className="knowledge-base__topic-text">
+                        <strong>{collection.name}</strong>
+                        <small>
+                          {count === 1 ? "1 Artikel" : `${count} Artikel`}
+                        </small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {topicScroll.right ? (
                 <button
-                  className="knowledge-base__chip knowledge-base__chip--more"
-                  onClick={() => setShowAllTopics(true)}
+                  aria-label="Themen nach rechts"
+                  className="knowledge-base__topic-arrow knowledge-base__topic-arrow--right"
+                  onClick={() =>
+                    topicRowRef.current?.scrollBy({
+                      left: 320,
+                      behavior: "smooth",
+                    })
+                  }
                   type="button"
                 >
-                  + {topicChips.hidden} weitere
-                </button>
-              ) : showAllTopics &&
-                categoryTiles.length > VISIBLE_TOPIC_CHIPS ? (
-                <button
-                  className="knowledge-base__chip knowledge-base__chip--more"
-                  onClick={() => setShowAllTopics(false)}
-                  type="button"
-                >
-                  Weniger
+                  <ChevronRight aria-hidden="true" size={18} />
                 </button>
               ) : null}
             </div>
@@ -3388,7 +3582,7 @@ export function KnowledgeBase({
           {readOnly ? null : (
             <div
               aria-label="Artikel nach Sichtbarkeit oder Status filtern"
-              className="knowledge-base__chips"
+              className="knowledge-base__segmented"
               role="group"
             >
               {(
@@ -3396,7 +3590,7 @@ export function KnowledgeBase({
               ).map((filter) => (
                 <button
                   aria-pressed={articleListFilter === filter}
-                  className="knowledge-base__chip"
+                  className="knowledge-base__segment"
                   key={filter}
                   onClick={() => changeArticleListFilter(filter)}
                   type="button"

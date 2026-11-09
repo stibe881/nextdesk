@@ -345,8 +345,8 @@ Fälle, Serviceaufgaben, Wissensartikel, Lagerartikel, Verträge und Lizenzen.
 
 Die Wissensdatenbank ist eine Suchzentrale: Tippen Sie ein Stichwort ins
 Suchfeld (Taste `/` springt hinein), die Treffer erscheinen beim Tippen. Mit
-den Themen-Chips (mit **+ weitere** für seltene Themen) und den Chips
-**Alle Artikel / Intern / Extern / Entwurf** grenzen Sie die Liste ein. Ohne
+der Themenreihe (seitlich scrollbar, mit Symbol und Artikelzahl) und dem
+Umschalter **Alle Artikel / Intern / Extern / Entwurf** grenzen Sie die Liste ein. Ohne
 Suche und Filter zeigt die Startseite die neusten Artikel als Karten. Status, Sichtbarkeit und «Überarbeiten?» sehen nur
 Agenten. Ein Klick öffnet den Artikel auf einer eigenen Leseseite mit
 **Bearbeiten**, **Veröffentlichen**, **Archivieren** und **Löschen**.
