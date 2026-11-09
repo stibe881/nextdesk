@@ -1,13 +1,13 @@
 import { CsvImportDialog } from "./csv-import-dialog";
 import { INFRASTRUCTURE_IMPORT_FIELDS } from "./lib/import-fields";
-import { RackView } from "./infrastructure-racks";
+import { RackView, type RackInput } from "./infrastructure-racks";
 import {
   AssetLabelDialog,
   LabelSelectionBar,
   type LabelBranding,
 } from "./asset-label-dialog";
 import { assetLabelItem, rackLabelItem } from "./lib/asset-labels";
-import { buildRacks } from "./lib/rack-layout";
+import { buildRacks, type RackDefinition } from "./lib/rack-layout";
 import { NetworkMap, type MonitoringEntry } from "./infrastructure-network-map";
 import {
   checklistItems,
@@ -302,6 +302,7 @@ export function Infrastructure({
 }) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [rackDefinitions, setRackDefinitions] = useState<RackDefinition[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -392,6 +393,7 @@ export function Infrastructure({
         canManage: boolean;
         devices: Device[];
         locations: Location[];
+        racks?: RackDefinition[];
         services?: Service[];
         monitoring?: Record<string, MonitoringEntry[]>;
       }>({ type: "list", tenantId });
@@ -403,6 +405,7 @@ export function Infrastructure({
         })),
       );
       setLocations(data.locations);
+      setRackDefinitions(data.racks ?? []);
       setServices(data.services ?? []);
       setCanManage(data.canManage);
       setError("");
@@ -491,7 +494,54 @@ export function Infrastructure({
 
   const selected = devices.find((device) => device.id === selectedId) ?? null;
 
-  const allRacks = useMemo(() => buildRacks(devices), [devices]);
+  const allRacks = useMemo(
+    () => buildRacks(devices, rackDefinitions),
+    [devices, rackDefinitions],
+  );
+
+  async function saveRack(input: RackInput): Promise<boolean> {
+    setError("");
+    try {
+      const result = await call<{ movedDevices: number }>({
+        type: "saveRack",
+        tenantId,
+        ...input,
+      });
+      setNotice(
+        input.id
+          ? result.movedDevices
+            ? `Rack gespeichert, ${result.movedDevices} Geräte angepasst.`
+            : "Rack gespeichert."
+          : "Rack erfasst.",
+      );
+      await load();
+      return true;
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Das Rack konnte nicht gespeichert werden.",
+      );
+      return false;
+    }
+  }
+
+  async function deleteRack(id: string): Promise<boolean> {
+    setError("");
+    try {
+      await call({ type: "deleteRack", tenantId, id });
+      setNotice("Rack gelöscht.");
+      await load();
+      return true;
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Das Rack konnte nicht gelöscht werden.",
+      );
+      return false;
+    }
+  }
   const visibleRackKeys = useMemo(
     () => buildRacks(visible).map((rack) => rack.key),
     [visible],
@@ -773,7 +823,7 @@ export function Infrastructure({
 
       {loading && devices.length === 0 ? (
         <p className="empty-state">Infrastruktur wird geladen …</p>
-      ) : visible.length === 0 ? (
+      ) : visible.length === 0 && layout !== "racks" ? (
         <div className="infrastructure__empty">
           <Network aria-hidden="true" size={28} />
           <p>
@@ -808,6 +858,10 @@ export function Infrastructure({
           }
           onToggleRack={(key, checked) => toggleIn(setLabelRacks, key, checked)}
           selectedRackKeys={labelRacks}
+          definitions={rackDefinitions}
+          locations={locations}
+          onSaveRack={canManage ? saveRack : undefined}
+          onDeleteRack={canManage ? deleteRack : undefined}
         />
       ) : (
         <ul className="infrastructure__list">

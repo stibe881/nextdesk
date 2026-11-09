@@ -153,7 +153,26 @@ type Action =
     intervalMonths: number;
     startsOn: string;
     assigneeId: string | null;
-  };
+  }
+  | {
+    type: "saveRack";
+    tenantId: string;
+    id: string | null;
+    name: string;
+    locationId: string | null;
+    heightUnits: number;
+    notes: string | null;
+  }
+  | { type: "deleteRack"; tenantId: string; id: string };
+
+/** «12», «12-13», «HE 12» → highest occupied unit; null if unknown. */
+export function topRackUnit(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const numbers = value.match(/\d{1,3}/g)?.map(Number) ?? [];
+  const [first, second] = numbers;
+  if (!first || first > 60) return null;
+  return second && second >= first && second <= 60 ? second : first;
+}
 
 function uuidList(value: unknown, min: number, max: number): string[] | null {
   if (!Array.isArray(value) || value.length < min || value.length > max) return null;
@@ -466,6 +485,30 @@ export function parseAction(value: unknown): Action | null {
         assigneeId: isUuid(value.assigneeId) ? value.assigneeId.toLowerCase() : null,
       };
     }
+    case "saveRack": {
+      const name = optionalText(value.name, 80);
+      const notes = optionalText(value.notes, 1000);
+      const heightUnits = typeof value.heightUnits === "number" ? value.heightUnits : NaN;
+      const locationId = value.locationId === null || value.locationId === undefined ||
+          value.locationId === ""
+        ? null
+        : isUuid(value.locationId)
+        ? value.locationId.toLowerCase()
+        : undefined;
+      const id = value.id === null || value.id === undefined
+        ? null
+        : isUuid(value.id)
+        ? value.id.toLowerCase()
+        : undefined;
+      return name && notes !== undefined && locationId !== undefined && id !== undefined &&
+          Number.isInteger(heightUnits) && heightUnits >= 1 && heightUnits <= 60
+        ? { type: "saveRack", tenantId, id, name, locationId, heightUnits, notes }
+        : null;
+    }
+    case "deleteRack":
+      return isUuid(value.id)
+        ? { type: "deleteRack", tenantId, id: value.id.toLowerCase() }
+        : null;
     default:
       return null;
   }
@@ -568,7 +611,7 @@ function deviceFromRows(
 }
 
 async function list(request: Request, admin: Admin, tenantId: string, canManage: boolean) {
-  const [infra, locations, services, alerts, serviceLinks] = await Promise.all([
+  const [infra, locations, services, alerts, serviceLinks, racks] = await Promise.all([
     admin.from("asset_infrastructure").select("*").eq("tenant_id", tenantId).limit(5000),
     admin.from("asset_locations").select("id, name").eq("tenant_id", tenantId).eq("active", true)
       .order("name"),
@@ -578,8 +621,13 @@ async function list(request: Request, admin: Admin, tenantId: string, canManage:
       .select("asset_id, sensor_name, last_status, last_message, last_event_at")
       .eq("tenant_id", tenantId).eq("state", "open").not("asset_id", "is", null).limit(2000),
     admin.from("asset_services").select("asset_id, service_id").eq("tenant_id", tenantId).limit(20000),
+    admin.from("infrastructure_racks").select("id, name, location_id, height_units, notes")
+      .eq("tenant_id", tenantId).order("name").limit(1000),
   ]);
-  if (infra.error || locations.error || services.error || alerts.error || serviceLinks.error) {
+  if (
+    infra.error || locations.error || services.error || alerts.error || serviceLinks.error ||
+    racks.error
+  ) {
     throw dbFailure();
   }
   const linkedServices = new Map<string, string[]>();
@@ -626,6 +674,14 @@ async function list(request: Request, admin: Admin, tenantId: string, canManage:
       devices,
       monitoring,
       locations: ((locations.data ?? []) as Row[]).map((row) => ({ id: row.id, name: row.name })),
+      racks: ((racks.data ?? []) as Row[]).map((row) => ({
+        id: row.id,
+        name: row.name,
+        locationId: row.location_id ?? null,
+        locationName: row.location_id ? (locationNames.get(String(row.location_id)) ?? null) : null,
+        heightUnits: row.height_units,
+        notes: row.notes ?? null,
+      })),
       services: ((services.data ?? []) as Row[]).map((row) => ({ id: row.id, name: row.name })),
     },
   });
@@ -908,6 +964,136 @@ async function addMaintenance(
   return json(request, { data: { added: true } }, 201);
 }
 
+/** Devices of a rack: same rack name (case-insensitive) and location. */
+async function devicesInRack(
+  admin: Admin,
+  tenantId: string,
+  name: string,
+  locationId: string | null,
+): Promise<{ assetId: string; name: string; top: number | null }[]> {
+  const { data: rows, error } = await admin.from("asset_infrastructure")
+    .select("asset_id, rack, rack_unit").eq("tenant_id", tenantId)
+    .not("rack", "is", null).limit(5000);
+  if (error) throw dbFailure();
+  const wanted = name.trim().toLocaleLowerCase("de-CH");
+  const matches = ((rows ?? []) as Row[]).filter((row) =>
+    typeof row.rack === "string" && row.rack.trim().toLocaleLowerCase("de-CH") === wanted
+  );
+  if (matches.length === 0) return [];
+  const { data: assets, error: assetError } = await admin.from("assets")
+    .select("id, name, location_id").eq("tenant_id", tenantId)
+    .in("id", matches.map((row) => String(row.asset_id)));
+  if (assetError) throw dbFailure();
+  const assetById = new Map(((assets ?? []) as Row[]).map((row) => [String(row.id), row]));
+  return matches.flatMap((row) => {
+    const asset = assetById.get(String(row.asset_id));
+    if (!asset || (asset.location_id ?? null) !== locationId) return [];
+    return [{ assetId: String(asset.id), name: String(asset.name), top: topRackUnit(row.rack_unit) }];
+  });
+}
+
+async function saveRack(
+  request: Request,
+  admin: Admin,
+  actorId: string,
+  action: Extract<Action, { type: "saveRack" }>,
+) {
+  if (action.locationId) {
+    const { data, error } = await admin.from("asset_locations").select("id")
+      .eq("tenant_id", action.tenantId).eq("id", action.locationId).maybeSingle();
+    if (error) throw dbFailure();
+    if (!data) throw new HttpError(422, "location_invalid", "Der Standort ist nicht verfügbar.");
+  }
+  let previous: { name: string; locationId: string | null } | null = null;
+  if (action.id) {
+    const { data, error } = await admin.from("infrastructure_racks")
+      .select("name, location_id").eq("tenant_id", action.tenantId).eq("id", action.id)
+      .maybeSingle();
+    if (error) throw dbFailure();
+    if (!data) throw new HttpError(404, "rack_not_found", "Das Rack ist nicht verfügbar.");
+    previous = { name: String(data.name), locationId: (data.location_id as string | null) ?? null };
+  }
+  // Devices that move with the rack: those of the saved rack, or for a new
+  // rack the devices that already name it.
+  const members = await devicesInRack(
+    admin,
+    action.tenantId,
+    previous?.name ?? action.name,
+    previous ? previous.locationId : action.locationId,
+  );
+  const tooHigh = members.find((device) => device.top !== null && device.top > action.heightUnits);
+  if (tooHigh) {
+    throw new HttpError(
+      422,
+      "rack_too_small",
+      `«${tooHigh.name}» belegt HE ${tooHigh.top}. Das Rack braucht mindestens ${tooHigh.top} HE.`,
+    );
+  }
+  const values = {
+    tenant_id: action.tenantId,
+    name: action.name,
+    location_id: action.locationId,
+    height_units: action.heightUnits,
+    notes: action.notes,
+    updated_at: new Date().toISOString(),
+  };
+  const result = action.id
+    ? await admin.from("infrastructure_racks").update(values)
+      .eq("tenant_id", action.tenantId).eq("id", action.id).select("id").single()
+    : await admin.from("infrastructure_racks").insert({ ...values, created_by: actorId })
+      .select("id").single();
+  if (result.error) {
+    if (result.error.code === "23505") {
+      throw new HttpError(409, "rack_exists", "Ein Rack mit diesem Namen gibt es am Standort bereits.");
+    }
+    throw dbFailure();
+  }
+  const ids = members.map((device) => device.assetId);
+  if (previous && ids.length) {
+    if (previous.name !== action.name) {
+      const { error } = await admin.from("asset_infrastructure").update({ rack: action.name })
+        .eq("tenant_id", action.tenantId).in("asset_id", ids);
+      if (error) throw dbFailure();
+    }
+    if (previous.locationId !== action.locationId) {
+      // The devices are in the rack: they move with it.
+      const { error } = await admin.from("assets").update({ location_id: action.locationId })
+        .eq("tenant_id", action.tenantId).in("id", ids);
+      if (error) throw dbFailure();
+    }
+  }
+  return json(request, { data: { rackId: result.data.id, movedDevices: previous ? ids.length : 0 } });
+}
+
+async function deleteRack(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { type: "deleteRack" }>,
+) {
+  const { data, error } = await admin.from("infrastructure_racks")
+    .select("name, location_id").eq("tenant_id", action.tenantId).eq("id", action.id)
+    .maybeSingle();
+  if (error) throw dbFailure();
+  if (!data) throw new HttpError(404, "rack_not_found", "Das Rack ist nicht verfügbar.");
+  const members = await devicesInRack(
+    admin,
+    action.tenantId,
+    String(data.name),
+    (data.location_id as string | null) ?? null,
+  );
+  if (members.length) {
+    throw new HttpError(
+      409,
+      "rack_not_empty",
+      `Im Rack sind noch ${members.length} Geräte. Entfernen Sie zuerst die Geräte aus dem Rack.`,
+    );
+  }
+  const { error: deleteError } = await admin.from("infrastructure_racks").delete()
+    .eq("tenant_id", action.tenantId).eq("id", action.id);
+  if (deleteError) throw dbFailure();
+  return json(request, { data: { deleted: true } });
+}
+
 async function addLocation(request: Request, admin: Admin, tenantId: string, name: string) {
   const { data, error } = await admin.from("asset_locations")
     .upsert({ tenant_id: tenantId, name, active: true }, { onConflict: "tenant_id,name" })
@@ -1096,6 +1282,10 @@ const handler = withSupabase(
           return await planMaintenance(request, admin, actorId, action);
         case "scheduleChecklist":
           return await scheduleChecklist(request, admin, actorId, action);
+        case "saveRack":
+          return await saveRack(request, admin, actorId, action);
+        case "deleteRack":
+          return await deleteRack(request, admin, action);
       }
     } catch (error) {
       if (error instanceof HttpError) {
