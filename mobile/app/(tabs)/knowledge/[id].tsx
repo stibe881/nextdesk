@@ -92,6 +92,12 @@ export default function KnowledgeArticleScreen() {
     );
   }
 
+  // Always back to the knowledge list: «back» returned to whichever tab the
+  // article was opened from (e.g. the ticket page).
+  function goToKnowledgeList() {
+    router.replace("/knowledge" as never);
+  }
+
   async function shareArticle() {
     if (!article) return;
     try {
@@ -141,7 +147,7 @@ export default function KnowledgeArticleScreen() {
             <Pressable
               accessibilityLabel="Zurück zu Wissen"
               accessibilityRole="button"
-              onPress={() => router.back()}
+              onPress={goToKnowledgeList}
               style={styles.retry}
             >
               <Text style={styles.retryText}>Zurück zu Wissen</Text>
@@ -151,7 +157,7 @@ export default function KnowledgeArticleScreen() {
           <KnowledgeArticleView
             body={article.body}
             imageUrls={article.imageUrls}
-            onBack={() => router.back()}
+            onBack={goToKnowledgeList}
             onShare={() => void shareArticle()}
             summary={article.summary}
             title={article.title}
@@ -213,7 +219,7 @@ const useStyles = makeThemedStyles((c) => ({
     borderTopWidth: 1,
     flexDirection: "row",
     gap: 10,
-    paddingBottom: 6,
+    paddingBottom: 34,
     paddingTop: 10,
   },
   action: {
