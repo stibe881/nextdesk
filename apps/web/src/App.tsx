@@ -2971,7 +2971,7 @@ function AuthenticatedApp() {
   const [onboardingAttentionCount, setOnboardingAttentionCount] = useState<
     number | null
   >(null);
-  // Agents: tickets without team and agent, security cases without an agent.
+  // Agents: tickets without an assigned agent, security cases without an agent.
   const [ticketAttentionCount, setTicketAttentionCount] = useState<
     number | null
   >(null);
@@ -5345,7 +5345,7 @@ function AuthenticatedApp() {
       : label === "Shop"
         ? "neue Bestellungen warten auf Bearbeitung"
         : label === "Tickets"
-          ? "Tickets haben noch kein Team und keine Bearbeitung"
+          ? "Tickets sind noch keinem Agenten zugewiesen"
           : label === "Sicherheitsfälle"
             ? "Sicherheitsfälle sind noch niemandem zugewiesen"
             : "Eintritte sind noch nicht in Bearbeitung";
