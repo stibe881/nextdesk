@@ -177,7 +177,7 @@ async function list(admin: Client, client: Client, action: Extract<Action, { typ
     return { cases: [], stats: emptyStats() };
   }
   const { data } = await admin.from("security_cases")
-    .select("ticket_id, state, verdict, verdict_at, decision_due_at, created_at, tickets(ticket_number, subject, assigned_team_id)")
+    .select("ticket_id, state, verdict, verdict_at, decision_due_at, created_at, tickets(ticket_number, subject, assigned_team_id, assigned_agent_id)")
     .eq("tenant_id", action.tenantId).in("ticket_id", ids.slice(0, 1000))
     .order("created_at", { ascending: false }).limit(1000);
   const rows = (data ?? []) as Row[];
@@ -190,6 +190,14 @@ async function list(admin: Client, client: Client, action: Extract<Action, { typ
     ? ((await admin.from("teams").select("id, name").in("id", teamIds)).data ?? []) as Row[]
     : [];
   const teamName = new Map(teams.map((team) => [String(team.id), String(team.name)]));
+  const agentIds = [...new Set(rows.map((row) => {
+    const ticket = (Array.isArray(row.tickets) ? row.tickets[0] : row.tickets) as Row | null;
+    return text(ticket?.assigned_agent_id);
+  }).filter((id): id is string => id !== null))];
+  const agents = agentIds.length
+    ? ((await admin.from("user_profiles").select("id, display_name").in("id", agentIds)).data ?? []) as Row[]
+    : [];
+  const agentName = new Map(agents.map((agent) => [String(agent.id), text(agent.display_name)]));
 
   const now = Date.now();
   const dayStart = new Date();
@@ -220,6 +228,8 @@ async function list(admin: Client, client: Client, action: Extract<Action, { typ
       overdue: row.state === "triage" && !!row.decision_due_at &&
         Date.parse(String(row.decision_due_at)) < now,
       teamName: teamName.get(text(ticket?.assigned_team_id) ?? "") ?? null,
+      assignedAgentId: text(ticket?.assigned_agent_id),
+      assignedAgentName: agentName.get(text(ticket?.assigned_agent_id) ?? "") ?? null,
     };
   });
 
@@ -314,7 +324,7 @@ async function detail(admin: Client, client: Client, tenantId: string, ticketId:
   await requireCase(client, tenantId, ticketId);
   const [caseResult, ticketResult, reportResult, actionsResult, clicksResult] = await Promise.all([
     admin.from("security_cases").select("*").eq("ticket_id", ticketId).eq("tenant_id", tenantId).maybeSingle(),
-    admin.from("tickets").select("ticket_number, subject, description, assigned_team_id, created_at")
+    admin.from("tickets").select("ticket_number, subject, description, assigned_team_id, assigned_agent_id, created_at")
       .eq("id", ticketId).eq("tenant_id", tenantId).maybeSingle(),
     admin.from("phishing_reports").select("reporter_id, reporter_email, channel, risk_score, analysis, created_at")
       .eq("tenant_id", tenantId).eq("ticket_id", ticketId).order("created_at").limit(500),
@@ -334,6 +344,7 @@ async function detail(admin: Client, client: Client, tenantId: string, ticketId:
   const userIds = [...new Set([
     ...reports.map((entry) => text(entry.reporter_id)),
     text(securityCase.verdict_by),
+    text(ticket?.assigned_agent_id),
     ...((actionsResult.data ?? []) as Row[]).map((entry) => text(entry.done_by)),
   ].filter((id): id is string => id !== null))];
   const profiles = userIds.length
@@ -372,6 +383,8 @@ async function detail(admin: Client, client: Client, tenantId: string, ticketId:
     subject: text(ticket.subject),
     description: text(ticket.description),
     teamName: text(team?.name),
+    assignedAgentId: text(ticket.assigned_agent_id),
+    assignedAgentName: names.get(text(ticket.assigned_agent_id) ?? "") ?? null,
     createdAt: text(ticket.created_at),
     state: String(securityCase.state),
     verdict: isSecurityVerdict(securityCase.verdict) ? securityCase.verdict : null,
