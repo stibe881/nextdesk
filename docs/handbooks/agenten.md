@@ -300,10 +300,12 @@ Als Agent lesen Sie nicht nur Artikel, sondern schreiben sie auch:
    Sichtbarkeit (_Intern_ oder _Extern_ für Mitarbeitende).
 2. Optional **Mit KI aufbereiten** oder direkt aus einem gelösten Ticket
    **Entwurf mit KI erstellen**.
-3. **Zur Freigabe einreichen** – nach der Prüfung wird der Artikel
-   **veröffentlicht**. Veraltete Artikel **archivieren**.
+3. **Speichern** – der Artikel ist sofort **veröffentlicht**, eine Freigabe ist
+   nicht nötig. Frühere Fassungen bleiben im Verlauf erhalten. Veraltete
+   Artikel **archivieren**.
 
-Status: _Entwurf → Prüfung → Veröffentlicht_.
+KI-Entwürfe aus Tickets erscheinen zuerst als _Entwurf_; mit **Speichern** oder
+**Veröffentlichen** gehen sie live.
 
 ![Wissensdatenbank aus Sicht der Agenten](images/ag-wissen.jpg)
 
