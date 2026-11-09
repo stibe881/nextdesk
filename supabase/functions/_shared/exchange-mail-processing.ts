@@ -941,7 +941,11 @@ async function readInboundAttachments(
   const response = await graphRequestForChannel<Row>(
     admin,
     channel,
-    `/users/${mailbox}/messages/${encodeURIComponent(graphMessageId)}/attachments?$top=${MAX_INBOUND_ATTACHMENTS}&$select=id,name,contentType,size,contentBytes,isInline,contentId`,
+    // No $select: contentBytes/contentId exist only on file attachments, and
+    // selecting them fails the whole request with 400 BadRequest as soon as
+    // the mail carries an attached message (item attachment), e.g. a
+    // phishing report from Microsoft's Outlook «Report» button.
+    `/users/${mailbox}/messages/${encodeURIComponent(graphMessageId)}/attachments?$top=${MAX_INBOUND_ATTACHMENTS}`,
   );
   const entries = array(response.data.value).slice(0, MAX_INBOUND_ATTACHMENTS);
   const attachments: InboundAttachment[] = [];
