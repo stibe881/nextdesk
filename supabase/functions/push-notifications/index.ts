@@ -55,6 +55,8 @@ const MODE_ONLY_CATEGORIES: readonly Category[] = [
   "infrastructure",
   "security_report",
 ];
+// Phishing reports are opt-in: off unless the person switched them on.
+const OPT_IN_MODE_CATEGORIES: readonly Category[] = ["security_report"];
 const DEFAULT_ENABLED_CATEGORIES = ALL_CATEGORIES.filter(
   (category) =>
     category !== "inventory_low_stock" &&
@@ -507,12 +509,20 @@ export function defaultPreferences() {
     // Unterbestand braucht immer ein persönliches, nachträgliches Opt-in.
     // Die neue Kategorie darf weder für bestehende noch neue Präferenzen aus
     // einer bisherigen Push-Standardauswahl geerbt werden.
-    enabledCategories: [...DEFAULT_ENABLED_CATEGORIES, ...MODE_ONLY_CATEGORIES],
+    enabledCategories: [
+      ...DEFAULT_ENABLED_CATEGORIES,
+      ...MODE_ONLY_CATEGORIES.filter(
+        (category) => !OPT_IN_MODE_CATEGORIES.includes(category),
+      ),
+    ],
     globalEnabled: true,
     categoryModes: Object.fromEntries(
       ALL_CATEGORIES.map((category) => [
         category,
-        category === "inventory_low_stock" ? "off" : "immediate",
+        category === "inventory_low_stock" ||
+        OPT_IN_MODE_CATEGORIES.includes(category)
+          ? "off"
+          : "immediate",
       ]),
     ) as Record<Category, DeliveryMode>,
     quietHoursEnabled: false,
@@ -560,7 +570,9 @@ function preferencesForResponse(row: PreferenceRow | null) {
     ALL_CATEGORIES.map((category) => [
       category,
       categoryModes[category] ??
-        (enabled.has(category) || MODE_ONLY_CATEGORIES.includes(category)
+        (enabled.has(category) ||
+        (MODE_ONLY_CATEGORIES.includes(category) &&
+          !OPT_IN_MODE_CATEGORIES.includes(category))
           ? "immediate"
           : "off"),
     ]),

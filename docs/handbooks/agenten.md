@@ -400,7 +400,8 @@ Entra, gilt die neue Stufe nach dem nächsten Abgleich automatisch.
 - In der Tabelle **Benachrichtigungen** schalten Sie pro Benachrichtigung
   (z. B. Zuweisungen, Eskalationen, Erwähnungen, Phishing-Meldungen)
   einzeln **Push** und **E-Mail** ein oder aus. Für Agenten sind zu Beginn alle Benachrichtigungen
-  per Push und E-Mail eingeschaltet. E-Mails kommen über das Exchange-Postfach
+  per Push und E-Mail eingeschaltet – ausser **Phishing-Meldungen**: Diese sind
+  ausgeschaltet. Wer sie erhalten möchte, schaltet sie dort selbst ein. E-Mails kommen über das Exchange-Postfach
   Ihres Unternehmens und sind verfügbar, sobald eines verbunden ist.
 - Das iPhone-Widget **Meine Prioritäten** zeigt Ihre wichtigsten Tickets in
   den Farben Ihres Unternehmens. Öffnen Sie die App einmal, damit es aktuell
