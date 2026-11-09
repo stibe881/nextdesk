@@ -192,8 +192,6 @@ Wählen Sie im Antwortbereich den Modus:
 Praktische Helfer:
 
 - **Antwort senden und als gelöst markieren** in einem Schritt
-- `/` im Textfeld fügt einen **Antwort-Baustein** ein (verwalten unter
-  _Persönliche Einstellungen → Antwort-Bausteine_)
 - `@Name` erwähnt Kolleginnen und Kollegen
 - **Bilder hochladen**, **Makro anwenden**, **KI-Entwurf erstellen**
   (falls KI-Assistenz aktiv)
@@ -294,9 +292,7 @@ Entra, gilt die neue Stufe nach dem nächsten Abgleich automatisch.
 
 Zusätzlich zu den Karten für Mitarbeitende sehen Agenten:
 
-- **Antwort-Bausteine** – eigene Textbausteine anlegen und bearbeiten
 - **Passwort setzen oder ändern** (ohne SSO)
-- **Datenschutz** → **Meine Daten exportieren**
 - **Handbücher** – Handbuch für Mitarbeitende und Handbuch für Agenten
 
 ![Persönliche Einstellungen eines Agenten](images/ag-profil.jpg)

@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -14,18 +13,6 @@ import {
   type TicketCommentVisibility,
 } from "@/lib/nextdesk-tickets";
 import { DictationControls } from "@/components/dictation-controls";
-import {
-  ReplySnippetSheet,
-  SnippetSuggestions,
-} from "@/components/reply-snippet-sheet";
-import {
-  filterSnippets,
-  insertSnippetAt,
-  resolveSnippetPlaceholders,
-  snippetTriggerAt,
-  type ReplySnippet,
-  type SnippetContext,
-} from "@/lib/reply-snippets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type TicketConversationProps = {
@@ -44,10 +31,6 @@ type TicketConversationProps = {
   onPolish?: (() => Promise<void>) | undefined;
   onVisibilityChange: (visibility: TicketCommentVisibility) => void;
   visibility: TicketCommentVisibility;
-  /** «Antwort-Bausteine» of the agent; without them no picker is shown. */
-  snippets?: ReplySnippet[] | undefined;
-  snippetContext?: SnippetContext | undefined;
-  departmentId?: string | null | undefined;
 };
 
 type MessageDirection = "incoming" | "internal" | "outgoing";
@@ -185,9 +168,6 @@ export function TicketConversation({
   onPolish,
   onVisibilityChange,
   visibility,
-  snippets = [],
-  snippetContext,
-  departmentId = null,
 }: TicketConversationProps) {
   const colors = useAppColors();
   const styles = useStyles();
@@ -197,33 +177,6 @@ export function TicketConversation({
   const draftLabel = draftStatusLabel(draftState);
   const sendDisabled = isSending || !body.trim();
   const groups = buildGroups(comments);
-  const [caret, setCaret] = useState(0);
-  const [snippetSheetOpen, setSnippetSheetOpen] = useState(false);
-  const hasSnippets = snippets.length > 0 && snippetContext !== undefined;
-  // «/kürzel» in the reply field suggests matching snippets.
-  const trigger = hasSnippets
-    ? snippetTriggerAt(body, Math.min(caret, body.length))
-    : null;
-  const snippetMatches = trigger
-    ? filterSnippets(snippets, trigger.query, departmentId, 5)
-    : [];
-
-  function insertSnippet(snippet: ReplySnippet) {
-    if (!snippetContext) return;
-    const resolved = resolveSnippetPlaceholders(snippet.body, snippetContext);
-    if (trigger) {
-      const next = insertSnippetAt(body, trigger, caret, resolved);
-      onBodyChange(next.text);
-      setCaret(next.caret);
-      return;
-    }
-    const position = Math.min(caret, body.length);
-    const before = body.slice(0, position);
-    const separator = before && !/\s$/.test(before) ? " " : "";
-    onBodyChange(`${before}${separator}${resolved}${body.slice(position)}`);
-    setCaret(position + separator.length + resolved.length);
-    setSnippetSheetOpen(false);
-  }
   const countLabel =
     comments.length === 1 ? "1 Nachricht" : `${comments.length} Nachrichten`;
 
@@ -375,43 +328,6 @@ export function TicketConversation({
             onTextChange={onBodyChange}
             text={body}
           />
-          {hasSnippets ? (
-            <Pressable
-              accessibilityHint="Öffnet die Liste deiner Antwort-Bausteine"
-              accessibilityRole="button"
-              disabled={isSending}
-              onPress={() => {
-                hapticSelection();
-                setSnippetSheetOpen(true);
-              }}
-              style={styles.snippetButton}
-            >
-              <Ionicons
-                color={colors.primaryText}
-                name="document-text-outline"
-                size={15}
-              />
-              <Text style={styles.snippetButtonText}>Bausteine</Text>
-              <Text style={styles.snippetHint}>oder «/» tippen</Text>
-            </Pressable>
-          ) : null}
-          {hasSnippets && snippetContext ? (
-            <ReplySnippetSheet
-              context={snippetContext}
-              departmentId={departmentId}
-              onClose={() => setSnippetSheetOpen(false)}
-              onPick={insertSnippet}
-              snippets={snippets}
-              visible={snippetSheetOpen}
-            />
-          ) : null}
-          {hasSnippets && snippetContext ? (
-            <SnippetSuggestions
-              context={snippetContext}
-              matches={snippetMatches}
-              onPick={insertSnippet}
-            />
-          ) : null}
           <View style={styles.inputRow}>
             <TextInput
               accessibilityLabel={
@@ -422,9 +338,6 @@ export function TicketConversation({
               maxLength={50_000}
               multiline
               onChangeText={onBodyChange}
-              onSelectionChange={(event) =>
-                setCaret(event.nativeEvent.selection.end)
-              }
               placeholder={
                 isInternalDraft
                   ? "Interne Notiz schreiben …"
@@ -654,18 +567,6 @@ function InternalGroup({ group }: { group: MessageGroup }) {
 }
 
 const useStyles = makeThemedStyles((c) => ({
-  snippetButton: {
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: c.primarySoft,
-    borderRadius: 999,
-    flexDirection: "row",
-    gap: 6,
-    minHeight: 32,
-    paddingHorizontal: 12,
-  },
-  snippetButtonText: { color: c.primaryText, fontSize: 13, fontWeight: "800" },
-  snippetHint: { color: c.muted, fontSize: 12 },
   chat: {
     backgroundColor: c.surface,
     borderColor: c.border,
@@ -894,7 +795,12 @@ const useStyles = makeThemedStyles((c) => ({
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  restoredDraftText: { color: c.foreground, flex: 1, fontSize: 12, lineHeight: 16 },
+  restoredDraftText: {
+    color: c.foreground,
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+  },
   restoredDraftAction: {
     color: c.primaryText,
     fontSize: 12,

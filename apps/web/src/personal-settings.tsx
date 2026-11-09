@@ -1,9 +1,7 @@
 import {
   ArrowLeft,
-  Download,
   KeyRound,
   Laptop,
-  LoaderCircle,
   LogOut,
   Mail,
   ShieldCheck,
@@ -17,7 +15,6 @@ import type { User } from "@supabase/supabase-js";
 import { HandbookCard, HandbookViewer } from "./handbooks";
 import { deleteAccount } from "./lib/account";
 import type { HandbookId } from "./lib/handbooks";
-import { ReplySnippetManager } from "./reply-snippets";
 import { supabase } from "./lib/supabase";
 import {
   DEFAULT_DELIVERY_WINDOW,
@@ -51,35 +48,6 @@ type ProviderSummary = {
   label: string;
   passwordNote: string;
 };
-
-type DataExport = {
-  comments: unknown[];
-  exportedAt: string;
-  profile: Record<string, unknown> | null;
-  tickets: unknown[];
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseDataExport(value: unknown): DataExport {
-  if (!isRecord(value) || !isRecord(value.data)) {
-    throw new Error("invalid_requester_portal_response");
-  }
-  const exportedAt = value.data.exportedAt;
-  const { comments, profile, tickets } = value.data;
-  if (
-    typeof exportedAt !== "string" ||
-    Number.isNaN(new Date(exportedAt).getTime()) ||
-    !Array.isArray(tickets) ||
-    !Array.isArray(comments) ||
-    (profile !== null && !isRecord(profile))
-  ) {
-    throw new Error("invalid_requester_portal_response");
-  }
-  return { comments, exportedAt, profile, tickets };
-}
 
 function providerSummary(user: User, ssoEnforced: boolean): ProviderSummary {
   const providers = new Set(
@@ -201,10 +169,6 @@ export function PersonalSettings({
     "idle" | "saving" | "success" | "error"
   >("idle");
   const [message, setMessage] = useState("");
-  const [exportState, setExportState] = useState<
-    "idle" | "exporting" | "success" | "error"
-  >("idle");
-  const [exportMessage, setExportMessage] = useState("");
   const [otherSessionsState, setOtherSessionsState] = useState<
     "idle" | "confirming" | "signing-out" | "success" | "error"
   >("idle");
@@ -402,48 +366,6 @@ export function PersonalSettings({
     setPasswordConfirmation("");
     setSaveState("success");
     setMessage("Dein Passwort wurde erfolgreich geändert.");
-  }
-
-  async function exportPersonalData() {
-    if (!supabase || !tenantId || exportState === "exporting") {
-      setExportState("error");
-      setExportMessage(
-        "Der Datenexport ist ohne aktiven Mandanten derzeit nicht verfügbar.",
-      );
-      return;
-    }
-    setExportState("exporting");
-    setExportMessage("");
-    try {
-      const { data, error } = await supabase.functions.invoke(
-        "requester-portal",
-        {
-          body: { tenantId, type: "exportMyData" },
-        },
-      );
-      if (error) throw error;
-      const exported = parseDataExport(data);
-      const blob = new Blob([JSON.stringify(exported, null, 2)], {
-        type: "application/json;charset=utf-8",
-      });
-      const downloadUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      const date = exported.exportedAt.slice(0, 10) || "heute";
-      link.href = downloadUrl;
-      link.download = `nextDesk-meine-daten-${date}.json`;
-      link.style.display = "none";
-      document.body.append(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(downloadUrl);
-      setExportState("success");
-      setExportMessage("Deine Daten wurden als JSON-Datei heruntergeladen.");
-    } catch {
-      setExportState("error");
-      setExportMessage(
-        "Der Datenexport konnte nicht erstellt werden. Bitte versuche es später erneut.",
-      );
-    }
   }
 
   async function signOutOtherDevices() {
@@ -994,69 +916,6 @@ export function PersonalSettings({
           ) : null}
         </section>
       ) : null}
-
-      {employeeView ? null : (
-        <section
-          aria-labelledby="personal-privacy-heading"
-          className="personal-settings__card"
-        >
-          <div className="personal-settings__card-heading">
-            <span
-              className="personal-settings__icon personal-settings__icon--security"
-              aria-hidden="true"
-            >
-              <Download size={19} strokeWidth={1.9} />
-            </span>
-            <div>
-              <h3 id="personal-privacy-heading">Datenschutz</h3>
-              <p>
-                Lade eine JSON-Datei mit deinen exportierbaren Profildaten,
-                eigenen Tickets und externen Kommentaren herunter.
-              </p>
-            </div>
-          </div>
-          <button
-            className="secondary-button"
-            disabled={!tenantId || exportState === "exporting"}
-            onClick={() => void exportPersonalData()}
-            type="button"
-          >
-            {exportState === "exporting" ? (
-              <LoaderCircle aria-hidden="true" size={17} strokeWidth={1.9} />
-            ) : (
-              <Download aria-hidden="true" size={17} strokeWidth={1.9} />
-            )}
-            {exportState === "exporting"
-              ? "Daten werden vorbereitet …"
-              : "Meine Daten exportieren"}
-          </button>
-          {!tenantId && (
-            <p className="personal-settings__hint">
-              Der Export wird verfügbar, sobald ein aktiver Mandant übergeben
-              wird.
-            </p>
-          )}
-          {exportMessage && (
-            <p
-              aria-live="polite"
-              className={
-                exportState === "success"
-                  ? "personal-settings__notice personal-settings__notice--success"
-                  : "personal-settings__notice personal-settings__notice--error"
-              }
-              role="status"
-            >
-              {exportMessage}
-            </p>
-          )}
-        </section>
-      )}
-
-      {employeeView || !tenantId ? null : (
-        <section className="personal-settings__card">
-          <ReplySnippetManager tenantId={tenantId} />
-        </section>
-      )}
 
       <section
         aria-labelledby="personal-sessions-heading"

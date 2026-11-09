@@ -102,7 +102,6 @@ import { TicketPdfRecord } from "./ticket-pdf-record";
 import { TicketCoordination } from "./ticket-coordination";
 import { TicketSlaBreachReason } from "./ticket-sla-breach-reason";
 import { TicketSupportLevel } from "./ticket-support-level";
-import { useReplySnippetAssist } from "./reply-snippets";
 import {
   TicketFormAnswersBlock,
   parseStoredFormAnswers,
@@ -4153,25 +4152,6 @@ export function TicketDetail({
     commentVisibility,
   );
   const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
-  // «Antwort-Bausteine»: «/» in the reply field opens the snippet picker.
-  const snippetAssist = useReplySnippetAssist({
-    enabled:
-      !requesterView &&
-      Boolean(
-        detail &&
-        (detail.canCommentExternal || detail.canWriteInternalNotes) &&
-        detail.ticket.id === ticketId,
-      ),
-    tenantId,
-    ticketId,
-    departmentId: detail?.ticket.department_id ?? null,
-    text: commentBody,
-    onTextChange: (value) =>
-      setCommentDrafts((current) =>
-        updateTicketCommentDraft(current, commentVisibility, value),
-      ),
-    textareaRef: commentTextareaRef,
-  });
   const activeCommentImageAttachments =
     commentImageAttachments[commentVisibility];
   // Shared with colleagues so nobody answers the same ticket twice.
@@ -7437,7 +7417,6 @@ export function TicketDetail({
               <label className="ticket-comment-body">
                 {commentComposer.bodyLabel}
                 <textarea
-                  {...snippetAssist.textareaProps}
                   aria-describedby="ticket-comment-visibility-hint"
                   disabled={busy || attachmentBusy}
                   maxLength={50_000}
@@ -7456,8 +7435,6 @@ export function TicketDetail({
                   value={commentBody}
                 />
               </label>
-              {snippetAssist.picker}
-              {snippetAssist.browser}
               {canAttachCommentImages ? (
                 <div
                   className={`ticket-comment-image-dropzone${isCommentImageDropActive ? " ticket-comment-image-dropzone--active" : ""}`}

@@ -32,8 +32,6 @@ import { isRatableTicketStatus } from "@/lib/ticket-satisfaction-model";
 import { reminderAnswerFromParam } from "@/lib/requester-progress";
 import { personRoute } from "@/lib/person-overview";
 import { TicketConversation } from "@/components/ticket-conversation";
-import { loadTicketSnippets } from "@/lib/nextdesk-assistance";
-import type { ReplySnippet, SnippetContext } from "@/lib/reply-snippets";
 import { TicketPhotoAttachments } from "@/components/ticket-photo-attachments";
 import { TicketSupportLevelCard } from "@/components/ticket-support-level-card";
 import {
@@ -366,31 +364,6 @@ export default function TicketDetailScreen() {
   // Background reloads (reconnect, recovery, refresh after actions) must never
   // overwrite text that is currently being edited. Refs expose the latest
   // editing state to the stable load() callback.
-  // «Antwort-Bausteine» of the agent with the ticket's placeholder values.
-  const [snippetData, setSnippetData] = useState<{
-    ticketId: string;
-    snippets: ReplySnippet[];
-    context: SnippetContext;
-  } | null>(null);
-  const snippetTicketId = ticket?.id ?? null;
-  const snippetTenantId = tenant?.id ?? null;
-  const canWriteReplies = Boolean(
-    ticket && (ticket.canWriteInternalNotes || ticket.canCommentExternal),
-  );
-  useEffect(() => {
-    if (!snippetTenantId || !snippetTicketId || !canWriteReplies) return;
-    let active = true;
-    void loadTicketSnippets(snippetTenantId, snippetTicketId)
-      .then((result) => {
-        if (active) setSnippetData({ ticketId: snippetTicketId, ...result });
-      })
-      .catch(() => {
-        // Requesters and people without snippets just write as before.
-      });
-    return () => {
-      active = false;
-    };
-  }, [canWriteReplies, snippetTenantId, snippetTicketId]);
   const editingFieldRef = useRef<typeof editingField>(null);
   const draftDirtyRef = useRef(false);
   useEffect(() => {
@@ -2879,15 +2852,6 @@ export default function TicketDetailScreen() {
               }
               onVisibilityChange={changeCommentVisibility}
               visibility={commentVisibility}
-              departmentId={ticket.departmentId}
-              snippetContext={
-                snippetData?.ticketId === ticket.id
-                  ? snippetData.context
-                  : undefined
-              }
-              snippets={
-                snippetData?.ticketId === ticket.id ? snippetData.snippets : []
-              }
             />
           </View>
 
