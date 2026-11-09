@@ -163,6 +163,27 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-sicherheitsfaelle",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Sicherheitsfälle");
+      await h.waitText("Voicemail (24 Sekunden)");
+      await h.settle(300);
+    },
+  },
+  {
+    name: "ag-sicherheitsfall",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Sicherheitsfälle");
+      await h.clickText("Voicemail (24 Sekunden)");
+      await h.waitText("Befunde der Analyse");
+      await h.settle(300);
+    },
+  },
+  {
     name: "ag-personensuche",
     persona: "agent",
     async run(h) {

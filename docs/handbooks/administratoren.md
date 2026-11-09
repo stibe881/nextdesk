@@ -74,7 +74,7 @@ Wichtige Funktionen und ihre Konfiguration:
 | Wissensdatenbank                                                      | Artikel für Agenten und Mitarbeitende                                                                                   |
 | Ticketvorlagen                                                        | **Vorlagen verwalten → Neue Vorlage**: Name, Betreff- und Beschreibungsvorlage, Abteilung, Priorität, Checklistenpunkte |
 | SLA-Automatisierung                                                   | Erinnerungen, automatisches Lösen/Schliessen, Regeln für neue Tickets, KI-Triage, Drittanbieter (siehe unten)           |
-| E-Mail-Kanal (Exchange Online)                                        | Support-Postfächer und Phishing-Meldungen (siehe Installationsanleitung)                                                |
+| E-Mail-Kanal (Exchange Online)                                        | Support-Postfächer, Phishing-Meldungen und Massnahmen je Urteil für Sicherheitsfälle (siehe Installationsanleitung)     |
 | Push-Benachrichtigungen                                               | Inhaltsstufe («Nur Ticketnummer» empfohlen); wann jemand Mitteilungen erhält, legt jede Person selbst fest              |
 | KI-Assistenz                                                          | Freigabe für Wissensentwürfe mit Claude und Selbstbedienungs-Assistent im Portal                                        |
 | Asset-Management                                                      | Geräte und Microsoft Intune; Monitoring liegt im Register «Monitoring»                                                  |

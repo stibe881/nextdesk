@@ -48,6 +48,7 @@ import {
   Minus,
   MonitorCog,
   Network,
+  ShieldAlert,
   Plus,
   Settings,
   SlidersHorizontal,
@@ -123,6 +124,7 @@ import {
   type SupportLevelFilter,
 } from "./lib/support-levels";
 import { Infrastructure } from "./infrastructure";
+import { SecurityCases } from "./security-cases";
 import {
   HomeLayoutEditor,
   loadHomeLayout,
@@ -225,6 +227,7 @@ type Section =
   | "Infrastruktur"
   | "Lager"
   | "Fälle"
+  | "Sicherheitsfälle"
   | "Verträge"
   | "Lizenzen"
   | "Raumplanung"
@@ -356,6 +359,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Tickets", Icon: Ticket },
     { label: "Shop", Icon: ShoppingBag },
     { label: "Fälle", Icon: FileWarning },
+    { label: "Sicherheitsfälle", Icon: ShieldAlert },
     { label: "Wissen", Icon: BookOpen },
     { label: "Services", Icon: MonitorCog },
     { label: "Serviceaufgaben", Icon: ListChecks },
@@ -377,7 +381,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "ARBEITSBEREICH",
     id: "navigation-category-workspace",
     navigationLabel: "Arbeitsbereich",
-    sectionLabels: ["Tickets", "Shop", "Fälle"],
+    sectionLabels: ["Tickets", "Shop", "Fälle", "Sicherheitsfälle"],
   },
   {
     heading: "PLANUNG & BETRIEB",
@@ -4738,6 +4742,7 @@ function AuthenticatedApp() {
     if (item.label === "Infrastruktur") {
       return isFeatureEnabled("assets.management");
     }
+    if (item.label === "Sicherheitsfälle") return canWorkTickets;
     if (item.label === "Lager") return isFeatureEnabled("inventory.management");
     if (item.label === "Shop") return isFeatureEnabled("self_service.shop");
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
@@ -6140,6 +6145,8 @@ function AuthenticatedApp() {
             }}
             tenantId={activeTenant.id}
           />
+        ) : section === "Sicherheitsfälle" && activeTenant && canWorkTickets ? (
+          <SecurityCases key={activeTenant.id} tenantId={activeTenant.id} />
         ) : section === "Infrastruktur" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (

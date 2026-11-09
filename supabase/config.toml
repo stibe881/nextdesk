@@ -263,3 +263,9 @@ verify_jwt = false
 
 [functions.phishing-reports]
 verify_jwt = true
+
+[functions.security-cases]
+verify_jwt = true
+
+[functions.security-case-response]
+verify_jwt = false

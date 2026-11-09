@@ -954,6 +954,165 @@ const HANDLERS = {
       stats: { inbound24h: 23, outbound24h: 41, failed24h: 0 },
     });
   },
+  "security-cases": (body) => {
+    const cases = [
+      {
+        ticketId: "sec-41",
+        ticketNumber: "ICT-2026-000041",
+        subject: "Voicemail (24 Sekunden)",
+        from: "noreply@vm-telefon-service.com",
+        state: "triage",
+        verdict: null,
+        riskScore: 82,
+        riskLevel: "high",
+        reports: 7,
+        reporters: 7,
+        firstReportedAt: D.ago(26 * 60 * 1000),
+        decisionDueAt: D.ago(-4 * 60 * 1000),
+        overdue: false,
+        teamName: "System Engineering",
+      },
+      {
+        ticketId: "sec-40",
+        ticketNumber: "ICT-2026-000040",
+        subject: "Ihre Lieferung konnte nicht zugestellt werden",
+        from: "info@paket-zustellung24.net",
+        state: "triage",
+        verdict: null,
+        riskScore: 54,
+        riskLevel: "medium",
+        reports: 1,
+        reporters: 1,
+        firstReportedAt: D.ago(65 * 60 * 1000),
+        decisionDueAt: D.ago(-175 * 60 * 1000),
+        overdue: false,
+        teamName: "System Engineering",
+      },
+      {
+        ticketId: "sec-39",
+        ticketNumber: "ICT-2026-000039",
+        subject: "HIN Domain encryption: Neue Nachricht",
+        from: "noreply@hin.ch",
+        state: "triage",
+        verdict: null,
+        riskScore: 12,
+        riskLevel: "low",
+        reports: 1,
+        reporters: 1,
+        firstReportedAt: D.ago(3 * 60 * 60 * 1000),
+        decisionDueAt: D.ago(-21 * 60 * 60 * 1000),
+        overdue: false,
+        teamName: "System Engineering",
+      },
+    ];
+    if (body.type === "list") {
+      return ok({
+        cases: body.state === "triage" || body.state === "all" ? cases : [],
+        stats: {
+          triage: 3,
+          triageHigh: 1,
+          overdue: 0,
+          actions: 2,
+          reportsToday: 14,
+          reportersToday: 11,
+          medianVerdictMinutes: 18,
+          clickAnswers: 21,
+          clickYes: 1,
+        },
+      });
+    }
+    if (body.type === "getTemplates") {
+      return ok({
+        custom: false,
+        templates: {
+          harmless: [],
+          spam: ["Absender in Microsoft Defender als Spam sperren"],
+          phishing: [
+            "Absender und Domain in Microsoft Defender sperren",
+            "Link-Domains blockieren",
+            "Mail aus allen Postfächern entfernen (Defender → Bedrohungs-Explorer)",
+            "Melder fragen: geklickt oder Daten eingegeben?",
+            "Falls ja: Passwort zurücksetzen und Anmeldungen prüfen",
+          ],
+          targeted: [
+            "Absender und Domain in Microsoft Defender sperren",
+            "Link-Domains blockieren",
+            "Mail aus allen Postfächern entfernen (Defender → Bedrohungs-Explorer)",
+            "Melder fragen: geklickt oder Daten eingegeben?",
+            "Geschäftsleitung informieren",
+          ],
+        },
+      });
+    }
+    if (body.type === "get") {
+      return ok({
+        ticketId: "sec-41",
+        ticketNumber: "ICT-2026-000041",
+        subject: "Phishing-Meldung: Voicemail (24 Sekunden)",
+        description:
+          "Verdächtige E-Mail gemeldet von Lena Brunner.\n\nInhalt der gemeldeten E-Mail (Links entschärft):\n\nSie haben eine neue Sprachnachricht (24 Sekunden).\n\nNachricht anhören: hxxps://microsoftonline-login[.]co/voicemail?id=8812\n\nIhr Telefonie-Service",
+        teamName: "System Engineering",
+        createdAt: D.ago(26 * 60 * 1000),
+        state: "triage",
+        verdict: null,
+        verdictBy: null,
+        verdictAt: null,
+        decisionDueAt: D.ago(-4 * 60 * 1000),
+        reportersNotifiedAt: null,
+        closedAt: null,
+        analysis: {
+          score: 82,
+          level: "high",
+          from: "noreply@vm-telefon-service.com",
+          fromName: "Voicemail Service",
+          replyTo: "support@vm-telefon-service.top",
+          returnPath: "bounce@mail-relay-77.net",
+          subject: "Voicemail (24 Sekunden)",
+          date: "Mo, 9 Nov 2026 14:05:12 +0100",
+          sendingIp: "185.220.101.44",
+          auth: { spf: "softfail", dkim: "none", dmarc: "fail" },
+          findings: [
+            {
+              severity: "high",
+              message:
+                "Link-Text nennt Microsoft, das Ziel ist microsoftonline-login.co (nachgeahmte Domain).",
+            },
+            {
+              severity: "high",
+              message:
+                "Anhang ist eine HTML-Datei, typisch für gefälschte Anmeldeseiten.",
+            },
+            {
+              severity: "medium",
+              message: "DMARC fehlgeschlagen, Antwort-Adresse weicht vom Absender ab.",
+            },
+            {
+              severity: "low",
+              message: "Keine Makros und keine ausführbaren Dateien.",
+            },
+          ],
+          links: [
+            {
+              href: "hxxps://microsoftonline-login[.]co/voicemail?id=8812",
+              text: "Nachricht anhören",
+              host: "microsoftonline-login[.]co",
+            },
+          ],
+          attachments: [
+            { filename: "Voicemail_0924.htm", contentType: "text/html", size: 3174 },
+          ],
+        },
+        reporters: [
+          { name: "Lena Brunner", email: "lena.brunner@muster.ch", channel: "email", reportedAt: D.ago(26 * 60 * 1000), asked: false, answer: null },
+          { name: "Jonas Meier", email: "jonas.meier@muster.ch", channel: "email", reportedAt: D.ago(24 * 60 * 1000), asked: false, answer: null },
+          { name: "Sara Keller", email: "sara.keller@muster.ch", channel: "mobile", reportedAt: D.ago(21 * 60 * 1000), asked: false, answer: null },
+          { name: "Marco Rossi", email: "marco.rossi@muster.ch", channel: "portal", reportedAt: D.ago(18 * 60 * 1000), asked: false, answer: null },
+        ],
+        actions: [],
+      });
+    }
+    return null;
+  },
   "phishing-reports": (body) => {
     if (body.type !== "getSettings") return null;
     return ok({

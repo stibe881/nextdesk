@@ -22,6 +22,12 @@ import {
   type PhishingSettingsOptions,
   type PhishingSubmitResult,
 } from "./lib/phishing-report";
+import {
+  parseTemplates,
+  VERDICT_LABELS,
+  VERDICTS,
+  type SecurityVerdict,
+} from "./lib/security-cases";
 import { supabase } from "./lib/supabase";
 import "./phishing-report.css";
 
@@ -517,10 +523,12 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
             Mitarbeitende melden verdächtige E-Mails mit «Phishing melden» im
             Portal und in der App oder per Weiterleitung an die Meldeadresse
             (die Adresse muss beim verbundenen Exchange-Postfach ankommen, z. B.
-            als Alias). Daraus entsteht ein Sicherheitsticket mit automatischer
-            Risikoeinschätzung (interne Notiz); Links und Anhänge werden dabei
-            nicht geöffnet. Das Ticket wird dem Sicherheitsteam zugewiesen, und
-            das Team erhält eine Benachrichtigung.
+            als Alias). Daraus entsteht ein Sicherheitsfall unter
+            «Sicherheitsfälle» mit automatischer Risikoeinschätzung; Links und
+            Anhänge werden dabei nicht geöffnet. Meldungen derselben E-Mail
+            werden zu einem Fall gebündelt. Der Fall wird dem Sicherheitsteam
+            zugewiesen, das Team erhält eine Benachrichtigung, und nach dem
+            Urteil bekommen alle Melder automatisch das Ergebnis.
           </p>
         </div>
       </div>
@@ -688,6 +696,132 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
           {message}
         </p>
       ) : null}
+      {settings ? <SecurityChecklistSettings tenantId={tenantId} /> : null}
     </section>
   );
+}
+
+/** Checklist per verdict for security cases (one step per line). */
+function SecurityChecklistSettings({ tenantId }: { tenantId: string }) {
+  const [drafts, setDrafts] = useState<Record<SecurityVerdict, string> | null>(
+    null,
+  );
+  const [custom, setCustom] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void securityCall({ type: "getTemplates", tenantId })
+      .then((value) => {
+        const parsed = parseTemplates(value);
+        if (!active || !parsed) return;
+        setCustom(parsed.custom);
+        setDrafts(
+          Object.fromEntries(
+            VERDICTS.map((verdict) => [
+              verdict,
+              parsed.templates[verdict].join("\n"),
+            ]),
+          ) as Record<SecurityVerdict, string>,
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [tenantId]);
+
+  if (!drafts) return null;
+
+  async function save() {
+    if (!drafts || busy) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const templates = Object.fromEntries(
+        VERDICTS.map((verdict) => [
+          verdict,
+          drafts[verdict]
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .slice(0, 20),
+        ]),
+      );
+      const parsed = parseTemplates(
+        await securityCall({ type: "saveTemplates", tenantId, templates }),
+      );
+      if (parsed) setCustom(parsed.custom);
+      setMessage("Checklisten gespeichert.");
+    } catch (saveError) {
+      setMessage(
+        saveError instanceof Error ? saveError.message : String(saveError),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="phishing-report-settings__checklists">
+      <h3>Massnahmen je Urteil</h3>
+      <p>
+        Wenn das Sicherheitsteam einen Fall beurteilt, erscheinen diese Schritte
+        als Checkliste. Ein Schritt pro Zeile; eine leere Liste schliesst den
+        Fall direkt nach dem Urteil ab.
+        {custom ? "" : " Noch sind die Standard-Checklisten aktiv."}
+      </p>
+      <div className="phishing-report-settings__checklist-grid">
+        {VERDICTS.map((verdict) => (
+          <label key={verdict}>
+            {VERDICT_LABELS[verdict]}
+            <textarea
+              disabled={busy}
+              onChange={(event) =>
+                setDrafts((current) =>
+                  current
+                    ? { ...current, [verdict]: event.target.value }
+                    : current,
+                )
+              }
+              rows={6}
+              value={drafts[verdict]}
+            />
+          </label>
+        ))}
+      </div>
+      <div className="phishing-report-settings__checklist-actions">
+        <button
+          className="primary-button"
+          disabled={busy}
+          onClick={() => void save()}
+          type="button"
+        >
+          Checklisten speichern
+        </button>
+        {message ? (
+          <span className="tenant-automation__message" role="status">
+            {message}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+async function securityCall(body: Record<string, unknown>): Promise<unknown> {
+  if (!supabase) throw new Error("Die Verbindung ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("security-cases", {
+    body,
+  });
+  if (error) {
+    throw new Error(
+      await functionErrorMessage(
+        error,
+        "Die Checklisten konnten nicht gespeichert werden.",
+      ),
+    );
+  }
+  return data;
 }

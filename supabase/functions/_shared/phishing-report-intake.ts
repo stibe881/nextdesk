@@ -311,6 +311,7 @@ export async function createSecurityTicket(
     requester_id: input.reporterId,
     requester_contact_id: contact.id,
     source: "portal",
+    is_security_case: true,
   }).select("id, ticket_number").single()
     .setHeader("x-nextdesk-actor-id", input.reporterId);
   if (created.error || !created.data?.id) throw new Error("ticket_create_failed");
@@ -395,6 +396,8 @@ export async function finalizePhishingReport(
     channel: PhishingChannel;
     analysis: PhishingAnalysis;
     fingerprint: string;
+    /** Another report of a mail that already is an open case: no new alert. */
+    bundled?: boolean;
   },
 ): Promise<{ previousReports: number }> {
   const previous = await admin.from("phishing_reports").select("id", { count: "exact", head: true })
@@ -434,6 +437,7 @@ export async function finalizePhishingReport(
       previousReports,
     },
   });
+  if (input.bundled) return { previousReports };
   try {
     await admin.rpc("phishing_report_notify", {
       p_tenant_id: input.tenantId,

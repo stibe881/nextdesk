@@ -1,3 +1,4 @@
+import { ensureSecurityCase, openSecurityCaseFor } from "../_shared/security-cases.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import {
@@ -416,17 +417,29 @@ async function handle(
   }
 
   await admin.from("user_profiles").upsert({ id: actorId });
+  // Somebody else already reported the same mail: same security case.
+  const openCase = await openSecurityCaseFor(admin, action.tenantId, fingerprint);
   let ticket: { id: string; ticketNumber: string };
-  try {
-    ticket = await createSecurityTicket(admin, {
-      tenantId: action.tenantId,
-      settings,
-      reporterId: actorId,
-      analysis,
-    });
-  } catch (error) {
-    console.error("phishing_ticket_failed", error instanceof Error ? error.message : "");
-    throw unavailable();
+  if (openCase) {
+    ticket = openCase;
+  } else {
+    try {
+      ticket = await createSecurityTicket(admin, {
+        tenantId: action.tenantId,
+        settings,
+        reporterId: actorId,
+        analysis,
+      });
+      await ensureSecurityCase(admin, {
+        tenantId: action.tenantId,
+        ticketId: ticket.id,
+        fingerprint,
+        riskLevel: analysis.level,
+      });
+    } catch (error) {
+      console.error("phishing_ticket_failed", error instanceof Error ? error.message : "");
+      throw unavailable();
+    }
   }
   try {
     await finalizePhishingReport(admin, {
@@ -439,6 +452,7 @@ async function handle(
       channel: action.channel,
       analysis,
       fingerprint,
+      bundled: openCase !== null,
     });
   } catch (error) {
     // The ticket exists; the report row is the only missing piece.

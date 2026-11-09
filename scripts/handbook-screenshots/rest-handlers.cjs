@@ -134,7 +134,9 @@ function matches(row, column, expression) {
     case "eq":
       result =
         String(value) === String(parseValue(operand)) ||
-        value === parseValue(operand);
+        value === parseValue(operand) ||
+        // Flags missing in the demo data count as false (e.g. is_security_case).
+        (value === undefined && operand === "false");
       break;
     case "neq":
       result = String(value) !== operand;

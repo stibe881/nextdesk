@@ -186,3 +186,54 @@
   flex: 1 1 140px;
   min-width: 0;
 }
+
+/* Checklists per verdict for security cases. */
+.phishing-report-settings__checklists {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+
+.phishing-report-settings__checklists h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.phishing-report-settings__checklists p {
+  max-width: 80ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.phishing-report-settings__checklist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.phishing-report-settings__checklist-grid label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.phishing-report-settings__checklist-grid textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.phishing-report-settings__checklist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
