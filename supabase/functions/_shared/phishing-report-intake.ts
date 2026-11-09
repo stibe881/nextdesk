@@ -21,6 +21,7 @@ export type PhishingSettings = {
   reportAddress: string | null;
   departmentId: string | null;
   categoryId: string | null;
+  subcategoryId: string | null;
   priorityKey: "low" | "normal" | "high" | "urgent";
   notifyTeamId: string | null;
 };
@@ -41,6 +42,7 @@ export function parseSettingsRow(row: Row | null | undefined): PhishingSettings 
     reportAddress: text(row?.report_address)?.toLowerCase() ?? null,
     departmentId: text(row?.department_id),
     categoryId: text(row?.category_id),
+    subcategoryId: text(row?.subcategory_id),
     priorityKey: priority === "low" || priority === "normal" || priority === "urgent"
       ? priority
       : "high",
@@ -54,7 +56,7 @@ export async function loadPhishingSettings(
 ): Promise<PhishingSettings | null> {
   const { data, error } = await admin
     .from("phishing_report_settings")
-    .select("enabled, report_address, department_id, category_id, priority_key, notify_team_id")
+    .select("enabled, report_address, department_id, category_id, subcategory_id, priority_key, notify_team_id")
     .eq("tenant_id", tenantId)
     .maybeSingle();
   if (error) return null;
@@ -196,6 +198,20 @@ async function validCategory(
   return text((data as Row | null)?.id);
 }
 
+async function validSubcategory(
+  admin: Admin,
+  tenantId: string,
+  departmentId: string,
+  categoryId: string | null,
+  subcategoryId: string | null,
+): Promise<string | null> {
+  if (!categoryId || !subcategoryId) return null;
+  const { data } = await admin.from("ticket_categories").select("id")
+    .eq("id", subcategoryId).eq("tenant_id", tenantId).eq("department_id", departmentId)
+    .eq("active", true).eq("parent_id", categoryId).maybeSingle();
+  return text((data as Row | null)?.id);
+}
+
 async function requesterContactFor(
   admin: Admin,
   tenantId: string,
@@ -262,6 +278,13 @@ export async function createSecurityTicket(
     status_id: status.data.id,
     priority_id: priority,
     category_id: category,
+    subcategory_id: await validSubcategory(
+      admin,
+      input.tenantId,
+      department.id,
+      category,
+      input.settings.subcategoryId,
+    ),
     requester_id: input.reporterId,
     requester_contact_id: contact.id,
     source: "portal",
@@ -296,10 +319,22 @@ export async function convertToSecurityTicket(
   if (input.description) update.description = input.description.slice(0, 50_000);
   if (priority) update.priority_id = priority;
   if (department) {
+    const category = await validCategory(
+      admin,
+      input.tenantId,
+      department.id,
+      input.settings.categoryId,
+    );
     Object.assign(update, {
       department_id: department.id,
-      category_id: await validCategory(admin, input.tenantId, department.id, input.settings.categoryId),
-      subcategory_id: null,
+      category_id: category,
+      subcategory_id: await validSubcategory(
+        admin,
+        input.tenantId,
+        department.id,
+        category,
+        input.settings.subcategoryId,
+      ),
       assigned_team_id: null,
       assigned_agent_id: null,
     });

@@ -333,6 +333,8 @@ function PhishingReportDialog({
   );
 }
 
+const NEW_OPTION = "__new__";
+
 const PRIORITY_LABELS = {
   low: "Niedrig",
   normal: "Normal",
@@ -347,6 +349,10 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [creating, setCreating] = useState<"category" | "subcategory" | null>(
+    null,
+  );
+  const [newCategoryName, setNewCategoryName] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -409,6 +415,97 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
     options?.categories.filter(
       (category) => category.departmentId === settings?.departmentId,
     ) ?? [];
+  const subcategories =
+    options?.subcategories.filter(
+      (subcategory) => subcategory.categoryId === settings?.categoryId,
+    ) ?? [];
+
+  // Creates a category (parentId null) or a subcategory right here and
+  // selects it; saving the settings is still a separate step.
+  async function createCategory(parentId: string | null) {
+    const name = newCategoryName.trim();
+    if (!settings?.departmentId || !name || busy) return;
+    setBusy(true);
+    try {
+      const result = (await call({
+        type: "createCategory",
+        tenantId,
+        departmentId: settings.departmentId,
+        parentId,
+        name,
+      })) as { data?: { id?: unknown; options?: unknown } } | null;
+      const id = typeof result?.data?.id === "string" ? result.data.id : null;
+      const parsed = parsePhishingSettings({
+        data: { settings, options: result?.data?.options },
+      });
+      if (parsed) setOptions(parsed.options);
+      if (id) {
+        update(
+          parentId
+            ? { subcategoryId: id }
+            : { categoryId: id, subcategoryId: null },
+        );
+      }
+      setCreating(null);
+      setNewCategoryName("");
+      setMessage(
+        `${parentId ? "Unterkategorie" : "Kategorie"} «${name}» erstellt. Speichern nicht vergessen.`,
+      );
+    } catch (createError) {
+      setMessage(
+        createError instanceof Error
+          ? createError.message
+          : String(createError),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const createForm = (parentId: string | null) => (
+    <span className="phishing-report-settings__new">
+      <input
+        aria-label={parentId ? "Neue Unterkategorie" : "Neue Kategorie"}
+        autoFocus
+        maxLength={80}
+        onChange={(event) => setNewCategoryName(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void createCategory(parentId);
+          }
+          if (event.key === "Escape") {
+            setCreating(null);
+            setNewCategoryName("");
+          }
+        }}
+        placeholder={
+          parentId ? "Name der Unterkategorie" : "Name der Kategorie"
+        }
+        type="text"
+        value={newCategoryName}
+      />
+      <button
+        className="secondary-button"
+        disabled={busy || !newCategoryName.trim()}
+        onClick={() => void createCategory(parentId)}
+        type="button"
+      >
+        Erstellen
+      </button>
+      <button
+        className="text-button"
+        disabled={busy}
+        onClick={() => {
+          setCreating(null);
+          setNewCategoryName("");
+        }}
+        type="button"
+      >
+        Abbrechen
+      </button>
+    </span>
+  );
 
   return (
     <section className="tenant-automation phishing-report-settings">
@@ -457,6 +554,7 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
                 update({
                   departmentId: event.target.value || null,
                   categoryId: null,
+                  subcategoryId: null,
                 })
               }
               value={settings.departmentId ?? ""}
@@ -471,20 +569,64 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
           </label>
           <label>
             Kategorie
-            <select
-              disabled={!settings.departmentId}
-              onChange={(event) =>
-                update({ categoryId: event.target.value || null })
-              }
-              value={settings.categoryId ?? ""}
-            >
-              <option value="">Keine</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
+            {creating === "category" ? (
+              createForm(null)
+            ) : (
+              <select
+                disabled={!settings.departmentId || busy}
+                onChange={(event) => {
+                  if (event.target.value === NEW_OPTION) {
+                    setNewCategoryName("");
+                    setCreating("category");
+                    return;
+                  }
+                  update({
+                    categoryId: event.target.value || null,
+                    subcategoryId: null,
+                  });
+                }}
+                value={settings.categoryId ?? ""}
+              >
+                <option value="">Keine</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+                <option value={NEW_OPTION}>+ Neue Kategorie …</option>
+              </select>
+            )}
+          </label>
+          <label>
+            Unterkategorie
+            {creating === "subcategory" && settings.categoryId ? (
+              createForm(settings.categoryId)
+            ) : (
+              <select
+                disabled={!settings.categoryId || busy}
+                onChange={(event) => {
+                  if (event.target.value === NEW_OPTION) {
+                    setNewCategoryName("");
+                    setCreating("subcategory");
+                    return;
+                  }
+                  update({ subcategoryId: event.target.value || null });
+                }}
+                value={settings.subcategoryId ?? ""}
+              >
+                <option value="">
+                  {settings.categoryId ? "Keine" : "Zuerst Kategorie wählen"}
                 </option>
-              ))}
-            </select>
+                {subcategories.map((subcategory) => (
+                  <option key={subcategory.id} value={subcategory.id}>
+                    {subcategory.name}
+                  </option>
+                ))}
+                {settings.categoryId ? (
+                  <option value={NEW_OPTION}>+ Neue Unterkategorie …</option>
+                ) : null}
+              </select>
+            )}
           </label>
           <label>
             Priorität

@@ -173,3 +173,16 @@
   color: var(--muted);
   font-size: 13px;
 }
+
+/* Inline form to create a category or subcategory in the settings. */
+.phishing-report-settings__new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.phishing-report-settings__new input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
