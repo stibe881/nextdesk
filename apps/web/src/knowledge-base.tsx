@@ -398,14 +398,6 @@ const knowledgeBaseStyles = `
     font-size: 15px;
     padding: 12px 0;
   }
-  .knowledge-base .knowledge-base__kbd {
-    border: 1px solid #c9d8dd;
-    border-bottom-width: 2px;
-    border-radius: 4px;
-    color: #5d6f7a;
-    font: 700 11px var(--font-sans);
-    padding: 1px 6px;
-  }
   .knowledge-base .knowledge-base__chips {
     display: flex;
     flex-wrap: wrap;
@@ -3467,11 +3459,6 @@ export function KnowledgeBase({
                 type="search"
                 value={searchInput}
               />
-              {searchInput ? null : (
-                <kbd aria-hidden="true" className="knowledge-base__kbd">
-                  /
-                </kbd>
-              )}
             </form>
           </div>
 
