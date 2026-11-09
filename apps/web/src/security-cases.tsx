@@ -271,6 +271,9 @@ export function SecurityCases({ tenantId }: { tenantId: string }) {
                     {entry.state !== "triage"
                       ? ` · ${STATE_LABELS[entry.state]}`
                       : ""}
+                    {entry.assignedAgentName
+                      ? ` · zuständig: ${entry.assignedAgentName}`
+                      : " · nicht zugewiesen"}
                   </small>
                 </span>
                 <span className="security-case-row__reporters">
@@ -302,6 +305,8 @@ function SecurityCaseView({
   const [pendingVerdict, setPendingVerdict] = useState<SecurityVerdict | null>(
     null,
   );
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const run = useCallback(
     async (key: string, body: Record<string, unknown>) => {
@@ -326,6 +331,84 @@ function SecurityCaseView({
   useEffect(() => {
     void run("load", { type: "get" });
   }, [run]);
+
+  // Agents who may work on this case (team rules of the ticket apply).
+  useEffect(() => {
+    let active = true;
+    if (!supabase) return;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active) setCurrentUserId(data.session?.user.id ?? null);
+    });
+    void supabase.functions
+      .invoke("ticket-agent-assignment", {
+        body: { type: "list", tenantId, ticketId },
+      })
+      .then(({ data, error: listError }) => {
+        if (!active || listError) return;
+        const rows = (data as { data?: { agents?: unknown } } | null)?.data
+          ?.agents;
+        setAgents(
+          Array.isArray(rows)
+            ? rows.flatMap((row) =>
+                row &&
+                typeof row === "object" &&
+                typeof (row as { id?: unknown }).id === "string"
+                  ? [
+                      {
+                        id: (row as { id: string }).id,
+                        name:
+                          typeof (row as { displayName?: unknown })
+                            .displayName === "string"
+                            ? (row as { displayName: string }).displayName
+                            : "Agent",
+                      },
+                    ]
+                  : [],
+              )
+            : [],
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [tenantId, ticketId]);
+
+  async function assign(agentId: string | null) {
+    if (!supabase) return;
+    setBusy("assign");
+    setError("");
+    try {
+      const { error: assignError } = await supabase.functions.invoke(
+        "ticket-agent-assignment",
+        {
+          body: {
+            type: "assign",
+            tenantId,
+            ticketId,
+            assignedAgentId: agentId,
+          },
+        },
+      );
+      if (assignError) {
+        throw new Error(
+          await functionErrorMessage(
+            assignError,
+            "Der Fall konnte nicht zugewiesen werden.",
+          ),
+        );
+      }
+      setNotice(
+        agentId
+          ? `Fall zugewiesen an ${agents.find((agent) => agent.id === agentId)?.name ?? "Agent"}.`
+          : "Zuweisung entfernt.",
+      );
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(null);
+    }
+    await run("load", { type: "get" });
+  }
 
   async function decide(verdict: SecurityVerdict) {
     const result = await run(`verdict:${verdict}`, {
@@ -554,6 +637,53 @@ function SecurityCaseView({
             </div>
 
             <div className="security-case__side">
+              <article className="security-card">
+                <div className="security-card__head">
+                  <h3>Zuständig</h3>
+                  {currentUserId &&
+                  detail.assignedAgentId !== currentUserId &&
+                  agents.some((agent) => agent.id === currentUserId) ? (
+                    <button
+                      className="text-button"
+                      disabled={busy !== null}
+                      onClick={() => void assign(currentUserId)}
+                      type="button"
+                    >
+                      Mir zuweisen
+                    </button>
+                  ) : null}
+                </div>
+                <label className="security-assign">
+                  <span className="sr-only">Zuständige Person</span>
+                  <select
+                    disabled={busy !== null || detail.state === "closed"}
+                    onChange={(event) =>
+                      void assign(event.target.value || null)
+                    }
+                    value={detail.assignedAgentId ?? ""}
+                  >
+                    <option value="">Nicht zugewiesen</option>
+                    {detail.assignedAgentId &&
+                    !agents.some(
+                      (agent) => agent.id === detail.assignedAgentId,
+                    ) ? (
+                      <option value={detail.assignedAgentId}>
+                        {detail.assignedAgentName ?? "Zugewiesen"}
+                      </option>
+                    ) : null}
+                    {agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {detail.teamName ? (
+                  <p className="security-muted">
+                    Auswahl aus dem Team {detail.teamName}.
+                  </p>
+                ) : null}
+              </article>
               <article className="security-card">
                 <div className="security-score">
                   <span

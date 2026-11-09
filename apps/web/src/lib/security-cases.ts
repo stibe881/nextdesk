@@ -47,6 +47,8 @@ export type SecurityCaseSummary = {
   decisionDueAt: string | null;
   overdue: boolean;
   teamName: string | null;
+  assignedAgentId: string | null;
+  assignedAgentName: string | null;
 };
 
 export type SecurityStats = {
@@ -67,6 +69,8 @@ export type SecurityCaseDetail = {
   subject: string | null;
   description: string | null;
   teamName: string | null;
+  assignedAgentId: string | null;
+  assignedAgentName: string | null;
   createdAt: string | null;
   state: SecurityCaseState;
   verdict: SecurityVerdict | null;
@@ -166,6 +170,8 @@ export function parseSecurityList(
           decisionDueAt: str(row.decisionDueAt),
           overdue: row.overdue === true,
           teamName: str(row.teamName),
+          assignedAgentId: str(row.assignedAgentId),
+          assignedAgentName: str(row.assignedAgentName),
         },
       ];
     }),
@@ -198,6 +204,8 @@ export function parseSecurityDetail(value: unknown): SecurityCaseDetail | null {
     subject: str(body.subject),
     description: str(body.description),
     teamName: str(body.teamName),
+    assignedAgentId: str(body.assignedAgentId),
+    assignedAgentName: str(body.assignedAgentName),
     createdAt: str(body.createdAt),
     state: state(body.state),
     verdict: verdict(body.verdict),

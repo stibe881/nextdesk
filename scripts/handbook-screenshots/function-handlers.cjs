@@ -1052,6 +1052,8 @@ const HANDLERS = {
         description:
           "Verdächtige E-Mail gemeldet von Lena Brunner.\n\nInhalt der gemeldeten E-Mail (Links entschärft):\n\nSie haben eine neue Sprachnachricht (24 Sekunden).\n\nNachricht anhören: hxxps://microsoftonline-login[.]co/voicemail?id=8812\n\nIhr Telefonie-Service",
         teamName: "System Engineering",
+        assignedAgentId: null,
+        assignedAgentName: null,
         createdAt: D.ago(26 * 60 * 1000),
         state: "triage",
         verdict: null,
@@ -1164,6 +1166,14 @@ const HANDLERS = {
         agents: D.AGENTS.filter(
           (a) => !department || a.departmentKey === department.key,
         ).map((a) => ({ id: a.id, displayName: a.name })),
+      });
+    }
+    if (body.type === "list") {
+      return ok({
+        agents: D.AGENTS.filter((a) => a.departmentKey === "ict").map((a) => ({
+          id: a.id,
+          displayName: a.name,
+        })),
       });
     }
     return null;
