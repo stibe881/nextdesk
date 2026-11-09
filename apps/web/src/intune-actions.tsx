@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -195,67 +196,75 @@ export function IntuneActionsMenu({
           ))}
         </ul>
       ) : null}
-      {confirming ? (
-        <div className="intune-actions__backdrop">
-          <div
-            aria-labelledby={dialogTitleId}
-            aria-modal="true"
-            className="intune-actions__dialog"
-            role="alertdialog"
-          >
-            <AlertTriangle aria-hidden="true" size={20} />
-            <div>
-              <strong id={dialogTitleId}>
-                {intuneActionLabel(confirming)}?
-              </strong>
-              <p>{intuneConfirmationText(confirming, device.name)}</p>
-              <p className="intune-actions__hint">
-                Die Aktion wird über Microsoft Intune ausgeführt und
-                protokolliert.
-              </p>
-              <div className="intune-actions__dialog-actions">
-                <button
-                  className="danger-action"
-                  onClick={() => void execute(confirming, true)}
-                  ref={confirmButtonRef}
-                  type="button"
-                >
-                  {intuneActionLabel(confirming)}
-                </button>
-                <button
-                  className="secondary-button"
-                  onClick={() => setConfirming(null)}
-                  type="button"
-                >
-                  Abbrechen
-                </button>
+      {/* Dialog and toast are rendered on the body: inside the narrow,
+          clipping fact cell of the ticket detail they broke apart. */}
+      {confirming
+        ? createPortal(
+            <div className="intune-actions__backdrop">
+              <div
+                aria-labelledby={dialogTitleId}
+                aria-modal="true"
+                className="intune-actions__dialog"
+                role="alertdialog"
+              >
+                <AlertTriangle aria-hidden="true" size={20} />
+                <div>
+                  <strong id={dialogTitleId}>
+                    {intuneActionLabel(confirming)}?
+                  </strong>
+                  <p>{intuneConfirmationText(confirming, device.name)}</p>
+                  <p className="intune-actions__hint">
+                    Die Aktion wird über Microsoft Intune ausgeführt und
+                    protokolliert.
+                  </p>
+                  <div className="intune-actions__dialog-actions">
+                    <button
+                      className="danger-action"
+                      onClick={() => void execute(confirming, true)}
+                      ref={confirmButtonRef}
+                      type="button"
+                    >
+                      {intuneActionLabel(confirming)}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      onClick={() => setConfirming(null)}
+                      type="button"
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-      {toast ? (
-        <aside
-          aria-live="polite"
-          className={`intune-actions__toast intune-actions__toast--${toast.kind}`}
-          role={toast.kind === "error" ? "alert" : "status"}
-        >
-          {toast.kind === "success" ? (
-            <CheckCircle2 aria-hidden="true" size={20} strokeWidth={1.8} />
-          ) : (
-            <AlertTriangle aria-hidden="true" size={20} strokeWidth={1.8} />
-          )}
-          <span>{toast.text}</span>
-          <button
-            aria-label="Hinweis schliessen"
-            className="ticket-toast-dismiss"
-            onClick={() => setToast(null)}
-            type="button"
-          >
-            <X aria-hidden="true" size={16} strokeWidth={1.8} />
-          </button>
-        </aside>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
+      {toast
+        ? createPortal(
+            <aside
+              aria-live="polite"
+              className={`intune-actions__toast intune-actions__toast--${toast.kind}`}
+              role={toast.kind === "error" ? "alert" : "status"}
+            >
+              {toast.kind === "success" ? (
+                <CheckCircle2 aria-hidden="true" size={20} strokeWidth={1.8} />
+              ) : (
+                <AlertTriangle aria-hidden="true" size={20} strokeWidth={1.8} />
+              )}
+              <span>{toast.text}</span>
+              <button
+                aria-label="Hinweis schliessen"
+                className="ticket-toast-dismiss"
+                onClick={() => setToast(null)}
+                type="button"
+              >
+                <X aria-hidden="true" size={16} strokeWidth={1.8} />
+              </button>
+            </aside>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
