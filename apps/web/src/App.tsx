@@ -4606,11 +4606,23 @@ function AuthenticatedApp() {
       return;
     }
     setMetricTicketFilter(null);
-    setReportDrilldown(null);
     setQuery("");
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue(department.key);
     setTicketScope("open");
+    // Exactly the tickets of this queue: department and team, or the
+    // tickets without a team (nil UUID, see migration 0251).
+    setReportDrilldown({
+      source: "queue",
+      label: `${teamQueue.departmentName?.trim() || department.key} · ${
+        teamQueue.teamId
+          ? `Team ${teamQueue.teamName?.trim() || "ohne Namen"}`
+          : "ohne Teamzuordnung"
+      }`,
+      departmentIds: [teamQueue.departmentId],
+      teamIds: [teamQueue.teamId ?? "00000000-0000-0000-0000-000000000000"],
+      statusClosed: false,
+    });
     setSection("Tickets");
     setSplitSelectedTicketId(null);
   };
@@ -6346,7 +6358,9 @@ function AuthenticatedApp() {
                   <h2>
                     {metricTicketFilter?.label ??
                       (reportDrilldown
-                        ? "Tickets aus Bericht"
+                        ? reportDrilldown.source === "queue"
+                          ? "Tickets der Warteschlange"
+                          : "Tickets aus Bericht"
                         : ticketScopeLabel[effectiveTicketScope])}
                   </h2>
                 </div>
@@ -6460,7 +6474,11 @@ function AuthenticatedApp() {
               )}
               {reportDrilldown && (
                 <div
-                  aria-label="Filter aus Bericht"
+                  aria-label={
+                    reportDrilldown.source === "queue"
+                      ? "Filter aus Warteschlange"
+                      : "Filter aus Bericht"
+                  }
                   className="ticket-drilldown-chips"
                   role="group"
                 >

@@ -106,7 +106,11 @@ Mit **Startseite anpassen** blenden Sie Blöcke ein oder aus.
 
 Der **Arbeitsplatz** bündelt Ihre persönliche Arbeit in Registern:
 
-- **Team** – Tickets Ihrer Teams
+- **Team** – die **Team-Warteschlangen**: offene Tickets pro Team, Ihre
+  eigenen Teams zuoberst (markiert mit _Mein Team_). Daneben steht, wie viele
+  davon noch **ohne Bearbeiter** sind. **Ohne Teamzuordnung** sammelt offene
+  Tickets, die noch keinem Team zugeteilt sind. Ein Klick zeigt genau diese
+  Tickets in der Ticketliste (Filter «Warteschlange: …», mit × entfernen).
 - **Erwähnungen** – wo Sie mit @ erwähnt wurden
 - **Stellvertretung** – Tickets abwesender Kolleginnen und Kollegen
 - **Störungen** – aktive Störungen

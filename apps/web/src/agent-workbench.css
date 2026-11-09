@@ -210,6 +210,42 @@
   font-weight: 450;
 }
 
+.workbench-queue-list > li > button.is-my-team {
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
+  background: color-mix(in srgb, var(--primary-soft) 55%, var(--surface));
+}
+
+.workbench-queue-list
+  > li
+  > button.is-without-team
+  .workbench-queue-list__icon {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.workbench-queue-list strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.workbench-queue-list__mine {
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.workbench-queue-list__counts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .workbench-count {
   border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border));
   border-radius: 999px;
@@ -219,6 +255,11 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.workbench-count--warn {
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+  color: var(--warning);
 }
 
 .workbench-mention {
