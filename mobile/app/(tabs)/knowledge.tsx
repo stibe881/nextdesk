@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 
-import { BrandGradient } from "@/components/knowledge-gradient";
+import { KnowledgeCarousel } from "@/components/knowledge-carousel";
 import {
   KnowledgeTopicRow,
   knowledgeTopicColor,
@@ -30,11 +30,7 @@ import {
   type MobileKnowledgeArticle,
 } from "@/lib/mobile-knowledge";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
-import {
-  makeThemedStyles,
-  useAppColors,
-  useIsDarkScheme,
-} from "@/lib/themed-styles";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
 export default function KnowledgeScreen() {
@@ -51,7 +47,6 @@ export default function KnowledgeScreen() {
   const [error, setError] = useState("");
   const styles = useStyles();
   const colors = useAppColors();
-  const dark = useIsDarkScheme();
   const wideLayout = width >= 768;
   const [topic, setTopic] = useState<string | null>(null);
   // Topics come from the articles' categories; the busiest first.
@@ -79,14 +74,23 @@ export default function KnowledgeScreen() {
   );
   // Start page: the newest article as a large card, the rest as a list.
   const showHero = !query.trim() && !topic && visible.length >= 4;
-  // The large card is a published article; drafts never lead the page.
-  const hero = showHero
-    ? (visible.find((item) => item.status === "published") ??
-      visible[0] ??
-      null)
-    : null;
+  // Start page: the 7 newest or most recently edited published articles as
+  // cards to swipe through; the rest follows as a list.
+  const carousel = useMemo(() => {
+    if (!showHero) return [];
+    const published = visible.filter((item) => item.status === "published");
+    const pool = published.length >= 3 ? published : visible;
+    return [...pool]
+      .sort(
+        (left, right) =>
+          Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+      )
+      .slice(0, 7);
+  }, [showHero, visible]);
   const listed = showHero
-    ? visible.filter((item) => item.id !== hero?.id)
+    ? visible.filter(
+        (item) => !carousel.some((featured) => featured.id === item.id),
+      )
     : visible;
 
   const loadArticles = useCallback(async () => {
@@ -227,44 +231,20 @@ export default function KnowledgeScreen() {
               topics={topics}
               total={articles.length}
             />
-            {hero ? (
-              <Pressable
-                accessibilityLabel={`Artikel ${hero.title} öffnen`}
-                accessibilityRole="button"
-                onPress={() => openArticle(hero.id)}
-                style={styles.hero}
-              >
-                <BrandGradient
-                  dark={dark}
-                  from={colors.primary}
-                  id="knowledgeHero"
-                  to={colors.info}
-                />
-                {hero.collections[0] ? (
-                  <Text style={styles.heroTopic}>
-                    {hero.collections[0].name}
-                  </Text>
-                ) : null}
-                <Text style={styles.heroTitle}>{hero.title}</Text>
-                {hero.summary || hero.excerpt ? (
-                  <Text numberOfLines={3} style={styles.heroSummary}>
-                    {hero.summary || hero.excerpt}
-                  </Text>
-                ) : null}
-                <Text style={styles.heroMeta}>
-                  {formatMobileKnowledgeUpdatedAt(hero.updatedAt)}
-                </Text>
-              </Pressable>
+            {carousel.length > 0 ? (
+              <KnowledgeCarousel articles={carousel} onOpen={openArticle} />
             ) : null}
             <View style={styles.listHeader}>
               <Text style={styles.listTitle}>
                 {showHero
-                  ? "Neu und aktualisiert"
+                  ? "Weitere Artikel"
                   : query.trim()
                     ? "Treffer"
                     : (topic ?? "Artikel")}
               </Text>
-              <Text style={styles.resultCount}>{visible.length}</Text>
+              <Text style={styles.resultCount}>
+                {showHero ? listed.length : visible.length}
+              </Text>
             </View>
             <View
               style={[styles.articleGrid, wideLayout && styles.articleGridWide]}
@@ -418,42 +398,6 @@ const useStyles = makeThemedStyles((c) => ({
     textAlign: "center",
   },
   list: { gap: 12 },
-  hero: {
-    borderRadius: 22,
-    gap: 6,
-    justifyContent: "flex-end",
-    minHeight: 170,
-    overflow: "hidden",
-    padding: 18,
-  },
-  heroTopic: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.24)",
-    borderRadius: 999,
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "800",
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  heroTitle: {
-    color: "#FFFFFF",
-    fontSize: 25,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-    lineHeight: 30,
-  },
-  heroSummary: {
-    color: "rgba(255,255,255,0.94)",
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  heroMeta: {
-    color: "rgba(255,255,255,0.86)",
-    fontSize: 11,
-    fontWeight: "600",
-  },
   listHeader: {
     alignItems: "center",
     flexDirection: "row",
