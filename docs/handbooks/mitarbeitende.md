@@ -221,7 +221,12 @@ Browser an. Unten finden Sie **Tickets**, **Shop**, **Home**, **Wissen** und
 die Themen und lesen sie im Design Ihres Unternehmens: oben «Kurz gesagt»,
 darunter Abschnitte zum Aufklappen, Schritte als nummerierte Karten und
 Hinweisboxen. Unten im Artikel teilen Sie ihn oder erstellen mit **Ticket
-erstellen** eine Rückfrage dazu. Über **Neues Ticket** erfassen Sie Anliegen
+erstellen** eine Rückfrage dazu. Die **Home**-Seite gestalten Sie selbst: Mit dem Symbol
+**Home anpassen** oben rechts blenden Sie Bereiche (z. B. Suche, Heute im
+Fokus, Zuletzt geöffnet, Übersicht, Ticketliste, Erwähnungen, Geräte) ein oder
+aus und verschieben sie mit den Pfeilen. **Standard wiederherstellen** setzt
+alles zurück. Die Einstellung gilt nur für Sie und bleibt auf dem Gerät
+gespeichert. Über **Neues Ticket** erfassen Sie Anliegen
 unterwegs, auf Wunsch mit Foto. In den App-Einstellungen aktivieren Sie Benachrichtigungen, z. B.
 für Antworten des Supports, und wählen unter **Benachrichtigungszeit**, an
 welchen Tagen und zu welchen Zeiten sie kommen.

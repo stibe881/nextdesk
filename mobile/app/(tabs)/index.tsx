@@ -1,6 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   ActivityIndicator,
   Image,
@@ -13,6 +21,7 @@ import {
 } from "react-native";
 
 import { GlobalSearch } from "@/components/global-search";
+import { HomeLayoutSheet } from "@/components/home-layout-sheet";
 import { ApprovalInboxCard } from "@/components/approval-inbox-card";
 import { OnboardingHomeCard } from "@/components/onboarding-home-card";
 import { IncidentBanner } from "@/components/incident-banner";
@@ -47,6 +56,13 @@ import {
   nextDesk,
   type MobileTenant,
 } from "@/lib/nextdesk-client";
+import {
+  DEFAULT_HOME_LAYOUT,
+  visibleHomeSections,
+  type HomeLayout,
+  type HomeSectionId,
+} from "@/lib/home-layout";
+import { loadHomeLayout, saveHomeLayout } from "@/lib/home-layout-storage";
 import { listRecentTicketIds } from "@/lib/mobile-private-state";
 import {
   listWatchedTicketIds,
@@ -173,6 +189,36 @@ export default function HomeScreen() {
   >(() => new Set());
   const focusLoadInFlight = useRef("");
   const scrollRef = useRef<ScrollView>(null);
+  // Each person arranges their own home screen (order and visible sections).
+  const [homeLayout, setHomeLayout] = useState<HomeLayout>(DEFAULT_HOME_LAYOUT);
+  const [homeLayoutUserId, setHomeLayoutUserId] = useState<string | null>(null);
+  const [layoutSheetOpen, setLayoutSheetOpen] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const userId = await getMobileUserId();
+        const stored = await loadHomeLayout(userId);
+        if (cancelled) return;
+        setHomeLayoutUserId(userId);
+        setHomeLayout(stored);
+      } catch {
+        // Without a stored layout the standard home screen is shown.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const changeHomeLayout = useCallback(
+    (next: HomeLayout) => {
+      setHomeLayout(next);
+      if (homeLayoutUserId) {
+        void saveHomeLayout(homeLayoutUserId, next).catch(() => undefined);
+      }
+    },
+    [homeLayoutUserId],
+  );
   const ticketListOffset = useRef(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -822,243 +868,108 @@ export default function HomeScreen() {
     );
   }
 
-  return (
-    <ScreenContainer
-      containerClassName="bg-background"
-      className="px-5"
-      style={{ backgroundColor: colors.background }}
-    >
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={[styles.content, isWide && styles.contentWide]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              void load();
-              void loadSupplementaryData();
-              if (brandingTenantId) void loadBranding(brandingTenantId);
-            }}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <View style={styles.headerBrand}>
-            <View style={styles.brandRow}>
-              {customLogoUrl ? (
-                <Image
-                  accessibilityLabel={`${brandName} Logo`}
-                  onError={() =>
-                    setLogoLoad({
-                      aspect: null,
-                      failed: true,
-                      url: customLogoUrl,
-                    })
-                  }
-                  resizeMode="contain"
-                  source={{ uri: customLogoUrl }}
-                  style={{ height: logoHeight, width: logoWidth }}
-                />
-              ) : (
-                <Image
-                  accessibilityLabel="nextDesk Logo"
-                  source={require("@/assets/images/icon.png")}
-                  style={styles.brandLogo}
-                />
-              )}
-              {showBrandText ? (
-                <Text
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.8}
-                  numberOfLines={hasCustomName ? 2 : 1}
-                  style={[
-                    styles.brand,
-                    hasCustomName && styles.brandCustom,
-                    tokenStyles.foreground,
-                  ]}
-                >
-                  {brandName}
-                </Text>
-              ) : null}
+  const homeSections: Record<HomeSectionId, ReactNode> = {
+    search: (
+      <GlobalSearch
+        key={tenantId ?? "kein-mandant"}
+        platformName={brandName}
+        tenant={tenant}
+        tickets={tickets}
+      />
+    ),
+    focus: (
+      <View style={[styles.hero, { backgroundColor: colors.primary }]}>
+        <Text style={[styles.heroEyebrow, { color: colors.onPrimary }]}>
+          HEUTE IM FOKUS
+        </Text>
+        {metricsAvailableForTenant && visibleAgentMetrics ? (
+          <View style={styles.heroKpiRows}>
+            <View style={styles.heroKpis}>
+              <HeroKpi
+                disabled={!canOpenFocus}
+                label="Mir zugewiesen"
+                onPress={() => selectFocusScope("assigned")}
+                selected={ticketScope === "assigned"}
+                value={String(visibleAgentMetrics.open)}
+              />
+              <View
+                style={[
+                  styles.heroKpiDivider,
+                  { backgroundColor: colors.onPrimary },
+                ]}
+              />
+              <HeroKpi
+                disabled={!canOpenFocus}
+                label="Heute gelöst"
+                onPress={() => selectFocusScope("solvedToday")}
+                selected={ticketScope === "solvedToday"}
+                value={String(visibleAgentMetrics.solvedToday)}
+              />
+              <View
+                style={[
+                  styles.heroKpiDivider,
+                  { backgroundColor: colors.onPrimary },
+                ]}
+              />
+              <HeroKpi
+                disabled={
+                  !canOpenFocus || !visibleAgentMetrics.ticketIds?.slaDue
+                }
+                label="Fällig"
+                onPress={() => selectFocusScope("slaDue")}
+                selected={ticketScope === "slaDue"}
+                value={
+                  visibleAgentMetrics.slaDue === undefined
+                    ? "—"
+                    : String(visibleAgentMetrics.slaDue)
+                }
+              />
+            </View>
+            <View style={styles.heroKpis}>
+              <HeroKpi
+                disabled={!canOpenFocus}
+                label="Erste Antwort (Median)"
+                onPress={() => selectFocusScope("firstResponse")}
+                selected={ticketScope === "firstResponse"}
+                value={formatDuration(
+                  visibleAgentMetrics.medianFirstResponseMinutes,
+                )}
+              />
+              <View
+                style={[
+                  styles.heroKpiDivider,
+                  { backgroundColor: colors.onPrimary },
+                ]}
+              />
+              <HeroKpi
+                disabled={
+                  !canOpenFocus || !visibleAgentMetrics.ticketIds?.resolution
+                }
+                label="Lösungszeit (Median)"
+                onPress={() => selectFocusScope("resolution")}
+                selected={ticketScope === "resolution"}
+                value={formatDuration(
+                  visibleAgentMetrics.medianResolutionMinutes,
+                )}
+              />
             </View>
           </View>
-          <Pressable
-            accessibilityLabel="Persönliche Einstellungen öffnen"
-            accessibilityRole="button"
-            onPress={() => router.push("/settings")}
-            style={[styles.avatar, { backgroundColor: colors.primarySoft }]}
-          >
-            {profilePhoto && profilePhoto.tenantId === tenantId ? (
-              <Image
-                accessibilityIgnoresInvertColors
-                source={{ uri: profilePhoto.url }}
-                style={styles.avatarPhoto}
-              />
-            ) : (
-              <Ionicons
-                color={colors.primaryText}
-                name="person-circle-outline"
-                size={23}
-              />
-            )}
-          </Pressable>
-        </View>
-
-        <GlobalSearch
-          key={tenantId ?? "kein-mandant"}
-          platformName={brandName}
-          tenant={tenant}
-          tickets={tickets}
-        />
-
-        <IncidentBanner notices={visibleIncidentNotices} />
-
-        <View style={[styles.hero, { backgroundColor: colors.primary }]}>
-          <Text style={[styles.heroEyebrow, { color: colors.onPrimary }]}>
-            HEUTE IM FOKUS
-          </Text>
-          {metricsAvailableForTenant && visibleAgentMetrics ? (
-            <View style={styles.heroKpiRows}>
-              <View style={styles.heroKpis}>
-                <HeroKpi
-                  disabled={!canOpenFocus}
-                  label="Mir zugewiesen"
-                  onPress={() => selectFocusScope("assigned")}
-                  selected={ticketScope === "assigned"}
-                  value={String(visibleAgentMetrics.open)}
-                />
-                <View
-                  style={[
-                    styles.heroKpiDivider,
-                    { backgroundColor: colors.onPrimary },
-                  ]}
-                />
-                <HeroKpi
-                  disabled={!canOpenFocus}
-                  label="Heute gelöst"
-                  onPress={() => selectFocusScope("solvedToday")}
-                  selected={ticketScope === "solvedToday"}
-                  value={String(visibleAgentMetrics.solvedToday)}
-                />
-                <View
-                  style={[
-                    styles.heroKpiDivider,
-                    { backgroundColor: colors.onPrimary },
-                  ]}
-                />
-                <HeroKpi
-                  disabled={
-                    !canOpenFocus || !visibleAgentMetrics.ticketIds?.slaDue
-                  }
-                  label="Fällig"
-                  onPress={() => selectFocusScope("slaDue")}
-                  selected={ticketScope === "slaDue"}
-                  value={
-                    visibleAgentMetrics.slaDue === undefined
-                      ? "—"
-                      : String(visibleAgentMetrics.slaDue)
-                  }
-                />
-              </View>
-              <View style={styles.heroKpis}>
-                <HeroKpi
-                  disabled={!canOpenFocus}
-                  label="Erste Antwort (Median)"
-                  onPress={() => selectFocusScope("firstResponse")}
-                  selected={ticketScope === "firstResponse"}
-                  value={formatDuration(
-                    visibleAgentMetrics.medianFirstResponseMinutes,
-                  )}
-                />
-                <View
-                  style={[
-                    styles.heroKpiDivider,
-                    { backgroundColor: colors.onPrimary },
-                  ]}
-                />
-                <HeroKpi
-                  disabled={
-                    !canOpenFocus || !visibleAgentMetrics.ticketIds?.resolution
-                  }
-                  label="Lösungszeit (Median)"
-                  onPress={() => selectFocusScope("resolution")}
-                  selected={ticketScope === "resolution"}
-                  value={formatDuration(
-                    visibleAgentMetrics.medianResolutionMinutes,
-                  )}
-                />
-              </View>
-            </View>
-          ) : (
-            <>
-              <Text style={[styles.heroTitle, { color: colors.onPrimary }]}>
-                Alles im Blick.
-              </Text>
-              <Text style={[styles.heroBody, { color: colors.onPrimary }]}>
-                Bearbeite Tickets schnell, klar und von überall.
-              </Text>
-            </>
-          )}
-        </View>
-
-        {error ? (
-          <View
-            accessibilityRole="alert"
-            style={[
-              styles.errorBox,
-              {
-                backgroundColor: colors.errorSoft,
-                borderColor: colors.errorBorder,
-              },
-            ]}
-          >
-            <Text style={[styles.errorText, { color: colors.error }]}>
-              {error}
+        ) : (
+          <>
+            <Text style={[styles.heroTitle, { color: colors.onPrimary }]}>
+              Alles im Blick.
             </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                setLoading(true);
-                void load();
-              }}
-            >
-              <Text style={[styles.retryText, tokenStyles.primaryText]}>
-                Erneut versuchen
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {supplementaryMessage ? (
-          <View
-            accessibilityLiveRegion="polite"
-            style={[
-              styles.supplementaryMessage,
-              {
-                backgroundColor: colors.warningSoft,
-                borderColor: colors.warningBorder,
-              },
-            ]}
-          >
-            <Ionicons
-              color={colors.warning}
-              name="information-circle-outline"
-              size={18}
-            />
-            <Text
-              style={[styles.supplementaryMessageText, tokenStyles.foreground]}
-            >
-              {supplementaryMessage}
+            <Text style={[styles.heroBody, { color: colors.onPrimary }]}>
+              Bearbeite Tickets schnell, klar und von überall.
             </Text>
-          </View>
-        ) : null}
-
-        {tenantId && !isOffline ? (
-          <RecentItemsCard tenantId={tenantId} />
-        ) : null}
-
+          </>
+        )}
+      </View>
+    ),
+    recent:
+      tenantId && !isOffline ? <RecentItemsCard tenantId={tenantId} /> : null,
+    overview: (
+      <>
         <Text style={[styles.sectionEyebrow, tokenStyles.muted]}>
           ÜBERSICHT
         </Text>
@@ -1088,7 +999,10 @@ export default function HomeScreen() {
             value={String(scopeCount("unassigned"))}
           />
         </View>
-
+      </>
+    ),
+    tickets: (
+      <>
         <View
           onLayout={(event) => {
             ticketListOffset.current = event.nativeEvent.layout.y;
@@ -1260,255 +1174,379 @@ export default function HomeScreen() {
             ) : null}
           </View>
         )}
-
-        <View
-          style={[styles.auxiliaryGrid, isWide && styles.auxiliaryGridWide]}
-        >
-          <View style={styles.auxiliaryColumn}>
-            <ApprovalInboxCard
-              tenantId={tenantContextMismatch ? null : tenantId}
-            />
-            <OnboardingHomeCard
-              tenantId={tenantContextMismatch ? null : tenantId}
-            />
-            {mentionsAvailableForTenant ? (
+      </>
+    ),
+    inbox: (
+      <ApprovalInboxCard tenantId={tenantContextMismatch ? null : tenantId} />
+    ),
+    onboarding: (
+      <OnboardingHomeCard tenantId={tenantContextMismatch ? null : tenantId} />
+    ),
+    mentions: mentionsAvailableForTenant ? (
+      <View style={[styles.card, tokenStyles.card, { padding: cardPadding }]}>
+        <View style={styles.cardHeadingRow}>
+          <SectionTitle
+            icon="at-outline"
+            title="Erwähnungen"
+            subtitle={
+              unreadMentions === 1
+                ? "1 ungelesene Erwähnung"
+                : `${unreadMentions} ungelesene Erwähnungen`
+            }
+          />
+          <Text
+            accessibilityLabel={`${unreadMentions} ungelesene Erwähnungen`}
+            style={[
+              styles.countBadge,
+              {
+                backgroundColor: colors.primarySoft,
+                color: colors.primaryText,
+              },
+            ]}
+          >
+            {unreadMentions}
+          </Text>
+        </View>
+        {recentMentions.length === 0 ? (
+          <Text style={[styles.emptyCardText, tokenStyles.muted]}>
+            Keine Erwähnungen vorhanden.
+          </Text>
+        ) : (
+          <View style={styles.compactList}>
+            {recentMentions.map((mention) => (
               <View
-                style={[
-                  styles.card,
-                  tokenStyles.card,
-                  { padding: cardPadding },
-                ]}
+                key={mention.id}
+                style={[styles.compactListRow, { borderColor: colors.border }]}
               >
-                <View style={styles.cardHeadingRow}>
-                  <SectionTitle
-                    icon="at-outline"
-                    title="Erwähnungen"
-                    subtitle={
-                      unreadMentions === 1
-                        ? "1 ungelesene Erwähnung"
-                        : `${unreadMentions} ungelesene Erwähnungen`
-                    }
-                  />
+                <View style={styles.compactListCopy}>
                   <Text
-                    accessibilityLabel={`${unreadMentions} ungelesene Erwähnungen`}
-                    style={[
-                      styles.countBadge,
-                      {
-                        backgroundColor: colors.primarySoft,
-                        color: colors.primaryText,
-                      },
-                    ]}
+                    style={[styles.compactListTitle, tokenStyles.foreground]}
                   >
-                    {unreadMentions}
+                    Ticket-Erwähnung
+                  </Text>
+                  <Text style={[styles.compactListMeta, tokenStyles.muted]}>
+                    {formatDateTime(mention.created_at)} ·{" "}
+                    {mention.read_at ? "Gelesen" : "Neu"}
                   </Text>
                 </View>
-                {recentMentions.length === 0 ? (
-                  <Text style={[styles.emptyCardText, tokenStyles.muted]}>
-                    Keine Erwähnungen vorhanden.
-                  </Text>
-                ) : (
-                  <View style={styles.compactList}>
-                    {recentMentions.map((mention) => (
-                      <View
-                        key={mention.id}
-                        style={[
-                          styles.compactListRow,
-                          { borderColor: colors.border },
-                        ]}
-                      >
-                        <View style={styles.compactListCopy}>
-                          <Text
-                            style={[
-                              styles.compactListTitle,
-                              tokenStyles.foreground,
-                            ]}
-                          >
-                            Ticket-Erwähnung
-                          </Text>
-                          <Text
-                            style={[styles.compactListMeta, tokenStyles.muted]}
-                          >
-                            {formatDateTime(mention.created_at)} ·{" "}
-                            {mention.read_at ? "Gelesen" : "Neu"}
-                          </Text>
-                        </View>
-                        {!mention.read_at ? (
-                          <Pressable
-                            accessibilityLabel="Erwähnung als gelesen markieren"
-                            accessibilityRole="button"
-                            accessibilityState={{
-                              busy: readingMentionId === mention.id,
-                            }}
-                            disabled={readingMentionId !== null}
-                            onPress={() => void readMention(mention)}
-                            style={[
-                              styles.compactAction,
-                              { borderColor: colors.primarySoftBorder },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.compactActionText,
-                                tokenStyles.primaryText,
-                              ]}
-                            >
-                              {readingMentionId === mention.id
-                                ? "…"
-                                : "Gelesen"}
-                            </Text>
-                          </Pressable>
-                        ) : null}
-                      </View>
-                    ))}
-                  </View>
-                )}
+                {!mention.read_at ? (
+                  <Pressable
+                    accessibilityLabel="Erwähnung als gelesen markieren"
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      busy: readingMentionId === mention.id,
+                    }}
+                    disabled={readingMentionId !== null}
+                    onPress={() => void readMention(mention)}
+                    style={[
+                      styles.compactAction,
+                      { borderColor: colors.primarySoftBorder },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.compactActionText,
+                        tokenStyles.primaryText,
+                      ]}
+                    >
+                      {readingMentionId === mention.id ? "…" : "Gelesen"}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
-            ) : null}
+            ))}
           </View>
-
-          <View style={styles.auxiliaryColumn}>
-            {approvalsAvailableForTenant ? (
-              <View
-                style={[
-                  styles.card,
-                  tokenStyles.card,
-                  { padding: cardPadding },
-                ]}
+        )}
+      </View>
+    ) : null,
+    approvals: approvalsAvailableForTenant ? (
+      <View style={[styles.card, tokenStyles.card, { padding: cardPadding }]}>
+        <SectionTitle
+          icon="checkbox-outline"
+          title="Meine Freigabeanfragen"
+          subtitle={`${visibleApprovals.length} offene Anfrage${visibleApprovals.length === 1 ? "" : "n"}`}
+        />
+        {visibleApprovals.length === 0 ? (
+          <Text style={[styles.emptyCardText, tokenStyles.muted]}>
+            Keine offenen Freigaben.
+          </Text>
+        ) : (
+          <View style={styles.compactList}>
+            {visibleApprovals.slice(0, 3).map((approval) => (
+              <Pressable
+                accessibilityHint="Öffnet das zugehörige Ticket"
+                accessibilityRole="button"
+                accessibilityState={{
+                  disabled: checkingFeatures || !ticketDetailsEnabled,
+                }}
+                disabled={checkingFeatures || !ticketDetailsEnabled}
+                key={approval.id}
+                onPress={() =>
+                  router.push({
+                    pathname: "/ticket/[id]",
+                    params: { id: approval.ticket_id },
+                  })
+                }
+                style={[styles.compactListRow, { borderColor: colors.border }]}
               >
-                <SectionTitle
-                  icon="checkbox-outline"
-                  title="Meine Freigabeanfragen"
-                  subtitle={`${visibleApprovals.length} offene Anfrage${visibleApprovals.length === 1 ? "" : "n"}`}
-                />
-                {visibleApprovals.length === 0 ? (
-                  <Text style={[styles.emptyCardText, tokenStyles.muted]}>
-                    Keine offenen Freigaben.
+                <View style={styles.compactListCopy}>
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.compactListTitle, tokenStyles.foreground]}
+                  >
+                    {approval.approval_kind}
                   </Text>
-                ) : (
-                  <View style={styles.compactList}>
-                    {visibleApprovals.slice(0, 3).map((approval) => (
-                      <Pressable
-                        accessibilityHint="Öffnet das zugehörige Ticket"
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          disabled: checkingFeatures || !ticketDetailsEnabled,
-                        }}
-                        disabled={checkingFeatures || !ticketDetailsEnabled}
-                        key={approval.id}
-                        onPress={() =>
-                          router.push({
-                            pathname: "/ticket/[id]",
-                            params: { id: approval.ticket_id },
-                          })
-                        }
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.compactListMeta, tokenStyles.muted]}
+                  >
+                    {firstReason(approval.reason)}
+                  </Text>
+                </View>
+                <Text style={[styles.compactListMeta, tokenStyles.muted]}>
+                  {approval.required_approvals} nötig
+                </Text>
+                <Ionicons
+                  color={colors.subtle}
+                  name="chevron-forward"
+                  size={16}
+                />
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </View>
+    ) : null,
+    devices:
+      devicesAvailableForTenant && !agentWorkbenchEnabled ? (
+        <View style={[styles.card, tokenStyles.card, { padding: cardPadding }]}>
+          <SectionTitle
+            icon="hardware-chip-outline"
+            title="Meine Geräte"
+            subtitle={`${visibleDevices.length} zugeordnet`}
+          />
+          {visibleDevices.length === 0 ? (
+            <Text style={[styles.emptyCardText, tokenStyles.muted]}>
+              Derzeit sind keine Geräte zugeordnet.
+            </Text>
+          ) : (
+            <View style={styles.compactList}>
+              {visibleDevices.slice(0, 3).map((device, index) => {
+                const detail = compactDeviceDetail(device);
+                return (
+                  <View
+                    key={
+                      typeof device.id === "string"
+                        ? device.id
+                        : `device-${index}`
+                    }
+                    style={[
+                      styles.compactListRow,
+                      { borderColor: colors.border },
+                    ]}
+                  >
+                    <Ionicons
+                      color={colors.primary}
+                      name="laptop-outline"
+                      size={18}
+                    />
+                    <View style={styles.compactListCopy}>
+                      <Text
+                        numberOfLines={1}
                         style={[
-                          styles.compactListRow,
-                          { borderColor: colors.border },
+                          styles.compactListTitle,
+                          tokenStyles.foreground,
                         ]}
                       >
-                        <View style={styles.compactListCopy}>
-                          <Text
-                            numberOfLines={1}
-                            style={[
-                              styles.compactListTitle,
-                              tokenStyles.foreground,
-                            ]}
-                          >
-                            {approval.approval_kind}
-                          </Text>
-                          <Text
-                            numberOfLines={1}
-                            style={[styles.compactListMeta, tokenStyles.muted]}
-                          >
-                            {firstReason(approval.reason)}
-                          </Text>
-                        </View>
+                        {compactDeviceName(device, index)}
+                      </Text>
+                      {detail ? (
                         <Text
+                          numberOfLines={1}
                           style={[styles.compactListMeta, tokenStyles.muted]}
                         >
-                          {approval.required_approvals} nötig
+                          {detail}
                         </Text>
-                        <Ionicons
-                          color={colors.subtle}
-                          name="chevron-forward"
-                          size={16}
-                        />
-                      </Pressable>
-                    ))}
+                      ) : null}
+                    </View>
                   </View>
-                )}
-              </View>
-            ) : null}
-            {devicesAvailableForTenant && !agentWorkbenchEnabled ? (
-              <View
-                style={[
-                  styles.card,
-                  tokenStyles.card,
-                  { padding: cardPadding },
-                ]}
-              >
-                <SectionTitle
-                  icon="hardware-chip-outline"
-                  title="Meine Geräte"
-                  subtitle={`${visibleDevices.length} zugeordnet`}
+                );
+              })}
+            </View>
+          )}
+        </View>
+      ) : null,
+  };
+  const shownSections = visibleHomeSections(homeLayout);
+
+  return (
+    <ScreenContainer
+      containerClassName="bg-background"
+      className="px-5"
+      style={{ backgroundColor: colors.background }}
+    >
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={[styles.content, isWide && styles.contentWide]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void load();
+              void loadSupplementaryData();
+              if (brandingTenantId) void loadBranding(brandingTenantId);
+            }}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <View style={styles.headerBrand}>
+            <View style={styles.brandRow}>
+              {customLogoUrl ? (
+                <Image
+                  accessibilityLabel={`${brandName} Logo`}
+                  onError={() =>
+                    setLogoLoad({
+                      aspect: null,
+                      failed: true,
+                      url: customLogoUrl,
+                    })
+                  }
+                  resizeMode="contain"
+                  source={{ uri: customLogoUrl }}
+                  style={{ height: logoHeight, width: logoWidth }}
                 />
-                {visibleDevices.length === 0 ? (
-                  <Text style={[styles.emptyCardText, tokenStyles.muted]}>
-                    Derzeit sind keine Geräte zugeordnet.
-                  </Text>
-                ) : (
-                  <View style={styles.compactList}>
-                    {visibleDevices.slice(0, 3).map((device, index) => {
-                      const detail = compactDeviceDetail(device);
-                      return (
-                        <View
-                          key={
-                            typeof device.id === "string"
-                              ? device.id
-                              : `device-${index}`
-                          }
-                          style={[
-                            styles.compactListRow,
-                            { borderColor: colors.border },
-                          ]}
-                        >
-                          <Ionicons
-                            color={colors.primary}
-                            name="laptop-outline"
-                            size={18}
-                          />
-                          <View style={styles.compactListCopy}>
-                            <Text
-                              numberOfLines={1}
-                              style={[
-                                styles.compactListTitle,
-                                tokenStyles.foreground,
-                              ]}
-                            >
-                              {compactDeviceName(device, index)}
-                            </Text>
-                            {detail ? (
-                              <Text
-                                numberOfLines={1}
-                                style={[
-                                  styles.compactListMeta,
-                                  tokenStyles.muted,
-                                ]}
-                              >
-                                {detail}
-                              </Text>
-                            ) : null}
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-            ) : null}
+              ) : (
+                <Image
+                  accessibilityLabel="nextDesk Logo"
+                  source={require("@/assets/images/icon.png")}
+                  style={styles.brandLogo}
+                />
+              )}
+              {showBrandText ? (
+                <Text
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                  numberOfLines={hasCustomName ? 2 : 1}
+                  style={[
+                    styles.brand,
+                    hasCustomName && styles.brandCustom,
+                    tokenStyles.foreground,
+                  ]}
+                >
+                  {brandName}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+          <View style={{ alignItems: "center", flexDirection: "row", gap: 8 }}>
+            <Pressable
+              accessibilityLabel="Home anpassen"
+              accessibilityRole="button"
+              onPress={() => setLayoutSheetOpen(true)}
+              style={[styles.avatar, { backgroundColor: colors.primarySoft }]}
+            >
+              <Ionicons
+                color={colors.primaryText}
+                name="options-outline"
+                size={21}
+              />
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Persönliche Einstellungen öffnen"
+              accessibilityRole="button"
+              onPress={() => router.push("/settings")}
+              style={[styles.avatar, { backgroundColor: colors.primarySoft }]}
+            >
+              {profilePhoto && profilePhoto.tenantId === tenantId ? (
+                <Image
+                  accessibilityIgnoresInvertColors
+                  source={{ uri: profilePhoto.url }}
+                  style={styles.avatarPhoto}
+                />
+              ) : (
+                <Ionicons
+                  color={colors.primaryText}
+                  name="person-circle-outline"
+                  size={23}
+                />
+              )}
+            </Pressable>
           </View>
         </View>
+
+        <IncidentBanner notices={visibleIncidentNotices} />
+
+        {error ? (
+          <View
+            accessibilityRole="alert"
+            style={[
+              styles.errorBox,
+              {
+                backgroundColor: colors.errorSoft,
+                borderColor: colors.errorBorder,
+              },
+            ]}
+          >
+            <Text style={[styles.errorText, { color: colors.error }]}>
+              {error}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setLoading(true);
+                void load();
+              }}
+            >
+              <Text style={[styles.retryText, tokenStyles.primaryText]}>
+                Erneut versuchen
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {supplementaryMessage ? (
+          <View
+            accessibilityLiveRegion="polite"
+            style={[
+              styles.supplementaryMessage,
+              {
+                backgroundColor: colors.warningSoft,
+                borderColor: colors.warningBorder,
+              },
+            ]}
+          >
+            <Ionicons
+              color={colors.warning}
+              name="information-circle-outline"
+              size={18}
+            />
+            <Text
+              style={[styles.supplementaryMessageText, tokenStyles.foreground]}
+            >
+              {supplementaryMessage}
+            </Text>
+          </View>
+        ) : null}
+
+        {shownSections.map((id) => (
+          <Fragment key={id}>{homeSections[id]}</Fragment>
+        ))}
+        {shownSections.length === 0 ? (
+          <Text style={[styles.sectionSub, tokenStyles.muted]}>
+            Alle Bereiche sind ausgeblendet. Über das Symbol oben rechts kannst
+            du sie wieder einblenden.
+          </Text>
+        ) : null}
       </ScrollView>
+      <HomeLayoutSheet
+        layout={homeLayout}
+        onChange={changeHomeLayout}
+        onClose={() => setLayoutSheetOpen(false)}
+        visible={layoutSheetOpen}
+      />
       {undoDelete.lastDeleted ? (
         <UndoToast
           message={`«${undoDelete.lastDeleted.ticketNumber}» gelöscht`}
