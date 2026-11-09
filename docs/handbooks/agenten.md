@@ -165,7 +165,9 @@ Status. Ziehen Sie eine Karte in eine andere Spalte, um den Status zu ändern.
 Öffnen Sie ein Ticket mit einem Klick. Im Kopf- und Infobereich ändern Sie
 direkt **Status**, **Priorität**, **Kategorie**, **Team** und **zugewiesene
 Person**. Ein Klick auf den Namen der **anfragenden Person** öffnet ihre
-Personenübersicht. Der **Verlauf** zeigt alle Nachrichten, Notizen und Änderungen
+Personenübersicht. Mit dem **Stift** in der Karte **Beschreibung** bearbeiten Sie die
+Beschreibung direkt dort (**Beschreibung speichern** oder Strg/⌘ + Enter);
+Betreff und Beschreibung zusammen ändern Sie über **Inhalt bearbeiten**. Der **Verlauf** zeigt alle Nachrichten, Notizen und Änderungen
 chronologisch; die SLA-Anzeige zeigt die verbleibende Zeit.
 
 ![Ticketdetail mit Verlauf und Infobereich](images/ag-ticket-detail.jpg)

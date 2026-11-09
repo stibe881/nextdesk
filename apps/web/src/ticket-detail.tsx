@@ -24,6 +24,7 @@ import {
   Clock,
   ListChecks,
   Paperclip,
+  Pencil,
   ChevronDown,
   Clock3,
   Eye,
@@ -3891,6 +3892,8 @@ export function TicketDetail({
   const [solutionPromptOpen, setSolutionPromptOpen] = useState(false);
   const [priorityKey, setPriorityKey] = useState("");
   const [isEditingTicket, setIsEditingTicket] = useState(false);
+  // Description edited in place via the pencil in the «Beschreibung» card.
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [editSubject, setEditSubject] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -5337,7 +5340,7 @@ export function TicketDetail({
   }, [assignableAgents, detail?.agents, detail?.assignedAgent]);
   const hasContentChanges = Boolean(
     detail &&
-    isEditingTicket &&
+    (isEditingTicket || isEditingDescription) &&
     (editSubject.trim() !== detail.ticket.subject ||
       editDescription.trim() !== detail.ticket.description),
   );
@@ -5900,7 +5903,24 @@ export function TicketDetail({
     setIsWorkToolsOpen(true);
     setEditSubject(detail.ticket.subject);
     setEditDescription(detail.ticket.description);
+    setIsEditingDescription(false);
     setIsEditingTicket(true);
+    setError("");
+  }
+
+  function startDescriptionEdit() {
+    if (!detail || !detail.canUpdate || busy) return;
+    setEditSubject(detail.ticket.subject);
+    setEditDescription(detail.ticket.description);
+    setIsEditingTicket(false);
+    setIsEditingDescription(true);
+    setError("");
+  }
+
+  function cancelDescriptionEdit() {
+    if (!detail || busy) return;
+    setEditDescription(detail.ticket.description);
+    setIsEditingDescription(false);
     setError("");
   }
 
@@ -6153,6 +6173,7 @@ export function TicketDetail({
     try {
       await invokeTicketOperation(action);
       setIsEditingTicket(false);
+      setIsEditingDescription(false);
       onChanged();
       await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
     } catch (nextError) {
@@ -7068,22 +7089,104 @@ export function TicketDetail({
                 <p className="eyebrow">ANLIEGEN</p>
                 <h3 id="ticket-description-heading">Beschreibung</h3>
               </div>
-            </div>
-            <div className="ticket-detail-description">
-              <TicketTextWithInlineImages
-                body={
-                  emailSignatureHtml
-                    ? splitPlainTextSignature(detail.ticket.description).message
-                    : detail.ticket.description
-                }
-                imagesByAttachmentId={inlineImagesByAttachmentId}
-                loading={inlineImagesLoading}
-                onImageError={refreshInlineImageAfterError}
-              />
-              {emailSignatureHtml ? (
-                <EmailSignatureFrame html={emailSignatureHtml} />
+              {detail.canUpdate && !requesterView && !isEditingDescription ? (
+                <button
+                  aria-label="Beschreibung bearbeiten"
+                  className="ticket-description-edit"
+                  disabled={busy}
+                  onClick={startDescriptionEdit}
+                  title="Beschreibung bearbeiten"
+                  type="button"
+                >
+                  <Pencil aria-hidden="true" size={16} strokeWidth={1.9} />
+                </button>
               ) : null}
             </div>
+            {isEditingDescription ? (
+              <form
+                className="ticket-description-editor"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveTicketContent();
+                }}
+              >
+                <label className="ticket-comment-body">
+                  <span className="sr-only">Beschreibung</span>
+                  <textarea
+                    autoFocus
+                    disabled={busy}
+                    maxLength={10_000}
+                    onChange={(event) => setEditDescription(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.stopPropagation();
+                        cancelDescriptionEdit();
+                      }
+                      if (
+                        event.key === "Enter" &&
+                        (event.metaKey || event.ctrlKey)
+                      ) {
+                        event.preventDefault();
+                        void saveTicketContent();
+                      }
+                    }}
+                    required
+                    rows={Math.min(
+                      18,
+                      Math.max(6, editDescription.split("\n").length + 1),
+                    )}
+                    value={editDescription}
+                  />
+                </label>
+                <div className="ticket-description-editor__actions">
+                  <span className="data-caption" aria-live="polite">
+                    {[...editDescription].length}/10&apos;000 Zeichen · Strg/⌘ +
+                    Enter speichert
+                  </span>
+                  <button
+                    className="secondary-button"
+                    disabled={busy}
+                    onClick={cancelDescriptionEdit}
+                    type="button"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={busy || !hasContentChanges}
+                    type="submit"
+                  >
+                    {pendingAction === "update" ? (
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="ticket-detail-spinner"
+                        size={16}
+                      />
+                    ) : (
+                      <Save aria-hidden="true" size={16} strokeWidth={1.8} />
+                    )}
+                    Beschreibung speichern
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="ticket-detail-description">
+                <TicketTextWithInlineImages
+                  body={
+                    emailSignatureHtml
+                      ? splitPlainTextSignature(detail.ticket.description)
+                          .message
+                      : detail.ticket.description
+                  }
+                  imagesByAttachmentId={inlineImagesByAttachmentId}
+                  loading={inlineImagesLoading}
+                  onImageError={refreshInlineImageAfterError}
+                />
+                {emailSignatureHtml ? (
+                  <EmailSignatureFrame html={emailSignatureHtml} />
+                ) : null}
+              </div>
+            )}
             {storedFormAnswers?.ticketId === detail.ticket.id && (
               <TicketFormAnswersBlock stored={storedFormAnswers.stored} />
             )}
