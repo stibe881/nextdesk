@@ -3,7 +3,13 @@
 
 export type SecurityVerdict = "harmless" | "spam" | "phishing" | "targeted";
 export type SecurityCaseState = "triage" | "actions" | "closed";
-export type SecurityStateFilter = SecurityCaseState | "all";
+export type SecurityStateFilter =
+  | SecurityCaseState
+  | "all"
+  /** Tiles: reported today, decided (30 days), someone clicked (30 days). */
+  | "today"
+  | "decided"
+  | "clicked";
 export type RiskLevel = "low" | "medium" | "high";
 
 export const VERDICTS: readonly SecurityVerdict[] = [

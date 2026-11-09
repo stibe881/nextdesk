@@ -21,7 +21,25 @@ import {
 // deno-lint-ignore no-explicit-any
 type Client = any;
 type Row = Record<string, unknown>;
-type StateFilter = "triage" | "actions" | "closed" | "all";
+// The tabs (state) and the tiles: reported today, decided in the last 30
+// days, someone said they clicked (last 30 days).
+type StateFilter =
+  | "triage"
+  | "actions"
+  | "closed"
+  | "all"
+  | "today"
+  | "decided"
+  | "clicked";
+const STATE_FILTERS: readonly StateFilter[] = [
+  "triage",
+  "actions",
+  "closed",
+  "all",
+  "today",
+  "decided",
+  "clicked",
+];
 
 type Action =
   | { type: "list"; tenantId: string; state: StateFilter }
@@ -54,8 +72,8 @@ export function parseAction(value: unknown): Action | null {
   switch (value.type) {
     case "list": {
       const state = value.state ?? "triage";
-      return state === "triage" || state === "actions" || state === "closed" || state === "all"
-        ? { type: "list", tenantId, state }
+      return (STATE_FILTERS as readonly unknown[]).includes(state)
+        ? { type: "list", tenantId, state: state as StateFilter }
         : null;
     }
     case "get":
@@ -200,8 +218,12 @@ async function list(admin: Client, client: Client, action: Extract<Action, { typ
   const agentName = new Map(agents.map((agent) => [String(agent.id), text(agent.display_name)]));
 
   const now = Date.now();
-  const dayStart = new Date();
+  // Start of today in Swiss time (the function runs in UTC).
+  const zurichNow = new Date(new Date(now).toLocaleString("en-US", { timeZone: "Europe/Zurich" }));
+  const zurichOffset = zurichNow.getTime() - now;
+  const dayStart = new Date(zurichNow);
   dayStart.setHours(0, 0, 0, 0);
+  dayStart.setTime(dayStart.getTime() - zurichOffset);
   const all = rows.map((row) => {
     const ticket = (Array.isArray(row.tickets) ? row.tickets[0] : row.tickets) as Row | null;
     const caseReports = reports.get(String(row.ticket_id)) ?? [];
@@ -240,7 +262,7 @@ async function list(admin: Client, client: Client, action: Extract<Action, { typ
   const todayReports = [...reports.values()].flat().filter((entry) =>
     Date.parse(String(entry.created_at)) >= dayStart.getTime()
   );
-  const clicks = await admin.from("security_click_questions").select("answer")
+  const clicks = await admin.from("security_click_questions").select("ticket_id, answer")
     .eq("tenant_id", action.tenantId).in("ticket_id", ids.slice(0, 1000)).not("answer", "is", null)
     .gte("created_at", new Date(thirtyDays).toISOString()).limit(5000);
   const answers = ((clicks.data ?? []) as Row[]).map((row) => row.answer);
@@ -257,7 +279,26 @@ async function list(admin: Client, client: Client, action: Extract<Action, { typ
     clickAnswers: answers.length,
     clickYes: answers.filter((answer) => answer === "yes").length,
   };
-  const cases = action.state === "all" ? all : all.filter((entry) => entry.state === action.state);
+  const clickedCases = new Set(((clicks.data ?? []) as Row[])
+    .filter((row) => row.answer === "yes").map((row) => String(row.ticket_id)));
+  const todayCases = new Set(todayReports.map((entry) => String(entry.ticket_id)));
+  const decidedCases = new Set(rows.filter((row) =>
+    row.verdict_at && Date.parse(String(row.verdict_at)) >= thirtyDays
+  ).map((row) => String(row.ticket_id)));
+  const cases = all.filter((entry) => {
+    switch (action.state) {
+      case "all":
+        return true;
+      case "today":
+        return todayCases.has(entry.ticketId);
+      case "decided":
+        return decidedCases.has(entry.ticketId);
+      case "clicked":
+        return clickedCases.has(entry.ticketId);
+      default:
+        return entry.state === action.state;
+    }
+  });
   cases.sort((a, b) =>
     a.state === "triage" && b.state === "triage"
       ? levelRank(b.riskLevel) - levelRank(a.riskLevel) || b.reporters - a.reporters ||
