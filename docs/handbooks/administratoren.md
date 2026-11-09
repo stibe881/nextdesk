@@ -97,10 +97,34 @@ Unter **Funktionen → SLA-Automatisierung → Konfigurieren**:
 - **Automatisierungen**: Mit **Vorschau ausführen** prüfen Sie Regeln vor
   dem Einsatz, das **Prüfintervall in Tagen** erinnert an die regelmässige
   Kontrolle.
-- **Drittanbieter**: externe Lieferanten mit E-Mail, Telefon und _Erinnerung
-  nach (Stunden)_.
+- **Drittanbieter**: externe Lieferanten, an die Agenten Tickets übergeben
+  können (siehe unten).
 
 ![Regeln für neue Tickets – Wenn … dann](images/ad-automation.jpg)
+
+### Drittanbieter erfassen
+
+Agenten können ein Ticket über **An Drittanbieter übergeben** an eine externe
+Firma (z. B. Hersteller oder Support-Partner) weitergeben. Dafür muss
+mindestens ein Drittanbieter erfasst sein. Sonst zeigt der Dialog den Hinweis
+«Es sind noch keine Drittanbieter erfasst».
+
+1. Öffnen Sie **Funktionen → SLA-Automatisierung → Konfigurieren** und
+   scrollen Sie zum Bereich **Drittanbieter**.
+2. Wählen Sie **Drittanbieter erfassen** und füllen Sie aus: _Name_ (Pflicht),
+   _E-Mail_, _Telefon_ und _Erinnerung nach (Stunden)_.
+3. Lassen Sie **Aktiv** eingeschaltet und wählen Sie **Speichern**.
+
+_Erinnerung nach (Stunden)_ ist die Frist, nach der die zugewiesene Person
+erinnert wird, wenn der Anbieter nicht antwortet. Erlaubt sind 1 bis 2160
+Stunden (90 Tage), voreingestellt sind 48. Mit dem Stift bearbeiten Sie einen
+Eintrag; mit **Aktiv** schalten Sie einen Anbieter ab, ohne ihn zu löschen.
+
+> Sie benötigen die Berechtigung **Automationen verwalten**. Ohne sie
+> verweist der Dialog der Agenten auf die Mandantenadministration.
+
+Bei der Übergabe wechselt das Ticket auf **Wartend auf Drittanbieter**. Ist es
+noch niemandem zugewiesen, bleibt der Status **Neu**, bis jemand es übernimmt.
 
 ## SLA-Regeln
 

@@ -217,6 +217,28 @@ Praktische Helfer:
 | Zusammenfassen (KI)                         | Kurzfassung langer Verläufe                             |
 | Ticketakte als PDF                          | Ticket drucken oder ablegen                             |
 
+### An Drittanbieter übergeben
+
+Mit **An Drittanbieter übergeben** erfassen Sie einen Lieferantenfall, wenn eine
+externe Firma das Problem lösen muss:
+
+1. Wählen Sie den **Drittanbieter**.
+2. Tragen Sie bei Bedarf die **externe Fallnummer** des Anbieters und eine
+   **Notiz** ein.
+3. Bestätigen Sie die Übergabe.
+
+Das Ticket wechselt auf **Wartend auf Drittanbieter**. Antwortet der Anbieter
+nicht innerhalb der beim Drittanbieter eingestellten Zeit (Voreinstellung 48
+Stunden), werden Sie als zugewiesene Person automatisch erinnert. Ist das
+Ticket noch niemandem zugewiesen, wird der Fall erfasst, der Status bleibt
+aber **Neu**, bis es zugewiesen ist.
+
+Erscheint stattdessen «Es sind noch keine Drittanbieter erfasst», hat der
+Mandant noch keine Anbieter angelegt. Wer die Berechtigung **Automationen
+verwalten** hat, erfasst sie in den Mandanteneinstellungen unter
+SLA-Automatisierung (siehe Administrationshandbuch); sonst wenden Sie sich an
+die Mandantenadministration.
+
 Wird eine SLA verletzt, erfassen Sie die **Ursache der SLA-Verletzung**.
 
 ### Bewertung der anfragenden Person
