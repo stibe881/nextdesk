@@ -1049,14 +1049,31 @@ const HANDLERS = {
     if (body.type === "queueLevels") return ok({ levels: [] });
     if (body.type === "getTicket")
       return ok({
-        levelsConfigured: false,
-        currentLevel: null,
-        currentTeam: null,
+        levelsConfigured: true,
+        currentLevel: 1,
+        currentTeam: { id: "team-servicedesk", name: "ICT Servicedesk" },
         ticketClosed: false,
-        canHandover: false,
-        targets: { next: null, back: [] },
+        canHandover: true,
+        targets: {
+          next: {
+            level: 2,
+            teams: [{ id: "team-system", name: "System Engineering" }],
+          },
+          back: [],
+        },
         currentHandover: null,
-        history: [],
+        history: [
+          {
+            id: "level-1",
+            kind: "initial",
+            fromLevel: null,
+            toLevel: 1,
+            teamName: "ICT Servicedesk",
+            note: null,
+            actorName: "Mara Keller",
+            createdAt: "2026-11-09T07:50:00Z",
+          },
+        ],
       });
     return null;
   },
@@ -1364,48 +1381,6 @@ const HANDLERS = {
       ],
     });
   },
-  "reply-snippets": (body, { persona }) => {
-    if (body.type !== "list" && body.type !== "listForTicket") return null;
-    const snippet = (n, name, shortcut, text, personal) => ({
-      id: D.uid("33333334", n),
-      name,
-      shortcut,
-      body: text,
-      departmentId: D.DEP.ict.id,
-      departmentName: "ICT",
-      personal,
-      canEdit: personal || persona.isTenantAdmin,
-    });
-    return ok({
-      snippets: [
-        snippet(
-          1,
-          "Begrüssung",
-          "hallo",
-          "Guten Tag {{anfragende_person}}\n\n",
-          false,
-        ),
-        snippet(
-          2,
-          "Neustart erbeten",
-          "neustart",
-          "Bitte starten Sie Ihr Gerät einmal vollständig neu und melden Sie sich, falls das Problem weiterhin besteht.",
-          false,
-        ),
-        snippet(3, "Abschluss", "gruss", "Freundliche Grüsse\n{{agent}}", true),
-      ],
-      context: {
-        requesterName: "Reto Baumann",
-        ticketNumber: null,
-        subject: null,
-        device: null,
-        agentName: persona.name,
-        departmentName: "ICT",
-      },
-      canManageShared: persona.isTenantAdmin,
-      departments: D.DEPARTMENTS.map((d) => ({ id: d.id, name: d.name })),
-    });
-  },
   "sla-breach-reasons": (body) =>
     body.type === "list" ? ok({ breaches: [], canRecord: true }) : null,
   "ticket-presence": (body) => {
@@ -1480,9 +1455,16 @@ const HANDLERS = {
             lastSentAt: D.ago(3 * D.HOUR),
           },
         ],
+        emailAvailable: true,
         featureEnabled: true,
         preferences: {
           enabledCategories: categories,
+          // Some categories also by e-mail.
+          emailCategories: categories.filter((category) =>
+            ["assigned", "escalation", "approval", "resolved"].includes(
+              category,
+            ),
+          ),
           // Notification time Mo–Fr 06:00–17:00 (quiet 17–06).
           deliveryDays: [1, 2, 3, 4, 5],
           quietHoursEnabled: true,

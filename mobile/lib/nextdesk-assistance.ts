@@ -1,6 +1,5 @@
-// Calls of the reply-snippets and portal-assistant edge functions (mobile).
-// The pure parsing lives in reply-snippets.ts and portal-assistant.ts, which
-// are identical copies of the web files.
+// Calls of the portal-assistant edge function (mobile). The pure parsing
+// lives in portal-assistant.ts, an identical copy of the web file.
 
 import { invokeNextDesk } from "./nextdesk-client";
 import {
@@ -10,27 +9,6 @@ import {
   type AssistantMessage,
   type AssistantTurn,
 } from "./portal-assistant";
-import {
-  parseSnippetResponse,
-  type ReplySnippet,
-  type SnippetContext,
-} from "./reply-snippets";
-
-/** Snippets and placeholder values for a ticket (agents only). */
-export async function loadTicketSnippets(
-  tenantId: string,
-  ticketId: string,
-): Promise<{ snippets: ReplySnippet[]; context: SnippetContext }> {
-  const parsed = parseSnippetResponse(
-    await invokeNextDesk<unknown>("reply-snippets", {
-      type: "listForTicket",
-      tenantId,
-      ticketId,
-    }),
-  );
-  if (!parsed) throw new Error("Die Antwort-Bausteine sind nicht verfügbar.");
-  return { snippets: parsed.snippets, context: parsed.context };
-}
 
 /** Whether the self-service assistant is switched on (off by default). */
 export async function loadPortalAssistantEnabled(

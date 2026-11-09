@@ -3004,6 +3004,8 @@ function AuthenticatedApp() {
   const [workspacePreferencesContext, setWorkspacePreferencesContext] =
     useState<"page" | "personal">("page");
   const [personalSettingsOpen, setPersonalSettingsOpen] = useState(false);
+  // While the personal settings are open, no menu item is marked active.
+  const navSection: Section | null = personalSettingsOpen ? null : section;
   const [ssoEnforced, setSsoEnforced] = useState(false);
   const [tenantFeatures, setTenantFeatures] = useState<Record<string, boolean>>(
     {},
@@ -5406,7 +5408,7 @@ function AuthenticatedApp() {
             {serviceStatusReadable && activeTenant ? (
               <div className="workplace-primary-navigation employee-status-navigation">
                 <NavigationStatusBadge
-                  active={section === "Systemstatus"}
+                  active={navSection === "Systemstatus"}
                   onOpenInternal={() => {
                     setPersonalSettingsOpen(false);
                     setSection("Systemstatus");
@@ -5427,14 +5429,14 @@ function AuthenticatedApp() {
                   const label = sectionDisplayLabel(item.label);
                   return (
                     <button
-                      aria-current={section === item.label ? "page" : undefined}
+                      aria-current={navSection === item.label ? "page" : undefined}
                       aria-label={
                         hasAttention
                           ? `${label} – ${attentionCount} ${navigationAttentionDescription(item.label)}`
                           : label
                       }
                       className={
-                        section === item.label ? "nav-item active" : "nav-item"
+                        navSection === item.label ? "nav-item active" : "nav-item"
                       }
                       key={item.label}
                       onClick={() => {
@@ -5472,7 +5474,7 @@ function AuthenticatedApp() {
                 {primaryNavigationItems.map((item) => (
                   <button
                     className={
-                      section === item.label ? "nav-item active" : "nav-item"
+                      navSection === item.label ? "nav-item active" : "nav-item"
                     }
                     key={item.label}
                     onClick={() => {
@@ -5557,7 +5559,7 @@ function AuthenticatedApp() {
                           return (
                             <button
                               aria-current={
-                                section === item.label ? "page" : undefined
+                                navSection === item.label ? "page" : undefined
                               }
                               aria-label={
                                 hasAttention
@@ -5565,7 +5567,7 @@ function AuthenticatedApp() {
                                   : label
                               }
                               className={
-                                section === item.label
+                                navSection === item.label
                                   ? "nav-item active"
                                   : "nav-item"
                               }
@@ -5606,10 +5608,10 @@ function AuthenticatedApp() {
               >
                 <button
                   aria-current={
-                    section === reportsNavigationItem.label ? "page" : undefined
+                    navSection === reportsNavigationItem.label ? "page" : undefined
                   }
                   className={
-                    section === reportsNavigationItem.label
+                    navSection === reportsNavigationItem.label
                       ? "nav-item active"
                       : "nav-item"
                   }
@@ -5635,7 +5637,7 @@ function AuthenticatedApp() {
             <nav aria-label="Einstellungen" className="rail-footer__settings">
               <button
                 className={
-                  section === settingsNavigationItem.label
+                  navSection === settingsNavigationItem.label
                     ? "nav-item active"
                     : "nav-item"
                 }

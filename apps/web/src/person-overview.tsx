@@ -790,8 +790,7 @@ export function PersonOverview({
                   <p className="person-note">
                     <Lock aria-hidden="true" size={13} />
                     Einzelne Bewertungen und Kommentare sind nicht sichtbar.
-                    nextDesk zeigt nur den Durchschnitt, erst ab{" "}
-                    {satisfaction?.minimumRatings ?? 3} Bewertungen.
+                    nextDesk zeigt nur den Durchschnitt.
                   </p>
                 </section>
 
@@ -808,20 +807,30 @@ export function PersonOverview({
                         const Icon = deviceIcon(device);
                         return (
                           <li key={device.id}>
-                            <span className="person-icon">
-                              <Icon aria-hidden="true" size={16} />
-                            </span>
-                            <div>
-                              <b>{device.name}</b>
-                              <small>
-                                {[
-                                  device.model,
-                                  complianceLabel(device.complianceState),
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </small>
-                            </div>
+                            <button
+                              className="person-mini-list__item"
+                              disabled={!onOpenAsset}
+                              onClick={() =>
+                                onOpenAsset?.(device.assetTag ?? device.name)
+                              }
+                              title={onOpenAsset ? "Gerät öffnen" : undefined}
+                              type="button"
+                            >
+                              <span className="person-icon">
+                                <Icon aria-hidden="true" size={16} />
+                              </span>
+                              <span className="person-mini-list__text">
+                                <b>{device.name}</b>
+                                <small>
+                                  {[
+                                    device.model,
+                                    complianceLabel(device.complianceState),
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </small>
+                              </span>
+                            </button>
                           </li>
                         );
                       })}

@@ -862,3 +862,56 @@
     width: min(100%, 580px);
   }
 }
+
+/* Tabs: no visible scrollbar (they still scroll on narrow screens). */
+.person-tabs {
+  scrollbar-width: none;
+}
+
+.person-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Devices in the side card open the device. */
+.person-mini-list li {
+  padding: 0;
+}
+
+button.person-mini-list__item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 10px;
+  padding: 8px 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.person-mini-list__item:hover:not(:disabled) {
+  border: 0;
+  background: var(--surface-subtle);
+  color: inherit;
+}
+
+button.person-mini-list__item:hover:not(:disabled) b {
+  color: var(--primary);
+}
+
+button.person-mini-list__item:disabled {
+  cursor: default;
+  padding: 8px 4px;
+  border-radius: 10px;
+  background: transparent;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.person-mini-list__text {
+  display: grid;
+  min-width: 0;
+}

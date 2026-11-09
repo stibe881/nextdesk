@@ -85,6 +85,8 @@ type Action =
       categoryModes?: Partial<Record<Category, DeliveryMode>>;
       summaryHour?: number;
       deliveryDays?: number[];
+      /** Categories also sent by e-mail (Exchange mailbox). */
+      emailCategories?: Category[];
     }
   | { type: "sendTest"; tenantId: string }
   | { type: "checkIn"; tenantId: string }
@@ -110,6 +112,7 @@ type PreferenceRow = {
   category_modes?: unknown;
   summary_hour?: number;
   delivery_days?: unknown;
+  email_categories?: unknown;
   last_test_at: string | null;
 };
 
@@ -376,6 +379,7 @@ function parseAction(value: unknown): Action | null {
       "categoryModes",
       "summaryHour",
       "deliveryDays",
+      "emailCategories",
     ]) &&
     isCategories(value.enabledCategories) &&
     typeof value.quietHoursEnabled === "boolean" &&
@@ -387,7 +391,8 @@ function parseAction(value: unknown): Action | null {
     (!hasOwn(value, "categoryModes") ||
       parseCategoryModes(value.categoryModes) !== null) &&
     (!hasOwn(value, "summaryHour") || isHour(value.summaryHour)) &&
-    (!hasOwn(value, "deliveryDays") || isDeliveryDays(value.deliveryDays))
+    (!hasOwn(value, "deliveryDays") || isDeliveryDays(value.deliveryDays)) &&
+    (!hasOwn(value, "emailCategories") || isCategories(value.emailCategories))
   ) {
     const categoryModes = hasOwn(value, "categoryModes")
       ? parseCategoryModes(value.categoryModes)
@@ -411,6 +416,9 @@ function parseAction(value: unknown): Action | null {
         : {}),
       ...(hasOwn(value, "deliveryDays")
         ? { deliveryDays: deliveryDaysOrAll(value.deliveryDays) }
+        : {}),
+      ...(hasOwn(value, "emailCategories")
+        ? { emailCategories: value.emailCategories as Category[] }
         : {}),
     };
   }
@@ -508,6 +516,7 @@ export function defaultPreferences() {
     summaryHour: 8,
     timezone: "Europe/Zurich",
     deliveryDays: [...ALL_DELIVERY_DAYS],
+    emailCategories: [] as Category[],
   };
 }
 
@@ -565,7 +574,14 @@ function preferencesForResponse(row: PreferenceRow | null) {
     summaryHour: isHour(row.summary_hour) ? row.summary_hour : 8,
     timezone: row.timezone,
     deliveryDays: deliveryDaysOrAll(row.delivery_days),
+    emailCategories: emailCategoriesOf(row.email_categories),
   };
+}
+
+function emailCategoriesOf(value: unknown): Category[] {
+  return Array.isArray(value)
+    ? ALL_CATEGORIES.filter((category) => value.includes(category))
+    : [];
 }
 
 function deviceForResponse(row: DeviceRow) {
@@ -664,7 +680,7 @@ async function readPreferences(
   const { data, error } = await admin
     .from("push_preferences")
     .select(
-      "enabled_categories, quiet_hours_enabled, quiet_start, quiet_end, timezone, global_enabled, category_modes, summary_hour, delivery_days, last_test_at",
+      "enabled_categories, quiet_hours_enabled, quiet_start, quiet_end, timezone, global_enabled, category_modes, summary_hour, delivery_days, email_categories, last_test_at",
     )
     .eq("tenant_id", tenantId)
     .eq("user_id", actorId)
@@ -866,6 +882,26 @@ async function featureConfiguration(
   };
 }
 
+/** E-mail notifications need the e-mail module and an active mailbox. */
+async function emailNotificationsAvailable(
+  admin: Admin,
+  tenantId: string,
+): Promise<boolean> {
+  const [{ data: enabled }, { data: channel }] = await Promise.all([
+    admin.rpc("exchange_mail_feature_enabled", { p_tenant_id: tenantId }),
+    admin
+      .from("exchange_mail_channels")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .eq("access_mode", "delegated")
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  return enabled === true && Boolean(channel);
+}
+
 async function getStatus(
   request: Request,
   client: Client,
@@ -873,12 +909,14 @@ async function getStatus(
   action: Extract<Action, { type: "getStatus" }>,
   actorId: string,
 ): Promise<Response> {
-  const [feature, preferences, devices, categories] = await Promise.all([
-    featureConfiguration(admin, action.tenantId),
-    readPreferences(admin, action.tenantId, actorId),
-    readDevices(admin, action.tenantId, actorId),
-    applicableCategories(client, admin, action.tenantId, actorId),
-  ]);
+  const [feature, preferences, devices, categories, emailAvailable] =
+    await Promise.all([
+      featureConfiguration(admin, action.tenantId),
+      readPreferences(admin, action.tenantId, actorId),
+      readDevices(admin, action.tenantId, actorId),
+      applicableCategories(client, admin, action.tenantId, actorId),
+      emailNotificationsAvailable(admin, action.tenantId),
+    ]);
   const workHours = await readWorkHours(
     admin,
     action.tenantId,
@@ -891,6 +929,7 @@ async function getStatus(
       apnsConfigured: isApnsConfigured(),
       contentLevel: feature.contentLevel,
       applicableCategories: categories,
+      emailAvailable,
       preferences: preferencesForResponse(preferences),
       devices: devices.map(deviceForResponse),
       workHours,
@@ -1035,13 +1074,14 @@ async function updatePreferences(
         quiet_end: action.quietEnd,
         summary_hour: action.summaryHour ?? fallback.summaryHour,
         delivery_days: action.deliveryDays ?? fallback.deliveryDays,
+        email_categories: action.emailCategories ?? fallback.emailCategories,
         timezone: action.timezone,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "tenant_id,user_id" },
     )
     .select(
-      "enabled_categories, quiet_hours_enabled, quiet_start, quiet_end, timezone, global_enabled, category_modes, summary_hour, delivery_days, last_test_at",
+      "enabled_categories, quiet_hours_enabled, quiet_start, quiet_end, timezone, global_enabled, category_modes, summary_hour, delivery_days, email_categories, last_test_at",
     )
     .single();
   if (error || !data) throw new HttpError(422, "preferences_update_failed");

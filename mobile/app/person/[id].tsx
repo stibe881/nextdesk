@@ -495,8 +495,7 @@ export default function PersonScreen() {
                 />
                 <Text style={styles.noteText}>
                   Einzelne Bewertungen und Kommentare sind nicht sichtbar.
-                  nextDesk zeigt nur den Durchschnitt, erst ab{" "}
-                  {data.satisfaction.minimumRatings} Bewertungen.
+                  nextDesk zeigt nur den Durchschnitt.
                 </Text>
               </View>
             </View>
