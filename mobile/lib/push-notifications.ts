@@ -82,6 +82,8 @@ export type WorkHours = {
 
 export type PushPreferences = {
   enabledCategories: PushCategory[];
+  /** Categories that are also sent by e-mail. */
+  emailCategories: PushCategory[];
   /** ISO weekdays 1 (Monday) to 7 (Sunday) on which pushes arrive. */
   deliveryDays: number[];
   quietHoursEnabled: boolean;
@@ -106,6 +108,8 @@ export type PushNotificationStatus = {
   apnsConfigured: boolean;
   contentLevel: PushContentLevel;
   applicableCategories: PushCategory[];
+  /** E-mail notifications can be sent in this workspace. */
+  emailAvailable: boolean;
   preferences: PushPreferences;
   devices: PushDevice[];
   workHours: WorkHours;
@@ -145,6 +149,7 @@ type PushAction =
       type: "updatePreferences";
       tenantId: string;
       enabledCategories: PushCategory[];
+      emailCategories: PushCategory[];
       categoryModes: Record<string, "immediate" | "off">;
       quietHoursEnabled: boolean;
       quietStart: number;
@@ -212,6 +217,7 @@ function normalizePushPreferences(
   return {
     ...preferences,
     enabledCategories: knownPushCategories(preferences?.enabledCategories),
+    emailCategories: knownPushCategories(preferences?.emailCategories),
     deliveryDays: normalizeDeliveryDays(preferences?.deliveryDays),
   };
 }
@@ -222,6 +228,7 @@ function normalizePushNotificationStatus(
   return {
     ...status,
     applicableCategories: knownPushCategories(status.applicableCategories),
+    emailAvailable: status.emailAvailable !== false,
     preferences: normalizePushPreferences(status.preferences),
   };
 }
@@ -399,6 +406,7 @@ export async function updatePushPreferences(input: {
     type: "updatePreferences",
     tenantId: input.tenantId,
     enabledCategories: preferences.enabledCategories,
+    emailCategories: preferences.emailCategories,
     // Explizite Modi, damit auch Kategorien ohne Eintrag in der gespeicherten
     // Liste (Infrastruktur) ausgeschaltet werden können.
     categoryModes: Object.fromEntries(

@@ -233,8 +233,9 @@ aus und verschieben sie mit den Pfeilen. **Standard wiederherstellen** setzt
 alles zurück. Die Einstellung gilt nur für Sie und wird zwischen Ihren
 Geräten (iPhone, Android) abgeglichen: Die letzte Änderung gilt überall. Auf jeder Ticketkarte steht, wann das Ticket erstellt wurde
 (z. B. «Erstellt heute, 14:32»). Über **Neues Ticket** erfassen Sie Anliegen
-unterwegs, auf Wunsch mit Foto. In den App-Einstellungen aktivieren Sie Benachrichtigungen, z. B.
-für Antworten des Supports, und wählen unter **Benachrichtigungszeit**, an
+unterwegs, auf Wunsch mit Foto. In den App-Einstellungen schalten Sie Benachrichtigungen, z. B.
+für Antworten des Supports, pro Hinweis einzeln als **Push** und als **Mail**
+ein oder aus (gleich wie im Browser) und wählen unter **Benachrichtigungszeit**, an
 welchen Tagen und zu welchen Zeiten sie kommen.
 
 Die Handbücher finden Sie auch in der App: **Profil → Hilfe und
