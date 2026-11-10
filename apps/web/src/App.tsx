@@ -1488,7 +1488,7 @@ function baseNotificationPresentation(
     case "ticket.sla.supervisor_no_response": {
       const agent = notificationPayloadText(notification, "agentName", 200);
       return {
-        description: `${ticketLabel} ist seit über 24 Stunden ohne Antwort${agent ? ` (${agent})` : " (nicht zugewiesen)"}.`,
+        description: `${ticketLabel}: Frist für die erste Antwort abgelaufen${agent ? ` (${agent})` : " (nicht zugewiesen)"}.`,
         Icon: AlertTriangle,
         title: "Team: Ticket ohne Antwort",
       };
