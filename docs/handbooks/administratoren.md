@@ -2,7 +2,7 @@
 title: Handbuch für Administratoren
 description: Mandant einrichten – Design, Funktionen, SLA, Abteilungen, Personen, Rollen, Datenschutz und Protokoll.
 audienceLabel: Administratoren
-updated: 2026-11-09
+updated: 2026-11-10
 ---
 
 # Handbuch für Administratoren
@@ -20,11 +20,11 @@ Der Menüpunkt **Einstellungen** ist nur für Administratoren sichtbar und
 steht unten in der linken Navigation. Die Einstellungen sind in Register
 gegliedert:
 
-| Gruppe               | Register                                               |
-| -------------------- | ------------------------------------------------------ |
-| Allgemein            | Übersicht, Design                                      |
-| Betrieb              | Funktionen, SLA, Ticketfelder, Abteilungen, Monitoring |
-| Zugriff & Sicherheit | Personen, Rollen, Datenschutz, Protokoll               |
+| Gruppe               | Register                                                                |
+| -------------------- | ----------------------------------------------------------------------- |
+| Allgemein            | Übersicht, Design                                                       |
+| Betrieb              | Funktionen, SLA, Ticketfelder, Abteilungen, E-Mail-Vorlagen, Monitoring |
+| Zugriff & Sicherheit | Personen, Rollen, Datenschutz, Protokoll                                |
 
 Mit **Schliessen** kehren Sie in den Arbeitsbereich zurück.
 
@@ -162,6 +162,38 @@ Im Register **Abteilungen**:
 3. **Teams pro Abteilung**: Name, Abteilung und Supportstufe
    (1st/2nd/3rd Level). Über **Mitglieder verwalten** ordnen Sie Agenten zu.
 4. **Module pro Abteilung**: welche Abteilung welche Zusatzmodule nutzt.
+
+## E-Mail-Vorlagen
+
+Im Register **E-Mail-Vorlagen** steuern Sie alle E-Mails, die nextDesk
+automatisch versendet:
+
+- Eingangsbestätigung, Antwort des Supports, Ticket gelöst
+- Rückmeldungen an Personen, die eine Phishing-Mail gemeldet haben: Danke,
+  Ergebnis (je Beurteilung eine eigene Vorlage) und Rückfrage «geklickt?». Die
+  Vorlage «Gestaltung» legt Überschrift und Hinweis fest; ausgeschaltet
+  werden gar keine Rückmeldungen versendet
+- Abteilungsrückfrage und Abteilungsantwort
+- Benachrichtigungen an Mitarbeitende
+- Statusseite: Anmeldung bestätigen und Statusänderung
+
+Öffnen Sie eine Vorlage, um sie zu bearbeiten:
+
+1. **Versand aktiv** ausschalten, wenn diese E-Mail nicht mehr gesendet werden
+   soll. Die Nachrichten bleiben dann ohne Zustellung markiert («Vorlage
+   deaktiviert»).
+2. Betreff, Überschriften, Texte und Hinweise anpassen. Ein leeres Feld
+   verwendet den Standardtext, der als Platzhalter im Feld sichtbar ist.
+3. Mit Platzhaltern wie `{{ticketNumber}}`, `{{ticketSubject}}` oder
+   `{{portalName}}` fügen Sie Werte ein. Welche Platzhalter gelten, steht
+   unter dem Formular.
+4. **Speichern**. Mit **Auf Standard** setzen Sie die Vorlage zurück.
+
+Der Text einer Antwort des Supports (was Ihre Agenten im Ticket schreiben)
+und die Details der Ereignisse
+(z. B. Ticketbetreff in Benachrichtigungen) bleiben unverändert. Die Schalter
+unter _Funktionen → E-Mail-Kanäle_ (Eingangsbestätigung, Agentenantworten,
+Lösung) gelten zusätzlich: Eine E-Mail wird nur gesendet, wenn beide aktiv sind.
 
 ## Monitoring
 

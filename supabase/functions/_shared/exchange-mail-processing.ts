@@ -19,6 +19,8 @@ import {
   type CustomerTicketEmailBrand,
   type CustomerTicketEmailKind,
 } from "./customer-ticket-email-template.ts";
+import { emailTemplateDefinition } from "./email-templates.ts";
+import { loadEmailTemplate } from "./email-templates-store.ts";
 import {
   requesterActionUrl,
   signRequesterActionToken,
@@ -1953,6 +1955,15 @@ async function dispatchNotificationMail(
     });
   try {
     if (!(await claimMessage(admin, message.id))) return;
+    const template = await loadEmailTemplate(
+      admin,
+      message.tenant_id,
+      "notification",
+    );
+    if (!template.enabled) {
+      await ignore("template_disabled");
+      return;
+    }
     const row = await admin
       .from("mail_messages")
       .select("notification_id")
@@ -2048,10 +2059,11 @@ async function dispatchNotificationMail(
       ticketNumber,
       intro: mail.title,
       text: mail.message,
-      replyHint: mail.hint,
+      eyebrow: template.text("eyebrow", { portalName }),
+      replyHint: template.text("hint", { portalName }).trim() || mail.hint,
       actions: [
         {
-          label: `In ${portalName} öffnen`,
+          label: template.text("button", { portalName }),
           url: APP_ORIGIN,
           primary: true,
         },
@@ -2071,7 +2083,11 @@ async function dispatchNotificationMail(
       method: "POST",
       body: JSON.stringify({
         message: {
-          subject: `${mail.subject} – ${portalName}`.slice(0, 250),
+          subject:
+            `${mail.subject} – ${template.text("subjectSuffix", { portalName }).trim() || portalName}`.slice(
+              0,
+              250,
+            ),
           body: { contentType: "HTML", content: html },
           toRecipients: [{ emailAddress: { address: recipient } }],
           internetMessageHeaders: [
@@ -2133,6 +2149,15 @@ async function dispatchServiceStatusMail(
     });
   try {
     if (!(await claimMessage(admin, message.id))) return;
+    const template = await loadEmailTemplate(
+      admin,
+      message.tenant_id,
+      message.kind,
+    );
+    if (!template.enabled) {
+      await ignore("template_disabled");
+      return;
+    }
     const row = await admin
       .from("mail_messages")
       .select("status_subscription_id, service_status_event_id")
@@ -2182,14 +2207,13 @@ async function dispatchServiceStatusMail(
         await ignore("status_subscription_already_confirmed");
         return;
       }
-      subject = `Anmeldung bestätigen – ${pageTitle}`;
-      intro = "Bitte bestätigen Sie Ihre Anmeldung";
-      text =
-        `Sie möchten per E-Mail informiert werden, wenn sich der Status eines Dienstes auf «${pageTitle}» ändert.\n\n` +
-        "Bestätigen Sie die Anmeldung mit dem Knopf unten. Wenn Sie sich nicht angemeldet haben, können Sie diese E-Mail ignorieren.";
+      const values = { pageTitle };
+      subject = template.text("subject", values);
+      intro = template.text("intro", values);
+      text = template.text("text", values);
       actions = [
         {
-          label: "Anmeldung bestätigen",
+          label: template.text("button", values),
           url: serviceStatusPageUrl(publicId, { token, kind: "confirm" }),
           primary: true,
         },
@@ -2245,8 +2269,9 @@ async function dispatchServiceStatusMail(
         timeStyle: "short",
         timeZone: "Europe/Zurich",
       }).format(new Date(String(event.data.changed_at)));
-      subject = `${serviceName}: ${now}`;
-      intro = `${serviceName} – ${now}`;
+      const values = { service: serviceName, status: now, pageTitle };
+      subject = template.text("subject", values);
+      intro = template.text("intro", values);
       text =
         (before
           ? `Der Status von «${serviceName}» hat sich von «${before}» zu «${now}» geändert.`
@@ -2254,7 +2279,7 @@ async function dispatchServiceStatusMail(
         `\n\nGeändert am ${changedAt}.`;
       actions = [
         {
-          label: "Systemstatus ansehen",
+          label: template.text("button", { pageTitle }),
           url: serviceStatusPageUrl(publicId),
           primary: true,
         },
@@ -2290,7 +2315,9 @@ async function dispatchServiceStatusMail(
       intro,
       text,
       replyHint:
-        "Sie erhalten diese E-Mail, weil Sie den Systemstatus abonniert haben. Über «Abmelden» beenden Sie das Abo jederzeit.",
+        message.kind === "status_change"
+          ? template.text("hint", { pageTitle })
+          : "Sie erhalten diese E-Mail, weil Sie den Systemstatus abonniert haben. Über «Abmelden» beenden Sie das Abo jederzeit.",
       actions,
       branding: branding.branding,
       attachmentNotice: false,
@@ -2403,6 +2430,24 @@ export async function dispatchOutboundMessage(
       .eq("id", message.tenant_id)
       .maybeSingle();
     let portalName = asString(tenantName.data?.name) ?? "Support";
+    const emailTemplate = emailTemplateDefinition(message.kind)
+      ? await loadEmailTemplate(admin, message.tenant_id, message.kind)
+      : null;
+    if (emailTemplate && !emailTemplate.enabled) {
+      await updateMessage(admin, message.id, {
+        processing_status: "ignored",
+        ignore_reason: "template_disabled",
+      });
+      return;
+    }
+    const templateText = (field: string, fallback: string): string =>
+      emailTemplate
+        ? emailTemplate.text(field, {
+            ticketNumber: asString(ticket?.ticket_number) ?? "",
+            ticketSubject: asString(ticket?.subject) ?? "",
+            portalName,
+          })
+        : fallback;
     const internalDepartmentNotice =
       message.kind === "department_question" ||
       message.kind === "department_answer";
@@ -2520,16 +2565,18 @@ export async function dispatchOutboundMessage(
           throw new Error("department_question_unavailable");
         bodyText =
           message.kind === "department_question"
-            ? `Eine Abteilungsrückfrage benötigt Ihre Antwort:\n\n${cleanText(question.data.question)}`
-            : `Die Abteilungsleitung hat auf Ihre Rückfrage geantwortet:\n\n${cleanText(question.data.answer)}`;
+            ? `${templateText("text", "Eine Abteilungsrückfrage benötigt Ihre Antwort:")}\n\n${cleanText(question.data.question)}`
+            : `${templateText("text", "Die Abteilungsleitung hat auf Ihre Rückfrage geantwortet:")}\n\n${cleanText(question.data.answer)}`;
       }
     }
     if (!recipient) throw new Error("recipient_unavailable");
     if (message.kind === "acknowledgement")
-      bodyText =
-        "Ihre Anfrage ist bei uns eingegangen und wurde als Ticket erfasst.";
+      bodyText = templateText(
+        "text",
+        "Ihre Anfrage ist bei uns eingegangen und wurde als Ticket erfasst.",
+      );
     if (message.kind === "resolution")
-      bodyText = "Ihr Ticket wurde als gelöst markiert.";
+      bodyText = templateText("text", "Ihr Ticket wurde als gelöst markiert.");
     if (message.kind === "test")
       bodyText = "Dies ist eine Testmail des nextDesk E-Mail-Kanals.";
     const ticketNumber = asString(ticket?.ticket_number) ?? "nextDesk-Test";
@@ -2575,6 +2622,13 @@ export async function dispatchOutboundMessage(
           branding: customerBranding!.branding,
           attachmentNotice: attachments.omitted,
           kind: customerEmailKind!,
+          ...(emailTemplate
+            ? {
+                eyebrow: templateText("eyebrow", ""),
+                intro: templateText("intro", ""),
+                replyHint: templateText("hint", ""),
+              }
+            : {}),
         });
     const graphAttachments = [
       ...attachments.attachments,
@@ -2582,9 +2636,13 @@ export async function dispatchOutboundMessage(
         ? [customerBranding.logoAttachment]
         : []),
     ];
+    const customSubject = emailTemplate
+      ? templateText("subject", "").replace(/\s+/g, " ").trim()
+      : "";
     const graphMessage: Row = {
-      subject:
-        message.kind === "security_notice" && asString(message.subject)
+      subject: customSubject
+        ? customSubject.slice(0, 250)
+        : message.kind === "security_notice" && asString(message.subject)
           ? `[${ticketNumber}] ${asString(message.subject)}`
           : message.kind === "agent_reply"
             ? `AW: [${ticketNumber}] ${ticketSubject}`

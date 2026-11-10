@@ -38,6 +38,8 @@ type CustomerTicketEmailInput = {
   intro?: string;
   /** Overrides the hint below the message. */
   replyHint?: string;
+  /** Overrides the small heading above the headline. */
+  eyebrow?: string;
 };
 
 type EmailPresentation = {
@@ -239,6 +241,7 @@ export function renderCustomerTicketEmail(
   const base = presentation(input.kind);
   const copy = {
     ...base,
+    eyebrow: input.eyebrow ?? base.eyebrow,
     intro: input.intro ?? base.intro,
     replyHint: input.replyHint ?? base.replyHint,
   };

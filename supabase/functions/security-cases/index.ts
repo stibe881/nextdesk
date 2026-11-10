@@ -1,16 +1,15 @@
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
+import { loadEmailTemplate } from "../_shared/email-templates-store.ts";
 import { defang } from "../_shared/phishing-analysis.ts";
 import {
   caseReporterEmails,
-  CLICK_QUESTION_TEXT,
   DEFAULT_ACTIONS,
   isSecurityVerdict,
   queueSecurityNotice,
   SECURITY_VERDICTS,
   type SecurityVerdict,
   VERDICT_LABELS,
-  VERDICT_RESULT_TEXT,
 } from "../_shared/security-cases.ts";
 
 // «Sicherheitsfälle»: phishing reports handled as their own kind of case
@@ -502,17 +501,23 @@ async function setVerdict(
       .eq("ticket_id", action.ticketId).order("created_at").limit(1).maybeSingle();
     const original = text(subjectRow.data?.original_subject);
     const recipients = await caseReporterEmails(admin, action.tenantId, action.ticketId);
-    const result = await queueSecurityNotice(admin, {
-      tenantId: action.tenantId,
-      ticketId: action.ticketId,
-      authorId: actorId,
-      subject: original
-        ? `Ergebnis Ihrer Phishing-Meldung: «${original.slice(0, 120)}»`
-        : "Ergebnis Ihrer Phishing-Meldung",
-      body: VERDICT_RESULT_TEXT[action.verdict],
-      recipients,
-      note: `Ergebnis «${VERDICT_LABELS[action.verdict]}» an ${recipients.length} meldende Person(en):`,
-    });
+    const [frame, template] = await Promise.all([
+      loadEmailTemplate(admin, action.tenantId, "security_notice"),
+      loadEmailTemplate(admin, action.tenantId, `phishing_result_${action.verdict}`),
+    ]);
+    const values = { originalSubject: original ? original.slice(0, 120) : "" };
+    const result = frame.enabled && template.enabled
+      ? await queueSecurityNotice(admin, {
+        tenantId: action.tenantId,
+        ticketId: action.ticketId,
+        authorId: actorId,
+        subject: template.text("subject", values).replace(/\s*:?\s*«\s*»/g, "").trim() ||
+          "Ergebnis Ihrer Phishing-Meldung",
+        body: template.text("text", values),
+        recipients,
+        note: `Ergebnis «${VERDICT_LABELS[action.verdict]}» an ${recipients.length} meldende Person(en):`,
+      })
+      : { commentId: null, queued: 0 };
     notified = result.queued;
     await admin.from("security_cases").update({ reporters_notified_at: now })
       .eq("ticket_id", action.ticketId).eq("tenant_id", action.tenantId);
@@ -527,12 +532,17 @@ async function askClicked(admin: Client, client: Client, actorId: string, tenant
   const known = new Set(((asked.data ?? []) as Row[]).map((row) => String(row.email).toLowerCase()));
   const recipients = all.filter((email) => !known.has(email));
   if (!recipients.length) return { asked: 0 };
+  const [frame, template] = await Promise.all([
+    loadEmailTemplate(admin, tenantId, "security_notice"),
+    loadEmailTemplate(admin, tenantId, "phishing_click_question"),
+  ]);
+  if (!frame.enabled || !template.enabled) return { asked: 0 };
   const result = await queueSecurityNotice(admin, {
     tenantId,
     ticketId,
     authorId: actorId,
-    subject: "Kurze Rückfrage zu Ihrer Phishing-Meldung",
-    body: CLICK_QUESTION_TEXT,
+    subject: template.text("subject", {}),
+    body: template.text("text", {}),
     recipients,
     note: `Rückfrage «geklickt?» an ${recipients.length} meldende Person(en):`,
     beforeQueue: async (commentId) => {

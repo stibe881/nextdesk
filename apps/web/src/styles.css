@@ -21579,3 +21579,59 @@ button.predefined-report__drill:hover:not(:disabled) strong {
     flex-basis: 100%;
   }
 }
+
+/* E-Mail-Vorlagen (Einstellungen) */
+.email-templates__list { display: grid; gap: 10px; }
+.email-templates__item {
+  border: 1px solid var(--border, #e3e9ee);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+.email-templates__item > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 16px;
+}
+.email-templates__item > summary::-webkit-details-marker { display: none; }
+.email-templates__title { display: grid; gap: 2px; }
+.email-templates__title small { color: var(--muted, #5d6f7a); }
+.email-templates__badges { display: flex; gap: 6px; }
+.email-templates__badges em {
+  border-radius: 999px;
+  background: var(--surface-subtle, #eef2f6);
+  color: var(--muted, #5d6f7a);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+  padding: 2px 10px;
+}
+.email-templates__badges em.is-on { background: #dcf5e6; color: #14653a; }
+.email-templates__badges em.is-off { background: #fde4e1; color: #9b2a1c; }
+.email-templates__body {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--border, #e3e9ee);
+  padding: 14px 16px 16px;
+}
+.email-templates__description { margin: 0; color: var(--muted, #5d6f7a); }
+.email-templates__switch { display: flex; align-items: flex-start; gap: 10px; }
+.email-templates__switch span { display: grid; gap: 2px; }
+.email-templates__switch small { color: var(--muted, #5d6f7a); }
+.email-templates__field { display: grid; gap: 4px; }
+.email-templates__field label { font-weight: 700; font-size: 13px; }
+.email-templates__field input,
+.email-templates__field textarea { width: 100%; font: inherit; }
+.email-templates__placeholders { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 13px; }
+.email-templates__placeholders code {
+  border-radius: 6px;
+  background: var(--surface-subtle, #eef2f6);
+  padding: 1px 6px;
+}
+.email-templates__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.email-templates__feedback { margin: 0 0 10px; border-radius: 10px; padding: 8px 12px; }
+.email-templates__feedback.is-success { background: #dcf5e6; color: #14653a; }
+.email-templates__feedback.is-error { background: #fde4e1; color: #9b2a1c; }

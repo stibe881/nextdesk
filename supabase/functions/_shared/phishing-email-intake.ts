@@ -31,8 +31,8 @@ import {
   reportFingerprint,
   securityTicketDescription,
   tenantReferenceDomains,
-  THANK_YOU_TEXT,
 } from "./phishing-report-intake.ts";
+import { loadEmailTemplate } from "./email-templates-store.ts";
 
 // deno-lint-ignore no-explicit-any
 type Admin = any;
@@ -255,13 +255,20 @@ export async function processPhishingEmailReport(
       fingerprint,
       bundled: caseTicketId !== input.ticketId,
     });
-    if (input.thankYou) {
+    const thanks = input.thankYou
+      ? await loadEmailTemplate(admin, input.tenantId, "phishing_thanks")
+      : null;
+    const frame = input.thankYou
+      ? await loadEmailTemplate(admin, input.tenantId, "security_notice")
+      : null;
+    if (input.thankYou && thanks?.enabled && frame?.enabled) {
+      const values = { ticketNumber: caseTicketNumber };
       await queueSecurityNotice(admin, {
         tenantId: input.tenantId,
         ticketId: caseTicketId,
         authorId: input.serviceIdentityId,
-        subject: "Danke für Ihre Phishing-Meldung",
-        body: THANK_YOU_TEXT,
+        subject: thanks.text("subject", values),
+        body: thanks.text("text", values),
         recipients: [input.sender],
         note: `Dankesnachricht an ${input.sender}:`,
       });
