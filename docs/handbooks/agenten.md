@@ -290,6 +290,10 @@ Wählen Sie im Antwortbereich den Modus:
 
 - **Antwort an anfragende Person** → **Externe Antwort senden**. Die Person
   sieht die Antwort im Portal und per E-Mail.
+  Im Antwortfeld steht bereits die Begrüssung «Lieber Vorname» mit Platz
+  darunter; ein Klick ins Feld setzt den Cursor direkt dahinter. Sie können die
+  Begrüssung ändern oder löschen. Eine Antwort, die nur aus der Begrüssung
+  besteht, wird nicht gesendet.
 - **Interne Notiz** → **Interne Notiz speichern**. Nur für berechtigte
   Mitarbeitende sichtbar.
 
