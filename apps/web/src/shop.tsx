@@ -2266,6 +2266,53 @@ function draftFromItem(item: CatalogItem): Draft {
   };
 }
 
+/** Vorschau der Artikelkarte neben dem Formular. */
+function ArticlePreview({
+  articleNumber,
+  category,
+  coverUrl,
+  inShop,
+  loan,
+  name,
+  stockLine,
+}: {
+  articleNumber: string;
+  category: string;
+  coverUrl: string | null | undefined;
+  inShop: boolean;
+  loan: boolean;
+  name: string;
+  stockLine: string;
+}) {
+  return (
+    <div className="article-editor__preview">
+      <div className="article-editor__cover">
+        {coverUrl ? <img alt="" src={coverUrl} /> : <span>Noch kein Bild</span>}
+      </div>
+      <div className="article-editor__preview-meta">
+        <strong>{name.trim() || "Neuer Artikel"}</strong>
+        <small>
+          {[articleNumber.trim(), category].filter(Boolean).join(" · ") ||
+            "Artikelnummer und Kategorie fehlen noch"}
+        </small>
+        <div className="article-editor__chips">
+          {loan ? (
+            <span className="article-editor__pill article-editor__pill--loan">
+              Ausleihartikel
+            </span>
+          ) : null}
+          <span
+            className={`article-editor__pill ${inShop ? "article-editor__pill--shop" : "article-editor__pill--off"}`}
+          >
+            {inShop ? "Im Shop" : "Nur im Lager"}
+          </span>
+        </div>
+        {stockLine ? <small>{stockLine}</small> : null}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Article editor and category management, opened from the catalog. Reports
  * a success message (or null when nothing changed) through onDone.
@@ -2950,7 +2997,7 @@ export function CatalogEditor({
           <form
             aria-labelledby="shop-item-title"
             aria-modal="true"
-            className="contracts__editor-dialog shop__dialog"
+            className="contracts__editor-dialog shop__dialog shop__dialog--wide"
             onClick={(event) => event.stopPropagation()}
             // A photo dropped next to the drop zone must not open in the tab.
             onDragOver={(event) => event.preventDefault()}
@@ -2978,578 +3025,658 @@ export function CatalogEditor({
                 <X size={18} />
               </button>
             </header>
-            {stock ? (
-              <SwitchField
-                checked={draft.inShop}
-                hint={
-                  draft.inShop
-                    ? "Der Artikel erscheint im Shop. Die Felder unten sind dieselben wie beim Artikel im Shop."
-                    : draft.id
-                      ? "Beim Speichern wird der Artikel aus dem Shop genommen. Der Lagerartikel bleibt bestehen."
-                      : "Der Artikel bleibt nur im Lager."
-                }
-                label="Im Shop anbieten"
-                onChange={(inShop) => setDraft({ ...draft, inShop })}
-              />
-            ) : null}
-            <div className="shop__image-field">
-              <span className="shop__image-label">
-                Fotos ({imageCount}/{maxImages})
-              </span>
-              {imageCount < maxImages ? (
-                <label
-                  className={`shop__dropzone${dragActive ? " shop__dropzone--active" : ""}`}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    setDragActive(true);
-                  }}
-                  onDragLeave={(event) => {
-                    if (
-                      !event.currentTarget.contains(
-                        event.relatedTarget as Node | null,
-                      )
-                    ) {
-                      setDragActive(false);
+            <div className="article-editor">
+              <aside className="article-editor__side">
+                <ArticlePreview
+                  articleNumber={draft.articleNumber}
+                  category={
+                    categories.find(
+                      (entry) => entry.id === draft.categoryIds[0],
+                    )?.name ?? draft.newCategory.trim()
+                  }
+                  coverUrl={
+                    draft.images[0]?.url ??
+                    newFilePreviews[0] ??
+                    draft.fallbackImageUrl
+                  }
+                  inShop={!stock || draft.inShop}
+                  loan={draft.kind === "loan"}
+                  name={draft.name}
+                  stockLine={
+                    stock
+                      ? draft.kind === "loan"
+                        ? `Bestand ${draft.stockQuantity || 0} ${draft.unit}`
+                        : `Mindestbestand ${draft.minimumStock || 0} · Ziel ${draft.targetStock || 0}`
+                      : draft.kind === "loan" && draft.loanQuantity
+                        ? `${draft.loanQuantity} zum Ausleihen`
+                        : ""
+                  }
+                />
+                {stock ? (
+                  <SwitchField
+                    checked={draft.inShop}
+                    hint={
+                      draft.inShop
+                        ? "Der Artikel erscheint im Shop. Die Felder unten sind dieselben wie beim Artikel im Shop."
+                        : draft.id
+                          ? "Beim Speichern wird der Artikel aus dem Shop genommen. Der Lagerartikel bleibt bestehen."
+                          : "Der Artikel bleibt nur im Lager."
                     }
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = "copy";
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    setDragActive(false);
-                    void addFiles(Array.from(event.dataTransfer.files));
-                  }}
-                >
-                  <ImagePlus aria-hidden="true" size={26} />
-                  <strong>
-                    {preparingPhotos
-                      ? "Fotos werden vorbereitet …"
-                      : "Fotos hierher ziehen"}
-                  </strong>
-                  <span>
-                    oder <u>vom Computer auswählen</u>
-                  </span>
-                  <input
-                    accept="image/*"
-                    disabled={preparingPhotos}
-                    multiple
-                    onChange={(event) => {
-                      const files = Array.from(event.target.files ?? []);
-                      event.target.value = "";
-                      void addFiles(files);
-                    }}
-                    type="file"
+                    label="Im Shop anbieten"
+                    onChange={(inShop) => setDraft({ ...draft, inShop })}
                   />
-                </label>
-              ) : null}
-              {photoError ? (
-                <p className="form-error" role="alert">
-                  {photoError}
-                </p>
-              ) : null}
-              {imageCount > 0 ? (
-                <div className="shop__image-gallery">
-                  {draft.images.map((image, index) => (
-                    <div className="shop__image-thumb" key={image.id}>
-                      <img alt={`Foto ${index + 1}`} src={image.url} />
-                      {index === 0 ? (
-                        <span className="shop__image-cover">Titelbild</span>
-                      ) : null}
-                      <button
-                        aria-label={`Foto ${index + 1} entfernen`}
-                        className="shop__image-remove"
-                        onClick={() =>
-                          setDraft({
-                            ...draft,
-                            images: draft.images.filter(
-                              (candidate) => candidate.id !== image.id,
-                            ),
-                            removedImageIds: [
-                              ...draft.removedImageIds,
-                              image.id,
-                            ],
-                          })
-                        }
-                        type="button"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
-                  {draft.newFiles.map((file, index) => (
-                    <div
-                      className="shop__image-thumb shop__image-thumb--new"
-                      key={`${file.name}-${index}`}
-                    >
-                      <img
-                        alt={`Neues Foto ${index + 1}`}
-                        src={newFilePreviews[index]}
-                      />
-                      {draft.images.length === 0 && index === 0 ? (
-                        <span className="shop__image-cover">Titelbild</span>
-                      ) : null}
-                      <button
-                        aria-label={`Neues Foto ${index + 1} entfernen`}
-                        className="shop__image-remove"
-                        onClick={() =>
-                          setDraft({
-                            ...draft,
-                            newFiles: draft.newFiles.filter(
-                              (_, fileIndex) => fileIndex !== index,
-                            ),
-                          })
-                        }
-                        type="button"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <span className="shop__muted">
-                Bis zu {maxImages} {maxImages === 1 ? "Foto" : "Fotos"}. Grosse
-                Fotos werden automatisch verkleinert. Das erste Foto ist das
-                Titelbild; neue Fotos werden beim Speichern hochgeladen.
-                {imageCount === 0 && draft.fallbackImageUrl
-                  ? " Ohne eigene Fotos wird das Bild des Lagerartikels gezeigt."
-                  : ""}
-              </span>
-            </div>
-            <label>
-              {stock ? "Bezeichnung" : "Name im Shop"}
-              <input
-                maxLength={160}
-                minLength={2}
-                onChange={(event) =>
-                  setDraft({ ...draft, name: event.target.value })
-                }
-                required
-                value={draft.name}
-              />
-            </label>
-            {shopFields ? (
-              <OptionsEditor
-                candidates={(items ?? []).filter(
-                  (other) => other.id !== draft.id,
-                )}
-                onChange={(optionItemIds) =>
-                  setDraft({ ...draft, optionItemIds })
-                }
-                selected={draft.optionItemIds}
-              />
-            ) : null}
-            <fieldset className="shop__options-editor">
-              <legend>
-                Kategorien
-                {draft.categoryIds.length > 0
-                  ? ` · ${draft.categoryIds.length} gewählt`
-                  : ""}
-              </legend>
-              <ul>
-                {categories.map((entry) => {
-                  const checked = draft.categoryIds.includes(entry.id);
-                  return (
-                    <li key={entry.id}>
-                      <label>
-                        <input
-                          checked={checked}
-                          onChange={() =>
-                            setDraft({
-                              ...draft,
-                              categoryIds: checked
-                                ? draft.categoryIds.filter(
-                                    (id) => id !== entry.id,
-                                  )
-                                : [...draft.categoryIds, entry.id],
-                            })
+                ) : null}
+                <SwitchField
+                  checked={draft.kind === "loan"}
+                  hint={
+                    draft.kind === "loan"
+                      ? "Wird ausgeliehen und zurückgegeben. Es gibt keinen Mindest- und Zielbestand, nur einen Bestand."
+                      : "Wird bestellt und bleibt bei der Person."
+                  }
+                  label="Ausleihartikel"
+                  onChange={(loan) =>
+                    setDraft({ ...draft, kind: loan ? "loan" : "order" })
+                  }
+                />
+              </aside>
+              <div className="article-editor__main">
+                <section className="article-editor__card">
+                  <h3>Artikel</h3>
+                  <div className="shop__image-field">
+                    <span className="shop__image-label">
+                      Fotos ({imageCount}/{maxImages})
+                    </span>
+                    {imageCount < maxImages ? (
+                      <label
+                        className={`shop__dropzone${dragActive ? " shop__dropzone--active" : ""}`}
+                        onDragEnter={(event) => {
+                          event.preventDefault();
+                          setDragActive(true);
+                        }}
+                        onDragLeave={(event) => {
+                          if (
+                            !event.currentTarget.contains(
+                              event.relatedTarget as Node | null,
+                            )
+                          ) {
+                            setDragActive(false);
                           }
-                          type="checkbox"
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "copy";
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          setDragActive(false);
+                          void addFiles(Array.from(event.dataTransfer.files));
+                        }}
+                      >
+                        <ImagePlus aria-hidden="true" size={26} />
+                        <strong>
+                          {preparingPhotos
+                            ? "Fotos werden vorbereitet …"
+                            : "Fotos hierher ziehen"}
+                        </strong>
+                        <span>
+                          oder <u>vom Computer auswählen</u>
+                        </span>
+                        <input
+                          accept="image/*"
+                          disabled={preparingPhotos}
+                          multiple
+                          onChange={(event) => {
+                            const files = Array.from(event.target.files ?? []);
+                            event.target.value = "";
+                            void addFiles(files);
+                          }}
+                          type="file"
                         />
-                        {entry.name}
                       </label>
-                    </li>
-                  );
-                })}
-              </ul>
-              <label className="shop__stacked-label">
-                Neue Kategorie hinzufügen (optional)
-                <input
-                  maxLength={80}
-                  minLength={2}
-                  onChange={(event) =>
-                    setDraft({ ...draft, newCategory: event.target.value })
-                  }
-                  placeholder="z. B. Kabel & Adapter"
-                  value={draft.newCategory}
-                />
-              </label>
-              <p className="shop__options-hint">
-                Die erste gewählte Kategorie ist die Hauptkategorie.
-              </p>
-            </fieldset>
-            <div className="shop__row">
-              <label>
-                Artikelnummer (intern)
-                <input
-                  maxLength={80}
-                  required={Boolean(stock)}
-                  onChange={(event) =>
-                    setDraft({ ...draft, articleNumber: event.target.value })
-                  }
-                  placeholder="z. B. LOG-MX-VERT"
-                  value={draft.articleNumber}
-                />
-              </label>
-              {shopFields ? (
-                <label>
-                  Link zum Lieferanten (intern)
-                  <input
-                    maxLength={1000}
-                    onChange={(event) =>
-                      setDraft({ ...draft, supplierUrl: event.target.value })
-                    }
-                    placeholder="https://…"
-                    type="url"
-                    value={draft.supplierUrl}
-                  />
-                </label>
-              ) : null}
-            </div>
-            <p className="shop__muted shop__internal-hint">
-              Artikelnummer und Lieferanten-Link sehen nur Agenten – im Shop und
-              in Bestellungen von Mitarbeitenden werden sie nicht angezeigt.
-            </p>
-            {shopFields ? (
-              <label>
-                Beschreibung
-                <textarea
-                  maxLength={2000}
-                  onChange={(event) =>
-                    setDraft({ ...draft, description: event.target.value })
-                  }
-                  rows={3}
-                  value={draft.description}
-                />
-              </label>
-            ) : null}
-            {shopFields ? (
-              <fieldset className="shop__options-editor shop__specs-editor">
-                <legend>Technische Angaben (optional)</legend>
-                <p className="shop__options-hint">
-                  Erscheinen im Shop unter «Technische Angaben». Eine Zeile pro
-                  Punkt ist am übersichtlichsten.
-                </p>
-                {SPEC_FIELDS.map(({ key, label }) => (
-                  <label key={key}>
-                    {label}
-                    <textarea
-                      maxLength={2000}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          specifications: {
-                            ...draft.specifications,
-                            [key]: event.target.value,
-                          },
-                        })
-                      }
-                      rows={2}
-                      value={draft.specifications[key] ?? ""}
-                    />
-                  </label>
-                ))}
-              </fieldset>
-            ) : null}
-            {chooseDepartment ? (
-              <label>
-                Abteilung
-                <select
-                  onChange={(event) =>
-                    setDraft({ ...draft, departmentId: event.target.value })
-                  }
-                  required={!(stock ? stock.item : draft.id)}
-                  value={draft.departmentId}
-                >
-                  {!(stock ? stock.item : draft.id) ? (
-                    <option value="">Bitte wählen</option>
-                  ) : draft.departmentId === "" ? (
-                    <option value="">Alle Abteilungen</option>
-                  ) : null}
-                  {departments.map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            <SwitchField
-              checked={draft.kind === "loan"}
-              hint={
-                draft.kind === "loan"
-                  ? "Wird ausgeliehen und zurückgegeben. Es gibt keinen Mindest- und Zielbestand, nur einen Bestand."
-                  : "Wird bestellt und bleibt bei der Person."
-              }
-              label="Ausleihartikel"
-              onChange={(loan) =>
-                setDraft({ ...draft, kind: loan ? "loan" : "order" })
-              }
-            />
-            {stock ? (
-              <fieldset className="shop__options-editor shop__stock-fields">
-                <legend>Lager</legend>
-                <div className="shop__row shop__row--grid">
-                  <label>
-                    Einheit
-                    <input
-                      maxLength={32}
-                      onChange={(event) =>
-                        setDraft({ ...draft, unit: event.target.value })
-                      }
-                      placeholder="stk"
-                      required
-                      value={draft.unit}
-                    />
-                  </label>
-                  {draft.kind === "loan" ? (
+                    ) : null}
+                    {photoError ? (
+                      <p className="form-error" role="alert">
+                        {photoError}
+                      </p>
+                    ) : null}
+                    {imageCount > 0 ? (
+                      <div className="shop__image-gallery">
+                        {draft.images.map((image, index) => (
+                          <div className="shop__image-thumb" key={image.id}>
+                            <img alt={`Foto ${index + 1}`} src={image.url} />
+                            {index === 0 ? (
+                              <span className="shop__image-cover">
+                                Titelbild
+                              </span>
+                            ) : null}
+                            <button
+                              aria-label={`Foto ${index + 1} entfernen`}
+                              className="shop__image-remove"
+                              onClick={() =>
+                                setDraft({
+                                  ...draft,
+                                  images: draft.images.filter(
+                                    (candidate) => candidate.id !== image.id,
+                                  ),
+                                  removedImageIds: [
+                                    ...draft.removedImageIds,
+                                    image.id,
+                                  ],
+                                })
+                              }
+                              type="button"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                        {draft.newFiles.map((file, index) => (
+                          <div
+                            className="shop__image-thumb shop__image-thumb--new"
+                            key={`${file.name}-${index}`}
+                          >
+                            <img
+                              alt={`Neues Foto ${index + 1}`}
+                              src={newFilePreviews[index]}
+                            />
+                            {draft.images.length === 0 && index === 0 ? (
+                              <span className="shop__image-cover">
+                                Titelbild
+                              </span>
+                            ) : null}
+                            <button
+                              aria-label={`Neues Foto ${index + 1} entfernen`}
+                              className="shop__image-remove"
+                              onClick={() =>
+                                setDraft({
+                                  ...draft,
+                                  newFiles: draft.newFiles.filter(
+                                    (_, fileIndex) => fileIndex !== index,
+                                  ),
+                                })
+                              }
+                              type="button"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    <span className="shop__muted">
+                      Bis zu {maxImages} {maxImages === 1 ? "Foto" : "Fotos"}.
+                      Grosse Fotos werden automatisch verkleinert. Das erste
+                      Foto ist das Titelbild; neue Fotos werden beim Speichern
+                      hochgeladen.
+                      {imageCount === 0 && draft.fallbackImageUrl
+                        ? " Ohne eigene Fotos wird das Bild des Lagerartikels gezeigt."
+                        : ""}
+                    </span>
+                  </div>
+                  <div className="article-editor__grid2">
                     <label>
-                      Bestand
+                      {stock ? "Bezeichnung" : "Name im Shop"}
                       <input
-                        disabled={
-                          Boolean(stock.item) &&
-                          stock.item!.physicalQuantity > 0 &&
-                          !stock.item!.locationId
-                        }
-                        min={0}
+                        maxLength={160}
+                        minLength={2}
                         onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            stockQuantity: event.target.value,
-                          })
+                          setDraft({ ...draft, name: event.target.value })
                         }
                         required
-                        step={1}
-                        type="number"
-                        value={draft.stockQuantity}
+                        value={draft.name}
                       />
                     </label>
-                  ) : (
-                    <>
-                      <label>
-                        Mindestbestand
-                        <input
-                          min={0}
-                          onChange={(event) =>
-                            setDraft({
-                              ...draft,
-                              minimumStock: event.target.value,
-                            })
-                          }
-                          required
-                          step="0.001"
-                          type="number"
-                          value={draft.minimumStock}
-                        />
-                      </label>
-                      <label>
-                        Zielbestand
-                        <input
-                          min={0}
-                          onChange={(event) =>
-                            setDraft({
-                              ...draft,
-                              targetStock: event.target.value,
-                            })
-                          }
-                          required
-                          step="0.001"
-                          type="number"
-                          value={draft.targetStock}
-                        />
-                      </label>
-                    </>
-                  )}
-                  {draft.kind === "loan" && stock.locations.length > 0 ? (
                     <label>
-                      Lagerort
-                      <select
-                        disabled={Boolean(stock.item?.locationId)}
+                      Artikelnummer (intern)
+                      <input
+                        maxLength={80}
+                        required={Boolean(stock)}
                         onChange={(event) =>
-                          setDraft({ ...draft, locationId: event.target.value })
+                          setDraft({
+                            ...draft,
+                            articleNumber: event.target.value,
+                          })
                         }
-                        value={draft.locationId}
+                        placeholder="z. B. LOG-MX-VERT"
+                        value={draft.articleNumber}
+                      />
+                    </label>
+                  </div>
+                  <fieldset className="shop__options-editor">
+                    <legend>
+                      Kategorien
+                      {draft.categoryIds.length > 0
+                        ? ` · ${draft.categoryIds.length} gewählt`
+                        : ""}
+                    </legend>
+                    <ul>
+                      {categories.map((entry) => {
+                        const checked = draft.categoryIds.includes(entry.id);
+                        return (
+                          <li key={entry.id}>
+                            <label>
+                              <input
+                                checked={checked}
+                                onChange={() =>
+                                  setDraft({
+                                    ...draft,
+                                    categoryIds: checked
+                                      ? draft.categoryIds.filter(
+                                          (id) => id !== entry.id,
+                                        )
+                                      : [...draft.categoryIds, entry.id],
+                                  })
+                                }
+                                type="checkbox"
+                              />
+                              {entry.name}
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <label className="shop__stacked-label">
+                      Neue Kategorie hinzufügen (optional)
+                      <input
+                        maxLength={80}
+                        minLength={2}
+                        onChange={(event) =>
+                          setDraft({
+                            ...draft,
+                            newCategory: event.target.value,
+                          })
+                        }
+                        placeholder="z. B. Kabel & Adapter"
+                        value={draft.newCategory}
+                      />
+                    </label>
+                    <p className="shop__options-hint">
+                      Die erste gewählte Kategorie ist die Hauptkategorie.
+                    </p>
+                  </fieldset>
+                  {chooseDepartment ? (
+                    <label>
+                      Abteilung
+                      <select
+                        onChange={(event) =>
+                          setDraft({
+                            ...draft,
+                            departmentId: event.target.value,
+                          })
+                        }
+                        required={!(stock ? stock.item : draft.id)}
+                        value={draft.departmentId}
                       >
-                        <option value="">Bitte wählen</option>
-                        {stock.locations.map((location) => (
-                          <option key={location.id} value={location.id}>
-                            {location.name}
+                        {!(stock ? stock.item : draft.id) ? (
+                          <option value="">Bitte wählen</option>
+                        ) : draft.departmentId === "" ? (
+                          <option value="">Alle Abteilungen</option>
+                        ) : null}
+                        {departments.map((department) => (
+                          <option key={department.id} value={department.id}>
+                            {department.name}
                           </option>
                         ))}
                       </select>
                     </label>
                   ) : null}
-                </div>
-                {draft.kind === "loan" &&
-                stock.item &&
-                stock.item.physicalQuantity > 0 &&
-                !stock.item.locationId ? (
-                  <p className="shop__muted">
-                    Der Bestand liegt an mehreren Lagerorten. Ändern Sie ihn
-                    unter «Bewegungen».
-                  </p>
+                </section>
+                {stock ? (
+                  <fieldset className="shop__options-editor shop__stock-fields article-editor__card">
+                    <legend>Lager</legend>
+                    <div className="shop__row shop__row--grid">
+                      <label>
+                        Einheit
+                        <input
+                          maxLength={32}
+                          onChange={(event) =>
+                            setDraft({ ...draft, unit: event.target.value })
+                          }
+                          placeholder="stk"
+                          required
+                          value={draft.unit}
+                        />
+                      </label>
+                      {draft.kind === "loan" ? (
+                        <label>
+                          Bestand
+                          <input
+                            disabled={
+                              Boolean(stock.item) &&
+                              stock.item!.physicalQuantity > 0 &&
+                              !stock.item!.locationId
+                            }
+                            min={0}
+                            onChange={(event) =>
+                              setDraft({
+                                ...draft,
+                                stockQuantity: event.target.value,
+                              })
+                            }
+                            required
+                            step={1}
+                            type="number"
+                            value={draft.stockQuantity}
+                          />
+                        </label>
+                      ) : (
+                        <>
+                          <label>
+                            Mindestbestand
+                            <input
+                              min={0}
+                              onChange={(event) =>
+                                setDraft({
+                                  ...draft,
+                                  minimumStock: event.target.value,
+                                })
+                              }
+                              required
+                              step="0.001"
+                              type="number"
+                              value={draft.minimumStock}
+                            />
+                          </label>
+                          <label>
+                            Zielbestand
+                            <input
+                              min={0}
+                              onChange={(event) =>
+                                setDraft({
+                                  ...draft,
+                                  targetStock: event.target.value,
+                                })
+                              }
+                              required
+                              step="0.001"
+                              type="number"
+                              value={draft.targetStock}
+                            />
+                          </label>
+                        </>
+                      )}
+                      {draft.kind === "loan" && stock.locations.length > 0 ? (
+                        <label>
+                          Lagerort
+                          <select
+                            disabled={Boolean(stock.item?.locationId)}
+                            onChange={(event) =>
+                              setDraft({
+                                ...draft,
+                                locationId: event.target.value,
+                              })
+                            }
+                            value={draft.locationId}
+                          >
+                            <option value="">Bitte wählen</option>
+                            {stock.locations.map((location) => (
+                              <option key={location.id} value={location.id}>
+                                {location.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                    </div>
+                    {draft.kind === "loan" &&
+                    stock.item &&
+                    stock.item.physicalQuantity > 0 &&
+                    !stock.item.locationId ? (
+                      <p className="shop__muted">
+                        Der Bestand liegt an mehreren Lagerorten. Ändern Sie ihn
+                        unter «Bewegungen».
+                      </p>
+                    ) : null}
+                    {draft.kind === "loan" && stock.locations.length === 0 ? (
+                      <p className="shop__muted">
+                        Für einen Bestand braucht es zuerst einen Lagerort
+                        (unter «Lagerorte»).
+                      </p>
+                    ) : null}
+                  </fieldset>
                 ) : null}
-                {draft.kind === "loan" && stock.locations.length === 0 ? (
-                  <p className="shop__muted">
-                    Für einen Bestand braucht es zuerst einen Lagerort (unter
-                    «Lagerorte»).
-                  </p>
-                ) : null}
-              </fieldset>
-            ) : null}
-            <div className="shop__row shop__row--grid">
-              {shopFields ? (
-                <label>
-                  Höchstmenge pro Bestellung
-                  <input
-                    max={100}
-                    min={1}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        maxQuantity: Number(event.target.value) || 1,
-                      })
-                    }
-                    type="number"
-                    value={draft.maxQuantity}
-                  />
-                </label>
-              ) : null}
-              {draft.kind === "loan" && !stock ? (
-                <label>
-                  Anzahl zum Ausleihen
-                  <input
-                    max={10000}
-                    min={0}
-                    onChange={(event) =>
-                      setDraft({ ...draft, loanQuantity: event.target.value })
-                    }
-                    placeholder="z. B. 5"
-                    required
-                    type="number"
-                    value={draft.loanQuantity}
-                  />
-                </label>
-              ) : null}
-              {draft.kind === "loan" && shopFields ? (
-                <label>
-                  Max. Ausleihdauer (Tage)
-                  <input
-                    max={365}
-                    min={1}
-                    onChange={(event) =>
-                      setDraft({ ...draft, maxLoanDays: event.target.value })
-                    }
-                    type="number"
-                    value={draft.maxLoanDays}
-                  />
-                </label>
-              ) : null}
-            </div>
-            {draft.kind !== "loan" && !stock ? (
-              <label>
-                Lagerartikel (optional)
-                <select
-                  onChange={(event) =>
-                    setDraft(
-                      fromInventory(
-                        inventory.find(
-                          (option) => option.id === event.target.value,
-                        ),
-                      ),
-                    )
-                  }
-                  value={draft.inventoryItemId}
-                >
-                  <option value="">Kein Lagerartikel – wird beschafft</option>
-                  <option value={NEW_STOCK_ITEM}>
-                    + Neu im Lager anlegen (gleicher Name und Artikelnummer)
-                  </option>
-                  {inventory.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.name} ({option.articleNumber})
-                      {option.trackingMode === "serial"
-                        ? " · Seriennummern"
-                        : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            {shopFields ? (
-              <>
-                <label className="shop__check">
-                  <input
-                    checked={draft.requiresApproval}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        requiresApproval: event.target.checked,
-                      })
-                    }
-                    type="checkbox"
-                  />
-                  Braucht die Freigabe der vorgesetzten Person
-                </label>
-                <SwitchField
-                  checked={draft.active}
-                  hint="Ausgeschaltet ist der Artikel im Shop versteckt, aber nicht gelöscht."
-                  label="Im Shop sichtbar"
-                  onChange={(active) => setDraft({ ...draft, active })}
-                />
-                <fieldset className="shop__cadre-visibility">
-                  <legend>Sichtbar für</legend>
-                  <label className="shop__check">
-                    <input
-                      checked={draft.visibleCadreLevels.length === 0}
-                      onChange={() =>
-                        setDraft({ ...draft, visibleCadreLevels: [] })
-                      }
-                      type="checkbox"
-                    />
-                    Alle Mitarbeitenden
-                  </label>
-                  {[1, 2, 3].map((level) => (
-                    <label className="shop__check" key={level}>
-                      <input
-                        checked={draft.visibleCadreLevels.includes(level)}
-                        onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            visibleCadreLevels: event.target.checked
-                              ? [...draft.visibleCadreLevels, level].sort(
-                                  (a, b) => a - b,
-                                )
-                              : draft.visibleCadreLevels.filter(
-                                  (entry) => entry !== level,
+                {shopFields ? (
+                  <section className="article-editor__card">
+                    <h3>Im Shop</h3>
+                    {shopFields ? (
+                      <label>
+                        Beschreibung
+                        <textarea
+                          maxLength={2000}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              description: event.target.value,
+                            })
+                          }
+                          rows={3}
+                          value={draft.description}
+                        />
+                      </label>
+                    ) : null}
+                    <div className="shop__row shop__row--grid">
+                      {shopFields ? (
+                        <label>
+                          Höchstmenge pro Bestellung
+                          <input
+                            max={100}
+                            min={1}
+                            onChange={(event) =>
+                              setDraft({
+                                ...draft,
+                                maxQuantity: Number(event.target.value) || 1,
+                              })
+                            }
+                            type="number"
+                            value={draft.maxQuantity}
+                          />
+                        </label>
+                      ) : null}
+                      {draft.kind === "loan" && !stock ? (
+                        <label>
+                          Anzahl zum Ausleihen
+                          <input
+                            max={10000}
+                            min={0}
+                            onChange={(event) =>
+                              setDraft({
+                                ...draft,
+                                loanQuantity: event.target.value,
+                              })
+                            }
+                            placeholder="z. B. 5"
+                            required
+                            type="number"
+                            value={draft.loanQuantity}
+                          />
+                        </label>
+                      ) : null}
+                      {draft.kind === "loan" && shopFields ? (
+                        <label>
+                          Max. Ausleihdauer (Tage)
+                          <input
+                            max={365}
+                            min={1}
+                            onChange={(event) =>
+                              setDraft({
+                                ...draft,
+                                maxLoanDays: event.target.value,
+                              })
+                            }
+                            type="number"
+                            value={draft.maxLoanDays}
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                    {draft.kind !== "loan" && !stock ? (
+                      <label>
+                        Lagerartikel (optional)
+                        <select
+                          onChange={(event) =>
+                            setDraft(
+                              fromInventory(
+                                inventory.find(
+                                  (option) => option.id === event.target.value,
                                 ),
-                          })
-                        }
-                        type="checkbox"
+                              ),
+                            )
+                          }
+                          value={draft.inventoryItemId}
+                        >
+                          <option value="">
+                            Kein Lagerartikel – wird beschafft
+                          </option>
+                          <option value={NEW_STOCK_ITEM}>
+                            + Neu im Lager anlegen (gleicher Name und
+                            Artikelnummer)
+                          </option>
+                          {inventory.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.name} ({option.articleNumber})
+                              {option.trackingMode === "serial"
+                                ? " · Seriennummern"
+                                : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                    <>
+                      <label className="shop__check">
+                        <input
+                          checked={draft.requiresApproval}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              requiresApproval: event.target.checked,
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        Braucht die Freigabe der vorgesetzten Person
+                      </label>
+                      <SwitchField
+                        checked={draft.active}
+                        hint="Ausgeschaltet ist der Artikel im Shop versteckt, aber nicht gelöscht."
+                        label="Im Shop sichtbar"
+                        onChange={(active) => setDraft({ ...draft, active })}
                       />
-                      Kaderstufe {level}
-                    </label>
-                  ))}
-                  <small>
-                    Ohne Auswahl sehen alle den Artikel. Mit Auswahl sehen und
-                    bestellen ihn nur Personen genau dieser Kaderstufen; Agenten
-                    sehen immer alle Artikel.
-                  </small>
-                </fieldset>
-              </>
-            ) : null}
+                    </>
+                  </section>
+                ) : null}
+                {shopFields ? (
+                  <details className="article-editor__card article-editor__more">
+                    <summary>
+                      Weitere Angaben: Optionen, technische Angaben,
+                      Lieferanten-Link, Sichtbarkeit
+                    </summary>
+                    {shopFields ? (
+                      <OptionsEditor
+                        candidates={(items ?? []).filter(
+                          (other) => other.id !== draft.id,
+                        )}
+                        onChange={(optionItemIds) =>
+                          setDraft({ ...draft, optionItemIds })
+                        }
+                        selected={draft.optionItemIds}
+                      />
+                    ) : null}
+                    {shopFields ? (
+                      <fieldset className="shop__options-editor shop__specs-editor">
+                        <legend>Technische Angaben (optional)</legend>
+                        <p className="shop__options-hint">
+                          Erscheinen im Shop unter «Technische Angaben». Eine
+                          Zeile pro Punkt ist am übersichtlichsten.
+                        </p>
+                        {SPEC_FIELDS.map(({ key, label }) => (
+                          <label key={key}>
+                            {label}
+                            <textarea
+                              maxLength={2000}
+                              onChange={(event) =>
+                                setDraft({
+                                  ...draft,
+                                  specifications: {
+                                    ...draft.specifications,
+                                    [key]: event.target.value,
+                                  },
+                                })
+                              }
+                              rows={2}
+                              value={draft.specifications[key] ?? ""}
+                            />
+                          </label>
+                        ))}
+                      </fieldset>
+                    ) : null}
+                    <div className="shop__row">
+                      {shopFields ? (
+                        <label>
+                          Link zum Lieferanten (intern)
+                          <input
+                            maxLength={1000}
+                            onChange={(event) =>
+                              setDraft({
+                                ...draft,
+                                supplierUrl: event.target.value,
+                              })
+                            }
+                            placeholder="https://…"
+                            type="url"
+                            value={draft.supplierUrl}
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                    <p className="shop__muted shop__internal-hint">
+                      Artikelnummer und Lieferanten-Link sehen nur Agenten – im
+                      Shop und in Bestellungen von Mitarbeitenden werden sie
+                      nicht angezeigt.
+                    </p>
+                    <fieldset className="shop__cadre-visibility">
+                      <legend>Sichtbar für</legend>
+                      <label className="shop__check">
+                        <input
+                          checked={draft.visibleCadreLevels.length === 0}
+                          onChange={() =>
+                            setDraft({ ...draft, visibleCadreLevels: [] })
+                          }
+                          type="checkbox"
+                        />
+                        Alle Mitarbeitenden
+                      </label>
+                      {[1, 2, 3].map((level) => (
+                        <label className="shop__check" key={level}>
+                          <input
+                            checked={draft.visibleCadreLevels.includes(level)}
+                            onChange={(event) =>
+                              setDraft({
+                                ...draft,
+                                visibleCadreLevels: event.target.checked
+                                  ? [...draft.visibleCadreLevels, level].sort(
+                                      (a, b) => a - b,
+                                    )
+                                  : draft.visibleCadreLevels.filter(
+                                      (entry) => entry !== level,
+                                    ),
+                              })
+                            }
+                            type="checkbox"
+                          />
+                          Kaderstufe {level}
+                        </label>
+                      ))}
+                      <small>
+                        Ohne Auswahl sehen alle den Artikel. Mit Auswahl sehen
+                        und bestellen ihn nur Personen genau dieser Kaderstufen;
+                        Agenten sehen immer alle Artikel.
+                      </small>
+                    </fieldset>
+                  </details>
+                ) : null}
+              </div>
+            </div>
             {error ? (
               <p className="form-error" role="alert">
                 {error}

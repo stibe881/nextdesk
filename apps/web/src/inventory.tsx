@@ -1711,7 +1711,7 @@ function InventoryItems({
   // Shop-Verknüpfung: welcher Lagerartikel im Shop angeboten wird.
   const [shop, setShop] = useState<{
     canManage: boolean;
-    linked: Map<string, { name: string; active: boolean }>;
+    linked: Map<string, { name: string; active: boolean; kind: string }>;
   } | null>(null);
   const [shopNotice, setShopNotice] = useState("");
   const [shopError, setShopError] = useState("");
@@ -1774,12 +1774,16 @@ function InventoryItems({
     try {
       const context = await shopApi.context(tenantId);
       const catalog = await shopApi.catalog(tenantId, context.canManage);
-      const linked = new Map<string, { name: string; active: boolean }>();
+      const linked = new Map<
+        string,
+        { name: string; active: boolean; kind: string }
+      >();
       for (const entry of catalog) {
         if (entry.inventoryItemId) {
           linked.set(entry.inventoryItemId, {
             name: entry.name,
             active: entry.active,
+            kind: entry.kind,
           });
         }
       }
@@ -2017,6 +2021,10 @@ function InventoryItems({
                           {shop.linked.get(item.id)?.active
                             ? "Im Shop"
                             : "Im Shop · ausgeblendet"}
+                          {" · "}
+                          {shop.linked.get(item.id)?.kind === "loan"
+                            ? "Ausleihartikel"
+                            : "Bestellartikel"}
                         </span>
                       ) : shop.canManage ? (
                         <button
