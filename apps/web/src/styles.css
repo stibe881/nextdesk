@@ -21717,3 +21717,8 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 }
 .ticket-presence-avatar.is-editing { overflow: visible; }
 .ticket-presence-avatar.is-editing img { border-radius: 50%; }
+.inventory__item-edit { margin-top: 6px; }
+.inventory__item-editor { display: grid; gap: 8px; margin-top: 8px; min-width: 220px; }
+.inventory__item-editor label { display: grid; gap: 2px; font-size: 12px; font-weight: 700; }
+.inventory__item-editor input { width: 100%; font: inherit; font-weight: 400; }
+.inventory__item-editor-actions { display: flex; gap: 8px; }

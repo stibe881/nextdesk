@@ -238,6 +238,21 @@ type InventoryAction =
       clientRequestId: string;
     }
   | {
+      type: "manageItem";
+      tenantId: string;
+      operation: "update";
+      itemId: string;
+      values: {
+        articleNumber?: string;
+        name?: string;
+        category?: string;
+        unit?: string;
+        minimumStock?: number;
+        targetStock?: number;
+      };
+      clientRequestId: string;
+    }
+  | {
       type: "postMovement";
       tenantId: string;
       itemId: string;
@@ -1639,6 +1654,13 @@ function InventoryItems({
                         ? "Serienführung"
                         : "Mengenartikel"}
                     </small>
+                    {canManage ? (
+                      <InventoryItemEditor
+                        item={item}
+                        onChanged={onChanged}
+                        tenantId={tenantId}
+                      />
+                    ) : null}
                   </td>
                   <td>
                     <InventoryItemImage
@@ -2891,6 +2913,195 @@ function InventoryLocationCreateForm({
  * Abteilung eines bestehenden Artikels ändern. Zur Wahl stehen nur die
  * Abteilungen der Person; der Server prüft die Wahl erneut.
  */
+/** Edits the basic data of an article; only changed fields are sent. */
+function InventoryItemEditor({
+  item,
+  onChanged,
+  tenantId,
+}: {
+  item: InventoryItemSummary;
+  onChanged: InventoryChangedHandler;
+  tenantId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [articleNumber, setArticleNumber] = useState(item.articleNumber ?? "");
+  const [name, setName] = useState(item.name);
+  // The category is not part of the list; empty keeps the current one.
+  const [category, setCategory] = useState("");
+  const [unit, setUnit] = useState(item.unit);
+  const [minimumStock, setMinimumStock] = useState(String(item.minQuantity));
+  const [targetStock, setTargetStock] = useState(String(item.targetQuantity));
+  const clientRequest = useClientRequestId(tenantId, `item-edit-${item.id}`);
+
+  function reset() {
+    setArticleNumber(item.articleNumber ?? "");
+    setName(item.name);
+    setCategory("");
+    setUnit(item.unit);
+    setMinimumStock(String(item.minQuantity));
+    setTargetStock(String(item.targetQuantity));
+    setError("");
+  }
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving) return;
+    const minimum = Number(minimumStock);
+    const target = Number(targetStock);
+    if (
+      !name.trim() ||
+      !unit.trim() ||
+      minimumStock === "" ||
+      targetStock === "" ||
+      !Number.isFinite(minimum) ||
+      !Number.isFinite(target) ||
+      minimum < 0 ||
+      target < minimum
+    ) {
+      setError(
+        "Bitte Bezeichnung und Einheit angeben; der Zielbestand darf nicht unter dem Mindestbestand liegen.",
+      );
+      return;
+    }
+    const values: {
+      articleNumber?: string;
+      name?: string;
+      category?: string;
+      unit?: string;
+      minimumStock?: number;
+      targetStock?: number;
+    } = {};
+    if (articleNumber.trim() && articleNumber.trim() !== item.articleNumber)
+      values.articleNumber = articleNumber.trim();
+    if (name.trim() !== item.name) values.name = name.trim();
+    if (category.trim()) values.category = category.trim();
+    if (unit.trim() !== item.unit) values.unit = unit.trim();
+    if (minimum !== item.minQuantity) values.minimumStock = minimum;
+    if (target !== item.targetQuantity) values.targetStock = target;
+    if (Object.keys(values).length === 0) {
+      setOpen(false);
+      return;
+    }
+    setSaving(true);
+    setError("");
+    clientRequest.discard();
+    const saved = await onChanged(
+      {
+        type: "manageItem",
+        tenantId,
+        operation: "update",
+        itemId: item.id,
+        values,
+        clientRequestId: clientRequest.requestId(),
+      },
+      `«${name.trim()}» wurde gespeichert.`,
+    );
+    setSaving(false);
+    if (saved) {
+      clientRequest.discard();
+      setOpen(false);
+    } else {
+      setError("Die Änderung konnte nicht gespeichert werden.");
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        className="secondary-button inventory__item-edit"
+        onClick={() => {
+          reset();
+          setOpen(true);
+        }}
+        type="button"
+      >
+        Bearbeiten
+      </button>
+    );
+  }
+  return (
+    <form className="inventory__item-editor" onSubmit={(e) => void save(e)}>
+      <label>
+        Bezeichnung
+        <input
+          autoComplete="off"
+          onChange={(event) => setName(event.target.value)}
+          required
+          value={name}
+        />
+      </label>
+      <label>
+        Artikelnummer
+        <input
+          autoComplete="off"
+          onChange={(event) => setArticleNumber(event.target.value)}
+          value={articleNumber}
+        />
+      </label>
+      <label>
+        Kategorie
+        <input
+          autoComplete="off"
+          onChange={(event) => setCategory(event.target.value)}
+          placeholder="Leer lassen = unverändert"
+          value={category}
+        />
+      </label>
+      <label>
+        Einheit
+        <input
+          autoComplete="off"
+          onChange={(event) => setUnit(event.target.value)}
+          required
+          value={unit}
+        />
+      </label>
+      <label>
+        Mindestbestand
+        <input
+          min="0"
+          onChange={(event) => setMinimumStock(event.target.value)}
+          required
+          step="0.001"
+          type="number"
+          value={minimumStock}
+        />
+      </label>
+      <label>
+        Zielbestand
+        <input
+          min="0"
+          onChange={(event) => setTargetStock(event.target.value)}
+          required
+          step="0.001"
+          type="number"
+          value={targetStock}
+        />
+      </label>
+      {error ? (
+        <small className="inventory__item-image-error" role="alert">
+          {error}
+        </small>
+      ) : null}
+      <div className="inventory__item-editor-actions">
+        <button disabled={saving} type="submit">
+          {saving ? "Speichert …" : "Speichern"}
+        </button>
+        <button
+          className="secondary-button"
+          disabled={saving}
+          onClick={() => setOpen(false)}
+          type="button"
+        >
+          Abbrechen
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function InventoryItemDepartmentSelect({
   departments,
   item,
