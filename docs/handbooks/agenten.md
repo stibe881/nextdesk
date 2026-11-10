@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-09
+updated: 2026-11-10
 ---
 
 # Handbuch für Agenten
@@ -249,6 +249,11 @@ Person**. Ein Klick auf den Namen der **anfragenden Person** öffnet ihre
 Personenübersicht. Mit dem **Stift** in der Karte **Beschreibung** bearbeiten
 Sie Betreff und Beschreibung direkt dort (**Beschreibung speichern** oder
 Strg/⌘ + Enter).
+
+Oben rechts im Ticketkopf sehen Sie als runde Kürzel alle Kolleginnen und
+Kollegen, die das Ticket gerade geöffnet haben. Bewegen Sie die Maus über ein
+Kürzel, sehen Sie den Namen. Ein grüner Rand bedeutet, dass die Person gerade
+etwas ändert; so vermeiden Sie doppelte Arbeit.
 
 Über der Beschreibung zeigt die kompakte **Ticket-Zeitachse** alle
 Ereignisse, die Reaktions- und Lösungsfrist sowie längere Lücken. Darunter
