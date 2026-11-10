@@ -1904,6 +1904,14 @@ type Draft = {
   fallbackImageUrl: string | null;
   /** Abteilung des Artikels ("" = noch nicht gewählt bzw. für alle). */
   departmentId: string;
+  /** Lager-Modus: wird der Artikel im Shop angeboten? */
+  inShop: boolean;
+  /** Lager-Modus: Einheit, Bestände und Lagerort. */
+  unit: string;
+  minimumStock: string;
+  targetStock: string;
+  stockQuantity: string;
+  locationId: string;
 };
 
 const MAX_IMAGES = 5;
@@ -2013,6 +2021,12 @@ const EMPTY_DRAFT: Draft = {
   newFiles: [],
   fallbackImageUrl: null,
   departmentId: "",
+  inShop: true,
+  unit: "stk",
+  minimumStock: "0",
+  targetStock: "0",
+  stockQuantity: "0",
+  locationId: "",
 };
 
 /** Optionen eines Artikels wählen, mit Suche über alle Artikel. */
@@ -2113,10 +2127,98 @@ function OptionsEditor({
 }
 
 /** What the catalog asks the article editor to open. */
-type EditorRequest =
+/** Lager-Artikel, der im gemeinsamen Artikelformular bearbeitet wird. */
+export type StockEditorItem = {
+  id: string;
+  name: string;
+  articleNumber: string | null;
+  unit: string;
+  minQuantity: number;
+  targetQuantity: number;
+  loanItem: boolean;
+  physicalQuantity: number;
+  /** Einziger Lagerort mit Bestand (null: keiner oder mehrere). */
+  locationId: string | null;
+  hasPrimaryImage: boolean;
+  departmentId: string | null;
+};
+
+export type StockItemValues = {
+  articleNumber: string;
+  name: string;
+  /** Leer lassen = unverändert (bei Neuanlage Pflicht). */
+  category?: string;
+  unit: string;
+  minimumStock: number;
+  targetStock: number;
+  loanItem: boolean;
+  departmentId?: string;
+};
+
+/**
+ * Das Artikelformular des Shops, geöffnet aus dem Lager: gleiche Felder, dazu
+ * die Lagerangaben. Die Lagerzugriffe liefert das Lager (kein Import dorthin).
+ */
+export type StockEditor = {
+  item: StockEditorItem | null;
+  locations: { id: string; name: string }[];
+  api: {
+    saveItem: (
+      values: StockItemValues,
+      itemId: string | null,
+    ) => Promise<string>;
+    postStock: (input: {
+      itemId: string;
+      locationId: string;
+      delta: number;
+    }) => Promise<void>;
+    uploadImage: (itemId: string, file: File) => Promise<void>;
+    deleteImage: (itemId: string) => Promise<void>;
+    loadImageUrl: (itemId: string) => Promise<string | null>;
+  };
+};
+
+/** Schieber mit Beschriftung (statt Checkbox). */
+function SwitchField({
+  checked,
+  disabled,
+  hint,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  hint?: string;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="switch-field">
+      <button
+        aria-checked={checked}
+        aria-label={label}
+        className={`switch-field__slider${checked ? " is-on" : ""}`}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        role="switch"
+        type="button"
+      >
+        <span />
+      </button>
+      <span className="switch-field__text">
+        <strong>{label}</strong>
+        {hint ? <small>{hint}</small> : null}
+      </span>
+    </div>
+  );
+}
+
+export type EditorRequest =
   | { kind: "new"; nonce: number }
   | { kind: "edit"; item: CatalogItem; nonce: number }
-  | { kind: "categories"; nonce: number };
+  | { kind: "categories"; nonce: number }
+  /** Lager-Modus: neuer (stock.item = null) oder bestehender Lagerartikel. */
+  | { kind: "stock"; nonce: number };
 
 function draftFromItem(item: CatalogItem): Draft {
   return {
@@ -2152,6 +2254,12 @@ function draftFromItem(item: CatalogItem): Draft {
     newFiles: [],
     fallbackImageUrl: (item.images ?? []).length === 0 ? item.imageUrl : null,
     departmentId: item.departmentId ?? "",
+    inShop: true,
+    unit: "stk",
+    minimumStock: "0",
+    targetStock: "0",
+    stockQuantity: "0",
+    locationId: "",
   };
 }
 
@@ -2159,17 +2267,20 @@ function draftFromItem(item: CatalogItem): Draft {
  * Article editor and category management, opened from the catalog. Reports
  * a success message (or null when nothing changed) through onDone.
  */
-function CatalogEditor({
+export function CatalogEditor({
   tenantId,
   departments,
   request,
   onDone,
+  stock,
 }: {
   tenantId: string;
   /** Eigene Abteilungen; eine Auswahl erscheint erst ab zwei. */
   departments: ShopDepartment[];
   request: EditorRequest | null;
   onDone: (message: string | null) => void;
+  /** Gesetzt, wenn das Formular aus dem Lager geöffnet wird. */
+  stock?: StockEditor;
 }) {
   const chooseDepartment = departments.length > 1;
   const [items, setItems] = useState<CatalogItem[] | null>(null);
@@ -2252,6 +2363,46 @@ function CatalogEditor({
     setPhotoError("");
     if (request.kind === "new") setDraft({ ...EMPTY_DRAFT });
     if (request.kind === "edit") setDraft(draftFromItem(request.item));
+    if (request.kind === "stock" && stock) {
+      const info = stock.item;
+      void (async () => {
+        let shopItem: CatalogItem | undefined;
+        if (info) {
+          try {
+            shopItem = (await shopApi.catalog(tenantId, true)).find(
+              (entry) => entry.inventoryItemId === info.id,
+            );
+          } catch {
+            shopItem = undefined;
+          }
+        }
+        let stockImage: string | null = null;
+        if (info?.hasPrimaryImage && !(shopItem?.images ?? []).length) {
+          stockImage = await stock.api.loadImageUrl(info.id).catch(() => null);
+        }
+        const base = shopItem ? draftFromItem(shopItem) : { ...EMPTY_DRAFT };
+        const onlyLocation =
+          stock.locations.length === 1 ? (stock.locations[0]?.id ?? "") : "";
+        setDraft({
+          ...base,
+          name: info?.name ?? base.name,
+          articleNumber: info?.articleNumber ?? base.articleNumber,
+          unit: info?.unit ?? "stk",
+          minimumStock: String(info?.minQuantity ?? 0),
+          targetStock: String(info?.targetQuantity ?? 0),
+          stockQuantity: String(info?.physicalQuantity ?? 0),
+          locationId: info?.locationId ?? onlyLocation,
+          kind: info?.loanItem ? "loan" : "order",
+          inShop: Boolean(shopItem),
+          departmentId: info?.departmentId ?? base.departmentId,
+          images: shopItem
+            ? base.images
+            : stockImage
+              ? [{ id: "lager", url: stockImage }]
+              : [],
+        });
+      })();
+    }
     if (request.kind === "categories") {
       setCategoriesChanged(false);
       setManageCategories(true);
@@ -2297,9 +2448,169 @@ function CatalogEditor({
     }
   };
 
+  const saveStockArticle = async () => {
+    if (!draft || !stock) return;
+    setPending(true);
+    setError("");
+    try {
+      const isLoan = draft.kind === "loan";
+      const categoryIds = [...draft.categoryIds];
+      const typedCategory = draft.newCategory.trim();
+      if (draft.inShop && typedCategory) {
+        const created = await shopApi.saveCategory(tenantId, {
+          name: typedCategory,
+        });
+        if (!categoryIds.includes(created.id)) categoryIds.push(created.id);
+      }
+      if (draft.inShop && categoryIds.length === 0) {
+        throw new Error("Bitte mindestens eine Kategorie wählen.");
+      }
+      const categoryName =
+        categories.find((entry) => entry.id === categoryIds[0])?.name ??
+        (typedCategory || undefined);
+      const minimum = isLoan ? 0 : Number(draft.minimumStock);
+      const target = isLoan ? 0 : Number(draft.targetStock);
+      if (
+        !Number.isFinite(minimum) ||
+        !Number.isFinite(target) ||
+        minimum < 0 ||
+        target < minimum
+      ) {
+        throw new Error(
+          "Der Zielbestand darf nicht unter dem Mindestbestand liegen.",
+        );
+      }
+      const unit = draft.unit.trim().toLowerCase();
+      const articleNumber = draft.articleNumber.trim();
+      if (!unit) throw new Error("Bitte eine Einheit angeben.");
+      if (!articleNumber) throw new Error("Bitte eine Artikelnummer angeben.");
+
+      const itemId = await stock.api.saveItem(
+        {
+          articleNumber,
+          name: draft.name.trim(),
+          ...(categoryName
+            ? { category: categoryName }
+            : stock.item
+              ? {}
+              : { category: "Allgemein" }),
+          unit,
+          minimumStock: minimum,
+          targetStock: target,
+          loanItem: isLoan,
+          ...(chooseDepartment && draft.departmentId
+            ? { departmentId: draft.departmentId }
+            : {}),
+        },
+        stock.item?.id ?? null,
+      );
+
+      // Ausleihartikel: ein einfacher Bestand, gebucht als Lagerbewegung.
+      if (isLoan) {
+        const wanted = Math.floor(Number(draft.stockQuantity));
+        if (!Number.isFinite(wanted) || wanted < 0) {
+          throw new Error("Bitte einen Bestand von 0 oder mehr angeben.");
+        }
+        const delta = wanted - (stock.item?.physicalQuantity ?? 0);
+        if (delta !== 0) {
+          const locationId =
+            draft.locationId ||
+            (stock.locations.length === 1 ? stock.locations[0]!.id : "");
+          if (!locationId) {
+            throw new Error(
+              "Bitte einen Lagerort für den Bestand wählen (Lagerorte lassen sich im Lager anlegen).",
+            );
+          }
+          await stock.api.postStock({ itemId, locationId, delta });
+        }
+      }
+
+      let imageProblem = "";
+      try {
+        if (draft.inShop) {
+          const saved = await shopApi.saveItem(tenantId, {
+            id: draft.id,
+            name: draft.name.trim(),
+            description: draft.description.trim() || null,
+            specifications: Object.fromEntries(
+              SPEC_FIELDS.flatMap(({ key }) => {
+                const value = (draft.specifications[key] ?? "").trim();
+                return value ? [[key, value]] : [];
+              }),
+            ),
+            categoryIds,
+            articleNumber,
+            supplierUrl: draft.supplierUrl.trim() || null,
+            kind: draft.kind,
+            requiresApproval: draft.requiresApproval,
+            maxQuantity: draft.maxQuantity,
+            maxLoanDays:
+              isLoan && draft.maxLoanDays ? Number(draft.maxLoanDays) : null,
+            inventoryItemId: itemId,
+            createInventoryItem: false,
+            loanQuantity: null,
+            optionItemIds: draft.optionItemIds,
+            active: draft.active,
+            visibleCadreLevels: draft.visibleCadreLevels,
+            sortOrder: draft.sortOrder,
+            ...(chooseDepartment && draft.departmentId
+              ? { departmentId: draft.departmentId }
+              : {}),
+          });
+          for (const imageId of draft.removedImageIds.filter(
+            (id) => id !== "lager",
+          )) {
+            await shopApi.removeImage(tenantId, saved.id, imageId);
+          }
+          for (const file of draft.newFiles) {
+            await shopApi.addImage(tenantId, saved.id, {
+              data: await fileToBase64(file),
+              contentType: file.type,
+            });
+          }
+        } else if (draft.id) {
+          // Schieber «Im Shop anbieten» aus: der Artikel verlässt den Shop.
+          await shopApi.deleteItem(tenantId, draft.id);
+        }
+        // Lagerbild: das erste neue Foto (Titelbild) ersetzt das bisherige.
+        const firstNew = draft.newFiles[0];
+        if (firstNew && (!draft.inShop || draft.images.length === 0)) {
+          await stock.api.uploadImage(itemId, firstNew);
+        } else if (draft.removedImageIds.includes("lager")) {
+          await stock.api.deleteImage(itemId);
+        }
+      } catch (nextError) {
+        imageProblem =
+          nextError instanceof Error
+            ? nextError.message
+            : "Fehler beim Shop/Bild.";
+      }
+      setDraft(null);
+      onDone(
+        imageProblem
+          ? `Der Artikel wurde gespeichert, aber nicht alles übernommen: ${imageProblem}`
+          : stock.item
+            ? "Artikel gespeichert."
+            : "Artikel erfasst.",
+      );
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Speichern fehlgeschlagen.",
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft) return;
+    if (stock) {
+      await saveStockArticle();
+      return;
+    }
     setPending(true);
     setError("");
     try {
@@ -2385,6 +2696,10 @@ function CatalogEditor({
     [newFilePreviews],
   );
   const imageCount = draft ? draft.images.length + draft.newFiles.length : 0;
+  // Nur im Lager (nicht im Shop): ein Bild; im Shop bis zu MAX_IMAGES.
+  const maxImages = stock && draft && !draft.inShop ? 1 : MAX_IMAGES;
+  // Shop-Felder (Beschreibung, Optionen, Freigabe …) nur, wenn im Shop.
+  const shopFields = !stock || Boolean(draft?.inShop);
 
   const [photoError, setPhotoError] = useState("");
   const [preparingPhotos, setPreparingPhotos] = useState(false);
@@ -2392,9 +2707,13 @@ function CatalogEditor({
 
   const addFiles = async (files: File[]) => {
     if (!draft || files.length === 0) return;
-    const free = MAX_IMAGES - imageCount;
+    const free = maxImages - imageCount;
     if (free <= 0) {
-      setPhotoError(`Pro Artikel sind höchstens ${MAX_IMAGES} Fotos möglich.`);
+      setPhotoError(
+        maxImages === 1
+          ? "Ohne Shop ist ein Bild möglich. Entfernen Sie zuerst das bisherige."
+          : `Pro Artikel sind höchstens ${MAX_IMAGES} Fotos möglich.`,
+      );
       return;
     }
     setPhotoError("");
@@ -2414,7 +2733,7 @@ function CatalogEditor({
     }
     if (files.length > free) {
       problems.push(
-        `Pro Artikel sind höchstens ${MAX_IMAGES} Fotos möglich – ${files.length - free} wurden nicht übernommen.`,
+        `Pro Artikel sind höchstens ${maxImages} Fotos möglich – ${files.length - free} wurden nicht übernommen.`,
       );
     }
     setPhotoError(problems.join(" "));
@@ -2425,7 +2744,7 @@ function CatalogEditor({
             ...current,
             newFiles: [...current.newFiles, ...prepared].slice(
               0,
-              MAX_IMAGES - current.images.length,
+              maxImages - current.images.length,
             ),
           }
         : current,
@@ -2597,9 +2916,13 @@ function CatalogEditor({
           >
             <header className="panel-heading">
               <div>
-                <p className="eyebrow">Shop</p>
+                <p className="eyebrow">{stock ? "Lager" : "Shop"}</p>
                 <h2 id="shop-item-title">
-                  {draft.id ? "Artikel bearbeiten" : "Artikel hinzufügen"}
+                  {(stock ? stock.item : draft.id)
+                    ? "Artikel bearbeiten"
+                    : stock
+                      ? "Artikel erfassen"
+                      : "Artikel hinzufügen"}
                 </h2>
               </div>
               <button
@@ -2611,11 +2934,25 @@ function CatalogEditor({
                 <X size={18} />
               </button>
             </header>
+            {stock ? (
+              <SwitchField
+                checked={draft.inShop}
+                hint={
+                  draft.inShop
+                    ? "Der Artikel erscheint im Shop. Die Felder unten sind dieselben wie beim Artikel im Shop."
+                    : draft.id
+                      ? "Beim Speichern wird der Artikel aus dem Shop genommen. Der Lagerartikel bleibt bestehen."
+                      : "Der Artikel bleibt nur im Lager."
+                }
+                label="Im Shop anbieten"
+                onChange={(inShop) => setDraft({ ...draft, inShop })}
+              />
+            ) : null}
             <div className="shop__image-field">
               <span className="shop__image-label">
-                Fotos ({imageCount}/{MAX_IMAGES})
+                Fotos ({imageCount}/{maxImages})
               </span>
-              {imageCount < MAX_IMAGES ? (
+              {imageCount < maxImages ? (
                 <label
                   className={`shop__dropzone${dragActive ? " shop__dropzone--active" : ""}`}
                   onDragEnter={(event) => {
@@ -2729,16 +3066,16 @@ function CatalogEditor({
                 </div>
               ) : null}
               <span className="shop__muted">
-                Bis zu {MAX_IMAGES} Fotos. Grosse Fotos werden automatisch
-                verkleinert. Das erste Foto ist das Titelbild; neue Fotos werden
-                beim Speichern hochgeladen.
+                Bis zu {maxImages} {maxImages === 1 ? "Foto" : "Fotos"}. Grosse
+                Fotos werden automatisch verkleinert. Das erste Foto ist das
+                Titelbild; neue Fotos werden beim Speichern hochgeladen.
                 {imageCount === 0 && draft.fallbackImageUrl
                   ? " Ohne eigene Fotos wird das Bild des Lagerartikels gezeigt."
                   : ""}
               </span>
             </div>
             <label>
-              Name im Shop
+              {stock ? "Bezeichnung" : "Name im Shop"}
               <input
                 maxLength={160}
                 minLength={2}
@@ -2749,15 +3086,17 @@ function CatalogEditor({
                 value={draft.name}
               />
             </label>
-            <OptionsEditor
-              candidates={(items ?? []).filter(
-                (other) => other.id !== draft.id,
-              )}
-              onChange={(optionItemIds) =>
-                setDraft({ ...draft, optionItemIds })
-              }
-              selected={draft.optionItemIds}
-            />
+            {shopFields ? (
+              <OptionsEditor
+                candidates={(items ?? []).filter(
+                  (other) => other.id !== draft.id,
+                )}
+                onChange={(optionItemIds) =>
+                  setDraft({ ...draft, optionItemIds })
+                }
+                selected={draft.optionItemIds}
+              />
+            ) : null}
             <fieldset className="shop__options-editor">
               <legend>
                 Kategorien
@@ -2812,6 +3151,7 @@ function CatalogEditor({
                 Artikelnummer (intern)
                 <input
                   maxLength={80}
+                  required={Boolean(stock)}
                   onChange={(event) =>
                     setDraft({ ...draft, articleNumber: event.target.value })
                   }
@@ -2819,60 +3159,66 @@ function CatalogEditor({
                   value={draft.articleNumber}
                 />
               </label>
-              <label>
-                Link zum Lieferanten (intern)
-                <input
-                  maxLength={1000}
-                  onChange={(event) =>
-                    setDraft({ ...draft, supplierUrl: event.target.value })
-                  }
-                  placeholder="https://…"
-                  type="url"
-                  value={draft.supplierUrl}
-                />
-              </label>
+              {shopFields ? (
+                <label>
+                  Link zum Lieferanten (intern)
+                  <input
+                    maxLength={1000}
+                    onChange={(event) =>
+                      setDraft({ ...draft, supplierUrl: event.target.value })
+                    }
+                    placeholder="https://…"
+                    type="url"
+                    value={draft.supplierUrl}
+                  />
+                </label>
+              ) : null}
             </div>
             <p className="shop__muted shop__internal-hint">
               Artikelnummer und Lieferanten-Link sehen nur Agenten – im Shop und
               in Bestellungen von Mitarbeitenden werden sie nicht angezeigt.
             </p>
-            <label>
-              Beschreibung
-              <textarea
-                maxLength={2000}
-                onChange={(event) =>
-                  setDraft({ ...draft, description: event.target.value })
-                }
-                rows={3}
-                value={draft.description}
-              />
-            </label>
-            <fieldset className="shop__options-editor shop__specs-editor">
-              <legend>Technische Angaben (optional)</legend>
-              <p className="shop__options-hint">
-                Erscheinen im Shop unter «Technische Angaben». Eine Zeile pro
-                Punkt ist am übersichtlichsten.
-              </p>
-              {SPEC_FIELDS.map(({ key, label }) => (
-                <label key={key}>
-                  {label}
-                  <textarea
-                    maxLength={2000}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        specifications: {
-                          ...draft.specifications,
-                          [key]: event.target.value,
-                        },
-                      })
-                    }
-                    rows={2}
-                    value={draft.specifications[key] ?? ""}
-                  />
-                </label>
-              ))}
-            </fieldset>
+            {shopFields ? (
+              <label>
+                Beschreibung
+                <textarea
+                  maxLength={2000}
+                  onChange={(event) =>
+                    setDraft({ ...draft, description: event.target.value })
+                  }
+                  rows={3}
+                  value={draft.description}
+                />
+              </label>
+            ) : null}
+            {shopFields ? (
+              <fieldset className="shop__options-editor shop__specs-editor">
+                <legend>Technische Angaben (optional)</legend>
+                <p className="shop__options-hint">
+                  Erscheinen im Shop unter «Technische Angaben». Eine Zeile pro
+                  Punkt ist am übersichtlichsten.
+                </p>
+                {SPEC_FIELDS.map(({ key, label }) => (
+                  <label key={key}>
+                    {label}
+                    <textarea
+                      maxLength={2000}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          specifications: {
+                            ...draft.specifications,
+                            [key]: event.target.value,
+                          },
+                        })
+                      }
+                      rows={2}
+                      value={draft.specifications[key] ?? ""}
+                    />
+                  </label>
+                ))}
+              </fieldset>
+            ) : null}
             {chooseDepartment ? (
               <label>
                 Abteilung
@@ -2880,10 +3226,10 @@ function CatalogEditor({
                   onChange={(event) =>
                     setDraft({ ...draft, departmentId: event.target.value })
                   }
-                  required={!draft.id}
+                  required={!(stock ? stock.item : draft.id)}
                   value={draft.departmentId}
                 >
-                  {!draft.id ? (
+                  {!(stock ? stock.item : draft.id) ? (
                     <option value="">Bitte wählen</option>
                   ) : draft.departmentId === "" ? (
                     <option value="">Alle Abteilungen</option>
@@ -2896,40 +3242,148 @@ function CatalogEditor({
                 </select>
               </label>
             ) : null}
+            <SwitchField
+              checked={draft.kind === "loan"}
+              hint={
+                draft.kind === "loan"
+                  ? "Wird ausgeliehen und zurückgegeben. Es gibt keinen Mindest- und Zielbestand, nur einen Bestand."
+                  : "Wird bestellt und bleibt bei der Person."
+              }
+              label="Ausleihartikel"
+              onChange={(loan) =>
+                setDraft({ ...draft, kind: loan ? "loan" : "order" })
+              }
+            />
+            {stock ? (
+              <fieldset className="shop__options-editor shop__stock-fields">
+                <legend>Lager</legend>
+                <div className="shop__row shop__row--grid">
+                  <label>
+                    Einheit
+                    <input
+                      maxLength={32}
+                      onChange={(event) =>
+                        setDraft({ ...draft, unit: event.target.value })
+                      }
+                      placeholder="stk"
+                      required
+                      value={draft.unit}
+                    />
+                  </label>
+                  {draft.kind === "loan" ? (
+                    <label>
+                      Bestand
+                      <input
+                        disabled={
+                          Boolean(stock.item) &&
+                          stock.item!.physicalQuantity > 0 &&
+                          !stock.item!.locationId
+                        }
+                        min={0}
+                        onChange={(event) =>
+                          setDraft({
+                            ...draft,
+                            stockQuantity: event.target.value,
+                          })
+                        }
+                        required
+                        step={1}
+                        type="number"
+                        value={draft.stockQuantity}
+                      />
+                    </label>
+                  ) : (
+                    <>
+                      <label>
+                        Mindestbestand
+                        <input
+                          min={0}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              minimumStock: event.target.value,
+                            })
+                          }
+                          required
+                          step="0.001"
+                          type="number"
+                          value={draft.minimumStock}
+                        />
+                      </label>
+                      <label>
+                        Zielbestand
+                        <input
+                          min={0}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              targetStock: event.target.value,
+                            })
+                          }
+                          required
+                          step="0.001"
+                          type="number"
+                          value={draft.targetStock}
+                        />
+                      </label>
+                    </>
+                  )}
+                  {draft.kind === "loan" && stock.locations.length > 0 ? (
+                    <label>
+                      Lagerort
+                      <select
+                        disabled={Boolean(stock.item?.locationId)}
+                        onChange={(event) =>
+                          setDraft({ ...draft, locationId: event.target.value })
+                        }
+                        value={draft.locationId}
+                      >
+                        <option value="">Bitte wählen</option>
+                        {stock.locations.map((location) => (
+                          <option key={location.id} value={location.id}>
+                            {location.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                </div>
+                {draft.kind === "loan" &&
+                stock.item &&
+                stock.item.physicalQuantity > 0 &&
+                !stock.item.locationId ? (
+                  <p className="shop__muted">
+                    Der Bestand liegt an mehreren Lagerorten. Ändern Sie ihn
+                    unter «Bewegungen».
+                  </p>
+                ) : null}
+                {draft.kind === "loan" && stock.locations.length === 0 ? (
+                  <p className="shop__muted">
+                    Für einen Bestand braucht es zuerst einen Lagerort (unter
+                    «Lagerorte»).
+                  </p>
+                ) : null}
+              </fieldset>
+            ) : null}
             <div className="shop__row shop__row--grid">
-              <label>
-                Art
-                <select
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      kind: event.target.value as Draft["kind"],
-                    })
-                  }
-                  value={draft.kind}
-                >
-                  <option value="order">
-                    Bestellen (bleibt bei der Person)
-                  </option>
-                  <option value="loan">Ausleihen (mit Rückgabe)</option>
-                </select>
-              </label>
-              <label>
-                Höchstmenge pro Bestellung
-                <input
-                  max={100}
-                  min={1}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      maxQuantity: Number(event.target.value) || 1,
-                    })
-                  }
-                  type="number"
-                  value={draft.maxQuantity}
-                />
-              </label>
-              {draft.kind === "loan" ? (
+              {shopFields ? (
+                <label>
+                  Höchstmenge pro Bestellung
+                  <input
+                    max={100}
+                    min={1}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        maxQuantity: Number(event.target.value) || 1,
+                      })
+                    }
+                    type="number"
+                    value={draft.maxQuantity}
+                  />
+                </label>
+              ) : null}
+              {draft.kind === "loan" && !stock ? (
                 <label>
                   Anzahl zum Ausleihen
                   <input
@@ -2945,7 +3399,7 @@ function CatalogEditor({
                   />
                 </label>
               ) : null}
-              {draft.kind === "loan" ? (
+              {draft.kind === "loan" && shopFields ? (
                 <label>
                   Max. Ausleihdauer (Tage)
                   <input
@@ -2960,7 +3414,7 @@ function CatalogEditor({
                 </label>
               ) : null}
             </div>
-            {draft.kind !== "loan" ? (
+            {draft.kind !== "loan" && !stock ? (
               <label>
                 Lagerartikel (optional)
                 <select
@@ -2990,72 +3444,75 @@ function CatalogEditor({
                 </select>
               </label>
             ) : null}
-            <label className="shop__check">
-              <input
-                checked={draft.requiresApproval}
-                onChange={(event) =>
-                  setDraft({ ...draft, requiresApproval: event.target.checked })
-                }
-                type="checkbox"
-              />
-              Braucht die Freigabe der vorgesetzten Person
-            </label>
-            <label className="shop__check">
-              <input
-                checked={draft.active}
-                onChange={(event) =>
-                  setDraft({ ...draft, active: event.target.checked })
-                }
-                type="checkbox"
-              />
-              Im Shop sichtbar
-            </label>
-            <fieldset className="shop__cadre-visibility">
-              <legend>Sichtbar für</legend>
-              <label className="shop__check">
-                <input
-                  checked={draft.visibleCadreLevels.length === 0}
-                  onChange={() =>
-                    setDraft({ ...draft, visibleCadreLevels: [] })
-                  }
-                  type="checkbox"
-                />
-                Alle Mitarbeitenden
-              </label>
-              {[1, 2, 3].map((level) => (
-                <label className="shop__check" key={level}>
+            {shopFields ? (
+              <>
+                <label className="shop__check">
                   <input
-                    checked={draft.visibleCadreLevels.includes(level)}
+                    checked={draft.requiresApproval}
                     onChange={(event) =>
                       setDraft({
                         ...draft,
-                        visibleCadreLevels: event.target.checked
-                          ? [...draft.visibleCadreLevels, level].sort(
-                              (a, b) => a - b,
-                            )
-                          : draft.visibleCadreLevels.filter(
-                              (entry) => entry !== level,
-                            ),
+                        requiresApproval: event.target.checked,
                       })
                     }
                     type="checkbox"
                   />
-                  Kaderstufe {level}
+                  Braucht die Freigabe der vorgesetzten Person
                 </label>
-              ))}
-              <small>
-                Ohne Auswahl sehen alle den Artikel. Mit Auswahl sehen und
-                bestellen ihn nur Personen genau dieser Kaderstufen; Agenten
-                sehen immer alle Artikel.
-              </small>
-            </fieldset>
+                <SwitchField
+                  checked={draft.active}
+                  hint="Ausgeschaltet ist der Artikel im Shop versteckt, aber nicht gelöscht."
+                  label="Im Shop sichtbar"
+                  onChange={(active) => setDraft({ ...draft, active })}
+                />
+                <fieldset className="shop__cadre-visibility">
+                  <legend>Sichtbar für</legend>
+                  <label className="shop__check">
+                    <input
+                      checked={draft.visibleCadreLevels.length === 0}
+                      onChange={() =>
+                        setDraft({ ...draft, visibleCadreLevels: [] })
+                      }
+                      type="checkbox"
+                    />
+                    Alle Mitarbeitenden
+                  </label>
+                  {[1, 2, 3].map((level) => (
+                    <label className="shop__check" key={level}>
+                      <input
+                        checked={draft.visibleCadreLevels.includes(level)}
+                        onChange={(event) =>
+                          setDraft({
+                            ...draft,
+                            visibleCadreLevels: event.target.checked
+                              ? [...draft.visibleCadreLevels, level].sort(
+                                  (a, b) => a - b,
+                                )
+                              : draft.visibleCadreLevels.filter(
+                                  (entry) => entry !== level,
+                                ),
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      Kaderstufe {level}
+                    </label>
+                  ))}
+                  <small>
+                    Ohne Auswahl sehen alle den Artikel. Mit Auswahl sehen und
+                    bestellen ihn nur Personen genau dieser Kaderstufen; Agenten
+                    sehen immer alle Artikel.
+                  </small>
+                </fieldset>
+              </>
+            ) : null}
             {error ? (
               <p className="form-error" role="alert">
                 {error}
               </p>
             ) : null}
             <div className="form-actions">
-              {draft.id ? (
+              {draft.id && !stock ? (
                 <button
                   className="secondary-button shop__delete-item"
                   disabled={pending}
