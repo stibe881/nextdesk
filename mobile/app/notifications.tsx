@@ -131,6 +131,7 @@ function defaultPreferences(): PushPreferences {
     enabledCategories: PUSH_CATEGORIES.filter(
       (category) => category !== "inventory_low_stock",
     ),
+    emailCategories: [],
     deliveryDays: [...ALL_DELIVERY_DAYS],
     quietEnd: 7,
     quietHoursEnabled: false,
@@ -247,6 +248,7 @@ export default function NotificationsScreen() {
 
   const preferences = status?.preferences ?? defaultPreferences();
   const applicableCategories = status?.applicableCategories ?? [];
+  const emailAvailable = status?.emailAvailable ?? false;
   const context = tenantId && userId ? { tenantId, userId } : null;
   const masterDisabled =
     !context ||
@@ -367,12 +369,17 @@ export default function NotificationsScreen() {
     }
   }
 
-  function toggleCategory(category: PushCategory, enabled: boolean) {
+  function toggleCategory(
+    category: PushCategory,
+    channel: "push" | "email",
+    enabled: boolean,
+  ) {
     hapticSelection();
-    const enabledCategories = enabled
-      ? [...new Set([...preferences.enabledCategories, category])]
-      : preferences.enabledCategories.filter((item) => item !== category);
-    void savePreferences({ ...preferences, enabledCategories });
+    const key = channel === "push" ? "enabledCategories" : "emailCategories";
+    const next = enabled
+      ? [...new Set([...preferences[key], category])]
+      : preferences[key].filter((item) => item !== category);
+    void savePreferences({ ...preferences, [key]: next });
   }
 
   function toggleQuietHours(enabled: boolean) {
@@ -672,7 +679,8 @@ export default function NotificationsScreen() {
                       Kategorien
                     </Text>
                     <Text style={[styles.cardHint, { color: colors.muted }]}>
-                      Wähle Hinweise, die für deine Rolle verfügbar sind.
+                      Wähle pro Hinweis, ob er als Push, als Mail oder beides
+                      kommen soll.
                     </Text>
                   </View>
                 </View>
@@ -687,6 +695,9 @@ export default function NotificationsScreen() {
                       applicableCategories.includes(category.key),
                     ).map((category) => {
                       const enabled = preferences.enabledCategories.includes(
+                        category.key,
+                      );
+                      const emailEnabled = preferences.emailCategories.includes(
                         category.key,
                       );
                       return (
@@ -715,26 +726,56 @@ export default function NotificationsScreen() {
                               {category.description}
                             </Text>
                           </View>
-                          <Switch
-                            accessibilityLabel={`${category.label} ${enabled ? "deaktivieren" : "aktivieren"}`}
-                            accessibilityRole="switch"
-                            accessibilityState={{
-                              checked: enabled,
-                              disabled: preferenceSaving,
-                            }}
-                            disabled={preferenceSaving}
-                            onValueChange={(value) =>
-                              toggleCategory(category.key, value)
-                            }
-                            thumbColor={
-                              enabled ? colors.onPrimary : colors.surface
-                            }
-                            trackColor={{
-                              false: colors.border,
-                              true: colors.primary,
-                            }}
-                            value={enabled}
-                          />
+                          <View style={styles.channelSwitches}>
+                            {(
+                              [
+                                ["push", "Push", enabled],
+                                ["email", "Mail", emailEnabled],
+                              ] as const
+                            ).map(([channel, label, on]) => {
+                              const unavailable =
+                                channel === "email" && !emailAvailable;
+                              return (
+                                <View
+                                  key={channel}
+                                  style={styles.channelSwitch}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.channelLabel,
+                                      { color: colors.muted },
+                                    ]}
+                                  >
+                                    {label}
+                                  </Text>
+                                  <Switch
+                                    accessibilityLabel={`${category.label} per ${label} ${on ? "deaktivieren" : "aktivieren"}`}
+                                    accessibilityRole="switch"
+                                    accessibilityState={{
+                                      checked: on && !unavailable,
+                                      disabled: preferenceSaving || unavailable,
+                                    }}
+                                    disabled={preferenceSaving || unavailable}
+                                    onValueChange={(value) =>
+                                      toggleCategory(
+                                        category.key,
+                                        channel,
+                                        value,
+                                      )
+                                    }
+                                    thumbColor={
+                                      on ? colors.onPrimary : colors.surface
+                                    }
+                                    trackColor={{
+                                      false: colors.border,
+                                      true: colors.primary,
+                                    }}
+                                    value={on && !unavailable}
+                                  />
+                                </View>
+                              );
+                            })}
+                          </View>
                         </View>
                       );
                     })}
@@ -1064,6 +1105,9 @@ const useStyles = makeThemedStyles((c) => ({
   cardTitle: { fontSize: 16, fontWeight: "900" },
   categoryCopy: { flex: 1, gap: 3, paddingRight: 12 },
   categoryDescription: { fontSize: 12, lineHeight: 17 },
+  channelLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 0.4 },
+  channelSwitch: { alignItems: "center", gap: 4 },
+  channelSwitches: { flexDirection: "row", gap: 10 },
   categoryList: { gap: 1 },
   categoryRow: {
     alignItems: "center",
