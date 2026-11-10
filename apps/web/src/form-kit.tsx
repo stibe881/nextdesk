@@ -293,3 +293,19 @@ export function FormSummary({
 export function FormNote({ children }: { children: ReactNode }) {
   return <p className="fk-note">{children}</p>;
 }
+
+/** Zusammenfassung links und Karten rechts für Formulare, die kein Dialog sind. */
+export function FormLayout({
+  children,
+  side,
+}: {
+  children: ReactNode;
+  side?: ReactNode;
+}) {
+  return (
+    <div className={`fk-layout${side ? " fk-layout--side" : ""}`}>
+      {side ? <aside className="fk-side">{side}</aside> : null}
+      <div className="fk-main">{children}</div>
+    </div>
+  );
+}
