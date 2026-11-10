@@ -255,6 +255,14 @@ alle Kolleginnen und Kollegen, die das Ticket gerade geöffnet haben. Bewegen Si
 Bild, sehen Sie den Namen. Ein grüner Rand bedeutet, dass die Person gerade
 etwas ändert; so vermeiden Sie doppelte Arbeit.
 
+**Status ändern heisst Ticket übernehmen:** Wer den Status eines Tickets ändert
+(im Ticketdetail, auf der Kachel in Liste und Kanban oder in der App), wird
+automatisch als **zugewiesene Person** eingetragen, sofern er oder sie das
+Ticket bearbeiten darf. Das gilt auch für ein neues, noch nicht zugewiesenes
+Ticket: der Status «Neu» lässt sich dann direkt ändern. Wählen Sie im selben
+Schritt eine andere Person aus, gilt diese Auswahl. Bei der Mehrfachauswahl
+(Sammelaktion) wird nicht automatisch zugewiesen.
+
 Über der Beschreibung zeigt die kompakte **Ticket-Zeitachse** alle
 Ereignisse, die Reaktions- und Lösungsfrist sowie längere Lücken. Darunter
 folgt die **Unterhaltung** mit allen Nachrichten und Notizen.

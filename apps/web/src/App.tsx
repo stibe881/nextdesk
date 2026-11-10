@@ -2256,12 +2256,6 @@ function TicketQuickAssign({
     if (open === "status") {
       const status = options?.find((option) => option.id === value);
       if (!status) return;
-      if (value !== "new" && ticket.isUnassigned && ticket.state === "Neu") {
-        setError(
-          "Der Status «Neu» kann erst geändert werden, wenn das Ticket einer Person zugewiesen ist.",
-        );
-        return;
-      }
       // Closing needs an explicit confirmation, as in the ticket detail.
       if (status.isClosed && !confirmed) {
         setPendingClose(status);

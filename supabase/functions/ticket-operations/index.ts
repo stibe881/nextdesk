@@ -2796,11 +2796,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .eq("author_id", actorId)
         .eq("visibility", action.visibility);
       if (discardError)
-        return response(
-          request,
-          { error: { code: "draft_save_failed" } },
-          422,
-        );
+        return response(request, { error: { code: "draft_save_failed" } }, 422);
       return response(request, { data: { draft: null } });
     }
     const { data: draft, error } = await context.supabaseAdmin
@@ -3212,10 +3208,32 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           { error: { code: "ticket_status_new_locked" } },
           422,
         );
+      // Whoever changes the status takes the ticket: it is assigned to them,
+      // as long as they are an eligible agent of the ticket (an explicit
+      // assignment in the same request wins).
+      let autoAssignAgentId: string | null = null;
+      if (
+        action.assignedAgentId === undefined &&
+        typeof actorId === "string" &&
+        ticket.assigned_agent_id !== actorId
+      ) {
+        const eligible = await getEligibleTicketAgentIds(
+          context.supabaseAdmin,
+          {
+            ...ticket,
+            assigned_team_id:
+              action.assignedTeamId === undefined
+                ? ticket.assigned_team_id
+                : action.assignedTeamId,
+          },
+        );
+        if (!eligible.error && eligible.agentIds.includes(actorId))
+          autoAssignAgentId = actorId;
+      }
       const nextAgentId =
         action.assignedAgentId !== undefined
           ? action.assignedAgentId
-          : ticket.assigned_agent_id;
+          : (autoAssignAgentId ?? ticket.assigned_agent_id);
       if (currentStatus?.key === "new" && !nextAgentId)
         return response(
           request,
@@ -3233,7 +3251,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           context.supabaseAdmin,
           ticket,
           action.assignedTeamId,
-          action.assignedAgentId,
+          action.assignedAgentId !== undefined
+            ? action.assignedAgentId
+            : (autoAssignAgentId ?? undefined),
         );
         if (missing.length > 0)
           return response(
@@ -3256,6 +3276,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         ? occurredAt
         : null;
       changedFields.push("status");
+      if (autoAssignAgentId) {
+        update.assigned_agent_id = autoAssignAgentId;
+        changedFields.push("assignedAgent");
+      }
       statusTransition = {
         fromStatusId: ticket.status_id,
         toStatusKey: status.key,
