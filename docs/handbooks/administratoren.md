@@ -166,16 +166,16 @@ Im Register **Abteilungen**:
 ## E-Mail-Vorlagen
 
 Im Register **E-Mail-Vorlagen** steuern Sie alle E-Mails, die nextDesk
-automatisch versendet:
+automatisch versendet. Die Vorlagen sind nach Kategorie geordnet:
 
-- Eingangsbestätigung, Antwort des Supports, Ticket gelöst
-- Rückmeldungen an Personen, die eine Phishing-Mail gemeldet haben: Danke,
+- **Tickets**: Eingangsbestätigung, Antwort des Supports, Ticket gelöst
+- **Phishing-Meldungen**: Rückmeldungen an Personen, die eine Phishing-Mail gemeldet haben: Danke,
   Ergebnis (je Beurteilung eine eigene Vorlage) und Rückfrage «geklickt?». Die
   Vorlage «Gestaltung» legt Überschrift und Hinweis fest; ausgeschaltet
   werden gar keine Rückmeldungen versendet
-- Abteilungsrückfrage und Abteilungsantwort
-- Benachrichtigungen an Mitarbeitende
-- Statusseite: Anmeldung bestätigen und Statusänderung
+- **Interne Mitteilungen**: Abteilungsrückfrage, Abteilungsantwort und
+  Benachrichtigungen an Mitarbeitende
+- **Statusseite**: Anmeldung bestätigen und Statusänderung
 
 Öffnen Sie eine Vorlage, um sie zu bearbeiten:
 
