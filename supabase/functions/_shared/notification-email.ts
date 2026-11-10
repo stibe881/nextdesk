@@ -189,6 +189,18 @@ export function notificationEmailText(
         ? "Die Störung ist noch von niemandem bestätigt. Bitte unter «Störungen» bestätigen."
         : "Details und Bestätigen unter «Störungen».",
     ];
+  } else if (kind === "ticket.sla.supervisor_no_response") {
+    const agent = text(payload.agentName, 200);
+    title = "Team: Ticket ohne Antwort";
+    lines = [
+      `Die Frist für die erste Antwort ist abgelaufen${agent ? ` (zuständig: ${agent})` : " (nicht zugewiesen)"}.`,
+    ];
+  } else if (kind === "ticket.sla.supervisor_risk") {
+    const agent = text(payload.agentName, 200);
+    title = "Team: SLA in Gefahr";
+    lines = [
+      `Das Ticket verletzt in weniger als einer Stunde die Lösungsfrist${agent ? ` (zuständig: ${agent})` : " (nicht zugewiesen)"}.`,
+    ];
   } else if (kind.startsWith("ticket.sla.")) {
     title = "SLA-Hinweis";
     lines = ["Eine SLA-Frist eines Tickets ist betroffen."];
