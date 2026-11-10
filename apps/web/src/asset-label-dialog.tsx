@@ -89,16 +89,19 @@ export function AssetLabelDialog({
   count,
   branding,
   onClose,
+  webOnly = false,
 }: {
   /** Creates the label items for the chosen QR mode. */
   buildItems: (mode: LabelQrMode, baseUrl: string) => LabelItem[];
   count: number;
   branding?: LabelBranding | undefined;
   onClose: () => void;
+  /** Only a web link is offered (e.g. stock articles have no app link). */
+  webOnly?: boolean;
 }) {
   const [formatId, setFormatId] = useState<LabelFormatId>(storedFormat);
   const [skip, setSkip] = useState(0);
-  const [mode, setMode] = useState<LabelQrMode>("app");
+  const [mode, setMode] = useState<LabelQrMode>(webOnly ? "web" : "app");
   const [withLogo, setWithLogo] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -267,39 +270,46 @@ export function AssetLabelDialog({
               ein, Ränder «Keine».
             </p>
           )}
-          <fieldset>
-            <legend>Inhalt des QR-Codes</legend>
-            <label className="asset-label-dialog__choice">
-              <input
-                checked={mode === "app"}
-                name="asset-label-qr"
-                onChange={() => setMode("app")}
-                type="radio"
-              />
-              <span>
-                <strong>App-Link</strong>
-                <small>
-                  Öffnet das Gerät direkt in der nextDesk-App (Scanner oder
-                  Kamera).
-                </small>
-              </span>
-            </label>
-            <label className="asset-label-dialog__choice">
-              <input
-                checked={mode === "web"}
-                name="asset-label-qr"
-                onChange={() => setMode("web")}
-                type="radio"
-              />
-              <span>
-                <strong>Web-Link</strong>
-                <small>
-                  Öffnet nextDesk im Browser; der App-Scanner erkennt den Link
-                  ebenfalls.
-                </small>
-              </span>
-            </label>
-          </fieldset>
+          {webOnly ? (
+            <p className="asset-label-dialog__hint">
+              Der QR-Code enthält einen Web-Link: Er öffnet den Artikel im Lager
+              von nextDesk (Anmeldung nötig).
+            </p>
+          ) : (
+            <fieldset>
+              <legend>Inhalt des QR-Codes</legend>
+              <label className="asset-label-dialog__choice">
+                <input
+                  checked={mode === "app"}
+                  name="asset-label-qr"
+                  onChange={() => setMode("app")}
+                  type="radio"
+                />
+                <span>
+                  <strong>App-Link</strong>
+                  <small>
+                    Öffnet das Gerät direkt in der nextDesk-App (Scanner oder
+                    Kamera).
+                  </small>
+                </span>
+              </label>
+              <label className="asset-label-dialog__choice">
+                <input
+                  checked={mode === "web"}
+                  name="asset-label-qr"
+                  onChange={() => setMode("web")}
+                  type="radio"
+                />
+                <span>
+                  <strong>Web-Link</strong>
+                  <small>
+                    Öffnet nextDesk im Browser; der App-Scanner erkennt den Link
+                    ebenfalls.
+                  </small>
+                </span>
+              </label>
+            </fieldset>
+          )}
           {hasLogo ? (
             <label className="asset-label-dialog__choice">
               <input

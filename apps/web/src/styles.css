@@ -21779,3 +21779,4 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 .switch-field__text small { color: var(--muted, #5d6f7a); font-size: 12.5px; line-height: 1.4; }
 .shop__stock-fields { display: grid; gap: 8px; }
 .inventory__create-row { display: flex; justify-content: flex-start; margin: 0 0 12px; }
+.inventory__focus-note { margin: 0 0 10px; color: var(--muted, #5d6f7a); }
