@@ -153,10 +153,9 @@ Mit **Neue SLA-Regel** legen Sie fest:
 
 Die Fristen zählen nur innerhalb der **Servicezeit**: Ein Ticket, das am Abend
 eingeht, verbraucht bis zum nächsten Morgen keine Zeit. Auch die Hinweise an
-Leitungen («Team: Ticket ohne Antwort», «Team: SLA in Gefahr») richten sich
-danach. «Ohne Antwort» kommt, sobald die Reaktionszeit abgelaufen ist, und
-beide Hinweise werden nur während der Servicezeit verschickt. Was abends
-fällig wird, kommt am nächsten Morgen.
+Leitungen richten sich danach: «Team: Ticket ohne Antwort» kommt, sobald die
+**Reaktionszeit** in Servicezeit abgelaufen ist (ohne SLA nach 24 Stunden
+Servicezeit), «Team: SLA in Gefahr» eine Stunde vor Ablauf der Lösungszeit.
 
 Unter **Aktuelle Eskalationen** sehen Sie Tickets, deren SLA gefährdet oder
 verletzt ist. Nicht mehr benötigte Regeln **archivieren** Sie, statt sie zu
