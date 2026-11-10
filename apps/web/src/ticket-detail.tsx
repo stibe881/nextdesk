@@ -5985,24 +5985,14 @@ export function TicketDetail({
     const updatesAgent = change.assignedAgentId !== undefined;
     if (!updatesTicket && !updatesAgent) return;
     const closingStatus = closingStatusForKey(change.statusKey);
-    if (
-      change.statusKey !== undefined &&
-      change.statusKey !== "new" &&
-      selectedStatus?.key === "new" &&
-      !detail.ticket.assigned_agent_id &&
-      !change.assignedAgentId
-    ) {
-      setStatusKey(selectedStatus.key);
-      setError(
-        "Der Status «Neu» kann erst geändert werden, wenn das Ticket einer Person zugewiesen ist.",
-      );
-      return;
-    }
     if (closingStatus) {
       const missing = [
         requiredCloseFields.category ? "Kategorie" : null,
         requiredCloseFields.team ? "Team" : null,
-        requiredCloseFields.assignee ? "Zuweisung" : null,
+        // The person who closes the ticket is assigned automatically.
+        requiredCloseFields.assignee && !hasAgentExperienceAccess
+          ? "Zuweisung"
+          : null,
       ].filter((label): label is string => label !== null);
       if (missing.length > 0) {
         setStatusKey(selectedStatus?.key ?? "");
