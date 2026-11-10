@@ -1850,8 +1850,9 @@ function InventoryItems({
                     ) : null}
                   </td>
                   <td>
+                    {/* Bilder werden nur im Artikelformular geändert. */}
                     <InventoryItemImage
-                      canManage={canManage}
+                      canManage={false}
                       item={item}
                       onImagesChanged={onImagesChanged}
                       tenantId={tenantId}
@@ -1886,7 +1887,13 @@ function InventoryItems({
                   >
                     {quantity(item.availableQuantity, item.unit)}
                   </td>
-                  <td>{quantity(item.minQuantity, item.unit)}</td>
+                  <td>
+                    {item.loanItem ? (
+                      <span className="inventory__muted">–</span>
+                    ) : (
+                      quantity(item.minQuantity, item.unit)
+                    )}
+                  </td>
                   {shop ? (
                     <td>
                       {shop.linked.has(item.id) ? (
