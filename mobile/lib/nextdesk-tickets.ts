@@ -331,6 +331,8 @@ export async function loadMobileDashboard(input: {
             "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, created_at",
           )
           .eq("tenant_id", tenant.id)
+          // Phishing reports are security cases, not tickets.
+          .eq("is_security_case", false)
           .order("updated_at", { ascending: false })
           .limit(50),
         client
@@ -382,18 +384,24 @@ export async function loadMobileDashboard(input: {
         client
           .from("tickets")
           .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenant.id),
+          .eq("tenant_id", tenant.id)
+          // Phishing reports are security cases, not tickets.
+          .eq("is_security_case", false),
         closedStatusIds.length > 0
           ? client
               .from("tickets")
               .select("id", { count: "exact", head: true })
               .eq("tenant_id", tenant.id)
+              // Phishing reports are security cases, not tickets.
+              .eq("is_security_case", false)
               .in("status_id", closedStatusIds)
           : Promise.resolve({ count: 0, error: null }),
         client
           .from("tickets")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenant.id)
+          // Phishing reports are security cases, not tickets.
+          .eq("is_security_case", false)
           .or(
             `assigned_agent_id.eq.${activeUser.id},requester_id.eq.${activeUser.id}`,
           ),
@@ -401,6 +409,8 @@ export async function loadMobileDashboard(input: {
           .from("tickets")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenant.id)
+          // Phishing reports are security cases, not tickets.
+          .eq("is_security_case", false)
           .is("assigned_agent_id", null),
       ]);
     if (

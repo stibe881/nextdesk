@@ -154,8 +154,8 @@ entsteht ein Sicherheitsfall (siehe unten).
 
 ## Sicherheitsfälle
 
-Gemeldete Phishing-Mails erscheinen nicht in der Ticketliste, sondern unter
-**Sicherheitsfälle**. Meldet mehr als eine Person dieselbe E-Mail, entsteht
+Gemeldete Phishing-Mails erscheinen nicht in der Ticketliste (weder im Web
+noch in der App), sondern unter **Sicherheitsfälle**. Meldet mehr als eine Person dieselbe E-Mail, entsteht
 nur ein Fall; alle Melder hängen daran (Kennzeichen **Kampagne**). Die Kacheln
 zeigen, was zu beurteilen ist, wie viele Fälle noch Massnahmen haben, die
 Meldungen von heute, die mittlere Zeit bis zum Urteil und wie oft Melder
