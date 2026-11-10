@@ -1598,6 +1598,7 @@ function InventoryItems({
           departments={departments}
           key={createOpenRequestId ?? "item-create"}
           onChanged={onChanged}
+          onImagesChanged={onImagesChanged}
           tenantId={tenantId}
         />
       ) : null}
@@ -1721,6 +1722,59 @@ function InventoryItems({
   );
 }
 
+/** Uploads the primary image of an item: signed upload URL, PUT, completion. */
+async function uploadInventoryItemImageFile(
+  tenantId: string,
+  itemId: string,
+  file: File,
+): Promise<void> {
+  if (!supabase) {
+    throw new Error("Die Verbindung zu nextDesk ist nicht konfiguriert.");
+  }
+  const contentType = file.type.trim().toLowerCase() as
+    "image/jpeg" | "image/png" | "image/webp";
+  const { data: createData, error: createError } =
+    await supabase.functions.invoke<unknown>("inventory", {
+      body: {
+        type: "createUpload",
+        tenantId,
+        itemId,
+        contentType,
+        byteSize: file.size,
+      },
+    });
+  if (createError) throw createError;
+  const upload = parseInventoryItemImageUpload(createData, tenantId, itemId);
+  if (
+    !upload ||
+    upload.contentType !== contentType ||
+    upload.byteSize !== file.size
+  ) {
+    throw new Error("Ungültige Upload-Antwort.");
+  }
+  const uploadResponse = await fetch(upload.signedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body: file,
+  });
+  if (!uploadResponse.ok) throw new Error("Bild-Upload fehlgeschlagen.");
+  const { data: completeData, error: completeError } =
+    await supabase.functions.invoke<unknown>("inventory", {
+      body: {
+        type: "completeUpload",
+        tenantId,
+        itemId,
+        storageObjectPath: upload.storageObjectPath,
+        contentType,
+        byteSize: file.size,
+      },
+    });
+  if (completeError) throw completeError;
+  if (!parseInventoryItemImageCompletion(completeData, itemId)) {
+    throw new Error("Ungültige Bildabschluss-Antwort.");
+  }
+}
+
 function InventoryItemImage({
   canManage,
   item,
@@ -1822,56 +1876,11 @@ function InventoryItemImage({
       setError("Die Verbindung zu nextDesk ist nicht konfiguriert.");
       return;
     }
-    const contentType = file.type.trim().toLowerCase() as
-      "image/jpeg" | "image/png" | "image/webp";
     setPending("upload");
     setError("");
     setNotice("");
     try {
-      const { data: createData, error: createError } =
-        await supabase.functions.invoke<unknown>("inventory", {
-          body: {
-            type: "createUpload",
-            tenantId,
-            itemId: item.id,
-            contentType,
-            byteSize: file.size,
-          },
-        });
-      if (createError) throw createError;
-      const upload = parseInventoryItemImageUpload(
-        createData,
-        tenantId,
-        item.id,
-      );
-      if (
-        !upload ||
-        upload.contentType !== contentType ||
-        upload.byteSize !== file.size
-      ) {
-        throw new Error("Ungültige Upload-Antwort.");
-      }
-      const uploadResponse = await fetch(upload.signedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": contentType },
-        body: file,
-      });
-      if (!uploadResponse.ok) throw new Error("Bild-Upload fehlgeschlagen.");
-      const { data: completeData, error: completeError } =
-        await supabase.functions.invoke<unknown>("inventory", {
-          body: {
-            type: "completeUpload",
-            tenantId,
-            itemId: item.id,
-            storageObjectPath: upload.storageObjectPath,
-            contentType,
-            byteSize: file.size,
-          },
-        });
-      if (completeError) throw completeError;
-      if (!parseInventoryItemImageCompletion(completeData, item.id)) {
-        throw new Error("Ungültige Bildabschluss-Antwort.");
-      }
+      await uploadInventoryItemImageFile(tenantId, item.id, file);
       clearSelectedFile();
       setImageUrl(null);
       setImageRevision((revision) => revision + 1);
@@ -2946,11 +2955,13 @@ function InventoryItemCreateForm({
   defaultOpen = false,
   departments,
   onChanged,
+  onImagesChanged,
   tenantId,
 }: {
   defaultOpen?: boolean;
   departments: readonly InventoryDepartment[];
   onChanged: InventoryChangedHandler;
+  onImagesChanged: () => Promise<boolean>;
   tenantId: string;
 }) {
   // Eine Abteilung ist nur zu wählen, wenn mehrere in Frage kommen; bei
@@ -2964,7 +2975,41 @@ function InventoryItemCreateForm({
   const [minimumStock, setMinimumStock] = useState("0");
   const [targetStock, setTargetStock] = useState("0");
   const [saving, setSaving] = useState(false);
+  // Optional picture, uploaded right after the article exists.
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageError, setImageError] = useState("");
   const clientRequest = useClientRequestId(tenantId, "item-create");
+
+  useEffect(
+    () => () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+    },
+    [imagePreview],
+  );
+
+  function clearImage() {
+    setImageFile(null);
+    setImagePreview(null);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  }
+
+  function selectImage(file: File | null) {
+    setImageError("");
+    if (!file) {
+      clearImage();
+      return;
+    }
+    const validationError = inventoryItemImageFileError(file);
+    if (validationError) {
+      setImageError(validationError);
+      clearImage();
+      return;
+    }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  }
   const minimumStockNumber = Number(minimumStock);
   const targetStockNumber = Number(targetStock);
   const complete =
@@ -2982,6 +3027,7 @@ function InventoryItemCreateForm({
     event.preventDefault();
     if (!complete || saving) return;
     setSaving(true);
+    setImageError("");
     const saved = await onChanged(
       {
         type: "manageItem",
@@ -3001,8 +3047,22 @@ function InventoryItemCreateForm({
       },
       "Der Artikel wurde erfasst und die Ansicht aktualisiert.",
     );
+    if (saved && imageFile) {
+      try {
+        await uploadInventoryItemImageFile(tenantId, saved.id, imageFile);
+        await onImagesChanged();
+      } catch (error) {
+        setImageError(
+          `Der Artikel wurde erfasst, das Bild aber nicht gespeichert: ${await functionErrorMessage(
+            error,
+            "Das Artikelbild konnte nicht gespeichert werden.",
+          )} Sie können es beim Artikel nachträglich hinzufügen.`,
+        );
+      }
+    }
     setSaving(false);
     if (saved) {
+      clearImage();
       clientRequest.discard();
       setArticleNumber("");
       setName("");
@@ -3096,6 +3156,30 @@ function InventoryItemCreateForm({
             value={targetStock}
           />
         </label>
+        <label>
+          Bild (optional)
+          <input
+            accept="image/jpeg,image/png,image/webp"
+            disabled={saving}
+            onChange={(event) => selectImage(event.target.files?.[0] ?? null)}
+            ref={imageInputRef}
+            type="file"
+          />
+          <small>JPG, PNG oder WebP, höchstens 5 MB.</small>
+        </label>
+        {imagePreview ? (
+          <div className="inventory__item-image">
+            <img alt="Vorschau des Artikelbilds" src={imagePreview} />
+            <button disabled={saving} onClick={clearImage} type="button">
+              Bild entfernen
+            </button>
+          </div>
+        ) : null}
+        {imageError ? (
+          <small className="inventory__item-image-error" role="alert">
+            {imageError}
+          </small>
+        ) : null}
         <button disabled={!complete || saving} type="submit">
           {saving ? "Artikel wird erfasst …" : "Artikel erfassen"}
         </button>
