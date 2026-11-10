@@ -186,6 +186,9 @@ verify_jwt = false
 [functions.exchange-mail-admin]
 verify_jwt = true
 
+[functions.email-templates]
+verify_jwt = true
+
 [functions.exchange-mail-webhook]
 verify_jwt = false
 

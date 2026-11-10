@@ -58,6 +58,7 @@ import { TenantOnboarding, type OnboardingTarget } from "./tenant-onboarding";
 import { AiGovernancePanel } from "./ai-governance-panel";
 import { PhishingReportSettings } from "./phishing-report";
 import { PortalAssistantSettings } from "./portal-assistant";
+import { EmailTemplatesSettings } from "./email-templates-settings";
 import { ExchangeMailSettings } from "./exchange-mail-settings";
 import { SlaManagement } from "./sla-management";
 import { TenantAuditLog } from "./tenant-audit-log";
@@ -120,6 +121,7 @@ type SettingsArea =
   | "users"
   | "roles"
   | "monitoring"
+  | "email-templates"
   | "audit";
 
 type TenantSettings = {
@@ -2759,6 +2761,7 @@ export function TenantAdminSettings({
         ...(slaManagementEnabled ? ([["sla", "SLA"]] as const) : []),
         ["ticket-fields", "Ticketfelder"],
         ["departments", "Abteilungen"],
+        ["email-templates", "E-Mail-Vorlagen"],
         ["monitoring", "Monitoring"],
       ],
     },
@@ -3085,6 +3088,9 @@ export function TenantAdminSettings({
               </>
             )}
 
+            {activeArea === "email-templates" && (
+              <EmailTemplatesSettings tenantId={tenantId} />
+            )}
             {activeArea === "monitoring" && (
               <section
                 className="tenant-admin-settings__section"
