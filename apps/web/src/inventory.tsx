@@ -13,12 +13,14 @@ import {
   ClipboardList,
   MapPin,
   PackageCheck,
+  Plus,
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
 
 import { InventoryProcurement } from "./inventory-procurement";
 import { functionErrorMessage } from "./lib/function-error";
+import { CatalogEditor, type EditorRequest, type StockEditor } from "./shop";
 import { shopApi } from "./lib/shop";
 import { supabase } from "./lib/supabase";
 
@@ -1393,6 +1395,7 @@ export function Inventory({
               createOpenRequestId={itemCreateRequestId}
               departments={workspace.departments}
               items={currentItems}
+              locations={workspace.locations}
               onChanged={onChanged}
               onImagesChanged={load}
               tenantId={tenantId}
@@ -1523,11 +1526,96 @@ function InventoryOverview({ workspace }: { workspace: InventoryWorkspace }) {
   );
 }
 
+async function inventoryInvoke(body: Record<string, unknown>) {
+  if (!supabase) {
+    throw new Error("Die Verbindung zu nextDesk ist nicht konfiguriert.");
+  }
+  const { data, error } = await supabase.functions.invoke<unknown>(
+    "inventory",
+    { body },
+  );
+  if (error) {
+    throw new Error(
+      await functionErrorMessage(
+        error,
+        "Die Lageraktion konnte nicht abgeschlossen werden.",
+      ),
+    );
+  }
+  return data;
+}
+
+/** Lagerzugriffe des gemeinsamen Artikelformulars (siehe shop.tsx). */
+function inventoryEditorApi(tenantId: string): StockEditor["api"] {
+  return {
+    saveItem: async (values, itemId) => {
+      const data = await inventoryInvoke(
+        itemId
+          ? {
+              type: "manageItem",
+              tenantId,
+              operation: "update",
+              itemId,
+              values,
+              clientRequestId: crypto.randomUUID(),
+            }
+          : {
+              type: "manageItem",
+              tenantId,
+              operation: "create",
+              values: { ...values, trackingMode: "quantity" },
+              clientRequestId: crypto.randomUUID(),
+            },
+      );
+      const receipt = parseMutationReceipt(data);
+      const id = receipt?.id ?? itemId;
+      if (!id) {
+        throw new Error(
+          "Die Lagerantwort hat keinen bestätigten Vorgang enthalten.",
+        );
+      }
+      return id;
+    },
+    postStock: async ({ itemId, locationId, delta }) => {
+      await inventoryInvoke({
+        type: "postMovement",
+        tenantId,
+        itemId,
+        movementType: delta > 0 ? "receipt" : "adjustment_out",
+        quantity: Math.abs(delta),
+        ...(delta > 0
+          ? { toLocationId: locationId }
+          : { fromLocationId: locationId }),
+        clientRequestId: crypto.randomUUID(),
+      });
+    },
+    uploadImage: (itemId, file) =>
+      uploadInventoryItemImageFile(tenantId, itemId, file),
+    deleteImage: async (itemId) => {
+      const data = await inventoryInvoke({ type: "delete", tenantId, itemId });
+      if (!parseInventoryItemImageDeletion(data, itemId)) {
+        throw new Error("Ungültige Löschantwort.");
+      }
+    },
+    loadImageUrl: async (itemId) => {
+      const data = await inventoryInvoke({
+        type: "createDownloadUrl",
+        tenantId,
+        itemId,
+      });
+      return (
+        parseInventoryItemImageDownloadUrl(data, itemId)?.signedUrl ?? null
+      );
+    },
+  };
+}
+
 function InventoryItems({
   canManage,
   createOpenRequestId,
   departments,
   items,
+  locations,
   onChanged,
   onImagesChanged,
   tenantId,
@@ -1537,6 +1625,7 @@ function InventoryItems({
   createOpenRequestId?: number | undefined;
   departments: readonly InventoryDepartment[];
   items: readonly InventoryItemSummary[];
+  locations: readonly InventoryLocation[];
   onChanged: InventoryChangedHandler;
   onImagesChanged: () => Promise<boolean>;
   tenantId: string;
@@ -1554,6 +1643,54 @@ function InventoryItems({
   const [shopNotice, setShopNotice] = useState("");
   const [shopError, setShopError] = useState("");
   const [offering, setOffering] = useState<string | null>(null);
+  // Artikelformular (gleiche Felder wie im Shop) für Erfassen und Bearbeiten.
+  const [editorRequest, setEditorRequest] = useState<EditorRequest | null>(
+    null,
+  );
+  const [editorStock, setEditorStock] = useState<StockEditor | null>(null);
+  const openEditor = useCallback(
+    (item: InventoryItemSummary | null) => {
+      const activeLocations = locations
+        .filter((location) => location.active)
+        .map((location) => ({ id: location.id, name: location.name }));
+      setEditorStock({
+        item: item
+          ? {
+              id: item.id,
+              name: item.name,
+              articleNumber: item.articleNumber,
+              unit: item.unit,
+              minQuantity: item.minQuantity,
+              targetQuantity: item.targetQuantity,
+              loanItem: item.loanItem === true,
+              physicalQuantity: item.physicalQuantity,
+              locationId: item.locationName
+                ? (locations.find(
+                    (location) => location.name === item.locationName,
+                  )?.id ?? null)
+                : null,
+              hasPrimaryImage: item.hasPrimaryImage,
+              departmentId: item.departmentId,
+            }
+          : null,
+        locations: activeLocations,
+        api: inventoryEditorApi(tenantId),
+      });
+      setEditorRequest({ kind: "stock", nonce: Date.now() });
+    },
+    [locations, tenantId],
+  );
+  const openedCreateRequest = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (
+      canManage &&
+      createOpenRequestId !== undefined &&
+      openedCreateRequest.current !== createOpenRequestId
+    ) {
+      openedCreateRequest.current = createOpenRequestId;
+      openEditor(null);
+    }
+  }, [canManage, createOpenRequestId, openEditor]);
   const loadShop = useCallback(async () => {
     try {
       const context = await shopApi.context(tenantId);
@@ -1616,12 +1753,29 @@ function InventoryItems({
         ) : null}
       </div>
       {canManage ? (
-        <InventoryItemCreateForm
-          defaultOpen={createOpenRequestId !== undefined}
-          departments={departments}
-          key={createOpenRequestId ?? "item-create"}
-          onChanged={onChanged}
-          onImagesChanged={onImagesChanged}
+        <div className="inventory__create-row">
+          <button
+            className="primary-button"
+            onClick={() => openEditor(null)}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} /> Artikel erfassen
+          </button>
+        </div>
+      ) : null}
+      {canManage && editorStock ? (
+        <CatalogEditor
+          departments={[...departments]}
+          onDone={(message) => {
+            setEditorRequest(null);
+            if (message) {
+              setShopNotice(message);
+              void onImagesChanged();
+              void loadShop();
+            }
+          }}
+          request={editorRequest}
+          stock={editorStock}
           tenantId={tenantId}
         />
       ) : null}
@@ -1665,11 +1819,13 @@ function InventoryItems({
                           : "Mengenartikel"}
                     </small>
                     {canManage ? (
-                      <InventoryItemEditor
-                        item={item}
-                        onChanged={onChanged}
-                        tenantId={tenantId}
-                      />
+                      <button
+                        className="secondary-button inventory__item-edit"
+                        onClick={() => openEditor(item)}
+                        type="button"
+                      >
+                        Bearbeiten
+                      </button>
                     ) : null}
                   </td>
                   <td>
@@ -2919,211 +3075,6 @@ function InventoryLocationCreateForm({
   );
 }
 
-/**
- * Abteilung eines bestehenden Artikels ändern. Zur Wahl stehen nur die
- * Abteilungen der Person; der Server prüft die Wahl erneut.
- */
-/** Edits the basic data of an article; only changed fields are sent. */
-function InventoryItemEditor({
-  item,
-  onChanged,
-  tenantId,
-}: {
-  item: InventoryItemSummary;
-  onChanged: InventoryChangedHandler;
-  tenantId: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [articleNumber, setArticleNumber] = useState(item.articleNumber ?? "");
-  const [name, setName] = useState(item.name);
-  // The category is not part of the list; empty keeps the current one.
-  const [category, setCategory] = useState("");
-  const [unit, setUnit] = useState(item.unit);
-  const [minimumStock, setMinimumStock] = useState(String(item.minQuantity));
-  const [targetStock, setTargetStock] = useState(String(item.targetQuantity));
-  const [loanItem, setLoanItem] = useState(item.loanItem === true);
-  const clientRequest = useClientRequestId(tenantId, `item-edit-${item.id}`);
-
-  function reset() {
-    setArticleNumber(item.articleNumber ?? "");
-    setName(item.name);
-    setCategory("");
-    setUnit(item.unit);
-    setMinimumStock(String(item.minQuantity));
-    setTargetStock(String(item.targetQuantity));
-    setLoanItem(item.loanItem === true);
-    setError("");
-  }
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (saving) return;
-    const minimum = Number(minimumStock);
-    const target = Number(targetStock);
-    if (
-      !name.trim() ||
-      !unit.trim() ||
-      minimumStock === "" ||
-      targetStock === "" ||
-      !Number.isFinite(minimum) ||
-      !Number.isFinite(target) ||
-      minimum < 0 ||
-      target < minimum
-    ) {
-      setError(
-        "Bitte Bezeichnung und Einheit angeben; der Zielbestand darf nicht unter dem Mindestbestand liegen.",
-      );
-      return;
-    }
-    const values: {
-      articleNumber?: string;
-      name?: string;
-      category?: string;
-      unit?: string;
-      minimumStock?: number;
-      targetStock?: number;
-      loanItem?: boolean;
-    } = {};
-    if (articleNumber.trim() && articleNumber.trim() !== item.articleNumber)
-      values.articleNumber = articleNumber.trim();
-    if (name.trim() !== item.name) values.name = name.trim();
-    if (category.trim()) values.category = category.trim();
-    if (unit.trim() !== item.unit) values.unit = unit.trim();
-    if (minimum !== item.minQuantity) values.minimumStock = minimum;
-    if (target !== item.targetQuantity) values.targetStock = target;
-    if (loanItem !== (item.loanItem === true)) values.loanItem = loanItem;
-    if (Object.keys(values).length === 0) {
-      setOpen(false);
-      return;
-    }
-    setSaving(true);
-    setError("");
-    clientRequest.discard();
-    const saved = await onChanged(
-      {
-        type: "manageItem",
-        tenantId,
-        operation: "update",
-        itemId: item.id,
-        values,
-        clientRequestId: clientRequest.requestId(),
-      },
-      `«${name.trim()}» wurde gespeichert.`,
-    );
-    setSaving(false);
-    if (saved) {
-      clientRequest.discard();
-      setOpen(false);
-    } else {
-      setError("Die Änderung konnte nicht gespeichert werden.");
-    }
-  }
-
-  if (!open) {
-    return (
-      <button
-        className="secondary-button inventory__item-edit"
-        onClick={() => {
-          reset();
-          setOpen(true);
-        }}
-        type="button"
-      >
-        Bearbeiten
-      </button>
-    );
-  }
-  return (
-    <form className="inventory__item-editor" onSubmit={(e) => void save(e)}>
-      <label>
-        Bezeichnung
-        <input
-          autoComplete="off"
-          onChange={(event) => setName(event.target.value)}
-          required
-          value={name}
-        />
-      </label>
-      <label>
-        Artikelnummer
-        <input
-          autoComplete="off"
-          onChange={(event) => setArticleNumber(event.target.value)}
-          value={articleNumber}
-        />
-      </label>
-      <label>
-        Kategorie
-        <input
-          autoComplete="off"
-          onChange={(event) => setCategory(event.target.value)}
-          placeholder="Leer lassen = unverändert"
-          value={category}
-        />
-      </label>
-      <label>
-        Einheit
-        <input
-          autoComplete="off"
-          onChange={(event) => setUnit(event.target.value)}
-          required
-          value={unit}
-        />
-      </label>
-      <label>
-        Mindestbestand
-        <input
-          min="0"
-          onChange={(event) => setMinimumStock(event.target.value)}
-          required
-          step="0.001"
-          type="number"
-          value={minimumStock}
-        />
-      </label>
-      <label>
-        Zielbestand
-        <input
-          min="0"
-          onChange={(event) => setTargetStock(event.target.value)}
-          required
-          step="0.001"
-          type="number"
-          value={targetStock}
-        />
-      </label>
-      <label className="inventory__checkbox">
-        <input
-          checked={loanItem}
-          onChange={(event) => setLoanItem(event.target.checked)}
-          type="checkbox"
-        />
-        <span>Ausleihartikel</span>
-      </label>
-      {error ? (
-        <small className="inventory__item-image-error" role="alert">
-          {error}
-        </small>
-      ) : null}
-      <div className="inventory__item-editor-actions">
-        <button disabled={saving} type="submit">
-          {saving ? "Speichert …" : "Speichern"}
-        </button>
-        <button
-          className="secondary-button"
-          disabled={saving}
-          onClick={() => setOpen(false)}
-          type="button"
-        >
-          Abbrechen
-        </button>
-      </div>
-    </form>
-  );
-}
-
 function InventoryItemDepartmentSelect({
   departments,
   item,
@@ -3181,260 +3132,6 @@ function InventoryItemDepartmentSelect({
         </option>
       ))}
     </select>
-  );
-}
-
-function InventoryItemCreateForm({
-  defaultOpen = false,
-  departments,
-  onChanged,
-  onImagesChanged,
-  tenantId,
-}: {
-  defaultOpen?: boolean;
-  departments: readonly InventoryDepartment[];
-  onChanged: InventoryChangedHandler;
-  onImagesChanged: () => Promise<boolean>;
-  tenantId: string;
-}) {
-  // Eine Abteilung ist nur zu wählen, wenn mehrere in Frage kommen; bei
-  // einer einzigen setzt der Server sie selbst.
-  const chooseDepartment = departments.length > 1;
-  const [departmentId, setDepartmentId] = useState("");
-  const [articleNumber, setArticleNumber] = useState("");
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("");
-  const [unit, setUnit] = useState("stk");
-  const [minimumStock, setMinimumStock] = useState("0");
-  const [targetStock, setTargetStock] = useState("0");
-  const [loanItem, setLoanItem] = useState(false);
-  const [saving, setSaving] = useState(false);
-  // Optional picture, uploaded right after the article exists.
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageError, setImageError] = useState("");
-  const clientRequest = useClientRequestId(tenantId, "item-create");
-
-  useEffect(
-    () => () => {
-      if (imagePreview) URL.revokeObjectURL(imagePreview);
-    },
-    [imagePreview],
-  );
-
-  function clearImage() {
-    setImageFile(null);
-    setImagePreview(null);
-    if (imageInputRef.current) imageInputRef.current.value = "";
-  }
-
-  function selectImage(file: File | null) {
-    setImageError("");
-    if (!file) {
-      clearImage();
-      return;
-    }
-    const validationError = inventoryItemImageFileError(file);
-    if (validationError) {
-      setImageError(validationError);
-      clearImage();
-      return;
-    }
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
-  }
-  const minimumStockNumber = Number(minimumStock);
-  const targetStockNumber = Number(targetStock);
-  const complete =
-    articleNumber.trim().length > 0 &&
-    name.trim().length > 0 &&
-    category.trim().length > 0 &&
-    unit.trim().length > 0 &&
-    minimumStock !== "" &&
-    targetStock !== "" &&
-    Number.isFinite(minimumStockNumber) &&
-    Number.isFinite(targetStockNumber) &&
-    (!chooseDepartment || departmentId !== "");
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!complete || saving) return;
-    setSaving(true);
-    setImageError("");
-    const saved = await onChanged(
-      {
-        type: "manageItem",
-        tenantId,
-        operation: "create",
-        values: {
-          articleNumber,
-          name,
-          category,
-          unit,
-          trackingMode: "quantity",
-          minimumStock: minimumStockNumber,
-          targetStock: targetStockNumber,
-          ...(loanItem ? { loanItem: true } : {}),
-          ...(chooseDepartment && departmentId ? { departmentId } : {}),
-        },
-        clientRequestId: clientRequest.requestId(),
-      },
-      "Der Artikel wurde erfasst und die Ansicht aktualisiert.",
-    );
-    if (saved && imageFile) {
-      try {
-        await uploadInventoryItemImageFile(tenantId, saved.id, imageFile);
-        await onImagesChanged();
-      } catch (error) {
-        setImageError(
-          `Der Artikel wurde erfasst, das Bild aber nicht gespeichert: ${await functionErrorMessage(
-            error,
-            "Das Artikelbild konnte nicht gespeichert werden.",
-          )} Sie können es beim Artikel nachträglich hinzufügen.`,
-        );
-      }
-    }
-    setSaving(false);
-    if (saved) {
-      clearImage();
-      clientRequest.discard();
-      setArticleNumber("");
-      setName("");
-      setCategory("");
-      setUnit("stk");
-      setMinimumStock("0");
-      setTargetStock("0");
-      setLoanItem(false);
-      setDepartmentId("");
-    }
-  };
-
-  return (
-    <details className="inventory__form" open={defaultOpen || undefined}>
-      <summary>Artikel erfassen</summary>
-      <form
-        onChange={clientRequest.discard}
-        onSubmit={(event) => void submit(event)}
-      >
-        <label>
-          Artikelnummer
-          <input
-            autoComplete="off"
-            onChange={(event) => setArticleNumber(event.target.value)}
-            required
-            value={articleNumber}
-          />
-        </label>
-        <label>
-          Bezeichnung
-          <input
-            autoComplete="off"
-            onChange={(event) => setName(event.target.value)}
-            required
-            value={name}
-          />
-        </label>
-        <label>
-          Kategorie
-          <input
-            autoComplete="off"
-            onChange={(event) => setCategory(event.target.value)}
-            required
-            value={category}
-          />
-        </label>
-        {chooseDepartment ? (
-          <label>
-            Abteilung
-            <select
-              onChange={(event) => setDepartmentId(event.target.value)}
-              required
-              value={departmentId}
-            >
-              <option value="">Bitte wählen</option>
-              {departments.map((department) => (
-                <option key={department.id} value={department.id}>
-                  {department.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <label>
-          Einheit
-          <input
-            autoComplete="off"
-            onChange={(event) => setUnit(event.target.value)}
-            required
-            value={unit}
-          />
-        </label>
-        <label>
-          Mindestbestand
-          <input
-            min="0"
-            onChange={(event) => setMinimumStock(event.target.value)}
-            required
-            step="0.001"
-            type="number"
-            value={minimumStock}
-          />
-        </label>
-        <label>
-          Zielbestand
-          <input
-            min="0"
-            onChange={(event) => setTargetStock(event.target.value)}
-            required
-            step="0.001"
-            type="number"
-            value={targetStock}
-          />
-        </label>
-        <label className="inventory__checkbox">
-          <input
-            checked={loanItem}
-            onChange={(event) => setLoanItem(event.target.checked)}
-            type="checkbox"
-          />
-          <span>
-            Ausleihartikel
-            <small>
-              Wird ausgeliehen und zurückgegeben. Im Shop erscheint er zum
-              Ausleihen statt zum Bestellen.
-            </small>
-          </span>
-        </label>
-        <label>
-          Bild (optional)
-          <input
-            accept="image/jpeg,image/png,image/webp"
-            disabled={saving}
-            onChange={(event) => selectImage(event.target.files?.[0] ?? null)}
-            ref={imageInputRef}
-            type="file"
-          />
-          <small>JPG, PNG oder WebP, höchstens 5 MB.</small>
-        </label>
-        {imagePreview ? (
-          <div className="inventory__item-image">
-            <img alt="Vorschau des Artikelbilds" src={imagePreview} />
-            <button disabled={saving} onClick={clearImage} type="button">
-              Bild entfernen
-            </button>
-          </div>
-        ) : null}
-        {imageError ? (
-          <small className="inventory__item-image-error" role="alert">
-            {imageError}
-          </small>
-        ) : null}
-        <button disabled={!complete || saving} type="submit">
-          {saving ? "Artikel wird erfasst …" : "Artikel erfassen"}
-        </button>
-      </form>
-    </details>
   );
 }
 

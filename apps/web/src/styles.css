@@ -21726,3 +21726,46 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 .inventory__checkbox input { width: auto !important; margin-top: 3px; }
 .inventory__checkbox span { display: grid; gap: 2px; }
 .inventory__checkbox small { color: var(--muted, #5d6f7a); font-weight: 400; }
+
+/* Schieber mit Beschriftung (Artikelformular) */
+.switch-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid var(--border, #e3e9ee);
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: var(--surface, #fff);
+}
+.switch-field__slider {
+  position: relative;
+  flex: none;
+  width: 42px;
+  height: 24px;
+  min-height: 0;
+  margin-top: 1px;
+  border: 0;
+  border-radius: 999px;
+  background: #c3ccd3;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s;
+}
+.switch-field__slider span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+.switch-field__slider.is-on { background: #1f9d55; }
+.switch-field__slider.is-on span { transform: translateX(18px); }
+.switch-field__slider:disabled { opacity: 0.6; cursor: not-allowed; }
+.switch-field__text { display: grid; gap: 2px; }
+.switch-field__text small { color: var(--muted, #5d6f7a); font-size: 12.5px; line-height: 1.4; }
+.shop__stock-fields { display: grid; gap: 8px; }
+.inventory__create-row { display: flex; justify-content: flex-start; margin: 0 0 12px; }

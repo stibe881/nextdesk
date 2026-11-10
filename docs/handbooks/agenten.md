@@ -480,16 +480,20 @@ Einleitung, Abschnitte, Schritte, Hinweise). KI-Entwürfe aus Tickets erscheinen
 
 ## Lager: Artikel erfassen und ausleihen
 
-Unter **Lager → Artikel** erfassen Sie Artikel mit Artikelnummer, Bezeichnung,
-Kategorie, Einheit, Mindest- und Zielbestand und einem optionalen **Bild**. Mit
-**Bearbeiten** ändern Sie die Angaben später.
+**Lager → Artikel → Artikel erfassen** (und **Bearbeiten** in der Liste) öffnet
+dasselbe Formular wie ein Artikel im Shop: Bezeichnung, Fotos (per Drag and
+Drop oder Auswahl), Kategorien, Artikelnummer, Beschreibung, technische Angaben
+und alle weiteren Shop-Felder. Dazu kommen die Lagerangaben **Einheit** und
+**Mindest-/Zielbestand**.
 
-Setzen Sie **Ausleihartikel**, wenn der Artikel ausgeliehen und zurückgegeben
-wird (z. B. Presenter oder Adapter). Mit **Im Shop anbieten** erscheint er dann
-im Shop **zum Ausleihen** (mit Zeitraum) statt zum Bestellen; Ausgabe und
-Rückgabe buchen den Lagerbestand. Ist der Artikel schon im Shop, ändert das
-Häkchen dort nichts: Art und Ausleihdauer stellen Sie im Shop unter **Artikel
-verwalten** ein.
+- **Im Shop anbieten** (Schieber): Eingeschaltet erscheint der Artikel im Shop,
+  ausgeschaltet wird er beim Speichern aus dem Shop genommen. Der Lagerartikel bleibt bestehen. Ohne Shop sind
+  nur Bezeichnung, ein Bild, Kategorie, Artikelnummer und die Lagerangaben
+  nötig.
+- **Ausleihartikel** (Schieber): Der Artikel wird ausgeliehen und
+  zurückgegeben (z. B. Presenter). Er hat keinen Mindest- und Zielbestand,
+  sondern einen **Bestand** mit **Lagerort**; Änderungen daran werden als
+  Lagerbewegung gebucht. Im Shop erscheint er zum Ausleihen.
 
 ## Shop: Artikel nur für Kaderstufen
 
