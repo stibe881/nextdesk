@@ -182,8 +182,10 @@ ein oder aus; ausgeschaltet wird diese E-Mail nicht mehr gesendet (die
 Nachricht bleibt als «Vorlage deaktiviert» markiert). Öffnen Sie eine Vorlage,
 um die Texte zu bearbeiten:
 
-1. Betreff, Überschriften, Texte und Hinweise anpassen. Ein leeres Feld
-   verwendet den Standardtext, der als Platzhalter im Feld sichtbar ist.
+1. Betreff, Überschriften, Texte und Hinweise anpassen. In den Feldern steht
+   genau der Text, der versendet wird. Rechts sehen Sie eine **Vorschau mit
+   Beispieldaten**, die sich beim Tippen aktualisiert. Ein geleertes Feld
+   verwendet wieder den Standardtext.
 2. Mit Platzhaltern wie `{{ticketNumber}}`, `{{ticketSubject}}` oder
    `{{portalName}}` fügen Sie Werte ein. Welche Platzhalter gelten, steht
    unter dem Formular.

@@ -462,7 +462,7 @@ function escapeHtml(value: string): string {
   });
 }
 
-function internalNoticeHtmlTemplate(input: {
+export function internalNoticeHtmlTemplate(input: {
   text: string;
   ticketNumber: string;
   subject: string;
