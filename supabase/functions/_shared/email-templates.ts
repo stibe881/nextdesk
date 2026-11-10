@@ -19,9 +19,19 @@ export type EmailTemplateField = {
   default: string;
 };
 
+export const EMAIL_TEMPLATE_CATEGORIES = [
+  "Tickets",
+  "Phishing-Meldungen",
+  "Interne Mitteilungen",
+  "Statusseite",
+] as const;
+export type EmailTemplateCategory = (typeof EMAIL_TEMPLATE_CATEGORIES)[number];
+
 export type EmailTemplateDefinition = {
   key: string;
   label: string;
+  /** Gruppe in den Einstellungen. */
+  category: EmailTemplateCategory;
   /** Wann wird diese E-Mail versendet? */
   description: string;
   audience: "customer" | "staff" | "subscriber";
@@ -42,6 +52,7 @@ const REPLY_HINT =
 export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
   {
     key: "acknowledgement",
+    category: "Tickets",
     label: "Eingangsbestätigung",
     description:
       "Wird an die anfragende Person gesendet, sobald aus ihrer E-Mail ein Ticket entstanden ist.",
@@ -75,6 +86,7 @@ export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
   },
   {
     key: "agent_reply",
+    category: "Tickets",
     label: "Antwort des Supports",
     description:
       "Wird gesendet, wenn eine Agentin oder ein Agent im Ticket öffentlich antwortet. Der Text der Antwort selbst bleibt unverändert.",
@@ -101,6 +113,7 @@ export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
   },
   {
     key: "resolution",
+    category: "Tickets",
     label: "Ticket gelöst",
     description: "Wird gesendet, wenn ein Ticket als gelöst markiert wird.",
     audience: "customer",
@@ -134,6 +147,7 @@ export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
   },
   {
     key: "security_notice",
+    category: "Phishing-Meldungen",
     label: "Phishing-Meldung: Gestaltung",
     description:
       "Rahmen aller Rückmeldungen an meldende Personen (Danke, Ergebnis, Rückfrage). Ausgeschaltet wird keine dieser Rückmeldungen versendet. Die Texte stellen Sie in den folgenden Vorlagen ein.",
@@ -157,6 +171,7 @@ export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
   },
   {
     key: "phishing_thanks",
+    category: "Phishing-Meldungen",
     label: "Phishing-Meldung: Danke",
     description:
       "Geht an die Person, die eine verdächtige E-Mail gemeldet hat, sobald die Meldung eingegangen ist.",
@@ -205,6 +220,7 @@ export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
   })),
   {
     key: "phishing_click_question",
+    category: "Phishing-Meldungen",
     label: "Phishing-Meldung: Rückfrage «geklickt?»",
     description:
       "Fragt meldende Personen, ob sie in der gemeldeten E-Mail etwas geöffnet oder eingegeben haben. Die Antwortknöpfe werden automatisch angefügt.",
@@ -226,6 +242,7 @@ export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
   },
   {
     key: "department_question",
+    category: "Interne Mitteilungen",
     label: "Abteilungsrückfrage",
     description:
       "Geht an die Abteilungsleitung, wenn ein Ticket eine Rückfrage braucht.",
@@ -242,6 +259,7 @@ export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
   },
   {
     key: "department_answer",
+    category: "Interne Mitteilungen",
     label: "Abteilungsantwort",
     description:
       "Geht an die fragende Person, wenn die Abteilungsleitung geantwortet hat.",
@@ -258,6 +276,7 @@ export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
   },
   {
     key: "notification",
+    category: "Interne Mitteilungen",
     label: "Benachrichtigung an Mitarbeitende",
     description:
       "E-Mail-Variante der Benachrichtigungen (Zuweisung, Erwähnung, SLA, Shop …), sofern Mitarbeitende E-Mail dafür eingeschaltet haben. Die Titel der einzelnen Ereignisse bleiben unverändert.",
@@ -289,6 +308,7 @@ export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
   },
   {
     key: "status_confirmation",
+    category: "Statusseite",
     label: "Statusseite: Anmeldung bestätigen",
     description:
       "Wird gesendet, wenn sich jemand für Meldungen der öffentlichen Statusseite anmeldet.",
@@ -321,6 +341,7 @@ export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
   },
   {
     key: "status_change",
+    category: "Statusseite",
     label: "Statusseite: Statusänderung",
     description:
       "Wird an bestätigte Abonnentinnen und Abonnenten gesendet, wenn sich der Status eines Dienstes ändert.",

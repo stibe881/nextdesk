@@ -21635,3 +21635,12 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 .email-templates__feedback { margin: 0 0 10px; border-radius: 10px; padding: 8px 12px; }
 .email-templates__feedback.is-success { background: #dcf5e6; color: #14653a; }
 .email-templates__feedback.is-error { background: #fde4e1; color: #9b2a1c; }
+.email-templates__group { display: grid; gap: 8px; }
+.email-templates__group + .email-templates__group { margin-top: 10px; }
+.email-templates__group h3 {
+  margin: 0;
+  color: var(--muted, #5d6f7a);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}

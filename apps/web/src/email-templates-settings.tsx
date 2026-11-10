@@ -11,6 +11,7 @@ type TemplateField = {
 type Template = {
   key: string;
   label: string;
+  category: string;
   description: string;
   audience: "customer" | "staff" | "subscriber";
   placeholders: { name: string; description: string }[];
@@ -19,6 +20,13 @@ type Template = {
   values: Record<string, string>;
 };
 type Draft = { enabled: boolean; values: Record<string, string> };
+
+const categoryOrder = [
+  "Tickets",
+  "Phishing-Meldungen",
+  "Interne Mitteilungen",
+  "Statusseite",
+];
 
 const audienceLabels: Record<Template["audience"], string> = {
   customer: "Anfragende Personen",
@@ -130,137 +138,159 @@ export function EmailTemplatesSettings({ tenantId }: { tenantId: string }) {
         </p>
       ) : (
         <div className="email-templates__list">
-          {templates.map((template) => {
-            const draft = drafts[template.key] ?? toDraft(template);
-            const changed =
-              draft.enabled !== template.enabled ||
-              JSON.stringify(draft.values) !== JSON.stringify(template.values);
-            const customised = Object.keys(template.values).length > 0;
+          {categoryOrder.map((category) => {
+            const inCategory = templates.filter(
+              (template) => template.category === category,
+            );
+            if (!inCategory.length) return null;
             return (
-              <details className="email-templates__item" key={template.key}>
-                <summary>
-                  <span className="email-templates__title">
-                    <strong>{template.label}</strong>
-                    <small>{audienceLabels[template.audience]}</small>
-                  </span>
-                  <span className="email-templates__badges">
-                    {customised ? <em>Angepasst</em> : null}
-                    <em className={template.enabled ? "is-on" : "is-off"}>
-                      {template.enabled ? "Aktiv" : "Aus"}
-                    </em>
-                  </span>
-                </summary>
-                <div className="email-templates__body">
-                  <p className="email-templates__description">
-                    {template.description}
-                  </p>
-                  <label className="email-templates__switch">
-                    <input
-                      checked={draft.enabled}
-                      onChange={(event) =>
-                        patch(template.key, { enabled: event.target.checked })
-                      }
-                      type="checkbox"
-                    />
-                    <span>
-                      <strong>Versand aktiv</strong>
-                      <small>
-                        Ausgeschaltet wird diese E-Mail nicht mehr gesendet.
-                      </small>
-                    </span>
-                  </label>
-                  {template.fields.map((field) => {
-                    const id = `email-template-${template.key}-${field.key}`;
-                    const value = draft.values[field.key] ?? "";
-                    return (
-                      <div className="email-templates__field" key={field.key}>
-                        <label htmlFor={id}>{field.label}</label>
-                        {field.multiline ? (
-                          <textarea
-                            id={id}
-                            maxLength={4000}
-                            onChange={(event) =>
-                              patch(template.key, {
-                                values: {
-                                  ...draft.values,
-                                  [field.key]: event.target.value,
-                                },
-                              })
-                            }
-                            placeholder={field.default}
-                            rows={3}
-                            value={value}
-                          />
-                        ) : (
+              <div className="email-templates__group" key={category}>
+                <h3>{category}</h3>
+                {inCategory.map((template) => {
+                  const draft = drafts[template.key] ?? toDraft(template);
+                  const changed =
+                    draft.enabled !== template.enabled ||
+                    JSON.stringify(draft.values) !==
+                      JSON.stringify(template.values);
+                  const customised = Object.keys(template.values).length > 0;
+                  return (
+                    <details
+                      className="email-templates__item"
+                      key={template.key}
+                    >
+                      <summary>
+                        <span className="email-templates__title">
+                          <strong>{template.label}</strong>
+                          <small>{audienceLabels[template.audience]}</small>
+                        </span>
+                        <span className="email-templates__badges">
+                          {customised ? <em>Angepasst</em> : null}
+                          <em className={template.enabled ? "is-on" : "is-off"}>
+                            {template.enabled ? "Aktiv" : "Aus"}
+                          </em>
+                        </span>
+                      </summary>
+                      <div className="email-templates__body">
+                        <p className="email-templates__description">
+                          {template.description}
+                        </p>
+                        <label className="email-templates__switch">
                           <input
-                            id={id}
-                            maxLength={4000}
+                            checked={draft.enabled}
                             onChange={(event) =>
                               patch(template.key, {
-                                values: {
-                                  ...draft.values,
-                                  [field.key]: event.target.value,
-                                },
+                                enabled: event.target.checked,
                               })
                             }
-                            placeholder={field.default}
-                            type="text"
-                            value={value}
+                            type="checkbox"
                           />
-                        )}
+                          <span>
+                            <strong>Versand aktiv</strong>
+                            <small>
+                              Ausgeschaltet wird diese E-Mail nicht mehr
+                              gesendet.
+                            </small>
+                          </span>
+                        </label>
+                        {template.fields.map((field) => {
+                          const id = `email-template-${template.key}-${field.key}`;
+                          const value = draft.values[field.key] ?? "";
+                          return (
+                            <div
+                              className="email-templates__field"
+                              key={field.key}
+                            >
+                              <label htmlFor={id}>{field.label}</label>
+                              {field.multiline ? (
+                                <textarea
+                                  id={id}
+                                  maxLength={4000}
+                                  onChange={(event) =>
+                                    patch(template.key, {
+                                      values: {
+                                        ...draft.values,
+                                        [field.key]: event.target.value,
+                                      },
+                                    })
+                                  }
+                                  placeholder={field.default}
+                                  rows={3}
+                                  value={value}
+                                />
+                              ) : (
+                                <input
+                                  id={id}
+                                  maxLength={4000}
+                                  onChange={(event) =>
+                                    patch(template.key, {
+                                      values: {
+                                        ...draft.values,
+                                        [field.key]: event.target.value,
+                                      },
+                                    })
+                                  }
+                                  placeholder={field.default}
+                                  type="text"
+                                  value={value}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                        <p className="email-templates__placeholders">
+                          Platzhalter:{" "}
+                          {template.placeholders.map((placeholder) => (
+                            <code
+                              key={placeholder.name}
+                              title={placeholder.description}
+                            >
+                              {`{{${placeholder.name}}}`}
+                            </code>
+                          ))}
+                        </p>
+                        <div className="email-templates__actions">
+                          <button
+                            className="primary-button"
+                            disabled={!changed || busy === template.key}
+                            onClick={() =>
+                              void run(
+                                template.key,
+                                {
+                                  action: "save",
+                                  enabled: draft.enabled,
+                                  fields: draft.values,
+                                },
+                                `«${template.label}» gespeichert.`,
+                              )
+                            }
+                            type="button"
+                          >
+                            <Save aria-hidden="true" size={16} /> Speichern
+                          </button>
+                          <button
+                            className="secondary-button"
+                            disabled={
+                              busy === template.key ||
+                              (!customised && template.enabled)
+                            }
+                            onClick={() =>
+                              void run(
+                                template.key,
+                                { action: "reset" },
+                                `«${template.label}» auf Standard zurückgesetzt.`,
+                              )
+                            }
+                            type="button"
+                          >
+                            <RotateCcw aria-hidden="true" size={16} /> Auf
+                            Standard
+                          </button>
+                        </div>
                       </div>
-                    );
-                  })}
-                  <p className="email-templates__placeholders">
-                    Platzhalter:{" "}
-                    {template.placeholders.map((placeholder) => (
-                      <code
-                        key={placeholder.name}
-                        title={placeholder.description}
-                      >
-                        {`{{${placeholder.name}}}`}
-                      </code>
-                    ))}
-                  </p>
-                  <div className="email-templates__actions">
-                    <button
-                      className="primary-button"
-                      disabled={!changed || busy === template.key}
-                      onClick={() =>
-                        void run(
-                          template.key,
-                          {
-                            action: "save",
-                            enabled: draft.enabled,
-                            fields: draft.values,
-                          },
-                          `«${template.label}» gespeichert.`,
-                        )
-                      }
-                      type="button"
-                    >
-                      <Save aria-hidden="true" size={16} /> Speichern
-                    </button>
-                    <button
-                      className="secondary-button"
-                      disabled={
-                        busy === template.key ||
-                        (!customised && template.enabled)
-                      }
-                      onClick={() =>
-                        void run(
-                          template.key,
-                          { action: "reset" },
-                          `«${template.label}» auf Standard zurückgesetzt.`,
-                        )
-                      }
-                      type="button"
-                    >
-                      <RotateCcw aria-hidden="true" size={16} /> Auf Standard
-                    </button>
-                  </div>
-                </div>
-              </details>
+                    </details>
+                  );
+                })}
+              </div>
             );
           })}
         </div>
