@@ -222,7 +222,8 @@ Lösung) gelten zusätzlich: Eine E-Mail wird nur gesendet, wenn beide aktiv sin
 Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
 
 - **Monitoring (PRTG)** – Störungen aus PRTG-Alarmen (ohne Tickets, im
-  Arbeitsbereich **Störungen**). Sie wählen das **Team für die Alarmierung**,
+  Arbeitsbereich **Störungen**). Sie wählen das **Team für die Alarmierung**
+  (nur dieses Team sieht Störungen),
   ob auch Warnungen eine Störung öffnen, wie oft unbestätigte Störungen erneut
   alarmieren, ob Folgestörungen gebündelt werden und ob während einer Wartung
   alarmiert wird. Ist die Option

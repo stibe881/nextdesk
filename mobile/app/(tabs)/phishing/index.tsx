@@ -13,7 +13,7 @@ import {
 import { useIncidentStyles } from "@/components/incident-styles";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { ScreenContainer } from "@/components/screen-container";
-import { canWorkIncidents } from "@/lib/incidents";
+import { canWorkSecurityCases } from "@/lib/incidents";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import {
   formatAgo,
@@ -67,7 +67,7 @@ export default function PhishingScreen() {
       else if (loadedFilter.current !== filter) setLoading(true);
       try {
         const tenant = await loadCurrentTenant();
-        const permitted = await canWorkIncidents(tenant.id);
+        const permitted = await canWorkSecurityCases(tenant.id);
         setAllowed(permitted);
         if (!permitted) return;
         const result = await listSecurityCases(tenant.id, filter);
@@ -120,7 +120,7 @@ export default function PhishingScreen() {
             />
             <Text style={styles.cardTitle}>Phishing</Text>
             <Text style={styles.emptyText}>
-              Phishing-Fälle sehen nur Personen, die Tickets bearbeiten.
+              Phishing-Fälle sieht nur das zuständige Sicherheitsteam.
             </Text>
           </View>
         </View>

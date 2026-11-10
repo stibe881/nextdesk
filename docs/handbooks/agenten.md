@@ -27,6 +27,7 @@ Die linke Navigation ist gegliedert in:
 - **Arbeitsplatz** – Team-Queues, Erwähnungen, Stellvertretung, Wiedervorlagen
 - **Teamführung** – nur für Leitungen von Abteilungen
 - **Arbeitsbereich**: Tickets, Shop, Fälle, Sicherheitsfälle, Störungen
+  (Sicherheitsfälle und Störungen nur für das zuständige Team, siehe unten)
 - **Planung und Betrieb**: Raumplanung, Eintritte, Serviceaufgaben
 - **Wissen und Ressourcen**: Wissensdatenbank, Assets, Lager, Verträge, Lizenzen
 - **Dienste und Überwachung**: Dienste, Infrastruktur, Systemstatus
@@ -154,6 +155,10 @@ entsteht ein Sicherheitsfall (siehe unten).
 
 ## Sicherheitsfälle
 
+**Sicherheitsfälle** (in der App **Phishing**) sehen nur die Mitglieder des
+Sicherheitsteams, das in den Phishing-Einstellungen gewählt ist. Ohne gewähltes
+Team sehen sie alle Agenten.
+
 Gemeldete Phishing-Mails erscheinen nicht in der Ticketliste (weder im Web
 noch in der App), sondern unter **Sicherheitsfälle**. Meldet mehr als eine Person dieselbe E-Mail, entsteht
 nur ein Fall; alle Melder hängen daran (Kennzeichen **Kampagne**). Die Kacheln
@@ -206,6 +211,9 @@ haken Massnahmen ab, fragen die Melder nach einem Klick und schliessen den
 Fall ab. Ein Tipp auf eine Phishing-Mitteilung öffnet den Fall direkt.
 
 ## Störungen
+
+**Störungen** sehen nur die Mitglieder des Teams für die Alarmierung aus den
+PRTG-Einstellungen. Ohne gewähltes Team sehen sie alle Agenten.
 
 Meldungen aus PRTG landen nicht in der Ticketliste, sondern unter
 **Störungen** im Arbeitsbereich. Ein Ticket braucht es dafür nicht: Sie

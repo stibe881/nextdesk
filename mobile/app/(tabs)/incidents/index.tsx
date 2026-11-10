@@ -120,7 +120,7 @@ export default function IncidentsScreen() {
             <Ionicons color={colors.primaryText} name="pulse" size={28} />
             <Text style={styles.cardTitle}>Störungen</Text>
             <Text style={styles.emptyText}>
-              Störungen sehen nur Personen, die Tickets bearbeiten.
+              Störungen sieht nur das zuständige Team.
             </Text>
           </View>
         </View>

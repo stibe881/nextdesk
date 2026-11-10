@@ -136,9 +136,10 @@ export function availability(
 }
 
 async function requireAgent(client: Client, tenantId: string): Promise<void> {
-  const { data, error } = await client.rpc("is_tenant_ticket_agent", { p_tenant_id: tenantId });
+  // Only the alarm team of the PRTG settings (all agents without one).
+  const { data, error } = await client.rpc("can_work_incidents", { p_tenant_id: tenantId });
   if (error || data !== true) {
-    throw new HttpError(403, "forbidden", "Störungen sind nur für Agenten sichtbar.");
+    throw new HttpError(403, "forbidden", "Störungen sind nur für das zuständige Team sichtbar.");
   }
 }
 

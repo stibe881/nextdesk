@@ -63,10 +63,18 @@ export const closeIncident = (
   note: string | null,
 ) => detailCall({ type: "close", tenantId, incidentId, cause, note });
 
-/** Whether the signed-in person works on tickets (and thus on incidents). */
+/** Whether the signed-in person is in the alarm team of the PRTG settings. */
 export async function canWorkIncidents(tenantId: string): Promise<boolean> {
+  const { data, error } = await requireNextDesk().rpc("can_work_incidents", {
+    p_tenant_id: tenantId,
+  });
+  return !error && data === true;
+}
+
+/** Whether the signed-in person is in the security team (phishing). */
+export async function canWorkSecurityCases(tenantId: string): Promise<boolean> {
   const { data, error } = await requireNextDesk().rpc(
-    "is_tenant_ticket_agent",
+    "can_work_security_cases",
     { p_tenant_id: tenantId },
   );
   return !error && data === true;
