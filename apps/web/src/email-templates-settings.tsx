@@ -149,9 +149,8 @@ export function EmailTemplatesSettings({ tenantId }: { tenantId: string }) {
                 {inCategory.map((template) => {
                   const draft = drafts[template.key] ?? toDraft(template);
                   const changed =
-                    draft.enabled !== template.enabled ||
                     JSON.stringify(draft.values) !==
-                      JSON.stringify(template.values);
+                    JSON.stringify(template.values);
                   const customised = Object.keys(template.values).length > 0;
                   return (
                     <details
@@ -165,33 +164,40 @@ export function EmailTemplatesSettings({ tenantId }: { tenantId: string }) {
                         </span>
                         <span className="email-templates__badges">
                           {customised ? <em>Angepasst</em> : null}
-                          <em className={template.enabled ? "is-on" : "is-off"}>
-                            {template.enabled ? "Aktiv" : "Aus"}
-                          </em>
+                          <button
+                            aria-checked={template.enabled}
+                            aria-label={`${template.label}: Versand ${template.enabled ? "aktiv" : "aus"}`}
+                            className={`email-templates__slider${template.enabled ? " is-on" : ""}`}
+                            disabled={busy === template.key}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              void run(
+                                template.key,
+                                {
+                                  action: "save",
+                                  enabled: !template.enabled,
+                                  fields: template.values,
+                                },
+                                `«${template.label}» ${template.enabled ? "ausgeschaltet" : "eingeschaltet"}.`,
+                              );
+                            }}
+                            role="switch"
+                            title={
+                              template.enabled
+                                ? "Versand aktiv – zum Ausschalten klicken"
+                                : "Versand aus – zum Einschalten klicken"
+                            }
+                            type="button"
+                          >
+                            <span />
+                          </button>
                         </span>
                       </summary>
                       <div className="email-templates__body">
                         <p className="email-templates__description">
                           {template.description}
                         </p>
-                        <label className="email-templates__switch">
-                          <input
-                            checked={draft.enabled}
-                            onChange={(event) =>
-                              patch(template.key, {
-                                enabled: event.target.checked,
-                              })
-                            }
-                            type="checkbox"
-                          />
-                          <span>
-                            <strong>Versand aktiv</strong>
-                            <small>
-                              Ausgeschaltet wird diese E-Mail nicht mehr
-                              gesendet.
-                            </small>
-                          </span>
-                        </label>
                         {template.fields.map((field) => {
                           const id = `email-template-${template.key}-${field.key}`;
                           const value = draft.values[field.key] ?? "";
@@ -257,7 +263,7 @@ export function EmailTemplatesSettings({ tenantId }: { tenantId: string }) {
                                 template.key,
                                 {
                                   action: "save",
-                                  enabled: draft.enabled,
+                                  enabled: template.enabled,
                                   fields: draft.values,
                                 },
                                 `«${template.label}» gespeichert.`,
