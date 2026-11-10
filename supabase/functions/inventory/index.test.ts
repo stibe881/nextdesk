@@ -1633,3 +1633,33 @@ Deno.test(
     );
   },
 );
+
+Deno.test("item RPC parameters keep optional fields as null when not sent", () => {
+  const params = upsertItemRpcParameters(
+    TENANT_ID,
+    TENANT_ID,
+    REQUEST_ID,
+    null,
+    {
+      articleNumber: "1105050",
+      name: "Presenter",
+      category: "Presenter",
+      unit: "stk",
+      trackingMode: "quantity",
+      minimumStock: 3,
+      targetStock: 3,
+      // Not sent by the create form: undefined, which JSON would drop.
+      manufacturer: undefined,
+      model: undefined,
+      supplier: undefined,
+      privateNote: undefined,
+      active: true,
+    } as unknown as Parameters<typeof upsertItemRpcParameters>[4],
+  );
+  // PostgREST needs every parameter without a default to be present.
+  const body = JSON.parse(JSON.stringify(params));
+  for (const key of ["p_manufacturer", "p_model", "p_supplier", "p_note"]) {
+    assertEquals(key in body, true, key);
+    assertEquals(body[key], null, key);
+  }
+});
