@@ -177,17 +177,17 @@ automatisch versendet. Die Vorlagen sind nach Kategorie geordnet:
   Benachrichtigungen an Mitarbeitende
 - **Statusseite**: Anmeldung bestätigen und Statusänderung
 
-Öffnen Sie eine Vorlage, um sie zu bearbeiten:
+Jede Vorlage hat rechts einen Schieber. Damit schalten Sie den Versand sofort
+ein oder aus; ausgeschaltet wird diese E-Mail nicht mehr gesendet (die
+Nachricht bleibt als «Vorlage deaktiviert» markiert). Öffnen Sie eine Vorlage,
+um die Texte zu bearbeiten:
 
-1. **Versand aktiv** ausschalten, wenn diese E-Mail nicht mehr gesendet werden
-   soll. Die Nachrichten bleiben dann ohne Zustellung markiert («Vorlage
-   deaktiviert»).
-2. Betreff, Überschriften, Texte und Hinweise anpassen. Ein leeres Feld
+1. Betreff, Überschriften, Texte und Hinweise anpassen. Ein leeres Feld
    verwendet den Standardtext, der als Platzhalter im Feld sichtbar ist.
-3. Mit Platzhaltern wie `{{ticketNumber}}`, `{{ticketSubject}}` oder
+2. Mit Platzhaltern wie `{{ticketNumber}}`, `{{ticketSubject}}` oder
    `{{portalName}}` fügen Sie Werte ein. Welche Platzhalter gelten, steht
    unter dem Formular.
-4. **Speichern**. Mit **Auf Standard** setzen Sie die Vorlage zurück.
+3. **Speichern**. Mit **Auf Standard** setzen Sie die Vorlage zurück.
 
 Der Text einer Antwort des Supports (was Ihre Agenten im Ticket schreiben)
 und die Details der Ereignisse
