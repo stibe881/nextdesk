@@ -263,6 +263,21 @@ export function rackWebLink(baseUrl: string, rackName: string): string {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Web link of a stock article: the web app opens the Lager article list. */
+export function inventoryWebLink(baseUrl: string, itemId: string): string {
+  const url = new URL(baseUrl);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("inventory", itemId.toLowerCase());
+  return url.toString();
+}
+
+/** «?inventory=<uuid>» from a stock article label link, if valid. */
+export function inventoryIdFromSearch(search: string): string | null {
+  const value = new URLSearchParams(search).get("inventory")?.trim() ?? "";
+  return UUID_PATTERN.test(value) ? value.toLowerCase() : null;
+}
+
 /** «?asset=<uuid>» from a web fallback link, if valid. */
 export function assetIdFromSearch(search: string): string | null {
   const value = new URLSearchParams(search).get("asset")?.trim() ?? "";
@@ -318,6 +333,34 @@ export function assetLabelItem(
       mode === "app"
         ? assetDeepLink(asset.id)
         : assetWebLink(baseUrl, asset.id),
+  };
+}
+
+export type LabelInventoryItem = {
+  id: string;
+  name: string;
+  articleNumber: string | null;
+  /** Shown as «Lagerort», e.g. «Wandschrank ICT». */
+  locationName: string | null;
+};
+
+/** Label of a stock article; the QR code is always the web link. */
+export function inventoryLabelItem(
+  item: LabelInventoryItem,
+  baseUrl: string,
+): LabelItem {
+  return {
+    key: `inventory:${item.id}`,
+    title: item.name.trim() || "Artikel",
+    meta: [
+      present(item.articleNumber)
+        ? `Artikel: ${item.articleNumber.trim()}`
+        : null,
+      present(item.locationName)
+        ? `Lagerort: ${item.locationName.trim()}`
+        : null,
+    ].filter(present),
+    qrText: inventoryWebLink(baseUrl, item.id),
   };
 }
 

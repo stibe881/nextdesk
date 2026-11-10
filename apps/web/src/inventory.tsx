@@ -19,6 +19,12 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
+import {
+  AssetLabelDialog,
+  LabelSelectionBar,
+  type LabelBranding,
+} from "./asset-label-dialog";
+import { inventoryLabelItem } from "./lib/asset-labels";
 import { InventoryProcurement } from "./inventory-procurement";
 import { functionErrorMessage } from "./lib/function-error";
 import { CatalogEditor, type EditorRequest, type StockEditor } from "./shop";
@@ -1083,11 +1089,20 @@ function deltaLabel(value: number, unit: string): string {
 
 export function Inventory({
   createRequestId,
+  focusItemId,
+  labelBranding,
   onCreateRequestConsumed,
+  onFocusConsumed,
   tenantId,
 }: {
   createRequestId?: number | undefined;
+  /** Opens the article list showing only this article (QR label link). */
+  focusItemId?: string | undefined;
+  /** Tenant name and logo for printed labels. */
+  labelBranding?: LabelBranding | undefined;
   onCreateRequestConsumed?: (requestId: number) => void;
+  /** Called once the focus link was applied, so it does not apply again. */
+  onFocusConsumed?: () => void;
   tenantId: string;
 }) {
   const [activeSection, setActiveSection] =
@@ -1275,9 +1290,21 @@ export function Inventory({
     void load();
   }, [load]);
 
+  // QR label link: show only this article until «Alle Artikel» is chosen.
+  const [focusId, setFocusId] = useState<string | undefined>(focusItemId);
+  useEffect(() => {
+    if (!focusItemId) return;
+    setFocusId(focusItemId);
+    setActiveSection("Artikel");
+    onFocusConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusItemId]);
   const currentItems = useMemo(
-    () => workspace?.items.filter((item) => item.active) ?? [],
-    [workspace],
+    () =>
+      workspace?.items.filter(
+        (item) => item.active && (!focusId || item.id === focusId),
+      ) ?? [],
+    [focusId, workspace],
   );
 
   const onChanged = useCallback<InventoryChangedHandler>(
@@ -1395,8 +1422,11 @@ export function Inventory({
               canManage={workspace.permissions.canManage}
               createOpenRequestId={itemCreateRequestId}
               departments={workspace.departments}
+              focused={Boolean(focusId)}
               items={currentItems}
+              labelBranding={labelBranding}
               locations={workspace.locations}
+              onShowAll={() => setFocusId(undefined)}
               onChanged={onChanged}
               onImagesChanged={load}
               tenantId={tenantId}
@@ -1650,18 +1680,25 @@ function InventoryItems({
   canManage,
   createOpenRequestId,
   departments,
+  focused,
   items,
+  labelBranding,
   locations,
   onChanged,
   onImagesChanged,
+  onShowAll,
   tenantId,
 }: {
   canManage: boolean;
   /** Opens the create form (key) when set by the "+" menu. */
   createOpenRequestId?: number | undefined;
   departments: readonly InventoryDepartment[];
+  /** Only one article is shown (QR label link). */
+  focused: boolean;
   items: readonly InventoryItemSummary[];
+  labelBranding?: LabelBranding | undefined;
   locations: readonly InventoryLocation[];
+  onShowAll: () => void;
   onChanged: InventoryChangedHandler;
   onImagesChanged: () => Promise<boolean>;
   tenantId: string;
@@ -1684,6 +1721,12 @@ function InventoryItems({
     null,
   );
   const [editorStock, setEditorStock] = useState<StockEditor | null>(null);
+  // Etiketten: ausgewählte Artikel und Druckdialog.
+  const [labelSelection, setLabelSelection] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
+  const labelItems = items.filter((item) => labelSelection.has(item.id));
   const openEditor = useCallback(
     (item: InventoryItemSummary | null) => {
       const activeLocations = locations
@@ -1815,10 +1858,50 @@ function InventoryItems({
           tenantId={tenantId}
         />
       ) : null}
+      {focused ? (
+        <p className="inventory__focus-note" role="status">
+          Es wird nur der Artikel aus dem Etiketten-Link angezeigt.{" "}
+          <button className="text-button" onClick={onShowAll} type="button">
+            Alle Artikel anzeigen
+          </button>
+        </p>
+      ) : null}
       {shopNotice ? (
         <p className="form-success" role="status">
           {shopNotice}
         </p>
+      ) : null}
+      {items.length > 0 ? (
+        <LabelSelectionBar
+          onClear={() => setLabelSelection(new Set())}
+          onPrint={() => setLabelDialogOpen(true)}
+          onSelectVisible={() =>
+            setLabelSelection(new Set(items.map((item) => item.id)))
+          }
+          selectedCount={labelItems.length}
+          visibleCount={items.length}
+        />
+      ) : null}
+      {labelDialogOpen ? (
+        <AssetLabelDialog
+          branding={labelBranding}
+          buildItems={(_mode, baseUrl) =>
+            labelItems.map((item) =>
+              inventoryLabelItem(
+                {
+                  id: item.id,
+                  name: item.name,
+                  articleNumber: item.articleNumber,
+                  locationName: item.locationName,
+                },
+                baseUrl,
+              ),
+            )
+          }
+          count={labelItems.length}
+          onClose={() => setLabelDialogOpen(false)}
+          webOnly
+        />
       ) : null}
       {shopError ? (
         <p className="form-error" role="alert">
@@ -1845,6 +1928,22 @@ function InventoryItems({
               {items.map((item) => (
                 <tr key={item.id}>
                   <td>
+                    <label className="asset-label-check">
+                      <input
+                        checked={labelSelection.has(item.id)}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setLabelSelection((current) => {
+                            const next = new Set(current);
+                            if (checked) next.add(item.id);
+                            else next.delete(item.id);
+                            return next;
+                          });
+                        }}
+                        type="checkbox"
+                      />
+                      Für Etikett auswählen
+                    </label>
                     <strong>{item.name}</strong>
                     <small>
                       {item.articleNumber ?? "Ohne Artikelnummer"} ·{" "}

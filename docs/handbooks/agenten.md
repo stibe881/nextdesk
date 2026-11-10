@@ -495,6 +495,12 @@ und alle weiteren Shop-Felder. Dazu kommen die Lagerangaben **Einheit** und
   sondern einen **Bestand** mit **Lagerort**; Änderungen daran werden als
   Lagerbewegung gebucht. Im Shop erscheint er zum Ausleihen.
 
+**Etiketten drucken** wie bei den Assets: In der Artikelliste wählen Sie Artikel
+mit **Für Etikett auswählen** (oder **Alle sichtbaren**) und drucken mit
+**Etiketten drucken** Etiketten mit QR-Code, Bezeichnung, Artikelnummer und
+Lagerort (Bogenformate oder Etikettendrucker). Der QR-Code enthält einen
+Web-Link: Er öffnet den Artikel im Lager von nextDesk.
+
 Mit **Löschen** im Formular entfernen Sie einen Artikel endgültig (auch aus dem
 Shop). Hat er schon Bewegungen oder Reservationen, lässt er sich nicht löschen;
 nextDesk bietet dann an, ihn zu **archivieren**.

@@ -98,7 +98,11 @@ import {
   type TicketDrilldown,
 } from "./lib/ticket-drilldown";
 import { createPersonalWorkspace, deleteAccount } from "./lib/account";
-import { assetIdFromSearch, rackFromSearch } from "./lib/asset-labels";
+import {
+  assetIdFromSearch,
+  inventoryIdFromSearch,
+  rackFromSearch,
+} from "./lib/asset-labels";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import { normalizeQueueSelection, shouldShowQueueTabs } from "./lib/queue-tabs";
 import {
@@ -2519,21 +2523,29 @@ const initialKnowledgeDeepLink: string | null = (() => {
 // labels (QR code). They open the asset list or the rack view.
 const initialAssetLabelDeepLink: {
   assetId: string | null;
+  inventoryId: string | null;
   rack: string | null;
 } = (() => {
-  if (typeof window === "undefined") return { assetId: null, rack: null };
+  if (typeof window === "undefined")
+    return { assetId: null, inventoryId: null, rack: null };
   try {
     const url = new URL(window.location.href);
     const assetId = assetIdFromSearch(url.search);
-    const rack = assetId ? null : rackFromSearch(url.search);
-    if (url.searchParams.has("asset") || url.searchParams.has("rack")) {
+    const inventoryId = assetId ? null : inventoryIdFromSearch(url.search);
+    const rack = assetId || inventoryId ? null : rackFromSearch(url.search);
+    if (
+      url.searchParams.has("asset") ||
+      url.searchParams.has("rack") ||
+      url.searchParams.has("inventory")
+    ) {
       url.searchParams.delete("asset");
       url.searchParams.delete("rack");
+      url.searchParams.delete("inventory");
       window.history.replaceState(window.history.state, "", url.toString());
     }
-    return { assetId, rack };
+    return { assetId, inventoryId, rack };
   } catch {
-    return { assetId: null, rack: null };
+    return { assetId: null, inventoryId: null, rack: null };
   }
 })();
 
@@ -2950,6 +2962,8 @@ function AuthenticatedApp() {
     string | undefined
   >(initialKnowledgeDeepLink ?? undefined);
   // Device opened from a ticket: the asset list starts filtered to it.
+  // Article from a printed stock label (QR link): shown once in the Lager.
+  const [inventoryFocusId, setInventoryFocusId] = useState<string | null>(null);
   const [assetFocusQuery, setAssetFocusQuery] = useState<{
     query: string;
     id: number;
@@ -3466,6 +3480,11 @@ function AuthenticatedApp() {
           id: Date.now(),
         });
         setSection("Assets");
+        return;
+      }
+      if (initialAssetLabelDeepLink.inventoryId) {
+        setInventoryFocusId(initialAssetLabelDeepLink.inventoryId);
+        setSection("Lager");
         return;
       }
       if (initialAssetLabelDeepLink.rack) {
@@ -6260,6 +6279,12 @@ function AuthenticatedApp() {
           activeTenant &&
           isFeatureEnabled("inventory.management") ? (
           <Inventory
+            focusItemId={inventoryFocusId ?? undefined}
+            onFocusConsumed={() => setInventoryFocusId(null)}
+            labelBranding={{
+              name: workspaceBrandName,
+              logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
+            }}
             createRequestId={
               activeQuickCreateRequest?.action === "inventoryItem"
                 ? activeQuickCreateRequest.id
