@@ -1,6 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@1";
 import {
   inboundAttachmentContentType,
+  inboundSubjectKind,
   customerTicketEmailKindForOutbound,
   supportsInlineCustomerEmailLogo,
   tenantBrandingStoragePath,
@@ -150,4 +151,16 @@ Deno.test("Anhang-Dateityp: ohne Parameter, Fallback über die Endung", () => {
   );
   assertEquals(inboundAttachmentContentType(null, "notiz.txt"), "text/plain");
   assertEquals(inboundAttachmentContentType(null, "ohne-endung"), null);
+});
+
+Deno.test("Betreff: Antwort, Weiterleitung oder neue Mail", () => {
+  assertEquals(inboundSubjectKind("AW: Drucker"), "reply");
+  assertEquals(inboundSubjectKind("RE: Drucker"), "reply");
+  assertEquals(inboundSubjectKind("Antw: Drucker"), "reply");
+  assertEquals(inboundSubjectKind("WG: TestAnhang"), "forward");
+  assertEquals(inboundSubjectKind("Fwd: TestAnhang"), "forward");
+  assertEquals(inboundSubjectKind("[EXTERN] FW: Rechnung"), "forward");
+  assertEquals(inboundSubjectKind("TestAnhang"), "new");
+  assertEquals(inboundSubjectKind("Wartung: Server"), "new");
+  assertEquals(inboundSubjectKind(null), "new");
 });

@@ -441,6 +441,26 @@ function subject(value: unknown): string {
   return cleaned.length >= 3 ? cleaned.slice(0, 240) : "E-Mail-Anfrage";
 }
 
+/**
+ * Art der Betreffzeile: «AW:/RE:» = Antwort, «WG:/FW:/Fwd:» = Weiterleitung.
+ * Weitergeleitete Mails behalten in Outlook Verlauf und Referenzen der
+ * Originalmail, sind aber eine neue Anfrage.
+ */
+export function inboundSubjectKind(
+  value: unknown,
+): "reply" | "forward" | "new" {
+  const text = typeof value === "string" ? value.trim() : "";
+  const prefix = text
+    .match(
+      /^(?:\[[^\]]{0,40}\]\s*)?(re|aw|antw|sv|vs|wg|fw|fwd|tr|wtr)\s*(?:\[\d+\])?\s*:/iu,
+    )?.[1]
+    ?.toLowerCase();
+  if (!prefix) return "new";
+  return ["wg", "fw", "fwd", "tr", "wtr"].includes(prefix)
+    ? "forward"
+    : "reply";
+}
+
 function ticketNumbers(value: string): string[] {
   const matches = new Set<string>();
   for (const match of value.matchAll(TICKET_NUMBER_PATTERN)) {
@@ -856,7 +876,10 @@ async function findInboundTicket(
       (header) => asString(header.value)?.match(/<[^<>\r\n]{1,512}>/g) ?? [],
     )
     .slice(0, 20);
-  if (references.length) {
+  const subjectKind = inboundSubjectKind(graph.subject);
+  // Weiterleitungen sind neue Anfragen, ausser die Ticketnummer steht im
+  // Betreff (siehe unten). Tickets im Papierkorb werden nie gefunden.
+  if (references.length && subjectKind !== "forward") {
     const result = await admin
       .from("mail_messages")
       .select("ticket_id, tickets!inner(id, ticket_number)")
@@ -864,6 +887,7 @@ async function findInboundTicket(
       .eq("channel_id", channel.id)
       .in("internet_message_id", references)
       .not("ticket_id", "is", null)
+      .is("tickets.deleted_at", null)
       .limit(2);
     const candidate = result.data?.[0]?.tickets;
     if (!result.error && result.data?.length === 1 && record(candidate)) {
@@ -881,12 +905,16 @@ async function findInboundTicket(
       .eq("tenant_id", channel.tenant_id)
       .eq("exchange_mail_channel_id", channel.id)
       .eq("ticket_number", numbers[0])
+      .is("deleted_at", null)
       .maybeSingle();
     if (!byNumber.error && asString(byNumber.data?.id)) return byNumber.data;
   }
 
+  // Gleicher Outlook-Verlauf nur bei echten Antworten («AW:/RE:»): Outlook
+  // fasst auch neue Mails mit gleichem Betreff und Weiterleitungen in
+  // denselben Verlauf.
   const conversationId = asString(graph.conversationId);
-  if (conversationId) {
+  if (conversationId && subjectKind === "reply") {
     const byConversation = await admin
       .from("mail_messages")
       .select("ticket_id, tickets!inner(id, ticket_number)")
@@ -894,6 +922,7 @@ async function findInboundTicket(
       .eq("channel_id", channel.id)
       .eq("conversation_id", conversationId)
       .not("ticket_id", "is", null)
+      .is("tickets.deleted_at", null)
       .limit(2);
     const candidate = byConversation.data?.[0]?.tickets;
     if (
