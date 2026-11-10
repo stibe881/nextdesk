@@ -35,23 +35,34 @@ export default function TabLayout() {
   const scanVisible = !loading && isEnabled("assets.management");
   const shopVisible = !loading && isEnabled("self_service.shop");
 
-  // Fachliche Reihenfolge ohne Home: Tickets, Störungen, Shop | Home | Wissen, Scan.
-  // Die Leiste verteilt die sichtbaren Einträge gleichmässig um das zentrierte Home.
+  // Links vom Home: Tickets, Störungen, Phishing (Arbeit);
+  // rechts: Shop, Wissen, Scan.
   const tabItems: NextDeskTabItem[] = [
     {
       name: "tickets",
       label: "Tickets",
       icon: "ticket-outline",
       activeIcon: "ticket",
+      side: "left",
     },
   ];
   if (incidentsVisible) {
-    tabItems.push({
-      name: "incidents",
-      label: "Störungen",
-      icon: "pulse-outline",
-      activeIcon: "pulse",
-    });
+    tabItems.push(
+      {
+        name: "incidents",
+        label: "Störungen",
+        icon: "pulse-outline",
+        activeIcon: "pulse",
+        side: "left",
+      },
+      {
+        name: "phishing",
+        label: "Phishing",
+        icon: "shield-outline",
+        activeIcon: "shield",
+        side: "left",
+      },
+    );
   }
   if (shopVisible) {
     tabItems.push({
@@ -59,6 +70,7 @@ export default function TabLayout() {
       label: "Shop",
       icon: "bag-handle-outline",
       activeIcon: "bag-handle",
+      side: "right",
     });
   }
   if (knowledgeVisible) {
@@ -67,6 +79,7 @@ export default function TabLayout() {
       label: "Wissen",
       icon: "book-outline",
       activeIcon: "book",
+      side: "right",
     });
   }
   if (scanVisible) {
@@ -75,6 +88,7 @@ export default function TabLayout() {
       label: "Scan",
       icon: "scan-outline",
       activeIcon: "scan",
+      side: "right",
     });
   }
 
@@ -93,6 +107,13 @@ export default function TabLayout() {
           options={{
             href: incidentsVisible ? undefined : null,
             title: "Störungen",
+          }}
+        />
+        <Tabs.Screen
+          name="phishing"
+          options={{
+            href: incidentsVisible ? undefined : null,
+            title: "Phishing",
           }}
         />
         <Tabs.Screen name="services" options={{ href: null }} />

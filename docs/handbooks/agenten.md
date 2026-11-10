@@ -200,6 +200,11 @@ So bearbeiten Sie einen Fall:
 Melder bekommen für Phishing-Meldungen keine Eingangsbestätigung, nur eine
 Dankesnachricht und später das Ergebnis.
 
+In der **iOS- und Android-App** heisst der Bereich **Phishing** (untere
+Leiste, links vom Home-Knopf). Dort fällen Sie das Urteil, weisen den Fall zu,
+haken Massnahmen ab, fragen die Melder nach einem Klick und schliessen den
+Fall ab. Ein Tipp auf eine Phishing-Mitteilung öffnet den Fall direkt.
+
 ## Störungen
 
 Meldungen aus PRTG landen nicht in der Ticketliste, sondern unter
@@ -264,7 +269,7 @@ Die Benachrichtigungen dazu schalten Sie unter _Persönliche Einstellungen →
 Benachrichtigungen → Störungen_ (Push und E-Mail) ein oder aus.
 
 In der **iOS- und Android-App** finden Sie **Störungen** in der unteren Leiste
-zwischen **Tickets** und **Shop**. Dort sehen Sie die aktiven und unbestätigten
+links vom Home-Knopf (Tickets, Störungen, Phishing). Dort sehen Sie die aktiven und unbestätigten
 Störungen samt Folgestörungen, bestätigen sie, weisen sie zu, ergänzen Notizen
 und schliessen sie ab oder tragen die Ursache nach. Ein Tipp auf eine
 Störungs-Mitteilung öffnet die Störung direkt.
