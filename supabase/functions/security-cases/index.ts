@@ -123,7 +123,8 @@ async function readableCaseIds(client: Client, tenantId: string): Promise<Set<st
 }
 
 async function requireAgent(client: Client, tenantId: string): Promise<void> {
-  const { data, error } = await client.rpc("is_tenant_ticket_agent", { p_tenant_id: tenantId });
+  // Only the security team of the phishing settings (all agents without one).
+  const { data, error } = await client.rpc("can_work_security_cases", { p_tenant_id: tenantId });
   if (error || data !== true) throw forbidden();
 }
 

@@ -3019,6 +3019,11 @@ function AuthenticatedApp() {
     number | null
   >(null);
   // Agents: active incidents nobody has acknowledged yet.
+  // «Phishing»/«Störungen» only for the responsible team (server decides).
+  const [teamModuleAccess, setTeamModuleAccess] = useState({
+    securityCases: false,
+    incidents: false,
+  });
   const [incidentAttentionCount, setIncidentAttentionCount] = useState<
     number | null
   >(null);
@@ -3824,11 +3829,16 @@ function AuthenticatedApp() {
           setTicketAttentionCount(count(summary?.unassignedTickets));
           setSecurityAttentionCount(count(summary?.securityTriage));
           setIncidentAttentionCount(count(summary?.incidentsUnacknowledged));
+          setTeamModuleAccess({
+            securityCases: summary?.canWorkSecurityCases === true,
+            incidents: summary?.canWorkIncidents === true,
+          });
         });
     } else {
       setTicketAttentionCount(null);
       setSecurityAttentionCount(null);
       setIncidentAttentionCount(null);
+      setTeamModuleAccess({ securityCases: false, incidents: false });
     }
     void supabase.functions
       .invoke("onboarding", { body: { type: "navigationSummary", tenantId } })
@@ -4838,8 +4848,12 @@ function AuthenticatedApp() {
     if (item.label === "Infrastruktur") {
       return isFeatureEnabled("assets.management");
     }
-    if (item.label === "Sicherheitsfälle") return canWorkTickets;
-    if (item.label === "Störungen") return canWorkTickets;
+    if (item.label === "Sicherheitsfälle") {
+      return canWorkTickets && teamModuleAccess.securityCases;
+    }
+    if (item.label === "Störungen") {
+      return canWorkTickets && teamModuleAccess.incidents;
+    }
     if (item.label === "Lager") return isFeatureEnabled("inventory.management");
     if (item.label === "Shop") return isFeatureEnabled("self_service.shop");
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
@@ -6254,9 +6268,15 @@ function AuthenticatedApp() {
             }}
             tenantId={activeTenant.id}
           />
-        ) : section === "Sicherheitsfälle" && activeTenant && canWorkTickets ? (
+        ) : section === "Sicherheitsfälle" &&
+          activeTenant &&
+          canWorkTickets &&
+          teamModuleAccess.securityCases ? (
           <SecurityCases key={activeTenant.id} tenantId={activeTenant.id} />
-        ) : section === "Störungen" && activeTenant && canWorkTickets ? (
+        ) : section === "Störungen" &&
+          activeTenant &&
+          canWorkTickets &&
+          teamModuleAccess.incidents ? (
           <Incidents
             focusId={incidentFocusId}
             key={activeTenant.id}

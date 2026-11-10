@@ -153,7 +153,8 @@ anfangs alle Benachrichtigungen per Push und E-Mail eingeschaltet. Optional akti
 **Phishing-Meldungen** mit eigener Meldeadresse und Zielabteilung. Kategorie
 und Unterkategorie des Sicherheitstickets wählen Sie dort aus oder erfassen sie
 über **+ Neue Kategorie …** bzw. **+ Neue Unterkategorie …** direkt neu. Das
-**Sicherheitsteam** bekommt die Fälle zugewiesen und wird benachrichtigt.
+**Sicherheitsteam** bekommt die Fälle zugewiesen und wird benachrichtigt; nur
+seine Mitglieder sehen die Sicherheitsfälle (Web) bzw. Phishing (App).
 Meldungen werden als **Sicherheitsfälle** bearbeitet (eigener Menüpunkt,
 nicht in der Ticketliste). Unter **Massnahmen je Urteil** legen Sie fest,
 welche Checkliste nach dem Urteil _Harmlos_, _Spam_, _Phishing_ oder
@@ -217,7 +218,8 @@ Arbeitsbereich (siehe _Handbuch für Agenten_). Das gewählte Team wird sofort
 per Push und E-Mail alarmiert.
 
 1. **[Admin]** **Einstellungen → Monitoring → Monitoring (PRTG)**: Verarbeitung
-   aktivieren, **Team für die Alarmierung** (ohne Team alle Agenten),
+   aktivieren, **Team für die Alarmierung** (ohne Team alle Agenten; nur dieses
+   Team sieht den Bereich Störungen in Web und App),
    «Störung öffnen bei» (Down bzw. Down und Warning) und **Erneut alarmieren,
    solange unbestätigt** (Standard alle 15 Minuten, oder _Nie_) wählen,
    **Token erzeugen**. Die Webhook-Adresse wird **nur einmal** angezeigt –

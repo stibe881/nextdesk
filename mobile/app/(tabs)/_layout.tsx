@@ -8,29 +8,33 @@ import {
   type NextDeskTabItem,
 } from "@/components/nextdesk-tab-bar";
 import { PushCheckInPrompt } from "@/components/push-checkin-prompt";
-import { canWorkIncidents } from "@/lib/incidents";
+import { canWorkIncidents, canWorkSecurityCases } from "@/lib/incidents";
 
 export default function TabLayout() {
   const { isEnabled, loading, needsWorkspace, tenantId } = useMobileFeatures();
-  // «Störungen» only for people who work on tickets (checked per tenant).
-  const [incidentAccess, setIncidentAccess] = useState<{
+  // «Störungen» and «Phishing» only for the responsible team (per tenant).
+  const [moduleAccess, setModuleAccess] = useState<{
     tenantId: string;
-    allowed: boolean;
+    incidents: boolean;
+    phishing: boolean;
   } | null>(null);
   useEffect(() => {
     if (!tenantId) return;
     let active = true;
-    void canWorkIncidents(tenantId).then((allowed) => {
-      if (active) setIncidentAccess({ tenantId, allowed });
+    void Promise.all([
+      canWorkIncidents(tenantId),
+      canWorkSecurityCases(tenantId),
+    ]).then(([incidents, phishing]) => {
+      if (active) setModuleAccess({ tenantId, incidents, phishing });
     });
     return () => {
       active = false;
     };
   }, [tenantId]);
-  const incidentsVisible =
-    Boolean(tenantId) &&
-    incidentAccess?.tenantId === tenantId &&
-    incidentAccess.allowed;
+  const currentAccess =
+    tenantId && moduleAccess?.tenantId === tenantId ? moduleAccess : null;
+  const incidentsVisible = currentAccess?.incidents === true;
+  const phishingVisible = currentAccess?.phishing === true;
   const knowledgeVisible = !loading && isEnabled("knowledge.base");
   const scanVisible = !loading && isEnabled("assets.management");
   const shopVisible = !loading && isEnabled("self_service.shop");
@@ -47,22 +51,22 @@ export default function TabLayout() {
     },
   ];
   if (incidentsVisible) {
-    tabItems.push(
-      {
-        name: "incidents",
-        label: "Störungen",
-        icon: "pulse-outline",
-        activeIcon: "pulse",
-        side: "left",
-      },
-      {
-        name: "phishing",
-        label: "Phishing",
-        icon: "shield-outline",
-        activeIcon: "shield",
-        side: "left",
-      },
-    );
+    tabItems.push({
+      name: "incidents",
+      label: "Störungen",
+      icon: "pulse-outline",
+      activeIcon: "pulse",
+      side: "left",
+    });
+  }
+  if (phishingVisible) {
+    tabItems.push({
+      name: "phishing",
+      label: "Phishing",
+      icon: "shield-outline",
+      activeIcon: "shield",
+      side: "left",
+    });
   }
   if (shopVisible) {
     tabItems.push({
@@ -112,7 +116,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="phishing"
           options={{
-            href: incidentsVisible ? undefined : null,
+            href: phishingVisible ? undefined : null,
             title: "Phishing",
           }}
         />
