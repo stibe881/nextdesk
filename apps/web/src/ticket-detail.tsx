@@ -2489,6 +2489,18 @@ async function invokeTicketAgentAssignment(
   return data;
 }
 
+function presenceInitials(name: string): string {
+  const parts = name
+    .replace(/@.*$/, "")
+    .split(/[\s._-]+/)
+    .filter(Boolean);
+  const letters =
+    parts.length > 1
+      ? `${parts[0]![0]}${parts[parts.length - 1]![0]}`
+      : (parts[0] ?? "?").slice(0, 2);
+  return letters.toUpperCase();
+}
+
 async function invokeTicketPresence(
   action: TicketPresenceAction,
 ): Promise<unknown> {
@@ -6963,6 +6975,41 @@ export function TicketDetail({
           <h2>{detail.ticket.subject}</h2>
         </div>
         <div className="ticket-detail-header-actions">
+          {!requesterView && presence.length > 0 ? (
+            <ul
+              aria-label="Personen, die dieses Ticket gerade geöffnet haben"
+              className="ticket-presence-avatars"
+            >
+              {presence.slice(0, 5).map((person, index) => (
+                <li
+                  className={
+                    person.editing
+                      ? "ticket-presence-avatar is-editing"
+                      : "ticket-presence-avatar"
+                  }
+                  key={`${person.displayName}-${index}`}
+                  title={
+                    person.editing
+                      ? `${person.displayName} bearbeitet gerade`
+                      : `${person.displayName} hat das Ticket geöffnet`
+                  }
+                >
+                  {presenceInitials(person.displayName)}
+                </li>
+              ))}
+              {presence.length > 5 ? (
+                <li
+                  className="ticket-presence-avatar is-more"
+                  title={presence
+                    .slice(5)
+                    .map((person) => person.displayName)
+                    .join(", ")}
+                >
+                  +{presence.length - 5}
+                </li>
+              ) : null}
+            </ul>
+          ) : null}
           <TicketPdfRecord
             canExport={detail.canExport}
             tenantId={tenantId}
@@ -8718,31 +8765,6 @@ export function TicketDetail({
           {!requesterView ? (
             <TicketAiSummary tenantId={tenantId} ticketId={detail.ticket.id} />
           ) : null}
-
-          {!requesterView && presence.length > 0 && (
-            <aside
-              className="ticket-presence"
-              aria-label="Aktive Ticketbearbeitung"
-            >
-              <UsersRound aria-hidden="true" size={17} strokeWidth={1.8} />
-              <div>
-                <strong>
-                  {presence.some((person) => person.editing)
-                    ? "Ticket wird parallel bearbeitet"
-                    : "Weitere Personen sehen dieses Ticket"}
-                </strong>
-                <span>
-                  {presence
-                    .map((person) =>
-                      person.editing
-                        ? `${person.displayName} bearbeitet gerade`
-                        : person.displayName,
-                    )
-                    .join(", ")}
-                </span>
-              </div>
-            </aside>
-          )}
 
           {focusMode && (
             <p className="ticket-focus-notice" role="status">

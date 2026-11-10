@@ -21681,3 +21681,28 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 .email-templates__subject span { display: block; color: var(--muted, #5d6f7a); font-size: 11px; font-weight: 600; text-transform: uppercase; }
 .email-templates__frame { width: 100%; height: 560px; border: 1px solid var(--border, #e3e9ee); border-radius: 10px; background: #fff; }
 @media (max-width: 1100px) { .email-templates__body { grid-template-columns: minmax(0, 1fr); } }
+
+.ticket-presence-avatars {
+  display: flex;
+  align-items: center;
+  margin: 0 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ticket-presence-avatar {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  margin-left: -8px;
+  border: 2px solid var(--surface, #fff);
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand-primary, #4338ca), var(--brand-accent, #075985));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: default;
+}
+.ticket-presence-avatar:first-child { margin-left: 0; }
+.ticket-presence-avatar.is-editing { box-shadow: 0 0 0 2px #1f9d55; }
+.ticket-presence-avatar.is-more { background: var(--surface-subtle, #eef2f6); color: var(--muted, #5d6f7a); }
