@@ -58,6 +58,7 @@ type PushNavigationData = {
   ticketId?: string;
   orderId?: string;
   assetId?: string;
+  incidentId?: string;
   notificationId?: string;
   kind?: string;
 };
@@ -82,6 +83,9 @@ function parsePushNavigationData(value: unknown): PushNavigationData | null {
       : {}),
     ...(typeof nestedBody.assetId === "string" && nestedBody.assetId
       ? { assetId: nestedBody.assetId }
+      : {}),
+    ...(typeof nestedBody.incidentId === "string" && nestedBody.incidentId
+      ? { incidentId: nestedBody.incidentId }
       : {}),
     ...(typeof nestedBody.notificationId === "string" &&
     nestedBody.notificationId
@@ -158,6 +162,8 @@ export function PushNotificationBridge() {
           } as never);
         } else if (data.kind === "infrastructure" && data.assetId) {
           router.push(`/infrastructure/${data.assetId}` as never);
+        } else if (data.kind === "incident" && data.incidentId) {
+          router.push(`/incidents/${data.incidentId}` as never);
         } else if (data.kind === "summary") {
           router.push("/tickets");
         } else {

@@ -1,4 +1,5 @@
 import { Tabs } from "expo-router";
+import { useEffect, useState } from "react";
 
 import { CreateWorkspaceScreen } from "@/components/create-workspace-screen";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
@@ -7,14 +8,34 @@ import {
   type NextDeskTabItem,
 } from "@/components/nextdesk-tab-bar";
 import { PushCheckInPrompt } from "@/components/push-checkin-prompt";
+import { canWorkIncidents } from "@/lib/incidents";
 
 export default function TabLayout() {
-  const { isEnabled, loading, needsWorkspace } = useMobileFeatures();
+  const { isEnabled, loading, needsWorkspace, tenantId } = useMobileFeatures();
+  // «Störungen» only for people who work on tickets (checked per tenant).
+  const [incidentAccess, setIncidentAccess] = useState<{
+    tenantId: string;
+    allowed: boolean;
+  } | null>(null);
+  useEffect(() => {
+    if (!tenantId) return;
+    let active = true;
+    void canWorkIncidents(tenantId).then((allowed) => {
+      if (active) setIncidentAccess({ tenantId, allowed });
+    });
+    return () => {
+      active = false;
+    };
+  }, [tenantId]);
+  const incidentsVisible =
+    Boolean(tenantId) &&
+    incidentAccess?.tenantId === tenantId &&
+    incidentAccess.allowed;
   const knowledgeVisible = !loading && isEnabled("knowledge.base");
   const scanVisible = !loading && isEnabled("assets.management");
   const shopVisible = !loading && isEnabled("self_service.shop");
 
-  // Fachliche Reihenfolge ohne Home: Tickets, Shop | Home | Wissen, Scan.
+  // Fachliche Reihenfolge ohne Home: Tickets, Störungen, Shop | Home | Wissen, Scan.
   // Die Leiste verteilt die sichtbaren Einträge gleichmässig um das zentrierte Home.
   const tabItems: NextDeskTabItem[] = [
     {
@@ -24,6 +45,14 @@ export default function TabLayout() {
       activeIcon: "ticket",
     },
   ];
+  if (incidentsVisible) {
+    tabItems.push({
+      name: "incidents",
+      label: "Störungen",
+      icon: "pulse-outline",
+      activeIcon: "pulse",
+    });
+  }
   if (shopVisible) {
     tabItems.push({
       name: "shop",
@@ -59,6 +88,13 @@ export default function TabLayout() {
         tabBar={(props) => <NextDeskTabBar {...props} items={tabItems} />}
       >
         <Tabs.Screen name="tickets" options={{ title: "Tickets" }} />
+        <Tabs.Screen
+          name="incidents"
+          options={{
+            href: incidentsVisible ? undefined : null,
+            title: "Störungen",
+          }}
+        />
         <Tabs.Screen name="services" options={{ href: null }} />
         <Tabs.Screen name="assets" options={{ href: null }} />
         <Tabs.Screen name="inventory" options={{ href: null }} />
