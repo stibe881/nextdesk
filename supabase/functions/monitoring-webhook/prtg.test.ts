@@ -60,6 +60,12 @@ Deno.test("status texts map to kinds", () => {
   assertEquals(classifyStatus("Ungewöhnlich"), "warning");
   assertEquals(classifyStatus("OK"), "up");
   assertEquals(classifyStatus("Pausiert (durch Benutzer)"), "ignore");
+  // Recovery texts end the problem; the bracketed state is the new one.
+  assertEquals(classifyStatus("Fehler beendet (jetzt: OK)"), "up");
+  assertEquals(classifyStatus("Down ended (now: Up)"), "up");
+  assertEquals(classifyStatus("Warnung beendet (jetzt: OK)"), "up");
+  assertEquals(classifyStatus("Fehler beendet (jetzt: Warnung)"), "warning");
+  assertEquals(classifyStatus("Fehler beendet"), "up");
   assertEquals(classifyStatus("Unbekannt"), "ignore");
   assertEquals(classifyStatus(null), null);
   // Ended states carry the current state in brackets.
