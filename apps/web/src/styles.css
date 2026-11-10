@@ -21706,3 +21706,14 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 .ticket-presence-avatar:first-child { margin-left: 0; }
 .ticket-presence-avatar.is-editing { box-shadow: 0 0 0 2px #1f9d55; }
 .ticket-presence-avatar.is-more { background: var(--surface-subtle, #eef2f6); color: var(--muted, #5d6f7a); }
+
+.ticket-presence-avatar { position: relative; overflow: hidden; }
+.ticket-presence-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ticket-presence-avatar.is-editing { overflow: visible; }
+.ticket-presence-avatar.is-editing img { border-radius: 50%; }

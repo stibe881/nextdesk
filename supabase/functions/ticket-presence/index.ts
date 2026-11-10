@@ -333,6 +333,41 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           : "Aktives Benutzerkonto",
       ]),
   );
+  // Profile photos (Entra, private bucket) as short-lived signed URLs. Without
+  // a photo or on any error the person is shown with initials.
+  const photoUrls = new Map<string, string>();
+  try {
+    const { data: directory } = userIds.length
+      ? await admin
+          .from("tenant_entra_directory_people")
+          .select("local_user_id, photo_path")
+          .eq("tenant_id", ticket.tenant_id)
+          .in("local_user_id", userIds)
+      : { data: [] };
+    const entries = (directory ?? []).filter(
+      (row: any) =>
+        isUuid(row.local_user_id) &&
+        typeof row.photo_path === "string" &&
+        row.photo_path.startsWith(`${ticket.tenant_id}/`),
+    );
+    if (entries.length) {
+      const { data: signed } = await admin.storage
+        .from("entra-avatars")
+        .createSignedUrls(
+          entries.map((row: any) => row.photo_path),
+          3600,
+        );
+      for (const item of signed ?? []) {
+        const row = entries.find(
+          (entry: any) => entry.photo_path === item.path,
+        );
+        if (row && typeof item.signedUrl === "string")
+          photoUrls.set(row.local_user_id, item.signedUrl);
+      }
+    }
+  } catch {
+    // Photos are optional.
+  }
   const people = (sessions ?? []).flatMap((session: any) => {
     if (!isUuid(session.user_id)) return [];
     const displayName = names.get(session.user_id);
@@ -340,6 +375,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return [
       {
         displayName,
+        photoUrl: photoUrls.get(session.user_id) ?? null,
         editing: session.is_editing === true,
         // A draft only counts as current while the heartbeat is recent.
         composing:
