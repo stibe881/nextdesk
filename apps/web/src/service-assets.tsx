@@ -15,6 +15,16 @@ import {
   type SetStateAction,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  FormCard,
+  FormDialog,
+  FormField,
+  FormGrid,
+  FormLayout,
+  FormNote,
+  FormSummary,
+  FormSwitch,
+} from "./form-kit";
 import { supabase } from "./lib/supabase";
 import { IntuneActionsMenu, useIntuneAssetDevices } from "./intune-actions";
 import {
@@ -590,10 +600,7 @@ function ServiceEditorFields({
               eyebrow="Statusseite"
               rows={[
                 ["Zustand", SERVICE_STATUS_LABELS[serviceForm.status]],
-                [
-                  "Kritikalität",
-                  CRITICALITY_LABELS[serviceForm.criticality],
-                ],
+                ["Kritikalität", CRITICALITY_LABELS[serviceForm.criticality]],
                 ["Ort", selectedCategoryPath[0]?.name ?? ""],
                 ["Abteilung", departmentName],
               ]}
@@ -700,164 +707,171 @@ function ServiceEditorFields({
             />
           </FormGrid>
         </FormCard>
-      {supportsServiceCategories ? (
-        <FormCard
-          sub="Ort, Kategorie, Unterkategorie"
-          title="Serviceeinordnung"
-        >
-          <FormNote>
-            Wählen Sie den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei
-            Bedarf eine Kategorie und Unterkategorie.
-          </FormNote>
-          <FormGrid cols={3}>
-          <FormField label="Ort">
-            <select
-              disabled={controlsDisabled}
-              onChange={(event) =>
-                setServiceForm((current) => ({
-                  ...current,
-                  categoryId: event.target.value,
-                }))
-              }
-              value={rootCategoryId}
-            >
-              <option value="">Nicht zugeordnet</option>
-              {rootCategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-            {addControl(0)}
-          </FormField>
-          <FormField label="Kategorie">
-            <select
-              disabled={controlsDisabled || !rootCategoryId}
-              onChange={(event) =>
-                setServiceForm((current) => ({
-                  ...current,
-                  categoryId: event.target.value || rootCategoryId,
-                }))
-              }
-              value={subcategoryId}
-            >
-              <option value="">
-                {rootCategoryId ? "Keine Kategorie" : "Zuerst Ort wählen"}
-              </option>
-              {subcategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-            {addControl(1)}
-          </FormField>
-          <FormField label="Unterkategorie">
-            <select
-              disabled={controlsDisabled || !subcategoryId}
-              onChange={(event) =>
-                setServiceForm((current) => ({
-                  ...current,
-                  categoryId:
-                    event.target.value || subcategoryId || rootCategoryId,
-                }))
-              }
-              value={
-                selectedCategoryPath[2]?.id && subcategoryId
-                  ? selectedCategoryPath[2].id
-                  : ""
-              }
-            >
-              <option value="">
-                {subcategoryId
-                  ? "Keine Unterkategorie"
-                  : "Zuerst Kategorie wählen"}
-              </option>
-              {detailCategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-            {addControl(2)}
-          </FormField>
-          </FormGrid>
-          {rootCategories.length === 0 ? (
+        {supportsServiceCategories ? (
+          <FormCard
+            sub="Ort, Kategorie, Unterkategorie"
+            title="Serviceeinordnung"
+          >
             <FormNote>
-              Es sind noch keine Orte und Kategorien angelegt. Sie können die
-              Einordnung später ergänzen.
+              Wählen Sie den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei
+              Bedarf eine Kategorie und Unterkategorie.
             </FormNote>
-          ) : null}
-        </FormCard>
-      ) : null}
+            <FormGrid cols={3}>
+              <FormField label="Ort">
+                <select
+                  disabled={controlsDisabled}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      categoryId: event.target.value,
+                    }))
+                  }
+                  value={rootCategoryId}
+                >
+                  <option value="">Nicht zugeordnet</option>
+                  {rootCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                {addControl(0)}
+              </FormField>
+              <FormField label="Kategorie">
+                <select
+                  disabled={controlsDisabled || !rootCategoryId}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      categoryId: event.target.value || rootCategoryId,
+                    }))
+                  }
+                  value={subcategoryId}
+                >
+                  <option value="">
+                    {rootCategoryId ? "Keine Kategorie" : "Zuerst Ort wählen"}
+                  </option>
+                  {subcategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                {addControl(1)}
+              </FormField>
+              <FormField label="Unterkategorie">
+                <select
+                  disabled={controlsDisabled || !subcategoryId}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      categoryId:
+                        event.target.value || subcategoryId || rootCategoryId,
+                    }))
+                  }
+                  value={
+                    selectedCategoryPath[2]?.id && subcategoryId
+                      ? selectedCategoryPath[2].id
+                      : ""
+                  }
+                >
+                  <option value="">
+                    {subcategoryId
+                      ? "Keine Unterkategorie"
+                      : "Zuerst Kategorie wählen"}
+                  </option>
+                  {detailCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                {addControl(2)}
+              </FormField>
+            </FormGrid>
+            {rootCategories.length === 0 ? (
+              <FormNote>
+                Es sind noch keine Orte und Kategorien angelegt. Sie können die
+                Einordnung später ergänzen.
+              </FormNote>
+            ) : null}
+          </FormCard>
+        ) : null}
         <FormCard title="Verantwortung">
           <FormGrid cols={2}>
-<FormField label="Primär verantwortliche Agent:in">
-        <select
-          disabled={controlsDisabled || serviceResponsibleAgentsLoading}
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              primaryResponsibleId: event.target.value,
-              secondaryResponsibleId:
-                event.target.value === current.secondaryResponsibleId
-                  ? ""
-                  : current.secondaryResponsibleId,
-            }))
-          }
-          value={serviceForm.primaryResponsibleId}
-        >
-          <option value="">Nicht zugeordnet</option>
-          {serviceForm.primaryResponsibleId &&
-          !serviceResponsibleAgentNames.has(
-            serviceForm.primaryResponsibleId,
-          ) ? (
-            <option value={serviceForm.primaryResponsibleId}>
-              Nicht mehr verfügbar
-            </option>
-          ) : null}
-          {serviceResponsibleAgents
-            .filter((agent) => agent.id !== serviceForm.secondaryResponsibleId)
-            .map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.displayName}
-              </option>
-            ))}
-        </select>
-</FormField>
-<FormField label="Sekundär verantwortliche Agent:in" hint="Nur aktuell berechtigte interne Agent:innen stehen zur Auswahl.">
-        <select
-          disabled={
-            controlsDisabled ||
-            serviceResponsibleAgentsLoading ||
-            !serviceForm.primaryResponsibleId
-          }
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              secondaryResponsibleId: event.target.value,
-            }))
-          }
-          value={serviceForm.secondaryResponsibleId}
-        >
-          <option value="">Nicht zugeordnet</option>
-          {serviceForm.secondaryResponsibleId &&
-          !serviceResponsibleAgentNames.has(
-            serviceForm.secondaryResponsibleId,
-          ) ? (
-            <option value={serviceForm.secondaryResponsibleId}>
-              Nicht mehr verfügbar
-            </option>
-          ) : null}
-          {serviceResponsibleAgents
-            .filter((agent) => agent.id !== serviceForm.primaryResponsibleId)
-            .map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.displayName}
-              </option>
-            ))}
-        </select>
-</FormField>
+            <FormField label="Primär verantwortliche Agent:in">
+              <select
+                disabled={controlsDisabled || serviceResponsibleAgentsLoading}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    primaryResponsibleId: event.target.value,
+                    secondaryResponsibleId:
+                      event.target.value === current.secondaryResponsibleId
+                        ? ""
+                        : current.secondaryResponsibleId,
+                  }))
+                }
+                value={serviceForm.primaryResponsibleId}
+              >
+                <option value="">Nicht zugeordnet</option>
+                {serviceForm.primaryResponsibleId &&
+                !serviceResponsibleAgentNames.has(
+                  serviceForm.primaryResponsibleId,
+                ) ? (
+                  <option value={serviceForm.primaryResponsibleId}>
+                    Nicht mehr verfügbar
+                  </option>
+                ) : null}
+                {serviceResponsibleAgents
+                  .filter(
+                    (agent) => agent.id !== serviceForm.secondaryResponsibleId,
+                  )
+                  .map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.displayName}
+                    </option>
+                  ))}
+              </select>
+            </FormField>
+            <FormField
+              label="Sekundär verantwortliche Agent:in"
+              hint="Nur aktuell berechtigte interne Agent:innen stehen zur Auswahl."
+            >
+              <select
+                disabled={
+                  controlsDisabled ||
+                  serviceResponsibleAgentsLoading ||
+                  !serviceForm.primaryResponsibleId
+                }
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    secondaryResponsibleId: event.target.value,
+                  }))
+                }
+                value={serviceForm.secondaryResponsibleId}
+              >
+                <option value="">Nicht zugeordnet</option>
+                {serviceForm.secondaryResponsibleId &&
+                !serviceResponsibleAgentNames.has(
+                  serviceForm.secondaryResponsibleId,
+                ) ? (
+                  <option value={serviceForm.secondaryResponsibleId}>
+                    Nicht mehr verfügbar
+                  </option>
+                ) : null}
+                {serviceResponsibleAgents
+                  .filter(
+                    (agent) => agent.id !== serviceForm.primaryResponsibleId,
+                  )
+                  .map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.displayName}
+                    </option>
+                  ))}
+              </select>
+            </FormField>
           </FormGrid>
         </FormCard>
       </FormLayout>
@@ -4662,168 +4676,190 @@ export function ServiceAssets({
                       </aside>
                     ) : null}
                     <form onSubmit={(event) => void saveAsset(event)}>
-                      <label>
-                        Name
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={240}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              name: event.target.value,
-                            }))
-                          }
-                          ref={assetNameInputRef}
-                          required
-                          value={assetForm.name}
-                        />
-                      </label>
-                      <DepartmentField
-                        departments={departments}
-                        disabled={controlsDisabled}
-                        onChange={(departmentId) =>
-                          setAssetForm((current) => ({
-                            ...current,
-                            departmentId,
-                          }))
+                      <FormLayout
+                        side={
+                          <FormSummary
+                            eyebrow={assetForm.kind.trim() || "Asset"}
+                            rows={[
+                              ["Status", assetForm.status.trim()],
+                              [
+                                "Dienst",
+                                services.find(
+                                  (service) =>
+                                    service.id === assetForm.serviceId,
+                                )?.name ?? "",
+                              ],
+                              ["Inventarnr.", assetForm.inventoryNumber.trim()],
+                            ]}
+                            title={assetForm.name.trim()}
+                          />
                         }
-                        required={assetForm.id === null}
-                        value={assetForm.departmentId}
-                      />
-                      <label>
-                        Zugehöriger Dienst (optional)
-                        <select
-                          disabled={controlsDisabled}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              serviceId: event.target.value,
-                            }))
-                          }
-                          value={assetForm.serviceId}
-                        >
-                          <option value="">Nicht zugeordnet</option>
-                          {services.map((service) => (
-                            <option key={service.id} value={service.id}>
-                              {service.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Asset-Kennung (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={160}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              assetTag: event.target.value,
-                            }))
-                          }
-                          value={assetForm.assetTag}
-                        />
-                      </label>
-                      <label>
-                        Inventarnummer (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={160}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              inventoryNumber: event.target.value,
-                            }))
-                          }
-                          value={assetForm.inventoryNumber}
-                        />
-                      </label>
-                      <label>
-                        Seriennummer (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={160}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              serialNumber: event.target.value,
-                            }))
-                          }
-                          value={assetForm.serialNumber}
-                        />
-                      </label>
-                      <label>
-                        Hersteller (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={160}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              manufacturer: event.target.value,
-                            }))
-                          }
-                          value={assetForm.manufacturer}
-                        />
-                      </label>
-                      <label>
-                        Modell (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={160}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              model: event.target.value,
-                            }))
-                          }
-                          value={assetForm.model}
-                        />
-                      </label>
-                      <label>
-                        Betriebssystem (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={160}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              operatingSystem: event.target.value,
-                            }))
-                          }
-                          value={assetForm.operatingSystem}
-                        />
-                      </label>
-                      <label>
-                        Art
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={64}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              kind: event.target.value,
-                            }))
-                          }
-                          required
-                          value={assetForm.kind}
-                        />
-                      </label>
-                      <label>
-                        Status
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={64}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              status: event.target.value,
-                            }))
-                          }
-                          required
-                          value={assetForm.status}
-                        />
-                      </label>
+                      >
+                        <FormCard title="Gerät">
+                          <FormGrid cols={2}>
+                            <FormField label="Name" required>
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={240}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    name: event.target.value,
+                                  }))
+                                }
+                                ref={assetNameInputRef}
+                                required
+                                value={assetForm.name}
+                              />
+                            </FormField>
+                            <FormField label="Art" required>
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={64}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    kind: event.target.value,
+                                  }))
+                                }
+                                required
+                                value={assetForm.kind}
+                              />
+                            </FormField>
+                            <FormField label="Status" required>
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={64}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    status: event.target.value,
+                                  }))
+                                }
+                                required
+                                value={assetForm.status}
+                              />
+                            </FormField>
+                            <FormField label="Zugehöriger Dienst">
+                              <select
+                                disabled={controlsDisabled}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    serviceId: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.serviceId}
+                              >
+                                <option value="">Nicht zugeordnet</option>
+                                {services.map((service) => (
+                                  <option key={service.id} value={service.id}>
+                                    {service.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </FormField>
+                            <DepartmentField
+                              departments={departments}
+                              disabled={controlsDisabled}
+                              onChange={(departmentId) =>
+                                setAssetForm((current) => ({
+                                  ...current,
+                                  departmentId,
+                                }))
+                              }
+                              required={assetForm.id === null}
+                              value={assetForm.departmentId}
+                            />
+                          </FormGrid>
+                        </FormCard>
+                        <FormCard title="Hersteller und Modell">
+                          <FormGrid cols={3}>
+                            <FormField label="Hersteller">
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={160}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    manufacturer: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.manufacturer}
+                              />
+                            </FormField>
+                            <FormField label="Modell">
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={160}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    model: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.model}
+                              />
+                            </FormField>
+                            <FormField label="Betriebssystem">
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={160}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    operatingSystem: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.operatingSystem}
+                              />
+                            </FormField>
+                          </FormGrid>
+                        </FormCard>
+                        <FormCard title="Kennungen">
+                          <FormGrid cols={3}>
+                            <FormField label="Asset-Kennung">
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={160}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    assetTag: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.assetTag}
+                              />
+                            </FormField>
+                            <FormField label="Inventarnummer">
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={160}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    inventoryNumber: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.inventoryNumber}
+                              />
+                            </FormField>
+                            <FormField label="Seriennummer">
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={160}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    serialNumber: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.serialNumber}
+                              />
+                            </FormField>
+                          </FormGrid>
+                        </FormCard>
+                      </FormLayout>
                       <p>
                         <button
                           className="primary-button"

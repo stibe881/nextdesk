@@ -26,6 +26,14 @@ import {
   Smartphone,
   Wifi,
 } from "lucide-react";
+import {
+  FormCard,
+  FormDialog,
+  FormField,
+  FormGrid,
+  FormNote,
+  FormSummary,
+} from "./form-kit";
 import { functionErrorMessage } from "./lib/function-error";
 import { knowledgeErrorBackendMessage } from "./lib/knowledge-errors";
 import {
@@ -3656,60 +3664,48 @@ export function KnowledgeBase({
       )}
 
       {editorOpen && (
-        <div className="knowledge-base__editor-backdrop">
-          <section
-            aria-busy={isBusy}
-            aria-labelledby="knowledge-article-form-heading"
-            aria-modal="true"
-            className="panel knowledge-base__editor-panel"
-            onKeyDown={handleEditorDialogKeyDown}
-            ref={editorPanelRef}
-            role="dialog"
-            tabIndex={knowledgeEditorDialogTabIndex(isBusy)}
+        <section
+          onKeyDown={handleEditorDialogKeyDown}
+          ref={editorPanelRef}
+          style={{ display: "contents" }}
+        >
+          <FormDialog
+            eyebrow={editingArticleId ? "Artikel bearbeiten" : "Neuer Artikel"}
+            error={error}
+            onClose={closeEditor}
+            onSubmit={(event) => void saveArticle(event)}
+            side={
+              <>
+                <FormSummary
+                  eyebrow={statusLabels[draft.status]}
+                  rows={[
+                    ["Sichtbarkeit", visibilityLabels[draft.visibility]],
+                    ["Kategorie", selectedCategory?.name ?? ""],
+                    ["Unterkategorie", selectedSubcategory?.name ?? ""],
+                    [
+                      "Abteilung",
+                      departments.find(
+                        (department) => department.id === draft.departmentId,
+                      )?.name ?? "",
+                    ],
+                  ]}
+                  title={draft.title.trim()}
+                />
+                <FormNote>
+                  Live-Vorschau: Banner, «Kurz gesagt» und Inhalt erscheinen
+                  weiter unten, sobald Sie schreiben.
+                </FormNote>
+              </>
+            }
+            submitDisabled={isBusy || !collectionAssignmentReady}
+            submitLabel={
+              editingArticleId ? "Änderungen speichern" : "Artikel anlegen"
+            }
+            submitting={saving === "save"}
+            title={editorTitle}
           >
-            <div className="knowledge-base__editor-heading">
-              <div>
-                <p className="eyebrow">
-                  {editingArticleId ? "Artikel bearbeiten" : "Neuer Artikel"}
-                </p>
-                <h2 id="knowledge-article-form-heading">{editorTitle}</h2>
-                <p className="knowledge-base__intro">
-                  Schreiben Sie klar, strukturieren Sie mit Markdown und prüfen
-                  Sie die Darstellung direkt in der Vorschau.
-                </p>
-              </div>
-              <div className="knowledge-base__editor-heading-actions">
-                <span
-                  className={`knowledge-base__badge knowledge-base__badge--${draft.status}`}
-                >
-                  {statusLabels[draft.status]}
-                </span>
-                <button
-                  className="knowledge-base__button knowledge-base__editor-close"
-                  disabled={isBusy}
-                  onClick={closeEditor}
-                  type="button"
-                >
-                  Schliessen
-                </button>
-              </div>
-            </div>
-
-            {error ? (
-              <p
-                className="knowledge-base__message knowledge-base__message--error"
-                role="alert"
-              >
-                {error}
-              </p>
-            ) : null}
-
-            <form
-              className="knowledge-base__form knowledge-base__form-panel"
-              onSubmit={(event) => void saveArticle(event)}
-            >
-              <label>
-                Titel
+            <FormCard title="Inhalt">
+              <FormField label="Titel" required>
                 <input
                   disabled={isBusy}
                   maxLength={240}
@@ -3725,312 +3721,391 @@ export function KnowledgeBase({
                   required
                   value={draft.title}
                 />
-              </label>
-
-              <label>
-                Sichtbarkeit
-                <select
+              </FormField>
+              <FormField label="Kurzfassung">
+                <textarea
                   disabled={isBusy}
+                  maxLength={500}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
-                      visibility: event.target.value as ArticleVisibility,
+                      summary: event.target.value,
                     }))
                   }
-                  value={draft.visibility}
+                  placeholder="Ein bis zwei Sätze: worum geht es, was bringt es? Erscheint oben als «Kurz gesagt»."
+                  rows={2}
+                  value={draft.summary}
+                />
+              </FormField>
+              <FormField label="Markdown-Inhalt">
+                <textarea
+                  aria-busy={imageUploading}
+                  disabled={isBusy}
+                  maxLength={100000}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      bodyMarkdown: event.target.value,
+                    }))
+                  }
+                  onDragOver={(event) => {
+                    if (event.dataTransfer.types.includes("Files"))
+                      event.preventDefault();
+                  }}
+                  onDrop={handleMarkdownDrop}
+                  onPaste={handleMarkdownPaste}
+                  ref={markdownInputRef}
+                  placeholder={
+                    "# Überschrift\n\nBeschreiben Sie hier die Lösung oder den Ablauf in Markdown."
+                  }
+                  rows={12}
+                  value={draft.bodyMarkdown}
+                />
+              </FormField>
+              <div className="knowledge-base__full-width knowledge-base__image-tools">
+                <button
+                  className="knowledge-base__button"
+                  disabled={isBusy}
+                  onClick={() => imageInputRef.current?.click()}
+                  type="button"
                 >
-                  <option value="internal">Intern</option>
-                  <option value="external">Extern</option>
-                </select>
-              </label>
+                  {imageUploading ? "Bild wird hochgeladen …" : "Bild einfügen"}
+                </button>
+                <input
+                  accept={KNOWLEDGE_IMAGE_TYPES.join(",")}
+                  hidden
+                  multiple
+                  onChange={(event) => {
+                    const files = [...(event.target.files ?? [])];
+                    event.target.value = "";
+                    void uploadImages(files);
+                  }}
+                  ref={imageInputRef}
+                  type="file"
+                />
+                <p className="knowledge-base__hint">
+                  JPG, PNG, WebP oder GIF bis 5 MB; grosse Bilder werden
+                  verkleinert. Bilder können auch in das Textfeld eingefügt oder
+                  hineingezogen werden.
+                </p>
+                {imageError ? (
+                  <p
+                    className="knowledge-base__message knowledge-base__message--error"
+                    role="alert"
+                  >
+                    {imageError}
+                  </p>
+                ) : null}
+              </div>
+            </FormCard>
 
-              {departments.length > 1 ? (
-                <label>
-                  Abteilung
+            <FormCard
+              title="Live-Vorschau"
+              sub={visibilityLabels[draft.visibility]}
+            >
+              <KnowledgeArticleView
+                body={draft.bodyMarkdown}
+                imageUrls={imageUrls}
+                summary={draft.summary}
+                title={previewTitle}
+              />
+            </FormCard>
+
+            <FormCard title="Einordnung">
+              <FormGrid cols={2}>
+                <FormField label="Sichtbarkeit">
                   <select
                     disabled={isBusy}
                     onChange={(event) =>
                       setDraft((current) => ({
                         ...current,
-                        departmentId: event.target.value || null,
+                        visibility: event.target.value as ArticleVisibility,
                       }))
                     }
-                    required
-                    value={draft.departmentId ?? ""}
+                    value={draft.visibility}
                   >
-                    <option disabled value="">
-                      Abteilung wählen
-                    </option>
-                    {departments.map((department) => (
-                      <option key={department.id} value={department.id}>
-                        {department.name}
+                    <option value="internal">Intern</option>
+                    <option value="external">Extern</option>
+                  </select>
+                </FormField>
+                {departments.length > 1 ? (
+                  <FormField label="Abteilung" required>
+                    <select
+                      disabled={isBusy}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          departmentId: event.target.value || null,
+                        }))
+                      }
+                      required
+                      value={draft.departmentId ?? ""}
+                    >
+                      <option disabled value="">
+                        Abteilung wählen
+                      </option>
+                      {departments.map((department) => (
+                        <option key={department.id} value={department.id}>
+                          {department.name}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                ) : null}
+              </FormGrid>
+              <FormNote>
+                Speichern veröffentlicht den Artikel sofort, eine Freigabe ist
+                nicht nötig. Frühere Fassungen bleiben im Verlauf erhalten.
+              </FormNote>
+              <p className="knowledge-base__collection-intro">
+                Optional können Sie den Artikel einer Kategorie und einer
+                passenden Unterkategorie zuordnen. Bei einer Unterkategorie wird
+                nur diese gespeichert.
+              </p>
+
+              {collectionsLoading ? (
+                <p className="knowledge-base__collection-status" role="status">
+                  Kategorien werden geladen …
+                </p>
+              ) : null}
+              {collectionLoadError ? (
+                <div
+                  className="knowledge-base__collection-load-error"
+                  role="alert"
+                >
+                  <p className="knowledge-base__message knowledge-base__message--error">
+                    Kategorien konnten nicht geladen werden.{" "}
+                    {collectionLoadError}
+                  </p>
+                  <button
+                    className="knowledge-base__button"
+                    disabled={isBusy || collectionsLoading}
+                    onClick={() => void loadCollections(true)}
+                    type="button"
+                  >
+                    Kategorien erneut laden
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="knowledge-base__collection-controls">
+                <label>
+                  Kategorie
+                  <select
+                    disabled={isBusy || !collectionAssignmentReady}
+                    onChange={(event) => changeCategory(event.target.value)}
+                    value={selectedCategory?.id ?? ""}
+                  >
+                    <option value="">Keine Kategorie</option>
+                    {editorTopicCategories.map((collection) => (
+                      <option key={collection.id} value={collection.id}>
+                        {collection.name}
                       </option>
                     ))}
                   </select>
                 </label>
-              ) : null}
 
-              <p className="knowledge-base__hint">
-                Speichern veröffentlicht den Artikel sofort, eine Freigabe ist
-                nicht nötig. Frühere Fassungen bleiben im Verlauf erhalten.
-              </p>
-
-              <fieldset className="knowledge-base__collection-fieldset knowledge-base__full-width">
-                <legend>Einordnung</legend>
-                <p className="knowledge-base__collection-intro">
-                  Optional können Sie den Artikel einer Kategorie und einer
-                  passenden Unterkategorie zuordnen. Bei einer Unterkategorie
-                  wird nur diese gespeichert.
-                </p>
-
-                {collectionsLoading ? (
-                  <p
-                    className="knowledge-base__collection-status"
-                    role="status"
-                  >
-                    Kategorien werden geladen …
-                  </p>
-                ) : null}
-                {collectionLoadError ? (
-                  <div
-                    className="knowledge-base__collection-load-error"
-                    role="alert"
-                  >
-                    <p className="knowledge-base__message knowledge-base__message--error">
-                      Kategorien konnten nicht geladen werden.{" "}
-                      {collectionLoadError}
-                    </p>
-                    <button
-                      className="knowledge-base__button"
-                      disabled={isBusy || collectionsLoading}
-                      onClick={() => void loadCollections(true)}
-                      type="button"
-                    >
-                      Kategorien erneut laden
-                    </button>
-                  </div>
-                ) : null}
-
-                <div className="knowledge-base__collection-controls">
-                  <label>
-                    Kategorie
-                    <select
-                      disabled={isBusy || !collectionAssignmentReady}
-                      onChange={(event) => changeCategory(event.target.value)}
-                      value={selectedCategory?.id ?? ""}
-                    >
-                      <option value="">Keine Kategorie</option>
-                      {editorTopicCategories.map((collection) => (
-                        <option key={collection.id} value={collection.id}>
-                          {collection.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label>
-                    Unterkategorie
-                    <select
-                      disabled={
-                        isBusy ||
-                        !collectionAssignmentReady ||
-                        selectedCategory === undefined
-                      }
-                      onChange={(event) =>
-                        changeSubcategory(event.target.value)
-                      }
-                      value={selectedSubcategory?.id ?? ""}
-                    >
-                      <option value="">
-                        {selectedCategory
-                          ? "Keine Unterkategorie"
-                          : "Zuerst Kategorie wählen"}
-                      </option>
-                      {subcategoryCollections.map((collection) => (
-                        <option key={collection.id} value={collection.id}>
-                          {collection.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                {collectionAssignmentReady &&
-                editorTopicCategories.length === 0 ? (
-                  <p className="knowledge-base__collection-status">
-                    Es sind noch keine Kategorien vorhanden.
-                  </p>
-                ) : null}
-
-                <div className="knowledge-base__collection-actions">
-                  <button
-                    className="knowledge-base__button"
-                    disabled={isBusy || !collectionAssignmentReady}
-                    onClick={() => startCollectionCreator("root")}
-                    type="button"
-                  >
-                    Neue Kategorie
-                  </button>
-                  <button
-                    className="knowledge-base__button"
+                <label>
+                  Unterkategorie
+                  <select
                     disabled={
                       isBusy ||
                       !collectionAssignmentReady ||
-                      !selectedCategorySupportsSubcategories
+                      selectedCategory === undefined
                     }
-                    onClick={() => startCollectionCreator("child")}
+                    onChange={(event) => changeSubcategory(event.target.value)}
+                    value={selectedSubcategory?.id ?? ""}
+                  >
+                    <option value="">
+                      {selectedCategory
+                        ? "Keine Unterkategorie"
+                        : "Zuerst Kategorie wählen"}
+                    </option>
+                    {subcategoryCollections.map((collection) => (
+                      <option key={collection.id} value={collection.id}>
+                        {collection.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              {collectionAssignmentReady &&
+              editorTopicCategories.length === 0 ? (
+                <p className="knowledge-base__collection-status">
+                  Es sind noch keine Kategorien vorhanden.
+                </p>
+              ) : null}
+
+              <div className="knowledge-base__collection-actions">
+                <button
+                  className="knowledge-base__button"
+                  disabled={isBusy || !collectionAssignmentReady}
+                  onClick={() => startCollectionCreator("root")}
+                  type="button"
+                >
+                  Neue Kategorie
+                </button>
+                <button
+                  className="knowledge-base__button"
+                  disabled={
+                    isBusy ||
+                    !collectionAssignmentReady ||
+                    !selectedCategorySupportsSubcategories
+                  }
+                  onClick={() => startCollectionCreator("child")}
+                  type="button"
+                >
+                  Neue Unterkategorie
+                </button>
+                {selectedCategory ? (
+                  <button
+                    className="knowledge-base__button"
+                    disabled={isBusy || !collectionAssignmentReady}
+                    onClick={() => beginCollectionRename(selectedCategory)}
                     type="button"
                   >
-                    Neue Unterkategorie
+                    Kategorie umbenennen
                   </button>
-                  {selectedCategory ? (
+                ) : null}
+                {selectedSubcategory ? (
+                  <button
+                    className="knowledge-base__button"
+                    disabled={isBusy || !collectionAssignmentReady}
+                    onClick={() => beginCollectionRename(selectedSubcategory)}
+                    type="button"
+                  >
+                    Unterkategorie umbenennen
+                  </button>
+                ) : null}
+                {selectedCategory ? (
+                  <button
+                    className="knowledge-base__button knowledge-base__button--danger"
+                    disabled={isBusy || !collectionAssignmentReady}
+                    onClick={() => void deleteCollection(selectedCategory)}
+                    type="button"
+                  >
+                    Kategorie löschen
+                  </button>
+                ) : null}
+                {selectedSubcategory ? (
+                  <button
+                    className="knowledge-base__button knowledge-base__button--danger"
+                    disabled={isBusy || !collectionAssignmentReady}
+                    onClick={() => void deleteCollection(selectedSubcategory)}
+                    type="button"
+                  >
+                    Unterkategorie löschen
+                  </button>
+                ) : null}
+              </div>
+
+              {collectionCreator ? (
+                <div className="knowledge-base__collection-inline-form">
+                  <label>
+                    {collectionCreator === "root"
+                      ? "Name der neuen Kategorie"
+                      : `Name der neuen Unterkategorie in ${selectedCategory?.name ?? "der Kategorie"}`}
+                    <input
+                      disabled={isBusy}
+                      maxLength={100}
+                      minLength={2}
+                      onChange={(event) =>
+                        setCollectionName(event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void createCollection();
+                        }
+                      }}
+                      required
+                      value={collectionName}
+                    />
+                  </label>
+                  <div className="knowledge-base__collection-inline-actions">
                     <button
                       className="knowledge-base__button"
-                      disabled={isBusy || !collectionAssignmentReady}
-                      onClick={() => beginCollectionRename(selectedCategory)}
+                      disabled={isBusy}
+                      onClick={() => void createCollection()}
                       type="button"
                     >
-                      Kategorie umbenennen
+                      Anlegen
                     </button>
-                  ) : null}
-                  {selectedSubcategory ? (
                     <button
                       className="knowledge-base__button"
-                      disabled={isBusy || !collectionAssignmentReady}
-                      onClick={() => beginCollectionRename(selectedSubcategory)}
+                      disabled={isBusy}
+                      onClick={cancelCollectionForm}
                       type="button"
                     >
-                      Unterkategorie umbenennen
+                      Abbrechen
                     </button>
-                  ) : null}
-                  {selectedCategory ? (
-                    <button
-                      className="knowledge-base__button knowledge-base__button--danger"
-                      disabled={isBusy || !collectionAssignmentReady}
-                      onClick={() => void deleteCollection(selectedCategory)}
-                      type="button"
-                    >
-                      Kategorie löschen
-                    </button>
-                  ) : null}
-                  {selectedSubcategory ? (
-                    <button
-                      className="knowledge-base__button knowledge-base__button--danger"
-                      disabled={isBusy || !collectionAssignmentReady}
-                      onClick={() => void deleteCollection(selectedSubcategory)}
-                      type="button"
-                    >
-                      Unterkategorie löschen
-                    </button>
-                  ) : null}
+                  </div>
                 </div>
+              ) : null}
 
-                {collectionCreator ? (
-                  <div className="knowledge-base__collection-inline-form">
-                    <label>
-                      {collectionCreator === "root"
-                        ? "Name der neuen Kategorie"
-                        : `Name der neuen Unterkategorie in ${selectedCategory?.name ?? "der Kategorie"}`}
-                      <input
-                        disabled={isBusy}
-                        maxLength={100}
-                        minLength={2}
-                        onChange={(event) =>
-                          setCollectionName(event.target.value)
+              {renamingCollectionId ? (
+                <div className="knowledge-base__collection-inline-form">
+                  <label>
+                    Neuer Name
+                    <input
+                      disabled={isBusy}
+                      maxLength={100}
+                      minLength={2}
+                      onChange={(event) =>
+                        setRenamedCollectionName(event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void renameCollection();
                         }
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void createCollection();
-                          }
-                        }}
-                        required
-                        value={collectionName}
-                      />
-                    </label>
-                    <div className="knowledge-base__collection-inline-actions">
-                      <button
-                        className="knowledge-base__button"
-                        disabled={isBusy}
-                        onClick={() => void createCollection()}
-                        type="button"
-                      >
-                        Anlegen
-                      </button>
-                      <button
-                        className="knowledge-base__button"
-                        disabled={isBusy}
-                        onClick={cancelCollectionForm}
-                        type="button"
-                      >
-                        Abbrechen
-                      </button>
-                    </div>
+                      }}
+                      required
+                      value={renamedCollectionName}
+                    />
+                  </label>
+                  <div className="knowledge-base__collection-inline-actions">
+                    <button
+                      className="knowledge-base__button"
+                      disabled={isBusy}
+                      onClick={() => void renameCollection()}
+                      type="button"
+                    >
+                      Umbenennen
+                    </button>
+                    <button
+                      className="knowledge-base__button"
+                      disabled={isBusy}
+                      onClick={cancelCollectionForm}
+                      type="button"
+                    >
+                      Abbrechen
+                    </button>
                   </div>
-                ) : null}
+                </div>
+              ) : null}
 
-                {renamingCollectionId ? (
-                  <div className="knowledge-base__collection-inline-form">
-                    <label>
-                      Neuer Name
-                      <input
-                        disabled={isBusy}
-                        maxLength={100}
-                        minLength={2}
-                        onChange={(event) =>
-                          setRenamedCollectionName(event.target.value)
-                        }
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void renameCollection();
-                          }
-                        }}
-                        required
-                        value={renamedCollectionName}
-                      />
-                    </label>
-                    <div className="knowledge-base__collection-inline-actions">
-                      <button
-                        className="knowledge-base__button"
-                        disabled={isBusy}
-                        onClick={() => void renameCollection()}
-                        type="button"
-                      >
-                        Umbenennen
-                      </button>
-                      <button
-                        className="knowledge-base__button"
-                        disabled={isBusy}
-                        onClick={cancelCollectionForm}
-                        type="button"
-                      >
-                        Abbrechen
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
+              {collectionActionError ? (
+                <p
+                  className="knowledge-base__message knowledge-base__message--error"
+                  role="alert"
+                >
+                  {collectionActionError}
+                </p>
+              ) : null}
+              {collectionActionMessage ? (
+                <p
+                  className="knowledge-base__message knowledge-base__message--success"
+                  role="status"
+                >
+                  {collectionActionMessage}
+                </p>
+              ) : null}
+            </FormCard>
 
-                {collectionActionError ? (
-                  <p
-                    className="knowledge-base__message knowledge-base__message--error"
-                    role="alert"
-                  >
-                    {collectionActionError}
-                  </p>
-                ) : null}
-                {collectionActionMessage ? (
-                  <p
-                    className="knowledge-base__message knowledge-base__message--success"
-                    role="status"
-                  >
-                    {collectionActionMessage}
-                  </p>
-                ) : null}
-              </fieldset>
-
-              <label className="knowledge-base__full-width">
-                Rohinhalt für die KI-Aufbereitung
+            <FormCard collapsed title="Mit KI aus Rohtext erstellen">
+              <FormField label="Rohinhalt für die KI-Aufbereitung">
                 <textarea
                   disabled={isBusy}
                   maxLength={1200}
@@ -4039,8 +4114,7 @@ export function KnowledgeBase({
                   rows={7}
                   value={rawContent}
                 />
-              </label>
-
+              </FormField>
               <div className="knowledge-base__full-width knowledge-base__raw-images">
                 <button
                   className="knowledge-base__button"
@@ -4097,7 +4171,6 @@ export function KnowledgeBase({
                   </ul>
                 ) : null}
               </div>
-
               <div className="knowledge-base__full-width knowledge-base__ai-assist">
                 <div>
                   <strong>Mit KI aufbereiten</strong>
@@ -4118,124 +4191,9 @@ export function KnowledgeBase({
                   {aiPreparing ? "KI bereitet auf …" : "Mit KI aufbereiten"}
                 </button>
               </div>
-
-              <div className="knowledge-base__full-width knowledge-base__image-tools">
-                <button
-                  className="knowledge-base__button"
-                  disabled={isBusy}
-                  onClick={() => imageInputRef.current?.click()}
-                  type="button"
-                >
-                  {imageUploading ? "Bild wird hochgeladen …" : "Bild einfügen"}
-                </button>
-                <input
-                  accept={KNOWLEDGE_IMAGE_TYPES.join(",")}
-                  hidden
-                  multiple
-                  onChange={(event) => {
-                    const files = [...(event.target.files ?? [])];
-                    event.target.value = "";
-                    void uploadImages(files);
-                  }}
-                  ref={imageInputRef}
-                  type="file"
-                />
-                <p className="knowledge-base__hint">
-                  JPG, PNG, WebP oder GIF bis 5 MB; grosse Bilder werden
-                  verkleinert. Bilder können auch in das Textfeld eingefügt oder
-                  hineingezogen werden.
-                </p>
-                {imageError ? (
-                  <p
-                    className="knowledge-base__message knowledge-base__message--error"
-                    role="alert"
-                  >
-                    {imageError}
-                  </p>
-                ) : null}
-              </div>
-
-              <label className="knowledge-base__full-width">
-                Kurzfassung (optional)
-                <textarea
-                  disabled={isBusy}
-                  maxLength={500}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      summary: event.target.value,
-                    }))
-                  }
-                  placeholder="Ein bis zwei Sätze: worum geht es, was bringt es? Erscheint oben als «Kurz gesagt»."
-                  rows={2}
-                  value={draft.summary}
-                />
-              </label>
-
-              <label className="knowledge-base__full-width">
-                Markdown-Inhalt
-                <textarea
-                  aria-busy={imageUploading}
-                  disabled={isBusy}
-                  maxLength={100000}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      bodyMarkdown: event.target.value,
-                    }))
-                  }
-                  onDragOver={(event) => {
-                    if (event.dataTransfer.types.includes("Files"))
-                      event.preventDefault();
-                  }}
-                  onDrop={handleMarkdownDrop}
-                  onPaste={handleMarkdownPaste}
-                  ref={markdownInputRef}
-                  placeholder={
-                    "# Überschrift\n\nBeschreiben Sie hier die Lösung oder den Ablauf in Markdown."
-                  }
-                  rows={12}
-                  value={draft.bodyMarkdown}
-                />
-              </label>
-
-              <aside className="knowledge-base__preview knowledge-base__full-width">
-                <div className="knowledge-base__preview-heading">
-                  <p className="eyebrow">Live-Vorschau</p>
-                  <span>{visibilityLabels[draft.visibility]}</span>
-                </div>
-                <KnowledgeArticleView
-                  body={draft.bodyMarkdown}
-                  imageUrls={imageUrls}
-                  summary={draft.summary}
-                  title={previewTitle}
-                />
-              </aside>
-
-              <div className="knowledge-base__form-actions knowledge-base__full-width">
-                <button
-                  className="primary-button knowledge-base__save"
-                  disabled={isBusy || !collectionAssignmentReady}
-                  type="submit"
-                >
-                  {saving === "save"
-                    ? "Wird gespeichert …"
-                    : editingArticleId
-                      ? "Änderungen speichern"
-                      : "Artikel anlegen"}
-                </button>
-                <button
-                  className="knowledge-base__button"
-                  disabled={isBusy}
-                  onClick={closeEditor}
-                  type="button"
-                >
-                  Abbrechen
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
+            </FormCard>
+          </FormDialog>
+        </section>
       )}
 
       {error ? (
