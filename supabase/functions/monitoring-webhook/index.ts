@@ -552,15 +552,125 @@ async function resolveIncidentIfClear(
   return false;
 }
 
+/**
+ * Records the message as the sensor's latest state. False when a newer
+ * message for the same sensor was already received (PRTG bursts are handled
+ * in parallel, so an older «Fehler» can come after its «OK»).
+ */
+async function recordSensorState(
+  admin: Admin,
+  tenantId: string,
+  key: string,
+  event: PrtgEvent,
+  receivedAt: Date,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc("monitoring_record_sensor_state", {
+    p_tenant_id: tenantId,
+    p_external_key: key,
+    p_kind: event.kind,
+    p_status: event.status,
+    p_received_at: receivedAt.toISOString(),
+  });
+  // Without the record the message is still handled.
+  return error ? true : data !== false;
+}
+
+async function latestSensorKind(admin: Admin, tenantId: string, key: string) {
+  const { data } = await admin
+    .from("monitoring_sensor_states")
+    .select("kind")
+    .eq("tenant_id", tenantId)
+    .eq("external_key", key)
+    .maybeSingle();
+  return typeof data?.kind === "string" ? data.kind : null;
+}
+
+async function resolveAlert(
+  admin: Admin,
+  tenantId: string,
+  alert: Alert,
+  event: PrtgEvent,
+  now: Date,
+) {
+  await admin
+    .from("monitoring_alerts")
+    .update({
+      state: "resolved",
+      resolved_at: now.toISOString(),
+      last_status: event.status.slice(0, 80),
+      last_message: event.message,
+      last_event_at: now.toISOString(),
+      last_comment_at: now.toISOString(),
+      event_count: alert.event_count + 1,
+    })
+    .eq("id", alert.id)
+    .eq("state", "open");
+  for (const serviceId of Object.keys(alertServiceStatuses(alert))) {
+    await restoreServiceStatus(admin, tenantId, serviceId, alert.id);
+  }
+  if (alert.incident_id) {
+    await resolveIncidentIfClear(admin, tenantId, alert.incident_id, event, now);
+  }
+}
+
+/**
+ * After a «Fehler» was handled: an «OK» for the same sensor may have been
+ * handled meanwhile (and found no open alert yet). Then close it now.
+ */
+async function settleAfterDown(
+  admin: Admin,
+  tenantId: string,
+  key: string,
+  incidentId: string,
+  event: PrtgEvent,
+  now: Date,
+) {
+  if ((await latestSensorKind(admin, tenantId, key)) === "up") {
+    const open = await findOpenAlert(admin, tenantId, key);
+    if (open) {
+      await resolveAlert(admin, tenantId, open, {
+        ...event,
+        kind: "up",
+        status: "OK",
+        message: "Die OK-Meldung von PRTG kam vor dem Fehler an.",
+      }, now);
+      return;
+    }
+  }
+  // The alert was resolved before it was linked to the incident.
+  const stillOpen = await admin
+    .from("monitoring_alerts")
+    .select("id")
+    .eq("incident_id", incidentId)
+    .eq("state", "open")
+    .limit(1);
+  if (!stillOpen.error && ((stillOpen.data ?? []) as Row[]).length === 0) {
+    await admin
+      .from("monitoring_incidents")
+      .update({
+        state: "closed",
+        resolved_at: now.toISOString(),
+        closed_at: now.toISOString(),
+        closing_note: "Automatisch abgeschlossen: PRTG meldet wieder OK.",
+      })
+      .eq("id", incidentId)
+      .eq("state", "active");
+  }
+}
+
 export async function processEvent(
   admin: Admin,
   integration: Integration,
   event: PrtgEvent,
+  receivedAt: Date = new Date(),
 ): Promise<string> {
   if (event.kind === "ignore") return "ignored";
   const tenantId = integration.tenant_id;
   const key = externalKey(event);
   const now = new Date();
+  if (!(await recordSensorState(admin, tenantId, key, event, receivedAt))) {
+    return "stale";
+  }
   let alert = await findOpenAlert(admin, tenantId, key);
 
   if (!alert) {
@@ -616,29 +726,13 @@ export async function processEvent(
           service_status_applied: Object.values(statuses)[0] ?? null,
         })
         .eq("id", alertId);
+      await settleAfterDown(admin, tenantId, key, incident.incident.id, event, now);
       return incident.created ? "incident_opened" : "incident_updated";
     }
   }
 
   if (event.kind === "up") {
-    await admin
-      .from("monitoring_alerts")
-      .update({
-        state: "resolved",
-        resolved_at: now.toISOString(),
-        last_status: event.status.slice(0, 80),
-        last_message: event.message,
-        last_event_at: now.toISOString(),
-        last_comment_at: now.toISOString(),
-        event_count: alert.event_count + 1,
-      })
-      .eq("id", alert.id);
-    for (const serviceId of Object.keys(alertServiceStatuses(alert))) {
-      await restoreServiceStatus(admin, tenantId, serviceId, alert.id);
-    }
-    if (alert.incident_id) {
-      await resolveIncidentIfClear(admin, tenantId, alert.incident_id, event, now);
-    }
+    await resolveAlert(admin, tenantId, alert, event, now);
     return "resolved";
   }
 
@@ -708,6 +802,8 @@ function runInBackground(work: Promise<unknown>): boolean {
 const handler = withSupabase(
   { auth: "none", cors: "disabled" },
   async (request, context) => {
+    // Order of arrival decides which message is the newest per sensor.
+    const receivedAt = new Date();
     if (request.method !== "POST" && request.method !== "GET") {
       return new Response(null, {
         status: 405,
@@ -755,7 +851,7 @@ const handler = withSupabase(
       .update({ last_received_at: new Date().toISOString() })
       .eq("id", integration.id);
 
-    const work = processEvent(admin, integration as Integration, event).catch(
+    const work = processEvent(admin, integration as Integration, event, receivedAt).catch(
       (failure) => {
         console.error(
           "monitoring_webhook_failed",
