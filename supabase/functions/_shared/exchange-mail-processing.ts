@@ -1005,6 +1005,40 @@ async function isOtherChannelMailbox(
   return !result.error && Boolean(result.data);
 }
 
+/**
+ * Content type of a Graph file attachment: lower case, without parameters
+ * («application/pdf; name=x.pdf» → «application/pdf»); a generic
+ * «application/octet-stream» falls back to the file extension.
+ */
+export function inboundAttachmentContentType(
+  value: unknown,
+  filename?: unknown,
+): string | null {
+  const raw = asString(value)?.split(";")[0]?.trim().toLowerCase() ?? null;
+  if (raw && raw !== "application/octet-stream") {
+    return raw === "image/jpg" || raw === "image/pjpeg" ? "image/jpeg" : raw;
+  }
+  const name = asString(filename)?.toLowerCase() ?? "";
+  const extension = name.includes(".") ? name.split(".").pop() : "";
+  return (
+    (
+      {
+        pdf: "application/pdf",
+        txt: "text/plain",
+        csv: "text/csv",
+        doc: "application/msword",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        xls: "application/vnd.ms-excel",
+        xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        png: "image/png",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        webp: "image/webp",
+      } as Record<string, string>
+    )[extension ?? ""] ?? raw
+  );
+}
+
 async function readInboundAttachments(
   admin: Admin,
   channel: Channel,
@@ -1029,18 +1063,21 @@ async function readInboundAttachments(
 
   for (const entry of entries) {
     if (entry["@odata.type"] !== "#microsoft.graph.fileAttachment") continue;
-    const contentType = asString(entry.contentType)?.toLowerCase();
+    const contentType = inboundAttachmentContentType(
+      entry.contentType,
+      entry.name,
+    );
     const filename = asString(entry.name);
     const contentBytes = asString(entry.contentBytes);
-    const size = typeof entry.size === "number" ? entry.size : 0;
+    // Graph's «size» is the size of the attachment item including metadata,
+    // not the file itself; only use it to skip oversized items early.
+    const reportedSize = typeof entry.size === "number" ? entry.size : 0;
     if (
       !contentType ||
       !filename ||
       !contentBytes ||
       !ALLOWED_CONTENT_TYPES.has(contentType) ||
-      size < 1 ||
-      size > MAX_INBOUND_ATTACHMENT_BYTES ||
-      total + size > MAX_INBOUND_TOTAL_BYTES ||
+      reportedSize > MAX_INBOUND_ATTACHMENT_BYTES * 2 ||
       filename.length > 255 ||
       /[\u0000-\u001f\u007f/\\]/.test(filename)
     ) {
@@ -1055,7 +1092,14 @@ async function readInboundAttachments(
     } catch {
       continue;
     }
-    if (bytes.byteLength !== size) continue;
+    const size = bytes.byteLength;
+    if (
+      size < 1 ||
+      size > MAX_INBOUND_ATTACHMENT_BYTES ||
+      total + size > MAX_INBOUND_TOTAL_BYTES
+    ) {
+      continue;
+    }
     total += size;
     attachments.push({
       bytes,
