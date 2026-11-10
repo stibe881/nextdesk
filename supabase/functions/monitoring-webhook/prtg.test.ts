@@ -62,6 +62,11 @@ Deno.test("status texts map to kinds", () => {
   assertEquals(classifyStatus("Pausiert (durch Benutzer)"), "ignore");
   assertEquals(classifyStatus("Unbekannt"), "ignore");
   assertEquals(classifyStatus(null), null);
+  // Ended states carry the current state in brackets.
+  assertEquals(classifyStatus("Fehler beendet (jetzt: OK)"), "up");
+  assertEquals(classifyStatus("Fehler beendet (jetzt: Warnung)"), "warning");
+  assertEquals(classifyStatus("Warnung beendet"), "up");
+  assertEquals(classifyStatus("Down ended (now: Up)"), "up");
 });
 
 Deno.test("form, JSON and query payloads are accepted", () => {

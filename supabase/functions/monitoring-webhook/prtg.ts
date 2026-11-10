@@ -131,6 +131,11 @@ export function parseQuery(url: URL): Record<string, string> {
 export function classifyStatus(status: string | null): StatusKind | null {
   if (!status) return null;
   const head = status.trim().toLowerCase();
+  // «Fehler beendet (jetzt: OK)», «Down ended (now: Warning)»: the current
+  // state is in the brackets; an ended state without one means it is OK again.
+  const current = /\((?:jetzt|now)\s*:\s*([^)]+)\)/i.exec(head);
+  if (current) return classifyStatus(current[1]);
+  if (/\b(beendet|ended)\b/.test(head)) return "up";
   if (/^(up|ok|ended|resolved|behoben|in ordnung)\b/.test(head)) return "up";
   if (
     /^(down|error|critical|failed|fehler|ausfall|st[öo]rung|kritisch|teilweiser fehler)/

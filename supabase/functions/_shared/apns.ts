@@ -29,6 +29,7 @@ export type ApnsPayloadKind =
   | "children_done"
   | "kudos"
   | "security_report"
+  | "incident"
   | "summary"
   | "test";
 
@@ -67,6 +68,12 @@ export type ApnsPayloadInput = {
   kudosScore?: number;
   /** Forwarded to a stand-in: name of the absent person. */
   delegatedFromName?: string;
+  /** Incident («Störung») from monitoring. */
+  incidentId?: string;
+  incidentNumber?: string;
+  incidentTitle?: string;
+  incidentReason?: string;
+  incidentSeverity?: string;
   /** Security case: a reporter said they clicked or entered data. */
   securityEvent?: "clicked";
 };
@@ -301,6 +308,21 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
       return {
         title: "Lob von Kund:innen",
         body: `${from} hat ${ticketNumber} sehr gut bewertet${score}. Danke für deinen Einsatz!`,
+      };
+    }
+    case "incident": {
+      const what = input.incidentSeverity === "warning" ? "Warnung" : "Störung";
+      const title = input.incidentReason === "realert"
+        ? `Noch unbestätigt: ${what}`
+        : input.incidentReason === "escalated"
+          ? "Störung: jetzt Ausfall"
+          : input.incidentReason === "reopened"
+            ? `Erneut: ${what}`
+            : what;
+      const name = input.incidentTitle?.trim().slice(0, 120) || "Ein Gerät";
+      return {
+        title,
+        body: input.incidentNumber ? `${input.incidentNumber}: ${name}` : name,
       };
     }
     case "security_report":
@@ -550,6 +572,9 @@ export function buildApnsPayload(
     input.kind !== "inventory_low_stock"
   ) {
     data.ticketId = input.ticketId;
+  }
+  if (input.kind === "incident" && input.incidentId) {
+    data.incidentId = input.incidentId;
   }
   if (input.contractId && input.kind === "contract_deadline") {
     data.contractId = input.contractId;
