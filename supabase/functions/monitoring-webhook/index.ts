@@ -385,7 +385,9 @@ async function incidentForAlert(
     .select(INCIDENT_COLUMNS)
     .eq("tenant_id", tenantId)
     .eq("incident_key", deviceKey)
-    .eq("state", "resolved")
+    // Closed automatically by an «Up» (not by an agent).
+    .eq("state", "closed")
+    .is("closed_by", null)
     .gte("resolved_at", new Date(now.getTime() - REOPEN_WINDOW_MS).toISOString())
     .order("resolved_at", { ascending: false })
     .limit(1)
@@ -397,11 +399,14 @@ async function incidentForAlert(
       .update({
         state: "active",
         resolved_at: null,
+        closed_at: null,
+        closing_note: null,
         severity,
         last_event_at: now.toISOString(),
       })
       .eq("id", incident.id)
-      .eq("state", "resolved")
+      .eq("state", "closed")
+      .is("closed_by", null)
       .select(INCIDENT_COLUMNS)
       .maybeSingle();
     if (reopened.data) {
@@ -528,13 +533,20 @@ async function resolveIncidentIfClear(
   if (open.error || ((open.data ?? []) as Row[]).length > 0) return false;
   const updated = await admin
     .from("monitoring_incidents")
-    .update({ state: "resolved", resolved_at: now.toISOString(), last_event_at: now.toISOString() })
+    // Back to OK: the incident is done, nobody has to confirm or close it.
+    .update({
+      state: "closed",
+      resolved_at: now.toISOString(),
+      closed_at: now.toISOString(),
+      closing_note: "Automatisch abgeschlossen: PRTG meldet wieder OK.",
+      last_event_at: now.toISOString(),
+    })
     .eq("id", incidentId)
     .eq("state", "active")
     .select("id");
   if (((updated.data ?? []) as Row[]).length) {
     await addIncidentEvent(admin, tenantId, incidentId, "resolved", null,
-      "PRTG meldet alle Sensoren wieder OK.");
+      "PRTG meldet alle Sensoren wieder OK. Störung automatisch abgeschlossen.");
     return true;
   }
   return false;

@@ -1027,7 +1027,7 @@ const HANDLERS = {
       title: "FW-01 – HTTPS",
       deviceName: "FW-01",
       severity: "down",
-      state: "resolved",
+      state: "closed",
       acknowledgedAt: D.ago(26 * D.HOUR),
       acknowledgedBy: agent.name,
       assignedAgentId: agent.id,
@@ -1049,15 +1049,13 @@ const HANDLERS = {
     };
     if (body.type === "list") {
       const incidents =
-        body.filter === "resolved" || body.filter === "recent"
+        body.filter === "closed" || body.filter === "recent"
           ? [resolved]
           : body.filter === "unacknowledged" || body.filter === "services"
             ? [root]
             : body.filter === "all"
               ? [root, warning, resolved]
-              : body.filter === "closed"
-                ? []
-                : [root, warning];
+              : [root, warning];
       return ok({ incidents, stats });
     }
     if (body.type === "report") {

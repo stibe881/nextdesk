@@ -224,9 +224,11 @@ bearbeiten die Störung vollständig dort.
   letzten 30 Tage) und _Verfügbarkeit_ der überwachten Geräte. Ein Klick auf
   eine Kachel zeigt darunter die passenden Störungen; **Filter aufheben** führt
   zurück zu den aktiven.
-- **Register**: _Aktiv_, _Behoben, offen_ (PRTG meldet wieder OK, die Störung
-  ist aber noch nicht abgeschlossen), _Abgeschlossen_ und _Alle_. Die Dauer
-  läuft live mit, und die Liste aktualisiert sich alle 30 Sekunden.
+- **Register**: _Aktiv_, _Behoben_ und _Alle_. Die Dauer läuft live mit, und
+  die Liste aktualisiert sich alle 30 Sekunden.
+- **Automatisch erledigt**: Meldet PRTG wieder OK, verschwindet die Störung
+  aus _Aktiv_ und ist automatisch abgeschlossen. Sie muss weder bestätigt noch
+  von Hand abgeschlossen werden, und die Alarmierung hört auf.
 
 ![Liste der Störungen mit Folgestörungen](images/ag-stoerungen.jpg)
 
@@ -245,12 +247,12 @@ Ein Klick öffnet die Störung:
    **Abhängigkeiten** (vorgelagerte Geräte und Folgestörungen) und die
    **betroffenen Dienste**. Der Systemstatus wird automatisch gesetzt und nach
    der Behebung zurückgesetzt.
-5. Meldet PRTG wieder OK, wechselt die Störung auf _Behoben_. Wählen Sie unter
-   **Abschliessen** die **Ursache** (Strom, Netzwerk, Hardware, Software,
-   Wartung, Extern, Unbekannt), optional eine Notiz, und klicken Sie
-   **Störung abschliessen**. Folgestörungen werden mit abgeschlossen. Auch eine
-   noch aktive Störung lässt sich abschliessen, etwa wenn ein «Up» von PRTG
-   verloren ging.
+5. Meldet PRTG wieder OK, schliesst sich die Störung automatisch. Bei Bedarf
+   tragen Sie unter **Ursache nachtragen** die Ursache (Strom, Netzwerk,
+   Hardware, Software, Wartung, Extern, Unbekannt) nach; das ist freiwillig
+   und fliesst in die Auswertung ein. Eine noch aktive Störung schliessen Sie
+   unter **Abschliessen** mit Ursache von Hand ab, etwa wenn ein «Up» von PRTG
+   verloren ging; Folgestörungen werden mit abgeschlossen.
 
 ![Störung mit Verlauf, Gerät und Abhängigkeiten](images/ag-stoerung.jpg)
 
