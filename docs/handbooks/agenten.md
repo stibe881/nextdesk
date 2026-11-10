@@ -1,6 +1,6 @@
 ---
 title: Handbuch für Agenten
-description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Wissensdatenbank und Stellvertretung.
+description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Sicherheitsfälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
 updated: 2026-11-10
 ---
@@ -26,7 +26,7 @@ Die linke Navigation ist gegliedert in:
 - **Übersicht** – Ihre Startseite mit Kennzahlen
 - **Arbeitsplatz** – Team-Queues, Erwähnungen, Stellvertretung, Wiedervorlagen
 - **Teamführung** – nur für Leitungen von Abteilungen
-- **Arbeitsbereich**: Tickets, Shop, Fälle, Sicherheitsfälle
+- **Arbeitsbereich**: Tickets, Shop, Fälle, Sicherheitsfälle, Störungen
 - **Planung und Betrieb**: Raumplanung, Eintritte, Serviceaufgaben
 - **Wissen und Ressourcen**: Wissensdatenbank, Assets, Lager, Verträge, Lizenzen
 - **Dienste und Überwachung**: Dienste, Infrastruktur, Systemstatus
@@ -40,7 +40,8 @@ offenen Tickets, die noch keinem Agenten zugewiesen sind (auch wenn schon ein
 Team gesetzt ist) – dieselbe Zahl wie in der Kachel «Nicht zugewiesene
 Tickets» –, bei
 **Sicherheitsfällen** die offenen Fälle, die noch niemandem zugewiesen
-sind, bei **Raumplanung**, **Shop** und
+sind, bei **Störungen** die aktiven Störungen, die noch niemand bestätigt
+hat, bei **Raumplanung**, **Shop** und
 **Eintritte** die offenen Anfragen. Die Zahlen aktualisieren sich jede Minute.
 
 Das **Systemstatus-Badge** oben in der Navigation und die Seite
@@ -56,7 +57,8 @@ erfassen Sie mit **Rack erfassen** ein Rack (Name, Standort, Höhe in HE,
 Notizen; einen fehlenden Standort legen Sie dort mit **+ Neuer Standort …**
 an) und ändern es über den **Stift** am Rack. Ein neuer Name oder
 Standort gilt auch für die Geräte im Rack; die Höhe muss mindestens bis zum
-obersten Gerät reichen. Leere Racks lassen sich löschen.
+obersten Gerät reichen. Leere Racks lassen sich löschen. Geräte mit einer
+aktiven Störung aus PRTG erscheinen im Rack rot mit blinkender Leuchte.
 
 Oben rechts stehen **+ (Erfassen)**, die **globale Suche** und die
 **Benachrichtigungen**.
@@ -197,6 +199,67 @@ So bearbeiten Sie einen Fall:
 
 Melder bekommen für Phishing-Meldungen keine Eingangsbestätigung, nur eine
 Dankesnachricht und später das Ergebnis.
+
+## Störungen
+
+Meldungen aus PRTG landen nicht in der Ticketliste, sondern unter
+**Störungen** im Arbeitsbereich. Ein Ticket braucht es dafür nicht: Sie
+bearbeiten die Störung vollständig dort.
+
+- **Eine Störung pro Gerät**: Weitere Sensoren desselben Geräts (z. B. Ping
+  und SNMP) hängen an derselben Störung. Kommt das Gerät innerhalb von
+  10 Minuten erneut in Störung, öffnet sich die bisherige Störung wieder.
+- **Folgestörungen**: Fällt ein Gerät aus, das hinter einem bereits gestörten
+  Gerät hängt (Uplink in der Infrastruktur), erscheint es eingerückt als
+  Folgestörung und wird nicht separat alarmiert. Es behebt sich mit der
+  Ursache.
+- **Alarmierung**: Sobald PRTG eine Störung meldet, erhält das in den
+  Monitoring-Einstellungen gewählte Team (ohne Team alle Agenten) sofort eine
+  Push-Mitteilung und eine E-Mail. Solange niemand die Störung bestätigt, wird
+  in dem eingestellten Abstand (Standard 15 Minuten) erneut alarmiert. Wird
+  aus einer Warnung ein Ausfall, kommt ebenfalls ein Alarm. Während einer
+  Wartung im Systemstatus wird die Störung erfasst, aber nicht alarmiert.
+- **Kacheln**: _Aktiv_ (Ausfälle und Warnungen), _Unbestätigt_ (mit der
+  ältesten offenen Zeit), _Betroffene Dienste_, _Behebungszeit_ (Median der
+  letzten 30 Tage) und _Verfügbarkeit_ der überwachten Geräte. Ein Klick auf
+  eine Kachel zeigt darunter die passenden Störungen; **Filter aufheben** führt
+  zurück zu den aktiven.
+- **Register**: _Aktiv_, _Behoben, offen_ (PRTG meldet wieder OK, die Störung
+  ist aber noch nicht abgeschlossen), _Abgeschlossen_ und _Alle_. Die Dauer
+  läuft live mit, und die Liste aktualisiert sich alle 30 Sekunden.
+
+![Liste der Störungen mit Folgestörungen](images/ag-stoerungen.jpg)
+
+Ein Klick öffnet die Störung:
+
+1. **Bestätigen: ich kümmere mich** stoppt die erneute Alarmierung und weist
+   Ihnen die Störung zu, falls noch niemand zuständig ist. Unter
+   **Zuständig** ändern Sie die Person (oder **Mir zuweisen**).
+2. Der **Verlauf** zeigt alle PRTG-Meldungen und was in nextDesk geschah
+   (geöffnet, alarmiert, bestätigt, Notizen). Mit **Notiz zum Verlauf
+   hinzufügen** halten Sie fest, was Sie geprüft oder veranlasst haben.
+3. **Letzte 24 Stunden** zeigt, wann das Gerät gestört war, und warnt, wenn
+   es in dieser Woche mehrfach ausgefallen ist. Darunter stehen die
+   **Sensoren** mit ihrem letzten Stand.
+4. Rechts sehen Sie **Gerät** (Ort, Adresse, PRTG-Objekt), die
+   **Abhängigkeiten** (vorgelagerte Geräte und Folgestörungen) und die
+   **betroffenen Dienste**. Der Systemstatus wird automatisch gesetzt und nach
+   der Behebung zurückgesetzt.
+5. Meldet PRTG wieder OK, wechselt die Störung auf _Behoben_. Wählen Sie unter
+   **Abschliessen** die **Ursache** (Strom, Netzwerk, Hardware, Software,
+   Wartung, Extern, Unbekannt), optional eine Notiz, und klicken Sie
+   **Störung abschliessen**. Folgestörungen werden mit abgeschlossen. Auch eine
+   noch aktive Störung lässt sich abschliessen, etwa wenn ein «Up» von PRTG
+   verloren ging.
+
+![Störung mit Verlauf, Gerät und Abhängigkeiten](images/ag-stoerung.jpg)
+
+Über **Auswertung** sehen Sie für 30 oder 90 Tage die Anzahl Störungen, die
+mittlere Behebungszeit, die Verfügbarkeit, die häufigsten Ursachen und die
+Geräte mit den meisten Störungen.
+
+Die Benachrichtigungen dazu schalten Sie unter _Persönliche Einstellungen →
+Benachrichtigungen → Störungen_ (Push und E-Mail) ein oder aus.
 
 ## Ticketliste
 

@@ -3112,8 +3112,9 @@ export function TenantAdminSettings({
                       Monitoring
                     </h2>
                     <p>
-                      Überwachung per PRTG, Ablaufdaten und Backups. Meldungen
-                      erzeugen Tickets und passen den Systemstatus an.
+                      Überwachung per PRTG, Ablaufdaten und Backups.
+                      PRTG-Meldungen erscheinen als Störungen im Arbeitsbereich
+                      und passen den Systemstatus an.
                     </p>
                   </div>
                 </div>

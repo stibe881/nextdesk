@@ -53,6 +53,29 @@ Deno.test("config needs booleans and a known create-on value", () => {
   assertEquals(parseAction({ type: "drop", tenantId }), null);
 });
 
+Deno.test("incident options default and are validated", () => {
+  const base = {
+    enabled: true,
+    createOn: "down",
+    autoResolve: true,
+    setServiceStatus: true,
+  };
+  const defaults = parseConfig(base);
+  assertEquals(defaults?.realertMinutes, 15);
+  assertEquals(defaults?.groupDependencies, true);
+  assertEquals(defaults?.suppressInMaintenance, true);
+  const custom = parseConfig({
+    ...base,
+    realertMinutes: 0,
+    groupDependencies: false,
+    suppressInMaintenance: false,
+  });
+  assertEquals(custom?.realertMinutes, 0);
+  assertEquals(custom?.groupDependencies, false);
+  assertEquals(parseConfig({ ...base, realertMinutes: 5000 }), null);
+  assertEquals(parseConfig({ ...base, groupDependencies: "ja" }), null);
+});
+
 Deno.test("tokens are url-safe and match the webhook pattern", () => {
   const token = generateToken();
   assert(TOKEN_PATTERN.test(token));

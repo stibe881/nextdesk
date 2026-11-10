@@ -753,6 +753,9 @@ const HANDLERS = {
         autoResolve: true,
         setServiceStatus: true,
         priorityKey: "high",
+        realertMinutes: 15,
+        groupDependencies: true,
+        suppressInMaintenance: true,
         hasToken: true,
         tokenRotatedAt: D.ago(45 * D.DAY),
         lastReceivedAt: D.ago(2 * D.HOUR + 10 * D.MIN),
@@ -954,6 +957,234 @@ const HANDLERS = {
       stats: { inbound24h: 23, outbound24h: 41, failed24h: 0 },
     });
   },
+  incidents: (body) => {
+    const agent = D.AGENTS[1] ?? D.AGENTS[0];
+    const services = [
+      {
+        id: D.uid("29292929", 90),
+        name: "Dateiablage",
+        status: "partial_outage",
+      },
+    ];
+    const summary = (n, extra) => ({
+      id: D.uid("29292929", n),
+      number: `STO-2026-00${40 + n}`,
+      assetId: null,
+      parentId: null,
+      maintenance: false,
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+      assignedAgentId: null,
+      assignedAgentName: null,
+      resolvedAt: null,
+      closedAt: null,
+      cause: null,
+      durationMinutes: 0,
+      services: [],
+      location: "Serverraum UG · Rack A",
+      realertCount: 0,
+      children: [],
+      ...extra,
+    });
+    const root = summary(1, {
+      title: "SW-CORE-01 – Ping",
+      deviceName: "SW-CORE-01",
+      severity: "down",
+      state: "active",
+      openedAt: D.ago(14 * D.MIN),
+      services,
+      children: [
+        summary(2, {
+          title: "SRV-FS01 – Ping",
+          deviceName: "SRV-FS01",
+          severity: "down",
+          state: "active",
+          parentId: D.uid("29292929", 1),
+          openedAt: D.ago(13 * D.MIN),
+        }),
+        summary(3, {
+          title: "AP-OG1-02 – Ping",
+          deviceName: "AP-OG1-02",
+          severity: "down",
+          state: "active",
+          parentId: D.uid("29292929", 1),
+          openedAt: D.ago(13 * D.MIN),
+        }),
+      ],
+    });
+    const warning = summary(4, {
+      title: "USV Serverraum – Temperatur",
+      deviceName: "USV Serverraum",
+      severity: "warning",
+      state: "active",
+      acknowledgedAt: D.ago(40 * D.MIN),
+      acknowledgedBy: agent.name,
+      assignedAgentId: agent.id,
+      assignedAgentName: agent.name,
+      openedAt: D.ago(2 * D.HOUR + 10 * D.MIN),
+    });
+    const resolved = summary(5, {
+      title: "FW-01 – HTTPS",
+      deviceName: "FW-01",
+      severity: "down",
+      state: "resolved",
+      acknowledgedAt: D.ago(26 * D.HOUR),
+      acknowledgedBy: agent.name,
+      assignedAgentId: agent.id,
+      assignedAgentName: agent.name,
+      openedAt: D.ago(26 * D.HOUR),
+      resolvedAt: D.ago(25 * D.HOUR + 20 * D.MIN),
+      durationMinutes: 40,
+    });
+    const stats = {
+      active: 2,
+      activeDown: 1,
+      activeWarning: 1,
+      unacknowledged: 1,
+      oldestUnacknowledgedAt: D.ago(14 * D.MIN),
+      affectedServices: ["Dateiablage"],
+      medianResolveMinutes: 38,
+      availability: 0.9981,
+      monitoredDevices: 42,
+    };
+    if (body.type === "list") {
+      const incidents =
+        body.filter === "resolved" || body.filter === "recent"
+          ? [resolved]
+          : body.filter === "unacknowledged" || body.filter === "services"
+            ? [root]
+            : body.filter === "all"
+              ? [root, warning, resolved]
+              : body.filter === "closed"
+                ? []
+                : [root, warning];
+      return ok({ incidents, stats });
+    }
+    if (body.type === "report") {
+      return ok({
+        days: body.days ?? 30,
+        total: 17,
+        medianResolveMinutes: 38,
+        availability: 0.9981,
+        causes: [
+          { cause: "network", label: "Netzwerk", count: 6 },
+          { cause: "power", label: "Strom", count: 4 },
+          { cause: "hardware", label: "Hardware", count: 3 },
+          {
+            cause: "external",
+            label: "Extern (Provider, Lieferant)",
+            count: 2,
+          },
+          { cause: "unknown", label: "Unbekannt", count: 2 },
+        ],
+        devices: [
+          { name: "SW-CORE-01", count: 4, minutes: 95 },
+          { name: "USV Serverraum", count: 3, minutes: 410 },
+          { name: "FW-01", count: 2, minutes: 52 },
+        ],
+      });
+    }
+    if (body.type !== "get") return null;
+    const at = (minutes) => D.ago(minutes * D.MIN);
+    return ok({
+      ...root,
+      closedBy: null,
+      closingNote: null,
+      parent: null,
+      sensors: [
+        {
+          name: "Ping",
+          status: "Fehler",
+          state: "open",
+          lastEventAt: at(14),
+          message: "Zeitüberschreitung (100 % Paketverlust)",
+        },
+        {
+          name: "SNMP Uptime",
+          status: "Fehler",
+          state: "open",
+          lastEventAt: at(12),
+          message: "Keine Antwort",
+        },
+        {
+          name: "Port 24 (Uplink)",
+          status: "OK",
+          state: "resolved",
+          lastEventAt: at(30),
+          message: "1 Gbit/s",
+        },
+      ],
+      events: [
+        {
+          id: "e1",
+          kind: "prtg",
+          status: "Fehler",
+          sensor: "Ping",
+          message: "Zeitüberschreitung (100 % Paketverlust)",
+          actor: null,
+          at: at(14),
+        },
+        {
+          id: "e2",
+          kind: "opened",
+          status: null,
+          sensor: null,
+          message:
+            "Störung geöffnet, Team ICT Infrastruktur alarmiert (Push und Mail).",
+          actor: null,
+          at: at(14),
+        },
+        {
+          id: "e3",
+          kind: "child",
+          status: null,
+          sensor: null,
+          message: "SRV-FS01 und AP-OG1-02 als Folgestörungen angehängt.",
+          actor: null,
+          at: at(13),
+        },
+        {
+          id: "e4",
+          kind: "prtg",
+          status: "Fehler",
+          sensor: "SNMP Uptime",
+          message: "Keine Antwort",
+          actor: null,
+          at: at(12),
+        },
+        {
+          id: "e5",
+          kind: "realert",
+          status: null,
+          sensor: null,
+          message: "Noch unbestätigt: erneut alarmiert.",
+          actor: null,
+          at: at(0),
+        },
+      ],
+      device: {
+        name: "SW-CORE-01",
+        category: "Switch",
+        manufacturer: "HPE Aruba",
+        model: "6300M",
+        hostname: "sw-core-01.muster.local",
+        ipAddress: "10.10.0.2",
+        prtgObjectId: "2041",
+        location: "Serverraum UG · Rack A · HE 40",
+      },
+      dependencies: {
+        upstream: [{ assetId: "fw", name: "FW-01", failing: false }],
+      },
+      history: {
+        segments: [
+          { start: at(9 * 60), end: at(9 * 60 - 6), severity: "down" },
+          { start: at(14), end: at(0), severity: "down" },
+        ],
+        weekCount: 3,
+      },
+      agents: D.AGENTS.map((entry) => ({ id: entry.id, name: entry.name })),
+    });
+  },
   "security-cases": (body) => {
     const cases = [
       {
@@ -1086,7 +1317,8 @@ const HANDLERS = {
             },
             {
               severity: "medium",
-              message: "DMARC fehlgeschlagen, Antwort-Adresse weicht vom Absender ab.",
+              message:
+                "DMARC fehlgeschlagen, Antwort-Adresse weicht vom Absender ab.",
             },
             {
               severity: "low",
@@ -1101,14 +1333,46 @@ const HANDLERS = {
             },
           ],
           attachments: [
-            { filename: "Voicemail_0924.htm", contentType: "text/html", size: 3174 },
+            {
+              filename: "Voicemail_0924.htm",
+              contentType: "text/html",
+              size: 3174,
+            },
           ],
         },
         reporters: [
-          { name: "Lena Brunner", email: "lena.brunner@muster.ch", channel: "email", reportedAt: D.ago(26 * 60 * 1000), asked: false, answer: null },
-          { name: "Jonas Meier", email: "jonas.meier@muster.ch", channel: "email", reportedAt: D.ago(24 * 60 * 1000), asked: false, answer: null },
-          { name: "Sara Keller", email: "sara.keller@muster.ch", channel: "mobile", reportedAt: D.ago(21 * 60 * 1000), asked: false, answer: null },
-          { name: "Marco Rossi", email: "marco.rossi@muster.ch", channel: "portal", reportedAt: D.ago(18 * 60 * 1000), asked: false, answer: null },
+          {
+            name: "Lena Brunner",
+            email: "lena.brunner@muster.ch",
+            channel: "email",
+            reportedAt: D.ago(26 * 60 * 1000),
+            asked: false,
+            answer: null,
+          },
+          {
+            name: "Jonas Meier",
+            email: "jonas.meier@muster.ch",
+            channel: "email",
+            reportedAt: D.ago(24 * 60 * 1000),
+            asked: false,
+            answer: null,
+          },
+          {
+            name: "Sara Keller",
+            email: "sara.keller@muster.ch",
+            channel: "mobile",
+            reportedAt: D.ago(21 * 60 * 1000),
+            asked: false,
+            answer: null,
+          },
+          {
+            name: "Marco Rossi",
+            email: "marco.rossi@muster.ch",
+            channel: "portal",
+            reportedAt: D.ago(18 * 60 * 1000),
+            asked: false,
+            answer: null,
+          },
         ],
         actions: [],
       });

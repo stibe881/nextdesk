@@ -930,6 +930,29 @@
 .rack-view__device--ups .rack-view__accent {
   fill: var(--chart-4);
 }
+/* Active PRTG incident: red face, red blinking LED. */
+.rack-view__device--failing .rack-view__face {
+  fill: #5a2328;
+  stroke: #ef4444;
+  stroke-width: 1.5;
+}
+.rack-view__device--failing .rack-view__accent,
+.rack-view__device--failing .rack-view__led {
+  fill: #ef4444;
+}
+.rack-view__device--failing .rack-view__led--activity {
+  animation: rack-view-failing 1s steps(2, start) infinite;
+}
+@keyframes rack-view-failing {
+  to {
+    fill: #2a1012;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rack-view__device--failing .rack-view__led--activity {
+    animation: none;
+  }
+}
 .rack-view__link {
   fill: none;
   stroke: var(--chart-label);

@@ -72,6 +72,7 @@ function category(
   | "service_task"
   | "infrastructure"
   | "security_report"
+  | "incident"
   | null {
   if (kind === "ticket.assigned") return "assigned";
   if (kind === "ticket.requester_reply") return "requester_reply";
@@ -104,6 +105,7 @@ function category(
   if (kind.startsWith("shop.order.")) return "shop";
   if (kind.startsWith("service_task.")) return "service_task";
   if (kind === "infrastructure.due") return "infrastructure";
+  if (kind.startsWith("monitoring.")) return "incident";
   if (kind.startsWith("ticket.watch.")) return "mention";
   return kind.startsWith("ticket.sla.") ? "sla" : null;
 }
@@ -260,9 +262,11 @@ export async function ticketNotificationRecipientAuthorized(
   if (!row.ticket_id) {
     if (
       row.kind.startsWith("shop.order.") ||
-      row.kind.startsWith("service_task.")
+      row.kind.startsWith("service_task.") ||
+      row.kind.startsWith("monitoring.")
     ) {
-      // Shop and service task notifications go only to active members.
+      // Shop, service task and incident notifications go only to active
+      // members (incident recipients were chosen when the alert was raised).
       const { data: membership } = await admin
         .from("tenant_memberships")
         .select("user_id")
@@ -442,6 +446,27 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
         : {}),
     };
   }
+  // Incident («Störung»): number, title and why the alert was sent.
+  let incident: Record<string, string> = {};
+  if (row.kind.startsWith("monitoring.") && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const payload = notification?.payload ?? {};
+    for (
+      const [from, to] of [
+        ["number", "incidentNumber"],
+        ["title", "incidentTitle"],
+        ["reason", "incidentReason"],
+        ["severity", "incidentSeverity"],
+        ["incidentId", "incidentId"],
+      ]
+    ) {
+      if (typeof payload[from] === "string") incident[to] = payload[from];
+    }
+  }
   // Security case: a reporter said they clicked (own wording, no address).
   let securityEvent: { securityEvent?: "clicked" } = {};
   if (row.kind === "ticket.security_report" && row.notification_id) {
@@ -499,6 +524,7 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     ...vendorReminder,
     ...kudos,
     ...securityEvent,
+    ...incident,
     ...delegated,
     kind: payloadKind(row.kind, preferenceCategory),
     tenantId: row.tenant_id,

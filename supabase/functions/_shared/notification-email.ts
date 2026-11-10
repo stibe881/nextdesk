@@ -169,6 +169,26 @@ export function notificationEmailText(
     const due = day(payload.dueOn);
     title = `Infrastruktur: ${device}`;
     lines = [`${what} von ${device} ist fällig${due ? ` (${due})` : ""}.`];
+  } else if (kind.startsWith("monitoring.")) {
+    const number = text(payload.number, 40);
+    const name = text(payload.title, 200) ?? "Ein Gerät";
+    const warning = payload.severity === "warning";
+    const what = warning ? "Warnung" : "Störung";
+    title =
+      payload.reason === "realert"
+        ? `Noch unbestätigt: ${what}`
+        : payload.reason === "escalated"
+          ? "Störung: jetzt Ausfall"
+          : payload.reason === "reopened"
+            ? `Erneut: ${what}`
+            : what;
+    if (number) title = `${title} ${number}`;
+    lines = [
+      `${warning ? "PRTG meldet eine Warnung" : "PRTG meldet einen Ausfall"}: ${name}.`,
+      payload.reason === "realert"
+        ? "Die Störung ist noch von niemandem bestätigt. Bitte unter «Störungen» bestätigen."
+        : "Details und Bestätigen unter «Störungen».",
+    ];
   } else if (kind.startsWith("ticket.sla.")) {
     title = "SLA-Hinweis";
     lines = ["Eine SLA-Frist eines Tickets ist betroffen."];

@@ -25,6 +25,7 @@ const ALL_CATEGORIES = [
   "shop",
   "infrastructure",
   "security_report",
+  "incident",
 ] as const;
 const AGENT_CATEGORIES = [
   "assigned",
@@ -35,6 +36,7 @@ const AGENT_CATEGORIES = [
   "approval",
   "follow_up",
   "security_report",
+  "incident",
 ] as const;
 const REQUESTER_CATEGORIES = [
   "support_reply",
@@ -54,6 +56,7 @@ type Environment = "production" | "development";
 const MODE_ONLY_CATEGORIES: readonly Category[] = [
   "infrastructure",
   "security_report",
+  "incident",
 ];
 // Phishing reports are opt-in: off unless the person switched them on.
 const OPT_IN_MODE_CATEGORIES: readonly Category[] = ["security_report"];
