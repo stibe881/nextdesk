@@ -1,5 +1,9 @@
 import { withSupabase } from "@supabase/server";
 import {
+  SLA_REASON_REQUIRED_MESSAGE,
+  ticketIdsWithOpenSlaBreach,
+} from "../_shared/sla-breach-gate.ts";
+import {
   loadDepartmentScope,
   scopeDepartmentOptions,
 } from "../_shared/department-scope.ts";
@@ -3241,9 +3245,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       // Same rules as the database trigger (0195), with clear error codes.
       const { data: currentStatus } = await context.supabaseAdmin
         .from("ticket_statuses")
-        .select("key")
+        .select("key, is_closed")
         .eq("id", ticket.status_id)
         .maybeSingle();
+      const currentIsClosed = currentStatus?.is_closed === true;
       if (status.key === "new" && currentStatus?.key !== "new")
         return response(
           request,
@@ -3282,6 +3287,31 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           { error: { code: "ticket_assignee_required" } },
           422,
         );
+      if (status.is_closed && !currentIsClosed) {
+        // A breached SLA target needs its cause before resolving or closing.
+        const openBreaches = await ticketIdsWithOpenSlaBreach(
+          context.supabaseAdmin,
+          ticket.tenant_id,
+          [ticket.id],
+        );
+        if (openBreaches === null)
+          return response(
+            request,
+            { error: { code: "sla_breach_lookup_failed" } },
+            503,
+          );
+        if (openBreaches.length > 0)
+          return response(
+            request,
+            {
+              error: {
+                code: "sla_breach_reason_required",
+                message: SLA_REASON_REQUIRED_MESSAGE,
+              },
+            },
+            422,
+          );
+      }
       if (status.is_closed) {
         if (action.confirmClose !== true)
           return response(

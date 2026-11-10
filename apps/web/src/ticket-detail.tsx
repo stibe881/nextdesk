@@ -3910,6 +3910,10 @@ export function TicketDetail({
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [statusKey, setStatusKey] = useState("");
   const resolveAfterCommentRef = useRef(false);
+  // Breaches without a reason while the close confirmation is open.
+  const [closeSlaOpenCount, setCloseSlaOpenCount] = useState<number | null>(
+    null,
+  );
   const [pendingCloseConfirmation, setPendingCloseConfirmation] =
     useState<PendingCloseConfirmation | null>(null);
   const [solutionPromptOpen, setSolutionPromptOpen] = useState(false);
@@ -7820,6 +7824,7 @@ export function TicketDetail({
                   {!requesterView && (
                     <TicketSlaBreachReason
                       tenantId={tenantId}
+                      onOpenCountChange={setCloseSlaOpenCount}
                       ticketId={ticketId}
                       variant="closing"
                     />
@@ -7827,8 +7832,13 @@ export function TicketDetail({
                   <div className="ticket-detail-actions">
                     <button
                       className="primary-button"
-                      disabled={busy}
+                      disabled={busy || (closeSlaOpenCount ?? 0) > 0}
                       onClick={() => void confirmTicketClose()}
+                      title={
+                        closeSlaOpenCount
+                          ? "Erst möglich, wenn die Ursache der SLA-Verletzung erfasst ist."
+                          : undefined
+                      }
                       type="button"
                     >
                       Abschluss bestätigen

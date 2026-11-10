@@ -1,3 +1,4 @@
+import { ticketIdsWithOpenSlaBreach } from "../_shared/sla-breach-gate.ts";
 import { withSupabase } from "@supabase/server";
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
@@ -589,6 +590,40 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             : cleanupPending,
       },
     });
+  }
+
+  // Resolving or closing needs the cause of every SLA breach first.
+  const { data: targetStatus } = await context.supabaseAdmin
+    .from("ticket_statuses")
+    .select("is_closed")
+    .eq("tenant_id", action.tenantId)
+    .eq("key", action.statusKey)
+    .maybeSingle();
+  if (targetStatus?.is_closed === true) {
+    const openBreaches = await ticketIdsWithOpenSlaBreach(
+      context.supabaseAdmin,
+      action.tenantId,
+      action.ticketIds,
+    );
+    if (openBreaches === null) {
+      return response(
+        request,
+        { error: { code: "sla_breach_lookup_failed" } },
+        503,
+      );
+    }
+    if (openBreaches.length > 0) {
+      return response(
+        request,
+        {
+          error: {
+            code: "sla_breach_reason_required",
+            message: `${openBreaches.length === 1 ? "Bei einem Ticket fehlt" : `Bei ${openBreaches.length} Tickets fehlt`} die Ursache der SLA-Verletzung. Bitte zuerst im Ticket erfassen.`,
+          },
+        },
+        422,
+      );
+    }
   }
 
   const { data, error } = await context.supabaseAdmin.rpc(
