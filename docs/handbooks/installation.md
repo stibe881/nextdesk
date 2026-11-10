@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-09
+updated: 2026-11-10
 ---
 
 # Installationsanleitung
@@ -212,10 +212,19 @@ etwas gelöscht.
 
 ### PRTG-Monitoring
 
+PRTG-Meldungen erzeugen keine Tickets, sondern **Störungen** im
+Arbeitsbereich (siehe _Handbuch für Agenten_). Das gewählte Team wird sofort
+per Push und E-Mail alarmiert.
+
 1. **[Admin]** **Einstellungen → Monitoring → Monitoring (PRTG)**: Verarbeitung
-   aktivieren, Abteilung/Team, «Ticket erstellen bei» (Down bzw. Down und
-   Warning) und Priorität wählen, **Token erzeugen**. Die Webhook-Adresse wird
-   **nur einmal** angezeigt – sofort kopieren.
+   aktivieren, **Team für die Alarmierung** (ohne Team alle Agenten),
+   «Störung öffnen bei» (Down bzw. Down und Warning) und **Erneut alarmieren,
+   solange unbestätigt** (Standard alle 15 Minuten, oder _Nie_) wählen,
+   **Token erzeugen**. Die Webhook-Adresse wird **nur einmal** angezeigt –
+   sofort kopieren. **Folgestörungen bündeln** fasst Geräte hinter einem
+   gestörten Gerät (Uplink in der Infrastruktur) zusammen; **Während einer
+   Wartung … nicht alarmieren** unterdrückt Alarme, solange ein betroffener
+   Dienst im Systemstatus auf Wartung steht.
 2. In PRTG unter _Setup → Kontoeinstellungen → Benachrichtigungsvorlagen_
    eine Vorlage **HTTP-Aktion ausführen** mit Methode **POST** anlegen.
    Postdaten:
@@ -228,7 +237,7 @@ etwas gelöscht.
    bei Bedarf _Warnung_ und **zwingend** die Zeile «nicht mehr im Status …»
    (Up) mit derselben Vorlage. Ohne den Up-Trigger erfährt nextDesk nie, dass
    die Störung vorbei ist, und der Dienst bleibt im Systemstatus gestört. Bei
-   _Up_ kann nextDesk das Ticket automatisch lösen. nextDesk versteht die
+   _Up_ wird die Störung als behoben markiert. nextDesk versteht die
    Statuswörter deutsch (Fehler, Warnung, OK, Pausiert) und englisch (Down,
    Warning, Up, Paused).
 4. **Geräte und Dienste verknüpfen** (nur damit ändert sich der Systemstatus):
@@ -249,9 +258,12 @@ etwas gelöscht.
    erreichbar).
 6. Geht ein «Up» verloren, bleibt ein Alarm offen. Im Register **Monitoring**
    beenden Sie ihn unter **Alarme aus PRTG → Alarm beenden**; dabei werden die
-   gestörten Dienste zurückgesetzt.
+   gestörten Dienste zurückgesetzt. Alternativ schliessen Agenten die Störung
+   unter **Störungen** ab.
+7. Damit Folgestörungen erkannt werden, beim Gerät in der Infrastruktur den
+   **Uplink** (vorgelagertes Gerät) eintragen.
 
-![Monitoring (PRTG) mit Token und Ticketregeln](images/in-monitoring.jpg)
+![Monitoring (PRTG) mit Token und Alarmierung](images/in-monitoring.jpg)
 
 ### Zertifikate, Domains und Backups
 
@@ -278,7 +290,7 @@ erwartetem Intervall und Toleranz).
 | Person landet im falschen bzw. keinem Mandanten | Domain unter «Zugelassene E-Mail-Domains» prüfen; eine Domain gehört nur zu einem Mandanten  |
 | Postfach lässt sich nicht prüfen                | Vollzugriff und «Senden als» für das Connector-Konto prüfen, danach erneut **Prüfen**        |
 | Keine Tickets aus E-Mails                       | Postfach aktiv? Bis zu 5 Minuten warten; Status im Bereich E-Mail-Kanäle prüfen              |
-| PRTG-Alarme erzeugen keine Tickets              | Token neu erzeugen, Postdaten und Methode POST prüfen, ggf. `prtg-relay.php` verwenden       |
+| PRTG-Alarme erscheinen nicht unter Störungen    | Token neu erzeugen, Postdaten und Methode POST prüfen, ggf. `prtg-relay.php` verwenden       |
 | PRTG meldet «403 Forbidden» beim Zustellen      | Firewall/Webfilter des PRTG-Servers blockiert die Domain; Freigabe oder Weiterleitung nutzen |
 | Dienst bleibt auf «Teilweiser Ausfall»          | Fehlt der Up-Trigger oder kam das Up nicht an? Alarm im Register Monitoring beenden          |
 | Agent sieht keine Tickets                       | Rolle und Ticketzugriffsbereich unter **Personen** bzw. **Rollen** prüfen                    |

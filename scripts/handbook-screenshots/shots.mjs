@@ -180,6 +180,27 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-stoerungen",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Störungen");
+      await h.waitText("SW-CORE-01 – Ping");
+      await h.settle(300);
+    },
+  },
+  {
+    name: "ag-stoerung",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Störungen");
+      await h.clickText("SW-CORE-01 – Ping");
+      await h.waitText("Letzte 24 Stunden");
+      await h.settle(300);
+    },
+  },
+  {
     name: "ag-personensuche",
     persona: "agent",
     async run(h) {

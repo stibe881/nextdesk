@@ -201,8 +201,11 @@ Lösung) gelten zusätzlich: Eine E-Mail wird nur gesendet, wenn beide aktiv sin
 
 Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
 
-- **Monitoring (PRTG)** – Tickets aus PRTG-Alarmen. Sie wählen Abteilung,
-  **Team**, Priorität und ob auch Warnungen Tickets erzeugen. Ist die Option
+- **Monitoring (PRTG)** – Störungen aus PRTG-Alarmen (ohne Tickets, im
+  Arbeitsbereich **Störungen**). Sie wählen das **Team für die Alarmierung**,
+  ob auch Warnungen eine Störung öffnen, wie oft unbestätigte Störungen erneut
+  alarmieren, ob Folgestörungen gebündelt werden und ob während einer Wartung
+  alarmiert wird. Ist die Option
   «Systemstatus des verknüpften Dienstes anpassen» aktiv, ändern Alarme den
   Status der Dienste, die am Gerät in der Infrastruktur hinterlegt sind (ein
   Gerät kann mehrere Dienste haben). Unter **Alarme aus PRTG** beenden Sie
