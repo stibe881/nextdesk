@@ -54,6 +54,8 @@ export type InventoryItemSummary = {
   departmentId: string | null;
   hasPrimaryImage: boolean;
   id: string;
+  /** Handed out and returned; the shop offers it as a loan article. */
+  loanItem?: boolean;
   locationName: string | null;
   minQuantity: number;
   name: string;
@@ -225,6 +227,7 @@ type InventoryAction =
         trackingMode: "quantity";
         minimumStock: number;
         targetStock: number;
+        loanItem?: boolean;
         departmentId?: string;
       };
       clientRequestId: string;
@@ -249,6 +252,7 @@ type InventoryAction =
         unit?: string;
         minimumStock?: number;
         targetStock?: number;
+        loanItem?: boolean;
       };
       clientRequestId: string;
     }
@@ -376,9 +380,12 @@ function parseItem(value: unknown): InventoryItemSummary | null {
       "targetQuantity",
       "locationName",
       "active",
+      "loanItem",
       "departmentId",
     ])
   )
+    return null;
+  if (value.loanItem !== undefined && typeof value.loanItem !== "boolean")
     return null;
   if (
     value.departmentId !== undefined &&
@@ -416,6 +423,7 @@ function parseItem(value: unknown): InventoryItemSummary | null {
       typeof value.departmentId === "string" ? value.departmentId : null,
     hasPrimaryImage: value.hasPrimaryImage,
     id: value.id,
+    loanItem: value.loanItem === true,
     locationName: nullableText(value.locationName),
     minQuantity,
     name: value.name,
@@ -1652,7 +1660,9 @@ function InventoryItems({
                       {item.articleNumber ?? "Ohne Artikelnummer"} ·{" "}
                       {item.trackingMode === "serial"
                         ? "Serienführung"
-                        : "Mengenartikel"}
+                        : item.loanItem
+                          ? "Ausleihartikel"
+                          : "Mengenartikel"}
                     </small>
                     {canManage ? (
                       <InventoryItemEditor
@@ -2933,6 +2943,7 @@ function InventoryItemEditor({
   const [unit, setUnit] = useState(item.unit);
   const [minimumStock, setMinimumStock] = useState(String(item.minQuantity));
   const [targetStock, setTargetStock] = useState(String(item.targetQuantity));
+  const [loanItem, setLoanItem] = useState(item.loanItem === true);
   const clientRequest = useClientRequestId(tenantId, `item-edit-${item.id}`);
 
   function reset() {
@@ -2942,6 +2953,7 @@ function InventoryItemEditor({
     setUnit(item.unit);
     setMinimumStock(String(item.minQuantity));
     setTargetStock(String(item.targetQuantity));
+    setLoanItem(item.loanItem === true);
     setError("");
   }
 
@@ -2972,6 +2984,7 @@ function InventoryItemEditor({
       unit?: string;
       minimumStock?: number;
       targetStock?: number;
+      loanItem?: boolean;
     } = {};
     if (articleNumber.trim() && articleNumber.trim() !== item.articleNumber)
       values.articleNumber = articleNumber.trim();
@@ -2980,6 +2993,7 @@ function InventoryItemEditor({
     if (unit.trim() !== item.unit) values.unit = unit.trim();
     if (minimum !== item.minQuantity) values.minimumStock = minimum;
     if (target !== item.targetQuantity) values.targetStock = target;
+    if (loanItem !== (item.loanItem === true)) values.loanItem = loanItem;
     if (Object.keys(values).length === 0) {
       setOpen(false);
       return;
@@ -3079,6 +3093,14 @@ function InventoryItemEditor({
           type="number"
           value={targetStock}
         />
+      </label>
+      <label className="inventory__checkbox">
+        <input
+          checked={loanItem}
+          onChange={(event) => setLoanItem(event.target.checked)}
+          type="checkbox"
+        />
+        <span>Ausleihartikel</span>
       </label>
       {error ? (
         <small className="inventory__item-image-error" role="alert">
@@ -3185,6 +3207,7 @@ function InventoryItemCreateForm({
   const [unit, setUnit] = useState("stk");
   const [minimumStock, setMinimumStock] = useState("0");
   const [targetStock, setTargetStock] = useState("0");
+  const [loanItem, setLoanItem] = useState(false);
   const [saving, setSaving] = useState(false);
   // Optional picture, uploaded right after the article exists.
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -3252,6 +3275,7 @@ function InventoryItemCreateForm({
           trackingMode: "quantity",
           minimumStock: minimumStockNumber,
           targetStock: targetStockNumber,
+          ...(loanItem ? { loanItem: true } : {}),
           ...(chooseDepartment && departmentId ? { departmentId } : {}),
         },
         clientRequestId: clientRequest.requestId(),
@@ -3281,6 +3305,7 @@ function InventoryItemCreateForm({
       setUnit("stk");
       setMinimumStock("0");
       setTargetStock("0");
+      setLoanItem(false);
       setDepartmentId("");
     }
   };
@@ -3366,6 +3391,20 @@ function InventoryItemCreateForm({
             type="number"
             value={targetStock}
           />
+        </label>
+        <label className="inventory__checkbox">
+          <input
+            checked={loanItem}
+            onChange={(event) => setLoanItem(event.target.checked)}
+            type="checkbox"
+          />
+          <span>
+            Ausleihartikel
+            <small>
+              Wird ausgeliehen und zurückgegeben. Im Shop erscheint er zum
+              Ausleihen statt zum Bestellen.
+            </small>
+          </span>
         </label>
         <label>
           Bild (optional)

@@ -478,6 +478,19 @@ Einleitung, Abschnitte, Schritte, Hinweise). KI-Entwürfe aus Tickets erscheinen
 
 ![Wissensdatenbank aus Sicht der Agenten](images/ag-wissen.jpg)
 
+## Lager: Artikel erfassen und ausleihen
+
+Unter **Lager → Artikel** erfassen Sie Artikel mit Artikelnummer, Bezeichnung,
+Kategorie, Einheit, Mindest- und Zielbestand und einem optionalen **Bild**. Mit
+**Bearbeiten** ändern Sie die Angaben später.
+
+Setzen Sie **Ausleihartikel**, wenn der Artikel ausgeliehen und zurückgegeben
+wird (z. B. Presenter oder Adapter). Mit **Im Shop anbieten** erscheint er dann
+im Shop **zum Ausleihen** (mit Zeitraum) statt zum Bestellen; Ausgabe und
+Rückgabe buchen den Lagerbestand. Ist der Artikel schon im Shop, ändert das
+Häkchen dort nichts: Art und Ausleihdauer stellen Sie im Shop unter **Artikel
+verwalten** ein.
+
 ## Shop: Artikel nur für Kaderstufen
 
 Im Shop legen Sie beim **Artikel hinzufügen** bzw. **Bearbeiten** unter

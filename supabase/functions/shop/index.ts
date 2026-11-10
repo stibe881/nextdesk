@@ -2183,7 +2183,9 @@ async function offerInventoryItem(
 ): Promise<{ id: string; created: boolean }> {
   const { data: stock, error } = await admin
     .from("inventory_items")
-    .select("id, name, article_number, category, tracking_mode, department_id")
+    .select(
+      "id, name, article_number, category, tracking_mode, department_id, loan_item",
+    )
     .eq("tenant_id", tenantId)
     .eq("id", inventoryItemId)
     .maybeSingle();
@@ -2215,6 +2217,7 @@ async function offerInventoryItem(
       ? stockCategory
       : "Allgemein",
   );
+  const isLoan = row.tracking_mode === "serial" || row.loan_item === true;
   const name = String(row.name).slice(0, 160).trim();
   // The shop article takes the department of the stock article; without one,
   // the manager's only department (several: for all departments).
@@ -2232,8 +2235,9 @@ async function offerInventoryItem(
       category_id: category.id,
       category_ids: [category.id],
       article_number: row.article_number,
-      kind: row.tracking_mode === "serial" ? "loan" : "order",
-      max_loan_days: row.tracking_mode === "serial" ? 30 : null,
+      // Serial-tracked and loan articles are lent out, everything else is ordered.
+      kind: isLoan ? "loan" : "order",
+      max_loan_days: isLoan ? 30 : null,
       inventory_item_id: inventoryItemId,
       department_id: departmentId,
       created_by: actorId,
