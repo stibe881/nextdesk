@@ -418,7 +418,8 @@ export function sanitizeTemplateFields(
     const single = field.multiline
       ? cleaned
       : cleaned.replace(/\s*\n\s*/g, " ");
-    if (single !== field.default.trim()) result[field.key] = single;
+    // Leer oder gleich dem Standard: nichts speichern, es gilt der Standard.
+    if (single && single !== field.default.trim()) result[field.key] = single;
   }
   return result;
 }

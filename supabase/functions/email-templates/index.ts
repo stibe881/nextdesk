@@ -1,4 +1,6 @@
 import { withSupabase } from "@supabase/server";
+import { renderTemplatePreview } from "../_shared/email-template-preview.ts";
+import { normalizeCustomerTicketEmailBranding } from "../_shared/customer-ticket-email-template.ts";
 import {
   EMAIL_TEMPLATES,
   emailTemplateDefinition,
@@ -18,7 +20,13 @@ type Action =
       enabled: boolean;
       fields: Record<string, string>;
     }
-  | { action: "reset"; tenantId: string; templateKey: string };
+  | { action: "reset"; tenantId: string; templateKey: string }
+  | {
+      action: "preview";
+      tenantId: string;
+      templateKey: string;
+      fields: Record<string, string>;
+    };
 
 class HttpError extends Error {
   constructor(
@@ -58,6 +66,16 @@ function parseAction(value: unknown): Action | null {
     emailTemplateDefinition(value.templateKey)
   )
     return { action: "reset", tenantId, templateKey: value.templateKey };
+  if (
+    value.action === "preview" &&
+    onlyKeys(value, ["action", "tenantId", "templateKey", "fields"]) &&
+    typeof value.templateKey === "string"
+  ) {
+    const fields = sanitizeTemplateFields(value.templateKey, value.fields);
+    return fields
+      ? { action: "preview", tenantId, templateKey: value.templateKey, fields }
+      : null;
+  }
   if (
     value.action === "save" &&
     onlyKeys(value, [
@@ -179,6 +197,61 @@ async function list(request: Request, admin: Admin, tenantId: string) {
   });
 }
 
+async function preview(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { action: "preview" }>,
+) {
+  const [branding, settings, tenant, frame] = await Promise.all([
+    admin
+      .from("tenant_branding")
+      .select("logo_path, primary_color, secondary_color, accent_color")
+      .eq("tenant_id", action.tenantId)
+      .maybeSingle(),
+    admin
+      .from("tenant_settings")
+      .select("portal_name")
+      .eq("tenant_id", action.tenantId)
+      .maybeSingle(),
+    admin
+      .from("tenants")
+      .select("name")
+      .eq("id", action.tenantId)
+      .maybeSingle(),
+    admin
+      .from("tenant_email_templates")
+      .select("fields")
+      .eq("tenant_id", action.tenantId)
+      .eq("template_key", "security_notice")
+      .maybeSingle(),
+  ]);
+  const str = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : undefined;
+  const portalName =
+    str(settings.data?.portal_name) ?? str(tenant.data?.name) ?? "nextDesk";
+  const frameFields: Record<string, string> = {};
+  if (isRecord(frame.data?.fields)) {
+    for (const [name, value] of Object.entries(frame.data.fields)) {
+      if (typeof value === "string") frameFields[name] = value;
+    }
+  }
+  const result = renderTemplatePreview({
+    key: action.templateKey,
+    fields: action.fields,
+    frameFields,
+    portalName,
+    branding: normalizeCustomerTicketEmailBranding({
+      accentColor: str(branding.data?.accent_color),
+      displayName: portalName,
+      logoUrl: str(branding.data?.logo_path),
+      primaryColor: str(branding.data?.primary_color),
+      secondaryColor: str(branding.data?.secondary_color),
+    }),
+  });
+  if (!result) throw new HttpError(400, "invalid_request");
+  return reply(request, { data: result });
+}
+
 const handler = withSupabase(
   { auth: "user", cors: "disabled", errors: { detailed: false } },
   async (request, context) => {
@@ -188,6 +261,8 @@ const handler = withSupabase(
     if (!action) throw new HttpError(400, "invalid_request");
     const admin = context.supabaseAdmin;
     await requireTenantAdmin(admin, action.tenantId, actorId);
+    if (action.action === "preview")
+      return await preview(request, admin, action);
     if (action.action === "save") {
       const result = await admin.from("tenant_email_templates").upsert(
         {
