@@ -1,4 +1,6 @@
+import { assertEquals } from "jsr:@std/assert@1";
 import {
+  inboundAttachmentContentType,
   customerTicketEmailKindForOutbound,
   supportsInlineCustomerEmailLogo,
   tenantBrandingStoragePath,
@@ -135,3 +137,17 @@ Deno.test(
     }
   },
 );
+
+Deno.test("Anhang-Dateityp: ohne Parameter, Fallback über die Endung", () => {
+  assertEquals(
+    inboundAttachmentContentType("application/pdf; name=rechnung.pdf"),
+    "application/pdf",
+  );
+  assertEquals(inboundAttachmentContentType("IMAGE/JPG"), "image/jpeg");
+  assertEquals(
+    inboundAttachmentContentType("application/octet-stream", "Offerte.XLSX"),
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  assertEquals(inboundAttachmentContentType(null, "notiz.txt"), "text/plain");
+  assertEquals(inboundAttachmentContentType(null, "ohne-endung"), null);
+});
