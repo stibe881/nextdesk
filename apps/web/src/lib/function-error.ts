@@ -58,6 +58,8 @@ export async function functionErrorMessage(
       return "Ein Ticket kann nicht auf «Neu» zurückgesetzt werden.";
     case "ticket_assignee_required":
       return "Der Status «Neu» kann erst geändert werden, wenn das Ticket einer Person zugewiesen ist.";
+    case "sla_breach_reason_required":
+      return "Bitte zuerst die Ursache der SLA-Verletzung im Ticket erfassen. Danach lässt sich das Ticket lösen oder schliessen.";
     case "ticket_children_open":
       return "Das Ticket kann erst gelöst oder geschlossen werden, wenn alle Teil-Tickets gelöst oder geschlossen sind.";
     case "ticket_required_fields_missing": {

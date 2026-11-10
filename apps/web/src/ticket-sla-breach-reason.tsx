@@ -54,11 +54,14 @@ export function TicketSlaBreachReason({
   ticketId,
   variant = "prompt",
   refreshKey,
+  onOpenCountChange,
 }: {
   tenantId: string;
   ticketId: string;
   variant?: "prompt" | "closing";
   refreshKey?: string | number;
+  /** Number of breaches without a reason (null while unknown). */
+  onOpenCountChange?: (count: number | null) => void;
 }) {
   const [result, setResult] = useState<ListResult | null>(null);
   const [code, setCode] = useState<SlaBreachReasonCode | "">("");
@@ -85,6 +88,16 @@ export function TicketSlaBreachReason({
     setError("");
     void load();
   }, [load, refreshKey]);
+
+  const openCount =
+    result === null
+      ? null
+      : result.canRecord
+        ? breachesWithoutReason(result.breaches).length
+        : 0;
+  useEffect(() => {
+    onOpenCountChange?.(openCount);
+  }, [onOpenCountChange, openCount]);
 
   if (!result?.canRecord || result.breaches.length === 0) return null;
   const open = breachesWithoutReason(result.breaches);
@@ -154,7 +167,7 @@ export function TicketSlaBreachReason({
         <div>
           <strong id={`${fieldId}-title`}>
             {variant === "closing"
-              ? "Ursache der SLA-Verletzung (optional)"
+              ? "Ursache der SLA-Verletzung (erforderlich)"
               : `SLA verletzt: ${describeBreachKinds(open)}`}
           </strong>
           <p>

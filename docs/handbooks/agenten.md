@@ -349,7 +349,10 @@ verwalten** hat, erfasst sie in den Mandanteneinstellungen unter
 SLA-Automatisierung (siehe Administrationshandbuch); sonst wenden Sie sich an
 die Mandantenadministration.
 
-Wird eine SLA verletzt, erfassen Sie die **Ursache der SLA-Verletzung**.
+Wird eine SLA verletzt, erfassen Sie die **Ursache der SLA-Verletzung**. Das
+ist Pflicht: Ein Ticket mit verletzter SLA lässt sich erst **lösen oder
+schliessen**, wenn die Ursache erfasst ist (auch bei der Sammelaktion). Beim
+Abschluss kann sie direkt im Bestätigungsfeld eingetragen werden.
 
 ### Bewertung der anfragenden Person
 
