@@ -2233,6 +2233,14 @@ function formatDateTime(timestamp: string): string {
   }).format(value);
 }
 
+const ATTACHMENT_STRIP_LIMIT = 4;
+
+function attachmentExtension(filename: string): string {
+  const dot = filename.lastIndexOf(".");
+  const extension = dot > 0 ? filename.slice(dot + 1) : "";
+  return (extension || "DATEI").slice(0, 4).toUpperCase();
+}
+
 function formatFileSize(byteSize: number): string {
   if (byteSize < 1024) return `${byteSize} B`;
   const units = ["KiB", "MiB", "GiB"];
@@ -3991,8 +3999,8 @@ export function TicketDetail({
   const [inlineImagesLoading, setInlineImagesLoading] = useState(false);
   const [emailSenderContacts, setEmailSenderContacts] =
     useState<EmailSenderContacts | null>(null);
-  const [selectedAttachmentFile, setSelectedAttachmentFile] =
-    useState<File | null>(null);
+  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
+  const [attachmentDragOver, setAttachmentDragOver] = useState(false);
 
   useEffect(() => {
     // Contact details of an external e-mail sender (phone numbers and
@@ -4123,8 +4131,7 @@ export function TicketDetail({
     commentDrafts.internal.trim().length > 0 ||
     commentImageAttachments.external.length > 0 ||
     commentImageAttachments.internal.length > 0 ||
-    ticketCategoryDraft !== null ||
-    selectedAttachmentFile !== null;
+    ticketCategoryDraft !== null;
   detailRef.current = detail;
   backgroundTicketRefreshBlockedRef.current = backgroundTicketRefreshBlocked;
   const ticketIsClosed = Boolean(
@@ -5157,7 +5164,7 @@ export function TicketDetail({
   useEffect(() => {
     setAttachments([]);
     setAttachmentsLoaded(false);
-    setSelectedAttachmentFile(null);
+    setAttachmentsExpanded(false);
     if (attachmentInputRef.current) attachmentInputRef.current.value = "";
     void loadAttachments();
     return () => {
@@ -5786,20 +5793,6 @@ export function TicketDetail({
     }
   }
 
-  function selectAttachmentFile(file: File | null) {
-    setAttachmentError("");
-    setSelectedAttachmentFile(null);
-    if (!file) return;
-
-    const validationError = attachmentFileError(file);
-    if (validationError) {
-      setAttachmentError(validationError);
-      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
-      return;
-    }
-    setSelectedAttachmentFile(file);
-  }
-
   async function uploadTicketAttachment(
     file: File,
     visibility?: CommentVisibility,
@@ -5848,28 +5841,27 @@ export function TicketDetail({
     return attachment;
   }
 
-  async function uploadAttachment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!detail || !detail.canUpdate || !selectedAttachmentFile) return;
-
-    const file = selectedAttachmentFile;
-    const validationError = attachmentFileError(file);
-    if (validationError) {
-      setAttachmentError(validationError);
-      return;
+  async function uploadAttachmentFiles(files: File[]) {
+    if (!detail || !detail.canUpdate || files.length === 0) return;
+    setAttachmentError("");
+    for (const file of files) {
+      const validationError = attachmentFileError(file);
+      if (validationError) {
+        setAttachmentError(`${file.name}: ${validationError}`);
+        if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+        return;
+      }
     }
 
     setPendingAttachmentAction("upload");
-    setAttachmentError("");
     try {
-      await uploadTicketAttachment(file);
-      setSelectedAttachmentFile(null);
-      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+      for (const file of files) await uploadTicketAttachment(file);
       onChanged();
       await loadAttachments();
     } catch {
       setAttachmentError(attachmentErrorMessage("upload"));
     } finally {
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
       setPendingAttachmentAction(null);
     }
   }
@@ -7336,231 +7328,167 @@ export function TicketDetail({
             {storedFormAnswers?.ticketId === detail.ticket.id && (
               <TicketFormAnswersBlock stored={storedFormAnswers.stored} />
             )}
-          </section>
-
-          <details
-            className="ticket-detail-disclosure ticket-detail-attachments-disclosure"
-            open={attachments.length > 0 ? true : undefined}
-          >
-            <summary>
-              <span className="ticket-detail-disclosure-label">
-                <Paperclip aria-hidden="true" size={17} strokeWidth={1.8} />
-                Anhänge
+            <div
+              aria-label="Anhänge"
+              className={`ticket-attachment-strip${
+                attachmentDragOver ? " is-dragover" : ""
+              }`}
+              onDragLeave={() => setAttachmentDragOver(false)}
+              onDragOver={(event) => {
+                if (!detail.canUpdate) return;
+                event.preventDefault();
+                setAttachmentDragOver(true);
+              }}
+              onDrop={(event) => {
+                if (!detail.canUpdate) return;
+                event.preventDefault();
+                setAttachmentDragOver(false);
+                void uploadAttachmentFiles(Array.from(event.dataTransfer.files));
+              }}
+              role="group"
+            >
+              <span className="ticket-attachment-strip__label">
+                <Paperclip aria-hidden="true" size={15} strokeWidth={1.8} />
+                {attachments.length > 0
+                  ? `${attachments.length} ${
+                      attachments.length === 1 ? "Anhang" : "Anhänge"
+                    }`
+                  : "Anhänge"}
               </span>
-              <span className="ticket-detail-disclosure-meta">
-                Dateien zum Ticket
-                <ChevronDown
-                  aria-hidden="true"
-                  className="ticket-detail-disclosure-icon"
-                  size={18}
-                  strokeWidth={1.8}
+              {attachmentsLoading && !attachmentsLoaded ? (
+                <LoaderCircle
+                  aria-label="Anhänge werden geladen"
+                  className="ticket-detail-spinner"
+                  size={15}
                 />
-              </span>
-            </summary>
-            <div className="ticket-detail-disclosure-content">
-              <section
-                className="ticket-detail-comments"
-                aria-labelledby="ticket-attachments-heading"
-              >
-                <div className="ticket-detail-section-heading">
-                  <div>
-                    <p className="eyebrow">ANHÄNGE</p>
-                    <h3 id="ticket-attachments-heading">Anhänge</h3>
-                  </div>
-                  <span className="data-caption">{attachments.length}</span>
-                </div>
-                <p className="data-caption" id="ticket-attachments-help">
-                  Erlaubt sind {ATTACHMENT_ALLOWLIST_LABEL}. Maximal 25 MiB pro
-                  Datei.
-                </p>
-
-                {attachmentError && (
-                  <p className="ticket-detail-message error" role="alert">
-                    <AlertCircle aria-hidden="true" size={17} />
-                    {attachmentError}
-                  </p>
-                )}
-
-                {detail.canUpdate && (
-                  <form
-                    className="ticket-comment-form"
-                    onSubmit={uploadAttachment}
-                  >
-                    <label className="ticket-comment-body">
-                      Datei auswählen
-                      <input
-                        accept={ATTACHMENT_ACCEPT}
-                        aria-describedby="ticket-attachments-help"
-                        disabled={attachmentBusy || busy}
-                        onChange={(event) =>
-                          selectAttachmentFile(event.target.files?.[0] ?? null)
-                        }
-                        ref={attachmentInputRef}
-                        type="file"
-                      />
-                    </label>
-                    {pendingAttachmentAction === "upload" ? (
-                      <p
-                        className="data-caption ticket-detail-loading"
-                        role="status"
-                      >
-                        <LoaderCircle
-                          aria-hidden="true"
-                          className="ticket-detail-spinner"
-                          size={16}
-                        />
-                        Anhang wird hochgeladen …
-                      </p>
-                    ) : selectedAttachmentFile ? (
-                      <p className="data-caption" aria-live="polite">
-                        Ausgewählt: {selectedAttachmentFile.name} (
-                        {formatFileSize(selectedAttachmentFile.size)})
-                      </p>
-                    ) : null}
-                    <button
-                      className="secondary-button"
-                      disabled={
-                        attachmentBusy || busy || !selectedAttachmentFile
-                      }
-                      type="submit"
+              ) : (
+                (attachmentsExpanded
+                  ? attachments
+                  : attachments.slice(0, ATTACHMENT_STRIP_LIMIT)
+                ).map((attachment) => {
+                  const image = inlineImagesByAttachmentId[attachment.id];
+                  const isBusy =
+                    pendingAttachmentId === attachment.id &&
+                    pendingAttachmentAction !== null;
+                  return (
+                    <span
+                      className="ticket-attachment-chip"
+                      key={attachment.id}
                     >
-                      {pendingAttachmentAction === "upload" ? (
-                        <LoaderCircle
-                          aria-hidden="true"
-                          className="ticket-detail-spinner"
-                          size={16}
-                        />
-                      ) : (
-                        <Circle
-                          aria-hidden="true"
-                          size={16}
-                          strokeWidth={1.8}
-                        />
+                      <button
+                        aria-label={`${attachment.originalFilename} herunterladen`}
+                        className="ticket-attachment-chip__main"
+                        disabled={attachmentBusy || busy}
+                        onClick={() => void downloadAttachment(attachment)}
+                        title={`${attachment.originalFilename} · ${formatFileSize(
+                          attachment.byteSize,
+                        )} · ${formatDateTime(attachment.createdAt)}`}
+                        type="button"
+                      >
+                        {isBusy ? (
+                          <LoaderCircle
+                            aria-hidden="true"
+                            className="ticket-detail-spinner"
+                            size={14}
+                          />
+                        ) : image?.signedUrl ? (
+                          <img
+                            alt=""
+                            loading="lazy"
+                            onError={() =>
+                              refreshInlineImageAfterError(attachment.id)
+                            }
+                            src={image.signedUrl}
+                          />
+                        ) : (
+                          <span className="ticket-attachment-chip__ext">
+                            {attachmentExtension(attachment.originalFilename)}
+                          </span>
+                        )}
+                        <span className="ticket-attachment-chip__name">
+                          {attachment.originalFilename}
+                        </span>
+                        <small>{formatFileSize(attachment.byteSize)}</small>
+                      </button>
+                      {detail.canUpdate && (
+                        <button
+                          aria-label={`${attachment.originalFilename} löschen`}
+                          className="ticket-attachment-chip__remove"
+                          disabled={attachmentBusy || busy}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `«${attachment.originalFilename}» wirklich löschen?`,
+                              )
+                            ) {
+                              void deleteAttachment(attachment);
+                            }
+                          }}
+                          type="button"
+                        >
+                          <X aria-hidden="true" size={13} strokeWidth={2} />
+                        </button>
                       )}
-                      Anhang hochladen
-                    </button>
-                  </form>
-                )}
-
-                {attachmentsLoading && !attachmentsLoaded ? (
-                  <p
-                    className="empty-state ticket-detail-loading"
-                    role="status"
+                    </span>
+                  );
+                })
+              )}
+              {attachments.length > ATTACHMENT_STRIP_LIMIT && (
+                <button
+                  className="ticket-attachment-more"
+                  onClick={() => setAttachmentsExpanded((value) => !value)}
+                  type="button"
+                >
+                  {attachmentsExpanded
+                    ? "Weniger"
+                    : `+${attachments.length - ATTACHMENT_STRIP_LIMIT} weitere`}
+                </button>
+              )}
+              {detail.canUpdate && (
+                <>
+                  <input
+                    accept={ATTACHMENT_ACCEPT}
+                    aria-label="Dateien als Anhang auswählen"
+                    className="sr-only"
+                    disabled={attachmentBusy || busy}
+                    multiple
+                    onChange={(event) =>
+                      void uploadAttachmentFiles(
+                        Array.from(event.target.files ?? []),
+                      )
+                    }
+                    ref={attachmentInputRef}
+                    tabIndex={-1}
+                    type="file"
+                  />
+                  <button
+                    className="ticket-attachment-add"
+                    disabled={attachmentBusy || busy}
+                    onClick={() => attachmentInputRef.current?.click()}
+                    title={`Erlaubt sind ${ATTACHMENT_ALLOWLIST_LABEL}. Maximal 25 MiB pro Datei. Dateien können auch hierher gezogen werden.`}
+                    type="button"
                   >
-                    <LoaderCircle
-                      aria-hidden="true"
-                      className="ticket-detail-spinner"
-                      size={18}
-                    />
-                    Anhänge werden geladen …
-                  </p>
-                ) : attachments.length === 0 ? (
-                  <p className="empty-state">Noch keine Anhänge vorhanden.</p>
-                ) : (
-                  <ol
-                    className="ticket-comment-list"
-                    aria-busy={attachmentsLoading}
-                  >
-                    {attachments.map((attachment) => {
-                      const isDownloading =
-                        pendingAttachmentAction === "download" &&
-                        pendingAttachmentId === attachment.id;
-                      const isDeleting =
-                        pendingAttachmentAction === "delete" &&
-                        pendingAttachmentId === attachment.id;
-
-                      return (
-                        <li className="ticket-comment" key={attachment.id}>
-                          {inlineImagesByAttachmentId[attachment.id] ? (
-                            <button
-                              aria-label={`${attachment.originalFilename} gross anzeigen`}
-                              className="ticket-attachment-thumbnail"
-                              onClick={() =>
-                                void downloadAttachment(attachment)
-                              }
-                              type="button"
-                            >
-                              <img
-                                alt=""
-                                loading="lazy"
-                                onError={() =>
-                                  refreshInlineImageAfterError(attachment.id)
-                                }
-                                src={
-                                  inlineImagesByAttachmentId[attachment.id]
-                                    ?.signedUrl
-                                }
-                              />
-                            </button>
-                          ) : null}
-                          <div className="ticket-comment-meta">
-                            <strong>{attachment.originalFilename}</strong>
-                            <span>{formatFileSize(attachment.byteSize)}</span>
-                            <time dateTime={attachment.createdAt}>
-                              Hochgeladen am{" "}
-                              {formatDateTime(attachment.createdAt)}
-                            </time>
-                          </div>
-                          <div className="ticket-detail-actions">
-                            <button
-                              aria-label={`${attachment.originalFilename} herunterladen`}
-                              className="secondary-button"
-                              disabled={attachmentBusy || busy}
-                              onClick={() =>
-                                void downloadAttachment(attachment)
-                              }
-                              type="button"
-                            >
-                              {isDownloading ? (
-                                <LoaderCircle
-                                  aria-hidden="true"
-                                  className="ticket-detail-spinner"
-                                  size={16}
-                                />
-                              ) : (
-                                <Save
-                                  aria-hidden="true"
-                                  size={16}
-                                  strokeWidth={1.8}
-                                />
-                              )}
-                              Herunterladen
-                            </button>
-                            {detail.canUpdate && (
-                              <button
-                                aria-label={`${attachment.originalFilename} löschen`}
-                                className="secondary-button"
-                                disabled={attachmentBusy || busy}
-                                onClick={() =>
-                                  void deleteAttachment(attachment)
-                                }
-                                type="button"
-                              >
-                                {isDeleting ? (
-                                  <LoaderCircle
-                                    aria-hidden="true"
-                                    className="ticket-detail-spinner"
-                                    size={16}
-                                  />
-                                ) : (
-                                  <X
-                                    aria-hidden="true"
-                                    size={16}
-                                    strokeWidth={1.8}
-                                  />
-                                )}
-                                Löschen
-                              </button>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                )}
-              </section>
+                    {pendingAttachmentAction === "upload" ? (
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="ticket-detail-spinner"
+                        size={14}
+                      />
+                    ) : (
+                      <Plus aria-hidden="true" size={14} strokeWidth={2} />
+                    )}
+                    Anhang
+                  </button>
+                </>
+              )}
+              {attachmentError && (
+                <p className="ticket-attachment-strip__error" role="alert">
+                  <AlertCircle aria-hidden="true" size={14} />
+                  {attachmentError}
+                </p>
+              )}
             </div>
-          </details>
+          </section>
 
           <section
             className="ticket-detail-comments ticket-detail-primary"
