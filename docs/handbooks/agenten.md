@@ -429,7 +429,7 @@ Feedback-Themen** (mit KI-Assistenz zusätzlich nach Themen gruppiert).
 
 Über **+ → Ticket erfassen** öffnen Sie das Formular. Als Agent wählen Sie
 die **anfragende Person** (Suche, «Mich auswählen» oder neue Person), füllen
-Betreff, Einordnung, Priorität und Beschreibung aus und können direkt einen
+Betreff, Einordnung, Priorität und Beschreibung aus (Zusammenfassung links, Abschnitte rechts, Pflichtfelder mit **\***) und können direkt einen
 **zugewiesenen Agenten** setzen. Abschliessen mit **Ticket erstellen**.
 
 Im selben Menü erfassen Sie – je nach Freischaltung – auch Wiedervorlagen,

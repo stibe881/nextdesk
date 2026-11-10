@@ -21882,3 +21882,19 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 .tenant-admin-settings__form .fk-layout .fk-switch {
   font-size: inherit;
 }
+
+/* fk: Schalter in der SLA-Regel gegen globale Button-Stile absichern */
+.sla-management .fk-slider {
+  width: 42px;
+  height: 24px;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: #c3ccd3;
+}
+.sla-management .fk-slider.is-on {
+  background: #1f9d55;
+}
+.sla-management .fk-slider span {
+  background: #fff;
+}

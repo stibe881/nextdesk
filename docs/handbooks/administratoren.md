@@ -239,7 +239,9 @@ alle Zugänge.
 1. Unter **Person einladen** Vor- und Nachname, E-Mail-Adresse, Angebot und
    Funktion erfassen.
 2. Soll die Person Tickets bearbeiten, **Arbeitet als Support-Agent**
-   ankreuzen und einen **Ticketzugriffsbereich** wählen (Pflicht für Agenten).
+   den Schalter aktivieren und einen **Ticketzugriffsbereich** wählen (Pflicht
+   für Agenten). Die Abschnitte **Person** und **Zugang** stehen rechts, die
+   Zusammenfassung links.
 3. **Einladung versenden**. Die Einladung ist 7 Tage gültig.
 
 Offene Einladungen sehen Sie unter **Offene Einladungen** und können sie dort
