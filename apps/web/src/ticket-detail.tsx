@@ -467,6 +467,7 @@ type TicketAgent = {
 
 type TicketPresencePerson = {
   displayName: string;
+  photoUrl: string | null;
   editing: boolean;
   composing: "external" | "internal" | null;
   lastSeenAt: string;
@@ -1149,6 +1150,11 @@ function toTicketPresencePerson(value: unknown): TicketPresencePerson | null {
   }
   return {
     displayName: person.displayName.trim(),
+    photoUrl:
+      typeof person.photoUrl === "string" &&
+      person.photoUrl.startsWith("https://")
+        ? person.photoUrl
+        : null,
     editing: person.editing,
     composing:
       person.composing === "external" || person.composing === "internal"
@@ -5030,7 +5036,19 @@ export function TicketDetail({
         });
         const people = parseTicketPresence(response);
         if (!people) throw new Error("Ungültige Präsenzdaten.");
-        if (!cancelled) setPresence(people);
+        if (!cancelled)
+          // A new signed URL on every poll would reload the photos: keep the
+          // URL already shown for the same person.
+          setPresence((current) =>
+            people.map((person) => ({
+              ...person,
+              photoUrl:
+                current.find(
+                  (known) =>
+                    known.displayName === person.displayName && known.photoUrl,
+                )?.photoUrl ?? person.photoUrl,
+            })),
+          );
       } catch {
         // Presence is contextual convenience only. Ticket work remains available
         // when the short-lived indicator cannot be refreshed.
@@ -6994,7 +7012,16 @@ export function TicketDetail({
                       : `${person.displayName} hat das Ticket geöffnet`
                   }
                 >
-                  {presenceInitials(person.displayName)}
+                  {person.photoUrl ? (
+                    <img
+                      alt=""
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                      }}
+                      src={person.photoUrl}
+                    />
+                  ) : null}
+                  <span>{presenceInitials(person.displayName)}</span>
                 </li>
               ))}
               {presence.length > 5 ? (
