@@ -495,6 +495,10 @@ und alle weiteren Shop-Felder. Dazu kommen die Lagerangaben **Einheit** und
   sondern einen **Bestand** mit **Lagerort**; Änderungen daran werden als
   Lagerbewegung gebucht. Im Shop erscheint er zum Ausleihen.
 
+Mit **Löschen** im Formular entfernen Sie einen Artikel endgültig (auch aus dem
+Shop). Hat er schon Bewegungen oder Reservationen, lässt er sich nicht löschen;
+nextDesk bietet dann an, ihn zu **archivieren**.
+
 ## Shop: Artikel nur für Kaderstufen
 
 Im Shop legen Sie beim **Artikel hinzufügen** bzw. **Bearbeiten** unter

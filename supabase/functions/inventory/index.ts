@@ -301,6 +301,7 @@ type Action =
     }
   | { type: "createDownloadUrl"; tenantId: string; itemId: string }
   | { type: "delete"; tenantId: string; itemId: string }
+  | { type: "deleteItem"; tenantId: string; itemId: string }
   | {
       type: "manageItem";
       tenantId: string;
@@ -867,7 +868,11 @@ export function parseAction(value: unknown): Action | null {
         }
       : null;
   }
-  if (value.type === "createDownloadUrl" || value.type === "delete") {
+  if (
+    value.type === "createDownloadUrl" ||
+    value.type === "delete" ||
+    value.type === "deleteItem"
+  ) {
     return hasOnlyKeys(value, ["type", "tenantId", "itemId"]) &&
       isUuid(value.itemId)
       ? {
@@ -4064,6 +4069,7 @@ async function requireActionInScope(
     case "completeUpload":
     case "createDownloadUrl":
     case "delete":
+    case "deleteItem":
     case "reserve":
     case "recordCountLine":
       return await requireVisibleItem(
@@ -4488,6 +4494,45 @@ async function deleteInventoryItemImage(
   return json(request, { data: { itemId: action.itemId, deleted: true } });
 }
 
+/**
+ * Deletes an item for good. Items with movements, reservations or counts are
+ * protected by foreign keys: they answer «in_use» and can only be archived.
+ */
+async function deleteInventoryItem(
+  request: Request,
+  admin: AdminClient,
+  action: Extract<Action, { type: "deleteItem" }>,
+): Promise<Response> {
+  const image = await loadPrimaryInventoryItemImage(
+    admin,
+    action.tenantId,
+    action.itemId,
+  );
+  const result = await admin
+    .from("inventory_items")
+    .delete()
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.itemId)
+    .select("id");
+  if (result.error) {
+    if (result.error.code === "23503") {
+      return json(request, {
+        data: { itemId: action.itemId, deleted: false, reason: "in_use" },
+      });
+    }
+    databaseFailure(result.error);
+  }
+  if (!Array.isArray(result.data) || result.data.length === 0) {
+    throw new HttpError(404, "not_found", "Der Artikel wurde nicht gefunden.");
+  }
+  if (image) {
+    await admin.storage
+      .from(INVENTORY_ITEM_IMAGE_BUCKET)
+      .remove([image.storageObjectPath]);
+  }
+  return json(request, { data: { itemId: action.itemId, deleted: true } });
+}
+
 // Beschaffung (Rückstände aus dem Shop, Migration 0224)
 // ------------------------------------------------------
 const MAX_BACKORDERS = 1_000;
@@ -4895,6 +4940,19 @@ const securedHandler = withSupabase(
         );
         await requireActionInScope(context.supabaseAdmin, scope, action);
         return await deleteInventoryItemImage(
+          request,
+          context.supabaseAdmin,
+          action,
+        );
+      }
+      if (action.type === "deleteItem") {
+        await requirePermission(
+          context.supabase,
+          action.tenantId,
+          "inventory.manage",
+        );
+        await requireActionInScope(context.supabaseAdmin, scope, action);
+        return await deleteInventoryItem(
           request,
           context.supabaseAdmin,
           action,
