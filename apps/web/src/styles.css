@@ -21841,3 +21841,60 @@ button.predefined-report__drill:hover:not(:disabled) strong {
   .article-editor__side { border-right: 0; border-bottom: 1px solid var(--border); }
   .article-editor__grid2 { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* fk: SLA-Regel im gemeinsamen Formularstil */
+.sla-management .sla-management__form.sla-management__form--kit {
+  display: block;
+}
+.sla-management .sla-management__form--kit .sla-management__form-actions {
+  justify-content: flex-end;
+}
+
+/* Ticket erfassen im gemeinsamen Formularstil (form-kit) */
+.ticket-compose-form.fk-compose {
+  display: block;
+  padding: 0 24px 24px;
+}
+.fk-compose-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Infrastruktur-Formular: Checklisten-Editor ohne zweiten Rahmen in der Karte. */
+.fk-card .infrastructure__checklist-editor {
+  border: 0;
+  padding: 0;
+}
+
+/* fk: Person einladen (Einstellungen) im gemeinsamen Formularstil */
+.tenant-admin-settings__form .fk-slider {
+  width: 42px;
+  height: 24px;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: #c3ccd3;
+}
+.tenant-admin-settings__form .fk-slider.is-on {
+  background: #1f9d55;
+}
+.tenant-admin-settings__form .fk-layout .fk-field,
+.tenant-admin-settings__form .fk-layout .fk-switch {
+  font-size: inherit;
+}
+
+/* fk: Schalter in der SLA-Regel gegen globale Button-Stile absichern */
+.sla-management .fk-slider {
+  width: 42px;
+  height: 24px;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: #c3ccd3;
+}
+.sla-management .fk-slider.is-on {
+  background: #1f9d55;
+}
+.sla-management .fk-slider span {
+  background: #fff;
+}

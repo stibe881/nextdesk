@@ -23,6 +23,15 @@ import {
   matchesEventSpaceMetricFilter,
   type EventSpaceMetricFilter,
 } from "./lib/event-space-metric-filter";
+import {
+  FormCard,
+  FormChips,
+  FormField,
+  FormGrid,
+  FormLayout,
+  FormNote,
+  FormSummary,
+} from "./form-kit";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
@@ -1300,9 +1309,7 @@ export function EventSpaces({
                       }
                       type="button"
                     >
-                      {item.assignedAgent
-                        ? "Person ändern"
-                        : "Person zuweisen"}
+                      {item.assignedAgent ? "Person ändern" : "Person zuweisen"}
                     </button>
                     <label>
                       Beginn (Europe/Zurich)
@@ -1403,188 +1410,207 @@ export function EventSpaces({
           </div>
           {workspace?.rooms.length ? (
             <form onSubmit={previewRequest}>
-              <div className="event-spaces__form-grid">
-                <label>
-                  Raum
-                  <select
-                    required
-                    value={requestDraft.spaceId}
-                    onChange={(event) =>
-                      updateDraft("spaceId", event.target.value)
-                    }
-                  >
-                    <option value="">Raum auswählen …</option>
-                    {workspace.rooms.map((room) => (
-                      <option key={room.id} value={room.id}>
-                        {room.name}
-                        {room.location ? ` · ${room.location}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Anlass
-                  <input
-                    maxLength={240}
-                    minLength={3}
-                    required
-                    value={requestDraft.title}
-                    onChange={(event) =>
-                      updateDraft("title", event.target.value)
-                    }
-                    placeholder="z. B. Mitarbeitendenanlass"
-                  />
-                </label>
-                <label>
-                  Start
-                  <input
-                    required
-                    type="datetime-local"
-                    value={requestDraft.startsAt}
-                    onChange={(event) =>
-                      updateDraft("startsAt", event.target.value)
-                    }
-                  />
-                </label>
-                <label>
-                  Ende
-                  <input
-                    required
-                    type="datetime-local"
-                    value={requestDraft.endsAt}
-                    onChange={(event) =>
-                      updateDraft("endsAt", event.target.value)
-                    }
-                  />
-                </label>
-                <label>
-                  Anfragende Person
-                  <select
-                    required
-                    value={requestDraft.responsibleUserId}
-                    onChange={(event) =>
-                      updateDraft("responsibleUserId", event.target.value)
-                    }
-                  >
-                    <option value="">Person auswählen …</option>
-                    {workspace.people.map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {person.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Teilnehmende
-                  <input
-                    inputMode="numeric"
-                    max="10000"
-                    min="0"
-                    type="number"
-                    value={requestDraft.expectedParticipants}
-                    onChange={(event) =>
-                      updateDraft("expectedParticipants", event.target.value)
-                    }
-                    placeholder="Optional"
-                  />
-                </label>
-                <label>
-                  Kontakt / Organisation
-                  <input
-                    maxLength={160}
-                    value={requestDraft.organizer}
-                    onChange={(event) =>
-                      updateDraft("organizer", event.target.value)
-                    }
-                    placeholder="Optional"
-                  />
-                </label>
-                <label>
-                  Wiederholung
-                  <select
-                    value={requestDraft.recurrence}
-                    onChange={(event) => {
-                      const recurrence = event.target.value as Recurrence;
-                      updateDraft("recurrence", recurrence);
-                      if (recurrence === "none")
-                        updateDraft("occurrences", "1");
-                      else if (requestDraft.occurrences === "1")
-                        updateDraft("occurrences", "2");
-                      else if (
-                        recurrence === "monthly" &&
-                        Number(requestDraft.occurrences) > 12
-                      )
-                        updateDraft("occurrences", "12");
-                    }}
-                  >
-                    <option value="none">Einmalig</option>
-                    <option value="weekly">Wöchentlich</option>
-                    <option value="monthly">Monatlich</option>
-                  </select>
-                </label>
-                {requestDraft.recurrence !== "none" ? (
-                  <label>
-                    Anzahl Termine
-                    <input
-                      max={requestDraft.recurrence === "monthly" ? "12" : "52"}
-                      min="2"
-                      required
-                      type="number"
-                      value={requestDraft.occurrences}
-                      onChange={(event) =>
-                        updateDraft("occurrences", event.target.value)
-                      }
+              <FormLayout
+                side={
+                  <>
+                    <FormSummary
+                      eyebrow="Anfrage"
+                      title={requestDraft.title}
+                      rows={[
+                        [
+                          "Raum",
+                          workspace.rooms.find(
+                            (room) => room.id === requestDraft.spaceId,
+                          )?.name ?? "",
+                        ],
+                        [
+                          "Zeit",
+                          requestDraft.startsAt && requestDraft.endsAt
+                            ? `${requestDraft.startsAt.replace("T", " ")} – ${requestDraft.endsAt.replace("T", " ")}`
+                            : "",
+                        ],
+                        [
+                          "Termine",
+                          requestDraft.recurrence === "none"
+                            ? "1"
+                            : requestDraft.occurrences,
+                        ],
+                      ]}
                     />
-                  </label>
-                ) : null}
-              </div>
-              <fieldset className="event-spaces__equipment">
-                <legend>Benötigte Technik</legend>
-                <p>
-                  Diese Auswahl löst die standardisierten ICT-Aufgaben aus und
-                  wird auf zeitgleiche Überschneidungen geprüft.
-                </p>
-                <div>
-                  {EQUIPMENT.map(([key, label]) => (
-                    <label key={key}>
+                    <FormNote>
+                      Diese Auswahl löst die standardisierten ICT-Aufgaben aus
+                      und wird auf zeitgleiche Überschneidungen geprüft.
+                    </FormNote>
+                  </>
+                }
+              >
+                <FormCard title="Anlass">
+                  <FormGrid cols={2}>
+                    <FormField label="Raum" required>
+                      <select
+                        required
+                        value={requestDraft.spaceId}
+                        onChange={(event) =>
+                          updateDraft("spaceId", event.target.value)
+                        }
+                      >
+                        <option value="">Raum auswählen …</option>
+                        {workspace.rooms.map((room) => (
+                          <option key={room.id} value={room.id}>
+                            {room.name}
+                            {room.location ? ` · ${room.location}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+                    <FormField label="Anlass" required>
                       <input
-                        checked={requestDraft.equipment.includes(key)}
+                        maxLength={240}
+                        minLength={3}
+                        required
+                        value={requestDraft.title}
+                        onChange={(event) =>
+                          updateDraft("title", event.target.value)
+                        }
+                        placeholder="z. B. Mitarbeitendenanlass"
+                      />
+                    </FormField>
+                    <FormField label="Anfragende Person" required>
+                      <select
+                        required
+                        value={requestDraft.responsibleUserId}
+                        onChange={(event) =>
+                          updateDraft("responsibleUserId", event.target.value)
+                        }
+                      >
+                        <option value="">Person auswählen …</option>
+                        {workspace.people.map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+                    <FormField label="Teilnehmende">
+                      <input
+                        inputMode="numeric"
+                        max="10000"
+                        min="0"
+                        type="number"
+                        value={requestDraft.expectedParticipants}
                         onChange={(event) =>
                           updateDraft(
-                            "equipment",
-                            event.target.checked
-                              ? [...requestDraft.equipment, key]
-                              : requestDraft.equipment.filter(
-                                  (item) => item !== key,
-                                ),
+                            "expectedParticipants",
+                            event.target.value,
                           )
                         }
-                        type="checkbox"
                       />
-                      {label}
-                    </label>
-                  ))}
+                    </FormField>
+                    <FormField label="Kontakt / Organisation">
+                      <input
+                        maxLength={160}
+                        value={requestDraft.organizer}
+                        onChange={(event) =>
+                          updateDraft("organizer", event.target.value)
+                        }
+                      />
+                    </FormField>
+                  </FormGrid>
+                </FormCard>
+                <FormCard title="Zeit">
+                  <FormGrid cols={3}>
+                    <FormField label="Start" required>
+                      <input
+                        required
+                        type="datetime-local"
+                        value={requestDraft.startsAt}
+                        onChange={(event) =>
+                          updateDraft("startsAt", event.target.value)
+                        }
+                      />
+                    </FormField>
+                    <FormField label="Ende" required>
+                      <input
+                        required
+                        type="datetime-local"
+                        value={requestDraft.endsAt}
+                        onChange={(event) =>
+                          updateDraft("endsAt", event.target.value)
+                        }
+                      />
+                    </FormField>
+                    <FormField label="Wiederholung">
+                      <select
+                        value={requestDraft.recurrence}
+                        onChange={(event) => {
+                          const recurrence = event.target.value as Recurrence;
+                          updateDraft("recurrence", recurrence);
+                          if (recurrence === "none")
+                            updateDraft("occurrences", "1");
+                          else if (requestDraft.occurrences === "1")
+                            updateDraft("occurrences", "2");
+                          else if (
+                            recurrence === "monthly" &&
+                            Number(requestDraft.occurrences) > 12
+                          )
+                            updateDraft("occurrences", "12");
+                        }}
+                      >
+                        <option value="none">Einmalig</option>
+                        <option value="weekly">Wöchentlich</option>
+                        <option value="monthly">Monatlich</option>
+                      </select>
+                    </FormField>
+                    {requestDraft.recurrence !== "none" ? (
+                      <FormField label="Anzahl Termine" required>
+                        <input
+                          max={
+                            requestDraft.recurrence === "monthly" ? "12" : "52"
+                          }
+                          min="2"
+                          required
+                          type="number"
+                          value={requestDraft.occurrences}
+                          onChange={(event) =>
+                            updateDraft("occurrences", event.target.value)
+                          }
+                        />
+                      </FormField>
+                    ) : null}
+                  </FormGrid>
+                </FormCard>
+                <FormCard title="Benötigte Technik">
+                  <FormChips
+                    label="Benötigte Technik"
+                    multiple
+                    onChange={(next) => updateDraft("equipment", next)}
+                    options={EQUIPMENT.map(([value, label]) => ({
+                      label,
+                      value,
+                    }))}
+                    value={requestDraft.equipment}
+                  />
+                </FormCard>
+                <div className="event-spaces__form-actions">
+                  <button
+                    className="secondary-button"
+                    onClick={() => {
+                      setEditor(null);
+                      setPendingConflicts(null);
+                    }}
+                    type="button"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={pending}
+                    type="submit"
+                  >
+                    {pending ? "Wird geprüft …" : "Auftrag prüfen"}
+                  </button>
                 </div>
-              </fieldset>
-              <div className="event-spaces__form-actions">
-                <button
-                  className="secondary-button"
-                  onClick={() => {
-                    setEditor(null);
-                    setPendingConflicts(null);
-                  }}
-                  type="button"
-                >
-                  Abbrechen
-                </button>
-                <button
-                  className="primary-button"
-                  disabled={pending}
-                  type="submit"
-                >
-                  {pending ? "Wird geprüft …" : "Auftrag prüfen"}
-                </button>
-              </div>
+              </FormLayout>
             </form>
           ) : (
             <div className="event-spaces__empty-room">
@@ -1613,85 +1639,95 @@ export function EventSpaces({
             </div>
           </div>
           <form onSubmit={createRoom}>
-            <div className="event-spaces__form-grid">
-              <label>
-                Raumname
-                <input
-                  minLength={2}
-                  required
-                  value={roomDraft.name}
-                  onChange={(event) =>
-                    setRoomDraft((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  placeholder="z. B. Aula"
+            <FormLayout
+              side={
+                <FormSummary
+                  eyebrow="Raum"
+                  title={roomDraft.name}
+                  rows={[
+                    ["Standort", roomDraft.location],
+                    ["Kapazität", roomDraft.capacity],
+                  ]}
                 />
-              </label>
-              <label>
-                Raumart
-                <select
-                  value={roomDraft.kind}
-                  onChange={(event) =>
-                    setRoomDraft((current) => ({
-                      ...current,
-                      kind: event.target.value,
-                    }))
-                  }
+              }
+            >
+              <FormCard title="Raum">
+                <FormGrid cols={2}>
+                  <FormField label="Raumname" required>
+                    <input
+                      minLength={2}
+                      required
+                      value={roomDraft.name}
+                      onChange={(event) =>
+                        setRoomDraft((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                      placeholder="z. B. Aula"
+                    />
+                  </FormField>
+                  <FormField label="Raumart">
+                    <select
+                      value={roomDraft.kind}
+                      onChange={(event) =>
+                        setRoomDraft((current) => ({
+                          ...current,
+                          kind: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="meeting_room">Sitzungszimmer</option>
+                      <option value="event_room">Veranstaltungsraum</option>
+                      <option value="other">Anderer Raum</option>
+                    </select>
+                  </FormField>
+                  <FormField label="Standort">
+                    <input
+                      value={roomDraft.location}
+                      onChange={(event) =>
+                        setRoomDraft((current) => ({
+                          ...current,
+                          location: event.target.value,
+                        }))
+                      }
+                      placeholder="z. B. Gebäude A, Erdgeschoss"
+                    />
+                  </FormField>
+                  <FormField label="Kapazität">
+                    <input
+                      inputMode="numeric"
+                      max="10000"
+                      min="1"
+                      type="number"
+                      value={roomDraft.capacity}
+                      onChange={(event) =>
+                        setRoomDraft((current) => ({
+                          ...current,
+                          capacity: event.target.value,
+                        }))
+                      }
+                    />
+                  </FormField>
+                </FormGrid>
+              </FormCard>
+              <div className="event-spaces__form-actions">
+                <button
+                  className="secondary-button"
+                  onClick={() => setEditor("request")}
+                  type="button"
                 >
-                  <option value="meeting_room">Sitzungszimmer</option>
-                  <option value="event_room">Veranstaltungsraum</option>
-                  <option value="other">Anderer Raum</option>
-                </select>
-              </label>
-              <label>
-                Standort
-                <input
-                  value={roomDraft.location}
-                  onChange={(event) =>
-                    setRoomDraft((current) => ({
-                      ...current,
-                      location: event.target.value,
-                    }))
-                  }
-                  placeholder="z. B. Gebäude A, Erdgeschoss"
-                />
-              </label>
-              <label>
-                Kapazität
-                <input
-                  inputMode="numeric"
-                  max="10000"
-                  min="1"
-                  type="number"
-                  value={roomDraft.capacity}
-                  onChange={(event) =>
-                    setRoomDraft((current) => ({
-                      ...current,
-                      capacity: event.target.value,
-                    }))
-                  }
-                  placeholder="Optional"
-                />
-              </label>
-            </div>
-            <div className="event-spaces__form-actions">
-              <button
-                className="secondary-button"
-                onClick={() => setEditor("request")}
-                type="button"
-              >
-                Zurück
-              </button>
-              <button
-                className="primary-button"
-                disabled={pending}
-                type="submit"
-              >
-                {pending ? "Wird angelegt …" : "Raum anlegen"}
-              </button>
-            </div>
+                  Zurück
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={pending}
+                  type="submit"
+                >
+                  {pending ? "Wird angelegt …" : "Raum anlegen"}
+                </button>
+              </div>
+            </FormLayout>
           </form>
         </section>
       ) : null}

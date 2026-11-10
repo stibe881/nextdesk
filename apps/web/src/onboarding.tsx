@@ -10,6 +10,14 @@ import {
   UserRound,
   Wrench,
 } from "lucide-react";
+import {
+  FormCard,
+  FormDialog,
+  FormField,
+  FormGrid,
+  FormNote,
+  FormSummary,
+} from "./form-kit";
 import "./onboarding.css";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
@@ -772,15 +780,38 @@ export function Onboarding({
         </p>
       ) : null}
       {editor && canRequest ? (
-        <section className="onboarding__editor panel">
-          <div>
-            <p className="eyebrow">Neuer Eintritt</p>
-            <h3>Onboarding planen</h3>
-          </div>
-          <form onSubmit={createEntry}>
-            <div className="onboarding__grid">
-              <label>
-                Art
+        <FormDialog
+          eyebrow="Neuer Eintritt"
+          error={errorMessage}
+          onClose={() => setEditor(false)}
+          onSubmit={createEntry}
+          side={
+            <FormSummary
+              eyebrow={draft.kind === "offboarding" ? "Austritt" : "Eintritt"}
+              rows={[
+                [
+                  draft.kind === "offboarding" ? "Austrittsdatum" : "Datum",
+                  draft.startsOn,
+                ],
+                ["Abteilung", draft.organisationUnit],
+                ["Standort", draft.location],
+                [
+                  "Vorlage",
+                  workspace?.templates.find(
+                    (template) => template.id === draft.templateId,
+                  )?.name ?? "",
+                ],
+              ]}
+              title={draft.employeeName}
+            />
+          }
+          submitLabel="Eintritt planen"
+          submitting={pending}
+          title="Onboarding planen"
+        >
+          <FormCard title="Person">
+            <FormGrid cols={3}>
+              <FormField label="Art" required>
                 <select
                   value={draft.kind}
                   onChange={(event) =>
@@ -796,9 +827,8 @@ export function Onboarding({
                   <option value="onboarding">Eintritt</option>
                   <option value="offboarding">Austritt</option>
                 </select>
-              </label>
-              <label>
-                Name
+              </FormField>
+              <FormField label="Name" required>
                 <input
                   required
                   minLength={2}
@@ -809,11 +839,15 @@ export function Onboarding({
                   }
                   placeholder="Vor- und Nachname"
                 />
-              </label>
-              <label>
-                {draft.kind === "offboarding"
-                  ? "Austrittsdatum"
-                  : "Eintrittsdatum"}
+              </FormField>
+              <FormField
+                label={
+                  draft.kind === "offboarding"
+                    ? "Austrittsdatum"
+                    : "Eintrittsdatum"
+                }
+                required
+              >
                 <input
                   required
                   type="date"
@@ -822,9 +856,12 @@ export function Onboarding({
                     setDraft({ ...draft, startsOn: event.target.value })
                   }
                 />
-              </label>
-              <label>
-                Abteilung / Angebot
+              </FormField>
+            </FormGrid>
+          </FormCard>
+          <FormCard title="Einsatz">
+            <FormGrid cols={2}>
+              <FormField label="Abteilung / Angebot" required>
                 <input
                   required
                   minLength={2}
@@ -835,9 +872,8 @@ export function Onboarding({
                   }
                   placeholder="z. B. Schule oder ICT"
                 />
-              </label>
-              <label>
-                Standort
+              </FormField>
+              <FormField label="Standort" required>
                 <input
                   required
                   minLength={2}
@@ -846,11 +882,14 @@ export function Onboarding({
                   onChange={(event) =>
                     setDraft({ ...draft, location: event.target.value })
                   }
-                  placeholder="Optional"
+                  placeholder="Standort"
                 />
-              </label>
-              <label>
-                Führungsperson
+              </FormField>
+            </FormGrid>
+          </FormCard>
+          <FormCard title="Verantwortung">
+            <FormGrid cols={2}>
+              <FormField label="Führungsperson" required>
                 <select
                   required
                   value={draft.managerUserId}
@@ -865,9 +904,8 @@ export function Onboarding({
                     </option>
                   ))}
                 </select>
-              </label>
-              <label>
-                ICT-Verantwortung
+              </FormField>
+              <FormField label="ICT-Verantwortung" required>
                 <select
                   required
                   value={draft.ictResponsibleUserId}
@@ -885,66 +923,51 @@ export function Onboarding({
                     </option>
                   ))}
                 </select>
-              </label>
-              <label>
-                Onboarding-Vorlage
-                <select
-                  required
-                  value={draft.templateId}
-                  onChange={(event) =>
-                    setDraft({ ...draft, templateId: event.target.value })
-                  }
-                >
-                  {workspace?.templates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <p className="onboarding__hint">
+              </FormField>
+            </FormGrid>
+          </FormCard>
+          <FormCard title="Vorlage">
+            <FormField label="Onboarding-Vorlage" required>
+              <select
+                required
+                value={draft.templateId}
+                onChange={(event) =>
+                  setDraft({ ...draft, templateId: event.target.value })
+                }
+              >
+                {workspace?.templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <FormNote>
               Die Aufgaben werden jetzt einmalig relativ zum Eintrittsdatum
               terminiert. Es gibt keinen Scheduler und keine automatische
               Ticketanlage.
-            </p>
-            <div className="onboarding__actions">
-              <button
-                className="secondary-button"
-                onClick={() => setEditor(false)}
-                type="button"
-              >
-                Abbrechen
-              </button>
-              <button
-                className="primary-button"
-                disabled={pending}
-                type="submit"
-              >
-                {pending ? "Wird geplant …" : "Eintritt planen"}
-              </button>
-            </div>
-          </form>
-        </section>
+            </FormNote>
+          </FormCard>
+        </FormDialog>
       ) : null}
       {exceptionTarget ? (
-        <section
-          className="onboarding__editor panel"
-          aria-labelledby="onboarding-exception-heading"
+        <FormDialog
+          eyebrow="Bewusste Ausnahme"
+          error={errorMessage}
+          onClose={() => setExceptionTarget(null)}
+          onSubmit={linkException}
+          submitLabel="Ticket verknüpfen"
+          submitting={pending}
+          title="Ausnahmeticket verknüpfen"
         >
-          <div>
-            <p className="eyebrow">Bewusste Ausnahme</p>
-            <h3 id="onboarding-exception-heading">Ausnahmeticket verknüpfen</h3>
-          </div>
-          <form onSubmit={linkException}>
-            <p className="onboarding__hint">
+          <FormCard title="Ausnahmeticket">
+            <FormNote>
               Erstellen Sie das Ticket zuerst bewusst im Bereich «Tickets».
               Danach verknüpfen Sie dessen Ticketnummer mit «
               {exceptionTarget.taskTitle}».
-            </p>
-            <div className="onboarding__grid">
-              <label>
-                Ticketnummer
+            </FormNote>
+            <FormGrid cols={2}>
+              <FormField label="Ticketnummer" required>
                 <input
                   required
                   minLength={2}
@@ -953,9 +976,8 @@ export function Onboarding({
                   onChange={(event) => setTicketNumber(event.target.value)}
                   placeholder="z. B. ICT-2026-000123"
                 />
-              </label>
-              <label>
-                Grund der Ausnahme
+              </FormField>
+              <FormField label="Grund der Ausnahme" required>
                 <input
                   required
                   minLength={3}
@@ -964,26 +986,10 @@ export function Onboarding({
                   onChange={(event) => setExceptionReason(event.target.value)}
                   placeholder="z. B. Lieferverzögerung Gerät"
                 />
-              </label>
-            </div>
-            <div className="onboarding__actions">
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => setExceptionTarget(null)}
-              >
-                Abbrechen
-              </button>
-              <button
-                className="primary-button"
-                disabled={pending}
-                type="submit"
-              >
-                {pending ? "Wird verknüpft …" : "Ticket verknüpfen"}
-              </button>
-            </div>
-          </form>
-        </section>
+              </FormField>
+            </FormGrid>
+          </FormCard>
+        </FormDialog>
       ) : null}
       <section className="onboarding__workspace panel">
         <div className="onboarding__workspace-heading">

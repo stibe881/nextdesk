@@ -23,6 +23,15 @@ import {
   type TemplateFormField,
 } from "./lib/ticket-template-form";
 import {
+  FormCard,
+  FormField,
+  FormGrid,
+  FormLayout,
+  FormNote,
+  FormSummary,
+  FormSwitch,
+} from "./form-kit";
+import {
   ConditionPicker,
   TemplateFieldsEditor,
   fieldDraftFromField,
@@ -486,6 +495,16 @@ const ticketTemplateStyles = `
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+.ticket-templates__form.ticket-templates__form--kit {
+  display: block;
+}
+.ticket-templates__form--kit .fk-field {
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
 }
 .ticket-templates__form label {
   display: grid;
@@ -970,231 +989,266 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
         </div>
 
         <form
-          className="ticket-templates__form ticket-templates__form-panel"
+          className="ticket-templates__form ticket-templates__form-panel ticket-templates__form--kit"
           onSubmit={saveTemplate}
         >
-          <label>
-            Name der Vorlage
-            <input
-              disabled={loading || isBusy}
-              maxLength={160}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  name: event.target.value,
-                }))
-              }
-              placeholder="Zum Beispiel: Zugriffsproblem"
-              required
-              value={draft.name}
-            />
-          </label>
-
-          <label>
-            Betreffvorlage
-            <input
-              disabled={loading || isBusy}
-              maxLength={240}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  subjectTemplate: event.target.value,
-                }))
-              }
-              placeholder="Zum Beispiel: Zugriff auf {{System}} fehlt"
-              required
-              value={draft.subjectTemplate}
-            />
-          </label>
-          <p className="ticket-templates__description ticket-templates__full-width">
-            Sichere Platzhalter: <code>{"{{anfragende_person}}"}</code>,{" "}
-            <code>{"{{abteilung}}"}</code>, <code>{"{{heute}}"}</code> und{" "}
-            <code>{"{{ticket_nummer}}"}</code>. Andere geschweifte Klammern oder
-            Ausdrücke sind nicht zulässig.
-          </p>
-
-          <label>
-            Abteilung (optional)
-            <select
-              disabled={loading || isBusy}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  departmentId: event.target.value,
-                }))
-              }
-              value={draft.departmentId}
-            >
-              <option value="">Mandantenweit</option>
-              {options.departments.map((department) => (
-                <option key={department.id} value={department.id}>
-                  {department.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Prioritätsschlüssel (optional)
-            <select
-              disabled={loading || isBusy}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  priorityKey: event.target.value,
-                }))
-              }
-              value={draft.priorityKey}
-            >
-              <option value="">Keine Prioritätsvorgabe</option>
-              {options.priorities.map((priority) => (
-                <option key={priority.key} value={priority.key}>
-                  {priority.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="ticket-templates__full-width">
-            Beschreibungsvorlage
-            <textarea
-              disabled={loading || isBusy}
-              maxLength={50000}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  descriptionTemplate: event.target.value,
-                }))
-              }
-              placeholder="Beschreiben Sie den Standardablauf oder die benötigten Angaben."
-              required
-              rows={5}
-              value={draft.descriptionTemplate}
-            />
-          </label>
-
-          <div className="ticket-templates__checklist ticket-templates__full-width">
-            <div className="ticket-templates__checklist-heading">
-              <strong>Checklistenpunkte</strong>
-              <button
-                className="ticket-templates__button"
-                disabled={
-                  loading || isBusy || draft.checklistItems.length >= 100
-                }
-                onClick={() =>
-                  setDraft((current) => ({
-                    ...current,
-                    checklistItems: [
-                      ...current.checklistItems,
-                      { description: "", condition: null },
+          <FormLayout
+            side={
+              <>
+                <FormSummary
+                  eyebrow={editing ? "Vorlage bearbeiten" : "Neue Vorlage"}
+                  title={draft.name}
+                  rows={[
+                    [
+                      "Abteilung",
+                      draft.departmentId
+                        ? (departmentsById.get(draft.departmentId) ??
+                          "Nicht verfügbare Abteilung")
+                        : "Mandantenweit",
                     ],
-                  }))
-                }
-                type="button"
-              >
-                <Plus aria-hidden="true" size={14} />
-                Punkt hinzufügen
-              </button>
-            </div>
-            {draft.checklistItems.length === 0 ? (
-              <p className="ticket-templates__description">
-                Keine Checklistenpunkte. Sie können die Vorlage auch ohne
-                Checkliste speichern.
-              </p>
-            ) : (
-              draft.checklistItems.map((item, index) => (
-                <div className="ticket-templates__checklist-row" key={index}>
-                  <input
-                    aria-label={`Checklistenpunkt ${index + 1}`}
+                    [
+                      "Priorität",
+                      draft.priorityKey
+                        ? (prioritiesByKey.get(draft.priorityKey) ??
+                          draft.priorityKey)
+                        : "Keine Prioritätsvorgabe",
+                    ],
+                    [
+                      "Checkliste",
+                      `${draft.checklistItems.length} ${draft.checklistItems.length === 1 ? "Punkt" : "Punkte"}`,
+                    ],
+                    [
+                      "Formularfelder",
+                      `${draft.fieldDrafts.length} ${draft.fieldDrafts.length === 1 ? "Feld" : "Felder"}`,
+                    ],
+                  ]}
+                />
+                <FormSwitch
+                  checked={draft.active}
+                  disabled={loading || isBusy}
+                  hint="Kann beim Erfassen gewählt werden."
+                  label="Vorlage aktiv"
+                  onChange={(active) =>
+                    setDraft((current) => ({ ...current, active }))
+                  }
+                />
+              </>
+            }
+          >
+            <FormCard title="Vorlage">
+              <FormField label="Name der Vorlage" required>
+                <input
+                  disabled={loading || isBusy}
+                  maxLength={160}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="Zum Beispiel: Zugriffsproblem"
+                  required
+                  value={draft.name}
+                />
+              </FormField>
+              <FormField label="Betreffvorlage" required>
+                <input
+                  disabled={loading || isBusy}
+                  maxLength={240}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      subjectTemplate: event.target.value,
+                    }))
+                  }
+                  placeholder="Zum Beispiel: Zugriff auf {{System}} fehlt"
+                  required
+                  value={draft.subjectTemplate}
+                />
+              </FormField>
+              <FormField label="Beschreibungsvorlage" required>
+                <textarea
+                  disabled={loading || isBusy}
+                  maxLength={50000}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      descriptionTemplate: event.target.value,
+                    }))
+                  }
+                  placeholder="Beschreiben Sie den Standardablauf oder die benötigten Angaben."
+                  required
+                  rows={5}
+                  value={draft.descriptionTemplate}
+                />
+              </FormField>
+              <FormNote>
+                Sichere Platzhalter: <code>{"{{anfragende_person}}"}</code>,{" "}
+                <code>{"{{abteilung}}"}</code>, <code>{"{{heute}}"}</code> und{" "}
+                <code>{"{{ticket_nummer}}"}</code>. Andere geschweifte Klammern
+                oder Ausdrücke sind nicht zulässig.
+              </FormNote>
+            </FormCard>
+            <FormCard title="Einordnung">
+              <FormGrid cols={2}>
+                <FormField label="Abteilung">
+                  <select
                     disabled={loading || isBusy}
-                    maxLength={1000}
                     onChange={(event) =>
-                      updateChecklistItem(index, {
-                        description: event.target.value,
-                      })
+                      setDraft((current) => ({
+                        ...current,
+                        departmentId: event.target.value,
+                      }))
                     }
-                    placeholder={`Checklistenpunkt ${index + 1}`}
-                    required
-                    value={item.description}
-                  />
-                  <button
-                    aria-label={`Checklistenpunkt ${index + 1} entfernen`}
-                    className="ticket-templates__button ticket-templates__button--danger"
+                    value={draft.departmentId}
+                  >
+                    <option value="">Mandantenweit</option>
+                    {options.departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Prioritätsschlüssel">
+                  <select
                     disabled={loading || isBusy}
-                    onClick={() => removeChecklistItem(index)}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        priorityKey: event.target.value,
+                      }))
+                    }
+                    value={draft.priorityKey}
+                  >
+                    <option value="">Keine Prioritätsvorgabe</option>
+                    {options.priorities.map((priority) => (
+                      <option key={priority.key} value={priority.key}>
+                        {priority.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </FormGrid>
+            </FormCard>
+            <FormCard
+              title="Checklistenpunkte"
+              sub={`${draft.checklistItems.length} von max. 100`}
+            >
+              <div className="ticket-templates__checklist ticket-templates__full-width">
+                <div className="ticket-templates__checklist-heading">
+                  <button
+                    className="ticket-templates__button"
+                    disabled={
+                      loading || isBusy || draft.checklistItems.length >= 100
+                    }
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        checklistItems: [
+                          ...current.checklistItems,
+                          { description: "", condition: null },
+                        ],
+                      }))
+                    }
                     type="button"
                   >
-                    <X aria-hidden="true" size={15} />
-                    Entfernen
+                    <Plus aria-hidden="true" size={14} />
+                    Punkt hinzufügen
                   </button>
-                  {(draftFormFields.length > 0 || item.condition) && (
-                    <div className="ticket-templates__full-width">
-                      <ConditionPicker
-                        candidates={draftFormFields.filter(
-                          (field) => field.key,
-                        )}
-                        condition={item.condition}
-                        disabled={loading || isBusy}
-                        label={`Punkt ${index + 1} nur erstellen`}
-                        onChange={(condition) =>
-                          updateChecklistItem(index, { condition })
-                        }
-                      />
-                    </div>
-                  )}
                 </div>
-              ))
-            )}
-          </div>
-
-          <TemplateFieldsEditor
-            disabled={loading || isBusy}
-            drafts={draft.fieldDrafts}
-            onChange={(fieldDrafts) =>
-              setDraft((current) => ({ ...current, fieldDrafts }))
-            }
-          />
-
-          <label className="ticket-templates__checkbox">
-            <input
-              checked={draft.active}
-              disabled={loading || isBusy}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  active: event.target.checked,
-                }))
-              }
-              type="checkbox"
-            />
-            Vorlage ist aktiv und kann verwendet werden
-          </label>
-
-          <div className="ticket-templates__form-actions ticket-templates__full-width">
-            <button
-              className="primary-button ticket-templates__save"
-              disabled={loading || isBusy}
-              type="submit"
+                {draft.checklistItems.length === 0 ? (
+                  <p className="ticket-templates__description">
+                    Keine Checklistenpunkte. Sie können die Vorlage auch ohne
+                    Checkliste speichern.
+                  </p>
+                ) : (
+                  draft.checklistItems.map((item, index) => (
+                    <div
+                      className="ticket-templates__checklist-row"
+                      key={index}
+                    >
+                      <input
+                        aria-label={`Checklistenpunkt ${index + 1}`}
+                        disabled={loading || isBusy}
+                        maxLength={1000}
+                        onChange={(event) =>
+                          updateChecklistItem(index, {
+                            description: event.target.value,
+                          })
+                        }
+                        placeholder={`Checklistenpunkt ${index + 1}`}
+                        required
+                        value={item.description}
+                      />
+                      <button
+                        aria-label={`Checklistenpunkt ${index + 1} entfernen`}
+                        className="ticket-templates__button ticket-templates__button--danger"
+                        disabled={loading || isBusy}
+                        onClick={() => removeChecklistItem(index)}
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={15} />
+                        Entfernen
+                      </button>
+                      {(draftFormFields.length > 0 || item.condition) && (
+                        <div className="ticket-templates__full-width">
+                          <ConditionPicker
+                            candidates={draftFormFields.filter(
+                              (field) => field.key,
+                            )}
+                            condition={item.condition}
+                            disabled={loading || isBusy}
+                            label={`Punkt ${index + 1} nur erstellen`}
+                            onChange={(condition) =>
+                              updateChecklistItem(index, { condition })
+                            }
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </FormCard>
+            <FormCard
+              title="Formularfelder"
+              sub={`${draft.fieldDrafts.length} ${draft.fieldDrafts.length === 1 ? "Feld" : "Felder"}`}
             >
-              {saving === "create"
-                ? "Vorlage wird angelegt …"
-                : saving === "update"
-                  ? "Vorlage wird gespeichert …"
-                  : editing
-                    ? "Änderungen speichern"
-                    : "Vorlage anlegen"}
-            </button>
-            {editing && (
+              <TemplateFieldsEditor
+                disabled={loading || isBusy}
+                drafts={draft.fieldDrafts}
+                onChange={(fieldDrafts) =>
+                  setDraft((current) => ({ ...current, fieldDrafts }))
+                }
+              />
+            </FormCard>
+            <div className="ticket-templates__form-actions ticket-templates__full-width">
               <button
-                className="ticket-templates__button"
-                disabled={isBusy}
-                onClick={resetForm}
-                type="button"
+                className="primary-button ticket-templates__save"
+                disabled={loading || isBusy}
+                type="submit"
               >
-                Bearbeitung abbrechen
+                {saving === "create"
+                  ? "Vorlage wird angelegt …"
+                  : saving === "update"
+                    ? "Vorlage wird gespeichert …"
+                    : editing
+                      ? "Änderungen speichern"
+                      : "Vorlage anlegen"}
               </button>
-            )}
-          </div>
+              {editing && (
+                <button
+                  className="ticket-templates__button"
+                  disabled={isBusy}
+                  onClick={resetForm}
+                  type="button"
+                >
+                  Bearbeitung abbrechen
+                </button>
+              )}
+            </div>
+          </FormLayout>
         </form>
       </section>
 

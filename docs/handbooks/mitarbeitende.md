@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-09
+updated: 2026-11-10
 ---
 
 # Handbuch für Mitarbeitende
@@ -59,12 +59,16 @@ eigenes Ticket erfassen.
 1. Klicken Sie oben auf **+** und dann auf **Ticket erfassen**.
 2. Geben Sie einen kurzen, aussagekräftigen **Betreff** ein, z. B.
    «Drucker im 2. OG druckt nicht».
-3. Unter **Ticket einordnen** wählen Sie **Abteilung / Angebot** (z. B. ICT),
+3. Unter **Einordnung** wählen Sie **Abteilung / Angebot** (z. B. ICT),
    optional eine **Ticketvorlage** sowie **Kategorie** und **Unterkategorie**.
 4. Wählen Sie die **Priorität** – im Zweifel die vorgeschlagene belassen.
 5. Beschreiben Sie das Anliegen in der **Beschreibung** möglichst konkret:
    Was ist passiert? Seit wann? Welche Fehlermeldung? Welches Gerät?
 6. Klicken Sie auf **Ticket erstellen**.
+
+Links sehen Sie eine Zusammenfassung Ihrer Angaben, rechts die Abschnitte des
+Formulars. Pflichtfelder sind mit einem roten **\*** markiert; die Schaltfläche
+zum Erstellen bleibt am unteren Rand sichtbar.
 
 Sie erhalten sofort die **Ticketnummer** sowie die erwarteten Reaktions- und
 Lösungszeiten. Mit **Öffnen** springen Sie direkt ins Ticket.

@@ -26,10 +26,10 @@ export const SHOTS = [
       await h.open();
       await h.click("Neue Erfassung öffnen");
       await h.click("Ticket erfassen", { role: "menuitem" });
-      await h.waitText("Ticket einordnen");
+      await h.waitText("Einordnung");
       const form = h.page
         .locator("form")
-        .filter({ hasText: "Ticket einordnen" })
+        .filter({ hasText: "Einordnung" })
         .first();
       await form
         .getByLabel("Betreff")
@@ -284,10 +284,10 @@ export const SHOTS = [
       await h.open();
       await h.click("Neue Erfassung öffnen");
       await h.click("Ticket erfassen", { role: "menuitem" });
-      await h.waitText("Ticket einordnen");
+      await h.waitText("Einordnung");
       const form = h.page
         .locator("form")
-        .filter({ hasText: "Ticket einordnen" })
+        .filter({ hasText: "Einordnung" })
         .first();
       await form.getByRole("combobox").first().fill("Claudia");
       await h.page.getByRole("option", { name: "Claudia Widmer" }).click();

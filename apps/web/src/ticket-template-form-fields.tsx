@@ -1,4 +1,5 @@
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
+import { FormCard, FormField, FormGrid, FormSwitch } from "./form-kit";
 import {
   MAX_TEMPLATE_FIELDS,
   TEMPLATE_FIELD_TYPES,
@@ -41,129 +42,111 @@ export function TicketTemplateFormFields({
   if (shown.length === 0) return null;
 
   return (
-    <section
-      aria-labelledby="ticket-template-form-heading"
-      className="ticket-compose-routing ticket-template-answers"
-    >
-      <div className="ticket-compose-section-heading">
-        <p className="eyebrow">ANGABEN ZUR VORLAGE</p>
-        <h3 id="ticket-template-form-heading">Formular ausfüllen</h3>
-      </div>
-      {shown.map((field) => {
-        const id = `ticket-template-field-${field.key}`;
-        const errorId = `${id}-error`;
-        const helpId = `${id}-help`;
-        const error = errors[field.key];
-        const describedBy =
-          [field.helpText ? helpId : null, error ? errorId : null]
-            .filter(Boolean)
-            .join(" ") || undefined;
-        const value = answers[field.key];
-        const text =
-          typeof value === "string"
-            ? value
-            : typeof value === "number"
-              ? String(value)
-              : "";
-        const wide = field.fieldType === "textarea";
-        const label = (
-          <>
-            {field.label}
-            {field.required && (
-              <span aria-hidden="true" className="ticket-template-answers__req">
-                {" "}
-                *
-              </span>
-            )}
-          </>
-        );
-        const help = field.helpText ? (
-          <span className="data-caption" id={helpId}>
-            {field.helpText}
-          </span>
-        ) : null;
-        const errorText = error ? (
-          <span className="error" id={errorId} role="alert">
-            {error}
-          </span>
-        ) : null;
+    <FormCard sub="Angaben zur Vorlage" title="Formular ausfüllen">
+      <FormGrid cols={2}>
+        {shown.map((field) => {
+          const id = `ticket-template-field-${field.key}`;
+          const errorId = `${id}-error`;
+          const helpId = `${id}-help`;
+          const error = errors[field.key];
+          const describedBy =
+            [field.helpText ? helpId : null, error ? errorId : null]
+              .filter(Boolean)
+              .join(" ") || undefined;
+          const value = answers[field.key];
+          const text =
+            typeof value === "string"
+              ? value
+              : typeof value === "number"
+                ? String(value)
+                : "";
+          const wide = field.fieldType === "textarea";
+          const help = field.helpText ? (
+            <span className="data-caption" id={helpId}>
+              {field.helpText}
+            </span>
+          ) : null;
+          const errorText = error ? (
+            <span className="error" id={errorId} role="alert">
+              {error}
+            </span>
+          ) : null;
 
-        if (field.fieldType === "checkbox") {
-          return (
-            <div className="ticket-template-answers__checkbox" key={field.key}>
-              <label htmlFor={id}>
-                <input
-                  aria-describedby={describedBy}
-                  aria-invalid={Boolean(error)}
+          if (field.fieldType === "checkbox") {
+            return (
+              <div key={field.key} style={{ gridColumn: "1 / -1" }}>
+                <FormSwitch
                   checked={value === true}
                   disabled={disabled}
-                  id={id}
-                  onChange={(event) =>
-                    onChange(field.key, event.target.checked)
-                  }
-                  type="checkbox"
+                  label={field.label}
+                  onChange={(checked) => onChange(field.key, checked)}
                 />
-                <span>{label}</span>
-              </label>
-              {help}
-              {errorText}
+                {help}
+                {errorText}
+              </div>
+            );
+          }
+
+          const common = {
+            "aria-describedby": describedBy,
+            "aria-invalid": Boolean(error),
+            "aria-required": field.required,
+            disabled,
+            id,
+          };
+          return (
+            <div
+              key={field.key}
+              style={wide ? { gridColumn: "1 / -1" } : undefined}
+            >
+              <FormField label={field.label} required={field.required}>
+                {field.fieldType === "select" ? (
+                  <select
+                    {...common}
+                    onChange={(event) =>
+                      onChange(field.key, event.target.value || null)
+                    }
+                    value={text}
+                  >
+                    <option value="">Bitte wählen …</option>
+                    {field.options.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                ) : field.fieldType === "textarea" ? (
+                  <textarea
+                    {...common}
+                    maxLength={10000}
+                    onChange={(event) =>
+                      onChange(field.key, event.target.value)
+                    }
+                    rows={3}
+                    value={text}
+                  />
+                ) : (
+                  <input
+                    {...common}
+                    inputMode={
+                      field.fieldType === "number" ? "decimal" : undefined
+                    }
+                    maxLength={field.fieldType === "text" ? 1000 : undefined}
+                    onChange={(event) =>
+                      onChange(field.key, event.target.value)
+                    }
+                    type={field.fieldType === "date" ? "date" : "text"}
+                    value={text}
+                  />
+                )}
+                {help}
+                {errorText}
+              </FormField>
             </div>
           );
-        }
-
-        const common = {
-          "aria-describedby": describedBy,
-          "aria-invalid": Boolean(error),
-          "aria-required": field.required,
-          disabled,
-          id,
-        };
-        return (
-          <label
-            className={wide ? "ticket-compose-description" : undefined}
-            htmlFor={id}
-            key={field.key}
-          >
-            <span>{label}</span>
-            {field.fieldType === "select" ? (
-              <select
-                {...common}
-                onChange={(event) =>
-                  onChange(field.key, event.target.value || null)
-                }
-                value={text}
-              >
-                <option value="">Bitte wählen …</option>
-                {field.options.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            ) : field.fieldType === "textarea" ? (
-              <textarea
-                {...common}
-                maxLength={10000}
-                onChange={(event) => onChange(field.key, event.target.value)}
-                rows={3}
-                value={text}
-              />
-            ) : (
-              <input
-                {...common}
-                inputMode={field.fieldType === "number" ? "decimal" : undefined}
-                maxLength={field.fieldType === "text" ? 1000 : undefined}
-                onChange={(event) => onChange(field.key, event.target.value)}
-                type={field.fieldType === "date" ? "date" : "text"}
-                value={text}
-              />
-            )}
-            {help}
-            {errorText}
-          </label>
-        );
-      })}
-    </section>
+        })}
+      </FormGrid>
+    </FormCard>
   );
 }
 
@@ -479,7 +462,7 @@ export function TemplateFieldsEditor({
   return (
     <div className="ticket-templates__checklist ticket-templates__full-width">
       <div className="ticket-templates__checklist-heading">
-        <strong>Formularfelder</strong>
+        <span />
         <button
           className="ticket-templates__button"
           disabled={disabled || drafts.length >= MAX_TEMPLATE_FIELDS}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { LoaderCircle, Pencil, Plus } from "lucide-react";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
+import { FormField, FormGrid, FormSwitch } from "./form-kit";
 import "./ticket-coordination.css";
 
 type Vendor = {
@@ -196,9 +197,8 @@ export function TicketVendors({ tenantId }: { tenantId: string }) {
             void save();
           }}
         >
-          <div className="ticket-coordination__child-grid">
-            <label>
-              Name
+          <FormGrid cols={2}>
+            <FormField label="Name" required>
               <input
                 maxLength={160}
                 onChange={(event) =>
@@ -207,9 +207,8 @@ export function TicketVendors({ tenantId }: { tenantId: string }) {
                 required
                 value={draft.name}
               />
-            </label>
-            <label>
-              E-Mail
+            </FormField>
+            <FormField label="E-Mail">
               <input
                 maxLength={254}
                 onChange={(event) =>
@@ -218,9 +217,8 @@ export function TicketVendors({ tenantId }: { tenantId: string }) {
                 type="email"
                 value={draft.contactEmail}
               />
-            </label>
-            <label>
-              Telefon
+            </FormField>
+            <FormField label="Telefon">
               <input
                 maxLength={40}
                 onChange={(event) =>
@@ -228,9 +226,8 @@ export function TicketVendors({ tenantId }: { tenantId: string }) {
                 }
                 value={draft.contactPhone}
               />
-            </label>
-            <label>
-              Erinnerung nach (Stunden)
+            </FormField>
+            <FormField label="Erinnerung nach (Stunden)">
               <input
                 max={2160}
                 min={1}
@@ -243,18 +240,14 @@ export function TicketVendors({ tenantId }: { tenantId: string }) {
                 type="number"
                 value={draft.reminderAfterHours}
               />
-            </label>
-            <label className="tenant-automation__switch">
-              <input
-                checked={draft.active}
-                onChange={(event) =>
-                  setDraft({ ...draft, active: event.target.checked })
-                }
-                type="checkbox"
-              />
-              Aktiv
-            </label>
-          </div>
+            </FormField>
+            <FormSwitch
+              checked={draft.active}
+              hint="Inaktive Drittanbieter werden in der Liste als inaktiv gekennzeichnet."
+              label="Aktiv"
+              onChange={(checked) => setDraft({ ...draft, active: checked })}
+            />
+          </FormGrid>
           <div className="ticket-coordination__actions">
             <button
               className="secondary-button"
