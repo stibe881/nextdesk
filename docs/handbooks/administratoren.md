@@ -20,11 +20,11 @@ Der Menüpunkt **Einstellungen** ist nur für Administratoren sichtbar und
 steht unten in der linken Navigation. Die Einstellungen sind in Register
 gegliedert:
 
-| Gruppe               | Register                                                                |
-| -------------------- | ----------------------------------------------------------------------- |
-| Allgemein            | Übersicht, Design                                                       |
-| Betrieb              | Funktionen, SLA, Ticketfelder, Abteilungen, E-Mail-Vorlagen, Monitoring |
-| Zugriff & Sicherheit | Personen, Rollen, Datenschutz, Protokoll                                |
+| Gruppe               | Register                                                                                     |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| Allgemein            | Übersicht, Design                                                                            |
+| Betrieb              | Funktionen, SLA, Ticket-Lebenszyklus, Ticketfelder, Abteilungen, E-Mail-Vorlagen, Monitoring |
+| Zugriff & Sicherheit | Personen, Rollen, Datenschutz, Protokoll                                                     |
 
 Mit **Schliessen** kehren Sie in den Arbeitsbereich zurück.
 
@@ -86,9 +86,8 @@ Wichtige Funktionen und ihre Konfiguration:
 
 Unter **Funktionen → SLA-Automatisierung → Konfigurieren**:
 
-- **Erinnern, lösen, schliessen** (läuft stündlich): _Erinnern nach Tagen_,
-  _Höchstens so viele Erinnerungen_, _Lösen nach Tagen (ab Beginn der
-  Wartezeit)_, _Schliessen nach Tagen_.
+- **Erinnern, lösen, schliessen** (läuft stündlich) hat ein eigenes Register
+  **Ticket-Lebenszyklus**, siehe unten.
 - **Regeln für neue Tickets**: Auslöser «Beim Erstellen eines Tickets» oder
   «Zeitgesteuert». Im Teil **Wenn …** definieren Sie Bedingungen (z. B.
   Stichworte in Betreff oder Beschreibung), im Teil **… dann** die Aktion
@@ -125,6 +124,21 @@ Eintrag; mit **Aktiv** schalten Sie einen Anbieter ab, ohne ihn zu löschen.
 
 Bei der Übergabe wechselt das Ticket auf **Wartend auf Drittanbieter**. Ist es
 noch niemandem zugewiesen, bleibt der Status **Neu**, bis jemand es übernimmt.
+
+## Ticket-Lebenszyklus
+
+Das Register **Ticket-Lebenszyklus** (setzt die SLA-Automatisierung voraus)
+steuert, wie lange ein Ticket in einem Status bleibt, bevor nextDesk handelt.
+Die Regeln laufen stündlich und sind zunächst alle ausgeschaltet:
+
+- **Erinnerung** bei «Wartend auf Kunde»: _Erinnern nach Tagen_ und
+  _Höchstens so viele Erinnerungen_.
+- **Automatisch lösen**: _Lösen nach Tagen (ab Beginn der Wartezeit)_.
+- **Gelöste Tickets automatisch schliessen**: _Schliessen nach Tagen_. So lange
+  bleibt ein Ticket auf «Gelöst», bevor es geschlossen wird. Antwortet die
+  anfragende Person vorher, wird das Ticket wieder geöffnet.
+
+Das automatische Schliessen verlangt keine SLA-Ursache.
 
 ## SLA-Regeln
 
