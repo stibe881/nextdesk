@@ -263,6 +263,12 @@ Geräte mit den meisten Störungen.
 Die Benachrichtigungen dazu schalten Sie unter _Persönliche Einstellungen →
 Benachrichtigungen → Störungen_ (Push und E-Mail) ein oder aus.
 
+In der **iOS- und Android-App** finden Sie **Störungen** in der unteren Leiste
+zwischen **Tickets** und **Shop**. Dort sehen Sie die aktiven und unbestätigten
+Störungen samt Folgestörungen, bestätigen sie, weisen sie zu, ergänzen Notizen
+und schliessen sie ab oder tragen die Ursache nach. Ein Tipp auf eine
+Störungs-Mitteilung öffnet die Störung direkt.
+
 ## Ticketliste
 
 Unter **Tickets** arbeiten Sie die Warteschlangen ab. Jede Ticketkarte zeigt

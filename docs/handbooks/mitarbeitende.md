@@ -221,7 +221,8 @@ speichern.
 
 Laden Sie die **nextDesk-App** aus dem App Store und melden Sie sich wie im
 Browser an. Unten finden Sie **Tickets**, **Shop**, **Home**, **Wissen** und
-**Scan**. Unter **Wissen** (auch auf Android) suchen Sie Artikel, wischen durch
+**Scan**; wer Tickets bearbeitet, sieht zwischen Tickets und Shop zusätzlich
+**Störungen**. Unter **Wissen** (auch auf Android) suchen Sie Artikel, wischen durch
 die Themen und lesen sie im Design Ihres Unternehmens: oben «Kurz gesagt»,
 darunter Abschnitte zum Aufklappen, Schritte als nummerierte Karten und
 Hinweisboxen. Unten im Artikel teilen Sie ihn oder erstellen mit **Ticket
