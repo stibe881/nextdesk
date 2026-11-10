@@ -17169,6 +17169,16 @@ body:has(.knowledge-base__editor-backdrop) {
   color: var(--danger);
 }
 
+.inventory__metric--ok {
+  background: color-mix(in srgb, #1f9d55 8%, var(--surface));
+  border-color: color-mix(in srgb, #1f9d55 35%, var(--border));
+}
+
+.inventory__metric--ok > svg,
+.inventory__metric--ok strong {
+  color: #1f9d55;
+}
+
 .inventory__panel {
   min-width: 0;
   padding: 0 24px 24px;
