@@ -21722,3 +21722,7 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 .inventory__item-editor label { display: grid; gap: 2px; font-size: 12px; font-weight: 700; }
 .inventory__item-editor input { width: 100%; font: inherit; font-weight: 400; }
 .inventory__item-editor-actions { display: flex; gap: 8px; }
+.inventory__checkbox { display: flex !important; align-items: flex-start; gap: 8px; }
+.inventory__checkbox input { width: auto !important; margin-top: 3px; }
+.inventory__checkbox span { display: grid; gap: 2px; }
+.inventory__checkbox small { color: var(--muted, #5d6f7a); font-weight: 400; }

@@ -116,6 +116,8 @@ export type WorkspaceItem = {
   targetQuantity: number;
   locationName: string | null;
   active: boolean;
+  /** Is handed out and returned (shop offers it as a loan article). */
+  loanItem: boolean;
   /** Department of the item; null for items shared by all departments. */
   departmentId: string | null;
 };
@@ -193,6 +195,8 @@ type ItemValues = {
   supplier?: string | null;
   privateNote?: string | null;
   active?: boolean;
+  /** Loan article: handed out and returned instead of consumed. */
+  loanItem?: boolean;
   /**
    * Requested department, resolved against the caller's scope. On create it
    * may be left out when the caller has one department; on update it moves
@@ -573,6 +577,7 @@ function parseItemValues(value: unknown): ItemValues | null {
     "supplier",
     "privateNote",
     "active",
+    "loanItem",
     "departmentId",
   ] as const;
   // Inventory identifiers deliberately have no Edge command in migration 0068.
@@ -631,6 +636,10 @@ function parseItemValues(value: unknown): ItemValues | null {
   if (Object.hasOwn(value, "active")) {
     if (typeof value.active !== "boolean") return null;
     result.active = value.active;
+  }
+  if (Object.hasOwn(value, "loanItem")) {
+    if (typeof value.loanItem !== "boolean") return null;
+    result.loanItem = value.loanItem;
   }
   if (Object.hasOwn(value, "departmentId")) {
     if (value.departmentId === null || value.departmentId === "") {
@@ -1462,6 +1471,7 @@ type ItemSeed = {
   minQuantity: number;
   targetQuantity: number;
   active: boolean;
+  loanItem: boolean;
   departmentId: string | null;
 };
 
@@ -1519,6 +1529,7 @@ function workspaceItemSeed(value: unknown): ItemSeed | typeof INVALID {
     minQuantity,
     targetQuantity,
     active: value.active,
+    loanItem: value.loan_item === true,
     departmentId,
   };
 }
@@ -1882,6 +1893,7 @@ export function toWorkspaceContract(
         ? (locationById.get(locationId)?.name ?? null)
         : null,
       active: item.active,
+      loanItem: item.loanItem,
       departmentId: item.departmentId,
     };
   });
@@ -2154,7 +2166,7 @@ async function workspace(
         admin
           .from("inventory_items")
           .select(
-            "id,name,article_number,unit,tracking_mode,minimum_quantity,target_quantity,active,department_id",
+            "id,name,article_number,unit,tracking_mode,minimum_quantity,target_quantity,active,loan_item,department_id",
           )
           .eq("tenant_id", action.tenantId),
         scope,
@@ -3355,9 +3367,24 @@ async function manage(
         scope.scoped ? scope.departments : null,
       ),
     );
+    const receipt = mutationReceipt(raw);
+    // The loan flag is not part of the upsert function: set it on the saved
+    // row (same tenant, the row the function just wrote or changed).
+    if (action.values?.loanItem !== undefined) {
+      const savedItemId =
+        action.operation === "create" ? receipt.id : action.itemId;
+      if (typeof savedItemId === "string" && isUuid(savedItemId)) {
+        const loanResult = await admin
+          .from("inventory_items")
+          .update({ loan_item: action.values.loanItem })
+          .eq("tenant_id", action.tenantId)
+          .eq("id", savedItemId);
+        if (loanResult.error) databaseFailure(loanResult.error);
+      }
+    }
     return json(
       request,
-      { data: mutationReceipt(raw) },
+      { data: receipt },
       action.operation === "create" ? 201 : 200,
     );
   }
