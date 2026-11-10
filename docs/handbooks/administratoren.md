@@ -169,7 +169,10 @@ Im Register **E-Mail-Vorlagen** steuern Sie alle E-Mails, die nextDesk
 automatisch versendet:
 
 - Eingangsbestätigung, Antwort des Supports, Ticket gelöst
-- Rückmeldung an Personen, die eine Phishing-Mail gemeldet haben
+- Rückmeldungen an Personen, die eine Phishing-Mail gemeldet haben: Danke,
+  Ergebnis (je Beurteilung eine eigene Vorlage) und Rückfrage «geklickt?». Die
+  Vorlage «Gestaltung» legt Überschrift und Hinweis fest; ausgeschaltet
+  werden gar keine Rückmeldungen versendet
 - Abteilungsrückfrage und Abteilungsantwort
 - Benachrichtigungen an Mitarbeitende
 - Statusseite: Anmeldung bestätigen und Statusänderung
@@ -186,7 +189,8 @@ automatisch versendet:
    unter dem Formular.
 4. **Speichern**. Mit **Auf Standard** setzen Sie die Vorlage zurück.
 
-Der Text einer Antwort des Supports und die Details der Ereignisse
+Der Text einer Antwort des Supports (was Ihre Agenten im Ticket schreiben)
+und die Details der Ereignisse
 (z. B. Ticketbetreff in Benachrichtigungen) bleiben unverändert. Die Schalter
 unter _Funktionen → E-Mail-Kanäle_ (Eingangsbestätigung, Agentenantworten,
 Lösung) gelten zusätzlich: Eine E-Mail wird nur gesendet, wenn beide aktiv sind.

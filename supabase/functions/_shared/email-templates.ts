@@ -2,6 +2,14 @@
 // Auflösung der vom Mandanten angepassten Texte. Rein (keine Datenbank, kein
 // Netzwerk), siehe email-templates.test.ts.
 
+import { THANK_YOU_TEXT } from "./phishing-report-intake.ts";
+import {
+  CLICK_QUESTION_TEXT,
+  SECURITY_VERDICTS,
+  VERDICT_LABELS,
+  VERDICT_RESULT_TEXT,
+} from "./security-cases.ts";
+
 export type EmailTemplateField = {
   key: string;
   label: string;
@@ -126,9 +134,9 @@ export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
   },
   {
     key: "security_notice",
-    label: "Phishing-Meldung: Rückmeldung",
+    label: "Phishing-Meldung: Gestaltung",
     description:
-      "Danke oder Ergebnis an die Person, die eine verdächtige E-Mail gemeldet hat. Der Text der Rückmeldung stammt aus der Meldung.",
+      "Rahmen aller Rückmeldungen an meldende Personen (Danke, Ergebnis, Rückfrage). Ausgeschaltet wird keine dieser Rückmeldungen versendet. Die Texte stellen Sie in den folgenden Vorlagen ein.",
     audience: "customer",
     placeholders: TICKET_PLACEHOLDERS,
     fields: [
@@ -144,6 +152,75 @@ export const EMAIL_TEMPLATES: readonly EmailTemplateDefinition[] = [
         multiline: true,
         default:
           "Bitte antworten Sie nicht auf diese E-Mail. Bei Fragen wenden Sie sich an den Support.",
+      },
+    ],
+  },
+  {
+    key: "phishing_thanks",
+    label: "Phishing-Meldung: Danke",
+    description:
+      "Geht an die Person, die eine verdächtige E-Mail gemeldet hat, sobald die Meldung eingegangen ist.",
+    audience: "customer",
+    placeholders: [
+      { name: "ticketNumber", description: "Nummer des Sicherheitsfalls" },
+    ],
+    fields: [
+      {
+        key: "subject",
+        label: "Betreff",
+        default: "Danke für Ihre Phishing-Meldung",
+      },
+      {
+        key: "text",
+        label: "Text",
+        multiline: true,
+        default: THANK_YOU_TEXT,
+      },
+    ],
+  },
+  ...SECURITY_VERDICTS.map((verdict): EmailTemplateDefinition => ({
+    key: `phishing_result_${verdict}`,
+    label: `Phishing-Meldung: Ergebnis «${VERDICT_LABELS[verdict]}»`,
+    description: `Geht einmalig an alle meldenden Personen, wenn das Sicherheitsteam die Meldung als «${VERDICT_LABELS[verdict]}» beurteilt hat.`,
+    audience: "customer",
+    placeholders: [
+      {
+        name: "originalSubject",
+        description: "Betreff der gemeldeten E-Mail",
+      },
+    ],
+    fields: [
+      {
+        key: "subject",
+        label: "Betreff",
+        default: "Ergebnis Ihrer Phishing-Meldung: «{{originalSubject}}»",
+      },
+      {
+        key: "text",
+        label: "Text",
+        multiline: true,
+        default: VERDICT_RESULT_TEXT[verdict],
+      },
+    ],
+  })),
+  {
+    key: "phishing_click_question",
+    label: "Phishing-Meldung: Rückfrage «geklickt?»",
+    description:
+      "Fragt meldende Personen, ob sie in der gemeldeten E-Mail etwas geöffnet oder eingegeben haben. Die Antwortknöpfe werden automatisch angefügt.",
+    audience: "customer",
+    placeholders: [],
+    fields: [
+      {
+        key: "subject",
+        label: "Betreff",
+        default: "Kurze Rückfrage zu Ihrer Phishing-Meldung",
+      },
+      {
+        key: "text",
+        label: "Text",
+        multiline: true,
+        default: CLICK_QUESTION_TEXT,
       },
     ],
   },

@@ -19,11 +19,8 @@ import {
   type CustomerTicketEmailBrand,
   type CustomerTicketEmailKind,
 } from "./customer-ticket-email-template.ts";
-import {
-  emailTemplateDefinition,
-  resolveEmailTemplate,
-  type StoredEmailTemplate,
-} from "./email-templates.ts";
+import { emailTemplateDefinition } from "./email-templates.ts";
+import { loadEmailTemplate } from "./email-templates-store.ts";
 import {
   requesterActionUrl,
   signRequesterActionToken,
@@ -1946,27 +1943,6 @@ async function outboundAttachments(
  * and subject are sent; the recipient must still be allowed to see the
  * ticket.
  */
-/** Vom Mandanten angepasste Vorlage; ohne Eintrag gelten die Standardtexte. */
-async function loadEmailTemplate(admin: Admin, tenantId: string, key: string) {
-  let stored: StoredEmailTemplate | null = null;
-  const result = await admin
-    .from("tenant_email_templates")
-    .select("enabled, fields")
-    .eq("tenant_id", tenantId)
-    .eq("template_key", key)
-    .maybeSingle();
-  if (!result.error && result.data) {
-    const fields: Record<string, string> = {};
-    if (result.data.fields && typeof result.data.fields === "object") {
-      for (const [name, value] of Object.entries(result.data.fields)) {
-        if (typeof value === "string") fields[name] = value;
-      }
-    }
-    stored = { enabled: result.data.enabled !== false, fields };
-  }
-  return resolveEmailTemplate(key, stored);
-}
-
 async function dispatchNotificationMail(
   admin: Admin,
   message: Message,
