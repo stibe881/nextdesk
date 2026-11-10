@@ -145,7 +145,9 @@ export function PushNotificationBridge() {
         const tenant = await loadCurrentTenant();
         if (!active || tenant.id !== data.tenantId) return;
 
-        if (data.ticketId) {
+        if (data.kind === "security_report" && data.ticketId) {
+          router.push(`/phishing/${data.ticketId}` as never);
+        } else if (data.ticketId) {
           const reminderAnswer = reminderAnswerFromNotificationAction(
             response.actionIdentifier,
           );

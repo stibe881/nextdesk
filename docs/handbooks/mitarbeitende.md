@@ -220,9 +220,9 @@ speichern.
 ## nextDesk auf dem iPhone
 
 Laden Sie die **nextDesk-App** aus dem App Store und melden Sie sich wie im
-Browser an. Unten finden Sie **Tickets**, **Shop**, **Home**, **Wissen** und
-**Scan**; wer Tickets bearbeitet, sieht zwischen Tickets und Shop zusätzlich
-**Störungen**. Unter **Wissen** (auch auf Android) suchen Sie Artikel, wischen durch
+Browser an. Unten finden Sie links vom **Home**-Knopf **Tickets** und rechts
+**Shop**, **Wissen** und **Scan**; wer Tickets bearbeitet, sieht links
+zusätzlich **Störungen** und **Phishing**. Unter **Wissen** (auch auf Android) suchen Sie Artikel, wischen durch
 die Themen und lesen sie im Design Ihres Unternehmens: oben «Kurz gesagt»,
 darunter Abschnitte zum Aufklappen, Schritte als nummerierte Karten und
 Hinweisboxen. Unten im Artikel teilen Sie ihn oder erstellen mit **Ticket

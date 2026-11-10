@@ -20,6 +20,8 @@ export type NextDeskTabItem = {
   label: string;
   icon: IoniconName;
   activeIcon: IoniconName;
+  /** Fixed side of the Home button; without it the items are split evenly. */
+  side?: "left" | "right";
 };
 
 const HOME_ROUTE = "index";
@@ -70,9 +72,14 @@ export function NextDeskTabBar({
   const availableItems = items.filter((item) =>
     state.routes.some((route) => route.name === item.name),
   );
+  const sided = availableItems.some((item) => item.side);
   const leftCount = Math.ceil(availableItems.length / 2);
-  const leftItems = availableItems.slice(0, leftCount);
-  const rightItems = availableItems.slice(leftCount);
+  const leftItems = sided
+    ? availableItems.filter((item) => item.side !== "right")
+    : availableItems.slice(0, leftCount);
+  const rightItems = sided
+    ? availableItems.filter((item) => item.side === "right")
+    : availableItems.slice(leftCount);
 
   const focusedRouteName = state.routes[state.index]?.name ?? HOME_ROUTE;
   const activeName = ROUTE_ALIASES[focusedRouteName] ?? focusedRouteName;
@@ -133,7 +140,12 @@ export function NextDeskTabBar({
             size={22}
           />
         </View>
-        <Text numberOfLines={1} style={[styles.label, { color: tint }]}>
+        <Text
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+          numberOfLines={1}
+          style={[styles.label, { color: tint }]}
+        >
           {item.label}
         </Text>
       </Pressable>
@@ -272,7 +284,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   iconPill: {
-    width: 48,
+    width: 44,
     height: 28,
     borderRadius: 14,
     alignItems: "center",
