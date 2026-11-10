@@ -3254,10 +3254,12 @@ export function upsertItemRpcParameters(
     p_tracking_mode: item.trackingMode,
     p_minimum_quantity: item.minimumStock,
     p_target_quantity: item.targetStock,
-    p_manufacturer: item.manufacturer,
-    p_model: item.model,
-    p_supplier: item.supplier,
-    p_note: item.privateNote,
+    // Optional fields that were not sent are undefined; JSON would drop them
+    // and PostgREST would answer 404 (no function with these parameters).
+    p_manufacturer: item.manufacturer ?? null,
+    p_model: item.model ?? null,
+    p_supplier: item.supplier ?? null,
+    p_note: item.privateNote ?? null,
     p_active: item.active,
     // Migration 0187: set together with the item, so a new item is never
     // visible outside its department.
