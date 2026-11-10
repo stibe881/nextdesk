@@ -122,6 +122,7 @@ type SettingsArea =
   | "roles"
   | "monitoring"
   | "email-templates"
+  | "ticket-lifecycle"
   | "audit";
 
 type TenantSettings = {
@@ -2761,6 +2762,9 @@ export function TenantAdminSettings({
         ...(slaManagementEnabled ? ([["sla", "SLA"]] as const) : []),
         ["ticket-fields", "Ticketfelder"],
         ["departments", "Abteilungen"],
+        ...(slaManagementEnabled
+          ? ([["ticket-lifecycle", "Ticket-Lebenszyklus"]] as const)
+          : []),
         ["email-templates", "E-Mail-Vorlagen"],
         ["monitoring", "Monitoring"],
       ],
@@ -2783,7 +2787,10 @@ export function TenantAdminSettings({
     ) ?? false;
 
   useEffect(() => {
-    if (activeArea === "sla" && !slaManagementEnabled) {
+    if (
+      (activeArea === "sla" || activeArea === "ticket-lifecycle") &&
+      !slaManagementEnabled
+    ) {
       setActiveArea("features");
     }
   }, [activeArea, slaManagementEnabled]);
@@ -3088,6 +3095,9 @@ export function TenantAdminSettings({
               </>
             )}
 
+            {activeArea === "ticket-lifecycle" && (
+              <TicketLifecycleSettings tenantId={tenantId} />
+            )}
             {activeArea === "email-templates" && (
               <EmailTemplatesSettings tenantId={tenantId} />
             )}
@@ -3758,9 +3768,6 @@ export function TenantAdminSettings({
                                             {feature.feature_key ===
                                             "automation.sla" ? (
                                               <>
-                                                <TicketLifecycleSettings
-                                                  tenantId={tenantId}
-                                                />
                                                 <TicketRules
                                                   tenantId={tenantId}
                                                 />
