@@ -12,6 +12,13 @@ import {
   Users,
   X,
 } from "lucide-react";
+import {
+  FormCard,
+  FormDialog,
+  FormField,
+  FormGrid,
+  FormSummary,
+} from "./form-kit";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import {
   RecordAttachments,
@@ -791,40 +798,57 @@ export function Licenses({
       )}
       {editorOpen &&
         createPortal(
-          <div
-            className="contracts__dialog-backdrop"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) close();
-            }}
+          <FormDialog
+            eyebrow={form.id ? "Lizenz bearbeiten" : "Neue Lizenz"}
+            onClose={close}
+            onSubmit={save}
+            side={
+              <FormSummary
+                eyebrow="Lizenz"
+                rows={[
+                  ["Anbieter", form.vendorName.trim()],
+                  ["Anzahl", form.quantity.trim()],
+                  [
+                    "Status",
+                    form.status === "draft"
+                      ? "Entwurf"
+                      : form.status === "active"
+                        ? "Aktiv"
+                        : "Beendet",
+                  ],
+                  ["Läuft bis", form.endsOn ? formatDate(form.endsOn) : ""],
+                  [
+                    "Kosten gesamt",
+                    form.seatCostAmount.trim() !== "" &&
+                    form.quantity.trim() !== ""
+                      ? `${form.seatCostCurrency} ${(
+                          Number(form.seatCostAmount) * Number(form.quantity)
+                        ).toLocaleString("de-CH", {
+                          maximumFractionDigits: 2,
+                        })}${
+                          form.seatCostPeriod
+                            ? ` ${
+                                {
+                                  monthly: "pro Monat",
+                                  quarterly: "pro Quartal",
+                                  yearly: "pro Jahr",
+                                  one_time: "einmalig",
+                                }[form.seatCostPeriod]
+                              }`
+                            : ""
+                        }`
+                      : "",
+                  ],
+                ]}
+                title={form.title.trim()}
+              />
+            }
+            submitting={pending}
+            title={form.id ? "Lizenz aktualisieren" : "Lizenz erfassen"}
           >
-            <section
-              className="contracts__editor-dialog"
-              aria-labelledby="license-editor-heading"
-              aria-modal="true"
-              role="dialog"
-            >
-              <header className="panel-heading">
-                <div>
-                  <p className="eyebrow">
-                    {form.id ? "Lizenz bearbeiten" : "Neue Lizenz"}
-                  </p>
-                  <h2 id="license-editor-heading">
-                    {form.id ? "Lizenz aktualisieren" : "Lizenz erfassen"}
-                  </h2>
-                </div>
-                <button
-                  aria-label="Dialog schliessen"
-                  className="icon-button"
-                  disabled={pending}
-                  onClick={close}
-                  type="button"
-                >
-                  <X size={18} />
-                </button>
-              </header>
-              <form onSubmit={save}>
-                <label>
-                  Produkt / Bezeichnung
+            <FormCard title="Lizenz">
+              <FormGrid cols={2}>
+                <FormField label="Produkt / Bezeichnung" required>
                   <input
                     ref={nameRef}
                     required
@@ -835,9 +859,8 @@ export function Licenses({
                       setForm({ ...form, title: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Hersteller / Anbieter
+                </FormField>
+                <FormField label="Hersteller / Anbieter" required>
                   <input
                     required
                     minLength={2}
@@ -854,9 +877,8 @@ export function Licenses({
                       <option key={name} value={name} />
                     ))}
                   </datalist>
-                </label>
-                <label>
-                  Lizenznummer
+                </FormField>
+                <FormField label="Lizenznummer">
                   <input
                     maxLength={120}
                     value={form.referenceNumber}
@@ -864,9 +886,8 @@ export function Licenses({
                       setForm({ ...form, referenceNumber: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Art
+                </FormField>
+                <FormField label="Art">
                   <select
                     value={addingType ? NEW_TYPE : form.licenseType}
                     onChange={(event) => {
@@ -922,9 +943,8 @@ export function Licenses({
                       </button>
                     </span>
                   ) : null}
-                </label>
-                <label>
-                  Anzahl Lizenzen
+                </FormField>
+                <FormField label="Anzahl Lizenzen">
                   <input
                     min="1"
                     max="1000000"
@@ -935,9 +955,8 @@ export function Licenses({
                       setForm({ ...form, quantity: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Status
+                </FormField>
+                <FormField label="Status">
                   <select
                     value={form.status}
                     onChange={(event) =>
@@ -951,49 +970,12 @@ export function Licenses({
                     <option value="active">Aktiv</option>
                     <option value="terminated">Beendet</option>
                   </select>
-                </label>
-                {departments.length > 1 ? (
-                  <label>
-                    Abteilung
-                    <select
-                      required
-                      value={form.departmentId}
-                      onChange={(event) =>
-                        setForm({ ...form, departmentId: event.target.value })
-                      }
-                    >
-                      <option disabled value="">
-                        Abteilung wählen
-                      </option>
-                      {departments.map((department) => (
-                        <option key={department.id} value={department.id}>
-                          {department.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-                <label>
-                  Verantwortliche Person
-                  <select
-                    value={form.responsibleUserId}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        responsibleUserId: event.target.value,
-                      })
-                    }
-                  >
-                    <option value="">Nicht zugeordnet</option>
-                    {people.map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {person.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Startdatum
+                </FormField>
+              </FormGrid>
+            </FormCard>
+            <FormCard title="Laufzeit">
+              <FormGrid cols={3}>
+                <FormField label="Startdatum">
                   <input
                     type="date"
                     value={form.startsOn}
@@ -1001,9 +983,8 @@ export function Licenses({
                       setForm({ ...form, startsOn: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Ablaufdatum
+                </FormField>
+                <FormField label="Ablaufdatum">
                   <input
                     type="date"
                     value={form.endsOn}
@@ -1011,9 +992,8 @@ export function Licenses({
                       setForm({ ...form, endsOn: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Kündigungsfrist (Tage)
+                </FormField>
+                <FormField label="Kündigungsfrist (Tage)">
                   <input
                     min="0"
                     max="3650"
@@ -1024,9 +1004,13 @@ export function Licenses({
                       setForm({ ...form, noticePeriodDays: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Erinnerung per Ticket
+                </FormField>
+              </FormGrid>
+              <FormGrid cols={2}>
+                <FormField
+                  hint="Ein Ticket erinnert die verantwortliche Person rechtzeitig. Nur bei aktiven Einträgen mit Ablaufdatum."
+                  label="Erinnerung per Ticket"
+                >
                   <select
                     value={form.reminderDaysBefore}
                     onChange={(event) =>
@@ -1051,13 +1035,15 @@ export function Licenses({
                       </option>
                     ))}
                   </select>
-                  <small>
-                    Ein Ticket erinnert die verantwortliche Person rechtzeitig.
-                    Nur bei aktiven Einträgen mit Ablaufdatum.
-                  </small>
-                </label>
-                <label>
-                  Kosten pro Platz
+                </FormField>
+              </FormGrid>
+            </FormCard>
+            <FormCard title="Kosten">
+              <FormGrid cols={3}>
+                <FormField
+                  hint="Für die geschätzte Einsparung der Rückgewinnung."
+                  label="Kosten pro Platz"
+                >
                   <input
                     inputMode="decimal"
                     min="0"
@@ -1068,49 +1054,100 @@ export function Licenses({
                       setForm({ ...form, seatCostAmount: event.target.value })
                     }
                   />
-                  <small>
-                    Für die geschätzte Einsparung der Rückgewinnung.
-                  </small>
-                </label>
-                <label>
-                  Zeitraum der Kosten
-                  <span className="contracts__new-type">
+                </FormField>
+                <FormField label="Währung">
+                  <select
+                    value={form.seatCostCurrency}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        seatCostCurrency: event.target
+                          .value as Form["seatCostCurrency"],
+                      })
+                    }
+                  >
+                    <option value="CHF">CHF</option>
+                    <option value="EUR">EUR</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </FormField>
+                <FormField label="Zeitraum der Kosten">
+                  <select
+                    value={form.seatCostPeriod}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        seatCostPeriod: event.target
+                          .value as Form["seatCostPeriod"],
+                      })
+                    }
+                  >
+                    <option value="">Zeitraum wählen</option>
+                    <option value="monthly">pro Monat</option>
+                    <option value="quarterly">pro Quartal</option>
+                    <option value="yearly">pro Jahr</option>
+                    <option value="one_time">einmalig</option>
+                  </select>
+                </FormField>
+              </FormGrid>
+            </FormCard>
+            <FormCard title="Zuständigkeit">
+              <FormGrid cols={2}>
+                {departments.length > 1 ? (
+                  <FormField label="Abteilung" required>
                     <select
-                      aria-label="Währung"
-                      value={form.seatCostCurrency}
+                      required
+                      value={form.departmentId}
                       onChange={(event) =>
-                        setForm({
-                          ...form,
-                          seatCostCurrency: event.target
-                            .value as Form["seatCostCurrency"],
-                        })
+                        setForm({ ...form, departmentId: event.target.value })
                       }
                     >
-                      <option value="CHF">CHF</option>
-                      <option value="EUR">EUR</option>
-                      <option value="USD">USD</option>
+                      <option disabled value="">
+                        Abteilung wählen
+                      </option>
+                      {departments.map((department) => (
+                        <option key={department.id} value={department.id}>
+                          {department.name}
+                        </option>
+                      ))}
                     </select>
-                    <select
-                      aria-label="Zeitraum"
-                      value={form.seatCostPeriod}
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          seatCostPeriod: event.target
-                            .value as Form["seatCostPeriod"],
-                        })
-                      }
-                    >
-                      <option value="">Zeitraum wählen</option>
-                      <option value="monthly">pro Monat</option>
-                      <option value="quarterly">pro Quartal</option>
-                      <option value="yearly">pro Jahr</option>
-                      <option value="one_time">einmalig</option>
-                    </select>
-                  </span>
-                </label>
-                <label>
-                  Microsoft-365-SKU-ID (optional)
+                  </FormField>
+                ) : null}
+                <FormField label="Verantwortliche Person">
+                  <select
+                    value={form.responsibleUserId}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        responsibleUserId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">Nicht zugeordnet</option>
+                    {people.map((person) => (
+                      <option key={person.id} value={person.id}>
+                        {person.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </FormGrid>
+            </FormCard>
+            <FormCard title="Dokumente">
+              <RecordAttachments
+                entityId={form.id}
+                entityType="license"
+                onQueuedChange={setQueuedFiles}
+                queued={queuedFiles}
+                tenantId={tenantId}
+              />
+            </FormCard>
+            <FormCard collapsed title="Weitere Angaben">
+              <FormGrid cols={1}>
+                <FormField
+                  hint="Nur nötig, wenn beim Zurückgeben auch die Lizenz in Microsoft 365 entfernt werden soll."
+                  label="Microsoft-365-SKU-ID"
+                >
                   <input
                     maxLength={36}
                     placeholder="z. B. 05e9a617-0261-4cee-bb44-138d3ef5d965"
@@ -1120,13 +1157,8 @@ export function Licenses({
                       setForm({ ...form, m365SkuId: event.target.value })
                     }
                   />
-                  <small>
-                    Nur nötig, wenn beim Zurückgeben auch die Lizenz in
-                    Microsoft 365 entfernt werden soll.
-                  </small>
-                </label>
-                <label className="contracts__notes">
-                  Notiz
+                </FormField>
+                <FormField label="Notiz">
                   <textarea
                     maxLength={2000}
                     rows={5}
@@ -1135,36 +1167,10 @@ export function Licenses({
                       setForm({ ...form, notes: event.target.value })
                     }
                   />
-                </label>
-                <div className="contracts__notes">
-                  <RecordAttachments
-                    entityId={form.id}
-                    entityType="license"
-                    onQueuedChange={setQueuedFiles}
-                    queued={queuedFiles}
-                    tenantId={tenantId}
-                  />
-                </div>
-                <div className="form-actions">
-                  <button
-                    className="secondary-button"
-                    disabled={pending}
-                    onClick={close}
-                    type="button"
-                  >
-                    Abbrechen
-                  </button>
-                  <button
-                    className="primary-button"
-                    disabled={pending}
-                    type="submit"
-                  >
-                    {pending ? "Wird gespeichert …" : "Speichern"}
-                  </button>
-                </div>
-              </form>
-            </section>
-          </div>,
+                </FormField>
+              </FormGrid>
+            </FormCard>
+          </FormDialog>,
           document.body,
         )}
       {seatsFor ? (

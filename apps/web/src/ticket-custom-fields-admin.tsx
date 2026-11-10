@@ -23,6 +23,7 @@ import {
   type TicketFieldPreset,
   type TicketFieldPresetCategory,
 } from "./lib/ticket-form-builder-presets";
+import { FormField, FormSwitch } from "./form-kit";
 import { STANDARD_TICKET_FORM_PREVIEW_SECTIONS } from "./lib/ticket-form-preview";
 import { supabase } from "./lib/supabase";
 import {
@@ -760,8 +761,7 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
           className="ticket-form-builder__section-composer"
           onSubmit={saveSection}
         >
-          <label>
-            Bezeichnung für den neuen Abschnitt
+          <FormField label="Bezeichnung für den neuen Abschnitt" required>
             <input
               autoFocus
               disabled={saving}
@@ -772,7 +772,7 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
               required
               value={sectionLabel}
             />
-          </label>
+          </FormField>
           <div className="tenant-admin-settings__form-actions">
             <button
               className="secondary-button"
@@ -1182,8 +1182,7 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
                   Schliessen
                 </button>
               </div>
-              <label>
-                Abschnitt
+              <FormField label="Abschnitt" required>
                 <select
                   disabled={saving}
                   onChange={(event) =>
@@ -1202,9 +1201,8 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
                     </option>
                   ))}
                 </select>
-              </label>
-              <label>
-                Bezeichnung
+              </FormField>
+              <FormField label="Bezeichnung" required>
                 <input
                   disabled={saving}
                   maxLength={120}
@@ -1218,9 +1216,8 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
                   required
                   value={draft.label}
                 />
-              </label>
-              <label>
-                Technischer Schlüssel
+              </FormField>
+              <FormField label="Technischer Schlüssel" required>
                 <input
                   disabled={saving || Boolean(editingId)}
                   maxLength={63}
@@ -1238,9 +1235,8 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
                   required
                   value={draft.fieldKey}
                 />
-              </label>
-              <label>
-                Feldtyp
+              </FormField>
+              <FormField label="Feldtyp">
                 <select
                   disabled={saving || Boolean(editingId)}
                   onChange={(event) =>
@@ -1259,10 +1255,13 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
                   <option value="select">Auswahl</option>
                   <option value="checkbox">Ja / Nein</option>
                 </select>
-              </label>
+              </FormField>
               {draft.fieldType === "select" && (
-                <label>
-                  Auswahloptionen
+                <FormField
+                  hint="Eine Option pro Zeile."
+                  label="Auswahloptionen"
+                  required
+                >
                   <textarea
                     disabled={saving}
                     onChange={(event) =>
@@ -1275,25 +1274,17 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
                     required
                     value={draft.options}
                   />
-                  <span className="tenant-admin-settings__hint">
-                    Eine Option pro Zeile.
-                  </span>
-                </label>
+                </FormField>
               )}
-              <label className="tenant-admin-settings__checkbox">
-                <input
-                  checked={draft.required}
-                  disabled={saving}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      required: event.target.checked,
-                    }))
-                  }
-                  type="checkbox"
-                />
-                Als Pflichtfeld führen
-              </label>
+              <FormSwitch
+                checked={draft.required}
+                disabled={saving}
+                hint="Muss beim Erfassen ausgefüllt sein."
+                label="Pflichtfeld"
+                onChange={(checked) =>
+                  setDraft((current) => ({ ...current, required: checked }))
+                }
+              />
               <div className="tenant-admin-settings__form-actions">
                 <button
                   className="primary-button"

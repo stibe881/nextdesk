@@ -33,6 +33,7 @@ import {
   supportLevelFromSelect,
   supportLevelLabel,
 } from "./lib/support-levels";
+import { FormCard, FormField, FormGrid } from "./form-kit";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 import { useTransientSuccessMessage } from "./lib/use-transient-success-message";
@@ -766,71 +767,71 @@ function DepartmentTeams({ tenantId }: { tenantId: string }) {
 
       {formVisible ? (
         <form className="department-management__team-form" onSubmit={saveTeam}>
-          <div>
-            <h4>{form.id ? "Team bearbeiten" : "Neues Team"}</h4>
-            <p>Ordnen Sie jedes Team genau einer aktiven Abteilung zu.</p>
-          </div>
-          <label>
-            Name des Teams
-            <input
-              autoFocus
-              disabled={isSaving}
-              maxLength={120}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, name: event.target.value }))
-              }
-              placeholder="Zum Beispiel Service Desk"
-              required
-              value={form.name}
-            />
-          </label>
-          <label>
-            Abteilung
-            <select
-              disabled={isSaving}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  departmentId: event.target.value,
-                }))
-              }
-              required
-              value={form.departmentId}
-            >
-              <option value="">Aktive Abteilung auswählen</option>
-              {activeDepartments.map((department) => (
-                <option key={department.id} value={department.id}>
-                  {department.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Supportstufe
-            <select
-              aria-describedby="team-support-level-hint"
-              disabled={isSaving}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  supportLevel: event.target.value,
-                }))
-              }
-              value={form.supportLevel}
-            >
-              <option value="">Keine Stufe</option>
-              {SUPPORT_LEVELS.map((level) => (
-                <option key={level} value={String(level)}>
-                  {supportLevelLabel(level)}
-                </option>
-              ))}
-            </select>
-            <small id="team-support-level-hint">
-              Tickets dieses Teams stehen auf dieser Stufe. Agenten übergeben
-              sie mit einer Notiz an ein Team der nächsten Stufe derselben
-              Abteilung.
-            </small>
-          </label>
+          <FormCard
+            sub="Ordnen Sie jedes Team genau einer aktiven Abteilung zu."
+            title={form.id ? "Team bearbeiten" : "Neues Team"}
+          >
+            <FormGrid cols={1}>
+              <FormField label="Name des Teams" required>
+                <input
+                  autoFocus
+                  disabled={isSaving}
+                  maxLength={120}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="Zum Beispiel Service Desk"
+                  required
+                  value={form.name}
+                />
+              </FormField>
+              <FormField label="Abteilung" required>
+                <select
+                  disabled={isSaving}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      departmentId: event.target.value,
+                    }))
+                  }
+                  required
+                  value={form.departmentId}
+                >
+                  <option value="">Aktive Abteilung auswählen</option>
+                  {activeDepartments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField
+                hint="Tickets dieses Teams stehen auf dieser Stufe. Agenten übergeben sie mit einer Notiz an ein Team der nächsten Stufe derselben Abteilung."
+                label="Supportstufe"
+              >
+                <select
+                  disabled={isSaving}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      supportLevel: event.target.value,
+                    }))
+                  }
+                  value={form.supportLevel}
+                >
+                  <option value="">Keine Stufe</option>
+                  {SUPPORT_LEVELS.map((level) => (
+                    <option key={level} value={String(level)}>
+                      {supportLevelLabel(level)}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            </FormGrid>
+          </FormCard>
           <div className="department-management__form-actions">
             <button
               className="primary-button"
@@ -1229,27 +1230,29 @@ export function DepartmentManagement({ tenantId }: DepartmentManagementProps) {
 
       {formVisible ? (
         <form className="department-management__form" onSubmit={save}>
-          <div>
-            <h3>{form.id ? "Abteilung bearbeiten" : "Neue Abteilung"}</h3>
-            <p>
-              Die technische Kennung wird beim Anlegen sicher aus dem Namen
-              erzeugt und danach beibehalten.
-            </p>
-          </div>
-          <label>
-            Name der Abteilung
-            <input
-              autoFocus
-              disabled={saving}
-              maxLength={120}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, name: event.target.value }))
-              }
-              placeholder="Zum Beispiel ICT oder Finanzen"
-              required
-              value={form.name}
-            />
-          </label>
+          <FormCard
+            sub="Die technische Kennung wird beim Anlegen sicher aus dem Namen erzeugt und danach beibehalten."
+            title={form.id ? "Abteilung bearbeiten" : "Neue Abteilung"}
+          >
+            <FormGrid cols={1}>
+              <FormField label="Name der Abteilung" required>
+                <input
+                  autoFocus
+                  disabled={saving}
+                  maxLength={120}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="Zum Beispiel ICT oder Finanzen"
+                  required
+                  value={form.name}
+                />
+              </FormField>
+            </FormGrid>
+          </FormCard>
           <div className="department-management__form-actions">
             <button className="primary-button" disabled={saving} type="submit">
               {saving

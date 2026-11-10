@@ -7,6 +7,15 @@ import {
   type LabelBranding,
 } from "./asset-label-dialog";
 import { assetLabelItem, rackLabelItem } from "./lib/asset-labels";
+import {
+  FormCard,
+  FormChips,
+  FormDialog,
+  FormField,
+  FormGrid,
+  FormNote,
+  FormSummary,
+} from "./form-kit";
 import { buildRacks, type RackDefinition } from "./lib/rack-layout";
 import { NetworkMap, type MonitoringEntry } from "./infrastructure-network-map";
 import {
@@ -1637,8 +1646,7 @@ function DeviceEditor({
   const set = <K extends keyof Form>(key: K, value: Form[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
   const text = (key: keyof Form, label: string, placeholder = "") => (
-    <label>
-      {label}
+    <FormField label={label}>
       <input
         onChange={(event) =>
           set(key, (event.target.value || null) as Form[typeof key])
@@ -1646,11 +1654,10 @@ function DeviceEditor({
         placeholder={placeholder}
         value={(form[key] as string | null) ?? ""}
       />
-    </label>
+    </FormField>
   );
   const date = (key: keyof Form, label: string) => (
-    <label>
-      {label}
+    <FormField label={label}>
       <input
         onChange={(event) =>
           set(key, (event.target.value || null) as Form[typeof key])
@@ -1658,7 +1665,7 @@ function DeviceEditor({
         type="date"
         value={(form[key] as string | null) ?? ""}
       />
-    </label>
+    </FormField>
   );
 
   async function addLocation() {
@@ -1723,268 +1730,255 @@ function DeviceEditor({
       !["retired", "disposed"].includes(device.lifecycleState),
   );
 
+  const categoryOptions = (Object.keys(CATEGORY) as Category[]).map((key) => ({
+    label: CATEGORY[key].label,
+    value: key,
+  }));
+  const locationName =
+    locations.find((location) => location.id === form.locationId)?.name ?? "";
+  const rackLabel = [form.rack, form.rackUnit ? `HE ${form.rackUnit}` : ""]
+    .filter(Boolean)
+    .join(" · ");
+  const selectedServices = services.filter((service) =>
+    selectedServiceIds.includes(service.id),
+  );
+
   return (
-    <div className="infrastructure__drawer-backdrop">
-      <form
-        aria-label={form.id ? "Gerät bearbeiten" : "Gerät erfassen"}
-        className="infrastructure__drawer infrastructure__editor"
-        onSubmit={submit}
-      >
-        <header>
-          <div>
-            <h3>{form.id ? "Gerät bearbeiten" : "Gerät erfassen"}</h3>
-            <p>Pflicht sind nur Name und Typ – alles andere nach Bedarf.</p>
-          </div>
-          <button
-            aria-label="Abbrechen"
-            className="infrastructure__icon-button"
-            onClick={onCancel}
-            type="button"
-          >
-            <X aria-hidden="true" size={18} strokeWidth={1.9} />
-          </button>
-        </header>
-        <fieldset>
-          <legend>Grunddaten</legend>
-          <div
-            className="infrastructure__type-picker"
-            role="radiogroup"
-            aria-label="Typ"
-          >
-            {(Object.keys(CATEGORY) as Category[]).map((key) => {
-              const { Icon, label } = CATEGORY[key];
-              return (
-                <button
-                  aria-checked={form.category === key}
-                  className={form.category === key ? "is-active" : ""}
-                  key={key}
-                  onClick={() => set("category", key)}
-                  role="radio"
-                  type="button"
-                >
-                  <Icon aria-hidden="true" size={16} />
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="infrastructure__grid">
-            <label className="infrastructure__wide">
-              Name
-              <input
-                maxLength={240}
-                onChange={(event) => set("name", event.target.value)}
-                placeholder="z. B. SW-Haus-A-EG oder AP Büro 1"
-                required
-                value={form.name}
-              />
-            </label>
-            {!form.id ? (
-              <label>
-                Lebenszyklus
-                <select
-                  onChange={(event) =>
-                    set("lifecycleState", event.target.value as Lifecycle)
-                  }
-                  value={form.lifecycleState}
-                >
-                  {LIFECYCLE.map((entry) => (
-                    <option key={entry.key} value={entry.key}>
-                      {entry.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            <label>
-              Kritikalität
+    <FormDialog
+      error={error}
+      eyebrow="Infrastruktur"
+      onClose={onCancel}
+      onSubmit={submit}
+      side={
+        <>
+          <FormSummary
+            eyebrow={CATEGORY[form.category].label}
+            rows={[
+              ["Standort", locationName],
+              ["Rack", rackLabel],
+              ["Garantie bis", form.warrantyUntil ?? ""],
+              ["End of Life", form.endOfLife ?? ""],
+              [
+                "Dienste (Systemstatus)",
+                selectedServices.map((service) => service.name).join(", "),
+              ],
+            ]}
+            title={form.name.trim()}
+          />
+          <FormNote>
+            Pflicht sind nur Name und Typ – alles andere nach Bedarf.
+          </FormNote>
+        </>
+      }
+      submitDisabled={!form.name.trim()}
+      submitting={busy}
+      title={form.id ? "Gerät bearbeiten" : "Gerät erfassen"}
+    >
+      <FormCard title="Typ">
+        <FormChips<Category>
+          label="Typ"
+          onChange={(next) => {
+            if (next[0]) set("category", next[0]);
+          }}
+          options={categoryOptions}
+          value={[form.category]}
+        />
+      </FormCard>
+      <FormCard title="Grunddaten">
+        <FormGrid cols={3}>
+          <FormField label="Name" required>
+            <input
+              maxLength={240}
+              onChange={(event) => set("name", event.target.value)}
+              placeholder="z. B. SW-Haus-A-EG oder AP Büro 1"
+              required
+              value={form.name}
+            />
+          </FormField>
+          <FormField label="Kritikalität">
+            <select
+              onChange={(event) =>
+                set("criticality", event.target.value as Criticality)
+              }
+              value={form.criticality}
+            >
+              {(Object.keys(CRITICALITY_LABEL) as Criticality[]).map((key) => (
+                <option key={key} value={key}>
+                  {CRITICALITY_LABEL[key]}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          {!form.id ? (
+            <FormField label="Lebenszyklus">
               <select
                 onChange={(event) =>
-                  set("criticality", event.target.value as Criticality)
+                  set("lifecycleState", event.target.value as Lifecycle)
                 }
-                value={form.criticality}
+                value={form.lifecycleState}
               >
-                {(Object.keys(CRITICALITY_LABEL) as Criticality[]).map(
-                  (key) => (
-                    <option key={key} value={key}>
-                      {CRITICALITY_LABEL[key]}
-                    </option>
-                  ),
-                )}
-              </select>
-            </label>
-            {text("manufacturer", "Hersteller", "z. B. Cisco, Ubiquiti, HPE")}
-            {text("model", "Modell")}
-            {text("serialNumber", "Seriennummer")}
-            {text("inventoryNumber", "Inventarnummer")}
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Netzwerk</legend>
-          <div className="infrastructure__grid">
-            {text("hostname", "Hostname")}
-            {text("ipAddress", "IP-Adresse", "10.0.0.21")}
-            {text("macAddress", "MAC-Adresse", "00:1A:2B:3C:4D:5E")}
-            {text("firmwareVersion", "Firmware / Version")}
-            {text("prtgObjectId", "PRTG-Objekt-ID (optional)", "z. B. 2045")}
-            <label>
-              Uplink (hängt an)
-              <select
-                onChange={(event) =>
-                  set("uplinkAssetId", event.target.value || null)
-                }
-                value={form.uplinkAssetId ?? ""}
-              >
-                <option value="">– keiner –</option>
-                {uplinkOptions.map((device) => (
-                  <option key={device.id} value={device.id}>
-                    {device.name}
+                {LIFECYCLE.map((entry) => (
+                  <option key={entry.key} value={entry.key}>
+                    {entry.label}
                   </option>
                 ))}
               </select>
-            </label>
-            {text("uplinkPort", "Port", "z. B. Gi1/0/12")}
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Standort</legend>
-          <div className="infrastructure__grid">
-            <label>
-              Standort
-              <select
-                onChange={(event) =>
-                  set("locationId", event.target.value || null)
-                }
-                value={form.locationId ?? ""}
+            </FormField>
+          ) : null}
+          {text("manufacturer", "Hersteller", "z. B. Cisco, Ubiquiti, HPE")}
+          {text("model", "Modell")}
+          {text("serialNumber", "Seriennummer")}
+          {text("inventoryNumber", "Inventarnummer")}
+        </FormGrid>
+      </FormCard>
+      <FormCard title="Netzwerk">
+        <FormGrid cols={3}>
+          {text("hostname", "Hostname")}
+          {text("ipAddress", "IP-Adresse", "10.0.0.21")}
+          {text("macAddress", "MAC-Adresse", "00:1A:2B:3C:4D:5E")}
+          {text("firmwareVersion", "Firmware / Version")}
+          {text("prtgObjectId", "PRTG-Objekt-ID", "z. B. 2045")}
+          <FormField label="Uplink (hängt an)">
+            <select
+              onChange={(event) =>
+                set("uplinkAssetId", event.target.value || null)
+              }
+              value={form.uplinkAssetId ?? ""}
+            >
+              <option value="">– keiner –</option>
+              {uplinkOptions.map((device) => (
+                <option key={device.id} value={device.id}>
+                  {device.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          {text("uplinkPort", "Port", "z. B. Gi1/0/12")}
+        </FormGrid>
+      </FormCard>
+      <FormCard title="Standort">
+        <FormGrid cols={3}>
+          <FormField label="Standort">
+            <select
+              onChange={(event) =>
+                set("locationId", event.target.value || null)
+              }
+              value={form.locationId ?? ""}
+            >
+              <option value="">– kein Standort –</option>
+              {locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Neuer Standort">
+            <span className="infrastructure__inline">
+              <input
+                maxLength={160}
+                onChange={(event) => setNewLocation(event.target.value)}
+                placeholder="z. B. Serverraum Haus A"
+                value={newLocation}
+              />
+              <button
+                className="secondary-button"
+                disabled={!newLocation.trim()}
+                onClick={() => void addLocation()}
+                type="button"
               >
-                <option value="">– kein Standort –</option>
-                {locations.map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Neuer Standort
-              <span className="infrastructure__inline">
+                Anlegen
+              </button>
+            </span>
+          </FormField>
+          {text("rack", "Rack")}
+          <FormField label="Höheneinheit von">
+            <input
+              inputMode="numeric"
+              max={60}
+              min={1}
+              onChange={(event) => setRackUnits(event.target.value, rackTo)}
+              placeholder="z. B. 12"
+              type="number"
+              value={rackFrom}
+            />
+          </FormField>
+          <FormField label="bis">
+            <input
+              inputMode="numeric"
+              max={60}
+              min={rackFrom || 1}
+              onChange={(event) => setRackUnits(rackFrom, event.target.value)}
+              placeholder="z. B. 14"
+              type="number"
+              value={rackTo}
+            />
+          </FormField>
+        </FormGrid>
+        <fieldset className="infrastructure__services">
+          <legend>Dienste (für Systemstatus)</legend>
+          {services.length === 0 ? (
+            <p className="infrastructure__hint">
+              Noch keine Dienste vorhanden.
+            </p>
+          ) : (
+            services.map((service) => (
+              <label className="infrastructure__check" key={service.id}>
                 <input
-                  maxLength={160}
-                  onChange={(event) => setNewLocation(event.target.value)}
-                  placeholder="z. B. Serverraum Haus A"
-                  value={newLocation}
+                  checked={selectedServiceIds.includes(service.id)}
+                  onChange={() => toggleService(service.id)}
+                  type="checkbox"
                 />
-                <button
-                  className="secondary-button"
-                  disabled={!newLocation.trim()}
-                  onClick={() => void addLocation()}
-                  type="button"
-                >
-                  Anlegen
-                </button>
-              </span>
-            </label>
-            {text("rack", "Rack")}
-            <div className="infrastructure__range">
-              <label>
-                Höheneinheit von
-                <input
-                  inputMode="numeric"
-                  max={60}
-                  min={1}
-                  onChange={(event) => setRackUnits(event.target.value, rackTo)}
-                  placeholder="z. B. 12"
-                  type="number"
-                  value={rackFrom}
-                />
+                {service.name}
               </label>
-              <label>
-                bis
-                <input
-                  inputMode="numeric"
-                  max={60}
-                  min={rackFrom || 1}
-                  onChange={(event) =>
-                    setRackUnits(rackFrom, event.target.value)
-                  }
-                  placeholder="z. B. 14"
-                  type="number"
-                  value={rackTo}
-                />
-              </label>
-            </div>
-            <fieldset className="infrastructure__services">
-              <legend>Dienste (für Systemstatus)</legend>
-              {services.length === 0 ? (
-                <p className="infrastructure__hint">
-                  Noch keine Dienste vorhanden.
-                </p>
-              ) : (
-                services.map((service) => (
-                  <label className="infrastructure__check" key={service.id}>
-                    <input
-                      checked={selectedServiceIds.includes(service.id)}
-                      onChange={() => toggleService(service.id)}
-                      type="checkbox"
-                    />
-                    {service.name}
-                  </label>
-                ))
-              )}
-              <p className="infrastructure__hint">
-                Meldet die Überwachung (PRTG) eine Störung, ändern alle
-                gewählten Dienste ihren Status.
-              </p>
-            </fieldset>
-          </div>
+            ))
+          )}
+          <p className="infrastructure__hint">
+            Meldet die Überwachung (PRTG) eine Störung, ändern alle gewählten
+            Dienste ihren Status.
+          </p>
         </fieldset>
-        <fieldset>
-          <legend>Beschaffung & Lebenszyklus</legend>
-          <div className="infrastructure__grid">
-            {date("purchaseDate", "Kaufdatum")}
-            <label>
-              Kaufpreis (CHF)
-              <input
-                min={0}
-                onChange={(event) =>
-                  set(
-                    "purchasePrice",
-                    event.target.value === ""
-                      ? null
-                      : Number(event.target.value),
-                  )
-                }
-                step="0.05"
-                type="number"
-                value={form.purchasePrice ?? ""}
-              />
-            </label>
-            {text("supplier", "Lieferant")}
-            {date("warrantyUntil", "Garantie bis")}
-            {date("supportUntil", "Herstellersupport bis")}
-            {date("endOfLife", "End of Life")}
-            {date("plannedReplacement", "Ersatz geplant")}
-            <label>
-              Wartungsintervall (Monate)
-              <input
-                max={120}
-                min={1}
-                onChange={(event) =>
-                  set(
-                    "maintenanceIntervalMonths",
-                    event.target.value === ""
-                      ? null
-                      : Number(event.target.value),
-                  )
-                }
-                type="number"
-                value={form.maintenanceIntervalMonths ?? ""}
-              />
-            </label>
-          </div>
-        </fieldset>
-        <fieldset className="infrastructure__checklist-editor">
-          <legend>Wartungscheckliste</legend>
+      </FormCard>
+      <FormCard collapsed title="Beschaffung und Lebenszyklus">
+        <FormGrid cols={3}>
+          {date("purchaseDate", "Kaufdatum")}
+          <FormField label="Kaufpreis (CHF)">
+            <input
+              min={0}
+              onChange={(event) =>
+                set(
+                  "purchasePrice",
+                  event.target.value === "" ? null : Number(event.target.value),
+                )
+              }
+              step="0.05"
+              type="number"
+              value={form.purchasePrice ?? ""}
+            />
+          </FormField>
+          {text("supplier", "Lieferant")}
+          {date("warrantyUntil", "Garantie bis")}
+          {date("supportUntil", "Herstellersupport bis")}
+          {date("endOfLife", "End of Life")}
+          {date("plannedReplacement", "Ersatz geplant")}
+          <FormField label="Wartungsintervall (Monate)">
+            <input
+              max={120}
+              min={1}
+              onChange={(event) =>
+                set(
+                  "maintenanceIntervalMonths",
+                  event.target.value === "" ? null : Number(event.target.value),
+                )
+              }
+              type="number"
+              value={form.maintenanceIntervalMonths ?? ""}
+            />
+          </FormField>
+        </FormGrid>
+      </FormCard>
+      <FormCard collapsed title="Wartungscheckliste und Notizen">
+        <div className="infrastructure__checklist-editor">
           <p className="infrastructure__checklist-hint">
             Pro Punkt können Sie ein Datum eintragen, z. B. wann er erledigt
             wurde oder wann er dran ist.
@@ -2064,34 +2058,16 @@ function DeviceEditor({
               Punkt hinzufügen
             </button>
           ) : null}
-        </fieldset>
-        <label className="infrastructure__notes-field">
-          Notizen
+        </div>
+        <FormField label="Notizen">
           <textarea
             maxLength={4000}
             onChange={(event) => set("notes", event.target.value || null)}
             rows={3}
             value={form.notes ?? ""}
           />
-        </label>
-        {error ? (
-          <p className="form-message form-message--error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <footer>
-          <button className="secondary-button" onClick={onCancel} type="button">
-            Abbrechen
-          </button>
-          <button
-            className="primary-button"
-            disabled={busy || !form.name.trim()}
-            type="submit"
-          >
-            {busy ? "Wird gespeichert …" : "Speichern"}
-          </button>
-        </footer>
-      </form>
-    </div>
+        </FormField>
+      </FormCard>
+    </FormDialog>
   );
 }

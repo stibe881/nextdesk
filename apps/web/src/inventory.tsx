@@ -24,6 +24,7 @@ import {
   LabelSelectionBar,
   type LabelBranding,
 } from "./asset-label-dialog";
+import { FormField, FormGrid } from "./form-kit";
 import { inventoryLabelItem } from "./lib/asset-labels";
 import { InventoryProcurement } from "./inventory-procurement";
 import { functionErrorMessage } from "./lib/function-error";
@@ -3199,24 +3200,24 @@ function InventoryLocationCreateForm({
         onChange={clientRequest.discard}
         onSubmit={(event) => void submit(event)}
       >
-        <label>
-          Ortscode
-          <input
-            autoComplete="off"
-            onChange={(event) => setCode(event.target.value)}
-            required
-            value={code}
-          />
-        </label>
-        <label>
-          Bezeichnung
-          <input
-            autoComplete="off"
-            onChange={(event) => setName(event.target.value)}
-            required
-            value={name}
-          />
-        </label>
+        <FormGrid cols={2}>
+          <FormField label="Ortscode" required>
+            <input
+              autoComplete="off"
+              onChange={(event) => setCode(event.target.value)}
+              required
+              value={code}
+            />
+          </FormField>
+          <FormField label="Bezeichnung" required>
+            <input
+              autoComplete="off"
+              onChange={(event) => setName(event.target.value)}
+              required
+              value={name}
+            />
+          </FormField>
+        </FormGrid>
         <button disabled={!complete || saving} type="submit">
           {saving ? "Lagerort wird erfasst …" : "Lagerort erfassen"}
         </button>
@@ -3382,81 +3383,78 @@ function InventoryMovementForm({
         onChange={clientRequest.discard}
         onSubmit={(event) => void submit(event)}
       >
-        <label>
-          Buchungsart
-          <select
-            onChange={(event) =>
-              setMovementType(event.target.value as InventoryMovementType)
-            }
-            value={selectedType}
-          >
-            {options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Artikel
-          <select
-            onChange={(event) => setItemId(event.target.value)}
-            required
-            value={itemId}
-          >
-            <option value="">Artikel wählen</option>
-            {items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {requiresFrom ? (
-          <label>
-            Quelllagerort
+        <FormGrid cols={2}>
+          <FormField label="Buchungsart">
             <select
-              onChange={(event) => setFromLocationId(event.target.value)}
-              required
-              value={fromLocationId}
+              onChange={(event) =>
+                setMovementType(event.target.value as InventoryMovementType)
+              }
+              value={selectedType}
             >
-              <option value="">Lagerort wählen</option>
-              {locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
+              {options.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
-          </label>
-        ) : null}
-        {requiresTo ? (
-          <label>
-            Ziellagerort
+          </FormField>
+          <FormField label="Artikel" required>
             <select
-              onChange={(event) => setToLocationId(event.target.value)}
+              onChange={(event) => setItemId(event.target.value)}
               required
-              value={toLocationId}
+              value={itemId}
             >
-              <option value="">Lagerort wählen</option>
-              {locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
+              <option value="">Artikel wählen</option>
+              {items.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
                 </option>
               ))}
             </select>
-          </label>
-        ) : null}
-        <label>
-          Menge
-          <input
-            min="0.001"
-            onChange={(event) => setAmount(event.target.value)}
-            required
-            step="0.001"
-            type="number"
-            value={amount}
-          />
-        </label>
+          </FormField>
+          {requiresFrom ? (
+            <FormField label="Quelllagerort" required>
+              <select
+                onChange={(event) => setFromLocationId(event.target.value)}
+                required
+                value={fromLocationId}
+              >
+                <option value="">Lagerort wählen</option>
+                {locations.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          ) : null}
+          {requiresTo ? (
+            <FormField label="Ziellagerort" required>
+              <select
+                onChange={(event) => setToLocationId(event.target.value)}
+                required
+                value={toLocationId}
+              >
+                <option value="">Lagerort wählen</option>
+                {locations.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          ) : null}
+          <FormField label="Menge" required>
+            <input
+              min="0.001"
+              onChange={(event) => setAmount(event.target.value)}
+              required
+              step="0.001"
+              type="number"
+              value={amount}
+            />
+          </FormField>
+        </FormGrid>
         <button disabled={!complete || saving} type="submit">
           {saving ? "Buchung wird gespeichert …" : "Buchung speichern"}
         </button>
@@ -3520,47 +3518,46 @@ function InventoryReservationForm({
         onChange={clientRequest.discard}
         onSubmit={(event) => void submit(event)}
       >
-        <label>
-          Artikel
-          <select
-            onChange={(event) => setItemId(event.target.value)}
-            required
-            value={itemId}
-          >
-            <option value="">Artikel wählen</option>
-            {items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Lagerort
-          <select
-            onChange={(event) => setLocationId(event.target.value)}
-            required
-            value={locationId}
-          >
-            <option value="">Lagerort wählen</option>
-            {locations.map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Menge
-          <input
-            min="0.001"
-            onChange={(event) => setAmount(event.target.value)}
-            required
-            step="0.001"
-            type="number"
-            value={amount}
-          />
-        </label>
+        <FormGrid cols={2}>
+          <FormField label="Artikel" required>
+            <select
+              onChange={(event) => setItemId(event.target.value)}
+              required
+              value={itemId}
+            >
+              <option value="">Artikel wählen</option>
+              {items.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Lagerort" required>
+            <select
+              onChange={(event) => setLocationId(event.target.value)}
+              required
+              value={locationId}
+            >
+              <option value="">Lagerort wählen</option>
+              {locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Menge" required>
+            <input
+              min="0.001"
+              onChange={(event) => setAmount(event.target.value)}
+              required
+              step="0.001"
+              type="number"
+              value={amount}
+            />
+          </FormField>
+        </FormGrid>
         <button disabled={!complete || saving} type="submit">
           {saving ? "Reservation wird gespeichert …" : "Reservation speichern"}
         </button>

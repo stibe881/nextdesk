@@ -5,6 +5,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { FormField, FormGrid, FormSwitch } from "./form-kit";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
@@ -855,55 +856,53 @@ export function CustomerOrganizations({
                 : "Kundenorganisation anlegen"}
             </h2>
             <form onSubmit={(event) => void saveOrganization(event)}>
-              <label>
-                Name der Kundenorganisation
-                <input
-                  disabled={controlsDisabled}
-                  maxLength={160}
-                  onChange={(event) =>
-                    setOrganizationForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  required
-                  type="text"
-                  value={organizationForm.name}
-                />
-              </label>
-              <label>
-                Ticketzugriff
-                <select
-                  disabled={controlsDisabled}
-                  onChange={(event) =>
-                    setOrganizationForm((current) => ({
-                      ...current,
-                      ticketAccess: event.target.value as TicketAccess,
-                    }))
-                  }
-                  value={organizationForm.ticketAccess}
-                >
-                  <option value="disabled">Deaktiviert</option>
-                  <option value="own">Nur eigene Tickets</option>
-                  <option value="company">
-                    Alle Tickets der Kundenorganisation
-                  </option>
-                </select>
-              </label>
-              <label>
-                <input
+              <FormGrid cols={1}>
+                <FormField label="Name der Kundenorganisation" required>
+                  <input
+                    disabled={controlsDisabled}
+                    maxLength={160}
+                    onChange={(event) =>
+                      setOrganizationForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    required
+                    type="text"
+                    value={organizationForm.name}
+                  />
+                </FormField>
+                <FormField label="Ticketzugriff">
+                  <select
+                    disabled={controlsDisabled}
+                    onChange={(event) =>
+                      setOrganizationForm((current) => ({
+                        ...current,
+                        ticketAccess: event.target.value as TicketAccess,
+                      }))
+                    }
+                    value={organizationForm.ticketAccess}
+                  >
+                    <option value="disabled">Deaktiviert</option>
+                    <option value="own">Nur eigene Tickets</option>
+                    <option value="company">
+                      Alle Tickets der Kundenorganisation
+                    </option>
+                  </select>
+                </FormField>
+                <FormSwitch
                   checked={organizationForm.active}
                   disabled={controlsDisabled}
-                  onChange={(event) =>
+                  hint="Archivierte Organisationen erhalten keinen Ticketzugriff."
+                  label="Organisation ist aktiv"
+                  onChange={(checked) =>
                     setOrganizationForm((current) => ({
                       ...current,
-                      active: event.target.checked,
+                      active: checked,
                     }))
                   }
-                  type="checkbox"
                 />
-                Organisation ist aktiv
-              </label>
+              </FormGrid>
               <p className="customer-organizations__hint">
                 Archivierte Organisationen erhalten keinen neuen aktiven
                 Ticketzugriff. Das Archivieren ist für die Standardorganisation
@@ -1003,8 +1002,7 @@ export function CustomerOrganizations({
                     </p>
                   ) : (
                     <>
-                      <label>
-                        Mandantenbenutzer*in
+                      <FormField label="Mandantenbenutzer*in" required>
                         <select
                           disabled={controlsDisabled}
                           onChange={(event) =>
@@ -1031,9 +1029,8 @@ export function CustomerOrganizations({
                             </option>
                           ))}
                         </select>
-                      </label>
-                      <label>
-                        Zugriffsart
+                      </FormField>
+                      <FormField label="Zugriffsart">
                         <select
                           disabled={controlsDisabled}
                           onChange={(event) =>
@@ -1049,7 +1046,7 @@ export function CustomerOrganizations({
                             Alle Tickets der Kundenorganisation
                           </option>
                         </select>
-                      </label>
+                      </FormField>
                       <button disabled={controlsDisabled} type="submit">
                         {pendingAction?.startsWith("member:save:")
                           ? "Wird gespeichert …"

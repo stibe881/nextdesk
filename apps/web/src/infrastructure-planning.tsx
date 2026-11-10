@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { CalendarClock, ClipboardList } from "lucide-react";
+import { FormCard, FormField, FormGrid, FormSwitch } from "./form-kit";
 
 /** One point of the maintenance checklist with the date the user set. */
 export type ChecklistItem = { label: string; date: string | null };
@@ -149,98 +150,104 @@ export function MaintenancePlanning({
           <p className="empty-state">Keine geplanten Wartungsfenster.</p>
         )}
         {canManage ? (
-          <form className="infrastructure__form" onSubmit={planWindow}>
-            <label className="infrastructure__wide">
-              Titel
-              <input
-                maxLength={180}
-                onChange={(event) =>
-                  setPlan({ ...plan, title: event.target.value })
-                }
-                value={plan.title}
-              />
-            </label>
-            <label>
-              Beginn
-              <input
-                onChange={(event) =>
-                  setPlan({ ...plan, startsAt: event.target.value })
-                }
-                type="datetime-local"
-                value={plan.startsAt}
-              />
-            </label>
-            <label>
-              Ende
-              <input
-                onChange={(event) =>
-                  setPlan({ ...plan, endsAt: event.target.value })
-                }
-                type="datetime-local"
-                value={plan.endsAt}
-              />
-            </label>
-            <label className="infrastructure__wide">
-              Betroffene Dienste
-              <select
-                multiple
-                onChange={(event) =>
-                  setPlan({
-                    ...plan,
-                    serviceIds: [...event.target.selectedOptions].map(
-                      (option) => option.value,
-                    ),
-                  })
-                }
-                size={Math.min(6, Math.max(3, services.length))}
-                value={plan.serviceIds}
-              >
-                {services.map((service) => (
-                  <option key={service.id} value={service.id}>
-                    {service.name}
-                  </option>
-                ))}
-              </select>
-              <small>
-                Mehrfachauswahl mit Ctrl bzw. Cmd. Ohne Dienst kann kein
-                Wartungsfenster im Systemstatus erscheinen.
-              </small>
-            </label>
-            <label className="infrastructure__wide">
-              Hinweis für Betroffene (optional)
-              <textarea
-                maxLength={2000}
-                onChange={(event) =>
-                  setPlan({ ...plan, description: event.target.value })
-                }
-                rows={2}
-                value={plan.description}
-              />
-            </label>
-            <label className="infrastructure__check">
-              <input
-                checked={plan.publicEnabled}
-                onChange={(event) =>
-                  setPlan({ ...plan, publicEnabled: event.target.checked })
-                }
-                type="checkbox"
-              />
-              Im Systemstatus für alle Mitarbeitenden anzeigen
-            </label>
-            <button
-              className="primary-button"
-              disabled={
-                busy ||
-                plan.title.trim().length < 2 ||
-                plan.serviceIds.length === 0 ||
-                !plan.startsAt ||
-                !plan.endsAt ||
-                new Date(plan.endsAt) <= new Date(plan.startsAt)
-              }
-              type="submit"
+          <form onSubmit={planWindow}>
+            <FormCard
+              sub="Erscheint im Systemstatus, Betroffene werden 24 Stunden vorher informiert."
+              title="Wartungsfenster planen"
             >
-              Wartungsfenster planen
-            </button>
+              <FormGrid cols={1}>
+                <FormField label="Titel" required>
+                  <input
+                    maxLength={180}
+                    onChange={(event) =>
+                      setPlan({ ...plan, title: event.target.value })
+                    }
+                    value={plan.title}
+                  />
+                </FormField>
+              </FormGrid>
+              <FormGrid cols={2}>
+                <FormField label="Beginn" required>
+                  <input
+                    onChange={(event) =>
+                      setPlan({ ...plan, startsAt: event.target.value })
+                    }
+                    type="datetime-local"
+                    value={plan.startsAt}
+                  />
+                </FormField>
+                <FormField label="Ende" required>
+                  <input
+                    onChange={(event) =>
+                      setPlan({ ...plan, endsAt: event.target.value })
+                    }
+                    type="datetime-local"
+                    value={plan.endsAt}
+                  />
+                </FormField>
+              </FormGrid>
+              <FormGrid cols={1}>
+                <FormField
+                  hint="Mehrfachauswahl mit Ctrl bzw. Cmd. Ohne Dienst kann kein Wartungsfenster im Systemstatus erscheinen."
+                  label="Betroffene Dienste"
+                  required
+                >
+                  <select
+                    multiple
+                    onChange={(event) =>
+                      setPlan({
+                        ...plan,
+                        serviceIds: [...event.target.selectedOptions].map(
+                          (option) => option.value,
+                        ),
+                      })
+                    }
+                    size={Math.min(6, Math.max(3, services.length))}
+                    value={plan.serviceIds}
+                  >
+                    {services.map((service) => (
+                      <option key={service.id} value={service.id}>
+                        {service.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Hinweis für Betroffene">
+                  <textarea
+                    maxLength={2000}
+                    onChange={(event) =>
+                      setPlan({ ...plan, description: event.target.value })
+                    }
+                    rows={2}
+                    value={plan.description}
+                  />
+                </FormField>
+              </FormGrid>
+              <FormSwitch
+                checked={plan.publicEnabled}
+                hint="Für alle Mitarbeitenden sichtbar."
+                label="Im Systemstatus anzeigen"
+                onChange={(checked) =>
+                  setPlan({ ...plan, publicEnabled: checked })
+                }
+              />
+              <div>
+                <button
+                  className="primary-button"
+                  disabled={
+                    busy ||
+                    plan.title.trim().length < 2 ||
+                    plan.serviceIds.length === 0 ||
+                    !plan.startsAt ||
+                    !plan.endsAt ||
+                    new Date(plan.endsAt) <= new Date(plan.startsAt)
+                  }
+                  type="submit"
+                >
+                  Wartungsfenster planen
+                </button>
+              </div>
+            </FormCard>
           </form>
         ) : null}
       </section>

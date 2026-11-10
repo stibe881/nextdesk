@@ -578,105 +578,139 @@ function ServiceEditorFields({
       </span>
     );
   }
+  const departmentName =
+    departments.find((entry) => entry.id === serviceForm.departmentId)?.name ??
+    "";
   return (
     <form onSubmit={(event) => void onSubmit(event)}>
-      <label>
-        Name
-        <input
-          disabled={controlsDisabled}
-          maxLength={240}
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              name: event.target.value,
-            }))
-          }
-          required
-          ref={nameInputRef}
-          value={serviceForm.name}
-        />
-      </label>
-      <DepartmentField
-        departments={departments}
-        disabled={controlsDisabled}
-        onChange={(departmentId) =>
-          setServiceForm((current) => ({ ...current, departmentId }))
+      <FormLayout
+        side={
+          <>
+            <FormSummary
+              eyebrow="Statusseite"
+              rows={[
+                ["Zustand", SERVICE_STATUS_LABELS[serviceForm.status]],
+                [
+                  "Kritikalität",
+                  CRITICALITY_LABELS[serviceForm.criticality],
+                ],
+                ["Ort", selectedCategoryPath[0]?.name ?? ""],
+                ["Abteilung", departmentName],
+              ]}
+              title={serviceForm.name.trim()}
+            />
+            <FormSwitch
+              checked={serviceForm.statusPublic}
+              disabled={controlsDisabled}
+              hint="Der Dienst erscheint erst nach bewusster Freigabe der Statusseite unter Systemstatus."
+              label="Auf öffentlicher Statusseite anzeigen"
+              onChange={(checked) =>
+                setServiceForm((current) => ({
+                  ...current,
+                  statusPublic: checked,
+                }))
+              }
+            />
+          </>
         }
-        required={serviceForm.id === null}
-        value={serviceForm.departmentId}
-      />
-      <label>
-        Kritikalität
-        <select
-          disabled={controlsDisabled}
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              criticality: event.target.value as Criticality,
-            }))
-          }
-          value={serviceForm.criticality}
-        >
-          {(Object.keys(CRITICALITY_LABELS) as Criticality[]).map(
-            (criticality) => (
-              <option key={criticality} value={criticality}>
-                {CRITICALITY_LABELS[criticality]}
-              </option>
-            ),
-          )}
-        </select>
-      </label>
-      <label>
-        Betriebszustand
-        <select
-          disabled={controlsDisabled}
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              status: event.target.value as ServiceStatus,
-            }))
-          }
-          value={serviceForm.status}
-        >
-          {(Object.keys(SERVICE_STATUS_LABELS) as ServiceStatus[]).map(
-            (status) => (
-              <option key={status} value={status}>
-                {SERVICE_STATUS_LABELS[status]}
-              </option>
-            ),
-          )}
-        </select>
-      </label>
-      <label>
-        Beschreibung (optional)
-        <textarea
-          disabled={controlsDisabled}
-          maxLength={50000}
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              description: event.target.value,
-            }))
-          }
-          rows={3}
-          value={serviceForm.description}
-        />
-      </label>
+      >
+        <FormCard title="Dienst">
+          <FormGrid cols={1}>
+            <FormField label="Name" required>
+              <input
+                disabled={controlsDisabled}
+                maxLength={240}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                required
+                ref={nameInputRef}
+                value={serviceForm.name}
+              />
+            </FormField>
+            <FormField label="Beschreibung">
+              <textarea
+                disabled={controlsDisabled}
+                maxLength={50000}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                rows={3}
+                value={serviceForm.description}
+              />
+            </FormField>
+          </FormGrid>
+        </FormCard>
+        <FormCard title="Betrieb">
+          <FormGrid cols={3}>
+            <FormField label="Kritikalität">
+              <select
+                disabled={controlsDisabled}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    criticality: event.target.value as Criticality,
+                  }))
+                }
+                value={serviceForm.criticality}
+              >
+                {(Object.keys(CRITICALITY_LABELS) as Criticality[]).map(
+                  (criticality) => (
+                    <option key={criticality} value={criticality}>
+                      {CRITICALITY_LABELS[criticality]}
+                    </option>
+                  ),
+                )}
+              </select>
+            </FormField>
+            <FormField label="Betriebszustand">
+              <select
+                disabled={controlsDisabled}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    status: event.target.value as ServiceStatus,
+                  }))
+                }
+                value={serviceForm.status}
+              >
+                {(Object.keys(SERVICE_STATUS_LABELS) as ServiceStatus[]).map(
+                  (status) => (
+                    <option key={status} value={status}>
+                      {SERVICE_STATUS_LABELS[status]}
+                    </option>
+                  ),
+                )}
+              </select>
+            </FormField>
+            <DepartmentField
+              departments={departments}
+              disabled={controlsDisabled}
+              onChange={(departmentId) =>
+                setServiceForm((current) => ({ ...current, departmentId }))
+              }
+              required={serviceForm.id === null}
+              value={serviceForm.departmentId}
+            />
+          </FormGrid>
+        </FormCard>
       {supportsServiceCategories ? (
-        <div
-          aria-label="Serviceeinordnung"
-          className="service-assets__service-category-fields"
-          role="group"
+        <FormCard
+          sub="Ort, Kategorie, Unterkategorie"
+          title="Serviceeinordnung"
         >
-          <div>
-            <strong>Serviceeinordnung</strong>
-            <small>
-              Wählen Sie den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei
-              Bedarf eine Kategorie und Unterkategorie.
-            </small>
-          </div>
-          <label>
-            Ort
+          <FormNote>
+            Wählen Sie den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei
+            Bedarf eine Kategorie und Unterkategorie.
+          </FormNote>
+          <FormGrid cols={3}>
+          <FormField label="Ort">
             <select
               disabled={controlsDisabled}
               onChange={(event) =>
@@ -695,9 +729,8 @@ function ServiceEditorFields({
               ))}
             </select>
             {addControl(0)}
-          </label>
-          <label>
-            Kategorie
+          </FormField>
+          <FormField label="Kategorie">
             <select
               disabled={controlsDisabled || !rootCategoryId}
               onChange={(event) =>
@@ -718,9 +751,8 @@ function ServiceEditorFields({
               ))}
             </select>
             {addControl(1)}
-          </label>
-          <label>
-            Unterkategorie
+          </FormField>
+          <FormField label="Unterkategorie">
             <select
               disabled={controlsDisabled || !subcategoryId}
               onChange={(event) =>
@@ -748,17 +780,19 @@ function ServiceEditorFields({
               ))}
             </select>
             {addControl(2)}
-          </label>
+          </FormField>
+          </FormGrid>
           {rootCategories.length === 0 ? (
-            <p>
+            <FormNote>
               Es sind noch keine Orte und Kategorien angelegt. Sie können die
               Einordnung später ergänzen.
-            </p>
+            </FormNote>
           ) : null}
-        </div>
+        </FormCard>
       ) : null}
-      <label>
-        Primär verantwortliche Agent:in (optional)
+        <FormCard title="Verantwortung">
+          <FormGrid cols={2}>
+<FormField label="Primär verantwortliche Agent:in">
         <select
           disabled={controlsDisabled || serviceResponsibleAgentsLoading}
           onChange={(event) =>
@@ -790,9 +824,8 @@ function ServiceEditorFields({
               </option>
             ))}
         </select>
-      </label>
-      <label>
-        Sekundär verantwortliche Agent:in (optional)
+</FormField>
+<FormField label="Sekundär verantwortliche Agent:in" hint="Nur aktuell berechtigte interne Agent:innen stehen zur Auswahl.">
         <select
           disabled={
             controlsDisabled ||
@@ -824,30 +857,10 @@ function ServiceEditorFields({
               </option>
             ))}
         </select>
-        <small>
-          Nur aktuell berechtigte interne Agent:innen stehen zur Auswahl.
-        </small>
-      </label>
-      <label className="service-assets__status-public-toggle">
-        <input
-          checked={serviceForm.statusPublic}
-          disabled={controlsDisabled}
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              statusPublic: event.target.checked,
-            }))
-          }
-          type="checkbox"
-        />
-        <span>
-          <strong>Auf öffentlicher Statusseite anzeigen</strong>
-          <small>
-            Der Dienst erscheint erst nach bewusster Freigabe der Statusseite
-            unter Systemstatus.
-          </small>
-        </span>
-      </label>
+</FormField>
+          </FormGrid>
+        </FormCard>
+      </FormLayout>
       <p>
         <button
           className="primary-button"
@@ -1375,8 +1388,7 @@ function DepartmentField({
 }: DepartmentFieldProps) {
   if (departments.length <= 1) return null;
   return (
-    <label>
-      Abteilung
+    <FormField label="Abteilung" required={required}>
       <select
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
@@ -1395,7 +1407,7 @@ function DepartmentField({
           </option>
         ))}
       </select>
-    </label>
+    </FormField>
   );
 }
 

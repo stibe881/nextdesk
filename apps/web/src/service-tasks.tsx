@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
+import {
+  FormCard,
+  FormChips,
+  FormField,
+  FormGrid,
+  FormLayout,
+  FormNote,
+  FormSummary,
+  FormSwitch,
+} from "./form-kit";
 import "./service-tasks.css";
 
 type Access = { canRead: boolean; canExecute: boolean; canManage: boolean };
@@ -1033,210 +1043,194 @@ function TemplateForm({
         : (rule.monthlyMode ?? "first_workday");
 
   return (
-    <div className="st-form">
-      <div className="st-form__main">
-        <section className="st-card st-fields">
-          <p className="st-label">Aufgabe</p>
-          <label>
-            Titel
+    <FormLayout
+      side={
+        <>
+          <FormSummary
+            eyebrow="Wiederholt sich"
+            rows={[
+              ["Rhythmus", preview.ruleText ?? "Wiederholung prüfen"],
+              [
+                "Dauer",
+                form.estimatedMinutes ? `${form.estimatedMinutes} Min.` : "",
+              ],
+              [
+                "Nächste Termine",
+                preview.dates.length
+                  ? preview.dates.map((date) => dateLabel(date)).join(" · ")
+                  : "Keine Termine mit diesen Angaben.",
+              ],
+            ]}
+            title={form.title}
+          />
+          {rule.skipNonWorkdays ? (
+            <FormNote>Wochenenden und Feiertage werden übersprungen.</FormNote>
+          ) : null}
+        </>
+      }
+    >
+      <FormCard title="Aufgabe">
+        <FormGrid cols={2}>
+          <FormField label="Titel" required>
             <input
               maxLength={160}
               onChange={(event) => set("title", event.target.value)}
               placeholder="z. B. Backup-Wiederherstellungstest"
               value={form.title}
             />
-          </label>
-          <label>
-            Anleitung
-            <textarea
-              maxLength={4000}
-              onChange={(event) => set("instructions", event.target.value)}
-              rows={3}
-              value={form.instructions ?? ""}
+          </FormField>
+          <FormField label="Verantwortlich">
+            <select
+              onChange={(event) =>
+                set("assigneeId", event.target.value || null)
+              }
+              value={form.assigneeId ?? ""}
+            >
+              <option value="">Nicht zugewiesen</option>
+              {people.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          {departments.length > 1 ? (
+            <FormField label="Abteilung">
+              <select
+                onChange={(event) =>
+                  set("departmentId", event.target.value || null)
+                }
+                value={form.departmentId ?? ""}
+              >
+                <option disabled value="">
+                  Abteilung wählen
+                </option>
+                {departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          ) : null}
+          <FormField label="Kategorie">
+            <input
+              list="service-task-categories"
+              maxLength={60}
+              onChange={(event) => set("category", event.target.value)}
+              value={form.category ?? ""}
             />
-          </label>
-          <div className="st-grid2">
-            <label>
-              Kategorie
-              <input
-                list="service-task-categories"
-                maxLength={60}
-                onChange={(event) => set("category", event.target.value)}
-                value={form.category ?? ""}
-              />
-              <datalist id="service-task-categories">
-                {CATEGORY_SUGGESTIONS.map((category) => (
-                  <option key={category} value={category} />
-                ))}
-              </datalist>
-            </label>
-            <label>
-              Priorität
-              <select
-                onChange={(event) => set("priority", event.target.value)}
-                value={form.priority}
-              >
-                {Object.entries(PRIORITIES).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="st-grid2">
-            <label>
-              Verantwortlich
-              <select
-                onChange={(event) =>
-                  set("assigneeId", event.target.value || null)
-                }
-                value={form.assigneeId ?? ""}
-              >
-                <option value="">Nicht zugewiesen</option>
-                {people.map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {departments.length > 1 ? (
-              <label>
-                Abteilung
-                <select
-                  onChange={(event) =>
-                    set("departmentId", event.target.value || null)
-                  }
-                  value={form.departmentId ?? ""}
-                >
-                  <option disabled value="">
-                    Abteilung wählen
-                  </option>
-                  {departments.map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            <label>
-              Team (Vertretung &amp; Eskalation)
-              <select
-                onChange={(event) => set("teamId", event.target.value || null)}
-                value={form.teamId ?? ""}
-              >
-                <option value="">Kein Team</option>
-                {teams.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {team.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="st-grid2">
-            <label>
-              Bezug (optional)
-              <input
-                maxLength={200}
-                onChange={(event) => set("referenceLabel", event.target.value)}
-                placeholder="z. B. Server SRV-FILE01"
-                value={form.referenceLabel ?? ""}
-              />
-            </label>
-            <label>
-              Geschätzte Dauer (Minuten)
-              <input
-                min={1}
-                max={1440}
-                onChange={(event) =>
-                  set(
-                    "estimatedMinutes",
-                    event.target.value ? Number(event.target.value) : null,
-                  )
-                }
-                type="number"
-                value={form.estimatedMinutes ?? ""}
-              />
-            </label>
-          </div>
-        </section>
-        <section className="st-card st-fields">
-          <p className="st-label">Checkliste</p>
-          {form.checklist.map((item, index) => (
-            <div className="st-check-edit" key={item.id}>
-              <input
-                maxLength={300}
-                onChange={(event) =>
-                  set(
-                    "checklist",
-                    form.checklist.map((entry) =>
-                      entry.id === item.id
-                        ? { ...entry, label: event.target.value }
-                        : entry,
-                    ),
-                  )
-                }
-                value={item.label}
-              />
-              <button
-                aria-label="Nach oben"
-                className="st-icon"
-                disabled={index === 0}
-                onClick={() => {
-                  const next = [...form.checklist];
-                  const above = next[index - 1];
-                  const current = next[index];
-                  if (!above || !current) return;
-                  next[index - 1] = current;
-                  next[index] = above;
-                  set("checklist", next);
-                }}
-                type="button"
-              >
-                ↑
-              </button>
-              <button
-                aria-label="Entfernen"
-                className="st-icon"
-                onClick={() =>
-                  set(
-                    "checklist",
-                    form.checklist.filter((entry) => entry.id !== item.id),
-                  )
-                }
-                type="button"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-          <div className="st-check-edit">
+            <datalist id="service-task-categories">
+              {CATEGORY_SUGGESTIONS.map((category) => (
+                <option key={category} value={category} />
+              ))}
+            </datalist>
+          </FormField>
+          <FormField label="Priorität">
+            <select
+              onChange={(event) => set("priority", event.target.value)}
+              value={form.priority}
+            >
+              {Object.entries(PRIORITIES).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Team (Vertretung & Eskalation)">
+            <select
+              onChange={(event) => set("teamId", event.target.value || null)}
+              value={form.teamId ?? ""}
+            >
+              <option value="">Kein Team</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Geschätzte Dauer (Minuten)">
+            <input
+              min={1}
+              max={1440}
+              onChange={(event) =>
+                set(
+                  "estimatedMinutes",
+                  event.target.value ? Number(event.target.value) : null,
+                )
+              }
+              type="number"
+              value={form.estimatedMinutes ?? ""}
+            />
+          </FormField>
+        </FormGrid>
+        <FormField label="Anleitung">
+          <textarea
+            maxLength={4000}
+            onChange={(event) => set("instructions", event.target.value)}
+            rows={3}
+            value={form.instructions ?? ""}
+          />
+        </FormField>
+      </FormCard>
+      <FormCard title="Checkliste">
+        {form.checklist.map((item, index) => (
+          <div className="st-check-edit" key={item.id}>
             <input
               maxLength={300}
-              onChange={(event) => setNewCheck(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && newCheck.trim()) {
-                  event.preventDefault();
-                  set("checklist", [
-                    ...form.checklist,
-                    {
-                      id: crypto.randomUUID().slice(0, 8),
-                      label: newCheck.trim(),
-                    },
-                  ]);
-                  setNewCheck("");
-                }
-              }}
-              placeholder="Neuer Punkt, mit Enter hinzufügen"
-              value={newCheck}
+              onChange={(event) =>
+                set(
+                  "checklist",
+                  form.checklist.map((entry) =>
+                    entry.id === item.id
+                      ? { ...entry, label: event.target.value }
+                      : entry,
+                  ),
+                )
+              }
+              value={item.label}
             />
             <button
-              className="st-button"
-              disabled={!newCheck.trim() || form.checklist.length >= 40}
+              aria-label="Nach oben"
+              className="st-icon"
+              disabled={index === 0}
               onClick={() => {
+                const next = [...form.checklist];
+                const above = next[index - 1];
+                const current = next[index];
+                if (!above || !current) return;
+                next[index - 1] = current;
+                next[index] = above;
+                set("checklist", next);
+              }}
+              type="button"
+            >
+              ↑
+            </button>
+            <button
+              aria-label="Entfernen"
+              className="st-icon"
+              onClick={() =>
+                set(
+                  "checklist",
+                  form.checklist.filter((entry) => entry.id !== item.id),
+                )
+              }
+              type="button"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <div className="st-check-edit">
+          <input
+            maxLength={300}
+            onChange={(event) => setNewCheck(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && newCheck.trim()) {
+                event.preventDefault();
                 set("checklist", [
                   ...form.checklist,
                   {
@@ -1245,271 +1239,266 @@ function TemplateForm({
                   },
                 ]);
                 setNewCheck("");
-              }}
-              type="button"
-            >
-              + Punkt
-            </button>
-          </div>
-        </section>
-      </div>
-      <div className="st-form__side">
-        <section className="st-card st-fields">
-          <p className="st-label">Wiederholung</p>
-          <div className="st-seg" role="group" aria-label="Wiederholung">
-            {(
-              [
-                ["daily", "Täglich"],
-                ["weekly", "Wöchentlich"],
-                ["monthly", "Monatlich"],
-                ["yearly", "Jährlich"],
-                ["interval", "Alle X Tage"],
-              ] as const
-            ).map(([key, label]) => (
-              <button
-                aria-pressed={rule.frequency === key}
-                key={key}
-                onClick={() => frequency(key)}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {rule.frequency === "weekly" ? (
-            <div className="st-days">
-              {WEEKDAYS.map((label, index) => {
-                const day = index + 1;
-                const active = rule.weekdays?.includes(day) ?? false;
-                return (
-                  <button
-                    aria-pressed={active}
-                    key={label}
-                    onClick={() => {
-                      const current = rule.weekdays ?? [];
-                      const next = active
-                        ? current.filter((value) => value !== day)
-                        : [...current, day];
-                      if (next.length) setRule({ weekdays: next });
-                    }}
-                    type="button"
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-          {rule.frequency === "monthly" ? (
-            <label>
-              Am
-              <select
-                onChange={(event) => {
-                  const value = event.target.value;
-                  if (value === "first_workday" || value === "last_workday") {
-                    setRule({ monthlyMode: value });
-                  } else if (value.startsWith("day:")) {
-                    setRule({
-                      monthlyMode: "day",
-                      dayOfMonth: Number(value.slice(4)),
-                    });
-                  } else {
-                    const [, nth, weekday] = value.split(":");
-                    setRule({
-                      monthlyMode: "nth_weekday",
-                      nth: Number(nth),
-                      weekday: Number(weekday),
-                    });
-                  }
-                }}
-                value={monthlyValue}
-              >
-                <option value="first_workday">1. Werktag des Monats</option>
-                <option value="last_workday">Letzter Werktag des Monats</option>
-                <optgroup label="Bestimmter Tag">
-                  {Array.from({ length: 31 }, (_, index) => (
-                    <option key={index} value={`day:${index + 1}`}>
-                      am {index + 1}.
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Bestimmter Wochentag">
-                  {[1, 2, 3, 4, -1].flatMap((nth) =>
-                    WEEKDAY_NAMES.slice(0, 5).map((name, index) => (
-                      <option
-                        key={`${nth}-${index}`}
-                        value={`nth:${nth}:${index + 1}`}
-                      >
-                        {nth === -1 ? "letzter" : `${nth}.`} {name}
-                      </option>
-                    )),
-                  )}
-                </optgroup>
-              </select>
-            </label>
-          ) : null}
-          {rule.frequency === "yearly" ? (
-            <div className="st-grid2">
-              <label>
-                Tag
-                <input
-                  max={31}
-                  min={1}
-                  onChange={(event) =>
-                    setRule({ dayOfMonth: Number(event.target.value) || 1 })
-                  }
-                  type="number"
-                  value={rule.dayOfMonth ?? 1}
-                />
-              </label>
-              <label>
-                Monat
-                <select
-                  onChange={(event) =>
-                    setRule({ month: Number(event.target.value) })
-                  }
-                  value={rule.month ?? 1}
+              }
+            }}
+            placeholder="Neuer Punkt, mit Enter hinzufügen"
+            value={newCheck}
+          />
+          <button
+            className="st-button"
+            disabled={!newCheck.trim() || form.checklist.length >= 40}
+            onClick={() => {
+              set("checklist", [
+                ...form.checklist,
+                {
+                  id: crypto.randomUUID().slice(0, 8),
+                  label: newCheck.trim(),
+                },
+              ]);
+              setNewCheck("");
+            }}
+            type="button"
+          >
+            + Punkt
+          </button>
+        </div>
+      </FormCard>
+      <FormCard title="Wiederholung">
+        <FormChips
+          label="Wiederholung"
+          onChange={(next) => {
+            const [key] = next;
+            if (key) frequency(key);
+          }}
+          options={
+            [
+              { label: "Täglich", value: "daily" },
+              { label: "Wöchentlich", value: "weekly" },
+              { label: "Monatlich", value: "monthly" },
+              { label: "Jährlich", value: "yearly" },
+              { label: "Alle X Tage", value: "interval" },
+            ] as const
+          }
+          value={[rule.frequency]}
+        />
+        {rule.frequency === "weekly" ? (
+          <div className="st-days">
+            {WEEKDAYS.map((label, index) => {
+              const day = index + 1;
+              const active = rule.weekdays?.includes(day) ?? false;
+              return (
+                <button
+                  aria-pressed={active}
+                  key={label}
+                  onClick={() => {
+                    const current = rule.weekdays ?? [];
+                    const next = active
+                      ? current.filter((value) => value !== day)
+                      : [...current, day];
+                    if (next.length) setRule({ weekdays: next });
+                  }}
+                  type="button"
                 >
-                  {MONTHS.map((month, index) => (
-                    <option key={month} value={index + 1}>
-                      {month}
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        {rule.frequency === "monthly" ? (
+          <FormField label="Am">
+            <select
+              onChange={(event) => {
+                const value = event.target.value;
+                if (value === "first_workday" || value === "last_workday") {
+                  setRule({ monthlyMode: value });
+                } else if (value.startsWith("day:")) {
+                  setRule({
+                    monthlyMode: "day",
+                    dayOfMonth: Number(value.slice(4)),
+                  });
+                } else {
+                  const [, nth, weekday] = value.split(":");
+                  setRule({
+                    monthlyMode: "nth_weekday",
+                    nth: Number(nth),
+                    weekday: Number(weekday),
+                  });
+                }
+              }}
+              value={monthlyValue}
+            >
+              <option value="first_workday">1. Werktag des Monats</option>
+              <option value="last_workday">Letzter Werktag des Monats</option>
+              <optgroup label="Bestimmter Tag">
+                {Array.from({ length: 31 }, (_, index) => (
+                  <option key={index} value={`day:${index + 1}`}>
+                    am {index + 1}.
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Bestimmter Wochentag">
+                {[1, 2, 3, 4, -1].flatMap((nth) =>
+                  WEEKDAY_NAMES.slice(0, 5).map((name, index) => (
+                    <option
+                      key={`${nth}-${index}`}
+                      value={`nth:${nth}:${index + 1}`}
+                    >
+                      {nth === -1 ? "letzter" : `${nth}.`} {name}
                     </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          ) : null}
-          {rule.frequency !== "yearly" ? (
-            <label>
-              {rule.frequency === "interval"
+                  )),
+                )}
+              </optgroup>
+            </select>
+          </FormField>
+        ) : null}
+        {rule.frequency === "yearly" ? (
+          <FormGrid cols={2}>
+            <FormField label="Tag">
+              <input
+                max={31}
+                min={1}
+                onChange={(event) =>
+                  setRule({ dayOfMonth: Number(event.target.value) || 1 })
+                }
+                type="number"
+                value={rule.dayOfMonth ?? 1}
+              />
+            </FormField>
+            <FormField label="Monat">
+              <select
+                onChange={(event) =>
+                  setRule({ month: Number(event.target.value) })
+                }
+                value={rule.month ?? 1}
+              >
+                {MONTHS.map((month, index) => (
+                  <option key={month} value={index + 1}>
+                    {month}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          </FormGrid>
+        ) : null}
+        {rule.frequency !== "yearly" ? (
+          <FormField
+            label={
+              rule.frequency === "interval"
                 ? "Alle … Tage"
                 : rule.frequency === "daily"
                   ? "Alle … Tage"
                   : rule.frequency === "weekly"
                     ? "Alle … Wochen"
-                    : "Alle … Monate"}
-              <input
-                max={366}
-                min={1}
-                onChange={(event) =>
-                  setRule({ interval: Number(event.target.value) || 1 })
-                }
-                type="number"
-                value={rule.interval}
-              />
-            </label>
-          ) : null}
-          <div className="st-grid2">
-            <label>
-              Fällig bis
-              <input
-                onChange={(event) => set("dueTime", event.target.value)}
-                type="time"
-                value={form.dueTime}
-              />
-            </label>
-            <label>
-              Sichtbar ab (Tage vorher)
-              <input
-                max={60}
-                min={0}
-                onChange={(event) =>
-                  set("leadDays", Number(event.target.value) || 0)
-                }
-                type="number"
-                value={form.leadDays}
-              />
-            </label>
-          </div>
-          <div className="st-grid2">
-            <label>
-              Beginnt am
-              <input
-                onChange={(event) => set("startsOn", event.target.value)}
-                type="date"
-                value={form.startsOn}
-              />
-            </label>
-            <label>
-              Endet am (optional)
-              <input
-                min={form.startsOn}
-                onChange={(event) => set("endsOn", event.target.value || null)}
-                type="date"
-                value={form.endsOn ?? ""}
-              />
-            </label>
-          </div>
-          <label className="st-toggle">
+                    : "Alle … Monate"
+            }
+          >
             <input
-              checked={rule.skipNonWorkdays}
-              onChange={(event) =>
-                setRule({ skipNonWorkdays: event.target.checked })
-              }
-              type="checkbox"
-            />
-            Wochenenden und Feiertage (CH, Kanton Zug) überspringen
-          </label>
-          <div className="st-preview">
-            <strong>{preview.ruleText ?? "Wiederholung prüfen"}</strong>
-            <span>
-              {preview.dates.length
-                ? `Nächste Termine: ${preview.dates.map((date) => dateLabel(date)).join(" · ")}`
-                : "Keine Termine mit diesen Angaben."}
-            </span>
-          </div>
-        </section>
-        <section className="st-card st-fields">
-          <p className="st-label">Erledigung, Erinnerung &amp; Eskalation</p>
-          <label className="st-toggle">
-            <input
-              checked={form.requireNote}
-              onChange={(event) => set("requireNote", event.target.checked)}
-              type="checkbox"
-            />
-            Notiz beim Abschliessen verlangen
-          </label>
-          <label className="st-toggle">
-            <input
-              checked={form.remind}
-              onChange={(event) => set("remind", event.target.checked)}
-              type="checkbox"
-            />
-            Erinnerung am Fälligkeitstag (Push)
-          </label>
-          <label>
-            Team informieren, wenn überfällig seit (Tagen)
-            <input
-              max={30}
+              max={366}
               min={1}
               onChange={(event) =>
-                set(
-                  "escalateAfterDays",
-                  event.target.value ? Number(event.target.value) : null,
-                )
+                setRule({ interval: Number(event.target.value) || 1 })
               }
-              placeholder="leer = nie"
               type="number"
-              value={form.escalateAfterDays ?? ""}
+              value={rule.interval}
             />
-          </label>
-        </section>
-        {error ? <p className="st-error">{error}</p> : null}
-        <div className="st-actions st-actions--end">
-          <button className="st-button" onClick={onCancel} type="button">
-            Abbrechen
-          </button>
-          <button
-            className="st-button st-button--primary"
-            disabled={saving || !form.title.trim()}
-            onClick={() => void save()}
-            type="button"
-          >
-            {saving ? "Wird gespeichert …" : "Serviceaufgabe speichern"}
-          </button>
-        </div>
+          </FormField>
+        ) : null}
+        <FormGrid cols={2}>
+          <FormField label="Fällig bis">
+            <input
+              onChange={(event) => set("dueTime", event.target.value)}
+              type="time"
+              value={form.dueTime}
+            />
+          </FormField>
+          <FormField label="Sichtbar ab (Tage vorher)">
+            <input
+              max={60}
+              min={0}
+              onChange={(event) =>
+                set("leadDays", Number(event.target.value) || 0)
+              }
+              type="number"
+              value={form.leadDays}
+            />
+          </FormField>
+          <FormField label="Beginnt am">
+            <input
+              onChange={(event) => set("startsOn", event.target.value)}
+              type="date"
+              value={form.startsOn}
+            />
+          </FormField>
+          <FormField label="Endet am">
+            <input
+              min={form.startsOn}
+              onChange={(event) => set("endsOn", event.target.value || null)}
+              type="date"
+              value={form.endsOn ?? ""}
+            />
+          </FormField>
+        </FormGrid>
+        <FormSwitch
+          checked={rule.skipNonWorkdays}
+          hint="Feiertage nach Kalender CH, Kanton Zug."
+          label="Wochenenden und Feiertage überspringen"
+          onChange={(checked) => setRule({ skipNonWorkdays: checked })}
+        />
+      </FormCard>
+      <FormCard title="Erledigung, Erinnerung & Eskalation">
+        <FormSwitch
+          checked={form.requireNote}
+          label="Notiz beim Abschliessen verlangen"
+          onChange={(checked) => set("requireNote", checked)}
+        />
+        <FormSwitch
+          checked={form.remind}
+          hint="Push an die verantwortliche Person."
+          label="Erinnerung am Fälligkeitstag"
+          onChange={(checked) => set("remind", checked)}
+        />
+        <FormField label="Team informieren, wenn überfällig seit (Tagen)">
+          <input
+            max={30}
+            min={1}
+            onChange={(event) =>
+              set(
+                "escalateAfterDays",
+                event.target.value ? Number(event.target.value) : null,
+              )
+            }
+            placeholder="leer = nie"
+            type="number"
+            value={form.escalateAfterDays ?? ""}
+          />
+        </FormField>
+      </FormCard>
+      <FormCard collapsed title="Weitere Angaben">
+        <FormField label="Bezug">
+          <input
+            maxLength={200}
+            onChange={(event) => set("referenceLabel", event.target.value)}
+            placeholder="z. B. Server SRV-FILE01"
+            value={form.referenceLabel ?? ""}
+          />
+        </FormField>
+      </FormCard>
+      {error ? <p className="st-error">{error}</p> : null}
+      <div className="st-actions st-actions--end">
+        <button className="st-button" onClick={onCancel} type="button">
+          Abbrechen
+        </button>
+        <button
+          className="st-button st-button--primary"
+          disabled={saving || !form.title.trim()}
+          onClick={() => void save()}
+          type="button"
+        >
+          {saving ? "Wird gespeichert …" : "Serviceaufgabe speichern"}
+        </button>
       </div>
-    </div>
+    </FormLayout>
   );
 }
 

@@ -28,6 +28,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { TeamPicker, teamsInDepartment, type PickerTeam } from "./team-picker";
+import {
+  FormCard,
+  FormField,
+  FormGrid,
+  FormLayout,
+  FormSummary,
+  FormSwitch,
+} from "./form-kit";
 import { supabase } from "./lib/supabase";
 import { functionErrorMessage } from "./lib/function-error";
 import {
@@ -4317,108 +4325,137 @@ export function TenantAdminSettings({
                   onSubmit={inviteUser}
                 >
                   <h3>Person einladen</h3>
-                  <div className="tenant-admin-settings__person-form-grid">
-                    <label>
-                      Vor- und Nachname
-                      <input
-                        value={invitationPersonForm.displayName}
-                        required
-                        minLength={2}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setInvitationPersonForm((current) => ({
-                            ...current,
-                            displayName: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      E-Mail-Adresse
-                      <input
-                        type="email"
-                        inputMode="email"
-                        autoComplete="email"
-                        value={invitationEmail}
-                        required
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setInvitationEmail(event.target.value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      Ticketzugriffsbereich
-                      <select
-                        value={invitationPersonForm.departmentId}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setInvitationPersonForm((current) => ({
-                            ...current,
-                            departmentId: event.target.value,
-                          }))
-                        }
-                      >
-                        <option value="">Noch nicht zugeordnet</option>
-                        {userDirectory.departments
-                          .filter((department) => department.active)
-                          .map((department) => (
-                            <option key={department.id} value={department.id}>
-                              {department.name}
-                            </option>
-                          ))}
-                      </select>
-                      <small className="tenant-admin-settings__field-hint">
-                        Steuert ausschliesslich, auf welche Ticketbereiche diese
-                        Person als Agent zugreifen darf.
-                      </small>
-                    </label>
-                    <label>
-                      Angebot
-                      <input
-                        value={invitationPersonForm.offer}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setInvitationPersonForm((current) => ({
-                            ...current,
-                            offer: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      Funktion
-                      <input
-                        value={invitationPersonForm.jobTitle}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setInvitationPersonForm((current) => ({
-                            ...current,
-                            jobTitle: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    <label className="tenant-admin-settings__agent-toggle">
-                      <input
-                        type="checkbox"
-                        checked={invitationPersonForm.isAgent}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setInvitationPersonForm((current) => ({
-                            ...current,
-                            isAgent: event.target.checked,
-                          }))
-                        }
-                      />
-                      <span>Arbeitet als Support-Agent</span>
-                    </label>
-                  </div>
-                  <button type="submit" disabled={saving !== null}>
-                    {saving === "invite-user"
-                      ? "Einladung wird versendet …"
-                      : "Einladung versenden"}
-                  </button>
+                  <FormLayout
+                    side={
+                      <>
+                        <FormSummary
+                          eyebrow="Einladung"
+                          title={invitationPersonForm.displayName}
+                          rows={[
+                            ["E-Mail", invitationEmail],
+                            [
+                              "Zugriff",
+                              userDirectory.departments.find(
+                                (department) =>
+                                  department.id ===
+                                  invitationPersonForm.departmentId,
+                              )?.name ?? "",
+                            ],
+                            [
+                              "Rolle",
+                              invitationPersonForm.isAgent
+                                ? "Requester + Agent"
+                                : "Requester",
+                            ],
+                          ]}
+                        />
+                        <FormSwitch
+                          checked={invitationPersonForm.isAgent}
+                          disabled={saving !== null}
+                          hint="Kann Tickets bearbeiten, sobald die Einladung angenommen ist."
+                          label="Arbeitet als Support-Agent"
+                          onChange={(checked) =>
+                            setInvitationPersonForm((current) => ({
+                              ...current,
+                              isAgent: checked,
+                            }))
+                          }
+                        />
+                      </>
+                    }
+                  >
+                    <FormCard title="Person">
+                      <FormGrid cols={2}>
+                        <FormField label="Vor- und Nachname" required>
+                          <input
+                            value={invitationPersonForm.displayName}
+                            required
+                            minLength={2}
+                            disabled={saving !== null}
+                            onChange={(event) =>
+                              setInvitationPersonForm((current) => ({
+                                ...current,
+                                displayName: event.target.value,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="E-Mail-Adresse" required>
+                          <input
+                            type="email"
+                            inputMode="email"
+                            autoComplete="email"
+                            value={invitationEmail}
+                            required
+                            disabled={saving !== null}
+                            onChange={(event) =>
+                              setInvitationEmail(event.target.value)
+                            }
+                          />
+                        </FormField>
+                      </FormGrid>
+                    </FormCard>
+                    <FormCard title="Zugang">
+                      <FormGrid cols={3}>
+                        <FormField
+                          label="Ticketzugriffsbereich"
+                          hint="Steuert ausschliesslich, auf welche Ticketbereiche diese Person als Agent zugreifen darf."
+                        >
+                          <select
+                            value={invitationPersonForm.departmentId}
+                            disabled={saving !== null}
+                            onChange={(event) =>
+                              setInvitationPersonForm((current) => ({
+                                ...current,
+                                departmentId: event.target.value,
+                              }))
+                            }
+                          >
+                            <option value="">Noch nicht zugeordnet</option>
+                            {userDirectory.departments
+                              .filter((department) => department.active)
+                              .map((department) => (
+                                <option
+                                  key={department.id}
+                                  value={department.id}
+                                >
+                                  {department.name}
+                                </option>
+                              ))}
+                          </select>
+                        </FormField>
+                        <FormField label="Angebot">
+                          <input
+                            value={invitationPersonForm.offer}
+                            disabled={saving !== null}
+                            onChange={(event) =>
+                              setInvitationPersonForm((current) => ({
+                                ...current,
+                                offer: event.target.value,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="Funktion">
+                          <input
+                            value={invitationPersonForm.jobTitle}
+                            disabled={saving !== null}
+                            onChange={(event) =>
+                              setInvitationPersonForm((current) => ({
+                                ...current,
+                                jobTitle: event.target.value,
+                              }))
+                            }
+                          />
+                        </FormField>
+                      </FormGrid>
+                    </FormCard>
+                    <button type="submit" disabled={saving !== null}>
+                      {saving === "invite-user"
+                        ? "Einladung wird versendet …"
+                        : "Einladung versenden"}
+                    </button>
+                  </FormLayout>
                 </form>
 
                 {memberGroups.map((group) => (
