@@ -35,6 +35,10 @@ export type ConfigInput = {
   autoResolve: boolean;
   setServiceStatus: boolean;
   priorityKey: string | null;
+  /** Minutes until an unacknowledged incident alarms again; 0 = never. */
+  realertMinutes: number;
+  groupDependencies: boolean;
+  suppressInMaintenance: boolean;
 };
 
 type Action =
@@ -72,7 +76,24 @@ export function parseConfig(value: unknown): ConfigInput | null {
   const createOn = (CREATE_ON as readonly unknown[]).includes(value.createOn)
     ? (value.createOn as ConfigInput["createOn"])
     : undefined;
+  // Incident options; older clients do not send them, so defaults apply.
+  const realertMinutes =
+    value.realertMinutes === undefined
+      ? 15
+      : typeof value.realertMinutes === "number" &&
+          Number.isInteger(value.realertMinutes) &&
+          value.realertMinutes >= 0 &&
+          value.realertMinutes <= 1440
+        ? value.realertMinutes
+        : undefined;
+  const flag = (entry: unknown) =>
+    entry === undefined ? true : typeof entry === "boolean" ? entry : undefined;
+  const groupDependencies = flag(value.groupDependencies);
+  const suppressInMaintenance = flag(value.suppressInMaintenance);
   if (
+    realertMinutes === undefined ||
+    groupDependencies === undefined ||
+    suppressInMaintenance === undefined ||
     typeof value.enabled !== "boolean" ||
     typeof value.autoResolve !== "boolean" ||
     typeof value.setServiceStatus !== "boolean" ||
@@ -91,6 +112,9 @@ export function parseConfig(value: unknown): ConfigInput | null {
     autoResolve: value.autoResolve,
     setServiceStatus: value.setServiceStatus,
     priorityKey,
+    realertMinutes,
+    groupDependencies,
+    suppressInMaintenance,
   };
 }
 
@@ -203,6 +227,10 @@ function configFromRow(row: Row | null) {
     autoResolve: row?.auto_resolve === true,
     setServiceStatus: row?.set_service_status === true,
     priorityKey: (row?.priority_key as string | null) ?? null,
+    realertMinutes:
+      typeof row?.realert_minutes === "number" ? row.realert_minutes : 15,
+    groupDependencies: row?.group_dependencies !== false,
+    suppressInMaintenance: row?.suppress_in_maintenance !== false,
     hasToken: typeof row?.token_hash === "string",
     tokenRotatedAt: (row?.token_rotated_at as string | null) ?? null,
     lastReceivedAt: (row?.last_received_at as string | null) ?? null,
@@ -472,6 +500,9 @@ async function save(
         auto_resolve: config.autoResolve,
         set_service_status: config.setServiceStatus,
         priority_key: config.priorityKey,
+        realert_minutes: config.realertMinutes,
+        group_dependencies: config.groupDependencies,
+        suppress_in_maintenance: config.suppressInMaintenance,
       },
       { onConflict: "tenant_id" },
     )

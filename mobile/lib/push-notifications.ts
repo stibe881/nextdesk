@@ -28,6 +28,7 @@ export const PUSH_CATEGORIES = [
   "inventory_low_stock",
   "infrastructure",
   "security_report",
+  "incident",
 ] as const;
 
 export type PushCategory = (typeof PUSH_CATEGORIES)[number];

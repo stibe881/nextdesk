@@ -21,6 +21,9 @@ export type MonitoringConfig = {
   autoResolve: boolean;
   setServiceStatus: boolean;
   priorityKey: string | null;
+  realertMinutes: number;
+  groupDependencies: boolean;
+  suppressInMaintenance: boolean;
   hasToken: boolean;
   tokenRotatedAt: string | null;
   lastReceivedAt: string | null;
@@ -78,6 +81,10 @@ export function parseMonitoringConfig(value: unknown): MonitoringConfig | null {
     autoResolve: value.autoResolve,
     setServiceStatus: value.setServiceStatus,
     priorityKey: text(value.priorityKey),
+    realertMinutes:
+      typeof value.realertMinutes === "number" ? value.realertMinutes : 15,
+    groupDependencies: value.groupDependencies !== false,
+    suppressInMaintenance: value.suppressInMaintenance !== false,
     hasToken: value.hasToken,
     tokenRotatedAt: text(value.tokenRotatedAt),
     lastReceivedAt: text(value.lastReceivedAt),
@@ -168,6 +175,9 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
   const [autoResolve, setAutoResolve] = useState(false);
   const [setServiceStatus, setSetServiceStatus] = useState(false);
   const [priorityKey, setPriorityKey] = useState("");
+  const [realertMinutes, setRealertMinutes] = useState(15);
+  const [groupDependencies, setGroupDependencies] = useState(true);
+  const [suppressInMaintenance, setSuppressInMaintenance] = useState(true);
 
   const applyConfig = useCallback((next: MonitoringConfig) => {
     setConfig(next);
@@ -178,6 +188,9 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
     setAutoResolve(next.autoResolve);
     setSetServiceStatus(next.setServiceStatus);
     setPriorityKey(next.priorityKey ?? "");
+    setRealertMinutes(next.realertMinutes);
+    setGroupDependencies(next.groupDependencies);
+    setSuppressInMaintenance(next.suppressInMaintenance);
   }, []);
 
   const load = useCallback(async () => {
@@ -268,6 +281,9 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
             autoResolve,
             setServiceStatus,
             priorityKey: priorityKey || null,
+            realertMinutes,
+            groupDependencies,
+            suppressInMaintenance,
           },
         },
       });
@@ -356,11 +372,6 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
   const departmentNames = new Map(
     departments.map((department) => [department.id, department.name]),
   );
-  // Without a fixed department every team is offered; its department then
-  // decides where the ticket is created.
-  const teamOptions = teams.filter(
-    (team) => !departmentId || team.departmentId === departmentId,
-  );
 
   return (
     <section
@@ -373,10 +384,11 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
           <span className="eyebrow">MONITORING</span>
           <h2 id="monitoring-settings-heading">Monitoring (PRTG)</h2>
           <p>
-            PRTG Network Monitor meldet Störungen direkt an nextDesk: Bei «Down»
-            entsteht ein Ticket mit verknüpftem Gerät, weitere Meldungen werden
-            als interne Kommentare ergänzt, bei «Up» wird der Alarm beendet und
-            der Systemstatus wiederhergestellt.
+            PRTG Network Monitor meldet Störungen direkt an nextDesk: Jede
+            Meldung öffnet oder ergänzt eine Störung im Arbeitsbereich
+            «Störungen» (ohne Ticket) und alarmiert das Team sofort per Push und
+            Mail. Bei «Up» wird die Störung als behoben markiert und der
+            Systemstatus wiederhergestellt.
           </p>
         </div>
         <Activity aria-hidden="true" size={25} />
@@ -397,52 +409,30 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
             </label>
             <div className="monitoring-settings__grid">
               <label>
-                Abteilung für Tickets
-                <select
-                  disabled={saving}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    setDepartmentId(next);
-                    const current = teams.find((team) => team.id === teamId);
-                    if (next && current && current.departmentId !== next) {
-                      setTeamId("");
-                    }
-                  }}
-                  value={departmentId}
-                >
-                  <option value="">Erste aktive Abteilung</option>
-                  {departments.map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Team für Tickets
+                Team für die Alarmierung
                 <select
                   disabled={saving}
                   onChange={(event) => {
                     const next = event.target.value;
                     setTeamId(next);
                     const team = teams.find((entry) => entry.id === next);
-                    if (team) setDepartmentId(team.departmentId);
+                    setDepartmentId(team ? team.departmentId : "");
                   }}
                   value={teamId}
                 >
-                  <option value="">Kein Team (Abteilung entscheidet)</option>
-                  {teamOptions.map((team) => (
+                  <option value="">Kein Team (alle Agenten)</option>
+                  {teams.map((team) => (
                     <option key={team.id} value={team.id}>
                       {team.name}
-                      {departmentId || !departmentNames.get(team.departmentId)
-                        ? ""
-                        : ` (${departmentNames.get(team.departmentId)})`}
+                      {departmentNames.get(team.departmentId)
+                        ? ` (${departmentNames.get(team.departmentId)})`
+                        : ""}
                     </option>
                   ))}
                 </select>
               </label>
               <label>
-                Ticket erstellen bei
+                Störung öffnen bei
                 <select
                   disabled={saving}
                   onChange={(event) =>
@@ -455,30 +445,50 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
                 </select>
               </label>
               <label>
-                Priorität
+                Erneut alarmieren, solange unbestätigt
                 <select
                   disabled={saving}
-                  onChange={(event) => setPriorityKey(event.target.value)}
-                  value={priorityKey}
+                  onChange={(event) =>
+                    setRealertMinutes(Number(event.target.value))
+                  }
+                  value={realertMinutes}
                 >
-                  <option value="">Standard (Hoch)</option>
-                  {priorities.map((priority) => (
-                    <option key={priority.key} value={priority.key}>
-                      {priority.label}
+                  {[5, 10, 15, 30, 60].map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      alle {minutes} Minuten
                     </option>
                   ))}
+                  {[0, 5, 10, 15, 30, 60].includes(realertMinutes) ? null : (
+                    <option value={realertMinutes}>
+                      alle {realertMinutes} Minuten
+                    </option>
+                  )}
+                  <option value={0}>Nie</option>
                 </select>
               </label>
             </div>
             <label className="asset-intune-settings__check">
               <input
-                checked={autoResolve}
+                checked={groupDependencies}
                 disabled={saving}
-                onChange={(event) => setAutoResolve(event.target.checked)}
+                onChange={(event) => setGroupDependencies(event.target.checked)}
                 type="checkbox"
               />
-              Ticket bei «Up» automatisch auf «Gelöst» setzen (nur wenn es
-              bereits zugewiesen ist)
+              Folgestörungen bündeln: Fällt ein Gerät hinter einem bereits
+              gestörten Gerät aus (Uplink in der Infrastruktur), wird es als
+              Folgestörung angehängt und nicht separat alarmiert
+            </label>
+            <label className="asset-intune-settings__check">
+              <input
+                checked={suppressInMaintenance}
+                disabled={saving}
+                onChange={(event) =>
+                  setSuppressInMaintenance(event.target.checked)
+                }
+                type="checkbox"
+              />
+              Während einer Wartung im Systemstatus nicht alarmieren (die
+              Störung wird trotzdem erfasst)
             </label>
             <label className="asset-intune-settings__check">
               <input

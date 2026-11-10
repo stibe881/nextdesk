@@ -7,6 +7,7 @@ import {
 } from "./onboarding-tour";
 import {
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -19,6 +20,7 @@ import {
 } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
+  Activity,
   AtSign,
   ArrowDown,
   ArrowLeft,
@@ -124,6 +126,7 @@ import {
   type SupportLevelFilter,
 } from "./lib/support-levels";
 import { Infrastructure } from "./infrastructure";
+import { Incidents } from "./incidents";
 import { SecurityCases } from "./security-cases";
 import {
   HomeLayoutEditor,
@@ -228,6 +231,7 @@ type Section =
   | "Lager"
   | "Fälle"
   | "Sicherheitsfälle"
+  | "Störungen"
   | "Verträge"
   | "Lizenzen"
   | "Raumplanung"
@@ -360,6 +364,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Shop", Icon: ShoppingBag },
     { label: "Fälle", Icon: FileWarning },
     { label: "Sicherheitsfälle", Icon: ShieldAlert },
+    { label: "Störungen", Icon: Activity },
     { label: "Wissen", Icon: BookOpen },
     { label: "Services", Icon: MonitorCog },
     { label: "Serviceaufgaben", Icon: ListChecks },
@@ -381,7 +386,13 @@ const NAVIGATION_CATEGORIES = [
     heading: "ARBEITSBEREICH",
     id: "navigation-category-workspace",
     navigationLabel: "Arbeitsbereich",
-    sectionLabels: ["Tickets", "Shop", "Fälle", "Sicherheitsfälle"],
+    sectionLabels: [
+      "Tickets",
+      "Shop",
+      "Fälle",
+      "Sicherheitsfälle",
+      "Störungen",
+    ],
   },
   {
     heading: "PLANUNG & BETRIEB",
@@ -1439,6 +1450,27 @@ function baseNotificationPresentation(
         description: `Eine verdächtige E-Mail wurde gemeldet (${ticketLabel}${risk ? `, Risiko ${risk}` : ""}).`,
         Icon: AlertTriangle,
         title: "Phishing-Meldung",
+      };
+    }
+    case "monitoring.incident": {
+      const number = notificationPayloadText(notification, "number", 40);
+      const title = notificationPayloadText(notification, "title", 200);
+      const reason = notificationPayloadText(notification, "reason", 20);
+      const warning =
+        notificationPayloadText(notification, "severity", 20) === "warning";
+      return {
+        description: `${number ?? "Störung"}: ${title ?? "PRTG-Meldung"}`,
+        Icon: AlertTriangle,
+        title:
+          reason === "realert"
+            ? "Störung noch unbestätigt"
+            : reason === "escalated"
+              ? "Störung: jetzt Ausfall"
+              : reason === "reopened"
+                ? "Störung erneut"
+                : warning
+                  ? "Warnung"
+                  : "Störung",
       };
     }
     case "ticket.sla.supervisor_risk": {
@@ -2972,6 +3004,12 @@ function AuthenticatedApp() {
   const [securityAttentionCount, setSecurityAttentionCount] = useState<
     number | null
   >(null);
+  // Agents: active incidents nobody has acknowledged yet.
+  const [incidentAttentionCount, setIncidentAttentionCount] = useState<
+    number | null
+  >(null);
+  const [incidentFocusId, setIncidentFocusId] = useState<string | null>(null);
+  const clearIncidentFocus = useCallback(() => setIncidentFocusId(null), []);
   const [navigationAttentionTick, setNavigationAttentionTick] = useState(0);
   const [canManageContracts, setCanManageContracts] = useState(false);
   const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
@@ -3719,6 +3757,7 @@ function AuthenticatedApp() {
       setOnboardingAttentionCount(null);
       setTicketAttentionCount(null);
       setSecurityAttentionCount(null);
+      setIncidentAttentionCount(null);
       return;
     }
     let mounted = true;
@@ -3765,10 +3804,12 @@ function AuthenticatedApp() {
               : null;
           setTicketAttentionCount(count(summary?.unassignedTickets));
           setSecurityAttentionCount(count(summary?.securityTriage));
+          setIncidentAttentionCount(count(summary?.incidentsUnacknowledged));
         });
     } else {
       setTicketAttentionCount(null);
       setSecurityAttentionCount(null);
+      setIncidentAttentionCount(null);
     }
     void supabase.functions
       .invoke("onboarding", { body: { type: "navigationSummary", tenantId } })
@@ -4235,6 +4276,12 @@ function AuthenticatedApp() {
       setNotificationPanelOpen(false);
     } else if (notification.kind.startsWith("shop.order.")) {
       setSection("Shop");
+      setNotificationPanelOpen(false);
+    } else if (notification.kind.startsWith("monitoring.")) {
+      setIncidentFocusId(
+        notificationPayloadText(notification, "incidentId", 64),
+      );
+      setSection("Störungen");
       setNotificationPanelOpen(false);
     } else if (notification.kind === "team.overload") {
       setSection("Teamführung");
@@ -4773,6 +4820,7 @@ function AuthenticatedApp() {
       return isFeatureEnabled("assets.management");
     }
     if (item.label === "Sicherheitsfälle") return canWorkTickets;
+    if (item.label === "Störungen") return canWorkTickets;
     if (item.label === "Lager") return isFeatureEnabled("inventory.management");
     if (item.label === "Shop") return isFeatureEnabled("self_service.shop");
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
@@ -5331,7 +5379,9 @@ function AuthenticatedApp() {
               ? ticketAttentionCount
               : label === "Sicherheitsfälle"
                 ? securityAttentionCount
-                : null,
+                : label === "Störungen"
+                  ? incidentAttentionCount
+                  : null,
     );
   const navigationAttentionDescription = (label: Section): string =>
     label === "Raumplanung"
@@ -5342,7 +5392,9 @@ function AuthenticatedApp() {
           ? "Tickets sind noch keinem Agenten zugewiesen"
           : label === "Sicherheitsfälle"
             ? "Sicherheitsfälle sind noch niemandem zugewiesen"
-            : "Eintritte sind noch nicht in Bearbeitung";
+            : label === "Störungen"
+              ? "aktive Störungen sind noch nicht bestätigt"
+              : "Eintritte sind noch nicht in Bearbeitung";
   // Berichte stands on its own below the categories.
   const reportsNavigationItem = navigationItemsBySection.get("Berichte");
   const navigationGroups = NAVIGATION_CATEGORIES.map((category) => ({
@@ -6185,6 +6237,13 @@ function AuthenticatedApp() {
           />
         ) : section === "Sicherheitsfälle" && activeTenant && canWorkTickets ? (
           <SecurityCases key={activeTenant.id} tenantId={activeTenant.id} />
+        ) : section === "Störungen" && activeTenant && canWorkTickets ? (
+          <Incidents
+            focusId={incidentFocusId}
+            key={activeTenant.id}
+            onFocusConsumed={clearIncidentFocus}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Infrastruktur" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (

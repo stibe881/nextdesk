@@ -89,6 +89,12 @@ const CATEGORY_DETAILS: readonly {
     description: "Wenn eine verdächtige E-Mail als Phishing gemeldet wird.",
   },
   {
+    key: "incident",
+    label: "Störungen",
+    description:
+      "Wenn PRTG eine Störung meldet und solange sie niemand bestätigt.",
+  },
+  {
     key: "follow_up",
     label: "Wiedervorlagen",
     description:

@@ -877,6 +877,11 @@ export function Infrastructure({
         <RackView
           categoryLabel={(key) => CATEGORY[key as Category]?.label ?? key}
           devices={visible}
+          failingDeviceIds={
+            new Set(
+              Object.keys(monitoring).filter((id) => monitoring[id]?.length),
+            )
+          }
           onOpen={setSelectedId}
           onSelectRackDevices={(deviceIds) =>
             setLabelDevices((current) => new Set([...current, ...deviceIds]))

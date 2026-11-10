@@ -285,8 +285,11 @@ export function RackView<T extends RackDevice>({
   onSaveRack,
   onDeleteRack,
   onAddLocation,
+  failingDeviceIds,
 }: {
   devices: T[];
+  /** Devices with an active PRTG incident, drawn red. */
+  failingDeviceIds?: ReadonlySet<string> | undefined;
   /** Racks recorded by the user, shown even without devices. */
   definitions?: readonly RackDefinition[];
   locations?: RackLocation[];
@@ -573,7 +576,7 @@ export function RackView<T extends RackDevice>({
                   const textY = top + Math.min(deviceHeight, UNIT_PX) * 0.68;
                   return (
                     <g
-                      className={`rack-view__device rack-view__device--${entry.device.category}`}
+                      className={`rack-view__device rack-view__device--${entry.device.category}${failingDeviceIds?.has(entry.device.id) ? " rack-view__device--failing" : ""}`}
                       key={entry.device.id}
                       onClick={() => onOpen(entry.device.id)}
                       onKeyDown={(event) => {
@@ -585,7 +588,7 @@ export function RackView<T extends RackDevice>({
                       role="button"
                       tabIndex={0}
                     >
-                      <title>{`${entry.device.name} · ${categoryLabel(entry.device.category)} · HE ${entry.start}${entry.height > 1 ? `–${entry.start + entry.height - 1}` : ""}`}</title>
+                      <title>{`${entry.device.name} · ${categoryLabel(entry.device.category)} · HE ${entry.start}${entry.height > 1 ? `–${entry.start + entry.height - 1}` : ""}${failingDeviceIds?.has(entry.device.id) ? " · Störung aktiv" : ""}`}</title>
                       {/* Rack ears screwed to the rails. */}
                       <rect
                         className="rack-view__ear"

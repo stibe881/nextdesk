@@ -31,6 +31,11 @@ export const pushCategoryMeta = {
       "Wenn die Gesamtverfügbarkeit eines Artikels den Mindestbestand erreicht",
     label: "Lagerunterbestand",
   },
+  incident: {
+    description:
+      "Wenn PRTG eine Störung meldet und solange sie niemand bestätigt",
+    label: "Störungen",
+  },
   mention: {
     description: "Wenn Sie in einem Ticket erwähnt werden",
     label: "Erwähnungen",
