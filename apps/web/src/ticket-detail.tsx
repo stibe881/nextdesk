@@ -50,6 +50,8 @@ import {
   ticketCommentDraftForMode,
   updateTicketCommentDraft,
   type TicketCommentComposerContext,
+  isReplyGreetingOnly,
+  ticketReplyGreeting,
 } from "./lib/ticket-comment-composer";
 import {
   chronologicalTicketComments,
@@ -4107,7 +4109,13 @@ export function TicketDetail({
     handoversLoading ||
     affectedItemsLoading ||
     mergeSearchLoading ||
-    commentDrafts.external.trim().length > 0 ||
+    (commentDrafts.external.trim().length > 0 &&
+      !isReplyGreetingOnly(
+        commentDrafts.external,
+        requesterView
+          ? null
+          : ticketReplyGreeting(detail?.requesterContact?.displayName),
+      )) ||
     commentDrafts.internal.trim().length > 0 ||
     commentImageAttachments.external.length > 0 ||
     commentImageAttachments.internal.length > 0 ||
@@ -4173,11 +4181,24 @@ export function TicketDetail({
     commentVisibility,
   );
   const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  // Replies to the requester start with «Lieber <Vorname>» and room to write.
+  const replyGreeting = requesterView
+    ? null
+    : ticketReplyGreeting(detail?.requesterContact?.displayName);
+  const externalGreetingOnly = isReplyGreetingOnly(
+    commentDrafts.external,
+    replyGreeting,
+  );
+  const greetingAppliedRef = useRef<string | null>(null);
   const activeCommentImageAttachments =
     commentImageAttachments[commentVisibility];
   // Shared with colleagues so nobody answers the same ticket twice.
   const composingVisibility: "external" | "internal" | null =
-    !requesterView && commentBody.trim() ? commentVisibility : null;
+    !requesterView &&
+    commentBody.trim() &&
+    !(commentVisibility === "external" && externalGreetingOnly)
+      ? commentVisibility
+      : null;
   const colleaguesComposing = presence.filter((person) => person.composing);
   const canAttachCommentImages = Boolean(
     detail &&
@@ -4290,7 +4311,8 @@ export function TicketDetail({
     visibility: "internal",
   });
   const externalReplyDraft = useTicketReplyDraft({
-    body: commentDrafts.external,
+    // The pre-filled greeting alone is no draft.
+    body: externalGreetingOnly ? "" : commentDrafts.external,
     onRestore: restoreExternalReplyDraft,
     remote: externalDraftRemote,
     tenantId,
@@ -4298,6 +4320,20 @@ export function TicketDetail({
     userId: currentUserId,
     visibility: "external",
   });
+  // Pre-fill the greeting once per ticket, after a stored draft was restored.
+  useEffect(() => {
+    if (
+      !replyGreeting ||
+      !draftDetailReady ||
+      !detail?.canCommentExternal ||
+      greetingAppliedRef.current === ticketId
+    )
+      return;
+    greetingAppliedRef.current = ticketId;
+    setCommentDrafts((current) =>
+      current.external ? current : { ...current, external: replyGreeting },
+    );
+  }, [detail?.canCommentExternal, draftDetailReady, replyGreeting, ticketId]);
   const activeCommunicationDraft =
     commentVisibility === "internal" ? internalNoteDraft : externalReplyDraft;
 
@@ -6248,12 +6284,26 @@ export function TicketDetail({
     await saveOverviewChange({ statusKey: confirmation.statusKey }, true);
   }
 
+  /** Untouched greeting: continue writing right below it. */
+  function placeCaretAfterGreeting(field: HTMLTextAreaElement) {
+    if (
+      commentVisibility === "external" &&
+      replyGreeting &&
+      field.value === replyGreeting &&
+      field.selectionStart === field.selectionEnd
+    ) {
+      field.setSelectionRange(field.value.length, field.value.length);
+    }
+  }
+
   async function saveComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const resolveAfter = resolveAfterCommentRef.current;
     resolveAfterCommentRef.current = false;
     const body = ticketCommentBodyWithAttachments(
-      commentBody,
+      commentVisibility === "external" && externalGreetingOnly
+        ? ""
+        : commentBody,
       activeCommentImageAttachments.length,
     );
     const mentionRecipients = detail?.canUseInternalNotes
@@ -6331,7 +6381,13 @@ export function TicketDetail({
         setCommentNotice(copyNotice);
       }
       setCommentDrafts((current) =>
-        updateTicketCommentDraft(current, commentVisibility, ""),
+        updateTicketCommentDraft(
+          current,
+          commentVisibility,
+          commentVisibility === "external" && replyGreeting
+            ? replyGreeting
+            : "",
+        ),
       );
       clearCommentImageAttachments(commentVisibility);
       onChanged();
@@ -7492,6 +7548,13 @@ export function TicketDetail({
                       ),
                     )
                   }
+                  onClick={(event) =>
+                    placeCaretAfterGreeting(event.currentTarget)
+                  }
+                  onFocus={(event) => {
+                    const field = event.currentTarget;
+                    window.setTimeout(() => placeCaretAfterGreeting(field), 0);
+                  }}
                   placeholder={commentComposer.placeholder}
                   rows={4}
                   value={commentBody}
