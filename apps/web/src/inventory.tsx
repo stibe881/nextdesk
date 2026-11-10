@@ -1597,6 +1597,27 @@ function inventoryEditorApi(tenantId: string): StockEditor["api"] {
         throw new Error("Ungültige Löschantwort.");
       }
     },
+    deleteItem: async (itemId) => {
+      const data = await inventoryInvoke({
+        type: "deleteItem",
+        tenantId,
+        itemId,
+      });
+      const deleted =
+        isRecord(data) && isRecord(data.data) ? data.data.deleted : undefined;
+      if (deleted === true) return "deleted";
+      if (deleted === false) return "in_use";
+      throw new Error("Ungültige Löschantwort.");
+    },
+    archiveItem: async (itemId) => {
+      await inventoryInvoke({
+        type: "manageItem",
+        tenantId,
+        operation: "archive",
+        itemId,
+        clientRequestId: crypto.randomUUID(),
+      });
+    },
     loadImageUrl: async (itemId) => {
       const data = await inventoryInvoke({
         type: "createDownloadUrl",

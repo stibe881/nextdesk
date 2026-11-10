@@ -2175,6 +2175,9 @@ export type StockEditor = {
     uploadImage: (itemId: string, file: File) => Promise<void>;
     deleteImage: (itemId: string) => Promise<void>;
     loadImageUrl: (itemId: string) => Promise<string | null>;
+    /** «in_use»: hat Bewegungen oder Reservationen, nur archivierbar. */
+    deleteItem: (itemId: string) => Promise<"deleted" | "in_use">;
+    archiveItem: (itemId: string) => Promise<void>;
   };
 };
 
@@ -2437,6 +2440,47 @@ export function CatalogEditor({
       await shopApi.deleteItem(tenantId, draft.id);
       setDraft(null);
       onDone("Artikel gelöscht.");
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Der Artikel konnte nicht gelöscht werden.",
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const removeStockArticle = async () => {
+    const info = stock?.item;
+    if (!draft || !stock || !info) return;
+    if (
+      !window.confirm(
+        `Artikel «${info.name}» endgültig löschen? Er verschwindet auch aus dem Shop.`,
+      )
+    ) {
+      return;
+    }
+    setPending(true);
+    setError("");
+    try {
+      const result = await stock.api.deleteItem(info.id);
+      let message = "Artikel gelöscht.";
+      if (result === "in_use") {
+        if (
+          !window.confirm(
+            "Der Artikel hat Bewegungen oder Reservationen und kann nicht gelöscht werden. Stattdessen archivieren? Er wird dann ausgeblendet und aus dem Shop genommen.",
+          )
+        ) {
+          return;
+        }
+        await stock.api.archiveItem(info.id);
+        message = "Artikel archiviert.";
+      }
+      // Der Shop-Eintrag verschwindet mit dem Lagerartikel.
+      if (draft.id) await shopApi.deleteItem(tenantId, draft.id);
+      setDraft(null);
+      onDone(message);
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -3512,6 +3556,16 @@ export function CatalogEditor({
               </p>
             ) : null}
             <div className="form-actions">
+              {stock?.item ? (
+                <button
+                  className="secondary-button shop__delete-item"
+                  disabled={pending}
+                  onClick={() => void removeStockArticle()}
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" size={15} /> Löschen
+                </button>
+              ) : null}
               {draft.id && !stock ? (
                 <button
                   className="secondary-button shop__delete-item"
