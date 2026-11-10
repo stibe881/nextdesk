@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Archive,
   ArrowLeftRight,
+  CircleCheck,
   ClipboardList,
   MapPin,
   PackageCheck,
@@ -1461,11 +1462,25 @@ function InventoryOverview({ workspace }: { workspace: InventoryWorkspace }) {
   return (
     <>
       <div className="inventory__metrics">
-        <article className="inventory__metric inventory__metric--attention">
-          <AlertTriangle aria-hidden="true" size={19} />
+        <article
+          className={`inventory__metric ${
+            workspace.summary.criticalItemCount > 0
+              ? "inventory__metric--attention"
+              : "inventory__metric--ok"
+          }`}
+        >
+          {workspace.summary.criticalItemCount > 0 ? (
+            <AlertTriangle aria-hidden="true" size={19} />
+          ) : (
+            <CircleCheck aria-hidden="true" size={19} />
+          )}
           <span>Unterbestand</span>
           <strong>{workspace.summary.criticalItemCount}</strong>
-          <small>Artikel benötigen Aufmerksamkeit</small>
+          <small>
+            {workspace.summary.criticalItemCount > 0
+              ? "Artikel benötigen Aufmerksamkeit"
+              : "Alles im grünen Bereich"}
+          </small>
         </article>
         <article className="inventory__metric">
           <PackageCheck aria-hidden="true" size={19} />
