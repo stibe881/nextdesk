@@ -294,6 +294,10 @@ Wählen Sie im Antwortbereich den Modus:
   darunter; ein Klick ins Feld setzt den Cursor direkt dahinter. Sie können die
   Begrüssung ändern oder löschen. Eine Antwort, die nur aus der Begrüssung
   besteht, wird nicht gesendet.
+  Antworten an die anfragende Person sind nur möglich, wenn das Ticket
+  **zugewiesen**, **in Bearbeitung** und einer **Kategorie** zugeordnet ist
+  (sofern die Abteilung Kategorien hat). Sonst bleibt nur die interne Notiz
+  wählbar; der Hinweis am Knopf nennt, was fehlt.
 - **Interne Notiz** → **Interne Notiz speichern**. Nur für berechtigte
   Mitarbeitende sichtbar.
 

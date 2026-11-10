@@ -5357,6 +5357,22 @@ export function TicketDetail({
     () => ticketCategories.filter((category) => category.parentId === null),
     [ticketCategories],
   );
+  // Staff answer the requester only while the ticket is assigned, in progress
+  // and has a category (where the department has any); the server enforces the
+  // same rule.
+  const externalReplyBlocked = Boolean(
+    detail &&
+    !requesterView &&
+    (!detail.ticket.assigned_agent_id ||
+      selectedStatus?.key !== "in_progress" ||
+      (rootTicketCategories.length > 0 && !detail.ticket.category_id)),
+  );
+  useEffect(() => {
+    if (externalReplyBlocked && commentVisibility === "external") {
+      commentVisibilityRef.current = "internal";
+      setCommentVisibility("internal");
+    }
+  }, [commentVisibility, externalReplyBlocked]);
   // Category, team and assignee must be set before a ticket is closed;
   // category and team only where the department offers any.
   const requiredCloseFields = {
@@ -7520,14 +7536,23 @@ export function TicketDetail({
                   <button
                     aria-pressed={commentVisibility === "external"}
                     className="ticket-comment-mode ticket-comment-mode--external"
-                    disabled={busy || attachmentBusy}
+                    disabled={busy || attachmentBusy || externalReplyBlocked}
+                    title={
+                      externalReplyBlocked
+                        ? "Erst möglich, wenn das Ticket zugewiesen, in Bearbeitung und einer Kategorie zugeordnet ist."
+                        : undefined
+                    }
                     onClick={() => selectCommentMode("external")}
                     type="button"
                   >
                     <Send aria-hidden="true" size={17} strokeWidth={1.8} />
                     <span>
                       <strong>Antwort an anfragende Person</strong>
-                      <small>Für die anfragende Person sichtbar</small>
+                      <small>
+                        {externalReplyBlocked
+                          ? "Erst bei zugewiesenem Ticket in Bearbeitung mit Kategorie"
+                          : "Für die anfragende Person sichtbar"}
+                      </small>
                     </span>
                   </button>
                 </div>
@@ -7709,7 +7734,11 @@ export function TicketDetail({
               )}
               <button
                 className="primary-button"
-                disabled={busy || attachmentBusy}
+                disabled={
+                  busy ||
+                  attachmentBusy ||
+                  (commentVisibility === "external" && externalReplyBlocked)
+                }
                 type="submit"
               >
                 {pendingAction === "comment" ? (
@@ -7726,7 +7755,11 @@ export function TicketDetail({
               {detail.canClose && !ticketIsClosed ? (
                 <button
                   className="secondary-button ticket-comment-resolve-button"
-                  disabled={busy || attachmentBusy}
+                  disabled={
+                    busy ||
+                    attachmentBusy ||
+                    (commentVisibility === "external" && externalReplyBlocked)
+                  }
                   onClick={() => {
                     resolveAfterCommentRef.current = true;
                   }}
