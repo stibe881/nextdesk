@@ -20,6 +20,11 @@ import {
   type CustomerTicketEmailKind,
 } from "./customer-ticket-email-template.ts";
 import { emailTemplateDefinition } from "./email-templates.ts";
+import {
+  ensureRequesterContact,
+  nameFromAddress,
+  senderName,
+} from "./requester-name.ts";
 import { loadEmailTemplate } from "./email-templates-store.ts";
 import {
   requesterActionUrl,
@@ -426,14 +431,7 @@ function emailFromPerson(value: unknown): string | null {
 }
 
 function displayNameFromAddress(address: string): string {
-  const local = address.slice(0, address.indexOf("@"));
-  const label = local
-    .normalize("NFKC")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .replace(/\s+/g, " ")
-    .slice(0, 120);
-  return label || "E-Mail-Kontakt";
+  return nameFromAddress(address);
 }
 
 function subject(value: unknown): string {
@@ -838,27 +836,21 @@ async function requesterContact(
   admin: Admin,
   tenantId: string,
   address: string,
+  graph: Row,
 ): Promise<{ id: string; email: string }> {
-  const upsert = await admin
-    .from("ticket_requesters")
-    .upsert(
-      {
-        tenant_id: tenantId,
-        email: address,
-        display_name: displayNameFromAddress(address),
-        source: "email",
-      },
-      { onConflict: "tenant_id,email" },
-    )
-    .select("id, email")
-    .single();
-  if (
-    upsert.error ||
-    !asString(upsert.data?.id) ||
-    !emailAddress(upsert.data?.email)
-  )
+  // Keeps an existing (possibly corrected) name; see requester-name.ts.
+  const person = record(graph.from) ? graph.from : graph.sender;
+  const contact = await ensureRequesterContact(admin, {
+    tenantId,
+    address,
+    senderName:
+      record(person) && record(person.emailAddress)
+        ? senderName(person.emailAddress.name)
+        : null,
+  });
+  if (!contact || !asString(contact.id) || !emailAddress(contact.email))
     throw new Error("requester_contact_upsert_failed");
-  return { id: upsert.data.id, email: upsert.data.email };
+  return contact;
 }
 
 async function findInboundTicket(
@@ -1264,7 +1256,7 @@ async function createNewTicket(
 ): Promise<{ id: string; ticket_number: string; contactId: string }> {
   if (!(await activeChannel(admin, channel)))
     throw new Error("channel_reconfigured");
-  const contact = await requesterContact(admin, channel.tenant_id, sender);
+  const contact = await requesterContact(admin, channel.tenant_id, sender, graph);
   const department = channel.default_department_id
     ? await admin
         .from("departments")
@@ -1615,7 +1607,7 @@ export async function processInboundMessage(
         sender,
       ));
     stage = "requester_contact";
-    const contact = await requesterContact(admin, channel.tenant_id, sender);
+    const contact = await requesterContact(admin, channel.tenant_id, sender, graph);
     stage = "service_identity";
     const serviceIdentityId = await ensureExchangeMailServiceIdentity(admin);
     const inboundAttachments =
