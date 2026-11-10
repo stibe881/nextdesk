@@ -75,8 +75,7 @@ function useNow(): number {
 
 const TABS: { key: IncidentFilter; label: string }[] = [
   { key: "active", label: "Aktiv" },
-  { key: "resolved", label: "Behoben, offen" },
-  { key: "closed", label: "Abgeschlossen" },
+  { key: "closed", label: "Behoben" },
   { key: "all", label: "Alle" },
 ];
 
@@ -92,7 +91,7 @@ const EMPTY_TEXT: Record<IncidentFilter, string> = {
   services: "Keine Dienste betroffen.",
   recent: "In den letzten 30 Tagen wurde keine Störung behoben.",
   resolved: "Keine behobenen Störungen, die noch abgeschlossen werden müssen.",
-  closed: "Noch keine abgeschlossenen Störungen.",
+  closed: "Noch keine behobenen Störungen.",
   all: "Noch keine Störungen.",
 };
 
@@ -209,8 +208,8 @@ export function Incidents({
           <p>
             Meldungen aus PRTG: eine Störung pro Gerät, Geräte hinter einem
             gestörten Gerät als Folgestörung. Bestätigen Sie eine Störung,
-            sobald Sie sich darum kümmern; nach der Behebung schliessen Sie sie
-            mit der Ursache ab.
+            sobald Sie sich darum kümmern. Meldet PRTG wieder OK, schliesst sich
+            die Störung automatisch.
           </p>
         </div>
         <button
@@ -940,7 +939,8 @@ function IncidentView({
                     <dd>{detail.cause ? CAUSE_LABELS[detail.cause] : "–"}</dd>
                     <dt>Von</dt>
                     <dd>
-                      {detail.closedBy ?? "–"}, {dateTime(detail.closedAt)}
+                      {detail.closedBy ?? "automatisch (PRTG meldet OK)"},{" "}
+                      {dateTime(detail.closedAt)}
                     </dd>
                     {detail.closingNote ? (
                       <>
@@ -950,13 +950,19 @@ function IncidentView({
                     ) : null}
                   </dl>
                 </article>
-              ) : (
+              ) : null}
+              {detail.state !== "closed" || !detail.cause ? (
                 <article className="incident-card">
-                  <h3>Abschliessen</h3>
+                  <h3>
+                    {detail.state === "closed"
+                      ? "Ursache nachtragen (optional)"
+                      : "Abschliessen"}
+                  </h3>
                   {detail.state === "active" ? (
                     <p className="incident-muted">
                       <Clock3 aria-hidden="true" size={13} /> PRTG meldet noch
-                      eine Störung. Abschliessen beendet die Störung auch ohne
+                      eine Störung. Meldet PRTG wieder OK, schliesst sich die
+                      Störung automatisch. Abschliessen beendet sie auch ohne
                       OK-Meldung.
                     </p>
                   ) : null}
@@ -1002,11 +1008,13 @@ function IncidentView({
                       type="submit"
                     >
                       <CheckCircle2 aria-hidden="true" size={15} />
-                      Störung abschliessen
+                      {detail.state === "closed"
+                        ? "Ursache speichern"
+                        : "Störung abschliessen"}
                     </button>
                   </form>
                 </article>
-              )}
+              ) : null}
             </div>
           </div>
         </>

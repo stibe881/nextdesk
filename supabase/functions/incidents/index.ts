@@ -604,7 +604,18 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
       await requireAgent(client, action.tenantId);
       const incident = await loadIncident(admin, action.tenantId, action.incidentId);
       if (incident.state === "closed") {
-        throw new HttpError(409, "incident_closed", "Die Störung ist bereits abgeschlossen.");
+        // Closed automatically by PRTG: the cause can be added afterwards.
+        if (incident.cause) {
+          throw new HttpError(409, "incident_closed", "Die Störung ist bereits abgeschlossen.");
+        }
+        await admin.from("monitoring_incidents").update({
+          closed_by: actorId,
+          cause: action.cause,
+          closing_note: action.note ?? incident.closing_note ?? null,
+        }).eq("id", action.incidentId);
+        await addEvent(admin, action.tenantId, action.incidentId, "note", actorId,
+          `Ursache nachgetragen: ${CAUSE_LABELS[action.cause]}${action.note ? ` · ${action.note}` : ""}`);
+        return await detail(admin, client, action.tenantId, action.incidentId);
       }
       const now = new Date().toISOString();
       const ids = [action.incidentId];

@@ -237,7 +237,7 @@ per Push und E-Mail alarmiert.
    bei Bedarf _Warnung_ und **zwingend** die Zeile «nicht mehr im Status …»
    (Up) mit derselben Vorlage. Ohne den Up-Trigger erfährt nextDesk nie, dass
    die Störung vorbei ist, und der Dienst bleibt im Systemstatus gestört. Bei
-   _Up_ wird die Störung als behoben markiert. nextDesk versteht die
+   _Up_ wird die Störung automatisch abgeschlossen. nextDesk versteht die
    Statuswörter deutsch (Fehler, Warnung, OK, Pausiert) und englisch (Down,
    Warning, Up, Paused).
 4. **Geräte und Dienste verknüpfen** (nur damit ändert sich der Systemstatus):
