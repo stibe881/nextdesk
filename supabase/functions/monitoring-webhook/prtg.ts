@@ -127,10 +127,17 @@ export function parseQuery(url: URL): Record<string, string> {
  * "Warning", "Unusual", "Paused (paused by user)", "Down (Acknowledged)",
  * "Down (Partial)", "Up (was: Down)", "Unknown". German: "OK", "Fehler",
  * "Warnung", "Ungewöhnlich", "Pausiert", "Fehler (Teilweise)", "Unbekannt".
+ * Recovery texts: "Down ended (now: Up)" / "Fehler beendet (jetzt: OK)".
  */
 export function classifyStatus(status: string | null): StatusKind | null {
   if (!status) return null;
   const head = status.trim().toLowerCase();
+  // Recovery texts: «Fehler beendet (jetzt: OK)», «Down ended (now: Up)». The
+  // state in brackets is the new one; without it the problem simply ended.
+  if (/\b(beendet|ended)\b/.test(head)) {
+    const now = /\((?:jetzt|now):\s*([^)]+)\)/.exec(head);
+    return (now ? classifyStatus(now[1]!) : null) ?? "up";
+  }
   if (/^(up|ok|ended|resolved|behoben|in ordnung)\b/.test(head)) return "up";
   if (
     /^(down|error|critical|failed|fehler|ausfall|st[öo]rung|kritisch|teilweiser fehler)/
