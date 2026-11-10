@@ -373,11 +373,19 @@ Praktische Helfer:
 
 ![Antwort an die anfragende Person schreiben](images/ag-antworten.jpg)
 
+### Anhänge
+
+Unter der **Beschreibung** zeigt eine schlanke Zeile alle **Anhänge** als Chips
+(Typ-Symbol oder Bildvorschau, Name, Grösse). Ein Klick lädt die Datei herunter,
+das **×** löscht sie nach Rückfrage. Ab fünf Dateien erscheint **+n weitere**.
+Mit **+ Anhang** wählen Sie eine oder mehrere Dateien aus; Sie können sie auch
+direkt auf die Zeile ziehen (max. 25 MiB pro Datei).
+
 ### Weitere Aktionen im Ticket
 
 | Aktion                                      | Wofür                                                   |
 | ------------------------------------------- | ------------------------------------------------------- |
-| Anhang hochladen                            | Dateien zum Ticket ablegen                              |
+| Anhang hinzufügen                           | Dateien zum Ticket ablegen                              |
 | Beobachtende hinzufügen / Personen in Kopie | Weitere Personen informieren                            |
 | Tickets zusammenführen                      | Doppelte Meldungen bündeln                              |
 | Aufteilen                                   | Ein Ticket in mehrere Aufgaben trennen                  |
