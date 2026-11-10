@@ -2916,6 +2916,48 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         },
         403,
       );
+    // Staff may only answer the requester while the ticket is assigned and in
+    // progress (the requester's own replies are always possible).
+    if (action.visibility === "external" && actorId !== ticket.requester_id) {
+      const { data: replyState } = await context.supabaseAdmin
+        .from("tickets")
+        .select("assigned_agent_id, category_id, status:ticket_statuses(key)")
+        .eq("id", ticket.id)
+        .eq("tenant_id", ticket.tenant_id)
+        .maybeSingle();
+      const statusRelation = replyState?.status as
+        { key?: string } | { key?: string }[] | null | undefined;
+      const statusKey = Array.isArray(statusRelation)
+        ? statusRelation[0]?.key
+        : statusRelation?.key;
+      // A category is required where the department offers any (as when closing).
+      let categoryMissing = false;
+      if (replyState && !replyState.category_id) {
+        const { count } = await context.supabaseAdmin
+          .from("ticket_categories")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", ticket.tenant_id)
+          .eq("department_id", ticket.department_id)
+          .eq("active", true);
+        categoryMissing = (count ?? 0) > 0;
+      }
+      if (
+        !replyState?.assigned_agent_id ||
+        statusKey !== "in_progress" ||
+        categoryMissing
+      )
+        return response(
+          request,
+          {
+            error: {
+              code: "external_reply_requires_in_progress",
+              message:
+                "Eine Antwort an die anfragende Person ist nur möglich, wenn das Ticket zugewiesen, in Bearbeitung und einer Kategorie zugeordnet ist.",
+            },
+          },
+          422,
+        );
+    }
     let comment: {
       id: string;
       author_id: string;
