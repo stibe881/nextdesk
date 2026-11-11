@@ -6469,6 +6469,264 @@ const TOOLS: Tool[] = [
       });
     },
   },
+  // ------------------------------------------------ IP-Adressverwaltung (IPAM)
+  {
+    name: "netzwerk_fragen",
+    description:
+      "Beantwortet Fragen zur IP-Adressverwaltung aus den dokumentierten Daten, z. B. «Freie IP im VLAN 67 in Baar?», «Was hängt an SW-A2-01 Port 14?», «Welche IP hat DRU-A2-KOPIE?», «Welche Subnetze sind fast voll?». Die Antwort stammt aus nextDesk; nie IP-Adressen erfinden. Eine gefundene freie IP ist nur ein Vorschlag (Reservieren mit ip_reservieren).",
+    annotations: { readOnlyHint: true, title: "Netzwerk fragen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        frage: { type: "string", minLength: 2, maxLength: 500 },
+      },
+      required: ["frage"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const question = str(args.frage, 2, 500);
+      if (!question) throw new ToolError('"frage" fehlt.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "ask",
+        tenantId: workspace.id,
+        question,
+      });
+      return textResult({
+        answer: data.answer,
+        query: data.intent,
+        results: data.results,
+      });
+    },
+  },
+  {
+    name: "freie_ip_suchen",
+    description:
+      "Sucht die nächste freie IP-Adresse in den Subnetzen eines VLAN (vlan: Nummer, oder vlan_name z. B. «Drucker») und optional an einem Standort. Reserviert nichts; die Reservierung braucht ip_reservieren mit Bestätigung.",
+    annotations: { readOnlyHint: true, title: "Freie IP suchen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        vlan: { type: "integer", minimum: 1, maximum: 4094 },
+        vlan_name: { type: "string", maxLength: 60 },
+        standort: { type: "string", maxLength: 60 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const vlan = typeof args.vlan === "number" ? Math.trunc(args.vlan) : null;
+      const vlanName = str(args.vlan_name, 1, 60);
+      const site = str(args.standort, 1, 60);
+      if (vlan === null && !vlanName && !site) {
+        throw new ToolError('Gib "vlan", "vlan_name" oder "standort" an.');
+      }
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "freeAddress",
+        tenantId: workspace.id,
+        vlan,
+        vlanName,
+        site,
+      });
+      return textResult({
+        answer: data.answer,
+        free: isRecord(data.results) ? data.results.free : [],
+        next: "Zum Reservieren die Person fragen und ip_reservieren mit subnetz_id und adresse sowie bestaetigt=true aufrufen.",
+      });
+    },
+  },
+  {
+    name: "switchport_anzeigen",
+    description:
+      "Zeigt, welche dokumentierten Geräte an einem Switch-Port hängen (switch: Name wie SW-A2-01, port: z. B. 14 oder Gi1/0/14).",
+    annotations: { readOnlyHint: true, title: "Switch-Port anzeigen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        switch: { type: "string", minLength: 1, maxLength: 160 },
+        port: { type: "string", minLength: 1, maxLength: 80 },
+      },
+      required: ["switch", "port"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const switchName = str(args.switch, 1, 160);
+      const port = str(args.port, 1, 80);
+      if (!switchName || !port)
+        throw new ToolError('"switch" und "port" angeben.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "switchPort",
+        tenantId: workspace.id,
+        switchName,
+        port,
+      });
+      return textResult({ answer: data.answer, results: data.results });
+    },
+  },
+  {
+    name: "ip_nachschlagen",
+    description:
+      "Schlägt einen Hostnamen, eine IP- oder MAC-Adresse in der IP-Adressverwaltung nach: Status, Hostname, VLAN, Subnetz, Standort, Switch-Port, zuletzt gesehen, verknüpftes Gerät und offene Funde.",
+    annotations: { readOnlyHint: true, title: "IP nachschlagen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suche: { type: "string", minLength: 1, maxLength: 253 },
+      },
+      required: ["suche"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const query = str(args.suche, 1, 253);
+      if (!query) throw new ToolError('"suche" fehlt.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "hostLookup",
+        tenantId: workspace.id,
+        query,
+      });
+      return textResult({ answer: data.answer, results: data.results });
+    },
+  },
+  {
+    name: "volle_subnetze_anzeigen",
+    description:
+      "Listet Subnetze, deren Belegung (inkl. DHCP-Bereich) über der Warnschwelle liegt; optional eigene schwelle in Prozent.",
+    annotations: { readOnlyHint: true, title: "Volle Subnetze anzeigen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        schwelle: { type: "integer", minimum: 1, maximum: 100 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "fullPrefixes",
+        tenantId: workspace.id,
+        threshold:
+          typeof args.schwelle === "number" ? Math.trunc(args.schwelle) : null,
+      });
+      return textResult({ answer: data.answer, results: data.results });
+    },
+  },
+  {
+    name: "netzwerk_zum_ticket",
+    description:
+      "Erkennt IP-, MAC-Adressen und Gerätenamen im Ticket (Betreff, Beschreibung, Verlauf) und zeigt die dazu dokumentierten Netzwerkdaten.",
+    annotations: { readOnlyHint: true, title: "Netzwerk zum Ticket" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+      },
+      required: ["ticket"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const { workspace, ticketId } = await ticketContext(
+        config,
+        session,
+        args,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "ticketLookup",
+        tenantId: workspace.id,
+        ticketId,
+      });
+      return textResult({
+        detected: data.candidates,
+        addresses: data.addresses,
+        prefixes: data.prefixes,
+      });
+    },
+  },
+  {
+    name: "ip_reservieren",
+    description:
+      "Reserviert eine bestimmte IP-Adresse in einem Subnetz (subnetz_id und adresse aus freie_ip_suchen). Ohne bestaetigt zeigt das Werkzeug nur den Vorschlag; erst mit bestaetigt=true nach ausdrücklicher Zustimmung der Person wird reserviert. Braucht das Recht zur IPAM-Verwaltung.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "IP reservieren",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        subnetz_id: { type: "string" },
+        adresse: { type: "string", minLength: 2, maxLength: 45 },
+        hostname: { type: "string", maxLength: 253 },
+        beschreibung: { type: "string", maxLength: 1000 },
+        bestaetigt: {
+          type: "boolean",
+          description:
+            "Nur true, wenn die Person die Reservierung ausdrücklich bestätigt hat.",
+        },
+      },
+      required: ["subnetz_id", "adresse"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (!isUuid(args.subnetz_id))
+        throw new ToolError('"subnetz_id" fehlt (ID aus freie_ip_suchen).');
+      const address = str(args.adresse, 2, 45);
+      if (!address) throw new ToolError('"adresse" fehlt.');
+      const hostname = str(args.hostname, 1, 253);
+      const description = str(args.beschreibung, 1, 1000);
+      if (args.bestaetigt !== true) {
+        return draftResult("ip_reservieren", {
+          subnetz_id: args.subnetz_id,
+          adresse: address,
+          hostname,
+          beschreibung: description,
+        });
+      }
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "reserveAddress",
+        tenantId: workspace.id,
+        prefixId: args.subnetz_id,
+        address,
+        hostname,
+        description,
+        confirmed: true,
+      });
+      return textResult({ reserved: true, reservation: data.reservation });
+    },
+  },
 ];
 
 // ---------------------------------------------------------------- Vorlagen
@@ -7489,6 +7747,7 @@ export async function handleMessage(
         "Greift als angemeldete Person auf nextDesk zu (Service-Desk der Organisation).",
         "IT-Fragen zuerst in nextDesk beantworten: Bei Fragen zu Software (Installation, Download, Lizenzen), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst wissen_suchen aufrufen und die Antwort auf die gefundenen Artikel stützen (wissensartikel_lesen für den vollen Text). Gibt es zu einem bestimmten Programm keinen eigenen Artikel, gilt der allgemeine Weg aus der Wissensdatenbank (z. B. Software über das Unternehmensportal installieren). Interne Abläufe wie das Unternehmensportal, Company Portal oder Bestellwege gehen allgemeinen Anleitungen aus dem Web vor. Bei Software oder Material zusätzlich shop_katalog_anzeigen prüfen. Findet sich nichts, das offen sagen, keine allgemeinen Download-Anleitungen erfinden und anbieten, ein Ticket zu erfassen (ticket_erfassen).",
         "Lesen ist frei. Schreibaktionen nur nach Rückfrage bei der Person; folgenreiche Aktionen (Antworten an Anfragende, Lösen, Schliessen, Freigabeentscheide, Eskalationen, Abteilungswechsel, Zusammenführen, Umverteilen, Veröffentlichen und Archivieren von Wissen, an Anfragende gesendete Artikel, Bestellungen im Shop, Raumbuchungen trotz Überschneidung) verlangen ausdrückliche Bestätigung (bestaetigt=true).",
+        "Fragen zu IP-Adressen, VLANs, Subnetzen und Switch-Ports mit netzwerk_fragen, freie_ip_suchen, ip_nachschlagen, switchport_anzeigen oder volle_subnetze_anzeigen beantworten und nur die gelieferten Daten wiedergeben, nie Adressen erfinden. Eine freie IP ist nur ein Vorschlag; reservieren erst nach ausdrücklicher Bestätigung (ip_reservieren mit bestaetigt=true).",
         "Alle Rechte prüft nextDesk selbst; fehlt ein Recht, meldet das Werkzeug dies.",
       ].join(" "),
     });

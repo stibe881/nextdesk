@@ -40,6 +40,8 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `teamuebersicht`, `pruefliste_anzeigen`, `monatsbericht` | lesen | Teamführung (nur für Vorgesetzte) |
 | `anfragende_profil_anzeigen`, `kundenorganisationen_anzeigen` | lesen | Profil Anfragende, Kundenorganisationen |
 | `geraet_anzeigen`, `lageruebersicht`, `reservationen_anzeigen` | lesen | Gerät im Detail, Lager, Reservationen |
+| `netzwerk_fragen` | lesen | IP-Adressverwaltung in Alltagssprache: «Freie IP im VLAN 67 in Baar?», «Was hängt an SW-A2-01 Port 14?», «Welche IP hat DRU-A2-KOPIE?», «Welche Subnetze sind fast voll?» (deterministische Abfragen, nichts erfunden) |
+| `freie_ip_suchen`, `ip_nachschlagen`, `switchport_anzeigen`, `volle_subnetze_anzeigen`, `netzwerk_zum_ticket` | lesen | IPAM: freie IP im VLAN/Standort (nur Vorschlag), Host/IP/MAC nachschlagen, Switch-Port, volle Subnetze, Netzwerkangaben im Ticket (braucht `ipam.read` und das Modul IP-Adressverwaltung) |
 | `ticket_erfassen` | schreiben | Ticket erfassen, für sich selbst oder eine anfragende Person (`anfragende_person`) |
 | `interne_notiz_hinzufuegen` | schreiben | Interne Notiz an ein Ticket |
 | `ticketstatus_aendern` | schreiben | Status ändern; Lösen/Schliessen nur mit `bestaetigt=true` |
@@ -78,6 +80,7 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `ticket_bewerten`, `tickets_umverteilen` | schreiben | Teamführung: Ticket bewerten, Tickets umverteilen (nur mit `bestaetigt=true`) |
 | `lagerbewegung_buchen`, `material_reservieren`, `reservation_freigeben` | schreiben | Lagerbewegung buchen, Material reservieren, Reservation freigeben |
 | `im_shop_bestellen` | schreiben | Im Shop bestellen; nur mit `bestaetigt=true` |
+| `ip_reservieren` | schreiben | Vorgeschlagene IP reservieren; ohne `bestaetigt=true` nur Entwurf (braucht `ipam.manage`) |
 
 Bei IT-Fragen (Software, Geräte, Zugänge …) weist der Connector Gemini an, zuerst
 die Wissensdatenbank zu befragen und keine allgemeinen Anleitungen aus dem Web
