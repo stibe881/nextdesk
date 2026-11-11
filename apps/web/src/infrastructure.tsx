@@ -302,6 +302,8 @@ export function Infrastructure({
   onOpenTicket,
   labelBranding,
   initialRack,
+  focusDeviceId,
+  onFocusConsumed,
 }: {
   tenantId: string;
   onOpenTicket?: (ticketId: string) => void;
@@ -309,6 +311,9 @@ export function Infrastructure({
   labelBranding?: LabelBranding | undefined;
   /** Opens the rack view filtered to this rack (QR web fallback). */
   initialRack?: string | undefined;
+  /** Opens this device (e.g. from a notification). */
+  focusDeviceId?: string | null | undefined;
+  onFocusConsumed?: (() => void) | undefined;
 }) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -393,8 +398,15 @@ export function Infrastructure({
       },
     });
   }
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    focusDeviceId ?? null,
+  );
   const [form, setForm] = useState<Form | null>(null);
+  useEffect(() => {
+    if (!focusDeviceId) return;
+    setSelectedId(focusDeviceId);
+    onFocusConsumed?.();
+  }, [focusDeviceId, onFocusConsumed]);
 
   const load = useCallback(async () => {
     setLoading(true);

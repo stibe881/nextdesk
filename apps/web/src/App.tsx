@@ -105,6 +105,10 @@ import {
   rackFromSearch,
 } from "./lib/asset-labels";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
+import {
+  notificationTarget,
+  type NotificationIpamFocus,
+} from "./lib/notification-target";
 import { normalizeQueueSelection, shouldShowQueueTabs } from "./lib/queue-tabs";
 import {
   collapsedNavigationCategoryAttentionCount,
@@ -3145,6 +3149,20 @@ function AuthenticatedApp() {
   const clearIncidentFocus = useCallback(() => setIncidentFocusId(null), []);
   const [securityFocusId, setSecurityFocusId] = useState<string | null>(null);
   const clearSecurityFocus = useCallback(() => setSecurityFocusId(null), []);
+  // Objects a notification opens in the shop, infrastructure and IPAM views.
+  const [shopFocusOrderId, setShopFocusOrderId] = useState<string | null>(null);
+  const clearShopFocus = useCallback(() => setShopFocusOrderId(null), []);
+  const [infrastructureFocusId, setInfrastructureFocusId] = useState<
+    string | null
+  >(null);
+  const clearInfrastructureFocus = useCallback(
+    () => setInfrastructureFocusId(null),
+    [],
+  );
+  const [ipamFocus, setIpamFocus] = useState<NotificationIpamFocus | null>(
+    null,
+  );
+  const clearIpamFocus = useCallback(() => setIpamFocus(null), []);
   const [navigationAttentionTick, setNavigationAttentionTick] = useState(0);
   const [canManageContracts, setCanManageContracts] = useState(false);
   const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
@@ -4420,55 +4438,36 @@ function AuthenticatedApp() {
       setNotificationActionPending(null);
     }
 
-    if (
-      ticketId &&
-      (notification.kind.startsWith("security.") ||
-        notification.kind === "ticket.security_report")
-    ) {
-      setSecurityFocusId(ticketId);
-      setSection("Sicherheitsfälle");
-      setNotificationPanelOpen(false);
-    } else if (ticketId) {
+    // Open exactly the object that triggered the notification.
+    const target = notificationTarget({
+      kind: notification.kind,
+      payload: notification.payload,
+      ticketId: ticketId ?? null,
+    });
+    if (!target) return;
+    setNotificationPanelOpen(false);
+    if (target.type === "ticket") {
       setSection("Tickets");
-      setSelectedTicketId(ticketId);
-      setNotificationPanelOpen(false);
-    } else if (notification.kind.startsWith("shop.order.")) {
-      setSection("Shop");
-      setNotificationPanelOpen(false);
-    } else if (
-      notification.kind === "monitoring.ipam_finding" ||
-      notification.kind.startsWith("ipam.")
-    ) {
-      setSection("IP-Adressen");
-      setNotificationPanelOpen(false);
-    } else if (notification.kind.startsWith("monitoring.")) {
-      setIncidentFocusId(
-        notificationPayloadText(notification, "incidentId", 64),
-      );
-      setSection("Störungen");
-      setNotificationPanelOpen(false);
-    } else if (notification.kind === "team.overload") {
-      setSection("Teamführung");
-      setNotificationPanelOpen(false);
-    } else if (notification.kind === "problem.recurring_detected") {
-      setSection("Fälle");
-      setNotificationPanelOpen(false);
-    } else if (notification.kind === "maintenance.upcoming") {
-      setSection("Systemstatus");
-      setNotificationPanelOpen(false);
-    } else if (notification.kind === "infrastructure.due") {
-      setSection("Infrastruktur");
-      setNotificationPanelOpen(false);
-    } else if (notification.kind.startsWith("service_task.")) {
-      const occurrenceId = notificationPayloadText(
-        notification,
-        "occurrenceId",
-        64,
-      );
-      setServiceTaskFocusId(occurrenceId);
-      setSection("Serviceaufgaben");
-      setNotificationPanelOpen(false);
+      setSelectedTicketId(target.ticketId);
+      return;
     }
+    const focus = target.focus;
+    if (focus?.kind === "security") setSecurityFocusId(focus.id);
+    else if (focus?.kind === "incident") setIncidentFocusId(focus.id);
+    else if (focus?.kind === "serviceTask") setServiceTaskFocusId(focus.id);
+    else if (focus?.kind === "inventoryItem") setInventoryFocusId(focus.id);
+    else if (focus?.kind === "shopOrder") setShopFocusOrderId(focus.id);
+    else if (focus?.kind === "infrastructureDevice") {
+      setInfrastructureFocusId(focus.id);
+    } else if (focus?.kind === "ipam") {
+      setIpamFocus({
+        addressId: focus.addressId,
+        ip: focus.ip,
+        prefixId: focus.prefixId,
+        view: focus.view,
+      });
+    }
+    setSection(target.section);
   }
 
   async function markAllNotificationsAsRead() {
@@ -6438,7 +6437,9 @@ function AuthenticatedApp() {
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
           <Infrastructure
+            focusDeviceId={infrastructureFocusId}
             initialRack={infrastructureRackFocus ?? undefined}
+            onFocusConsumed={clearInfrastructureFocus}
             labelBranding={{
               name: workspaceBrandName,
               logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
@@ -6457,8 +6458,10 @@ function AuthenticatedApp() {
               />
             )}
             discoveryPanel={(panel) => <IpamDiscoveryPanel {...panel} />}
+            focus={ipamFocus}
             importPanel={(panel) => <IpamImportWizard {...panel} />}
             key={activeTenant.id}
+            onFocusConsumed={clearIpamFocus}
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             tenantId={activeTenant.id}
           />
@@ -6483,7 +6486,12 @@ function AuthenticatedApp() {
         ) : section === "Shop" &&
           activeTenant &&
           isFeatureEnabled("self_service.shop") ? (
-          <Shop key={activeTenant.id} tenantId={activeTenant.id} />
+          <Shop
+            focusOrderId={shopFocusOrderId}
+            key={activeTenant.id}
+            onFocusConsumed={clearShopFocus}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Serviceaufgaben" && activeTenant ? (
           <ServiceTasks
             createRequestId={

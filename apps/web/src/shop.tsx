@@ -88,12 +88,29 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function Shop({ tenantId }: { tenantId: string }) {
+export function Shop({
+  focusOrderId,
+  onFocusConsumed,
+  tenantId,
+}: {
+  /** Opens this order (e.g. from a notification). */
+  focusOrderId?: string | null | undefined;
+  onFocusConsumed?: (() => void) | undefined;
+  tenantId: string;
+}) {
   const [context, setContext] = useState<ShopContext | null>(null);
   const [tab, setTab] = useState<Tab>("catalog");
   const [error, setError] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const [openOrderId, setOpenOrderId] = useState<string | null>(
+    focusOrderId ?? null,
+  );
+
+  useEffect(() => {
+    if (!focusOrderId) return;
+    setOpenOrderId(focusOrderId);
+    onFocusConsumed?.();
+  }, [focusOrderId, onFocusConsumed]);
   const [revision, setRevision] = useState(0);
 
   const reloadContext = useCallback(() => {
