@@ -13,6 +13,7 @@ import {
   rackDeepLink,
   rackFromSearch,
   rackLabelItem,
+  repeatLabelItems,
 } from "./asset-labels";
 
 const ID = "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b";
@@ -191,5 +192,21 @@ describe("buildLabelDocument", () => {
     });
     expect(html).not.toContain("onload=alert");
     expect(html).toContain("window.print");
+  });
+});
+
+describe("repeatLabelItems", () => {
+  it("wiederholt jedes Etikett und begrenzt die Anzahl", () => {
+    expect(repeatLabelItems(["a", "b"], 3)).toEqual([
+      "a",
+      "a",
+      "a",
+      "b",
+      "b",
+      "b",
+    ]);
+    expect(repeatLabelItems(["a"], 0)).toEqual(["a"]);
+    expect(repeatLabelItems(["a"], Number.NaN)).toEqual(["a"]);
+    expect(repeatLabelItems(["a"], 10_000)).toHaveLength(200);
   });
 });

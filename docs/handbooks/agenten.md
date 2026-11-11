@@ -533,7 +533,9 @@ und alle weiteren Shop-Felder. Dazu kommen die Lagerangaben **Einheit** und
 mit **Für Etikett auswählen** (oder **Alle sichtbaren**) und drucken mit
 **Etiketten drucken** Etiketten mit QR-Code, Bezeichnung, Artikelnummer und
 Lagerort (Bogenformate oder Etikettendrucker). Der QR-Code enthält einen
-Web-Link: Er öffnet den Artikel im Lager von nextDesk. Die Scan-Funktion der
+Web-Link: Er öffnet den Artikel im Lager von nextDesk. Im Druckdialog legen Sie
+unter **Anzahl Etiketten** fest, wie viele Etiketten pro Artikel gedruckt
+werden (z. B. 10 gleiche Etiketten für ein Fach). Die Scan-Funktion der
 iOS-App erkennt ihn ebenfalls und zeigt nur diesen Artikel im Lager; mit
 **Alle Artikel anzeigen** sehen Sie wieder die ganze Liste. Wer beim Scannen mit
 der Kamera noch nicht angemeldet ist, landet nach der Anmeldung direkt beim
