@@ -520,7 +520,8 @@ und alle weiteren Shop-Felder. Dazu kommen die Lagerangaben **Einheit** und
 - **Zum Ausleihen anbieten** (Schieber): Der Artikel wird im Shop ausgeliehen
   und zurückgegeben (z. B. Presenter). Er hat dann keinen Mindest- und
   Zielbestand, sondern einen **Bestand** mit **Lagerort**; Änderungen daran
-  werden als Lagerbewegung gebucht.
+  werden als Lagerbewegung gebucht. Den **Lagerort** können Sie im Formular
+  wechseln; der Bestand wird dann beim Speichern umgelagert.
 - Sie können **beides** einschalten: Der Artikel erscheint dann im Shop
   einmal zum Bestellen und einmal zum Ausleihen. Sind beide Schieber aus, bleibt
   der Artikel nur im Lager (nötig sind dann Bezeichnung, ein Bild, Kategorie,

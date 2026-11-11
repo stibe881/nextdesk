@@ -22051,3 +22051,12 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 .article-editor .shop__image-thumb .shop__image-remove svg {
   flex: none;
 }
+
+/* Lager-Abschnitt im Artikelformular: Beschriftung über dem Feld, nicht daneben. */
+.shop__stock-fields .shop__row--grid > label {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 650;
+}
