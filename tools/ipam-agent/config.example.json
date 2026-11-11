@@ -1,0 +1,31 @@
+{
+  "nextdeskUrl": "https://<projekt>.supabase.co/functions/v1/ipam-agent",
+  "agentToken": "ndip_<wird in nextDesk beim Anlegen des Agenten einmalig angezeigt>",
+  "snmp": {
+    "default": {
+      "version": "v3",
+      "user": "nextdesk-ro",
+      "authProtocol": "sha256",
+      "authKey": "<SNMPv3-Authentifizierungsschlüssel>",
+      "privProtocol": "aes",
+      "privKey": "<SNMPv3-Verschlüsselungsschlüssel>"
+    },
+    "hosts": {
+      "192.0.2.201": {
+        "version": "v2c",
+        "community": "<nur für ältere ProCurve ohne SNMPv3>"
+      }
+    },
+    "timeoutMs": 5000,
+    "retries": 1
+  },
+  "scan": {
+    "subnets": [],
+    "reverseDns": true,
+    "maxHostsPerRun": 65536
+  },
+  "allowWrites": false,
+  "powershell": "powershell.exe",
+  "ouiFile": null,
+  "logLevel": "info"
+}
