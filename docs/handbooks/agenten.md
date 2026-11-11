@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Sicherheitsfälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # Handbuch für Agenten
@@ -515,14 +515,17 @@ Drop oder Auswahl), Kategorien, Artikelnummer, Beschreibung, technische Angaben
 und alle weiteren Shop-Felder. Dazu kommen die Lagerangaben **Einheit** und
 **Mindest-/Zielbestand**.
 
-- **Im Shop anbieten** (Schieber): Eingeschaltet erscheint der Artikel im Shop,
-  ausgeschaltet wird er beim Speichern aus dem Shop genommen. Der Lagerartikel bleibt bestehen. Ohne Shop sind
-  nur Bezeichnung, ein Bild, Kategorie, Artikelnummer und die Lagerangaben
-  nötig.
-- **Ausleihartikel** (Schieber): Der Artikel wird ausgeliehen und
-  zurückgegeben (z. B. Presenter). Er hat keinen Mindest- und Zielbestand,
-  sondern einen **Bestand** mit **Lagerort**; Änderungen daran werden als
-  Lagerbewegung gebucht. Im Shop erscheint er zum Ausleihen.
+- **Zum Bestellen anbieten** (Schieber): Eingeschaltet kann der Artikel im Shop
+  bestellt werden. Er hat **Mindest- und Zielbestand**.
+- **Zum Ausleihen anbieten** (Schieber): Der Artikel wird im Shop ausgeliehen
+  und zurückgegeben (z. B. Presenter). Er hat dann keinen Mindest- und
+  Zielbestand, sondern einen **Bestand** mit **Lagerort**; Änderungen daran
+  werden als Lagerbewegung gebucht.
+- Sie können **beides** einschalten: Der Artikel erscheint dann im Shop
+  einmal zum Bestellen und einmal zum Ausleihen. Sind beide Schieber aus, bleibt
+  der Artikel nur im Lager (nötig sind dann Bezeichnung, ein Bild, Kategorie,
+  Artikelnummer und die Lagerangaben). Ausschalten nimmt die jeweilige Art beim
+  Speichern aus dem Shop; der Lagerartikel bleibt bestehen.
 
 **Etiketten drucken** wie bei den Assets: In der Artikelliste wählen Sie Artikel
 mit **Für Etikett auswählen** (oder **Alle sichtbaren**) und drucken mit
