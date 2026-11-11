@@ -1,6 +1,8 @@
 import { Pencil, Ticket, Unlock, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { CustomFieldsEditor } from "./ipam-forms";
+import type { UndoAction } from "./ipam-ui";
+import { CopyButton, Term } from "./ipam-viz";
 import { ipamCall } from "./lib/ipam-api";
 import {
   ADDRESS_STATUS_LABEL,
@@ -26,7 +28,7 @@ type Props = {
   onClose: () => void;
   onEdit: (detail: IpamAddressDetail) => void;
   onReserve: (detail: IpamAddressDetail) => void;
-  onChanged: (message: string) => void;
+  onChanged: (message: string, undo?: UndoAction) => void;
   onOpenTicket?: ((ticketId: string) => void) | undefined;
 };
 
@@ -84,13 +86,19 @@ export function IpamAddressDrawer({
   }, [onClose]);
 
   const record = detail?.address ?? null;
-  const act = async (work: () => Promise<string>) => {
+  const act = async (
+    work: () => Promise<string | { message: string; undo: UndoAction }>,
+  ) => {
     setBusy(true);
     setError(null);
     try {
-      const message = await work();
+      const outcome = await work();
+      const message = typeof outcome === "string" ? outcome : outcome.message;
       if (!message) return;
-      onChanged(message);
+      onChanged(
+        message,
+        typeof outcome === "string" ? undefined : outcome.undo,
+      );
       await load();
     } catch (failure) {
       setError(
@@ -103,22 +111,25 @@ export function IpamAddressDrawer({
     }
   };
 
+  // Releasing keeps the record (status «Veraltet»), so it is reversible:
+  // no confirmation, but «Rückgängig» restores the previous entry.
   const release = () =>
     act(async () => {
       if (!record) return "";
-      if (
-        !window.confirm(
-          `${record.address} freigeben? Die Adresse wird als «Veraltet» markiert und wieder als frei vorgeschlagen; der Verlauf bleibt erhalten.`,
-        )
-      ) {
-        return "";
-      }
+      const previous = { ...record };
       await ipamCall({
         type: "releaseAddress",
         tenantId,
         addressId: record.id,
+        note: null,
       });
-      return `${record.address} freigegeben.`;
+      return {
+        message: `${record.address} freigegeben.`,
+        undo: {
+          run: () =>
+            ipamCall({ type: "saveAddress", tenantId, address: previous }),
+        },
+      };
     });
 
   const createTicket = () =>
@@ -164,11 +175,14 @@ export function IpamAddressDrawer({
       <aside aria-label={`IP-Adresse ${title}`} className="ipam-drawer">
         <header>
           <div>
-            <h3 className="ipam-mono">{title}</h3>
+            <div className="ipam-drawer__title">
+              <h3 className="ipam-mono">{title}</h3>
+              {title ? <CopyButton value={title} /> : null}
+            </div>
             <p>{record?.dnsName ?? record?.hostname ?? "Nicht dokumentiert"}</p>
           </div>
           <span
-            className={`ipam-status ipam-status--${record ? record.status : "free"}`}
+            className={`ipam-chip ipam-chip--${record ? (record.status === "deprecated" ? "deprecated" : record.status) : "free"}`}
           >
             {record ? ADDRESS_STATUS_LABEL[record.status] : "Frei"}
           </span>
@@ -215,7 +229,14 @@ export function IpamAddressDrawer({
                   ? `${detail.prefix.prefix}${detail.prefix.description ? ` · ${detail.prefix.description}` : ""}`
                   : "Ausserhalb der erfassten Subnetze",
               )}
-              {row("VLAN", vlanLabel(detail.vlan))}
+              {detail.vlan ? (
+                <div>
+                  <dt>
+                    <Term name="VLAN" />
+                  </dt>
+                  <dd>{vlanLabel(detail.vlan)}</dd>
+                </div>
+              ) : null}
               {row("Standort", detail.site?.name)}
               {row(
                 "Verantwortlich",

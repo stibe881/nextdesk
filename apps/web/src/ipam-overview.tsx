@@ -1,9 +1,11 @@
-// IPAM «Übersicht»: Live-Suche, Kennzahlen, Top-Auslastung, Agenten,
-// zuletzt geändert.
+// IPAM «Übersicht»: Live-Suche (auch kompakt im Kopf, Taste «/»),
+// Kennzahlen mit Grafiken, Top-Auslastung mit Sparkline und Prognose,
+// Agenten, zuletzt geändert.
 
 import { Search } from "lucide-react";
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
 import { Meter, Pill, useDebounced, useIpamQuery, errorText } from "./ipam-ui";
+import { RingGauge, Sparkline, StackedBar, type StackPart } from "./ipam-viz";
 import { ipamCall } from "./lib/ipam-api";
 import { formatCount } from "./lib/ipam-cidr";
 import {
@@ -21,7 +23,7 @@ import {
   type IpamOverview,
   type IpamPrefix,
 } from "./lib/ipam-model";
-import type { Dashboard } from "./lib/ipam-redesign-types";
+import type { Dashboard, UtilizationHistory } from "./lib/ipam-redesign-types";
 
 export type SearchHit = {
   key: string;
@@ -49,32 +51,105 @@ export function IpamOverviewPage(props: Props) {
     { type: "dashboard", tenantId: props.tenantId },
     `${props.tenantId}-${props.revision}`,
   );
+  const trends = useTrends(
+    props.tenantId,
+    data?.topUtilization.map((entry) => entry.prefixId) ?? [],
+    props.revision,
+  );
+  const kpis = props.overview.kpis;
   return (
     <div className="ipam-page">
-      <LiveSearch {...props} />
+      <LiveSearch
+        onOpenAddress={props.onOpenAddress}
+        onOpenPrefix={props.onOpenPrefix}
+        onOpenVlans={props.onOpenVlans}
+        overview={props.overview}
+        tenantId={props.tenantId}
+      />
       {error ? (
         <p className="form-message form-message--error" role="alert">
           {error}
         </p>
       ) : null}
       {data ? (
-        <DashboardView dashboard={data} {...props} />
+        <DashboardView
+          dashboard={data}
+          onOpenChanges={props.onOpenChanges}
+          onOpenFindings={props.onOpenFindings}
+          onOpenNetworks={props.onOpenNetworks}
+          onOpenPrefix={props.onOpenPrefix}
+          trends={trends}
+          usage={{ used: kpis.usedV4, capacity: kpis.capacityV4 }}
+        />
       ) : !error ? (
-        <p className="ipam-muted">Übersicht wird geladen …</p>
+        <div aria-hidden="true" className="ipam-skeleton ipam-skeleton--kpis" />
       ) : null}
     </div>
   );
 }
 
-function LiveSearch({
+/** 30-day utilization of the top subnets for the sparklines. */
+function useTrends(
+  tenantId: string,
+  prefixIds: string[],
+  revision: number,
+): Record<string, number[]> {
+  const [trends, setTrends] = useState<Record<string, number[]>>({});
+  const key = prefixIds.join(",");
+  useEffect(() => {
+    if (!key) return;
+    let active = true;
+    void Promise.all(
+      key.split(",").map((prefixId) =>
+        ipamCall<UtilizationHistory>({
+          type: "utilizationHistory",
+          tenantId,
+          prefixId,
+          days: 30,
+        })
+          .then(
+            (history) =>
+              [prefixId, history.points.map((point) => point.percent)] as const,
+          )
+          .catch(() => [prefixId, [] as number[]] as const),
+      ),
+    ).then((entries) => {
+      if (active) setTrends(Object.fromEntries(entries));
+    });
+    return () => {
+      active = false;
+    };
+  }, [key, tenantId, revision]);
+  return trends;
+}
+
+export const LIVE_SEARCH_ID = "ipam-live-search";
+
+/**
+ * Live search over addresses, subnets and VLANs. «/» focuses it (handled by
+ * the module shell), ↑/↓ choose a hit, Enter opens it, Escape clears.
+ * `compact` is the variant in the module header.
+ */
+export function LiveSearch({
+  compact = false,
   onOpenAddress,
   onOpenPrefix,
   onOpenVlans,
   overview,
   tenantId,
-}: Props) {
+}: {
+  compact?: boolean;
+  onOpenAddress: (address: IpamAddress) => void;
+  onOpenPrefix: (prefixId: string) => void;
+  onOpenVlans: () => void;
+  overview: Pick<IpamOverview, "vlans" | "sites">;
+  tenantId: string;
+}) {
   const [query, setQuery] = useState("");
-  const term = useDebounced(query.trim(), 300);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [open, setOpen] = useState(true);
+  const term = useDebounced(query.trim(), 250);
+  const listId = useId();
   const [result, setResult] = useState<{
     addresses: IpamAddress[];
     prefixes: IpamPrefix[];
@@ -94,7 +169,10 @@ function LiveSearch({
       query: term,
     })
       .then((value) => {
-        if (active) setResult(value);
+        if (active) {
+          setResult(value);
+          setActiveIndex(0);
+        }
       })
       .catch((failure: unknown) => {
         if (active)
@@ -117,44 +195,121 @@ function LiveSearch({
       ),
     [term, result, overview, onOpenAddress, onOpenPrefix, onOpenVlans],
   );
-  const onKey = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter" && hits[0]) hits[0].open();
-    if (event.key === "Escape") setQuery("");
+  const choose = (hit: SearchHit | undefined) => {
+    if (!hit) return;
+    hit.open();
+    setOpen(false);
+    if (compact) setQuery("");
   };
+  const onKey = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown" && hits.length) {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((index) => (index + 1) % hits.length);
+    } else if (event.key === "ArrowUp" && hits.length) {
+      event.preventDefault();
+      setActiveIndex((index) => (index - 1 + hits.length) % hits.length);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      choose(hits[activeIndex] ?? hits[0]);
+    } else if (event.key === "Escape") {
+      if (query) setQuery("");
+      else event.currentTarget.blur();
+    }
+  };
+  const showResults =
+    open && term.length >= 2 && Boolean(result || hits.length);
 
   return (
-    <section className="ipam-card ipam-search">
-      <label className="ipam-search__label" htmlFor="ipam-live-search">
+    <section
+      className={`ipam-search${compact ? " ipam-search--compact" : " ipam-card"}`}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+          setOpen(false);
+      }}
+      onFocus={() => setOpen(true)}
+    >
+      <label
+        className={compact ? "sr-only" : "ipam-search__label"}
+        htmlFor={LIVE_SEARCH_ID}
+      >
         Suchen
       </label>
       <div className="ipam-search__field">
-        <Search aria-hidden="true" size={20} />
+        <Search aria-hidden="true" size={compact ? 16 : 20} />
         <input
+          aria-activedescendant={
+            showResults && hits[activeIndex]
+              ? `${listId}-${activeIndex}`
+              : undefined
+          }
+          aria-autocomplete="list"
+          aria-controls={listId}
+          aria-expanded={showResults}
           autoComplete="off"
-          id="ipam-live-search"
-          onChange={(event) => setQuery(event.target.value)}
+          id={LIVE_SEARCH_ID}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+          }}
           onKeyDown={onKey}
-          placeholder="IP, MAC, Hostname, VLAN oder Subnetz – z. B. 10.20.30 oder SW016"
+          placeholder={
+            compact
+              ? "IP, MAC, Hostname, VLAN …"
+              : "IP, MAC, Hostname, VLAN oder Subnetz – z. B. 10.20.30 oder SW016"
+          }
+          role="combobox"
           spellCheck={false}
           type="search"
           value={query}
         />
+        <kbd
+          aria-hidden="true"
+          className="ipam-kbd"
+          title="Taste / fokussiert die Suche"
+        >
+          /
+        </kbd>
       </div>
       {error ? <p className="ipam-muted">{error}</p> : null}
-      {term.length >= 2 && (result || hits.length) ? (
-        <div aria-live="polite" className="ipam-search__results">
-          {hits.map((hit) => (
-            <button key={hit.key} onClick={hit.open} type="button">
-              <span className="ipam-search__kind">{hit.kind}</span>
-              <span className="ipam-mono ipam-search__title">{hit.title}</span>
-              <span className="ipam-search__sub">{hit.sub}</span>
-            </button>
-          ))}
-          {result && hits.length === 0 ? (
-            <p className="ipam-muted ipam-search__empty">Keine Treffer.</p>
-          ) : null}
-        </div>
-      ) : null}
+      <div
+        aria-label="Treffer"
+        className="ipam-search__results"
+        hidden={!showResults}
+        id={listId}
+        role="listbox"
+      >
+        {showResults
+          ? hits.map((hit, index) => (
+              <div
+                aria-selected={index === activeIndex}
+                className={index === activeIndex ? "is-active" : ""}
+                id={`${listId}-${index}`}
+                key={hit.key}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => choose(hit)}
+                onMouseEnter={() => setActiveIndex(index)}
+                role="option"
+              >
+                <span className="ipam-search__kind">{hit.kind}</span>
+                <span className="ipam-mono ipam-search__title">
+                  {hit.title}
+                </span>
+                <span className="ipam-search__sub">{hit.sub}</span>
+              </div>
+            ))
+          : null}
+        {showResults && result && hits.length === 0 ? (
+          <p className="ipam-muted ipam-search__empty">
+            Keine Treffer für «{term}».
+          </p>
+        ) : null}
+        {showResults && hits.length ? (
+          <p className="ipam-search__foot" aria-hidden="true">
+            ↑ ↓ auswählen · Enter öffnen · Esc leeren
+          </p>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -234,34 +389,97 @@ export function searchHits(
   return hits;
 }
 
+const FINDING_TONE: Record<string, string> = {
+  conflict: "conflict",
+  foreign_mac: "conflict",
+  ghost: "ghost",
+  dns_mismatch: "dhcp",
+  stale: "deprecated",
+  utilization: "reserved",
+  outside_prefix: "reserved",
+};
+
+const FINDING_NAME: Record<string, string> = {
+  conflict: "Konflikte",
+  foreign_mac: "Fremde MAC",
+  ghost: "Ghost-IPs",
+  dns_mismatch: "DNS",
+  stale: "Veraltet",
+  utilization: "Auslastung",
+  outside_prefix: "Ausserhalb",
+};
+
 export function DashboardView({
   dashboard,
   onOpenChanges,
   onOpenFindings,
   onOpenNetworks,
   onOpenPrefix,
-}: { dashboard: Dashboard } & Pick<
+  trends = {},
+  usage,
+}: {
+  dashboard: Dashboard;
+  /** 30-day percent values per prefix id (sparklines). */
+  trends?: Record<string, number[]>;
+  /** Used/total IPv4 of all active subnets (ring of the first KPI). */
+  usage?: { used: number; capacity: string };
+} & Pick<
   Props,
   "onOpenChanges" | "onOpenFindings" | "onOpenNetworks" | "onOpenPrefix"
 >) {
   const { kpis } = dashboard;
   const now = new Date();
+  const capacity = usage ? Number(usage.capacity || "0") : 0;
+  const usedPercent =
+    usage && capacity > 0
+      ? Math.round((usage.used / capacity) * 1000) / 10
+      : null;
+  const findingParts: StackPart[] = Object.entries(kpis.findingsByKind)
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([kind, count]) => ({
+      key: kind,
+      label: FINDING_NAME[kind] ?? kind,
+      count,
+      tone: FINDING_TONE[kind] ?? "deprecated",
+    }));
   return (
     <>
       <section aria-label="Kennzahlen" className="ipam-kpis">
-        <div className="ipam-kpi">
-          <span>Freie IPv4-Adressen</span>
-          <strong>{formatCount(BigInt(Math.max(0, kpis.freeIpv4)))}</strong>
-          <small>
-            in {kpis.activePrefixes} aktiven{" "}
-            {kpis.activePrefixes === 1 ? "Subnetz" : "Subnetzen"}
-          </small>
+        <div className="ipam-kpi ipam-kpi--visual">
+          <div>
+            <span>Freie IPv4-Adressen</span>
+            <strong>{formatCount(BigInt(Math.max(0, kpis.freeIpv4)))}</strong>
+            <small>
+              in {kpis.activePrefixes} aktiven{" "}
+              {kpis.activePrefixes === 1 ? "Subnetz" : "Subnetzen"}
+            </small>
+          </div>
+          {usedPercent !== null ? (
+            <RingGauge
+              caption="belegt"
+              label="Alle aktiven IPv4-Subnetze"
+              percent={usedPercent}
+              size={64}
+            />
+          ) : null}
         </div>
         <button className="ipam-kpi" onClick={onOpenNetworks} type="button">
           <span>Subnetze über Warnschwelle</span>
           <strong className={kpis.overThreshold ? "is-warn" : ""}>
             {kpis.overThreshold}
           </strong>
+          <span
+            aria-hidden="true"
+            className="ipam-kpi__ratio"
+            title={`${kpis.overThreshold} von ${kpis.activePrefixes}`}
+          >
+            <span
+              style={{
+                width: `${kpis.activePrefixes ? Math.min(100, (kpis.overThreshold / kpis.activePrefixes) * 100) : 0}%`,
+              }}
+            />
+          </span>
           <small>
             {kpis.fullWithin30Days
               ? `${kpis.fullWithin30Days} davon in unter 30 Tagen voll`
@@ -273,6 +491,9 @@ export function DashboardView({
           <strong className={kpis.openFindings ? "is-bad" : ""}>
             {kpis.openFindings}
           </strong>
+          {findingParts.length ? (
+            <StackedBar label="Funde nach Art" parts={findingParts} />
+          ) : null}
           <small>
             {findingsSummary(kpis.findingsByKind) || "keine Abweichungen"}
           </small>
@@ -297,52 +518,62 @@ export function DashboardView({
             </button>
           </div>
           {dashboard.topUtilization.length === 0 ? (
-            <p className="ipam-muted">Noch keine aktiven IPv4-Subnetze.</p>
+            <p className="ipam-empty">
+              Noch keine aktiven IPv4-Subnetze. Legen Sie unter «Netze» ein
+              Subnetz an oder importieren Sie bestehende Listen.
+            </p>
           ) : (
-            <div className="ipam-table-wrap">
-              <table className="ipam-table ipam-table--wide">
-                <thead>
-                  <tr>
-                    <th>Subnetz</th>
-                    <th>VLAN</th>
-                    <th>Standort</th>
-                    <th className="ipam-col-meter">Auslastung</th>
-                    <th>Prognose</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dashboard.topUtilization.map((entry) => {
-                    const forecast = forecastLabel(entry.forecast);
-                    return (
-                      <tr key={entry.prefixId}>
-                        <td>
-                          <button
-                            className="text-button ipam-mono"
-                            onClick={() => onOpenPrefix(entry.prefixId)}
-                            type="button"
-                          >
-                            {entry.prefix}
-                          </button>
-                          {entry.name ? <small> {entry.name}</small> : null}
-                        </td>
-                        <td>
-                          {entry.vlanNumber !== null
-                            ? `${entry.vlanNumber}${entry.vlanName ? ` ${entry.vlanName}` : ""}`
-                            : "–"}
-                        </td>
-                        <td>{entry.siteName ?? "–"}</td>
-                        <td>
-                          <Meter label={entry.prefix} percent={entry.percent} />
-                        </td>
-                        <td className={`ipam-tone-${forecast.tone}`}>
-                          {forecast.text}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <ul className="ipam-top">
+              {dashboard.topUtilization.map((entry) => {
+                const forecast = forecastLabel(entry.forecast);
+                const trend = trends[entry.prefixId] ?? [];
+                return (
+                  <li key={entry.prefixId}>
+                    <button
+                      className="ipam-top__row"
+                      onClick={() => onOpenPrefix(entry.prefixId)}
+                      type="button"
+                    >
+                      <span className="ipam-top__name">
+                        <span className="ipam-mono">{entry.prefix}</span>
+                        <small>
+                          {[
+                            entry.name,
+                            entry.vlanNumber !== null
+                              ? `${entry.vlanNumber}${entry.vlanName ? ` ${entry.vlanName}` : ""}`
+                              : null,
+                            entry.siteName,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </small>
+                      </span>
+                      <span className="ipam-top__meter">
+                        <Meter label={entry.prefix} percent={entry.percent} />
+                      </span>
+                      <span className="ipam-top__spark">
+                        {trend.length > 1 ? (
+                          <Sparkline
+                            label={`Verlauf ${entry.prefix}`}
+                            values={trend}
+                          />
+                        ) : (
+                          <span
+                            aria-hidden="true"
+                            className="ipam-spark ipam-spark--empty"
+                          />
+                        )}
+                      </span>
+                      <span
+                        className={`ipam-top__forecast ipam-chip ipam-chip--tone-${forecast.tone}`}
+                      >
+                        {forecast.text}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </section>
 
@@ -350,7 +581,7 @@ export function DashboardView({
           <section className="ipam-card">
             <h3>Netzwerkagenten</h3>
             {dashboard.agents.length === 0 ? (
-              <p className="ipam-muted">
+              <p className="ipam-empty">
                 Noch kein Netzwerkagent eingerichtet (Verwaltung → Discovery
                 &amp; Agenten).
               </p>
@@ -358,6 +589,10 @@ export function DashboardView({
               <ul className="ipam-agent-list">
                 {dashboard.agents.map((agent) => (
                   <li key={agent.id}>
+                    <i
+                      aria-hidden="true"
+                      className={`ipam-status-dot ipam-status-dot--${AGENT_STATUS_TONE[agent.status]}`}
+                    />
                     <div>
                       <strong>{agent.name}</strong>
                       <small>
@@ -391,9 +626,9 @@ export function DashboardView({
               </button>
             </div>
             {dashboard.recentChanges.length === 0 ? (
-              <p className="ipam-muted">Noch keine Änderungen protokolliert.</p>
+              <p className="ipam-empty">Noch keine Änderungen protokolliert.</p>
             ) : (
-              <ul className="ipam-recent">
+              <ol className="ipam-recent ipam-recent--timeline">
                 {dashboard.recentChanges.map((entry) => (
                   <li key={entry.id}>
                     <span>
@@ -405,7 +640,7 @@ export function DashboardView({
                     </small>
                   </li>
                 ))}
-              </ul>
+              </ol>
             )}
           </section>
         </div>

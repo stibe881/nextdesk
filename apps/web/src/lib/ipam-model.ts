@@ -486,18 +486,19 @@ function inRange(address: IpAddress, start: string | null, end: string | null) {
 }
 
 /**
- * One cell per address of a small prefix (≤ 1024). Open findings (conflict,
- * foreign MAC, ghost) win over the documented status; the DHCP range counts
- * as pool unless an address is documented there.
+ * One cell per address of a small prefix (≤ `max`, default 1024 = /22).
+ * Open findings (conflict, foreign MAC, ghost) win over the documented
+ * status; the DHCP range counts as pool unless an address is documented there.
  */
 export function buildGrid(
   prefix: Pick<IpamPrefix, "prefix" | "gateway" | "dhcpStart" | "dhcpEnd">,
   addresses: IpamAddress[],
   findings: IpamFinding[],
+  max = 1024,
 ): Grid | null {
   const cidr = parseCidrInput(prefix.prefix)?.cidr;
   if (!cidr) return null;
-  const all = listAddresses(cidr, 1024);
+  const all = listAddresses(cidr, max);
   if (!all) return null;
   const records = new Map(addresses.map((record) => [record.address, record]));
   const open = new Map<string, IpamFinding>();

@@ -590,19 +590,39 @@ enthält den **Bereinigungs-Assistenten**, den **Import** (Excel, phpIPAM,
 NetBox), **Export & Sophos-Objekte**, **Discovery & Agenten**, **API &
 Webhooks** und **VRF anlegen**.
 
+Hilfen in allen Ansichten:
+
+- **Suche überall**: Ausserhalb der Übersicht steht das Suchfeld oben rechts.
+  Die Taste **/** setzt den Cursor ins Suchfeld, mit ↑/↓ wählen Sie einen
+  Treffer, **Enter** öffnet ihn, **Esc** leert das Feld.
+- nextDesk merkt sich in diesem Browser das zuletzt gewählte Register und
+  Netz; beim nächsten Öffnen geht es dort weiter.
+- Nach einer Änderung erscheint unten eine Meldung. Lässt sich die Änderung
+  zurücknehmen (z. B. Reservierung, Freigabe, Archivieren, Massenänderung),
+  enthält sie den Knopf **Rückgängig**. Darum fragt nextDesk bei diesen
+  Aktionen nicht mehr nach; nur endgültiges Entfernen (z. B. eines VLAN)
+  verlangt eine Bestätigung.
+- Fachbegriffe wie Gateway, VLAN, Zone, DHCP-Pool, VRF oder Container sind
+  gepunktet unterstrichen: Zeigen Sie darauf oder wählen Sie sie mit der
+  Tabulatortaste an, erscheint eine kurze Erklärung.
+- Neben IP-Adressen und Netzen kopiert das kleine Kopier-Symbol den Wert in
+  die Zwischenablage.
+
 **Übersicht**
 
 - Das grosse **Suchfeld** zeigt schon während der Eingabe Treffer: IP-Adressen,
   MAC-Adressen, Hostnamen, Subnetze und VLANs (z. B. «10.20.30» oder
-  «SW016»). Ein Klick öffnet den Treffer, mit der Eingabetaste öffnen Sie den
-  ersten.
-- Vier **Kennzahlen**: freie IPv4-Adressen in aktiven Subnetzen, Subnetze
-  über der Warnschwelle (und wie viele davon in unter 30 Tagen voll sind),
-  offene Funde nach Art und Reservierungen, die in den nächsten 30 Tagen
-  ablaufen.
-- **Am stärksten ausgelastet** listet die vollsten Subnetze mit Balken und
-  **Prognose** («voll in ca. 18 Tagen», «stabil», «sinkt»). Der Balken wird
-  ab der Warnschwelle des Subnetzes (standardmässig 85 %) gelb, ab 95 % rot.
+  «SW016»). Ein Klick öffnet den Treffer, mit ↑/↓ und der Eingabetaste wählen
+  Sie per Tastatur.
+- Vier **Kennzahlen**: freie IPv4-Adressen in aktiven Subnetzen (mit Ring für
+  die Belegung aller aktiven IPv4-Subnetze), Subnetze über der Warnschwelle
+  (und wie viele davon in unter 30 Tagen voll sind), offene Funde nach Art
+  (farbiger Balken) und Reservierungen, die in den nächsten 30 Tagen ablaufen.
+- **Am stärksten ausgelastet** listet die vollsten Subnetze mit Balken, einer
+  kleinen Verlaufskurve der letzten 30 Tage und der **Prognose** («voll in ca.
+  18 Tagen», «stabil», «sinkt»). Ein Klick auf die Zeile öffnet das Subnetz.
+  Balken und Kurve werden ab der Warnschwelle des Subnetzes (standardmässig
+  85 %) orange, ab 95 % rot.
 - **Netzwerkagenten** zeigt jeden Agenten als «Online», «Verspätet» (länger
   als 30 Minuten still), «Offline» (länger als einen Tag) oder «Deaktiviert».
 - **Zuletzt geändert** nennt die letzten Änderungen; **Protokoll** führt zum
@@ -610,44 +630,76 @@ Webhooks** und **VRF anlegen**.
 
 **Netze**
 
-- Links steht der **Baum**. Mit **Hierarchie** sehen Sie Supernetze mit ihren
-  Teilnetzen (bei mehreren VRFs je VRF), mit **Nach Standort** die Subnetze
-  je Standort. Filtern Sie nach Standort, Zone und Status; veraltete Netze
-  sind ausgeblendet, bis Sie **Veraltete zeigen** wählen. Beim Filtern bleiben
-  die übergeordneten Netze blass sichtbar, damit der Zusammenhang erhalten
-  bleibt. Die Marke «prüfen» kennzeichnet ein aktives Netz, das selbst aktive
-  Teilnetze enthält – meist sollte es ein Container sein.
+- Links steht der **Baum** mit einem Feld **Netz, Name oder VLAN filtern**
+  (z. B. «10.10.4», «Drucker» oder «120»). Mit **Hierarchie** sehen Sie
+  Supernetze mit ihren Teilnetzen (bei mehreren VRFs je VRF), mit **Nach
+  Standort** die Subnetze je Standort. Mit dem Pfeil vor einem Supernetz
+  klappen Sie dessen Teilnetze zu oder auf. **Filter** blendet die Auswahl
+  nach Standort, Zone und Status sowie **Veraltete zeigen** ein; die Zahl am
+  Knopf nennt die aktiven Filter, **Filter zurücksetzen** hebt sie auf. Beim
+  Filtern bleiben die übergeordneten Netze blass sichtbar, damit der
+  Zusammenhang erhalten bleibt. Die Marke «prüfen» kennzeichnet ein aktives
+  Netz, das selbst aktive Teilnetze enthält – meist sollte es ein Container
+  sein. Auf dem Smartphone ist der Baum unter **Netz wählen** zugeklappt.
+- Über dem gewählten Netz zeigt ein **Pfad** die übergeordneten Supernetze
+  (z. B. 10.0.0.0/8 › 10.10.0.0/16 › 10.10.4.0/22); ein Klick springt dorthin.
 - **Mehrere auswählen** blendet Kästchen ein. Für die gewählten Netze setzen
-  Sie danach in der dunklen Leiste Status, Abteilung, Zone oder Standort und
-  bestätigen mit **Übernehmen** (bis 200 Netze auf einmal).
-- Ein **Supernetz** (Container oder Netz mit Teilnetzen) zeigt, wie viel an
-  Teilnetze vergeben ist, wie viele Adressen frei sind, den grössten freien
-  Block und die Zahl der Teilnetze. Die **Adressraum-Karte** stellt Teilnetze
-  und freie Blöcke massstäblich dar. Ein Klick auf einen Teilnetz-Block öffnet
-  es; ein Klick auf einen schraffierten freien Block zeigt Grösse und
-  Vorschlag, **Subnetz anlegen …** öffnet das Formular mit diesem Netz,
-  VRF, Standort und Abteilung vorausgefüllt. **Im Planer aufteilen** öffnet
-  den Subnetz-Planer für dieses Supernetz.
-- Ein **Subnetz** zeigt oben Gateway, VLAN, Zone, DHCP-Pool, Standort und
-  Abteilung, darunter Auslastung und Prognose («Warnschwelle 85 % in ca. 14
-  Monaten») aus dem Verlauf der letzten 90 Tage. **Nächste freie IP** schlägt
-  die erste freie Adresse ausserhalb von Gateway und DHCP-Pool vor und öffnet
-  den Dialog **Adresse reservieren** (Hostname, Zweck, verantwortliche Person
-  oder Team, auf Wunsch «Befristet bis»).
-- Register **Belegung**: Für ein /22 oder kleiner zeigt ein Raster jede
-  Adresse als Feld (Aktiv, Reserviert, DHCP-Pool, Ghost-IP, Konflikt,
-  Veraltet, Gateway, Netz/Broadcast, Frei). Ein Klick zeigt rechts die
-  Angaben zur Adresse mit **Reservieren** oder **Adresse öffnen**.
-- Register **Adressen**: Liste mit IP, Hostname, MAC, Switch-Port, Status
-  und zuletzt gesehen, mit Filter und Seiten. Grössere Subnetze und IPv6
-  erscheinen nur hier.
-- Register **Verlauf & Prognose**: Diagramm der täglich gemessenen
-  Auslastung (durchgezogen) mit Prognose (gestrichelt) bis zur Warnschwelle.
+  Sie danach in der Leiste Status, Abteilung, Zone oder Standort und
+  bestätigen mit **Übernehmen** (bis 200 Netze auf einmal); **Rückgängig** in
+  der Meldung stellt die vorherigen Werte wieder her.
+- Ein **Supernetz** (Container oder Netz mit Teilnetzen) zeigt im Ring, wie
+  viel an Teilnetze vergeben ist, dazu freie Adressen, den grössten freien
+  Block, die Zahl der Teilnetze und die Grösse. Der **Adressraum** teilt das
+  Supernetz in bis zu 256 gleich grosse Felder (bei einem /16 ist ein Feld
+  ein /24). Teilnetze haben je eine Farbe, die auch in der Legende und in der
+  Tabelle darunter steht; halb gefüllte Felder enthalten kleinere Teilnetze.
+  Zeigen Sie auf ein Feld, erscheinen Netz, Name und Auslastung. Ein Klick auf
+  ein Teilnetz öffnet es; ein Klick auf ein freies Feld zeigt den freien
+  Block, die Grösse und einen Vorschlag – **Subnetz anlegen …** öffnet das
+  Formular mit diesem Netz, VRF, Standort und Abteilung vorausgefüllt. **Im
+  Planer aufteilen** öffnet den Subnetz-Planer für dieses Supernetz.
+- Ein **Subnetz** zeigt oben die Auslastung als Ring, Gateway, VLAN, Zone,
+  DHCP-Pool, Grösse mit Netzmaske, Standort (bei Bedarf VRF und Abteilung).
+  Darunter stehen die **Zusammensetzung** (farbiger Balken: aktiv,
+  reserviert, DHCP-Pool, frei …) und die **Prognose** («Warnschwelle 85 % in
+  ca. 14 Monaten») aus dem Verlauf der letzten 90 Tage. **Nächste freie IP**
+  schlägt die erste freie Adresse ausserhalb von Gateway und DHCP-Pool vor und
+  öffnet den Dialog **Adresse reservieren** (Hostname, Zweck, verantwortliche
+  Person oder Team, auf Wunsch «Befristet bis»).
+- Register **Belegung**: Ein Raster mit 16 Feldern pro Zeile zeigt jede
+  Adresse; links steht der Beginn der Zeile (z. B. «.32»), oben der Versatz
+  (+0 … +15). Die Farben sind in der Legende erklärt (Aktiv, Reserviert,
+  DHCP-Pool, Ghost-IP gestreift, Konflikt, Veraltet, Gateway,
+  Netz/Broadcast, Frei); ein Klick auf einen Legendeneintrag hebt nur diese
+  Adressen hervor. Bei Subnetzen grösser als /24 (bis /20) wählen Sie oben den
+  /24-Block; jeder Block zeigt seine Belegung und offene Funde. Zeigen Sie auf
+  ein Feld, erscheinen IP, Status, Hostname, MAC, Switch-Port und zuletzt
+  gesehen. Ein Klick öffnet die Adresse rechts im Detail. Mit den Pfeiltasten
+  bewegen Sie sich im Raster, Enter öffnet.
+- **Mehrere Adressen reservieren**: Halten Sie die Umschalttaste und klicken
+  Sie auf die erste und die letzte Adresse, oder wählen Sie **Bereich
+  wählen** und tippen Sie die Felder an (Leertaste per Tastatur). Die Leiste
+  unten nennt den Bereich; **… Adressen reservieren** öffnet den Dialog für
+  alle freien Adressen der Auswahl (belegte werden übersprungen, Hostnamen
+  werden nummeriert).
+- Register **Adressen**: Liste mit IP, Status, Hostname, MAC, Switch-Port und
+  zuletzt gesehen; die Kopfzeile bleibt beim Blättern stehen. Filtern Sie mit
+  dem Suchfeld und den Knöpfen **Alle**, **Aktiv**, **Reserviert**, **DHCP**,
+  **Veraltet** und **Mit Fund**. **Freie Bereiche zeigen** fasst freie
+  Adressen zu einer Zeile zusammen («10.10.1.141 – 10.10.1.254 · 114 frei»);
+  **Erste reservieren** reserviert die erste davon. Ein Klick auf die Zeile
+  öffnet die Adresse. IPv6-Subnetze erscheinen nur in dieser Liste (mit
+  Seiten).
+- Register **Verlauf & Prognose**: Flächendiagramm der täglich gemessenen
+  Auslastung mit Warnschwelle, Linie «heute» und gestrichelter Prognose samt
+  Unsicherheitsbereich. Zeigen Sie auf das Diagramm (oder wählen Sie es an und
+  nutzen Sie die Pfeiltasten), erscheint der Wert des jeweiligen Tages.
 - Register **Funde**: offene Funde in diesem Subnetz.
 - **Bearbeiten** öffnet alle Felder des Netzes, inklusive einer **Notiz** für
-  interne Hinweise. **Aufteilen** zerlegt ein Subnetz in gleich grosse
-  Teilnetze. Mit dem Archiv-Symbol markieren Sie ein Netz als «Veraltet»;
-  Adressen und Verlauf bleiben erhalten. Ein neues Netz legen Sie mit
+  interne Hinweise. Das Scheren-Symbol (**Aufteilen**) zerlegt ein Subnetz in
+  gleich grosse Teilnetze. Mit dem Archiv-Symbol markieren Sie ein Netz als
+  «Veraltet»; Adressen und Verlauf bleiben erhalten, **Rückgängig** stellt den
+  vorherigen Status wieder her. Ein neues Netz legen Sie mit
   **+ Subnetz** in CIDR-Schreibweise an (z. B. 10.20.30.0/24). Dasselbe
   Subnetz darf im selben VRF nur einmal vorkommen, Gateway und DHCP-Pool
   müssen darin liegen.
@@ -748,9 +800,12 @@ Ein Klick auf eine Adresse öffnet sie: Status, Hostname, MAC und Hersteller,
 Gerätetyp, Switch-Port, VLAN, Verantwortung, zuletzt gesehen, Verknüpfungen in
 nextDesk (Infrastruktur-Gerät mit derselben IP, Asset, Dienst und Tickets, in
 denen die IP oder der Hostname vorkommt), eigene Felder und der Verlauf. Mit
-**Freigeben** wird die Adresse als «Veraltet» markiert und wieder als frei
-vorgeschlagen; der Verlauf bleibt. **Ticket erstellen** legt ein Ticket mit
-den Angaben zur Adresse an, **Bearbeiten** öffnet alle Felder.
+**Freigeben** wird die Adresse sofort als «Veraltet» markiert und wieder als
+frei vorgeschlagen; der Verlauf bleibt, **Rückgängig** in der Meldung stellt
+den vorherigen Eintrag wieder her. **Ticket erstellen** legt ein Ticket mit
+den Angaben zur Adresse an, **Bearbeiten** öffnet alle Felder. Eine eben
+reservierte Adresse geben Sie mit **Rückgängig** in der Meldung gleich wieder
+frei. **Esc** schliesst die Detailansicht.
 
 **Export & Sophos-Objekte**
 
