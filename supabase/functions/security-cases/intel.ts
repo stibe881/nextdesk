@@ -504,14 +504,20 @@ export async function orderReplacement(
   }
   const note = `Ersatzgerät aus Sicherheitsfall ${input.ticketNumber}`;
   const result = await call("shop", {
-    type: "submitOrder",
+    // Ersatzgerät ohne Genehmigung (Shop-Action, verlangt shop.fulfill).
+    type: "placeOrderWithoutApproval",
     tenantId: input.tenantId,
     clientRequestId: crypto.randomUUID(),
     lines: [{ catalogItemId: input.catalogItemId, quantity: 1 }],
-    reason: note,
+    reason: note.slice(0, 500),
     comment: input.comment ? `${note}: ${input.comment}`.slice(0, 2000) : note,
     requesterId,
     deliveryMethod: "desk",
+    source: {
+      type: "security_case",
+      id: input.ticketId,
+      reference: input.ticketNumber.slice(0, 60),
+    },
   });
   const orderId = text(result.data?.orderId);
   let message: string;
