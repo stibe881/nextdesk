@@ -63,6 +63,15 @@ export function renderTemplatePreview(input: {
       ...base,
       kind,
       text: body,
+      // Die gelöst-Mail enthält Sternlinks zur Bewertung (Beispiel-Links).
+      ...(kind === "resolution"
+        ? {
+            ratingLinks: [1, 2, 3, 4, 5].map((score) => ({
+              score,
+              url: APP,
+            })),
+          }
+        : {}),
       eyebrow: text("eyebrow") || undefined,
       intro: text("intro") || undefined,
       replyHint: text("hint") || undefined,
