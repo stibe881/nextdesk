@@ -1664,16 +1664,36 @@ function AccessShell({ children }: { children: ReactNode }) {
   );
 }
 
-function SignInScreen() {
+/** Fehlertext einer fehlgeschlagenen Rückkehr vom Anmeldeanbieter (z. B. Microsoft). */
+function callbackErrorMessage(detail: string): string {
+  return `Die Anmeldung konnte nicht abgeschlossen werden. Meldung des Anmeldedienstes: ${detail}`;
+}
+
+function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<
     "idle" | "sending" | "sso" | "sent" | "error"
-  >("idle");
-  const [message, setMessage] = useState("");
+  >(callbackError ? "error" : "idle");
+  const [message, setMessage] = useState(
+    callbackError ? callbackErrorMessage(callbackError) : "",
+  );
   const [passwordMode, setPasswordMode] = useState(false);
   const [password, setPassword] = useState("");
   const [registerMode, setRegisterMode] = useState(false);
   const [fullName, setFullName] = useState("");
+
+  const messageRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (!callbackError) return;
+    setStatus("error");
+    setMessage(callbackErrorMessage(callbackError));
+    // Auf dem Handy liegt die Meldung unter dem Bildschirmrand.
+    const frame = window.requestAnimationFrame(() =>
+      messageRef.current?.scrollIntoView?.({ block: "center" }),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [callbackError]);
 
   async function register(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1979,7 +1999,15 @@ function SignInScreen() {
           Neu bei nextDesk? Konto erstellen
         </button>
       </form>
-      {message && <p className={`access-message ${status}`}>{message}</p>}
+      {message && (
+        <p
+          className={`access-message ${status}`}
+          ref={messageRef}
+          role={status === "error" ? "alert" : undefined}
+        >
+          {message}
+        </p>
+      )}
     </AccessShell>
   );
 }
@@ -5474,7 +5502,7 @@ function AuthenticatedApp() {
     return <LoadingScreen message="Sichere Sitzung wird geprüft." />;
   }
   if (isSupabaseConfigured && session === null) {
-    return <SignInScreen />;
+    return <SignInScreen callbackError={errorMessage} />;
   }
   if (isSupabaseConfigured && session && oauthAuthorizationId) {
     return (
