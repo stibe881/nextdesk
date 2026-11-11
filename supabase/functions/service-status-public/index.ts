@@ -31,7 +31,29 @@ type PublicService = {
   status: ServiceStatus;
   updatedAt: string;
   history: Array<{ changedAt: string; status: ServiceStatus }>;
+  /** Verfügbarkeit in % über 90 Tage, nur wenn die Seite das zeigt. */
+  availability90: number | null;
 };
+const INCIDENT_STATES = [
+  "investigating",
+  "identified",
+  "monitoring",
+  "resolved",
+] as const;
+type PublicIncidentState = (typeof INCIDENT_STATES)[number];
+/** Öffentliche Störungsmeldung ohne interne Kennungen. */
+type PublicIncident = {
+  title: string;
+  body: string;
+  state: PublicIncidentState;
+  startsAt: string;
+  resolvedAt: string | null;
+  updatedAt: string;
+  serviceNames: string[];
+  updates: Array<{ state: PublicIncidentState; body: string; createdAt: string }>;
+};
+const MAX_PUBLIC_INCIDENTS = 50;
+const PUBLIC_INCIDENT_DAYS = 14;
 type PublicMaintenance = {
   title: string;
   description: string | null;
@@ -43,6 +65,7 @@ type PublicMaintenance = {
 type PublicStatusPayload = {
   accentColor: string | null;
   generatedAt: string;
+  incidents: PublicIncident[];
   logoUrl: string | null;
   maintenances: PublicMaintenance[];
   overallStatus: ServiceStatus;
@@ -426,13 +449,153 @@ async function readPublicMaintenances(
   return { activeServiceIds, maintenances: publicMaintenances };
 }
 
+function isIncidentState(value: unknown): value is PublicIncidentState {
+  return (
+    typeof value === "string" &&
+    (INCIDENT_STATES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Veröffentlichte Störungsmeldungen: aktuelle und in den letzten 14 Tagen
+ * gelöste, mit Verlauf. Nur Namen öffentlicher, aktiver Dienste.
+ */
+async function readPublicIncidents(
+  admin: any,
+  tenantId: string,
+  publicServiceNames: ReadonlyMap<string, string>,
+  now: Date,
+): Promise<PublicIncident[]> {
+  const since = new Date(
+    now.getTime() - PUBLIC_INCIDENT_DAYS * 86_400_000,
+  ).toISOString();
+  const noticesResult = await admin
+    .from("service_incident_notices")
+    .select("id, title, description, status, starts_at, resolved_at, updated_at")
+    .eq("tenant_id", tenantId)
+    .eq("public_enabled", true)
+    .or(`status.neq.resolved,resolved_at.gte.${since}`)
+    .order("starts_at", { ascending: false })
+    .limit(MAX_PUBLIC_INCIDENTS);
+  if (noticesResult.error) throw new Error("incident_data_failed");
+  const notices = (noticesResult.data ?? []).filter(
+    (notice: unknown) => isRecord(notice) && isUuid(notice.id),
+  ) as Record<string, unknown>[];
+  if (notices.length === 0) return [];
+  const ids = notices.map((notice) => String(notice.id));
+  const [linksResult, updatesResult] = await Promise.all([
+    admin
+      .from("service_incident_notice_services")
+      .select("notice_id, service_id")
+      .eq("tenant_id", tenantId)
+      .in("notice_id", ids)
+      .limit(ids.length * 100),
+    admin
+      .from("service_incident_notice_updates")
+      .select("notice_id, status, body, created_at")
+      .eq("tenant_id", tenantId)
+      .in("notice_id", ids)
+      .order("created_at", { ascending: false })
+      .limit(1_000),
+  ]);
+  if (linksResult.error || updatesResult.error) {
+    throw new Error("incident_data_failed");
+  }
+  const namesByNotice = new Map<string, string[]>();
+  for (const link of linksResult.data ?? []) {
+    if (!isRecord(link) || !isUuid(link.notice_id) || !isUuid(link.service_id)) {
+      continue;
+    }
+    const name = publicServiceNames.get(link.service_id.toLowerCase());
+    if (!name) continue;
+    const key = link.notice_id.toLowerCase();
+    namesByNotice.set(key, [...(namesByNotice.get(key) ?? []), name]);
+  }
+  const updatesByNotice = new Map<string, PublicIncident["updates"]>();
+  for (const update of updatesResult.data ?? []) {
+    const body = isRecord(update) ? safeText(update.body, 1, 10_000) : null;
+    const createdAt = isRecord(update)
+      ? safeIsoTimestamp(update.created_at)
+      : null;
+    if (
+      !isRecord(update) ||
+      !isUuid(update.notice_id) ||
+      !isIncidentState(update.status) ||
+      !body ||
+      !createdAt
+    ) {
+      continue;
+    }
+    const key = update.notice_id.toLowerCase();
+    updatesByNotice.set(key, [
+      ...(updatesByNotice.get(key) ?? []),
+      { state: update.status, body, createdAt },
+    ]);
+  }
+  return notices.flatMap((notice) => {
+    const title = safeText(notice.title, 1, 240);
+    const body = safeText(notice.description, 1, 10_000);
+    const startsAt = safeIsoTimestamp(notice.starts_at);
+    const updatedAt = safeIsoTimestamp(notice.updated_at);
+    const resolvedAt =
+      notice.resolved_at === null ? null : safeIsoTimestamp(notice.resolved_at);
+    if (
+      !title ||
+      !body ||
+      !startsAt ||
+      !updatedAt ||
+      !isIncidentState(notice.status) ||
+      (notice.resolved_at !== null && !resolvedAt)
+    ) {
+      return [];
+    }
+    const key = String(notice.id).toLowerCase();
+    return [{
+      title,
+      body,
+      state: notice.status,
+      startsAt,
+      resolvedAt,
+      updatedAt,
+      serviceNames: [...new Set(namesByNotice.get(key) ?? [])].sort((a, b) =>
+        a.localeCompare(b, "de-CH")
+      ),
+      updates: updatesByNotice.get(key) ?? [],
+    }];
+  });
+}
+
+async function readPublicAvailability(
+  admin: any,
+  tenantId: string,
+  serviceIds: string[],
+  now: Date,
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (serviceIds.length === 0) return result;
+  const availability = await admin.rpc("service_status_availability", {
+    p_tenant_id: tenantId,
+    p_service_ids: serviceIds,
+    p_since: new Date(now.getTime() - 90 * 86_400_000).toISOString(),
+  });
+  // Optionaler Zusatz: ohne Daten bleibt die Seite trotzdem verfügbar.
+  if (availability.error) return result;
+  for (const row of availability.data ?? []) {
+    const value = isRecord(row) ? Number(row.availability_percent) : NaN;
+    if (isRecord(row) && isUuid(row.service_id) && Number.isFinite(value)) {
+      result.set(row.service_id.toLowerCase(), Math.round(value * 1000) / 1000);
+    }
+  }
+  return result;
+}
+
 async function readPublicStatus(
   admin: any,
   publicId: string,
 ): Promise<PublicStatusPayload | null> {
   const pageResult = await admin
     .from("service_status_pages")
-    .select("tenant_id, title")
+    .select("tenant_id, title, show_availability")
     .eq("public_id", publicId)
     .eq("public_enabled", true)
     .maybeSingle();
@@ -551,6 +714,21 @@ async function readPublicStatus(
     eventsByService.set(serviceId, list);
   }
 
+  const publicServiceNames = new Map(
+    services.map((service) => [service.id, service.name]),
+  );
+  const [incidents, availability] = await Promise.all([
+    readPublicIncidents(admin, page.tenant_id, publicServiceNames, now)
+      .catch(() => [] as PublicIncident[]),
+    page.show_availability === true
+      ? readPublicAvailability(
+        admin,
+        page.tenant_id,
+        services.map((service) => service.id),
+        now,
+      )
+      : Promise.resolve(new Map<string, number>()),
+  ]);
   const publicServices: PublicService[] = services.map((service) => ({
     categoryPath: serviceCategoryPath(categoryPaths, service.categoryId),
     displayStatus: maintenanceProjection.activeServiceIds.has(service.id)
@@ -560,10 +738,12 @@ async function readPublicStatus(
     status: service.status,
     updatedAt: service.updatedAt,
     history: eventsByService.get(service.id) ?? [],
+    availability90: availability.get(service.id) ?? null,
   }));
   return {
     accentColor: safeColor(brandingResult.data?.accent_color),
     generatedAt: nowIso,
+    incidents,
     logoUrl: safeHttpsUrl(brandingResult.data?.logo_path),
     maintenances: maintenanceProjection.maintenances,
     overallStatus: overallStatus(publicServices),

@@ -54,8 +54,10 @@ Oben rechts finden Sie:
   leeren Sie die Liste
 
 Gibt es eine aktive Störung (z. B. «E-Mail ausgefallen»), erscheint oben ein
-Hinweis bzw. im Menü der Eintrag **Aktive Störung**. Dann müssen Sie dafür kein
-eigenes Ticket erfassen.
+Hinweis bzw. im Menü der Eintrag **Aktive Störung**, bei Bedarf mit den
+**betroffenen Diensten**. Dann müssen Sie dafür kein eigenes Ticket erfassen.
+Haben Sie den Systemstatus per E-Mail abonniert, erhalten Sie zu jeder
+öffentlichen Störungsmeldung und jedem Update eine E-Mail.
 
 ![Startseite für Mitarbeitende](images/ma-start.jpg)
 

@@ -13965,4 +13965,260 @@ $$;
 rollback;
 SQL
 
+# 0312: Statusseite, Dienste, Wartung (Meldungen, Wartungsautomatik, Dienst-Zuordnung, Verfügbarkeit).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_agent constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_service uuid;
+  v_service2 uuid;
+  v_service3 uuid;
+  v_asset uuid;
+  v_notice uuid;
+  v_incident uuid;
+  v_window uuid;
+  v_window2 uuid;
+  v_subscription uuid;
+  v_channel uuid;
+  v_result jsonb;
+  v_row record;
+begin
+  update public.tenant_feature_flags set enabled = true, pilot_ends_at = null
+  where tenant_id = v_tenant and feature_key = 'integrations.email';
+  if not found then
+    insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+    values (v_tenant, 'integrations.email', true);
+  end if;
+  update public.exchange_mail_channels
+     set status = 'active', deleted_at = null
+   where id = '1c000000-0000-4000-8000-000000000003';
+  insert into public.service_status_pages (tenant_id, public_enabled)
+  values (v_tenant, true)
+  on conflict (tenant_id) do update set public_enabled = true;
+  insert into public.service_status_subscriptions (tenant_id, email, confirmed_at)
+  values (v_tenant, 'b-abo@example.ch', timezone('utc', now()))
+  returning id into v_subscription;
+  select channel.id into v_channel from public.service_status_mail_channel(v_tenant) channel;
+
+  insert into public.services (tenant_id, name, active, status_public, status)
+  values (v_tenant, 'B-Mail', true, true, 'operational') returning id into v_service;
+  insert into public.services (tenant_id, name, active, status_public, status)
+  values (v_tenant, 'B-VPN', true, true, 'degraded') returning id into v_service2;
+  insert into public.services (tenant_id, name, active, status_public, status)
+  values (v_tenant, 'B-Drucker', true, false, 'operational') returning id into v_service3;
+
+  -- 1. Störungsmeldung: Verlauf, resolved_at, Mail je Update.
+  insert into public.monitoring_incidents (tenant_id, number, incident_key, title)
+  values (v_tenant, 'STO-B-1', 'b-key', 'Mailserver down') returning id into v_incident;
+  insert into public.service_incident_notices (tenant_id, title, description, status, created_by,
+    monitoring_incident_id, public_enabled)
+  values (v_tenant, 'Mail gestört', 'Wir untersuchen das Problem.', 'investigating', v_agent,
+    v_incident, true) returning id into v_notice;
+  insert into public.service_incident_notice_services (tenant_id, notice_id, service_id)
+  values (v_tenant, v_notice, v_service);
+  update public.service_incident_notices
+     set status = 'resolved', description = 'Behoben.', updated_by = v_agent
+   where id = v_notice;
+  if (select count(*) from public.service_incident_notice_updates where notice_id = v_notice) <> 2 then
+    raise exception 'status b test: update history wrong';
+  end if;
+  if (select resolved_at from public.service_incident_notices where id = v_notice) is null then
+    raise exception 'status b test: resolved_at not set';
+  end if;
+  update public.service_incident_notices set status = 'monitoring' where id = v_notice;
+  if (select resolved_at from public.service_incident_notices where id = v_notice) is not null then
+    raise exception 'status b test: resolved_at not cleared';
+  end if;
+  -- Unveränderte Speicherung erzeugt kein Update.
+  update public.service_incident_notices set category_id = null where id = v_notice;
+  if (select count(*) from public.service_incident_notice_updates where notice_id = v_notice) <> 3 then
+    raise exception 'status b test: no-op created an update';
+  end if;
+  if v_channel is not null and (
+    select count(*) from public.mail_messages
+    where service_incident_update_id is not null and status_subscription_id = v_subscription
+  ) <> 3 then
+    raise exception 'status b test: incident mails not queued per update';
+  end if;
+  -- Interne Banner gehen nicht an Abonnenten.
+  insert into public.service_incident_notices (tenant_id, title, description, status, created_by)
+  values (v_tenant, 'Intern', 'Nur im Portal.', 'investigating', v_agent);
+  if v_channel is not null and (
+    select count(*) from public.mail_messages
+    where service_incident_update_id is not null and status_subscription_id = v_subscription
+  ) <> 3 then
+    raise exception 'status b test: internal notice mailed';
+  end if;
+  -- RPC: Meldung mit Diensten anlegen und aktualisieren.
+  v_notice := public.save_service_incident_notice(v_agent, v_tenant, null, 'VPN gestört',
+    'VPN-Anmeldung schlägt fehl.', 'identified', true, array[v_service2, v_service], v_incident);
+  if (select count(*) from public.service_incident_notice_services where notice_id = v_notice) <> 2
+     or (select monitoring_incident_id from public.service_incident_notices where id = v_notice) is distinct from v_incident then
+    raise exception 'status b test: rpc create wrong';
+  end if;
+  perform public.save_service_incident_notice(v_agent, v_tenant, v_notice, null,
+    'VPN läuft wieder.', 'resolved', null, array[v_service2], null);
+  if (select count(*) from public.service_incident_notice_services where notice_id = v_notice) <> 1
+     or (select title from public.service_incident_notices where id = v_notice) <> 'VPN gestört'
+     or (select count(*) from public.service_incident_notice_updates where notice_id = v_notice) <> 2 then
+    raise exception 'status b test: rpc update wrong';
+  end if;
+  begin
+    perform public.save_service_incident_notice(v_agent, v_tenant, null, 'Fremd', 'Fremder Dienst.',
+      'investigating', true, array[gen_random_uuid()], null);
+    raise exception 'status b test: rpc accepted unknown service';
+  exception when foreign_key_violation then null;
+  end;
+  -- Unbekannte Monitoring-Störung wird abgelehnt.
+  begin
+    update public.service_incident_notices set monitoring_incident_id = gen_random_uuid() where id = v_notice;
+    raise exception 'status b test: unknown monitoring incident accepted';
+  exception when foreign_key_violation then null;
+  end;
+
+  -- 36. asset_services ist die Quelle, assets.service_id der erste Dienst.
+  insert into public.assets (tenant_id, name, kind, service_id)
+  values (v_tenant, 'B-Server', 'server', v_service) returning id into v_asset;
+  if (select count(*) from public.asset_services where asset_id = v_asset and service_id = v_service) <> 1 then
+    raise exception 'status b test: legacy service_id not mirrored';
+  end if;
+  perform public.set_asset_services(v_tenant, v_asset, array[v_service2, v_service]);
+  if (select service_id from public.assets where id = v_asset) is distinct from v_service2 then
+    raise exception 'status b test: primary service not synced';
+  end if;
+  update public.assets set service_id = v_service3 where id = v_asset;
+  if (select array_agg(service_id order by position, created_at, service_id) from public.asset_services where asset_id = v_asset)
+     <> array[v_service3, v_service] then
+    raise exception 'status b test: legacy primary replacement wrong';
+  end if;
+  perform public.set_asset_services(v_tenant, v_asset, array[]::uuid[]);
+  if (select service_id from public.assets where id = v_asset) is not null then
+    raise exception 'status b test: cleared services left primary';
+  end if;
+  begin
+    perform public.set_asset_services(v_tenant, v_asset, array[gen_random_uuid()]);
+    raise exception 'status b test: unknown service accepted';
+  exception when foreign_key_violation then null;
+  end;
+  perform public.set_asset_services(v_tenant, v_asset, array[v_service]);
+
+  -- 18./45. Wartungsfenster automatisch.
+  insert into public.service_status_maintenances (tenant_id, title, starts_at, ends_at, state, public_enabled)
+  values (v_tenant, 'B-Wartung', timezone('utc', now()) - interval '10 minutes',
+    timezone('utc', now()) + interval '1 hour', 'scheduled', true) returning id into v_window;
+  insert into public.service_status_maintenance_services (tenant_id, maintenance_id, service_id)
+  values (v_tenant, v_window, v_service), (v_tenant, v_window, v_service2);
+  insert into public.service_status_maintenance_assets (tenant_id, maintenance_id, asset_id)
+  values (v_tenant, v_window, v_asset);
+  -- Zweites Fenster überlappt B-VPN und endet später.
+  insert into public.service_status_maintenances (tenant_id, title, starts_at, ends_at, state, public_enabled)
+  values (v_tenant, 'B-Wartung 2', timezone('utc', now()) - interval '5 minutes',
+    timezone('utc', now()) + interval '3 hours', 'scheduled', false) returning id into v_window2;
+  insert into public.service_status_maintenance_services (tenant_id, maintenance_id, service_id)
+  values (v_tenant, v_window2, v_service2);
+
+  v_result := public.service_status_maintenance_run();
+  if (v_result ->> 'started')::integer <> 2 then
+    raise exception 'status b test: windows not started: %', v_result;
+  end if;
+  if (select status from public.services where id = v_service) <> 'maintenance'
+     or (select status from public.services where id = v_service2) <> 'maintenance'
+     or (select state from public.service_status_maintenances where id = v_window) <> 'active' then
+    raise exception 'status b test: services not in maintenance';
+  end if;
+  if (select previous_status from public.service_status_maintenance_services
+      where maintenance_id = v_window and service_id = v_service2) <> 'degraded' then
+    raise exception 'status b test: previous status not stored';
+  end if;
+  if current_setting('nextdesk.suppress_status_mail', true) = 'on' then
+    raise exception 'status b test: mail suppression leaked';
+  end if;
+  if v_channel is not null and (
+    exists (
+      select 1 from public.mail_messages message
+      join public.service_status_events event on event.id = message.service_status_event_id
+      where event.service_id in (v_service, v_service2) and event.status = 'maintenance'
+    )
+    or (select count(*) from public.mail_messages where service_status_maintenance_id = v_window
+          and maintenance_phase = 'start') <> 1
+  ) then
+    raise exception 'status b test: start mail wrong';
+  end if;
+  if (public.service_status_maintenance_run() ->> 'started')::integer <> 0 then
+    raise exception 'status b test: window started twice';
+  end if;
+
+  -- Ende des ersten Fensters: B-Mail zurück, B-VPN bleibt (zweites Fenster).
+  v_result := public.service_status_maintenance_run(timezone('utc', now()) + interval '2 hours');
+  if (v_result ->> 'ended')::integer <> 1 or (v_result ->> 'logged')::integer <> 1 then
+    raise exception 'status b test: end run wrong: %', v_result;
+  end if;
+  if (select status from public.services where id = v_service) <> 'operational'
+     or (select status from public.services where id = v_service2) <> 'maintenance'
+     or (select state from public.service_status_maintenances where id = v_window) <> 'completed' then
+    raise exception 'status b test: restore wrong';
+  end if;
+  if not exists (select 1 from public.asset_maintenance_log where asset_id = v_asset and maintenance_id = v_window) then
+    raise exception 'status b test: maintenance log missing';
+  end if;
+  if v_channel is not null and (select count(*) from public.mail_messages
+      where service_status_maintenance_id = v_window and maintenance_phase = 'end') <> 1 then
+    raise exception 'status b test: end mail missing';
+  end if;
+  perform public.service_status_maintenance_run(timezone('utc', now()) + interval '4 hours');
+  if (select status from public.services where id = v_service2) <> 'degraded' then
+    raise exception 'status b test: overlapping window did not restore previous status';
+  end if;
+  if (select count(*) from public.asset_maintenance_log where maintenance_id = v_window) <> 1 then
+    raise exception 'status b test: maintenance logged twice';
+  end if;
+  -- Manuell geänderter Status bleibt nach dem Ende; Absage protokolliert nichts.
+  insert into public.service_status_maintenances (tenant_id, title, starts_at, ends_at, state)
+  values (v_tenant, 'B-Wartung 3', timezone('utc', now()) - interval '1 minute',
+    timezone('utc', now()) + interval '1 hour', 'scheduled') returning id into v_window;
+  insert into public.service_status_maintenance_services (tenant_id, maintenance_id, service_id)
+  values (v_tenant, v_window, v_service);
+  insert into public.service_status_maintenance_assets (tenant_id, maintenance_id, asset_id)
+  values (v_tenant, v_window, v_asset);
+  perform public.service_status_maintenance_run();
+  update public.services set status = 'major_outage' where id = v_service;
+  update public.service_status_maintenances set state = 'cancelled' where id = v_window;
+  perform public.service_status_maintenance_run();
+  if (select status from public.services where id = v_service) <> 'major_outage' then
+    raise exception 'status b test: manual status overwritten';
+  end if;
+  if exists (select 1 from public.asset_maintenance_log where maintenance_id = v_window) then
+    raise exception 'status b test: cancelled window logged';
+  end if;
+
+  -- 42. Verfügbarkeit.
+  insert into public.service_status_events (tenant_id, service_id, status, changed_at)
+  values (v_tenant, v_service3, 'operational', timezone('utc', now()) - interval '10 days'),
+         (v_tenant, v_service3, 'major_outage', timezone('utc', now()) - interval '2 days'),
+         (v_tenant, v_service3, 'operational', timezone('utc', now()) - interval '1 day');
+  select * into v_row from public.service_status_availability(
+    v_tenant, array[v_service3], timezone('utc', now()) - interval '30 days') availability;
+  if v_row.availability_percent is null or v_row.availability_percent > 92
+     or v_row.availability_percent < 88 then
+    raise exception 'status b test: availability wrong: %', to_jsonb(v_row);
+  end if;
+  if (select count(*) from public.service_status_availability(v_tenant, array[gen_random_uuid()],
+      timezone('utc', now()) - interval '30 days')) <> 0 then
+    raise exception 'status b test: unknown service returned';
+  end if;
+
+  -- 16. Netzwerk-Abhängigkeiten.
+  v_result := public.service_network_dependencies(v_tenant, v_service);
+  if jsonb_array_length(v_result -> 'devices') <> 1
+     or v_result -> 'devices' -> 0 ->> 'name' <> 'B-Server' then
+    raise exception 'status b test: dependencies wrong: %', v_result;
+  end if;
+  raise notice 'status page services maintenance checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

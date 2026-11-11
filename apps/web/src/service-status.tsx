@@ -14,46 +14,22 @@ import {
   buildServiceStatusHistoryDays,
   type ServiceAvailabilityStatus,
 } from "./lib/service-status-history";
+import { useVisibleInterval } from "./lib/use-visible-interval";
+import {
+  formatAvailability,
+  IncidentMessagesPanel,
+  incidentMessagesToPublic,
+  type IncidentMessage,
+  parseIncidentMessages,
+  parsePublicIncidents,
+  PublicIncidentList,
+  type PublicIncident,
+} from "./service-status-incidents";
 
 type ServiceStatus = ServiceAvailabilityStatus;
 
 /** Seconds between silent background refreshes of the status. */
 export const STATUS_REFRESH_MS = 30_000;
-
-/**
- * Calls `refresh` every `intervalMs` while the page is visible, and right away
- * when the tab becomes visible or the window gets focus again (browsers
- * throttle timers in background tabs). Runs are at least 5 s apart.
- */
-export function useStatusPolling(
-  refresh: () => void,
-  intervalMs: number,
-  enabled = true,
-) {
-  const latest = useRef(refresh);
-  useEffect(() => {
-    latest.current = refresh;
-  }, [refresh]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    let lastRun = Date.now();
-    const run = () => {
-      if (document.visibilityState !== "visible") return;
-      if (Date.now() - lastRun < 5_000) return;
-      lastRun = Date.now();
-      latest.current();
-    };
-    const timer = window.setInterval(run, intervalMs);
-    document.addEventListener("visibilitychange", run);
-    window.addEventListener("focus", run);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", run);
-      window.removeEventListener("focus", run);
-    };
-  }, [enabled, intervalMs]);
-}
 
 type StatusService = {
   categoryPath: string[];
@@ -103,22 +79,33 @@ type StatusPage = {
   publicId: string | null;
   title: string;
   updatedAt: string | null;
+  showAvailability: boolean;
+};
+/** Verfügbarkeit eines Dienstes in % (operational/maintenance = verfügbar). */
+export type ServiceAvailabilityInfo = {
+  serviceId: string;
+  days30: number | null;
+  days90: number | null;
+  maintenance90Percent: number | null;
 };
 type StatusOverview = {
+  availability: ServiceAvailabilityInfo[];
   canManage: boolean;
   canManagePublication: boolean;
   events: StatusEvent[];
+  incidents: IncidentMessage[];
   maintenances: StatusMaintenance[];
   page: StatusPage;
   services: StatusService[];
 };
 type StatusAction =
-  | { type: "getStatusOverview"; tenantId: string }
+  | { type: "getStatusOverview"; tenantId: string; withDetails?: boolean }
   | {
       type: "saveStatusPage";
       tenantId: string;
       title: string;
       publicEnabled: boolean;
+      showAvailability: boolean;
     }
   | { type: "rotateStatusPageId"; tenantId: string }
   | {
@@ -147,6 +134,7 @@ type StatusAction =
       serviceIds: string[];
     };
 type PublicService = {
+  availability90?: number | null;
   categoryPath: string[];
   displayStatus: ServiceStatus;
   history: Array<{ changedAt: string; status: ServiceStatus }>;
@@ -157,6 +145,7 @@ type PublicService = {
 type PublicStatusPayload = {
   accentColor: string | null;
   generatedAt: string;
+  incidents: PublicIncident[];
   logoUrl: string | null;
   overallStatus: ServiceStatus;
   services: PublicService[];
@@ -491,19 +480,52 @@ export function parseStatusOverview(value: unknown): StatusOverview {
     throw new Error("Die Wartungsliste enthält ungültige Werte.");
   }
   return {
+    availability: parseAvailability(data.availability, serviceIds),
     // Older function versions only answered asset managers.
     canManage: typeof data.canManage === "boolean" ? data.canManage : true,
     canManagePublication: data.canManagePublication,
     events: parsedEvents,
+    incidents: parseIncidentMessages(data.incidents),
     maintenances: parsedMaintenances,
     page: {
       publicEnabled: page.publicEnabled,
       publicId,
       title: page.title.trim(),
       updatedAt: page.updatedAt,
+      showAvailability: page.showAvailability === true,
     },
     services: parsedServices,
   };
+}
+
+function percentOrNull(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 100
+    ? value
+    : null;
+}
+
+/** Optionale Verfügbarkeit (ältere Funktionsstände liefern keine). */
+export function parseAvailability(
+  value: unknown,
+  serviceIds: ReadonlySet<string>,
+): ServiceAvailabilityInfo[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const serviceId = normalizeUuid(item.serviceId);
+    if (!serviceId || !serviceIds.has(serviceId)) return [];
+    return [
+      {
+        serviceId,
+        days30: percentOrNull(item.days30),
+        days90: percentOrNull(item.days90),
+        maintenance90Percent: percentOrNull(item.maintenance90Percent),
+      },
+    ];
+  });
 }
 
 function parsePublicService(value: unknown): PublicService | null {
@@ -531,6 +553,7 @@ function parsePublicService(value: unknown): PublicService | null {
   const categoryPath = parseCategoryPath(value.categoryPath);
   if (categoryPath === null) return null;
   return {
+    availability90: percentOrNull(value.availability90),
     categoryPath,
     displayStatus: value.displayStatus,
     history: history as Array<{ changedAt: string; status: ServiceStatus }>,
@@ -606,6 +629,7 @@ export function parsePublicServiceStatus(value: unknown): PublicStatusPayload {
   return {
     accentColor: data.accentColor,
     generatedAt: data.generatedAt,
+    incidents: parsePublicIncidents(data.incidents),
     logoUrl: data.logoUrl,
     overallStatus: data.overallStatus,
     services: services.filter(
@@ -901,7 +925,15 @@ function ServiceCard({ service }: { service: PublicService }) {
       <div className="service-status__service-heading">
         <div>
           <h3>{service.name}</h3>
-          <p>Zuletzt aktualisiert: {dateLabel(service.updatedAt)}</p>
+          <p>
+            Zuletzt aktualisiert: {dateLabel(service.updatedAt)}
+            {typeof service.availability90 === "number" ? (
+              <span className="service-status__availability-percent">
+                {" "}
+                · {formatAvailability(service.availability90)} in 90 Tagen
+              </span>
+            ) : null}
+          </p>
         </div>
         <StatusPill status={service.displayStatus} />
       </div>
@@ -1469,9 +1501,13 @@ function internalToPublicPayload(
     overview.maintenances,
     now,
   );
+  const availability = new Map(
+    overview.availability.map((item) => [item.serviceId, item.days90]),
+  );
   const services = overview.services
     .filter((service) => service.statusPublic)
     .map((service) => ({
+      availability90: availability.get(service.id) ?? null,
       categoryPath: service.categoryPath,
       displayStatus: maintenanceServiceIds.has(service.id)
         ? "maintenance"
@@ -1506,9 +1542,18 @@ function internalToPublicPayload(
         (serviceId) => publicServiceNames.get(serviceId) ?? [],
       ),
     }));
+  const allServiceNames = new Map(
+    overview.services.map((service) => [service.id, service.name]),
+  );
   return {
     accentColor: null,
     generatedAt: new Date().toISOString(),
+    // Intern sehen Mitglieder auch interne Meldungen (wie im Portal-Banner).
+    incidents: incidentMessagesToPublic(
+      overview.incidents,
+      allServiceNames,
+      false,
+    ),
     logoUrl: null,
     overallStatus: displayOverallStatus(services),
     services,
@@ -1546,6 +1591,7 @@ export function ServiceStatus({
     useState<MaintenanceDraft | null>(null);
   const [title, setTitle] = useState("Systemstatus");
   const [publicEnabled, setPublicEnabled] = useState(false);
+  const [showAvailability, setShowAvailability] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [statusClock, setStatusClock] = useState(() => Date.now());
@@ -1555,6 +1601,7 @@ export function ServiceStatus({
     setOverview(next);
     setTitle(next.page.title);
     setPublicEnabled(next.page.publicEnabled);
+    setShowAvailability(next.page.showAvailability);
     setStatusClock(Date.now());
   }
 
@@ -1562,7 +1609,11 @@ export function ServiceStatus({
     setLoading(true);
     setError("");
     try {
-      const next = await requestStatus({ type: "getStatusOverview", tenantId });
+      const next = await requestStatus({
+        type: "getStatusOverview",
+        tenantId,
+        withDetails: true,
+      });
       applyOverview(next);
     } catch (nextError) {
       setOverview(null);
@@ -1585,14 +1636,18 @@ export function ServiceStatus({
   // without touching unsaved form fields (title, public switch).
   const refreshOverview = useCallback(async () => {
     try {
-      const next = await requestStatus({ type: "getStatusOverview", tenantId });
+      const next = await requestStatus({
+        type: "getStatusOverview",
+        tenantId,
+        withDetails: true,
+      });
       setOverview(next);
       setStatusClock(Date.now());
     } catch {
       // Keep the last known state; the next run tries again.
     }
   }, [tenantId]);
-  useStatusPolling(
+  useVisibleInterval(
     () => void refreshOverview(),
     STATUS_REFRESH_MS,
     !loading && !saving && !maintenanceSaving,
@@ -1650,6 +1705,7 @@ export function ServiceStatus({
         tenantId,
         title: trimmed,
         publicEnabled,
+        showAvailability,
       });
       applyOverview(next);
       setNotice(
@@ -1909,6 +1965,17 @@ export function ServiceStatus({
       {!loading && overview && publicPayload ? (
         <>
           <StatusPresentation payload={publicPayload} />
+          <PublicIncidentList incidents={publicPayload.incidents} />
+          {overview.canManage ? (
+            <IncidentMessagesPanel
+              onChanged={() => void refreshOverview()}
+              services={overview.services.map((service) => ({
+                id: service.id,
+                name: service.name,
+              }))}
+              tenantId={tenantId}
+            />
+          ) : null}
           {overview.canManage ? (
             <MaintenanceList
               canManagePublication={overview.canManagePublication}
@@ -1966,6 +2033,24 @@ export function ServiceStatus({
                       <small>
                         Erst nach dem Speichern ist die Seite für Personen mit
                         der öffentlichen Adresse sichtbar.
+                      </small>
+                    </span>
+                  </label>
+                  <label className="service-status__publish-toggle">
+                    <input
+                      checked={showAvailability}
+                      disabled={saving}
+                      onChange={(event) =>
+                        setShowAvailability(event.target.checked)
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>Verfügbarkeit in Prozent zeigen</strong>
+                      <small>
+                        Zeigt pro Dienst die Verfügbarkeit der letzten 90 Tage
+                        (z. B. «99.8 % in 90 Tagen»). Geplante Wartung zählt als
+                        verfügbar.
                       </small>
                     </span>
                   </label>
@@ -2133,6 +2218,7 @@ export function PublicServiceStatusBadgePage({
   const [status, setStatus] = useState<ServiceStatus | null | "unavailable">(
     null,
   );
+  const reloadBadge = useRef<() => void>(() => undefined);
   useEffect(() => {
     const abortController = new AbortController();
     async function load() {
@@ -2162,12 +2248,13 @@ export function PublicServiceStatusBadgePage({
       }
     }
     void load();
-    const timer = window.setInterval(() => void load(), 60_000);
+    reloadBadge.current = () => void load();
     return () => {
       abortController.abort();
-      window.clearInterval(timer);
+      reloadBadge.current = () => undefined;
     };
   }, [publicId]);
+  useVisibleInterval(() => reloadBadge.current(), 60_000);
 
   const visual =
     status === null || status === "unavailable" ? "unavailable" : status;
@@ -2240,7 +2327,7 @@ export function PublicServiceStatusPage({
     },
     [publicId],
   );
-  useStatusPolling(() => void load(true), 60_000, payload !== null);
+  useVisibleInterval(() => void load(true), 60_000, payload !== null);
 
   useEffect(() => {
     void load();
@@ -2306,6 +2393,7 @@ export function PublicServiceStatusPage({
               </header>
               <StatusSubscriptionPanel publicId={publicId} />
             </div>
+            <PublicIncidentList incidents={payload.incidents} />
             <StatusPresentation payload={payload} publicView />
             <PublicMaintenanceList maintenances={payload.maintenances} />
             <p className="public-service-status__footer">
@@ -2359,7 +2447,7 @@ export function NavigationStatusBadge({
       refreshBadge.current = () => undefined;
     };
   }, [tenantId]);
-  useStatusPolling(() => refreshBadge.current(), STATUS_REFRESH_MS);
+  useVisibleInterval(() => refreshBadge.current(), STATUS_REFRESH_MS);
 
   const status = useMemo(() => {
     if (!overview) return null;

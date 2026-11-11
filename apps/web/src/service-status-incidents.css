@@ -1,0 +1,248 @@
+/* Öffentliche Störungsmeldungen, Verfügbarkeit und Dienst-Details. */
+
+.status-incident__list {
+  display: grid;
+  gap: 18px;
+  margin: 18px 0;
+}
+
+.status-incident__group {
+  display: grid;
+  gap: 10px;
+}
+
+.status-incident__group > h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.status-incident {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--tone-danger, var(--danger));
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--surface);
+}
+
+.status-incident--monitoring,
+.status-incident--identified {
+  border-left-color: var(--tone-warning, var(--warning));
+}
+
+.status-incident--resolved {
+  border-left-color: var(--tone-success, var(--success));
+}
+
+.status-incident p {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.status-incident__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.status-incident__heading h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.status-incident__meta,
+.status-incident__services {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.status-incident__state {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--tone-danger, var(--danger));
+  background: var(--tone-danger-soft, var(--danger-soft));
+}
+
+.status-incident__state--identified,
+.status-incident__state--monitoring {
+  color: var(--tone-warning, var(--warning));
+  background: var(--tone-warning-soft, var(--warning-soft));
+}
+
+.status-incident__state--resolved {
+  color: var(--tone-success, var(--success));
+  background: var(--tone-success-soft, var(--success-soft));
+}
+
+.status-incident__timeline {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 0 0 0 14px;
+  border-left: 2px solid var(--border);
+  list-style: none;
+}
+
+.status-incident__timeline li {
+  display: grid;
+  gap: 3px;
+  font-size: 13px;
+}
+
+.status-incident__timeline time {
+  color: var(--muted);
+}
+
+.status-incident-admin {
+  display: grid;
+  gap: 12px;
+}
+
+.status-incident-admin__form {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--surface-subtle, var(--surface));
+}
+
+.status-incident-admin__form h4 {
+  margin: 0;
+}
+
+.status-incident-admin__form label {
+  display: grid;
+  gap: 4px;
+}
+
+.status-incident-admin__services {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.status-incident-admin__services label,
+.status-incident-admin__toggle {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-incident-admin__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+
+.status-incident-admin__list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.status-incident-admin__list > li {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.status-incident-admin__list > li p {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.status-incident-admin__list > li > button {
+  justify-self: start;
+}
+
+.service-status__availability-percent {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dienst-Details im Dienstkatalog (Verfügbarkeit, Netzwerk, Störungen). */
+.service-insights {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--surface-subtle, var(--surface));
+}
+
+.service-insights h5 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.service-insights__figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 0;
+}
+
+.service-insights__figures div {
+  display: grid;
+  gap: 2px;
+}
+
+.service-insights__figures dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.service-insights__figures dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.service-insights__alert {
+  margin: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--tone-danger, var(--danger));
+  background: var(--tone-danger-soft, var(--danger-soft));
+}
+
+.service-insights__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.service-insights__table th,
+.service-insights__table td {
+  border-bottom: 1px solid var(--border);
+  padding: 5px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.service-insights__down {
+  color: var(--tone-danger, var(--danger));
+  font-weight: 700;
+}
+
+.service-insights__table-wrap {
+  overflow-x: auto;
+}

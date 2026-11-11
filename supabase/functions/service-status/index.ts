@@ -1,5 +1,12 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { readServiceCategoryPaths, serviceCategoryPath } from "../_shared/service-category-paths.ts";
+import {
+  buildIncidentMessages,
+  type IncidentAction,
+  type IncidentMessage,
+  isRecentIncidentMessage,
+  parseIncidentAction,
+} from "./incident-messages.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 32 * 1024;
@@ -7,6 +14,9 @@ const MAX_SERVICES = 500;
 const MAX_EVENTS = 15_000;
 const MAX_MAINTENANCES = 500;
 const MAX_MAINTENANCE_SERVICES = 100;
+const MAX_INCIDENT_MESSAGES = 200;
+const INCIDENT_NOTICE_SELECT =
+  "id, title, description, status, public_enabled, monitoring_incident_id, starts_at, resolved_at, created_at, updated_at";
 const MAX_MAINTENANCE_SERVICE_LINKS =
   MAX_MAINTENANCES * MAX_MAINTENANCE_SERVICES;
 const STATUS_VALUES = [
@@ -28,14 +38,16 @@ type MaintenanceState = (typeof MAINTENANCE_STATES)[number];
 type CallerClient = SupabaseContext["supabase"];
 type AdminClient = SupabaseContext["supabaseAdmin"];
 type Action =
-  | { type: "getStatusOverview"; tenantId: string }
+  | { type: "getStatusOverview"; tenantId: string; withDetails?: boolean }
   | {
       type: "saveStatusPage";
       tenantId: string;
       title: string;
       publicEnabled: boolean;
+      showAvailability?: boolean;
     }
   | { type: "rotateStatusPageId"; tenantId: string }
+  | IncidentAction
   | {
       type: "manageMaintenance";
       tenantId: string;
@@ -162,7 +174,7 @@ function hasOnlyKeys(
   return Object.keys(value).every((key) => allowed.has(key));
 }
 
-function parseAction(value: unknown): Action | null {
+export function parseAction(value: unknown): Action | null {
   if (
     !isRecord(value) ||
     !isUuid(value.tenantId) ||
@@ -172,8 +184,16 @@ function parseAction(value: unknown): Action | null {
   }
   const tenantId = value.tenantId.toLowerCase();
   if (value.type === "getStatusOverview") {
-    return hasOnlyKeys(value, ["type", "tenantId"])
-      ? { type: value.type, tenantId }
+    // withDetails: Verfügbarkeit und Störungsmeldungen (Statusansicht); das
+    // Navigationsbadge fragt ohne Details ab.
+    return hasOnlyKeys(value, ["type", "tenantId", "withDetails"]) &&
+        (value.withDetails === undefined ||
+          typeof value.withDetails === "boolean")
+      ? {
+        type: value.type,
+        tenantId,
+        ...(value.withDetails === true ? { withDetails: true } : {}),
+      }
       : null;
   }
   if (value.type === "rotateStatusPageId") {
@@ -183,16 +203,35 @@ function parseAction(value: unknown): Action | null {
   }
   if (
     value.type === "saveStatusPage" &&
-    hasOnlyKeys(value, ["type", "tenantId", "title", "publicEnabled"]) &&
+    hasOnlyKeys(value, [
+      "type",
+      "tenantId",
+      "title",
+      "publicEnabled",
+      "showAvailability",
+    ]) &&
     isSafeText(value.title, 2, 120) &&
-    typeof value.publicEnabled === "boolean"
+    typeof value.publicEnabled === "boolean" &&
+    (value.showAvailability === undefined ||
+      typeof value.showAvailability === "boolean")
   ) {
     return {
       type: value.type,
       tenantId,
       title: value.title.trim(),
       publicEnabled: value.publicEnabled,
+      ...(typeof value.showAvailability === "boolean"
+        ? { showAvailability: value.showAvailability }
+        : {}),
     };
+  }
+  if (
+    value.type === "publishIncidentMessage" ||
+    value.type === "updateIncidentMessage" ||
+    value.type === "incidentMessages" ||
+    value.type === "listIncidentMessages"
+  ) {
+    return parseIncidentAction(value, tenantId);
   }
   if (
     value.type !== "manageMaintenance" ||
@@ -571,23 +610,27 @@ async function readMaintenances(
 async function readOverview(
   admin: AdminClient,
   tenantId: string,
+  withDetails = true,
 ): Promise<{
   page: {
     publicEnabled: boolean;
     publicId: string | null;
     title: string;
     updatedAt: string | null;
+    showAvailability: boolean;
   };
   services: StatusService[];
   events: StatusEvent[];
   maintenances: StatusMaintenance[];
+  availability: ServiceAvailability[];
+  incidents: IncidentMessage[];
 }> {
   const cutoff = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString();
   const [pageResult, servicesResult, eventsResult, maintenances] =
     await Promise.all([
       admin
         .from("service_status_pages")
-        .select("public_id, title, public_enabled, updated_at")
+        .select("public_id, title, public_enabled, updated_at, show_availability")
         .eq("tenant_id", tenantId)
         .maybeSingle(),
       admin
@@ -679,18 +722,236 @@ async function readOverview(
     );
   }
 
+  const [availability, incidents] = withDetails
+    ? await Promise.all([
+      readAvailability(
+        admin,
+        tenantId,
+        services.map((service) => service.id),
+      ),
+      readIncidentMessages(admin, tenantId, { recentOnly: true }),
+    ])
+    : [[], []];
+
   return {
     page: {
       publicEnabled: page?.public_enabled === true,
       publicId: page?.public_id ?? null,
       title: page?.title.trim() || "Systemstatus",
       updatedAt: page?.updated_at ?? null,
+      showAvailability: page?.show_availability === true,
     },
     services,
     events,
     maintenances,
+    availability,
+    incidents,
   };
 }
+
+type ServiceAvailability = {
+  serviceId: string;
+  days30: number | null;
+  days90: number | null;
+  maintenance90Percent: number | null;
+  withoutMaintenance90: number | null;
+};
+
+function percent(value: unknown): number | null {
+  const number = typeof value === "string" ? Number(value) : value;
+  return typeof number === "number" && Number.isFinite(number)
+    ? Math.round(number * 1000) / 1000
+    : null;
+}
+
+/** Verfügbarkeit (30/90 Tage) je Dienst; Fehler liefern eine leere Liste. */
+async function readAvailability(
+  admin: AdminClient,
+  tenantId: string,
+  serviceIds: string[],
+): Promise<ServiceAvailability[]> {
+  if (serviceIds.length === 0) return [];
+  const now = Date.now();
+  const [days30, days90] = await Promise.all(
+    [30, 90].map((days) =>
+      admin.rpc("service_status_availability", {
+        p_tenant_id: tenantId,
+        p_service_ids: serviceIds,
+        p_since: new Date(now - days * 86_400_000).toISOString(),
+      })
+    ),
+  );
+  if (days30.error || days90.error) return [];
+  const thirty = new Map<string, unknown>();
+  for (const row of (days30.data ?? []) as Record<string, unknown>[]) {
+    if (isUuid(row.service_id)) {
+      thirty.set(row.service_id.toLowerCase(), row.availability_percent);
+    }
+  }
+  return ((days90.data ?? []) as Record<string, unknown>[]).flatMap((row) => {
+    if (!isUuid(row.service_id)) return [];
+    const observed = Number(row.observed_seconds);
+    const maintenance = Number(row.maintenance_seconds);
+    return [{
+      serviceId: row.service_id.toLowerCase(),
+      days30: percent(thirty.get(row.service_id.toLowerCase())),
+      days90: percent(row.availability_percent),
+      maintenance90Percent: observed > 0 && Number.isFinite(maintenance)
+        ? percent((100 * maintenance) / observed)
+        : null,
+      withoutMaintenance90: percent(
+        row.availability_without_maintenance_percent,
+      ),
+    }];
+  });
+}
+
+async function readIncidentMessages(
+  admin: AdminClient,
+  tenantId: string,
+  options: { recentOnly?: boolean; monitoringIncidentId?: string },
+): Promise<IncidentMessage[]> {
+  let query = admin
+    .from("service_incident_notices")
+    .select(INCIDENT_NOTICE_SELECT)
+    .eq("tenant_id", tenantId);
+  if (options.monitoringIncidentId) {
+    query = query.eq("monitoring_incident_id", options.monitoringIncidentId);
+  }
+  if (options.recentOnly) {
+    query = query.or(
+      `status.neq.resolved,resolved_at.gte.${new Date(
+        Date.now() - 14 * 86_400_000,
+      ).toISOString()}`,
+    );
+  }
+  const notices = await query
+    .order("starts_at", { ascending: false })
+    .limit(MAX_INCIDENT_MESSAGES);
+  if (notices.error) {
+    throw new HttpError(
+      503,
+      "incident_data_unavailable",
+      "Die Störungsmeldungen konnten nicht geladen werden.",
+    );
+  }
+  const ids = ((notices.data ?? []) as unknown[]).flatMap((row) =>
+    isRecord(row) && isUuid(row.id) ? [row.id] : []
+  );
+  if (ids.length === 0) return [];
+  const [links, updates] = await Promise.all([
+    admin
+      .from("service_incident_notice_services")
+      .select("notice_id, service_id")
+      .eq("tenant_id", tenantId)
+      .in("notice_id", ids)
+      .limit(ids.length * 100),
+    admin
+      .from("service_incident_notice_updates")
+      .select("id, notice_id, status, title, body, created_at")
+      .eq("tenant_id", tenantId)
+      .in("notice_id", ids)
+      .order("created_at", { ascending: false })
+      .limit(2_000),
+  ]);
+  if (links.error || updates.error) {
+    throw new HttpError(
+      503,
+      "incident_data_unavailable",
+      "Die Störungsmeldungen konnten nicht geladen werden.",
+    );
+  }
+  const messages = buildIncidentMessages(
+    (notices.data ?? []) as unknown[],
+    (links.data ?? []) as unknown[],
+    (updates.data ?? []) as unknown[],
+  );
+  return options.recentOnly
+    ? messages.filter((message) => isRecentIncidentMessage(message, Date.now()))
+    : messages;
+}
+
+/** Monitoring-Störungsbearbeitende oder Asset-Verwaltende dürfen melden. */
+async function requireIncidentPublisher(
+  client: CallerClient,
+  tenantId: string,
+): Promise<void> {
+  const incidents = await client.rpc("can_work_incidents", {
+    p_tenant_id: tenantId,
+  });
+  if (!incidents.error && incidents.data === true) return;
+  await requirePermission(client, tenantId, "asset.manage");
+}
+
+async function saveIncidentMessage(
+  admin: AdminClient,
+  actorId: string,
+  action: Extract<
+    Action,
+    { type: "publishIncidentMessage" | "updateIncidentMessage" }
+  >,
+): Promise<string> {
+  const publish = action.type === "publishIncidentMessage";
+  const result = await admin.rpc("save_service_incident_notice", {
+    p_actor_id: actorId,
+    p_tenant_id: action.tenantId,
+    p_notice_id: publish ? null : action.messageId,
+    p_title: action.title ?? null,
+    p_body: action.body,
+    p_status: action.state,
+    p_public_enabled: action.publicEnabled ?? null,
+    p_service_ids: action.serviceIds ?? null,
+    p_monitoring_incident_id: publish ? action.monitoringIncidentId : null,
+  });
+  if (result.error) {
+    if (result.error.code === "P0002") {
+      throw new HttpError(
+        404,
+        "incident_message_not_found",
+        "Die Störungsmeldung ist nicht verfügbar.",
+      );
+    }
+    if (["22023", "23502", "23503", "23514"].includes(result.error.code)) {
+      throw new HttpError(
+        422,
+        "incident_message_invalid",
+        "Die Störungsmeldung oder die gewählten Dienste sind ungültig.",
+      );
+    }
+    throw new HttpError(
+      503,
+      "incident_message_write_failed",
+      "Die Störungsmeldung konnte nicht gespeichert werden.",
+    );
+  }
+  if (!isUuid(result.data)) {
+    throw new HttpError(
+      503,
+      "incident_message_write_failed",
+      "Die Störungsmeldung konnte nicht gespeichert werden.",
+    );
+  }
+  const audit = await admin.from("audit_logs").insert({
+    tenant_id: action.tenantId,
+    actor_id: actorId,
+    action: publish
+      ? "service_incident_message.published"
+      : "service_incident_message.updated",
+    entity_type: "service_incident_notice",
+    entity_id: result.data,
+    severity: "info",
+    metadata: { source: "service_status", state: action.state },
+  });
+  if (audit.error) {
+    throw new HttpError(
+      503,
+      "audit_unavailable",
+      "Die Änderung konnte nicht nachvollziehbar gespeichert werden.",
+    );
+  }
+  return result.data.toLowerCase();
+}
+
 
 async function writePageAudit(
   admin: AdminClient,
@@ -726,6 +987,9 @@ async function savePage(
       tenant_id: action.tenantId,
       title: action.title,
       public_enabled: action.publicEnabled,
+      ...(action.showAvailability !== undefined
+        ? { show_availability: action.showAvailability }
+        : {}),
       updated_by: actorId,
     },
     { onConflict: "tenant_id" },
@@ -861,6 +1125,7 @@ const handler = withSupabase(
       const overview = await readOverview(
         context.supabaseAdmin,
         action.tenantId,
+        action.withDetails === true,
       );
       if (!manage.data) {
         return json(request, {
@@ -901,6 +1166,42 @@ const handler = withSupabase(
           canManagePublication: publication.data,
         },
       });
+    }
+
+    if (action.type === "incidentMessages") {
+      // Lesen für alle, die Störungen bearbeiten oder Assets verwalten.
+      await requireIncidentPublisher(context.supabase, action.tenantId);
+      const messages = await readIncidentMessages(
+        context.supabaseAdmin,
+        action.tenantId,
+        { monitoringIncidentId: action.monitoringIncidentId },
+      );
+      return json(request, { data: { messages } });
+    }
+    if (action.type === "listIncidentMessages") {
+      await requireIncidentPublisher(context.supabase, action.tenantId);
+      const messages = await readIncidentMessages(
+        context.supabaseAdmin,
+        action.tenantId,
+        {},
+      );
+      return json(request, { data: { messages } });
+    }
+    if (
+      action.type === "publishIncidentMessage" ||
+      action.type === "updateIncidentMessage"
+    ) {
+      await requireIncidentPublisher(context.supabase, action.tenantId);
+      const messageId = await saveIncidentMessage(
+        context.supabaseAdmin,
+        actorId,
+        action,
+      );
+      return json(
+        request,
+        { data: { messageId } },
+        action.type === "publishIncidentMessage" ? 201 : 200,
+      );
     }
 
     await requirePermission(context.supabase, action.tenantId, "asset.manage");
