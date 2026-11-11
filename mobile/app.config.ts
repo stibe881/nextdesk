@@ -29,7 +29,7 @@ const schemeFromBundleId = "ch.grossict.nextdesk";
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "nextDesk iOS",
+  appName: "nextDesk",
   appSlug: "nextdeskios",
   logoUrl:
     "https://files.manuscdn.com/user_upload_by_module/session_file/310519663166174123/iJmIGyxNgxjtJGVS.png",
@@ -170,8 +170,10 @@ const config: ExpoConfig = {
     [
       "expo-video",
       {
-        supportsBackgroundPlayback: true,
-        supportsPictureInPicture: true,
+        // Die App spielt keine Medien im Hintergrund: das Plugin würde sonst
+        // «audio» in UIBackgroundModes eintragen (Apple 2.5.4).
+        supportsBackgroundPlayback: false,
+        supportsPictureInPicture: false,
       },
     ],
     // Static home-screen quick actions on iOS: they show on long-press of the
