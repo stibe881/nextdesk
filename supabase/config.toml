@@ -278,3 +278,6 @@ verify_jwt = true
 
 [functions.ipam]
 verify_jwt = true
+
+[functions.ipam-import]
+verify_jwt = true
