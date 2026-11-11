@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { listAssignableAgents } from "../_shared/assignable-agents.ts";
 import {
   isRecord,
   isUuid,
@@ -387,8 +388,7 @@ async function directory(
   tenantId: string,
   visibility: Visibility,
 ) {
-  const [members, teams, departments, departmentMembers, teamMembers] =
-    await Promise.all([
+  const [members, teams, departments, teamMembers] = await Promise.all([
     admin
       .from("tenant_memberships")
       .select("user_id")
@@ -409,18 +409,33 @@ async function directory(
           .order("name")
       : Promise.resolve({ data: [] }),
     admin
-      .from("department_memberships")
-      .select("user_id, department_id")
-      .eq("tenant_id", tenantId)
-      .eq("status", "active"),
-    admin
       .from("team_memberships")
       .select("user_id, team_id")
       .eq("tenant_id", tenantId),
   ]);
+  // Zur Auswahl stehen nur Agenten (aktive Rolle mit Ticketbearbeitung) und
+  // nur in ihrer Abteilung; Nicht-Agenten erscheinen nie.
+  const agentDepartments = new Map<string, string[]>();
+  const departmentIdList = (departments.data ?? []).map(
+    (row: Row) => row.id as string,
+  );
+  const agentLists = await Promise.all(
+    departmentIdList.map((id) => listAssignableAgents(admin, tenantId, id)),
+  );
+  agentLists.forEach((result, index) => {
+    if (result.error) return;
+    for (const agent of result.agents) {
+      const list = agentDepartments.get(agent.id) ?? [];
+      list.push(departmentIdList[index]!);
+      agentDepartments.set(agent.id, list);
+    }
+  });
+  const activeMemberIds = new Set(
+    (members.data ?? []).map((row: Row) => row.user_id as string),
+  );
   const people = await names(
     admin,
-    (members.data ?? []).map((row: Row) => row.user_id as string),
+    [...agentDepartments.keys()].filter((id) => activeMemberIds.has(id)),
   );
   // Je Person: Abteilungen und Teams (das Formular zeigt nur passende Personen).
   const idsOf = (rows: Row[] | null, key: string) => {
@@ -432,7 +447,7 @@ async function directory(
     }
     return byUser;
   };
-  const departmentsOf = idsOf(departmentMembers.data as Row[] | null, "department_id");
+  const departmentsOf = agentDepartments;
   const teamsOf = idsOf(teamMembers.data as Row[] | null, "team_id");
   return {
     people: [...people.entries()]
@@ -756,19 +771,16 @@ async function saveTemplate(
     }
   }
   if (fields.assignee_id && fields.department_id) {
-    const { data } = await admin
-      .from("department_memberships")
-      .select("user_id")
-      .eq("tenant_id", tenantId)
-      .eq("department_id", fields.department_id)
-      .eq("user_id", fields.assignee_id)
-      .eq("status", "active")
-      .maybeSingle();
-    if (!data) {
+    const agents = await listAssignableAgents(
+      admin,
+      tenantId,
+      fields.department_id,
+    );
+    if (agents.error || !agents.agents.some((a) => a.id === fields.assignee_id)) {
       throw new HttpError(
         422,
         "invalid_data",
-        "Die verantwortliche Person gehört nicht zur Abteilung der Aufgabe.",
+        "Die verantwortliche Person ist kein Agent der Abteilung der Aufgabe.",
       );
     }
   }
