@@ -391,7 +391,13 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
       ...(typeof payload.orderNumber === "string"
         ? { orderNumber: payload.orderNumber }
         : {}),
-      ...(payload.escalated === true ? { shopEscalated: true } : {}),
+      // Eskalation: an Vorgesetzte (audience manager) bzw. Stellvertretung
+      // (audience deputy) – siehe shop_send_reminders (0314).
+      ...(payload.escalated === true ||
+      payload.audience === "manager" ||
+      payload.audience === "deputy"
+        ? { shopEscalated: true }
+        : {}),
     };
   }
   let serviceTask:

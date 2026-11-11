@@ -194,6 +194,19 @@ export function notificationEmailText(
     const number = text(payload.orderNumber, 40);
     title = number ? `${shopTitle}: ${number}` : shopTitle;
     lines = [shopBody];
+    // Eskalationen (0314): an Vorgesetzte bzw. Stellvertretung.
+    if (kind === "shop.order.loan_overdue" && payload.audience === "manager") {
+      lines = [
+        "Eine Ausleihe einer Person aus Ihrem Team ist seit mehreren Tagen überfällig.",
+      ];
+    } else if (
+      kind === "shop.order.approval_reminder" &&
+      (payload.audience === "deputy" || payload.audience === "manager")
+    ) {
+      lines = [
+        "Eine Bestellung wartet seit mehreren Tagen auf Freigabe. Sie erhalten diese Erinnerung als Stellvertretung.",
+      ];
+    }
   } else if (kind.startsWith("service_task.")) {
     const task = text(payload.title) ?? "Eine Serviceaufgabe";
     const overdue = kind === "service_task.overdue";
