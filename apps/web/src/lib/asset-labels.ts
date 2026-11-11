@@ -8,7 +8,12 @@
 export const APP_SCHEME = "ch.grossict.nextdesk";
 
 export type LabelFormatId =
-  "avery-l7651" | "avery-3474" | "avery-l7163" | "roll-62x29" | "roll-62x100";
+  | "avery-l7651"
+  | "avery-l6009"
+  | "avery-3474"
+  | "avery-l7163"
+  | "roll-62x29"
+  | "roll-62x100";
 
 export type LabelFormat = {
   id: LabelFormatId;
@@ -90,6 +95,15 @@ export const LABEL_FORMATS: readonly LabelFormat[] = [
     [5, 13],
     [10.7, 4.75],
     [40.6, 21.2],
+  ),
+  sheet(
+    "avery-l6009",
+    "Avery L6009-20 (A4, 48 Etiketten)",
+    "45,7 × 21,2 mm, 4 × 12 pro Bogen – silbernes Polyester, wetterfest",
+    [45.7, 21.2],
+    [4, 12],
+    [21.5, 9.75],
+    [48.3, 21.2],
   ),
   sheet(
     "avery-3474",
