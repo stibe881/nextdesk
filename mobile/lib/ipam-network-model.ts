@@ -106,6 +106,7 @@ const FINDINGS: Record<string, string> = {
   stale: "Lange nicht gesehen",
   utilization: "Subnetz fast voll",
   outside_prefix: "Ausserhalb des Subnetzes",
+  coverage: "Nicht in PRTG überwacht",
 };
 
 export function mobileAddressStatusLabel(status: string): string {

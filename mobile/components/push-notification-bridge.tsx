@@ -9,6 +9,7 @@ import {
   nextDesk,
 } from "@/lib/nextdesk-client";
 import { reregisterPushTokenIfEnabled } from "@/lib/push-notifications";
+import { type PushNavigationData, pushRoute } from "@/lib/push-navigation";
 import {
   REMINDER_ACTION_NEED_HELP,
   REMINDER_ACTION_RESOLVED,
@@ -53,16 +54,6 @@ if (Platform.OS === "ios") {
   });
 }
 
-type PushNavigationData = {
-  tenantId: string;
-  ticketId?: string;
-  orderId?: string;
-  assetId?: string;
-  incidentId?: string;
-  notificationId?: string;
-  kind?: string;
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -86,6 +77,9 @@ function parsePushNavigationData(value: unknown): PushNavigationData | null {
       : {}),
     ...(typeof nestedBody.incidentId === "string" && nestedBody.incidentId
       ? { incidentId: nestedBody.incidentId }
+      : {}),
+    ...(typeof nestedBody.ipamAddress === "string" && nestedBody.ipamAddress
+      ? { ipamAddress: nestedBody.ipamAddress }
       : {}),
     ...(typeof nestedBody.notificationId === "string" &&
     nestedBody.notificationId
@@ -145,31 +139,20 @@ export function PushNotificationBridge() {
         const tenant = await loadCurrentTenant();
         if (!active || tenant.id !== data.tenantId) return;
 
-        if (data.kind === "security_report" && data.ticketId) {
-          router.push(`/phishing/${data.ticketId}` as never);
-        } else if (data.ticketId) {
+        const route = pushRoute(data);
+        if (!route) return;
+        if (route.kind === "ticket") {
           const reminderAnswer = reminderAnswerFromNotificationAction(
             response.actionIdentifier,
           );
           router.push({
             pathname: "/ticket/[id]",
             params: reminderAnswer
-              ? { id: data.ticketId, reminderAnswer }
-              : { id: data.ticketId },
+              ? { id: route.ticketId, reminderAnswer }
+              : { id: route.ticketId },
           });
-        } else if (data.kind === "shop" && data.orderId) {
-          router.push({
-            pathname: "/shop/order/[id]",
-            params: { id: data.orderId },
-          } as never);
-        } else if (data.kind === "infrastructure" && data.assetId) {
-          router.push(`/infrastructure/${data.assetId}` as never);
-        } else if (data.kind === "incident" && data.incidentId) {
-          router.push(`/incidents/${data.incidentId}` as never);
-        } else if (data.kind === "summary") {
-          router.push("/tickets");
         } else {
-          return;
+          router.push(route.path as never);
         }
 
         if (data.notificationId) {

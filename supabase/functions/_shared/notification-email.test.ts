@@ -70,3 +70,46 @@ Deno.test("Phishing: eigene Texte für neue Meldung und «Melder hat geklickt»"
     throw new Error("Hinweis gehört nur in body/hint");
   }
 });
+
+Deno.test("IP address management mails are not incidents", () => {
+  const finding = notificationEmailText({
+    kind: "ipam.finding",
+    payload: {
+      number: "10.20.30.0/24",
+      title: "Subnetz zu 92 % belegt",
+      severity: "warning",
+    },
+    ticketNumber: null,
+    ticketSubject: null,
+  });
+  assertEquals(finding.title, "IP-Adressverwaltung");
+  assertStringIncludes(finding.message, "10.20.30.0/24: Subnetz zu 92 % belegt");
+  const legacy = notificationEmailText({
+    kind: "monitoring.ipam_finding",
+    payload: { number: "10.1.1.5", title: "IP-Konflikt", severity: "critical" },
+    ticketNumber: null,
+    ticketSubject: null,
+  });
+  assertEquals(legacy.title, "IP-Adressverwaltung: kritischer Fund");
+  assertStringIncludes(
+    notificationEmailText({
+      kind: "ipam.reservation_expiring",
+      payload: { number: "10.1.1.6", reservedUntil: "2026-11-14" },
+      ticketNumber: null,
+      ticketSubject: null,
+    }).message,
+    "14.11.2026",
+  );
+});
+
+Deno.test("security, shop and inventory reminders", () => {
+  const text = (kind: string, payload: Record<string, unknown> = {}) =>
+    notificationEmailText({ kind, payload, ticketNumber: null, ticketSubject: null });
+  assertEquals(text("security.case_overdue").title, "Sicherheitsfall überfällig");
+  assertStringIncludes(
+    text("security.campaign", { reporterCount: 5 }).message,
+    "5 Personen",
+  );
+  assertEquals(text("shop.order.loan_overdue").title, "Ausleihe überfällig");
+  assertEquals(text("inventory.count_due").title, "Inventur fällig");
+});

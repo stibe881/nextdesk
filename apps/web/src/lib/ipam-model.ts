@@ -125,7 +125,8 @@ export type FindingKind =
   | "dns_mismatch"
   | "stale"
   | "utilization"
-  | "outside_prefix";
+  | "outside_prefix"
+  | "coverage";
 
 export type IpamFinding = {
   id: string;
@@ -273,8 +274,9 @@ export const FINDING_KIND_LABEL: Record<FindingKind, string> = {
   foreign_mac: "Fremde MAC auf reservierter IP",
   dns_mismatch: "DNS stimmt nicht",
   stale: "Lange nicht gesehen",
-  utilization: "Subnetz-Auslastung",
+  utilization: "Subnetz oder DHCP-Bereich fast voll",
   outside_prefix: "Adresse ausserhalb der Subnetze",
+  coverage: "Wichtiges Gerät ohne PRTG-Überwachung",
 };
 
 /** Short group labels for the summary chips of the findings tab. */
@@ -283,7 +285,9 @@ export const FINDING_GROUPS: { label: string; kinds: FindingKind[] }[] = [
   { label: "Ghost-IPs", kinds: ["ghost"] },
   { label: "DNS-Abweichungen", kinds: ["dns_mismatch"] },
   { label: "Veraltet", kinds: ["stale"] },
-  { label: "Weitere", kinds: ["utilization", "outside_prefix"] },
+  { label: "Auslastung", kinds: ["utilization"] },
+  { label: "PRTG-Lücken", kinds: ["coverage"] },
+  { label: "Weitere", kinds: ["outside_prefix"] },
 ];
 
 export const EVENT_KIND_LABEL: Record<string, string> = {

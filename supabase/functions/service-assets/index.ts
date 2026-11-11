@@ -57,12 +57,31 @@ type ProblemServices = {
   serviceIds?: string[];
   serviceStatus?: ServiceStatusValue;
 };
+/** Optionale, in SQL gefilterte Seite der Assets (ohne = alle wie bisher). */
+export type AssetPage = {
+  offset: number;
+  limit: number;
+  query: string | null;
+  /** Dienst-ID, "unassigned" (ohne Dienst) oder null (alle). */
+  serviceId: string | null;
+  status: string | null;
+};
+export type CatalogSection = "services" | "assets" | "problems";
+const CATALOG_SECTIONS: readonly CatalogSection[] = [
+  "services",
+  "assets",
+  "problems",
+];
+const MAX_ASSET_PAGE_SIZE = 200;
 type Action =
   | {
     type: "listCatalog";
     tenantId: string;
     includeArchivedServices: boolean;
+    sections?: CatalogSection[];
+    assetPage?: AssetPage;
   }
+  | { type: "serviceInsights"; tenantId: string; serviceId: string }
   | { type: "listServiceResponsibleAgents"; tenantId: string }
   | { type: "ownPhoto"; tenantId: string }
   | { type: "listProblemOwners"; tenantId: string }
@@ -316,9 +335,77 @@ export function parseAction(value: unknown): Action | null {
   const tenantId = value.tenantId.toLowerCase();
   if (value.type === "listCatalog") {
     if (
-      !hasOnlyKeys(value, ["type", "tenantId", "includeArchivedServices"]) ||
+      !hasOnlyKeys(value, [
+        "type",
+        "tenantId",
+        "includeArchivedServices",
+        "sections",
+        "assetOffset",
+        "assetLimit",
+        "assetQuery",
+        "assetServiceId",
+        "assetStatus",
+      ]) ||
       (Object.hasOwn(value, "includeArchivedServices") &&
         typeof value.includeArchivedServices !== "boolean")
+    ) {
+      return null;
+    }
+    let sections: CatalogSection[] | undefined;
+    if (value.sections !== undefined) {
+      if (
+        !Array.isArray(value.sections) ||
+        value.sections.length === 0 ||
+        !value.sections.every((section) =>
+          (CATALOG_SECTIONS as readonly unknown[]).includes(section)
+        )
+      ) {
+        return null;
+      }
+      sections = [...new Set(value.sections as CatalogSection[])];
+    }
+    const paged = value.assetLimit !== undefined ||
+      value.assetOffset !== undefined;
+    let assetPage: AssetPage | undefined;
+    if (paged) {
+      const limit = value.assetLimit ?? 100;
+      const offset = value.assetOffset ?? 0;
+      const query = value.assetQuery === undefined || value.assetQuery === null
+        ? null
+        : text(0, 120)(value.assetQuery);
+      const status = value.assetStatus === undefined ||
+          value.assetStatus === null
+        ? null
+        : text(1, 64)(value.assetStatus);
+      const serviceId = value.assetServiceId === undefined ||
+          value.assetServiceId === null
+        ? null
+        : value.assetServiceId === "unassigned"
+        ? "unassigned"
+        : isUuid(value.assetServiceId)
+        ? value.assetServiceId.toLowerCase()
+        : undefined;
+      if (
+        typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 ||
+        limit > MAX_ASSET_PAGE_SIZE ||
+        typeof offset !== "number" || !Number.isInteger(offset) ||
+        offset < 0 || offset > MAX_CATALOG_ROWS ||
+        (query !== null && typeof query !== "string") ||
+        (status !== null && typeof status !== "string") ||
+        serviceId === undefined
+      ) {
+        return null;
+      }
+      assetPage = {
+        limit,
+        offset,
+        query: typeof query === "string" && query.trim() ? query.trim() : null,
+        serviceId,
+        status: typeof status === "string" ? status : null,
+      };
+    } else if (
+      value.assetQuery !== undefined || value.assetServiceId !== undefined ||
+      value.assetStatus !== undefined
     ) {
       return null;
     }
@@ -326,6 +413,21 @@ export function parseAction(value: unknown): Action | null {
       type: value.type,
       tenantId,
       includeArchivedServices: value.includeArchivedServices === true,
+      ...(sections ? { sections } : {}),
+      ...(assetPage ? { assetPage } : {}),
+    };
+  }
+  if (value.type === "serviceInsights") {
+    if (
+      !hasOnlyKeys(value, ["type", "tenantId", "serviceId"]) ||
+      !isUuid(value.serviceId)
+    ) {
+      return null;
+    }
+    return {
+      type: value.type,
+      tenantId,
+      serviceId: value.serviceId.toLowerCase(),
     };
   }
   if (value.type === "listProblemOwners") {
@@ -720,6 +822,167 @@ async function readCatalog(
     }
     if (data.length < PAGE_SIZE) return rows;
   }
+}
+
+/** Suchbegriff ohne Zeichen, die PostgREST-Filter verändern würden. */
+export function assetSearchTerm(query: string): string {
+  return query.replace(/[,()*%\\"]/g, " ").replace(/\s+/g, " ").trim()
+    .slice(0, 120);
+}
+
+// Eine Seite aktiver Assets, gefiltert in SQL (mit der Sitzung der Person,
+// damit die Abteilungs-RLS greift). asset_services ist die Quelle der
+// Dienst-Zuordnung (Policy aus 0312 erlaubt das Lesen für lesbare Assets).
+async function readAssetPage(
+  client: CallerClient,
+  tenantId: string,
+  page: AssetPage,
+): Promise<{ rows: Row[]; total: number }> {
+  const select = page.serviceId && page.serviceId !== "unassigned"
+    ? `${ASSET_SELECT}, asset_services!inner(service_id)`
+    : ASSET_SELECT;
+  let query = client
+    .from("assets")
+    .select(select, { count: "exact" })
+    .eq("tenant_id", tenantId)
+    .eq("active", true);
+  if (page.serviceId === "unassigned") {
+    query = query.is("service_id", null);
+  } else if (page.serviceId) {
+    query = query.eq("asset_services.service_id", page.serviceId);
+  }
+  if (page.status) query = query.eq("status", page.status);
+  const term = page.query ? assetSearchTerm(page.query) : "";
+  if (term) {
+    const pattern = `%${term}%`;
+    query = query.or(
+      [
+        "name",
+        "asset_tag",
+        "inventory_number",
+        "serial_number",
+        "manufacturer",
+        "model",
+        "operating_system",
+        "kind",
+      ].map((column) => `${column}.ilike.${pattern}`).join(","),
+    );
+  }
+  const { data, error, count } = await query
+    .order("name")
+    .order("id")
+    .range(page.offset, page.offset + page.limit - 1)
+    .overrideTypes<Row[], { merge: false }>();
+  if (error) databaseFailure(error);
+  return {
+    rows: (data ?? []).map((row) => {
+      const { asset_services: _links, ...asset } = row;
+      return asset;
+    }),
+    total: typeof count === "number" ? count : (data ?? []).length,
+  };
+}
+
+/** Dienstansicht: Verfügbarkeit, Netzwerk-Abhängigkeiten, Störungen. */
+async function serviceInsights(
+  request: Request,
+  client: CallerClient,
+  admin: AdminClient,
+  action: Extract<Action, { type: "serviceInsights" }>,
+): Promise<Response> {
+  // Lesbarkeit des Dienstes mit der Sitzung der Person (Abteilungs-RLS).
+  const visible = await client
+    .from("services")
+    .select("id")
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.serviceId)
+    .maybeSingle();
+  if (visible.error) databaseFailure(visible.error);
+  if (!visible.data) {
+    throw new HttpError(404, "resource_not_found", "Der Dienst ist nicht verfügbar.");
+  }
+  const now = Date.now();
+  const [dependencies, days30, days90] = await Promise.all([
+    admin.rpc("service_network_dependencies", {
+      p_tenant_id: action.tenantId,
+      p_service_id: action.serviceId,
+    }),
+    ...[30, 90].map((days) =>
+      admin.rpc("service_status_availability", {
+        p_tenant_id: action.tenantId,
+        p_service_ids: [action.serviceId],
+        p_since: new Date(now - days * 86_400_000).toISOString(),
+      })
+    ),
+  ]);
+  if (dependencies.error) databaseFailure(dependencies.error);
+  const first = (value: { data: unknown }) =>
+    Array.isArray(value.data) && isRecord(value.data[0])
+      ? value.data[0] as Row
+      : null;
+  const thirty = days30.error ? null : first(days30);
+  const ninety = days90.error ? null : first(days90);
+  const number = (value: unknown) => {
+    const parsed = typeof value === "string" ? Number(value) : value;
+    return typeof parsed === "number" && Number.isFinite(parsed)
+      ? Math.round(parsed * 1000) / 1000
+      : null;
+  };
+  const observed90 = number(ninety?.observed_seconds);
+  const maintenance90 = number(ninety?.maintenance_seconds);
+  return json(request, {
+    data: {
+      availability: {
+        days30: number(thirty?.availability_percent),
+        days90: number(ninety?.availability_percent),
+        withoutMaintenance90: number(
+          ninety?.availability_without_maintenance_percent,
+        ),
+        maintenance90Percent: observed90 && maintenance90 !== null
+          ? Math.round((100_000 * maintenance90) / observed90) / 1000
+          : null,
+      },
+      dependencies: isRecord(dependencies.data)
+        ? dependencies.data
+        : { devices: [], subnets: [], incidents: [] },
+    },
+  });
+}
+
+/**
+ * Dienst-Zuordnung eines Assets über asset_services (Quelle). Der gewählte
+ * Dienst wird zum ersten Dienst, weitere Dienste bleiben erhalten; null
+ * entfernt nur den bisherigen ersten Dienst.
+ */
+async function applyAssetPrimaryService(
+  admin: AdminClient,
+  tenantId: string,
+  assetId: string,
+  serviceId: string | null,
+): Promise<void> {
+  const current = await admin
+    .from("asset_services")
+    .select("service_id")
+    .eq("tenant_id", tenantId)
+    .eq("asset_id", assetId)
+    .order("position")
+    .order("created_at")
+    .order("service_id")
+    .limit(100);
+  if (current.error) databaseFailure(current.error);
+  const ids = ((current.data ?? []) as Row[]).flatMap((row) =>
+    isUuid(row.service_id) ? [row.service_id.toLowerCase()] : []
+  );
+  const others = serviceId === null
+    ? ids.slice(1)
+    : ids.slice(1).filter((id) => id !== serviceId);
+  const next = serviceId === null ? others : [serviceId, ...others];
+  const { error } = await admin.rpc("set_asset_services", {
+    p_tenant_id: tenantId,
+    p_asset_id: assetId,
+    p_service_ids: next,
+  });
+  if (error) databaseFailure(error);
 }
 
 async function readIntunePrimaryPersonNames(
@@ -1313,6 +1576,17 @@ async function manageResource(
     "asset_manage_required",
   );
   const resource = RESOURCES[action.type];
+  // Dienst eines Assets: Quelle ist asset_services (assets.service_id folgt
+  // per Trigger als erster Dienst).
+  let assetServiceId: string | null | undefined;
+  if (
+    action.type === "manageAsset" &&
+    Object.hasOwn(action.values, "service_id")
+  ) {
+    const { service_id: requested, ...rest } = action.values;
+    assetServiceId = typeof requested === "string" ? requested : null;
+    action = { ...action, values: rest };
+  }
   const departmentValues: { department_id?: string | null } = {};
   if (
     action.operation === "create" ||
@@ -1375,6 +1649,19 @@ async function manageResource(
       return json(
         request,
         { data: { problem: { ...data, service_ids: serviceIds } } },
+        201,
+      );
+    }
+    if (assetServiceId !== undefined && isRecord(data) && isUuid(data.id)) {
+      await applyAssetPrimaryService(
+        admin,
+        action.tenantId,
+        data.id,
+        assetServiceId,
+      );
+      return json(
+        request,
+        { data: { [resource.key]: { ...data, service_id: assetServiceId } } },
         201,
       );
     }
@@ -1444,6 +1731,23 @@ async function manageResource(
     );
     return json(request, {
       data: { problem: { ...data, service_ids: serviceIds } },
+    });
+  }
+  if (assetServiceId !== undefined && isRecord(data)) {
+    await applyAssetPrimaryService(
+      admin,
+      action.tenantId,
+      action.id!,
+      assetServiceId,
+    );
+    const refreshed = await client
+      .from("assets")
+      .select(ASSET_SELECT)
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.id!)
+      .maybeSingle();
+    return json(request, {
+      data: { [resource.key]: refreshed.data ?? data },
     });
   }
   return json(request, { data: { [resource.key]: data } });
@@ -1604,19 +1908,41 @@ const handler = withSupabase(
           "Das Asset-Management ist für diesen Mandanten deaktiviert.",
         );
       }
+      if (action.type === "serviceInsights") {
+        return await serviceInsights(
+          request,
+          client,
+          context.supabaseAdmin,
+          action,
+        );
+      }
       if (action.type === "listCatalog") {
+        const wants = (section: CatalogSection) =>
+          !action.sections || action.sections.includes(section);
+        const assetPage = action.assetPage;
         const [
           services,
-          assets,
+          assetResult,
           problems,
           serviceCategories,
           assetManage,
           scope,
         ] = await Promise.all([
-          readCatalog(client, action.tenantId, RESOURCES.manageService),
-          readCatalog(client, action.tenantId, RESOURCES.manageAsset),
-          readCatalog(client, action.tenantId, RESOURCES.manageProblem),
-          readCatalog(client, action.tenantId, SERVICE_CATEGORY_RESOURCE),
+          wants("services")
+            ? readCatalog(client, action.tenantId, RESOURCES.manageService)
+            : Promise.resolve([] as Row[]),
+          !wants("assets")
+            ? Promise.resolve({ rows: [] as Row[], total: 0 })
+            : assetPage
+            ? readAssetPage(client, action.tenantId, assetPage)
+            : readCatalog(client, action.tenantId, RESOURCES.manageAsset)
+              .then((rows) => ({ rows, total: rows.length })),
+          wants("problems")
+            ? readCatalog(client, action.tenantId, RESOURCES.manageProblem)
+            : Promise.resolve([] as Row[]),
+          wants("services")
+            ? readCatalog(client, action.tenantId, SERVICE_CATEGORY_RESOURCE)
+            : Promise.resolve([] as Row[]),
           client.rpc("has_tenant_permission", {
             p_tenant_id: action.tenantId,
             p_permission_code: "asset.manage",
@@ -1630,8 +1956,9 @@ const handler = withSupabase(
             "Die Berechtigung konnte nicht geprüft werden.",
           );
         }
+        const assets = assetResult.rows;
         const archivedServices =
-          action.includeArchivedServices && assetManage.data
+          action.includeArchivedServices && assetManage.data && wants("services")
             ? await readCatalog(
               client,
               action.tenantId,
@@ -1657,6 +1984,10 @@ const handler = withSupabase(
             canManageServices: assetManage.data,
             serviceCategories,
             assets: resolvedAssets,
+            assetTotal: assetResult.total,
+            ...(assetPage
+              ? { assetPage: { offset: assetPage.offset, limit: assetPage.limit } }
+              : {}),
             problems: await withProblemServiceIds(
               context.supabaseAdmin,
               action.tenantId,

@@ -344,9 +344,19 @@ Die Basisrollen _Requester_ (alle angemeldeten Personen) und _Support agent_
 Unter **Datenschutz** («Aufbewahrung & Datenschutz») legen Sie Fristen in
 Tagen fest für _Geschlossene Tickets_, _Private Anhänge_ und das
 _Audit-Protokoll_. Die **Rechtliche Aufbewahrungssperre** verhindert jede
-Bereinigung. Die Werte sind Richtlinien – nextDesk löscht nie automatisch.
-Ausnahme: Gelöschte Tickets liegen 90 Tage im Papierkorb und werden danach
-endgültig entfernt; die Aufbewahrungssperre hält auch das an.
+Bereinigung. Diese Werte sind Richtlinien – Tickets und Anhänge löscht
+nextDesk nie automatisch. Ausnahmen: Gelöschte Tickets liegen 90 Tage im
+Papierkorb und werden danach endgültig entfernt, und die **Betriebsdaten**
+werden täglich bereinigt. Die Aufbewahrungssperre hält beides an.
+
+Unter **Betriebsdaten (automatische Bereinigung)** legen Sie die Fristen in
+Monaten fest (1–120):
+
+| Bereich             | Standard  | Was bereinigt wird                                                                                       |
+| ------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
+| Monitoring          | 24 Monate | gelöste PRTG-Meldungen, Verlauf gelöster und geschlossener Störungen, veraltete Sensorzustände           |
+| IP-Adressverwaltung | 24 Monate | Beobachtungen der Discovery, Adressverlauf, Änderungsprotokoll; zugestellte Webhooks nach 30 Tagen       |
+| Phishing-Meldungen  | 12 Monate | meldende Person und Kopfzeilen abgeschlossener Fälle werden anonymisiert; Absender, Links und IPs bleiben |
 
 ## Protokoll
 
@@ -364,17 +374,56 @@ Das Badge in der Navigation und die Seiten aktualisieren sich selbst (intern
 alle 30 Sekunden, öffentlich jede Minute); ein manuelles Neuladen ist nicht
 nötig.
 
+### Störungsmeldungen
+
+Unter **Störungsmeldungen** erfassen Sie mit **Neue Meldung** eine Meldung mit
+**Titel**, **Zustand** (Wird untersucht, Ursache erkannt, Wird beobachtet,
+Behoben), **Text** und den **betroffenen Diensten**. Mit **Update erfassen**
+ergänzen Sie den Verlauf; jedes Update ändert Zustand und Text, der bisherige
+Verlauf bleibt sichtbar. Ist **Auf der öffentlichen Statusseite zeigen und
+Abonnenten informieren** aktiv, erscheint die Meldung auf der öffentlichen
+Statusseite (aktuelle Meldungen und die der letzten 14 Tage mit Verlauf).
+Alle Meldungen erscheinen ausserdem als Banner im Portal und beim Erfassen
+eines Tickets. Aus einer Monitoring-Störung veröffentlichen Agenten die
+Meldung direkt mit **Öffentliche Meldung**; sie ist dann mit der Störung
+verknüpft. Meldungen erfassen dürfen Personen, die Störungen bearbeiten, oder
+mit der Berechtigung, Assets zu verwalten.
+
+### Wartungsfenster automatisch
+
+Zu Beginn eines Wartungsfensters setzt nextDesk die verknüpften Dienste
+automatisch auf **Wartung** (Prüfung alle 5 Minuten) und merkt sich den
+vorherigen Status. Am Ende oder wenn Sie das Fenster abschliessen oder absagen,
+wird der Status zurückgesetzt – aber nur, wenn der Dienst noch auf Wartung
+steht und kein anderes laufendes Fenster ihn betrifft. Während der Wartung
+unterdrückt die Monitoring-Anbindung Alarme für diese Dienste (sofern unter
+**Monitoring** eingeschaltet). Sind dem
+Fenster Geräte zugeordnet (z. B. aus der Infrastruktur geplant), entsteht nach
+dem Ende ein Eintrag im **Wartungsprotokoll** der Geräte.
+
+### Verfügbarkeit
+
+Mit **Verfügbarkeit in Prozent zeigen** erscheint auf der öffentlichen
+Statusseite pro Dienst die Verfügbarkeit der letzten 90 Tage (z. B. «99.8 % in
+90 Tagen»). Die Berechnung stützt sich auf den Statusverlauf: «In Betrieb» und
+«Wartung» gelten als verfügbar. Intern sehen Sie die Werte immer, ebenso im
+**Servicebericht** (Abschnitt Verfügbarkeit) und in den **Details** eines
+Dienstes.
+
 ### Statusmeldungen per E-Mail
 
 Auf der öffentlichen Statusseite können sich Besucherinnen und Besucher unter
 **Per E-Mail benachrichtigen** mit ihrer Adresse anmelden. Sie erhalten zuerst
 eine Mail mit dem Knopf **Anmeldung bestätigen** (Schutz davor, dass fremde
 Adressen eingetragen werden). Danach bekommen sie bei jeder Statusänderung
-eines öffentlich sichtbaren Dienstes eine E-Mail mit altem und neuem Status.
-Jede Mail enthält einen Link **Abmelden**.
+eines öffentlich sichtbaren Dienstes eine E-Mail mit altem und neuem Status,
+bei jeder öffentlichen Störungsmeldung und jedem Update eine E-Mail sowie bei
+Beginn und Ende eines öffentlichen Wartungsfensters je eine E-Mail (statt
+einzelner Mails pro Dienst). Jede Mail enthält einen Link **Abmelden**.
 
 Voraussetzung ist ein aktives Exchange-Postfach (Einstellungen → E-Mail); die
-Mails gehen über dieses Postfach.
+Mails gehen über dieses Postfach. Text und Betreff passen Sie unter
+**E-Mail-Vorlagen → Statusseite: Statusänderung** an.
 
 ## Eigenes Profil und Handbücher
 

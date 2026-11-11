@@ -1455,6 +1455,33 @@ function baseNotificationPresentation(
         Icon: ArrowUp,
         title: "Ticket eskaliert",
       };
+    case "security.case_clicked":
+      return {
+        description: `Eine meldende Person hat in ${ticketLabel} geklickt oder Daten eingegeben. Der Fall hat jetzt Priorität hoch.`,
+        Icon: AlertTriangle,
+        title: "Phishing: geklickt",
+      };
+    case "security.case_overdue": {
+      const supervisor =
+        notificationPayloadText(notification, "stage", 20) === "supervisor";
+      return {
+        description: supervisor
+          ? `Das Urteil zu ${ticketLabel} ist seit über 24 Stunden überfällig.`
+          : `Das Urteil zu ${ticketLabel} ist überfällig.`,
+        Icon: AlertTriangle,
+        title: supervisor
+          ? "Sicherheitsfall eskaliert"
+          : "Sicherheitsfall überfällig",
+      };
+    }
+    case "security.campaign": {
+      const reporters = notificationPayloadNumber(notification, "reporters");
+      return {
+        description: `${reporters ?? "Mehrere"} Personen haben ähnliche Mails gemeldet (${ticketLabel}).`,
+        Icon: AlertTriangle,
+        title: "Phishing-Kampagne",
+      };
+    }
     case "ticket.security_report": {
       const risk = notificationPayloadText(notification, "riskLabel", 20);
       return {
@@ -1463,6 +1490,30 @@ function baseNotificationPresentation(
         title: "Phishing-Meldung",
       };
     }
+    case "ipam.agent_offline": {
+      const agent =
+        notificationPayloadText(notification, "agentName", 120) ??
+        "Ein Netzwerkagent";
+      return {
+        description: `${agent} hat sich seit über zwei Stunden nicht gemeldet.`,
+        Icon: AlertTriangle,
+        title: "Netzwerkagent offline",
+      };
+    }
+    case "ipam.reservation_expiring": {
+      const address = notificationPayloadText(notification, "address", 60);
+      const until = notificationPayloadText(notification, "reservedUntil", 10);
+      const day =
+        until && /^\d{4}-\d{2}-\d{2}$/.test(until)
+          ? `${until.slice(8, 10)}.${until.slice(5, 7)}.${until.slice(0, 4)}`
+          : null;
+      return {
+        description: `${address ?? "Eine IP-Adresse"}: Reservierung endet${day ? ` am ${day}` : " bald"}.`,
+        Icon: AlertTriangle,
+        title: "Reservierung läuft ab",
+      };
+    }
+    case "ipam.finding":
     case "monitoring.ipam_finding": {
       const address = notificationPayloadText(notification, "number", 60);
       const title = notificationPayloadText(notification, "title", 200);
@@ -3092,6 +3143,8 @@ function AuthenticatedApp() {
   >(null);
   const [incidentFocusId, setIncidentFocusId] = useState<string | null>(null);
   const clearIncidentFocus = useCallback(() => setIncidentFocusId(null), []);
+  const [securityFocusId, setSecurityFocusId] = useState<string | null>(null);
+  const clearSecurityFocus = useCallback(() => setSecurityFocusId(null), []);
   const [navigationAttentionTick, setNavigationAttentionTick] = useState(0);
   const [canManageContracts, setCanManageContracts] = useState(false);
   const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
@@ -4367,14 +4420,25 @@ function AuthenticatedApp() {
       setNotificationActionPending(null);
     }
 
-    if (ticketId) {
+    if (
+      ticketId &&
+      (notification.kind.startsWith("security.") ||
+        notification.kind === "ticket.security_report")
+    ) {
+      setSecurityFocusId(ticketId);
+      setSection("Sicherheitsfälle");
+      setNotificationPanelOpen(false);
+    } else if (ticketId) {
       setSection("Tickets");
       setSelectedTicketId(ticketId);
       setNotificationPanelOpen(false);
     } else if (notification.kind.startsWith("shop.order.")) {
       setSection("Shop");
       setNotificationPanelOpen(false);
-    } else if (notification.kind === "monitoring.ipam_finding") {
+    } else if (
+      notification.kind === "monitoring.ipam_finding" ||
+      notification.kind.startsWith("ipam.")
+    ) {
       setSection("IP-Adressen");
       setNotificationPanelOpen(false);
     } else if (notification.kind.startsWith("monitoring.")) {
@@ -6060,6 +6124,11 @@ function AuthenticatedApp() {
                     return;
                   }
                   setGlobalSearchTarget(result);
+                  if (result.resultType === "incident") {
+                    setIncidentFocusId(result.entityId);
+                  } else if (result.resultType === "security_case") {
+                    setSecurityFocusId(result.entityId);
+                  }
                   if (result.resultType === "ticket" && result.ticketId) {
                     setSection("Tickets");
                     setSelectedTicketId(result.ticketId);
@@ -6348,7 +6417,12 @@ function AuthenticatedApp() {
           activeTenant &&
           canWorkTickets &&
           teamModuleAccess.securityCases ? (
-          <SecurityCases key={activeTenant.id} tenantId={activeTenant.id} />
+          <SecurityCases
+            focusId={securityFocusId}
+            key={activeTenant.id}
+            onFocusConsumed={clearSecurityFocus}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Störungen" &&
           activeTenant &&
           canWorkTickets &&
@@ -6357,6 +6431,7 @@ function AuthenticatedApp() {
             focusId={incidentFocusId}
             key={activeTenant.id}
             onFocusConsumed={clearIncidentFocus}
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             tenantId={activeTenant.id}
           />
         ) : section === "Infrastruktur" &&
@@ -7051,6 +7126,14 @@ function AuthenticatedApp() {
                         <>
                           {activeTenant && canWorkTickets && (
                             <MyPrioritiesCard
+                              onOpenIncident={(id) => {
+                                setIncidentFocusId(id);
+                                setSection("Störungen");
+                              }}
+                              onOpenSecurityCase={(id) => {
+                                setSecurityFocusId(id);
+                                setSection("Sicherheitsfälle");
+                              }}
                               onOpenTicket={(ticketId) => {
                                 setSection("Tickets");
                                 setSelectedTicketId(ticketId);
@@ -7576,6 +7659,11 @@ function AuthenticatedApp() {
                 : undefined
             }
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
+            onOpenIncident={(incidentId) => {
+              setSelectedTicketId(null);
+              setIncidentFocusId(incidentId);
+              setSection("Störungen");
+            }}
             onOpenPerson={
               canWorkTickets ? (person) => setPersonOverview(person) : undefined
             }
@@ -7603,6 +7691,16 @@ function AuthenticatedApp() {
                 }
               : undefined
           }
+          onOpenIncident={(id) => {
+            setPersonOverview(null);
+            setIncidentFocusId(id);
+            setSection("Störungen");
+          }}
+          onOpenSecurityCase={(id) => {
+            setPersonOverview(null);
+            setSecurityFocusId(id);
+            setSection("Sicherheitsfälle");
+          }}
           onOpenTicket={(ticketId) => {
             setPersonOverview(null);
             setSection("Tickets");

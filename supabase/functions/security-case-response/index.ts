@@ -88,7 +88,7 @@ const handler = withSupabase(
             author_id: author,
             visibility: "internal",
             body: clicked
-              ? `⚠ ${question.email} hat angegeben, einen Link oder Anhang geöffnet oder Daten eingegeben zu haben. Bitte Passwort zurücksetzen und Anmeldungen prüfen.`
+              ? `⚠ ${question.email} hat angegeben, einen Link oder Anhang geöffnet oder Daten eingegeben zu haben. Massnahmen im Sicherheitsfall: Sitzungen widerrufen, Passwort-Reset erzwingen, Gerät synchronisieren und scannen; Anmeldungen prüfen.`
               : `${question.email} hat angegeben, nichts geöffnet oder eingegeben zu haben.`,
           });
         }
@@ -99,16 +99,12 @@ const handler = withSupabase(
           payload: { answer: body.answer },
         });
         if (clicked) {
-          // Someone clicked: the security team is alerted again.
-          await admin.rpc("phishing_report_notify", {
+          // Someone clicked: the case gets priority «high» and the security
+          // team is alerted at once (security.case_clicked, always delivered
+          // to the phishing team).
+          await admin.rpc("security_case_mark_clicked", {
             p_tenant_id: question.tenant_id,
             p_ticket_id: question.ticket_id,
-            p_payload: {
-              event: "clicked",
-              reporterEmail: question.email,
-              riskLevel: "high",
-              riskLabel: "Melder hat geklickt",
-            },
           }).then(() => undefined, () => undefined);
         }
       }

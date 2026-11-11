@@ -191,7 +191,46 @@ export default function PrioritiesScreen() {
           </View>
         ) : null}
 
-        {tickets.length === 0 && !error ? (
+        {(list?.operations ?? []).length > 0 ? (
+          <View style={styles.list}>
+            {(list?.operations ?? []).map((item) => (
+              <Pressable
+                accessibilityRole="button"
+                key={`${item.kind}:${item.id}`}
+                onPress={() =>
+                  router.push(
+                    (item.kind === "incident"
+                      ? `/incidents/${item.id}`
+                      : `/phishing/${item.id}`) as never,
+                  )
+                }
+                style={[styles.card, item.urgent ? styles.cardUrgent : null]}
+              >
+                <Ionicons
+                  color={item.urgent ? colors.error : colors.primaryText}
+                  name={
+                    item.kind === "incident"
+                      ? "pulse-outline"
+                      : "shield-outline"
+                  }
+                  size={18}
+                />
+                <View style={styles.cardCopy}>
+                  <Text numberOfLines={1} style={styles.cardTitle}>
+                    {item.title}
+                  </Text>
+                  <Text numberOfLines={2} style={styles.cardMeta}>
+                    {item.number} ·{" "}
+                    {item.kind === "incident" ? "Störung" : "Sicherheitsfall"}{" "}
+                    · {item.reason}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
+        {tickets.length === 0 && (list?.operations ?? []).length === 0 && !error ? (
           <View style={styles.emptyCard}>
             <Ionicons
               color={colors.primaryText}
@@ -299,6 +338,7 @@ const useStyles = makeThemedStyles((c) => ({
     padding: 12,
   },
   cardCopy: { flex: 1, gap: 3 },
+  cardUrgent: { backgroundColor: c.errorSoft, borderColor: c.error },
   cardMeta: { color: c.muted, fontSize: 12, lineHeight: 16 },
   cardTitle: { color: c.foreground, fontSize: 15, fontWeight: "800" },
   centered: { alignItems: "center", flex: 1, justifyContent: "center" },

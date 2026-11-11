@@ -52,6 +52,7 @@ import {
 } from "react";
 
 import { supabase } from "./lib/supabase";
+import { useVisibleInterval } from "./lib/use-visible-interval";
 import "./infrastructure.css";
 
 type Category =
@@ -433,19 +434,20 @@ export function Infrastructure({
     void load();
   }, [load]);
 
-  // Live PRTG state: refresh quietly every minute while the map is shown.
-  useEffect(() => {
-    if (layout !== "map") return;
-    const timer = window.setInterval(() => {
+  // Live PRTG state: refresh quietly every minute while the map is shown
+  // and the tab is visible.
+  useVisibleInterval(
+    () => {
       void call<{ monitoring?: Record<string, MonitoringEntry[]> }>({
         type: "list",
         tenantId,
       })
         .then((data) => setMonitoring(data.monitoring ?? {}))
         .catch(() => undefined);
-    }, 60_000);
-    return () => window.clearInterval(timer);
-  }, [layout, tenantId]);
+    },
+    60_000,
+    layout === "map",
+  );
 
   const visible = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("de-CH");

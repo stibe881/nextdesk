@@ -18,7 +18,7 @@ import {
   WEBHOOK_EVENTS,
   type WebhookEvent,
 } from "../_shared/ipam-integrations.ts";
-import { detectNetworkCandidates, networkLookupTerms } from "./detect.ts";
+import { detectNetworkCandidates, networkLookupTerms } from "../_shared/ipam-ticket-detect.ts";
 import {
   type AssistantIntent,
   answerText,
@@ -38,6 +38,7 @@ import {
  *  - ticketLookup: IPs, MACs und Hostnamen im Ticket mit dem IPAM abgleichen
  *    (nur wenn die Person das Ticket lesen darf)
  *  - assetNetwork: Netzwerkdaten eines Assets (App: QR-Scan)
+ *  - addressNetwork: Netzwerkdaten einer IP-Adresse (App: Mitteilung)
  *  - ask / freeAddress / switchPort / hostLookup / fullPrefixes: Abfragen für
  *    den KI-Assistenten (MCP-Connector); reserveAddress nur mit Bestätigung
  *  - intuneSync / prtgSync / coverage / syncRuns: Abgleich mit Intune und PRTG
@@ -59,6 +60,7 @@ const FEATURE = "ipam.management";
 const READ_ACTIONS = new Set([
   "ticketLookup",
   "assetNetwork",
+  "addressNetwork",
   "ask",
   "freeAddress",
   "switchPort",
@@ -238,11 +240,132 @@ async function ticketLookup(
   const documented = new Set(
     result.addresses.map((entry) => String(entry.address)),
   );
+  const [addresses, linked] = await Promise.all([
+    withServices(admin, tenantId, result.addresses),
+    ticketLinks(admin, tenantId, ticketId),
+  ]);
   return {
     candidates,
-    addresses: result.addresses,
+    addresses,
     prefixes: result.prefixes.filter(
       (entry) => !documented.has(String(entry.matched)),
+    ),
+    linkedAssetIds: linked.assetIds,
+    linkedServiceIds: linked.serviceIds,
+  };
+}
+
+/**
+ * Dienste je Adresse: Dienst der Adresse und Dienste des Geräts
+ * (asset_services), damit die Netzwerk-Box sie ans Ticket hängen kann.
+ */
+async function withServices(
+  admin: Admin,
+  tenantId: string,
+  addresses: Row[],
+): Promise<Row[]> {
+  if (!addresses.length) return addresses;
+  const addressIds = addresses.map((entry) => String(entry.id)).filter(isUuid);
+  const assetIds = addresses
+    .map((entry) =>
+      typeof entry.asset === "object" && entry.asset !== null
+        ? String((entry.asset as Row).id)
+        : "",
+    )
+    .filter(isUuid);
+  const [own, viaAsset] = await Promise.all([
+    addressIds.length
+      ? admin
+          .from("ipam_addresses")
+          .select("id, service_id")
+          .eq("tenant_id", tenantId)
+          .in("id", addressIds)
+          .not("service_id", "is", null)
+      : { data: [], error: null },
+    assetIds.length
+      ? admin
+          .from("asset_services")
+          .select("asset_id, service_id")
+          .eq("tenant_id", tenantId)
+          .in("asset_id", assetIds)
+      : { data: [], error: null },
+  ]);
+  if (own.error || viaAsset.error) throw dbFailure();
+  const serviceIds = [
+    ...new Set(
+      [
+        ...((own.data ?? []) as Row[]).map((row) => String(row.service_id)),
+        ...((viaAsset.data ?? []) as Row[]).map((row) =>
+          String(row.service_id),
+        ),
+      ].filter(isUuid),
+    ),
+  ];
+  if (!serviceIds.length) {
+    return addresses.map((entry) => ({ ...entry, services: [] }));
+  }
+  const services = await admin
+    .from("services")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("active", true)
+    .in("id", serviceIds);
+  if (services.error) throw dbFailure();
+  const names = new Map(
+    ((services.data ?? []) as Row[]).map((row) => [
+      String(row.id),
+      String(row.name),
+    ]),
+  );
+  const byAddress = new Map<string, string[]>();
+  for (const row of (own.data ?? []) as Row[]) {
+    byAddress.set(String(row.id), [String(row.service_id)]);
+  }
+  const byAsset = new Map<string, string[]>();
+  for (const row of (viaAsset.data ?? []) as Row[]) {
+    const list = byAsset.get(String(row.asset_id)) ?? [];
+    list.push(String(row.service_id));
+    byAsset.set(String(row.asset_id), list);
+  }
+  return addresses.map((entry) => {
+    const assetId =
+      typeof entry.asset === "object" && entry.asset !== null
+        ? String((entry.asset as Row).id)
+        : "";
+    const ids = [
+      ...new Set([
+        ...(byAddress.get(String(entry.id)) ?? []),
+        ...(byAsset.get(assetId) ?? []),
+      ]),
+    ].filter((id) => names.has(id));
+    return {
+      ...entry,
+      services: ids.map((id) => ({ id, name: names.get(id) })),
+    };
+  });
+}
+
+/** Geräte und Dienste, die schon am Ticket hängen. */
+async function ticketLinks(admin: Admin, tenantId: string, ticketId: string) {
+  const [assets, services] = await Promise.all([
+    admin
+      .from("ticket_assets")
+      .select("asset_id")
+      .eq("tenant_id", tenantId)
+      .eq("ticket_id", ticketId)
+      .limit(200),
+    admin
+      .from("ticket_services")
+      .select("service_id")
+      .eq("tenant_id", tenantId)
+      .eq("ticket_id", ticketId)
+      .limit(200),
+  ]);
+  if (assets.error || services.error) throw dbFailure();
+  return {
+    assetIds: ((assets.data ?? []) as Row[]).map((row) => String(row.asset_id)),
+    serviceIds: ((services.data ?? []) as Row[]).map((row) =>
+      String(row.service_id),
     ),
   };
 }
@@ -844,6 +967,15 @@ const handler = withSupabase(
             );
           data = await networkLookup(admin, tenantId, scope, {
             assetId: asset.data.id,
+          });
+          break;
+        }
+        case "addressNetwork": {
+          // App: Absprung aus einer Mitteilung auf eine IP-Adresse.
+          const address = text(body.address, 2, 45);
+          if (!address || !IPV4_OR_V6.test(address)) throw invalid();
+          data = await networkLookup(admin, tenantId, scope, {
+            ips: [address],
           });
           break;
         }

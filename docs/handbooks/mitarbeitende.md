@@ -54,8 +54,10 @@ Oben rechts finden Sie:
   leeren Sie die Liste
 
 Gibt es eine aktive Störung (z. B. «E-Mail ausgefallen»), erscheint oben ein
-Hinweis bzw. im Menü der Eintrag **Aktive Störung**. Dann müssen Sie dafür kein
-eigenes Ticket erfassen.
+Hinweis bzw. im Menü der Eintrag **Aktive Störung**, bei Bedarf mit den
+**betroffenen Diensten**. Dann müssen Sie dafür kein eigenes Ticket erfassen.
+Haben Sie den Systemstatus per E-Mail abonniert, erhalten Sie zu jeder
+öffentlichen Störungsmeldung und jedem Update eine E-Mail.
 
 ![Startseite für Mitarbeitende](images/ma-start.jpg)
 
@@ -199,6 +201,18 @@ sich an den Support.
 
 Unter **Meine Bestellungen** sehen Sie den Stand. Als vorgesetzte Person
 entscheiden Sie im Register **Freigaben** über Bestellungen Ihres Teams.
+
+nextDesk erinnert automatisch (Benachrichtigung «Shop»):
+
+- **Ausleihe endet bald:** zwei Tage vor dem Rückgabedatum.
+- **Ausleihe überfällig:** am Tag nach dem Rückgabedatum; drei Tage später
+  auch Ihre vorgesetzte Person.
+- **Freigabe offen:** Wartet eine Bestellung zwei Arbeitstage auf Ihre
+  Freigabe, erhalten Sie eine Erinnerung; nach fünf Arbeitstagen geht sie an
+  Ihre Stellvertretung (sonst an Ihre vorgesetzte Person).
+
+Erhalten Sie ein Gerät aus dem Shop, ist es danach unter **Mein Bereich →
+Geräte** Ihnen zugewiesen.
 
 ![Shop mit Katalog, Suche und Warenkorb](images/ma-shop.jpg)
 

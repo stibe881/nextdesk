@@ -16,7 +16,11 @@ export * from "@/lib/incidents-model";
 export async function listIncidents(
   tenantId: string,
   filter: IncidentFilter,
-): Promise<{ incidents: IncidentSummary[]; stats: IncidentStats }> {
+): Promise<{
+  incidents: IncidentSummary[];
+  stats: IncidentStats | null;
+  nextCursor: string | null;
+}> {
   const parsed = parseIncidentList(
     await invokeNextDesk<unknown>("incidents", {
       type: "list",
@@ -56,12 +60,25 @@ export const addIncidentNote = (
   text: string,
 ) => detailCall({ type: "note", tenantId, incidentId, text });
 
+/**
+ * Closes the incident with its cause; optionally answers the linked open
+ * tickets (public reply with the cause) and sets them to «Gelöst».
+ */
 export const closeIncident = (
   tenantId: string,
   incidentId: string,
   cause: IncidentCause,
   note: string | null,
-) => detailCall({ type: "close", tenantId, incidentId, cause, note });
+  notifyTickets = false,
+) =>
+  detailCall({
+    type: "close",
+    tenantId,
+    incidentId,
+    cause,
+    note,
+    notifyTickets,
+  });
 
 /** Whether the signed-in person is in the alarm team of the PRTG settings. */
 export async function canWorkIncidents(tenantId: string): Promise<boolean> {

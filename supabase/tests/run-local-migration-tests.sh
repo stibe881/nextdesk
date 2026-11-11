@@ -13666,7 +13666,7 @@ begin
     raise exception 'ipam discovery test: findings not opened/notified: %', v_result;
   end if;
   if not exists (select 1 from public.ticket_notifications
-                  where tenant_id = v_tenant and user_id = v_manager and kind = 'monitoring.ipam_finding'
+                  where tenant_id = v_tenant and user_id = v_manager and kind = 'ipam.finding'
                     and payload->>'number' = '192.0.2.22') then
     raise exception 'ipam discovery test: critical finding not notified';
   end if;
@@ -13960,6 +13960,1355 @@ begin
     raise exception 'ipam redesign test: cascaded change not attributed: %', to_jsonb(v_row);
   end if;
   raise notice 'ipam redesign checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0313: Sicherheitsfälle – Kampagnen, IOC, «geklickt», Eskalation, Suche.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_agent constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_ticket uuid;
+  v_ticket2 uuid;
+  v_department uuid;
+  v_team uuid;
+  v_report uuid;
+  v_result jsonb;
+  v_hits jsonb;
+  v_count integer;
+  v_low uuid;
+  v_found boolean;
+begin
+  -- Browsers never read the new tables or call the service functions.
+  if has_table_privilege('authenticated', 'public.security_campaigns', 'select')
+    or has_table_privilege('authenticated', 'public.security_iocs', 'select')
+    or has_table_privilege('authenticated', 'public.security_case_measures', 'insert') then
+    raise exception 'security 0313 test: tables readable by browsers';
+  end if;
+  if has_function_privilege('authenticated', 'public.security_case_notify(uuid, uuid, text, jsonb, text)', 'execute')
+    or has_function_privilege('authenticated', 'public.security_case_mark_clicked(uuid, uuid)', 'execute')
+    or has_function_privilege('authenticated', 'public.security_case_escalate()', 'execute')
+    or has_function_privilege('authenticated', 'public.security_campaign_assign(uuid, uuid, text, text, text[])', 'execute')
+    or has_function_privilege('authenticated', 'public.security_iocs_record(uuid, uuid, text, jsonb)', 'execute')
+    or has_function_privilege('authenticated', 'public.security_ioc_match(uuid, uuid, jsonb)', 'execute')
+    or has_function_privilege('authenticated', 'public.security_ipam_matches(uuid, text[], text[])', 'execute')
+    or has_function_privilege('authenticated', 'public.security_notification_forced(uuid, uuid, text)', 'execute')
+    or has_function_privilege('anon', 'public.search_operations(uuid, text, integer)', 'execute') then
+    raise exception 'security 0313 test: service functions callable by browsers';
+  end if;
+  if not has_function_privilege('authenticated', 'public.search_operations(uuid, text, integer)', 'execute')
+    or not has_function_privilege('authenticated', 'public.my_operation_priorities(uuid)', 'execute')
+    or not has_function_privilege('authenticated', 'public.person_overview_operations(uuid, uuid, text, uuid[])', 'execute') then
+    raise exception 'security 0313 test: agent functions not granted';
+  end if;
+
+  select ticket.id, ticket.department_id into v_ticket, v_department
+    from public.tickets ticket
+   where ticket.tenant_id = v_tenant and ticket.deleted_at is null
+     and exists (
+       select 1 from public.department_memberships membership
+        where membership.tenant_id = v_tenant and membership.department_id = ticket.department_id
+          and membership.user_id = v_agent and membership.status = 'active'
+     )
+   order by ticket.created_at limit 1;
+  select ticket.id into v_ticket2
+    from public.tickets ticket
+   where ticket.tenant_id = v_tenant and ticket.deleted_at is null and ticket.id <> v_ticket
+     and ticket.department_id = v_department
+   order by ticket.created_at limit 1;
+  if v_ticket2 is null then
+    raise exception 'security 0313 test: fixture tickets missing';
+  end if;
+  update public.tickets set is_security_case = true where id in (v_ticket, v_ticket2);
+  insert into public.security_cases (ticket_id, tenant_id, fingerprint, state, decision_due_at)
+  values (v_ticket, v_tenant, repeat('c', 64), 'triage', timezone('utc', now()) - interval '1 hour'),
+         (v_ticket2, v_tenant, repeat('d', 64), 'triage', timezone('utc', now()) + interval '1 hour')
+  on conflict (ticket_id) do update set state = 'triage', decision_due_at = excluded.decision_due_at;
+
+  insert into public.teams (tenant_id, department_id, name)
+  values (v_tenant, v_department, 'Phishing 0313') returning id into v_team;
+  insert into public.team_memberships (team_id, user_id, tenant_id) values (v_team, v_agent, v_tenant);
+  insert into public.phishing_report_settings (tenant_id, enabled, notify_team_id)
+  values (v_tenant, true, v_team)
+  on conflict (tenant_id) do update set notify_team_id = excluded.notify_team_id;
+
+  if not public.security_notification_forced(v_tenant, v_agent, 'security.case_clicked')
+    or not public.security_notification_forced(v_tenant, v_agent, 'ticket.security_report')
+    or public.security_notification_forced(v_tenant, v_agent, 'ticket.assigned')
+    or public.security_notification_forced(v_tenant, gen_random_uuid(), 'security.campaign') then
+    raise exception 'security 0313 test: forced delivery wrong';
+  end if;
+  begin
+    perform public.security_case_notify(v_tenant, v_ticket, 'ticket.assigned', '{}'::jsonb, 'team');
+    raise exception 'security 0313 test: foreign kind accepted';
+  exception when invalid_parameter_value then null;
+  end;
+
+  -- Campaign: three people report similar mails → security.campaign once.
+  for v_count in 1..3 loop
+    insert into public.phishing_reports (tenant_id, ticket_id, reporter_email, channel, source,
+      risk_score, risk_level, original_subject, fingerprint, analysis)
+    -- One report row per ticket (phishing_reports.ticket_id is unique).
+    values (v_tenant, case v_count when 1 then v_ticket when 3 then v_ticket2 end,
+      'melder' || v_count || '@example.ch', 'email', 'eml', 60, 'medium',
+      'Ihre Rechnung', repeat(case when v_count = 3 then 'd' else 'c' end, 64), '{}'::jsonb)
+    returning id into v_report;
+    v_result := public.security_campaign_assign(v_tenant, v_report, 'Rechnung-Post.example',
+      'ihre rechnung # ist fällig', array['evil.example']);
+  end loop;
+  if (v_result ->> 'reporters')::integer <> 3 or (v_result ->> 'cases')::integer <> 2
+    or (v_result ->> 'created')::boolean or not (v_result ->> 'caseLinked')::boolean
+    or (v_result ->> 'notified')::integer < 1 then
+    raise exception 'security 0313 test: campaign wrong: %', v_result;
+  end if;
+  if (select count(*) from public.ticket_notifications
+       where ticket_id = v_ticket2 and kind = 'security.campaign' and user_id = v_agent) <> 1 then
+    raise exception 'security 0313 test: campaign notification missing';
+  end if;
+  -- Different subject and links: a new campaign.
+  insert into public.phishing_reports (tenant_id, ticket_id, reporter_email, channel, source,
+    risk_score, risk_level, fingerprint, analysis)
+  values (v_tenant, null, 'melder4@example.ch', 'email', 'eml', 10, 'low', repeat('e', 64), '{}')
+  returning id into v_report;
+  v_result := public.security_campaign_assign(v_tenant, v_report, 'rechnung-post.example',
+    'paket wartet', array['other.example']);
+  if not (v_result ->> 'created')::boolean then
+    raise exception 'security 0313 test: unrelated mail joined the campaign';
+  end if;
+  if (select count(*) from public.ticket_notifications
+       where kind = 'security.campaign' and user_id = v_agent) <> 1 then
+    raise exception 'security 0313 test: campaign notified twice';
+  end if;
+
+  -- IOC: recorded from a verdict, matched in another case, also as subdomain.
+  v_count := public.security_iocs_record(v_tenant, v_ticket, 'phishing', jsonb_build_array(
+    jsonb_build_object('kind', 'domain', 'value', 'Evil.Example'),
+    jsonb_build_object('kind', 'domain', 'value', 'evil.example '),
+    jsonb_build_object('kind', 'ip', 'value', '203.0.113.25'),
+    jsonb_build_object('kind', 'virus', 'value', 'x')));
+  if v_count <> 2 then
+    raise exception 'security 0313 test: IOC record count %', v_count;
+  end if;
+  if public.security_iocs_record(v_tenant, v_ticket, 'harmless', '[]'::jsonb) <> 0 then
+    raise exception 'security 0313 test: harmless verdict recorded';
+  end if;
+  v_hits := public.security_ioc_match(v_tenant, v_ticket2, jsonb_build_array(
+    jsonb_build_object('kind', 'domain', 'value', 'login.evil.example'),
+    jsonb_build_object('kind', 'domain', 'value', 'notevil.example'),
+    jsonb_build_object('kind', 'ip', 'value', '203.0.113.25')));
+  if jsonb_array_length(v_hits) <> 2 then
+    raise exception 'security 0313 test: IOC hits wrong: %', v_hits;
+  end if;
+  if jsonb_array_length((select ioc_hits from public.security_cases where ticket_id = v_ticket2)) <> 2 then
+    raise exception 'security 0313 test: IOC hits not stored on the case';
+  end if;
+  -- The source case does not match itself; harmless entries never match.
+  if jsonb_array_length(public.security_ioc_match(v_tenant, v_ticket,
+       '[{"kind": "ip", "value": "203.0.113.25"}]'::jsonb)) <> 0 then
+    raise exception 'security 0313 test: source case matched itself';
+  end if;
+  update public.security_iocs set status = 'harmless' where tenant_id = v_tenant and kind = 'ip';
+  if jsonb_array_length(public.security_ioc_match(v_tenant, v_ticket2,
+       '[{"kind": "ip", "value": "203.0.113.25"}]'::jsonb)) <> 0 then
+    raise exception 'security 0313 test: harmless IOC matched';
+  end if;
+  if (select hit_count from public.security_iocs where tenant_id = v_tenant and kind = 'domain') <> 1 then
+    raise exception 'security 0313 test: hit not counted';
+  end if;
+
+  -- «Ja, ich habe geklickt»: priority high, team notified.
+  select priority.id into v_low from public.ticket_priorities priority
+   where priority.tenant_id = v_tenant and priority.key = 'low';
+  if v_low is not null then
+    update public.tickets set priority_id = v_low where id = v_ticket;
+  end if;
+  v_result := public.security_case_mark_clicked(v_tenant, v_ticket);
+  if (select priority.key from public.tickets ticket
+        join public.ticket_priorities priority on priority.id = ticket.priority_id
+       where ticket.id = v_ticket) not in ('high', 'urgent')
+    or (select clicked_at from public.security_cases where ticket_id = v_ticket) is null
+    or not exists (select 1 from public.ticket_notifications
+                    where ticket_id = v_ticket and kind = 'security.case_clicked' and user_id = v_agent) then
+    raise exception 'security 0313 test: clicked flow wrong: %', v_result;
+  end if;
+
+  -- Escalation: team first, supervisors after another 24 hours, each once.
+  perform public.security_case_escalate();
+  if (select overdue_notified_at from public.security_cases where ticket_id = v_ticket) is null
+    or (select overdue_notified_at from public.security_cases where ticket_id = v_ticket2) is not null
+    or (select count(*) from public.ticket_notifications
+         where ticket_id = v_ticket and kind = 'security.case_overdue') < 1 then
+    raise exception 'security 0313 test: overdue not notified';
+  end if;
+  select count(*) into v_count from public.ticket_notifications where kind = 'security.case_overdue';
+  perform public.security_case_escalate();
+  if (select count(*) from public.ticket_notifications where kind = 'security.case_overdue') <> v_count then
+    raise exception 'security 0313 test: overdue notified twice';
+  end if;
+  update public.security_cases set overdue_notified_at = timezone('utc', now()) - interval '25 hours'
+   where ticket_id = v_ticket;
+  perform public.security_case_escalate();
+  if (select escalated_at from public.security_cases where ticket_id = v_ticket) is null then
+    raise exception 'security 0313 test: supervisor stage not reached';
+  end if;
+
+  -- IPAM: an IP of a known subnet is internal.
+  insert into public.ipam_prefixes (tenant_id, prefix, description)
+  values (v_tenant, '10.99.0.0/24', 'Test 0313');
+  v_result := public.security_ipam_matches(v_tenant, array['10.99.0.5', 'kein-ip', '198.51.100.1'], array[]::text[]);
+  if jsonb_array_length(v_result) <> 1 or v_result -> 0 ->> 'match' <> 'prefix'
+    or v_result -> 0 ->> 'prefix' <> '10.99.0.0/24' then
+    raise exception 'security 0313 test: IPAM match wrong: %', v_result;
+  end if;
+
+  -- Search, priorities and person overview under the agent.
+  perform set_config('request.jwt.claim.sub', v_agent::text, true);
+  update public.tickets set assigned_agent_id = v_agent where id = v_ticket;
+  select exists (
+    select 1 from public.search_operations(v_tenant, 'rechnung', 10) result
+     where result.result_type = 'security_case' and result.entity_id = v_ticket
+  ) into v_found;
+  if public.can_read_ticket(v_ticket) and not v_found then
+    raise exception 'security 0313 test: case not found by search';
+  end if;
+  if exists (select 1 from public.search_operations(v_tenant, 'r', 10)) then
+    raise exception 'security 0313 test: one-letter search accepted';
+  end if;
+  v_result := public.my_operation_priorities(v_tenant);
+  if public.can_read_ticket(v_ticket)
+    and not exists (select 1 from jsonb_array_elements(v_result -> 'securityCases') item
+                     where item ->> 'id' = v_ticket::text and (item ->> 'clicked')::boolean) then
+    raise exception 'security 0313 test: case missing in priorities: %', v_result;
+  end if;
+  v_result := public.person_overview_operations(v_tenant, null, 'Melder1@Example.ch', array[]::uuid[]);
+  if public.can_read_ticket(v_ticket)
+    and jsonb_array_length(coalesce(v_result -> 'securityCases', '[]'::jsonb)) <> 1 then
+    raise exception 'security 0313 test: person cases wrong: %', v_result;
+  end if;
+  -- Without team membership the phishing data stays hidden.
+  delete from public.team_memberships where team_id = v_team and user_id = v_agent;
+  if exists (select 1 from public.search_operations(v_tenant, 'rechnung', 10) where result_type = 'security_case')
+    or jsonb_array_length(public.my_operation_priorities(v_tenant) -> 'securityCases') <> 0
+    or (public.person_overview_operations(v_tenant, null, 'melder1@example.ch', null) -> 'securityCases') <> 'null'::jsonb then
+    raise exception 'security 0313 test: security cases visible outside the phishing team';
+  end if;
+  perform set_config('request.jwt.claim.sub', '', true);
+  raise notice 'security context, campaign and escalation checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0314: Lager, Shop, Assets: Zuweisung bei Ausgabe, Rücknahme ins Lager,
+# Austritt (Ausleihen, Lizenzen), Shop-Erinnerungen, Lager-Automatik und
+# Bestellung ohne Genehmigung.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f3140000-0000-4000-8000-000000000001';
+  v_employee constant uuid := 'f3140000-0000-4000-8000-000000000002';
+  v_manager constant uuid := 'f3140000-0000-4000-8000-000000000003';
+  v_deputy constant uuid := 'f3140000-0000-4000-8000-000000000004';
+  v_tenant uuid;
+  v_requester_role uuid;
+  v_lager uuid;
+  v_rueck uuid;
+  v_notebook_item uuid;
+  v_cable uuid;
+  v_asset uuid;
+  v_asset2 uuid;
+  v_serial uuid;
+  v_serial2 uuid;
+  v_cat_notebook uuid;
+  v_cat_headset uuid;
+  v_cat_loan uuid;
+  v_order uuid;
+  v_line uuid;
+  v_status text;
+  v_contact uuid;
+  v_assignment uuid;
+  v_template uuid;
+  v_entry uuid;
+  v_task_asset uuid := gen_random_uuid();
+  v_task_loan uuid := gen_random_uuid();
+  v_task_license uuid := gen_random_uuid();
+  v_license uuid;
+  v_seat uuid;
+  v_reservation uuid;
+  v_count integer;
+  v_result jsonb;
+begin
+  insert into auth.users (id) values (v_owner), (v_employee), (v_manager), (v_deputy);
+  v_tenant := public.provision_personal_workspace(v_owner, 'owner@lager.example', 'Lager Test');
+  select id into v_requester_role from public.roles where tenant_id = v_tenant and name = 'Requester';
+  insert into public.user_profiles (id, display_name)
+  values (v_employee, 'Erika Lager'), (v_manager, 'Chef Lager'), (v_deputy, 'Vertretung Lager');
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_tenant, v_employee, 'active', now()), (v_tenant, v_manager, 'active', now()),
+         (v_tenant, v_deputy, 'active', now());
+  insert into public.user_role_assignments (tenant_id, user_id, role_id, assigned_by)
+  values (v_tenant, v_employee, v_requester_role, v_owner), (v_tenant, v_manager, v_requester_role, v_owner),
+         (v_tenant, v_deputy, v_requester_role, v_owner);
+  insert into public.tenant_member_directory (tenant_id, user_id, manager_user_id)
+  values (v_tenant, v_employee, v_manager);
+  update public.tenant_feature_flags set enabled = true
+  where tenant_id = v_tenant and feature_key in ('inventory.management', 'notifications.push');
+  insert into public.tenant_feature_flags (tenant_id, feature_key, enabled, configuration)
+  values (v_tenant, 'notifications.push', true, '{"contentLevel":"minimal","checkInRequired":false}'::jsonb)
+  on conflict (tenant_id, feature_key) do update
+    set enabled = true, configuration = excluded.configuration, pilot_ends_at = null;
+
+  -- Arbeitstage: Freitag → Dienstag = 2 Arbeitstage.
+  if public.shop_working_days_between('2026-11-06 10:00+01', '2026-11-10 10:00+01') <> 2 then
+    raise exception 'automation test: working days wrong';
+  end if;
+
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'lager', 'Lager')
+  returning id into v_lager;
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'ruecknahme', 'Rücknahme')
+  returning id into v_rueck;
+  insert into public.inventory_automation_settings (tenant_id, default_return_location_id, reorder_create_task)
+  values (v_tenant, v_rueck, true);
+  if public.inventory_default_return_location(v_tenant, null) is distinct from v_rueck then
+    raise exception 'automation test: default return location not resolved';
+  end if;
+
+  insert into public.inventory_items (tenant_id, article_number, name, tracking_mode)
+  values (v_tenant, 'notebook', 'Notebook', 'serial') returning id into v_notebook_item;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Notebook 1', 'other', 'stock') returning id into v_asset;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Notebook 2', 'other', 'stock') returning id into v_asset2;
+  insert into public.inventory_serial_units (tenant_id, item_id, serial_number, asset_id)
+  values (v_tenant, v_notebook_item, 'nb-0001', v_asset) returning id into v_serial;
+  insert into public.inventory_serial_units (tenant_id, item_id, serial_number, asset_id)
+  values (v_tenant, v_notebook_item, 'nb-0002', v_asset2) returning id into v_serial2;
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(
+      jsonb_build_object('item_id', v_notebook_item, 'location_id', v_lager, 'serial_unit_id', v_serial,
+        'physical_delta', 1, 'reserved_delta', 0),
+      jsonb_build_object('item_id', v_notebook_item, 'location_id', v_lager, 'serial_unit_id', v_serial2,
+        'physical_delta', 1, 'reserved_delta', 0)
+    ), null, null);
+  insert into public.shop_catalog_items (tenant_id, inventory_item_id, name, kind, requires_approval)
+  values (v_tenant, v_notebook_item, 'Notebook', 'order', true) returning id into v_cat_notebook;
+  insert into public.shop_catalog_items (tenant_id, name, kind, requires_approval)
+  values (v_tenant, 'Headset', 'order', true) returning id into v_cat_headset;
+  insert into public.shop_catalog_items (tenant_id, inventory_item_id, name, kind, max_loan_days)
+  values (v_tenant, v_notebook_item, 'Leihnotebook', 'loan', 30) returning id into v_cat_loan;
+
+  -- 1. Ersatzgerät ohne Genehmigung (Sicherheitsfall); nur Agenten.
+  begin
+    perform public.shop_submit_order_direct(v_employee, v_tenant, v_employee, gen_random_uuid(),
+      jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_notebook, 'quantity', 1)),
+      'pickup', null, null, 'Ersatzgerät', null, 'security_case', gen_random_uuid(), 'SEC-1');
+    raise exception 'automation test: employee ordered without approval';
+  exception when insufficient_privilege then null;
+  end;
+  v_order := public.shop_submit_order_direct(v_owner, v_tenant, v_employee, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_notebook, 'quantity', 1)),
+    'desk', 'Büro 1', null, 'Ersatzgerät nach Phishing', null, 'security_case', gen_random_uuid(), 'SEC-2026-000001');
+  if not exists (select 1 from public.shop_orders where id = v_order and status = 'submitted'
+      and requester_id = v_employee and placed_by = v_owner and approved_by = v_owner
+      and source_type = 'security_case' and source_reference = 'SEC-2026-000001'
+      and reason = 'Ersatzgerät nach Phishing') then
+    raise exception 'automation test: direct order not stored';
+  end if;
+  if not exists (select 1 from public.shop_order_events where order_id = v_order and event_type = 'approval_skipped'
+      and note like 'Ersatzgerät aus Sicherheitsfall SEC-2026-000001%') then
+    raise exception 'automation test: approval skip not logged';
+  end if;
+  if exists (select 1 from public.ticket_notifications where kind = 'shop.order.approval_requested'
+      and payload ->> 'orderId' = v_order::text) then
+    raise exception 'automation test: direct order requested approval';
+  end if;
+
+  -- 2. Ausgabe einer Serieneinheit → Zuweisung an die Person.
+  select id into v_line from public.shop_order_lines where order_id = v_order;
+  v_status := public.shop_update_order(v_owner, v_tenant, v_order, 'issue',
+    jsonb_build_object('lines', jsonb_build_array(jsonb_build_object(
+      'line_id', v_line, 'location_id', v_lager, 'serial_unit_id', v_serial))));
+  v_contact := public.ensure_ticket_user_requester(v_tenant, v_employee, 'manual');
+  select id into v_assignment from public.asset_assignments
+  where asset_id = v_asset and returned_at is null and requester_id = v_contact and shop_order_line_id = v_line;
+  if v_assignment is null or (select lifecycle_state from public.assets where id = v_asset) <> 'active' then
+    raise exception 'automation test: hand-out did not assign the device';
+  end if;
+  if public.inventory_serial_unit_on_hand(v_tenant, v_serial) <> 0 then
+    raise exception 'automation test: serial unit still on hand';
+  end if;
+
+  -- 3. Ausleihe: Ausgabe, Erinnerungen, Rückgabe über den Austritt.
+  v_order := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_loan, 'quantity', 1)),
+    'pickup', null, null, (timezone('Europe/Zurich', now()))::date,
+    (timezone('Europe/Zurich', now()))::date + 1, null);
+  select id into v_line from public.shop_order_lines where order_id = v_order;
+  v_status := public.shop_update_order(v_owner, v_tenant, v_order, 'issue',
+    jsonb_build_object('lines', jsonb_build_array(jsonb_build_object(
+      'line_id', v_line, 'location_id', v_lager, 'serial_unit_id', v_serial2))));
+  if v_status <> 'loaned' or not exists (select 1 from public.asset_assignments
+      where asset_id = v_asset2 and returned_at is null and shop_order_line_id = v_line) then
+    raise exception 'automation test: loan hand-out not assigned';
+  end if;
+  v_result := public.shop_send_reminders();
+  if not exists (select 1 from public.ticket_notifications where user_id = v_employee
+      and kind = 'shop.order.loan_due' and payload ->> 'lineId' = v_line::text) then
+    raise exception 'automation test: loan due reminder missing: %', v_result;
+  end if;
+  perform public.shop_send_reminders();
+  if (select count(*) from public.ticket_notifications where kind = 'shop.order.loan_due'
+      and payload ->> 'lineId' = v_line::text) <> 1 then
+    raise exception 'automation test: loan due reminder repeated';
+  end if;
+  update public.shop_order_lines set loan_until = (timezone('Europe/Zurich', now()))::date - 4,
+    loan_from = (timezone('Europe/Zurich', now()))::date - 6 where id = v_line;
+  perform public.shop_send_reminders();
+  if not exists (select 1 from public.ticket_notifications where user_id = v_employee
+      and kind = 'shop.order.loan_overdue' and payload ->> 'lineId' = v_line::text)
+     or not exists (select 1 from public.ticket_notifications where user_id = v_manager
+      and kind = 'shop.order.loan_overdue' and payload ->> 'audience' = 'manager') then
+    raise exception 'automation test: overdue reminders missing';
+  end if;
+
+  -- 4. Genehmigung offen: Erinnerung, dann Stellvertretung.
+  v_order := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_headset, 'quantity', 1)),
+    'pickup', null, null, null, null, 'Headset');
+  insert into public.agent_delegations (tenant_id, agent_id, delegate_id, starts_at, ends_at, created_by)
+  values (v_tenant, v_manager, v_deputy, now() - interval '1 day', now() + interval '5 days', v_owner);
+  update public.shop_orders set created_at = now() - interval '3 days' where id = v_order;
+  perform public.shop_send_reminders(now() + interval '1 day');
+  if not exists (select 1 from public.ticket_notifications where user_id = v_manager
+      and kind = 'shop.order.approval_reminder' and payload ->> 'orderId' = v_order::text) then
+    raise exception 'automation test: approval reminder missing';
+  end if;
+  if exists (select 1 from public.ticket_notifications where user_id = v_deputy
+      and kind = 'shop.order.approval_reminder') then
+    raise exception 'automation test: deputy reminded too early';
+  end if;
+  update public.shop_orders set created_at = now() - interval '10 days' where id = v_order;
+  perform public.shop_send_reminders();
+  if not exists (select 1 from public.ticket_notifications where user_id = v_deputy
+      and kind = 'shop.order.approval_reminder' and payload ->> 'audience' = 'deputy') then
+    raise exception 'automation test: deputy not reminded';
+  end if;
+
+  -- 5. Austritt: Gerät, Ausleihe und Lizenz.
+  insert into public.onboarding_templates (tenant_id, template_key, name)
+  values (v_tenant, 'standard', 'Standard') on conflict (tenant_id, template_key) do nothing;
+  select id into v_template from public.onboarding_templates where tenant_id = v_tenant and template_key = 'standard';
+  insert into public.onboarding_entries (tenant_id, employee_name, starts_on, organisation_unit, location,
+    manager_user_id, ict_responsible_user_id, template_id, created_by, kind)
+  values (v_tenant, 'Erika Lager', current_date + 3, 'ICT', 'Bern', v_manager, v_owner, v_template, v_owner, 'offboarding')
+  returning id into v_entry;
+  insert into public.onboarding_tasks (id, tenant_id, entry_id, title, due_on, responsible_user_id, position) values
+    (v_task_asset, v_tenant, v_entry, 'Rückgabe: Notebook 1', current_date + 3, v_owner, 91),
+    (v_task_loan, v_tenant, v_entry, 'Rückgabe Ausleihe: Leihnotebook', current_date + 3, v_owner, 92),
+    (v_task_license, v_tenant, v_entry, 'Lizenz entziehen: Office', current_date + 3, v_owner, 93);
+  insert into public.onboarding_asset_returns (tenant_id, task_id, assignment_id, asset_id)
+  values (v_tenant, v_task_asset, v_assignment, v_asset);
+  insert into public.onboarding_loan_returns (tenant_id, task_id, order_line_id, return_location_id)
+  values (v_tenant, v_task_loan, v_line, v_rueck);
+  insert into public.licenses (tenant_id, title, vendor_name, status, created_by, updated_by)
+  values (v_tenant, 'Office Paket', 'Hersteller AG', 'active', v_owner, v_owner) returning id into v_license;
+  insert into public.license_assignments (tenant_id, license_id, user_id, assignee_label, assigned_by)
+  values (v_tenant, v_license, v_employee, 'Erika Lager', v_owner) returning id into v_seat;
+  insert into public.onboarding_license_revocations (tenant_id, task_id, license_assignment_id)
+  values (v_tenant, v_task_license, v_seat);
+
+  update public.onboarding_tasks set status = 'completed', completed_at = now(), completed_by = v_owner
+  where id in (v_task_asset, v_task_loan, v_task_license);
+  if (select returned_at from public.asset_assignments where id = v_assignment) is null
+     or (select lifecycle_state from public.assets where id = v_asset) <> 'stock'
+     or (select stock_result from public.onboarding_asset_returns where task_id = v_task_asset) <> 'booked'
+     or public.inventory_serial_unit_on_hand(v_tenant, v_serial) <> 1
+     or not exists (select 1 from public.inventory_event_lines where serial_unit_id = v_serial
+                    and location_id = v_rueck and physical_delta = 1) then
+    raise exception 'automation test: offboarding device not booked into stock';
+  end if;
+  if (select status from public.shop_order_lines where id = v_line) <> 'returned'
+     or (select status from public.shop_orders where id = (select order_id from public.shop_order_lines where id = v_line)) <> 'returned'
+     or (select result from public.onboarding_loan_returns where task_id = v_task_loan) <> 'returned'
+     or exists (select 1 from public.asset_assignments where asset_id = v_asset2 and returned_at is null)
+     or public.inventory_serial_unit_on_hand(v_tenant, v_serial2) <> 1 then
+    raise exception 'automation test: loan not returned by offboarding';
+  end if;
+  if (select released_at from public.license_assignments where id = v_seat) is null
+     or (select release_reason from public.license_assignments where id = v_seat) <> 'Austritt' then
+    raise exception 'automation test: license not revoked';
+  end if;
+
+  -- 6. Reservation mit Haltefrist wird freigegeben.
+  insert into public.inventory_items (tenant_id, article_number, name, minimum_quantity, target_quantity)
+  values (v_tenant, 'kabel', 'Kabel', 5, 10) returning id into v_cable;
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(jsonb_build_object('item_id', v_cable, 'location_id', v_lager,
+      'physical_delta', 3, 'reserved_delta', 0)), null, null);
+  insert into public.inventory_reservations (tenant_id, item_id, location_id, quantity, created_by, expires_at)
+  values (v_tenant, v_cable, v_lager, 2, v_owner, now() - interval '1 minute') returning id into v_reservation;
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'reservation_hold',
+    jsonb_build_array(jsonb_build_object('item_id', v_cable, 'location_id', v_lager,
+      'physical_delta', 0, 'reserved_delta', 2)), 'reservation', v_reservation);
+  v_count := public.inventory_release_expired_reservations();
+  if v_count < 1
+     or (select status from public.inventory_reservations where id = v_reservation) <> 'released'
+     or (select reserved_quantity from public.inventory_stock_balances
+         where tenant_id = v_tenant and item_id = v_cable and location_id = v_lager) <> 0 then
+    raise exception 'automation test: expired reservation not released: % %', v_count,
+      (select to_jsonb(r) from public.inventory_reservations r where id = v_reservation);
+  end if;
+
+  -- 7. Mindestbestand → Nachbestellung (Aufgabe + inventory.reorder), einmalig.
+  if not exists (select 1 from public.inventory_low_stock_episodes where item_id = v_cable and recovered_at is null) then
+    raise exception 'automation test: low stock episode missing';
+  end if;
+  perform public.inventory_process_reorders();
+  perform public.inventory_process_reorders();
+  if (select count(*) from public.inventory_reorder_requests where item_id = v_cable and status = 'open') <> 1
+     or (select suggested_quantity from public.inventory_reorder_requests where item_id = v_cable) <> 7 then
+    raise exception 'automation test: reorder request wrong';
+  end if;
+  if (select count(*) from public.ticket_notifications where user_id = v_owner and kind = 'inventory.reorder'
+      and payload ->> 'inventoryItemId' = v_cable::text) <> 1 then
+    raise exception 'automation test: reorder notification wrong';
+  end if;
+
+  -- 8. Inventur-Erinnerung nach Intervall, nicht doppelt.
+  update public.inventory_locations set count_interval_days = 30, created_at = now() - interval '40 days'
+  where id = v_lager;
+  v_count := public.inventory_send_count_reminders();
+  if v_count < 1 or not exists (select 1 from public.ticket_notifications where user_id = v_owner
+      and kind = 'inventory.count_due' and payload ->> 'inventoryLocationId' = v_lager::text) then
+    raise exception 'automation test: count reminder missing';
+  end if;
+  perform public.inventory_send_count_reminders();
+  if (select count(*) from public.ticket_notifications where user_id = v_owner and kind = 'inventory.count_due') <> 1 then
+    raise exception 'automation test: count reminder repeated';
+  end if;
+  v_result := public.inventory_shop_daily_automation();
+  if not (v_result ? 'shop') then
+    raise exception 'automation test: daily automation incomplete: %', v_result;
+  end if;
+
+  -- 9. Täglicher Intune-Abgleich: Ziele lesbar, Wecker ohne Dispatch still.
+  insert into public.asset_intune_connections (tenant_id, enabled, manual_sync_enabled, directory_tenant_id, updated_by)
+  values (v_tenant, true, true, gen_random_uuid(), v_owner)
+  on conflict (tenant_id) do update
+    set enabled = true, manual_sync_enabled = true,
+        directory_tenant_id = excluded.directory_tenant_id, updated_by = v_owner;
+  if not exists (select 1 from public.intune_scheduled_sync_targets() target
+                 where target.tenant_id = v_tenant) then
+    raise exception 'automation test: intune target missing';
+  end if;
+  if (select target.actor_id from public.intune_scheduled_sync_targets() target
+      where target.tenant_id = v_tenant) is distinct from v_owner
+     and public.user_has_tenant_permission(v_owner, v_tenant, 'asset.integration.manage') then
+    raise exception 'automation test: intune actor wrong';
+  end if;
+  perform public.intune_scheduled_sync_wake();
+
+  if has_function_privilege('authenticated', 'public.shop_submit_order_direct(uuid, uuid, uuid, uuid, jsonb, text, text, date, text, text, text, uuid, text)', 'execute')
+     or has_table_privilege('authenticated', 'public.inventory_automation_settings', 'select') then
+    raise exception 'automation test: browser access to automation';
+  end if;
+  raise notice 'inventory shop automation checks ran';
+end;
+$$;
+rollback;
+SQL
+
+
+# 0311: monitoring incidents – ticket links, resolver, lifecycle, SQL list/report, network context.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid := '10000000-0000-4000-8000-000000000001';
+  v_switch uuid;
+  v_ap uuid;
+  v_other uuid;
+  v_service uuid;
+  v_integration uuid;
+  v_incident uuid;
+  v_child uuid;
+  v_template public.tickets%rowtype;
+  v_status uuid;
+  v_ticket_text uuid := gen_random_uuid();
+  v_ticket_plain uuid := gen_random_uuid();
+  v_ticket_asset uuid := gen_random_uuid();
+  v_device jsonb;
+  v_result jsonb;
+  v_prefix uuid;
+  v_vlan uuid;
+begin
+  -- Text matching.
+  if not public.monitoring_text_mentions('Problem mit srv-mon-01.corp.local seit heute.', array['srv-mon-01'])
+     or not public.monitoring_text_mentions('Ping auf 10.31.0.5: keine Antwort', array['10.31.0.5'])
+     or public.monitoring_text_mentions('Ping auf 10.31.0.55 klappt', array['10.31.0.5'])
+     or not public.monitoring_text_mentions('Der Core   Switch Haus A ist weg', array['Core Switch Haus A'])
+     or public.monitoring_text_mentions('Drucker druckt nicht', array['dr']) then
+    raise exception 'incident workflow test: text matching wrong';
+  end if;
+
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'SW-MON-CORE', 'switch', 'active') returning id into v_switch;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'AP Mon Aula', 'access_point', 'active') returning id into v_ap;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Firewall', 'firewall', 'active') returning id into v_other;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, hostname, ip_address, prtg_object_id, mac_address)
+  values (v_switch, v_tenant, 'switch', 'sw-mon-core.corp.local', '10.31.0.2', '73101', '00:11:22:33:44:55');
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, hostname, ip_address, uplink_asset_id)
+  values (v_ap, v_tenant, 'access_point', 'ap-mon-aula', '10.31.0.20', v_switch);
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, hostname, uplink_asset_id)
+  values (v_other, v_tenant, 'firewall', 'fw-mon-01', v_ap);
+  insert into public.services (tenant_id, name, status)
+  values (v_tenant, 'Mon WLAN', 'operational') returning id into v_service;
+  insert into public.asset_services (tenant_id, asset_id, service_id) values (v_tenant, v_switch, v_service);
+
+  -- Resolver: object id, short hostname, name, ambiguity, chain.
+  v_device := public.monitoring_resolve_device(v_tenant, array['999999', '73101'], null, null);
+  if (v_device ->> 'assetId')::uuid is distinct from v_switch
+     or not (v_device -> 'serviceIds') ? v_service::text then
+    raise exception 'incident workflow test: object id not resolved: %', v_device;
+  end if;
+  if (public.monitoring_resolve_device(v_tenant, '{}', 'ap-mon-aula.corp.local', null) ->> 'assetId')::uuid
+       is distinct from v_ap
+     or (public.monitoring_resolve_device(v_tenant, '{}', '10.31.0.20', null) ->> 'assetId')::uuid is distinct from v_ap
+     or (public.monitoring_resolve_device(v_tenant, '{}', null, 'ap mon aula') ->> 'assetId')::uuid is distinct from v_ap then
+    raise exception 'incident workflow test: host or name not resolved';
+  end if;
+  update public.asset_infrastructure set prtg_object_id = '73101' where asset_id = v_ap;
+  if public.monitoring_resolve_device(v_tenant, array['73101'], 'ap-mon-aula', null) is not null then
+    raise exception 'incident workflow test: ambiguous object id resolved';
+  end if;
+  update public.asset_infrastructure set prtg_object_id = null where asset_id = v_ap;
+  v_device := public.monitoring_resolve_device(v_tenant, '{}', 'fw-mon-01', null);
+  if v_device -> 'uplinks' <> jsonb_build_array(v_ap, v_switch) then
+    raise exception 'incident workflow test: uplink chain wrong: %', v_device -> 'uplinks';
+  end if;
+  if not public.monitoring_downstream_assets(v_tenant, v_switch) @> array[v_ap, v_other]
+     or cardinality(public.monitoring_downstream_assets(v_tenant, v_switch)) <> 2 then
+    raise exception 'incident workflow test: downstream devices wrong';
+  end if;
+  -- A cycle in the uplinks does not loop.
+  update public.asset_infrastructure set uplink_asset_id = v_other where asset_id = v_switch;
+  if cardinality(public.monitoring_uplink_chain(v_tenant, v_switch)) <> 2 then
+    raise exception 'incident workflow test: cycle not handled';
+  end if;
+  update public.asset_infrastructure set uplink_asset_id = null where asset_id = v_switch;
+
+  select id into v_integration from public.monitoring_integrations where tenant_id = v_tenant;
+  if v_integration is null then
+    insert into public.monitoring_integrations (tenant_id, token_hash, enabled)
+    values (v_tenant, repeat('c', 64), true) returning id into v_integration;
+  end if;
+
+  select * into v_template from public.tickets where tenant_id = v_tenant limit 1;
+  select id into v_status from public.ticket_statuses
+   where tenant_id = v_tenant and not is_closed order by sort_order limit 1;
+  -- A ticket from shortly before the incident is linked when it opens.
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values (v_ticket_text, v_tenant, v_template.department_id, 'STO-TEST-1',
+    'WLAN weg', 'Seit 10 Minuten keine Verbindung über sw-mon-core.', v_status,
+    v_template.priority_id, v_template.requester_id);
+
+  insert into public.monitoring_incidents (tenant_id, number, incident_key, asset_id, device_name,
+    title, severity, state, service_ids)
+  values (v_tenant, public.monitoring_next_incident_number(v_tenant), 'asset:' || v_switch, v_switch,
+    'SW-MON-CORE', 'SW-MON-CORE – Ping', 'down', 'active', array[v_service])
+  returning id into v_incident;
+  if not exists (select 1 from public.monitoring_incident_tickets
+                 where incident_id = v_incident and ticket_id = v_ticket_text and source = 'text') then
+    raise exception 'incident workflow test: recent ticket not linked';
+  end if;
+  insert into public.monitoring_incidents (tenant_id, number, incident_key, asset_id, device_name,
+    title, severity, state, parent_incident_id)
+  values (v_tenant, public.monitoring_next_incident_number(v_tenant), 'asset:' || v_ap, v_ap,
+    'AP Mon Aula', 'AP Mon Aula – Ping', 'down', 'active', v_incident)
+  returning id into v_child;
+
+  -- New tickets: generic words do not link, the child device links to the root.
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values (v_ticket_plain, v_tenant, v_template.department_id, 'STO-TEST-2',
+    'Firewall', 'Unsere Firewall meldet etwas.', v_status, v_template.priority_id, v_template.requester_id),
+    (v_ticket_asset, v_tenant, v_template.department_id, 'STO-TEST-3',
+    'Beamer', 'Beamer im Raum 3 geht nicht.', v_status, v_template.priority_id, v_template.requester_id);
+  if exists (select 1 from public.monitoring_incident_tickets where ticket_id in (v_ticket_plain, v_ticket_asset)) then
+    raise exception 'incident workflow test: unrelated ticket linked';
+  end if;
+  insert into public.ticket_assets (tenant_id, ticket_id, asset_id) values (v_tenant, v_ticket_asset, v_ap);
+  if not exists (select 1 from public.monitoring_incident_tickets
+                 where incident_id = v_incident and ticket_id = v_ticket_asset and source = 'asset') then
+    raise exception 'incident workflow test: asset ticket not linked to the root incident';
+  end if;
+  -- Removed by an agent: not linked again.
+  update public.monitoring_incident_tickets set removed_at = timezone('utc', now())
+   where incident_id = v_incident and ticket_id = v_ticket_asset;
+  perform public.monitoring_link_ticket(v_ticket_asset);
+  if (select removed_at from public.monitoring_incident_tickets
+      where incident_id = v_incident and ticket_id = v_ticket_asset) is null then
+    raise exception 'incident workflow test: removed link restored';
+  end if;
+  insert into public.ticket_services (tenant_id, ticket_id, service_id) values (v_tenant, v_ticket_plain, v_service);
+  if not exists (select 1 from public.monitoring_incident_tickets
+                 where incident_id = v_incident and ticket_id = v_ticket_plain and source = 'service') then
+    raise exception 'incident workflow test: service ticket not linked';
+  end if;
+
+  -- List, tiles, report.
+  if not exists (select 1 from public.monitoring_incident_page(v_tenant, 'active', null, null, null, 50)
+                 where id = v_incident)
+     or exists (select 1 from public.monitoring_incident_page(v_tenant, 'active', null, null, null, 50)
+                where id = v_child)
+     or not exists (select 1 from public.monitoring_incident_page(v_tenant, 'all', 'mon-core', null, null, 50)
+                    where id = v_incident)
+     or exists (select 1 from public.monitoring_incident_page(v_tenant, 'all', 'kein%treffer', null, null, 50)) then
+    raise exception 'incident workflow test: page wrong';
+  end if;
+  v_result := public.monitoring_incident_stats(v_tenant);
+  if (v_result ->> 'active')::integer < 1 or not (v_result -> 'affectedServices') ? 'Mon WLAN' then
+    raise exception 'incident workflow test: stats wrong: %', v_result;
+  end if;
+  v_result := public.monitoring_incident_report(v_tenant, 90);
+  if (v_result ->> 'days')::integer <> 90 or (v_result ->> 'total')::integer < 1 then
+    raise exception 'incident workflow test: report wrong: %', v_result;
+  end if;
+
+  -- Network context from the IP address management.
+  insert into public.ipam_vlans (tenant_id, vlan_number, name) values (v_tenant, 3101, 'Mon-Netz')
+  returning id into v_vlan;
+  insert into public.ipam_prefixes (tenant_id, prefix, vlan_id) values (v_tenant, '10.31.0.0/24', v_vlan)
+  returning id into v_prefix;
+  insert into public.ipam_addresses (tenant_id, address, asset_id, prefix_id, switch_name, switch_port)
+  values (v_tenant, '10.31.0.2', v_switch, v_prefix, 'sw-dist-01', 'Gi1/0/1'),
+         (v_tenant, '10.31.0.20', v_ap, v_prefix, null, null);
+  v_result := public.monitoring_incident_network(v_tenant, v_switch);
+  if v_result -> 'addresses' -> 0 ->> 'prefix' <> '10.31.0.0/24'
+     or (v_result -> 'addresses' -> 0 ->> 'vlanNumber')::integer <> 3101
+     or v_result -> 'addresses' -> 0 ->> 'switchPort' <> 'Gi1/0/1'
+     or v_result -> 'subnetNeighbours' -> 0 ->> 'state' <> 'down' then
+    raise exception 'incident workflow test: network context wrong: %', v_result;
+  end if;
+
+  -- Lifecycle: no open sensors → resolved, not closed.
+  update public.monitoring_incidents set state = 'resolved', resolved_at = timezone('utc', now())
+   where id = v_child;
+  update public.monitoring_incidents set last_event_at = timezone('utc', now()) - interval '10 minutes'
+   where id = v_incident;
+  perform public.monitoring_reconcile_incidents();
+  if (select state from public.monitoring_incidents where id = v_incident) <> 'resolved'
+     or (select closed_at from public.monitoring_incidents where id = v_incident) is not null then
+    raise exception 'incident workflow test: reconcile closed instead of resolved';
+  end if;
+  v_result := public.monitoring_incident_recurrence(v_incident);
+  if (v_result ->> 'sameDevice30d')::integer <> 1 then
+    raise exception 'incident workflow test: recurrence wrong: %', v_result;
+  end if;
+
+  -- Privileges and realtime.
+  if has_table_privilege('authenticated', 'public.monitoring_incident_tickets', 'select')
+     or has_table_privilege('authenticated', 'public.problem_monitoring_incidents', 'select')
+     or has_function_privilege('authenticated', 'public.monitoring_resolve_device(uuid, text[], text, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.monitoring_incident_network(uuid, uuid)', 'execute')
+     or has_function_privilege('authenticated', 'public.monitoring_link_ticket(uuid, uuid)', 'execute') then
+    raise exception 'incident workflow test: browser roles reach service data';
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'monitoring_incidents'
+                 and policyname = 'monitoring_incidents_select_incident_team')
+     or not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime'
+                    and tablename = 'monitoring_incidents') then
+    raise exception 'incident workflow test: realtime not prepared';
+  end if;
+  raise notice 'monitoring incident workflow checks ran';
+end;
+$$;
+rollback;
+SQL
+
+
+# 0312: Statusseite, Dienste, Wartung (Meldungen, Wartungsautomatik, Dienst-Zuordnung, Verfügbarkeit).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_agent constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_service uuid;
+  v_service2 uuid;
+  v_service3 uuid;
+  v_asset uuid;
+  v_notice uuid;
+  v_incident uuid;
+  v_window uuid;
+  v_window2 uuid;
+  v_subscription uuid;
+  v_channel uuid;
+  v_result jsonb;
+  v_row record;
+begin
+  update public.tenant_feature_flags set enabled = true, pilot_ends_at = null
+  where tenant_id = v_tenant and feature_key = 'integrations.email';
+  if not found then
+    insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+    values (v_tenant, 'integrations.email', true);
+  end if;
+  update public.exchange_mail_channels
+     set status = 'active', deleted_at = null
+   where id = '1c000000-0000-4000-8000-000000000003';
+  insert into public.service_status_pages (tenant_id, public_enabled)
+  values (v_tenant, true)
+  on conflict (tenant_id) do update set public_enabled = true;
+  insert into public.service_status_subscriptions (tenant_id, email, confirmed_at)
+  values (v_tenant, 'b-abo@example.ch', timezone('utc', now()))
+  returning id into v_subscription;
+  select channel.id into v_channel from public.service_status_mail_channel(v_tenant) channel;
+
+  insert into public.services (tenant_id, name, active, status_public, status)
+  values (v_tenant, 'B-Mail', true, true, 'operational') returning id into v_service;
+  insert into public.services (tenant_id, name, active, status_public, status)
+  values (v_tenant, 'B-VPN', true, true, 'degraded') returning id into v_service2;
+  insert into public.services (tenant_id, name, active, status_public, status)
+  values (v_tenant, 'B-Drucker', true, false, 'operational') returning id into v_service3;
+
+  -- 1. Störungsmeldung: Verlauf, resolved_at, Mail je Update.
+  insert into public.monitoring_incidents (tenant_id, number, incident_key, title)
+  values (v_tenant, 'STO-B-1', 'b-key', 'Mailserver down') returning id into v_incident;
+  insert into public.service_incident_notices (tenant_id, title, description, status, created_by,
+    monitoring_incident_id, public_enabled)
+  values (v_tenant, 'Mail gestört', 'Wir untersuchen das Problem.', 'investigating', v_agent,
+    v_incident, true) returning id into v_notice;
+  insert into public.service_incident_notice_services (tenant_id, notice_id, service_id)
+  values (v_tenant, v_notice, v_service);
+  update public.service_incident_notices
+     set status = 'resolved', description = 'Behoben.', updated_by = v_agent
+   where id = v_notice;
+  if (select count(*) from public.service_incident_notice_updates where notice_id = v_notice) <> 2 then
+    raise exception 'status b test: update history wrong';
+  end if;
+  if (select resolved_at from public.service_incident_notices where id = v_notice) is null then
+    raise exception 'status b test: resolved_at not set';
+  end if;
+  update public.service_incident_notices set status = 'monitoring' where id = v_notice;
+  if (select resolved_at from public.service_incident_notices where id = v_notice) is not null then
+    raise exception 'status b test: resolved_at not cleared';
+  end if;
+  -- Unveränderte Speicherung erzeugt kein Update.
+  update public.service_incident_notices set category_id = null where id = v_notice;
+  if (select count(*) from public.service_incident_notice_updates where notice_id = v_notice) <> 3 then
+    raise exception 'status b test: no-op created an update';
+  end if;
+  if v_channel is not null and (
+    select count(*) from public.mail_messages
+    where service_incident_update_id is not null and status_subscription_id = v_subscription
+  ) <> 3 then
+    raise exception 'status b test: incident mails not queued per update';
+  end if;
+  -- Interne Banner gehen nicht an Abonnenten.
+  insert into public.service_incident_notices (tenant_id, title, description, status, created_by)
+  values (v_tenant, 'Intern', 'Nur im Portal.', 'investigating', v_agent);
+  if v_channel is not null and (
+    select count(*) from public.mail_messages
+    where service_incident_update_id is not null and status_subscription_id = v_subscription
+  ) <> 3 then
+    raise exception 'status b test: internal notice mailed';
+  end if;
+  -- RPC: Meldung mit Diensten anlegen und aktualisieren.
+  v_notice := public.save_service_incident_notice(v_agent, v_tenant, null, 'VPN gestört',
+    'VPN-Anmeldung schlägt fehl.', 'identified', true, array[v_service2, v_service], v_incident);
+  if (select count(*) from public.service_incident_notice_services where notice_id = v_notice) <> 2
+     or (select monitoring_incident_id from public.service_incident_notices where id = v_notice) is distinct from v_incident then
+    raise exception 'status b test: rpc create wrong';
+  end if;
+  perform public.save_service_incident_notice(v_agent, v_tenant, v_notice, null,
+    'VPN läuft wieder.', 'resolved', null, array[v_service2], null);
+  if (select count(*) from public.service_incident_notice_services where notice_id = v_notice) <> 1
+     or (select title from public.service_incident_notices where id = v_notice) <> 'VPN gestört'
+     or (select count(*) from public.service_incident_notice_updates where notice_id = v_notice) <> 2 then
+    raise exception 'status b test: rpc update wrong';
+  end if;
+  begin
+    perform public.save_service_incident_notice(v_agent, v_tenant, null, 'Fremd', 'Fremder Dienst.',
+      'investigating', true, array[gen_random_uuid()], null);
+    raise exception 'status b test: rpc accepted unknown service';
+  exception when foreign_key_violation then null;
+  end;
+  -- Unbekannte Monitoring-Störung wird abgelehnt.
+  begin
+    update public.service_incident_notices set monitoring_incident_id = gen_random_uuid() where id = v_notice;
+    raise exception 'status b test: unknown monitoring incident accepted';
+  exception when foreign_key_violation then null;
+  end;
+
+  -- 36. asset_services ist die Quelle, assets.service_id der erste Dienst.
+  insert into public.assets (tenant_id, name, kind, service_id)
+  values (v_tenant, 'B-Server', 'server', v_service) returning id into v_asset;
+  if (select count(*) from public.asset_services where asset_id = v_asset and service_id = v_service) <> 1 then
+    raise exception 'status b test: legacy service_id not mirrored';
+  end if;
+  perform public.set_asset_services(v_tenant, v_asset, array[v_service2, v_service]);
+  if (select service_id from public.assets where id = v_asset) is distinct from v_service2 then
+    raise exception 'status b test: primary service not synced';
+  end if;
+  update public.assets set service_id = v_service3 where id = v_asset;
+  if (select array_agg(service_id order by position, created_at, service_id) from public.asset_services where asset_id = v_asset)
+     <> array[v_service3, v_service] then
+    raise exception 'status b test: legacy primary replacement wrong';
+  end if;
+  perform public.set_asset_services(v_tenant, v_asset, array[]::uuid[]);
+  if (select service_id from public.assets where id = v_asset) is not null then
+    raise exception 'status b test: cleared services left primary';
+  end if;
+  begin
+    perform public.set_asset_services(v_tenant, v_asset, array[gen_random_uuid()]);
+    raise exception 'status b test: unknown service accepted';
+  exception when foreign_key_violation then null;
+  end;
+  perform public.set_asset_services(v_tenant, v_asset, array[v_service]);
+
+  -- 18./45. Wartungsfenster automatisch.
+  insert into public.service_status_maintenances (tenant_id, title, starts_at, ends_at, state, public_enabled)
+  values (v_tenant, 'B-Wartung', timezone('utc', now()) - interval '10 minutes',
+    timezone('utc', now()) + interval '1 hour', 'scheduled', true) returning id into v_window;
+  insert into public.service_status_maintenance_services (tenant_id, maintenance_id, service_id)
+  values (v_tenant, v_window, v_service), (v_tenant, v_window, v_service2);
+  insert into public.service_status_maintenance_assets (tenant_id, maintenance_id, asset_id)
+  values (v_tenant, v_window, v_asset);
+  -- Zweites Fenster überlappt B-VPN und endet später.
+  insert into public.service_status_maintenances (tenant_id, title, starts_at, ends_at, state, public_enabled)
+  values (v_tenant, 'B-Wartung 2', timezone('utc', now()) - interval '5 minutes',
+    timezone('utc', now()) + interval '3 hours', 'scheduled', false) returning id into v_window2;
+  insert into public.service_status_maintenance_services (tenant_id, maintenance_id, service_id)
+  values (v_tenant, v_window2, v_service2);
+
+  v_result := public.service_status_maintenance_run();
+  if (v_result ->> 'started')::integer <> 2 then
+    raise exception 'status b test: windows not started: %', v_result;
+  end if;
+  if (select status from public.services where id = v_service) <> 'maintenance'
+     or (select status from public.services where id = v_service2) <> 'maintenance'
+     or (select state from public.service_status_maintenances where id = v_window) <> 'active' then
+    raise exception 'status b test: services not in maintenance';
+  end if;
+  if (select previous_status from public.service_status_maintenance_services
+      where maintenance_id = v_window and service_id = v_service2) <> 'degraded' then
+    raise exception 'status b test: previous status not stored';
+  end if;
+  if current_setting('nextdesk.suppress_status_mail', true) = 'on' then
+    raise exception 'status b test: mail suppression leaked';
+  end if;
+  if v_channel is not null and (
+    exists (
+      select 1 from public.mail_messages message
+      join public.service_status_events event on event.id = message.service_status_event_id
+      where event.service_id in (v_service, v_service2) and event.status = 'maintenance'
+    )
+    or (select count(*) from public.mail_messages where service_status_maintenance_id = v_window
+          and maintenance_phase = 'start') <> 1
+  ) then
+    raise exception 'status b test: start mail wrong';
+  end if;
+  if (public.service_status_maintenance_run() ->> 'started')::integer <> 0 then
+    raise exception 'status b test: window started twice';
+  end if;
+
+  -- Ende des ersten Fensters: B-Mail zurück, B-VPN bleibt (zweites Fenster).
+  v_result := public.service_status_maintenance_run(timezone('utc', now()) + interval '2 hours');
+  if (v_result ->> 'ended')::integer <> 1 or (v_result ->> 'logged')::integer <> 1 then
+    raise exception 'status b test: end run wrong: %', v_result;
+  end if;
+  if (select status from public.services where id = v_service) <> 'operational'
+     or (select status from public.services where id = v_service2) <> 'maintenance'
+     or (select state from public.service_status_maintenances where id = v_window) <> 'completed' then
+    raise exception 'status b test: restore wrong';
+  end if;
+  if not exists (select 1 from public.asset_maintenance_log where asset_id = v_asset and maintenance_id = v_window) then
+    raise exception 'status b test: maintenance log missing';
+  end if;
+  if v_channel is not null and (select count(*) from public.mail_messages
+      where service_status_maintenance_id = v_window and maintenance_phase = 'end') <> 1 then
+    raise exception 'status b test: end mail missing';
+  end if;
+  perform public.service_status_maintenance_run(timezone('utc', now()) + interval '4 hours');
+  if (select status from public.services where id = v_service2) <> 'degraded' then
+    raise exception 'status b test: overlapping window did not restore previous status';
+  end if;
+  if (select count(*) from public.asset_maintenance_log where maintenance_id = v_window) <> 1 then
+    raise exception 'status b test: maintenance logged twice';
+  end if;
+  -- Manuell geänderter Status bleibt nach dem Ende; Absage protokolliert nichts.
+  insert into public.service_status_maintenances (tenant_id, title, starts_at, ends_at, state)
+  values (v_tenant, 'B-Wartung 3', timezone('utc', now()) - interval '1 minute',
+    timezone('utc', now()) + interval '1 hour', 'scheduled') returning id into v_window;
+  insert into public.service_status_maintenance_services (tenant_id, maintenance_id, service_id)
+  values (v_tenant, v_window, v_service);
+  insert into public.service_status_maintenance_assets (tenant_id, maintenance_id, asset_id)
+  values (v_tenant, v_window, v_asset);
+  perform public.service_status_maintenance_run();
+  update public.services set status = 'major_outage' where id = v_service;
+  update public.service_status_maintenances set state = 'cancelled' where id = v_window;
+  perform public.service_status_maintenance_run();
+  if (select status from public.services where id = v_service) <> 'major_outage' then
+    raise exception 'status b test: manual status overwritten';
+  end if;
+  if exists (select 1 from public.asset_maintenance_log where maintenance_id = v_window) then
+    raise exception 'status b test: cancelled window logged';
+  end if;
+
+  -- 42. Verfügbarkeit.
+  insert into public.service_status_events (tenant_id, service_id, status, changed_at)
+  values (v_tenant, v_service3, 'operational', timezone('utc', now()) - interval '10 days'),
+         (v_tenant, v_service3, 'major_outage', timezone('utc', now()) - interval '2 days'),
+         (v_tenant, v_service3, 'operational', timezone('utc', now()) - interval '1 day');
+  select * into v_row from public.service_status_availability(
+    v_tenant, array[v_service3], timezone('utc', now()) - interval '30 days') availability;
+  if v_row.availability_percent is null or v_row.availability_percent > 92
+     or v_row.availability_percent < 88 then
+    raise exception 'status b test: availability wrong: %', to_jsonb(v_row);
+  end if;
+  if (select count(*) from public.service_status_availability(v_tenant, array[gen_random_uuid()],
+      timezone('utc', now()) - interval '30 days')) <> 0 then
+    raise exception 'status b test: unknown service returned';
+  end if;
+
+  -- 16. Netzwerk-Abhängigkeiten.
+  v_result := public.service_network_dependencies(v_tenant, v_service);
+  if jsonb_array_length(v_result -> 'devices') <> 1
+     or v_result -> 'devices' -> 0 ->> 'name' <> 'B-Server' then
+    raise exception 'status b test: dependencies wrong: %', v_result;
+  end if;
+  raise notice 'status page services maintenance checks ran';
+end;
+$$;
+rollback;
+SQL
+
+
+# 0316: mehrere Phishing-Meldungen pro Sicherheitsfall.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.phishing_reports'::regclass
+      and contype = 'u'
+      and conkey = array[(select attnum from pg_attribute where attrelid = 'public.phishing_reports'::regclass and attname = 'ticket_id')]::smallint[]
+  ) then
+    raise exception 'phishing reports test: ticket_id must not be unique';
+  end if;
+  raise notice 'phishing multiple reports checks ran';
+end;
+$$;
+SQL
+
+# 0315: IP-Adressen & Querschnitt (Benachrichtigungsarten, IPAM-Automatik, Gerät-IP, Gruppierung, Aufbewahrung).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_manager constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_requester constant uuid := '00000000-0000-4000-8000-000000000001';
+  v_net uuid;
+  v_small uuid;
+  v_addr uuid;
+  v_gone uuid;
+  v_agent uuid;
+  v_asset uuid;
+  v_service uuid;
+  v_team uuid := gen_random_uuid();
+  v_notification uuid;
+  v_report uuid;
+  v_result jsonb;
+  v_count integer;
+  v_kind text;
+begin
+  -- Categories: every kind of the parts A–E.
+  for v_kind, v_result in
+    select item.key, to_jsonb(item.value)
+      from jsonb_each_text(jsonb_build_object(
+        'monitoring.incident', 'incident',
+        'monitoring.incident.reopened', 'incident',
+        'security.case_overdue', 'security_report',
+        'security.case_clicked', 'security_report',
+        'security.campaign', 'security_report',
+        'ticket.security_report', 'security_report',
+        'shop.order.loan_due', 'shop',
+        'shop.order.loan_overdue', 'shop',
+        'shop.order.approval_reminder', 'shop',
+        'inventory.low_stock', 'inventory_low_stock',
+        'inventory.reorder', 'inventory_low_stock',
+        'inventory.count_due', 'inventory_low_stock',
+        'ipam.finding', 'ipam',
+        'ipam.agent_offline', 'ipam',
+        'ipam.reservation_expiring', 'ipam',
+        'monitoring.ipam_finding', 'ipam',
+        'infrastructure.due', 'infrastructure',
+        'ticket.assigned', 'assigned')) as item
+  loop
+    if public.push_notification_category(v_kind) is distinct from (v_result #>> '{}') then
+      raise exception '0315 test: % maps to % instead of %', v_kind,
+        public.push_notification_category(v_kind), v_result #>> '{}';
+    end if;
+  end loop;
+  if public.push_notification_category('ipam.unknown') is not null
+     or not public.push_delivery_modes_valid('{"ipam": "summary"}'::jsonb)
+     or public.push_delivery_modes_valid('{"ipam": "loud"}'::jsonb) then
+    raise exception '0315 test: ipam category not accepted as expected';
+  end if;
+  insert into public.push_preferences (tenant_id, user_id, email_categories, category_modes)
+  values (v_tenant, v_requester, array['ipam', 'incident'], '{"ipam": "off"}')
+  on conflict (tenant_id, user_id) do update
+    set email_categories = excluded.email_categories, category_modes = excluded.category_modes;
+
+  if has_function_privilege('authenticated', 'public.ipam_notify(uuid, text, jsonb, uuid, uuid)', 'execute')
+     or has_function_privilege('authenticated', 'public.push_non_ticket_recipient_authorized(uuid, uuid, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.operational_data_prune(uuid)', 'execute')
+     or has_function_privilege('authenticated', 'public.ipam_automation_hourly()', 'execute')
+     or has_table_privilege('authenticated', 'public.ipam_reservation_reminders', 'select')
+     or not has_function_privilege('authenticated', 'public.ipam_ticket_mentions(uuid, text, text, integer)', 'execute')
+     or has_function_privilege('anon', 'public.ticket_similarity_clusters(uuid, timestamptz, integer, integer, boolean)', 'execute')
+     or not has_function_privilege('authenticated', 'public.ticket_similarity_clusters(uuid, timestamptz, integer, integer, boolean)', 'execute') then
+    raise exception '0315 test: grants wrong';
+  end if;
+
+  -- IPAM switched on, the manager may manage it.
+  insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+  values (v_tenant, 'ipam.management', true)
+  on conflict (tenant_id, feature_key) do update set enabled = true, pilot_ends_at = null;
+  insert into public.role_permissions (role_id, permission_code)
+  values ('16500000-0000-4000-8000-000000000002', 'ipam.manage'),
+         ('16500000-0000-4000-8000-000000000002', 'ipam.read')
+  on conflict do nothing;
+
+  -- Recipient rule without a ticket.
+  if not public.push_non_ticket_recipient_authorized(v_tenant, v_manager, 'ipam.finding')
+     or public.push_non_ticket_recipient_authorized(v_tenant, v_requester, 'ipam.finding')
+     or public.push_non_ticket_recipient_authorized(v_tenant, v_manager, 'unknown.kind')
+     or not public.push_non_ticket_recipient_authorized(v_tenant, v_requester, 'shop.order.loan_due')
+     or public.push_non_ticket_recipient_authorized(v_tenant, gen_random_uuid(), 'shop.order.loan_due') then
+    raise exception '0315 test: non-ticket recipient rule wrong';
+  end if;
+  -- The sweep no longer skips authorized notifications without a ticket.
+  insert into public.ticket_notifications (tenant_id, user_id, ticket_id, kind, payload)
+  values (v_tenant, v_manager, null, 'ipam.finding', '{"number": "test-sweep"}')
+  returning id into v_notification;
+  insert into public.push_outbox (tenant_id, user_id, notification_id)
+  values (v_tenant, v_manager, v_notification) on conflict (notification_id) do nothing;
+  insert into public.ticket_notifications (tenant_id, user_id, ticket_id, kind, payload)
+  values (v_tenant, v_requester, null, 'ipam.finding', '{"number": "test-sweep-denied"}')
+  returning id into v_notification;
+  insert into public.push_outbox (tenant_id, user_id, notification_id)
+  values (v_tenant, v_requester, v_notification) on conflict (notification_id) do nothing;
+  perform public.push_skip_unauthorized_ticket_outbox();
+  if exists (select 1 from public.push_outbox outbox
+               join public.ticket_notifications notification on notification.id = outbox.notification_id
+              where notification.payload ->> 'number' = 'test-sweep' and outbox.status = 'skipped')
+     or not exists (select 1 from public.push_outbox outbox
+               join public.ticket_notifications notification on notification.id = outbox.notification_id
+              where notification.payload ->> 'number' = 'test-sweep-denied' and outbox.status = 'skipped') then
+    raise exception '0315 test: sweep handled notifications without ticket wrongly';
+  end if;
+
+  -- Phishing team members always count as recipients of security notifications.
+  insert into public.teams (id, tenant_id, department_id, name, active)
+  values (v_team, v_tenant, '11000000-0000-4000-8000-000000000001', 'Phishing 0315', true);
+  insert into public.team_memberships (team_id, user_id) values (v_team, v_manager);
+  insert into public.phishing_report_settings (tenant_id, notify_team_id)
+  values (v_tenant, v_team)
+  on conflict (tenant_id) do update set notify_team_id = excluded.notify_team_id;
+  if not public.phishing_team_member(v_tenant, v_manager)
+     or public.phishing_team_member(v_tenant, v_requester) then
+    raise exception '0315 test: phishing team membership wrong';
+  end if;
+  if not public.push_security_delivery_forced(v_tenant, v_manager, 'security.case_clicked')
+     or public.push_security_delivery_forced(v_tenant, v_requester, 'security.case_clicked')
+     or public.push_security_delivery_forced(v_tenant, v_manager, 'ipam.finding')
+     or has_function_privilege('authenticated', 'public.push_security_delivery_forced(uuid, uuid, text)', 'execute') then
+    raise exception '0315 test: forced security delivery wrong';
+  end if;
+
+  -- 25: subnet over its threshold and a full DHCP scope.
+  insert into public.ipam_prefixes (tenant_id, prefix, description, utilization_warning_percent)
+  values (v_tenant, '10.231.1.0/29', 'Klein', 50) returning id into v_small;
+  insert into public.ipam_addresses (tenant_id, address, status)
+  select v_tenant, ('10.231.1.' || n)::inet, 'active' from generate_series(1, 4) n;
+  insert into public.ipam_prefixes (tenant_id, prefix, description)
+  values (v_tenant, '10.231.2.0/24', 'Clients') returning id into v_net;
+  insert into public.ipam_dhcp_scopes (tenant_id, server, scope_id, name, addresses_in_use, addresses_free, prefix_id)
+  values (v_tenant, 'DHCP01', '10.231.2.0', 'Clients', 95, 5, v_net);
+  v_result := public.ipam_utilization_findings(v_tenant);
+  if (v_result ->> 'opened')::integer <> 2
+     or not exists (select 1 from public.ipam_findings where tenant_id = v_tenant and kind = 'utilization'
+                     and prefix_id = v_small and status = 'open' and (details ->> 'percent')::integer = 66)
+     or not exists (select 1 from public.ipam_findings where tenant_id = v_tenant and kind = 'utilization'
+                     and address = '10.231.2.0' and (details ->> 'dhcpPercent')::integer = 95)
+     or not exists (select 1 from public.ticket_notifications where tenant_id = v_tenant
+                     and user_id = v_manager and kind = 'ipam.finding' and payload ->> 'number' = '10.231.1.0/29') then
+    raise exception '0315 test: utilization findings wrong: %', v_result;
+  end if;
+  v_result := public.ipam_utilization_findings(v_tenant);
+  if (v_result ->> 'opened')::integer <> 0 or (v_result ->> 'updated')::integer <> 2 then
+    raise exception '0315 test: utilization findings duplicated: %', v_result;
+  end if;
+  update public.ipam_dhcp_scopes set addresses_in_use = 10, addresses_free = 90 where tenant_id = v_tenant and server = 'DHCP01';
+  delete from public.ipam_addresses where tenant_id = v_tenant and address in ('10.231.1.3', '10.231.1.4');
+  v_result := public.ipam_utilization_findings(v_tenant);
+  if (v_result ->> 'resolved')::integer <> 2
+     or exists (select 1 from public.ipam_findings where tenant_id = v_tenant and kind = 'utilization' and status = 'open') then
+    raise exception '0315 test: utilization findings not resolved: %', v_result;
+  end if;
+
+  -- 27: server without PRTG → finding «coverage», ignoring sticks.
+  insert into public.ipam_addresses (tenant_id, address, hostname, device_type, status)
+  values (v_tenant, '10.231.2.10', 'SRV-0315', 'server', 'active') returning id into v_addr;
+  v_result := public.ipam_coverage_findings(v_tenant);
+  if not exists (select 1 from public.ipam_findings where address_id = v_addr and kind = 'coverage' and status = 'open') then
+    raise exception '0315 test: coverage finding missing: %', v_result;
+  end if;
+  update public.ipam_findings set status = 'ignored' where address_id = v_addr and kind = 'coverage';
+  perform public.ipam_coverage_findings(v_tenant);
+  if exists (select 1 from public.ipam_findings where address_id = v_addr and kind = 'coverage' and status = 'open') then
+    raise exception '0315 test: ignored coverage finding reopened';
+  end if;
+  insert into public.ipam_addresses (tenant_id, address, hostname, device_type, status)
+  values (v_tenant, '10.231.2.11', 'SW-0315', 'switch', 'active') returning id into v_gone;
+  perform public.ipam_coverage_findings(v_tenant);
+  update public.ipam_addresses set prtg_device_id = '9001' where id = v_gone;
+  perform public.ipam_coverage_findings(v_tenant);
+  if (select status from public.ipam_findings where address_id = v_gone and kind = 'coverage') <> 'resolved' then
+    raise exception '0315 test: covered device not resolved';
+  end if;
+
+  -- 26: agent offline once per outage.
+  insert into public.ipam_agents (tenant_id, name, token_hash, last_seen_at)
+  values (v_tenant, 'Agent 0315', repeat('c', 64), timezone('utc', now()) - interval '3 hours')
+  returning id into v_agent;
+  v_count := public.ipam_agents_offline_check(v_tenant);
+  if v_count <> 1 then
+    raise exception '0315 test: offline agent not announced (%)', v_count;
+  end if;
+  v_count := public.ipam_agents_offline_check(v_tenant);
+  if v_count <> 0
+     or not exists (select 1 from public.ticket_notifications where tenant_id = v_tenant and user_id = v_manager
+                     and kind = 'ipam.agent_offline' and payload ->> 'agentId' = v_agent::text) then
+    raise exception '0315 test: offline agent not announced exactly once';
+  end if;
+  update public.ipam_agents set last_seen_at = timezone('utc', now()) where id = v_agent;
+  if (select offline_notified_at from public.ipam_agents where id = v_agent) is not null then
+    raise exception '0315 test: offline marker not reset';
+  end if;
+
+  -- 24: reminder before reserved_until, then release.
+  update public.ipam_addresses
+     set status = 'reserved', owner_user_id = v_manager,
+         reserved_until = (timezone('Europe/Zurich', now()))::date + 2
+   where id = v_addr;
+  update public.ipam_addresses
+     set status = 'reserved', reserved_until = (timezone('Europe/Zurich', now()))::date - 1
+   where id = v_gone;
+  v_result := public.ipam_reservations_due(v_tenant);
+  if (v_result ->> 'reminded')::integer <> 1 or (v_result ->> 'released')::integer <> 1
+     or not exists (select 1 from public.ticket_notifications where tenant_id = v_tenant and user_id = v_manager
+                     and kind = 'ipam.reservation_expiring' and payload ->> 'address' = '10.231.2.10')
+     or (select status from public.ipam_addresses where id = v_gone) <> 'deprecated'
+     or not exists (select 1 from public.ipam_address_events where address_id = v_gone and kind = 'released'
+                     and details ->> 'reason' = 'reservation_expired')
+     or not exists (select 1 from public.ipam_change_log where object_id = v_gone and source = 'system') then
+    raise exception '0315 test: reservations wrong: %', v_result;
+  end if;
+  v_result := public.ipam_reservations_due(v_tenant);
+  if (v_result ->> 'reminded')::integer <> 0 then
+    raise exception '0315 test: reservation reminded twice';
+  end if;
+  perform public.ipam_automation_hourly();
+  perform public.ipam_automation_daily();
+
+  -- 40: foreign keys.
+  insert into public.services (tenant_id, name) values (v_tenant, 'Dienst 0315') returning id into v_service;
+  update public.ipam_addresses set service_id = v_service where id = v_addr;
+  begin
+    update public.ipam_addresses set service_id = gen_random_uuid() where id = v_addr;
+    raise exception '0315 test: unknown service accepted';
+  exception when foreign_key_violation then null;
+  end;
+  begin
+    update public.ipam_findings set ticket_id = gen_random_uuid() where address_id = v_addr;
+    raise exception '0315 test: unknown ticket accepted';
+  exception when foreign_key_violation then null;
+  end;
+
+  -- 37: device IP validated and synchronized.
+  insert into public.assets (tenant_id, name, kind) values (v_tenant, 'SRV-IP-0315', 'server') returning id into v_asset;
+  begin
+    insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address)
+    values (v_asset, v_tenant, 'server', 'kein-ip');
+    raise exception '0315 test: invalid device IP accepted';
+  exception when invalid_parameter_value then null;
+  end;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, hostname, ip_address)
+  values (v_asset, v_tenant, 'server', 'SRV-IP-0315', ' 10.231.2.40/24 ');
+  if (select ip_inet from public.asset_infrastructure where asset_id = v_asset) <> '10.231.2.40'::inet
+     or not exists (select 1 from public.ipam_addresses where tenant_id = v_tenant
+                     and address = '10.231.2.40' and asset_id = v_asset and hostname = 'SRV-IP-0315') then
+    raise exception '0315 test: device IP not documented in IPAM';
+  end if;
+  insert into public.assets (tenant_id, name, kind) values (v_tenant, 'SW-IP-0315', 'switch') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category) values (v_asset, v_tenant, 'switch');
+  update public.ipam_addresses set asset_id = v_asset where id = v_addr;
+  if (select ip_address from public.asset_infrastructure where asset_id = v_asset) <> '10.231.2.10' then
+    raise exception '0315 test: address link did not fill the device IP';
+  end if;
+
+  -- 33: ticket search by IP (trigram index, caller's rights).
+  select id into v_notification from public.tickets
+   where tenant_id = v_tenant and deleted_at is null order by created_at limit 1;
+  update public.tickets set subject = 'Drucker 10.231.2.99 offline' where id = v_notification;
+  if not exists (select 1 from public.ipam_ticket_mentions(v_tenant, '10.231.2.99', null, 10)
+                  where id = v_notification and matched = 'ip')
+     or exists (select 1 from public.ipam_ticket_mentions(v_tenant, '%', 'x', 10)) then
+    raise exception '0315 test: ticket mentions wrong';
+  end if;
+  if not exists (select 1 from pg_indexes where indexname = 'tickets_description_trgm_idx') then
+    raise notice '0315 test: pg_trgm not available, trigram index skipped';
+  end if;
+
+  -- 41: retention.
+  if (select monitoring_retention_months from public.tenant_data_retention_policies where tenant_id = v_tenant) <> 24
+     or (select phishing_retention_months from public.tenant_data_retention_policies where tenant_id = v_tenant) <> 12 then
+    raise exception '0315 test: retention defaults wrong';
+  end if;
+  insert into public.ipam_change_log (tenant_id, at, source, object_type, object_id, action)
+  values (v_tenant, timezone('utc', now()) - interval '30 months', 'user', 'address', v_addr, 'update');
+  insert into public.phishing_reports (tenant_id, reporter_email, channel, source, risk_score, risk_level,
+                                       fingerprint, analysis, original_from, created_at)
+  values (v_tenant, 'person@example.test', 'email', 'eml', 10, 'low', repeat('d', 64),
+          '{"headers": {"to": "person@example.test"}, "score": 10}', 'boese@example.test',
+          timezone('utc', now()) - interval '13 months')
+  returning id into v_report;
+  update public.tenant_data_retention_policies set legal_hold = true where tenant_id = v_tenant;
+  perform public.operational_data_prune(v_tenant);
+  if not exists (select 1 from public.ipam_change_log where tenant_id = v_tenant and at < timezone('utc', now()) - interval '29 months') then
+    raise exception '0315 test: prune ignored the legal hold';
+  end if;
+  update public.tenant_data_retention_policies set legal_hold = false where tenant_id = v_tenant;
+  v_result := public.operational_data_prune(v_tenant);
+  if exists (select 1 from public.ipam_change_log where tenant_id = v_tenant and at < timezone('utc', now()) - interval '29 months')
+     or (select reporter_email from public.phishing_reports where id = v_report) is not null
+     or (select analysis ? 'headers' from public.phishing_reports where id = v_report)
+     or (select original_from from public.phishing_reports where id = v_report) <> 'boese@example.test' then
+    raise exception '0315 test: prune wrong: %', v_result;
+  end if;
+
+  raise notice 'ipam automation and notification checks ran';
 end;
 $$;
 rollback;

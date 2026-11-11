@@ -11,6 +11,24 @@ import {
   type SecurityVerdict,
   VERDICT_LABELS,
 } from "../_shared/security-cases.ts";
+import {
+  caseCampaign,
+  caseContext,
+  caseIocHits,
+  caseMeasures,
+  type FunctionCall,
+  functionCaller,
+  IntelError,
+  listCampaigns,
+  listIocs,
+  type Measure,
+  MEASURES,
+  orderReplacement,
+  recordCaseIocs,
+  replacementCatalog,
+  runMeasure,
+  setIocStatus,
+} from "./intel.ts";
 
 // «Sicherheitsfälle»: phishing reports handled as their own kind of case
 // (migration 0261). Signed-in agents only; every case is checked with
@@ -48,7 +66,38 @@ type Action =
   | { type: "askClicked"; tenantId: string; ticketId: string }
   | { type: "close"; tenantId: string; ticketId: string }
   | { type: "getTemplates"; tenantId: string }
-  | { type: "saveTemplates"; tenantId: string; templates: Record<SecurityVerdict, string[]> };
+  | { type: "saveTemplates"; tenantId: string; templates: Record<SecurityVerdict, string[]> }
+  | { type: "context"; tenantId: string; ticketId: string }
+  | {
+    type: "runMeasure";
+    tenantId: string;
+    ticketId: string;
+    measure: Measure;
+    personKey: string;
+    assetId: string | null;
+    confirmed: boolean;
+  }
+  | { type: "replacementCatalog"; tenantId: string; ticketId: string }
+  | {
+    type: "orderReplacement";
+    tenantId: string;
+    ticketId: string;
+    personKey: string;
+    catalogItemId: string;
+    comment: string | null;
+    confirmed: boolean;
+  }
+  | { type: "listCampaigns"; tenantId: string }
+  | { type: "listIocs"; tenantId: string; status: "active" | "harmless" | "all"; query: string | null }
+  | { type: "setIocStatus"; tenantId: string; iocId: string; status: "active" | "harmless" };
+
+/** Person of a case: user id (UUID) or e-mail address in lower case. */
+function personKey(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const key: string = value.trim().toLowerCase();
+  if (isUuid(key as unknown)) return key;
+  return key.length <= 320 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(key) ? key : null;
+}
 
 class HttpError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) {
@@ -78,7 +127,63 @@ export function parseAction(value: unknown): Action | null {
     case "get":
     case "askClicked":
     case "close":
+    case "context":
+    case "replacementCatalog":
       return isUuid(value.ticketId) ? { type: value.type, tenantId, ticketId: value.ticketId } : null;
+    case "runMeasure": {
+      const key = personKey(value.personKey);
+      const measure = (MEASURES as readonly unknown[]).includes(value.measure)
+        ? value.measure as Measure
+        : null;
+      const assetId = value.assetId === null || value.assetId === undefined
+        ? null
+        : isUuid(value.assetId)
+        ? value.assetId
+        : undefined;
+      if (!isUuid(value.ticketId) || !key || !measure || assetId === undefined) return null;
+      if (measure.startsWith("intune_") && !assetId) return null;
+      return {
+        type: "runMeasure",
+        tenantId,
+        ticketId: value.ticketId,
+        measure,
+        personKey: key,
+        assetId: measure.startsWith("intune_") ? assetId : null,
+        confirmed: value.confirmed === true,
+      };
+    }
+    case "orderReplacement": {
+      const key = personKey(value.personKey);
+      const comment = typeof value.comment === "string" && value.comment.trim()
+        ? value.comment.trim().slice(0, 1000)
+        : null;
+      return isUuid(value.ticketId) && key && isUuid(value.catalogItemId)
+        ? {
+          type: "orderReplacement",
+          tenantId,
+          ticketId: value.ticketId,
+          personKey: key,
+          catalogItemId: value.catalogItemId,
+          comment,
+          confirmed: value.confirmed === true,
+        }
+        : null;
+    }
+    case "listCampaigns":
+      return { type: "listCampaigns", tenantId };
+    case "listIocs": {
+      const status = value.status ?? "active";
+      const query = typeof value.query === "string" && value.query.trim()
+        ? value.query.trim().slice(0, 120)
+        : null;
+      return status === "active" || status === "harmless" || status === "all"
+        ? { type: "listIocs", tenantId, status, query }
+        : null;
+    }
+    case "setIocStatus":
+      return isUuid(value.iocId) && (value.status === "active" || value.status === "harmless")
+        ? { type: "setIocStatus", tenantId, iocId: value.iocId, status: value.status }
+        : null;
     case "setVerdict":
       return isUuid(value.ticketId) && isSecurityVerdict(value.verdict)
         ? { type: "setVerdict", tenantId, ticketId: value.ticketId, verdict: value.verdict }
@@ -442,6 +547,12 @@ async function detail(admin: Client, client: Client, tenantId: string, ticketId:
       doneAt: text(row.done_at),
       doneBy: names.get(text(row.done_by) ?? "") ?? null,
     })),
+    clickedAt: text(securityCase.clicked_at),
+    overdueNotifiedAt: text(securityCase.overdue_notified_at),
+    escalatedAt: text(securityCase.escalated_at),
+    campaign: await caseCampaign(admin, tenantId, text(securityCase.campaign_id), ticketId),
+    iocHits: caseIocHits(securityCase.ioc_hits),
+    measures: await caseMeasures(admin, ticketId),
   };
 }
 
@@ -495,6 +606,8 @@ async function setVerdict(
     event_type: "ticket.security_verdict",
     payload: { verdict: action.verdict, label: VERDICT_LABELS[action.verdict] },
   });
+  // Indicators of the mail go into the IOC list (not for «harmless»).
+  await recordCaseIocs(admin, action.tenantId, action.ticketId, action.verdict).catch(() => 0);
   // Every reporter learns the result once (automatic).
   let notified = 0;
   if (!current.data.reporters_notified_at) {
@@ -558,8 +671,61 @@ async function askClicked(admin: Client, client: Client, actorId: string, tenant
   return { asked: result.queued };
 }
 
-async function handle(admin: Client, client: Client, actorId: string, action: Action) {
+async function ticketNumber(admin: Client, tenantId: string, ticketId: string): Promise<string> {
+  const { data } = await admin.from("tickets").select("ticket_number")
+    .eq("id", ticketId).eq("tenant_id", tenantId).maybeSingle();
+  return text((data as Row | null)?.ticket_number) ?? "";
+}
+
+function requireConfirmation(confirmed: boolean) {
+  if (!confirmed) {
+    throw new HttpError(428, "confirmation_required", "Bitte die Massnahme zuerst bestätigen.");
+  }
+}
+
+async function handle(
+  admin: Client,
+  client: Client,
+  call: FunctionCall,
+  actorId: string,
+  action: Action,
+) {
   switch (action.type) {
+    case "context":
+      await requireAgent(client, action.tenantId);
+      await requireCase(client, action.tenantId, action.ticketId);
+      return await caseContext(admin, client, call, action.tenantId, action.ticketId);
+    case "runMeasure": {
+      await requireAgent(client, action.tenantId);
+      await requireCase(client, action.tenantId, action.ticketId);
+      requireConfirmation(action.confirmed);
+      const measure = await runMeasure(admin, client, call, actorId, action);
+      return { ...await detail(admin, client, action.tenantId, action.ticketId), measure };
+    }
+    case "replacementCatalog":
+      await requireAgent(client, action.tenantId);
+      await requireCase(client, action.tenantId, action.ticketId);
+      return await replacementCatalog(call, action.tenantId);
+    case "orderReplacement": {
+      await requireAgent(client, action.tenantId);
+      await requireCase(client, action.tenantId, action.ticketId);
+      requireConfirmation(action.confirmed);
+      const measure = await orderReplacement(admin, client, call, actorId, {
+        ...action,
+        ticketNumber: await ticketNumber(admin, action.tenantId, action.ticketId),
+      });
+      return { ...await detail(admin, client, action.tenantId, action.ticketId), measure };
+    }
+    case "listCampaigns":
+      await requireAgent(client, action.tenantId);
+      return await listCampaigns(admin, action.tenantId);
+    case "listIocs":
+      await requireAgent(client, action.tenantId);
+      return await listIocs(admin, action.tenantId, action.status, action.query);
+    case "setIocStatus":
+      await requireAgent(client, action.tenantId);
+      await setIocStatus(admin, actorId, action.tenantId, action.iocId, action.status);
+      return { ok: true };
     case "list":
       return await list(admin, client, action);
     case "get":
@@ -643,10 +809,16 @@ const handler = withSupabase(
       if (!action) {
         return json(request, { error: { code: "invalid_request", message: "Die Anfrage ist ungültig." } }, 422);
       }
-      const data = await handle(context.supabaseAdmin, context.supabase, actorId, action);
+      const data = await handle(
+        context.supabaseAdmin,
+        context.supabase,
+        functionCaller(request),
+        actorId,
+        action,
+      );
       return json(request, { data: data as Record<string, unknown> });
     } catch (error) {
-      if (error instanceof HttpError) {
+      if (error instanceof HttpError || error instanceof IntelError) {
         return json(request, { error: { code: error.code, message: error.message } }, error.status);
       }
       console.error("security_cases_failed", error instanceof Error ? error.message : "");

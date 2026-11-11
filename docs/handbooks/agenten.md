@@ -75,6 +75,11 @@ Abteilung. Die Reiter _Alle / Personen / Tickets …_ filtern die Treffer. Neben
 dem Namen sehen Sie die Anzahl offener Tickets; gesperrte Konten sind als
 **Deaktiviert** markiert. Mitarbeitende ohne Agentenrolle sehen keine Personen.
 
+Die Suche findet ausserdem **Störungen** (Nummer, Titel, Gerät) und
+**Sicherheitsfälle** (Fallnummer, Betreff, Absender, meldende Person) – aber
+nur für das jeweils zuständige Team (siehe unten). Ein Klick öffnet die
+Störung bzw. den Fall direkt.
+
 ![Globale Suche mit Personen aus Microsoft Entra](images/ag-personensuche.jpg)
 
 Ein Klick auf eine Person öffnet die **Personenübersicht**. Sie erreichen sie
@@ -92,7 +97,10 @@ auch im Ticket über den Namen unter **Anfragende Person** (in der App:
   Offen / Geschlossen_), **Geräte** aus Intune und Assets (ein Klick öffnet das Gerät), **Lizenzen**,
   **Bestellungen** aus dem Shop und der **Verlauf** als Zeitleiste. Geräte,
   Lizenzen und Bestellungen erscheinen nur, wenn das Modul aktiv ist und Sie
-  die Berechtigung dafür haben.
+  die Berechtigung dafür haben. Für das Sicherheitsteam kommt der Reiter
+  **Sicherheitsfälle** dazu (von der Person gemeldete Phishing-Mails, mit
+  Kennzeichen _Geklickt_), für das Störungsteam der Reiter **Störungen**
+  (Störungen ihrer Geräte in den letzten 12 Monaten).
 - **Häufige Themen**: die Kategorien, zu denen die Person am häufigsten
   Tickets erfasst.
 
@@ -115,7 +123,10 @@ Weitere Blöcke:
 
 - **Priorisierte Tickets** und **Meine Prioritäten** – von der KI
   vorgeschlagene Reihenfolge; per Ziehen anpassen, **Neu priorisieren** oder
-  **Eigene Reihenfolge verwerfen**
+  **Eigene Reihenfolge verwerfen**. Über den Tickets stehen Ihnen zugewiesene
+  offene **Störungen** und **Sicherheitsfälle** (dringende rot markiert, z. B.
+  Ausfall unbestätigt, Urteil überfällig oder «Melder hat geklickt»);
+  Sicherheitsfälle erscheinen nicht mehr als Ticket.
 - **Freigaben** – Entscheidungen, die auf Sie warten
 - **Meine Kennzahlen** – z. B. heute gelöst, Median der ersten Antwort
 - **Gerade passiert** – die neuesten Ereignisse
@@ -163,7 +174,11 @@ Team sehen sie alle Agenten.
 
 Gemeldete Phishing-Mails erscheinen nicht in der Ticketliste (weder im Web
 noch in der App), sondern unter **Sicherheitsfälle**. Meldet mehr als eine Person dieselbe E-Mail, entsteht
-nur ein Fall; alle Melder hängen daran (Kennzeichen **Kampagne**). Die Kacheln
+nur ein Fall; alle Melder hängen daran (Kennzeichen **Kampagne**). Ähnliche
+Mails (gleiche Absenderdomain mit ähnlichem Betreff oder gleichen
+Link-Domains) fasst nextDesk zusätzlich zu einer **Kampagne** über mehrere
+Fälle zusammen; ab drei meldenden Personen erhält das Sicherheitsteam eine
+Benachrichtigung. Die Kacheln
 zeigen, was zu beurteilen ist, wie viele Fälle noch Massnahmen haben, die
 Meldungen von heute, die mittlere Zeit bis zum Urteil und wie oft Melder
 angegeben haben, geklickt zu haben.
@@ -204,13 +219,64 @@ So bearbeiten Sie einen Fall:
 4. **Fall abschliessen**, sobald alles erledigt ist. Bei _Harmlos_ ohne
    Massnahmen schliesst sich der Fall direkt nach dem Urteil.
 
+### Kontext und Massnahmen
+
+Im Fall zeigt die Karte **Kontext und Massnahmen** zu jeder meldenden Person
+Funktion, Abteilung, vorgesetzte Person, die letzte Anmeldung aus Microsoft
+Entra (falls synchronisiert) und ihre Geräte mit Intune-Status (Compliance,
+letzte Synchronisation) und IP-Adressen aus der IP-Verwaltung (Subnetz, VLAN,
+Standort, Switch-Port). Nennt die gemeldete Mail eine IP-Adresse oder einen
+Host aus dem eigenen Netz (bekanntes Subnetz, bekannte Adresse oder private
+Adresse), erscheint der Hinweis **Interne Adresse!** – das kann auf ein
+kompromittiertes internes Gerät oder Konto hindeuten.
+
+Antwortet eine Person auf die Rückfrage mit **«Ja, ich habe geklickt»**,
+erhält das Sicherheitsteam sofort eine Benachrichtigung und der Fall bekommt
+die Priorität _hoch_. Bei der Person stehen dann diese Massnahmen bereit
+(jede mit Bestätigungsdialog):
+
+- **Gerät synchronisieren** und **Defender-Schnellscan** (Windows) über Intune
+  – nur, was Intune für das Gerät anbietet. Ein Gerät **isolieren** ist nur
+  direkt in Microsoft Defender möglich.
+- **Sitzungen widerrufen** und **Passwort-Reset erzwingen** in Microsoft
+  Entra. Fehlt der nextDesk-App dafür die Berechtigung, erscheint eine klare
+  Meldung; die Checkliste bleibt, und Sie erledigen den Schritt im Entra Admin
+  Center.
+- **Ersatzgerät bestellen**: bestellt einen Shop-Artikel im Namen der Person
+  mit dem Hinweis «Ersatzgerät aus Sicherheitsfall …». Verlangt der Artikel
+  eine Genehmigung, wird diese wie üblich angefordert.
+
+Jede Massnahme steht mit Ergebnis unter **Ausgeführte Massnahmen** und im
+Verlauf des Falls.
+
+### Kampagnen und IOC-Liste
+
+Unter **Kampagnen & IOC** sehen Sie die erkannten Kampagnen mit allen
+zugehörigen Fällen und die **IOC-Liste**: Domains, URLs, sendende IPs und
+Absender aus allen Fällen mit dem Urteil _Spam_, _Phishing_ oder _Gezielter
+Angriff_. Jede neue Meldung wird dagegen geprüft; Treffer stehen im Fall unter
+**Bekannte Indikatoren** und als interne Notiz. Ist ein Eintrag unbedenklich
+(z. B. ein missbrauchter, aber seriöser Dienst), markieren Sie ihn **als
+harmlos** – er löst dann keine Treffer mehr aus.
+
+### Eskalation
+
+Ist das Urteil überfällig, erhält das Sicherheitsteam eine Benachrichtigung;
+nach weiteren 24 Stunden ohne Urteil gehen sie an die Vorgesetzten der
+Abteilung (Rolle «Vorgesetzter Agent»). Mitglieder des Sicherheitsteams
+erhalten neue Meldungen, Klicks, Kampagnen und Eskalationen immer – auch wenn
+sie die Phishing-Meldungen in den Benachrichtigungen nicht eingeschaltet
+haben.
+
 Melder bekommen für Phishing-Meldungen keine Eingangsbestätigung, nur eine
 Dankesnachricht und später das Ergebnis.
 
 In der **iOS- und Android-App** heisst der Bereich **Phishing** (untere
 Leiste, links vom Home-Knopf). Dort fällen Sie das Urteil, weisen den Fall zu,
 haken Massnahmen ab, fragen die Melder nach einem Klick und schliessen den
-Fall ab. Ein Tipp auf eine Phishing-Mitteilung öffnet den Fall direkt.
+Fall ab. Ein Tipp auf eine Phishing-Mitteilung öffnet den Fall direkt. Die
+App zeigt auch Kampagne, bekannte Indikatoren und ausgeführte Massnahmen; die
+Massnahmen selbst lösen Sie im Web aus.
 
 ## Störungen
 
@@ -239,11 +305,18 @@ bearbeiten die Störung vollständig dort.
   letzten 30 Tage) und _Verfügbarkeit_ der überwachten Geräte. Ein Klick auf
   eine Kachel zeigt darunter die passenden Störungen; **Filter aufheben** führt
   zurück zu den aktiven.
-- **Register**: _Aktiv_, _Behoben_ und _Alle_. Die Dauer läuft live mit, und
-  die Liste aktualisiert sich alle 30 Sekunden.
-- **Automatisch erledigt**: Meldet PRTG wieder OK, verschwindet die Störung
-  aus _Aktiv_ und ist automatisch abgeschlossen. Sie muss weder bestätigt noch
-  von Hand abgeschlossen werden, und die Alarmierung hört auf.
+- **Register**: _Aktiv_, _Behoben_ (PRTG meldet wieder OK, Ursache fehlt
+  noch), _Abgeschlossen_ und _Alle_. Die Dauer läuft live mit, und neue
+  Meldungen erscheinen ohne Neuladen. Im Suchfeld finden Sie Störungen nach
+  Nummer, Gerät oder Titel; ältere Störungen laden Sie mit **Weitere Störungen
+  laden** nach.
+- **Behoben, dann abgeschlossen**: Meldet PRTG wieder OK, wechselt die
+  Störung auf _Behoben_ und die Alarmierung hört auf. Abgeschlossen ist sie
+  erst, wenn Sie sie mit der **Ursache** abschliessen (siehe unten).
+- **Tickets zur Störung**: Gehen während einer aktiven Störung Tickets zum
+  betroffenen Gerät oder Dienst ein (Gerät bzw. Dienst am Ticket verknüpft
+  oder Gerätename, Hostname oder IP-Adresse im Text), ordnet nextDesk sie der
+  Störung automatisch zu. Im Ticket steht dann «Gehört zur Störung STO-…».
 
 ![Liste der Störungen mit Folgestörungen](images/ag-stoerungen.jpg)
 
@@ -258,16 +331,38 @@ Ein Klick öffnet die Störung:
 3. **Letzte 24 Stunden** zeigt, wann das Gerät gestört war, und warnt, wenn
    es in dieser Woche mehrfach ausgefallen ist. Darunter stehen die
    **Sensoren** mit ihrem letzten Stand.
-4. Rechts sehen Sie **Gerät** (Ort, Adresse, PRTG-Objekt), die
-   **Abhängigkeiten** (vorgelagerte Geräte und Folgestörungen) und die
-   **betroffenen Dienste**. Der Systemstatus wird automatisch gesetzt und nach
-   der Behebung zurückgesetzt.
-5. Meldet PRTG wieder OK, schliesst sich die Störung automatisch. Bei Bedarf
-   tragen Sie unter **Ursache nachtragen** die Ursache (Strom, Netzwerk,
-   Hardware, Software, Wartung, Extern, Unbekannt) nach; das ist freiwillig
-   und fliesst in die Auswertung ein. Eine noch aktive Störung schliessen Sie
-   unter **Abschliessen** mit Ursache von Hand ab, etwa wenn ein «Up» von PRTG
+4. Unter **Tickets** stehen die zugeordneten Tickets mit dem Grund der
+   Zuordnung (Gerät, Dienst, im Text, von Hand). Mit **Ticketnummer
+   zuordnen** ergänzen Sie ein Ticket, mit **×** lösen Sie eines wieder; ein
+   gelöstes Ticket wird nicht erneut automatisch zugeordnet.
+5. Rechts sehen Sie **Gerät** (Ort, Adresse, PRTG-Objekt), **Netzwerk** (IP,
+   Subnetz, VLAN, Standort und Switch-Port aus der IP-Adressverwaltung sowie
+   weitere Geräte im selben Subnetz bzw. am selben Switch mit ihrem aktuellen
+   Zustand), die **Abhängigkeiten** (vorgelagerte Geräte und Folgestörungen)
+   und die **betroffenen Dienste**. Der Systemstatus wird automatisch gesetzt
+   und nach der Behebung zurückgesetzt.
+6. Unter **Statusseite** veröffentlichen Sie mit **Öffentliche Meldung** eine
+   Meldung (Zustand, Titel, Text, betroffene Dienste) auf der Statusseite und
+   ergänzen sie später mit **Update veröffentlichen**.
+7. **Abschliessen**: Wählen Sie die **Ursache** (Strom, Netzwerk, Hardware,
+   Software, Wartung, Extern, Unbekannt) und halten Sie die Lösung fest. Sind
+   Tickets zugeordnet, ist **Tickets informieren und auf «Gelöst» setzen**
+   eingeschaltet: Jedes offene Ticket erhält eine öffentliche Antwort mit der
+   Ursache (Text anpassbar, Versand per Mail wie gewohnt) und wird gelöst.
+   Tickets, für die Ihnen die Berechtigung fehlt oder bei denen die Ursache
+   einer SLA-Verletzung noch fehlt, werden ausgelassen und nach dem Abschluss
+   aufgeführt. Mit **Fall eröffnen** legen Sie gleichzeitig einen Fall
+   (Problem-Management) mit Tickets und Diensten der Störung an. Eine noch
+   aktive Störung schliessen Sie ebenso ab, etwa wenn ein «Up» von PRTG
    verloren ging; Folgestörungen werden mit abgeschlossen.
+8. War das Gerät in 30 Tagen mindestens dreimal gestört (oder trat dieselbe
+   Ursache dreimal auf), schlägt die Karte **Fall** mit **Fall vorschlagen**
+   einen Fall vor; frühere Störungen des Geräts werden auf Wunsch verknüpft.
+9. Bei einer abgeschlossenen Störung mit Ursache erstellt **Wissen →
+   Wissensartikel-Entwurf erstellen** einen internen Artikelentwurf (Symptom,
+   Ursache, Lösung, Vorbeugung) – mit KI, wenn sie für den Mandanten
+   freigegeben ist, sonst aus den Angaben der Störung. Prüfen und
+   veröffentlichen Sie ihn in der Wissensdatenbank.
 
 ![Störung mit Verlauf, Gerät und Abhängigkeiten](images/ag-stoerung.jpg)
 
@@ -279,10 +374,12 @@ Die Benachrichtigungen dazu schalten Sie unter _Persönliche Einstellungen →
 Benachrichtigungen → Störungen_ (Push und E-Mail) ein oder aus.
 
 In der **iOS- und Android-App** finden Sie **Störungen** in der unteren Leiste
-links vom Home-Knopf (Tickets, Störungen, Phishing). Dort sehen Sie die aktiven und unbestätigten
-Störungen samt Folgestörungen, bestätigen sie, weisen sie zu, ergänzen Notizen
-und schliessen sie ab oder tragen die Ursache nach. Ein Tipp auf eine
-Störungs-Mitteilung öffnet die Störung direkt.
+links vom Home-Knopf (Tickets, Störungen, Phishing). Dort sehen Sie die aktiven,
+unbestätigten, behobenen und abgeschlossenen Störungen samt Folgestörungen,
+bestätigen sie, weisen sie zu, ergänzen Notizen und schliessen sie mit Ursache
+ab – auf Wunsch mit Antwort an die zugeordneten Tickets. Die Störung zeigt auch
+die Tickets und den Netzwerk-Kontext. Ein Tipp auf eine Störungs-Mitteilung
+öffnet die Störung direkt.
 
 ## Ticketliste
 
@@ -468,6 +565,29 @@ Fälle, Serviceaufgaben, Wissensartikel, Lagerartikel, Verträge und Lizenzen.
 
 ![Neues Ticket als Agent erfassen](images/ag-neues-ticket.jpg)
 
+## Dienste und Systemstatus
+
+Unter **Dienste** öffnet **Details** bei einem Dienst die Dienstansicht:
+
+- **Verfügbarkeit** der letzten 30 und 90 Tage, der Anteil geplanter Wartung
+  und die Verfügbarkeit ohne Wartung gerechnet
+- die **Geräte** des Dienstes mit IP-Adresse, Subnetz, VLAN und Switch-Port
+  (aus der IP-Adressverwaltung) und ihrem **Monitoring-Zustand**; fällt ein
+  Gerät aus, steht oben «Betroffen durch Ausfall» mit dem Gerät und der
+  Störung
+- die **Subnetze**, deren Adressen dem Dienst zugeordnet sind
+
+Die Dienste eines Geräts pflegen Sie in der **Infrastruktur** (mehrere Dienste
+möglich); im Asset-Katalog gilt der gewählte Dienst als erster Dienst des
+Geräts, weitere bleiben erhalten. Die **Assets** laden seitenweise: Suche und
+Filter wirken auf alle Assets, **Weitere Assets laden** zeigt die nächsten.
+
+In einer **Serviceaufgabe**, deren Gerät Dienste hat, plant **Wartungsfenster
+planen** ein Fenster im Systemstatus (Beginn und Ende, optional öffentlich).
+Während des Fensters stehen die Dienste auf Wartung; danach setzt nextDesk sie
+automatisch zurück. Der Abschluss der Aufgabe trägt die Wartung ins
+Wartungsprotokoll des Geräts ein.
+
 ## Wissensdatenbank pflegen
 
 Die Wissensdatenbank ist eine Suchzentrale: Tippen Sie ein Stichwort ins
@@ -551,6 +671,49 @@ Unter **Lagerorte** ändern Sie Ortscode und Bezeichnung mit dem Stift
 mehr zur Auswahl; bisherige Buchungen bleiben erhalten. Buchen Sie einen
 vorhandenen Bestand vorher an einen anderen Ort um. Gelöschte Lagerorte
 erscheinen blass und lassen sich mit **Wieder aktivieren** zurückholen.
+
+## Lager-Automatik, Rücknahmen und Austritt
+
+**Ausgabe und Rückgabe von Geräten.** Übergeben Sie im Shop eine Bestellung
+mit Seriennummer (Lagerort und Seriennummer wählen) und ist die Serieneinheit
+mit einem Asset verknüpft, weist nextDesk das Gerät automatisch der
+bestellenden Person zu; das Asset steht dann auf «In Betrieb». Dasselbe gilt
+für die Ausgabe einer Lager-Reservation mit Seriennummer zu einem Ticket (das
+Gerät geht an die anfragende Person). Kommt eine Shop-Ausleihe zurück, endet
+die Zuweisung, das Asset steht wieder auf «An Lager» und die Serieneinheit ist
+wieder an Lager.
+
+**Lager → Automatik** (nur mit dem Recht, das Lager zu verwalten):
+
+- **Standard-Lagerort** für Rücknahmen, auf Wunsch pro **Abteilung** ein
+  eigener Lagerort. Zurückgegebene Geräte aus einem Austritt werden dorthin
+  gebucht, sofern bei der Rückgabe kein anderer Lagerort gewählt wird.
+- **Mindestbestand:** **Lagerverwaltung benachrichtigen** schickt die
+  Mitteilung «Nachbestellen», sobald ein Artikel unter den Mindestbestand
+  fällt (wer schon den Push «Mindestbestand» erhalten hat, bekommt sie nicht
+  doppelt). **Nachbestell-Aufgabe anlegen** erstellt zusätzlich eine Aufgabe
+  mit der Menge bis zum Sollbestand. Offene Nachbestellungen erscheinen oben in
+  diesem Register: **Bestellt**, **Erledigt** oder **Verwerfen**.
+- **Reservationen:** Offene Reservationen werden nach der eingestellten Zahl
+  Tage automatisch freigegeben (stündliche Prüfung). Reservationen aus
+  Shop-Bestellungen, Eintritten und Raumbuchungen bleiben bestehen.
+- **Inventur:** Pro Lagerort ein Intervall in Tagen. Ist es seit der letzten
+  abgeschlossenen Inventur abgelaufen, erhält die Lagerverwaltung die
+  Mitteilung «Inventur fällig».
+
+**Austritt:** Im Austritt öffnen Sie **Rückgaben und Lizenzen**. Neben den
+zugewiesenen Geräten listet nextDesk die offenen **Shop-Ausleihen** und die
+**Lizenzen** der Person. Wählen Sie die Einträge und den Lagerort für die
+Rücknahme (vorausgewählt ist der Standard-Lagerort) und klicken Sie
+**Aufgaben erstellen**. Ist eine Aufgabe erledigt, wird das Gerät
+zurückgenommen und als Serieneinheit an den Lagerort gebucht, die Ausleihe
+zurückgebucht bzw. die Lizenz freigegeben (Grund «Austritt»). Die Lizenz in
+Microsoft 365 entfernen Sie bei Bedarf weiterhin unter **Lizenzen**.
+
+**Ersatzgerät ohne Genehmigung:** Aus einem Sicherheitsfall kann der Support
+ein Ersatzgerät im Namen der Person bestellen. Die Bestellung braucht keine
+Freigabe; in der Bestellung steht die Herkunft «Sicherheitsfall …
+(ohne Genehmigung)».
 
 ## Shop: Artikel nur für Kaderstufen
 
@@ -728,9 +891,15 @@ Im Register **Funde** schalten Sie oben zwischen drei Ansichten um:
 
 - **Funde**: Die Discovery meldet Abweichungen – Konflikte und fremde MAC auf
   einer reservierten IP (rot), Ghost-IPs (aktiv, aber nicht dokumentiert),
-  DNS-Abweichungen und lange nicht gesehene Adressen. Ghost-IPs übernehmen Sie
-  mit **Übernehmen** als dokumentierte Adresse, mit **Ticket** entsteht ein
-  Ticket, mit **Erledigt** oder **Ignorieren** schliessen Sie den Fund.
+  DNS-Abweichungen und lange nicht gesehene Adressen. Stündlich prüft nextDesk
+  ausserdem die **Auslastung**: Ein Subnetz über seiner Warnschwelle oder ein
+  DHCP-Bereich über 90 % wird zum Fund und schliesst sich von selbst, sobald
+  die Auslastung wieder darunter liegt. Täglich erscheinen wichtige Geräte
+  (Server, Switches, Firewalls, Router) ohne PRTG-Überwachung als
+  **PRTG-Lücke**. Ghost-IPs übernehmen Sie mit **Übernehmen** als
+  dokumentierte Adresse, mit **Ticket** entsteht ein Ticket, mit **Erledigt**
+  oder **Ignorieren** schliessen Sie den Fund (ignorierte Funde kommen nicht
+  wieder).
 - **Soll / Ist** vergleicht je Subnetz die dokumentierten Adressen mit dem,
   was die Netzwerkagenten in den letzten 7 Tagen gesehen haben:
   Übereinstimmung in Prozent, «Nur gesehen» (nicht dokumentiert) und «Nur
@@ -767,8 +936,27 @@ DHCP-Bereiche mit Auslastung, Leases und den Vergleich der DNS-Einträge mit
 der Dokumentation. Mit **Jetzt scannen** stossen Sie einen Scan an. Dort
 beauftragen Sie auch DHCP-Reservierungen oder fehlende bzw. abweichende
 DNS-Einträge; der Agent führt den Auftrag aus, sobald eine Person mit
-Verwaltungsrecht ihn freigegeben hat. Neue Konflikte melden sich per Glocke,
-Push und E-Mail (Kategorie Störungen).
+Verwaltungsrecht ihn freigegeben hat. Neue Konflikte und volle Subnetze
+melden sich per Glocke, Push und E-Mail (Kategorie **IP-Adressverwaltung**).
+Meldet sich ein Agent länger als zwei Stunden nicht, erhalten alle mit
+Verwaltungsrecht einmal pro Ausfall die Mitteilung «Netzwerkagent offline»;
+die Karte des Agenten zeigt dann «Ausfall gemeldet».
+
+**Reservierungen mit Ablaufdatum**
+
+Hat eine reservierte Adresse ein Datum «Reserviert bis», erinnert nextDesk
+bis zu drei Tage vorher die verantwortliche Person und das Team
+(«Reservierung läuft ab»). Nach Ablauf wird die Adresse automatisch
+freigegeben (Status Veraltet); Verlauf und Änderungsprotokoll nennen als
+Herkunft «System».
+
+**Geräte-IP und IP-Adressverwaltung**
+
+Die IP-Adresse eines Infrastruktur-Geräts muss eine gültige IP sein (optional
+mit Präfixlänge, z. B. 10.1.2.3/24). Tragen Sie eine IP ein, verknüpft
+nextDesk die dokumentierte Adresse mit dem Gerät bzw. legt sie in einem
+bekannten Subnetz an. Umgekehrt ergänzt das Verknüpfen einer Adresse mit
+einem Gerät dessen IP, wenn sie noch leer ist.
 
 **Import**
 
@@ -810,12 +998,22 @@ Kommt in einem Ticket eine IP-Adresse, ein Subnetz, eine MAC-Adresse oder ein
 dokumentierter Hostname vor, zeigt das Ticket rechts die Box **Netzwerk**:
 Subnetz und VLAN, Gerät, Switch-Port, verantwortliche Person und zuletzt
 gesehen. Mit **In der IP-Adressverwaltung öffnen** springen Sie zur Adresse.
+Dürfen Sie das Ticket bearbeiten, hängen Sie mit **Gerät … ans Ticket
+hängen** bzw. **Dienst … ans Ticket hängen** das Gerät und seine Dienste
+direkt an (bereits verknüpfte erscheinen als «am Ticket»). Für eine erkannte,
+noch nicht dokumentierte IP in einem bekannten Subnetz reserviert **IP
+reservieren** die Adresse nach einer Bestätigung (braucht das Recht,
+IP-Adressen zu verwalten). Tickets zu einer Adresse findet die
+IP-Adressverwaltung über einen Suchindex auch in grossen Ticketbeständen
+schnell.
 
 **In der App**
 
 In der iPhone-App zeigen die Detailseiten von Assets und Infrastruktur-Geräten
 die Karte **Netzwerk** mit IP, Subnetz, VLAN, Gateway und Switch-Port. Scannen
-Sie den QR-Code am Gerät, sehen Sie diese Angaben direkt vor Ort.
+Sie den QR-Code am Gerät, sehen Sie diese Angaben direkt vor Ort. Tippen Sie
+auf eine Mitteilung der IP-Adressverwaltung, öffnet die App das Gerät oder
+die Netzwerkdaten der betroffenen Adresse.
 
 **KI-Assistent**
 
@@ -834,10 +1032,18 @@ gelten dieselben Rechte und Abteilungsgrenzen wie in der Weboberfläche.
   ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten
   Benachrichtigungszeit.
 - In der Tabelle **Benachrichtigungen** schalten Sie pro Benachrichtigung
-  (z. B. Zuweisungen, Eskalationen, Erwähnungen, Phishing-Meldungen)
-  einzeln **Push** und **E-Mail** ein oder aus. Für Agenten sind zu Beginn alle Benachrichtigungen
-  per Push und E-Mail eingeschaltet – ausser **Phishing-Meldungen**: Diese sind
-  ausgeschaltet. Wer sie erhalten möchte, schaltet sie dort selbst ein. E-Mails kommen über das Exchange-Postfach
+  (z. B. Zuweisungen, Eskalationen, Erwähnungen, Phishing und
+  Sicherheitsfälle, IP-Adressverwaltung) einzeln **Push** und **E-Mail** ein
+  oder aus. Für Agenten sind zu Beginn alle Benachrichtigungen per Push und
+  E-Mail eingeschaltet – ausser **Phishing und Sicherheitsfälle**: Diese sind
+  ausgeschaltet. Wer sie erhalten möchte, schaltet sie dort selbst ein.
+  Mitglieder des in den Phishing-Einstellungen hinterlegten Teams erhalten
+  Phishing-Meldungen, überfällige Sicherheitsfälle, «geklickt» und Kampagnen
+  immer; die Tabelle weist darauf hin. **IP-Adressverwaltung** (Funde,
+  Netzwerkagent offline, ablaufende Reservierungen) sehen Personen mit Zugriff
+  auf die IP-Adressverwaltung; **Lager** umfasst Mindestbestand,
+  Nachbestellung und fällige Inventur, **Shop** auch Erinnerungen zu
+  Ausleihen und offenen Freigaben. E-Mails kommen über das Exchange-Postfach
   Ihres Unternehmens und sind verfügbar, sobald eines verbunden ist.
 - Das iPhone-Widget **Meine Prioritäten** zeigt Ihre wichtigsten Tickets in
   den Farben Ihres Unternehmens. Öffnen Sie die App einmal, damit es aktuell

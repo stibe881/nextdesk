@@ -7,23 +7,42 @@ import {
   Clock3,
   LoaderCircle,
   Network,
+  Search,
   Wrench,
 } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 
+import {
+  IncidentKnowledgeCard,
+  IncidentNetworkCard,
+  IncidentPublicMessageCard,
+  IncidentTicketsCard,
+} from "./incidents-extras";
 import { functionErrorMessage } from "./lib/function-error";
 import {
+  ACTIVE_FILTERS,
   CAUSE_LABELS,
   CAUSES,
   EVENT_LABELS,
   formatAvailability,
   formatDuration,
   liveMinutes,
+  parseCaseResult,
+  parseCloseResult,
   parseIncidentDetail,
   parseIncidentList,
   parseIncidentReport,
+  SKIP_REASON_LABELS,
   STATE_LABELS,
+  ticketReplyText,
   type IncidentCause,
+  type IncidentCloseResult,
   type IncidentDetail,
   type IncidentFilter,
   type IncidentReport,
@@ -31,6 +50,7 @@ import {
   type IncidentSummary,
 } from "./lib/incidents";
 import { supabase } from "./lib/supabase";
+import { useVisibleInterval } from "./lib/use-visible-interval";
 import "./incidents.css";
 
 async function call(body: Record<string, unknown>): Promise<unknown> {
@@ -63,19 +83,63 @@ const TIME = new Intl.DateTimeFormat("de-CH", {
 const dateTime = (value: string | null) =>
   value ? DATE_TIME.format(new Date(value)) : "–";
 
-/** Re-renders every 30 seconds so durations run live. */
+/** Re-renders every 30 seconds (visible tab only) so durations run live. */
 function useNow(): number {
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
+  useVisibleInterval(() => setNow(Date.now()), 30_000);
   return now;
+}
+
+/**
+ * Reloads when an incident of the tenant changes (Supabase Realtime, only
+ * rows the incident team may read), debounced. A slow poll on the visible tab
+ * covers dropped realtime connections.
+ */
+function useIncidentChanges(
+  tenantId: string,
+  incidentId: string | null,
+  onChange: () => void,
+): void {
+  const latest = useRef(onChange);
+  latest.current = onChange;
+  useEffect(() => {
+    if (!supabase) return;
+    const client = supabase;
+    let timer: number | null = null;
+    const schedule = () => {
+      if (timer !== null || document.visibilityState !== "visible") return;
+      timer = window.setTimeout(() => {
+        timer = null;
+        latest.current();
+      }, 400);
+    };
+    const channel = client
+      .channel(`incidents:${tenantId}:${incidentId ?? "list"}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          filter: incidentId
+            ? `id=eq.${incidentId}`
+            : `tenant_id=eq.${tenantId}`,
+          schema: "public",
+          table: "monitoring_incidents",
+        },
+        schedule,
+      )
+      .subscribe();
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      void client.removeChannel(channel);
+    };
+  }, [incidentId, tenantId]);
+  useVisibleInterval(() => latest.current(), 60_000);
 }
 
 const TABS: { key: IncidentFilter; label: string }[] = [
   { key: "active", label: "Aktiv" },
-  { key: "closed", label: "Behoben" },
+  { key: "resolved", label: "Behoben" },
+  { key: "closed", label: "Abgeschlossen" },
   { key: "all", label: "Alle" },
 ];
 
@@ -91,7 +155,7 @@ const EMPTY_TEXT: Record<IncidentFilter, string> = {
   services: "Keine Dienste betroffen.",
   recent: "In den letzten 30 Tagen wurde keine Störung behoben.",
   resolved: "Keine behobenen Störungen, die noch abgeschlossen werden müssen.",
-  closed: "Noch keine behobenen Störungen.",
+  closed: "Noch keine abgeschlossenen Störungen.",
   all: "Noch keine Störungen.",
 };
 
@@ -137,19 +201,26 @@ export function Incidents({
   tenantId,
   focusId,
   onFocusConsumed,
+  onOpenTicket,
 }: {
   tenantId: string;
   focusId?: string | null;
   onFocusConsumed?: () => void;
+  onOpenTicket?: (ticketId: string) => void;
 }) {
   const [filter, setFilter] = useState<IncidentFilter>("active");
   const [incidents, setIncidents] = useState<IncidentSummary[] | null>(null);
   const [stats, setStats] = useState<IncidentStats | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<string | null>(focusId ?? null);
   const [view, setView] = useState<"list" | "report">("list");
   const [revision, setRevision] = useState(0);
   const now = useNow();
+  const request = useRef(0);
 
   useEffect(() => {
     if (focusId) {
@@ -158,32 +229,74 @@ export function Incidents({
     }
   }, [focusId, onFocusConsumed]);
 
+  // Search waits for a short pause in typing.
   useEffect(() => {
-    let active = true;
-    const load = () =>
-      call({ type: "list", tenantId, filter })
-        .then((value) => {
-          if (!active) return;
-          const parsed = parseIncidentList(value);
-          if (!parsed) {
-            setError("Die Störungen konnten nicht gelesen werden.");
-            return;
-          }
-          setError("");
-          setIncidents(parsed.incidents);
-          setStats(parsed.stats);
-        })
-        .catch((cause: Error) => {
-          if (active) setError(cause.message);
-        });
-    void load();
-    // New PRTG messages show up without reloading the page.
-    const timer = window.setInterval(() => void load(), 30_000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [filter, revision, tenantId]);
+    const timer = window.setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  // The first page (history: the newest 50; active: all of them).
+  const loadFirst = useCallback(() => {
+    const version = ++request.current;
+    return call({ type: "list", tenantId, filter, search: search || null })
+      .then((value) => {
+        if (request.current !== version) return;
+        const parsed = parseIncidentList(value);
+        if (!parsed) {
+          setError("Die Störungen konnten nicht gelesen werden.");
+          return;
+        }
+        setError("");
+        setIncidents(parsed.incidents);
+        setNextCursor(parsed.nextCursor);
+        if (parsed.stats) setStats(parsed.stats);
+      })
+      .catch((cause: Error) => {
+        if (request.current === version) setError(cause.message);
+      });
+  }, [filter, search, tenantId]);
+
+  useEffect(() => {
+    setIncidents(null);
+    void loadFirst();
+  }, [loadFirst, revision]);
+
+  // New PRTG messages show up without reloading the page (realtime, else a
+  // slow poll while the tab is visible). Further pages stay as they are.
+  useIncidentChanges(tenantId, null, () => {
+    if (!selected && !nextCursor) void loadFirst();
+    else if (!selected && ACTIVE_FILTERS.includes(filter)) void loadFirst();
+  });
+
+  async function loadMore() {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    const version = request.current;
+    try {
+      const parsed = parseIncidentList(
+        await call({
+          type: "list",
+          tenantId,
+          filter,
+          search: search || null,
+          cursor: nextCursor,
+        }),
+      );
+      if (!parsed || request.current !== version) return;
+      setIncidents((current) => {
+        const known = new Set((current ?? []).map((entry) => entry.id));
+        return [
+          ...(current ?? []),
+          ...parsed.incidents.filter((entry) => !known.has(entry.id)),
+        ];
+      });
+      setNextCursor(parsed.nextCursor);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   if (selected) {
     return (
@@ -194,6 +307,7 @@ export function Incidents({
           setRevision((value) => value + 1);
         }}
         onOpen={setSelected}
+        onOpenTicket={onOpenTicket}
         tenantId={tenantId}
       />
     );
@@ -208,8 +322,8 @@ export function Incidents({
           <p>
             Meldungen aus PRTG: eine Störung pro Gerät, Geräte hinter einem
             gestörten Gerät als Folgestörung. Bestätigen Sie eine Störung,
-            sobald Sie sich darum kümmern. Meldet PRTG wieder OK, schliesst sich
-            die Störung automatisch.
+            sobald Sie sich darum kümmern. Meldet PRTG wieder OK, gilt sie als
+            behoben; abgeschlossen wird sie von Ihnen mit der Ursache.
           </p>
         </div>
         <button
@@ -303,6 +417,17 @@ export function Incidents({
               </button>
             ))}
           </div>
+          <label className="incidents__search">
+            <Search aria-hidden="true" size={15} />
+            <span className="sr-only">Störungen durchsuchen</span>
+            <input
+              maxLength={120}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Nummer, Gerät oder Titel suchen …"
+              type="search"
+              value={searchInput}
+            />
+          </label>
           {TILE_FILTER_LABELS[filter] ? (
             <p className="incidents__tile-filter" role="status">
               {TILE_FILTER_LABELS[filter]}
@@ -335,7 +460,7 @@ export function Incidents({
           {incidents && incidents.length === 0 ? (
             <p className="incidents__empty">
               <CheckCircle2 aria-hidden="true" size={18} />
-              {EMPTY_TEXT[filter]}
+              {search ? "Keine Störung passt zur Suche." : EMPTY_TEXT[filter]}
             </p>
           ) : null}
           {incidents && incidents.length > 0 ? (
@@ -382,6 +507,16 @@ export function Incidents({
                 </li>
               ))}
             </ul>
+          ) : null}
+          {nextCursor ? (
+            <button
+              className="secondary-button incidents__more"
+              disabled={loadingMore}
+              onClick={() => void loadMore()}
+              type="button"
+            >
+              {loadingMore ? "Wird geladen …" : "Weitere Störungen laden"}
+            </button>
           ) : null}
         </>
       )}
@@ -463,18 +598,28 @@ function IncidentView({
   incidentId,
   onBack,
   onOpen,
+  onOpenTicket,
 }: {
   tenantId: string;
   incidentId: string;
   onBack: () => void;
   onOpen: (id: string) => void;
+  onOpenTicket?: ((ticketId: string) => void) | undefined;
 }) {
   const [detail, setDetail] = useState<IncidentDetail | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [cause, setCause] = useState<IncidentCause | "">("");
   const [closingNote, setClosingNote] = useState("");
+  const [notifyTickets, setNotifyTickets] = useState(true);
+  const [ticketMessage, setTicketMessage] = useState("");
+  const [messageEdited, setMessageEdited] = useState(false);
+  const [withCase, setWithCase] = useState(false);
+  const [caseTitle, setCaseTitle] = useState("");
+  const [caseRecurring, setCaseRecurring] = useState(true);
+  const [caseFormOpen, setCaseFormOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const now = useNow();
 
@@ -482,17 +627,17 @@ function IncidentView({
     async (key: string, body: Record<string, unknown>) => {
       setBusy(key);
       setError("");
+      setNotice("");
       try {
-        const parsed = parseIncidentDetail(
-          await call({ tenantId, incidentId, ...body }),
-        );
+        const value = await call({ tenantId, incidentId, ...body });
+        const parsed = parseIncidentDetail(value);
         if (!parsed)
           throw new Error("Die Störung konnte nicht gelesen werden.");
         setDetail(parsed);
-        return true;
+        return value;
       } catch (cause) {
         setError((cause as Error).message);
-        return false;
+        return null;
       } finally {
         setBusy(null);
       }
@@ -503,16 +648,36 @@ function IncidentView({
   useEffect(() => {
     setDetail(null);
     void run("load", { type: "get" });
-    const timer = window.setInterval(() => {
-      void call({ type: "get", tenantId, incidentId })
-        .then((value) => {
-          const parsed = parseIncidentDetail(value);
-          if (parsed) setDetail(parsed);
-        })
-        .catch(() => undefined);
-    }, 30_000);
-    return () => window.clearInterval(timer);
-  }, [incidentId, run, tenantId]);
+  }, [incidentId, run]);
+
+  // Changes of this incident (PRTG messages, colleagues) show up live.
+  useIncidentChanges(tenantId, incidentId, () => {
+    void call({ type: "get", tenantId, incidentId })
+      .then((value) => {
+        const parsed = parseIncidentDetail(value);
+        if (parsed) setDetail(parsed);
+      })
+      .catch(() => undefined);
+  });
+
+  // The reply to the tickets follows cause and note until edited by hand.
+  useEffect(() => {
+    if (!detail || !cause || messageEdited) return;
+    setTicketMessage(
+      ticketReplyText(detail, cause, closingNote.trim() || null),
+    );
+  }, [cause, closingNote, detail, messageEdited]);
+
+  useEffect(() => {
+    if (detail && !caseTitle) {
+      setCaseTitle(
+        `Wiederkehrende Störung: ${detail.deviceName ?? detail.title}`.slice(
+          0,
+          240,
+        ),
+      );
+    }
+  }, [caseTitle, detail]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -527,14 +692,37 @@ function IncidentView({
     if (await run("note", { type: "note", text: note.trim() })) setNote("");
   }
 
+  const openTickets = detail?.tickets.filter((ticket) => !ticket.closed) ?? [];
+
   async function close(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!cause) return;
-    await run("close", {
+    const sendReplies = notifyTickets && openTickets.length > 0;
+    const value = await run("close", {
       type: "close",
       cause,
       note: closingNote.trim() || null,
+      notifyTickets: sendReplies,
+      ticketMessage: sendReplies ? ticketMessage.trim() || null : null,
+      openCase:
+        withCase && caseTitle.trim().length >= 3
+          ? { title: caseTitle.trim(), includeRecurring: caseRecurring }
+          : null,
     });
+    if (value) setNotice(closeNotice(parseCloseResult(value)));
+  }
+
+  async function openCase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = await run("case", {
+      type: "openCase",
+      title: caseTitle.trim(),
+      includeRecurring: caseRecurring,
+    });
+    if (value && parseCaseResult(value)) {
+      setCaseFormOpen(false);
+      setNotice("Der Fall wurde eröffnet. Sie finden ihn unter «Fälle».");
+    }
   }
 
   const day = 24 * 60 * 60_000;
@@ -565,6 +753,12 @@ function IncidentView({
         <p className="ticket-detail-message error" role="alert">
           <AlertTriangle aria-hidden="true" size={16} />
           {error}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className="ticket-detail-message" role="status">
+          <CheckCircle2 aria-hidden="true" size={16} />
+          {notice}
         </p>
       ) : null}
       {detail ? (
@@ -686,6 +880,18 @@ function IncidentView({
                 ) : null}
               </article>
 
+              <IncidentTicketsCard
+                busy={busy !== null}
+                detail={detail}
+                onLink={async (ticket) =>
+                  (await run("link", { type: "linkTicket", ticket })) !== null
+                }
+                onOpenTicket={onOpenTicket}
+                onUnlink={(ticketId) =>
+                  void run("unlink", { type: "unlinkTicket", ticketId })
+                }
+              />
+
               <article className="incident-card">
                 <div className="incident-card__head">
                   <h3>Letzte 24 Stunden</h3>
@@ -724,6 +930,101 @@ function IncidentView({
                   </p>
                 ) : null}
               </article>
+
+              {detail.recurrence.suggestCase || detail.problems.length ? (
+                <article className="incident-card">
+                  <div className="incident-card__head">
+                    <h3>Fall</h3>
+                    {detail.recurrence.suggestCase &&
+                    detail.permissions.openCase &&
+                    !caseFormOpen ? (
+                      <button
+                        className="text-button"
+                        onClick={() => setCaseFormOpen(true)}
+                        type="button"
+                      >
+                        Fall vorschlagen
+                      </button>
+                    ) : null}
+                  </div>
+                  {detail.recurrence.suggestCase ? (
+                    <p className="incident-muted">
+                      {detail.recurrence.sameCause30d >= 3
+                        ? `Dieselbe Ursache trat an diesem Gerät in 30 Tagen ${detail.recurrence.sameCause30d}-mal auf.`
+                        : `Das Gerät war in 30 Tagen ${detail.recurrence.sameDevice30d}-mal gestört.`}{" "}
+                      Ein Fall (Problem-Management) hilft, die Ursache dauerhaft
+                      zu beheben.
+                    </p>
+                  ) : null}
+                  {detail.problems.length ? (
+                    <ul className="incident-sensors">
+                      {detail.problems.map((problem) => (
+                        <li key={problem.id}>
+                          <strong>{problem.title}</strong>
+                          <span
+                            className={`incident-chip incident-chip--${problem.status === "resolved" ? "ok" : "line"}`}
+                          >
+                            {problem.status === "resolved"
+                              ? "Gelöst"
+                              : problem.status === "known_error"
+                                ? "Bekannter Fehler"
+                                : "In Untersuchung"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {caseFormOpen ? (
+                    <form
+                      className="incident-close"
+                      onSubmit={(event) => void openCase(event)}
+                    >
+                      <label className="incident-field">
+                        Titel des Falls
+                        <input
+                          disabled={busy !== null}
+                          maxLength={240}
+                          minLength={3}
+                          onChange={(event) => setCaseTitle(event.target.value)}
+                          required
+                          type="text"
+                          value={caseTitle}
+                        />
+                      </label>
+                      <label className="incident-check">
+                        <input
+                          checked={caseRecurring}
+                          disabled={busy !== null}
+                          onChange={(event) =>
+                            setCaseRecurring(event.target.checked)
+                          }
+                          type="checkbox"
+                        />
+                        Frühere Störungen dieses Geräts (30 Tage) verknüpfen
+                      </label>
+                      <div className="incident-actions">
+                        <button
+                          className="primary-button"
+                          disabled={
+                            busy !== null || caseTitle.trim().length < 3
+                          }
+                          type="submit"
+                        >
+                          Fall eröffnen
+                        </button>
+                        <button
+                          className="secondary-button"
+                          disabled={busy !== null}
+                          onClick={() => setCaseFormOpen(false)}
+                          type="button"
+                        >
+                          Abbrechen
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
+                </article>
+              ) : null}
 
               <article className="incident-card">
                 <h3>Sensoren</h3>
@@ -859,6 +1160,8 @@ function IncidentView({
                 </article>
               )}
 
+              <IncidentNetworkCard detail={detail} onOpen={onOpen} />
+
               {detail.dependencies.upstream.length || detail.children.length ? (
                 <article className="incident-card">
                   <h3>
@@ -931,6 +1234,8 @@ function IncidentView({
                 </article>
               ) : null}
 
+              <IncidentPublicMessageCard detail={detail} tenantId={tenantId} />
+
               {detail.state === "closed" ? (
                 <article className="incident-card">
                   <h3>Abgeschlossen</h3>
@@ -961,9 +1266,13 @@ function IncidentView({
                   {detail.state === "active" ? (
                     <p className="incident-muted">
                       <Clock3 aria-hidden="true" size={13} /> PRTG meldet noch
-                      eine Störung. Meldet PRTG wieder OK, schliesst sich die
-                      Störung automatisch. Abschliessen beendet sie auch ohne
-                      OK-Meldung.
+                      eine Störung. Meldet PRTG wieder OK, gilt sie als behoben.
+                      Abschliessen beendet sie auch ohne OK-Meldung.
+                    </p>
+                  ) : detail.state === "resolved" ? (
+                    <p className="incident-muted">
+                      PRTG meldet wieder OK. Schliessen Sie die Störung mit der
+                      Ursache ab.
                     </p>
                   ) : null}
                   <form
@@ -989,7 +1298,7 @@ function IncidentView({
                       </select>
                     </label>
                     <label className="incident-field">
-                      Notiz (optional)
+                      Lösung / Notiz (optional)
                       <textarea
                         disabled={busy !== null}
                         maxLength={4000}
@@ -998,13 +1307,96 @@ function IncidentView({
                         value={closingNote}
                       />
                     </label>
+                    {openTickets.length ? (
+                      <>
+                        <label className="incident-check">
+                          <input
+                            checked={notifyTickets}
+                            disabled={busy !== null}
+                            onChange={(event) =>
+                              setNotifyTickets(event.target.checked)
+                            }
+                            type="checkbox"
+                          />
+                          {openTickets.length === 1
+                            ? "Das offene Ticket informieren (öffentliche Antwort mit Ursache) und auf «Gelöst» setzen"
+                            : `Die ${openTickets.length} offenen Tickets informieren (öffentliche Antwort mit Ursache) und auf «Gelöst» setzen`}
+                        </label>
+                        {notifyTickets && cause ? (
+                          <label className="incident-field">
+                            Antwort an die Tickets
+                            <textarea
+                              disabled={busy !== null}
+                              maxLength={10000}
+                              onChange={(event) => {
+                                setMessageEdited(true);
+                                setTicketMessage(event.target.value);
+                              }}
+                              rows={7}
+                              value={ticketMessage}
+                            />
+                          </label>
+                        ) : null}
+                      </>
+                    ) : null}
+                    {detail.permissions.openCase &&
+                    detail.state !== "closed" ? (
+                      <>
+                        <label className="incident-check">
+                          <input
+                            checked={withCase}
+                            disabled={busy !== null}
+                            onChange={(event) =>
+                              setWithCase(event.target.checked)
+                            }
+                            type="checkbox"
+                          />
+                          Fall eröffnen (Problem-Management)
+                          {detail.recurrence.suggestCase
+                            ? " – empfohlen, das Gerät war mehrfach gestört"
+                            : ""}
+                        </label>
+                        {withCase ? (
+                          <>
+                            <label className="incident-field">
+                              Titel des Falls
+                              <input
+                                disabled={busy !== null}
+                                maxLength={240}
+                                onChange={(event) =>
+                                  setCaseTitle(event.target.value)
+                                }
+                                type="text"
+                                value={caseTitle}
+                              />
+                            </label>
+                            <label className="incident-check">
+                              <input
+                                checked={caseRecurring}
+                                disabled={busy !== null}
+                                onChange={(event) =>
+                                  setCaseRecurring(event.target.checked)
+                                }
+                                type="checkbox"
+                              />
+                              Frühere Störungen dieses Geräts (30 Tage)
+                              verknüpfen
+                            </label>
+                          </>
+                        ) : null}
+                      </>
+                    ) : null}
                     <button
                       className={
                         detail.state === "resolved"
                           ? "primary-button"
                           : "secondary-button"
                       }
-                      disabled={busy !== null || !cause}
+                      disabled={
+                        busy !== null ||
+                        !cause ||
+                        (withCase && caseTitle.trim().length < 3)
+                      }
                       type="submit"
                     >
                       <CheckCircle2 aria-hidden="true" size={15} />
@@ -1015,12 +1407,40 @@ function IncidentView({
                   </form>
                 </article>
               ) : null}
+              <IncidentKnowledgeCard detail={detail} tenantId={tenantId} />
             </div>
           </div>
         </>
       ) : null}
     </section>
   );
+}
+
+/** Summary after closing: tickets informed, case opened. */
+function closeNotice(result: IncidentCloseResult | null): string {
+  const parts = ["Die Störung ist abgeschlossen."];
+  if (result?.tickets) {
+    const { notified, resolved, skipped } = result.tickets;
+    if (notified) {
+      parts.push(
+        `${notified} ${notified === 1 ? "Ticket" : "Tickets"} informiert, ${resolved} auf «Gelöst» gesetzt.`,
+      );
+    }
+    if (skipped.length) {
+      parts.push(
+        `Ausgelassen: ${skipped
+          .map(
+            (entry) =>
+              `${entry.ticketNumber} (${SKIP_REASON_LABELS[entry.reason] ?? entry.reason})`,
+          )
+          .join(", ")}.`,
+      );
+    }
+  }
+  if (result?.problemId) {
+    parts.push("Der Fall wurde eröffnet (unter «Fälle»).");
+  }
+  return parts.join(" ");
 }
 
 function IncidentReportView({ tenantId }: { tenantId: string }) {

@@ -586,3 +586,108 @@ button.incident-tile:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* 0311: search, paging, tickets, network context, close options. */
+.incidents__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface, transparent);
+  padding: 0 10px;
+  color: var(--muted);
+}
+
+.incidents__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 8px 0;
+  color: inherit;
+  font: inherit;
+}
+
+.incidents__search input:focus {
+  outline: none;
+}
+
+.incidents__search:focus-within {
+  border-color: var(--primary);
+}
+
+.incidents__more {
+  justify-self: center;
+}
+
+.incident-dot--unknown {
+  background: var(--border);
+}
+
+.incident-subhead {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.incident-topology small {
+  margin-left: 4px;
+}
+
+.incident-ticket__open {
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.incident-ticket__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.incident-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.incident-check input {
+  margin-top: 2px;
+}
+
+.incident-checks {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  font-size: 13px;
+}
+
+.incident-checks legend {
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+
+.incident-checks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.incident-field input {
+  width: 100%;
+}
+
+.incident-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

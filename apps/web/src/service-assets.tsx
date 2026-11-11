@@ -1,4 +1,5 @@
 import { recordRecentItem } from "./lib/recent-items";
+import { ServiceInsightsPanel } from "./service-insights";
 import { CsvImportDialog } from "./csv-import-dialog";
 import { ASSET_IMPORT_FIELDS } from "./lib/import-fields";
 import { ProblemAnalysis } from "./problem-insights";
@@ -206,17 +207,52 @@ type CatalogRequest = {
   type: "listCatalog";
   tenantId: string;
   includeArchivedServices?: boolean;
+  sections?: Array<"services" | "assets" | "problems">;
+  assetOffset?: number;
+  assetLimit?: number;
+  assetQuery?: string;
+  assetServiceId?: string;
+  assetStatus?: string;
+};
+
+/** Seitengrösse der Asset-Liste (Filter und Seiten in SQL). */
+export const ASSET_PAGE_SIZE = 100;
+
+/** Filter der Asset-Seite; «all» bzw. leere Suche werden nicht gesendet. */
+export type AssetPageFilter = {
+  offset: number;
+  query: string;
+  serviceFilter: string;
+  statusFilter: string;
 };
 
 export function catalogRequest(
   tenantId: string,
   supportsArchivedServices: boolean,
   includeArchivedServices: boolean,
+  assetPage?: AssetPageFilter,
+  sections?: CatalogRequest["sections"],
 ): CatalogRequest {
   return {
     type: "listCatalog",
     tenantId,
     ...(supportsArchivedServices ? { includeArchivedServices } : {}),
+    ...(sections ? { sections } : {}),
+    ...(assetPage
+      ? {
+          assetOffset: assetPage.offset,
+          assetLimit: ASSET_PAGE_SIZE,
+          ...(assetPage.query.trim()
+            ? { assetQuery: assetPage.query.trim().slice(0, 120) }
+            : {}),
+          ...(assetPage.serviceFilter !== "all"
+            ? { assetServiceId: assetPage.serviceFilter }
+            : {}),
+          ...(assetPage.statusFilter !== "all"
+            ? { assetStatus: assetPage.statusFilter }
+            : {}),
+        }
+      : {}),
   };
 }
 
@@ -1302,6 +1338,8 @@ export function parseCatalog(value: unknown): {
   serviceCategories: ServiceCategory[];
   supportsServiceCategories: boolean;
   assets: Asset[];
+  /** Anzahl passender Assets insgesamt (bei seitenweiser Abfrage). */
+  assetTotal: number;
   problems: Problem[];
   departments: DepartmentOption[];
 } {
@@ -1356,6 +1394,12 @@ export function parseCatalog(value: unknown): {
     serviceCategories: categories as ServiceCategory[],
     supportsServiceCategories,
     assets: assets as Asset[],
+    assetTotal:
+      typeof data.assetTotal === "number" &&
+      Number.isInteger(data.assetTotal) &&
+      data.assetTotal >= assets.length
+        ? data.assetTotal
+        : assets.length,
     problems: problems as Problem[],
     departments: departments as DepartmentOption[],
   };
@@ -1903,6 +1947,22 @@ export function ServiceAssets({
   );
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const [assetStatusFilter, setAssetStatusFilter] = useState("all");
+  const [assetTotal, setAssetTotal] = useState(0);
+  const [assetPageLoading, setAssetPageLoading] = useState(false);
+  const assetPageVersion = useRef(0);
+  const assetFilterRef = useRef({
+    query: assetQuery,
+    serviceFilter: "all",
+    statusFilter: "all",
+  });
+  assetFilterRef.current = {
+    query: assetQuery,
+    serviceFilter: assetServiceFilter,
+    statusFilter: assetStatusFilter,
+  };
+  const [insightsServiceId, setInsightsServiceId] = useState<string | null>(
+    null,
+  );
   const [problemQuery, setProblemQuery] = useState("");
   const [problemStatusFilter, setProblemStatusFilter] = useState<
     "open" | "all" | ProblemStatus
@@ -2179,6 +2239,7 @@ export function ServiceAssets({
             tenantId,
             supportsArchivedServicesRef.current,
             showArchivedServices,
+            { offset: 0, ...assetFilterRef.current },
           ),
         ),
       );
@@ -2194,7 +2255,8 @@ export function ServiceAssets({
         setServiceCategoryManagerOpen(false);
         setServiceCategoryForm(EMPTY_SERVICE_CATEGORY_FORM);
       }
-      setAssets(sortByName(catalog.assets));
+      setAssets(catalog.assets);
+      setAssetTotal(catalog.assetTotal);
       setProblems(sortProblems(catalog.problems));
       setDepartments(catalog.departments);
     } catch (nextError) {
@@ -2228,6 +2290,56 @@ export function ServiceAssets({
       requestVersion.current += 1;
     };
   }, [loadCatalog]);
+
+  // Asset-Seiten: Filter und Seiten werden in SQL ausgewertet.
+  const loadAssetPage = useCallback(
+    async (offset: number) => {
+      const version = assetPageVersion.current + 1;
+      assetPageVersion.current = version;
+      setAssetPageLoading(true);
+      try {
+        const catalog = parseCatalog(
+          await requestServiceAssets(
+            catalogRequest(
+              tenantId,
+              false,
+              false,
+              { offset, ...assetFilterRef.current },
+              ["assets"],
+            ),
+          ),
+        );
+        if (assetPageVersion.current !== version) return;
+        setAssets((current) =>
+          offset === 0 ? catalog.assets : [...current, ...catalog.assets],
+        );
+        setAssetTotal(catalog.assetTotal);
+      } catch (nextError) {
+        if (assetPageVersion.current !== version) return;
+        setError(
+          await apiErrorMessage(
+            nextError,
+            "Die Assets konnten nicht geladen werden.",
+          ),
+        );
+      } finally {
+        if (assetPageVersion.current === version) setAssetPageLoading(false);
+      }
+    },
+    [tenantId],
+  );
+  const assetFilterKey = `${assetQuery.trim()}|${assetServiceFilter}|${assetStatusFilter}`;
+  const appliedAssetFilterKey = useRef(assetFilterKey);
+  useEffect(() => {
+    if (!allowAssets || appliedAssetFilterKey.current === assetFilterKey) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      appliedAssetFilterKey.current = assetFilterKey;
+      void loadAssetPage(0);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [allowAssets, assetFilterKey, loadAssetPage]);
 
   useEffect(() => {
     const version = serviceResponsibleAgentsRequestVersion.current + 1;
@@ -3424,7 +3536,7 @@ export function ServiceAssets({
     activeTab === "services"
       ? filteredServices.length
       : activeTab === "assets"
-        ? filteredAssets.length
+        ? assetTotal
         : filteredProblems.length;
 
   return (
@@ -3529,7 +3641,7 @@ export function ServiceAssets({
               tabIndex={activeTab === "assets" ? 0 : -1}
               type="button"
             >
-              Assets ({assets.length})
+              Assets ({assetTotal})
             </button>
           ) : null}
           <button
@@ -4040,44 +4152,57 @@ export function ServiceAssets({
                         <dd>{formatDate(service.updated_at)}</dd>
                       </div>
                     </dl>
-                    {canManageServices ||
-                    canArchiveServices(
-                      canManageServices,
-                      supportsArchivedServices,
-                    ) ? (
-                      <div className="service-assets__service-card-actions">
-                        {canManageServices ? (
-                          <button
-                            aria-expanded={inlineServiceEditorId === service.id}
-                            disabled={controlsDisabled}
-                            onClick={(event) =>
-                              openInlineServiceEditor(
-                                service,
-                                event.currentTarget,
-                              )
-                            }
-                            type="button"
-                          >
-                            {inlineServiceEditorId === service.id
-                              ? "Bearbeitung schliessen"
-                              : "Bearbeiten"}
-                          </button>
-                        ) : null}
-                        {canArchiveServices(
-                          canManageServices,
-                          supportsArchivedServices,
-                        ) ? (
-                          <button
-                            disabled={controlsDisabled}
-                            onClick={() => void archiveService(service)}
-                            type="button"
-                          >
-                            {pendingAction === `service:archive:${service.id}`
-                              ? "Wird archiviert …"
-                              : "Archivieren"}
-                          </button>
-                        ) : null}
-                      </div>
+                    <div className="service-assets__service-card-actions">
+                      <button
+                        aria-expanded={insightsServiceId === service.id}
+                        onClick={() =>
+                          setInsightsServiceId((current) =>
+                            current === service.id ? null : service.id,
+                          )
+                        }
+                        type="button"
+                      >
+                        {insightsServiceId === service.id
+                          ? "Details schliessen"
+                          : "Details"}
+                      </button>
+                      {canManageServices ? (
+                        <button
+                          aria-expanded={inlineServiceEditorId === service.id}
+                          disabled={controlsDisabled}
+                          onClick={(event) =>
+                            openInlineServiceEditor(
+                              service,
+                              event.currentTarget,
+                            )
+                          }
+                          type="button"
+                        >
+                          {inlineServiceEditorId === service.id
+                            ? "Bearbeitung schliessen"
+                            : "Bearbeiten"}
+                        </button>
+                      ) : null}
+                      {canArchiveServices(
+                        canManageServices,
+                        supportsArchivedServices,
+                      ) ? (
+                        <button
+                          disabled={controlsDisabled}
+                          onClick={() => void archiveService(service)}
+                          type="button"
+                        >
+                          {pendingAction === `service:archive:${service.id}`
+                            ? "Wird archiviert …"
+                            : "Archivieren"}
+                        </button>
+                      ) : null}
+                    </div>
+                    {insightsServiceId === service.id ? (
+                      <ServiceInsightsPanel
+                        serviceId={service.id}
+                        tenantId={tenantId}
+                      />
                     ) : null}
                     {inlineServiceEditorId === service.id ? (
                       <section
@@ -4563,6 +4688,19 @@ export function ServiceAssets({
                   </li>
                 ))}
               </ul>
+              {assets.length < assetTotal ? (
+                <p className="service-assets__load-more">
+                  <button
+                    disabled={controlsDisabled || assetPageLoading}
+                    onClick={() => void loadAssetPage(assets.length)}
+                    type="button"
+                  >
+                    {assetPageLoading
+                      ? "Wird geladen …"
+                      : `Weitere Assets laden (${assets.length} von ${assetTotal})`}
+                  </button>
+                </p>
+              ) : null}
             </>
           )}
 

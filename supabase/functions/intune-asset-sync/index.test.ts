@@ -1,9 +1,11 @@
 Deno.test(
   "Intune manual sync endpoint remains JWT-bound, allowlisted and provider-safe",
   async () => {
-    const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
-    );
+    // HTTP-Schicht und gemeinsamer Ablauf (runner.ts, auch für den
+    // täglichen Abgleich) zusammen prüfen.
+    const source =
+      (await Deno.readTextFile(new URL("./index.ts", import.meta.url))) +
+      (await Deno.readTextFile(new URL("./runner.ts", import.meta.url)));
     for (const required of [
       'auth: "user"',
       'type: "runManualIntuneSync"',

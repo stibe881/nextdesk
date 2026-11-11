@@ -4,6 +4,13 @@ import {
   isApnsConfigured,
   sendApns,
 } from "../_shared/apns.ts";
+import {
+  isInventoryNotificationKind,
+  isIpamNotificationKind,
+  isSecurityCaseNotificationKind,
+  type NotificationCategory,
+  notificationCategory,
+} from "../_shared/notification-kinds.ts";
 
 type Environment = "production" | "development";
 type Device = { id: string; token: string; environment: Environment };
@@ -54,67 +61,18 @@ function devices(value: unknown): Device[] {
   return [...found.values()];
 }
 
-function category(
-  kind: string,
-):
-  | "assigned"
-  | "requester_reply"
-  | "support_reply"
-  | "mention"
-  | "resolved"
-  | "approval"
-  | "escalation"
-  | "sla"
-  | "follow_up"
-  | "contract_deadline"
-  | "inventory_low_stock"
-  | "shop"
-  | "service_task"
-  | "infrastructure"
-  | "security_report"
-  | "incident"
-  | null {
-  if (kind === "ticket.assigned") return "assigned";
-  if (kind === "ticket.requester_reply") return "requester_reply";
-  if (kind === "ticket.support_reply") return "support_reply";
-  if (kind === "ticket.requester_reminder") return "support_reply";
-  if (kind === "ticket.mention") return "mention";
-  if (
-    kind === "ticket.supervisor_request" ||
-    kind === "ticket.supervisor_answer"
-  ) {
-    return "mention";
-  }
-  if (kind === "ticket.resolved") return "resolved";
-  if (kind === "ticket.kudos") return "resolved";
-  if (kind === "ticket.approval.requested") return "approval";
-  if (
-    kind === "ticket.department_question.asked" ||
-    kind === "ticket.department_question.answered"
-  ) {
-    return "approval";
-  }
-  if (kind === "ticket.escalation_opened") return "escalation";
-  if (kind === "ticket.security_report") return "security_report";
-  if (kind === "ticket.follow_up_due") return "follow_up";
-  if (kind === "ticket.rule_reminder") return "follow_up";
-  if (kind === "ticket.vendor_reminder") return "follow_up";
-  if (kind === "ticket.children_done") return "follow_up";
-  if (kind === "contract.deadline") return "contract_deadline";
-  if (kind === "inventory.low_stock") return "inventory_low_stock";
-  if (kind.startsWith("shop.order.")) return "shop";
-  if (kind.startsWith("service_task.")) return "service_task";
-  if (kind === "infrastructure.due") return "infrastructure";
-  if (kind.startsWith("monitoring.")) return "incident";
-  if (kind.startsWith("ticket.watch.")) return "mention";
-  return kind.startsWith("ticket.sla.") ? "sla" : null;
+type Category = NotificationCategory;
+
+/** Preference category of a kind (same mapping as the database). */
+function category(kind: string): Category | null {
+  return notificationCategory(kind);
 }
 
 function payloadKind(
   kind: string,
-  fallback: NonNullable<ReturnType<typeof category>>,
+  fallback: Category,
 ):
-  | NonNullable<ReturnType<typeof category>>
+  | Category
   | "department_question_asked"
   | "department_question_answered"
   | "supervisor_request"
@@ -260,37 +218,15 @@ export async function ticketNotificationRecipientAuthorized(
 ): Promise<boolean> {
   if (row.source_type !== "ticket") return true;
   if (!row.ticket_id) {
-    if (
-      row.kind.startsWith("shop.order.") ||
-      row.kind.startsWith("service_task.") ||
-      row.kind.startsWith("monitoring.")
-    ) {
-      // Shop, service task and incident notifications go only to active
-      // members (incident recipients were chosen when the alert was raised).
-      const { data: membership } = await admin
-        .from("tenant_memberships")
-        .select("user_id")
-        .eq("tenant_id", row.tenant_id)
-        .eq("user_id", row.user_id)
-        .eq("status", "active")
-        .maybeSingle();
-      return Boolean(membership);
-    }
-    if (row.kind === "infrastructure.due") {
-      // Only people who may manage assets get infrastructure reminders.
-      const { data, error } = await admin.rpc("user_has_tenant_permission", {
-        p_user_id: row.user_id,
-        p_tenant_id: row.tenant_id,
-        p_permission_code: "asset.manage",
-      });
-      return !error && data === true;
-    }
-    if (row.kind !== "inventory.low_stock") return false;
+    // One rule for every kind without a ticket (shop, service tasks,
+    // incidents, infrastructure, inventory, IP addresses, security cases),
+    // shared with the database queue.
     const { data, error } = await admin.rpc(
-      "inventory_low_stock_delivery_authorized",
+      "push_non_ticket_recipient_authorized",
       {
         p_tenant_id: row.tenant_id,
         p_user_id: row.user_id,
+        p_kind: row.kind,
       },
     );
     return !error && data === true;
@@ -321,6 +257,98 @@ async function skipUnauthorizedRecipient(
     .eq("status", "sending");
 }
 
+async function notificationPayload(
+  admin: any,
+  notificationId: string | null,
+): Promise<Record<string, unknown>> {
+  if (!notificationId) return {};
+  const { data: notification } = await admin
+    .from("ticket_notifications")
+    .select("payload")
+    .eq("id", notificationId)
+    .maybeSingle();
+  const payload = notification?.payload;
+  return typeof payload === "object" && payload !== null && !Array.isArray(payload)
+    ? payload
+    : {};
+}
+
+function payloadText(
+  payload: Record<string, unknown>,
+  key: string,
+  max = 120,
+): string | undefined {
+  const value = payload[key];
+  return typeof value === "string" && value.trim()
+    ? value.trim().slice(0, max)
+    : undefined;
+}
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Push fields of IPAM notifications (no personal data). */
+export function ipamFields(
+  kind: string,
+  payload: Record<string, unknown>,
+): Record<string, string> {
+  const event = kind === "ipam.agent_offline"
+    ? "agent_offline"
+    : kind === "ipam.reservation_expiring"
+    ? "reservation_expiring"
+    : "finding";
+  const fields: Record<string, string> = { ipamEvent: event };
+  const title = payloadText(payload, "title");
+  const number = payloadText(payload, "number", 60);
+  const address = payloadText(payload, "address", 45);
+  const severity = payloadText(payload, "severity", 20);
+  const agentName = payloadText(payload, "agentName");
+  const reservedUntil = payloadText(payload, "reservedUntil", 10);
+  if (title) fields.ipamTitle = title;
+  if (number) fields.ipamNumber = number;
+  if (address) fields.ipamAddress = address;
+  if (severity) fields.ipamSeverity = severity;
+  if (agentName) fields.ipamAgentName = agentName;
+  if (reservedUntil) fields.dueOn = reservedUntil;
+  const assetId = payloadText(payload, "assetId", 36);
+  if (assetId && UUID.test(assetId)) fields.assetId = assetId;
+  return fields;
+}
+
+/** Push fields of security case notifications (no reporter address). */
+export function securityCaseFields(
+  kind: string,
+  payload: Record<string, unknown>,
+): Record<string, string | number> {
+  const event = kind === "security.case_clicked"
+    ? "clicked"
+    : kind === "security.case_overdue"
+    ? "overdue"
+    : "campaign";
+  const fields: Record<string, string | number> = { securityEvent: event };
+  const count = payload.reporterCount ?? payload.count;
+  if (typeof count === "number" && Number.isInteger(count) && count > 0) {
+    fields.securityCount = count;
+  }
+  const escalated = payload.escalated === true || payload.stage === "supervisor";
+  if (event === "overdue" && escalated) fields.securityEscalated = "1";
+  return fields;
+}
+
+/** Push fields of inventory reminders. */
+export function inventoryFields(
+  kind: string,
+  payload: Record<string, unknown>,
+): Record<string, string> {
+  const fields: Record<string, string> = {
+    inventoryEvent: kind === "inventory.count_due" ? "count_due" : "reorder",
+  };
+  const name = payloadText(payload, "itemName") ??
+    payloadText(payload, "locationName") ?? payloadText(payload, "title");
+  if (name) fields.inventoryName = name;
+  return fields;
+}
+
 async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
   if (!(await ticketNotificationRecipientAuthorized(admin, row))) {
     await skipUnauthorizedRecipient(admin, row);
@@ -340,8 +368,14 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     await completeForDeliveries(admin, row, []);
     return;
   }
-  let shop: { shopEvent: string; orderId?: string; orderNumber?: string } | {} =
-    {};
+  let shop:
+    | {
+      shopEvent: string;
+      orderId?: string;
+      orderNumber?: string;
+      shopEscalated?: boolean;
+    }
+    | {} = {};
   if (preferenceCategory === "shop" && row.notification_id) {
     const { data: notification } = await admin
       .from("ticket_notifications")
@@ -356,6 +390,13 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
         : {}),
       ...(typeof payload.orderNumber === "string"
         ? { orderNumber: payload.orderNumber }
+        : {}),
+      // Eskalation: an Vorgesetzte (audience manager) bzw. Stellvertretung
+      // (audience deputy) – siehe shop_send_reminders (0314).
+      ...(payload.escalated === true ||
+      payload.audience === "manager" ||
+      payload.audience === "deputy"
+        ? { shopEscalated: true }
         : {}),
     };
   }
@@ -448,7 +489,11 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
   }
   // Incident («Störung»): number, title and why the alert was sent.
   let incident: Record<string, string> = {};
-  if (row.kind.startsWith("monitoring.") && row.notification_id) {
+  if (
+    row.kind.startsWith("monitoring.") &&
+    !isIpamNotificationKind(row.kind) &&
+    row.notification_id
+  ) {
     const { data: notification } = await admin
       .from("ticket_notifications")
       .select("payload")
@@ -467,8 +512,9 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
       if (typeof payload[from] === "string") incident[to] = payload[from];
     }
   }
-  // Security case: a reporter said they clicked (own wording, no address).
-  let securityEvent: { securityEvent?: "clicked" } = {};
+  // Security case: a reporter said they clicked (own wording, no address),
+  // the verdict is overdue or several people reported the same campaign.
+  let securityEvent: Record<string, string | number> = {};
   if (row.kind === "ticket.security_report" && row.notification_id) {
     const { data: notification } = await admin
       .from("ticket_notifications")
@@ -478,6 +524,27 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     if (notification?.payload?.event === "clicked") {
       securityEvent = { securityEvent: "clicked" };
     }
+  } else if (isSecurityCaseNotificationKind(row.kind)) {
+    securityEvent = securityCaseFields(
+      row.kind,
+      await notificationPayload(admin, row.notification_id),
+    );
+  }
+  // IP address management: finding, offline agent, expiring reservation.
+  let ipam: Record<string, string> = {};
+  if (isIpamNotificationKind(row.kind)) {
+    ipam = ipamFields(
+      row.kind,
+      await notificationPayload(admin, row.notification_id),
+    );
+  }
+  // Inventory: reorder and stock count reminders (low stock keeps its text).
+  let inventory: Record<string, string> = {};
+  if (isInventoryNotificationKind(row.kind) && row.kind !== "inventory.low_stock") {
+    inventory = inventoryFields(
+      row.kind,
+      await notificationPayload(admin, row.notification_id),
+    );
   }
   let watched: Record<string, string | boolean> = {};
   if (row.kind.startsWith("ticket.watch.") && row.notification_id) {
@@ -524,6 +591,8 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     ...vendorReminder,
     ...kudos,
     ...securityEvent,
+    ...ipam,
+    ...inventory,
     ...incident,
     ...delegated,
     kind: payloadKind(row.kind, preferenceCategory),

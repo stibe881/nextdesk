@@ -31,6 +31,7 @@ import {
   VERDICTS,
   type SecurityCaseDetail,
   type SecurityVerdict,
+  INDICATOR_LABELS,
 } from "@/lib/security-cases";
 import { useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
@@ -294,6 +295,54 @@ export default function PhishingCaseScreen() {
           </View>
         ) : null}
 
+        {detail.clickedAt && open ? (
+          <View style={styles.errorCard}>
+            <Ionicons color={colors.error} name="warning-outline" size={19} />
+            <Text style={styles.errorText}>
+              Jemand hat geklickt. Sitzungen widerrufen, Passwort-Reset
+              erzwingen und Gerät scannen kannst du im Web unter «Kontext und
+              Massnahmen».
+            </Text>
+          </View>
+        ) : null}
+        {detail.escalatedAt && detail.state === "triage" ? (
+          <View style={styles.errorCard}>
+            <Ionicons color={colors.error} name="time-outline" size={19} />
+            <Text style={styles.errorText}>
+              Das Urteil ist seit über 24 Stunden überfällig; die Vorgesetzten
+              wurden informiert.
+            </Text>
+          </View>
+        ) : null}
+        {detail.iocHits.length ? (
+          <View style={[styles.card, { gap: 6 }]}>
+            <Text style={styles.cardTitle}>Bekannte Indikatoren</Text>
+            <Text style={styles.muted}>
+              Diese Mail enthält Indikatoren aus früheren Fällen.
+            </Text>
+            {detail.iocHits.slice(0, 10).map((hit) => (
+              <Text key={hit.id} style={styles.kvValue}>
+                {INDICATOR_LABELS[hit.kind]}: {hit.value}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+        {detail.campaign &&
+        (detail.campaign.caseCount > 1 || detail.campaign.reporters > 1) ? (
+          <View style={[styles.card, { gap: 4 }]}>
+            <Text style={styles.cardTitle}>Kampagne</Text>
+            <Text style={styles.kvValue}>
+              {detail.campaign.reports} Meldungen von{" "}
+              {detail.campaign.reporters} Personen in{" "}
+              {detail.campaign.caseCount}{" "}
+              {detail.campaign.caseCount === 1 ? "Fall" : "Fällen"}
+              {detail.campaign.senderDomain
+                ? ` · Absender ${detail.campaign.senderDomain}`
+                : ""}
+            </Text>
+          </View>
+        ) : null}
+
         {detail.state === "triage" ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Urteil fällen</Text>
@@ -387,6 +436,19 @@ export default function PhishingCaseScreen() {
             </View>
           ) : null}
         </View>
+
+        {detail.measures.length ? (
+          <View style={[styles.card, { gap: 4 }]}>
+            <Text style={styles.cardTitle}>Ausgeführte Massnahmen</Text>
+            {detail.measures.slice(0, 10).map((entry) => (
+              <Text key={entry.id} style={styles.muted}>
+                {entry.status === "succeeded" ? "✓" : "✗"} {entry.label}
+                {entry.target ? ` · ${entry.target}` : ""} ·{" "}
+                {when(entry.createdAt)}
+              </Text>
+            ))}
+          </View>
+        ) : null}
 
         {detail.actions.length ? (
           <View style={styles.card}>

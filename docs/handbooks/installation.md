@@ -198,7 +198,35 @@ Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
 Geräte mit bereits vorhandener Seriennummer werden übersprungen, es wird nie
 etwas gelöscht.
 
+Sobald der Abgleich freigegeben ist, läuft er zusätzlich **jede Nacht (gegen
+03:10 Uhr, Sommerzeit 04:10 Uhr)** automatisch (Cron `nextdesk-intune-scheduled-sync`, Edge Function
+`intune-scheduled-sync`). Er läuft im Namen der Person, die die
+Intune-Anbindung zuletzt gespeichert hat (sonst einer anderen Person mit dem
+Recht, Asset-Integrationen zu verwalten). Ist die IP-Adressverwaltung aktiv,
+liefert derselbe Geräteabruf auch die MAC-Adressen; der bisherige separate
+nächtliche Intune-Abruf der IP-Adressverwaltung entfällt dann.
+Voraussetzung ist die Dispatch-Konfiguration für Cron-Aufrufe (wie bei
+PRTG/IP-Adressverwaltung).
+
 ![Microsoft-Intune-Abgleich](images/in-intune.jpg)
+
+**Massnahmen in Sicherheitsfällen (optional).** Hat jemand in einer
+Phishing-Mail geklickt, kann das Sicherheitsteam direkt aus dem Fall handeln.
+Dafür braucht dieselbe Intune-/Entra-App zusätzliche
+Anwendungsberechtigungen mit Administratorzustimmung:
+
+- _DeviceManagementManagedDevices.PrivilegedOperations.All_ – **Gerät
+  synchronisieren** und **Defender-Schnellscan** (wie bei den
+  Intune-Aktionen).
+- _User.RevokeSessions.All_ – **Sitzungen widerrufen**.
+- _User-PasswordProfile.ReadWrite.All_ – **Passwort-Reset erzwingen**. Für
+  Konten mit Administratorrolle braucht die App zusätzlich eine passende
+  Entra-Rolle (z. B. _Administrator für privilegierte Authentifizierung_);
+  sonst lehnt Microsoft den Schritt ab.
+
+Fehlt eine Berechtigung, zeigt nextDesk im Fall eine klare Meldung, und das
+Team erledigt den Schritt im Entra Admin Center. Ein Gerät isolieren geht nur
+in Microsoft Defender.
 
 ### Push-Benachrichtigungen (iOS)
 
@@ -239,7 +267,8 @@ per Push und E-Mail alarmiert.
    bei Bedarf _Warnung_ und **zwingend** die Zeile «nicht mehr im Status …»
    (Up) mit derselben Vorlage. Ohne den Up-Trigger erfährt nextDesk nie, dass
    die Störung vorbei ist, und der Dienst bleibt im Systemstatus gestört. Bei
-   _Up_ wird die Störung automatisch abgeschlossen. nextDesk versteht die
+   _Up_ wird die Störung als behoben markiert; abgeschlossen wird sie von einem
+   Agenten mit der Ursache. nextDesk versteht die
    Statuswörter deutsch (Fehler, Warnung, OK, Pausiert) und englisch (Down,
    Warning, Up, Paused).
 4. **Geräte und Dienste verknüpfen** (nur damit ändert sich der Systemstatus):
@@ -247,7 +276,9 @@ per Push und E-Mail alarmiert.
    (am besten die Geräte-ID aus der PRTG-Adresse `device.htm?id=…`, dann gelten
    alle Sensoren des Geräts) und bei **Dienste (für Systemstatus)** einen oder
    **mehrere Dienste** ankreuzen. Ohne ID ordnet nextDesk über Hostname bzw.
-   IP-Adresse und zuletzt über den Gerätenamen zu. Bei Down wechseln alle
+   IP-Adresse, dann über den Gerätenamen und zuletzt über eine IP-Adresse
+   bzw. einen Hostnamen der IP-Adressverwaltung mit verknüpftem Gerät zu. Bei
+   Down wechseln alle
    gewählten Dienste auf «Teilweiser Ausfall» (Warning: «Eingeschränkt»), bei
    Up zurück auf «Betriebsbereit», sobald kein anderer Alarm sie mehr betrifft.
 5. Blockiert Ihre Firewall die Webhook-Adresse (typisch: Webfilter oder

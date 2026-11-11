@@ -41,6 +41,8 @@ export type DiscoveryAgent = {
   platform: string | null;
   lastSeenAt: string | null;
   lastReportAt: string | null;
+  /** Ausfall gemeldet (Benachrichtigung «Netzwerkagent offline»). */
+  offlineNotifiedAt: string | null;
   lastError: string | null;
   config: AgentConfig;
 };
@@ -264,6 +266,7 @@ export function parseAgent(
     platform: str(entry.platform),
     lastSeenAt: str(entry.lastSeenAt),
     lastReportAt: str(entry.lastReportAt),
+    offlineNotifiedAt: str(entry.offlineNotifiedAt),
     lastError: str(entry.lastError),
     config: parseConfig(entry.config),
   };

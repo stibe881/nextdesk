@@ -631,7 +631,8 @@ async function list(request: Request, admin: Admin, tenantId: string, canManage:
     admin.from("monitoring_alerts")
       .select("asset_id, sensor_name, last_status, last_message, last_event_at")
       .eq("tenant_id", tenantId).eq("state", "open").not("asset_id", "is", null).limit(2000),
-    admin.from("asset_services").select("asset_id, service_id").eq("tenant_id", tenantId).limit(20000),
+    admin.from("asset_services").select("asset_id, service_id").eq("tenant_id", tenantId)
+      .order("position").order("created_at").order("service_id").limit(20000),
     admin.from("infrastructure_racks").select("id, name, location_id, height_units, notes")
       .eq("tenant_id", tenantId).order("name").limit(1000),
   ]);
@@ -835,9 +836,9 @@ async function save(
       throw new HttpError(422, "service_invalid", "Ein Dienst ist nicht verfügbar.");
     }
   }
+  // Services are written to asset_services (source of truth); the trigger keeps
+  // assets.service_id as the first service for modules that know only one.
   const assetValues = {
-    // The first service stays the primary one for modules that know only one.
-    service_id: device.serviceIds[0] ?? null,
     name: device.name,
     kind: device.category,
     asset_tag: device.assetTag,
@@ -899,19 +900,12 @@ async function save(
     updated_at: new Date().toISOString(),
   }, { onConflict: "asset_id" });
   if (infraError) throw dbFailure();
-  const cleared = await admin.from("asset_services").delete()
-    .eq("tenant_id", tenantId).eq("asset_id", assetId);
-  if (cleared.error) throw dbFailure();
-  if (device.serviceIds.length) {
-    const linked = await admin.from("asset_services").insert(
-      device.serviceIds.map((serviceId) => ({
-        tenant_id: tenantId,
-        asset_id: assetId,
-        service_id: serviceId,
-      })),
-    );
-    if (linked.error) throw dbFailure();
-  }
+  const linked = await admin.rpc("set_asset_services", {
+    p_tenant_id: tenantId,
+    p_asset_id: assetId,
+    p_service_ids: device.serviceIds,
+  });
+  if (linked.error) throw dbFailure();
   await admin.from("audit_logs").insert({
     tenant_id: tenantId,
     actor_id: actorId,

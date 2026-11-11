@@ -2,9 +2,11 @@
 // MAC-Adressen und Hostnamen nach dem Namensschema (z. B. SW-A2-01, AP101,
 // PC-A2-009, SOBE-NB-0123, DRU-A2-KOPIE).
 //
-// Dieselbe Logik läuft serverseitig in
-// supabase/functions/ipam-sync/detect.ts – Änderungen bitte in beiden Dateien
-// nachziehen (die Tests prüfen dieselben Beispiele).
+// Diese Datei existiert identisch zweimal:
+//   supabase/functions/_shared/ipam-ticket-detect.ts (Edge Functions, Deno)
+//   apps/web/src/lib/ipam-ticket-detect.ts (Web-App, Vite)
+// Ein Vitest-Test prüft, dass beide Kopien übereinstimmen. Änderungen immer in
+// beiden Dateien vornehmen. Die Ticket-IP-Erkennung gibt es nur hier.
 
 export type NetworkCandidates = {
   /** Einzelne IPv4-Adressen. */
@@ -202,4 +204,17 @@ export function networkLookupTerms(candidates: NetworkCandidates): {
     macs: [...candidates.macs],
     hostnames: [...candidates.hostnames],
   };
+}
+
+/**
+ * Erwähnt der Text genau diese Adresse? (10.20.30.21 trifft nicht auf
+ * 10.20.30.211 oder 110.20.30.21; ein Satzpunkt danach ist erlaubt.)
+ */
+export function textMentionsAddress(text: string, address: string): boolean {
+  if (!text || !address) return false;
+  const escaped = address.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `(^|[^0-9A-Za-z.:])${escaped}($|[^0-9A-Za-z:]|\\.(?![0-9]))`,
+    "i",
+  ).test(text);
 }

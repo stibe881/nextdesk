@@ -1,4 +1,5 @@
 import { TicketAiTriage } from "./ticket-ai-triage";
+import { TicketMonitoringIncidentHint } from "./incidents-ticket-hint";
 import { TicketAiSummary } from "./ticket-ai-summary";
 import { RequesterTicketProgress } from "./requester-ticket-progress";
 import {
@@ -813,6 +814,8 @@ type TicketDetailProps = {
   requesterView?: boolean;
   /** Opens another ticket (e.g. a child or parent ticket of a split). */
   onOpenTicket?: ((ticketId: string) => void) | undefined;
+  /** Opens a monitoring incident the ticket belongs to («Störungen»). */
+  onOpenIncident?: ((incidentId: string) => void) | undefined;
   /** Agents: opens the person overview of the requester. */
   onOpenPerson?:
     | ((person: {
@@ -3874,6 +3877,7 @@ export function TicketDetail({
   requesterView = false,
   onOpenTicket,
   onOpenPerson,
+  onOpenIncident,
 }: TicketDetailProps) {
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
   // Answers from a ticket template form (only tickets created with one).
@@ -7157,6 +7161,14 @@ export function TicketDetail({
         </p>
       )}
 
+      {!requesterView && (
+        <TicketMonitoringIncidentHint
+          onOpenIncident={onOpenIncident}
+          tenantId={tenantId}
+          ticketId={ticketId}
+        />
+      )}
+
       {detail.canUpdate && (
         <TicketIncidentBanner
           refreshKey={`${detail.ticket.id}:${detail.ticket.subject}`}
@@ -9030,9 +9042,12 @@ export function TicketDetail({
 
           {!requesterView ? (
             <IpamTicketPanel
+              canUpdate={detail.canUpdate}
               comments={detail.comments.map((comment) => comment.body)}
               description={detail.ticket.description}
+              onLinked={onChanged}
               onOpenAsset={onOpenAsset}
+              ticketNumber={detail.ticket.ticket_number}
               refreshKey={`${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
               subject={detail.ticket.subject}
               tenantId={tenantId}

@@ -1,6 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@1";
 import {
   effectiveOrder,
+  operationItems,
   parseAction,
   parseAiOrder,
   type PriorityTicket,
@@ -65,4 +66,23 @@ Deno.test("reorder needs unique ticket ids", () => {
   const id = "00000000-0000-4000-8000-0000000000aa";
   assertEquals(parseAction({ type: "reorder", tenantId, ticketIds: [id, id] }), null);
   assertEquals(parseAction({ type: "reorder", tenantId, ticketIds: [id] })?.type, "reorder");
+});
+
+Deno.test("Meine Prioritäten: Störungen und Sicherheitsfälle, dringende zuerst", () => {
+  const items = operationItems({
+    incidents: [
+      { id: "i1", number: "STO-1", title: "Switch", state: "resolved", severity: "down", acknowledged: true },
+      { id: "i2", number: "STO-2", title: "Server", state: "active", severity: "down", acknowledged: false },
+    ],
+    securityCases: [
+      { id: "s1", number: "SEC-1", title: "Rechnung", state: "triage", decisionDueAt: "2026-11-07T11:00:00Z" },
+      { id: "s2", number: "SEC-2", title: "Paket", state: "actions", clicked: false },
+      { number: "kaputt" },
+    ],
+  }, now);
+  assertEquals(items.map((item) => item.id), ["i2", "s1", "i1", "s2"]);
+  assertEquals(items[0]!.reason, "Ausfall · unbestätigt");
+  assertEquals(items[1]!.reason, "Urteil überfällig");
+  assertEquals(items[2]!.reason, "Behoben, Ursache erfassen und schliessen");
+  assertEquals(operationItems(null), []);
 });

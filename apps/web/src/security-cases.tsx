@@ -31,6 +31,11 @@ import {
   type SecurityVerdict,
 } from "./lib/security-cases";
 import { supabase } from "./lib/supabase";
+import {
+  SecurityCaseContextPanel,
+  SecurityCaseIntelCards,
+  SecurityIntelView,
+} from "./security-case-intel";
 import "./security-cases.css";
 
 async function call(body: Record<string, unknown>): Promise<unknown> {
@@ -121,13 +126,29 @@ const CHANNEL_LABELS: Record<string, string> = {
  * tickets. Reports of the same mail are one case; the security team gives a
  * verdict, works through the checklist and every reporter gets the result.
  */
-export function SecurityCases({ tenantId }: { tenantId: string }) {
+export function SecurityCases({
+  tenantId,
+  focusId = null,
+  onFocusConsumed,
+}: {
+  tenantId: string;
+  /** Opens this case (global search, notification, priorities). */
+  focusId?: string | null;
+  onFocusConsumed?: () => void;
+}) {
   const [filter, setFilter] = useState<SecurityStateFilter>("triage");
+  const [view, setView] = useState<"cases" | "intel">("cases");
   const [cases, setCases] = useState<SecurityCaseSummary[] | null>(null);
   const [stats, setStats] = useState<SecurityStats | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    if (!focusId) return;
+    setSelected(focusId);
+    onFocusConsumed?.();
+  }, [focusId, onFocusConsumed]);
 
   useEffect(() => {
     let active = true;
@@ -154,10 +175,12 @@ export function SecurityCases({ tenantId }: { tenantId: string }) {
   if (selected) {
     return (
       <SecurityCaseView
+        key={selected}
         onBack={() => {
           setSelected(null);
           setRevision((value) => value + 1);
         }}
+        onOpenCase={setSelected}
         tenantId={tenantId}
         ticketId={selected}
       />
@@ -238,19 +261,35 @@ export function SecurityCases({ tenantId }: { tenantId: string }) {
       >
         {FILTERS.map((entry) => (
           <button
-            aria-pressed={filter === entry.key}
+            aria-pressed={view === "cases" && filter === entry.key}
             className={
-              filter === entry.key ? "queue-tab selected" : "queue-tab"
+              view === "cases" && filter === entry.key
+                ? "queue-tab selected"
+                : "queue-tab"
             }
             key={entry.key}
-            onClick={() => setFilter(entry.key)}
+            onClick={() => {
+              setView("cases");
+              setFilter(entry.key);
+            }}
             type="button"
           >
             {entry.label}
           </button>
         ))}
+        <button
+          aria-pressed={view === "intel"}
+          className={view === "intel" ? "queue-tab selected" : "queue-tab"}
+          onClick={() => setView("intel")}
+          type="button"
+        >
+          Kampagnen & IOC
+        </button>
       </div>
-      {TILE_FILTER_LABELS[filter] ? (
+      {view === "intel" ? (
+        <SecurityIntelView onOpenCase={setSelected} tenantId={tenantId} />
+      ) : null}
+      {view === "cases" && TILE_FILTER_LABELS[filter] ? (
         <p className="security-cases__tile-filter" role="status">
           {TILE_FILTER_LABELS[filter]}
           <button
@@ -269,7 +308,7 @@ export function SecurityCases({ tenantId }: { tenantId: string }) {
           {error}
         </p>
       ) : null}
-      {!cases && !error ? (
+      {view === "cases" && !cases && !error ? (
         <p className="security-cases__empty" role="status">
           <LoaderCircle
             aria-hidden="true"
@@ -279,13 +318,13 @@ export function SecurityCases({ tenantId }: { tenantId: string }) {
           Sicherheitsfälle werden geladen …
         </p>
       ) : null}
-      {cases && cases.length === 0 ? (
+      {view === "cases" && cases && cases.length === 0 ? (
         <p className="security-cases__empty">
           <ShieldCheck aria-hidden="true" size={18} />
           {EMPTY_TEXT[filter]}
         </p>
       ) : null}
-      {cases && cases.length > 0 ? (
+      {view === "cases" && cases && cases.length > 0 ? (
         <ul className="security-cases__list">
           {cases.map((entry) => (
             <li key={entry.ticketId}>
@@ -354,10 +393,12 @@ function SecurityCaseView({
   tenantId,
   ticketId,
   onBack,
+  onOpenCase,
 }: {
   tenantId: string;
   ticketId: string;
   onBack: () => void;
+  onOpenCase: (ticketId: string) => void;
 }) {
   const [detail, setDetail] = useState<SecurityCaseDetail | null>(null);
   const [error, setError] = useState("");
@@ -576,7 +617,14 @@ function SecurityCaseView({
               {clickedYes === 1
                 ? "Eine meldende Person hat angegeben, geklickt oder Daten eingegeben zu haben."
                 : `${clickedYes} meldende Personen haben angegeben, geklickt oder Daten eingegeben zu haben.`}{" "}
-              Passwort zurücksetzen und Anmeldungen prüfen.
+              Massnahmen unten unter «Kontext und Massnahmen».
+            </p>
+          ) : null}
+          {detail.escalatedAt && detail.state === "triage" ? (
+            <p className="ticket-detail-message error" role="status">
+              <Clock3 aria-hidden="true" size={16} />
+              Urteil seit über 24 Stunden überfällig – die Vorgesetzten wurden
+              am {dateTime(detail.escalatedAt)} informiert.
             </p>
           ) : null}
 
@@ -695,6 +743,13 @@ function SecurityCaseView({
                   <p className="security-muted">Keine auffälligen Befunde.</p>
                 )}
               </article>
+
+              <SecurityCaseIntelCards detail={detail} onOpenCase={onOpenCase} />
+              <SecurityCaseContextPanel
+                detail={detail}
+                onDetail={setDetail}
+                tenantId={tenantId}
+              />
             </div>
 
             <div className="security-case__side">

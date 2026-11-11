@@ -1,11 +1,11 @@
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
-import { subjectWords } from "../_shared/ticket-similarity.ts";
 
 /**
  * Problem management on top of the cases (table problems):
  *  - candidates: groups of similar open tickets that are not linked to a case
- *    yet (same category or a frequent word in the subject),
+ *    yet (database function ticket_similarity_clusters, the same grouping as
+ *    the incident hint in the ticket list),
  *  - createFromTickets: opens a case and links the chosen tickets,
  *  - analysis: structured root cause analysis (5 × why) and impact.
  * Requires asset.manage like the cases themselves. Tickets are read with the
@@ -110,56 +110,50 @@ export function parseAction(value: unknown): Action | null {
   }
 }
 
-export { subjectWords };
-
 export type CandidateTicket = {
   id: string;
   ticketNumber: string;
   subject: string;
-  categoryName: string | null;
-  departmentId: string | null;
   createdAt: string;
 };
 
-/** Groups of at least three similar tickets, largest first, without overlap. */
-export function clusterTickets(tickets: CandidateTicket[]) {
-  const groups = new Map<
-    string,
-    { key: string; kind: "category" | "keyword"; label: string; tickets: CandidateTicket[] }
-  >();
-  for (const ticket of tickets) {
-    if (ticket.categoryName) {
-      const key = `category:${ticket.categoryName}`;
-      const group = groups.get(key) ??
-        { key, kind: "category" as const, label: ticket.categoryName, tickets: [] };
-      group.tickets.push(ticket);
-      groups.set(key, group);
+export type CandidateGroup = {
+  key: string;
+  kind: "similar";
+  label: string;
+  tickets: CandidateTicket[];
+};
+
+/** Rows of ticket_similarity_clusters → groups for the case candidates. */
+export function groupsFromClusters(rows: unknown): CandidateGroup[] {
+  if (!Array.isArray(rows)) return [];
+  const groups: CandidateGroup[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || !isUuid((row as Row).ticket_id)) {
+      continue;
     }
-    for (const word of subjectWords(ticket.subject)) {
-      const key = `keyword:${word}`;
-      const group = groups.get(key) ??
-        { key, kind: "keyword" as const, label: word, tickets: [] };
-      group.tickets.push(ticket);
-      groups.set(key, group);
-    }
-  }
-  const used = new Set<string>();
-  const result = [];
-  for (
-    const group of [...groups.values()]
-      .filter((entry) => entry.tickets.length >= MIN_CLUSTER)
-      .sort((a, b) =>
-        b.tickets.length - a.tickets.length ||
-        (a.kind === "keyword" ? -1 : 1)
+    const cluster = row as Row;
+    const tickets = (Array.isArray(cluster.tickets) ? cluster.tickets : [])
+      .filter((ticket: unknown): ticket is Row =>
+        typeof ticket === "object" && ticket !== null &&
+        isUuid((ticket as Row).id)
       )
-  ) {
-    const fresh = group.tickets.filter((ticket) => !used.has(ticket.id));
-    if (fresh.length < MIN_CLUSTER) continue;
-    fresh.forEach((ticket) => used.add(ticket.id));
-    result.push({ ...group, tickets: fresh });
-    if (result.length >= 8) break;
+      .map((ticket: Row) => ({
+        id: String(ticket.id),
+        ticketNumber: String(ticket.ticket_number ?? ""),
+        subject: String(ticket.subject ?? ""),
+        createdAt: String(ticket.created_at ?? ""),
+      }));
+    if (tickets.length < MIN_CLUSTER) continue;
+    groups.push({
+      key: `similar:${String(cluster.ticket_id)}`,
+      kind: "similar",
+      label: String(cluster.subject ?? "").trim().slice(0, 120) ||
+        tickets[0]!.subject,
+      tickets,
+    });
   }
-  return result;
+  return groups;
 }
 
 async function readBody(request: Request): Promise<unknown> {
@@ -185,46 +179,18 @@ async function requireCaseManager(client: Client, tenantId: string) {
   }
 }
 
-async function candidates(request: Request, client: Client, admin: Client, tenantId: string) {
+async function candidates(request: Request, client: Client, tenantId: string) {
   const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000).toISOString();
-  const { data, error } = await client
-    .from("tickets")
-    .select("id, ticket_number, subject, category_id, department_id, created_at")
-    .eq("tenant_id", tenantId)
-    .is("closed_at", null)
-    .is("resolved_at", null)
-    .gte("created_at", since)
-    .order("created_at", { ascending: false })
-    .limit(1000);
+  // Caller's client: only tickets the person may read are seeds or members.
+  const { data, error } = await client.rpc("ticket_similarity_clusters", {
+    p_tenant_id: tenantId,
+    p_since: since,
+    p_min_size: MIN_CLUSTER,
+    p_limit: 8,
+    p_open_unlinked: true,
+  });
   if (error) throw new HttpError(500, "tickets_failed", "Die Tickets konnten nicht geladen werden.");
-  const rows = (data ?? []) as Row[];
-  const ids = rows.map((row) => String(row.id));
-  const [linked, categories] = await Promise.all([
-    ids.length
-      ? admin.from("problem_tickets").select("ticket_id").eq("tenant_id", tenantId).in("ticket_id", ids)
-      : { data: [], error: null },
-    admin.from("ticket_categories").select("id, name").eq("tenant_id", tenantId),
-  ]);
-  if (linked.error || categories.error) {
-    throw new HttpError(500, "tickets_failed", "Die Tickets konnten nicht geladen werden.");
-  }
-  const linkedIds = new Set(((linked.data ?? []) as Row[]).map((row) => String(row.ticket_id)));
-  const categoryNames = new Map(
-    ((categories.data ?? []) as Row[]).map((row) => [String(row.id), String(row.name)]),
-  );
-  const tickets: CandidateTicket[] = rows
-    .filter((row) => !linkedIds.has(String(row.id)))
-    .map((row) => ({
-      id: String(row.id),
-      ticketNumber: String(row.ticket_number),
-      subject: String(row.subject ?? ""),
-      categoryName: typeof row.category_id === "string"
-        ? (categoryNames.get(row.category_id) ?? null)
-        : null,
-      departmentId: typeof row.department_id === "string" ? row.department_id : null,
-      createdAt: String(row.created_at),
-    }));
-  return json(request, { data: { windowDays: WINDOW_DAYS, groups: clusterTickets(tickets) } });
+  return json(request, { data: { windowDays: WINDOW_DAYS, groups: groupsFromClusters(data) } });
 }
 
 async function createFromTickets(
@@ -355,7 +321,7 @@ const handler = withSupabase(
       const admin = context.supabaseAdmin;
       switch (action.type) {
         case "candidates":
-          return await candidates(request, context.supabase, admin, action.tenantId);
+          return await candidates(request, context.supabase, action.tenantId);
         case "createFromTickets":
           return await createFromTickets(request, context.supabase, admin, actorId, action);
         case "getAnalysis":

@@ -9,9 +9,21 @@ type Policy = {
   auditRetentionDays: number;
   legalHold: boolean;
 };
+/** Operational data, pruned daily (0315); months, 1–120. */
+type OperationalPolicy = {
+  monitoringRetentionMonths: number;
+  ipamRetentionMonths: number;
+  phishingRetentionMonths: number;
+};
+const OPERATIONAL_KEYS = [
+  "monitoringRetentionMonths",
+  "ipamRetentionMonths",
+  "phishingRetentionMonths",
+] as const;
 type Action =
   | { type: "get"; tenantId: string }
-  | ({ type: "update"; tenantId: string } & Policy);
+  | ({ type: "update"; tenantId: string } & Policy &
+    Partial<OperationalPolicy>);
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -30,7 +42,7 @@ function integer(
     value <= maximum
   );
 }
-function parse(value: unknown): Action | null {
+export function parse(value: unknown): Action | null {
   if (!record(value) || !uuid(value.tenantId)) return null;
   if (
     value.type === "get" &&
@@ -47,13 +59,21 @@ function parse(value: unknown): Action | null {
         "attachmentRetentionDays",
         "auditRetentionDays",
         "legalHold",
+        ...OPERATIONAL_KEYS,
       ].includes(key),
     ) &&
     integer(value.ticketRetentionDays, 30, 3650) &&
     integer(value.attachmentRetentionDays, 30, 3650) &&
     integer(value.auditRetentionDays, 365, 3650) &&
-    typeof value.legalHold === "boolean"
-  )
+    typeof value.legalHold === "boolean" &&
+    OPERATIONAL_KEYS.every(
+      (key) => value[key] === undefined || integer(value[key], 1, 120),
+    )
+  ) {
+    const operational: Partial<OperationalPolicy> = {};
+    for (const key of OPERATIONAL_KEYS) {
+      if (typeof value[key] === "number") operational[key] = value[key];
+    }
     return {
       type: "update",
       tenantId: value.tenantId,
@@ -61,7 +81,9 @@ function parse(value: unknown): Action | null {
       attachmentRetentionDays: value.attachmentRetentionDays,
       auditRetentionDays: value.auditRetentionDays,
       legalHold: value.legalHold,
+      ...operational,
     };
+  }
   return null;
 }
 function cors(request: Request): HeadersInit {
@@ -121,7 +143,12 @@ async function isTenantAdmin(admin: any, userId: string, tenantId: string) {
     .maybeSingle();
   return error ? null : Boolean(data);
 }
-function toPolicy(row: Record<string, unknown>): Policy | null {
+function months(value: unknown, fallback: number): number {
+  return integer(value, 1, 120) ? value : fallback;
+}
+export function toPolicy(
+  row: Record<string, unknown>,
+): (Policy & OperationalPolicy) | null {
   return integer(row.ticket_retention_days, 30, 3650) &&
     integer(row.attachment_retention_days, 30, 3650) &&
     integer(row.audit_retention_days, 365, 3650) &&
@@ -131,6 +158,9 @@ function toPolicy(row: Record<string, unknown>): Policy | null {
         attachmentRetentionDays: row.attachment_retention_days,
         auditRetentionDays: row.audit_retention_days,
         legalHold: row.legal_hold,
+        monitoringRetentionMonths: months(row.monitoring_retention_months, 24),
+        ipamRetentionMonths: months(row.ipam_retention_months, 24),
+        phishingRetentionMonths: months(row.phishing_retention_months, 12),
       }
     : null;
 }
@@ -158,7 +188,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const { data, error } = await context.supabaseAdmin
       .from("tenant_data_retention_policies")
       .select(
-        "ticket_retention_days, attachment_retention_days, audit_retention_days, legal_hold, deletion_mode, updated_at",
+        "ticket_retention_days, attachment_retention_days, audit_retention_days, legal_hold, deletion_mode, updated_at, monitoring_retention_months, ipam_retention_months, phishing_retention_months",
       )
       .eq("tenant_id", action.tenantId)
       .maybeSingle();
@@ -183,6 +213,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         attachment_retention_days: action.attachmentRetentionDays,
         audit_retention_days: action.auditRetentionDays,
         legal_hold: action.legalHold,
+        ...(action.monitoringRetentionMonths !== undefined
+          ? { monitoring_retention_months: action.monitoringRetentionMonths }
+          : {}),
+        ...(action.ipamRetentionMonths !== undefined
+          ? { ipam_retention_months: action.ipamRetentionMonths }
+          : {}),
+        ...(action.phishingRetentionMonths !== undefined
+          ? { phishing_retention_months: action.phishingRetentionMonths }
+          : {}),
         updated_by: actorId,
         updated_at: new Date().toISOString(),
       },
@@ -208,6 +247,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         attachmentRetentionDays: action.attachmentRetentionDays,
         auditRetentionDays: action.auditRetentionDays,
         legalHold: action.legalHold,
+        monitoringRetentionMonths: action.monitoringRetentionMonths ?? null,
+        ipamRetentionMonths: action.ipamRetentionMonths ?? null,
+        phishingRetentionMonths: action.phishingRetentionMonths ?? null,
         deletionMode: "manual_review",
       },
     });

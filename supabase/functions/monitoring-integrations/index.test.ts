@@ -13,14 +13,10 @@ const tenantId = "00000000-0000-4000-8000-000000000001";
 Deno.test("config needs booleans and a known create-on value", () => {
   const config = parseConfig({
     enabled: true,
-    departmentId: "",
     teamId: "",
     createOn: "down_and_warning",
-    autoResolve: true,
     setServiceStatus: false,
-    priorityKey: "high",
   });
-  assertEquals(config?.departmentId, null);
   assertEquals(config?.teamId, null);
   assertEquals(
     parseConfig({
@@ -51,6 +47,21 @@ Deno.test("config needs booleans and a known create-on value", () => {
     "rotateToken",
   );
   assertEquals(parseAction({ type: "drop", tenantId }), null);
+});
+
+Deno.test("old ticket settings are ignored, not required", () => {
+  const config = parseConfig({
+    enabled: true,
+    departmentId: "00000000-0000-4000-8000-0000000000d1",
+    createOn: "down",
+    autoResolve: "egal",
+    setServiceStatus: true,
+    priorityKey: "high",
+  });
+  assertEquals(config !== null, true);
+  assertEquals("departmentId" in (config ?? {}), false);
+  assertEquals("autoResolve" in (config ?? {}), false);
+  assertEquals("priorityKey" in (config ?? {}), false);
 });
 
 Deno.test("incident options default and are validated", () => {

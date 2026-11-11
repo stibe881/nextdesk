@@ -15,12 +15,9 @@ type CreateOn = "down" | "down_and_warning";
 export type MonitoringConfig = {
   configured: boolean;
   enabled: boolean;
-  departmentId: string | null;
   teamId: string | null;
   createOn: CreateOn;
-  autoResolve: boolean;
   setServiceStatus: boolean;
-  priorityKey: string | null;
   realertMinutes: number;
   groupDependencies: boolean;
   suppressInMaintenance: boolean;
@@ -43,8 +40,7 @@ export type MonitoringAlert = {
 };
 
 type Option = { id: string; name: string };
-type TeamOption = { id: string; name: string; departmentId: string };
-type PriorityOption = { key: string; label: string };
+type TeamOption = { id: string; name: string; departmentId: string | null };
 
 export const PRTG_POSTDATA =
   "device=%device&host=%host&sensor=%sensor&status=%status&message=%message&down=%down&lastvalue=%lastvalue&datetime=%datetime&group=%group&probe=%probe&sensorid=%sensorid&deviceid=%deviceid";
@@ -64,7 +60,6 @@ export function parseMonitoringConfig(value: unknown): MonitoringConfig | null {
   if (!isRecord(value)) return null;
   if (
     typeof value.enabled !== "boolean" ||
-    typeof value.autoResolve !== "boolean" ||
     typeof value.setServiceStatus !== "boolean" ||
     typeof value.hasToken !== "boolean" ||
     (value.createOn !== "down" && value.createOn !== "down_and_warning")
@@ -75,12 +70,9 @@ export function parseMonitoringConfig(value: unknown): MonitoringConfig | null {
   return {
     configured: value.configured === true,
     enabled: value.enabled,
-    departmentId: text(value.departmentId),
     teamId: text(value.teamId),
     createOn: value.createOn,
-    autoResolve: value.autoResolve,
     setServiceStatus: value.setServiceStatus,
-    priorityKey: text(value.priorityKey),
     realertMinutes:
       typeof value.realertMinutes === "number" ? value.realertMinutes : 15,
     groupDependencies: value.groupDependencies !== false,
@@ -155,7 +147,6 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
   const [config, setConfig] = useState<MonitoringConfig | null>(null);
   const [departments, setDepartments] = useState<Option[]>([]);
   const [teams, setTeams] = useState<TeamOption[]>([]);
-  const [priorities, setPriorities] = useState<PriorityOption[]>([]);
   const [alerts, setAlerts] = useState<MonitoringAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -169,12 +160,9 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
   const requestVersion = useRef(0);
 
   const [enabled, setEnabled] = useState(false);
-  const [departmentId, setDepartmentId] = useState("");
   const [teamId, setTeamId] = useState("");
   const [createOn, setCreateOn] = useState<CreateOn>("down");
-  const [autoResolve, setAutoResolve] = useState(false);
   const [setServiceStatus, setSetServiceStatus] = useState(false);
-  const [priorityKey, setPriorityKey] = useState("");
   const [realertMinutes, setRealertMinutes] = useState(15);
   const [groupDependencies, setGroupDependencies] = useState(true);
   const [suppressInMaintenance, setSuppressInMaintenance] = useState(true);
@@ -182,12 +170,9 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
   const applyConfig = useCallback((next: MonitoringConfig) => {
     setConfig(next);
     setEnabled(next.enabled);
-    setDepartmentId(next.departmentId ?? "");
     setTeamId(next.teamId ?? "");
     setCreateOn(next.createOn);
-    setAutoResolve(next.autoResolve);
     setSetServiceStatus(next.setServiceStatus);
-    setPriorityKey(next.priorityKey ?? "");
     setRealertMinutes(next.realertMinutes);
     setGroupDependencies(next.groupDependencies);
     setSuppressInMaintenance(next.suppressInMaintenance);
@@ -222,26 +207,17 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
           ? payload.teams.flatMap((entry) =>
               isRecord(entry) &&
               typeof entry.id === "string" &&
-              typeof entry.name === "string" &&
-              typeof entry.departmentId === "string"
+              typeof entry.name === "string"
                 ? [
                     {
                       id: entry.id,
                       name: entry.name,
-                      departmentId: entry.departmentId,
+                      departmentId:
+                        typeof entry.departmentId === "string"
+                          ? entry.departmentId
+                          : null,
                     },
                   ]
-                : [],
-            )
-          : [],
-      );
-      setPriorities(
-        Array.isArray(payload.priorities)
-          ? payload.priorities.flatMap((entry) =>
-              isRecord(entry) &&
-              typeof entry.key === "string" &&
-              typeof entry.label === "string"
-                ? [{ key: entry.key, label: entry.label }]
                 : [],
             )
           : [],
@@ -275,12 +251,9 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
           tenantId,
           config: {
             enabled,
-            departmentId: departmentId || null,
             teamId: teamId || null,
             createOn,
-            autoResolve,
             setServiceStatus,
-            priorityKey: priorityKey || null,
             realertMinutes,
             groupDependencies,
             suppressInMaintenance,
@@ -388,7 +361,8 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
             Meldung öffnet oder ergänzt eine Störung im Arbeitsbereich
             «Störungen» (ohne Ticket) und alarmiert das Team sofort per Push und
             Mail. Bei «Up» wird die Störung als behoben markiert und der
-            Systemstatus wiederhergestellt.
+            Systemstatus wiederhergestellt; abgeschlossen wird sie von einem
+            Agenten mit der Ursache.
           </p>
         </div>
         <Activity aria-hidden="true" size={25} />
@@ -412,19 +386,15 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
                 Team für die Alarmierung
                 <select
                   disabled={saving}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    setTeamId(next);
-                    const team = teams.find((entry) => entry.id === next);
-                    setDepartmentId(team ? team.departmentId : "");
-                  }}
+                  onChange={(event) => setTeamId(event.target.value)}
                   value={teamId}
                 >
                   <option value="">Kein Team (alle Agenten)</option>
                   {teams.map((team) => (
                     <option key={team.id} value={team.id}>
                       {team.name}
-                      {departmentNames.get(team.departmentId)
+                      {team.departmentId &&
+                      departmentNames.get(team.departmentId)
                         ? ` (${departmentNames.get(team.departmentId)})`
                         : ""}
                     </option>

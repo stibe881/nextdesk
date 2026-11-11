@@ -30,6 +30,7 @@ export type ApnsPayloadKind =
   | "kudos"
   | "security_report"
   | "incident"
+  | "ipam"
   | "summary"
   | "test";
 
@@ -43,6 +44,8 @@ export type ApnsPayloadInput = {
   subject?: string | null;
   summaryCount?: number;
   shopEvent?: string;
+  /** Shop reminder sent to the supervisor or stand-in (escalation). */
+  shopEscalated?: boolean;
   orderId?: string;
   orderNumber?: string;
   serviceTaskEvent?: string;
@@ -74,8 +77,24 @@ export type ApnsPayloadInput = {
   incidentTitle?: string;
   incidentReason?: string;
   incidentSeverity?: string;
-  /** Security case: a reporter said they clicked or entered data. */
-  securityEvent?: "clicked";
+  /**
+   * Security case: a reporter said they clicked or entered data, the verdict
+   * is overdue (optionally escalated to the team lead) or several people
+   * reported the same campaign.
+   */
+  securityEvent?: "clicked" | "overdue" | "campaign";
+  securityCount?: number;
+  securityEscalated?: string;
+  /** IP address management: finding, offline agent or expiring reservation. */
+  ipamEvent?: "finding" | "agent_offline" | "reservation_expiring";
+  ipamTitle?: string;
+  ipamNumber?: string;
+  ipamAddress?: string;
+  ipamSeverity?: string;
+  ipamAgentName?: string;
+  /** Inventory reminders: reorder or stock count due. */
+  inventoryEvent?: "reorder" | "count_due";
+  inventoryName?: string;
 };
 
 type ApnsConfiguration = {
@@ -329,7 +348,29 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
       if (input.securityEvent === "clicked") {
         return {
           title: "Melder hat geklickt",
-          body: `Eine meldende Person hat in der Phishing-Mail geklickt oder Daten eingegeben (${ticketNumber}). Bitte Passwort zurücksetzen.`,
+          body: ticketNumber
+            ? `Eine meldende Person hat in der Phishing-Mail geklickt oder Daten eingegeben (${ticketNumber}). Bitte Passwort zurücksetzen.`
+            : "Eine meldende Person hat in der Phishing-Mail geklickt oder Daten eingegeben. Bitte Passwort zurücksetzen.",
+        };
+      }
+      if (input.securityEvent === "overdue") {
+        const about = ticketNumber ? ` ${ticketNumber}` : "";
+        return {
+          title: input.securityEscalated
+            ? "Sicherheitsfall: Eskalation"
+            : "Sicherheitsfall überfällig",
+          body: input.securityEscalated
+            ? `Der Sicherheitsfall${about} wartet seit über 24 Stunden nach Fristablauf auf ein Urteil.`
+            : `Die Frist für das Urteil zum Sicherheitsfall${about} ist abgelaufen.`,
+        };
+      }
+      if (input.securityEvent === "campaign") {
+        const count = input.securityCount && input.securityCount > 1
+          ? `${input.securityCount} Personen haben`
+          : "Mehrere Personen haben";
+        return {
+          title: "Phishing-Kampagne",
+          body: `${count} dieselbe verdächtige E-Mail gemeldet${ticketNumber ? ` (${ticketNumber})` : ""}.`,
         };
       }
       return {
@@ -394,6 +435,28 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           return {
             title: "Bestellung ausgegeben",
             body: `Bestellung${number} wurde ausgegeben.`,
+          };
+        case "loan_due":
+          return {
+            title: "Ausleihe endet bald",
+            body: `Die Ausleihe${number} endet in zwei Tagen. Bitte rechtzeitig zurückgeben.`,
+          };
+        case "loan_overdue":
+          return input.shopEscalated
+            ? {
+              title: "Ausleihe im Team überfällig",
+              body: `Die Ausleihe${number} einer Person aus deinem Team ist seit mehreren Tagen überfällig.`,
+            }
+            : {
+              title: "Ausleihe überfällig",
+              body: `Die Ausleihe${number} ist überfällig. Bitte zurückgeben.`,
+            };
+        case "approval_reminder":
+          return {
+            title: input.shopEscalated
+              ? "Freigabe als Stellvertretung"
+              : "Freigabe ausstehend",
+            body: `Bestellung${number} wartet noch auf eine Freigabe.`,
           };
         case "returned":
           return {
@@ -510,11 +573,58 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         body: actor ? `${actor} in ${about}` : `Neuer Eintrag in ${about}`,
       };
     }
-    case "inventory_low_stock":
+    case "inventory_low_stock": {
+      const name = input.inventoryName?.trim().slice(0, 80);
+      if (input.inventoryEvent === "reorder") {
+        return {
+          title: "Nachbestellen",
+          body: name
+            ? `${name} hat den Mindestbestand erreicht. Bitte nachbestellen.`
+            : "Ein Lagerartikel hat den Mindestbestand erreicht. Bitte nachbestellen.",
+        };
+      }
+      if (input.inventoryEvent === "count_due") {
+        return {
+          title: "Inventur fällig",
+          body: name
+            ? `Die Inventur für ${name} ist fällig.`
+            : "Eine Inventur ist fällig.",
+        };
+      }
       return {
         title: "Lagerunterbestand",
         body: "Ein Lagerartikel hat den Mindestbestand erreicht.",
       };
+    }
+    case "ipam": {
+      const what = input.ipamTitle?.trim().slice(0, 120);
+      const where = input.ipamNumber?.trim().slice(0, 60) ||
+        input.ipamAddress?.trim().slice(0, 45);
+      if (input.ipamEvent === "agent_offline") {
+        const agent = input.ipamAgentName?.trim().slice(0, 80) || where ||
+          "Ein Netzwerkagent";
+        return {
+          title: "Netzwerkagent offline",
+          body: `${agent} hat sich seit über zwei Stunden nicht gemeldet.`,
+        };
+      }
+      if (input.ipamEvent === "reservation_expiring") {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.dueOn ?? "");
+        const day = match ? ` am ${match[3]}.${match[2]}.${match[1]}` : " bald";
+        return {
+          title: "Reservierung läuft ab",
+          body: `${where ?? "Eine IP-Adresse"}${what ? ` (${what})` : ""}: Reservierung endet${day}.`,
+        };
+      }
+      return {
+        title: input.ipamSeverity === "critical"
+          ? "IP-Adressverwaltung: kritischer Fund"
+          : "IP-Adressverwaltung",
+        body: where && what
+          ? `${where}: ${what}`
+          : what ?? where ?? "Neuer Fund in der IP-Adressverwaltung.",
+      };
+    }
     case "summary":
       return {
         title: "nextDesk",
@@ -587,6 +697,11 @@ export function buildApnsPayload(
   }
   if (input.kind === "infrastructure" && input.assetId) {
     data.assetId = input.assetId;
+  }
+  if (input.kind === "ipam") {
+    if (input.ipamEvent) data.ipamEvent = input.ipamEvent;
+    if (input.ipamAddress) data.ipamAddress = input.ipamAddress;
+    if (input.assetId) data.assetId = input.assetId;
   }
   const aps: Record<string, unknown> = {
     alert,

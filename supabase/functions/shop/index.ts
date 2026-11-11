@@ -22,6 +22,7 @@ import {
   resolveRecordDepartment,
   scopeDepartmentOptions,
 } from "../_shared/department-scope.ts";
+import { parseDirectOrder, parseSkipApproval } from "./direct-order.ts";
 import {
   cadreLevelOf,
   type CadreRules,
@@ -54,7 +55,7 @@ const IMAGE_TYPES: Record<string, string> = {
   "image/webp": "webp",
 };
 const ORDER_SELECT =
-  "id, order_number, reason, requester_id, placed_by, status, approver_id, approved_by, approved_at, handled_by, delivery_method, delivery_location, needed_by, loan_from, loan_until, comment, decision_reason, issued_at, returned_at, closed_at, created_at, updated_at";
+  "id, order_number, reason, requester_id, placed_by, status, approver_id, approved_by, approved_at, handled_by, delivery_method, delivery_location, needed_by, loan_from, loan_until, comment, decision_reason, issued_at, returned_at, closed_at, created_at, updated_at, source_type, source_id, source_reference";
 const UPDATE_ACTIONS = new Set([
   "approve",
   "reject_approval",
@@ -1191,6 +1192,19 @@ function orderSummary(
     comment: row.comment,
     decisionReason: row.decision_reason,
     reason: typeof row.reason === "string" ? row.reason : null,
+    // Herkunft einer Bestellung ohne Genehmigung (z. B. Ersatzgerät aus einem
+    // Sicherheitsfall).
+    source:
+      row.source_type === "security_case" && typeof row.source_id === "string"
+        ? {
+            type: "security_case",
+            id: row.source_id,
+            reference:
+              typeof row.source_reference === "string"
+                ? row.source_reference
+                : null,
+          }
+        : null,
     lineCount,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -2559,6 +2573,23 @@ const securedHandler = withSupabase(
           });
         }
         case "submitOrder": {
+          // Optional: ohne Genehmigung bestellen (z. B. Ersatzgerät aus einem
+          // Sicherheitsfall). Nur für Agenten mit Shop-Rechten.
+          const skip = parseSkipApproval(body);
+          if (skip === "invalid") {
+            throw new HttpError(
+              400,
+              "invalid_request",
+              "Die Herkunft der Bestellung ohne Genehmigung ist ungültig.",
+            );
+          }
+          if (skip && !access.canFulfill && !access.canManage) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Nur Agenten können ohne Genehmigung bestellen.",
+            );
+          }
           if (!isUuid(body.clientRequestId) || !Array.isArray(body.lines)) {
             throw new HttpError(
               400,
@@ -2759,6 +2790,47 @@ const securedHandler = withSupabase(
               );
             }
           }
+          if (skip) {
+            const { data: ticket } = await admin
+              .from("tickets")
+              .select("ticket_number")
+              .eq("tenant_id", tenantId)
+              .eq("id", skip.ticketId)
+              .maybeSingle();
+            const { data: directId, error: directError } = await admin.rpc(
+              "shop_submit_order_direct",
+              {
+                p_actor_id: actorId,
+                p_tenant_id: tenantId,
+                p_requester_id: requesterId,
+                p_client_request_id: body.clientRequestId,
+                p_lines: lines.map((line) => ({
+                  ...line,
+                  loan_from: line.loan_from ?? isoDate(body.loanFrom),
+                  loan_until: line.loan_until ?? isoDate(body.loanUntil),
+                })),
+                p_delivery_method:
+                  body.deliveryMethod === "desk" ? "desk" : "pickup",
+                p_delivery_location: text(body.deliveryLocation, 200),
+                p_needed_by: isoDate(body.neededBy),
+                p_reason: reason,
+                p_comment: text(body.comment, 2000),
+                p_source_type: skip.kind,
+                p_source_id: skip.ticketId,
+                p_source_reference:
+                  ticket?.ticket_number !== undefined &&
+                  ticket?.ticket_number !== null
+                    ? String(ticket.ticket_number).slice(0, 60)
+                    : null,
+              },
+            );
+            if (directError) throw databaseError(directError);
+            return json(
+              request,
+              { data: { orderId: directId, approvalSkipped: true } },
+              201,
+            );
+          }
           const { data, error } = await admin.rpc("shop_submit_order_for", {
             p_actor_id: actorId,
             p_tenant_id: tenantId,
@@ -2785,6 +2857,112 @@ const securedHandler = withSupabase(
             if (reasonError) console.error("Shop order reason not saved");
           }
           return json(request, { data: { orderId: data } }, 201);
+        }
+        case "placeOrderWithoutApproval": {
+          // Agenten bestellen im Namen einer Person ohne Genehmigung, z. B.
+          // ein Ersatzgerät aus einem Sicherheitsfall (Teil Sicherheit).
+          if (!access.canFulfill && !access.canManage) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Nur Agenten können ohne Genehmigung bestellen.",
+            );
+          }
+          const parsed = parseDirectOrder(body);
+          if (!parsed) {
+            throw new HttpError(
+              400,
+              "invalid_request",
+              "Bitte Person, Artikel und Grund der Bestellung prüfen.",
+            );
+          }
+          const { data: articleRows, error: articleError } = await admin
+            .from("shop_catalog_items")
+            .select("id, name, kind, active, department_id")
+            .eq("tenant_id", tenantId)
+            .in(
+              "id",
+              parsed.lines.map((line) => line.catalog_item_id),
+            );
+          if (articleError) throw databaseError(articleError);
+          const shopOn = await shopDepartments(admin, tenantId);
+          for (const line of parsed.lines) {
+            const row = ((articleRows ?? []) as Row[]).find(
+              (candidate) => candidate.id === line.catalog_item_id,
+            );
+            if (
+              !row ||
+              row.active !== true ||
+              (isUuid(row.department_id) && !shopOn.has(row.department_id))
+            ) {
+              throw new HttpError(
+                409,
+                "item_unavailable",
+                row
+                  ? `«${row.name}» kann zurzeit nicht bestellt werden.`
+                  : "Ein Artikel kann zurzeit nicht bestellt werden.",
+              );
+            }
+            if (row.kind === "loan" && (!line.loan_from || !line.loan_until)) {
+              throw new HttpError(
+                400,
+                "loan_period_required",
+                `Bitte für «${row.name}» Ausleihe ab und Rückgabe bis angeben.`,
+              );
+            }
+          }
+          let requesterId = parsed.requesterId;
+          if (parsed.entraObjectId) {
+            try {
+              requesterId = await ensureEntraPersonAccount(
+                admin,
+                tenantId,
+                parsed.entraObjectId,
+                actorId,
+              );
+            } catch (accountError) {
+              throw new HttpError(
+                422,
+                accountError instanceof EntraPersonAccountError
+                  ? accountError.code
+                  : "entra_person_account_failed",
+                "Für diese Person konnte kein Konto vorbereitet werden.",
+              );
+            }
+          }
+          const { data, error } = await admin.rpc("shop_submit_order_direct", {
+            p_actor_id: actorId,
+            p_tenant_id: tenantId,
+            p_requester_id: requesterId,
+            p_client_request_id: parsed.clientRequestId,
+            p_lines: parsed.lines,
+            p_delivery_method: parsed.deliveryMethod,
+            p_delivery_location: parsed.deliveryLocation,
+            p_needed_by: parsed.neededBy,
+            p_reason: parsed.reason,
+            p_comment: parsed.comment,
+            p_source_type: parsed.source?.type ?? null,
+            p_source_id: parsed.source?.id ?? null,
+            p_source_reference: parsed.source?.reference ?? null,
+          });
+          if (error) throw databaseError(error);
+          const { data: placed } = await admin
+            .from("shop_orders")
+            .select("id, order_number, status")
+            .eq("tenant_id", tenantId)
+            .eq("id", data)
+            .maybeSingle();
+          return json(
+            request,
+            {
+              data: {
+                orderId: data,
+                orderNumber: placed?.order_number ?? null,
+                status: placed?.status ?? "submitted",
+              },
+            },
+            201,
+          );
         }
         case "listRequesters": {
           if (!access.canFulfill) {
