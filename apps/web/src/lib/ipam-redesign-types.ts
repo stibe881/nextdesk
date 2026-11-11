@@ -186,7 +186,8 @@ export type TemplateEntry = {
 };
 
 export type SiteTemplate = {
-  id?: string;
+  /** null for the derived suggestion (not saved yet). */
+  id?: string | null;
   name: string;
   description?: string | null;
   prefixLength: number;
@@ -248,8 +249,10 @@ export type SiteFromTemplateResult = {
     function: string;
     vlanNumber: number;
     prefix: string;
-    gateway: string;
+    gateway: string | null;
   }[];
+  /** Only with dryRun: overlapping existing prefixes (creation would fail). */
+  conflicts?: string[];
   siteId?: string;
 };
 

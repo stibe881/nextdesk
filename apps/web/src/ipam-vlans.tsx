@@ -980,7 +980,13 @@ function SiteFromTemplateDialog({
       dryRun: true,
     })
       .then((result) => {
-        if (active) setPreview(result.preview);
+        if (!active) return;
+        setPreview(result.preview);
+        if (result.conflicts?.length) {
+          setPreviewError(
+            `Überschneidung mit bestehenden Subnetzen: ${result.conflicts.join(", ")}.`,
+          );
+        }
       })
       .catch((failure: unknown) => {
         if (active) {
