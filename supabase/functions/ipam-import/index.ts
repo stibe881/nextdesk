@@ -194,6 +194,15 @@ async function insertRows(
 ): Promise<Map<string, Row>> {
   const created = new Map<string, Row>();
   if (!entries.length) return created;
+  // Änderungsprotokoll: Herkunft «import», Person aus created_by.
+  entries = entries.map((entry) => ({
+    ...entry,
+    values: {
+      ...entry.values,
+      change_source: "import",
+      change_actor: entry.values.created_by ?? null,
+    },
+  }));
   const bulk = await admin
     .from(table)
     .insert(entries.map((entry) => entry.values))
@@ -254,7 +263,12 @@ async function updateRow(
   }
   const { error } = await ctx.admin
     .from(table)
-    .update({ ...changes, updated_at: new Date().toISOString() })
+    .update({
+      ...changes,
+      updated_at: new Date().toISOString(),
+      change_source: "import",
+      change_actor: ctx.actorId,
+    })
     .eq("tenant_id", ctx.tenantId)
     .eq("id", id);
   if (error) {

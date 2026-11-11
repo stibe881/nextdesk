@@ -13741,7 +13741,7 @@ $$;
 rollback;
 SQL
 
-# 0304: IPAM-Redesign (Änderungsprotokoll, Rücknahme, Layout, Vorlagen, Asset-Standort).
+# 0310: IPAM-Redesign (Änderungsprotokoll, Rücknahme, Layout, Vorlagen, Asset-Standort).
 psql -v ON_ERROR_STOP=1 <<'SQL'
 begin;
 do $$
