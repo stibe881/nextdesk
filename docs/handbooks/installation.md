@@ -166,6 +166,12 @@ _Einstellungen → E-Mail und Zusammenarbeit → Von Benutzern gemeldete
 Einstellungen_ die Meldeadresse als **Meldepostfach** ein (_Nur mein
 Berichtspostfach_). Die Meldeadresse muss beim verbundenen Postfach ankommen.
 
+Ist die Meldeadresse das Support-Postfach selbst, werden nur Mails als Meldung
+erkannt, deren Betreff «Phishing» oder «verdächtig» enthält oder mit «Junk:»
+bzw. «Phish:» beginnt (so meldet Outlook mit **Melden**). Alle anderen Mails an
+das Support-Postfach bleiben normale Tickets. Mit einer eigenen Meldeadresse
+(Alias) wird jede Mail dorthin als Meldung behandelt.
+
 ![E-Mail-Kanäle mit Support-Postfächern](images/in-exchange.jpg)
 
 ## Schritt 6: Optionale Integrationen
