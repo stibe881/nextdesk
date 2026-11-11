@@ -3260,8 +3260,9 @@ button.ipam-mx {
 
 /* Facts */
 .ipam-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  /* Flex statt Grid: die letzte Zeile füllt die Breite, keine leeren Zellen. */
+  display: flex;
+  flex-wrap: wrap;
   gap: 0;
   margin: 0;
   overflow: hidden;
@@ -3269,6 +3270,8 @@ button.ipam-mx {
   border-radius: 12px;
 }
 .ipam-facts > div {
+  flex: 1 1 150px;
+  min-width: 0;
   display: grid;
   align-content: start;
   gap: 2px;
