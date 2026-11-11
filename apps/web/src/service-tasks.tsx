@@ -14,7 +14,15 @@ import {
 import "./service-tasks.css";
 
 type Access = { canRead: boolean; canExecute: boolean; canManage: boolean };
-type Person = { id: string; name: string };
+type Person = {
+  id: string;
+  name: string;
+  /** Nur im Verzeichnis: Abteilungen und Teams der Person. */
+  departmentIds?: string[];
+  teamIds?: string[];
+  /** Nur bei Teams: zugehörige Abteilung. */
+  departmentId?: string | null;
+};
 type CheckItem = {
   id: string;
   label: string;
@@ -499,7 +507,7 @@ const EVENT_LABELS: Record<string, string> = {
   reopened: "hat wieder geöffnet",
   reschedule: "hat den Termin verschoben",
   assign: "hat die Zuständigkeit geändert",
-  escalated: "Erinnerung ans Team (überfällig)",
+  escalated: "Ans Team übergeben (überfällig)",
 };
 
 function DetailPanel({
@@ -947,6 +955,54 @@ function TemplateForm({
   const rule = form.recurrence;
   const set = <K extends keyof Template>(key: K, value: Template[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
+  // Teams der Abteilung; Verantwortliche nur aus Abteilung und Team.
+  const visibleTeams = teams.filter(
+    (team) =>
+      !form.departmentId ||
+      !team.departmentId ||
+      team.departmentId === form.departmentId ||
+      team.id === form.teamId,
+  );
+  const eligiblePeople = people.filter(
+    (person) =>
+      person.id === form.assigneeId ||
+      ((!form.departmentId ||
+        (person.departmentIds ?? []).includes(form.departmentId)) &&
+        (!form.teamId || (person.teamIds ?? []).includes(form.teamId))),
+  );
+  const changeDepartment = (departmentId: string | null) =>
+    setForm((current) => {
+      const team = teams.find((entry) => entry.id === current.teamId);
+      const teamStays =
+        !team ||
+        !departmentId ||
+        !team.departmentId ||
+        team.departmentId === departmentId;
+      const teamId = teamStays ? current.teamId : null;
+      const assignee = people.find((entry) => entry.id === current.assigneeId);
+      const assigneeStays =
+        !assignee ||
+        ((!departmentId ||
+          (assignee.departmentIds ?? []).includes(departmentId)) &&
+          (!teamId || (assignee.teamIds ?? []).includes(teamId)));
+      return {
+        ...current,
+        departmentId,
+        teamId,
+        assigneeId: assigneeStays ? current.assigneeId : null,
+      };
+    });
+  const changeTeam = (teamId: string | null) =>
+    setForm((current) => {
+      const assignee = people.find((entry) => entry.id === current.assigneeId);
+      const assigneeStays =
+        !assignee || !teamId || (assignee.teamIds ?? []).includes(teamId);
+      return {
+        ...current,
+        teamId,
+        assigneeId: assigneeStays ? current.assigneeId : null,
+      };
+    });
   const setRule = (patch: Partial<Rule>) =>
     setForm((current) => ({
       ...current,
@@ -1079,26 +1135,11 @@ function TemplateForm({
               value={form.title}
             />
           </FormField>
-          <FormField label="Verantwortlich">
-            <select
-              onChange={(event) =>
-                set("assigneeId", event.target.value || null)
-              }
-              value={form.assigneeId ?? ""}
-            >
-              <option value="">Nicht zugewiesen</option>
-              {people.map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.name}
-                </option>
-              ))}
-            </select>
-          </FormField>
           {departments.length > 1 ? (
             <FormField label="Abteilung">
               <select
                 onChange={(event) =>
-                  set("departmentId", event.target.value || null)
+                  changeDepartment(event.target.value || null)
                 }
                 value={form.departmentId ?? ""}
               >
@@ -1113,6 +1154,57 @@ function TemplateForm({
               </select>
             </FormField>
           ) : null}
+          <FormField label="Team (Vertretung & Übergabe)">
+            <select
+              onChange={(event) => changeTeam(event.target.value || null)}
+              value={form.teamId ?? ""}
+            >
+              <option value="">Kein Team</option>
+              {visibleTeams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Verantwortlich">
+            <select
+              onChange={(event) =>
+                set("assigneeId", event.target.value || null)
+              }
+              value={form.assigneeId ?? ""}
+            >
+              <option value="">Nicht zugewiesen</option>
+              {eligiblePeople.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField
+            hint={
+              form.teamId
+                ? "Ist die Aufgabe so lange überfällig, geht sie vom Verantwortlichen ans Team."
+                : "Wähle zuerst ein Team."
+            }
+            label="Ans Team übergeben nach (Tagen)"
+          >
+            <input
+              disabled={!form.teamId}
+              max={30}
+              min={1}
+              onChange={(event) =>
+                set(
+                  "escalateAfterDays",
+                  event.target.value ? Number(event.target.value) : null,
+                )
+              }
+              placeholder="leer = nie"
+              type="number"
+              value={form.escalateAfterDays ?? ""}
+            />
+          </FormField>
           <FormField label="Kategorie">
             <input
               list="service-task-categories"
@@ -1134,19 +1226,6 @@ function TemplateForm({
               {Object.entries(PRIORITIES).map(([key, label]) => (
                 <option key={key} value={key}>
                   {label}
-                </option>
-              ))}
-            </select>
-          </FormField>
-          <FormField label="Team (Vertretung & Eskalation)">
-            <select
-              onChange={(event) => set("teamId", event.target.value || null)}
-              value={form.teamId ?? ""}
-            >
-              <option value="">Kein Team</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
                 </option>
               ))}
             </select>
@@ -1446,7 +1525,7 @@ function TemplateForm({
           onChange={(checked) => setRule({ skipNonWorkdays: checked })}
         />
       </FormCard>
-      <FormCard title="Erledigung, Erinnerung & Eskalation">
+      <FormCard title="Erledigung & Erinnerung">
         <FormSwitch
           checked={form.requireNote}
           label="Notiz beim Abschliessen verlangen"
@@ -1458,21 +1537,6 @@ function TemplateForm({
           label="Erinnerung am Fälligkeitstag"
           onChange={(checked) => set("remind", checked)}
         />
-        <FormField label="Team informieren, wenn überfällig seit (Tagen)">
-          <input
-            max={30}
-            min={1}
-            onChange={(event) =>
-              set(
-                "escalateAfterDays",
-                event.target.value ? Number(event.target.value) : null,
-              )
-            }
-            placeholder="leer = nie"
-            type="number"
-            value={form.escalateAfterDays ?? ""}
-          />
-        </FormField>
       </FormCard>
       <FormCard collapsed title="Weitere Angaben">
         <FormField label="Bezug">

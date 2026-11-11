@@ -161,8 +161,19 @@ export function notificationEmailText(
   } else if (kind.startsWith("service_task.")) {
     const task = text(payload.title) ?? "Eine Serviceaufgabe";
     const overdue = kind === "service_task.overdue";
-    title = overdue ? "Serviceaufgabe überfällig" : "Serviceaufgabe fällig";
-    lines = [overdue ? `${task} ist überfällig.` : `${task} ist heute fällig.`];
+    const handedOver = overdue && payload.handover === "team";
+    title = handedOver
+      ? "Serviceaufgabe ans Team übergeben"
+      : overdue
+        ? "Serviceaufgabe überfällig"
+        : "Serviceaufgabe fällig";
+    lines = [
+      handedOver
+        ? `${task} ist überfällig und wurde ans Team übergeben.`
+        : overdue
+          ? `${task} ist überfällig.`
+          : `${task} ist heute fällig.`,
+    ];
   } else if (kind === "infrastructure.due") {
     const device = text(payload.assetName) ?? "Ein Gerät";
     const what = INFRASTRUCTURE_REASONS[String(payload.reason)] ?? "Eine Frist";

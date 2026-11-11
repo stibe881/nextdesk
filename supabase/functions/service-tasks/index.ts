@@ -387,7 +387,8 @@ async function directory(
   tenantId: string,
   visibility: Visibility,
 ) {
-  const [members, teams, departments] = await Promise.all([
+  const [members, teams, departments, departmentMembers, teamMembers] =
+    await Promise.all([
     admin
       .from("tenant_memberships")
       .select("user_id")
@@ -395,7 +396,7 @@ async function directory(
       .eq("status", "active"),
     admin
       .from("teams")
-      .select("id, name")
+      .select("id, name, department_id")
       .eq("tenant_id", tenantId)
       .eq("active", true)
       .order("name"),
@@ -407,18 +408,45 @@ async function directory(
           .in("id", visibility.departments)
           .order("name")
       : Promise.resolve({ data: [] }),
+    admin
+      .from("department_memberships")
+      .select("user_id, department_id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active"),
+    admin
+      .from("team_memberships")
+      .select("user_id, team_id")
+      .eq("tenant_id", tenantId),
   ]);
   const people = await names(
     admin,
     (members.data ?? []).map((row: Row) => row.user_id as string),
   );
+  // Je Person: Abteilungen und Teams (das Formular zeigt nur passende Personen).
+  const idsOf = (rows: Row[] | null, key: string) => {
+    const byUser = new Map<string, string[]>();
+    for (const row of rows ?? []) {
+      const list = byUser.get(row.user_id as string) ?? [];
+      list.push(row[key] as string);
+      byUser.set(row.user_id as string, list);
+    }
+    return byUser;
+  };
+  const departmentsOf = idsOf(departmentMembers.data as Row[] | null, "department_id");
+  const teamsOf = idsOf(teamMembers.data as Row[] | null, "team_id");
   return {
     people: [...people.entries()]
-      .map(([id, name]) => ({ id, name }))
+      .map(([id, name]) => ({
+        id,
+        name,
+        departmentIds: departmentsOf.get(id) ?? [],
+        teamIds: teamsOf.get(id) ?? [],
+      }))
       .sort((a, b) => a.name.localeCompare(b.name, "de-CH")),
     teams: (teams.data ?? []).map((row: Row) => ({
       id: row.id,
       name: row.name,
+      departmentId: row.department_id ?? null,
     })),
     departments: (departments.data ?? []).map((row: Row) => ({
       id: row.id,
@@ -709,6 +737,40 @@ async function saveTemplate(
       .maybeSingle();
     if (!data)
       throw new HttpError(422, "invalid_data", "Das Team ist ungültig.");
+  }
+  // Die verantwortliche Person gehört zum gewählten Team und zur Abteilung.
+  if (fields.assignee_id && fields.team_id) {
+    const { data } = await admin
+      .from("team_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("team_id", fields.team_id)
+      .eq("user_id", fields.assignee_id)
+      .maybeSingle();
+    if (!data) {
+      throw new HttpError(
+        422,
+        "invalid_data",
+        "Die verantwortliche Person gehört nicht zum gewählten Team.",
+      );
+    }
+  }
+  if (fields.assignee_id && fields.department_id) {
+    const { data } = await admin
+      .from("department_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("department_id", fields.department_id)
+      .eq("user_id", fields.assignee_id)
+      .eq("status", "active")
+      .maybeSingle();
+    if (!data) {
+      throw new HttpError(
+        422,
+        "invalid_data",
+        "Die verantwortliche Person gehört nicht zur Abteilung der Aufgabe.",
+      );
+    }
   }
   const today = swissToday();
   let templateId: string;
@@ -1205,7 +1267,9 @@ async function cron(admin: Admin) {
       reminders += dueRows.length;
     }
 
-    // Escalation after n days overdue: assignee plus the template's team.
+    // Escalation after n days overdue: with a team the task is handed over to
+    // it (no assignee any more, the team members see it and pick it up);
+    // without a team the assignee is only reminded.
     const { data: late } = await admin
       .from("service_task_occurrences")
       .select("id, template_id, assignee_id, due_on, due_at")
@@ -1243,12 +1307,16 @@ async function cron(admin: Admin) {
             title: template.title,
             dueOn: occurrence.due_on,
             overdueDays: days,
+            ...(template.team_id ? { handover: "team" } : {}),
           },
         })),
       );
       await admin
         .from("service_task_occurrences")
-        .update({ escalated_at: now.toISOString() })
+        .update({
+          escalated_at: now.toISOString(),
+          ...(template.team_id ? { assignee_id: null } : {}),
+        })
         .eq("id", occurrence.id);
       await logEvent(
         admin,
@@ -1259,7 +1327,11 @@ async function cron(admin: Admin) {
           occurrenceId: occurrence.id as string,
           templateId: template.id as string,
         },
-        { recipients: recipients.size },
+        {
+          recipients: recipients.size,
+          handedOverToTeam: Boolean(template.team_id),
+          previousAssigneeId: occurrence.assignee_id ?? null,
+        },
       );
       escalations += 1;
     }
