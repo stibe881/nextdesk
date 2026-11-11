@@ -256,7 +256,7 @@ export default function AssetScanScreen() {
               name="camera-outline"
               size={33}
             />
-            <Text style={styles.permissionTitle}>Kamera aktivieren</Text>
+            <Text style={styles.permissionTitle}>Scanner verwenden</Text>
             <Text style={styles.permissionText}>
               Die Kamera wird ausschliesslich genutzt, um den QR- oder Barcode
               eines Assets zu lesen.
@@ -266,7 +266,7 @@ export default function AssetScanScreen() {
                 onPress={() => void requestPermission()}
                 style={styles.permissionButton}
               >
-                <Text style={styles.permissionButtonText}>Kamera erlauben</Text>
+                <Text style={styles.permissionButtonText}>Weiter</Text>
               </Pressable>
             ) : null}
             {quickLinks}
