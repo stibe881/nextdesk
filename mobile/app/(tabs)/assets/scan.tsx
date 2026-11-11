@@ -86,6 +86,14 @@ export default function AssetScanScreen() {
         router.replace(`/assets/${scanned.assetId}` as never);
         return;
       }
+      if (scanned.kind === "inventory") {
+        hapticSuccess();
+        router.replace({
+          pathname: "/inventory",
+          params: { item: scanned.itemId },
+        } as never);
+        return;
+      }
       if (scanned.kind === "rack") {
         hapticSuccess();
         router.replace({

@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -49,6 +49,16 @@ export default function InventoryScreen() {
     null,
   );
   const [query, setQuery] = useState("");
+  // «?item=…» from a scanned article label shows only this article.
+  const { item: itemParam } = useLocalSearchParams<{ item?: string }>();
+  const scannedItemId =
+    typeof itemParam === "string" && itemParam.trim()
+      ? itemParam.trim().toLowerCase()
+      : "";
+  const [appliedItemId, setAppliedItemId] = useState(scannedItemId);
+  if (scannedItemId !== "" && scannedItemId !== appliedItemId) {
+    setAppliedItemId(scannedItemId);
+  }
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -112,12 +122,13 @@ export default function InventoryScreen() {
     const needle = query.trim().toLocaleLowerCase("de-CH");
     return (overview?.items ?? []).filter(
       (item) =>
-        !needle ||
+        (!appliedItemId || item.id.toLowerCase() === appliedItemId) &&
+        (!needle ||
         `${item.name} ${item.articleNumber ?? ""} ${item.locationName ?? ""}`
           .toLocaleLowerCase("de-CH")
-          .includes(needle),
+          .includes(needle)),
     );
-  }, [overview, query]);
+  }, [overview, query, appliedItemId]);
 
   const canReceive = overview?.canMove === true;
   const locations = overview?.locations ?? [];
@@ -276,6 +287,22 @@ export default function InventoryScreen() {
             value={query}
           />
         </View>
+
+        {appliedItemId ? (
+          <Text style={styles.hint}>
+            Gescannter Artikel.{" "}
+            <Text
+              accessibilityRole="button"
+              onPress={() => {
+                setAppliedItemId("");
+                router.setParams({ item: "" } as never);
+              }}
+              style={{ color: colors.primaryText, fontWeight: "700" }}
+            >
+              Alle Artikel anzeigen
+            </Text>
+          </Text>
+        ) : null}
 
         {canReceive ? (
           <Text style={styles.hint}>
