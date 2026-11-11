@@ -172,6 +172,10 @@ bzw. «Phish:» beginnt (so meldet Outlook mit **Melden**). Alle anderen Mails a
 das Support-Postfach bleiben normale Tickets. Mit einer eigenen Meldeadresse
 (Alias) wird jede Mail dorthin als Meldung behandelt.
 
+Die Datei **winmail.dat**, die Outlook einer Meldung beilegt, wird am
+Sicherheitsfall als Anhang abgelegt (nur zum Herunterladen, nie geöffnet oder
+dargestellt).
+
 ![E-Mail-Kanäle mit Support-Postfächern](images/in-exchange.jpg)
 
 ## Schritt 6: Optionale Integrationen
