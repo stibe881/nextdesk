@@ -539,6 +539,12 @@ Mit **Löschen** im Formular entfernen Sie einen Artikel endgültig (auch aus de
 Shop). Hat er schon Bewegungen oder Reservationen, lässt er sich nicht löschen;
 nextDesk bietet dann an, ihn zu **archivieren**.
 
+Unter **Lagerorte** ändern Sie Ortscode und Bezeichnung mit dem Stift
+(**Bearbeiten**). Mit dem Papierkorb (**Löschen**) steht ein Lagerort nicht
+mehr zur Auswahl; bisherige Buchungen bleiben erhalten. Buchen Sie einen
+vorhandenen Bestand vorher an einen anderen Ort um. Gelöschte Lagerorte
+erscheinen blass und lassen sich mit **Wieder aktivieren** zurückholen.
+
 ## Shop: Artikel nur für Kaderstufen
 
 Im Shop legen Sie beim **Artikel hinzufügen** bzw. **Bearbeiten** unter
