@@ -13965,4 +13965,214 @@ $$;
 rollback;
 SQL
 
+# 0311: monitoring incidents – ticket links, resolver, lifecycle, SQL list/report, network context.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid := '10000000-0000-4000-8000-000000000001';
+  v_switch uuid;
+  v_ap uuid;
+  v_other uuid;
+  v_service uuid;
+  v_integration uuid;
+  v_incident uuid;
+  v_child uuid;
+  v_template public.tickets%rowtype;
+  v_status uuid;
+  v_ticket_text uuid := gen_random_uuid();
+  v_ticket_plain uuid := gen_random_uuid();
+  v_ticket_asset uuid := gen_random_uuid();
+  v_device jsonb;
+  v_result jsonb;
+  v_prefix uuid;
+  v_vlan uuid;
+begin
+  -- Text matching.
+  if not public.monitoring_text_mentions('Problem mit srv-mon-01.corp.local seit heute.', array['srv-mon-01'])
+     or not public.monitoring_text_mentions('Ping auf 10.31.0.5: keine Antwort', array['10.31.0.5'])
+     or public.monitoring_text_mentions('Ping auf 10.31.0.55 klappt', array['10.31.0.5'])
+     or not public.monitoring_text_mentions('Der Core   Switch Haus A ist weg', array['Core Switch Haus A'])
+     or public.monitoring_text_mentions('Drucker druckt nicht', array['dr']) then
+    raise exception 'incident workflow test: text matching wrong';
+  end if;
+
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'SW-MON-CORE', 'switch', 'active') returning id into v_switch;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'AP Mon Aula', 'access_point', 'active') returning id into v_ap;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Firewall', 'firewall', 'active') returning id into v_other;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, hostname, ip_address, prtg_object_id, mac_address)
+  values (v_switch, v_tenant, 'switch', 'sw-mon-core.corp.local', '10.31.0.2', '73101', '00:11:22:33:44:55');
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, hostname, ip_address, uplink_asset_id)
+  values (v_ap, v_tenant, 'access_point', 'ap-mon-aula', '10.31.0.20', v_switch);
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, hostname, uplink_asset_id)
+  values (v_other, v_tenant, 'firewall', 'fw-mon-01', v_ap);
+  insert into public.services (tenant_id, name, status)
+  values (v_tenant, 'Mon WLAN', 'operational') returning id into v_service;
+  insert into public.asset_services (tenant_id, asset_id, service_id) values (v_tenant, v_switch, v_service);
+
+  -- Resolver: object id, short hostname, name, ambiguity, chain.
+  v_device := public.monitoring_resolve_device(v_tenant, array['999999', '73101'], null, null);
+  if (v_device ->> 'assetId')::uuid is distinct from v_switch
+     or not (v_device -> 'serviceIds') ? v_service::text then
+    raise exception 'incident workflow test: object id not resolved: %', v_device;
+  end if;
+  if (public.monitoring_resolve_device(v_tenant, '{}', 'ap-mon-aula.corp.local', null) ->> 'assetId')::uuid
+       is distinct from v_ap
+     or (public.monitoring_resolve_device(v_tenant, '{}', '10.31.0.20', null) ->> 'assetId')::uuid is distinct from v_ap
+     or (public.monitoring_resolve_device(v_tenant, '{}', null, 'ap mon aula') ->> 'assetId')::uuid is distinct from v_ap then
+    raise exception 'incident workflow test: host or name not resolved';
+  end if;
+  update public.asset_infrastructure set prtg_object_id = '73101' where asset_id = v_ap;
+  if public.monitoring_resolve_device(v_tenant, array['73101'], 'ap-mon-aula', null) is not null then
+    raise exception 'incident workflow test: ambiguous object id resolved';
+  end if;
+  update public.asset_infrastructure set prtg_object_id = null where asset_id = v_ap;
+  v_device := public.monitoring_resolve_device(v_tenant, '{}', 'fw-mon-01', null);
+  if v_device -> 'uplinks' <> jsonb_build_array(v_ap, v_switch) then
+    raise exception 'incident workflow test: uplink chain wrong: %', v_device -> 'uplinks';
+  end if;
+  if not public.monitoring_downstream_assets(v_tenant, v_switch) @> array[v_ap, v_other]
+     or cardinality(public.monitoring_downstream_assets(v_tenant, v_switch)) <> 2 then
+    raise exception 'incident workflow test: downstream devices wrong';
+  end if;
+  -- A cycle in the uplinks does not loop.
+  update public.asset_infrastructure set uplink_asset_id = v_other where asset_id = v_switch;
+  if cardinality(public.monitoring_uplink_chain(v_tenant, v_switch)) <> 2 then
+    raise exception 'incident workflow test: cycle not handled';
+  end if;
+  update public.asset_infrastructure set uplink_asset_id = null where asset_id = v_switch;
+
+  select id into v_integration from public.monitoring_integrations where tenant_id = v_tenant;
+  if v_integration is null then
+    insert into public.monitoring_integrations (tenant_id, token_hash, enabled)
+    values (v_tenant, repeat('c', 64), true) returning id into v_integration;
+  end if;
+
+  select * into v_template from public.tickets where tenant_id = v_tenant limit 1;
+  select id into v_status from public.ticket_statuses
+   where tenant_id = v_tenant and not is_closed order by sort_order limit 1;
+  -- A ticket from shortly before the incident is linked when it opens.
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values (v_ticket_text, v_tenant, v_template.department_id, 'STO-TEST-1',
+    'WLAN weg', 'Seit 10 Minuten keine Verbindung über sw-mon-core.', v_status,
+    v_template.priority_id, v_template.requester_id);
+
+  insert into public.monitoring_incidents (tenant_id, number, incident_key, asset_id, device_name,
+    title, severity, state, service_ids)
+  values (v_tenant, public.monitoring_next_incident_number(v_tenant), 'asset:' || v_switch, v_switch,
+    'SW-MON-CORE', 'SW-MON-CORE – Ping', 'down', 'active', array[v_service])
+  returning id into v_incident;
+  if not exists (select 1 from public.monitoring_incident_tickets
+                 where incident_id = v_incident and ticket_id = v_ticket_text and source = 'text') then
+    raise exception 'incident workflow test: recent ticket not linked';
+  end if;
+  insert into public.monitoring_incidents (tenant_id, number, incident_key, asset_id, device_name,
+    title, severity, state, parent_incident_id)
+  values (v_tenant, public.monitoring_next_incident_number(v_tenant), 'asset:' || v_ap, v_ap,
+    'AP Mon Aula', 'AP Mon Aula – Ping', 'down', 'active', v_incident)
+  returning id into v_child;
+
+  -- New tickets: generic words do not link, the child device links to the root.
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values (v_ticket_plain, v_tenant, v_template.department_id, 'STO-TEST-2',
+    'Firewall', 'Unsere Firewall meldet etwas.', v_status, v_template.priority_id, v_template.requester_id),
+    (v_ticket_asset, v_tenant, v_template.department_id, 'STO-TEST-3',
+    'Beamer', 'Beamer im Raum 3 geht nicht.', v_status, v_template.priority_id, v_template.requester_id);
+  if exists (select 1 from public.monitoring_incident_tickets where ticket_id in (v_ticket_plain, v_ticket_asset)) then
+    raise exception 'incident workflow test: unrelated ticket linked';
+  end if;
+  insert into public.ticket_assets (tenant_id, ticket_id, asset_id) values (v_tenant, v_ticket_asset, v_ap);
+  if not exists (select 1 from public.monitoring_incident_tickets
+                 where incident_id = v_incident and ticket_id = v_ticket_asset and source = 'asset') then
+    raise exception 'incident workflow test: asset ticket not linked to the root incident';
+  end if;
+  -- Removed by an agent: not linked again.
+  update public.monitoring_incident_tickets set removed_at = timezone('utc', now())
+   where incident_id = v_incident and ticket_id = v_ticket_asset;
+  perform public.monitoring_link_ticket(v_ticket_asset);
+  if (select removed_at from public.monitoring_incident_tickets
+      where incident_id = v_incident and ticket_id = v_ticket_asset) is null then
+    raise exception 'incident workflow test: removed link restored';
+  end if;
+  insert into public.ticket_services (tenant_id, ticket_id, service_id) values (v_tenant, v_ticket_plain, v_service);
+  if not exists (select 1 from public.monitoring_incident_tickets
+                 where incident_id = v_incident and ticket_id = v_ticket_plain and source = 'service') then
+    raise exception 'incident workflow test: service ticket not linked';
+  end if;
+
+  -- List, tiles, report.
+  if not exists (select 1 from public.monitoring_incident_page(v_tenant, 'active', null, null, null, 50)
+                 where id = v_incident)
+     or exists (select 1 from public.monitoring_incident_page(v_tenant, 'active', null, null, null, 50)
+                where id = v_child)
+     or not exists (select 1 from public.monitoring_incident_page(v_tenant, 'all', 'mon-core', null, null, 50)
+                    where id = v_incident)
+     or exists (select 1 from public.monitoring_incident_page(v_tenant, 'all', 'kein%treffer', null, null, 50)) then
+    raise exception 'incident workflow test: page wrong';
+  end if;
+  v_result := public.monitoring_incident_stats(v_tenant);
+  if (v_result ->> 'active')::integer < 1 or not (v_result -> 'affectedServices') ? 'Mon WLAN' then
+    raise exception 'incident workflow test: stats wrong: %', v_result;
+  end if;
+  v_result := public.monitoring_incident_report(v_tenant, 90);
+  if (v_result ->> 'days')::integer <> 90 or (v_result ->> 'total')::integer < 1 then
+    raise exception 'incident workflow test: report wrong: %', v_result;
+  end if;
+
+  -- Network context from the IP address management.
+  insert into public.ipam_vlans (tenant_id, vlan_number, name) values (v_tenant, 3101, 'Mon-Netz')
+  returning id into v_vlan;
+  insert into public.ipam_prefixes (tenant_id, prefix, vlan_id) values (v_tenant, '10.31.0.0/24', v_vlan)
+  returning id into v_prefix;
+  insert into public.ipam_addresses (tenant_id, address, asset_id, prefix_id, switch_name, switch_port)
+  values (v_tenant, '10.31.0.2', v_switch, v_prefix, 'sw-dist-01', 'Gi1/0/1'),
+         (v_tenant, '10.31.0.20', v_ap, v_prefix, null, null);
+  v_result := public.monitoring_incident_network(v_tenant, v_switch);
+  if v_result -> 'addresses' -> 0 ->> 'prefix' <> '10.31.0.0/24'
+     or (v_result -> 'addresses' -> 0 ->> 'vlanNumber')::integer <> 3101
+     or v_result -> 'addresses' -> 0 ->> 'switchPort' <> 'Gi1/0/1'
+     or v_result -> 'subnetNeighbours' -> 0 ->> 'state' <> 'down' then
+    raise exception 'incident workflow test: network context wrong: %', v_result;
+  end if;
+
+  -- Lifecycle: no open sensors → resolved, not closed.
+  update public.monitoring_incidents set state = 'resolved', resolved_at = timezone('utc', now())
+   where id = v_child;
+  update public.monitoring_incidents set last_event_at = timezone('utc', now()) - interval '10 minutes'
+   where id = v_incident;
+  perform public.monitoring_reconcile_incidents();
+  if (select state from public.monitoring_incidents where id = v_incident) <> 'resolved'
+     or (select closed_at from public.monitoring_incidents where id = v_incident) is not null then
+    raise exception 'incident workflow test: reconcile closed instead of resolved';
+  end if;
+  v_result := public.monitoring_incident_recurrence(v_incident);
+  if (v_result ->> 'sameDevice30d')::integer <> 1 then
+    raise exception 'incident workflow test: recurrence wrong: %', v_result;
+  end if;
+
+  -- Privileges and realtime.
+  if has_table_privilege('authenticated', 'public.monitoring_incident_tickets', 'select')
+     or has_table_privilege('authenticated', 'public.problem_monitoring_incidents', 'select')
+     or has_function_privilege('authenticated', 'public.monitoring_resolve_device(uuid, text[], text, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.monitoring_incident_network(uuid, uuid)', 'execute')
+     or has_function_privilege('authenticated', 'public.monitoring_link_ticket(uuid, uuid)', 'execute') then
+    raise exception 'incident workflow test: browser roles reach service data';
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'monitoring_incidents'
+                 and policyname = 'monitoring_incidents_select_incident_team')
+     or not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime'
+                    and tablename = 'monitoring_incidents') then
+    raise exception 'incident workflow test: realtime not prepared';
+  end if;
+  raise notice 'monitoring incident workflow checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

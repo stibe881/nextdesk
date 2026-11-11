@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
+  Switch,
   Text,
   TextInput,
   View,
@@ -25,11 +26,15 @@ import {
   formatDuration,
   liveMinutes,
   loadIncident,
+  STATE_LABELS,
+  TICKET_SOURCE_LABELS,
   type IncidentCause,
   type IncidentDetail,
+  type IncidentNeighbour,
 } from "@/lib/incidents";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { useAppColors } from "@/lib/themed-styles";
+import { useAppActiveInterval } from "@/lib/use-app-active-interval";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
 const TIME = new Intl.DateTimeFormat("de-CH", {
@@ -75,7 +80,9 @@ export default function IncidentDetailScreen() {
   const [cause, setCause] = useState<IncidentCause | null>(null);
   const [closingNote, setClosingNote] = useState("");
   const [pickAgent, setPickAgent] = useState(false);
+  const [notifyTickets, setNotifyTickets] = useState(true);
   const [now, setNow] = useState(() => Date.now());
+  const [focused, setFocused] = useState(false);
 
   const load = useCallback(
     async (pull = false) => {
@@ -103,17 +110,15 @@ export default function IncidentDetailScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (checkingSession) return;
-      void load();
-      const timer = setInterval(() => void load(), 30_000);
-      return () => clearInterval(timer);
+      setFocused(true);
+      if (!checkingSession) void load();
+      return () => setFocused(false);
     }, [checkingSession, load]),
   );
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
+  // Live while the screen is open and the app in the foreground.
+  useAppActiveInterval(() => void load(), 30_000, focused && !checkingSession);
+  useAppActiveInterval(() => setNow(Date.now()), 30_000, focused);
 
   async function run(key: string, action: () => Promise<IncidentDetail>) {
     setBusy(key);
@@ -180,6 +185,15 @@ export default function IncidentDetailScreen() {
   const canChange = detail.state !== "closed";
   const showCauseForm = detail.state !== "closed" || !detail.cause;
   const assigned = detail.agents.find((a) => a.id === detail.assignedAgentId);
+  const openTickets = detail.tickets.filter((ticket) => !ticket.closed);
+  const neighbourDot = (entry: IncidentNeighbour) =>
+    entry.state === "down"
+      ? styles.sevBad
+      : entry.state === "warning"
+        ? styles.sevWarn
+        : entry.state === "ok"
+          ? styles.sevOk
+          : { backgroundColor: colors.subtle };
 
   return (
     <ScreenContainer className="px-5">
@@ -213,7 +227,7 @@ export default function IncidentDetailScreen() {
               </Text>
             ) : (
               <Text style={[styles.badge, styles.badgeOk]}>
-                Behoben · Dauer {formatDuration(minutes)}
+                {STATE_LABELS[detail.state]} · Dauer {formatDuration(minutes)}
               </Text>
             )}
             {detail.maintenance ? (
@@ -459,6 +473,98 @@ export default function IncidentDetailScreen() {
           </View>
         ) : null}
 
+        {detail.tickets.length ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Tickets</Text>
+            {detail.tickets.map((ticket) => (
+              <View key={ticket.id} style={styles.kv}>
+                <View
+                  style={[
+                    styles.eventDot,
+                    ticket.closed ? styles.sevOk : styles.sevWarn,
+                  ]}
+                />
+                <Text style={styles.kvValue}>
+                  <Text style={{ fontWeight: "800" }}>{ticket.number}</Text>
+                  {` · ${ticket.subject}`}
+                  {` · ${ticket.status || "–"} · ${TICKET_SOURCE_LABELS[ticket.source]}`}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {detail.network &&
+        (detail.network.addresses.length ||
+          detail.network.subnetNeighbours.length ||
+          detail.network.switchNeighbours.length) ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Netzwerk</Text>
+            {detail.network.addresses.map((address, index) =>
+              [
+                ["IP", address.address],
+                [
+                  "Subnetz",
+                  address.prefix
+                    ? `${address.prefix}${address.gateway ? ` · GW ${address.gateway}` : ""}`
+                    : null,
+                ],
+                [
+                  "VLAN",
+                  address.vlanNumber !== null
+                    ? `${address.vlanNumber}${address.vlanName ? ` · ${address.vlanName}` : ""}`
+                    : null,
+                ],
+                ["Standort", address.site],
+                [
+                  "Switch-Port",
+                  address.switchName
+                    ? `${address.switchName}${address.switchPort ? ` · ${address.switchPort}` : ""}`
+                    : null,
+                ],
+              ]
+                .filter(([, value]) => value)
+                .map(([label, value]) => (
+                  <View key={`${index}-${label}`} style={styles.kv}>
+                    <Text style={styles.kvLabel}>{label}</Text>
+                    <Text style={styles.kvValue}>{value}</Text>
+                  </View>
+                )),
+            )}
+            {[
+              ["Im selben Subnetz", detail.network.subnetNeighbours],
+              ["Am selben Switch", detail.network.switchNeighbours],
+            ].map(([label, entries]) =>
+              (entries as IncidentNeighbour[]).length ? (
+                <View key={label as string} style={{ gap: 6 }}>
+                  <Text style={styles.muted}>{label as string}</Text>
+                  {(entries as IncidentNeighbour[]).map((entry, index) => (
+                    <Pressable
+                      disabled={!entry.incidentId}
+                      key={`${entry.assetId ?? entry.name}-${index}`}
+                      onPress={() =>
+                        entry.incidentId
+                          ? router.push(
+                              `/incidents/${entry.incidentId}` as never,
+                            )
+                          : undefined
+                      }
+                      style={styles.kv}
+                    >
+                      <View style={[styles.eventDot, neighbourDot(entry)]} />
+                      <Text style={styles.kvValue}>
+                        {entry.name}
+                        {entry.port ? ` · ${entry.port}` : ""}
+                        {entry.address ? ` · ${entry.address}` : ""}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null,
+            )}
+          </View>
+        ) : null}
+
         {detail.dependencies.upstream.length || detail.children.length ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Abhängigkeiten</Text>
@@ -511,7 +617,7 @@ export default function IncidentDetailScreen() {
 
         {detail.state === "closed" ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Behoben</Text>
+            <Text style={styles.cardTitle}>Abgeschlossen</Text>
             <View style={styles.kv}>
               <Text style={styles.kvLabel}>Von</Text>
               <Text style={styles.kvValue}>
@@ -542,8 +648,12 @@ export default function IncidentDetailScreen() {
             </Text>
             {detail.state === "active" ? (
               <Text style={styles.muted}>
-                Meldet PRTG wieder OK, schliesst sich die Störung automatisch.
+                Meldet PRTG wieder OK, gilt die Störung als behoben.
                 Abschliessen beendet sie auch ohne OK-Meldung.
+              </Text>
+            ) : detail.state === "resolved" ? (
+              <Text style={styles.muted}>
+                PRTG meldet wieder OK. Schliesse die Störung mit der Ursache ab.
               </Text>
             ) : null}
             <View style={styles.badgeRow}>
@@ -572,11 +682,25 @@ export default function IncidentDetailScreen() {
               maxLength={4000}
               multiline
               onChangeText={setClosingNote}
-              placeholder="Notiz (optional)"
+              placeholder="Lösung / Notiz (optional)"
               placeholderTextColor={colors.subtle}
               style={styles.input}
               value={closingNote}
             />
+            {openTickets.length ? (
+              <View style={styles.kv}>
+                <Switch
+                  accessibilityLabel="Tickets informieren"
+                  onValueChange={setNotifyTickets}
+                  value={notifyTickets}
+                />
+                <Text style={styles.kvValue}>
+                  {openTickets.length === 1
+                    ? "Offenes Ticket informieren (Antwort mit Ursache) und auf «Gelöst» setzen"
+                    : `${openTickets.length} offene Tickets informieren (Antwort mit Ursache) und auf «Gelöst» setzen`}
+                </Text>
+              </View>
+            ) : null}
             <Pressable
               disabled={busy !== null || !cause}
               onPress={() =>
@@ -587,6 +711,7 @@ export default function IncidentDetailScreen() {
                         detail.id,
                         cause,
                         closingNote.trim() || null,
+                        notifyTickets && openTickets.length > 0,
                       ),
                     )
                   : undefined

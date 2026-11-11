@@ -6357,6 +6357,7 @@ function AuthenticatedApp() {
             focusId={incidentFocusId}
             key={activeTenant.id}
             onFocusConsumed={clearIncidentFocus}
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             tenantId={activeTenant.id}
           />
         ) : section === "Infrastruktur" &&
@@ -7576,6 +7577,11 @@ function AuthenticatedApp() {
                 : undefined
             }
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
+            onOpenIncident={(incidentId) => {
+              setSelectedTicketId(null);
+              setIncidentFocusId(incidentId);
+              setSection("Störungen");
+            }}
             onOpenPerson={
               canWorkTickets ? (person) => setPersonOverview(person) : undefined
             }

@@ -36,6 +36,13 @@ export const STATE_LABELS: Record<string, string> = {
   closed: "Abgeschlossen",
 };
 
+/** Filters on active incidents (one page, sorted by urgency). */
+export const ACTIVE_FILTERS: readonly IncidentFilter[] = [
+  "active",
+  "unacknowledged",
+  "services",
+];
+
 export type IncidentService = { id: string; name: string; status: string };
 
 export type IncidentSummary = {
@@ -85,6 +92,46 @@ export type IncidentEvent = {
   at: string;
 };
 
+export type IncidentTicket = {
+  id: string;
+  number: string;
+  subject: string;
+  status: string;
+  closed: boolean;
+  source: "asset" | "service" | "text" | "manual";
+  linkedAt: string;
+  notifiedAt: string | null;
+};
+
+export type IncidentNeighbour = {
+  assetId: string | null;
+  name: string;
+  address: string | null;
+  switchName: string | null;
+  port: string | null;
+  state: "down" | "warning" | "ok" | "unknown";
+  incidentId: string | null;
+};
+
+export type IncidentNetworkAddress = {
+  address: string | null;
+  hostname: string | null;
+  prefix: string | null;
+  gateway: string | null;
+  vlanNumber: number | null;
+  vlanName: string | null;
+  site: string | null;
+  switchName: string | null;
+  switchPort: string | null;
+  portSource: string | null;
+};
+
+export type IncidentNetwork = {
+  addresses: IncidentNetworkAddress[];
+  subnetNeighbours: IncidentNeighbour[];
+  switchNeighbours: IncidentNeighbour[];
+};
+
 export type IncidentDetail = IncidentSummary & {
   closedBy: string | null;
   closingNote: string | null;
@@ -114,7 +161,41 @@ export type IncidentDetail = IncidentSummary & {
     segments: { start: string; end: string; severity: string }[];
     weekCount: number;
   };
+  network: IncidentNetwork | null;
+  tickets: IncidentTicket[];
+  hiddenTickets: number;
+  problems: { id: string; title: string; status: string }[];
+  recurrence: {
+    sameDevice30d: number;
+    sameCause30d: number;
+    suggestCase: boolean;
+  };
+  permissions: { openCase: boolean; draftArticle: boolean };
   agents: { id: string; name: string }[];
+};
+
+export type IncidentCloseResult = {
+  tickets: {
+    notified: number;
+    resolved: number;
+    skipped: { ticketNumber: string; reason: string }[];
+  } | null;
+  problemId: string | null;
+};
+
+export const TICKET_SOURCE_LABELS: Record<IncidentTicket["source"], string> = {
+  asset: "Gerät verknüpft",
+  service: "Dienst verknüpft",
+  text: "Gerät im Text",
+  manual: "von Hand",
+};
+
+export const SKIP_REASON_LABELS: Record<string, string> = {
+  already_done: "bereits gelöst",
+  no_permission: "keine Berechtigung",
+  comment_failed: "Antwort fehlgeschlagen",
+  sla_reason_required: "SLA-Ursache fehlt",
+  status_failed: "Status nicht geändert",
 };
 
 export type IncidentReport = {
@@ -181,33 +262,174 @@ function summaryOf(row: Row): IncidentSummary | null {
   };
 }
 
-export function parseIncidentList(
-  value: unknown,
-): { incidents: IncidentSummary[]; stats: IncidentStats } | null {
+export function parseIncidentList(value: unknown): {
+  incidents: IncidentSummary[];
+  stats: IncidentStats | null;
+  nextCursor: string | null;
+} | null {
   const body = data(value);
   if (!body) return null;
-  const stats = isRecord(body.stats) ? body.stats : {};
+  const stats = isRecord(body.stats) ? body.stats : null;
   return {
     incidents: list(body.incidents).flatMap((row) => {
       const parsed = summaryOf(row);
       return parsed ? [parsed] : [];
     }),
-    stats: {
-      active: num(stats.active),
-      activeDown: num(stats.activeDown),
-      activeWarning: num(stats.activeWarning),
-      unacknowledged: num(stats.unacknowledged),
-      oldestUnacknowledgedAt: str(stats.oldestUnacknowledgedAt),
-      affectedServices: Array.isArray(stats.affectedServices)
-        ? stats.affectedServices.filter(
-            (entry): entry is string => typeof entry === "string",
-          )
-        : [],
-      medianResolveMinutes: nullableNum(stats.medianResolveMinutes),
-      availability: nullableNum(stats.availability),
-      monitoredDevices: num(stats.monitoredDevices),
-    },
+    nextCursor: str(body.nextCursor),
+    stats: stats
+      ? {
+          active: num(stats.active),
+          activeDown: num(stats.activeDown),
+          activeWarning: num(stats.activeWarning),
+          unacknowledged: num(stats.unacknowledged),
+          oldestUnacknowledgedAt: str(stats.oldestUnacknowledgedAt),
+          affectedServices: Array.isArray(stats.affectedServices)
+            ? stats.affectedServices.filter(
+                (entry): entry is string => typeof entry === "string",
+              )
+            : [],
+          medianResolveMinutes: nullableNum(stats.medianResolveMinutes),
+          availability: nullableNum(stats.availability),
+          monitoredDevices: num(stats.monitoredDevices),
+        }
+      : null,
   };
+}
+
+const TICKET_SOURCES = ["asset", "service", "text", "manual"] as const;
+const NEIGHBOUR_STATES = ["down", "warning", "ok", "unknown"] as const;
+
+function neighbourOf(row: Row): IncidentNeighbour {
+  const state = str(row.state);
+  return {
+    assetId: str(row.assetId),
+    name: str(row.name) ?? str(row.address) ?? "Gerät",
+    address: str(row.address),
+    switchName: str(row.switchName),
+    port: str(row.port),
+    state: NEIGHBOUR_STATES.find((entry) => entry === state) ?? "unknown",
+    incidentId: str(row.incidentId),
+  };
+}
+
+function networkOf(value: unknown): IncidentNetwork | null {
+  if (!isRecord(value)) return null;
+  return {
+    addresses: list(value.addresses).map((row) => ({
+      address: str(row.address),
+      hostname: str(row.hostname),
+      prefix: str(row.prefix),
+      gateway: str(row.gateway),
+      vlanNumber: nullableNum(row.vlanNumber),
+      vlanName: str(row.vlanName),
+      site: str(row.site),
+      switchName: str(row.switchName),
+      switchPort: str(row.switchPort),
+      portSource: str(row.portSource),
+    })),
+    subnetNeighbours: list(value.subnetNeighbours).map(neighbourOf),
+    switchNeighbours: list(value.switchNeighbours).map(neighbourOf),
+  };
+}
+
+/** Result of closing (tickets informed, case opened), if any. */
+export function parseCloseResult(value: unknown): IncidentCloseResult | null {
+  const body = data(value);
+  const result = body && isRecord(body.closeResult) ? body.closeResult : null;
+  if (!result) return null;
+  const tickets = isRecord(result.tickets) ? result.tickets : null;
+  return {
+    tickets: tickets
+      ? {
+          notified: num(tickets.notified),
+          resolved: num(tickets.resolved),
+          skipped: list(tickets.skipped).map((row) => ({
+            ticketNumber: str(row.ticketNumber) ?? "",
+            reason: str(row.reason) ?? "",
+          })),
+        }
+      : null,
+    problemId: str(result.problemId),
+  };
+}
+
+/** Case opened from the incident (openCase action), if any. */
+export function parseCaseResult(value: unknown): string | null {
+  const body = data(value);
+  return body && isRecord(body.caseResult)
+    ? str(body.caseResult.problemId)
+    : null;
+}
+
+/** Article draft created from an incident. */
+export function parseArticleDraft(
+  value: unknown,
+): { articleId: string; title: string; aiUsed: boolean } | null {
+  const body = data(value);
+  const articleId = body ? str(body.articleId) : null;
+  return body && articleId
+    ? { articleId, title: str(body.title) ?? "", aiUsed: body.aiUsed === true }
+    : null;
+}
+
+export type TicketIncidentLink = {
+  id: string;
+  number: string;
+  title: string;
+  state: "active" | "resolved" | "closed";
+  severity: "down" | "warning";
+};
+
+/** Incidents a ticket belongs to (hint in the ticket view). */
+export function parseTicketIncidents(value: unknown): {
+  incidents: TicketIncidentLink[];
+  canOpen: boolean;
+} {
+  const body = data(value);
+  return {
+    incidents: list(body?.incidents).flatMap((row) => {
+      const id = str(row.id);
+      const number = str(row.number);
+      return id && number
+        ? [
+            {
+              id,
+              number,
+              title: str(row.title) ?? number,
+              state:
+                row.state === "resolved" || row.state === "closed"
+                  ? row.state
+                  : "active",
+              severity: row.severity === "warning" ? "warning" : "down",
+            },
+          ]
+        : [];
+    }),
+    canOpen: body?.canOpen === true,
+  };
+}
+
+/**
+ * Reply to the linked tickets when the incident is closed (prefilled in the
+ * close dialog, the server uses the same text when none is sent).
+ */
+export function ticketReplyText(
+  incident: { number: string; title: string; deviceName: string | null },
+  cause: IncidentCause,
+  note: string | null,
+): string {
+  const device = incident.deviceName ?? incident.title;
+  return [
+    "Guten Tag",
+    "",
+    `Ihre Meldung hängt mit einer Störung zusammen (${incident.number}, ${device}). Die Störung ist behoben.`,
+    "",
+    `Ursache: ${CAUSE_LABELS[cause]}${note ? `\n${note}` : ""}`,
+    "",
+    "Wir setzen Ihr Ticket deshalb auf «Gelöst». Besteht das Problem weiterhin, antworten Sie bitte auf diese Nachricht.",
+    "",
+    "Freundliche Grüsse",
+  ].join("\n");
 }
 
 export function parseIncidentDetail(value: unknown): IncidentDetail | null {
@@ -218,6 +440,8 @@ export function parseIncidentDetail(value: unknown): IncidentDetail | null {
   const parent = isRecord(body.parent) ? body.parent : null;
   const dependencies = isRecord(body.dependencies) ? body.dependencies : {};
   const history = isRecord(body.history) ? body.history : {};
+  const recurrence = isRecord(body.recurrence) ? body.recurrence : {};
+  const permissions = isRecord(body.permissions) ? body.permissions : {};
   return {
     ...base,
     closedBy: str(body.closedBy),
@@ -290,6 +514,49 @@ export function parseIncidentDetail(value: unknown): IncidentDetail | null {
           : [];
       }),
       weekCount: num(history.weekCount),
+    },
+    network: networkOf(body.network),
+    tickets: list(body.tickets).flatMap((row) => {
+      const ticketId = str(row.id);
+      const number = str(row.number);
+      const source = str(row.source);
+      return ticketId && number
+        ? [
+            {
+              id: ticketId,
+              number,
+              subject: str(row.subject) ?? "",
+              status: str(row.status) ?? "",
+              closed: row.closed === true,
+              source:
+                TICKET_SOURCES.find((entry) => entry === source) ?? "manual",
+              linkedAt: str(row.linkedAt) ?? "",
+              notifiedAt: str(row.notifiedAt),
+            },
+          ]
+        : [];
+    }),
+    hiddenTickets: num(body.hiddenTickets),
+    problems: list(body.problems).flatMap((row) => {
+      const problemId = str(row.id);
+      return problemId
+        ? [
+            {
+              id: problemId,
+              title: str(row.title) ?? "",
+              status: str(row.status) ?? "",
+            },
+          ]
+        : [];
+    }),
+    recurrence: {
+      sameDevice30d: num(recurrence.sameDevice30d),
+      sameCause30d: num(recurrence.sameCause30d),
+      suggestCase: recurrence.suggestCase === true,
+    },
+    permissions: {
+      openCase: permissions.openCase === true,
+      draftArticle: permissions.draftArticle === true,
     },
     agents: list(body.agents).flatMap((row) => {
       const agentId = str(row.id);

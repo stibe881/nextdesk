@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -25,19 +25,22 @@ import {
 } from "@/lib/incidents";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { useAppColors } from "@/lib/themed-styles";
+import { useAppActiveInterval } from "@/lib/use-app-active-interval";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
 const FILTERS: { key: IncidentFilter; label: string }[] = [
   { key: "active", label: "Aktiv" },
   { key: "unacknowledged", label: "Unbestätigt" },
-  { key: "closed", label: "Behoben" },
+  { key: "resolved", label: "Behoben" },
+  { key: "closed", label: "Abgeschlossen" },
   { key: "all", label: "Alle" },
 ];
 
 const EMPTY: Partial<Record<IncidentFilter, string>> = {
   active: "Keine aktiven Störungen. Alles läuft.",
   unacknowledged: "Alle aktiven Störungen sind bestätigt.",
-  closed: "Noch keine behobenen Störungen.",
+  resolved: "Keine behobenen Störungen, die noch abgeschlossen werden müssen.",
+  closed: "Noch keine abgeschlossenen Störungen.",
 };
 
 /** «Störungen»: PRTG incidents, handled without tickets. Agents only. */
@@ -55,6 +58,7 @@ export default function IncidentsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => Date.now());
+  const [focused, setFocused] = useState(false);
   const loadedFilter = useRef<IncidentFilter | null>(null);
 
   const load = useCallback(
@@ -69,7 +73,7 @@ export default function IncidentsScreen() {
         if (!permitted) return;
         const result = await listIncidents(tenant.id, filter);
         setIncidents(result.incidents);
-        setStats(result.stats);
+        if (result.stats) setStats(result.stats);
         loadedFilter.current = filter;
         setNow(Date.now());
       } catch (nextError) {
@@ -89,18 +93,15 @@ export default function IncidentsScreen() {
   useFocusEffect(
     useCallback(() => {
       void recoveryEpoch;
-      if (checkingSession) return;
-      void load();
-      // New PRTG messages show up while the screen is open.
-      const timer = setInterval(() => void load(), 30_000);
-      return () => clearInterval(timer);
+      setFocused(true);
+      if (!checkingSession) void load();
+      return () => setFocused(false);
     }, [checkingSession, load, recoveryEpoch]),
   );
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
+  // New PRTG messages show up while the screen is open and the app in use.
+  useAppActiveInterval(() => void load(), 30_000, focused && !checkingSession);
+  useAppActiveInterval(() => setNow(Date.now()), 30_000, focused);
 
   if (checkingSession || (loading && allowed === null)) {
     return (
@@ -145,8 +146,9 @@ export default function IncidentsScreen() {
           <Text style={styles.eyebrow}>BETRIEB</Text>
           <Text style={styles.title}>Störungen</Text>
           <Text style={styles.subtitle}>
-            Meldungen aus PRTG. Bestätigen Sie eine Störung, sobald Sie sich
-            darum kümmern. Meldet PRTG wieder OK, schliesst sie sich selbst.
+            Meldungen aus PRTG. Bestätige eine Störung, sobald du dich darum
+            kümmerst. Meldet PRTG wieder OK, gilt sie als behoben – abschliessen
+            mit Ursache musst du sie selbst.
           </Text>
         </View>
 
@@ -264,9 +266,7 @@ export default function IncidentsScreen() {
                         </Text>
                       ) : (
                         <Text style={[styles.badge, styles.badgeOk]}>
-                          {STATE_LABELS[entry.state] === "Abgeschlossen"
-                            ? "Behoben"
-                            : STATE_LABELS[entry.state]}
+                          {STATE_LABELS[entry.state]}
                         </Text>
                       )}
                       {entry.state === "active" && !entry.acknowledgedAt ? (

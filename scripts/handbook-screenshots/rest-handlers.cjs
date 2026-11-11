@@ -421,6 +421,14 @@ const RPCS = {
         : [];
     }),
   list_active_delegations: () => [],
+  // Menu counters and team modules («Störungen», «Sicherheitsfälle»).
+  navigation_ticket_attention: (args, ctx) => ({
+    unassignedTickets: 3,
+    securityTriage: 1,
+    incidentsUnacknowledged: 1,
+    canWorkSecurityCases: ctx.persona?.role !== "employee",
+    canWorkIncidents: ctx.persona?.role !== "employee",
+  }),
   list_ticket_rule_statuses: () =>
     D.STATUSES.map((s) => ({ key: s.key, label: s.label })),
   get_ticket_lifecycle_settings: () => ({
