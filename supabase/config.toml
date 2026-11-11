@@ -278,3 +278,23 @@ verify_jwt = false
 
 [functions.incidents]
 verify_jwt = true
+
+[functions.ipam]
+verify_jwt = true
+
+[functions.ipam-import]
+verify_jwt = true
+
+[functions.ipam-sync]
+verify_jwt = true
+
+# IPAM-REST-API: API-Schlüssel des Mandanten; der Cron (Webhooks, Intune)
+# weckt die Funktion mit dem Dispatch-Geheimnis.
+[functions.ipam-api]
+verify_jwt = false
+
+[functions.ipam-agent]
+verify_jwt = false
+
+[functions.ipam-discovery]
+verify_jwt = true

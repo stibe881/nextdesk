@@ -13272,4 +13272,473 @@ end;
 $$;
 SQL
 
+# 0300: IP-Adressverwaltung (Grundlage).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_vrf uuid;
+  v_super uuid;
+  v_net uuid;
+  v_addr uuid;
+  v_next inet;
+  v_free cidr;
+begin
+  insert into public.ipam_vrfs (tenant_id, name) values (v_tenant, 'Gäste') returning id into v_vrf;
+  insert into public.ipam_prefixes (tenant_id, prefix, status, description)
+  values (v_tenant, '172.16.64.0/18', 'container', 'Campus Baar') returning id into v_super;
+  insert into public.ipam_prefixes (tenant_id, prefix, gateway, dhcp_start, dhcp_end, description)
+  values (v_tenant, '172.16.67.0/24', '172.16.67.1', '172.16.67.100', '172.16.67.199', 'Drucker')
+  returning id into v_net;
+
+  -- Adresse wird dem spezifischsten Prefix zugeordnet.
+  insert into public.ipam_addresses (tenant_id, address, hostname, status)
+  values (v_tenant, '172.16.67.2', 'DRU-01', 'active') returning id into v_addr;
+  if (select prefix_id from public.ipam_addresses where id = v_addr) <> v_net then
+    raise exception 'ipam test: address not assigned to most specific prefix';
+  end if;
+  -- Gleiche Adresse in anderem VRF ist erlaubt.
+  insert into public.ipam_addresses (tenant_id, vrf_id, address) values (v_tenant, v_vrf, '172.16.67.2');
+  begin
+    insert into public.ipam_addresses (tenant_id, address) values (v_tenant, '172.16.67.2');
+    raise exception 'ipam test: duplicate address accepted';
+  exception when unique_violation then null;
+  end;
+
+  -- Nächste freie: .1 Gateway, .2 belegt -> .3
+  v_next := public.ipam_next_free_address(v_tenant, v_net);
+  if host(v_next) <> '172.16.67.3' then
+    raise exception 'ipam test: next free address wrong: %', v_next;
+  end if;
+  v_next := public.ipam_next_free_address(v_tenant, v_net, '172.16.67.99');
+  if host(v_next) <> '172.16.67.200' then
+    raise exception 'ipam test: DHCP range not skipped: %', v_next;
+  end if;
+
+  -- Nächstes freies /24 im /18: .64 und .67 sind belegt? Nur .67 -> .64 frei
+  v_free := public.ipam_next_free_prefix(v_tenant, v_super, 24);
+  if v_free <> '172.16.64.0/24'::cidr then
+    raise exception 'ipam test: next free prefix wrong: %', v_free;
+  end if;
+  insert into public.ipam_prefixes (tenant_id, prefix) values (v_tenant, '172.16.64.0/22');
+  v_free := public.ipam_next_free_prefix(v_tenant, v_super, 24);
+  if v_free <> '172.16.68.0/24'::cidr then
+    raise exception 'ipam test: next free prefix after /22 wrong: %', v_free;
+  end if;
+
+  -- Neues, spezifischeres Prefix übernimmt bestehende Adressen.
+  insert into public.ipam_prefixes (tenant_id, prefix) values (v_tenant, '172.16.67.0/28');
+  if (select masklen(p.prefix) from public.ipam_addresses a join public.ipam_prefixes p on p.id = a.prefix_id where a.id = v_addr) <> 28 then
+    raise exception 'ipam test: addresses not reassigned to new prefix';
+  end if;
+
+  if (select used from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 1
+     or (select capacity from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 254 then
+    raise exception 'ipam test: usage wrong';
+  end if;
+  if public.ipam_record_utilization() < 1 then
+    raise exception 'ipam test: utilization not recorded';
+  end if;
+  begin
+    insert into public.ipam_prefixes (tenant_id, prefix, gateway) values (v_tenant, '10.9.9.0/24', '10.9.8.1');
+    raise exception 'ipam test: gateway outside prefix accepted';
+  exception when check_violation then null;
+  end;
+  raise notice 'ipam foundation checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0301: IPAM Kern – freigegebene Adressen werden wieder angeboten.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_net uuid;
+  v_next inet;
+begin
+  insert into public.ipam_prefixes (tenant_id, prefix, gateway)
+  values (v_tenant, '198.51.100.0/29', '198.51.100.1') returning id into v_net;
+  insert into public.ipam_addresses (tenant_id, address, status) values
+    (v_tenant, '198.51.100.2', 'active'),
+    (v_tenant, '198.51.100.3', 'deprecated');
+  v_next := public.ipam_next_free_address(v_tenant, v_net);
+  if host(v_next) <> '198.51.100.3' then
+    raise exception 'ipam core test: released address not offered again: %', v_next;
+  end if;
+  update public.ipam_addresses set status = 'reserved'
+   where tenant_id = v_tenant and address = '198.51.100.3';
+  v_next := public.ipam_next_free_address(v_tenant, v_net);
+  if host(v_next) <> '198.51.100.4' then
+    raise exception 'ipam core test: reserved address offered: %', v_next;
+  end if;
+  if (select used from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 2 then
+    raise exception 'ipam core test: usage wrong';
+  end if;
+  raise notice 'ipam core checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0303: IPAM-Integrationen (Intune/PRTG-Abgleich, Nachschlagen, API, Webhooks).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_net uuid;
+  v_pc uuid;
+  v_srv uuid;
+  v_asset uuid;
+  v_result jsonb;
+  v_key uuid;
+  v_hook uuid;
+  v_outbox bigint;
+  v_state text;
+begin
+  insert into public.ipam_prefixes (tenant_id, prefix, gateway, description)
+  values (v_tenant, '10.77.30.0/24', '10.77.30.1', 'Testnetz') returning id into v_net;
+  insert into public.ipam_addresses (tenant_id, address, mac_address, status)
+  values (v_tenant, '10.77.30.20', 'aa:bb:cc:00:00:01', 'active') returning id into v_pc;
+  insert into public.ipam_addresses (tenant_id, address, hostname, device_type, status)
+  values (v_tenant, '10.77.30.5', 'SRV-TEST-01', 'server', 'active') returning id into v_srv;
+  insert into public.ipam_findings (tenant_id, address, kind, details)
+  values (v_tenant, '10.77.30.99', 'ghost', '{"mac": "aa:bb:cc:00:00:02"}');
+
+  -- Intune: MAC-Treffer, Ghost erklärt, ausgemustert -> Vorschlag «veraltet».
+  perform public.ipam_intune_store(v_tenant, '[
+    {"id": "DEV-1", "device_name": "PC-T-001", "wifi_mac": "AA-BB-CC-00-00-01", "user_principal_name": "anna@example.test", "management_state": "retirePending"},
+    {"id": "dev-2", "device_name": "NB-T-002", "ethernet_mac": "aa:bb:cc:00:00:02"},
+    {"id": "dev-3", "device_name": "NB-T-003", "wifi_mac": "kaputt"}
+  ]'::jsonb);
+  if (select count(*) from public.ipam_intune_devices where tenant_id = v_tenant and present) <> 3 then
+    raise exception 'ipam integrations test: intune devices not stored';
+  end if;
+  v_result := public.ipam_reconcile_intune(v_tenant, null, 'manual');
+  if v_result ? 'error' then
+    raise exception 'ipam integrations test: intune reconcile failed: %', v_result;
+  end if;
+  if (select intune_device_id || '|' || hostname || '|' || (custom_fields ->> 'intune_user')
+        from public.ipam_addresses where id = v_pc) <> 'dev-1|PC-T-001|anna@example.test' then
+    raise exception 'ipam integrations test: MAC match not applied';
+  end if;
+  if (select status from public.ipam_findings where tenant_id = v_tenant and address = '10.77.30.99' and kind = 'ghost') <> 'resolved' then
+    raise exception 'ipam integrations test: ghost not explained';
+  end if;
+  if not exists (select 1 from public.ipam_findings where address_id = v_pc and kind = 'stale' and status = 'open') then
+    raise exception 'ipam integrations test: stale suggestion missing';
+  end if;
+  -- Zweiter Lauf: idempotent, kein zweiter offener Fund.
+  perform public.ipam_reconcile_intune(v_tenant);
+  if (select count(*) from public.ipam_findings where address_id = v_pc and kind = 'stale') <> 1 then
+    raise exception 'ipam integrations test: stale finding duplicated';
+  end if;
+
+  -- PRTG: Gerät mit Objekt-ID wird dokumentiert, Server ohne Sensor ist eine Lücke.
+  insert into public.assets (tenant_id, name, kind) values (v_tenant, 'SW-T-01', 'switch') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, hostname, ip_address, prtg_object_id)
+  values (v_asset, v_tenant, 'switch', 'SW-T-01', '10.77.30.2', '4711');
+  v_result := public.ipam_reconcile_prtg(v_tenant, null, 'manual');
+  if v_result ? 'error' or (v_result ->> 'documented')::integer <> 1 then
+    raise exception 'ipam integrations test: prtg reconcile wrong: %', v_result;
+  end if;
+  if (select prtg_device_id from public.ipam_addresses where tenant_id = v_tenant and address = '10.77.30.2') <> '4711' then
+    raise exception 'ipam integrations test: prtg device not documented';
+  end if;
+  if not exists (select 1 from public.ipam_prtg_coverage(v_tenant) where address_id = v_srv) then
+    raise exception 'ipam integrations test: coverage gap missing';
+  end if;
+  if (select count(*) from public.ipam_sync_runs where tenant_id = v_tenant and status = 'succeeded') < 3 then
+    raise exception 'ipam integrations test: sync runs not logged';
+  end if;
+
+  -- Nachschlagen über IP, MAC, Hostname und Asset.
+  v_result := public.ipam_network_lookup(v_tenant, array['10.77.30.5', '10.77.30.200', '10.77.30.0/24'],
+                                          array['aa-bb-cc-00-00-01'], array['sw-t-01.example.local'], null);
+  if jsonb_array_length(v_result -> 'addresses') <> 3 then
+    raise exception 'ipam integrations test: lookup addresses wrong: %', v_result -> 'addresses';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(v_result -> 'prefixes') item
+                 where item ->> 'matched' = '10.77.30.200' and item ->> 'id' = v_net::text) then
+    raise exception 'ipam integrations test: containing prefix missing';
+  end if;
+  v_result := public.ipam_network_lookup(v_tenant, '{}', '{}', '{}', v_asset);
+  if jsonb_array_length(v_result -> 'addresses') <> 1 then
+    raise exception 'ipam integrations test: asset lookup wrong';
+  end if;
+
+  -- Reservieren: nächste freie bzw. bestimmte Adresse.
+  v_result := public.ipam_reserve_address(v_tenant, v_net, null, 'DRU-T-01', null, null, null, null, 'test');
+  if v_result ->> 'address' <> '10.77.30.3' then
+    raise exception 'ipam integrations test: next reservation wrong: %', v_result;
+  end if;
+  begin
+    perform public.ipam_reserve_address(v_tenant, v_net, '10.77.30.1');
+    raise exception 'ipam integrations test: gateway reserved';
+  exception when invalid_parameter_value then null;
+  end;
+  begin
+    perform public.ipam_reserve_address(v_tenant, v_net, '10.77.30.3');
+    raise exception 'ipam integrations test: duplicate reserved';
+  exception when unique_violation then null;
+  end;
+  -- Freigegebene (veraltete) Adresse wird wiederverwendet (Update statt Insert).
+  insert into public.ipam_addresses (tenant_id, address, hostname, status)
+  values (v_tenant, '10.77.30.60', 'ALT-01', 'deprecated');
+  v_result := public.ipam_reserve_address(v_tenant, v_net, '10.77.30.60', 'NEU-01');
+  if (select status || '|' || hostname from public.ipam_addresses where tenant_id = v_tenant and address = '10.77.30.60')
+     <> 'reserved|NEU-01' then
+    raise exception 'ipam integrations test: deprecated address not reused';
+  end if;
+
+  -- API-Schlüssel und Ratenbegrenzung.
+  insert into public.ipam_api_keys (tenant_id, name, key_prefix, key_hash, scopes)
+  values (v_tenant, 'Ansible', 'ndk_ipam_abcd1234', repeat('a', 64), '{read,write}') returning id into v_key;
+  if not public.ipam_api_consume(v_key, 2) or not public.ipam_api_consume(v_key, 2)
+     or public.ipam_api_consume(v_key, 2) then
+    raise exception 'ipam integrations test: rate limit wrong';
+  end if;
+  begin
+    insert into public.ipam_api_keys (tenant_id, name, key_prefix, key_hash, scopes)
+    values (v_tenant, 'x', 'ndk_ipam_abcd', repeat('b', 64), '{admin}');
+    raise exception 'ipam integrations test: invalid scope accepted';
+  exception when check_violation then null;
+  end;
+
+  -- Webhooks: Ereignisse landen in der Outbox, Wiederholung und Zustellung.
+  begin
+    insert into public.ipam_webhooks (tenant_id, name, url, events, secret)
+    values (v_tenant, 'x', 'http://example.test/hook', '{address.reserved}', repeat('s', 40));
+    raise exception 'ipam integrations test: http webhook accepted';
+  exception when check_violation then null;
+  end;
+  insert into public.ipam_webhooks (tenant_id, name, url, events, secret)
+  values (v_tenant, 'Automation', 'https://example.test/hook', '{address.reserved,address.released,prefix.created}', repeat('s', 40))
+  returning id into v_hook;
+  perform public.ipam_reserve_address(v_tenant, v_net, '10.77.30.40', 'AP-T-40');
+  delete from public.ipam_addresses where tenant_id = v_tenant and address = '10.77.30.40';
+  insert into public.ipam_prefixes (tenant_id, prefix) values (v_tenant, '10.77.31.0/24');
+  update public.ipam_addresses set hostname = 'PC-T-NEU' where id = v_pc; -- address.updated: nicht abonniert
+  if (select string_agg(event, ',' order by id) from public.ipam_webhook_outbox where webhook_id = v_hook)
+     <> 'address.reserved,address.released,prefix.created' then
+    raise exception 'ipam integrations test: outbox events wrong: %',
+      (select string_agg(event, ',' order by id) from public.ipam_webhook_outbox where webhook_id = v_hook);
+  end if;
+  select claimed.id into v_outbox from public.ipam_webhook_claim(10) claimed order by claimed.id limit 1;
+  if v_outbox is null then
+    raise exception 'ipam integrations test: nothing claimed';
+  end if;
+  v_state := public.ipam_webhook_complete(v_outbox, false, 500, 'Serverfehler');
+  if v_state <> 'pending' or (select next_attempt_at <= timezone('utc', now()) from public.ipam_webhook_outbox where id = v_outbox) then
+    raise exception 'ipam integrations test: retry not scheduled';
+  end if;
+  v_state := public.ipam_webhook_complete(v_outbox, true, 200, null);
+  if v_state <> 'delivered' or (select last_status from public.ipam_webhooks where id = v_hook) <> 200 then
+    raise exception 'ipam integrations test: delivery not recorded';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.ipam_api_keys', 'select')
+     or has_table_privilege('authenticated', 'public.ipam_webhooks', 'select')
+     or has_function_privilege('authenticated', 'public.ipam_network_lookup(uuid, text[], text[], text[], uuid)', 'execute') then
+    raise exception 'ipam integrations test: authenticated may access integration data';
+  end if;
+  raise notice 'ipam integrations checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0302: IPAM Discovery (Agenten, Aufträge, DHCP/DNS, Beobachtungen, Funde).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_manager constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_requester constant uuid := '00000000-0000-4000-8000-000000000001';
+  v_agent uuid;
+  v_net uuid;
+  v_addr uuid;
+  v_scope uuid;
+  v_job uuid;
+  v_context jsonb;
+  v_result jsonb;
+  v_count integer;
+begin
+  insert into public.role_permissions (role_id, permission_code)
+  values ('16500000-0000-4000-8000-000000000002', 'ipam.manage') on conflict do nothing;
+  if not exists (select 1 from public.user_role_assignments
+                  where tenant_id = v_tenant and user_id = v_manager
+                    and role_id = '16500000-0000-4000-8000-000000000002') then
+    insert into public.user_role_assignments (tenant_id, user_id, role_id)
+    values (v_tenant, v_manager, '16500000-0000-4000-8000-000000000002');
+  end if;
+
+  if has_table_privilege('authenticated', 'public.ipam_agents', 'select')
+     or has_table_privilege('anon', 'public.ipam_observations', 'select')
+     or has_function_privilege('authenticated', 'public.ipam_discovery_apply(uuid, uuid, jsonb)', 'execute') then
+    raise exception 'ipam discovery test: tables or functions exposed to clients';
+  end if;
+
+  insert into public.ipam_agents (tenant_id, name, token_hash, created_by)
+  values (v_tenant, 'Agent Baar', repeat('a', 64), v_manager) returning id into v_agent;
+  begin
+    insert into public.ipam_agents (tenant_id, name, token_hash) values (v_tenant, 'agent baar', repeat('b', 64));
+    raise exception 'ipam discovery test: duplicate agent name accepted';
+  exception when unique_violation then null;
+  end;
+  begin
+    insert into public.ipam_agents (tenant_id, name, token_hash) values (v_tenant, 'Klartext', 'geheim');
+    raise exception 'ipam discovery test: token stored without hash';
+  exception when check_violation then null;
+  end;
+
+  -- Ratenbegrenzung
+  if not public.ipam_agent_touch(v_agent, 2) or not public.ipam_agent_touch(v_agent, 2)
+     or public.ipam_agent_touch(v_agent, 2) then
+    raise exception 'ipam discovery test: rate limit not applied';
+  end if;
+
+  -- Aufträge: Scan ohne Freigabe, DHCP/DNS nur mit ipam.manage-Freigabe
+  insert into public.ipam_agent_jobs (tenant_id, agent_id, kind, created_by)
+  values (v_tenant, v_agent, 'scan_now', v_requester);
+  begin
+    insert into public.ipam_agent_jobs (tenant_id, agent_id, kind, payload, created_by)
+    values (v_tenant, v_agent, 'dhcp_reserve', '{"address":"192.0.2.10"}', v_manager);
+    raise exception 'ipam discovery test: write job without approval accepted';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.ipam_agent_jobs (tenant_id, agent_id, kind, payload, created_by, approved_by)
+    values (v_tenant, v_agent, 'dns_upsert_a', '{}', v_requester, v_requester);
+    raise exception 'ipam discovery test: approval without ipam.manage accepted';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public.ipam_agent_jobs (tenant_id, agent_id, kind, payload, created_by, status)
+  values (v_tenant, v_agent, 'dns_upsert_ptr', '{}', v_requester, 'pending_approval') returning id into v_job;
+  update public.ipam_agent_jobs set status = 'queued', approved_by = v_manager where id = v_job;
+  if (select approved_at from public.ipam_agent_jobs where id = v_job) is null then
+    raise exception 'ipam discovery test: approval time not set';
+  end if;
+  select count(*) into v_count from public.ipam_agent_claim_jobs(v_agent, 10);
+  if v_count <> 2 or exists (select 1 from public.ipam_agent_jobs where agent_id = v_agent and status = 'queued') then
+    raise exception 'ipam discovery test: jobs not claimed (%)', v_count;
+  end if;
+
+  -- Beobachtungen und Funde
+  insert into public.ipam_prefixes (tenant_id, prefix, dhcp_start, dhcp_end)
+  values (v_tenant, '192.0.2.0/24', '192.0.2.100', '192.0.2.199') returning id into v_net;
+  insert into public.ipam_addresses (tenant_id, address, status, hostname, mac_address)
+  values (v_tenant, '192.0.2.22', 'reserved', 'AP-A2-02', '00:1a:1e:00:00:01') returning id into v_addr;
+  v_context := public.ipam_discovery_context(v_tenant, null,
+    array['192.0.2.22', '192.0.2.23', '198.51.100.9'], array['f0:9f:c2:11:08:3a']);
+  if jsonb_array_length(v_context->'addresses') <> 3
+     or not exists (select 1 from jsonb_array_elements(v_context->'addresses') item
+                     where item->>'address' = '192.0.2.22' and item->>'addressId' = v_addr::text
+                       and item->>'prefixId' = v_net::text and item->>'mac' = '00:1a:1e:00:00:01')
+     or not exists (select 1 from jsonb_array_elements(v_context->'addresses') item
+                     where item->>'address' = '198.51.100.9' and item->'prefixId' = 'null'::jsonb) then
+    raise exception 'ipam discovery test: context wrong: %', v_context;
+  end if;
+
+  v_result := public.ipam_discovery_apply(v_tenant, v_agent, jsonb_build_object(
+    'runKey', 'run-1',
+    'observations', jsonb_build_array(
+      jsonb_build_object('address', '192.0.2.22', 'mac', 'f0:9f:c2:11:08:3a', 'source', 'arp',
+                         'sources', jsonb_build_array('ping', 'arp'), 'run_macs', jsonb_build_array('f0:9f:c2:11:08:3a'),
+                         'switch_name', 'SW-A2-01', 'switch_port', '1/1/22', 'vendor', 'Ubiquiti'),
+      jsonb_build_object('address', '192.0.2.23', 'mac', 'f0:9f:c2:11:08:3b', 'source', 'ping',
+                         'run_macs', jsonb_build_array('f0:9f:c2:11:08:3b'))),
+    'addressUpdates', jsonb_build_array(jsonb_build_object('addressId', v_addr, 'source', 'arp',
+      'event', jsonb_build_object('kind', 'seen', 'details', jsonb_build_object('first', true)))),
+    'open', jsonb_build_array(
+      jsonb_build_object('address', '192.0.2.22', 'kind', 'foreign_mac', 'severity', 'critical',
+                         'addressId', v_addr, 'prefixId', v_net,
+                         'details', jsonb_build_object('expectedMac', '00:1a:1e:00:00:01')),
+      jsonb_build_object('address', '192.0.2.23', 'kind', 'ghost', 'severity', 'warning', 'prefixId', v_net)),
+    'resolve', jsonb_build_array(jsonb_build_object('address', '192.0.2.22', 'kinds', jsonb_build_array('ghost')))
+  ));
+  if (v_result->>'opened')::integer <> 2 or (v_result->>'notified')::integer < 2 then
+    raise exception 'ipam discovery test: findings not opened/notified: %', v_result;
+  end if;
+  if not exists (select 1 from public.ticket_notifications
+                  where tenant_id = v_tenant and user_id = v_manager and kind = 'monitoring.ipam_finding'
+                    and payload->>'number' = '192.0.2.22') then
+    raise exception 'ipam discovery test: critical finding not notified';
+  end if;
+  if (select last_seen_source from public.ipam_addresses where id = v_addr) <> 'arp'
+     or not exists (select 1 from public.ipam_address_events where address_id = v_addr and kind = 'seen')
+     or (select switch_port from public.ipam_observations where tenant_id = v_tenant and address = '192.0.2.22') <> '1/1/22' then
+    raise exception 'ipam discovery test: address/observation not updated';
+  end if;
+  -- Gleicher Fund erneut: kein neuer Fund, keine neue Meldung
+  v_result := public.ipam_discovery_apply(v_tenant, v_agent, jsonb_build_object(
+    'runKey', 'run-2',
+    'open', jsonb_build_array(jsonb_build_object('address', '192.0.2.22', 'kind', 'foreign_mac', 'severity', 'critical'))));
+  if (v_result->>'opened')::integer <> 0 then
+    raise exception 'ipam discovery test: duplicate finding opened';
+  end if;
+  -- Ignorierter Fund bleibt ignoriert
+  update public.ipam_findings set status = 'ignored' where tenant_id = v_tenant and address = '192.0.2.23' and kind = 'ghost';
+  v_result := public.ipam_discovery_apply(v_tenant, v_agent, jsonb_build_object(
+    'open', jsonb_build_array(jsonb_build_object('address', '192.0.2.23', 'kind', 'ghost'))));
+  if (v_result->>'opened')::integer <> 0 then
+    raise exception 'ipam discovery test: ignored finding reopened';
+  end if;
+  v_result := public.ipam_discovery_apply(v_tenant, v_agent, jsonb_build_object(
+    'resolve', jsonb_build_array(jsonb_build_object('address', '192.0.2.22', 'kinds', jsonb_build_array('foreign_mac')))));
+  if (v_result->>'resolved')::integer <> 1
+     or exists (select 1 from public.ipam_findings where tenant_id = v_tenant and kind = 'foreign_mac' and status = 'open') then
+    raise exception 'ipam discovery test: finding not resolved';
+  end if;
+
+  -- DHCP: Bereich wird dem Prefix zugeordnet, Lease erklärt Ghost-IP
+  insert into public.ipam_dhcp_scopes (tenant_id, agent_id, server, scope_id, start_range, end_range)
+  values (v_tenant, v_agent, 'dhcp01', '192.0.2.0', '192.0.2.100', '192.0.2.199') returning id into v_scope;
+  if (select prefix_id from public.ipam_dhcp_scopes where id = v_scope) is distinct from v_net then
+    raise exception 'ipam discovery test: scope not linked to prefix';
+  end if;
+  perform public.ipam_discovery_apply(v_tenant, v_agent, jsonb_build_object(
+    'open', jsonb_build_array(jsonb_build_object('address', '192.0.2.150', 'kind', 'ghost'))));
+  insert into public.ipam_dhcp_leases (tenant_id, scope_ref, server, address, mac, expires_at)
+  values (v_tenant, v_scope, 'dhcp01', '192.0.2.150', 'aa:bb:cc:00:00:01', now() + interval '1 day');
+  -- Stale: aktive Adresse seit 100 Tagen nicht gesehen
+  insert into public.ipam_addresses (tenant_id, address, status, hostname, last_seen_at)
+  values (v_tenant, '192.0.2.24', 'active', 'PC-A2-009', now() - interval '100 days');
+  v_result := public.ipam_discovery_housekeeping(v_tenant);
+  if (v_result->>'opened')::integer <> 1
+     or not exists (select 1 from public.ipam_findings where tenant_id = v_tenant and address = '192.0.2.24' and kind = 'stale' and status = 'open')
+     or exists (select 1 from public.ipam_findings where tenant_id = v_tenant and address = '192.0.2.150' and status = 'open') then
+    raise exception 'ipam discovery test: housekeeping wrong: %', v_result;
+  end if;
+  update public.ipam_addresses set last_seen_at = now() where tenant_id = v_tenant and address = '192.0.2.24';
+  perform public.ipam_discovery_housekeeping(v_tenant);
+  if exists (select 1 from public.ipam_findings where tenant_id = v_tenant and kind = 'stale' and status = 'open') then
+    raise exception 'ipam discovery test: stale not resolved after sighting';
+  end if;
+
+  -- DNS-Kontext
+  insert into public.ipam_dns_records (tenant_id, server, zone, name, type, value, address) values
+    (v_tenant, 'dns01', 'example.test', 'ap-a2-02.example.test', 'A', '192.0.2.99', '192.0.2.99'),
+    (v_tenant, 'dns01', '2.0.192.in-addr.arpa', '22.2.0.192.in-addr.arpa', 'PTR', 'srv-alt-01.example.test', '192.0.2.22');
+  v_context := public.ipam_dns_context(v_tenant);
+  if not exists (select 1 from jsonb_array_elements(v_context) item
+                  where item->>'addressId' = v_addr::text
+                    and item->'nameTargets' = '["192.0.2.99"]'::jsonb
+                    and item->'ptrTargets' = '["srv-alt-01.example.test"]'::jsonb) then
+    raise exception 'ipam discovery test: dns context wrong: %', v_context;
+  end if;
+  if jsonb_array_length(public.ipam_dns_zones(v_tenant)) <> 2 then
+    raise exception 'ipam discovery test: dns zones wrong';
+  end if;
+  raise notice 'ipam discovery checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

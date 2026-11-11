@@ -2,7 +2,7 @@
 title: Handbuch für Administratoren
 description: Mandant einrichten – Design, Funktionen, SLA, Abteilungen, Personen, Rollen, Datenschutz und Protokoll.
 audienceLabel: Administratoren
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # Handbuch für Administratoren
@@ -78,6 +78,7 @@ Wichtige Funktionen und ihre Konfiguration:
 | Push-Benachrichtigungen                                               | Inhaltsstufe («Nur Ticketnummer» empfohlen); wann jemand Mitteilungen erhält, legt jede Person selbst fest              |
 | KI-Assistenz                                                          | Freigabe für Wissensentwürfe mit Claude und Selbstbedienungs-Assistent im Portal                                        |
 | Asset-Management                                                      | Geräte und Microsoft Intune; Monitoring liegt im Register «Monitoring»                                                  |
+| IP-Adressverwaltung                                                   | Subnetze, VLANs, IP-Adressen und Funde unter «IP-Adressen»; je Abteilung abschaltbar                                    |
 | Service-Reporting                                                     | Berichte und Auswertungen                                                                                               |
 | Raumplanung, Eintritte, Bestandsverwaltung, Verträge, Serviceaufgaben | Zusatzmodule für einzelne Abteilungen                                                                                   |
 | Single Sign-On                                                        | Anmeldung mit Microsoft Entra ID (siehe Installationsanleitung)                                                         |
@@ -302,6 +303,31 @@ oben umschalten:
 - Bestehende eigene Rollen ändern Sie und speichern mit **Änderungen
   speichern**; mit **Rolle deaktivieren** bzw. **Rolle aktivieren** schalten
   Sie sie ab oder wieder ein.
+
+Für die IP-Adressverwaltung gibt es die Rechte «IP-Adressverwaltung
+ansehen» und «IP-Adressen, Subnetze und VLANs verwalten». Bestehende Rollen
+mit Asset-Verwaltung haben beide Rechte erhalten, Rollen mit Asset-Lesen das
+Ansehen; passen Sie das bei Bedarf hier an. Das Modul lässt sich wie andere
+Module pro Abteilung einschalten; Subnetze, VLANs und Standorte mit einer
+Abteilung sehen nur deren Mitglieder.
+
+**IP-Adressverwaltung: API und Webhooks**
+
+Im Register **API & Webhooks** der IP-Adressverwaltung (Recht «IP-Adressen,
+Subnetze und VLANs verwalten») richten Sie die REST-API für andere Systeme
+ein:
+
+- **API-Schlüssel**: Name und Rechte («Nur lesen» oder «Lesen und
+  schreiben») wählen. Der Schlüssel wird nur einmal angezeigt; Systeme senden
+  ihn als `Authorization: Bearer …`. Nicht mehr benötigte Schlüssel
+  widerrufen Sie sofort.
+- **Webhooks**: Adresse (HTTPS) und Ereignisse wählen (z. B. Adresse
+  reserviert, Subnetz geändert, neuer Fund). Jede Zustellung ist mit dem
+  angezeigten Geheimnis signiert; mit **Testen** senden Sie eine
+  Probenachricht, mit **Pausieren** halten Sie die Zustellung an.
+
+Die Beschreibung der Endpunkte liegt im Repository unter
+`docs/ipam-api.openapi.yaml`, Beispiele unter `docs/ipam-api-beispiele.md`.
 
 Die Basisrollen _Requester_ (alle angemeldeten Personen) und _Support agent_
 (über «Arbeitet als Support-Agent») werden nicht direkt vergeben.

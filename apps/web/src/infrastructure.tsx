@@ -881,6 +881,7 @@ export function Infrastructure({
           devices={visible}
           monitoring={monitoring}
           onOpen={setSelectedId}
+          tenantId={tenantId}
         />
       ) : layout === "racks" ? (
         <RackView

@@ -40,6 +40,7 @@ import {
   ClipboardList,
   CircleCheck,
   CircleEllipsis,
+  EthernetPort,
   Filter,
   FileWarning,
   FileText,
@@ -130,6 +131,10 @@ import {
   type SupportLevelFilter,
 } from "./lib/support-levels";
 import { Infrastructure } from "./infrastructure";
+import { Ipam } from "./ipam";
+import { IpamImportWizard } from "./ipam-import";
+import { IpamApiSettings } from "./ipam-api-settings";
+import { IpamDiscoveryPanel } from "./ipam-discovery";
 import { Incidents } from "./incidents";
 import { SecurityCases } from "./security-cases";
 import {
@@ -232,6 +237,7 @@ type Section =
   | "Systemstatus"
   | "Assets"
   | "Infrastruktur"
+  | "IP-Adressen"
   | "Lager"
   | "Fälle"
   | "Sicherheitsfälle"
@@ -374,6 +380,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Serviceaufgaben", Icon: ListChecks },
     { label: "Assets", Icon: Boxes },
     { label: "Infrastruktur", Icon: Network },
+    { label: "IP-Adressen", Icon: EthernetPort },
     { label: "Lager", Icon: Boxes },
     { label: "Systemstatus", Icon: CircleCheck },
     { label: "Raumplanung", Icon: CalendarDays },
@@ -414,7 +421,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "DIENSTE & ÜBERWACHUNG",
     id: "navigation-category-services",
     navigationLabel: "Dienste und Überwachung",
-    sectionLabels: ["Services", "Infrastruktur", "Systemstatus"],
+    sectionLabels: ["Services", "Infrastruktur", "IP-Adressen", "Systemstatus"],
   },
 ] as const satisfies readonly {
   heading: string;
@@ -1454,6 +1461,17 @@ function baseNotificationPresentation(
         description: `Eine verdächtige E-Mail wurde gemeldet (${ticketLabel}${risk ? `, Risiko ${risk}` : ""}).`,
         Icon: AlertTriangle,
         title: "Phishing-Meldung",
+      };
+    }
+    case "monitoring.ipam_finding": {
+      const address = notificationPayloadText(notification, "number", 60);
+      const title = notificationPayloadText(notification, "title", 200);
+      const critical =
+        notificationPayloadText(notification, "severity", 20) === "critical";
+      return {
+        description: `${address ? `${address}: ` : ""}${title ?? "Neuer Fund in der IP-Adressverwaltung"}`,
+        Icon: AlertTriangle,
+        title: critical ? "IP-Konflikt" : "IP-Adressverwaltung",
       };
     }
     case "monitoring.incident": {
@@ -4356,6 +4374,9 @@ function AuthenticatedApp() {
     } else if (notification.kind.startsWith("shop.order.")) {
       setSection("Shop");
       setNotificationPanelOpen(false);
+    } else if (notification.kind === "monitoring.ipam_finding") {
+      setSection("IP-Adressen");
+      setNotificationPanelOpen(false);
     } else if (notification.kind.startsWith("monitoring.")) {
       setIncidentFocusId(
         notificationPayloadText(notification, "incidentId", 64),
@@ -4898,6 +4919,9 @@ function AuthenticatedApp() {
     if (item.label === "Infrastruktur") {
       return isFeatureEnabled("assets.management");
     }
+    if (item.label === "IP-Adressen") {
+      return isFeatureEnabled("ipam.management");
+    }
     if (item.label === "Sicherheitsfälle") {
       return canWorkTickets && teamModuleAccess.securityCases;
     }
@@ -4940,6 +4964,7 @@ function AuthenticatedApp() {
   const employeeHiddenSections: readonly Section[] = [
     "Raumplanung",
     "Infrastruktur",
+    "IP-Adressen",
     "Lager",
     "Arbeitsplatz",
     "Systemstatus",
@@ -6343,6 +6368,22 @@ function AuthenticatedApp() {
               name: workspaceBrandName,
               logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
             }}
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
+            tenantId={activeTenant.id}
+          />
+        ) : section === "IP-Adressen" &&
+          activeTenant &&
+          isFeatureEnabled("ipam.management") ? (
+          <Ipam
+            apiPanel={(panel) => (
+              <IpamApiSettings
+                canManage={panel.canManage}
+                tenantId={panel.tenantId}
+              />
+            )}
+            discoveryPanel={(panel) => <IpamDiscoveryPanel {...panel} />}
+            importPanel={(panel) => <IpamImportWizard {...panel} />}
+            key={activeTenant.id}
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             tenantId={activeTenant.id}
           />

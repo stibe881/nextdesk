@@ -1,0 +1,574 @@
+openapi: 3.1.0
+info:
+  title: nextDesk IPAM API
+  version: 1.0.0
+  summary: IP-Adressverwaltung von nextDesk für Automatisierung (Ansible, Terraform, Power Automate …)
+  description: |
+    REST-API der IP-Adressverwaltung (IPAM) eines nextDesk-Mandanten.
+
+    **Authentifizierung:** API-Schlüssel des Mandanten (Einstellungen →
+    IP-Adressverwaltung → REST-API). Senden Sie ihn als
+    `Authorization: Bearer ndk_ipam_…` oder im Header `X-API-Key`.
+    Schlüssel haben den Bereich `read` (nur lesen) oder `read` + `write`
+    (reservieren, ändern, freigeben). Der Schlüssel wird nur beim Erstellen
+    angezeigt; nextDesk speichert nur seinen SHA-256-Hash.
+
+    **Grenzen:** 120 Anfragen pro Minute und Schlüssel (sonst `429` mit
+    `Retry-After`). Bodies höchstens 16 KB. Listen sind paginiert
+    (`limit` 1–500, Standard 100; `offset`).
+
+    **Audit:** Jede schreibende Anfrage steht im Audit-Log des Mandanten
+    (mit Schlüsselpräfix) und im Verlauf der Adresse.
+
+    **VRF:** Adressen werden je VRF geführt. Ohne `vrf` gilt die globale
+    Routing-Tabelle; mit `vrf=<uuid>` eine bestimmte VRF.
+
+    **Webhooks:** Siehe Abschnitt `webhooks`. Jede Zustellung ist mit
+    HMAC-SHA256 signiert: `X-NextDesk-Signature: t=<Unix-Zeit>,v1=<hex>`,
+    berechnet über `"<t>.<roher Body>"` mit dem Signatur-Geheimnis des
+    Webhooks. Prüfen Sie die Signatur und verwerfen Sie Zustellungen, deren
+    Zeit mehr als 5 Minuten abweicht.
+servers:
+  - url: https://{project}.supabase.co/functions/v1/ipam-api
+    variables:
+      project:
+        default: ewizsylzrwogsztsthbl
+        description: Supabase-Projekt von nextDesk
+security:
+  - bearerAuth: []
+  - apiKeyHeader: []
+tags:
+  - name: Subnetze
+  - name: Adressen
+  - name: VLANs
+  - name: Suche
+paths:
+  /:
+    get:
+      summary: API-Info und Bereiche des Schlüssels
+      operationId: getInfo
+      responses:
+        "200":
+          description: Info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      version: { type: string }
+                      scopes:
+                        type: array
+                        items: { type: string, enum: [read, write] }
+                      rate_limit_per_minute: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /prefixes:
+    get:
+      tags: [Subnetze]
+      summary: Subnetze auflisten
+      operationId: listPrefixes
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: vrf
+          in: query
+          description: "`global` oder VRF-ID. Ohne Angabe: alle VRFs."
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/PrefixStatus" }
+        - name: site_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: vlan_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Seite mit Subnetzen
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Prefix" }
+                  pagination: { $ref: "#/components/schemas/Pagination" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /prefixes/{prefixId}/addresses:
+    get:
+      tags: [Subnetze, Adressen]
+      summary: Adressen eines Subnetzes
+      description: Adressen, die diesem Subnetz als spezifischstem Prefix zugeordnet sind.
+      operationId: listPrefixAddresses
+      parameters:
+        - $ref: "#/components/parameters/PrefixId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/AddressStatus" }
+      responses:
+        "200":
+          description: Seite mit Adressen
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Address" }
+                  pagination: { $ref: "#/components/schemas/Pagination" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /prefixes/{prefixId}/next-address:
+    post:
+      tags: [Subnetze, Adressen]
+      summary: Nächste freie Adresse reservieren
+      description: |
+        Reserviert die nächste freie Adresse (nicht Netz-/Broadcastadresse,
+        nicht Gateway, nicht im DHCP-Bereich) mit Status `reserved`.
+        Braucht den Bereich `write`. Löst den Webhook `address.reserved` aus.
+      operationId: reserveNextAddress
+      parameters:
+        - $ref: "#/components/parameters/PrefixId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                hostname:
+                  { type: string, maxLength: 253, examples: [PC-A2-010] }
+                description: { type: string, maxLength: 1000 }
+                mac:
+                  type: string
+                  description: MAC in beliebiger Schreibweise (aa:bb:…, AA-BB-…, aabb.ccdd.eeff)
+                dns_name: { type: string, maxLength: 253 }
+      responses:
+        "201":
+          description: Reservierte Adresse
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Address" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Subnetz voll (`prefix_full`) oder gleichzeitig vergeben
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /prefixes/{prefixId}/next-prefix:
+    post:
+      tags: [Subnetze]
+      summary: Nächstes freies Teilnetz anlegen
+      description: |
+        Legt im Subnetz das nächste freie Teilnetz der gewünschten Länge an
+        (gleiche VRF, gleicher Standort, gleiche Abteilung). Braucht `write`.
+        Löst den Webhook `prefix.created` aus.
+      operationId: createNextPrefix
+      parameters:
+        - $ref: "#/components/parameters/PrefixId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [length]
+              properties:
+                length:
+                  { type: integer, minimum: 1, maximum: 128, examples: [26] }
+                description: { type: string, maxLength: 1000 }
+                status: { $ref: "#/components/schemas/PrefixStatus" }
+      responses:
+        "201":
+          description: Neues Subnetz
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Prefix" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Kein Bereich dieser Grösse mehr frei (`no_free_prefix`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /addresses/{ip}:
+    parameters:
+      - name: ip
+        in: path
+        required: true
+        description: IPv4- oder IPv6-Adresse (IPv6 URL-kodiert, z. B. `2001%3Adb8%3A%3A5`)
+        schema: { type: string }
+      - name: vrf
+        in: query
+        description: "`global` (Standard) oder VRF-ID"
+        schema: { type: string }
+    get:
+      tags: [Adressen]
+      summary: Adresse lesen
+      operationId: getAddress
+      responses:
+        "200":
+          description: Adresse
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Address" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Adressen]
+      summary: Adresse ändern
+      description: Braucht `write`. Unbekannte Felder werden abgelehnt. Löst `address.updated` aus (bzw. `address.released` beim Wechsel auf `deprecated`, `address.reserved` beim Wechsel auf `reserved`).
+      operationId: updateAddress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                hostname: { type: [string, "null"], maxLength: 253 }
+                dns_name: { type: [string, "null"], maxLength: 253 }
+                description: { type: [string, "null"], maxLength: 1000 }
+                mac_address: { type: [string, "null"] }
+                status: { $ref: "#/components/schemas/AddressStatus" }
+                device_type:
+                  oneOf:
+                    - $ref: "#/components/schemas/DeviceType"
+                    - type: "null"
+                reserved_until: { type: [string, "null"], format: date }
+      responses:
+        "200":
+          description: Geänderte Adresse
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Address" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Invalid" }
+    delete:
+      tags: [Adressen]
+      summary: Adresse freigeben
+      description: Entfernt die Dokumentation der Adresse; sie ist danach wieder frei. Braucht `write`. Löst `address.released` aus.
+      operationId: releaseAddress
+      responses:
+        "200":
+          description: Freigegeben
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      released: { type: boolean, const: true }
+                      address: { type: string }
+                      id: { type: string, format: uuid }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /vlans:
+    get:
+      tags: [VLANs]
+      summary: VLANs auflisten
+      operationId: listVlans
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: site_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Seite mit VLANs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Vlan" }
+                  pagination: { $ref: "#/components/schemas/Pagination" }
+  /search:
+    get:
+      tags: [Suche]
+      summary: Suche nach IP, CIDR, MAC, Hostname, Beschreibung oder VLAN
+      operationId: search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 100 }
+          examples:
+            ip: { value: 10.20.30.22 }
+            mac: { value: f0:9f:c2:11:08:3a }
+            host: { value: DRU-A2-KOPIE }
+            vlan: { value: "67" }
+      responses:
+        "200":
+          description: Treffer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      addresses:
+                        type: array
+                        description: Adressen (bei IP/MAC/Hostname mit VLAN-, Subnetz- und Standortangaben)
+                        items: { type: object, additionalProperties: true }
+                      prefixes:
+                        type: array
+                        description: Subnetze, die die gesuchte IP enthalten bzw. dem CIDR entsprechen
+                        items: { type: object, additionalProperties: true }
+                      vlans:
+                        type: array
+                        items: { $ref: "#/components/schemas/Vlan" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+webhooks:
+  ipamEvent:
+    post:
+      summary: IPAM-Ereignis
+      description: |
+        Ereignisse: `address.reserved`, `address.released`, `address.updated`,
+        `prefix.created`, `finding.opened` (Test: `ping`). Header:
+        `X-NextDesk-Event`, `X-NextDesk-Delivery` (ID der Zustellung),
+        `X-NextDesk-Signature`. Antworten Sie mit 2xx innerhalb von 10
+        Sekunden; sonst wiederholt nextDesk nach 1, 5, 15, 60, 120, 240 und
+        480 Minuten (höchstens 8 Versuche). Weiterleitungen werden nicht
+        verfolgt.
+      parameters:
+        - name: X-NextDesk-Signature
+          in: header
+          required: true
+          schema: { type: string, examples: ["t=1762851600,v1=5f2c…"] }
+        - name: X-NextDesk-Event
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-NextDesk-Delivery
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WebhookEvent" }
+      responses:
+        "2XX":
+          description: Empfang bestätigt
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "API-Schlüssel `ndk_ipam_…`"
+    apiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    PrefixId:
+      name: prefixId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    BadRequest:
+      description: Ungültige Parameter
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: API-Schlüssel fehlt, ist ungültig oder widerrufen
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Schlüssel ohne `write` (`insufficient_scope`) oder Modul ausgeschaltet
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Nicht gefunden
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Invalid:
+      description: Ungültiger Body
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Zu viele Anfragen
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, examples: [prefix_full] }
+            message: { type: string }
+    Pagination:
+      type: object
+      properties:
+        limit: { type: integer }
+        offset: { type: integer }
+        total: { type: [integer, "null"] }
+        next_offset: { type: [integer, "null"] }
+    PrefixStatus:
+      type: string
+      enum: [container, active, reserved, deprecated]
+    AddressStatus:
+      type: string
+      enum: [active, reserved, dhcp, deprecated]
+    DeviceType:
+      type: string
+      enum:
+        [
+          server,
+          vm,
+          switch,
+          router,
+          firewall,
+          access_point,
+          printer,
+          voip,
+          client,
+          storage,
+          camera,
+          iot,
+          gateway,
+          other,
+        ]
+    Prefix:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        prefix: { type: string, examples: [10.20.67.0/24] }
+        vrf_id: { type: [string, "null"], format: uuid }
+        status: { $ref: "#/components/schemas/PrefixStatus" }
+        description: { type: [string, "null"] }
+        site_id: { type: [string, "null"], format: uuid }
+        vlan_id: { type: [string, "null"], format: uuid }
+        gateway: { type: [string, "null"] }
+        dhcp_start: { type: [string, "null"] }
+        dhcp_end: { type: [string, "null"] }
+        security_zone: { type: [string, "null"] }
+        tags: { type: array, items: { type: string } }
+        utilization:
+          type: [object, "null"]
+          properties:
+            used: { type: integer }
+            dhcp_size: { type: number }
+            capacity: { type: number }
+            percent: { type: number }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Address:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        address: { type: string, examples: [10.20.67.12] }
+        vrf_id: { type: [string, "null"], format: uuid }
+        prefix_id: { type: [string, "null"], format: uuid }
+        status: { $ref: "#/components/schemas/AddressStatus" }
+        hostname: { type: [string, "null"] }
+        dns_name: { type: [string, "null"] }
+        mac_address: { type: [string, "null"] }
+        vendor: { type: [string, "null"] }
+        device_type:
+          oneOf:
+            - $ref: "#/components/schemas/DeviceType"
+            - type: "null"
+        description: { type: [string, "null"] }
+        switch_name: { type: [string, "null"] }
+        switch_port: { type: [string, "null"] }
+        asset_id: { type: [string, "null"], format: uuid }
+        reserved_until: { type: [string, "null"], format: date }
+        last_seen_at: { type: [string, "null"], format: date-time }
+        last_seen_source: { type: [string, "null"] }
+        tags: { type: array, items: { type: string } }
+        custom_fields: { type: object, additionalProperties: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Vlan:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        vlan_number: { type: integer, minimum: 1, maximum: 4094 }
+        name: { type: string }
+        description: { type: [string, "null"] }
+        site_id: { type: [string, "null"], format: uuid }
+    WebhookEvent:
+      type: object
+      required: [id, event, occurred_at, tenant_id, data]
+      properties:
+        id: { type: string, format: uuid }
+        event:
+          type: string
+          enum:
+            [
+              address.reserved,
+              address.released,
+              address.updated,
+              prefix.created,
+              finding.opened,
+              ping,
+            ]
+        occurred_at: { type: string, format: date-time }
+        tenant_id: { type: string, format: uuid }
+        data:
+          type: object
+          additionalProperties: true
+          description: |
+            Adress-Ereignisse: id, address, vrf_id, prefix_id, status, hostname,
+            dns_name, mac_address, device_type, description, reserved_until.
+            prefix.created: id, prefix, vrf_id, status, vlan_id, site_id,
+            description, gateway. finding.opened: id, kind, severity, address,
+            address_id, prefix_id, vrf_id, details.

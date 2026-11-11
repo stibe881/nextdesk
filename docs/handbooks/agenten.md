@@ -30,7 +30,8 @@ Die linke Navigation ist gegliedert in:
   (Sicherheitsfälle und Störungen nur für das zuständige Team, siehe unten)
 - **Planung und Betrieb**: Raumplanung, Eintritte, Serviceaufgaben
 - **Ressourcen**: Assets, Lager, Verträge, Lizenzen
-- **Dienste und Überwachung**: Dienste, Infrastruktur, Systemstatus
+- **Dienste und Überwachung**: Dienste, Infrastruktur, IP-Adressen,
+  Systemstatus
 - **Berichte**
 - **Wissensdatenbank**
 
@@ -572,6 +573,142 @@ Kaderstufe 1, Fachbereichsleitung und Angebotsleitung → Kaderstufe 2,
 Teamleitung → Kaderstufe 3). Dort können Sie für einzelne Personen eine Stufe
 auch von Hand festlegen oder «Kein Kader» setzen. Ändert sich die Funktion in
 Entra, gilt die neue Stufe nach dem nächsten Abgleich automatisch.
+
+## IP-Adressen
+
+Unter **Dienste und Überwachung → IP-Adressen** verwalten Sie Subnetze,
+VLANs, Standorte und einzelne IP-Adressen (IPv4 und IPv6). Der Bereich
+erscheint, wenn das Modul _IP-Adressverwaltung_ eingeschaltet ist und Sie das
+Recht «IP-Adressverwaltung ansehen» haben; Änderungen brauchen «IP-Adressen,
+Subnetze und VLANs verwalten». Subnetze, VLANs und Standorte mit einer
+Abteilung sehen nur deren Mitglieder; ohne Abteilung gelten sie für alle.
+
+Oben zeigen die Kennzahlen die Anzahl Subnetze, die belegten IPv4-Adressen,
+die Subnetze über der Warnschwelle und die offenen Funde. Über das Suchfeld
+finden Sie eine IP, ein Subnetz, einen Hostnamen oder eine MAC-Adresse.
+
+**Adressräume**
+
+- Links steht der **Baum** je VRF (zuerst «Global»): Supernetze mit ihren
+  Teilnetzen. Der Balken zeigt die Auslastung; ab der Warnschwelle des
+  Subnetzes (standardmässig 85 %) wird er gelb, ab 95 % rot.
+- Rechts steht das gewählte Subnetz mit VLAN, Standort, Gateway, DHCP-Pool
+  und Auslastung. Liegt genug Verlauf vor, nennt nextDesk, wann die
+  Warnschwelle erreicht und wann das Subnetz voraussichtlich voll ist.
+- Für ein /22 oder kleiner zeigt ein **Belegungsraster** jede Adresse als
+  Feld: Aktiv, Reserviert, DHCP-Pool, Ghost-IP, Konflikt, Veraltet,
+  Gateway, Netz/Broadcast und Frei. Grössere Subnetze und IPv6 erscheinen als
+  Liste mit Seiten und Filter.
+- **Nächste freie IP** schlägt die erste freie Adresse ausserhalb von
+  Gateway und DHCP-Pool vor. Im Dialog **Adresse reservieren** ergänzen Sie
+  Hostname, Zweck, verantwortliche Person oder Team und auf Wunsch ein
+  Ablaufdatum («Befristet bis»).
+- **Nächstes freies Subnetz** rechnet im gewählten Supernetz das nächste
+  freie Teilnetz der gewünschten Grösse aus (z. B. /24) und legt es an.
+- **Aufteilen** zerlegt ein Subnetz in gleich grosse Teilnetze; bereits
+  erfasste Teilnetze bleiben unverändert.
+- Ein Subnetz legen Sie über **Subnetz anlegen** in CIDR-Schreibweise an
+  (z. B. 10.20.30.0/24). Dasselbe Subnetz darf im selben VRF nur einmal
+  vorkommen, verschachtelte Subnetze sind erlaubt. Gateway und DHCP-Pool
+  müssen im Subnetz liegen. Mit dem Papierkorb archivieren Sie ein Subnetz
+  (Status «Veraltet»); Adressen und Verlauf bleiben erhalten.
+
+**Eine Adresse**
+
+Ein Klick auf ein Feld oder eine Zeile öffnet die Adresse: Status, Hostname,
+MAC und Hersteller, Gerätetyp, Switch-Port, VLAN, Verantwortung, zuletzt
+gesehen, Verknüpfungen in nextDesk (Infrastruktur-Gerät mit derselben IP,
+Asset, Dienst und Tickets, in denen die IP oder der Hostname vorkommt),
+eigene Felder und der Verlauf. Mit **Freigeben** wird die Adresse als
+«Veraltet» markiert und wieder als frei vorgeschlagen; der Verlauf bleibt.
+**Ticket erstellen** legt ein Ticket mit den Angaben zur Adresse an,
+**Bearbeiten** öffnet alle Felder.
+
+**VLANs und Standorte**
+
+In den Registern **VLANs** und **Standorte** erfassen Sie VLAN-ID, Name und
+Standort bzw. Gebäude und Stockwerk. Dieselbe VLAN-ID darf an verschiedenen
+Standorten vorkommen. Einträge, die noch von Subnetzen verwendet werden,
+lassen sich nicht entfernen.
+
+**Funde**
+
+Die Discovery meldet Abweichungen als Funde: Konflikte und fremde MAC auf
+einer reservierten IP (rot), Ghost-IPs (aktiv, aber nicht dokumentiert),
+DNS-Abweichungen und lange nicht gesehene Adressen. Ghost-IPs übernehmen Sie
+mit **Übernehmen** als dokumentierte Adresse, mit **Ticket** entsteht ein
+Ticket, mit **Erledigt** oder **Ignorieren** schliessen Sie den Fund.
+
+**Export**
+
+Im Register **Export** laden Sie Subnetze, Adressen und VLANs als CSV oder
+JSON herunter. Unter **Firewall-Objekte (Sophos)** erzeugen Sie eine
+Import-Datei mit Netzwerken, einzelnen Hosts und je Subnetz einer
+Hostgruppe für die Sophos Firewall (XML) oder eine Objektliste als CSV.
+
+**Netzwerkkarte**
+
+In der **Infrastruktur → Netzwerkkarte** zeigt jedes Gerät zusätzlich sein
+Subnetz und VLAN (aus der IP-Adresse des Geräts). Über die Legende über der
+Karte heben Sie die Geräte eines VLAN hervor.
+
+**Discovery**
+
+Im Register **Discovery** sehen Sie die Netzwerkagenten mit Status und
+letzter Meldung, die letzten **Scans** und unter **DHCP & DNS** die
+DHCP-Bereiche mit Auslastung, Leases und den Vergleich der DNS-Einträge mit
+der Dokumentation. Mit **Jetzt scannen** stossen Sie einen Scan an. Dort
+beauftragen Sie auch DHCP-Reservierungen oder fehlende bzw. abweichende
+DNS-Einträge; der Agent führt den Auftrag aus, sobald eine Person mit
+Verwaltungsrecht ihn freigegeben hat. Neue Konflikte melden sich per Glocke,
+Push und E-Mail (Kategorie Störungen).
+
+**Import**
+
+Im Register **Import** übernehmen Sie bestehende Listen in vier Schritten
+(Datei wählen, Zuordnung prüfen, Vorschau, Übernehmen):
+
+- **Excel** (.xlsx) oder **CSV**: IP-Listen mit einem Blatt pro Subnetz,
+  eine Übersicht mit VLANs und Subnetzen, Switch-Listen und Access-Point-
+  Listen. nextDesk erkennt die Spalten selbst; in der Zuordnung können Sie sie
+  ändern.
+- **phpIPAM** und **NetBox**: CSV-Exporte der Subnetze bzw. Prefixe,
+  Adressen und VLANs.
+- Switches und Access Points werden zusätzlich als Geräte in der
+  **Infrastruktur** angelegt (mit Seriennummer, MAC und Uplink-Switch).
+
+Die Vorschau zeigt, was neu ist, was sich ändert und was übersprungen wird,
+mit Hinweisen zu jeder Zeile (z. B. fehlende Präfixlänge, Gateway ausserhalb
+des Subnetzes, doppelte Geräte). Bestehende Einträge werden nur ergänzt, nicht
+überschrieben. Blätter mit Zugangsdaten (z. B. WLAN-Schlüssel) und Vorlagen
+werden nie übernommen.
+
+**Abgleich mit Intune und PRTG**
+
+Jede Nacht gleicht nextDesk die dokumentierten Adressen mit den Geräten aus
+Intune und den Sensoren aus PRTG ab: Hostname, MAC und zuletzt gesehen werden
+ergänzt, Geräte ohne dokumentierte IP erscheinen als Fund. In der Adresse
+sehen Sie die Verknüpfung zum Intune-Gerät bzw. zum PRTG-Sensor.
+
+**Netzwerk im Ticket**
+
+Kommt in einem Ticket eine IP-Adresse, ein Subnetz, eine MAC-Adresse oder ein
+dokumentierter Hostname vor, zeigt das Ticket rechts die Box **Netzwerk**:
+Subnetz und VLAN, Gerät, Switch-Port, verantwortliche Person und zuletzt
+gesehen. Mit **In der IP-Adressverwaltung öffnen** springen Sie zur Adresse.
+
+**In der App**
+
+In der iPhone-App zeigen die Detailseiten von Assets und Infrastruktur-Geräten
+die Karte **Netzwerk** mit IP, Subnetz, VLAN, Gateway und Switch-Port. Scannen
+Sie den QR-Code am Gerät, sehen Sie diese Angaben direkt vor Ort.
+
+**KI-Assistent**
+
+Über die nextDesk-Schnittstelle für KI-Assistenten (MCP) können Sie Fragen
+wie «Welche IP hat der Drucker im 2. OG?», «Wie viele Adressen sind in VLAN
+20 frei?» oder «Reserviere die nächste freie IP im Server-Netz» stellen. Es
+gelten dieselben Rechte und Abteilungsgrenzen wie in der Weboberfläche.
 
 ## Benachrichtigungen und Erreichbarkeit
 

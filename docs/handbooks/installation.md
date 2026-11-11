@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # Installationsanleitung
@@ -272,6 +272,40 @@ per Push und E-Mail alarmiert.
 Im selben Register erfassen Sie **Zertifikate und Domains** (Erinnerung vor
 Ablauf) und die **Backup-Überwachung** (z. B. Veeam per E-Mail oder Webhook mit
 erwartetem Intervall und Toleranz).
+
+### IP-Adressverwaltung und Netzwerkagent
+
+1. Unter **Module** die _IP-Adressverwaltung_ einschalten (für alle oder
+   einzelne Abteilungen) und die Rechte «IP-Adressverwaltung ansehen» bzw.
+   «IP-Adressen, Subnetze und VLANs verwalten» vergeben.
+2. Bestehende Listen unter **IP-Adressen → Import** übernehmen (Excel, CSV,
+   phpIPAM, NetBox).
+3. Für die automatische Erkennung den **Netzwerkagenten** im LAN installieren.
+   Er verbindet sich nur ausgehend per HTTPS (443) mit nextDesk; eingehende
+   Firewall-Regeln braucht es nicht.
+   - Unter **IP-Adressen → Discovery → Agenten → Agent anlegen** den Agenten
+     erfassen, die zu scannenden Subnetze, den Zeitplan und die SNMP-Ziele
+     wählen. Der Token wird **nur einmal** angezeigt.
+   - Auf einer VM (Linux mit Docker, oder Windows Server für Microsoft DHCP
+     und DNS) `tools/ipam-agent` aus dem Repository bereitstellen und
+     `config.example.json` als `config.json` kopieren: Adresse
+     `https://<projekt>.supabase.co/functions/v1/ipam-agent`, Token und die
+     SNMP-Zugangsdaten. **SNMP-Schlüssel stehen nur in dieser Datei**, nie in
+     nextDesk; nextDesk lehnt Einstellungen mit Zugangsdaten ab.
+   - Linux: Image mit `docker build` erstellen, mit `--check` die Verbindung
+     prüfen und mit `docker run -d --network host --restart unless-stopped`
+     starten. Windows: `npm ci && npm run build`, danach
+     `windows\install-service.ps1` (Dienst unter einem gMSA-Dienstkonto).
+   - Auf den Switches SNMPv3 nur lesend einrichten und ICMP vom Agenten in
+     alle Subnetze erlauben (Firewall und IDS informieren).
+   - Die ausführliche Anleitung mit Beispielen für Aruba steht in
+     `tools/ipam-agent/README.md`.
+4. DHCP-Reservierungen und DNS-Einträge schreibt der Agent nur, wenn beim
+   Agenten «Änderungen an DHCP/DNS erlauben» und in der lokalen `config.json`
+   `allowWrites` eingeschaltet sind, und nur für Aufträge, die eine Person mit
+   Verwaltungsrecht freigegeben hat.
+5. Der Abgleich mit **Intune** und **PRTG** läuft jede Nacht automatisch,
+   sobald die jeweilige Anbindung oben eingerichtet ist.
 
 ## Schritt 7: Mobile-App und Abschluss
 
