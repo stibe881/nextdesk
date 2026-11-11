@@ -14,6 +14,7 @@ import {
   cidrContainsCidr,
   cidrLast,
   cidrRelation,
+  cidrSize,
   compareAddressText,
   compareCidrText,
   containingPrefix,
@@ -47,6 +48,32 @@ import {
   type VlanInput,
   type VrfInput,
 } from "./logic.ts";
+import {
+  addressSpaceLayout,
+  agentState,
+  type AgentState,
+  betterAgentState,
+  type ChangeSource,
+  changeLogEntry,
+  type ChildInput,
+  cleanupPlans,
+  compareObservedRows,
+  firstUsable,
+  forecastSummary,
+  lengthText,
+  type MatrixPrefix,
+  type MatrixSite,
+  type MatrixVlan,
+  parseRedesignAction,
+  planPlacement,
+  type RedesignAction,
+  redesignIsRead,
+  suggestTemplate,
+  type Template,
+  templateFromRow,
+  templateLayout,
+  vlanMatrix,
+} from "./redesign.ts";
 
 /**
  * IP-Adressverwaltung (IPAM): VRFs, Standorte, VLANs, Subnetze (Prefixe) und
@@ -154,6 +181,11 @@ async function addressEvent(ctx: Ctx, addressId: string, kind: string, details: 
   if (error) console.error("ipam_event_failed", error.code);
 }
 
+/** Change log attribution for every write of this function (trigger 0304). */
+function stamp(ctx: Ctx, source: ChangeSource = "user") {
+  return { change_actor: ctx.actorId, change_source: source };
+}
+
 // ---------------------------------------------------------------------------
 // DTOs
 
@@ -174,6 +206,10 @@ function siteDto(row: Row) {
     address: str(row.address),
     description: str(row.description),
     departmentId: str(row.department_id),
+    assetLocationId: str(row.asset_location_id),
+    vlanBase: row.vlan_base === null || row.vlan_base === undefined ? null : num(row.vlan_base),
+    supernetPrefixId: str(row.supernet_prefix_id),
+    templateId: str(row.template_id),
   };
 }
 
@@ -185,6 +221,9 @@ function vlanDto(row: Row) {
     siteId: str(row.site_id),
     departmentId: str(row.department_id),
     description: str(row.description),
+    notes: str(row.notes),
+    zone: str(row.zone),
+    status: str(row.status) ?? "active",
   };
 }
 
@@ -205,6 +244,7 @@ function prefixDto(row: Row, usage: Usage | null) {
     dhcpStart: inetText(row.dhcp_start),
     dhcpEnd: inetText(row.dhcp_end),
     description: str(row.description),
+    notes: str(row.notes),
     utilizationWarningPercent: num(row.utilization_warning_percent) || 85,
     tags: Array.isArray(row.tags) ? row.tags : [],
     customFields: row.custom_fields && typeof row.custom_fields === "object" ? row.custom_fields : {},
@@ -997,14 +1037,25 @@ async function existingScoped(ctx: Ctx, table: string, id: string, message: stri
 
 async function saveSite(ctx: Ctx, site: SiteInput) {
   if (site.id) await existingScoped(ctx, "ipam_sites", site.id, "Der Standort ist nicht verfügbar.");
-  const values = {
+  await Promise.all([
+    ensureRow(ctx, "asset_locations", site.assetLocationId ?? null, "Der Asset-Standort ist nicht verfügbar."),
+    ensureRow(ctx, "ipam_prefixes", site.supernetPrefixId ?? null, "Das Supernetz ist nicht verfügbar.", true),
+    ensureRow(ctx, "ipam_site_templates", site.templateId ?? null, "Die Vorlage ist nicht verfügbar."),
+  ]);
+  if (site.assetLocationId) await ensureAssetLocationFree(ctx, site.assetLocationId, site.id);
+  const values: Row = {
     name: site.name,
     code: site.code,
     address: site.address,
     description: site.description,
     department_id: departmentFor(ctx, site.departmentId),
     updated_at: new Date().toISOString(),
+    ...stamp(ctx),
   };
+  if (site.assetLocationId !== undefined) values.asset_location_id = site.assetLocationId;
+  if (site.vlanBase !== undefined) values.vlan_base = site.vlanBase;
+  if (site.supernetPrefixId !== undefined) values.supernet_prefix_id = site.supernetPrefixId;
+  if (site.templateId !== undefined) values.template_id = site.templateId;
   const result = site.id
     ? await ctx.admin.from("ipam_sites").update(values).eq("tenant_id", ctx.tenantId).eq("id", site.id)
       .select("id").single()
@@ -1024,7 +1075,11 @@ async function saveVlan(ctx: Ctx, vlan: VlanInput) {
     description: vlan.description,
     department_id: departmentFor(ctx, vlan.departmentId),
     updated_at: new Date().toISOString(),
-  };
+    ...stamp(ctx),
+  } as Row;
+  if (vlan.notes !== undefined) values.notes = vlan.notes;
+  if (vlan.zone !== undefined) values.zone = vlan.zone;
+  if (vlan.status !== undefined) values.status = vlan.status;
   const result = vlan.id
     ? await ctx.admin.from("ipam_vlans").update(values).eq("tenant_id", ctx.tenantId).eq("id", vlan.id)
       .select("id").single()
@@ -1091,12 +1146,17 @@ async function savePrefix(ctx: Ctx, input: PrefixInput) {
     custom_fields: input.customFields,
     department_id: departmentFor(ctx, input.departmentId),
     updated_at: new Date().toISOString(),
-  };
+  } as Row;
+  if (input.notes !== undefined) values.notes = input.notes;
   const result = input.id
-    ? await ctx.admin.from("ipam_prefixes").update(values).eq("tenant_id", ctx.tenantId).eq("id", input.id)
+    ? await ctx.admin.from("ipam_prefixes").update({ ...values, ...stamp(ctx) }).eq("tenant_id", ctx.tenantId).eq("id", input.id)
       .select("id").single()
-    : await ctx.admin.from("ipam_prefixes").insert({ ...values, tenant_id: ctx.tenantId, created_by: ctx.actorId })
-      .select("id").single();
+    : await ctx.admin.from("ipam_prefixes").insert({
+      ...values,
+      ...stamp(ctx),
+      tenant_id: ctx.tenantId,
+      created_by: ctx.actorId,
+    }).select("id").single();
   if (result.error) throw conflict(result.error, `${input.prefix} ist in diesem VRF bereits erfasst.`);
   await audit(ctx, input.id ? "ipam.prefix.updated" : "ipam.prefix.created", "ipam_prefix", String(result.data.id), {
     prefix: input.prefix,
@@ -1179,10 +1239,14 @@ async function saveAddress(ctx: Ctx, input: AddressInput) {
   await checkAddressPlacement(ctx, input.address, input.vrfId);
   const values = addressValues(input);
   const result = input.id
-    ? await ctx.admin.from("ipam_addresses").update(values).eq("tenant_id", ctx.tenantId).eq("id", input.id)
+    ? await ctx.admin.from("ipam_addresses").update({ ...values, ...stamp(ctx) }).eq("tenant_id", ctx.tenantId).eq("id", input.id)
       .select("id, prefix_id").single()
-    : await ctx.admin.from("ipam_addresses").insert({ ...values, tenant_id: ctx.tenantId, created_by: ctx.actorId })
-      .select("id, prefix_id").single();
+    : await ctx.admin.from("ipam_addresses").insert({
+      ...values,
+      ...stamp(ctx),
+      tenant_id: ctx.tenantId,
+      created_by: ctx.actorId,
+    }).select("id, prefix_id").single();
   if (result.error) throw conflict(result.error, `${input.address} ist in diesem VRF bereits erfasst.`);
   const id = String(result.data.id);
   if (before) {
@@ -1244,6 +1308,7 @@ async function reserveAddress(ctx: Ctx, input: ReserveInput) {
     team_id: input.teamId,
     reserved_until: input.reservedUntil,
     device_type: input.deviceType,
+    ...stamp(ctx),
   };
   const result = existing
     ? await ctx.admin.from("ipam_addresses").update(values).eq("tenant_id", ctx.tenantId).eq("id", existing.id)
@@ -1275,6 +1340,7 @@ async function releaseAddress(ctx: Ctx, addressId: string, note: string | null) 
     reserved_until: null,
     owner_user_id: null,
     team_id: null,
+    ...stamp(ctx),
   }).eq("tenant_id", ctx.tenantId).eq("id", addressId);
   if (error) throw dbFailure();
   await addressEvent(ctx, addressId, "released", {
@@ -1292,7 +1358,7 @@ async function remove(ctx: Ctx, action: Extract<Action, { type: "delete" }>) {
   if (action.entity === "prefix") {
     await existingScoped(ctx, "ipam_prefixes", action.id, "Das Subnetz ist nicht verfügbar.");
     const { error } = await ctx.admin.from("ipam_prefixes")
-      .update({ status: "deprecated", updated_at: new Date().toISOString() })
+      .update({ status: "deprecated", updated_at: new Date().toISOString(), ...stamp(ctx) })
       .eq("tenant_id", ctx.tenantId).eq("id", action.id);
     if (error) throw dbFailure();
     await audit(ctx, "ipam.prefix.archived", "ipam_prefix", action.id, {});
@@ -1324,7 +1390,15 @@ async function remove(ctx: Ctx, action: Extract<Action, { type: "delete" }>) {
       "Der Eintrag wird noch von Subnetzen, VLANs oder Adressen verwendet und kann nicht entfernt werden.",
     );
   }
-  const { error } = await ctx.admin.from(table).delete().eq("tenant_id", ctx.tenantId).eq("id", action.id);
+  const { error } = action.entity === "vrf"
+    ? await ctx.admin.from(table).delete().eq("tenant_id", ctx.tenantId).eq("id", action.id)
+    : await ctx.admin.rpc("ipam_delete_logged", {
+      p_tenant_id: ctx.tenantId,
+      p_object_type: action.entity,
+      p_object_id: action.id,
+      p_actor_id: ctx.actorId,
+      p_source: "user",
+    });
   if (error) throw dbFailure();
   await audit(ctx, `ipam.${action.entity}.deleted`, `ipam_${action.entity}`, action.id, {});
   return json(ctx.request, { data: { id: action.id, deleted: true } });
@@ -1390,6 +1464,7 @@ async function createPrefix(ctx: Ctx, action: Extract<Action, { type: "createPre
     security_zone: parent.security_zone ?? null,
     utilization_warning_percent: parent.utilization_warning_percent ?? 85,
     created_by: ctx.actorId,
+    ...stamp(ctx),
   }).select("id, prefix").single();
   if (result.error) throw conflict(result.error, `${data} wurde soeben angelegt. Bitte versuchen Sie es erneut.`);
   await audit(ctx, "ipam.prefix.created", "ipam_prefix", String(result.data.id), { prefix: data, parentId: action.parentId });
@@ -1428,11 +1503,13 @@ async function splitPrefix(ctx: Ctx, prefixId: string, length: number) {
       security_zone: prefix.security_zone ?? null,
       utilization_warning_percent: prefix.utilization_warning_percent ?? 85,
       created_by: ctx.actorId,
+      ...stamp(ctx),
     })));
     if (insert.error) throw conflict(insert.error, "Ein Teilnetz ist bereits erfasst.");
   }
   if (prefix.status === "active") {
-    await ctx.admin.from("ipam_prefixes").update({ status: "container", updated_at: new Date().toISOString() })
+    await ctx.admin.from("ipam_prefixes")
+      .update({ status: "container", updated_at: new Date().toISOString(), ...stamp(ctx) })
       .eq("tenant_id", ctx.tenantId).eq("id", prefixId);
   }
   await audit(ctx, "ipam.prefix.split", "ipam_prefix", prefixId, { length, created: fresh.length });
@@ -1494,6 +1571,7 @@ async function adoptFinding(ctx: Ctx, findingId: string) {
     switch_port: str(details.switchPort),
     last_seen_at: str(finding.last_seen_at),
     last_seen_source: str(details.source) ?? "discovery",
+    ...stamp(ctx),
   };
   if (mac) values.mac_address = normalizeMac(mac);
   for (const key of Object.keys(values)) if (values[key] === null) delete values[key];
@@ -1689,6 +1767,1134 @@ async function addressTicket(ctx: Ctx, action: Extract<Action, { type: "addressT
 }
 
 // ---------------------------------------------------------------------------
+// Redesign (0304): dashboard, change log, cleanup, address space, planner,
+// site templates, VLAN matrix, sites and target/actual comparison.
+
+/** Today in Zurich (same day boundary as ipam_record_utilization). */
+function zurichToday(offsetDays = 0): string {
+  const day = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Zurich",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  if (!offsetDays) return day;
+  return new Date(Date.parse(`${day}T00:00:00Z`) + offsetDays * 86_400_000).toISOString().slice(0, 10);
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function cidrOf(row: Row): Cidr | null {
+  return parseCidrInput(String(row.prefix ?? ""))?.cidr ?? null;
+}
+
+/** Ids of prefixes that contain at least one active (or any) nested prefix of the same VRF. */
+function prefixesWithChildren(rows: Row[], onlyActive: boolean): Set<string> {
+  const nested = nestPrefixes(rows.map((row) => ({ id: String(row.id), prefix: String(row.prefix), vrfId: str(row.vrf_id) })));
+  const parents = new Map(nested.map((entry) => [entry.item.id, entry.parentId]));
+  const status = new Map(rows.map((row) => [String(row.id), String(row.status)]));
+  const result = new Set<string>();
+  for (const entry of nested) {
+    if (onlyActive && status.get(entry.item.id) !== "active") continue;
+    let parent = entry.parentId;
+    while (parent && !result.has(parent)) {
+      result.add(parent);
+      parent = parents.get(parent) ?? null;
+    }
+  }
+  return result;
+}
+
+/**
+ * Existing prefixes (same VRF) that overlap `cidr`. Allowed are only the
+ * container the new prefix goes into and prefixes containing that container
+ * (without container: any strict supernet of `cidr`). Same rule as
+ * public.ipam_apply_layout.
+ */
+function overlapConflicts(rows: Row[], cidr: Cidr, vrfId: string | null, container: Cidr | null = null): string[] {
+  const conflicts: string[] = [];
+  for (const row of rows) {
+    if (str(row.vrf_id) !== vrfId) continue;
+    const other = cidrOf(row);
+    if (!other || cidrRelation(other, cidr) === "disjoint") continue;
+    if (container ? cidrContainsCidr(other, container) : cidrRelation(other, cidr) === "contains") continue;
+    conflicts.push(formatCidr(other));
+  }
+  return conflicts;
+}
+
+function layoutError(error: { code?: string; message?: string } | null): HttpError {
+  if (error?.code === "P0001" && String(error.message ?? "").startsWith("ipam_layout_conflict")) {
+    const list = String(error.message).replace(/^ipam_layout_conflict:\s*/, "");
+    return new HttpError(409, "prefix_conflict", `Überschneidung mit bestehenden Subnetzen: ${list}.`);
+  }
+  if (error?.code === "23505") {
+    return new HttpError(409, "duplicate", "Ein Standort, VLAN oder Subnetz mit diesen Angaben gibt es bereits.");
+  }
+  return conflict(error, "Die Angaben passen nicht zusammen.");
+}
+
+async function ensureAssetLocationFree(ctx: Ctx, locationId: string, ownSiteId: string | null) {
+  const { data, error } = await ctx.admin.from("ipam_sites").select("id, name")
+    .eq("tenant_id", ctx.tenantId).eq("asset_location_id", locationId).limit(1);
+  if (error) throw dbFailure();
+  const other = ((data ?? []) as Row[]).find((row) => row.id !== ownSiteId);
+  if (other) {
+    throw new HttpError(
+      409,
+      "asset_location_linked",
+      `Der Asset-Standort ist bereits mit dem Standort «${other.name}» verknüpft.`,
+    );
+  }
+}
+
+// ----------------------------------------------------------- change log
+
+type ChangeFilter = {
+  objectType?: string | null;
+  objectId?: string | null;
+  source?: string | null;
+  since?: string | null;
+  before?: number | null;
+  limit: number;
+};
+
+const RESOLVE_TABLES: Record<string, { table: string; columns: string; label: (row: Row) => string; tenant: boolean }> = {
+  site_id: { table: "ipam_sites", columns: "id, name", label: (row) => String(row.name), tenant: true },
+  vlan_id: {
+    table: "ipam_vlans",
+    columns: "id, vlan_number, name",
+    label: (row) => `VLAN ${row.vlan_number} ${row.name}`,
+    tenant: true,
+  },
+  vrf_id: { table: "ipam_vrfs", columns: "id, name", label: (row) => String(row.name), tenant: true },
+  department_id: { table: "departments", columns: "id, name", label: (row) => String(row.name), tenant: true },
+  supernet_prefix_id: { table: "ipam_prefixes", columns: "id, prefix", label: (row) => String(row.prefix), tenant: true },
+  template_id: { table: "ipam_site_templates", columns: "id, name", label: (row) => String(row.name), tenant: true },
+  asset_location_id: { table: "asset_locations", columns: "id, name", label: (row) => String(row.name), tenant: true },
+  team_id: { table: "teams", columns: "id, name", label: (row) => String(row.name), tenant: true },
+  asset_id: { table: "assets", columns: "id, name", label: (row) => String(row.name), tenant: true },
+  service_id: { table: "services", columns: "id, name", label: (row) => String(row.name), tenant: true },
+  owner_user_id: {
+    table: "user_profiles",
+    columns: "id, display_name",
+    label: (row) => str(row.display_name) ?? "Unbekannte Person",
+    tenant: false,
+  },
+};
+
+/** Names for the ids in the changed fields of the given entries. */
+async function changeResolver(ctx: Ctx, rows: Row[]) {
+  const wanted = new Map<string, Set<string>>();
+  for (const row of rows) {
+    for (const side of [row.before, row.after]) {
+      if (!side || typeof side !== "object") continue;
+      for (const [field, value] of Object.entries(side as Row)) {
+        if (!RESOLVE_TABLES[field] || typeof value !== "string" || !isUuid(value)) continue;
+        const set = wanted.get(field) ?? new Set<string>();
+        set.add(value);
+        wanted.set(field, set);
+      }
+    }
+  }
+  const names = new Map<string, string>();
+  await Promise.all([...wanted].map(async ([field, ids]) => {
+    const spec = RESOLVE_TABLES[field]!;
+    let query = ctx.admin.from(spec.table).select(spec.columns).in("id", [...ids].slice(0, 200));
+    if (spec.tenant) query = query.eq("tenant_id", ctx.tenantId);
+    const { data } = await query;
+    for (const row of (data ?? []) as Row[]) names.set(`${field}:${row.id}`, spec.label(row));
+  }));
+  return (field: string, id: string) => names.get(`${field}:${id}`) ?? null;
+}
+
+async function changeEntries(ctx: Ctx, filter: ChangeFilter) {
+  const { data, error } = await ctx.admin.rpc("ipam_change_log_page", {
+    p_tenant_id: ctx.tenantId,
+    p_departments: ctx.scope.scoped ? ctx.scope.departments : null,
+    p_object_type: filter.objectType ?? null,
+    p_object_id: filter.objectId ?? null,
+    p_source: filter.source ?? null,
+    p_since: filter.since ?? null,
+    p_before: filter.before ?? null,
+    p_limit: filter.limit + 1,
+  });
+  if (error) throw dbFailure();
+  const all = (data ?? []) as Row[];
+  const rows = all.slice(0, filter.limit);
+  const [actors, resolve] = await Promise.all([
+    profileNames(ctx.admin, rows.map((row) => str(row.actor_id))),
+    changeResolver(ctx, rows),
+  ]);
+  const entries = rows.map((row) =>
+    changeLogEntry(row, {
+      actorName: row.actor_id ? (actors.get(String(row.actor_id)) ?? null) : null,
+      canManage: ctx.canManage,
+      resolve,
+    })
+  );
+  return {
+    entries,
+    nextBefore: all.length > filter.limit && rows.length ? Number(rows[rows.length - 1]!.id) : null,
+  };
+}
+
+async function changeLog(ctx: Ctx, action: Extract<RedesignAction, { type: "changeLog" }>) {
+  return json(ctx.request, { data: await changeEntries(ctx, action) });
+}
+
+async function undoChange(ctx: Ctx, entryId: number) {
+  const { data: entry, error } = await ctx.admin.from("ipam_change_log")
+    .select("id, object_type, object_id, department_id, action")
+    .eq("tenant_id", ctx.tenantId).eq("id", entryId).maybeSingle();
+  if (error) throw dbFailure();
+  if (!entry || !departmentVisible(ctx.scope, entry.department_id)) {
+    throw new HttpError(404, "entry_not_found", "Der Eintrag ist nicht verfügbar.");
+  }
+  // The object as it is now must be visible as well.
+  const type = String(entry.object_type);
+  const objectId = String(entry.object_id);
+  if (type === "address") {
+    const current = await ctx.admin.from("ipam_addresses").select("prefix_id").eq("tenant_id", ctx.tenantId)
+      .eq("id", objectId).maybeSingle();
+    if (current.error) throw dbFailure();
+    if (current.data?.prefix_id) {
+      await loadPrefix(ctx, String(current.data.prefix_id)).catch(() => {
+        throw new HttpError(404, "entry_not_found", "Der Eintrag ist nicht verfügbar.");
+      });
+    }
+  } else if (type !== "template") {
+    const table = type === "prefix" ? "ipam_prefixes" : type === "vlan" ? "ipam_vlans" : "ipam_sites";
+    const current = await ctx.admin.from(table).select("department_id").eq("tenant_id", ctx.tenantId)
+      .eq("id", objectId).maybeSingle();
+    if (current.error) throw dbFailure();
+    if (current.data && !departmentVisible(ctx.scope, current.data.department_id)) {
+      throw new HttpError(404, "entry_not_found", "Der Eintrag ist nicht verfügbar.");
+    }
+  }
+  const result = await ctx.admin.rpc("ipam_change_undo", {
+    p_tenant_id: ctx.tenantId,
+    p_entry_id: entryId,
+    p_actor_id: ctx.actorId,
+  });
+  if (result.error) {
+    throw conflict(result.error, "Der frühere Wert ist inzwischen anderweitig vergeben.");
+  }
+  if (result.data === "changed_since") {
+    throw new HttpError(409, "changed_since", "Der Eintrag wurde seither erneut geändert.");
+  }
+  if (result.data === "not_found") throw new HttpError(404, "entry_not_found", "Der Eintrag ist nicht verfügbar.");
+  if (result.data !== "ok") {
+    throw new HttpError(422, "not_undoable", "Diese Änderung kann nicht rückgängig gemacht werden.");
+  }
+  await audit(ctx, "ipam.change.undone", `ipam_${type}`, objectId, { entryId });
+  return json(ctx.request, { data: { ok: true } });
+}
+
+// ----------------------------------------------------------- dashboard
+
+async function dashboard(ctx: Ctx) {
+  const today = zurichToday();
+  const [space, usage, findingsResult, reservations, agentsResult, recent] = await Promise.all([
+    loadSpace(ctx),
+    usageMap(ctx),
+    ctx.admin.from("ipam_findings").select("kind, prefix_id").eq("tenant_id", ctx.tenantId).eq("status", "open")
+      .limit(10000),
+    ctx.admin.from("ipam_addresses").select("prefix_id").eq("tenant_id", ctx.tenantId).eq("status", "reserved")
+      .gte("reserved_until", today).lte("reserved_until", zurichToday(30)).limit(10000),
+    ctx.admin.from("ipam_agents").select("id, name, platform, status, last_seen_at").eq("tenant_id", ctx.tenantId)
+      .neq("status", "revoked").order("name").limit(200),
+    changeEntries(ctx, { limit: 8 }),
+  ]);
+  if (findingsResult.error || reservations.error || agentsResult.error) throw dbFailure();
+  const visible = new Set(space.prefixes.map((row) => String(row.id)));
+  const withActiveChild = prefixesWithChildren(space.prefixes, true);
+  const leaves = space.prefixes.filter((row) =>
+    row.status === "active" && cidrOf(row)?.version === 4 && !withActiveChild.has(String(row.id))
+  );
+  const warnings = new Map(leaves.map((row) => [String(row.id), num(row.utilization_warning_percent) || 85]));
+  const forecasts = await prefixForecast(ctx, leaves.map((row) => String(row.id)).slice(0, 2000), warnings);
+  let free = 0n;
+  let overThreshold = 0;
+  let fullSoon = 0;
+  const summaries = new Map<string, ReturnType<typeof forecastSummary>>();
+  for (const row of leaves) {
+    const id = String(row.id);
+    const item = usage.get(id);
+    const cidr = cidrOf(row)!;
+    const taken = BigInt((item?.used ?? 0) + (item?.dhcpSize ?? 0));
+    const capacity = cidrCapacity(cidr);
+    if (capacity > taken) free += capacity - taken;
+    if (item && item.percent >= (warnings.get(id) ?? 85)) overThreshold++;
+    const summary = forecastSummary(forecasts[id] ?? null, today);
+    summaries.set(id, summary);
+    if (summary.daysToFull !== null && summary.daysToFull <= 30) fullSoon++;
+  }
+  const openFindings = ((findingsResult.data ?? []) as Row[]).filter(
+    (row) => !row.prefix_id || visible.has(String(row.prefix_id)),
+  );
+  const byKind: Record<string, number> = {};
+  for (const row of openFindings) byKind[String(row.kind)] = (byKind[String(row.kind)] ?? 0) + 1;
+  const vlans = new Map(space.vlans.map((row) => [String(row.id), row]));
+  const sites = new Map(space.sites.map((row) => [String(row.id), row]));
+  const top = [...leaves]
+    .sort((a, b) => (usage.get(String(b.id))?.percent ?? 0) - (usage.get(String(a.id))?.percent ?? 0))
+    .slice(0, 8)
+    .map((row) => {
+      const vlan = row.vlan_id ? vlans.get(String(row.vlan_id)) : undefined;
+      const site = row.site_id ? sites.get(String(row.site_id)) : undefined;
+      return {
+        prefixId: String(row.id),
+        prefix: String(row.prefix),
+        name: str(row.description),
+        vlanNumber: vlan ? num(vlan.vlan_number) : null,
+        vlanName: vlan ? String(vlan.name) : null,
+        siteName: site ? String(site.name) : null,
+        percent: usage.get(String(row.id))?.percent ?? 0,
+        forecast: summaries.get(String(row.id)) ?? forecastSummary(null, today),
+      };
+    });
+  return json(ctx.request, {
+    data: {
+      kpis: {
+        freeIpv4: Number(free),
+        activePrefixes: space.prefixes.filter((row) => row.status === "active").length,
+        overThreshold,
+        fullWithin30Days: fullSoon,
+        openFindings: openFindings.length,
+        findingsByKind: byKind,
+        expiringReservations30Days: ((reservations.data ?? []) as Row[]).filter(
+          (row) => !row.prefix_id || visible.has(String(row.prefix_id)),
+        ).length,
+      },
+      topUtilization: top,
+      agents: ((agentsResult.data ?? []) as Row[]).map((row) => ({
+        id: String(row.id),
+        name: String(row.name),
+        platform: str(row.platform),
+        status: agentState(String(row.status), str(row.last_seen_at)),
+        lastSeenAt: str(row.last_seen_at),
+      })),
+      recentChanges: recent.entries,
+    },
+  });
+}
+
+// ----------------------------------------------------------- bulk edit
+
+async function bulkUpdatePrefixes(ctx: Ctx, action: Extract<RedesignAction, { type: "bulkUpdatePrefixes" }>) {
+  const { data, error } = await ctx.admin.from("ipam_prefixes").select("id, department_id")
+    .eq("tenant_id", ctx.tenantId).in("id", action.prefixIds);
+  if (error) throw dbFailure();
+  const rows = (data ?? []) as Row[];
+  if (rows.length !== action.prefixIds.length || rows.some((row) => !departmentVisible(ctx.scope, row.department_id))) {
+    throw new HttpError(404, "prefix_not_found", "Mindestens ein Subnetz ist nicht verfügbar.");
+  }
+  const values: Row = { updated_at: new Date().toISOString(), ...stamp(ctx) };
+  const patch = action.patch;
+  if (patch.status !== undefined) values.status = patch.status;
+  if (patch.departmentId !== undefined) values.department_id = departmentFor(ctx, patch.departmentId);
+  if (patch.securityZone !== undefined) values.security_zone = patch.securityZone;
+  if (patch.siteId !== undefined) {
+    await ensureRow(ctx, "ipam_sites", patch.siteId, "Der Standort ist nicht verfügbar.", true);
+    values.site_id = patch.siteId;
+  }
+  const result = await ctx.admin.from("ipam_prefixes").update(values).eq("tenant_id", ctx.tenantId)
+    .in("id", action.prefixIds).select("id");
+  if (result.error) throw conflict(result.error, "Die Änderung ist nicht möglich.");
+  const updated = ((result.data ?? []) as Row[]).length;
+  await audit(ctx, "ipam.prefix.bulk_updated", "ipam_prefix", null, {
+    count: updated,
+    fields: Object.keys(patch),
+  });
+  return json(ctx.request, { data: { updated } });
+}
+
+// ----------------------------------------------------------- cleanup
+
+async function loadCleanupPlans(ctx: Ctx) {
+  const [space, usage] = await Promise.all([loadSpace(ctx), usageMap(ctx)]);
+  const sites = new Map(space.sites.map((row) => [String(row.id), row]));
+  return cleanupPlans(
+    space.prefixes.map((row) => ({
+      id: String(row.id),
+      prefix: String(row.prefix),
+      vrfId: str(row.vrf_id),
+      status: String(row.status),
+      description: str(row.description),
+      notes: str(row.notes),
+      gateway: inetText(row.gateway),
+      dhcpStart: inetText(row.dhcp_start),
+      dhcpEnd: inetText(row.dhcp_end),
+      used: usage.get(String(row.id))?.used ?? 0,
+    })),
+    space.vlans.map((row) => {
+      const site = row.site_id ? sites.get(String(row.site_id)) : undefined;
+      return {
+        id: String(row.id),
+        vlanNumber: num(row.vlan_number),
+        name: String(row.name),
+        siteId: str(row.site_id),
+        siteName: site ? String(site.name) : null,
+        siteCode: site ? str(site.code) : null,
+        status: str(row.status) ?? "active",
+        description: str(row.description),
+        notes: str(row.notes),
+      };
+    }),
+  );
+}
+
+async function cleanupSuggestions(ctx: Ctx) {
+  const plans = await loadCleanupPlans(ctx);
+  return json(ctx.request, { data: { suggestions: plans.map((plan) => plan.suggestion) } });
+}
+
+async function applyCleanup(ctx: Ctx, keys: string[]) {
+  const plans = new Map((await loadCleanupPlans(ctx)).map((plan) => [plan.suggestion.key, plan]));
+  let applied = 0;
+  const failed: { key: string; message: string }[] = [];
+  for (const key of keys) {
+    const plan = plans.get(key);
+    if (!plan) {
+      failed.push({ key, message: "Der Vorschlag trifft nicht mehr zu." });
+      continue;
+    }
+    if (!plan.patch) {
+      failed.push({ key, message: "Dieser Hinweis hat keine automatische Korrektur." });
+      continue;
+    }
+    const table = plan.suggestion.objectType === "vlan" ? "ipam_vlans" : "ipam_prefixes";
+    const { error } = await ctx.admin.from(table)
+      .update({ ...plan.patch, updated_at: new Date().toISOString(), ...stamp(ctx, "cleanup") })
+      .eq("tenant_id", ctx.tenantId).eq("id", plan.suggestion.objectId);
+    if (error) {
+      failed.push({ key, message: "Die Korrektur konnte nicht gespeichert werden." });
+      continue;
+    }
+    applied++;
+  }
+  await audit(ctx, "ipam.cleanup.applied", "ipam_prefix", null, { applied, failed: failed.length });
+  return json(ctx.request, { data: { applied, failed } });
+}
+
+// ----------------------------------------------------------- address space
+
+async function addressSpace(ctx: Ctx, prefixId: string) {
+  const prefix = await loadPrefix(ctx, prefixId);
+  const cidr = cidrOf(prefix);
+  if (!cidr) throw dbFailure();
+  const [space, usage] = await Promise.all([loadSpace(ctx), usageMap(ctx)]);
+  const visible = new Set(space.prefixes.map((row) => String(row.id)));
+  const sites = new Map(space.sites.map((row) => [String(row.id), String(row.name)]));
+  type Meta = { prefixId: string; name: string | null; siteName: string | null; percent: number; status: string };
+  const children: ChildInput<Meta | null>[] = [];
+  for (const row of space.allPrefixes) {
+    if (row.id === prefix.id || str(row.vrf_id) !== str(prefix.vrf_id)) continue;
+    const child = cidrOf(row);
+    if (!child) continue;
+    children.push({
+      cidr: child,
+      meta: visible.has(String(row.id))
+        ? {
+          prefixId: String(row.id),
+          name: str(row.description),
+          siteName: row.site_id ? (sites.get(String(row.site_id)) ?? null) : null,
+          percent: usage.get(String(row.id))?.percent ?? 0,
+          status: String(row.status),
+        }
+        : null,
+    });
+  }
+  const layout = addressSpaceLayout(cidr, children, 512);
+  return json(ctx.request, {
+    data: {
+      prefixId: String(prefix.id),
+      prefix: formatCidr(cidr),
+      capacity: layout.capacity.toString(),
+      allocatedPercent: layout.allocatedPercent,
+      freeTotal: layout.freeTotal.toString(),
+      largestFree: lengthText(layout.largestFree),
+      childCount: layout.childCount,
+      truncated: layout.truncated,
+      segments: layout.segments.map((segment) => {
+        const base = { kind: segment.kind, cidr: formatCidr(segment.cidr), size: cidrSize(segment.cidr).toString() };
+        if (segment.kind === "free" || !segment.meta) return base;
+        return { ...base, ...segment.meta };
+      }),
+    },
+  });
+}
+
+async function utilizationHistory(ctx: Ctx, prefixId: string, days: number) {
+  const prefix = await loadPrefix(ctx, prefixId);
+  const warningPercent = num(prefix.utilization_warning_percent) || 85;
+  const [history, forecasts] = await Promise.all([
+    ctx.admin.from("ipam_utilization_daily").select("day, used, dhcp_used, total")
+      .eq("tenant_id", ctx.tenantId).eq("prefix_id", prefixId).gte("day", zurichToday(-days))
+      .order("day").limit(400),
+    prefixForecast(ctx, [prefixId], new Map([[prefixId, warningPercent]])),
+  ]);
+  if (history.error) throw dbFailure();
+  return json(ctx.request, {
+    data: {
+      points: ((history.data ?? []) as Row[]).map((row) => {
+        const used = num(row.used) + num(row.dhcp_used);
+        const total = num(row.total);
+        return { day: String(row.day), used, total, percent: total > 0 ? round1(Math.min(100, (used / total) * 100)) : 0 };
+      }),
+      forecast: forecastSummary(forecasts[prefixId] ?? null, zurichToday()),
+      warningPercent,
+    },
+  });
+}
+
+// ----------------------------------------------------------- planner
+
+async function planPrefixes(ctx: Ctx, action: Extract<RedesignAction, { type: "planPrefixes" }>) {
+  const parent = await loadPrefix(ctx, action.parentPrefixId);
+  const cidr = cidrOf(parent);
+  if (!cidr) throw dbFailure();
+  const space = await loadSpace(ctx);
+  const occupied = space.allPrefixes
+    .filter((row) => row.id !== parent.id && str(row.vrf_id) === str(parent.vrf_id))
+    .map(cidrOf)
+    .filter((value): value is Cidr => value !== null);
+  const plan = planPlacement(cidr, occupied, action.items);
+  const items = plan.items.map((item) => ({
+    name: item.name,
+    cidr: item.cidr ? formatCidr(item.cidr) : null,
+    hosts: item.cidr ? cidrCapacity(item.cidr).toString() : null,
+    error: item.error,
+  }));
+  if (action.dryRun) {
+    return json(ctx.request, { data: { items, freeAfter: plan.freeAfter.toString() } });
+  }
+  const failed = items.filter((item) => item.error);
+  if (failed.length) {
+    throw new HttpError(
+      422,
+      "plan_invalid",
+      `Nicht alle Teilnetze passen: ${failed.map((item) => `${item.name} (${item.error})`).join("; ")}`,
+    );
+  }
+  const vlans = new Map<number, Row>();
+  action.items.forEach((item) => {
+    if (item.vlanNumber !== null && !vlans.has(item.vlanNumber)) {
+      vlans.set(item.vlanNumber, { vlanNumber: item.vlanNumber, name: item.name, zone: item.securityZone });
+    }
+  });
+  const { data, error } = await ctx.admin.rpc("ipam_apply_layout", {
+    p_tenant_id: ctx.tenantId,
+    p_actor_id: ctx.actorId,
+    p_source: "planner",
+    p_layout: {
+      vrfId: str(parent.vrf_id),
+      departmentId: str(parent.department_id),
+      siteId: str(parent.site_id),
+      parentPrefix: formatCidr(cidr),
+      vlans: [...vlans.values()],
+      prefixes: plan.items.map((item, index) => ({
+        prefix: formatCidr(item.cidr!),
+        description: item.name,
+        status: "active",
+        securityZone: action.items[index]!.securityZone ?? str(parent.security_zone),
+        gateway: firstUsable(item.cidr!),
+        vlanNumber: action.items[index]!.vlanNumber,
+        warningPercent: num(parent.utilization_warning_percent) || 85,
+      })),
+    },
+  });
+  if (error) throw layoutError(error);
+  await audit(ctx, "ipam.prefix.planned", "ipam_prefix", String(parent.id), {
+    created: items.map((item) => item.cidr),
+  });
+  return json(ctx.request, {
+    data: { items, freeAfter: plan.freeAfter.toString(), prefixIds: (data as Row | null)?.prefixIds ?? [] },
+  }, 201);
+}
+
+// ----------------------------------------------------------- templates
+
+function templateDto(template: Template) {
+  // Contract: `id?: string` – the derived suggestion has no id.
+  return {
+    ...(template.id ? { id: template.id } : {}),
+    name: template.name,
+    description: template.description,
+    prefixLength: template.prefixLength,
+    entries: template.entries,
+  };
+}
+
+async function loadTemplates(ctx: Ctx): Promise<Template[]> {
+  const { data, error } = await ctx.admin.from("ipam_site_templates").select("*").eq("tenant_id", ctx.tenantId)
+    .order("name").limit(200);
+  if (error) throw dbFailure();
+  return ((data ?? []) as Row[]).map(templateFromRow);
+}
+
+async function loadTemplate(ctx: Ctx, id: string): Promise<Template> {
+  const { data, error } = await ctx.admin.from("ipam_site_templates").select("*").eq("tenant_id", ctx.tenantId)
+    .eq("id", id).maybeSingle();
+  if (error) throw dbFailure();
+  if (!data) throw new HttpError(404, "template_not_found", "Die Vorlage ist nicht verfügbar.");
+  return templateFromRow(data as Row);
+}
+
+function matrixSites(space: Space): MatrixSite[] {
+  const prefixes = new Map(space.allPrefixes.map((row) => [String(row.id), String(row.prefix)]));
+  return space.sites.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    code: str(row.code),
+    vlanBase: row.vlan_base === null || row.vlan_base === undefined ? null : num(row.vlan_base),
+    supernet: row.supernet_prefix_id ? (prefixes.get(String(row.supernet_prefix_id)) ?? null) : null,
+  })).sort((a, b) => a.name.localeCompare(b.name, "de-CH"));
+}
+
+function matrixVlans(space: Space): MatrixVlan[] {
+  return space.vlans.filter((row) => (str(row.status) ?? "active") !== "deprecated").map((row) => ({
+    id: String(row.id),
+    siteId: str(row.site_id),
+    vlanNumber: num(row.vlan_number),
+    name: String(row.name),
+    zone: str(row.zone),
+  }));
+}
+
+async function listTemplates(ctx: Ctx) {
+  const templates = await loadTemplates(ctx);
+  let suggested: ReturnType<typeof templateDto> | null = null;
+  if (!templates.length) {
+    const space = await loadSpace(ctx);
+    const template = suggestTemplate(
+      matrixSites(space),
+      matrixVlans(space),
+      space.prefixes.map((row) => ({
+        id: String(row.id),
+        prefix: String(row.prefix),
+        vlanId: str(row.vlan_id),
+        securityZone: str(row.security_zone),
+        dhcp: !!row.dhcp_start,
+      })),
+    );
+    suggested = template ? templateDto(template) : null;
+  }
+  return json(ctx.request, { data: { templates: templates.map(templateDto), suggested } });
+}
+
+async function saveTemplate(ctx: Ctx, template: Template) {
+  const values = {
+    name: template.name,
+    description: template.description,
+    prefix_length: template.prefixLength,
+    entries: template.entries,
+    updated_at: new Date().toISOString(),
+    ...stamp(ctx),
+  };
+  const result = template.id
+    ? await ctx.admin.from("ipam_site_templates").update(values).eq("tenant_id", ctx.tenantId).eq("id", template.id)
+      .select("id").maybeSingle()
+    : await ctx.admin.from("ipam_site_templates").insert({ ...values, tenant_id: ctx.tenantId, created_by: ctx.actorId })
+      .select("id").single();
+  if (result.error) throw conflict(result.error, "Eine Vorlage mit diesem Namen gibt es bereits.");
+  if (!result.data) throw new HttpError(404, "template_not_found", "Die Vorlage ist nicht verfügbar.");
+  const id = String(result.data.id);
+  await audit(ctx, template.id ? "ipam.template.updated" : "ipam.template.created", "ipam_site_template", id, {
+    name: template.name,
+  });
+  return json(ctx.request, { data: { id } }, template.id ? 200 : 201);
+}
+
+async function deleteTemplate(ctx: Ctx, id: string) {
+  const { data, error } = await ctx.admin.rpc("ipam_delete_logged", {
+    p_tenant_id: ctx.tenantId,
+    p_object_type: "template",
+    p_object_id: id,
+    p_actor_id: ctx.actorId,
+    p_source: "user",
+  });
+  if (error) throw dbFailure();
+  if (data !== true) throw new HttpError(404, "template_not_found", "Die Vorlage ist nicht verfügbar.");
+  await audit(ctx, "ipam.template.deleted", "ipam_site_template", id, {});
+  return json(ctx.request, { data: { id, deleted: true } });
+}
+
+async function vlanMatrixAction(ctx: Ctx, templateId: string | null) {
+  const [space, usage, templates] = await Promise.all([loadSpace(ctx), usageMap(ctx), loadTemplates(ctx)]);
+  const template = templateId
+    ? (templates.find((item) => item.id === templateId) ??
+      (() => {
+        throw new HttpError(404, "template_not_found", "Die Vorlage ist nicht verfügbar.");
+      })())
+    : (templates[0] ?? null);
+  const sites = matrixSites(space);
+  const prefixes: MatrixPrefix[] = space.prefixes.map((row) => ({
+    id: String(row.id),
+    prefix: String(row.prefix),
+    vlanId: str(row.vlan_id),
+    percent: usage.get(String(row.id))?.percent ?? null,
+  }));
+  const result = vlanMatrix(template, sites, matrixVlans(space), prefixes);
+  return json(ctx.request, {
+    data: {
+      template: template ? templateDto(template) : null,
+      sites: sites.map((site) => ({ id: site.id, name: site.name })),
+      rows: result.rows,
+      otherVlans: result.otherVlans,
+    },
+  });
+}
+
+async function createFromTemplate(ctx: Ctx, action: Extract<RedesignAction, { type: "createFromTemplate" }>) {
+  const [site, template, space] = await Promise.all([
+    existingScoped(ctx, "ipam_sites", action.siteId, "Der Standort ist nicht verfügbar."),
+    loadTemplate(ctx, action.templateId),
+    loadSpace(ctx),
+  ]);
+  const entry = template.entries.find((item) => item.function.toLowerCase() === action.function.toLowerCase());
+  if (!entry) throw new HttpError(422, "function_unknown", `Die Funktion «${action.function}» gibt es in der Vorlage nicht.`);
+  const supernetRow = site.supernet_prefix_id
+    ? space.allPrefixes.find((row) => row.id === site.supernet_prefix_id)
+    : undefined;
+  const supernet = supernetRow ? cidrOf(supernetRow) : null;
+  if (site.vlan_base === null || site.vlan_base === undefined || !supernet) {
+    throw new HttpError(
+      422,
+      "site_layout_missing",
+      "Für diesen Standort sind keine VLAN-Basis und kein Supernetz erfasst.",
+    );
+  }
+  const layout = templateLayout(template, supernet, num(site.vlan_base), [entry.function]);
+  const item = layout.items[0];
+  if (!item) throw new HttpError(422, "template_invalid", layout.errors.join(" ") || "Die Vorlage passt nicht.");
+  const vrfId = str(supernetRow!.vrf_id);
+  const cidr = parseCidrInput(item.prefix)!.cidr;
+  const exists = space.allPrefixes.some((row) => str(row.vrf_id) === vrfId && String(row.prefix) === item.prefix);
+  const vlanExists = space.vlans.some((row) =>
+    row.site_id === site.id && num(row.vlan_number) === item.vlanNumber
+  );
+  if (exists && vlanExists) {
+    throw new HttpError(409, "already_exists", `VLAN ${item.vlanNumber} und ${item.prefix} sind bereits vorhanden.`);
+  }
+  if (!exists) {
+    const conflicts = overlapConflicts(space.allPrefixes, cidr, vrfId, supernet);
+    if (conflicts.length) {
+      throw new HttpError(409, "prefix_conflict", `Überschneidung mit bestehenden Subnetzen: ${conflicts.join(", ")}.`);
+    }
+  }
+  const { data, error } = await ctx.admin.rpc("ipam_apply_layout", {
+    p_tenant_id: ctx.tenantId,
+    p_actor_id: ctx.actorId,
+    p_source: "template",
+    p_layout: {
+      vrfId,
+      departmentId: str(site.department_id),
+      siteId: String(site.id),
+      parentPrefix: formatCidr(supernet),
+      vlans: [{ vlanNumber: item.vlanNumber, name: item.function, zone: item.zone, description: item.description }],
+      prefixes: exists ? [] : [{
+        prefix: item.prefix,
+        description: item.function,
+        status: "active",
+        securityZone: item.zone,
+        gateway: item.gateway,
+        vlanNumber: item.vlanNumber,
+      }],
+    },
+  });
+  if (error) throw layoutError(error);
+  await audit(ctx, "ipam.template.applied", "ipam_site", String(site.id), {
+    function: item.function,
+    vlanNumber: item.vlanNumber,
+    prefix: item.prefix,
+  });
+  const result = (data ?? {}) as Row;
+  return json(ctx.request, {
+    data: {
+      siteId: String(site.id),
+      vlanNumber: item.vlanNumber,
+      prefix: item.prefix,
+      prefixIds: result.prefixIds ?? [],
+      vlanIds: result.vlanIds ?? [],
+    },
+  }, 201);
+}
+
+async function createSiteFromTemplate(
+  ctx: Ctx,
+  action: Extract<RedesignAction, { type: "createSiteFromTemplate" }>,
+) {
+  const [template, space] = await Promise.all([loadTemplate(ctx, action.templateId), loadSpace(ctx)]);
+  const supernet = parseCidrInput(action.supernet)!.cidr;
+  const layout = templateLayout(template, supernet, action.vlanBase, action.functions);
+  if (layout.errors.length) throw new HttpError(422, "template_invalid", layout.errors.join(" "));
+  const preview = layout.items.map((item) => ({
+    function: item.function,
+    vlanNumber: item.vlanNumber,
+    prefix: item.prefix,
+    gateway: item.gateway,
+  }));
+  // Conflicts in the global routing table (vrf null).
+  const conflicts = new Set<string>();
+  const existingSupernet = space.allPrefixes.find((row) => !row.vrf_id && String(row.prefix) === action.supernet);
+  if (!existingSupernet) overlapConflicts(space.allPrefixes, supernet, null).forEach((item) => conflicts.add(item));
+  for (const item of layout.items) {
+    overlapConflicts(space.allPrefixes, parseCidrInput(item.prefix)!.cidr, null, supernet)
+      .forEach((value) => conflicts.add(value));
+  }
+  const { data: sameName, error: nameError } = await ctx.admin.from("ipam_sites").select("id")
+    .eq("tenant_id", ctx.tenantId).eq("name", action.name).limit(1);
+  if (nameError) throw dbFailure();
+  if ((sameName ?? []).length) throw new HttpError(409, "duplicate", "Einen Standort mit diesem Namen gibt es bereits.");
+  let assetLocationId: string | null = null;
+  if (action.assetLocation.mode === "existing") {
+    await ensureRow(ctx, "asset_locations", action.assetLocation.id, "Der Asset-Standort ist nicht verfügbar.");
+    await ensureAssetLocationFree(ctx, action.assetLocation.id, null);
+    assetLocationId = action.assetLocation.id;
+  } else if (action.assetLocation.mode === "new") {
+    const { data: location, error } = await ctx.admin.from("asset_locations").select("id")
+      .eq("tenant_id", ctx.tenantId).eq("name", action.name).maybeSingle();
+    if (error) throw dbFailure();
+    if (location) await ensureAssetLocationFree(ctx, String(location.id), null);
+  }
+  const conflictList = [...conflicts].sort();
+  if (action.dryRun) {
+    return json(ctx.request, { data: { preview, conflicts: conflictList } });
+  }
+  if (conflictList.length) {
+    return json(ctx.request, {
+      error: {
+        code: "prefix_conflict",
+        message: `Überschneidung mit bestehenden Subnetzen: ${conflictList.join(", ")}.`,
+        conflicts: conflictList,
+      },
+    }, 422);
+  }
+  const { data, error } = await ctx.admin.rpc("ipam_apply_layout", {
+    p_tenant_id: ctx.tenantId,
+    p_actor_id: ctx.actorId,
+    p_source: "template",
+    p_layout: {
+      vrfId: null,
+      departmentId: null,
+      site: {
+        name: action.name,
+        code: action.code,
+        address: action.address,
+        vlanBase: action.vlanBase,
+        templateId: template.id,
+        assetLocationId,
+        newAssetLocationName: action.assetLocation.mode === "new" ? action.name : null,
+      },
+      supernet: { prefix: action.supernet, description: action.name },
+      vlans: layout.items.map((item) => ({
+        vlanNumber: item.vlanNumber,
+        name: item.function,
+        zone: item.zone,
+        description: item.description,
+      })),
+      prefixes: layout.items.map((item) => ({
+        prefix: item.prefix,
+        description: item.function,
+        status: "active",
+        securityZone: item.zone,
+        gateway: item.gateway,
+        vlanNumber: item.vlanNumber,
+      })),
+    },
+  });
+  if (error) throw layoutError(error);
+  const siteId = String((data as Row).siteId);
+  await audit(ctx, "ipam.site.created_from_template", "ipam_site", siteId, {
+    name: action.name,
+    templateId: template.id,
+    supernet: action.supernet,
+    functions: layout.items.length,
+  });
+  return json(ctx.request, { data: { preview, siteId } }, 201);
+}
+
+// ----------------------------------------------------------- sites
+
+type SiteContext = {
+  space: Space;
+  usage: Map<string, Usage>;
+  locations: Row[];
+  infra: Row[];
+  assets: Map<string, Row>;
+  agents: Row[];
+};
+
+async function loadSiteContext(ctx: Ctx): Promise<SiteContext> {
+  const [space, usage, locations, infra, agents] = await Promise.all([
+    loadSpace(ctx),
+    usageMap(ctx),
+    ctx.admin.from("asset_locations").select("id, name, active").eq("tenant_id", ctx.tenantId).order("name")
+      .limit(2000),
+    ctx.admin.from("asset_infrastructure")
+      .select("asset_id, category, ip_address, uplink_asset_id, rack, rack_unit")
+      .eq("tenant_id", ctx.tenantId).limit(5000),
+    ctx.admin.from("ipam_agents").select("id, name, status, last_seen_at, config").eq("tenant_id", ctx.tenantId)
+      .neq("status", "revoked").limit(200),
+  ]);
+  if (locations.error || infra.error || agents.error) throw dbFailure();
+  const infraRows = (infra.data ?? []) as Row[];
+  const ids = [
+    ...new Set(infraRows.flatMap((row) => [str(row.asset_id), str(row.uplink_asset_id)]).filter((id): id is string => !!id)),
+  ];
+  const assets = new Map<string, Row>();
+  for (let index = 0; index < ids.length; index += 150) {
+    const { data, error } = await ctx.admin.from("assets")
+      .select("id, name, location_id, model, manufacturer, serial_number, active")
+      .eq("tenant_id", ctx.tenantId).in("id", ids.slice(index, index + 150));
+    if (error) throw dbFailure();
+    for (const row of (data ?? []) as Row[]) assets.set(String(row.id), row);
+  }
+  return {
+    space,
+    usage,
+    locations: (locations.data ?? []) as Row[],
+    infra: infraRows.filter((row) => assets.get(String(row.asset_id))?.active !== false),
+    assets,
+    agents: (agents.data ?? []) as Row[],
+  };
+}
+
+function siteSummary(context: SiteContext, site: Row, withActiveChild: Set<string>) {
+  const { space, usage } = context;
+  const siteId = String(site.id);
+  const prefixes = space.prefixes.filter((row) => row.site_id === siteId);
+  const cidrs = prefixes.map((row) => ({ row, cidr: cidrOf(row) }))
+    .filter((entry): entry is { row: Row; cidr: Cidr } => entry.cidr !== null);
+  const devices = context.infra.filter((row) => {
+    const asset = context.assets.get(String(row.asset_id));
+    if (site.asset_location_id && asset?.location_id === site.asset_location_id) return true;
+    const ip = typeof row.ip_address === "string" ? parseAddress(row.ip_address.split("/")[0]!.trim()) : null;
+    return !!ip && cidrs.some((entry) => cidrContainsAddress(entry.cidr, ip));
+  });
+  let used = 0n;
+  let capacity = 0n;
+  for (const { row, cidr } of cidrs) {
+    if (row.status !== "active" || cidr.version !== 4 || withActiveChild.has(String(row.id))) continue;
+    const item = usage.get(String(row.id));
+    used += BigInt((item?.used ?? 0) + (item?.dhcpSize ?? 0));
+    capacity += cidrCapacity(cidr);
+  }
+  // Agents whose configured subnets overlap a subnet of the site.
+  let best: { state: AgentState; name: string } | null = null;
+  for (const agent of context.agents) {
+    const config = (agent.config && typeof agent.config === "object" ? agent.config : {}) as Row;
+    const agentVrf = str(config.vrfId);
+    const configured = Array.isArray(config.prefixIds) ? config.prefixIds.map(String) : [];
+    // Without explicit configuration an agent scans all active subnets (DEFAULT_AGENT_CONFIG).
+    const covered = config.scanAllActive !== false
+      ? cidrs.some((entry) => entry.row.status === "active" && str(entry.row.vrf_id) === agentVrf)
+      : space.allPrefixes.filter((row) => configured.includes(String(row.id))).some((row) => {
+        const target = cidrOf(row);
+        return !!target && cidrs.some((entry) =>
+          str(entry.row.vrf_id) === str(row.vrf_id) && cidrRelation(entry.cidr, target) !== "disjoint"
+        );
+      });
+    if (!covered) continue;
+    const state = agentState(String(agent.status), str(agent.last_seen_at));
+    const better = betterAgentState(best?.state ?? null, state);
+    if (!best || better !== best.state) best = { state, name: String(agent.name) };
+  }
+  const location = site.asset_location_id
+    ? context.locations.find((row) => row.id === site.asset_location_id)
+    : undefined;
+  const supernet = site.supernet_prefix_id
+    ? space.allPrefixes.find((row) => row.id === site.supernet_prefix_id)
+    : undefined;
+  return {
+    entry: {
+      id: siteId,
+      name: String(site.name),
+      code: str(site.code),
+      address: str(site.address),
+      assetLocation: location ? { id: String(location.id), name: String(location.name) } : null,
+      supernet: supernet ? String(supernet.prefix) : null,
+      vlanCount: space.vlans.filter((row) => row.site_id === siteId).length,
+      prefixCount: prefixes.filter((row) => row.status !== "deprecated").length,
+      switchCount: devices.filter((row) => row.category === "switch").length,
+      apCount: devices.filter((row) => row.category === "access_point").length,
+      deviceCount: devices.length,
+      percent: capacity > 0n ? utilizationPercent(used, capacity) : null,
+      agent: best ? { status: best.state, name: best.name } : null,
+    },
+    prefixes,
+    devices,
+  };
+}
+
+async function siteOverview(ctx: Ctx) {
+  const context = await loadSiteContext(ctx);
+  const withActiveChild = prefixesWithChildren(context.space.prefixes, true);
+  const linked = new Map<string, string>();
+  for (const site of context.space.sites) {
+    if (site.asset_location_id) linked.set(String(site.asset_location_id), String(site.id));
+  }
+  // Locations linked to sites outside the scope still count as linked.
+  const { data: allLinks } = await ctx.admin.from("ipam_sites").select("id, asset_location_id")
+    .eq("tenant_id", ctx.tenantId).not("asset_location_id", "is", null);
+  for (const row of (allLinks ?? []) as Row[]) {
+    if (!linked.has(String(row.asset_location_id))) linked.set(String(row.asset_location_id), String(row.id));
+  }
+  return json(ctx.request, {
+    data: {
+      sites: context.space.sites.map((site) => siteSummary(context, site, withActiveChild).entry),
+      assetLocations: context.locations.filter((row) => row.active !== false || linked.has(String(row.id)))
+        .map((row) => ({
+          id: String(row.id),
+          name: String(row.name),
+          linkedSiteId: linked.get(String(row.id)) ?? null,
+        })),
+    },
+  });
+}
+
+async function siteDetail(ctx: Ctx, siteId: string) {
+  const site = await existingScoped(ctx, "ipam_sites", siteId, "Der Standort ist nicht verfügbar.");
+  const context = await loadSiteContext(ctx);
+  const withActiveChild = prefixesWithChildren(context.space.prefixes, true);
+  const summary = siteSummary(context, site, withActiveChild);
+  const percent = (row: Row) => context.usage.get(String(row.id))?.percent ?? 0;
+  const prefixItem = (row: Row) => ({
+    id: String(row.id),
+    prefix: String(row.prefix),
+    gateway: inetText(row.gateway),
+    dhcpStart: inetText(row.dhcp_start),
+    dhcpEnd: inetText(row.dhcp_end),
+    percent: percent(row),
+  });
+  const sorted = [...summary.prefixes].sort((a, b) => compareCidrText(String(a.prefix), String(b.prefix)));
+  const vlans = context.space.vlans.filter((row) => row.site_id === siteId)
+    .sort((a, b) => num(a.vlan_number) - num(b.vlan_number))
+    .map((row) => ({
+      id: String(row.id),
+      vlanNumber: num(row.vlan_number),
+      name: String(row.name),
+      description: str(row.description),
+      zone: str(row.zone),
+      status: str(row.status) ?? "active",
+      notes: str(row.notes),
+      prefixes: sorted.filter((prefix) => prefix.vlan_id === row.id).map(prefixItem),
+    }));
+  const devices = summary.devices.map((row) => {
+    const asset = context.assets.get(String(row.asset_id));
+    const uplink = row.uplink_asset_id ? context.assets.get(String(row.uplink_asset_id)) : undefined;
+    const rack = [str(row.rack) ? `Rack ${row.rack}` : null, str(row.rack_unit) ? `HE ${row.rack_unit}` : null]
+      .filter(Boolean).join(" · ");
+    return {
+      assetId: String(row.asset_id),
+      name: asset ? String(asset.name) : "Unbekanntes Gerät",
+      category: String(row.category),
+      ipAddress: str(row.ip_address),
+      model: asset ? str(asset.model) : null,
+      manufacturer: asset ? str(asset.manufacturer) : null,
+      serialNumber: asset ? str(asset.serial_number) : null,
+      locationNote: rack || null,
+      uplinkAssetId: str(row.uplink_asset_id),
+      uplinkName: uplink ? String(uplink.name) : null,
+    };
+  }).sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name, "de-CH"));
+  return json(ctx.request, {
+    data: {
+      site: {
+        ...summary.entry,
+        description: str(site.description),
+        departmentId: str(site.department_id),
+        vlanBase: site.vlan_base === null || site.vlan_base === undefined ? null : num(site.vlan_base),
+        supernetPrefixId: str(site.supernet_prefix_id),
+        templateId: str(site.template_id),
+      },
+      vlans,
+      prefixesWithoutVlan: sorted
+        .filter((row) => !row.vlan_id && row.id !== site.supernet_prefix_id)
+        .map((row) => ({ id: String(row.id), prefix: String(row.prefix), name: str(row.description), percent: percent(row) })),
+      devices,
+    },
+  });
+}
+
+// ----------------------------------------------------------- target/actual
+
+async function compareObserved(ctx: Ctx, siteId: string | null) {
+  if (siteId) await existingScoped(ctx, "ipam_sites", siteId, "Der Standort ist nicht verfügbar.");
+  const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const [space, documented, seen, lastRun, lastSeen] = await Promise.all([
+    loadSpace(ctx),
+    ctx.admin.from("ipam_addresses").select("address, vrf_id").eq("tenant_id", ctx.tenantId)
+      .neq("status", "deprecated").limit(50000),
+    ctx.admin.from("ipam_observations").select("address, vrf_id").eq("tenant_id", ctx.tenantId)
+      .gte("seen_at", since).limit(50000),
+    ctx.admin.from("ipam_agent_runs").select("started_at").eq("tenant_id", ctx.tenantId)
+      .order("started_at", { ascending: false }).limit(1),
+    ctx.admin.from("ipam_observations").select("seen_at").eq("tenant_id", ctx.tenantId)
+      .order("seen_at", { ascending: false }).limit(1),
+  ]);
+  if (documented.error || seen.error || lastRun.error || lastSeen.error) throw dbFailure();
+  const withChild = prefixesWithChildren(space.prefixes, false);
+  const leaves = space.prefixes.filter((row) =>
+    cidrOf(row)?.version === 4 && !withChild.has(String(row.id)) && row.status !== "container" &&
+    row.status !== "deprecated" && (!siteId || row.site_id === siteId)
+  );
+  const rows = compareObservedRows(
+    leaves.map((row) => ({ id: String(row.id), prefix: String(row.prefix), name: str(row.description), vrfId: str(row.vrf_id) })),
+    ((documented.data ?? []) as Row[]).map((row) => ({ address: String(row.address), vrfId: str(row.vrf_id) })),
+    ((seen.data ?? []) as Row[]).map((row) => ({ address: String(row.address), vrfId: str(row.vrf_id) })),
+  );
+  const lastScanAt = str(((lastRun.data ?? []) as Row[])[0]?.started_at) ??
+    str(((lastSeen.data ?? []) as Row[])[0]?.seen_at);
+  return json(ctx.request, { data: { lastScanAt, rows } });
+}
+
+async function dispatchRedesign(ctx: Ctx, action: RedesignAction): Promise<Response> {
+  switch (action.type) {
+    case "dashboard":
+      return await dashboard(ctx);
+    case "changeLog":
+      return await changeLog(ctx, action);
+    case "undoChange":
+      return await undoChange(ctx, action.entryId);
+    case "bulkUpdatePrefixes":
+      return await bulkUpdatePrefixes(ctx, action);
+    case "cleanupSuggestions":
+      return await cleanupSuggestions(ctx);
+    case "applyCleanup":
+      return await applyCleanup(ctx, action.keys);
+    case "addressSpace":
+      return await addressSpace(ctx, action.prefixId);
+    case "utilizationHistory":
+      return await utilizationHistory(ctx, action.prefixId, action.days);
+    case "planPrefixes":
+      return await planPrefixes(ctx, action);
+    case "listTemplates":
+      return await listTemplates(ctx);
+    case "saveTemplate":
+      return await saveTemplate(ctx, action.template);
+    case "deleteTemplate":
+      return await deleteTemplate(ctx, action.id);
+    case "vlanMatrix":
+      return await vlanMatrixAction(ctx, action.templateId);
+    case "createFromTemplate":
+      return await createFromTemplate(ctx, action);
+    case "createSiteFromTemplate":
+      return await createSiteFromTemplate(ctx, action);
+    case "siteOverview":
+      return await siteOverview(ctx);
+    case "siteDetail":
+      return await siteDetail(ctx, action.siteId);
+    case "compareObserved":
+      return await compareObserved(ctx, action.siteId);
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 async function dispatch(ctx: Ctx, action: Action): Promise<Response> {
   switch (action.type) {
@@ -1756,9 +2962,12 @@ const handler = withSupabase(
       }
       const actorId = context.userClaims?.id;
       if (!isUuid(actorId)) return json(request, { error: { code: "unauthorized" } }, 401);
-      let action: Action;
+      let action: Action | RedesignAction;
+      let redesign: RedesignAction | null = null;
       try {
-        action = parseAction(await readBody(request));
+        const body = await readBody(request);
+        redesign = parseRedesignAction(body);
+        action = redesign ?? parseAction(body);
       } catch (error) {
         if (error instanceof InputError) {
           return json(request, { error: { code: "invalid_request", message: error.message } }, 422);
@@ -1774,14 +2983,15 @@ const handler = withSupabase(
       if (!access.canRead) {
         throw new HttpError(403, "access_denied", "Für die IP-Adressverwaltung fehlt Ihnen die Berechtigung.");
       }
-      if (!READ_ACTIONS.has(action.type) && !access.canManage) {
+      const readOnly = redesign ? redesignIsRead(redesign) : READ_ACTIONS.has((action as Action).type);
+      if (!readOnly && !access.canManage) {
         throw new HttpError(403, "manage_denied", "Änderungen erfordern die Berechtigung «IP-Adressen verwalten».");
       }
       const scope = await loadDepartmentScope(admin, action.tenantId, actorId, FEATURE);
       if (!scope) {
         throw new HttpError(503, "scope_failed", "Die Abteilungen konnten nicht geprüft werden.");
       }
-      return await dispatch({
+      const ctx: Ctx = {
         request,
         admin,
         client: context.supabase,
@@ -1789,7 +2999,8 @@ const handler = withSupabase(
         tenantId: action.tenantId,
         scope,
         canManage: access.canManage,
-      }, action);
+      };
+      return redesign ? await dispatchRedesign(ctx, redesign) : await dispatch(ctx, action as Action);
     } catch (error) {
       if (error instanceof HttpError) {
         return json(request, { error: { code: error.code, message: error.message } }, error.status);

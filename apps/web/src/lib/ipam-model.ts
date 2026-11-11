@@ -29,6 +29,11 @@ export type IpamSite = {
   address: string | null;
   description: string | null;
   departmentId: string | null;
+  /** IPAM-Redesign (0304); optional until the backend delivers them. */
+  assetLocationId?: string | null;
+  vlanBase?: number | null;
+  supernetPrefixId?: string | null;
+  templateId?: string | null;
 };
 
 export type IpamVlan = {
@@ -38,6 +43,10 @@ export type IpamVlan = {
   siteId: string | null;
   departmentId: string | null;
   description: string | null;
+  /** IPAM-Redesign (0304). */
+  zone?: string | null;
+  notes?: string | null;
+  status?: "active" | "deprecated";
 };
 
 export type IpamUsage = {
@@ -65,6 +74,8 @@ export type IpamPrefix = {
   dhcpStart: string | null;
   dhcpEnd: string | null;
   description: string | null;
+  /** IPAM-Redesign (0304): free text moved out of the description. */
+  notes?: string | null;
   utilizationWarningPercent: number;
   tags: string[];
   customFields: Record<string, string | number | boolean>;

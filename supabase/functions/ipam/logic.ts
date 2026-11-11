@@ -186,6 +186,11 @@ export type SiteInput = {
   address: string | null;
   description: string | null;
   departmentId: string | null;
+  /** undefined = unchanged (older clients do not send these fields). */
+  assetLocationId: string | null | undefined;
+  vlanBase: number | null | undefined;
+  supernetPrefixId: string | null | undefined;
+  templateId: string | null | undefined;
 };
 export type VlanInput = {
   id: string | null;
@@ -194,6 +199,10 @@ export type VlanInput = {
   siteId: string | null;
   departmentId: string | null;
   description: string | null;
+  /** undefined = unchanged. */
+  notes: string | null | undefined;
+  zone: string | null | undefined;
+  status: "active" | "deprecated" | undefined;
 };
 export type PrefixInput = {
   id: string | null;
@@ -213,6 +222,8 @@ export type PrefixInput = {
   tags: string[];
   customFields: Record<string, string | number | boolean>;
   departmentId: string | null;
+  /** undefined = unchanged. */
+  notes: string | null | undefined;
 };
 export type AddressInput = {
   id: string | null;
@@ -255,7 +266,29 @@ export function parseSite(value: unknown): SiteInput {
     address: optionalText(value.address, 300, "Die Adresse"),
     description: optionalText(value.description, 500, "Die Beschreibung"),
     departmentId: optionalUuid(value.departmentId, "Die Abteilung"),
+    assetLocationId: value.assetLocationId === undefined
+      ? undefined
+      : optionalUuid(value.assetLocationId, "Der Asset-Standort"),
+    vlanBase: value.vlanBase === undefined ? undefined : optionalVlanNumber(value.vlanBase, "Die VLAN-Basis"),
+    supernetPrefixId: value.supernetPrefixId === undefined
+      ? undefined
+      : optionalUuid(value.supernetPrefixId, "Das Supernetz"),
+    templateId: value.templateId === undefined ? undefined : optionalUuid(value.templateId, "Die Vorlage"),
   };
+}
+
+function optionalVlanNumber(value: unknown, label: string): number | null {
+  if (value === null || value === "") return null;
+  const number = typeof value === "string" ? Number(value) : value;
+  if (typeof number !== "number" || !Number.isInteger(number) || number < 1 || number > 4094) {
+    throw new InputError(`${label} muss zwischen 1 und 4094 liegen.`);
+  }
+  return number;
+}
+
+/** undefined stays undefined (field not sent → unchanged). */
+function keptText(value: unknown, max: number, label: string): string | null | undefined {
+  return value === undefined ? undefined : optionalText(value, max, label);
 }
 
 export function parseVlan(value: unknown): VlanInput {
@@ -271,6 +304,13 @@ export function parseVlan(value: unknown): VlanInput {
     siteId: optionalUuid(value.siteId, "Der Standort"),
     departmentId: optionalUuid(value.departmentId, "Die Abteilung"),
     description: optionalText(value.description, 1000, "Die Beschreibung"),
+    notes: keptText(value.notes, 4000, "Die Notiz"),
+    zone: value.zone !== undefined
+      ? optionalText(value.zone, 60, "Die Zone")
+      : keptText(value.securityZone, 60, "Die Zone"),
+    status: value.status === undefined || value.status === null || value.status === ""
+      ? undefined
+      : oneOf(value.status, ["active", "deprecated"] as const, null, "Der Status"),
   };
 }
 
@@ -305,6 +345,7 @@ export function parsePrefix(value: unknown): PrefixInput {
     tags: parseTags(value.tags),
     customFields: parseCustomFields(value.customFields),
     departmentId: optionalUuid(value.departmentId, "Die Abteilung"),
+    notes: keptText(value.notes, 4000, "Die Notiz"),
   };
 }
 

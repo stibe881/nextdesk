@@ -426,6 +426,7 @@ async function nextPrefix(
         prefix: free.data,
         status: input.value.status,
         description: input.value.description,
+        change_source: "api",
       })
       .select(PREFIX_COLUMNS)
       .single();
@@ -461,7 +462,7 @@ async function updateAddress(
   const current = await loadAddress(admin, key.tenant_id, route.address!, url);
   const { data, error } = await admin
     .from("ipam_addresses")
-    .update(input.value)
+    .update({ ...input.value, change_source: "api" })
     .eq("tenant_id", key.tenant_id)
     .eq("id", current.id)
     .select(ADDRESS_COLUMNS)

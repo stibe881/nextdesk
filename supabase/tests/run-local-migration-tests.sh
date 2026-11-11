@@ -13741,4 +13741,228 @@ $$;
 rollback;
 SQL
 
+# 0310: IPAM-Redesign (Änderungsprotokoll, Rücknahme, Layout, Vorlagen, Asset-Standort).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_manager constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_site uuid;
+  v_site2 uuid;
+  v_vlan uuid;
+  v_super uuid;
+  v_net uuid;
+  v_addr uuid;
+  v_location uuid;
+  v_template uuid;
+  v_entry bigint;
+  v_old_entry bigint;
+  v_count integer;
+  v_result jsonb;
+  v_text text;
+  v_row public.ipam_change_log;
+begin
+  if has_table_privilege('authenticated', 'public.ipam_change_log', 'select')
+     or has_table_privilege('anon', 'public.ipam_site_templates', 'select')
+     or has_function_privilege('authenticated', 'public.ipam_change_undo(uuid, bigint, uuid)', 'execute')
+     or has_function_privilege('authenticated', 'public.ipam_apply_layout(uuid, uuid, text, jsonb)', 'execute') then
+    raise exception 'ipam redesign test: tables or functions exposed to clients';
+  end if;
+
+  -- Anlegen mit Herkunft: protokolliert, change_* danach wieder leer.
+  insert into public.ipam_sites (tenant_id, name, code, change_actor, change_source)
+  values (v_tenant, 'Redesign Baar', 'RBAAR', v_manager, 'user') returning id into v_site;
+  select * into v_row from public.ipam_change_log
+   where tenant_id = v_tenant and object_id = v_site order by id desc limit 1;
+  if v_row.action <> 'create' or v_row.source <> 'user' or v_row.actor_id is distinct from v_manager
+     or v_row.object_type <> 'site' or v_row.object_label <> 'Redesign Baar' then
+    raise exception 'ipam redesign test: site create not logged: %', to_jsonb(v_row);
+  end if;
+  if (select change_source from public.ipam_sites where id = v_site) is not null
+     or (select change_actor from public.ipam_sites where id = v_site) is not null then
+    raise exception 'ipam redesign test: change columns not reset';
+  end if;
+
+  insert into public.ipam_prefixes (tenant_id, prefix, status, description, site_id, change_source, change_actor)
+  values (v_tenant, '198.18.0.0/16', 'active', 'Redesign Campus', v_site, 'user', v_manager)
+  returning id into v_super;
+
+  -- Ohne Angabe: «system»; nur updated_at: kein Eintrag.
+  update public.ipam_prefixes set description = 'Redesign Campus Baar' where id = v_super;
+  if (select source from public.ipam_change_log where object_id = v_super order by id desc limit 1) <> 'system' then
+    raise exception 'ipam redesign test: write without source not attributed to system';
+  end if;
+  select count(*) into v_count from public.ipam_change_log where object_id = v_super;
+  update public.ipam_prefixes set updated_at = timezone('utc', now()) + interval '1 minute' where id = v_super;
+  if (select count(*) from public.ipam_change_log where object_id = v_super) <> v_count then
+    raise exception 'ipam redesign test: updated_at alone logged';
+  end if;
+
+  -- Änderung durch eine Person, danach Rücknahme.
+  update public.ipam_prefixes set status = 'container', change_source = 'cleanup', change_actor = v_manager
+   where id = v_super;
+  select * into v_row from public.ipam_change_log where object_id = v_super order by id desc limit 1;
+  if v_row.source <> 'cleanup' or v_row.changes <> '["status"]'::jsonb
+     or v_row.before <> '{"status": "active"}'::jsonb or v_row.after <> '{"status": "container"}'::jsonb then
+    raise exception 'ipam redesign test: status change wrong: %', to_jsonb(v_row);
+  end if;
+  v_entry := v_row.id;
+  select id into v_old_entry from public.ipam_change_log
+   where object_id = v_super and action = 'update' and source = 'system' order by id limit 1;
+  if public.ipam_change_undo(v_tenant, v_old_entry, v_manager) <> 'changed_since' then
+    raise exception 'ipam redesign test: older entry undoable';
+  end if;
+  if public.ipam_change_undo(v_tenant, (select id from public.ipam_change_log where object_id = v_super and action = 'create'), v_manager)
+     <> 'not_undoable' then
+    raise exception 'ipam redesign test: create undoable';
+  end if;
+  if (select is_latest from public.ipam_change_log_page(v_tenant, null, 'prefix', v_super) where id = v_entry) is not true
+     or (select is_latest from public.ipam_change_log_page(v_tenant, null, 'prefix', v_super) where id = v_old_entry) then
+    raise exception 'ipam redesign test: is_latest wrong';
+  end if;
+  v_text := public.ipam_change_undo(v_tenant, v_entry, v_manager);
+  if v_text <> 'ok' or (select status from public.ipam_prefixes where id = v_super) <> 'active' then
+    raise exception 'ipam redesign test: undo failed (%)', v_text;
+  end if;
+  select * into v_row from public.ipam_change_log where object_id = v_super order by id desc limit 1;
+  if v_row.source <> 'user' or v_row.actor_id is distinct from v_manager or v_row.after <> '{"status": "active"}'::jsonb then
+    raise exception 'ipam redesign test: undo not logged as user change: %', to_jsonb(v_row);
+  end if;
+  if public.ipam_change_undo(v_tenant, v_entry, v_manager) <> 'changed_since' then
+    raise exception 'ipam redesign test: undo twice accepted';
+  end if;
+  -- Abteilungsfilter: fremde Abteilung ausgeblendet, ohne Abteilung sichtbar.
+  if exists (select 1 from public.ipam_change_log_page(v_tenant, array[gen_random_uuid()], 'prefix', v_super)) is not true then
+    raise exception 'ipam redesign test: entries without department hidden';
+  end if;
+
+  -- Adressen: «gesehen» allein wird nicht protokolliert, Discovery-Änderung schon.
+  insert into public.ipam_addresses (tenant_id, address, hostname, status, change_source)
+  values (v_tenant, '198.18.1.10', 'RD-01', 'active', 'import') returning id into v_addr;
+  if (select source from public.ipam_change_log where object_id = v_addr and action = 'create') <> 'import'
+     or (select object_label from public.ipam_change_log where object_id = v_addr and action = 'create') <> '198.18.1.10 · RD-01' then
+    raise exception 'ipam redesign test: address create wrong';
+  end if;
+  select count(*) into v_count from public.ipam_change_log where object_id = v_addr;
+  update public.ipam_addresses set last_seen_at = timezone('utc', now()), last_seen_source = 'arp' where id = v_addr;
+  if (select count(*) from public.ipam_change_log where object_id = v_addr) <> v_count then
+    raise exception 'ipam redesign test: last_seen update logged';
+  end if;
+  update public.ipam_addresses set last_seen_at = timezone('utc', now()) + interval '1 hour',
+         mac_address = '00:1a:1e:00:00:42' where id = v_addr;
+  select * into v_row from public.ipam_change_log where object_id = v_addr order by id desc limit 1;
+  if v_row.source <> 'discovery' or v_row.changes <> '["mac_address"]'::jsonb then
+    raise exception 'ipam redesign test: discovery change wrong: %', to_jsonb(v_row);
+  end if;
+  update public.ipam_addresses set intune_device_id = 'abc' where id = v_addr;
+  if (select source from public.ipam_change_log where object_id = v_addr order by id desc limit 1) <> 'intune' then
+    raise exception 'ipam redesign test: intune change not attributed';
+  end if;
+
+  -- Layout (Planer/Vorlage): VLANs und Subnetze atomar, Überschneidung abgelehnt.
+  v_result := public.ipam_apply_layout(v_tenant, v_manager, 'planner', jsonb_build_object(
+    'siteId', v_site,
+    'vlans', jsonb_build_array(jsonb_build_object('vlanNumber', 110, 'name', 'Clients', 'zone', 'LAN')),
+    'prefixes', jsonb_build_array(
+      jsonb_build_object('prefix', '198.18.4.0/22', 'description', 'Clients', 'gateway', '198.18.4.1', 'vlanNumber', 110),
+      jsonb_build_object('prefix', '198.18.8.0/24', 'description', 'Server'))));
+  if jsonb_array_length(v_result -> 'prefixIds') <> 2 or jsonb_array_length(v_result -> 'vlanIds') <> 1 then
+    raise exception 'ipam redesign test: layout result wrong: %', v_result;
+  end if;
+  select id into v_vlan from public.ipam_vlans where tenant_id = v_tenant and site_id = v_site and vlan_number = 110;
+  if (select vlan_id from public.ipam_prefixes where tenant_id = v_tenant and prefix = '198.18.4.0/22') is distinct from v_vlan
+     or (select site_id from public.ipam_prefixes where tenant_id = v_tenant and prefix = '198.18.8.0/24') is distinct from v_site
+     or (select count(*) from public.ipam_change_log where tenant_id = v_tenant and source = 'planner' and actor_id = v_manager) <> 3
+     or (select prefix_id from public.ipam_addresses where id = v_addr) is distinct from v_super then
+    raise exception 'ipam redesign test: layout rows wrong';
+  end if;
+  begin
+    perform public.ipam_apply_layout(v_tenant, v_manager, 'planner', jsonb_build_object(
+      'parentPrefix', '198.18.0.0/16',
+      'prefixes', jsonb_build_array(
+        jsonb_build_object('prefix', '198.18.9.0/24'),
+        jsonb_build_object('prefix', '198.18.4.0/23'))));
+    raise exception 'ipam redesign test: overlapping layout accepted';
+  exception when raise_exception then
+    if sqlerrm not like 'ipam_layout_conflict: 198.18.4.0/22%' then raise; end if;
+  end;
+  if exists (select 1 from public.ipam_prefixes where tenant_id = v_tenant and prefix = '198.18.9.0/24') then
+    raise exception 'ipam redesign test: layout not atomic';
+  end if;
+
+  -- Vorlagen, Asset-Standort, Supernetz.
+  insert into public.ipam_site_templates (tenant_id, name, prefix_length, entries, change_source, change_actor)
+  values (v_tenant, 'Schulhaus', 19, '[{"function":"Clients","vlanOffset":0,"offset24":0,"length":22,"dhcp":true}]',
+          'user', v_manager) returning id into v_template;
+  begin
+    insert into public.ipam_site_templates (tenant_id, name, prefix_length) values (v_tenant, 'Schulhaus', 20);
+    raise exception 'ipam redesign test: duplicate template name accepted';
+  exception when unique_violation then null;
+  end;
+  begin
+    insert into public.ipam_site_templates (tenant_id, name, prefix_length, entries) values (v_tenant, 'Kaputt', 19, '{}');
+    raise exception 'ipam redesign test: template entries object accepted';
+  exception when check_violation then null;
+  end;
+  insert into public.asset_locations (tenant_id, name) values (v_tenant, 'Redesign Baar Gebäude') returning id into v_location;
+  update public.ipam_sites
+     set asset_location_id = v_location, vlan_base = 100, supernet_prefix_id = v_super, template_id = v_template,
+         change_source = 'template', change_actor = v_manager
+   where id = v_site;
+  select * into v_row from public.ipam_change_log where object_id = v_site order by id desc limit 1;
+  if v_row.source <> 'template' or jsonb_array_length(v_row.changes) <> 4 then
+    raise exception 'ipam redesign test: site layout change wrong: %', to_jsonb(v_row);
+  end if;
+  insert into public.ipam_sites (tenant_id, name) values (v_tenant, 'Redesign Zug') returning id into v_site2;
+  begin
+    update public.ipam_sites set asset_location_id = v_location where id = v_site2;
+    raise exception 'ipam redesign test: asset location linked twice';
+  exception when unique_violation then null;
+  end;
+  begin
+    update public.ipam_sites set asset_location_id = gen_random_uuid() where id = v_site2;
+    raise exception 'ipam redesign test: unknown asset location accepted';
+  exception when foreign_key_violation then null;
+  end;
+  begin
+    update public.ipam_sites set vlan_base = 5000 where id = v_site2;
+    raise exception 'ipam redesign test: vlan base out of range accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    update public.ipam_vlans set status = 'old' where id = v_vlan;
+    raise exception 'ipam redesign test: invalid vlan status accepted';
+  exception when check_violation then null;
+  end;
+  delete from public.asset_locations where id = v_location;
+  if (select asset_location_id from public.ipam_sites where id = v_site) is not null then
+    raise exception 'ipam redesign test: asset location not cleared';
+  end if;
+  if not public.ipam_delete_logged(v_tenant, 'template', v_template, v_manager, 'user') then
+    raise exception 'ipam redesign test: template not deleted';
+  end if;
+  if (select template_id from public.ipam_sites where id = v_site) is not null then
+    raise exception 'ipam redesign test: template delete wrong';
+  end if;
+
+  -- Löschen mit Herkunft, Folgeänderungen mit derselben Herkunft.
+  if not public.ipam_delete_logged(v_tenant, 'site', v_site, v_manager, 'user') then
+    raise exception 'ipam redesign test: site not deleted';
+  end if;
+  select * into v_row from public.ipam_change_log where object_id = v_site order by id desc limit 1;
+  if v_row.action <> 'delete' or v_row.source <> 'user' or v_row.actor_id is distinct from v_manager
+     or v_row.before ->> 'name' <> 'Redesign Baar' then
+    raise exception 'ipam redesign test: site delete not logged: %', to_jsonb(v_row);
+  end if;
+  select * into v_row from public.ipam_change_log where object_id = v_vlan order by id desc limit 1;
+  if v_row.action <> 'update' or v_row.source <> 'user' or v_row.changes <> '["site_id"]'::jsonb then
+    raise exception 'ipam redesign test: cascaded change not attributed: %', to_jsonb(v_row);
+  end if;
+  raise notice 'ipam redesign checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
