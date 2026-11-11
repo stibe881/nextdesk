@@ -180,11 +180,33 @@ type ReturnAsset = {
   returnedAt: string | null;
   returnTask: { taskId: string; status: string; sameEntry: boolean } | null;
 };
+type LinkedTask = { taskId: string; status: string; sameEntry: boolean };
+type ReturnLoan = {
+  lineId: string;
+  orderNumber: string | null;
+  itemName: string;
+  quantity: number;
+  loanUntil: string | null;
+  returned: boolean;
+  returnTask: LinkedTask | null;
+};
+type ReturnLicense = {
+  assignmentId: string;
+  licenseTitle: string;
+  assignedAt: string;
+  released: boolean;
+  revokeTask: LinkedTask | null;
+};
+type ReturnLocation = { id: string; name: string };
 type ReturnOverview = {
   matches: ReturnRequester[];
   requesters: ReturnRequester[];
   selectedRequesterId: string | null;
   assets: ReturnAsset[];
+  loans: ReturnLoan[];
+  licenses: ReturnLicense[];
+  locations: ReturnLocation[];
+  defaultLocationId: string | null;
 };
 function isReturnOverview(value: unknown): value is ReturnOverview {
   return Boolean(
@@ -192,8 +214,28 @@ function isReturnOverview(value: unknown): value is ReturnOverview {
     typeof value === "object" &&
     Array.isArray((value as ReturnOverview).matches) &&
     Array.isArray((value as ReturnOverview).requesters) &&
-    Array.isArray((value as ReturnOverview).assets),
+    Array.isArray((value as ReturnOverview).assets) &&
+    Array.isArray((value as ReturnOverview).loans) &&
+    Array.isArray((value as ReturnOverview).licenses) &&
+    Array.isArray((value as ReturnOverview).locations),
   );
+}
+function linkedTaskLabel(
+  task: LinkedTask | null,
+  done: boolean,
+  doneLabel: string,
+  kind: string,
+) {
+  if (done) return doneLabel;
+  if (!task) return null;
+  if (!task.sameEntry) return `${kind} in anderem Austritt`;
+  const labels: Record<string, string> = {
+    open: `${kind} offen`,
+    in_progress: `${kind} in Arbeit`,
+    blocked: `${kind} blockiert`,
+    completed: `${kind} erledigt`,
+  };
+  return labels[task.status] ?? `${kind} offen`;
 }
 function requesterLabel(requester: ReturnRequester) {
   return requester.email
@@ -215,8 +257,10 @@ function returnStateLabel(asset: ReturnAsset) {
 }
 
 /**
- * Geräte der austretenden Person. Pro gewähltem Gerät entsteht eine
- * Rückgabe-Aufgabe; ist sie erledigt, kommt das Gerät wieder an Lager.
+ * Geräte, offene Shop-Ausleihen und Lizenzen der austretenden Person. Pro
+ * gewähltem Eintrag entsteht eine Aufgabe; ist sie erledigt, kommt das Gerät
+ * bzw. die Ausleihe an den gewählten Lagerort zurück, die Lizenz wird
+ * entzogen.
  */
 function AssetReturnsPanel({
   entry,
@@ -231,6 +275,9 @@ function AssetReturnsPanel({
   const [overview, setOverview] = useState<ReturnOverview | null>(null);
   const [requesterId, setRequesterId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [selectedLoans, setSelectedLoans] = useState<string[]>([]);
+  const [selectedLicenses, setSelectedLicenses] = useState<string[]>([]);
+  const [locationId, setLocationId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -268,6 +315,23 @@ function AssetReturnsPanel({
           ),
         ),
       );
+      setSelectedLoans((current) =>
+        current.filter((id) =>
+          value.loans.some((loan) => loan.lineId === id && !loan.returnTask),
+        ),
+      );
+      setSelectedLicenses((current) =>
+        current.filter((id) =>
+          value.licenses.some(
+            (license) => license.assignmentId === id && !license.revokeTask,
+          ),
+        ),
+      );
+      setLocationId((current) =>
+        current && value.locations.some((location) => location.id === current)
+          ? current
+          : value.defaultLocationId,
+      );
     } catch (loadError) {
       setError(
         await functionErrorMessage(
@@ -283,8 +347,10 @@ function AssetReturnsPanel({
     if (open) void load(requesterId);
     // Reload when the panel opens or a task of this entry changed state.
   }, [open, taskSignature]);
+  const selectedCount =
+    selected.length + selectedLoans.length + selectedLicenses.length;
   async function createTasks() {
-    if (!supabase || !selected.length) return;
+    if (!supabase || !selectedCount) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -297,6 +363,11 @@ function AssetReturnsPanel({
             tenantId,
             entryId: entry.id,
             assignmentIds: selected,
+            ...(selectedLoans.length ? { loanLineIds: selectedLoans } : {}),
+            ...(selectedLicenses.length
+              ? { licenseAssignmentIds: selectedLicenses }
+              : {}),
+            ...(locationId ? { returnLocationId: locationId } : {}),
           },
         },
       );
@@ -308,10 +379,12 @@ function AssetReturnsPanel({
             )
           : 0;
       setSelected([]);
+      setSelectedLoans([]);
+      setSelectedLicenses([]);
       setNotice(
         created === 1
-          ? "Eine Rückgabe-Aufgabe wurde erstellt."
-          : `${created} Rückgabe-Aufgaben wurden erstellt.`,
+          ? "Eine Aufgabe wurde erstellt."
+          : `${created} Aufgaben wurden erstellt.`,
       );
       // New tasks change the entry's task list, which reloads this panel.
       await onCreated();
@@ -336,12 +409,28 @@ function AssetReturnsPanel({
   const selectable = (overview?.assets ?? []).filter(
     (asset) => !asset.returnTask && !asset.returnedAt,
   );
+  const selectableLoans = (overview?.loans ?? []).filter(
+    (loan) => !loan.returnTask && !loan.returned,
+  );
+  const selectableLicenses = (overview?.licenses ?? []).filter(
+    (license) => !license.revokeTask && !license.released,
+  );
+  const selectableCount =
+    selectable.length + selectableLoans.length + selectableLicenses.length;
+  const toggle = (
+    setter: (update: (current: string[]) => string[]) => void,
+    id: string,
+    checked: boolean,
+  ) =>
+    setter((current) =>
+      checked ? [...current, id] : current.filter((entry) => entry !== id),
+    );
   return (
     <details
       className="onboarding__details onboarding__returns"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary>Geräte-Rückgabe</summary>
+      <summary>Rückgaben und Lizenzen</summary>
       {error ? (
         <p
           className="onboarding__message onboarding__message--error"
@@ -453,38 +542,193 @@ function AssetReturnsPanel({
               Dieser Person sind keine Geräte zugewiesen.
             </p>
           ) : null}
-          {selectable.length ? (
+          {overview.loans.length ? (
+            <>
+              <h4 className="onboarding__returns-heading">
+                Offene Shop-Ausleihen
+              </h4>
+              <ul className="onboarding__returns-list">
+                {overview.loans.map((loan) => {
+                  const state = linkedTaskLabel(
+                    loan.returnTask,
+                    loan.returned,
+                    "Zurückgegeben",
+                    "Rückgabe-Aufgabe",
+                  );
+                  const checkable = !loan.returnTask && !loan.returned;
+                  return (
+                    <li key={loan.lineId}>
+                      <label>
+                        <input
+                          checked={selectedLoans.includes(loan.lineId)}
+                          disabled={!checkable || busy}
+                          onChange={(event) =>
+                            toggle(
+                              setSelectedLoans,
+                              loan.lineId,
+                              event.target.checked,
+                            )
+                          }
+                          type="checkbox"
+                        />
+                        <span>
+                          <strong>
+                            {loan.quantity > 1 ? `${loan.quantity} × ` : ""}
+                            {loan.itemName}
+                          </strong>
+                          <small>
+                            {[
+                              loan.orderNumber
+                                ? `Bestellung ${loan.orderNumber}`
+                                : null,
+                              loan.loanUntil
+                                ? `Rückgabe bis ${dateLabel(loan.loanUntil)}`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </small>
+                        </span>
+                      </label>
+                      {state ? (
+                        <em
+                          className={
+                            loan.returned ||
+                            loan.returnTask?.status === "completed"
+                              ? "is-done"
+                              : ""
+                          }
+                        >
+                          {state}
+                        </em>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          ) : null}
+          {overview.licenses.length ? (
+            <>
+              <h4 className="onboarding__returns-heading">Lizenzen</h4>
+              <ul className="onboarding__returns-list">
+                {overview.licenses.map((license) => {
+                  const state = linkedTaskLabel(
+                    license.revokeTask,
+                    license.released,
+                    "Entzogen",
+                    "Entzug",
+                  );
+                  const checkable = !license.revokeTask && !license.released;
+                  return (
+                    <li key={license.assignmentId}>
+                      <label>
+                        <input
+                          checked={selectedLicenses.includes(
+                            license.assignmentId,
+                          )}
+                          disabled={!checkable || busy}
+                          onChange={(event) =>
+                            toggle(
+                              setSelectedLicenses,
+                              license.assignmentId,
+                              event.target.checked,
+                            )
+                          }
+                          type="checkbox"
+                        />
+                        <span>
+                          <strong>{license.licenseTitle}</strong>
+                          <small>
+                            zugewiesen seit{" "}
+                            {dateLabel(license.assignedAt.slice(0, 10))}
+                          </small>
+                        </span>
+                      </label>
+                      {state ? (
+                        <em
+                          className={
+                            license.released ||
+                            license.revokeTask?.status === "completed"
+                              ? "is-done"
+                              : ""
+                          }
+                        >
+                          {state}
+                        </em>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          ) : null}
+          {selectableCount && overview.locations.length ? (
+            <div className="onboarding__returns-picker">
+              <label>
+                Rücknahme an Lagerort
+                <select
+                  disabled={busy}
+                  onChange={(event) =>
+                    setLocationId(event.target.value || null)
+                  }
+                  value={locationId ?? ""}
+                >
+                  <option value="">Standard-Lagerort bzw. Herkunftsort</option>
+                  {overview.locations.map((location) => (
+                    <option key={location.id} value={location.id}>
+                      {location.name}
+                      {location.id === overview.defaultLocationId
+                        ? " (Standard)"
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
+          {selectableCount ? (
             <div className="onboarding__actions">
               <button
                 className="secondary-button"
                 disabled={busy}
-                onClick={() =>
+                onClick={() => {
+                  const all = selectedCount === selectableCount;
                   setSelected(
-                    selected.length === selectable.length
+                    all ? [] : selectable.map((asset) => asset.assignmentId),
+                  );
+                  setSelectedLoans(
+                    all ? [] : selectableLoans.map((loan) => loan.lineId),
+                  );
+                  setSelectedLicenses(
+                    all
                       ? []
-                      : selectable.map((asset) => asset.assignmentId),
-                  )
-                }
+                      : selectableLicenses.map(
+                          (license) => license.assignmentId,
+                        ),
+                  );
+                }}
                 type="button"
               >
-                {selected.length === selectable.length
+                {selectedCount === selectableCount
                   ? "Auswahl aufheben"
                   : "Alle auswählen"}
               </button>
               <button
                 className="primary-button"
-                disabled={busy || !selected.length}
+                disabled={busy || !selectedCount}
                 onClick={() => void createTasks()}
                 type="button"
               >
-                {busy ? "Wird erstellt …" : "Rückgabe-Aufgaben erstellen"}
+                {busy ? "Wird erstellt …" : "Aufgaben erstellen"}
               </button>
             </div>
           ) : null}
           <p className="onboarding__hint">
             Die Aufgaben sind am Austrittsdatum fällig und gehen an die
             ICT-Verantwortung. Sobald eine Rückgabe erledigt ist, gilt das Gerät
-            als zurückgegeben und kommt wieder an Lager.
+            bzw. die Ausleihe als zurückgegeben und wird an den gewählten
+            Lagerort gebucht; erledigte Lizenz-Aufgaben geben die Lizenz frei.
           </p>
         </>
       )}

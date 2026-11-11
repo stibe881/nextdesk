@@ -198,6 +198,16 @@ Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
 Geräte mit bereits vorhandener Seriennummer werden übersprungen, es wird nie
 etwas gelöscht.
 
+Sobald der Abgleich freigegeben ist, läuft er zusätzlich **jede Nacht (gegen
+03:10 Uhr, Sommerzeit 04:10 Uhr)** automatisch (Cron `nextdesk-intune-scheduled-sync`, Edge Function
+`intune-scheduled-sync`). Er läuft im Namen der Person, die die
+Intune-Anbindung zuletzt gespeichert hat (sonst einer anderen Person mit dem
+Recht, Asset-Integrationen zu verwalten). Ist die IP-Adressverwaltung aktiv,
+liefert derselbe Geräteabruf auch die MAC-Adressen; der bisherige separate
+nächtliche Intune-Abruf der IP-Adressverwaltung entfällt dann.
+Voraussetzung ist die Dispatch-Konfiguration für Cron-Aufrufe (wie bei
+PRTG/IP-Adressverwaltung).
+
 ![Microsoft-Intune-Abgleich](images/in-intune.jpg)
 
 ### Push-Benachrichtigungen (iOS)

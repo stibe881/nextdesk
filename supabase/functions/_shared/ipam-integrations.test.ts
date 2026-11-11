@@ -42,30 +42,48 @@ Deno.test("Intune devices are parsed and paged", async () => {
     },
   );
   assertEquals(parseIntuneMacDevice({ deviceName: "ohne id" }), null);
+  // Gemeinsamer Geräteabruf (mit dem Asset-Abgleich): Folgelinks müssen
+  // dieselbe Auswahl tragen, fremde Hosts werden abgelehnt.
   const calls: string[] = [];
+  let evil = false;
   const fakeFetch = ((input: URL | string) => {
     calls.push(String(input));
+    const select = new URL(String(input)).searchParams.get("$select") ?? "";
+    const next = new URL(
+      "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices",
+    );
+    next.searchParams.set("$skiptoken", "x");
+    next.searchParams.set("$top", "100");
+    next.searchParams.set("$select", select);
     const body =
       calls.length === 1
         ? {
             value: [{ id: "1", wiFiMacAddress: "AABBCCDDEE01" }],
-            "@odata.nextLink":
-              "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?$skiptoken=x",
+            "@odata.nextLink": evil
+              ? "https://evil.example/v1.0/deviceManagement/managedDevices"
+              : next.toString(),
           }
-        : {
-            value: [{ id: "2" }],
-            "@odata.nextLink":
-              "https://evil.example/v1.0/deviceManagement/managedDevices",
-          };
+        : { value: [{ id: "2", ethernetMacAddress: "aa-bb-cc-dd-ee-02" }] };
     return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
   }) as typeof fetch;
   const devices = await fetchIntuneMacDevices("token", fakeFetch);
   assertEquals(
-    devices.map((device) => device.id),
-    ["1", "2"],
+    devices.map((device) => [device.id, device.wifi_mac, device.ethernet_mac]),
+    [
+      ["1", "aa:bb:cc:dd:ee:01", null],
+      ["2", null, "aa:bb:cc:dd:ee:02"],
+    ],
   );
   assertEquals(calls.length, 2);
   assert(calls[0]!.includes("wiFiMacAddress"));
+  assert(calls[0]!.includes("serialNumber"));
+  calls.length = 0;
+  evil = true;
+  let rejected = false;
+  await fetchIntuneMacDevices("token", fakeFetch).catch(() => {
+    rejected = true;
+  });
+  assert(rejected);
 });
 
 Deno.test("keys, secrets and signatures", async () => {

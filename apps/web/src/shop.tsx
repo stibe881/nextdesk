@@ -1567,6 +1567,18 @@ function OrderDialog({
                   <dd>{order.placedByName}</dd>
                 </div>
               ) : null}
+              {order.source?.type === "security_case" ? (
+                <div>
+                  <dt>Herkunft</dt>
+                  <dd>
+                    Sicherheitsfall
+                    {order.source.reference
+                      ? ` ${order.source.reference}`
+                      : ""}{" "}
+                    (ohne Genehmigung)
+                  </dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Bestellt am</dt>
                 <dd>{formatDate(order.createdAt)}</dd>
@@ -2765,9 +2777,7 @@ export function CatalogEditor({
         const firstNew = draft.newFiles[0];
         if (
           firstNew &&
-          (!inShop ||
-            draft.images.length === 0 ||
-            !stock.item?.hasPrimaryImage)
+          (!inShop || draft.images.length === 0 || !stock.item?.hasPrimaryImage)
         ) {
           await stock.api.uploadImage(itemId, firstNew);
         } else if (draft.removedImageIds.includes("lager")) {

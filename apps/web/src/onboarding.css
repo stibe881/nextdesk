@@ -595,3 +595,10 @@
   background: var(--success-soft);
   color: var(--success);
 }
+
+.onboarding__returns-heading {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}

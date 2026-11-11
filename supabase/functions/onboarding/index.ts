@@ -1,5 +1,11 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  ExtrasDatabaseError,
+  licenseRevocationTaskTitle,
+  loanReturnTaskTitle,
+  offboardingExtras as loadOffboardingExtras,
+} from "./offboarding-extras.ts";
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 48 * 1024;
@@ -61,6 +67,12 @@ type Action =
       tenantId: string;
       entryId: string;
       assignmentIds: string[];
+      /** Offene Shop-Ausleihen (Bestellpositionen), die zurückkommen. */
+      loanLineIds?: string[];
+      /** Lizenzzuweisungen, die beim Austritt entzogen werden. */
+      licenseAssignmentIds?: string[];
+      /** Lagerort für die Rücknahme; ohne Angabe der Standard-Lagerort. */
+      returnLocationId?: string;
     };
 
 class HttpError extends Error {
@@ -334,20 +346,52 @@ export function parseAction(value: unknown): Action | null {
   }
   if (value.type === "createReturnTasks") {
     const ids = Array.isArray(value.assignmentIds) ? value.assignmentIds : [];
+    const optionalIds = (entry: unknown): string[] | null =>
+      entry === undefined
+        ? []
+        : Array.isArray(entry) && entry.every(isUuid)
+          ? [...new Set(entry.map((id) => String(id).toLowerCase()))]
+          : null;
+    const loanLineIds = optionalIds(value.loanLineIds);
+    const licenseAssignmentIds = optionalIds(value.licenseAssignmentIds);
+    const uniqueIds = [...new Set(ids.map((id) => String(id).toLowerCase()))];
+    const total =
+      uniqueIds.length +
+      (loanLineIds?.length ?? 0) +
+      (licenseAssignmentIds?.length ?? 0);
     return isUuid(value.tenantId) &&
       isUuid(value.entryId) &&
       Array.isArray(value.assignmentIds) &&
-      ids.length >= 1 &&
-      ids.length <= MAX_RETURN_TASKS &&
       ids.every(isUuid) &&
-      onlyKeys(value, ["type", "tenantId", "entryId", "assignmentIds"])
+      loanLineIds !== null &&
+      licenseAssignmentIds !== null &&
+      total >= 1 &&
+      ids.length +
+        (loanLineIds?.length ?? 0) +
+        (licenseAssignmentIds?.length ?? 0) <=
+        MAX_RETURN_TASKS &&
+      (value.returnLocationId === undefined ||
+        value.returnLocationId === null ||
+        isUuid(value.returnLocationId)) &&
+      onlyKeys(value, [
+        "type",
+        "tenantId",
+        "entryId",
+        "assignmentIds",
+        "loanLineIds",
+        "licenseAssignmentIds",
+        "returnLocationId",
+      ])
       ? {
           type: value.type,
           tenantId: value.tenantId.toLowerCase(),
           entryId: value.entryId.toLowerCase(),
-          assignmentIds: [
-            ...new Set(ids.map((id) => String(id).toLowerCase())),
-          ],
+          assignmentIds: uniqueIds,
+          ...(loanLineIds?.length ? { loanLineIds } : {}),
+          ...(licenseAssignmentIds?.length ? { licenseAssignmentIds } : {}),
+          ...(isUuid(value.returnLocationId)
+            ? { returnLocationId: value.returnLocationId.toLowerCase() }
+            : {}),
         }
       : null;
   }
@@ -1069,6 +1113,8 @@ async function updateTaskStatus(
       status: action.status,
       completed_at:
         action.status === "completed" ? new Date().toISOString() : null,
+      // Wer abschliesst, bucht Rücknahmen ins Lager (Trigger 0314).
+      completed_by: action.status === "completed" ? actorId : null,
     })
     .eq("tenant_id", action.tenantId)
     .eq("id", action.taskId);
@@ -1429,11 +1475,26 @@ async function offboardingAssets(
   const assetsById = new Map(
     ((assetsResult.data ?? []) as Row[]).map((row) => [String(row.id), row]),
   );
+  let extras: Awaited<ReturnType<typeof loadOffboardingExtras>>;
+  try {
+    extras = await loadOffboardingExtras(
+      admin,
+      action.tenantId,
+      entry.id,
+      entryTaskIds,
+      selectedRequesterId,
+    );
+  } catch (cause) {
+    if (cause instanceof ExtrasDatabaseError)
+      databaseFailure(cause.databaseError as { code?: string });
+    throw cause;
+  }
   return {
     entry: { id: entry.id, employeeName: entry.employeeName },
     matches,
     requesters,
     selectedRequesterId,
+    ...extras,
     assets: assignmentRows.map((row) => {
       const asset: Row = assetsById.get(String(row.asset_id)) ?? {};
       const task = taskByAssignment.get(String(row.id));
@@ -1474,107 +1535,290 @@ async function createReturnTasks(
     action.tenantId,
     action.entryId,
   );
-  const { data: assignments, error: assignmentsError } = await admin
-    .from("asset_assignments")
-    .select("id, asset_id")
-    .eq("tenant_id", action.tenantId)
-    .in("id", action.assignmentIds)
-    .is("returned_at", null)
-    .limit(action.assignmentIds.length);
-  if (assignmentsError) databaseFailure(assignmentsError);
-  const found = (assignments ?? []) as Row[];
-  if (found.length !== action.assignmentIds.length)
-    throw new HttpError(
-      422,
-      "onboarding_assignment_invalid",
-      "Mindestens eine Gerätezuweisung ist nicht mehr aktiv.",
-    );
-  const { data: existing, error: existingError } = await admin
-    .from("onboarding_asset_returns")
-    .select("assignment_id")
-    .eq("tenant_id", action.tenantId)
-    .in("assignment_id", action.assignmentIds)
-    .limit(action.assignmentIds.length);
-  if (existingError) databaseFailure(existingError);
+  const loanLineIds = action.loanLineIds ?? [];
+  const licenseIds = action.licenseAssignmentIds ?? [];
+  const found: Row[] = [];
+  if (action.assignmentIds.length) {
+    const { data: assignments, error: assignmentsError } = await admin
+      .from("asset_assignments")
+      .select("id, asset_id")
+      .eq("tenant_id", action.tenantId)
+      .in("id", action.assignmentIds)
+      .is("returned_at", null)
+      .limit(action.assignmentIds.length);
+    if (assignmentsError) databaseFailure(assignmentsError);
+    found.push(...((assignments ?? []) as Row[]));
+    if (found.length !== action.assignmentIds.length)
+      throw new HttpError(
+        422,
+        "onboarding_assignment_invalid",
+        "Mindestens eine Gerätezuweisung ist nicht mehr aktiv.",
+      );
+  }
+  const loanLines: Row[] = [];
+  if (loanLineIds.length) {
+    const { data, error } = await admin
+      .from("shop_order_lines")
+      .select("id, order_id, item_name")
+      .eq("tenant_id", action.tenantId)
+      .in("id", loanLineIds)
+      .eq("kind", "loan")
+      .eq("status", "issued")
+      .limit(loanLineIds.length);
+    if (error) databaseFailure(error);
+    loanLines.push(...((data ?? []) as Row[]));
+    if (loanLines.length !== loanLineIds.length)
+      throw new HttpError(
+        422,
+        "onboarding_loan_invalid",
+        "Mindestens eine Ausleihe ist nicht mehr offen.",
+      );
+  }
+  const seats: Row[] = [];
+  if (licenseIds.length) {
+    const { data, error } = await admin
+      .from("license_assignments")
+      .select("id, license_id")
+      .eq("tenant_id", action.tenantId)
+      .in("id", licenseIds)
+      .is("released_at", null)
+      .limit(licenseIds.length);
+    if (error) databaseFailure(error);
+    seats.push(...((data ?? []) as Row[]));
+    if (seats.length !== licenseIds.length)
+      throw new HttpError(
+        422,
+        "onboarding_license_invalid",
+        "Mindestens eine Lizenzzuweisung ist nicht mehr aktiv.",
+      );
+  }
+  if (action.returnLocationId) {
+    const { data, error } = await admin
+      .from("inventory_locations")
+      .select("id")
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.returnLocationId)
+      .eq("active", true)
+      .maybeSingle();
+    if (error) databaseFailure(error);
+    if (!data)
+      throw new HttpError(
+        422,
+        "onboarding_location_invalid",
+        "Der gewählte Lagerort ist nicht mehr verfügbar.",
+      );
+  }
+  const [existingAssets, existingLoans, existingSeats] = await Promise.all([
+    action.assignmentIds.length
+      ? admin
+          .from("onboarding_asset_returns")
+          .select("assignment_id")
+          .eq("tenant_id", action.tenantId)
+          .in("assignment_id", action.assignmentIds)
+          .limit(action.assignmentIds.length)
+      : Promise.resolve({ data: [] as Row[], error: null }),
+    loanLineIds.length
+      ? admin
+          .from("onboarding_loan_returns")
+          .select("order_line_id")
+          .eq("tenant_id", action.tenantId)
+          .in("order_line_id", loanLineIds)
+          .limit(loanLineIds.length)
+      : Promise.resolve({ data: [] as Row[], error: null }),
+    licenseIds.length
+      ? admin
+          .from("onboarding_license_revocations")
+          .select("license_assignment_id")
+          .eq("tenant_id", action.tenantId)
+          .in("license_assignment_id", licenseIds)
+          .limit(licenseIds.length)
+      : Promise.resolve({ data: [] as Row[], error: null }),
+  ]);
+  for (const result of [existingAssets, existingLoans, existingSeats])
+    if (result.error) databaseFailure(result.error);
   const linked = new Set(
-    ((existing ?? []) as Row[]).map((row) => String(row.assignment_id)),
+    ((existingAssets.data ?? []) as Row[]).map((row) =>
+      String(row.assignment_id),
+    ),
   );
+  const linkedLoans = new Set(
+    ((existingLoans.data ?? []) as Row[]).map((row) =>
+      String(row.order_line_id),
+    ),
+  );
+  const linkedSeats = new Set(
+    ((existingSeats.data ?? []) as Row[]).map((row) =>
+      String(row.license_assignment_id),
+    ),
+  );
+  const skipped = linked.size + linkedLoans.size + linkedSeats.size;
   // Keep the order in which the devices were listed.
   const pendingAssignments = action.assignmentIds
     .filter((id) => !linked.has(id))
     .map((id) => found.find((row) => row.id === id) as Row);
-  if (!pendingAssignments.length) return { created: 0, skipped: linked.size };
+  const pendingLoans = loanLineIds
+    .filter((id) => !linkedLoans.has(id))
+    .map((id) => loanLines.find((row) => row.id === id) as Row);
+  const pendingSeats = licenseIds
+    .filter((id) => !linkedSeats.has(id))
+    .map((id) => seats.find((row) => row.id === id) as Row);
+  const pendingCount =
+    pendingAssignments.length + pendingLoans.length + pendingSeats.length;
+  if (!pendingCount) return { created: 0, skipped };
   const assetIds = [
     ...new Set(pendingAssignments.map((row) => String(row.asset_id))),
   ];
-  const [{ data: assets, error: assetsError }, lastTask] = await Promise.all([
-    admin
-      .from("assets")
-      .select("id, name, inventory_number, serial_number")
-      .eq("tenant_id", action.tenantId)
-      .in("id", assetIds)
-      .limit(assetIds.length),
-    admin
-      .from("onboarding_tasks")
-      .select("position")
-      .eq("tenant_id", action.tenantId)
-      .eq("entry_id", entry.id)
-      .order("position", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
-  if (assetsError) databaseFailure(assetsError);
-  if (lastTask.error) databaseFailure(lastTask.error);
+  const orderIds = [
+    ...new Set(pendingLoans.map((row) => String(row.order_id))),
+  ];
+  const titleLicenseIds = [
+    ...new Set(pendingSeats.map((row) => String(row.license_id))),
+  ];
+  const [assetsResult, ordersResult, licensesResult, lastTask] =
+    await Promise.all([
+      assetIds.length
+        ? admin
+            .from("assets")
+            .select("id, name, inventory_number, serial_number")
+            .eq("tenant_id", action.tenantId)
+            .in("id", assetIds)
+            .limit(assetIds.length)
+        : Promise.resolve({ data: [] as Row[], error: null }),
+      orderIds.length
+        ? admin
+            .from("shop_orders")
+            .select("id, order_number")
+            .eq("tenant_id", action.tenantId)
+            .in("id", orderIds)
+            .limit(orderIds.length)
+        : Promise.resolve({ data: [] as Row[], error: null }),
+      titleLicenseIds.length
+        ? admin
+            .from("licenses")
+            .select("id, title")
+            .eq("tenant_id", action.tenantId)
+            .in("id", titleLicenseIds)
+            .limit(titleLicenseIds.length)
+        : Promise.resolve({ data: [] as Row[], error: null }),
+      admin
+        .from("onboarding_tasks")
+        .select("position")
+        .eq("tenant_id", action.tenantId)
+        .eq("entry_id", entry.id)
+        .order("position", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+  for (const result of [assetsResult, ordersResult, licensesResult, lastTask])
+    if (result.error) databaseFailure(result.error);
   const assetsById = new Map(
-    ((assets ?? []) as Row[]).map((row) => [String(row.id), row]),
+    ((assetsResult.data ?? []) as Row[]).map((row) => [String(row.id), row]),
+  );
+  const orderNumbers = new Map(
+    ((ordersResult.data ?? []) as Row[]).map((row) => [
+      String(row.id),
+      String(row.order_number),
+    ]),
+  );
+  const licenseTitles = new Map(
+    ((licensesResult.data ?? []) as Row[]).map((row) => [
+      String(row.id),
+      String(row.title),
+    ]),
   );
   const startPosition = Number(lastTask.data?.position ?? 0);
-  if (startPosition + pendingAssignments.length > 100)
+  if (startPosition + pendingCount > 100)
     throw new HttpError(
       422,
       "onboarding_task_limit",
       "Dieser Austritt hat zu viele Aufgaben für weitere Rückgaben.",
     );
-  const tasks = pendingAssignments.map((assignment, index) => {
+  const task = (title: string, index: number) => ({
+    id: crypto.randomUUID(),
+    tenant_id: action.tenantId,
+    entry_id: entry.id,
+    title,
+    due_on: entry.startsOn,
+    responsible_user_id: entry.ictResponsibleUserId,
+    position: startPosition + index + 1,
+  });
+  const assetTasks = pendingAssignments.map((assignment, index) => {
     const asset: Row = assetsById.get(String(assignment.asset_id)) ?? {};
-    return {
-      id: crypto.randomUUID(),
-      tenant_id: action.tenantId,
-      entry_id: entry.id,
-      title: returnTaskTitle({
+    return task(
+      returnTaskTitle({
         name: asset.name,
         inventoryNumber: asset.inventory_number,
         serialNumber: asset.serial_number,
       }),
-      due_on: entry.startsOn,
-      responsible_user_id: entry.ictResponsibleUserId,
-      position: startPosition + index + 1,
-    };
+      index,
+    );
   });
+  const loanTasks = pendingLoans.map((line, index) =>
+    task(
+      loanReturnTaskTitle(
+        String(line.item_name),
+        orderNumbers.get(String(line.order_id)) ?? null,
+      ),
+      pendingAssignments.length + index,
+    ),
+  );
+  const seatTasks = pendingSeats.map((seat, index) =>
+    task(
+      licenseRevocationTaskTitle(
+        licenseTitles.get(String(seat.license_id)) ?? "Lizenz",
+      ),
+      pendingAssignments.length + pendingLoans.length + index,
+    ),
+  );
+  const tasks = [...assetTasks, ...loanTasks, ...seatTasks];
   const { error: tasksError } = await admin
     .from("onboarding_tasks")
     .insert(tasks);
   if (tasksError) databaseFailure(tasksError);
-  const { error: linksError } = await admin
-    .from("onboarding_asset_returns")
-    .insert(
-      tasks.map((task, index) => ({
-        tenant_id: action.tenantId,
-        task_id: task.id,
-        assignment_id: String(pendingAssignments[index].id),
-        asset_id: String(pendingAssignments[index].asset_id),
-      })),
-    );
+  const returnLocationId = action.returnLocationId ?? null;
+  const linkResults = await Promise.all([
+    assetTasks.length
+      ? admin.from("onboarding_asset_returns").insert(
+          assetTasks.map((created, index) => ({
+            tenant_id: action.tenantId,
+            task_id: created.id,
+            assignment_id: String(pendingAssignments[index].id),
+            asset_id: String(pendingAssignments[index].asset_id),
+            return_location_id: returnLocationId,
+          })),
+        )
+      : Promise.resolve({ error: null }),
+    loanTasks.length
+      ? admin.from("onboarding_loan_returns").insert(
+          loanTasks.map((created, index) => ({
+            tenant_id: action.tenantId,
+            task_id: created.id,
+            order_line_id: String(pendingLoans[index].id),
+            return_location_id: returnLocationId,
+          })),
+        )
+      : Promise.resolve({ error: null }),
+    seatTasks.length
+      ? admin.from("onboarding_license_revocations").insert(
+          seatTasks.map((created, index) => ({
+            tenant_id: action.tenantId,
+            task_id: created.id,
+            license_assignment_id: String(pendingSeats[index].id),
+          })),
+        )
+      : Promise.resolve({ error: null }),
+  ]);
+  const linksError = linkResults.find((result) => result.error)?.error;
   if (linksError) {
-    // A parallel request linked the same device first: remove the tasks of
-    // this attempt so no unlinked return task remains.
+    // A parallel request linked the same item first: remove the tasks of
+    // this attempt so no unlinked task remains (links cascade with them).
     await admin
       .from("onboarding_tasks")
       .delete()
       .eq("tenant_id", action.tenantId)
       .in(
         "id",
-        tasks.map((task) => task.id),
+        tasks.map((created) => created.id),
       );
     databaseFailure(linksError);
   }
@@ -1585,9 +1829,15 @@ async function createReturnTasks(
     "onboarding.asset_return_tasks.created",
     "onboarding_entry",
     entry.id,
-    { created: tasks.length, skipped: linked.size },
+    {
+      created: tasks.length,
+      skipped,
+      devices: assetTasks.length,
+      loans: loanTasks.length,
+      licenses: seatTasks.length,
+    },
   );
-  return { created: tasks.length, skipped: linked.size };
+  return { created: tasks.length, skipped };
 }
 
 const handler = withSupabase(

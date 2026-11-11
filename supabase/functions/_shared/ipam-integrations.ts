@@ -1,13 +1,18 @@
 // IPAM-Integrationen, gemeinsam für ipam-sync (Benutzeraktionen) und
 // ipam-api (REST-API und Cron):
 //  * Intune-Geräte mit MAC-Adressen aus Microsoft Graph lesen und speichern
+//    (gemeinsamer Geräteabruf mit dem Asset-Abgleich, siehe
+//    _shared/intune-managed-devices-graph.ts)
 //  * Webhooks signieren (HMAC-SHA256) und zustellen
 //  * API-Schlüssel und Webhook-Geheimnisse erzeugen
 
 import {
   type FetchLike,
   IntuneGraphError,
+  type IntuneManagedDevice,
+  normalizeMacAddress,
   readIntuneGraphCredentials,
+  readIntuneManagedDevices,
   requestIntuneGraphAccessToken,
 } from "./intune-managed-devices-graph.ts";
 
@@ -15,19 +20,9 @@ import {
 type Admin = any;
 type Row = Record<string, unknown>;
 
-const GRAPH_ORIGIN = "https://graph.microsoft.com";
-const GRAPH_PATH = "/v1.0/deviceManagement/managedDevices";
-const GRAPH_SELECT = [
-  "id",
-  "deviceName",
-  "wiFiMacAddress",
-  "ethernetMacAddress",
-  "userPrincipalName",
-  "managementState",
-  "lastSyncDateTime",
-].join(",");
-const GRAPH_MAX_PAGES = 200;
-const GRAPH_TIMEOUT_MS = 15_000;
+// Ein geplanter Abruf (Cron) entfällt, wenn der tägliche gemeinsame Abruf
+// (intune-scheduled-sync) die Geräte schon geliefert hat.
+const SHARED_FETCH_FRESH_HOURS = 20;
 
 export const WEBHOOK_EVENTS = [
   "address.reserved",
@@ -56,13 +51,7 @@ export type IntuneMacDevice = {
 };
 
 /** «AABBCCDDEEFF», «aa-bb-…», «aa:bb:…» → «aa:bb:cc:dd:ee:ff» oder null. */
-export function normalizeMac(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const hex = value.replace(/[\s:.-]/g, "").toLowerCase();
-  if (!/^[0-9a-f]{12}$/.test(hex)) return null;
-  if (hex === "000000000000" || hex === "ffffffffffff") return null;
-  return hex.match(/.{2}/g)!.join(":");
-}
+export const normalizeMac = normalizeMacAddress;
 
 function text(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
@@ -91,59 +80,54 @@ export function parseIntuneMacDevice(value: unknown): IntuneMacDevice | null {
   };
 }
 
-function nextGraphUrl(value: unknown): URL | null {
-  if (typeof value !== "string" || value.length > 8192) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" &&
-      url.origin === GRAPH_ORIGIN &&
-      url.pathname === GRAPH_PATH
-      ? url
-      : null;
-  } catch {
-    return null;
-  }
+/** Gerät aus dem gemeinsamen Abruf → Zeile für ipam_intune_store. */
+export function toIntuneMacDevice(
+  device: IntuneManagedDevice,
+): IntuneMacDevice {
+  return {
+    id: device.external_device_id,
+    device_name: device.device_name,
+    wifi_mac: device.network?.wifi_mac ?? null,
+    ethernet_mac: device.network?.ethernet_mac ?? null,
+    user_principal_name: device.network?.user_principal_name ?? null,
+    management_state: device.network?.management_state ?? null,
+    last_sync_at: device.last_sync_at,
+  };
 }
 
-/** Liest alle verwalteten Geräte mit MAC-Adressen (Client-Credentials). */
+/**
+ * Liest alle verwalteten Geräte mit MAC-Adressen (Client-Credentials) über
+ * den gemeinsamen Geräteabruf.
+ */
 export async function fetchIntuneMacDevices(
   accessToken: string,
   fetchImpl: FetchLike = fetch,
 ): Promise<IntuneMacDevice[]> {
   const devices: IntuneMacDevice[] = [];
-  let url: URL | null = new URL(`${GRAPH_ORIGIN}${GRAPH_PATH}`);
-  url.searchParams.set("$select", GRAPH_SELECT);
-  url.searchParams.set("$top", "500");
-  for (let page = 0; url && page < GRAPH_MAX_PAGES; page += 1) {
-    const response = await fetchImpl(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
-      },
-      redirect: "error",
-      signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
-    }).catch(() => {
-      throw new IntuneGraphError("provider_unavailable");
-    });
-    if (response.status === 429)
-      throw new IntuneGraphError("provider_rate_limited");
-    if (!response.ok) throw new IntuneGraphError("provider_unavailable");
-    const payload: unknown = await response.json().catch(() => null);
-    if (!isRecord(payload) || !Array.isArray(payload.value)) {
-      throw new IntuneGraphError("provider_payload_invalid");
-    }
-    for (const entry of payload.value) {
-      const device = parseIntuneMacDevice(entry);
-      if (device) devices.push(device);
-    }
-    url = nextGraphUrl(payload["@odata.nextLink"]);
-  }
+  await readIntuneManagedDevices(
+    accessToken,
+    async (page) => {
+      devices.push(...page.map(toIntuneMacDevice));
+    },
+    fetchImpl,
+    undefined,
+    { includeNetwork: true },
+  );
   return devices;
 }
 
 export type IntuneRefreshResult =
   | { status: "ok"; devices: number }
+  | { status: "skipped"; code: "recent_shared_fetch" }
   | { status: "not_configured" | "failed"; code: string };
+
+export type IntuneRefreshOptions = {
+  /**
+   * Bereits abgerufene Geräte (gemeinsamer Abruf mit dem Asset-Abgleich):
+   * dann wird Graph nicht nochmals gefragt.
+   */
+  devices?: IntuneMacDevice[];
+};
 
 /**
  * Holt die Intune-Geräte des Mandanten (wenn die Intune-Anbindung aktiv und
@@ -155,6 +139,7 @@ export async function refreshIntuneDevices(
   actorId: string | null,
   trigger: "manual" | "cron",
   fetchImpl: FetchLike = fetch,
+  options: IntuneRefreshOptions = {},
 ): Promise<IntuneRefreshResult> {
   const { data: connection, error } = await admin
     .from("asset_intune_connections")
@@ -168,8 +153,26 @@ export async function refreshIntuneDevices(
   ) {
     return { status: "not_configured", code: "intune_not_connected" };
   }
-  const credentials = readIntuneGraphCredentials();
-  if (!credentials)
+  const prefetched = options.devices ?? null;
+  if (!prefetched && trigger === "cron") {
+    // Doppelabruf vermeiden: der tägliche gemeinsame Abruf hat geliefert.
+    const since = new Date(
+      Date.now() - SHARED_FETCH_FRESH_HOURS * 3_600_000,
+    ).toISOString();
+    const { data: recent } = await admin
+      .from("ipam_sync_runs")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("source", "intune_graph")
+      .eq("status", "succeeded")
+      .gte("started_at", since)
+      .limit(1);
+    if (Array.isArray(recent) && recent.length > 0) {
+      return { status: "skipped", code: "recent_shared_fetch" };
+    }
+  }
+  const credentials = prefetched ? null : readIntuneGraphCredentials();
+  if (!prefetched && !credentials)
     return { status: "not_configured", code: "provider_not_configured" };
 
   const run = await admin
@@ -200,12 +203,16 @@ export async function refreshIntuneDevices(
       .eq("id", runId);
   };
   try {
-    const token = await requestIntuneGraphAccessToken(
-      connection.directory_tenant_id,
-      credentials,
-      fetchImpl,
-    );
-    const devices = await fetchIntuneMacDevices(token, fetchImpl);
+    const devices =
+      prefetched ??
+      (await fetchIntuneMacDevices(
+        await requestIntuneGraphAccessToken(
+          connection.directory_tenant_id,
+          credentials!,
+          fetchImpl,
+        ),
+        fetchImpl,
+      ));
     const stored = await admin.rpc("ipam_intune_store", {
       p_tenant_id: tenantId,
       p_devices: devices,

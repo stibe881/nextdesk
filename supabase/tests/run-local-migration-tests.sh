@@ -13965,4 +13965,324 @@ $$;
 rollback;
 SQL
 
+# 0314: Lager, Shop, Assets: Zuweisung bei Ausgabe, Rücknahme ins Lager,
+# Austritt (Ausleihen, Lizenzen), Shop-Erinnerungen, Lager-Automatik und
+# Bestellung ohne Genehmigung.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f3140000-0000-4000-8000-000000000001';
+  v_employee constant uuid := 'f3140000-0000-4000-8000-000000000002';
+  v_manager constant uuid := 'f3140000-0000-4000-8000-000000000003';
+  v_deputy constant uuid := 'f3140000-0000-4000-8000-000000000004';
+  v_tenant uuid;
+  v_requester_role uuid;
+  v_lager uuid;
+  v_rueck uuid;
+  v_notebook_item uuid;
+  v_cable uuid;
+  v_asset uuid;
+  v_asset2 uuid;
+  v_serial uuid;
+  v_serial2 uuid;
+  v_cat_notebook uuid;
+  v_cat_headset uuid;
+  v_cat_loan uuid;
+  v_order uuid;
+  v_line uuid;
+  v_status text;
+  v_contact uuid;
+  v_assignment uuid;
+  v_template uuid;
+  v_entry uuid;
+  v_task_asset uuid := gen_random_uuid();
+  v_task_loan uuid := gen_random_uuid();
+  v_task_license uuid := gen_random_uuid();
+  v_license uuid;
+  v_seat uuid;
+  v_reservation uuid;
+  v_count integer;
+  v_result jsonb;
+begin
+  insert into auth.users (id) values (v_owner), (v_employee), (v_manager), (v_deputy);
+  v_tenant := public.provision_personal_workspace(v_owner, 'owner@lager.example', 'Lager Test');
+  select id into v_requester_role from public.roles where tenant_id = v_tenant and name = 'Requester';
+  insert into public.user_profiles (id, display_name)
+  values (v_employee, 'Erika Lager'), (v_manager, 'Chef Lager'), (v_deputy, 'Vertretung Lager');
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_tenant, v_employee, 'active', now()), (v_tenant, v_manager, 'active', now()),
+         (v_tenant, v_deputy, 'active', now());
+  insert into public.user_role_assignments (tenant_id, user_id, role_id, assigned_by)
+  values (v_tenant, v_employee, v_requester_role, v_owner), (v_tenant, v_manager, v_requester_role, v_owner),
+         (v_tenant, v_deputy, v_requester_role, v_owner);
+  insert into public.tenant_member_directory (tenant_id, user_id, manager_user_id)
+  values (v_tenant, v_employee, v_manager);
+  update public.tenant_feature_flags set enabled = true
+  where tenant_id = v_tenant and feature_key in ('inventory.management', 'notifications.push');
+  insert into public.tenant_feature_flags (tenant_id, feature_key, enabled, configuration)
+  values (v_tenant, 'notifications.push', true, '{"contentLevel":"minimal","checkInRequired":false}'::jsonb)
+  on conflict (tenant_id, feature_key) do update
+    set enabled = true, configuration = excluded.configuration, pilot_ends_at = null;
+
+  -- Arbeitstage: Freitag → Dienstag = 2 Arbeitstage.
+  if public.shop_working_days_between('2026-11-06 10:00+01', '2026-11-10 10:00+01') <> 2 then
+    raise exception 'automation test: working days wrong';
+  end if;
+
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'lager', 'Lager')
+  returning id into v_lager;
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'ruecknahme', 'Rücknahme')
+  returning id into v_rueck;
+  insert into public.inventory_automation_settings (tenant_id, default_return_location_id, reorder_create_task)
+  values (v_tenant, v_rueck, true);
+  if public.inventory_default_return_location(v_tenant, null) is distinct from v_rueck then
+    raise exception 'automation test: default return location not resolved';
+  end if;
+
+  insert into public.inventory_items (tenant_id, article_number, name, tracking_mode)
+  values (v_tenant, 'notebook', 'Notebook', 'serial') returning id into v_notebook_item;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Notebook 1', 'other', 'stock') returning id into v_asset;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Notebook 2', 'other', 'stock') returning id into v_asset2;
+  insert into public.inventory_serial_units (tenant_id, item_id, serial_number, asset_id)
+  values (v_tenant, v_notebook_item, 'nb-0001', v_asset) returning id into v_serial;
+  insert into public.inventory_serial_units (tenant_id, item_id, serial_number, asset_id)
+  values (v_tenant, v_notebook_item, 'nb-0002', v_asset2) returning id into v_serial2;
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(
+      jsonb_build_object('item_id', v_notebook_item, 'location_id', v_lager, 'serial_unit_id', v_serial,
+        'physical_delta', 1, 'reserved_delta', 0),
+      jsonb_build_object('item_id', v_notebook_item, 'location_id', v_lager, 'serial_unit_id', v_serial2,
+        'physical_delta', 1, 'reserved_delta', 0)
+    ), null, null);
+  insert into public.shop_catalog_items (tenant_id, inventory_item_id, name, kind, requires_approval)
+  values (v_tenant, v_notebook_item, 'Notebook', 'order', true) returning id into v_cat_notebook;
+  insert into public.shop_catalog_items (tenant_id, name, kind, requires_approval)
+  values (v_tenant, 'Headset', 'order', true) returning id into v_cat_headset;
+  insert into public.shop_catalog_items (tenant_id, inventory_item_id, name, kind, max_loan_days)
+  values (v_tenant, v_notebook_item, 'Leihnotebook', 'loan', 30) returning id into v_cat_loan;
+
+  -- 1. Ersatzgerät ohne Genehmigung (Sicherheitsfall); nur Agenten.
+  begin
+    perform public.shop_submit_order_direct(v_employee, v_tenant, v_employee, gen_random_uuid(),
+      jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_notebook, 'quantity', 1)),
+      'pickup', null, null, 'Ersatzgerät', null, 'security_case', gen_random_uuid(), 'SEC-1');
+    raise exception 'automation test: employee ordered without approval';
+  exception when insufficient_privilege then null;
+  end;
+  v_order := public.shop_submit_order_direct(v_owner, v_tenant, v_employee, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_notebook, 'quantity', 1)),
+    'desk', 'Büro 1', null, 'Ersatzgerät nach Phishing', null, 'security_case', gen_random_uuid(), 'SEC-2026-000001');
+  if not exists (select 1 from public.shop_orders where id = v_order and status = 'submitted'
+      and requester_id = v_employee and placed_by = v_owner and approved_by = v_owner
+      and source_type = 'security_case' and source_reference = 'SEC-2026-000001'
+      and reason = 'Ersatzgerät nach Phishing') then
+    raise exception 'automation test: direct order not stored';
+  end if;
+  if not exists (select 1 from public.shop_order_events where order_id = v_order and event_type = 'approval_skipped'
+      and note like '%SEC-2026-000001%') then
+    raise exception 'automation test: approval skip not logged';
+  end if;
+  if exists (select 1 from public.ticket_notifications where kind = 'shop.order.approval_requested'
+      and payload ->> 'orderId' = v_order::text) then
+    raise exception 'automation test: direct order requested approval';
+  end if;
+
+  -- 2. Ausgabe einer Serieneinheit → Zuweisung an die Person.
+  select id into v_line from public.shop_order_lines where order_id = v_order;
+  v_status := public.shop_update_order(v_owner, v_tenant, v_order, 'issue',
+    jsonb_build_object('lines', jsonb_build_array(jsonb_build_object(
+      'line_id', v_line, 'location_id', v_lager, 'serial_unit_id', v_serial))));
+  v_contact := public.ensure_ticket_user_requester(v_tenant, v_employee, 'manual');
+  select id into v_assignment from public.asset_assignments
+  where asset_id = v_asset and returned_at is null and requester_id = v_contact and shop_order_line_id = v_line;
+  if v_assignment is null or (select lifecycle_state from public.assets where id = v_asset) <> 'active' then
+    raise exception 'automation test: hand-out did not assign the device';
+  end if;
+  if public.inventory_serial_unit_on_hand(v_tenant, v_serial) <> 0 then
+    raise exception 'automation test: serial unit still on hand';
+  end if;
+
+  -- 3. Ausleihe: Ausgabe, Erinnerungen, Rückgabe über den Austritt.
+  v_order := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_loan, 'quantity', 1)),
+    'pickup', null, null, (timezone('Europe/Zurich', now()))::date,
+    (timezone('Europe/Zurich', now()))::date + 1, null);
+  select id into v_line from public.shop_order_lines where order_id = v_order;
+  v_status := public.shop_update_order(v_owner, v_tenant, v_order, 'issue',
+    jsonb_build_object('lines', jsonb_build_array(jsonb_build_object(
+      'line_id', v_line, 'location_id', v_lager, 'serial_unit_id', v_serial2))));
+  if v_status <> 'loaned' or not exists (select 1 from public.asset_assignments
+      where asset_id = v_asset2 and returned_at is null and shop_order_line_id = v_line) then
+    raise exception 'automation test: loan hand-out not assigned';
+  end if;
+  v_result := public.shop_send_reminders();
+  if not exists (select 1 from public.ticket_notifications where user_id = v_employee
+      and kind = 'shop.order.loan_due' and payload ->> 'lineId' = v_line::text) then
+    raise exception 'automation test: loan due reminder missing: %', v_result;
+  end if;
+  perform public.shop_send_reminders();
+  if (select count(*) from public.ticket_notifications where kind = 'shop.order.loan_due'
+      and payload ->> 'lineId' = v_line::text) <> 1 then
+    raise exception 'automation test: loan due reminder repeated';
+  end if;
+  update public.shop_order_lines set loan_until = (timezone('Europe/Zurich', now()))::date - 4,
+    loan_from = (timezone('Europe/Zurich', now()))::date - 6 where id = v_line;
+  perform public.shop_send_reminders();
+  if not exists (select 1 from public.ticket_notifications where user_id = v_employee
+      and kind = 'shop.order.loan_overdue' and payload ->> 'lineId' = v_line::text)
+     or not exists (select 1 from public.ticket_notifications where user_id = v_manager
+      and kind = 'shop.order.loan_overdue' and payload ->> 'audience' = 'manager') then
+    raise exception 'automation test: overdue reminders missing';
+  end if;
+
+  -- 4. Genehmigung offen: Erinnerung, dann Stellvertretung.
+  v_order := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_headset, 'quantity', 1)),
+    'pickup', null, null, null, null, 'Headset');
+  insert into public.agent_delegations (tenant_id, agent_id, delegate_id, starts_at, ends_at, created_by)
+  values (v_tenant, v_manager, v_deputy, now() - interval '1 day', now() + interval '5 days', v_owner);
+  update public.shop_orders set created_at = now() - interval '3 days' where id = v_order;
+  perform public.shop_send_reminders(now() + interval '1 day');
+  if not exists (select 1 from public.ticket_notifications where user_id = v_manager
+      and kind = 'shop.order.approval_reminder' and payload ->> 'orderId' = v_order::text) then
+    raise exception 'automation test: approval reminder missing';
+  end if;
+  if exists (select 1 from public.ticket_notifications where user_id = v_deputy
+      and kind = 'shop.order.approval_reminder') then
+    raise exception 'automation test: deputy reminded too early';
+  end if;
+  update public.shop_orders set created_at = now() - interval '10 days' where id = v_order;
+  perform public.shop_send_reminders();
+  if not exists (select 1 from public.ticket_notifications where user_id = v_deputy
+      and kind = 'shop.order.approval_reminder' and payload ->> 'audience' = 'deputy') then
+    raise exception 'automation test: deputy not reminded';
+  end if;
+
+  -- 5. Austritt: Gerät, Ausleihe und Lizenz.
+  insert into public.onboarding_templates (tenant_id, template_key, name)
+  values (v_tenant, 'standard', 'Standard') on conflict (tenant_id, template_key) do nothing;
+  select id into v_template from public.onboarding_templates where tenant_id = v_tenant and template_key = 'standard';
+  insert into public.onboarding_entries (tenant_id, employee_name, starts_on, organisation_unit, location,
+    manager_user_id, ict_responsible_user_id, template_id, created_by, kind)
+  values (v_tenant, 'Erika Lager', current_date + 3, 'ICT', 'Bern', v_manager, v_owner, v_template, v_owner, 'offboarding')
+  returning id into v_entry;
+  insert into public.onboarding_tasks (id, tenant_id, entry_id, title, due_on, responsible_user_id, position) values
+    (v_task_asset, v_tenant, v_entry, 'Rückgabe: Notebook 1', current_date + 3, v_owner, 91),
+    (v_task_loan, v_tenant, v_entry, 'Rückgabe Ausleihe: Leihnotebook', current_date + 3, v_owner, 92),
+    (v_task_license, v_tenant, v_entry, 'Lizenz entziehen: Office', current_date + 3, v_owner, 93);
+  insert into public.onboarding_asset_returns (tenant_id, task_id, assignment_id, asset_id)
+  values (v_tenant, v_task_asset, v_assignment, v_asset);
+  insert into public.onboarding_loan_returns (tenant_id, task_id, order_line_id, return_location_id)
+  values (v_tenant, v_task_loan, v_line, v_rueck);
+  insert into public.licenses (tenant_id, title, vendor_name, status, created_by, updated_by)
+  values (v_tenant, 'Office Paket', 'Hersteller AG', 'active', v_owner, v_owner) returning id into v_license;
+  insert into public.license_assignments (tenant_id, license_id, user_id, assignee_label, assigned_by)
+  values (v_tenant, v_license, v_employee, 'Erika Lager', v_owner) returning id into v_seat;
+  insert into public.onboarding_license_revocations (tenant_id, task_id, license_assignment_id)
+  values (v_tenant, v_task_license, v_seat);
+
+  update public.onboarding_tasks set status = 'completed', completed_at = now(), completed_by = v_owner
+  where id in (v_task_asset, v_task_loan, v_task_license);
+  if (select returned_at from public.asset_assignments where id = v_assignment) is null
+     or (select lifecycle_state from public.assets where id = v_asset) <> 'stock'
+     or (select stock_result from public.onboarding_asset_returns where task_id = v_task_asset) <> 'booked'
+     or public.inventory_serial_unit_on_hand(v_tenant, v_serial) <> 1
+     or not exists (select 1 from public.inventory_event_lines where serial_unit_id = v_serial
+                    and location_id = v_rueck and physical_delta = 1) then
+    raise exception 'automation test: offboarding device not booked into stock';
+  end if;
+  if (select status from public.shop_order_lines where id = v_line) <> 'returned'
+     or (select status from public.shop_orders where id = (select order_id from public.shop_order_lines where id = v_line)) <> 'returned'
+     or (select result from public.onboarding_loan_returns where task_id = v_task_loan) <> 'returned'
+     or exists (select 1 from public.asset_assignments where asset_id = v_asset2 and returned_at is null)
+     or public.inventory_serial_unit_on_hand(v_tenant, v_serial2) <> 1 then
+    raise exception 'automation test: loan not returned by offboarding';
+  end if;
+  if (select released_at from public.license_assignments where id = v_seat) is null
+     or (select release_reason from public.license_assignments where id = v_seat) <> 'Austritt' then
+    raise exception 'automation test: license not revoked';
+  end if;
+
+  -- 6. Reservation mit Haltefrist wird freigegeben.
+  insert into public.inventory_items (tenant_id, article_number, name, minimum_quantity, target_quantity)
+  values (v_tenant, 'kabel', 'Kabel', 5, 10) returning id into v_cable;
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(jsonb_build_object('item_id', v_cable, 'location_id', v_lager,
+      'physical_delta', 3, 'reserved_delta', 0)), null, null);
+  insert into public.inventory_reservations (tenant_id, item_id, location_id, quantity, created_by, expires_at)
+  values (v_tenant, v_cable, v_lager, 2, v_owner, now() - interval '1 minute') returning id into v_reservation;
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'reservation_hold',
+    jsonb_build_array(jsonb_build_object('item_id', v_cable, 'location_id', v_lager,
+      'physical_delta', 0, 'reserved_delta', 2)), 'reservation', v_reservation);
+  v_count := public.inventory_release_expired_reservations();
+  if v_count < 1
+     or (select status from public.inventory_reservations where id = v_reservation) <> 'released'
+     or (select reserved_quantity from public.inventory_stock_balances
+         where tenant_id = v_tenant and item_id = v_cable and location_id = v_lager) <> 0 then
+    raise exception 'automation test: expired reservation not released: % %', v_count,
+      (select to_jsonb(r) from public.inventory_reservations r where id = v_reservation);
+  end if;
+
+  -- 7. Mindestbestand → Nachbestellung (Aufgabe + inventory.reorder), einmalig.
+  if not exists (select 1 from public.inventory_low_stock_episodes where item_id = v_cable and recovered_at is null) then
+    raise exception 'automation test: low stock episode missing';
+  end if;
+  perform public.inventory_process_reorders();
+  perform public.inventory_process_reorders();
+  if (select count(*) from public.inventory_reorder_requests where item_id = v_cable and status = 'open') <> 1
+     or (select suggested_quantity from public.inventory_reorder_requests where item_id = v_cable) <> 7 then
+    raise exception 'automation test: reorder request wrong';
+  end if;
+  if (select count(*) from public.ticket_notifications where user_id = v_owner and kind = 'inventory.reorder'
+      and payload ->> 'inventoryItemId' = v_cable::text) <> 1 then
+    raise exception 'automation test: reorder notification wrong';
+  end if;
+
+  -- 8. Inventur-Erinnerung nach Intervall, nicht doppelt.
+  update public.inventory_locations set count_interval_days = 30, created_at = now() - interval '40 days'
+  where id = v_lager;
+  v_count := public.inventory_send_count_reminders();
+  if v_count < 1 or not exists (select 1 from public.ticket_notifications where user_id = v_owner
+      and kind = 'inventory.count_due' and payload ->> 'inventoryLocationId' = v_lager::text) then
+    raise exception 'automation test: count reminder missing';
+  end if;
+  perform public.inventory_send_count_reminders();
+  if (select count(*) from public.ticket_notifications where user_id = v_owner and kind = 'inventory.count_due') <> 1 then
+    raise exception 'automation test: count reminder repeated';
+  end if;
+  v_result := public.inventory_shop_daily_automation();
+  if not (v_result ? 'shop') then
+    raise exception 'automation test: daily automation incomplete: %', v_result;
+  end if;
+
+  -- 9. Täglicher Intune-Abgleich: Ziele lesbar, Wecker ohne Dispatch still.
+  insert into public.asset_intune_connections (tenant_id, enabled, manual_sync_enabled, directory_tenant_id, updated_by)
+  values (v_tenant, true, true, gen_random_uuid(), v_owner)
+  on conflict (tenant_id) do update
+    set enabled = true, manual_sync_enabled = true,
+        directory_tenant_id = excluded.directory_tenant_id, updated_by = v_owner;
+  if not exists (select 1 from public.intune_scheduled_sync_targets() target
+                 where target.tenant_id = v_tenant) then
+    raise exception 'automation test: intune target missing';
+  end if;
+  if (select target.actor_id from public.intune_scheduled_sync_targets() target
+      where target.tenant_id = v_tenant) is distinct from v_owner
+     and public.user_has_tenant_permission(v_owner, v_tenant, 'asset.integration.manage') then
+    raise exception 'automation test: intune actor wrong';
+  end if;
+  perform public.intune_scheduled_sync_wake();
+
+  if has_function_privilege('authenticated', 'public.shop_submit_order_direct(uuid, uuid, uuid, uuid, jsonb, text, text, date, text, text, text, uuid, text)', 'execute')
+     or has_table_privilege('authenticated', 'public.inventory_automation_settings', 'select') then
+    raise exception 'automation test: browser access to automation';
+  end if;
+  raise notice 'inventory shop automation checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
