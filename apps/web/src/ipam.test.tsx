@@ -10,7 +10,7 @@ vi.mock("./lib/ipam-api", () => ({
 
 import { Ipam } from "./ipam";
 import { IpamFindingsPage } from "./ipam-findings";
-import { IpamNetworksPage } from "./ipam-networks";
+import { bulkUndoGroups, IpamNetworksPage } from "./ipam-networks";
 import { DashboardView, searchHits } from "./ipam-overview";
 import { IpCalculator, planItems, plannerParents } from "./ipam-planner";
 import { SiteCardButton, SiteDocumentation, siteNetRows } from "./ipam-sites";
@@ -245,7 +245,10 @@ describe("Netze", () => {
     );
     expect(html).toContain("Hierarchie");
     expect(html).toContain("Nach Standort");
-    expect(html).toContain("Veraltete zeigen");
+    // Site/zone/status filters sit behind «Filter»; text filter is inline.
+    expect(html).toContain("Filter");
+    expect(html).toContain("Netze filtern");
+    expect(html).toContain('aria-label="Pfad"');
     expect(html).toContain("Mehrere auswählen");
     expect(html).toContain("10.20.67.0/24");
     expect(html).toContain("VLAN 67");
@@ -506,5 +509,27 @@ describe("Funde und Protokoll", () => {
       before: 120,
     });
     expect(changeLogRequest("", "", "all", null, now)).toEqual({ limit: 50 });
+  });
+});
+
+describe("Netze – Rückgängig", () => {
+  it("groups the previous values of a bulk change", () => {
+    const prefixes = [
+      prefix("a", "10.1.0.0/24", null, { status: "active", siteId: "s1" }),
+      prefix("b", "10.1.1.0/24", null, { status: "active", siteId: null }),
+      prefix("c", "10.1.2.0/24", null, { status: "reserved", siteId: "s1" }),
+    ];
+    const groups = bulkUndoGroups(prefixes, ["a", "b", "c", "x"], {
+      status: "deprecated",
+    });
+    expect(groups).toEqual([
+      { prefixIds: ["a", "b"], patch: { status: "active" } },
+      { prefixIds: ["c"], patch: { status: "reserved" } },
+    ]);
+    expect(
+      bulkUndoGroups(prefixes, ["a", "b"], { siteId: "s2" }).map(
+        (group) => group.patch,
+      ),
+    ).toEqual([{ siteId: "s1" }, { siteId: null }]);
   });
 });

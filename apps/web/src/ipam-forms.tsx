@@ -854,6 +854,7 @@ export function CustomFieldsEditor({
 // ---------------------------------------------------------------------------
 
 export function ReserveDialog({
+  addresses,
   lookups,
   onClose,
   onSaved,
@@ -861,13 +862,17 @@ export function ReserveDialog({
   suggestion,
   tenantId,
 }: {
+  /** Several free addresses (range selection in the occupancy grid). */
+  addresses?: string[] | undefined;
   lookups: IpamLookups;
   onClose: () => void;
-  onSaved: (message: string, addressId: string) => void;
+  /** `ids` lists every reserved address (for undo). */
+  onSaved: (message: string, addressId: string, ids: string[]) => void;
   prefix: IpamPrefix;
   suggestion: string | null;
   tenantId: string;
 }) {
+  const many = addresses && addresses.length > 1 ? addresses : null;
   const [address, setAddress] = useState(suggestion ?? "");
   const [hostname, setHostname] = useState("");
   const [description, setDescription] = useState("");
@@ -899,7 +904,7 @@ export function ReserveDialog({
   };
 
   useEffect(() => {
-    if (!suggestion) void fetchSuggestion(null);
+    if (!suggestion && !many) void fetchSuggestion(null);
     // Only once when the dialog opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -907,21 +912,46 @@ export function ReserveDialog({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     void run(async () => {
-      const result = await ipamCall<{ id: string; address: string }>({
-        type: "reserveAddress",
-        tenantId,
-        reservation: {
-          prefixId: prefix.id,
-          address,
-          hostname,
-          description,
-          ownerUserId: ownerUserId || null,
-          teamId: teamId || null,
-          reservedUntil: reservedUntil || null,
-          deviceType: deviceType || null,
-        },
-      });
-      onSaved(`${result.address} reserviert.`, result.id);
+      const targets = many ?? [address];
+      const ids: string[] = [];
+      for (const [index, target] of targets.entries()) {
+        try {
+          const result = await ipamCall<{ id: string; address: string }>({
+            type: "reserveAddress",
+            tenantId,
+            reservation: {
+              prefixId: prefix.id,
+              address: target,
+              // A host name must stay unique: number it for ranges.
+              hostname:
+                many && hostname ? `${hostname}-${index + 1}` : hostname,
+              description,
+              ownerUserId: ownerUserId || null,
+              teamId: teamId || null,
+              reservedUntil: reservedUntil || null,
+              deviceType: deviceType || null,
+            },
+          });
+          ids.push(result.id);
+        } catch (failure) {
+          if (!ids.length) throw failure;
+          const reason =
+            failure instanceof Error ? ` (${failure.message})` : "";
+          onSaved(
+            `${ids.length} von ${targets.length} Adressen reserviert; bei ${target} abgebrochen${reason}.`,
+            ids[0]!,
+            ids,
+          );
+          return;
+        }
+      }
+      onSaved(
+        many
+          ? `${ids.length} Adressen reserviert (${many[0]} – ${many[many.length - 1]}).`
+          : `${targets[0]} reserviert.`,
+        ids[0]!,
+        ids,
+      );
     });
   };
   const inPool =
@@ -934,39 +964,52 @@ export function ReserveDialog({
       eyebrow={prefix.prefix}
       onClose={onClose}
       onSubmit={submit}
-      submitDisabled={!address || loadingSuggestion}
-      submitLabel="Reservieren"
+      submitDisabled={(!many && !address) || loadingSuggestion}
+      submitLabel={many ? `${many.length} Adressen reservieren` : "Reservieren"}
       submitting={busy}
-      title="Adresse reservieren"
+      title={many ? "Adressen reservieren" : "Adresse reservieren"}
     >
-      <FormCard title="Adresse">
+      <FormCard title={many ? `${many.length} Adressen` : "Adresse"}>
+        {many ? (
+          <FormNote>
+            <span className="ipam-mono">
+              {many.length <= 12
+                ? many.join(", ")
+                : `${many.slice(0, 6).join(", ")} … ${many.slice(-3).join(", ")}`}
+            </span>
+          </FormNote>
+        ) : null}
         <FormGrid>
-          <FormField
-            hint={
-              hint ??
-              inPool ??
-              "Vorschlag ohne Gateway, Netz- und Broadcastadresse."
-            }
-            label="IP-Adresse"
-            required
-          >
-            <input
-              onChange={(event) => setAddress(event.target.value)}
-              required
-              spellCheck={false}
-              value={address}
-            />
-          </FormField>
-          <FormField label="Vorschlag">
-            <button
-              className="secondary-button"
-              disabled={loadingSuggestion}
-              onClick={() => void fetchSuggestion(address || null)}
-              type="button"
-            >
-              {loadingSuggestion ? "Sucht …" : "Nächste freie danach"}
-            </button>
-          </FormField>
+          {many ? null : (
+            <>
+              <FormField
+                hint={
+                  hint ??
+                  inPool ??
+                  "Vorschlag ohne Gateway, Netz- und Broadcastadresse."
+                }
+                label="IP-Adresse"
+                required
+              >
+                <input
+                  onChange={(event) => setAddress(event.target.value)}
+                  required
+                  spellCheck={false}
+                  value={address}
+                />
+              </FormField>
+              <FormField label="Vorschlag">
+                <button
+                  className="secondary-button"
+                  disabled={loadingSuggestion}
+                  onClick={() => void fetchSuggestion(address || null)}
+                  type="button"
+                >
+                  {loadingSuggestion ? "Sucht …" : "Nächste freie danach"}
+                </button>
+              </FormField>
+            </>
+          )}
           <FormField label="Hostname" optional>
             <input
               maxLength={253}

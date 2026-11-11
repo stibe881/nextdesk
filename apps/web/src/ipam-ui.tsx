@@ -23,7 +23,13 @@ export type IpamDialog =
   | { kind: "site"; site: IpamSite | null }
   | { kind: "vlan"; vlan: IpamVlan | null; draft?: Partial<IpamVlan> }
   | { kind: "prefix"; prefix: IpamPrefix | null; draft?: Partial<IpamPrefix> }
-  | { kind: "reserve"; prefix: IpamPrefix; suggestion: string | null }
+  | {
+      kind: "reserve";
+      prefix: IpamPrefix;
+      suggestion: string | null;
+      /** Several free addresses from the occupancy grid (range reserve). */
+      addresses?: string[];
+    }
   | { kind: "nextPrefix"; parent: IpamPrefix }
   | { kind: "split"; prefix: IpamPrefix }
   | { kind: "address"; initial: Partial<IpamAddress> & { address: string } };
@@ -210,6 +216,74 @@ export function Notice({
         </p>
       ) : null}
     </>
+  );
+}
+
+/** Reverses a change from the undo toast (calls existing actions). */
+export type UndoAction = { run: () => Promise<unknown> };
+
+/** Callback after a change: success text and optional undo. */
+export type IpamChanged = (message?: string, undo?: UndoAction) => void;
+
+export type IpamToastState = {
+  id: number;
+  message: string;
+  tone: "success" | "error";
+  undo?: UndoAction;
+};
+
+/**
+ * Message at the bottom of the screen after a change, with «Rückgängig»
+ * when the change can be reversed. Closes after 8 s (not while focused).
+ */
+export function Toast({
+  onClose,
+  onUndo,
+  toast,
+}: {
+  onClose: () => void;
+  onUndo: (undo: UndoAction) => void;
+  toast: IpamToastState | null;
+}) {
+  const [hold, setHold] = useState(false);
+  useEffect(() => {
+    if (!toast || hold) return;
+    const timer = window.setTimeout(onClose, toast.undo ? 8000 : 5000);
+    return () => window.clearTimeout(timer);
+  }, [toast, hold, onClose]);
+  return (
+    <div aria-live="polite" className="ipam-toast-region">
+      {toast ? (
+        <div
+          className={`ipam-toast ipam-toast--${toast.tone}`}
+          key={toast.id}
+          onBlur={() => setHold(false)}
+          onFocus={() => setHold(true)}
+          onMouseEnter={() => setHold(true)}
+          onMouseLeave={() => setHold(false)}
+          role={toast.tone === "error" ? "alert" : "status"}
+        >
+          <span>{toast.message}</span>
+          {toast.undo ? (
+            <button
+              className="ipam-toast__undo"
+              onClick={() => onUndo(toast.undo!)}
+              type="button"
+            >
+              Rückgängig
+            </button>
+          ) : null}
+          <button
+            aria-label="Meldung schliessen"
+            className="ipam-toast__close"
+            onClick={onClose}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

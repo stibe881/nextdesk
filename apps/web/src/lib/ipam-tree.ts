@@ -18,6 +18,8 @@ export type TreeFilter = {
   siteId: string | null;
   zone: string | null;
   status: PrefixStatus | null;
+  /** Free text: prefix, description, VLAN number or name. */
+  text?: string;
 };
 
 export const EMPTY_TREE_FILTER: TreeFilter = {
@@ -25,6 +27,7 @@ export const EMPTY_TREE_FILTER: TreeFilter = {
   siteId: null,
   zone: null,
   status: null,
+  text: "",
 };
 
 export type TreeRow =
@@ -72,8 +75,25 @@ export function zoneOptions(prefixes: IpamPrefix[]): string[] {
   ].sort((a, b) => a.localeCompare(b, "de-CH"));
 }
 
-function matches(prefix: IpamPrefix, filter: TreeFilter): boolean {
+function matches(
+  prefix: IpamPrefix,
+  filter: TreeFilter,
+  vlan: IpamVlan | null = null,
+): boolean {
   if (!filter.showDeprecated && prefix.status === "deprecated") return false;
+  const text = filter.text?.trim().toLowerCase();
+  if (text) {
+    const haystack = [
+      prefix.prefix,
+      prefix.description,
+      prefix.securityZone,
+      vlan ? `vlan ${vlan.vlanNumber}` : null,
+      vlan ? String(vlan.vlanNumber) : null,
+      vlan?.name,
+    ];
+    if (!haystack.some((value) => value?.toLowerCase().includes(text)))
+      return false;
+  }
   if (filter.siteId === "none" && prefix.siteId) return false;
   if (
     filter.siteId &&
@@ -91,7 +111,9 @@ function matches(prefix: IpamPrefix, filter: TreeFilter): boolean {
 }
 
 function filterActive(filter: TreeFilter): boolean {
-  return Boolean(filter.siteId || filter.zone || filter.status);
+  return Boolean(
+    filter.siteId || filter.zone || filter.status || filter.text?.trim(),
+  );
 }
 
 /**
@@ -120,7 +142,13 @@ export function buildTree(
     : prefixes.filter((prefix) => prefix.status === "deprecated").length;
   const matching = new Set(
     prefixes
-      .filter((prefix) => matches(prefix, filter))
+      .filter((prefix) =>
+        matches(
+          prefix,
+          filter,
+          prefix.vlanId ? (vlanById.get(prefix.vlanId) ?? null) : null,
+        ),
+      )
       .map((prefix) => prefix.id),
   );
   const node = (
