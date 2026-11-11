@@ -2182,6 +2182,13 @@ export type StockEditor = {
       locationId: string;
       delta: number;
     }) => Promise<void>;
+    /** Umlagerung des gesamten Bestands an einen anderen Lagerort. */
+    moveStock: (input: {
+      itemId: string;
+      fromLocationId: string;
+      toLocationId: string;
+      quantity: number;
+    }) => Promise<void>;
     uploadImage: (itemId: string, file: File) => Promise<void>;
     deleteImage: (itemId: string) => Promise<void>;
     loadImageUrl: (itemId: string) => Promise<string | null>;
@@ -2641,6 +2648,22 @@ export function CatalogEditor({
         const wanted = Math.floor(Number(draft.stockQuantity));
         if (!Number.isFinite(wanted) || wanted < 0) {
           throw new Error("Bitte einen Bestand von 0 oder mehr angeben.");
+        }
+        const currentLocationId = stock.item?.locationId ?? "";
+        const currentQuantity = stock.item?.physicalQuantity ?? 0;
+        // Anderer Lagerort gewählt: erst den bisherigen Bestand umlagern.
+        if (
+          currentLocationId &&
+          draft.locationId &&
+          draft.locationId !== currentLocationId &&
+          currentQuantity > 0
+        ) {
+          await stock.api.moveStock({
+            itemId,
+            fromLocationId: currentLocationId,
+            toLocationId: draft.locationId,
+            quantity: currentQuantity,
+          });
         }
         const delta = wanted - (stock.item?.physicalQuantity ?? 0);
         if (delta !== 0) {
@@ -3511,7 +3534,6 @@ export function CatalogEditor({
                         <label>
                           Lagerort
                           <select
-                            disabled={Boolean(stock.item?.locationId)}
                             onChange={(event) =>
                               setDraft({
                                 ...draft,

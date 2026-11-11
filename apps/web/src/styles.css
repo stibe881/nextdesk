@@ -18390,6 +18390,9 @@ html:has(.embed-status-badge) body {
   place-items: center;
   width: 22px;
   height: 22px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
   border: 0;
   border-radius: 999px;
   background: rgb(15 23 42 / 70%);
@@ -22030,4 +22033,30 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 .ticket-attachment-strip .ticket-attachment-chip__main small {
   font-size: 11.5px;
   font-weight: 400;
+}
+
+/* Foto-Kacheln im Artikelformular: Lösch-Knopf nicht von globalen Button-Stilen aufblähen lassen. */
+.article-editor .shop__image-thumb {
+  width: 120px;
+  height: 90px;
+}
+.article-editor .shop__image-thumb .shop__image-remove {
+  width: 24px;
+  height: 24px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  line-height: 1;
+}
+.article-editor .shop__image-thumb .shop__image-remove svg {
+  flex: none;
+}
+
+/* Lager-Abschnitt im Artikelformular: Beschriftung über dem Feld, nicht daneben. */
+.shop__stock-fields .shop__row--grid > label {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 650;
 }

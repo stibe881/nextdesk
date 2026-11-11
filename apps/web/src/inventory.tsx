@@ -1635,6 +1635,18 @@ function inventoryEditorApi(tenantId: string): StockEditor["api"] {
         clientRequestId: crypto.randomUUID(),
       });
     },
+    moveStock: async ({ itemId, fromLocationId, toLocationId, quantity }) => {
+      await inventoryInvoke({
+        type: "postMovement",
+        tenantId,
+        itemId,
+        movementType: "transfer",
+        quantity,
+        fromLocationId,
+        toLocationId,
+        clientRequestId: crypto.randomUUID(),
+      });
+    },
     uploadImage: (itemId, file) =>
       uploadInventoryItemImageFile(tenantId, itemId, file),
     deleteImage: async (itemId) => {
