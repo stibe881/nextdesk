@@ -23,13 +23,22 @@ import {
   type IpamLookups,
 } from "./ipam-forms";
 import { IpamNetworksPage } from "./ipam-networks";
-import { IpamOverviewPage } from "./ipam-overview";
+import { IpamOverviewPage, LIVE_SEARCH_ID, LiveSearch } from "./ipam-overview";
 import { IpamPlannerPage } from "./ipam-planner";
 import { IpamSitesPage } from "./ipam-sites";
-import { Notice, errorText, type IpamDialog, type IpamDrawer } from "./ipam-ui";
+import {
+  Notice,
+  Toast,
+  errorText,
+  type IpamDialog,
+  type IpamDrawer,
+  type IpamToastState,
+  type UndoAction,
+} from "./ipam-ui";
 import { IpamVlansPage } from "./ipam-vlans";
 import { ipamCall } from "./lib/ipam-api";
 import type { IpamAddressDetail, IpamOverview } from "./lib/ipam-model";
+import { isSearchShortcut, loadPrefs, savePrefs } from "./lib/ipam-ui-state";
 import "./ipam.css";
 
 /** Props of the panels that parts B (Import) and C (Discovery) provide. */
@@ -70,6 +79,19 @@ const TABS: { key: IpamView; label: string }[] = [
   { key: "findings", label: "Funde" },
 ];
 
+const VIEWS: IpamView[] = [
+  "overview",
+  "networks",
+  "vlans",
+  "sites",
+  "findings",
+  "planner",
+  "import",
+  "export",
+  "discovery",
+  "api",
+];
+
 const ADMIN_TITLE: Partial<Record<IpamView, string>> = {
   planner: "Subnetz-Planer",
   import: "Import (Excel, phpIPAM, NetBox)",
@@ -86,15 +108,29 @@ export function Ipam({
   onOpenTicket,
   tenantId,
 }: IpamProps) {
+  // Last view and selection per tenant (this browser only).
+  const [initial] = useState(() => loadPrefs(tenantId));
   const [overview, setOverview] = useState<IpamOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [view, setView] = useState<IpamView>("overview");
-  const [selectedPrefixId, setSelectedPrefixId] = useState<string | null>(null);
-  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+  const [toast, setToast] = useState<IpamToastState | null>(null);
+  const [view, setView] = useState<IpamView>(
+    VIEWS.includes(initial.view as IpamView)
+      ? (initial.view as IpamView)
+      : "overview",
+  );
+  const [selectedPrefixId, setSelectedPrefixId] = useState<string | null>(
+    initial.prefixId ?? null,
+  );
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(
+    initial.siteId ?? null,
+  );
   const [plannerParentId, setPlannerParentId] = useState<string | null>(null);
-  const [findingsMode, setFindingsMode] = useState<FindingsMode>("findings");
+  const [findingsMode, setFindingsMode] = useState<FindingsMode>(
+    initial.findingsMode === "compare" || initial.findingsMode === "changes"
+      ? (initial.findingsMode as FindingsMode)
+      : "findings",
+  );
   const [revision, setRevision] = useState(0);
   const [dialog, setDialog] = useState<IpamDialog | null>(null);
   const [drawer, setDrawer] = useState<IpamDrawer | null>(null);
@@ -125,16 +161,58 @@ export function Ipam({
     void load();
   }, [load, revision]);
 
-  const refresh = useCallback((message?: string) => {
-    if (message) setNotice(message);
+  const refresh = useCallback((message?: string, undo?: UndoAction) => {
+    if (message)
+      setToast({
+        id: Date.now(),
+        message,
+        tone: "success",
+        ...(undo ? { undo } : {}),
+      });
     setRevision((current) => current + 1);
   }, []);
 
+  const runUndo = useCallback(
+    (undo: UndoAction) => {
+      setToast(null);
+      undo
+        .run()
+        .then(() => refresh("Änderung rückgängig gemacht."))
+        .catch((failure: unknown) =>
+          setToast({
+            id: Date.now(),
+            message: errorText(
+              failure,
+              "Die Änderung konnte nicht rückgängig gemacht werden.",
+            ),
+            tone: "error",
+          }),
+        );
+    },
+    [refresh],
+  );
+
   useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(null), 5000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
+    savePrefs(tenantId, {
+      view,
+      prefixId: selectedPrefixId,
+      siteId: selectedSiteId,
+      findingsMode,
+    });
+  }, [tenantId, view, selectedPrefixId, selectedSiteId, findingsMode]);
+
+  // «/» focuses the search (overview: large field, elsewhere the header).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!isSearchShortcut(event)) return;
+      const input = document.getElementById(LIVE_SEARCH_ID);
+      if (!input) return;
+      event.preventDefault();
+      input.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   const canManage = overview?.canManage === true;
   const lookups: IpamLookups = useMemo(
@@ -209,6 +287,16 @@ export function Ipam({
             </div>
           </div>
           <div className="ipam-head__actions">
+            {overview && view !== "overview" ? (
+              <LiveSearch
+                compact
+                onOpenAddress={openAddress}
+                onOpenPrefix={openPrefix}
+                onOpenVlans={() => setView("vlans")}
+                overview={overview}
+                tenantId={tenantId}
+              />
+            ) : null}
             <button
               aria-pressed={view === "planner"}
               className="secondary-button"
@@ -248,7 +336,8 @@ export function Ipam({
         </nav>
       </header>
 
-      <Notice error={error} message={notice} />
+      <Notice error={error} />
+      <Toast onClose={() => setToast(null)} onUndo={runUndo} toast={toast} />
 
       {adminTitle ? (
         <div className="ipam-admin-head">
@@ -399,7 +488,7 @@ export function Ipam({
           canManage={canManage}
           ip={drawer.ip}
           key={`${drawer.addressId ?? ""}-${drawer.ip ?? ""}-${revision}`}
-          onChanged={(message) => refresh(message)}
+          onChanged={(message, undo) => refresh(message, undo)}
           onClose={() => setDrawer(null)}
           onEdit={(detail: IpamAddressDetail) =>
             setDialog({
@@ -472,11 +561,24 @@ export function Ipam({
       ) : null}
       {dialog?.kind === "reserve" ? (
         <ReserveDialog
+          addresses={dialog.addresses}
           lookups={lookups}
           onClose={() => setDialog(null)}
-          onSaved={(message, addressId) => {
-            refresh(message);
-            setDrawer({ addressId, ip: null, vrfId: dialog.prefix.vrfId });
+          onSaved={(message, addressId, ids) => {
+            refresh(message, {
+              run: async () => {
+                for (const id of ids) {
+                  await ipamCall({
+                    type: "releaseAddress",
+                    tenantId,
+                    addressId: id,
+                    note: "Reservierung rückgängig gemacht",
+                  });
+                }
+              },
+            });
+            if (ids.length === 1)
+              setDrawer({ addressId, ip: null, vrfId: dialog.prefix.vrfId });
           }}
           prefix={dialog.prefix}
           suggestion={dialog.suggestion}

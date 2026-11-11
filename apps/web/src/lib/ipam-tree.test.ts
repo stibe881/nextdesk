@@ -194,3 +194,27 @@ describe("helpers", () => {
     expect(descendantCount(prefixes, "printer")).toBe(0);
   });
 });
+
+describe("buildTree text filter", () => {
+  it("matches prefix, description and VLAN and keeps ancestors as context", () => {
+    const byVlan = buildTree(prefixes, vlans, sites, [], "tree", {
+      ...EMPTY_TREE_FILTER,
+      text: "printer",
+    });
+    const nodes = byVlan.rows.filter((row) => row.kind === "node");
+    expect(nodes.map((row) => row.key)).toEqual(["root", "nord", "printer"]);
+    expect(
+      nodes.filter((row) => row.kind === "node" && row.context).length,
+    ).toBe(2);
+    const byNumber = buildTree(prefixes, vlans, sites, [], "tree", {
+      ...EMPTY_TREE_FILTER,
+      text: "67",
+    });
+    expect(byNumber.matchCount).toBe(1);
+    const byCidr = buildTree(prefixes, vlans, sites, [], "tree", {
+      ...EMPTY_TREE_FILTER,
+      text: "172.16.64",
+    });
+    expect(byCidr.matchCount).toBe(2);
+  });
+});
