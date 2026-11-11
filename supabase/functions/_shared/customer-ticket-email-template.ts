@@ -25,8 +25,13 @@ export type CustomerTicketEmailAction = {
   primary?: boolean;
 };
 
+/** Star links of the «ticket resolved» e-mail: one https link per star count. */
+export type CustomerTicketEmailRatingLink = { score: number; url: string };
+
 type CustomerTicketEmailInput = {
   actions?: readonly CustomerTicketEmailAction[];
+  /** Five star links; only rendered when all five are https links. */
+  ratingLinks?: readonly CustomerTicketEmailRatingLink[];
   attachmentNotice: boolean;
   branding: CustomerTicketEmailBrand;
   kind: CustomerTicketEmailKind;
@@ -229,6 +234,45 @@ function actionsHtml(
   return `<tr><td style="padding:6px 32px 14px;"><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>${buttons}</tr></table><p style="margin:0;color:#607089;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;">Die Links sind persönlich, einmal verwendbar und 14 Tage gültig.</p></td></tr>`;
 }
 
+function ratingHtml(
+  links: readonly CustomerTicketEmailRatingLink[] | undefined,
+  branding: CustomerTicketEmailBrand,
+): string {
+  const safe = (links ?? []).filter((link) => {
+    try {
+      const url = new URL(link.url);
+      return (
+        url.protocol === "https:" &&
+        !url.username &&
+        !url.password &&
+        Number.isInteger(link.score) &&
+        link.score >= 1 &&
+        link.score <= 5
+      );
+    } catch {
+      return false;
+    }
+  });
+  if (safe.length !== 5) return "";
+  const stars = [...safe]
+    .sort((left, right) => left.score - right.score)
+    .map(
+      (link) =>
+        `<td align="center" style="padding:0 6px 0 0;"><a href="${escapeHtml(link.url)}" title="${link.score} von 5 Sternen" style="display:block;width:52px;padding:8px 0 6px;border:1px solid #E0E8F2;border-radius:10px;background:#FFFFFF;color:#F2A900;font-family:Arial,Helvetica,sans-serif;font-size:30px;line-height:34px;text-decoration:none;">&#9733;<span style="display:block;color:${branding.secondaryColor};font-size:12px;font-weight:700;line-height:16px;">${link.score}</span></a></td>`,
+    )
+    .join("");
+  return `<tr><td style="padding:6px 32px 18px;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #E0E8F2;border-radius:12px;background:#F8FAFD;">
+              <tr><td style="padding:18px 20px 6px;">
+                <p style="margin:0 0 4px;color:${branding.secondaryColor};font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;line-height:22px;">Wie zufrieden waren Sie mit dem Support?</p>
+                <p style="margin:0 0 12px;color:#607089;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:19px;">Ein Klick auf die Sterne genügt. 1 bedeutet unzufrieden, 5 sehr zufrieden.</p>
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>${stars}</tr></table>
+              </td></tr>
+              <tr><td style="padding:6px 20px 16px;color:#607089;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;">Der Link ist persönlich und 14 Tage gültig. Sie bestätigen die Bewertung auf der nächsten Seite und können dort einen Kommentar hinzufügen.</td></tr>
+            </table>
+          </td></tr>`;
+}
+
 /**
  * Renders presentation-only, Outlook-friendly HTML for customer-facing ticket
  * e-mails. All dynamic values are escaped locally; callers still own recipient,
@@ -286,6 +330,7 @@ export function renderCustomerTicketEmail(
             </table>
           </td></tr>
           ${actionsHtml(input.actions, branding)}
+          ${ratingHtml(input.ratingLinks, branding)}
           ${attachmentNotice}
           <tr><td style="padding:14px 32px 26px;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-left:4px solid ${branding.accentColor};background:#F6FAF9;">

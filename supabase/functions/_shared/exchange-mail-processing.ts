@@ -30,6 +30,7 @@ import {
   requesterActionUrl,
   signRequesterActionToken,
 } from "./requester-action-token.ts";
+import { ratingLinks } from "./rating-link-token.ts";
 import { processEventSpaceEmailTicketIntake } from "./event-space-email-ticket-intake.ts";
 import { processOnboardingEmailTicketIntake } from "./onboarding-email-intake.ts";
 import {
@@ -142,6 +143,24 @@ async function securityNoticeActions(
       primary: true,
     },
   ];
+}
+
+/**
+ * Star links for the «ticket resolved» e-mail. A missing secret just sends the
+ * mail without the stars.
+ */
+async function resolutionRatingLinks(
+  admin: any,
+  ticketId: string,
+  tenantId: string,
+): Promise<{ score: number; url: string }[]> {
+  try {
+    const secret = await admin.rpc("ticket_requester_action_secret");
+    if (secret.error || typeof secret.data !== "string") return [];
+    return await ratingLinks(APP_ORIGIN, ticketId, tenantId, secret.data);
+  } catch {
+    return [];
+  }
 }
 
 async function reminderEmailActions(
@@ -2671,6 +2690,14 @@ export async function dispatchOutboundMessage(
           attachmentNotice: attachments.omitted,
         })
       : renderCustomerTicketEmail({
+          ratingLinks:
+            message.kind === "resolution" && ticket
+              ? await resolutionRatingLinks(
+                  admin,
+                  ticket.id as string,
+                  message.tenant_id as string,
+                )
+              : [],
           actions:
             message.kind === "agent_reply"
               ? await reminderEmailActions(admin, message.comment_id)

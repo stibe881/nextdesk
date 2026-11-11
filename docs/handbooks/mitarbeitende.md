@@ -140,6 +140,12 @@ betroffene Person. Ihre Rückmeldung hilft dem Support-Team, besser zu werden.
 In der iPhone-App finden Sie die Bewertung im Ticket direkt unter dem
 Fortschritt.
 
+**Per E-Mail:** Die E-Mail «Ticket gelöst» enthält fünf Sterne. Ein Klick auf
+einen Stern öffnet eine Seite mit Ihrer Auswahl; dort können Sie die Sterne noch
+ändern, einen Kommentar schreiben und mit **Bewertung senden** bestätigen. Sie
+müssen dafür nicht angemeldet sein. Der Link ist persönlich und 14 Tage gültig.
+Ein Ticket lässt sich nur einmal per E-Mail-Link bewerten.
+
 ![Bewertung eines gelösten Tickets mit Sternen und Kommentar](images/ma-bewertung.jpg)
 
 ## Verdächtige E-Mail melden (Phishing)
