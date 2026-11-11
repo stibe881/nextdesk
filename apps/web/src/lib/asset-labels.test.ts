@@ -39,6 +39,22 @@ describe("label formats", () => {
   });
 });
 
+describe("Avery L6009-20", () => {
+  it("48 Etiketten 45,7 × 21,2 mm passen auf A4", () => {
+    const format = labelFormat("avery-l6009");
+    expect(format.id).toBe("avery-l6009");
+    const positions = layoutLabels(format, 48);
+    expect(positions).toHaveLength(48);
+    expect(new Set(positions.map((p) => p.page))).toEqual(new Set([0]));
+    expect(positions[0]).toMatchObject({ xMm: 9.75, yMm: 21.5 });
+    const last = positions[47]!;
+    expect(last).toMatchObject({ column: 3, row: 11 });
+    expect(last.xMm + 45.7).toBeLessThanOrEqual(210);
+    expect(last.yMm + 21.2).toBeLessThanOrEqual(297);
+    expect(pageCount(format, 49)).toBe(2);
+  });
+});
+
 describe("layoutLabels", () => {
   const l7651 = labelFormat("avery-l7651");
 
