@@ -40,6 +40,7 @@ import {
   ClipboardList,
   CircleCheck,
   CircleEllipsis,
+  EthernetPort,
   Filter,
   FileWarning,
   FileText,
@@ -130,6 +131,7 @@ import {
   type SupportLevelFilter,
 } from "./lib/support-levels";
 import { Infrastructure } from "./infrastructure";
+import { Ipam } from "./ipam";
 import { Incidents } from "./incidents";
 import { SecurityCases } from "./security-cases";
 import {
@@ -232,6 +234,7 @@ type Section =
   | "Systemstatus"
   | "Assets"
   | "Infrastruktur"
+  | "IP-Adressen"
   | "Lager"
   | "Fälle"
   | "Sicherheitsfälle"
@@ -374,6 +377,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Serviceaufgaben", Icon: ListChecks },
     { label: "Assets", Icon: Boxes },
     { label: "Infrastruktur", Icon: Network },
+    { label: "IP-Adressen", Icon: EthernetPort },
     { label: "Lager", Icon: Boxes },
     { label: "Systemstatus", Icon: CircleCheck },
     { label: "Raumplanung", Icon: CalendarDays },
@@ -414,7 +418,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "DIENSTE & ÜBERWACHUNG",
     id: "navigation-category-services",
     navigationLabel: "Dienste und Überwachung",
-    sectionLabels: ["Services", "Infrastruktur", "Systemstatus"],
+    sectionLabels: ["Services", "Infrastruktur", "IP-Adressen", "Systemstatus"],
   },
 ] as const satisfies readonly {
   heading: string;
@@ -4898,6 +4902,9 @@ function AuthenticatedApp() {
     if (item.label === "Infrastruktur") {
       return isFeatureEnabled("assets.management");
     }
+    if (item.label === "IP-Adressen") {
+      return isFeatureEnabled("ipam.management");
+    }
     if (item.label === "Sicherheitsfälle") {
       return canWorkTickets && teamModuleAccess.securityCases;
     }
@@ -4940,6 +4947,7 @@ function AuthenticatedApp() {
   const employeeHiddenSections: readonly Section[] = [
     "Raumplanung",
     "Infrastruktur",
+    "IP-Adressen",
     "Lager",
     "Arbeitsplatz",
     "Systemstatus",
@@ -6343,6 +6351,14 @@ function AuthenticatedApp() {
               name: workspaceBrandName,
               logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
             }}
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
+            tenantId={activeTenant.id}
+          />
+        ) : section === "IP-Adressen" &&
+          activeTenant &&
+          isFeatureEnabled("ipam.management") ? (
+          <Ipam
+            key={activeTenant.id}
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             tenantId={activeTenant.id}
           />
