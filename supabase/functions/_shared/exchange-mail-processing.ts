@@ -65,6 +65,12 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "image/jpeg",
   "image/webp",
 ]);
+// Eingehend zusätzlich erlaubt: Outlook-Anhang «winmail.dat» (z. B. gemeldete
+// Nachrichten von «Melden»). Ausgehend bleibt die strenge Liste.
+const INBOUND_ALLOWED_CONTENT_TYPES = new Set([
+  ...ALLOWED_CONTENT_TYPES,
+  "application/ms-tnef",
+]);
 const TICKET_NUMBER_PATTERN =
   /(?:^|[^a-z0-9_-])([a-z0-9_-]{2,8}-\d{4}-\d{6})(?=$|[^a-z0-9_-])/gi;
 
@@ -1117,7 +1123,7 @@ async function readInboundAttachments(
       !contentType ||
       !filename ||
       !contentBytes ||
-      !ALLOWED_CONTENT_TYPES.has(contentType) ||
+      !INBOUND_ALLOWED_CONTENT_TYPES.has(contentType) ||
       reportedSize > MAX_INBOUND_ATTACHMENT_BYTES * 2 ||
       filename.length > 255 ||
       /[\u0000-\u001f\u007f/\\]/.test(filename)
