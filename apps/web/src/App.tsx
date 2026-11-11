@@ -132,6 +132,7 @@ import {
 } from "./lib/support-levels";
 import { Infrastructure } from "./infrastructure";
 import { Ipam } from "./ipam";
+import { IpamImportWizard } from "./ipam-import";
 import { Incidents } from "./incidents";
 import { SecurityCases } from "./security-cases";
 import {
@@ -6358,6 +6359,7 @@ function AuthenticatedApp() {
           activeTenant &&
           isFeatureEnabled("ipam.management") ? (
           <Ipam
+            importPanel={(panel) => <IpamImportWizard {...panel} />}
             key={activeTenant.id}
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             tenantId={activeTenant.id}
