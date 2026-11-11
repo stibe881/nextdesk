@@ -1,6 +1,6 @@
 /**
  * Content of scanned asset labels. nextDesk labels carry an app link
- * (`ch.grossict.nextdesk://asset/<id>`) or a web link (`https://…/?asset=<id>`);
+ * (`ch.grossict.nextdesk://asset/<id>`) or a web link (`https://…/?asset=<id>`); stock article labels carry `https://…/?inventory=<id>`;
  * everything else (inventory number, serial number, asset tag, other
  * barcodes) is looked up as before.
  */
@@ -10,6 +10,7 @@ export const APP_SCHEME = "ch.grossict.nextdesk";
 export type ScannedCode =
   | { kind: "asset"; assetId: string }
   | { kind: "rack"; rack: string }
+  | { kind: "inventory"; itemId: string }
   | { kind: "code"; code: string };
 
 const UUID_PATTERN =
@@ -66,6 +67,10 @@ export function parseScannedCode(raw: string): ScannedCode {
       const assetId = uuid(safeDecode(segments[1] ?? ""));
       if (assetId) return { kind: "asset", assetId };
     }
+    if (segments[0]?.toLowerCase() === "inventory") {
+      const itemId = uuid(safeDecode(segments[1] ?? ""));
+      if (itemId) return { kind: "inventory", itemId };
+    }
     if (segments[0]?.toLowerCase() === "infrastructure") {
       const rack = rackName(searchParam(url.query, "rack"));
       if (rack) return { kind: "rack", rack };
@@ -75,6 +80,8 @@ export function parseScannedCode(raw: string): ScannedCode {
   if (url && (url.scheme === "https" || url.scheme === "http")) {
     const assetId = uuid(searchParam(url.query, "asset"));
     if (assetId) return { kind: "asset", assetId };
+    const itemId = uuid(searchParam(url.query, "inventory"));
+    if (itemId) return { kind: "inventory", itemId };
     const rack = rackName(searchParam(url.query, "rack"));
     if (rack) return { kind: "rack", rack };
   }
