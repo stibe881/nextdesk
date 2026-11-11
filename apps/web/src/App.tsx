@@ -2521,6 +2521,7 @@ const initialKnowledgeDeepLink: string | null = (() => {
 
 // "?asset=<uuid>" and "?rack=<name>" are the web fallback of printed asset
 // labels (QR code). They open the asset list or the rack view.
+const LABEL_LINK_STORAGE_KEY = "nextdesk.pendingLabelLink";
 const initialAssetLabelDeepLink: {
   assetId: string | null;
   inventoryId: string | null;
@@ -2530,19 +2531,33 @@ const initialAssetLabelDeepLink: {
     return { assetId: null, inventoryId: null, rack: null };
   try {
     const url = new URL(window.location.href);
-    const assetId = assetIdFromSearch(url.search);
-    const inventoryId = assetId ? null : inventoryIdFromSearch(url.search);
-    const rack = assetId || inventoryId ? null : rackFromSearch(url.search);
-    if (
+    let search = url.search;
+    const hasLabelParam =
       url.searchParams.has("asset") ||
       url.searchParams.has("rack") ||
-      url.searchParams.has("inventory")
-    ) {
+      url.searchParams.has("inventory");
+    if (hasLabelParam) {
+      // Scanned while signed out: the sign-in redirect drops the address
+      // parameters, so remember the link for this tab until it is used.
+      try {
+        window.sessionStorage.setItem(LABEL_LINK_STORAGE_KEY, search);
+      } catch {
+        // Storage not available: the link only works when already signed in.
+      }
       url.searchParams.delete("asset");
       url.searchParams.delete("rack");
       url.searchParams.delete("inventory");
       window.history.replaceState(window.history.state, "", url.toString());
+    } else {
+      try {
+        search = window.sessionStorage.getItem(LABEL_LINK_STORAGE_KEY) ?? "";
+      } catch {
+        search = "";
+      }
     }
+    const assetId = assetIdFromSearch(search);
+    const inventoryId = assetId ? null : inventoryIdFromSearch(search);
+    const rack = assetId || inventoryId ? null : rackFromSearch(search);
     return { assetId, inventoryId, rack };
   } catch {
     return { assetId: null, inventoryId: null, rack: null };
@@ -3479,6 +3494,11 @@ function AuthenticatedApp() {
     // Asset label QR code (web fallback): open the asset or the rack.
     if (!assetLabelDeepLinkConsumedRef.current) {
       assetLabelDeepLinkConsumedRef.current = true;
+      try {
+        window.sessionStorage.removeItem(LABEL_LINK_STORAGE_KEY);
+      } catch {
+        // Nothing to clear.
+      }
       if (initialAssetLabelDeepLink.assetId) {
         setAssetFocusQuery({
           query: initialAssetLabelDeepLink.assetId,

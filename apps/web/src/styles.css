@@ -864,6 +864,56 @@ input[type="radio"] {
   vertical-align: middle;
 }
 
+/* Moderne Checkbox: abgerundetes Feld, Markenfarbe, Haken statt System-Darstellung. */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  border: 1.5px solid color-mix(in srgb, var(--muted, #5d6f7a) 60%, transparent);
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+input[type="checkbox"]::after {
+  content: "";
+  width: 11px;
+  height: 11px;
+  background: #fff;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  transform: scale(0);
+  transition: transform 0.12s ease;
+}
+input[type="checkbox"]:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+input[type="checkbox"]:checked,
+input[type="checkbox"]:indeterminate {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+input[type="checkbox"]:checked::after {
+  transform: scale(1);
+}
+input[type="checkbox"]:indeterminate::after {
+  clip-path: none;
+  width: 9px;
+  height: 2px;
+  border-radius: 1px;
+  transform: scale(1);
+}
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 input[type="file"] {
   max-width: 100%;
   padding: 6px;
@@ -22356,4 +22406,8 @@ button.predefined-report__drill:hover:not(:disabled) strong {
   gap: 8px;
   justify-content: flex-end;
   margin-top: 10px;
+}
+
+.shop__options-editor .fk-chips {
+  margin-bottom: 10px;
 }
