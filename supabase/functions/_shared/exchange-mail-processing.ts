@@ -224,6 +224,7 @@ export function customerTicketEmailKindForOutbound(
     messageKind === "agent_reply" ||
     messageKind === "acknowledgement" ||
     messageKind === "resolution" ||
+    messageKind === "rating_reminder" ||
     messageKind === "test"
   )
     return messageKind;
@@ -2661,6 +2662,32 @@ export async function dispatchOutboundMessage(
       );
     if (message.kind === "resolution")
       bodyText = templateText("text", "Ihr Ticket wurde als gelöst markiert.");
+    if (message.kind === "rating_reminder") {
+      // Erinnerung nur, solange das Ticket gelöst und noch nicht bewertet ist.
+      const rated = await admin
+        .from("ticket_satisfaction")
+        .select("ticket_id")
+        .eq("ticket_id", ticket?.id ?? message.ticket_id)
+        .maybeSingle();
+      const statusRow = await admin
+        .from("tickets")
+        .select("status:ticket_statuses!inner(key, is_closed)")
+        .eq("id", ticket?.id ?? message.ticket_id)
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle();
+      const status = Array.isArray(statusRow.data?.status)
+        ? statusRow.data?.status[0]
+        : statusRow.data?.status;
+      if (rated.data || !(status?.is_closed === true || status?.key === "resolved")) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: rated.data ? "already_rated" : "not_ratable",
+        });
+        return;
+      }
+      bodyText =
+        "Wir haben Ihr Ticket vor drei Tagen als gelöst markiert. Wir möchten wissen, wie zufrieden Sie waren. Ein Klick auf die Sterne genügt.";
+    }
     if (message.kind === "test")
       bodyText = "Dies ist eine Testmail des nextDesk E-Mail-Kanals.";
     const ticketNumber = asString(ticket?.ticket_number) ?? "nextDesk-Test";
@@ -2691,7 +2718,9 @@ export async function dispatchOutboundMessage(
         })
       : renderCustomerTicketEmail({
           ratingLinks:
-            message.kind === "resolution" && ticket
+            (message.kind === "resolution" ||
+              message.kind === "rating_reminder") &&
+            ticket
               ? await resolutionRatingLinks(
                   admin,
                   ticket.id as string,
@@ -2738,7 +2767,9 @@ export async function dispatchOutboundMessage(
           ? `[${ticketNumber}] ${asString(message.subject)}`
           : message.kind === "agent_reply"
             ? `AW: [${ticketNumber}] ${ticketSubject}`
-            : `[${ticketNumber}] ${ticketSubject}`,
+            : message.kind === "rating_reminder"
+              ? `Wie zufrieden waren Sie? [${ticketNumber}] ${ticketSubject}`
+              : `[${ticketNumber}] ${ticketSubject}`,
       body: { contentType: "HTML", content: html },
       toRecipients: [{ emailAddress: { address: recipient } }],
       internetMessageHeaders: [

@@ -2,6 +2,7 @@ export type CustomerTicketEmailKind =
   | "acknowledgement"
   | "agent_reply"
   | "resolution"
+  | "rating_reminder"
   | "test"
   /** nextDesk notification to an agent or member (no reply expected). */
   | "notification"
@@ -136,6 +137,13 @@ function presentation(kind: CustomerTicketEmailKind): EmailPresentation {
       return {
         eyebrow: "Ticket gelöst",
         intro: "Ihr Ticket wurde als gelöst markiert.",
+        replyHint:
+          "Ist noch etwas offen? Antworten Sie direkt auf diese E-Mail. Bitte lassen Sie die Ticketnummer im Betreff stehen.",
+      };
+    case "rating_reminder":
+      return {
+        eyebrow: "Ihre Meinung zählt",
+        intro: "Wie zufrieden waren Sie mit dem Support?",
         replyHint:
           "Ist noch etwas offen? Antworten Sie direkt auf diese E-Mail. Bitte lassen Sie die Ticketnummer im Betreff stehen.",
       };
