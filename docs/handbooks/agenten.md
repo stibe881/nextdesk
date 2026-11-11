@@ -305,11 +305,18 @@ bearbeiten die Störung vollständig dort.
   letzten 30 Tage) und _Verfügbarkeit_ der überwachten Geräte. Ein Klick auf
   eine Kachel zeigt darunter die passenden Störungen; **Filter aufheben** führt
   zurück zu den aktiven.
-- **Register**: _Aktiv_, _Behoben_ und _Alle_. Die Dauer läuft live mit, und
-  die Liste aktualisiert sich alle 30 Sekunden.
-- **Automatisch erledigt**: Meldet PRTG wieder OK, verschwindet die Störung
-  aus _Aktiv_ und ist automatisch abgeschlossen. Sie muss weder bestätigt noch
-  von Hand abgeschlossen werden, und die Alarmierung hört auf.
+- **Register**: _Aktiv_, _Behoben_ (PRTG meldet wieder OK, Ursache fehlt
+  noch), _Abgeschlossen_ und _Alle_. Die Dauer läuft live mit, und neue
+  Meldungen erscheinen ohne Neuladen. Im Suchfeld finden Sie Störungen nach
+  Nummer, Gerät oder Titel; ältere Störungen laden Sie mit **Weitere Störungen
+  laden** nach.
+- **Behoben, dann abgeschlossen**: Meldet PRTG wieder OK, wechselt die
+  Störung auf _Behoben_ und die Alarmierung hört auf. Abgeschlossen ist sie
+  erst, wenn Sie sie mit der **Ursache** abschliessen (siehe unten).
+- **Tickets zur Störung**: Gehen während einer aktiven Störung Tickets zum
+  betroffenen Gerät oder Dienst ein (Gerät bzw. Dienst am Ticket verknüpft
+  oder Gerätename, Hostname oder IP-Adresse im Text), ordnet nextDesk sie der
+  Störung automatisch zu. Im Ticket steht dann «Gehört zur Störung STO-…».
 
 ![Liste der Störungen mit Folgestörungen](images/ag-stoerungen.jpg)
 
@@ -324,16 +331,38 @@ Ein Klick öffnet die Störung:
 3. **Letzte 24 Stunden** zeigt, wann das Gerät gestört war, und warnt, wenn
    es in dieser Woche mehrfach ausgefallen ist. Darunter stehen die
    **Sensoren** mit ihrem letzten Stand.
-4. Rechts sehen Sie **Gerät** (Ort, Adresse, PRTG-Objekt), die
-   **Abhängigkeiten** (vorgelagerte Geräte und Folgestörungen) und die
-   **betroffenen Dienste**. Der Systemstatus wird automatisch gesetzt und nach
-   der Behebung zurückgesetzt.
-5. Meldet PRTG wieder OK, schliesst sich die Störung automatisch. Bei Bedarf
-   tragen Sie unter **Ursache nachtragen** die Ursache (Strom, Netzwerk,
-   Hardware, Software, Wartung, Extern, Unbekannt) nach; das ist freiwillig
-   und fliesst in die Auswertung ein. Eine noch aktive Störung schliessen Sie
-   unter **Abschliessen** mit Ursache von Hand ab, etwa wenn ein «Up» von PRTG
+4. Unter **Tickets** stehen die zugeordneten Tickets mit dem Grund der
+   Zuordnung (Gerät, Dienst, im Text, von Hand). Mit **Ticketnummer
+   zuordnen** ergänzen Sie ein Ticket, mit **×** lösen Sie eines wieder; ein
+   gelöstes Ticket wird nicht erneut automatisch zugeordnet.
+5. Rechts sehen Sie **Gerät** (Ort, Adresse, PRTG-Objekt), **Netzwerk** (IP,
+   Subnetz, VLAN, Standort und Switch-Port aus der IP-Adressverwaltung sowie
+   weitere Geräte im selben Subnetz bzw. am selben Switch mit ihrem aktuellen
+   Zustand), die **Abhängigkeiten** (vorgelagerte Geräte und Folgestörungen)
+   und die **betroffenen Dienste**. Der Systemstatus wird automatisch gesetzt
+   und nach der Behebung zurückgesetzt.
+6. Unter **Statusseite** veröffentlichen Sie mit **Öffentliche Meldung** eine
+   Meldung (Zustand, Titel, Text, betroffene Dienste) auf der Statusseite und
+   ergänzen sie später mit **Update veröffentlichen**.
+7. **Abschliessen**: Wählen Sie die **Ursache** (Strom, Netzwerk, Hardware,
+   Software, Wartung, Extern, Unbekannt) und halten Sie die Lösung fest. Sind
+   Tickets zugeordnet, ist **Tickets informieren und auf «Gelöst» setzen**
+   eingeschaltet: Jedes offene Ticket erhält eine öffentliche Antwort mit der
+   Ursache (Text anpassbar, Versand per Mail wie gewohnt) und wird gelöst.
+   Tickets, für die Ihnen die Berechtigung fehlt oder bei denen die Ursache
+   einer SLA-Verletzung noch fehlt, werden ausgelassen und nach dem Abschluss
+   aufgeführt. Mit **Fall eröffnen** legen Sie gleichzeitig einen Fall
+   (Problem-Management) mit Tickets und Diensten der Störung an. Eine noch
+   aktive Störung schliessen Sie ebenso ab, etwa wenn ein «Up» von PRTG
    verloren ging; Folgestörungen werden mit abgeschlossen.
+8. War das Gerät in 30 Tagen mindestens dreimal gestört (oder trat dieselbe
+   Ursache dreimal auf), schlägt die Karte **Fall** mit **Fall vorschlagen**
+   einen Fall vor; frühere Störungen des Geräts werden auf Wunsch verknüpft.
+9. Bei einer abgeschlossenen Störung mit Ursache erstellt **Wissen →
+   Wissensartikel-Entwurf erstellen** einen internen Artikelentwurf (Symptom,
+   Ursache, Lösung, Vorbeugung) – mit KI, wenn sie für den Mandanten
+   freigegeben ist, sonst aus den Angaben der Störung. Prüfen und
+   veröffentlichen Sie ihn in der Wissensdatenbank.
 
 ![Störung mit Verlauf, Gerät und Abhängigkeiten](images/ag-stoerung.jpg)
 
@@ -345,10 +374,12 @@ Die Benachrichtigungen dazu schalten Sie unter _Persönliche Einstellungen →
 Benachrichtigungen → Störungen_ (Push und E-Mail) ein oder aus.
 
 In der **iOS- und Android-App** finden Sie **Störungen** in der unteren Leiste
-links vom Home-Knopf (Tickets, Störungen, Phishing). Dort sehen Sie die aktiven und unbestätigten
-Störungen samt Folgestörungen, bestätigen sie, weisen sie zu, ergänzen Notizen
-und schliessen sie ab oder tragen die Ursache nach. Ein Tipp auf eine
-Störungs-Mitteilung öffnet die Störung direkt.
+links vom Home-Knopf (Tickets, Störungen, Phishing). Dort sehen Sie die aktiven,
+unbestätigten, behobenen und abgeschlossenen Störungen samt Folgestörungen,
+bestätigen sie, weisen sie zu, ergänzen Notizen und schliessen sie mit Ursache
+ab – auf Wunsch mit Antwort an die zugeordneten Tickets. Die Störung zeigt auch
+die Tickets und den Netzwerk-Kontext. Ein Tipp auf eine Störungs-Mitteilung
+öffnet die Störung direkt.
 
 ## Ticketliste
 

@@ -1,10 +1,10 @@
 import { withSupabase } from "@supabase/server";
 import {
   buildEvent,
+  candidateObjectIds,
   classifyStatus,
   type DeviceCandidate,
   externalKey,
-  matchDevice,
   MAX_BODY_BYTES,
   opensAlert,
   parseBody,
@@ -27,8 +27,11 @@ import {
  *   incident («Störung») per device. No tickets are created: everything is
  *   handled in the «Störungen» module. Devices behind a failed device (uplinks
  *   in the infrastructure) become follow-up incidents without own alert. Up
- *   resolves the alert, the incident once all its sensors are OK again, and
- *   restores the service status.
+ *   resolves the alert, sets the incident to «resolved» once all its sensors
+ *   are OK again (an agent closes it with a cause) and restores the service
+ *   status.
+ * - Device, services and uplink chain come from one SQL resolver
+ *   (monitoring_resolve_device), shared with the incidents function.
  */
 
 // deno-lint-ignore no-explicit-any
@@ -39,15 +42,19 @@ type Integration = {
   id: string;
   tenant_id: string;
   enabled: boolean;
-  department_id: string | null;
   team_id: string | null;
   create_on: "down" | "down_and_warning";
-  auto_resolve: boolean;
   set_service_status: boolean;
-  priority_key: string | null;
   group_dependencies: boolean;
   suppress_in_maintenance: boolean;
 };
+
+/** A resolved device with its uplink chain (nearest first, at most 20). */
+export type ResolvedDevice = DeviceCandidate & { uplinks: string[] };
+
+/** Settings the webhook reads (no ticket settings: incidents have none). */
+export const INTEGRATION_COLUMNS =
+  "id, tenant_id, enabled, team_id, create_on, set_service_status, group_dependencies, suppress_in_maintenance";
 
 type Alert = {
   id: string;
@@ -91,63 +98,49 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value ? value : null;
 }
 
-async function loadDevices(
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+/** Parses the result of the SQL function monitoring_resolve_device. */
+export function parseResolvedDevice(value: unknown): ResolvedDevice | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const row = value as Row;
+  const assetId = asString(row.assetId);
+  if (!assetId) return null;
+  return {
+    assetId,
+    name: asString(row.name) ?? "",
+    hostname: asString(row.hostname),
+    ipAddress: asString(row.ipAddress),
+    prtgObjectId: asString(row.prtgObjectId),
+    serviceIds: stringList(row.serviceIds),
+    uplinks: stringList(row.uplinks),
+  };
+}
+
+/**
+ * The device of a message, resolved in SQL (PRTG object id, host, name, IP
+ * address management) with its services and uplink chain: only the rows
+ * needed, not the whole inventory of the tenant.
+ */
+async function resolveDevice(
   admin: Admin,
   tenantId: string,
-): Promise<DeviceCandidate[]> {
-  const infra = await admin
-    .from("asset_infrastructure")
-    .select("asset_id, hostname, ip_address, prtg_object_id")
-    .eq("tenant_id", tenantId)
-    .limit(5000);
-  if (infra.error) throw new Error("device_lookup_failed");
-  const rows = (infra.data ?? []) as Row[];
-  if (!rows.length) return [];
-  const assets = await admin
-    .from("assets")
-    .select("id, name, service_id")
-    .eq("tenant_id", tenantId)
-    .in(
-      "id",
-      rows.map((row) => String(row.asset_id)),
-    );
-  if (assets.error) throw new Error("device_lookup_failed");
-  const links = await admin
-    .from("asset_services")
-    .select("asset_id, service_id")
-    .eq("tenant_id", tenantId)
-    .limit(20000);
-  if (links.error) throw new Error("device_lookup_failed");
-  const servicesByAsset = new Map<string, Set<string>>();
-  for (const link of (links.data ?? []) as Row[]) {
-    const key = String(link.asset_id);
-    const set = servicesByAsset.get(key) ?? new Set<string>();
-    set.add(String(link.service_id));
-    servicesByAsset.set(key, set);
-  }
-  const byId = new Map(
-    ((assets.data ?? []) as Row[]).map((row) => [String(row.id), row]),
-  );
-  return rows.flatMap((row) => {
-    const asset = byId.get(String(row.asset_id));
-    if (!asset) return [];
-    return [
-      {
-        assetId: String(asset.id),
-        name: String(asset.name ?? ""),
-        hostname: asString(row.hostname),
-        ipAddress: asString(row.ip_address),
-        prtgObjectId: asString(row.prtg_object_id),
-        // The primary service plus every additional one of the device.
-        serviceIds: [
-          ...new Set([
-            ...(asString(asset.service_id) ? [asString(asset.service_id)!] : []),
-            ...(servicesByAsset.get(String(asset.id)) ?? []),
-          ]),
-        ],
-      },
-    ];
+  event: PrtgEvent,
+): Promise<ResolvedDevice | null> {
+  const { data, error } = await admin.rpc("monitoring_resolve_device", {
+    p_tenant_id: tenantId,
+    p_object_ids: candidateObjectIds(event),
+    p_host: event.host,
+    p_name: event.device,
   });
+  if (error) throw new Error("device_lookup_failed");
+  return parseResolvedDevice(data);
 }
 
 async function applyServiceStatus(
@@ -259,12 +252,12 @@ type Incident = {
 const INCIDENT_COLUMNS =
   "id, number, severity, state, parent_incident_id, maintenance";
 
-function incidentKey(event: PrtgEvent, device: DeviceCandidate | null, key: string): string {
+function incidentKey(event: PrtgEvent, device: ResolvedDevice | null, key: string): string {
   if (device) return `asset:${device.assetId}`;
   return `dev:${(event.device ?? event.host ?? key).toLowerCase()}`.slice(0, 300);
 }
 
-function incidentTitle(event: PrtgEvent, device: DeviceCandidate | null): string {
+function incidentTitle(event: PrtgEvent, device: ResolvedDevice | null): string {
   const name = device?.name ?? event.device ?? event.host ?? "Unbekanntes Gerät";
   const sensor = event.sensor ? ` – ${event.sensor}` : "";
   const title = `${name}${sensor}`.replace(/\s+/g, " ").trim();
@@ -301,27 +294,17 @@ async function notifyIncident(
   });
 }
 
-/** uplink map asset → uplink asset of the tenant's infrastructure. */
-async function loadUplinks(admin: Admin, tenantId: string): Promise<Map<string, string>> {
-  const { data } = await admin
-    .from("asset_infrastructure")
-    .select("asset_id, uplink_asset_id")
-    .eq("tenant_id", tenantId)
-    .not("uplink_asset_id", "is", null)
-    .limit(5000);
-  return new Map(
-    ((data ?? []) as Row[]).map((row) => [String(row.asset_id), String(row.uplink_asset_id)]),
-  );
-}
-
-function ancestorsOf(assetId: string, uplinks: Map<string, string>): string[] {
-  const chain: string[] = [];
-  let current = uplinks.get(assetId);
-  while (current && !chain.includes(current) && current !== assetId && chain.length < 20) {
-    chain.push(current);
-    current = uplinks.get(current);
-  }
-  return chain;
+/** Devices behind a device (their uplink chain contains it). */
+async function downstreamAssets(
+  admin: Admin,
+  tenantId: string,
+  assetId: string,
+): Promise<string[]> {
+  const { data, error } = await admin.rpc("monitoring_downstream_assets", {
+    p_tenant_id: tenantId,
+    p_asset_id: assetId,
+  });
+  return error ? [] : stringList(data);
 }
 
 async function inMaintenance(
@@ -349,7 +332,7 @@ async function incidentForAlert(
   admin: Admin,
   integration: Integration,
   event: PrtgEvent,
-  device: DeviceCandidate | null,
+  device: ResolvedDevice | null,
   key: string,
   now: Date,
 ): Promise<{ incident: Incident; created: boolean }> {
@@ -385,8 +368,9 @@ async function incidentForAlert(
     .select(INCIDENT_COLUMNS)
     .eq("tenant_id", tenantId)
     .eq("incident_key", deviceKey)
-    // Closed automatically by an «Up» (not by an agent).
-    .eq("state", "closed")
+    // Resolved by an «Up» (before 0311: closed automatically), never one an
+    // agent closed.
+    .in("state", ["resolved", "closed"])
     .is("closed_by", null)
     .gte("resolved_at", new Date(now.getTime() - REOPEN_WINDOW_MS).toISOString())
     .order("resolved_at", { ascending: false })
@@ -405,7 +389,7 @@ async function incidentForAlert(
         last_event_at: now.toISOString(),
       })
       .eq("id", incident.id)
-      .eq("state", "closed")
+      .in("state", ["resolved", "closed"])
       .is("closed_by", null)
       .select(INCIDENT_COLUMNS)
       .maybeSingle();
@@ -418,12 +402,10 @@ async function incidentForAlert(
     }
   }
 
-  const uplinks = integration.group_dependencies && device
-    ? await loadUplinks(admin, tenantId)
-    : new Map<string, string>();
+  const grouping = integration.group_dependencies && device !== null;
   let parent: { id: string; number: string } | null = null;
-  if (device && uplinks.size) {
-    const ancestors = ancestorsOf(device.assetId, uplinks);
+  if (device && grouping) {
+    const ancestors = device.uplinks;
     if (ancestors.length) {
       const { data } = await admin
         .from("monitoring_incidents")
@@ -493,10 +475,8 @@ async function incidentForAlert(
   await notifyIncident(admin, incident, "opened");
 
   // Devices behind this one that already failed become its follow-ups.
-  if (device && uplinks.size && !parent) {
-    const descendants = [...uplinks.keys()].filter((assetId) =>
-      ancestorsOf(assetId, uplinks).includes(device.assetId)
-    );
+  if (device && grouping && !parent) {
+    const descendants = await downstreamAssets(admin, tenantId, device.assetId);
     if (descendants.length) {
       const { data } = await admin
         .from("monitoring_incidents")
@@ -533,12 +513,10 @@ async function resolveIncidentIfClear(
   if (open.error || ((open.data ?? []) as Row[]).length > 0) return false;
   const updated = await admin
     .from("monitoring_incidents")
-    // Back to OK: the incident is done, nobody has to confirm or close it.
+    // Back to OK: resolved. An agent closes it with the cause.
     .update({
-      state: "closed",
+      state: "resolved",
       resolved_at: now.toISOString(),
-      closed_at: now.toISOString(),
-      closing_note: "Automatisch abgeschlossen: PRTG meldet wieder OK.",
       last_event_at: now.toISOString(),
     })
     .eq("id", incidentId)
@@ -546,7 +524,7 @@ async function resolveIncidentIfClear(
     .select("id");
   if (((updated.data ?? []) as Row[]).length) {
     await addIncidentEvent(admin, tenantId, incidentId, "resolved", null,
-      "PRTG meldet alle Sensoren wieder OK. Störung automatisch abgeschlossen.");
+      "PRTG meldet alle Sensoren wieder OK. Störung behoben – bitte mit Ursache abschliessen.");
     return true;
   }
   return false;
@@ -647,12 +625,7 @@ async function settleAfterDown(
   if (!stillOpen.error && ((stillOpen.data ?? []) as Row[]).length === 0) {
     await admin
       .from("monitoring_incidents")
-      .update({
-        state: "closed",
-        resolved_at: now.toISOString(),
-        closed_at: now.toISOString(),
-        closing_note: "Automatisch abgeschlossen: PRTG meldet wieder OK.",
-      })
+      .update({ state: "resolved", resolved_at: now.toISOString() })
       .eq("id", incidentId)
       .eq("state", "active");
   }
@@ -675,7 +648,7 @@ export async function processEvent(
 
   if (!alert) {
     if (!opensAlert(event.kind, integration.create_on)) return "ignored";
-    const device = matchDevice(event, await loadDevices(admin, tenantId));
+    const device = await resolveDevice(admin, tenantId, event);
     // The alert is claimed first: the partial unique index makes a second,
     // concurrent Down for the same object fall through to the update path.
     const inserted = await admin
@@ -738,7 +711,7 @@ export async function processEvent(
 
   // Older open alerts without an incident get one now.
   if (!alert.incident_id) {
-    const device = matchDevice(event, await loadDevices(admin, tenantId));
+    const device = await resolveDevice(admin, tenantId, event);
     const incident = await incidentForAlert(admin, integration, event, device, key, now);
     alert.incident_id = incident.incident.id;
     await admin.from("monitoring_alerts").update({ incident_id: alert.incident_id }).eq("id", alert.id);
@@ -831,9 +804,7 @@ const handler = withSupabase(
     const admin = context.supabaseAdmin;
     const { data: integration, error } = await admin
       .from("monitoring_integrations")
-      .select(
-        "id, tenant_id, enabled, department_id, team_id, create_on, auto_resolve, set_service_status, priority_key, group_dependencies, suppress_in_maintenance",
-      )
+      .select(INTEGRATION_COLUMNS)
       .eq("token_hash", await sha256Hex(token))
       .maybeSingle();
     if (error) return reply({ ok: false, error: "unavailable" }, 503);

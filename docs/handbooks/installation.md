@@ -267,7 +267,8 @@ per Push und E-Mail alarmiert.
    bei Bedarf _Warnung_ und **zwingend** die Zeile «nicht mehr im Status …»
    (Up) mit derselben Vorlage. Ohne den Up-Trigger erfährt nextDesk nie, dass
    die Störung vorbei ist, und der Dienst bleibt im Systemstatus gestört. Bei
-   _Up_ wird die Störung automatisch abgeschlossen. nextDesk versteht die
+   _Up_ wird die Störung als behoben markiert; abgeschlossen wird sie von einem
+   Agenten mit der Ursache. nextDesk versteht die
    Statuswörter deutsch (Fehler, Warnung, OK, Pausiert) und englisch (Down,
    Warning, Up, Paused).
 4. **Geräte und Dienste verknüpfen** (nur damit ändert sich der Systemstatus):
@@ -275,7 +276,9 @@ per Push und E-Mail alarmiert.
    (am besten die Geräte-ID aus der PRTG-Adresse `device.htm?id=…`, dann gelten
    alle Sensoren des Geräts) und bei **Dienste (für Systemstatus)** einen oder
    **mehrere Dienste** ankreuzen. Ohne ID ordnet nextDesk über Hostname bzw.
-   IP-Adresse und zuletzt über den Gerätenamen zu. Bei Down wechseln alle
+   IP-Adresse, dann über den Gerätenamen und zuletzt über eine IP-Adresse
+   bzw. einen Hostnamen der IP-Adressverwaltung mit verknüpftem Gerät zu. Bei
+   Down wechseln alle
    gewählten Dienste auf «Teilweiser Ausfall» (Warning: «Eingeschränkt»), bei
    Up zurück auf «Betriebsbereit», sobald kein anderer Alarm sie mehr betrifft.
 5. Blockiert Ihre Firewall die Webhook-Adresse (typisch: Webfilter oder

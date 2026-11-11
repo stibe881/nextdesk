@@ -1027,7 +1027,7 @@ const HANDLERS = {
       title: "FW-01 – HTTPS",
       deviceName: "FW-01",
       severity: "down",
-      state: "closed",
+      state: "resolved",
       acknowledgedAt: D.ago(26 * D.HOUR),
       acknowledgedBy: agent.name,
       assignedAgentId: agent.id,
@@ -1049,14 +1049,16 @@ const HANDLERS = {
     };
     if (body.type === "list") {
       const incidents =
-        body.filter === "closed" || body.filter === "recent"
+        body.filter === "closed" ||
+        body.filter === "recent" ||
+        body.filter === "resolved"
           ? [resolved]
           : body.filter === "unacknowledged" || body.filter === "services"
             ? [root]
             : body.filter === "all"
               ? [root, warning, resolved]
               : [root, warning];
-      return ok({ incidents, stats });
+      return ok({ incidents, stats, nextCursor: null });
     }
     if (body.type === "report") {
       return ok({
@@ -1179,6 +1181,72 @@ const HANDLERS = {
           { start: at(14), end: at(0), severity: "down" },
         ],
         weekCount: 3,
+      },
+      tickets: [
+        {
+          id: D.uid("29292929", 61),
+          number: "ICT-2026-000318",
+          subject: "Kein Zugriff auf Laufwerk S:",
+          status: "Offen",
+          closed: false,
+          source: "service",
+          linkedAt: at(10),
+          notifiedAt: null,
+        },
+        {
+          id: D.uid("29292929", 62),
+          number: "ICT-2026-000319",
+          subject: "WLAN im 1. OG weg (AP-OG1-02)",
+          status: "Offen",
+          closed: false,
+          source: "text",
+          linkedAt: at(8),
+          notifiedAt: null,
+        },
+      ],
+      hiddenTickets: 0,
+      problems: [],
+      recurrence: { sameDevice30d: 4, sameCause30d: 0, suggestCase: true },
+      permissions: { openCase: true, draftArticle: true },
+      network: {
+        addresses: [
+          {
+            address: "10.10.0.2",
+            hostname: "sw-core-01",
+            prefix: "10.10.0.0/24",
+            gateway: "10.10.0.1",
+            vlanNumber: 10,
+            vlanName: "Management",
+            site: "Hauptgebäude",
+            switchName: "FW-01",
+            switchPort: "port3",
+            portSource: "lldp",
+          },
+        ],
+        subnetNeighbours: [
+          {
+            assetId: D.uid("29292929", 71),
+            name: "SRV-FS01",
+            address: "10.10.0.21",
+            state: "down",
+            incidentId: D.uid("29292929", 2),
+          },
+          {
+            assetId: D.uid("29292929", 72),
+            name: "USV Serverraum",
+            address: "10.10.0.30",
+            state: "warning",
+            incidentId: D.uid("29292929", 4),
+          },
+          {
+            assetId: D.uid("29292929", 73),
+            name: "SRV-APP01",
+            address: "10.10.0.22",
+            state: "ok",
+            incidentId: null,
+          },
+        ],
+        switchNeighbours: [],
       },
       agents: D.AGENTS.map((entry) => ({ id: entry.id, name: entry.name })),
     });

@@ -27,14 +27,15 @@ class HttpError extends Error {
   }
 }
 
+// The ticket settings of the first PRTG version (department, priority,
+// auto-resolve) are no longer used: PRTG opens incidents, not tickets. The
+// columns stay in the database; older clients may still send the fields and
+// they are ignored.
 export type ConfigInput = {
   enabled: boolean;
-  departmentId: string | null;
   teamId: string | null;
   createOn: (typeof CREATE_ON)[number];
-  autoResolve: boolean;
   setServiceStatus: boolean;
-  priorityKey: string | null;
   /** Minutes until an unacknowledged incident alarms again; 0 = never. */
   realertMinutes: number;
   groupDependencies: boolean;
@@ -50,28 +51,11 @@ type Action =
 
 export function parseConfig(value: unknown): ConfigInput | null {
   if (!isRecord(value)) return null;
-  const departmentId =
-    value.departmentId === null ||
-    value.departmentId === undefined ||
-    value.departmentId === ""
-      ? null
-      : isUuid(value.departmentId)
-        ? value.departmentId.toLowerCase()
-        : undefined;
   const teamId =
     value.teamId === null || value.teamId === undefined || value.teamId === ""
       ? null
       : isUuid(value.teamId)
         ? value.teamId.toLowerCase()
-        : undefined;
-  const priorityKey =
-    value.priorityKey === null ||
-    value.priorityKey === undefined ||
-    value.priorityKey === ""
-      ? null
-      : typeof value.priorityKey === "string" &&
-          /^[a-z0-9_-]{1,64}$/i.test(value.priorityKey)
-        ? value.priorityKey
         : undefined;
   const createOn = (CREATE_ON as readonly unknown[]).includes(value.createOn)
     ? (value.createOn as ConfigInput["createOn"])
@@ -95,23 +79,17 @@ export function parseConfig(value: unknown): ConfigInput | null {
     groupDependencies === undefined ||
     suppressInMaintenance === undefined ||
     typeof value.enabled !== "boolean" ||
-    typeof value.autoResolve !== "boolean" ||
     typeof value.setServiceStatus !== "boolean" ||
-    departmentId === undefined ||
     teamId === undefined ||
-    priorityKey === undefined ||
     !createOn
   ) {
     return null;
   }
   return {
     enabled: value.enabled,
-    departmentId,
     teamId,
     createOn,
-    autoResolve: value.autoResolve,
     setServiceStatus: value.setServiceStatus,
-    priorityKey,
     realertMinutes,
     groupDependencies,
     suppressInMaintenance,
@@ -221,12 +199,9 @@ function configFromRow(row: Row | null) {
   return {
     configured: row !== null,
     enabled: row?.enabled === true,
-    departmentId: (row?.department_id as string | null) ?? null,
     teamId: (row?.team_id as string | null) ?? null,
     createOn: (row?.create_on as string | undefined) ?? "down",
-    autoResolve: row?.auto_resolve === true,
     setServiceStatus: row?.set_service_status === true,
-    priorityKey: (row?.priority_key as string | null) ?? null,
     realertMinutes:
       typeof row?.realert_minutes === "number" ? row.realert_minutes : 15,
     groupDependencies: row?.group_dependencies !== false,
@@ -301,7 +276,7 @@ async function listAlerts(admin: Admin, tenantId: string) {
 }
 
 async function get(request: Request, admin: Admin, tenantId: string) {
-  const [integration, departments, teams, priorities, alerts] =
+  const [integration, departments, teams, alerts] =
     await Promise.all([
     loadIntegration(admin, tenantId),
     admin
@@ -315,16 +290,10 @@ async function get(request: Request, admin: Admin, tenantId: string) {
       .select("id, name, department_id")
       .eq("tenant_id", tenantId)
       .eq("active", true)
-      .not("department_id", "is", null)
       .order("name"),
-    admin
-      .from("ticket_priorities")
-      .select("key, label, sort_order")
-      .eq("tenant_id", tenantId)
-      .order("sort_order"),
     listAlerts(admin, tenantId),
   ]);
-  if (departments.error || teams.error || priorities.error) throw dbFailure();
+  if (departments.error || teams.error) throw dbFailure();
   return json(request, {
     data: {
       config: configFromRow(integration),
@@ -335,11 +304,7 @@ async function get(request: Request, admin: Admin, tenantId: string) {
       teams: ((teams.data ?? []) as Row[]).map((row) => ({
         id: row.id,
         name: row.name,
-        departmentId: row.department_id,
-      })),
-      priorities: ((priorities.data ?? []) as Row[]).map((row) => ({
-        key: row.key,
-        label: row.label,
+        departmentId: row.department_id ?? null,
       })),
       alerts,
     },
@@ -433,57 +398,20 @@ async function save(
   tenantId: string,
   config: ConfigInput,
 ) {
-  if (config.departmentId) {
-    const { data, error } = await admin
-      .from("departments")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("id", config.departmentId)
-      .eq("active", true)
-      .maybeSingle();
-    if (error) throw dbFailure();
-    if (!data) {
-      throw new HttpError(
-        422,
-        "department_invalid",
-        "Die Abteilung ist nicht verfügbar.",
-      );
-    }
-  }
   if (config.teamId) {
     const { data, error } = await admin
       .from("teams")
-      .select("id, department_id")
+      .select("id")
       .eq("tenant_id", tenantId)
       .eq("id", config.teamId)
       .eq("active", true)
       .maybeSingle();
     if (error) throw dbFailure();
-    if (
-      !data ||
-      !data.department_id ||
-      (config.departmentId && data.department_id !== config.departmentId)
-    ) {
-      throw new HttpError(
-        422,
-        "team_invalid",
-        "Das Team ist nicht verfügbar oder gehört zu einer anderen Abteilung.",
-      );
-    }
-  }
-  if (config.priorityKey) {
-    const { data, error } = await admin
-      .from("ticket_priorities")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("key", config.priorityKey)
-      .maybeSingle();
-    if (error) throw dbFailure();
     if (!data) {
       throw new HttpError(
         422,
-        "priority_invalid",
-        "Die Priorität ist nicht verfügbar.",
+        "team_invalid",
+        "Das Team ist nicht verfügbar.",
       );
     }
   }
@@ -494,12 +422,9 @@ async function save(
         tenant_id: tenantId,
         provider: "prtg",
         enabled: config.enabled,
-        department_id: config.departmentId,
         team_id: config.teamId,
         create_on: config.createOn,
-        auto_resolve: config.autoResolve,
         set_service_status: config.setServiceStatus,
-        priority_key: config.priorityKey,
         realert_minutes: config.realertMinutes,
         group_dependencies: config.groupDependencies,
         suppress_in_maintenance: config.suppressInMaintenance,
