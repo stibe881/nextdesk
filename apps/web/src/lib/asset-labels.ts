@@ -502,3 +502,14 @@ ${input.autoPrint === false ? "" : `<script>window.onload=()=>{const imgs=[...do
 </body>
 </html>`;
 }
+
+export const MAX_LABEL_COPIES = 200;
+
+/** Jedes Etikett so oft wie gewünscht, in der Reihenfolge A, A, B, B … */
+export function repeatLabelItems<T>(items: readonly T[], copies: number): T[] {
+  const times = Math.min(
+    MAX_LABEL_COPIES,
+    Math.max(1, Math.floor(Number.isFinite(copies) ? copies : 1)),
+  );
+  return items.flatMap((item) => Array.from({ length: times }, () => item));
+}

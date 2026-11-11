@@ -6,7 +6,9 @@ import {
   buildLabelDocument,
   labelFormat,
   labelsPerPage,
+  MAX_LABEL_COPIES,
   pageCount,
+  repeatLabelItems,
   type LabelFormatId,
   type LabelItem,
   type LabelQrMode,
@@ -101,6 +103,8 @@ export function AssetLabelDialog({
 }) {
   const [formatId, setFormatId] = useState<LabelFormatId>(storedFormat);
   const [skip, setSkip] = useState(0);
+  const [copies, setCopies] = useState(1);
+  const total = count * copies;
   const [mode, setMode] = useState<LabelQrMode>(webOnly ? "web" : "app");
   const [withLogo, setWithLogo] = useState(true);
   const [pending, setPending] = useState(false);
@@ -108,8 +112,8 @@ export function AssetLabelDialog({
   const format = labelFormat(formatId);
   const perPage = labelsPerPage(format);
   const pages = useMemo(
-    () => pageCount(format, count, skip),
-    [count, format, skip],
+    () => pageCount(format, total, skip),
+    [total, format, skip],
   );
   const firstFieldRef = useRef<HTMLSelectElement>(null);
   const hasLogo = Boolean(branding?.logoUrl || branding?.name);
@@ -149,7 +153,7 @@ export function AssetLabelDialog({
       } catch {
         // Remembering the format is a convenience only.
       }
-      const items = buildItems(mode, webAppBaseUrl());
+      const items = repeatLabelItems(buildItems(mode, webAppBaseUrl()), copies);
       // QR library is loaded only when labels are printed.
       const QRCode = await import("qrcode");
       const qrSvgs = new Map<string, string>();
@@ -205,7 +209,7 @@ export function AssetLabelDialog({
           <div>
             <p className="eyebrow">Etiketten mit QR-Code</p>
             <h2 id="asset-label-dialog-heading">
-              {count === 1 ? "1 Etikett drucken" : `${count} Etiketten drucken`}
+              {total === 1 ? "1 Etikett drucken" : `${total} Etiketten drucken`}
             </h2>
           </div>
           <button
@@ -241,6 +245,28 @@ export function AssetLabelDialog({
               ))}
             </select>
             <small>{format.description}</small>
+          </label>
+          <label>
+            {count === 1 ? "Anzahl Etiketten" : "Anzahl Etiketten pro Eintrag"}
+            <input
+              max={MAX_LABEL_COPIES}
+              min={1}
+              onChange={(event) =>
+                setCopies(
+                  Math.min(
+                    MAX_LABEL_COPIES,
+                    Math.max(1, Math.floor(Number(event.target.value) || 1)),
+                  ),
+                )
+              }
+              type="number"
+              value={copies}
+            />
+            {count > 1 ? (
+              <small>
+                {count} ausgewählte Einträge × {copies} = {total} Etiketten
+              </small>
+            ) : null}
           </label>
           {format.kind === "sheet" ? (
             <label>
