@@ -27,7 +27,8 @@ brauchen.
 - **Konto erstellen**: Ohne Einladung Ihres Unternehmens legen Sie über
   «Neu bei nextDesk? Konto erstellen» (in der App «Konto erstellen») ein
   eigenes Konto an. Nach der Bestätigung per E-Mail erstellen Sie Ihren
-  eigenen Arbeitsbereich. Gehört Ihre E-Mail-Domain zu einem Unternehmen mit
+  eigenen Arbeitsbereich; die Wissensdatenbank enthält darin drei
+  Beispielartikel, die Sie bearbeiten oder löschen können. Gehört Ihre E-Mail-Domain zu einem Unternehmen mit
   SSO, melden Sie sich stattdessen mit SSO an.
 
 Scheitert die Anmeldung, erscheint unter dem Formular eine rote Meldung mit dem
