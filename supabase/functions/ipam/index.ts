@@ -2319,8 +2319,9 @@ async function planPrefixes(ctx: Ctx, action: Extract<RedesignAction, { type: "p
 // ----------------------------------------------------------- templates
 
 function templateDto(template: Template) {
+  // Contract: `id?: string` – the derived suggestion has no id.
   return {
-    id: template.id ?? null,
+    ...(template.id ? { id: template.id } : {}),
     name: template.name,
     description: template.description,
     prefixLength: template.prefixLength,

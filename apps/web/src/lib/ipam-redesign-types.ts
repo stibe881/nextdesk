@@ -186,8 +186,7 @@ export type TemplateEntry = {
 };
 
 export type SiteTemplate = {
-  /** null for the derived suggestion (not saved yet). */
-  id?: string | null;
+  id?: string;
   name: string;
   description?: string | null;
   prefixLength: number;
