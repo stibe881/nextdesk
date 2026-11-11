@@ -652,6 +652,53 @@ In der **Infrastruktur → Netzwerkkarte** zeigt jedes Gerät zusätzlich sein
 Subnetz und VLAN (aus der IP-Adresse des Geräts). Über die Legende über der
 Karte heben Sie die Geräte eines VLAN hervor.
 
+**Import**
+
+Im Register **Import** übernehmen Sie bestehende Listen in vier Schritten
+(Datei wählen, Zuordnung prüfen, Vorschau, Übernehmen):
+
+- **Excel** (.xlsx) oder **CSV**: IP-Listen mit einem Blatt pro Subnetz,
+  eine Übersicht mit VLANs und Subnetzen, Switch-Listen und Access-Point-
+  Listen. nextDesk erkennt die Spalten selbst; in der Zuordnung können Sie sie
+  ändern.
+- **phpIPAM** und **NetBox**: CSV-Exporte der Subnetze bzw. Prefixe,
+  Adressen und VLANs.
+- Switches und Access Points werden zusätzlich als Geräte in der
+  **Infrastruktur** angelegt (mit Seriennummer, MAC und Uplink-Switch).
+
+Die Vorschau zeigt, was neu ist, was sich ändert und was übersprungen wird,
+mit Hinweisen zu jeder Zeile (z. B. fehlende Präfixlänge, Gateway ausserhalb
+des Subnetzes, doppelte Geräte). Bestehende Einträge werden nur ergänzt, nicht
+überschrieben. Blätter mit Zugangsdaten (z. B. WLAN-Schlüssel) und Vorlagen
+werden nie übernommen.
+
+**Abgleich mit Intune und PRTG**
+
+Jede Nacht gleicht nextDesk die dokumentierten Adressen mit den Geräten aus
+Intune und den Sensoren aus PRTG ab: Hostname, MAC und zuletzt gesehen werden
+ergänzt, Geräte ohne dokumentierte IP erscheinen als Fund. In der Adresse
+sehen Sie die Verknüpfung zum Intune-Gerät bzw. zum PRTG-Sensor.
+
+**Netzwerk im Ticket**
+
+Kommt in einem Ticket eine IP-Adresse, ein Subnetz, eine MAC-Adresse oder ein
+dokumentierter Hostname vor, zeigt das Ticket rechts die Box **Netzwerk**:
+Subnetz und VLAN, Gerät, Switch-Port, verantwortliche Person und zuletzt
+gesehen. Mit **In der IP-Adressverwaltung öffnen** springen Sie zur Adresse.
+
+**In der App**
+
+In der iPhone-App zeigen die Detailseiten von Assets und Infrastruktur-Geräten
+die Karte **Netzwerk** mit IP, Subnetz, VLAN, Gateway und Switch-Port. Scannen
+Sie den QR-Code am Gerät, sehen Sie diese Angaben direkt vor Ort.
+
+**KI-Assistent**
+
+Über die nextDesk-Schnittstelle für KI-Assistenten (MCP) können Sie Fragen
+wie «Welche IP hat der Drucker im 2. OG?», «Wie viele Adressen sind in VLAN
+20 frei?» oder «Reserviere die nächste freie IP im Server-Netz» stellen. Es
+gelten dieselben Rechte und Abteilungsgrenzen wie in der Weboberfläche.
+
 ## Benachrichtigungen und Erreichbarkeit
 
 - Die **Glocke** zeigt Zuweisungen, Erwähnungen, Antworten und Eskalationen.
