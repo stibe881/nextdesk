@@ -16,6 +16,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { IpamNetworkCard } from "@/components/ipam-network-card";
 import {
   MobileFeatureLoadingScreen,
   MobileFeatureUnavailableScreen,
@@ -473,6 +474,12 @@ export default function InfrastructureDetailScreen() {
           <Text style={styles.sectionTitle}>Netzwerk</Text>
           {renderFacts(network)}
         </View>
+        <IpamNetworkCard
+          assetId={device.id}
+          refreshKey={detail}
+          tenantId={tenantId || null}
+          title="IP-Adressverwaltung"
+        />
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Beschaffung & Fristen</Text>
           {renderFacts(lifecycleDates)}

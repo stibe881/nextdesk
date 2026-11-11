@@ -13351,4 +13351,172 @@ $$;
 rollback;
 SQL
 
+# 0303: IPAM-Integrationen (Intune/PRTG-Abgleich, Nachschlagen, API, Webhooks).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_net uuid;
+  v_pc uuid;
+  v_srv uuid;
+  v_asset uuid;
+  v_result jsonb;
+  v_key uuid;
+  v_hook uuid;
+  v_outbox bigint;
+  v_state text;
+begin
+  insert into public.ipam_prefixes (tenant_id, prefix, gateway, description)
+  values (v_tenant, '10.77.30.0/24', '10.77.30.1', 'Testnetz') returning id into v_net;
+  insert into public.ipam_addresses (tenant_id, address, mac_address, status)
+  values (v_tenant, '10.77.30.20', 'aa:bb:cc:00:00:01', 'active') returning id into v_pc;
+  insert into public.ipam_addresses (tenant_id, address, hostname, device_type, status)
+  values (v_tenant, '10.77.30.5', 'SRV-TEST-01', 'server', 'active') returning id into v_srv;
+  insert into public.ipam_findings (tenant_id, address, kind, details)
+  values (v_tenant, '10.77.30.99', 'ghost', '{"mac": "aa:bb:cc:00:00:02"}');
+
+  -- Intune: MAC-Treffer, Ghost erklärt, ausgemustert -> Vorschlag «veraltet».
+  perform public.ipam_intune_store(v_tenant, '[
+    {"id": "DEV-1", "device_name": "PC-T-001", "wifi_mac": "AA-BB-CC-00-00-01", "user_principal_name": "anna@example.test", "management_state": "retirePending"},
+    {"id": "dev-2", "device_name": "NB-T-002", "ethernet_mac": "aa:bb:cc:00:00:02"},
+    {"id": "dev-3", "device_name": "NB-T-003", "wifi_mac": "kaputt"}
+  ]'::jsonb);
+  if (select count(*) from public.ipam_intune_devices where tenant_id = v_tenant and present) <> 3 then
+    raise exception 'ipam integrations test: intune devices not stored';
+  end if;
+  v_result := public.ipam_reconcile_intune(v_tenant, null, 'manual');
+  if v_result ? 'error' then
+    raise exception 'ipam integrations test: intune reconcile failed: %', v_result;
+  end if;
+  if (select intune_device_id || '|' || hostname || '|' || (custom_fields ->> 'intune_user')
+        from public.ipam_addresses where id = v_pc) <> 'dev-1|PC-T-001|anna@example.test' then
+    raise exception 'ipam integrations test: MAC match not applied';
+  end if;
+  if (select status from public.ipam_findings where tenant_id = v_tenant and address = '10.77.30.99' and kind = 'ghost') <> 'resolved' then
+    raise exception 'ipam integrations test: ghost not explained';
+  end if;
+  if not exists (select 1 from public.ipam_findings where address_id = v_pc and kind = 'stale' and status = 'open') then
+    raise exception 'ipam integrations test: stale suggestion missing';
+  end if;
+  -- Zweiter Lauf: idempotent, kein zweiter offener Fund.
+  perform public.ipam_reconcile_intune(v_tenant);
+  if (select count(*) from public.ipam_findings where address_id = v_pc and kind = 'stale') <> 1 then
+    raise exception 'ipam integrations test: stale finding duplicated';
+  end if;
+
+  -- PRTG: Gerät mit Objekt-ID wird dokumentiert, Server ohne Sensor ist eine Lücke.
+  insert into public.assets (tenant_id, name, kind) values (v_tenant, 'SW-T-01', 'switch') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, hostname, ip_address, prtg_object_id)
+  values (v_asset, v_tenant, 'switch', 'SW-T-01', '10.77.30.2', '4711');
+  v_result := public.ipam_reconcile_prtg(v_tenant, null, 'manual');
+  if v_result ? 'error' or (v_result ->> 'documented')::integer <> 1 then
+    raise exception 'ipam integrations test: prtg reconcile wrong: %', v_result;
+  end if;
+  if (select prtg_device_id from public.ipam_addresses where tenant_id = v_tenant and address = '10.77.30.2') <> '4711' then
+    raise exception 'ipam integrations test: prtg device not documented';
+  end if;
+  if not exists (select 1 from public.ipam_prtg_coverage(v_tenant) where address_id = v_srv) then
+    raise exception 'ipam integrations test: coverage gap missing';
+  end if;
+  if (select count(*) from public.ipam_sync_runs where tenant_id = v_tenant and status = 'succeeded') < 3 then
+    raise exception 'ipam integrations test: sync runs not logged';
+  end if;
+
+  -- Nachschlagen über IP, MAC, Hostname und Asset.
+  v_result := public.ipam_network_lookup(v_tenant, array['10.77.30.5', '10.77.30.200', '10.77.30.0/24'],
+                                          array['aa-bb-cc-00-00-01'], array['sw-t-01.example.local'], null);
+  if jsonb_array_length(v_result -> 'addresses') <> 3 then
+    raise exception 'ipam integrations test: lookup addresses wrong: %', v_result -> 'addresses';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(v_result -> 'prefixes') item
+                 where item ->> 'matched' = '10.77.30.200' and item ->> 'id' = v_net::text) then
+    raise exception 'ipam integrations test: containing prefix missing';
+  end if;
+  v_result := public.ipam_network_lookup(v_tenant, '{}', '{}', '{}', v_asset);
+  if jsonb_array_length(v_result -> 'addresses') <> 1 then
+    raise exception 'ipam integrations test: asset lookup wrong';
+  end if;
+
+  -- Reservieren: nächste freie bzw. bestimmte Adresse.
+  v_result := public.ipam_reserve_address(v_tenant, v_net, null, 'DRU-T-01', null, null, null, null, 'test');
+  if v_result ->> 'address' <> '10.77.30.3' then
+    raise exception 'ipam integrations test: next reservation wrong: %', v_result;
+  end if;
+  begin
+    perform public.ipam_reserve_address(v_tenant, v_net, '10.77.30.1');
+    raise exception 'ipam integrations test: gateway reserved';
+  exception when invalid_parameter_value then null;
+  end;
+  begin
+    perform public.ipam_reserve_address(v_tenant, v_net, '10.77.30.3');
+    raise exception 'ipam integrations test: duplicate reserved';
+  exception when unique_violation then null;
+  end;
+  -- Freigegebene (veraltete) Adresse wird wiederverwendet (Update statt Insert).
+  insert into public.ipam_addresses (tenant_id, address, hostname, status)
+  values (v_tenant, '10.77.30.60', 'ALT-01', 'deprecated');
+  v_result := public.ipam_reserve_address(v_tenant, v_net, '10.77.30.60', 'NEU-01');
+  if (select status || '|' || hostname from public.ipam_addresses where tenant_id = v_tenant and address = '10.77.30.60')
+     <> 'reserved|NEU-01' then
+    raise exception 'ipam integrations test: deprecated address not reused';
+  end if;
+
+  -- API-Schlüssel und Ratenbegrenzung.
+  insert into public.ipam_api_keys (tenant_id, name, key_prefix, key_hash, scopes)
+  values (v_tenant, 'Ansible', 'ndk_ipam_abcd1234', repeat('a', 64), '{read,write}') returning id into v_key;
+  if not public.ipam_api_consume(v_key, 2) or not public.ipam_api_consume(v_key, 2)
+     or public.ipam_api_consume(v_key, 2) then
+    raise exception 'ipam integrations test: rate limit wrong';
+  end if;
+  begin
+    insert into public.ipam_api_keys (tenant_id, name, key_prefix, key_hash, scopes)
+    values (v_tenant, 'x', 'ndk_ipam_abcd', repeat('b', 64), '{admin}');
+    raise exception 'ipam integrations test: invalid scope accepted';
+  exception when check_violation then null;
+  end;
+
+  -- Webhooks: Ereignisse landen in der Outbox, Wiederholung und Zustellung.
+  begin
+    insert into public.ipam_webhooks (tenant_id, name, url, events, secret)
+    values (v_tenant, 'x', 'http://example.test/hook', '{address.reserved}', repeat('s', 40));
+    raise exception 'ipam integrations test: http webhook accepted';
+  exception when check_violation then null;
+  end;
+  insert into public.ipam_webhooks (tenant_id, name, url, events, secret)
+  values (v_tenant, 'Automation', 'https://example.test/hook', '{address.reserved,address.released,prefix.created}', repeat('s', 40))
+  returning id into v_hook;
+  perform public.ipam_reserve_address(v_tenant, v_net, '10.77.30.40', 'AP-T-40');
+  delete from public.ipam_addresses where tenant_id = v_tenant and address = '10.77.30.40';
+  insert into public.ipam_prefixes (tenant_id, prefix) values (v_tenant, '10.77.31.0/24');
+  update public.ipam_addresses set hostname = 'PC-T-NEU' where id = v_pc; -- address.updated: nicht abonniert
+  if (select string_agg(event, ',' order by id) from public.ipam_webhook_outbox where webhook_id = v_hook)
+     <> 'address.reserved,address.released,prefix.created' then
+    raise exception 'ipam integrations test: outbox events wrong: %',
+      (select string_agg(event, ',' order by id) from public.ipam_webhook_outbox where webhook_id = v_hook);
+  end if;
+  select claimed.id into v_outbox from public.ipam_webhook_claim(10) claimed order by claimed.id limit 1;
+  if v_outbox is null then
+    raise exception 'ipam integrations test: nothing claimed';
+  end if;
+  v_state := public.ipam_webhook_complete(v_outbox, false, 500, 'Serverfehler');
+  if v_state <> 'pending' or (select next_attempt_at <= timezone('utc', now()) from public.ipam_webhook_outbox where id = v_outbox) then
+    raise exception 'ipam integrations test: retry not scheduled';
+  end if;
+  v_state := public.ipam_webhook_complete(v_outbox, true, 200, null);
+  if v_state <> 'delivered' or (select last_status from public.ipam_webhooks where id = v_hook) <> 200 then
+    raise exception 'ipam integrations test: delivery not recorded';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.ipam_api_keys', 'select')
+     or has_table_privilege('authenticated', 'public.ipam_webhooks', 'select')
+     or has_function_privilege('authenticated', 'public.ipam_network_lookup(uuid, text[], text[], text[], uuid)', 'execute') then
+    raise exception 'ipam integrations test: authenticated may access integration data';
+  end if;
+  raise notice 'ipam integrations checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -108,6 +108,7 @@ import { TicketPdfRecord } from "./ticket-pdf-record";
 import { TicketCoordination } from "./ticket-coordination";
 import { TicketSlaBreachReason } from "./ticket-sla-breach-reason";
 import { TicketSupportLevel } from "./ticket-support-level";
+import { IpamTicketPanel } from "./ipam-ticket-panel";
 import {
   TicketFormAnswersBlock,
   parseStoredFormAnswers,
@@ -7343,7 +7344,9 @@ export function TicketDetail({
                 if (!detail.canUpdate) return;
                 event.preventDefault();
                 setAttachmentDragOver(false);
-                void uploadAttachmentFiles(Array.from(event.dataTransfer.files));
+                void uploadAttachmentFiles(
+                  Array.from(event.dataTransfer.files),
+                );
               }}
               role="group"
             >
@@ -9024,6 +9027,18 @@ export function TicketDetail({
             tenantId={tenantId}
             ticketId={detail.ticket.id}
           />
+
+          {!requesterView ? (
+            <IpamTicketPanel
+              comments={detail.comments.map((comment) => comment.body)}
+              description={detail.ticket.description}
+              onOpenAsset={onOpenAsset}
+              refreshKey={`${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
+              subject={detail.ticket.subject}
+              tenantId={tenantId}
+              ticketId={detail.ticket.id}
+            />
+          ) : null}
 
           {!requesterView ? (
             <TicketAiTriage

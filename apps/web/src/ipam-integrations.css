@@ -1,0 +1,265 @@
+/* IPAM-Integrationen: Netzwerk im Ticket und REST-API/Webhooks. */
+
+.ipam-ticket-panel__icon-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border, #d7dde5);
+  border-radius: 8px;
+  color: var(--muted, #64748b);
+  cursor: pointer;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.ipam-ticket-panel__icon-button:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.ipam-ticket-panel__list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ipam-ticket-panel__item {
+  background: var(--surface-subtle, #f8fafc);
+  border: 1px solid var(--border, #d7dde5);
+  border-radius: 10px;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.ipam-ticket-panel__row {
+  align-items: center;
+  color: var(--muted, #64748b);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ipam-ticket-panel__address {
+  color: var(--ink, #0f172a);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.ipam-ticket-panel__link {
+  background: none;
+  border: 0;
+  color: var(--tone-accent, #4f46e5);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ipam-ticket-panel__host {
+  color: var(--ink, #0f172a);
+  font-weight: 600;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ipam-ticket-panel__facts {
+  display: grid;
+  font-size: 0.85rem;
+  gap: 2px 10px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin: 0;
+}
+
+.ipam-ticket-panel__facts dt {
+  color: var(--muted, #64748b);
+}
+
+.ipam-ticket-panel__facts dd {
+  color: var(--text, #1e293b);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ipam-ticket-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.ipam-ticket-panel__findings {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ipam-badge {
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.ipam-badge--success {
+  background: var(--tone-success-soft, #dcfce7);
+  color: var(--tone-success, #15803d);
+}
+
+.ipam-badge--info {
+  background: var(--tone-info-soft, #e0f2fe);
+  color: var(--tone-info, #0369a1);
+}
+
+.ipam-badge--warning {
+  background: var(--tone-warning-soft, #fef3c7);
+  color: var(--tone-warning, #b45309);
+}
+
+.ipam-badge--danger {
+  background: var(--tone-danger-soft, #fee2e2);
+  color: var(--tone-danger, #b91c1c);
+}
+
+.ipam-badge--neutral {
+  background: var(--tone-neutral-soft, #f1f5f9);
+  color: var(--tone-neutral, #475569);
+}
+
+.ipam-finding {
+  align-items: center;
+  border-radius: 8px;
+  display: flex;
+  font-size: 0.82rem;
+  font-weight: 600;
+  gap: 6px;
+  padding: 4px 8px;
+}
+
+.ipam-finding--info {
+  background: var(--tone-info-soft, #e0f2fe);
+  color: var(--tone-info, #0369a1);
+}
+
+.ipam-finding--warning {
+  background: var(--tone-warning-soft, #fef3c7);
+  color: var(--tone-warning, #b45309);
+}
+
+.ipam-finding--critical {
+  background: var(--tone-danger-soft, #fee2e2);
+  color: var(--tone-danger, #b91c1c);
+}
+
+/* REST-API und Webhooks */
+
+.ipam-api-settings {
+  display: grid;
+  gap: 18px;
+}
+
+.ipam-api-settings__card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #d7dde5);
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.ipam-api-settings__card h3 {
+  margin: 0;
+}
+
+.ipam-api-settings__form {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ipam-api-settings__form label {
+  display: grid;
+  font-size: 0.85rem;
+  gap: 4px;
+}
+
+.ipam-api-settings__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.ipam-api-settings__checks label {
+  align-items: center;
+  display: inline-flex;
+  font-size: 0.85rem;
+  gap: 6px;
+}
+
+.ipam-api-settings__table {
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  width: 100%;
+}
+
+.ipam-api-settings__table th,
+.ipam-api-settings__table td {
+  border-bottom: 1px solid var(--border, #d7dde5);
+  padding: 8px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ipam-api-settings__table th {
+  color: var(--muted, #64748b);
+  font-weight: 600;
+}
+
+.ipam-api-settings__table code {
+  overflow-wrap: anywhere;
+}
+
+.ipam-api-settings__secret {
+  background: var(--tone-warning-soft, #fef3c7);
+  border: 1px solid var(--tone-warning, #b45309);
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.ipam-api-settings__secret code {
+  background: var(--surface, #fff);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  padding: 6px 8px;
+}
+
+.ipam-api-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ipam-api-settings__error {
+  color: var(--tone-danger, #b91c1c);
+  margin: 0;
+}
+
+.ipam-api-settings__muted {
+  color: var(--muted, #64748b);
+  font-size: 0.85rem;
+  margin: 0;
+}
