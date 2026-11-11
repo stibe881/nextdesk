@@ -843,6 +843,14 @@ const ALLOWED_ATTACHMENT_CONTENT_TYPES = new Set<string>(
   ATTACHMENT_CONTENT_TYPES,
 );
 const ATTACHMENT_ACCEPT = ATTACHMENT_CONTENT_TYPES.join(",");
+/** Outlook-Anhang «winmail.dat» (nur aus eingehenden E-Mails, kein Upload). */
+const TNEF_CONTENT_TYPE = "application/ms-tnef";
+function isListedAttachmentType(contentType: string): boolean {
+  return (
+    ALLOWED_ATTACHMENT_CONTENT_TYPES.has(contentType) ||
+    contentType === TNEF_CONTENT_TYPE
+  );
+}
 const ATTACHMENT_ALLOWLIST_LABEL =
   "PDF, TXT, CSV, DOC, DOCX, XLS, XLSX, PNG, JPG/JPEG und WebP";
 const COMMENT_IMAGE_CONTENT_TYPES = new Set<string>([
@@ -1438,7 +1446,7 @@ function toTicketAttachment(value: unknown): TicketAttachment | null {
     typeof originalFilename !== "string" ||
     !originalFilename.trim() ||
     typeof contentType !== "string" ||
-    !ALLOWED_ATTACHMENT_CONTENT_TYPES.has(contentType) ||
+    !isListedAttachmentType(contentType) ||
     typeof byteSize !== "number" ||
     !Number.isSafeInteger(byteSize) ||
     byteSize < 1 ||
