@@ -39,7 +39,10 @@ import {
 } from "./phishing-email-intake.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
 import { routeBackupEmail } from "./backup-monitoring.ts";
-import { notificationEmailText } from "./notification-email.ts";
+import {
+  notificationEmailText,
+  notificationLinkUrl,
+} from "./notification-email.ts";
 
 const SERVICE_EMAIL = "exchange-mail-service@app.nextdesk.ch";
 const APP_ORIGIN = "https://app.nextdesk.ch";
@@ -2155,7 +2158,8 @@ async function dispatchNotificationMail(
       actions: [
         {
           label: template.text("button", { portalName }),
-          url: APP_ORIGIN,
+          // Deep link: opens exactly the object of this notification.
+          url: notificationLinkUrl(APP_ORIGIN, notificationId),
           primary: true,
         },
       ],

@@ -354,3 +354,25 @@ export function notificationEmailText(
     hint,
   };
 }
+
+const NOTIFICATION_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Query parameter the web app resolves (apps/web/src/lib/notification-link.ts). */
+export const NOTIFICATION_LINK_PARAM = "benachrichtigung";
+
+/**
+ * Link of the button in a notification e-mail: opens exactly the object of
+ * the notification in the web app. Only the opaque notification id is in the
+ * address; the app checks access after sign-in. Without a valid id: start page.
+ */
+export function notificationLinkUrl(
+  origin: string,
+  notificationId: string | null | undefined,
+): string {
+  const url = new URL("/", origin);
+  if (notificationId && NOTIFICATION_ID.test(notificationId)) {
+    url.searchParams.set(NOTIFICATION_LINK_PARAM, notificationId.toLowerCase());
+  }
+  return url.toString();
+}

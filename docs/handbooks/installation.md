@@ -149,7 +149,10 @@ Neue E-Mails werden etwa alle 5 Minuten abgeholt. Ein Postfach kann nur einem
 Mandanten gehören. Über das aktive Postfach verschickt nextDesk auch die
 **E-Mail-Benachrichtigungen**, die Personen unter _Persönliche Einstellungen →
 Benachrichtigungen_ pro Benachrichtigung einschalten. Für Agenten sind
-anfangs alle Benachrichtigungen per Push und E-Mail eingeschaltet. Optional aktivieren Sie im selben Bereich die
+anfangs alle Benachrichtigungen per Push und E-Mail eingeschaltet. Der Knopf
+in diesen E-Mails verweist auf `https://app.nextdesk.ch/?benachrichtigung=<ID>`
+(nur die Kennung der Benachrichtigung, keine Inhalte); die Web-App prüft nach
+der Anmeldung den Zugriff und öffnet das Objekt. Optional aktivieren Sie im selben Bereich die
 **Phishing-Meldungen** mit eigener Meldeadresse und Zielabteilung. Kategorie
 und Unterkategorie des Sicherheitstickets wählen Sie dort aus oder erfassen sie
 über **+ Neue Kategorie …** bzw. **+ Neue Unterkategorie …** direkt neu. Das

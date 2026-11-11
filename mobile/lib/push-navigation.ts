@@ -222,9 +222,9 @@ export function pushRoute(data: PushNavigationData): PushRoute | null {
         "Verträge gibt es nur in der Web-App. Öffne dort «Verträge», um die Frist zu sehen.",
     };
   }
-  if (kind === "summary") {
-    return ticketId ? { kind: "ticket", ticketId } : path("/tickets");
-  }
+  // Sammelmitteilung: kann Tickets, Shop, Störungen … enthalten. Die
+  // Mitteilungen der App listen alle; dort öffnet ein Tipp das Objekt.
+  if (kind === "summary") return path("/inbox");
   if (kind === "test") return null;
   // Unbekannte (neuere) Art mit Ticket: Ticket öffnen.
   return ticketId ? { kind: "ticket", ticketId } : null;

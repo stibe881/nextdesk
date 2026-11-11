@@ -29,6 +29,13 @@ async function errorPayload(error: unknown): Promise<ErrorEnvelope | null> {
   }
 }
 
+/** Error code of a failed function call (e.g. "notification_not_found"). */
+export async function functionErrorCode(
+  error: unknown,
+): Promise<string | null> {
+  return errorCode(await errorPayload(error));
+}
+
 export function functionErrorStatus(error: unknown): number | null {
   if (!isRecord(error)) return null;
   if (typeof error.status === "number") return error.status;
