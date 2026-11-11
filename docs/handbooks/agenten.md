@@ -29,9 +29,10 @@ Die linke Navigation ist gegliedert in:
 - **Arbeitsbereich**: Tickets, Shop, Fälle, Sicherheitsfälle, Störungen
   (Sicherheitsfälle und Störungen nur für das zuständige Team, siehe unten)
 - **Planung und Betrieb**: Raumplanung, Eintritte, Serviceaufgaben
-- **Wissen und Ressourcen**: Wissensdatenbank, Assets, Lager, Verträge, Lizenzen
+- **Ressourcen**: Assets, Lager, Verträge, Lizenzen
 - **Dienste und Überwachung**: Dienste, Infrastruktur, Systemstatus
 - **Berichte**
+- **Wissensdatenbank**
 
 Welche Einträge Sie sehen, hängt von den freigeschalteten Funktionen und
 Ihren Berechtigungen ab.
