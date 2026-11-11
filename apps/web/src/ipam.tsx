@@ -70,10 +70,19 @@ export type IpamProps = {
   importPanel?: (props: IpamPanelProps) => ReactNode;
   /** Rendered in the «Discovery» tab (IpamDiscoveryPanel). */
   discoveryPanel?: (props: IpamPanelProps) => ReactNode;
+  /** Rendered in the «API» tab (IpamApiSettings). */
+  apiPanel?: (props: IpamPanelProps) => ReactNode;
 };
 
 type Tab =
-  "spaces" | "vlans" | "sites" | "findings" | "import" | "discovery" | "export";
+  | "spaces"
+  | "vlans"
+  | "sites"
+  | "findings"
+  | "import"
+  | "discovery"
+  | "export"
+  | "api";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "spaces", label: "Adressräume" },
@@ -83,6 +92,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "import", label: "Import" },
   { key: "discovery", label: "Discovery" },
   { key: "export", label: "Export" },
+  { key: "api", label: "API & Webhooks" },
 ];
 
 type Dialog =
@@ -107,6 +117,7 @@ function errorText(failure: unknown, fallback: string): string {
 
 /** IP-Adressverwaltung: Adressräume, VLANs, Standorte, Funde, Export. */
 export function Ipam({
+  apiPanel,
   discoveryPanel,
   importPanel,
   onOpenTicket,
@@ -365,6 +376,15 @@ export function Ipam({
                 Scans, Netzwerkagent sowie DHCP- und DNS-Abgleich werden hier
                 eingerichtet. Dafür braucht es den nextDesk-Netzwerkagenten in
                 Ihrem Netz.
+              </Placeholder>
+            )
+          ) : tab === "api" ? (
+            apiPanel ? (
+              apiPanel(panelProps)
+            ) : (
+              <Placeholder title="API & Webhooks">
+                REST-API-Schlüssel und Webhooks für Ansible, Terraform oder
+                Power Automate.
               </Placeholder>
             )
           ) : (
