@@ -184,3 +184,30 @@ export function parseDirectOrder(body: unknown): DirectOrder | null {
     source,
   };
 }
+
+export type SkipApproval = { kind: "security_case"; ticketId: string };
+
+/**
+ * Optionaler Schalter der Action «submitOrder»:
+ * `skipApproval: true` mit `source: { kind: "security_case", ticketId }`.
+ * Ohne Schalter `null`; ein unvollständiger Schalter ist ungültig.
+ */
+export function parseSkipApproval(
+  body: Record<string, unknown>,
+): SkipApproval | null | "invalid" {
+  if (body.skipApproval === undefined || body.skipApproval === false) {
+    return null;
+  }
+  if (
+    body.skipApproval !== true ||
+    !isRecord(body.source) ||
+    body.source.kind !== "security_case" ||
+    !isUuid(body.source.ticketId)
+  ) {
+    return "invalid";
+  }
+  return {
+    kind: "security_case",
+    ticketId: body.source.ticketId.toLowerCase(),
+  };
+}

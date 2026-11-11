@@ -22,7 +22,7 @@ import {
   resolveRecordDepartment,
   scopeDepartmentOptions,
 } from "../_shared/department-scope.ts";
-import { parseDirectOrder } from "./direct-order.ts";
+import { parseDirectOrder, parseSkipApproval } from "./direct-order.ts";
 import {
   cadreLevelOf,
   type CadreRules,
@@ -2573,6 +2573,23 @@ const securedHandler = withSupabase(
           });
         }
         case "submitOrder": {
+          // Optional: ohne Genehmigung bestellen (z. B. Ersatzgerät aus einem
+          // Sicherheitsfall). Nur für Agenten mit Shop-Rechten.
+          const skip = parseSkipApproval(body);
+          if (skip === "invalid") {
+            throw new HttpError(
+              400,
+              "invalid_request",
+              "Die Herkunft der Bestellung ohne Genehmigung ist ungültig.",
+            );
+          }
+          if (skip && !access.canFulfill && !access.canManage) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Nur Agenten können ohne Genehmigung bestellen.",
+            );
+          }
           if (!isUuid(body.clientRequestId) || !Array.isArray(body.lines)) {
             throw new HttpError(
               400,
@@ -2773,6 +2790,47 @@ const securedHandler = withSupabase(
               );
             }
           }
+          if (skip) {
+            const { data: ticket } = await admin
+              .from("tickets")
+              .select("ticket_number")
+              .eq("tenant_id", tenantId)
+              .eq("id", skip.ticketId)
+              .maybeSingle();
+            const { data: directId, error: directError } = await admin.rpc(
+              "shop_submit_order_direct",
+              {
+                p_actor_id: actorId,
+                p_tenant_id: tenantId,
+                p_requester_id: requesterId,
+                p_client_request_id: body.clientRequestId,
+                p_lines: lines.map((line) => ({
+                  ...line,
+                  loan_from: line.loan_from ?? isoDate(body.loanFrom),
+                  loan_until: line.loan_until ?? isoDate(body.loanUntil),
+                })),
+                p_delivery_method:
+                  body.deliveryMethod === "desk" ? "desk" : "pickup",
+                p_delivery_location: text(body.deliveryLocation, 200),
+                p_needed_by: isoDate(body.neededBy),
+                p_reason: reason,
+                p_comment: text(body.comment, 2000),
+                p_source_type: skip.kind,
+                p_source_id: skip.ticketId,
+                p_source_reference:
+                  ticket?.ticket_number !== undefined &&
+                  ticket?.ticket_number !== null
+                    ? String(ticket.ticket_number).slice(0, 60)
+                    : null,
+              },
+            );
+            if (directError) throw databaseError(directError);
+            return json(
+              request,
+              { data: { orderId: directId, approvalSkipped: true } },
+              201,
+            );
+          }
           const { data, error } = await admin.rpc("shop_submit_order_for", {
             p_actor_id: actorId,
             p_tenant_id: tenantId,
@@ -2803,7 +2861,7 @@ const securedHandler = withSupabase(
         case "placeOrderWithoutApproval": {
           // Agenten bestellen im Namen einer Person ohne Genehmigung, z. B.
           // ein Ersatzgerät aus einem Sicherheitsfall (Teil Sicherheit).
-          if (!access.canFulfill) {
+          if (!access.canFulfill && !access.canManage) {
             throw new HttpError(
               403,
               "forbidden",

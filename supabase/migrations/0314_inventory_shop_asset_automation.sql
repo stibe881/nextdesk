@@ -779,7 +779,8 @@ begin
   if not public.shop_feature_enabled(p_tenant_id) then
     raise exception 'The shop is not enabled' using errcode = '42501';
   end if;
-  if not public.shop_has_permission(p_actor_id, p_tenant_id, 'shop.fulfill') then
+  if not (public.shop_has_permission(p_actor_id, p_tenant_id, 'shop.fulfill')
+          or public.shop_has_permission(p_actor_id, p_tenant_id, 'shop.manage')) then
     raise exception 'Not allowed to order without approval' using errcode = '42501';
   end if;
   if not exists (
@@ -855,7 +856,8 @@ begin
 
   v_note := case
     when p_source_type = 'security_case' then
-      'Ohne Genehmigung bestellt – aus Sicherheitsfall ' || coalesce(v_reference, p_source_id::text)
+      'Ersatzgerät aus Sicherheitsfall ' || coalesce(v_reference, p_source_id::text)
+        || ' – ohne Genehmigung bestellt'
     else 'Ohne Genehmigung bestellt'
   end;
   if p_requester_id <> p_actor_id then

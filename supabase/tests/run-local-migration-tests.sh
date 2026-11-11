@@ -14320,7 +14320,7 @@ begin
     raise exception 'automation test: direct order not stored';
   end if;
   if not exists (select 1 from public.shop_order_events where order_id = v_order and event_type = 'approval_skipped'
-      and note like '%SEC-2026-000001%') then
+      and note like 'Ersatzgerät aus Sicherheitsfall SEC-2026-000001%') then
     raise exception 'automation test: approval skip not logged';
   end if;
   if exists (select 1 from public.ticket_notifications where kind = 'shop.order.approval_requested'

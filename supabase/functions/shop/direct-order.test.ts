@@ -1,5 +1,27 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { parseDirectOrder } from "./direct-order.ts";
+import { parseDirectOrder, parseSkipApproval } from "./direct-order.ts";
+
+Deno.test("submitOrder: skipApproval needs a security case source", () => {
+  const ticket = "66666666-6666-4666-8666-666666666666";
+  assertEquals(parseSkipApproval({}), null);
+  assertEquals(parseSkipApproval({ skipApproval: false }), null);
+  assertEquals(
+    parseSkipApproval({
+      skipApproval: true,
+      source: { kind: "security_case", ticketId: ticket.toUpperCase() },
+    }),
+    { kind: "security_case", ticketId: ticket },
+  );
+  assertEquals(parseSkipApproval({ skipApproval: true }), "invalid");
+  assertEquals(
+    parseSkipApproval({
+      skipApproval: true,
+      source: { kind: "ticket", ticketId: ticket },
+    }),
+    "invalid",
+  );
+  assertEquals(parseSkipApproval({ skipApproval: "yes" }), "invalid");
+});
 
 const REQUEST = "11111111-1111-4111-8111-111111111111";
 const PERSON = "22222222-2222-4222-8222-222222222222";
