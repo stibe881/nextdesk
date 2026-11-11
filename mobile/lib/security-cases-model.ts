@@ -118,6 +118,31 @@ export type SecurityCaseDetail = {
     doneAt: string | null;
     doneBy: string | null;
   }[];
+  /** Someone answered «yes, I clicked» (case priority is high). */
+  clickedAt: string | null;
+  escalatedAt: string | null;
+  campaign: {
+    reports: number;
+    reporters: number;
+    caseCount: number;
+    senderDomain: string | null;
+  } | null;
+  /** Known indicators (IOC list) found in this mail; values are defanged. */
+  iocHits: { id: string; kind: string; value: string }[];
+  measures: {
+    id: string;
+    label: string;
+    target: string | null;
+    status: "succeeded" | "failed";
+    createdAt: string | null;
+  }[];
+};
+
+export const INDICATOR_LABELS: Record<string, string> = {
+  domain: "Domain",
+  url: "URL",
+  ip: "IP",
+  sender: "Absender",
 };
 
 type Row = Record<string, unknown>;
@@ -264,6 +289,41 @@ export function parseSecurityDetail(value: unknown): SecurityCaseDetail | null {
       const label = str(row.label);
       return id && label
         ? [{ id, label, doneAt: str(row.doneAt), doneBy: str(row.doneBy) }]
+        : [];
+    }),
+    clickedAt: str(body.clickedAt),
+    escalatedAt: str(body.escalatedAt),
+    campaign: isRecord(body.campaign)
+      ? {
+          reports: num(body.campaign.reports),
+          reporters: num(body.campaign.reporters),
+          caseCount: num(body.campaign.caseCount),
+          senderDomain: str(body.campaign.senderDomain),
+        }
+      : null,
+    iocHits: list(body.iocHits).flatMap((row) => {
+      const id = str(row.id);
+      const value = str(row.value);
+      const kind = str(row.kind);
+      return id && value && kind && INDICATOR_LABELS[kind]
+        ? [{ id, kind, value }]
+        : [];
+    }),
+    measures: list(body.measures).flatMap((row) => {
+      const id = str(row.id);
+      return id
+        ? [
+            {
+              id,
+              label: str(row.label) ?? "Massnahme",
+              target: str(row.target),
+              status:
+                row.status === "succeeded"
+                  ? ("succeeded" as const)
+                  : ("failed" as const),
+              createdAt: str(row.createdAt),
+            },
+          ]
         : [];
     }),
   };

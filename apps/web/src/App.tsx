@@ -1455,6 +1455,33 @@ function baseNotificationPresentation(
         Icon: ArrowUp,
         title: "Ticket eskaliert",
       };
+    case "security.case_clicked":
+      return {
+        description: `Eine meldende Person hat in ${ticketLabel} geklickt oder Daten eingegeben. Der Fall hat jetzt Priorität hoch.`,
+        Icon: AlertTriangle,
+        title: "Phishing: geklickt",
+      };
+    case "security.case_overdue": {
+      const supervisor =
+        notificationPayloadText(notification, "stage", 20) === "supervisor";
+      return {
+        description: supervisor
+          ? `Das Urteil zu ${ticketLabel} ist seit über 24 Stunden überfällig.`
+          : `Das Urteil zu ${ticketLabel} ist überfällig.`,
+        Icon: AlertTriangle,
+        title: supervisor
+          ? "Sicherheitsfall eskaliert"
+          : "Sicherheitsfall überfällig",
+      };
+    }
+    case "security.campaign": {
+      const reporters = notificationPayloadNumber(notification, "reporters");
+      return {
+        description: `${reporters ?? "Mehrere"} Personen haben ähnliche Mails gemeldet (${ticketLabel}).`,
+        Icon: AlertTriangle,
+        title: "Phishing-Kampagne",
+      };
+    }
     case "ticket.security_report": {
       const risk = notificationPayloadText(notification, "riskLabel", 20);
       return {
@@ -3092,6 +3119,8 @@ function AuthenticatedApp() {
   >(null);
   const [incidentFocusId, setIncidentFocusId] = useState<string | null>(null);
   const clearIncidentFocus = useCallback(() => setIncidentFocusId(null), []);
+  const [securityFocusId, setSecurityFocusId] = useState<string | null>(null);
+  const clearSecurityFocus = useCallback(() => setSecurityFocusId(null), []);
   const [navigationAttentionTick, setNavigationAttentionTick] = useState(0);
   const [canManageContracts, setCanManageContracts] = useState(false);
   const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
@@ -4367,7 +4396,15 @@ function AuthenticatedApp() {
       setNotificationActionPending(null);
     }
 
-    if (ticketId) {
+    if (
+      ticketId &&
+      (notification.kind.startsWith("security.") ||
+        notification.kind === "ticket.security_report")
+    ) {
+      setSecurityFocusId(ticketId);
+      setSection("Sicherheitsfälle");
+      setNotificationPanelOpen(false);
+    } else if (ticketId) {
       setSection("Tickets");
       setSelectedTicketId(ticketId);
       setNotificationPanelOpen(false);
@@ -6060,6 +6097,11 @@ function AuthenticatedApp() {
                     return;
                   }
                   setGlobalSearchTarget(result);
+                  if (result.resultType === "incident") {
+                    setIncidentFocusId(result.entityId);
+                  } else if (result.resultType === "security_case") {
+                    setSecurityFocusId(result.entityId);
+                  }
                   if (result.resultType === "ticket" && result.ticketId) {
                     setSection("Tickets");
                     setSelectedTicketId(result.ticketId);
@@ -6348,7 +6390,12 @@ function AuthenticatedApp() {
           activeTenant &&
           canWorkTickets &&
           teamModuleAccess.securityCases ? (
-          <SecurityCases key={activeTenant.id} tenantId={activeTenant.id} />
+          <SecurityCases
+            focusId={securityFocusId}
+            key={activeTenant.id}
+            onFocusConsumed={clearSecurityFocus}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Störungen" &&
           activeTenant &&
           canWorkTickets &&
@@ -7051,6 +7098,14 @@ function AuthenticatedApp() {
                         <>
                           {activeTenant && canWorkTickets && (
                             <MyPrioritiesCard
+                              onOpenIncident={(id) => {
+                                setIncidentFocusId(id);
+                                setSection("Störungen");
+                              }}
+                              onOpenSecurityCase={(id) => {
+                                setSecurityFocusId(id);
+                                setSection("Sicherheitsfälle");
+                              }}
                               onOpenTicket={(ticketId) => {
                                 setSection("Tickets");
                                 setSelectedTicketId(ticketId);
@@ -7603,6 +7658,16 @@ function AuthenticatedApp() {
                 }
               : undefined
           }
+          onOpenIncident={(id) => {
+            setPersonOverview(null);
+            setIncidentFocusId(id);
+            setSection("Störungen");
+          }}
+          onOpenSecurityCase={(id) => {
+            setPersonOverview(null);
+            setSecurityFocusId(id);
+            setSection("Sicherheitsfälle");
+          }}
           onOpenTicket={(ticketId) => {
             setPersonOverview(null);
             setSection("Tickets");

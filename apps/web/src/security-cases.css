@@ -625,3 +625,188 @@ button.security-tile:focus-visible {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* Context, measures, campaign and IOC (0313). */
+.security-card--alert {
+  border-color: var(--tone-danger);
+}
+
+.security-card h3 svg {
+  vertical-align: -2px;
+}
+
+.security-internal {
+  display: grid;
+  gap: 6px;
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--tone-danger-soft);
+  color: var(--tone-danger);
+}
+
+.security-internal p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.security-internal ul,
+.security-devices,
+.security-measure-log,
+.security-campaign-cases {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.security-internal li {
+  display: grid;
+  gap: 2px;
+  color: var(--ink);
+}
+
+.security-internal small,
+.security-devices small,
+.security-measure-log small,
+.security-person header small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.security-person {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  min-width: 0;
+}
+
+.security-person header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  color: var(--ink);
+}
+
+.security-person__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.security-person__facts dt {
+  color: var(--muted);
+}
+
+.security-person__facts dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.security-devices li {
+  display: grid;
+  gap: 4px;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--surface-subtle);
+}
+
+.security-devices__name {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 6px;
+  align-items: center;
+  color: var(--ink);
+}
+
+.security-devices__name small {
+  grid-column: 2;
+}
+
+.security-devices__net {
+  overflow-wrap: anywhere;
+}
+
+.security-measures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.security-measures .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+}
+
+.security-measure-log li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.security-campaign-cases li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.security-campaign-cases small {
+  color: var(--muted);
+}
+
+.security-intel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.security-intel__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.security-intel__filters .search-field {
+  flex: 1 1 240px;
+}
+
+.security-ioc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.security-ioc-table th,
+.security-ioc-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  color: var(--ink);
+  text-align: left;
+  vertical-align: top;
+}
+
+.security-ioc-table th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.security-ioc-table code {
+  overflow-wrap: anywhere;
+}
+
+.security-ioc-table tr.is-harmless td {
+  color: var(--muted);
+}

@@ -118,6 +118,150 @@ export type SecurityCaseDetail = {
     doneAt: string | null;
     doneBy: string | null;
   }[];
+  clickedAt: string | null;
+  escalatedAt: string | null;
+  campaign: SecurityCampaign | null;
+  iocHits: SecurityIocHit[];
+  measures: SecurityMeasureLog[];
+};
+
+export type IndicatorKind = "domain" | "url" | "ip" | "sender";
+export const INDICATOR_LABELS: Record<IndicatorKind, string> = {
+  domain: "Domain",
+  url: "URL",
+  ip: "IP",
+  sender: "Absender",
+};
+
+export type SecurityCampaign = {
+  id: string;
+  senderDomain: string | null;
+  subjectKey: string | null;
+  linkDomains: string[];
+  reports: number;
+  reporters: number;
+  caseCount: number;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  cases: {
+    ticketId: string;
+    ticketNumber: string | null;
+    state: SecurityCaseState;
+    verdict: SecurityVerdict | null;
+  }[];
+};
+
+export type SecurityIocHit = {
+  id: string;
+  kind: IndicatorKind;
+  value: string;
+  verdict: string;
+  caseCount: number;
+};
+
+export type SecurityMeasureLog = {
+  id: string;
+  label: string;
+  target: string | null;
+  status: "succeeded" | "failed";
+  message: string | null;
+  actorName: string | null;
+  createdAt: string | null;
+};
+
+export type SecurityIoc = {
+  id: string;
+  kind: IndicatorKind;
+  value: string;
+  verdict: string;
+  status: "active" | "harmless";
+  sourceTicketId: string | null;
+  sourceTicketNumber: string | null;
+  caseCount: number;
+  hitCount: number;
+  lastSeenAt: string | null;
+  lastHitAt: string | null;
+};
+
+export type MeasureKind =
+  | "intune_sync"
+  | "intune_defender_scan"
+  | "entra_revoke_sessions"
+  | "entra_force_password_change";
+
+export const MEASURE_LABELS: Record<MeasureKind, string> = {
+  intune_sync: "Gerät synchronisieren",
+  intune_defender_scan: "Defender-Schnellscan",
+  entra_revoke_sessions: "Sitzungen widerrufen",
+  entra_force_password_change: "Passwort-Reset erzwingen",
+};
+
+/** What the confirmation dialog says before a measure runs. */
+export const MEASURE_CONFIRM_TEXT: Record<MeasureKind, string> = {
+  intune_sync:
+    "Das Gerät wird über Intune angewiesen, sich sofort zu synchronisieren (Richtlinien, Apps, Compliance).",
+  intune_defender_scan:
+    "Microsoft Defender startet auf dem Gerät einen Schnellscan. Die Person kann weiterarbeiten.",
+  entra_revoke_sessions:
+    "Alle Anmeldesitzungen und Aktualisierungstoken der Person werden in Microsoft Entra widerrufen. Sie muss sich auf allen Geräten neu anmelden.",
+  entra_force_password_change:
+    "Die Person muss bei der nächsten Anmeldung ein neues Passwort festlegen.",
+};
+
+export type SecurityContextDevice = {
+  id: string;
+  name: string;
+  assetTag: string | null;
+  operatingSystem: string | null;
+  complianceState: string | null;
+  lastSyncAt: string | null;
+  network: {
+    address: string | null;
+    hostname: string | null;
+    prefix: string | null;
+    vlan: string | null;
+    site: string | null;
+    switchName: string | null;
+    switchPort: string | null;
+  }[];
+  intuneActions: ("syncDevice" | "windowsDefenderScan")[];
+};
+
+export type SecurityContextPerson = {
+  key: string;
+  name: string;
+  email: string | null;
+  userId: string | null;
+  entraObjectId: string | null;
+  jobTitle: string | null;
+  department: string | null;
+  managerName: string | null;
+  lastSignInAt: string | null;
+  accountEnabled: boolean | null;
+  clicked: boolean;
+  found: boolean;
+  devicesVisible: boolean;
+  devices: SecurityContextDevice[];
+};
+
+export type SecurityIndicatorMatch = {
+  match: string | null;
+  prefix: string | null;
+  vlan: string | null;
+  site: string | null;
+  hostname: string | null;
+  assetName: string | null;
+};
+
+export type SecurityContext = {
+  people: SecurityContextPerson[];
+  indicators: {
+    value: string;
+    kind: "ip" | "host";
+    privateAddress: boolean;
+    match: SecurityIndicatorMatch | null;
+  }[];
+  measures: { intuneMessage: string | null; entraMessage: string | null };
 };
 
 type Row = Record<string, unknown>;
@@ -266,7 +410,249 @@ export function parseSecurityDetail(value: unknown): SecurityCaseDetail | null {
         ? [{ id, label, doneAt: str(row.doneAt), doneBy: str(row.doneBy) }]
         : [];
     }),
+    clickedAt: str(body.clickedAt),
+    escalatedAt: str(body.escalatedAt),
+    campaign: parseCampaign(body.campaign),
+    iocHits: list(body.iocHits).flatMap((row) => {
+      const id = str(row.id);
+      const value = str(row.value);
+      const kind = indicatorKind(row.kind);
+      return id && value && kind
+        ? [
+            {
+              id,
+              kind,
+              value,
+              verdict: str(row.verdict) ?? "phishing",
+              caseCount: num(row.caseCount, 1),
+            },
+          ]
+        : [];
+    }),
+    measures: list(body.measures).flatMap((row) => {
+      const id = str(row.id);
+      return id
+        ? [
+            {
+              id,
+              label: str(row.label) ?? "Massnahme",
+              target: str(row.target),
+              status:
+                row.status === "succeeded"
+                  ? ("succeeded" as const)
+                  : ("failed" as const),
+              message: str(row.message),
+              actorName: str(row.actorName),
+              createdAt: str(row.createdAt),
+            },
+          ]
+        : [];
+    }),
   };
+}
+
+function indicatorKind(value: unknown): IndicatorKind | null {
+  return value === "domain" ||
+    value === "url" ||
+    value === "ip" ||
+    value === "sender"
+    ? value
+    : null;
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+export function parseCampaign(value: unknown): SecurityCampaign | null {
+  if (!isRecord(value)) return null;
+  const id = str(value.id);
+  if (!id) return null;
+  return {
+    id,
+    senderDomain: str(value.senderDomain),
+    subjectKey: str(value.subjectKey),
+    linkDomains: strings(value.linkDomains),
+    reports: num(value.reports),
+    reporters: num(value.reporters),
+    caseCount: num(value.caseCount),
+    firstSeenAt: str(value.firstSeenAt),
+    lastSeenAt: str(value.lastSeenAt),
+    cases: list(value.cases).flatMap((row) => {
+      const ticketId = str(row.ticketId);
+      return ticketId
+        ? [
+            {
+              ticketId,
+              ticketNumber: str(row.ticketNumber),
+              state: state(row.state),
+              verdict: verdict(row.verdict),
+            },
+          ]
+        : [];
+    }),
+  };
+}
+
+export function parseCampaignList(value: unknown): SecurityCampaign[] | null {
+  const body = data(value);
+  if (!body) return null;
+  return list(body.campaigns).flatMap((row) => {
+    const campaign = parseCampaign(row);
+    return campaign ? [campaign] : [];
+  });
+}
+
+export function parseIocList(value: unknown): SecurityIoc[] | null {
+  const body = data(value);
+  if (!body) return null;
+  return list(body.iocs).flatMap((row) => {
+    const id = str(row.id);
+    const text = str(row.value);
+    const kind = indicatorKind(row.kind);
+    if (!id || !text || !kind) return [];
+    return [
+      {
+        id,
+        kind,
+        value: text,
+        verdict: str(row.verdict) ?? "phishing",
+        status:
+          row.status === "harmless"
+            ? ("harmless" as const)
+            : ("active" as const),
+        sourceTicketId: str(row.sourceTicketId),
+        sourceTicketNumber: str(row.sourceTicketNumber),
+        caseCount: num(row.caseCount),
+        hitCount: num(row.hitCount),
+        lastSeenAt: str(row.lastSeenAt),
+        lastHitAt: str(row.lastHitAt),
+      },
+    ];
+  });
+}
+
+function indicatorMatch(value: unknown): SecurityIndicatorMatch | null {
+  if (!isRecord(value)) return null;
+  return {
+    match: str(value.match),
+    prefix: str(value.prefix),
+    vlan: str(value.vlan),
+    site: str(value.site),
+    hostname: str(value.hostname),
+    assetName: str(value.assetName),
+  };
+}
+
+function contextDevice(device: Row): SecurityContextDevice[] {
+  const id = str(device.id);
+  if (!id) return [];
+  return [
+    {
+      id,
+      name: str(device.name) ?? "Gerät",
+      assetTag: str(device.assetTag),
+      operatingSystem: str(device.operatingSystem),
+      complianceState: str(device.complianceState),
+      lastSyncAt: str(device.lastSyncAt),
+      network: list(device.network).map((entry) => ({
+        address: str(entry.address),
+        hostname: str(entry.hostname),
+        prefix: str(entry.prefix),
+        vlan: str(entry.vlan),
+        site: str(entry.site),
+        switchName: str(entry.switchName),
+        switchPort: str(entry.switchPort),
+      })),
+      intuneActions: strings(device.intuneActions).filter(
+        (entry): entry is "syncDevice" | "windowsDefenderScan" =>
+          entry === "syncDevice" || entry === "windowsDefenderScan",
+      ),
+    },
+  ];
+}
+
+export function parseSecurityContext(value: unknown): SecurityContext | null {
+  const body = data(value);
+  if (!body) return null;
+  const measures = isRecord(body.measures) ? body.measures : {};
+  return {
+    people: list(body.people).flatMap((row) => {
+      const key = str(row.key);
+      if (!key) return [];
+      return [
+        {
+          key,
+          name: str(row.name) ?? "Unbekannte Person",
+          email: str(row.email),
+          userId: str(row.userId),
+          entraObjectId: str(row.entraObjectId),
+          jobTitle: str(row.jobTitle),
+          department: str(row.department),
+          managerName: str(row.managerName),
+          lastSignInAt: str(row.lastSignInAt),
+          accountEnabled:
+            typeof row.accountEnabled === "boolean" ? row.accountEnabled : null,
+          clicked: row.clicked === true,
+          found: row.found === true,
+          devicesVisible: row.devicesVisible === true,
+          devices: list(row.devices).flatMap(contextDevice),
+        },
+      ];
+    }),
+    indicators: list(body.indicators).flatMap((row) => {
+      const text = str(row.value);
+      if (!text) return [];
+      return [
+        {
+          value: text,
+          kind: row.kind === "host" ? ("host" as const) : ("ip" as const),
+          privateAddress: row.privateAddress === true,
+          match: indicatorMatch(row.match),
+        },
+      ];
+    }),
+    measures: {
+      intuneMessage: str(measures.intuneMessage),
+      entraMessage: str(measures.entraMessage),
+    },
+  };
+}
+
+/** «Subnetz 10.1.2.0/24 · VLAN 20 Verwaltung · Standort Haus A». */
+export function internalIndicatorLabel(
+  indicator: SecurityContext["indicators"][number],
+): string {
+  const match = indicator.match;
+  if (!match) return "Private Adresse (nicht öffentlich erreichbar)";
+  if (match.match === "address") {
+    return [
+      "Bekannte Adresse der IP-Verwaltung",
+      match.hostname,
+      match.assetName ? `Gerät ${match.assetName}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return [
+    `Subnetz ${match.prefix ?? "?"}`,
+    match.vlan ? `VLAN ${match.vlan}` : null,
+    match.site ? `Standort ${match.site}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** Intune measures a device offers (only what Intune supports there). */
+export function deviceMeasures(device: SecurityContextDevice): MeasureKind[] {
+  const result: MeasureKind[] = [];
+  if (device.intuneActions.includes("syncDevice")) result.push("intune_sync");
+  if (device.intuneActions.includes("windowsDefenderScan")) {
+    result.push("intune_defender_scan");
+  }
+  return result;
 }
 
 export function parseTemplates(

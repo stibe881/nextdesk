@@ -67,6 +67,28 @@ export type PersonOrder = {
   items: string | null;
 };
 
+/** Security case the person reported (only for the phishing team). */
+export type PersonSecurityCase = {
+  id: string;
+  number: string;
+  title: string;
+  state: string;
+  verdict: string | null;
+  clicked: boolean;
+  reportedAt: string | null;
+};
+
+/** Störung of one of the person's devices (only for the incident team). */
+export type PersonIncident = {
+  id: string;
+  number: string;
+  title: string;
+  state: string;
+  severity: string;
+  deviceName: string | null;
+  openedAt: string | null;
+};
+
 export type PersonOverview = {
   person: {
     entraObjectId: string | null;
@@ -108,6 +130,8 @@ export type PersonOverview = {
   devices: PersonDevice[] | null;
   licenses: PersonLicense[] | null;
   orders: PersonOrder[] | null;
+  securityCases: PersonSecurityCase[] | null;
+  incidents: PersonIncident[] | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -298,7 +322,72 @@ export function parsePersonOverview(value: unknown): PersonOverview | null {
       ? list(data.licenses, parseLicense)
       : null,
     orders: Array.isArray(data.orders) ? list(data.orders, parseOrder) : null,
+    securityCases: Array.isArray(data.securityCases)
+      ? list(data.securityCases, parseSecurityCase)
+      : null,
+    incidents: Array.isArray(data.incidents)
+      ? list(data.incidents, parseIncident)
+      : null,
   };
+}
+
+function parseSecurityCase(
+  item: Record<string, unknown>,
+): PersonSecurityCase | null {
+  const id = str(item.id);
+  const number = str(item.number);
+  if (!id || !number) return null;
+  return {
+    id,
+    number,
+    title: str(item.title) ?? "Ohne Betreff",
+    state: str(item.state) ?? "triage",
+    verdict: str(item.verdict),
+    clicked: item.clicked === true,
+    reportedAt: str(item.reportedAt),
+  };
+}
+
+function parseIncident(item: Record<string, unknown>): PersonIncident | null {
+  const id = str(item.id);
+  const number = str(item.number);
+  if (!id || !number) return null;
+  return {
+    id,
+    number,
+    title: str(item.title) ?? "Störung",
+    state: str(item.state) ?? "active",
+    severity: str(item.severity) ?? "down",
+    deviceName: str(item.deviceName),
+    openedAt: str(item.openedAt),
+  };
+}
+
+const SECURITY_STATE: Record<string, string> = {
+  triage: "Zu beurteilen",
+  actions: "Massnahmen",
+  closed: "Abgeschlossen",
+};
+const SECURITY_VERDICT: Record<string, string> = {
+  harmless: "Harmlos",
+  spam: "Spam",
+  phishing: "Phishing",
+  targeted: "Gezielter Angriff",
+};
+const INCIDENT_STATE: Record<string, string> = {
+  active: "Aktiv",
+  resolved: "Behoben",
+  closed: "Geschlossen",
+};
+
+export function securityCaseLabel(entry: PersonSecurityCase): string {
+  return entry.verdict
+    ? (SECURITY_VERDICT[entry.verdict] ?? entry.verdict)
+    : (SECURITY_STATE[entry.state] ?? entry.state);
+}
+
+export function incidentStateLabel(entry: PersonIncident): string {
+  return INCIDENT_STATE[entry.state] ?? entry.state;
 }
 
 export function personInitials(name: string): string {

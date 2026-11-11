@@ -123,6 +123,47 @@ async function personPhotoUrl(
   }
 }
 
+/** {securityCases, incidents}; null per list when the caller may not see it. */
+export async function personOperations(
+  // deno-lint-ignore no-explicit-any
+  client: any,
+  tenantId: string,
+  overview: Record<string, unknown>,
+): Promise<{ securityCases: unknown[] | null; incidents: unknown[] | null }> {
+  const person =
+    typeof overview.person === "object" && overview.person !== null
+      ? (overview.person as Record<string, unknown>)
+      : {};
+  const assetIds = (Array.isArray(overview.devices) ? overview.devices : [])
+    .map((device) =>
+      typeof device === "object" && device !== null
+        ? (device as Record<string, unknown>).id
+        : null,
+    )
+    .filter(isUuid)
+    .slice(0, 100);
+  try {
+    const { data, error } = await client.rpc("person_overview_operations", {
+      p_tenant_id: tenantId,
+      p_user_id: isUuid(person.userId) ? person.userId : null,
+      p_email: typeof person.email === "string" ? person.email : null,
+      p_asset_ids: assetIds,
+    });
+    if (error || typeof data !== "object" || data === null) {
+      return { securityCases: null, incidents: null };
+    }
+    const result = data as Record<string, unknown>;
+    return {
+      securityCases: Array.isArray(result.securityCases)
+        ? result.securityCases
+        : null,
+      incidents: Array.isArray(result.incidents) ? result.incidents : null,
+    };
+  } catch {
+    return { securityCases: null, incidents: null };
+  }
+}
+
 const handler = withSupabase(
   { auth: "user", cors: "disabled", errors: { detailed: false } },
   async (request, context) => {
@@ -170,6 +211,16 @@ const handler = withSupabase(
         photoUrl,
       };
     }
+    // Security cases of the person and Störungen of their devices: only for
+    // the responsible teams (checked in the database function).
+    Object.assign(
+      data as Record<string, unknown>,
+      await personOperations(
+        context.supabase,
+        action.tenantId,
+        data as Record<string, unknown>,
+      ),
+    );
     return respond(request, { data });
   },
 );

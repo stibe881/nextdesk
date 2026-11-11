@@ -4,6 +4,7 @@
 // the Exchange inbound processing (forward to the report address).
 
 import {
+  defang,
   domainOf,
   type ParsedMail,
   type PhishingAnalysis,
@@ -11,6 +12,7 @@ import {
   storedAnalysis,
   summaryText,
 } from "./phishing-analysis.ts";
+import { iocHitNote, processReportIntel } from "./phishing-campaigns.ts";
 
 // deno-lint-ignore no-explicit-any
 type Admin = any;
@@ -381,6 +383,46 @@ export async function convertToSecurityTicket(
 }
 
 /**
+ * Campaign grouping and IOC check of a new report (migration 0313). Writes
+ * an internal note when the case joins a campaign with other cases or when
+ * known indicators match. Never fails the report.
+ */
+async function reportIntelNotes(
+  admin: Admin,
+  input: {
+    tenantId: string;
+    ticketId: string;
+    reportId: string;
+    noteAuthorId: string;
+    analysis: unknown;
+  },
+): Promise<void> {
+  try {
+    const referenceDomains = await tenantReferenceDomains(admin, input.tenantId).catch(() => []);
+    const { campaign, hits } = await processReportIntel(admin, { ...input, referenceDomains });
+    const notes: string[] = [];
+    if (campaign?.campaignId && campaign.caseLinked && campaign.cases > 1) {
+      notes.push(
+        `Kampagne erkannt: Diese Meldung gehört zu einer Kampagne mit ${campaign.reports} Meldungen von ${campaign.reporters} Personen in ${campaign.cases} Fällen (gleiche Absenderdomain, ähnlicher Betreff oder gleiche Link-Domains).`,
+      );
+    }
+    if (hits.length) {
+      notes.push(iocHitNote(hits.map((hit) => ({ kind: hit.kind, value: defang(hit.value) }))));
+    }
+    if (notes.length) {
+      await admin.from("ticket_comments").insert({
+        ticket_id: input.ticketId,
+        author_id: input.noteAuthorId,
+        visibility: "internal",
+        body: notes.join("\n\n"),
+      });
+    }
+  } catch {
+    // Best effort.
+  }
+}
+
+/**
  * Stores the report, writes the internal summary and notifies the security
  * team. Errors in the notification never undo the report.
  */
@@ -418,8 +460,8 @@ export async function finalizePhishingReport(
     sending_ip: h.sendingIp?.slice(0, 64) ?? null,
     fingerprint: input.fingerprint,
     analysis: storedAnalysis(input.analysis),
-  });
-  if (stored.error) throw new Error("phishing_report_store_failed");
+  }).select("id").single();
+  if (stored.error || !stored.data?.id) throw new Error("phishing_report_store_failed");
   await admin.from("ticket_comments").insert({
     ticket_id: input.ticketId,
     author_id: input.noteAuthorId,
@@ -436,6 +478,13 @@ export async function finalizePhishingReport(
       channel: input.channel,
       previousReports,
     },
+  });
+  await reportIntelNotes(admin, {
+    tenantId: input.tenantId,
+    ticketId: input.ticketId,
+    reportId: String(stored.data.id),
+    noteAuthorId: input.noteAuthorId,
+    analysis: storedAnalysis(input.analysis),
   });
   if (input.bundled) return { previousReports };
   try {

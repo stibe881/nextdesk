@@ -14,6 +14,9 @@ import {
  * Personal priority list of the caller's assigned open tickets. The AI ranks
  * the tickets with a one-line reason (fallback: rule-based score); the agent
  * can reorder, which is stored as a manual rank and wins over the proposal.
+ * Open Störungen and security cases assigned to the caller come as a
+ * separate list (`operations`, only for the responsible teams); security
+ * cases are therefore not part of the ticket list.
  */
 
 // deno-lint-ignore no-explicit-any
@@ -251,6 +254,7 @@ async function loadTickets(admin: Admin, tenantId: string, actorId: string) {
     .is("deleted_at", null)
     .eq("tenant_id", tenantId)
     .eq("assigned_agent_id", actorId)
+    .eq("is_security_case", false)
     .eq("status.is_closed", false)
     .is("merged_into_ticket_id", null)
     .order("created_at", { ascending: true })
@@ -388,12 +392,83 @@ async function rank(
   return source;
 }
 
+export type OperationItem = {
+  kind: "incident" | "security_case";
+  id: string;
+  number: string;
+  title: string;
+  state: string;
+  urgent: boolean;
+  reason: string;
+};
+
+function operationRows(value: unknown): Row[] {
+  return Array.isArray(value)
+    ? value.filter((row) => isRecord(row) && nonEmptyText(row.id) && typeof row.number === "string")
+    : [];
+}
+
+function nonEmptyText(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+/** Assigned open Störungen and security cases, most urgent first. */
+export function operationItems(value: unknown, now = Date.now()): OperationItem[] {
+  const data = isRecord(value) ? value : {};
+  const incidents = operationRows(data.incidents).map((row): OperationItem => {
+    const down = row.severity !== "warning";
+    const resolved = row.state === "resolved";
+    return {
+      kind: "incident",
+      id: String(row.id),
+      number: String(row.number ?? ""),
+      title: String(row.title ?? ""),
+      state: String(row.state ?? "active"),
+      urgent: down && !resolved,
+      reason: resolved
+        ? "Behoben, Ursache erfassen und schliessen"
+        : `${down ? "Ausfall" : "Warnung"}${row.acknowledged === true ? "" : " · unbestätigt"}`,
+    };
+  });
+  const cases = operationRows(data.securityCases).map((row): OperationItem => {
+    const due = typeof row.decisionDueAt === "string" ? Date.parse(row.decisionDueAt) : NaN;
+    const overdue = row.overdue === true || (row.state === "triage" && Number.isFinite(due) && due < now);
+    return {
+      kind: "security_case",
+      id: String(row.id),
+      number: String(row.number ?? ""),
+      title: String(row.title ?? ""),
+      state: String(row.state ?? "triage"),
+      urgent: overdue || row.clicked === true,
+      reason: row.clicked === true
+        ? "Melder hat geklickt"
+        : overdue
+        ? "Urteil überfällig"
+        : row.state === "triage"
+        ? "Urteil offen"
+        : "Massnahmen offen",
+    };
+  });
+  return [...incidents, ...cases]
+    .sort((a, b) => Number(b.urgent) - Number(a.urgent));
+}
+
+async function loadOperations(client: Admin, tenantId: string): Promise<OperationItem[]> {
+  try {
+    const { data, error } = await client.rpc("my_operation_priorities", { p_tenant_id: tenantId });
+    return error ? [] : operationItems(data);
+  } catch {
+    return [];
+  }
+}
+
 async function respond(
   request: Request,
   admin: Admin,
   tenantId: string,
   actorId: string,
   tickets: PriorityTicket[],
+  client?: Admin,
 ) {
   const ranks = await loadRanks(admin, tenantId, actorId);
   const order = effectiveOrder(tickets.map((ticket) => ticket.id), ranks);
@@ -404,8 +479,10 @@ async function respond(
     .sort()
     .at(-1) ?? null;
   const source = [...ranks.values()].find((row) => row.ai_ranked_at === rankedAt)?.ai_source ?? null;
+  const operations = client ? await loadOperations(client, tenantId) : [];
   return json(request, {
     data: {
+      operations,
       rankedAt,
       source,
       hasManualOrder: tickets.some((ticket) => ranks.get(ticket.id)?.manual_rank != null),
@@ -429,7 +506,13 @@ async function respond(
   });
 }
 
-async function handle(request: Request, admin: Admin, action: Action, actorId: string) {
+async function handle(
+  request: Request,
+  admin: Admin,
+  action: Action,
+  actorId: string,
+  client?: Admin,
+) {
   const tickets = await loadTickets(admin, action.tenantId, actorId);
   if (action.type === "reorder") {
     const own = new Set(tickets.map((ticket) => ticket.id));
@@ -448,7 +531,7 @@ async function handle(request: Request, admin: Admin, action: Action, actorId: s
       { onConflict: "user_id,ticket_id" },
     );
     if (error) throw new HttpError(503, "database_failure", "Die Reihenfolge konnte nicht gespeichert werden.");
-    return respond(request, admin, action.tenantId, actorId, tickets);
+    return respond(request, admin, action.tenantId, actorId, tickets, client);
   }
   if (action.type === "resetManual" || (action.type === "refresh" && action.resetManual)) {
     const { error } = await admin
@@ -471,7 +554,7 @@ async function handle(request: Request, admin: Admin, action: Action, actorId: s
       await rank(admin, action.tenantId, actorId, tickets);
     }
   }
-  return respond(request, admin, action.tenantId, actorId, tickets);
+  return respond(request, admin, action.tenantId, actorId, tickets, client);
 }
 
 const handler = withSupabase(
@@ -505,7 +588,7 @@ const handler = withSupabase(
           403,
         );
       }
-      return await handle(request, admin, action, actorId);
+      return await handle(request, admin, action, actorId, context.supabase);
     } catch (error) {
       if (error instanceof HttpError) {
         return json(request, { error: { code: error.code, message: error.message } }, error.status);

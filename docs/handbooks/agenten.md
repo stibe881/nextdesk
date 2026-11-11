@@ -75,6 +75,11 @@ Abteilung. Die Reiter _Alle / Personen / Tickets …_ filtern die Treffer. Neben
 dem Namen sehen Sie die Anzahl offener Tickets; gesperrte Konten sind als
 **Deaktiviert** markiert. Mitarbeitende ohne Agentenrolle sehen keine Personen.
 
+Die Suche findet ausserdem **Störungen** (Nummer, Titel, Gerät) und
+**Sicherheitsfälle** (Fallnummer, Betreff, Absender, meldende Person) – aber
+nur für das jeweils zuständige Team (siehe unten). Ein Klick öffnet die
+Störung bzw. den Fall direkt.
+
 ![Globale Suche mit Personen aus Microsoft Entra](images/ag-personensuche.jpg)
 
 Ein Klick auf eine Person öffnet die **Personenübersicht**. Sie erreichen sie
@@ -92,7 +97,10 @@ auch im Ticket über den Namen unter **Anfragende Person** (in der App:
   Offen / Geschlossen_), **Geräte** aus Intune und Assets (ein Klick öffnet das Gerät), **Lizenzen**,
   **Bestellungen** aus dem Shop und der **Verlauf** als Zeitleiste. Geräte,
   Lizenzen und Bestellungen erscheinen nur, wenn das Modul aktiv ist und Sie
-  die Berechtigung dafür haben.
+  die Berechtigung dafür haben. Für das Sicherheitsteam kommt der Reiter
+  **Sicherheitsfälle** dazu (von der Person gemeldete Phishing-Mails, mit
+  Kennzeichen _Geklickt_), für das Störungsteam der Reiter **Störungen**
+  (Störungen ihrer Geräte in den letzten 12 Monaten).
 - **Häufige Themen**: die Kategorien, zu denen die Person am häufigsten
   Tickets erfasst.
 
@@ -115,7 +123,10 @@ Weitere Blöcke:
 
 - **Priorisierte Tickets** und **Meine Prioritäten** – von der KI
   vorgeschlagene Reihenfolge; per Ziehen anpassen, **Neu priorisieren** oder
-  **Eigene Reihenfolge verwerfen**
+  **Eigene Reihenfolge verwerfen**. Über den Tickets stehen Ihnen zugewiesene
+  offene **Störungen** und **Sicherheitsfälle** (dringende rot markiert, z. B.
+  Ausfall unbestätigt, Urteil überfällig oder «Melder hat geklickt»);
+  Sicherheitsfälle erscheinen nicht mehr als Ticket.
 - **Freigaben** – Entscheidungen, die auf Sie warten
 - **Meine Kennzahlen** – z. B. heute gelöst, Median der ersten Antwort
 - **Gerade passiert** – die neuesten Ereignisse
@@ -163,7 +174,11 @@ Team sehen sie alle Agenten.
 
 Gemeldete Phishing-Mails erscheinen nicht in der Ticketliste (weder im Web
 noch in der App), sondern unter **Sicherheitsfälle**. Meldet mehr als eine Person dieselbe E-Mail, entsteht
-nur ein Fall; alle Melder hängen daran (Kennzeichen **Kampagne**). Die Kacheln
+nur ein Fall; alle Melder hängen daran (Kennzeichen **Kampagne**). Ähnliche
+Mails (gleiche Absenderdomain mit ähnlichem Betreff oder gleichen
+Link-Domains) fasst nextDesk zusätzlich zu einer **Kampagne** über mehrere
+Fälle zusammen; ab drei meldenden Personen erhält das Sicherheitsteam eine
+Benachrichtigung. Die Kacheln
 zeigen, was zu beurteilen ist, wie viele Fälle noch Massnahmen haben, die
 Meldungen von heute, die mittlere Zeit bis zum Urteil und wie oft Melder
 angegeben haben, geklickt zu haben.
@@ -204,13 +219,64 @@ So bearbeiten Sie einen Fall:
 4. **Fall abschliessen**, sobald alles erledigt ist. Bei _Harmlos_ ohne
    Massnahmen schliesst sich der Fall direkt nach dem Urteil.
 
+### Kontext und Massnahmen
+
+Im Fall zeigt die Karte **Kontext und Massnahmen** zu jeder meldenden Person
+Funktion, Abteilung, vorgesetzte Person, die letzte Anmeldung aus Microsoft
+Entra (falls synchronisiert) und ihre Geräte mit Intune-Status (Compliance,
+letzte Synchronisation) und IP-Adressen aus der IP-Verwaltung (Subnetz, VLAN,
+Standort, Switch-Port). Nennt die gemeldete Mail eine IP-Adresse oder einen
+Host aus dem eigenen Netz (bekanntes Subnetz, bekannte Adresse oder private
+Adresse), erscheint der Hinweis **Interne Adresse!** – das kann auf ein
+kompromittiertes internes Gerät oder Konto hindeuten.
+
+Antwortet eine Person auf die Rückfrage mit **«Ja, ich habe geklickt»**,
+erhält das Sicherheitsteam sofort eine Benachrichtigung und der Fall bekommt
+die Priorität _hoch_. Bei der Person stehen dann diese Massnahmen bereit
+(jede mit Bestätigungsdialog):
+
+- **Gerät synchronisieren** und **Defender-Schnellscan** (Windows) über Intune
+  – nur, was Intune für das Gerät anbietet. Ein Gerät **isolieren** ist nur
+  direkt in Microsoft Defender möglich.
+- **Sitzungen widerrufen** und **Passwort-Reset erzwingen** in Microsoft
+  Entra. Fehlt der nextDesk-App dafür die Berechtigung, erscheint eine klare
+  Meldung; die Checkliste bleibt, und Sie erledigen den Schritt im Entra Admin
+  Center.
+- **Ersatzgerät bestellen**: bestellt einen Shop-Artikel im Namen der Person
+  mit dem Hinweis «Ersatzgerät aus Sicherheitsfall …». Verlangt der Artikel
+  eine Genehmigung, wird diese wie üblich angefordert.
+
+Jede Massnahme steht mit Ergebnis unter **Ausgeführte Massnahmen** und im
+Verlauf des Falls.
+
+### Kampagnen und IOC-Liste
+
+Unter **Kampagnen & IOC** sehen Sie die erkannten Kampagnen mit allen
+zugehörigen Fällen und die **IOC-Liste**: Domains, URLs, sendende IPs und
+Absender aus allen Fällen mit dem Urteil _Spam_, _Phishing_ oder _Gezielter
+Angriff_. Jede neue Meldung wird dagegen geprüft; Treffer stehen im Fall unter
+**Bekannte Indikatoren** und als interne Notiz. Ist ein Eintrag unbedenklich
+(z. B. ein missbrauchter, aber seriöser Dienst), markieren Sie ihn **als
+harmlos** – er löst dann keine Treffer mehr aus.
+
+### Eskalation
+
+Ist das Urteil überfällig, erhält das Sicherheitsteam eine Benachrichtigung;
+nach weiteren 24 Stunden ohne Urteil gehen sie an die Vorgesetzten der
+Abteilung (Rolle «Vorgesetzter Agent»). Mitglieder des Sicherheitsteams
+erhalten neue Meldungen, Klicks, Kampagnen und Eskalationen immer – auch wenn
+sie die Phishing-Meldungen in den Benachrichtigungen nicht eingeschaltet
+haben.
+
 Melder bekommen für Phishing-Meldungen keine Eingangsbestätigung, nur eine
 Dankesnachricht und später das Ergebnis.
 
 In der **iOS- und Android-App** heisst der Bereich **Phishing** (untere
 Leiste, links vom Home-Knopf). Dort fällen Sie das Urteil, weisen den Fall zu,
 haken Massnahmen ab, fragen die Melder nach einem Klick und schliessen den
-Fall ab. Ein Tipp auf eine Phishing-Mitteilung öffnet den Fall direkt.
+Fall ab. Ein Tipp auf eine Phishing-Mitteilung öffnet den Fall direkt. Die
+App zeigt auch Kampagne, bekannte Indikatoren und ausgeführte Massnahmen; die
+Massnahmen selbst lösen Sie im Web aus.
 
 ## Störungen
 
@@ -837,7 +903,9 @@ gelten dieselben Rechte und Abteilungsgrenzen wie in der Weboberfläche.
   (z. B. Zuweisungen, Eskalationen, Erwähnungen, Phishing-Meldungen)
   einzeln **Push** und **E-Mail** ein oder aus. Für Agenten sind zu Beginn alle Benachrichtigungen
   per Push und E-Mail eingeschaltet – ausser **Phishing-Meldungen**: Diese sind
-  ausgeschaltet. Wer sie erhalten möchte, schaltet sie dort selbst ein. E-Mails kommen über das Exchange-Postfach
+  ausgeschaltet. Wer sie erhalten möchte, schaltet sie dort selbst ein.
+  Mitglieder des Sicherheitsteams aus den Phishing-Einstellungen erhalten sie
+  immer. E-Mails kommen über das Exchange-Postfach
   Ihres Unternehmens und sind verfügbar, sobald eines verbunden ist.
 - Das iPhone-Widget **Meine Prioritäten** zeigt Ihre wichtigsten Tickets in
   den Farben Ihres Unternehmens. Öffnen Sie die App einmal, damit es aktuell

@@ -13965,4 +13965,242 @@ $$;
 rollback;
 SQL
 
+# 0313: Sicherheitsfälle – Kampagnen, IOC, «geklickt», Eskalation, Suche.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_agent constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_ticket uuid;
+  v_ticket2 uuid;
+  v_department uuid;
+  v_team uuid;
+  v_report uuid;
+  v_result jsonb;
+  v_hits jsonb;
+  v_count integer;
+  v_low uuid;
+  v_found boolean;
+begin
+  -- Browsers never read the new tables or call the service functions.
+  if has_table_privilege('authenticated', 'public.security_campaigns', 'select')
+    or has_table_privilege('authenticated', 'public.security_iocs', 'select')
+    or has_table_privilege('authenticated', 'public.security_case_measures', 'insert') then
+    raise exception 'security 0313 test: tables readable by browsers';
+  end if;
+  if has_function_privilege('authenticated', 'public.security_case_notify(uuid, uuid, text, jsonb, text)', 'execute')
+    or has_function_privilege('authenticated', 'public.security_case_mark_clicked(uuid, uuid)', 'execute')
+    or has_function_privilege('authenticated', 'public.security_case_escalate()', 'execute')
+    or has_function_privilege('authenticated', 'public.security_campaign_assign(uuid, uuid, text, text, text[])', 'execute')
+    or has_function_privilege('authenticated', 'public.security_iocs_record(uuid, uuid, text, jsonb)', 'execute')
+    or has_function_privilege('authenticated', 'public.security_ioc_match(uuid, uuid, jsonb)', 'execute')
+    or has_function_privilege('authenticated', 'public.security_ipam_matches(uuid, text[], text[])', 'execute')
+    or has_function_privilege('authenticated', 'public.security_notification_forced(uuid, uuid, text)', 'execute')
+    or has_function_privilege('anon', 'public.search_operations(uuid, text, integer)', 'execute') then
+    raise exception 'security 0313 test: service functions callable by browsers';
+  end if;
+  if not has_function_privilege('authenticated', 'public.search_operations(uuid, text, integer)', 'execute')
+    or not has_function_privilege('authenticated', 'public.my_operation_priorities(uuid)', 'execute')
+    or not has_function_privilege('authenticated', 'public.person_overview_operations(uuid, uuid, text, uuid[])', 'execute') then
+    raise exception 'security 0313 test: agent functions not granted';
+  end if;
+
+  select ticket.id, ticket.department_id into v_ticket, v_department
+    from public.tickets ticket
+   where ticket.tenant_id = v_tenant and ticket.deleted_at is null
+     and exists (
+       select 1 from public.department_memberships membership
+        where membership.tenant_id = v_tenant and membership.department_id = ticket.department_id
+          and membership.user_id = v_agent and membership.status = 'active'
+     )
+   order by ticket.created_at limit 1;
+  select ticket.id into v_ticket2
+    from public.tickets ticket
+   where ticket.tenant_id = v_tenant and ticket.deleted_at is null and ticket.id <> v_ticket
+     and ticket.department_id = v_department
+   order by ticket.created_at limit 1;
+  if v_ticket2 is null then
+    raise exception 'security 0313 test: fixture tickets missing';
+  end if;
+  update public.tickets set is_security_case = true where id in (v_ticket, v_ticket2);
+  insert into public.security_cases (ticket_id, tenant_id, fingerprint, state, decision_due_at)
+  values (v_ticket, v_tenant, repeat('c', 64), 'triage', timezone('utc', now()) - interval '1 hour'),
+         (v_ticket2, v_tenant, repeat('d', 64), 'triage', timezone('utc', now()) + interval '1 hour')
+  on conflict (ticket_id) do update set state = 'triage', decision_due_at = excluded.decision_due_at;
+
+  insert into public.teams (tenant_id, department_id, name)
+  values (v_tenant, v_department, 'Phishing 0313') returning id into v_team;
+  insert into public.team_memberships (team_id, user_id, tenant_id) values (v_team, v_agent, v_tenant);
+  insert into public.phishing_report_settings (tenant_id, enabled, notify_team_id)
+  values (v_tenant, true, v_team)
+  on conflict (tenant_id) do update set notify_team_id = excluded.notify_team_id;
+
+  if not public.security_notification_forced(v_tenant, v_agent, 'security.case_clicked')
+    or not public.security_notification_forced(v_tenant, v_agent, 'ticket.security_report')
+    or public.security_notification_forced(v_tenant, v_agent, 'ticket.assigned')
+    or public.security_notification_forced(v_tenant, gen_random_uuid(), 'security.campaign') then
+    raise exception 'security 0313 test: forced delivery wrong';
+  end if;
+  begin
+    perform public.security_case_notify(v_tenant, v_ticket, 'ticket.assigned', '{}'::jsonb, 'team');
+    raise exception 'security 0313 test: foreign kind accepted';
+  exception when invalid_parameter_value then null;
+  end;
+
+  -- Campaign: three people report similar mails → security.campaign once.
+  for v_count in 1..3 loop
+    insert into public.phishing_reports (tenant_id, ticket_id, reporter_email, channel, source,
+      risk_score, risk_level, original_subject, fingerprint, analysis)
+    -- One report row per ticket (phishing_reports.ticket_id is unique).
+    values (v_tenant, case v_count when 1 then v_ticket when 3 then v_ticket2 end,
+      'melder' || v_count || '@example.ch', 'email', 'eml', 60, 'medium',
+      'Ihre Rechnung', repeat(case when v_count = 3 then 'd' else 'c' end, 64), '{}'::jsonb)
+    returning id into v_report;
+    v_result := public.security_campaign_assign(v_tenant, v_report, 'Rechnung-Post.example',
+      'ihre rechnung # ist fällig', array['evil.example']);
+  end loop;
+  if (v_result ->> 'reporters')::integer <> 3 or (v_result ->> 'cases')::integer <> 2
+    or (v_result ->> 'created')::boolean or not (v_result ->> 'caseLinked')::boolean
+    or (v_result ->> 'notified')::integer < 1 then
+    raise exception 'security 0313 test: campaign wrong: %', v_result;
+  end if;
+  if (select count(*) from public.ticket_notifications
+       where ticket_id = v_ticket2 and kind = 'security.campaign' and user_id = v_agent) <> 1 then
+    raise exception 'security 0313 test: campaign notification missing';
+  end if;
+  -- Different subject and links: a new campaign.
+  insert into public.phishing_reports (tenant_id, ticket_id, reporter_email, channel, source,
+    risk_score, risk_level, fingerprint, analysis)
+  values (v_tenant, null, 'melder4@example.ch', 'email', 'eml', 10, 'low', repeat('e', 64), '{}')
+  returning id into v_report;
+  v_result := public.security_campaign_assign(v_tenant, v_report, 'rechnung-post.example',
+    'paket wartet', array['other.example']);
+  if not (v_result ->> 'created')::boolean then
+    raise exception 'security 0313 test: unrelated mail joined the campaign';
+  end if;
+  if (select count(*) from public.ticket_notifications
+       where kind = 'security.campaign' and user_id = v_agent) <> 1 then
+    raise exception 'security 0313 test: campaign notified twice';
+  end if;
+
+  -- IOC: recorded from a verdict, matched in another case, also as subdomain.
+  v_count := public.security_iocs_record(v_tenant, v_ticket, 'phishing', jsonb_build_array(
+    jsonb_build_object('kind', 'domain', 'value', 'Evil.Example'),
+    jsonb_build_object('kind', 'domain', 'value', 'evil.example '),
+    jsonb_build_object('kind', 'ip', 'value', '203.0.113.25'),
+    jsonb_build_object('kind', 'virus', 'value', 'x')));
+  if v_count <> 2 then
+    raise exception 'security 0313 test: IOC record count %', v_count;
+  end if;
+  if public.security_iocs_record(v_tenant, v_ticket, 'harmless', '[]'::jsonb) <> 0 then
+    raise exception 'security 0313 test: harmless verdict recorded';
+  end if;
+  v_hits := public.security_ioc_match(v_tenant, v_ticket2, jsonb_build_array(
+    jsonb_build_object('kind', 'domain', 'value', 'login.evil.example'),
+    jsonb_build_object('kind', 'domain', 'value', 'notevil.example'),
+    jsonb_build_object('kind', 'ip', 'value', '203.0.113.25')));
+  if jsonb_array_length(v_hits) <> 2 then
+    raise exception 'security 0313 test: IOC hits wrong: %', v_hits;
+  end if;
+  if jsonb_array_length((select ioc_hits from public.security_cases where ticket_id = v_ticket2)) <> 2 then
+    raise exception 'security 0313 test: IOC hits not stored on the case';
+  end if;
+  -- The source case does not match itself; harmless entries never match.
+  if jsonb_array_length(public.security_ioc_match(v_tenant, v_ticket,
+       '[{"kind": "ip", "value": "203.0.113.25"}]'::jsonb)) <> 0 then
+    raise exception 'security 0313 test: source case matched itself';
+  end if;
+  update public.security_iocs set status = 'harmless' where tenant_id = v_tenant and kind = 'ip';
+  if jsonb_array_length(public.security_ioc_match(v_tenant, v_ticket2,
+       '[{"kind": "ip", "value": "203.0.113.25"}]'::jsonb)) <> 0 then
+    raise exception 'security 0313 test: harmless IOC matched';
+  end if;
+  if (select hit_count from public.security_iocs where tenant_id = v_tenant and kind = 'domain') <> 1 then
+    raise exception 'security 0313 test: hit not counted';
+  end if;
+
+  -- «Ja, ich habe geklickt»: priority high, team notified.
+  select priority.id into v_low from public.ticket_priorities priority
+   where priority.tenant_id = v_tenant and priority.key = 'low';
+  if v_low is not null then
+    update public.tickets set priority_id = v_low where id = v_ticket;
+  end if;
+  v_result := public.security_case_mark_clicked(v_tenant, v_ticket);
+  if (select priority.key from public.tickets ticket
+        join public.ticket_priorities priority on priority.id = ticket.priority_id
+       where ticket.id = v_ticket) not in ('high', 'urgent')
+    or (select clicked_at from public.security_cases where ticket_id = v_ticket) is null
+    or not exists (select 1 from public.ticket_notifications
+                    where ticket_id = v_ticket and kind = 'security.case_clicked' and user_id = v_agent) then
+    raise exception 'security 0313 test: clicked flow wrong: %', v_result;
+  end if;
+
+  -- Escalation: team first, supervisors after another 24 hours, each once.
+  perform public.security_case_escalate();
+  if (select overdue_notified_at from public.security_cases where ticket_id = v_ticket) is null
+    or (select overdue_notified_at from public.security_cases where ticket_id = v_ticket2) is not null
+    or (select count(*) from public.ticket_notifications
+         where ticket_id = v_ticket and kind = 'security.case_overdue') < 1 then
+    raise exception 'security 0313 test: overdue not notified';
+  end if;
+  select count(*) into v_count from public.ticket_notifications where kind = 'security.case_overdue';
+  perform public.security_case_escalate();
+  if (select count(*) from public.ticket_notifications where kind = 'security.case_overdue') <> v_count then
+    raise exception 'security 0313 test: overdue notified twice';
+  end if;
+  update public.security_cases set overdue_notified_at = timezone('utc', now()) - interval '25 hours'
+   where ticket_id = v_ticket;
+  perform public.security_case_escalate();
+  if (select escalated_at from public.security_cases where ticket_id = v_ticket) is null then
+    raise exception 'security 0313 test: supervisor stage not reached';
+  end if;
+
+  -- IPAM: an IP of a known subnet is internal.
+  insert into public.ipam_prefixes (tenant_id, prefix, description)
+  values (v_tenant, '10.99.0.0/24', 'Test 0313');
+  v_result := public.security_ipam_matches(v_tenant, array['10.99.0.5', 'kein-ip', '198.51.100.1'], array[]::text[]);
+  if jsonb_array_length(v_result) <> 1 or v_result -> 0 ->> 'match' <> 'prefix'
+    or v_result -> 0 ->> 'prefix' <> '10.99.0.0/24' then
+    raise exception 'security 0313 test: IPAM match wrong: %', v_result;
+  end if;
+
+  -- Search, priorities and person overview under the agent.
+  perform set_config('request.jwt.claim.sub', v_agent::text, true);
+  update public.tickets set assigned_agent_id = v_agent where id = v_ticket;
+  select exists (
+    select 1 from public.search_operations(v_tenant, 'rechnung', 10) result
+     where result.result_type = 'security_case' and result.entity_id = v_ticket
+  ) into v_found;
+  if public.can_read_ticket(v_ticket) and not v_found then
+    raise exception 'security 0313 test: case not found by search';
+  end if;
+  if exists (select 1 from public.search_operations(v_tenant, 'r', 10)) then
+    raise exception 'security 0313 test: one-letter search accepted';
+  end if;
+  v_result := public.my_operation_priorities(v_tenant);
+  if public.can_read_ticket(v_ticket)
+    and not exists (select 1 from jsonb_array_elements(v_result -> 'securityCases') item
+                     where item ->> 'id' = v_ticket::text and (item ->> 'clicked')::boolean) then
+    raise exception 'security 0313 test: case missing in priorities: %', v_result;
+  end if;
+  v_result := public.person_overview_operations(v_tenant, null, 'Melder1@Example.ch', array[]::uuid[]);
+  if public.can_read_ticket(v_ticket)
+    and jsonb_array_length(coalesce(v_result -> 'securityCases', '[]'::jsonb)) <> 1 then
+    raise exception 'security 0313 test: person cases wrong: %', v_result;
+  end if;
+  -- Without team membership the phishing data stays hidden.
+  delete from public.team_memberships where team_id = v_team and user_id = v_agent;
+  if exists (select 1 from public.search_operations(v_tenant, 'rechnung', 10) where result_type = 'security_case')
+    or jsonb_array_length(public.my_operation_priorities(v_tenant) -> 'securityCases') <> 0
+    or (public.person_overview_operations(v_tenant, null, 'melder1@example.ch', null) -> 'securityCases') <> 'null'::jsonb then
+    raise exception 'security 0313 test: security cases visible outside the phishing team';
+  end if;
+  perform set_config('request.jwt.claim.sub', '', true);
+  raise notice 'security context, campaign and escalation checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

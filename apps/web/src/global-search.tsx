@@ -25,12 +25,24 @@ import "./person-overview.css";
 
 export type GlobalSearchResult = {
   resultType:
-    "ticket" | "follow_up" | "knowledge" | "event_space" | "onboarding";
+    | "ticket"
+    | "follow_up"
+    | "knowledge"
+    | "event_space"
+    | "onboarding"
+    | "incident"
+    | "security_case";
   entityId: string;
   title: string;
   detail: string;
   section:
-    "Tickets" | "Wiedervorlagen" | "Wissen" | "Raumplanung" | "Eintritte";
+    | "Tickets"
+    | "Wiedervorlagen"
+    | "Wissen"
+    | "Raumplanung"
+    | "Eintritte"
+    | "Störungen"
+    | "Sicherheitsfälle";
   ticketId: string | null;
 };
 
@@ -60,7 +72,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseResults(value: unknown): GlobalSearchResult[] | null {
+export function parseResults(value: unknown): GlobalSearchResult[] | null {
   if (
     !isRecord(value) ||
     !isRecord(value.data) ||
@@ -74,6 +86,8 @@ function parseResults(value: unknown): GlobalSearchResult[] | null {
     "knowledge",
     "event_space",
     "onboarding",
+    "incident",
+    "security_case",
   ]);
   const allowedSections = new Set<GlobalSearchResult["section"]>([
     "Tickets",
@@ -81,6 +95,8 @@ function parseResults(value: unknown): GlobalSearchResult[] | null {
     "Wissen",
     "Raumplanung",
     "Eintritte",
+    "Störungen",
+    "Sicherheitsfälle",
   ]);
   const results: GlobalSearchResult[] = [];
   for (const rawItem of value.data.results) {
@@ -127,6 +143,8 @@ const typeLabel: Record<GlobalSearchResult["resultType"], string> = {
   knowledge: "Wissensartikel",
   event_space: "Raumauftrag",
   onboarding: "Eintritt",
+  incident: "Störung",
+  security_case: "Sicherheitsfall",
 };
 
 export function GlobalSearch({

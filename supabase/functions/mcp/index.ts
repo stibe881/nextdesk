@@ -236,6 +236,35 @@ async function rest(
   return payload.filter(isRecord);
 }
 
+/** Datenbankfunktion unter der Identität der angemeldeten Person. */
+async function rpcCall(
+  config: Config,
+  session: Session,
+  name: string,
+  args: Json,
+): Promise<unknown> {
+  const response = await fetch(`${config.supabaseUrl}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    headers: { ...authHeaders(config, session), Accept: "application/json" },
+    body: JSON.stringify(args),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (response.status === 401 || response.status === 403) {
+    throw new ToolError("Keine Berechtigung für diese Daten.");
+  }
+  if (!response.ok) {
+    throw new ToolError("Die Daten konnten nicht gelesen werden.");
+  }
+  return payload;
+}
+
+const SECURITY_STATE_LABELS: Json = {
+  triage: "zu beurteilen",
+  actions: "Massnahmen",
+  closed: "abgeschlossen",
+};
+
 type Workspace = { id: string; name: string; slug: string };
 
 async function listWorkspaces(
@@ -1704,7 +1733,7 @@ const TOOLS: Tool[] = [
   {
     name: "ueberall_suchen",
     description:
-      "Durchsucht den Arbeitsbereich gleichzeitig nach Tickets, Wiedervorlagen, Wissensartikeln, Veranstaltungsräumen und Eintritten.",
+      "Durchsucht den Arbeitsbereich gleichzeitig nach Tickets, Wiedervorlagen, Wissensartikeln, Veranstaltungsräumen und Eintritten; für das zuständige Team auch nach Störungen und Sicherheitsfällen.",
     annotations: { readOnlyHint: true, title: "Überall suchen" },
     inputSchema: {
       type: "object",
@@ -1726,6 +1755,7 @@ const TOOLS: Tool[] = [
         args.arbeitsbereich,
       );
       const data = await callFunction(config, session, "global-search", {
+        type: "search",
         tenantId: workspace.id,
         query,
       });
@@ -5207,6 +5237,192 @@ const TOOLS: Tool[] = [
       });
       const notice = isRecord(data.notice) ? data.notice : {};
       return textResult({ saved: true, id: notice.id ?? null });
+    },
+  },
+
+  // ------------------------------------------------ Störungen und Sicherheitsfälle
+  {
+    name: "stoerungen_anzeigen",
+    description:
+      "Listet Monitoring-Störungen (PRTG) des Arbeitsbereichs. Nur für das in den Monitoring-Einstellungen zuständige Team (ohne Team: alle Agenten).",
+    annotations: { readOnlyHint: true, title: "Störungen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        nur_offene: {
+          type: "boolean",
+          description: "Nur nicht geschlossene Störungen (Standard).",
+        },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 50 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await rpcCall(config, session, "list_operations_incidents", {
+        p_tenant_id: workspace.id,
+        p_only_open: args.nur_offene !== false,
+        p_limit: clampLimit(args.max_anzahl, 20, 50),
+      });
+      return textResult({ incidents: records(data) });
+    },
+  },
+  {
+    name: "sicherheitsfaelle_anzeigen",
+    description:
+      "Listet die Sicherheitsfälle (gemeldete Phishing-Mails). Nur für das Phishing-Team aus den Phishing-Einstellungen.",
+    annotations: { readOnlyHint: true, title: "Sicherheitsfälle" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        status: {
+          type: "string",
+          enum: ["triage", "actions", "closed", "all"],
+          description:
+            "triage = zu beurteilen (Standard), actions = Massnahmen offen, closed = abgeschlossen, all = alle.",
+        },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 50 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const state = ["triage", "actions", "closed", "all"].includes(
+        String(args.status),
+      )
+        ? String(args.status)
+        : "triage";
+      const data = await callFunction(config, session, "security-cases", {
+        type: "list",
+        tenantId: workspace.id,
+        state,
+      });
+      return textResult({
+        cases: records(data.cases)
+          .slice(0, clampLimit(args.max_anzahl, 20, 50))
+          .map((entry) => ({
+            id: entry.ticketId,
+            number: entry.ticketNumber,
+            subject: clip(entry.subject, 200),
+            from: entry.from,
+            state: SECURITY_STATE_LABELS[String(entry.state)] ?? entry.state,
+            verdict: entry.verdict,
+            risk: entry.riskLevel,
+            reporters: entry.reporters,
+            overdue: entry.overdue,
+            assignedTo: entry.assignedAgentName,
+            firstReportedAt: entry.firstReportedAt,
+          })),
+      });
+    },
+  },
+  {
+    name: "sicherheitsfall_anzeigen",
+    description:
+      "Zeigt einen Sicherheitsfall mit Analyse (Links entschärft), Urteil, Massnahmen, Kampagne und IOC-Treffern. Nur für das Phishing-Team.",
+    annotations: { readOnlyHint: true, title: "Sicherheitsfall" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        fall: {
+          type: "string",
+          description: "Fallnummer (z. B. SEC-2026-0012) oder ID.",
+        },
+      },
+      required: ["fall"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const reference = str(args.fall, 1, 80);
+      if (!reference) throw new ToolError('"fall" fehlt.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      let ticketId = isUuid(reference) ? reference : null;
+      if (!ticketId) {
+        const list = await callFunction(config, session, "security-cases", {
+          type: "list",
+          tenantId: workspace.id,
+          state: "all",
+        });
+        const match = records(list.cases).find(
+          (entry) =>
+            String(entry.ticketNumber ?? "").toLowerCase() ===
+            reference.toLowerCase(),
+        );
+        if (!match || !isUuid(match.ticketId)) {
+          throw new ToolError(`Sicherheitsfall «${reference}» nicht gefunden.`);
+        }
+        ticketId = match.ticketId;
+      }
+      const data = await callFunction(config, session, "security-cases", {
+        type: "get",
+        tenantId: workspace.id,
+        ticketId,
+      });
+      const analysis = isRecord(data.analysis) ? data.analysis : {};
+      return textResult({
+        id: data.ticketId,
+        number: data.ticketNumber,
+        state: SECURITY_STATE_LABELS[String(data.state)] ?? data.state,
+        verdict: data.verdict,
+        decisionDueAt: data.decisionDueAt,
+        clickedAt: data.clickedAt,
+        assignedTo: data.assignedAgentName,
+        mail: {
+          from: analysis.from,
+          subject: analysis.subject,
+          sendingIp: analysis.sendingIp,
+          risk: analysis.level,
+          score: analysis.score,
+          auth: analysis.auth,
+          findings: records(analysis.findings)
+            .slice(0, 15)
+            .map((entry) => entry.message),
+          links: records(analysis.links)
+            .slice(0, 15)
+            .map((entry) => entry.href),
+        },
+        reporters: records(data.reporters).map((entry) => ({
+          name: entry.name,
+          answer: entry.answer,
+        })),
+        checklist: records(data.actions).map((entry) => ({
+          label: entry.label,
+          done: Boolean(entry.doneAt),
+        })),
+        measures: records(data.measures).map((entry) => ({
+          label: entry.label,
+          target: entry.target,
+          status: entry.status,
+          at: entry.createdAt,
+        })),
+        campaign: isRecord(data.campaign)
+          ? {
+              reports: data.campaign.reports,
+              reporters: data.campaign.reporters,
+              cases: data.campaign.caseCount,
+            }
+          : null,
+        iocHits: records(data.iocHits).map((entry) => ({
+          kind: entry.kind,
+          value: entry.value,
+          verdict: entry.verdict,
+        })),
+      });
     },
   },
 

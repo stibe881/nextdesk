@@ -200,6 +200,24 @@ etwas gelöscht.
 
 ![Microsoft-Intune-Abgleich](images/in-intune.jpg)
 
+**Massnahmen in Sicherheitsfällen (optional).** Hat jemand in einer
+Phishing-Mail geklickt, kann das Sicherheitsteam direkt aus dem Fall handeln.
+Dafür braucht dieselbe Intune-/Entra-App zusätzliche
+Anwendungsberechtigungen mit Administratorzustimmung:
+
+- _DeviceManagementManagedDevices.PrivilegedOperations.All_ – **Gerät
+  synchronisieren** und **Defender-Schnellscan** (wie bei den
+  Intune-Aktionen).
+- _User.RevokeSessions.All_ – **Sitzungen widerrufen**.
+- _User-PasswordProfile.ReadWrite.All_ – **Passwort-Reset erzwingen**. Für
+  Konten mit Administratorrolle braucht die App zusätzlich eine passende
+  Entra-Rolle (z. B. _Administrator für privilegierte Authentifizierung_);
+  sonst lehnt Microsoft den Schritt ab.
+
+Fehlt eine Berechtigung, zeigt nextDesk im Fall eine klare Meldung, und das
+Team erledigt den Schritt im Entra Admin Center. Ein Gerät isolieren geht nur
+in Microsoft Defender.
+
 ### Push-Benachrichtigungen (iOS)
 
 - **[Admin]** Funktion **Push-Benachrichtigungen** aktivieren und die
