@@ -13351,4 +13351,37 @@ $$;
 rollback;
 SQL
 
+# 0301: IPAM Kern – freigegebene Adressen werden wieder angeboten.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_net uuid;
+  v_next inet;
+begin
+  insert into public.ipam_prefixes (tenant_id, prefix, gateway)
+  values (v_tenant, '198.51.100.0/29', '198.51.100.1') returning id into v_net;
+  insert into public.ipam_addresses (tenant_id, address, status) values
+    (v_tenant, '198.51.100.2', 'active'),
+    (v_tenant, '198.51.100.3', 'deprecated');
+  v_next := public.ipam_next_free_address(v_tenant, v_net);
+  if host(v_next) <> '198.51.100.3' then
+    raise exception 'ipam core test: released address not offered again: %', v_next;
+  end if;
+  update public.ipam_addresses set status = 'reserved'
+   where tenant_id = v_tenant and address = '198.51.100.3';
+  v_next := public.ipam_next_free_address(v_tenant, v_net);
+  if host(v_next) <> '198.51.100.4' then
+    raise exception 'ipam core test: reserved address offered: %', v_next;
+  end if;
+  if (select used from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 2 then
+    raise exception 'ipam core test: usage wrong';
+  end if;
+  raise notice 'ipam core checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
