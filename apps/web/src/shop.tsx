@@ -1906,6 +1906,12 @@ type Draft = {
   departmentId: string;
   /** Lager-Modus: wird der Artikel im Shop angeboten? */
   inShop: boolean;
+  /** Lager-Modus: zum Bestellen und/oder zum Ausleihen anbieten. */
+  offerOrder: boolean;
+  offerLoan: boolean;
+  /** Lager-Modus: bestehende Shop-Artikel je Art (Bestellen / Ausleihen). */
+  orderRowId: string;
+  loanRowId: string;
   /** Lager-Modus: Einheit, Bestände und Lagerort. */
   unit: string;
   minimumStock: string;
@@ -2022,6 +2028,10 @@ const EMPTY_DRAFT: Draft = {
   fallbackImageUrl: null,
   departmentId: "",
   inShop: true,
+  offerOrder: true,
+  offerLoan: false,
+  orderRowId: "",
+  loanRowId: "",
   unit: "stk",
   minimumStock: "0",
   targetStock: "0",
@@ -2258,6 +2268,10 @@ function draftFromItem(item: CatalogItem): Draft {
     fallbackImageUrl: (item.images ?? []).length === 0 ? item.imageUrl : null,
     departmentId: item.departmentId ?? "",
     inShop: true,
+    offerOrder: item.kind !== "loan",
+    offerLoan: item.kind === "loan",
+    orderRowId: "",
+    loanRowId: "",
     unit: "stk",
     minimumStock: "0",
     targetStock: "0",
@@ -2273,6 +2287,7 @@ function ArticlePreview({
   coverUrl,
   inShop,
   loan,
+  order,
   name,
   stockLine,
 }: {
@@ -2281,6 +2296,8 @@ function ArticlePreview({
   coverUrl: string | null | undefined;
   inShop: boolean;
   loan: boolean;
+  /** Nur im Lager-Formular: auch zum Bestellen angeboten. */
+  order?: boolean | undefined;
   name: string;
   stockLine: string;
 }) {
@@ -2301,11 +2318,20 @@ function ArticlePreview({
               Ausleihartikel
             </span>
           ) : null}
-          <span
-            className={`article-editor__pill ${inShop ? "article-editor__pill--shop" : "article-editor__pill--off"}`}
-          >
-            {inShop ? "Im Shop" : "Nur im Lager"}
-          </span>
+          {order !== undefined ? (
+            order ? (
+              <span className="article-editor__pill article-editor__pill--shop">
+                Bestellartikel
+              </span>
+            ) : null
+          ) : null}
+          {order === undefined || !inShop ? (
+            <span
+              className={`article-editor__pill ${inShop ? "article-editor__pill--shop" : "article-editor__pill--off"}`}
+            >
+              {inShop ? "Im Shop" : "Nur im Lager"}
+            </span>
+          ) : null}
         </div>
         {stockLine ? <small>{stockLine}</small> : null}
       </div>
@@ -2416,16 +2442,21 @@ export function CatalogEditor({
     if (request.kind === "stock" && stock) {
       const info = stock.item;
       void (async () => {
-        let shopItem: CatalogItem | undefined;
+        let orderRow: CatalogItem | undefined;
+        let loanRow: CatalogItem | undefined;
         if (info) {
           try {
-            shopItem = (await shopApi.catalog(tenantId, true)).find(
+            const rows = (await shopApi.catalog(tenantId, true)).filter(
               (entry) => entry.inventoryItemId === info.id,
             );
+            orderRow = rows.find((entry) => entry.kind !== "loan");
+            loanRow = rows.find((entry) => entry.kind === "loan");
           } catch {
-            shopItem = undefined;
+            orderRow = undefined;
+            loanRow = undefined;
           }
         }
+        const shopItem = orderRow ?? loanRow;
         let stockImage: string | null = null;
         if (info?.hasPrimaryImage && !(shopItem?.images ?? []).length) {
           stockImage = await stock.api.loadImageUrl(info.id).catch(() => null);
@@ -2442,8 +2473,15 @@ export function CatalogEditor({
           targetStock: String(info?.targetQuantity ?? 0),
           stockQuantity: String(info?.physicalQuantity ?? 0),
           locationId: info?.locationId ?? onlyLocation,
-          kind: info?.loanItem ? "loan" : "order",
-          inShop: Boolean(shopItem),
+          kind: info?.loanItem || loanRow ? "loan" : "order",
+          inShop: Boolean(shopItem) || Boolean(info?.loanItem),
+          offerOrder: Boolean(orderRow),
+          offerLoan: Boolean(loanRow) || Boolean(info?.loanItem),
+          orderRowId: orderRow?.id ?? "",
+          loanRowId: loanRow?.id ?? "",
+          maxLoanDays: loanRow?.maxLoanDays
+            ? String(loanRow.maxLoanDays)
+            : base.maxLoanDays || "14",
           departmentId: info?.departmentId ?? base.departmentId,
           images: shopItem
             ? base.images
@@ -2544,16 +2582,18 @@ export function CatalogEditor({
     setPending(true);
     setError("");
     try {
-      const isLoan = draft.kind === "loan";
+      const isLoan = draft.offerLoan;
+      const offerOrder = draft.offerOrder;
+      const inShop = offerOrder || isLoan;
       const categoryIds = [...draft.categoryIds];
       const typedCategory = draft.newCategory.trim();
-      if (draft.inShop && typedCategory) {
+      if (inShop && typedCategory) {
         const created = await shopApi.saveCategory(tenantId, {
           name: typedCategory,
         });
         if (!categoryIds.includes(created.id)) categoryIds.push(created.id);
       }
-      if (draft.inShop && categoryIds.length === 0) {
+      if (inShop && categoryIds.length === 0) {
         throw new Error("Bitte mindestens eine Kategorie wählen.");
       }
       const categoryName =
@@ -2618,63 +2658,106 @@ export function CatalogEditor({
 
       let imageProblem = "";
       try {
-        if (draft.inShop) {
-          const saved = await shopApi.saveItem(tenantId, {
-            id: draft.id,
-            name: draft.name.trim(),
-            description: draft.description.trim() || null,
-            specifications: Object.fromEntries(
-              SPEC_FIELDS.flatMap(({ key }) => {
-                const value = (draft.specifications[key] ?? "").trim();
-                return value ? [[key, value]] : [];
-              }),
-            ),
-            categoryIds,
-            articleNumber,
-            supplierUrl: draft.supplierUrl.trim() || null,
-            kind: draft.kind,
-            requiresApproval: draft.requiresApproval,
-            maxQuantity: draft.maxQuantity,
-            maxLoanDays:
-              isLoan && draft.maxLoanDays ? Number(draft.maxLoanDays) : null,
-            inventoryItemId: itemId,
-            createInventoryItem: false,
-            loanQuantity: null,
-            optionItemIds: draft.optionItemIds,
-            active: draft.active,
-            visibleCadreLevels: draft.visibleCadreLevels,
-            sortOrder: draft.sortOrder,
-            ...(chooseDepartment && draft.departmentId
-              ? { departmentId: draft.departmentId }
-              : {}),
-          });
+        const rowValues = (kind: "order" | "loan", id: string) => ({
+          id: id || undefined,
+          name: draft.name.trim(),
+          description: draft.description.trim() || null,
+          specifications: Object.fromEntries(
+            SPEC_FIELDS.flatMap(({ key }) => {
+              const value = (draft.specifications[key] ?? "").trim();
+              return value ? [[key, value]] : [];
+            }),
+          ),
+          categoryIds,
+          articleNumber,
+          supplierUrl: draft.supplierUrl.trim() || null,
+          kind,
+          requiresApproval: draft.requiresApproval,
+          maxQuantity: draft.maxQuantity,
+          maxLoanDays:
+            kind === "loan" && draft.maxLoanDays
+              ? Number(draft.maxLoanDays)
+              : null,
+          inventoryItemId: itemId,
+          createInventoryItem: false,
+          loanQuantity: null,
+          optionItemIds: draft.optionItemIds,
+          active: draft.active,
+          visibleCadreLevels: draft.visibleCadreLevels,
+          sortOrder: draft.sortOrder,
+          ...(chooseDepartment && draft.departmentId
+            ? { departmentId: draft.departmentId }
+            : {}),
+        });
+        // Je Art ein Shop-Artikel: Bestellen und/oder Ausleihen.
+        const savedIds: string[] = [];
+        if (offerOrder) {
+          const saved = await shopApi.saveItem(
+            tenantId,
+            rowValues("order", draft.orderRowId),
+          );
+          savedIds.push(saved.id);
+        }
+        if (isLoan) {
+          const saved = await shopApi.saveItem(
+            tenantId,
+            rowValues("loan", draft.loanRowId),
+          );
+          savedIds.push(saved.id);
+        }
+        if (!offerOrder && draft.orderRowId) {
+          await shopApi.deleteItem(tenantId, draft.orderRowId);
+        }
+        if (!isLoan && draft.loanRowId) {
+          await shopApi.deleteItem(tenantId, draft.loanRowId);
+        }
+        // Fotos gehören zu dem Shop-Artikel, der sie bisher trug; sonst zum
+        // ersten gespeicherten. Der andere nutzt das Lagerbild.
+        const imageRowId = savedIds.includes(draft.id ?? "")
+          ? (draft.id as string)
+          : savedIds[0];
+        if (imageRowId) {
           for (const imageId of draft.removedImageIds.filter(
             (id) => id !== "lager",
           )) {
-            await shopApi.removeImage(tenantId, saved.id, imageId);
+            await shopApi.removeImage(tenantId, imageRowId, imageId);
           }
           for (const file of draft.newFiles) {
-            await shopApi.addImage(tenantId, saved.id, {
+            await shopApi.addImage(tenantId, imageRowId, {
               data: await fileToBase64(file),
               contentType: file.type,
             });
           }
-        } else if (draft.id) {
-          // Schieber «Im Shop anbieten» aus: der Artikel verlässt den Shop.
-          await shopApi.deleteItem(tenantId, draft.id);
-        }
-        // Lagerbild: das erste neue Foto (Titelbild) ersetzt das bisherige.
-        const firstNew = draft.newFiles[0];
-        if (firstNew && (!draft.inShop || draft.images.length === 0)) {
-          await stock.api.uploadImage(itemId, firstNew);
-        } else if (draft.removedImageIds.includes("lager")) {
-          await stock.api.deleteImage(itemId);
         }
       } catch (nextError) {
         imageProblem =
           nextError instanceof Error
             ? nextError.message
             : "Fehler beim Shop/Bild.";
+      }
+      // Lagerbild getrennt, damit ein Shop-Fehler es nicht verhindert.
+      try {
+        // Lagerbild: das erste neue Foto (Titelbild) ersetzt das bisherige.
+        const firstNew = draft.newFiles[0];
+        if (
+          firstNew &&
+          (!inShop ||
+            draft.images.length === 0 ||
+            !stock.item?.hasPrimaryImage)
+        ) {
+          await stock.api.uploadImage(itemId, firstNew);
+        } else if (draft.removedImageIds.includes("lager")) {
+          await stock.api.deleteImage(itemId);
+        }
+      } catch (nextError) {
+        imageProblem = [
+          imageProblem,
+          nextError instanceof Error
+            ? nextError.message
+            : "Das Lagerbild konnte nicht gespeichert werden.",
+        ]
+          .filter(Boolean)
+          .join(" ");
       }
       setDraft(null);
       onDone(
@@ -3042,6 +3125,7 @@ export function CatalogEditor({
                   inShop={!stock || draft.inShop}
                   loan={draft.kind === "loan"}
                   name={draft.name}
+                  order={stock ? draft.offerOrder : undefined}
                   stockLine={
                     stock
                       ? draft.kind === "loan"
@@ -3053,31 +3137,59 @@ export function CatalogEditor({
                   }
                 />
                 {stock ? (
+                  <>
+                    <SwitchField
+                      checked={draft.offerOrder}
+                      hint={
+                        draft.offerOrder
+                          ? "Mitarbeitende können den Artikel im Shop bestellen. Die Felder unten sind dieselben wie beim Artikel im Shop."
+                          : draft.orderRowId
+                            ? "Beim Speichern wird der Artikel nicht mehr zum Bestellen angeboten."
+                            : "Der Artikel kann nicht bestellt werden."
+                      }
+                      label="Zum Bestellen anbieten"
+                      onChange={(offerOrder) =>
+                        setDraft({
+                          ...draft,
+                          offerOrder,
+                          inShop: offerOrder || draft.offerLoan,
+                        })
+                      }
+                    />
+                    <SwitchField
+                      checked={draft.offerLoan}
+                      hint={
+                        draft.offerLoan
+                          ? "Mitarbeitende können den Artikel im Shop ausleihen und geben ihn zurück. Es gibt keinen Mindest- und Zielbestand, nur einen Bestand."
+                          : draft.loanRowId
+                            ? "Beim Speichern wird der Artikel nicht mehr zum Ausleihen angeboten."
+                            : "Der Artikel kann nicht ausgeliehen werden."
+                      }
+                      label="Zum Ausleihen anbieten"
+                      onChange={(offerLoan) =>
+                        setDraft({
+                          ...draft,
+                          offerLoan,
+                          kind: offerLoan ? "loan" : "order",
+                          inShop: draft.offerOrder || offerLoan,
+                        })
+                      }
+                    />
+                  </>
+                ) : (
                   <SwitchField
-                    checked={draft.inShop}
+                    checked={draft.kind === "loan"}
                     hint={
-                      draft.inShop
-                        ? "Der Artikel erscheint im Shop. Die Felder unten sind dieselben wie beim Artikel im Shop."
-                        : draft.id
-                          ? "Beim Speichern wird der Artikel aus dem Shop genommen. Der Lagerartikel bleibt bestehen."
-                          : "Der Artikel bleibt nur im Lager."
+                      draft.kind === "loan"
+                        ? "Wird ausgeliehen und zurückgegeben. Es gibt keinen Mindest- und Zielbestand, nur einen Bestand."
+                        : "Wird bestellt und bleibt bei der Person."
                     }
-                    label="Im Shop anbieten"
-                    onChange={(inShop) => setDraft({ ...draft, inShop })}
+                    label="Ausleihartikel"
+                    onChange={(loan) =>
+                      setDraft({ ...draft, kind: loan ? "loan" : "order" })
+                    }
                   />
-                ) : null}
-                <SwitchField
-                  checked={draft.kind === "loan"}
-                  hint={
-                    draft.kind === "loan"
-                      ? "Wird ausgeliehen und zurückgegeben. Es gibt keinen Mindest- und Zielbestand, nur einen Bestand."
-                      : "Wird bestellt und bleibt bei der Person."
-                  }
-                  label="Ausleihartikel"
-                  onChange={(loan) =>
-                    setDraft({ ...draft, kind: loan ? "loan" : "order" })
-                  }
-                />
+                )}
               </aside>
               <div className="article-editor__main">
                 <section className="article-editor__card">
