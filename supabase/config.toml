@@ -298,3 +298,6 @@ verify_jwt = false
 
 [functions.ipam-discovery]
 verify_jwt = true
+
+[functions.intune-scheduled-sync]
+verify_jwt = false

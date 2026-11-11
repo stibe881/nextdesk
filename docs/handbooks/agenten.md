@@ -618,6 +618,49 @@ mehr zur Auswahl; bisherige Buchungen bleiben erhalten. Buchen Sie einen
 vorhandenen Bestand vorher an einen anderen Ort um. Gelöschte Lagerorte
 erscheinen blass und lassen sich mit **Wieder aktivieren** zurückholen.
 
+## Lager-Automatik, Rücknahmen und Austritt
+
+**Ausgabe und Rückgabe von Geräten.** Übergeben Sie im Shop eine Bestellung
+mit Seriennummer (Lagerort und Seriennummer wählen) und ist die Serieneinheit
+mit einem Asset verknüpft, weist nextDesk das Gerät automatisch der
+bestellenden Person zu; das Asset steht dann auf «In Betrieb». Dasselbe gilt
+für die Ausgabe einer Lager-Reservation mit Seriennummer zu einem Ticket (das
+Gerät geht an die anfragende Person). Kommt eine Shop-Ausleihe zurück, endet
+die Zuweisung, das Asset steht wieder auf «An Lager» und die Serieneinheit ist
+wieder an Lager.
+
+**Lager → Automatik** (nur mit dem Recht, das Lager zu verwalten):
+
+- **Standard-Lagerort** für Rücknahmen, auf Wunsch pro **Abteilung** ein
+  eigener Lagerort. Zurückgegebene Geräte aus einem Austritt werden dorthin
+  gebucht, sofern bei der Rückgabe kein anderer Lagerort gewählt wird.
+- **Mindestbestand:** **Lagerverwaltung benachrichtigen** schickt die
+  Mitteilung «Nachbestellen», sobald ein Artikel unter den Mindestbestand
+  fällt (wer schon den Push «Mindestbestand» erhalten hat, bekommt sie nicht
+  doppelt). **Nachbestell-Aufgabe anlegen** erstellt zusätzlich eine Aufgabe
+  mit der Menge bis zum Sollbestand. Offene Nachbestellungen erscheinen oben in
+  diesem Register: **Bestellt**, **Erledigt** oder **Verwerfen**.
+- **Reservationen:** Offene Reservationen werden nach der eingestellten Zahl
+  Tage automatisch freigegeben (stündliche Prüfung). Reservationen aus
+  Shop-Bestellungen, Eintritten und Raumbuchungen bleiben bestehen.
+- **Inventur:** Pro Lagerort ein Intervall in Tagen. Ist es seit der letzten
+  abgeschlossenen Inventur abgelaufen, erhält die Lagerverwaltung die
+  Mitteilung «Inventur fällig».
+
+**Austritt:** Im Austritt öffnen Sie **Rückgaben und Lizenzen**. Neben den
+zugewiesenen Geräten listet nextDesk die offenen **Shop-Ausleihen** und die
+**Lizenzen** der Person. Wählen Sie die Einträge und den Lagerort für die
+Rücknahme (vorausgewählt ist der Standard-Lagerort) und klicken Sie
+**Aufgaben erstellen**. Ist eine Aufgabe erledigt, wird das Gerät
+zurückgenommen und als Serieneinheit an den Lagerort gebucht, die Ausleihe
+zurückgebucht bzw. die Lizenz freigegeben (Grund «Austritt»). Die Lizenz in
+Microsoft 365 entfernen Sie bei Bedarf weiterhin unter **Lizenzen**.
+
+**Ersatzgerät ohne Genehmigung:** Aus einem Sicherheitsfall kann der Support
+ein Ersatzgerät im Namen der Person bestellen. Die Bestellung braucht keine
+Freigabe; in der Bestellung steht die Herkunft «Sicherheitsfall …
+(ohne Genehmigung)».
+
 ## Shop: Artikel nur für Kaderstufen
 
 Im Shop legen Sie beim **Artikel hinzufügen** bzw. **Bearbeiten** unter

@@ -1,6 +1,8 @@
 import {
   INTUNE_MANAGED_DEVICE_SELECT,
   IntuneGraphError,
+  type IntuneManagedDevice,
+  withoutNetwork,
   readIntuneGraphCredentials,
   readIntuneManagedDevices,
   requestIntuneGraphAccessToken,
@@ -319,3 +321,75 @@ for (const [label, continuation] of [
     throw new Error(`A continuation with ${label} was accepted.`);
   });
 }
+
+Deno.test(
+  "Intune graph reads network data only for the shared IPAM fetch",
+  async () => {
+    const urls: string[] = [];
+    const fakeFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.includes("/token")) {
+        return Response.json({ access_token: "token-value" });
+      }
+      const select = new URL(url).searchParams.get("$select") ?? "";
+      if (urls.filter((entry) => !entry.includes("/token")).length === 1) {
+        const next = new URL(
+          "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices",
+        );
+        next.searchParams.set("$select", select);
+        next.searchParams.set("$top", "100");
+        next.searchParams.set("$skiptoken", "page-two");
+        return Response.json({
+          value: [
+            {
+              id: "Device-A",
+              serialNumber: "SERIAL-1",
+              wiFiMacAddress: "AABBCCDDEEFF",
+              ethernetMacAddress: "nicht-mac",
+              userPrincipalName: "anna@example.test",
+              managementState: "managed",
+            },
+          ],
+          "@odata.nextLink": next.toString(),
+        });
+      }
+      return Response.json({ value: [{ id: "Device-B" }] });
+    };
+    const token = await requestIntuneGraphAccessToken(
+      TENANT_ID,
+      credentials,
+      fakeFetch,
+    );
+    const devices: IntuneManagedDevice[] = [];
+    await readIntuneManagedDevices(
+      token,
+      async (page) => {
+        devices.push(...page);
+      },
+      fakeFetch,
+      undefined,
+      { includeNetwork: true },
+    );
+    const graphUrls = urls.filter((url) => !url.includes("/token"));
+    if (
+      graphUrls.length !== 2 ||
+      !graphUrls[0].includes("wiFiMacAddress") ||
+      !graphUrls[0].includes("serialNumber")
+    ) {
+      throw new Error("The shared fetch did not request asset and MAC data.");
+    }
+    const first = devices[0];
+    if (
+      first.serial_number !== "SERIAL-1" ||
+      first.network?.wifi_mac !== "aa:bb:cc:dd:ee:ff" ||
+      first.network?.ethernet_mac !== null ||
+      first.network?.user_principal_name !== "anna@example.test"
+    ) {
+      throw new Error("The shared fetch lost network or asset data.");
+    }
+    if ("network" in withoutNetwork(first)) {
+      throw new Error("Asset staging must not receive network data.");
+    }
+  },
+);

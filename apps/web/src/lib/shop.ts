@@ -113,6 +113,12 @@ export type OrderSummary = {
   decisionReason: string | null;
   /** Grund der Bestellung (ältere Bestellungen: leer). */
   reason?: string | null;
+  /** Herkunft einer Bestellung ohne Genehmigung (z. B. Sicherheitsfall). */
+  source?: {
+    type: "security_case";
+    id: string;
+    reference: string | null;
+  } | null;
   lineCount: number;
   itemsLabel?: string;
   createdAt: string;
@@ -377,6 +383,8 @@ export const EVENT_LABEL: Record<string, string> = {
   backorder_ordered: "Beim Lieferanten bestellt",
   backorder_received: "Ware eingetroffen und reserviert",
   backorder_cancelled: "Beschaffung storniert",
+  approval_skipped: "Ohne Genehmigung bestellt",
+  line_returned: "Ausleihe zurückgenommen",
 };
 
 /** Beschaffungsstand einer Bestellzeile, die nicht an Lager ist. */

@@ -29,6 +29,7 @@ import {
 } from "./asset-label-dialog";
 import { FormField, FormGrid } from "./form-kit";
 import { inventoryLabelItem } from "./lib/asset-labels";
+import { InventoryAutomation } from "./inventory-automation";
 import { InventoryProcurement } from "./inventory-procurement";
 import { functionErrorMessage } from "./lib/function-error";
 import { CatalogEditor, type EditorRequest, type StockEditor } from "./shop";
@@ -43,7 +44,8 @@ type InventorySection =
   | "Bewegungen"
   | "Reservationen"
   | "Inventur"
-  | "Beschaffung";
+  | "Beschaffung"
+  | "Automatik";
 
 type InventoryPermissions = {
   canAdjust: boolean;
@@ -362,6 +364,7 @@ const sections: readonly InventorySection[] = [
   "Reservationen",
   "Inventur",
   "Beschaffung",
+  "Automatik",
 ];
 
 function isRecord(value: unknown): value is RecordValue {
@@ -1393,10 +1396,10 @@ export function Inventory({
         aria-label="Lagerbereiche"
       >
         {sections
-          // Beschaffung nur für die Lagerverwaltung.
+          // Beschaffung und Automatik nur für die Lagerverwaltung.
           .filter(
             (section) =>
-              section !== "Beschaffung" ||
+              (section !== "Beschaffung" && section !== "Automatik") ||
               workspace?.permissions.canManage === true,
           )
           .map((section) => (
@@ -1486,6 +1489,9 @@ export function Inventory({
           {activeSection === "Beschaffung" &&
           workspace.permissions.canManage ? (
             <InventoryProcurement tenantId={tenantId} />
+          ) : null}
+          {activeSection === "Automatik" && workspace.permissions.canManage ? (
+            <InventoryAutomation tenantId={tenantId} />
           ) : null}
           {activeSection === "Inventur" ? (
             <InventoryCounts

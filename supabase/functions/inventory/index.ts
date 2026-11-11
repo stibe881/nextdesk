@@ -20,6 +20,15 @@ import {
   type LocationStock,
   parseBackorderAction,
 } from "./backorders.ts";
+import {
+  AutomationError,
+  type AutomationAction,
+  isAutomationActionType,
+  loadAutomation,
+  manageReorderRequest,
+  parseAutomationAction,
+  saveAutomation,
+} from "./automation.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "inventory.management";
@@ -4786,11 +4795,12 @@ const securedHandler = withSupabase(
         );
       }
       const body = await request.json().catch(() => null);
-      const parsed: Action | BackorderAction | null = isBackorderActionType(
-        body,
-      )
-        ? parseBackorderAction(body)
-        : parseAction(body);
+      const parsed: Action | BackorderAction | AutomationAction | null =
+        isBackorderActionType(body)
+          ? parseBackorderAction(body)
+          : isAutomationActionType(body)
+            ? parseAutomationAction(body)
+            : parseAction(body);
       if (!parsed) {
         throw new HttpError(
           400,
@@ -4835,6 +4845,45 @@ const securedHandler = withSupabase(
           scope,
           parsed,
         );
+      }
+      if (
+        parsed.type === "getInventoryAutomation" ||
+        parsed.type === "saveInventoryAutomation" ||
+        parsed.type === "manageReorderRequest"
+      ) {
+        // Lager-Automatik ist Aufgabe der Lagerverwaltung.
+        await requirePermission(
+          context.supabase,
+          parsed.tenantId,
+          "inventory.manage",
+        );
+        try {
+          if (parsed.type === "saveInventoryAutomation") {
+            await saveAutomation(
+              context.supabaseAdmin,
+              actorId.toLowerCase(),
+              parsed,
+            );
+          } else if (parsed.type === "manageReorderRequest") {
+            await manageReorderRequest(
+              context.supabaseAdmin,
+              actorId.toLowerCase(),
+              parsed,
+            );
+          }
+          return json(request, {
+            data: await loadAutomation(context.supabaseAdmin, parsed.tenantId),
+          });
+        } catch (automationError) {
+          if (automationError instanceof AutomationError) {
+            throw new HttpError(
+              automationError.status,
+              automationError.code,
+              automationError.message,
+            );
+          }
+          throw automationError;
+        }
       }
       const action: Action = parsed;
       if (action.type === "workspace") {
