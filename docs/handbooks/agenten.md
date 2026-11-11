@@ -1025,6 +1025,17 @@ gelten dieselben Rechte und Abteilungsgrenzen wie in der Weboberfläche.
 ## Benachrichtigungen und Erreichbarkeit
 
 - Die **Glocke** zeigt Zuweisungen, Erwähnungen, Antworten und Eskalationen.
+  Ein Klick auf einen Eintrag öffnet genau das auslösende Objekt: das Ticket,
+  den Sicherheitsfall, die Störung, die Bestellung, den Lagerartikel, die
+  Serviceaufgabe, das Infrastruktur-Gerät oder in der IP-Adressverwaltung die
+  Adresse, das Netz bzw. die Funde und die Agenten.
+- Ein **Tipp auf eine Push-Mitteilung** öffnet in der iPhone-App ebenfalls
+  direkt das auslösende Objekt – auch wenn die App geschlossen war. Gehört die
+  Mitteilung zu einem anderen Arbeitsbereich, wechselt die App zuerst dorthin.
+  Serviceaufgaben öffnen sich in einer eigenen Ansicht, in der Sie die
+  Checkliste abhaken und die Aufgabe erledigen; fällige Inventuren zeigen die
+  Artikel des Lagerorts. Für Vertragsfristen und Netzwerkagenten gibt es in der
+  App keine Ansicht; die App weist dann auf die Web-App hin.
 - **Push-Benachrichtigungen** auf dem iPhone kommen ohne Einchecken. Unter
   _Persönliche Einstellungen → Benachrichtigungen → Benachrichtigungszeit_
   legen Sie fest, an welchen **Tagen** und zu welchen **Zeiten** Sie

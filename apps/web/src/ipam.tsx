@@ -48,6 +48,16 @@ export type IpamProps = {
   discoveryPanel?: (props: IpamPanelProps) => ReactNode;
   /** Rendered under «Verwaltung → API & Webhooks» (IpamApiSettings). */
   apiPanel?: (props: IpamPanelProps) => ReactNode;
+  /** Opens an address, a network or a view (e.g. from a notification). */
+  focus?: IpamFocus | null | undefined;
+  onFocusConsumed?: (() => void) | undefined;
+};
+
+export type IpamFocus = {
+  addressId: string | null;
+  ip: string | null;
+  prefixId: string | null;
+  view: "findings" | "discovery" | null;
 };
 
 export type IpamView =
@@ -85,6 +95,8 @@ export function Ipam({
   importPanel,
   onOpenTicket,
   tenantId,
+  focus,
+  onFocusConsumed,
 }: IpamProps) {
   const [overview, setOverview] = useState<IpamOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -188,6 +200,21 @@ export function Ipam({
       setDrawer({ addressId: address.id, ip: null, vrfId: address.vrfId }),
     [],
   );
+
+  useEffect(() => {
+    if (!focus) return;
+    if (focus.addressId || focus.ip) {
+      setDrawer({ addressId: focus.addressId, ip: focus.ip, vrfId: null });
+    } else if (focus.prefixId) {
+      openPrefix(focus.prefixId);
+    } else if (focus.view === "findings") {
+      setFindingsMode("findings");
+      setView("findings");
+    } else if (focus.view) {
+      setView(focus.view);
+    }
+    onFocusConsumed?.();
+  }, [focus, onFocusConsumed, openPrefix]);
 
   const panelProps: IpamPanelProps = {
     tenantId,

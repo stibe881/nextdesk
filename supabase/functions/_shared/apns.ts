@@ -38,6 +38,11 @@ export type ApnsPayloadInput = {
   kind: ApnsPayloadKind;
   tenantId: string;
   notificationId: string;
+  /**
+   * Exact notification kind (e.g. «inventory.count_due»); the app uses it
+   * together with the ids below to open the triggering object.
+   */
+  notificationKind?: string;
   ticketId?: string;
   contractId?: string;
   ticketNumber?: string;
@@ -95,7 +100,14 @@ export type ApnsPayloadInput = {
   /** Inventory reminders: reorder or stock count due. */
   inventoryEvent?: "reorder" | "count_due";
   inventoryName?: string;
+  /** Opaque ids only (no names): article or storage location to open. */
+  inventoryItemId?: string;
+  inventoryLocationId?: string;
 };
+
+const PAYLOAD_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NOTIFICATION_KIND = /^[a-z][a-z_.]{2,63}$/;
 
 type ApnsConfiguration = {
   keyId: string;
@@ -702,6 +714,25 @@ export function buildApnsPayload(
     if (input.ipamEvent) data.ipamEvent = input.ipamEvent;
     if (input.ipamAddress) data.ipamAddress = input.ipamAddress;
     if (input.assetId) data.assetId = input.assetId;
+  }
+  // Inventory: only the opaque id of the article or location, never names.
+  if (input.kind === "inventory_low_stock") {
+    if (input.inventoryItemId && PAYLOAD_UUID.test(input.inventoryItemId)) {
+      data.inventoryItemId = input.inventoryItemId;
+    } else if (
+      input.inventoryLocationId &&
+      PAYLOAD_UUID.test(input.inventoryLocationId)
+    ) {
+      data.inventoryLocationId = input.inventoryLocationId;
+    }
+  }
+  if (
+    input.notificationKind &&
+    input.kind !== "summary" &&
+    input.kind !== "test" &&
+    NOTIFICATION_KIND.test(input.notificationKind)
+  ) {
+    data.notificationKind = input.notificationKind;
   }
   const aps: Record<string, unknown> = {
     alert,
