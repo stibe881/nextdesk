@@ -344,9 +344,19 @@ Die Basisrollen _Requester_ (alle angemeldeten Personen) und _Support agent_
 Unter **Datenschutz** («Aufbewahrung & Datenschutz») legen Sie Fristen in
 Tagen fest für _Geschlossene Tickets_, _Private Anhänge_ und das
 _Audit-Protokoll_. Die **Rechtliche Aufbewahrungssperre** verhindert jede
-Bereinigung. Die Werte sind Richtlinien – nextDesk löscht nie automatisch.
-Ausnahme: Gelöschte Tickets liegen 90 Tage im Papierkorb und werden danach
-endgültig entfernt; die Aufbewahrungssperre hält auch das an.
+Bereinigung. Diese Werte sind Richtlinien – Tickets und Anhänge löscht
+nextDesk nie automatisch. Ausnahmen: Gelöschte Tickets liegen 90 Tage im
+Papierkorb und werden danach endgültig entfernt, und die **Betriebsdaten**
+werden täglich bereinigt. Die Aufbewahrungssperre hält beides an.
+
+Unter **Betriebsdaten (automatische Bereinigung)** legen Sie die Fristen in
+Monaten fest (1–120):
+
+| Bereich             | Standard  | Was bereinigt wird                                                                                       |
+| ------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
+| Monitoring          | 24 Monate | gelöste PRTG-Meldungen, Verlauf gelöster und geschlossener Störungen, veraltete Sensorzustände           |
+| IP-Adressverwaltung | 24 Monate | Beobachtungen der Discovery, Adressverlauf, Änderungsprotokoll; zugestellte Webhooks nach 30 Tagen       |
+| Phishing-Meldungen  | 12 Monate | meldende Person und Kopfzeilen abgeschlossener Fälle werden anonymisiert; Absender, Links und IPs bleiben |
 
 ## Protokoll
 

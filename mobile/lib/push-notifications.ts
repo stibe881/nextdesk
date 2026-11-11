@@ -29,6 +29,7 @@ export const PUSH_CATEGORIES = [
   "infrastructure",
   "security_report",
   "incident",
+  "ipam",
 ] as const;
 
 export type PushCategory = (typeof PUSH_CATEGORIES)[number];
@@ -108,6 +109,8 @@ export type PushNotificationStatus = {
   apnsConfigured: boolean;
   contentLevel: PushContentLevel;
   applicableCategories: PushCategory[];
+  /** Push categories delivered regardless of the setting (phishing team). */
+  alwaysDeliveredCategories: PushCategory[];
   /** E-mail notifications can be sent in this workspace. */
   emailAvailable: boolean;
   preferences: PushPreferences;
@@ -228,6 +231,10 @@ function normalizePushNotificationStatus(
   return {
     ...status,
     applicableCategories: knownPushCategories(status.applicableCategories),
+    alwaysDeliveredCategories: knownPushCategories(
+      (status as { alwaysDeliveredCategories?: unknown })
+        .alwaysDeliveredCategories,
+    ),
     emailAvailable: status.emailAvailable !== false,
     preferences: normalizePushPreferences(status.preferences),
   };

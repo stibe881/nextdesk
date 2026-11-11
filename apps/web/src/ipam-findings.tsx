@@ -90,6 +90,7 @@ const KIND_TONE: Record<FindingKind, string> = {
   stale: "neutral",
   utilization: "warning",
   outside_prefix: "neutral",
+  coverage: "info",
 };
 
 const KIND_SHORT: Record<FindingKind, string> = {
@@ -100,6 +101,7 @@ const KIND_SHORT: Record<FindingKind, string> = {
   stale: "Veraltet",
   utilization: "Auslastung",
   outside_prefix: "Ausserhalb",
+  coverage: "PRTG-Lücke",
 };
 
 /** Readable details of a finding (MAC, vendor, switch …). */
@@ -114,8 +116,17 @@ export function findingDetailText(details: Record<string, unknown>): string {
     switchPort: "Port",
     source: "Quelle",
     message: "",
+    deviceType: "Gerätetyp",
+    prefix: "Subnetz",
+    percent: "Belegt %",
+    threshold: "Warnschwelle %",
+    dhcpPercent: "DHCP belegt %",
+    used: "",
+    capacity: "",
+    assetId: "",
   };
   return Object.entries(details)
+    .filter(([key]) => labels[key] !== "" || key === "message")
     .filter(
       ([, value]) => typeof value === "string" || typeof value === "number",
     )

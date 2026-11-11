@@ -1463,6 +1463,30 @@ function baseNotificationPresentation(
         title: "Phishing-Meldung",
       };
     }
+    case "ipam.agent_offline": {
+      const agent =
+        notificationPayloadText(notification, "agentName", 120) ??
+        "Ein Netzwerkagent";
+      return {
+        description: `${agent} hat sich seit über zwei Stunden nicht gemeldet.`,
+        Icon: AlertTriangle,
+        title: "Netzwerkagent offline",
+      };
+    }
+    case "ipam.reservation_expiring": {
+      const address = notificationPayloadText(notification, "address", 60);
+      const until = notificationPayloadText(notification, "reservedUntil", 10);
+      const day =
+        until && /^\d{4}-\d{2}-\d{2}$/.test(until)
+          ? `${until.slice(8, 10)}.${until.slice(5, 7)}.${until.slice(0, 4)}`
+          : null;
+      return {
+        description: `${address ?? "Eine IP-Adresse"}: Reservierung endet${day ? ` am ${day}` : " bald"}.`,
+        Icon: AlertTriangle,
+        title: "Reservierung läuft ab",
+      };
+    }
+    case "ipam.finding":
     case "monitoring.ipam_finding": {
       const address = notificationPayloadText(notification, "number", 60);
       const title = notificationPayloadText(notification, "title", 200);
@@ -4374,7 +4398,10 @@ function AuthenticatedApp() {
     } else if (notification.kind.startsWith("shop.order.")) {
       setSection("Shop");
       setNotificationPanelOpen(false);
-    } else if (notification.kind === "monitoring.ipam_finding") {
+    } else if (
+      notification.kind === "monitoring.ipam_finding" ||
+      notification.kind.startsWith("ipam.")
+    ) {
       setSection("IP-Adressen");
       setNotificationPanelOpen(false);
     } else if (notification.kind.startsWith("monitoring.")) {

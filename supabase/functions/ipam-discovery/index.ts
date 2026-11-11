@@ -207,6 +207,8 @@ function agentView(row: Row, now = Date.now()) {
     capabilities: isRecord(row.capabilities) ? row.capabilities : {},
     lastSeenAt: row.last_seen_at ?? null,
     lastReportAt: row.last_report_at ?? null,
+    // Set once the outage was announced (ipam.agent_offline, 0315).
+    offlineNotifiedAt: row.offline_notified_at ?? null,
     lastError: row.last_error ?? null,
     createdAt: row.created_at ?? null,
     config: parsed.ok ? parsed.config : { ...DEFAULT_AGENT_CONFIG },
@@ -214,7 +216,7 @@ function agentView(row: Row, now = Date.now()) {
 }
 
 const AGENT_SELECT =
-  "id, name, status, token_hint, token_rotated_at, version, hostname, platform, capabilities, last_seen_at, last_report_at, last_error, created_at, config";
+  "id, name, status, token_hint, token_rotated_at, version, hostname, platform, capabilities, last_seen_at, last_report_at, last_error, created_at, config, offline_notified_at";
 
 async function loadAgent(admin: Admin, tenantId: string, agentId: string): Promise<Row> {
   const { data, error } = await admin.from("ipam_agents").select(AGENT_SELECT)

@@ -57,6 +57,18 @@ const SHOP_EVENTS: Record<string, [string, string]> = {
   ready: ["Bereit zur Abholung", "Ihre Bestellung liegt für Sie bereit."],
   issued: ["Bestellung ausgegeben", "Ihre Bestellung wurde ausgegeben."],
   returned: ["Rückgabe bestätigt", "Die Ausleihe wurde zurückgenommen."],
+  loan_due: [
+    "Ausleihe endet bald",
+    "Ihre Ausleihe endet in zwei Tagen. Bitte geben Sie das Gerät rechtzeitig zurück.",
+  ],
+  loan_overdue: [
+    "Ausleihe überfällig",
+    "Ihre Ausleihe ist überfällig. Bitte geben Sie das Gerät zurück.",
+  ],
+  approval_reminder: [
+    "Freigabe ausstehend",
+    "Eine Bestellung wartet noch auf Ihre Freigabe.",
+  ],
   rejected: ["Bestellung abgelehnt", "Ihre Bestellung wurde abgelehnt."],
   cancelled: ["Bestellung storniert", "Die Bestellung wurde storniert."],
 };
@@ -139,6 +151,30 @@ const TICKET_EVENTS: Record<string, [string, string]> = {
     "Lagerunterbestand",
     "Ein Artikel hat den Mindestbestand erreicht.",
   ],
+  "inventory.reorder": [
+    "Nachbestellen",
+    "Ein Artikel hat den Mindestbestand erreicht. Bitte nachbestellen.",
+  ],
+  "inventory.count_due": ["Inventur fällig", "Eine Inventur ist fällig."],
+  "security.case_overdue": [
+    "Sicherheitsfall überfällig",
+    "Die Frist für das Urteil zu einem Sicherheitsfall ist abgelaufen. Bitte unter «Sicherheitsfälle» entscheiden.",
+  ],
+  "security.case_clicked": [
+    "Melder hat geklickt",
+    "Eine meldende Person hat angegeben, in der gemeldeten E-Mail einen Link oder Anhang geöffnet oder Daten eingegeben zu haben. Bitte Passwort zurücksetzen und Anmeldungen prüfen.",
+  ],
+  "security.campaign": [
+    "Phishing-Kampagne",
+    "Mehrere Personen haben dieselbe verdächtige E-Mail gemeldet.",
+  ],
+};
+
+const IPAM_TITLES: Record<string, string> = {
+  "ipam.finding": "IP-Adressverwaltung",
+  "monitoring.ipam_finding": "IP-Adressverwaltung",
+  "ipam.agent_offline": "Netzwerkagent offline",
+  "ipam.reservation_expiring": "Reservierung läuft ab",
 };
 
 export function notificationEmailText(
@@ -180,6 +216,30 @@ export function notificationEmailText(
     const due = day(payload.dueOn);
     title = `Infrastruktur: ${device}`;
     lines = [`${what} von ${device} ist fällig${due ? ` (${due})` : ""}.`];
+  } else if (IPAM_TITLES[kind]) {
+    const where = text(payload.number, 60) ?? text(payload.address, 45);
+    const what = text(payload.title, 200);
+    title = IPAM_TITLES[kind]!;
+    if (kind === "ipam.agent_offline") {
+      const agent = text(payload.agentName) ?? where ?? "Ein Netzwerkagent";
+      lines = [
+        `${agent} hat sich seit über zwei Stunden nicht gemeldet.`,
+        "Bitte prüfen Sie den Dienst auf dem Server. Details unter «IP-Adressen → Discovery».",
+      ];
+    } else if (kind === "ipam.reservation_expiring") {
+      const until = day(payload.reservedUntil);
+      title = where ? `${title}: ${where}` : title;
+      lines = [
+        `Die Reservierung${where ? ` von ${where}` : ""}${what ? ` (${what})` : ""} endet${until ? ` am ${until}` : " bald"}. Danach wird die Adresse automatisch freigegeben.`,
+        "Verlängern oder freigeben unter «IP-Adressen».",
+      ];
+    } else {
+      if (payload.severity === "critical") title = `${title}: kritischer Fund`;
+      lines = [
+        `${where ? `${where}: ` : ""}${what ?? "Neuer Fund in der IP-Adressverwaltung"}.`,
+        "Details unter «IP-Adressen → Funde».",
+      ];
+    }
   } else if (kind.startsWith("monitoring.")) {
     const number = text(payload.number, 40);
     const name = text(payload.title, 200) ?? "Ein Gerät";
@@ -232,6 +292,21 @@ export function notificationEmailText(
       kind === "ticket.vendor_reminder" ? text(payload.vendorName) : null;
     if (vendor) {
       lines = [`${vendor} hat sich zu einem Ticket noch nicht gemeldet.`];
+    }
+    if (kind === "security.campaign") {
+      const count = payload.reporterCount ?? payload.count;
+      if (typeof count === "number" && Number.isInteger(count) && count > 1) {
+        lines = [`${count} Personen haben dieselbe verdächtige E-Mail gemeldet.`];
+      }
+    }
+    if (
+      kind === "security.case_overdue" &&
+      (payload.stage === "supervisor" || payload.escalated === true)
+    ) {
+      title = "Sicherheitsfall: Eskalation";
+      lines = [
+        "Ein Sicherheitsfall wartet seit über 24 Stunden nach Fristablauf auf ein Urteil.",
+      ];
     }
     if (kind === "ticket.security_report") {
       if (payload.event === "clicked") {

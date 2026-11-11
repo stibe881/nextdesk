@@ -170,6 +170,7 @@ const FINDING_SHORT: Record<string, [string, string]> = {
   stale: ["veraltet", "veraltet"],
   utilization: ["Auslastung", "Auslastung"],
   outside_prefix: ["ausserhalb", "ausserhalb"],
+  coverage: ["PRTG-Lücke", "PRTG-Lücken"],
 };
 
 /** «2 Konflikte · 4 Ghost-IPs · 1 DNS» from findingsByKind. */

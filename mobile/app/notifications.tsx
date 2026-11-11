@@ -85,8 +85,9 @@ const CATEGORY_DETAILS: readonly {
   },
   {
     key: "security_report",
-    label: "Phishing-Meldungen",
-    description: "Wenn eine verdächtige E-Mail als Phishing gemeldet wird.",
+    label: "Phishing und Sicherheitsfälle",
+    description:
+      "Phishing-Meldungen, überfällige Sicherheitsfälle, «geklickt» und Kampagnen.",
   },
   {
     key: "incident",
@@ -108,13 +109,19 @@ const CATEGORY_DETAILS: readonly {
   {
     key: "shop",
     label: "Shop",
-    description: "Freigaben, Bereitstellung und Status deiner Bestellungen.",
+    description:
+      "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status deiner Bestellungen.",
   },
   {
     key: "inventory_low_stock",
-    label: "Lagerunterbestand",
+    label: "Lager",
+    description: "Mindestbestand erreicht, Nachbestellung und fällige Inventur.",
+  },
+  {
+    key: "ipam",
+    label: "IP-Adressverwaltung",
     description:
-      "Wenn die Verfügbarkeit eines Artikels den Mindestbestand erreicht.",
+      "Neue Funde (z. B. IP-Konflikte, volle Subnetze), Netzwerkagent offline und ablaufende Reservierungen.",
   },
   {
     key: "infrastructure",
@@ -248,6 +255,7 @@ export default function NotificationsScreen() {
 
   const preferences = status?.preferences ?? defaultPreferences();
   const applicableCategories = status?.applicableCategories ?? [];
+  const alwaysDelivered = status?.alwaysDeliveredCategories ?? [];
   const emailAvailable = status?.emailAvailable ?? false;
   const context = tenantId && userId ? { tenantId, userId } : null;
   const masterDisabled =
@@ -725,6 +733,17 @@ export default function NotificationsScreen() {
                             >
                               {category.description}
                             </Text>
+                            {alwaysDelivered.includes(category.key) ? (
+                              <Text
+                                style={[
+                                  styles.categoryDescription,
+                                  { color: colors.muted },
+                                ]}
+                              >
+                                Als Mitglied des Phishing-Teams bekommst du
+                                diese Mitteilungen immer.
+                              </Text>
+                            ) : null}
                           </View>
                           <View style={styles.channelSwitches}>
                             {(

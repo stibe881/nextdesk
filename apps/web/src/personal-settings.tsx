@@ -797,6 +797,8 @@ export function PersonalSettings({
                 <tbody>
                   {pushStatus.applicableCategories.map((category) => {
                     const meta = pushCategoryMeta[category];
+                    const alwaysPush =
+                      pushStatus.alwaysDeliveredCategories.includes(category);
                     const channels = [
                       {
                         channel: "push" as const,
@@ -820,6 +822,12 @@ export function PersonalSettings({
                         <th scope="row">
                           <strong>{meta.label}</strong>
                           <small>{meta.description}</small>
+                          {alwaysPush ? (
+                            <small>
+                              Als Mitglied des Phishing-Teams erhalten Sie diese
+                              Mitteilungen immer per Push.
+                            </small>
+                          ) : null}
                         </th>
                         {channels.map((entry) => (
                           <td key={entry.channel}>

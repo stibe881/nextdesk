@@ -13,6 +13,7 @@ import {
 import { useIncidentStyles } from "@/components/incident-styles";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { ScreenContainer } from "@/components/screen-container";
+import { useAppActiveInterval } from "@/hooks/use-app-active-interval";
 import { canWorkSecurityCases } from "@/lib/incidents";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import {
@@ -88,15 +89,18 @@ export default function PhishingScreen() {
     [filter],
   );
 
+  const [focused, setFocused] = useState(false);
   useFocusEffect(
     useCallback(() => {
       void recoveryEpoch;
       if (checkingSession) return;
       void load();
-      const timer = setInterval(() => void load(), 60_000);
-      return () => clearInterval(timer);
+      setFocused(true);
+      return () => setFocused(false);
     }, [checkingSession, load, recoveryEpoch]),
   );
+  // Jede Minute nachladen, nur solange die Liste sichtbar und die App aktiv ist.
+  useAppActiveInterval(() => void load(), 60_000, focused && !checkingSession);
 
   if (checkingSession || (loading && allowed === null)) {
     return (

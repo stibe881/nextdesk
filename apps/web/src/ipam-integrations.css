@@ -94,6 +94,38 @@
   margin: 0;
 }
 
+.ipam-ticket-panel__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ipam-ticket-panel__action {
+  align-items: center;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #d7dde5);
+  border-radius: 8px;
+  color: var(--ink, #0f172a);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.82rem;
+  gap: 6px;
+  padding: 4px 10px;
+}
+
+.ipam-ticket-panel__action:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.ipam-ticket-panel__action--primary {
+  background: var(--tone-accent, #4f46e5);
+  border-color: var(--tone-accent, #4f46e5);
+  color: var(--on-accent, #fff);
+}
+
 .ipam-ticket-panel__findings {
   display: grid;
   gap: 4px;

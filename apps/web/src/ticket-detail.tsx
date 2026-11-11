@@ -9030,9 +9030,12 @@ export function TicketDetail({
 
           {!requesterView ? (
             <IpamTicketPanel
+              canUpdate={detail.canUpdate}
               comments={detail.comments.map((comment) => comment.body)}
               description={detail.ticket.description}
+              onLinked={onChanged}
               onOpenAsset={onOpenAsset}
+              ticketNumber={detail.ticket.ticket_number}
               refreshKey={`${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
               subject={detail.ticket.subject}
               tenantId={tenantId}

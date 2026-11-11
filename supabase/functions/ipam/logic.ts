@@ -947,12 +947,6 @@ export function sophosCsv(objects: SophosObject[]): string {
 }
 
 /** Whole-word match of an IP address in free text (10.0.0.1 ≠ 10.0.0.12). */
-export function textMentionsAddress(text: string, address: string): boolean {
-  if (!text || !address) return false;
-  const escaped = address.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[^0-9A-Za-z.:])${escaped}($|[^0-9A-Za-z:]|\\.(?![0-9]))`, "i").test(text);
-}
-
 /** Changed fields between two flat records (for the address history). */
 export function changedFields(
   before: Record<string, unknown>,
@@ -966,3 +960,6 @@ export function changedFields(
   }
   return result;
 }
+
+// Ticket-IP-Erkennung: gemeinsame Quelle (siehe _shared/ipam-ticket-detect.ts).
+export { textMentionsAddress } from "../_shared/ipam-ticket-detect.ts";
