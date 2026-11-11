@@ -81,7 +81,11 @@ export function isReportRecipient(
  * other mail to the support mailbox stays an ordinary ticket.
  */
 export function isMarkedPhishingReport(subject: string | null | undefined): boolean {
-  return /phishing|verd(ä|ae)chtig/i.test(subject ?? "");
+  const value = subject ?? "";
+  // Outlook «Nachricht melden» (Junk / Phishing) schickt den Betreff
+  // «Junk:<Kennung>|<Absender>|<Betreff>» bzw. «Phish:…» an das Meldepostfach.
+  // «Not junk:» (Fehlalarm) ist keine Meldung.
+  return /phishing|verd(ä|ae)chtig/i.test(value) || /^\s*(junk|phish)\s*:/i.test(value);
 }
 
 /**
