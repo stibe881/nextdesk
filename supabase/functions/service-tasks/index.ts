@@ -1205,7 +1205,9 @@ async function cron(admin: Admin) {
       reminders += dueRows.length;
     }
 
-    // Escalation after n days overdue: assignee plus the template's team.
+    // Escalation after n days overdue: with a team the task is handed over to
+    // it (no assignee any more, the team members see it and pick it up);
+    // without a team the assignee is only reminded.
     const { data: late } = await admin
       .from("service_task_occurrences")
       .select("id, template_id, assignee_id, due_on, due_at")
@@ -1243,12 +1245,16 @@ async function cron(admin: Admin) {
             title: template.title,
             dueOn: occurrence.due_on,
             overdueDays: days,
+            ...(template.team_id ? { handover: "team" } : {}),
           },
         })),
       );
       await admin
         .from("service_task_occurrences")
-        .update({ escalated_at: now.toISOString() })
+        .update({
+          escalated_at: now.toISOString(),
+          ...(template.team_id ? { assignee_id: null } : {}),
+        })
         .eq("id", occurrence.id);
       await logEvent(
         admin,
@@ -1259,7 +1265,11 @@ async function cron(admin: Admin) {
           occurrenceId: occurrence.id as string,
           templateId: template.id as string,
         },
-        { recipients: recipients.size },
+        {
+          recipients: recipients.size,
+          handedOverToTeam: Boolean(template.team_id),
+          previousAssigneeId: occurrence.assignee_id ?? null,
+        },
       );
       escalations += 1;
     }

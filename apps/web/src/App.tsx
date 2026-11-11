@@ -1576,7 +1576,9 @@ function baseNotificationPresentation(
           Icon: ListChecks,
           title:
             notification.kind === "service_task.overdue"
-              ? "Serviceaufgabe überfällig"
+              ? notificationPayloadText(notification, "handover", 20) === "team"
+                ? "Serviceaufgabe ans Team übergeben"
+                : "Serviceaufgabe überfällig"
               : "Serviceaufgabe heute fällig",
         };
       }

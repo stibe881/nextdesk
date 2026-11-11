@@ -499,7 +499,7 @@ const EVENT_LABELS: Record<string, string> = {
   reopened: "hat wieder geöffnet",
   reschedule: "hat den Termin verschoben",
   assign: "hat die Zuständigkeit geändert",
-  escalated: "Erinnerung ans Team (überfällig)",
+  escalated: "Ans Team übergeben (überfällig)",
 };
 
 function DetailPanel({
@@ -1138,7 +1138,7 @@ function TemplateForm({
               ))}
             </select>
           </FormField>
-          <FormField label="Team (Vertretung & Eskalation)">
+          <FormField label="Team (Vertretung & Übergabe)">
             <select
               onChange={(event) => set("teamId", event.target.value || null)}
               value={form.teamId ?? ""}
@@ -1150,6 +1150,29 @@ function TemplateForm({
                 </option>
               ))}
             </select>
+          </FormField>
+          <FormField
+            hint={
+              form.teamId
+                ? "Ist die Aufgabe so lange überfällig, geht sie vom Verantwortlichen ans Team."
+                : "Wähle zuerst ein Team."
+            }
+            label="Ans Team übergeben nach (Tagen)"
+          >
+            <input
+              disabled={!form.teamId}
+              max={30}
+              min={1}
+              onChange={(event) =>
+                set(
+                  "escalateAfterDays",
+                  event.target.value ? Number(event.target.value) : null,
+                )
+              }
+              placeholder="leer = nie"
+              type="number"
+              value={form.escalateAfterDays ?? ""}
+            />
           </FormField>
           <FormField label="Geschätzte Dauer (Minuten)">
             <input
@@ -1446,7 +1469,7 @@ function TemplateForm({
           onChange={(checked) => setRule({ skipNonWorkdays: checked })}
         />
       </FormCard>
-      <FormCard title="Erledigung, Erinnerung & Eskalation">
+      <FormCard title="Erledigung & Erinnerung">
         <FormSwitch
           checked={form.requireNote}
           label="Notiz beim Abschliessen verlangen"
@@ -1458,21 +1481,6 @@ function TemplateForm({
           label="Erinnerung am Fälligkeitstag"
           onChange={(checked) => set("remind", checked)}
         />
-        <FormField label="Team informieren, wenn überfällig seit (Tagen)">
-          <input
-            max={30}
-            min={1}
-            onChange={(event) =>
-              set(
-                "escalateAfterDays",
-                event.target.value ? Number(event.target.value) : null,
-              )
-            }
-            placeholder="leer = nie"
-            type="number"
-            value={form.escalateAfterDays ?? ""}
-          />
-        </FormField>
       </FormCard>
       <FormCard collapsed title="Weitere Angaben">
         <FormField label="Bezug">
