@@ -14,7 +14,15 @@ import {
 import "./service-tasks.css";
 
 type Access = { canRead: boolean; canExecute: boolean; canManage: boolean };
-type Person = { id: string; name: string };
+type Person = {
+  id: string;
+  name: string;
+  /** Nur im Verzeichnis: Abteilungen und Teams der Person. */
+  departmentIds?: string[];
+  teamIds?: string[];
+  /** Nur bei Teams: zugehörige Abteilung. */
+  departmentId?: string | null;
+};
 type CheckItem = {
   id: string;
   label: string;
@@ -947,6 +955,54 @@ function TemplateForm({
   const rule = form.recurrence;
   const set = <K extends keyof Template>(key: K, value: Template[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
+  // Teams der Abteilung; Verantwortliche nur aus Abteilung und Team.
+  const visibleTeams = teams.filter(
+    (team) =>
+      !form.departmentId ||
+      !team.departmentId ||
+      team.departmentId === form.departmentId ||
+      team.id === form.teamId,
+  );
+  const eligiblePeople = people.filter(
+    (person) =>
+      person.id === form.assigneeId ||
+      ((!form.departmentId ||
+        (person.departmentIds ?? []).includes(form.departmentId)) &&
+        (!form.teamId || (person.teamIds ?? []).includes(form.teamId))),
+  );
+  const changeDepartment = (departmentId: string | null) =>
+    setForm((current) => {
+      const team = teams.find((entry) => entry.id === current.teamId);
+      const teamStays =
+        !team ||
+        !departmentId ||
+        !team.departmentId ||
+        team.departmentId === departmentId;
+      const teamId = teamStays ? current.teamId : null;
+      const assignee = people.find((entry) => entry.id === current.assigneeId);
+      const assigneeStays =
+        !assignee ||
+        ((!departmentId ||
+          (assignee.departmentIds ?? []).includes(departmentId)) &&
+          (!teamId || (assignee.teamIds ?? []).includes(teamId)));
+      return {
+        ...current,
+        departmentId,
+        teamId,
+        assigneeId: assigneeStays ? current.assigneeId : null,
+      };
+    });
+  const changeTeam = (teamId: string | null) =>
+    setForm((current) => {
+      const assignee = people.find((entry) => entry.id === current.assigneeId);
+      const assigneeStays =
+        !assignee || !teamId || (assignee.teamIds ?? []).includes(teamId);
+      return {
+        ...current,
+        teamId,
+        assigneeId: assigneeStays ? current.assigneeId : null,
+      };
+    });
   const setRule = (patch: Partial<Rule>) =>
     setForm((current) => ({
       ...current,
@@ -1079,26 +1135,11 @@ function TemplateForm({
               value={form.title}
             />
           </FormField>
-          <FormField label="Verantwortlich">
-            <select
-              onChange={(event) =>
-                set("assigneeId", event.target.value || null)
-              }
-              value={form.assigneeId ?? ""}
-            >
-              <option value="">Nicht zugewiesen</option>
-              {people.map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.name}
-                </option>
-              ))}
-            </select>
-          </FormField>
           {departments.length > 1 ? (
             <FormField label="Abteilung">
               <select
                 onChange={(event) =>
-                  set("departmentId", event.target.value || null)
+                  changeDepartment(event.target.value || null)
                 }
                 value={form.departmentId ?? ""}
               >
@@ -1113,40 +1154,30 @@ function TemplateForm({
               </select>
             </FormField>
           ) : null}
-          <FormField label="Kategorie">
-            <input
-              list="service-task-categories"
-              maxLength={60}
-              onChange={(event) => set("category", event.target.value)}
-              value={form.category ?? ""}
-            />
-            <datalist id="service-task-categories">
-              {CATEGORY_SUGGESTIONS.map((category) => (
-                <option key={category} value={category} />
-              ))}
-            </datalist>
-          </FormField>
-          <FormField label="Priorität">
+          <FormField label="Team (Vertretung & Übergabe)">
             <select
-              onChange={(event) => set("priority", event.target.value)}
-              value={form.priority}
+              onChange={(event) => changeTeam(event.target.value || null)}
+              value={form.teamId ?? ""}
             >
-              {Object.entries(PRIORITIES).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
+              <option value="">Kein Team</option>
+              {visibleTeams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
                 </option>
               ))}
             </select>
           </FormField>
-          <FormField label="Team (Vertretung & Übergabe)">
+          <FormField label="Verantwortlich">
             <select
-              onChange={(event) => set("teamId", event.target.value || null)}
-              value={form.teamId ?? ""}
+              onChange={(event) =>
+                set("assigneeId", event.target.value || null)
+              }
+              value={form.assigneeId ?? ""}
             >
-              <option value="">Kein Team</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
+              <option value="">Nicht zugewiesen</option>
+              {eligiblePeople.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name}
                 </option>
               ))}
             </select>
@@ -1173,6 +1204,31 @@ function TemplateForm({
               type="number"
               value={form.escalateAfterDays ?? ""}
             />
+          </FormField>
+          <FormField label="Kategorie">
+            <input
+              list="service-task-categories"
+              maxLength={60}
+              onChange={(event) => set("category", event.target.value)}
+              value={form.category ?? ""}
+            />
+            <datalist id="service-task-categories">
+              {CATEGORY_SUGGESTIONS.map((category) => (
+                <option key={category} value={category} />
+              ))}
+            </datalist>
+          </FormField>
+          <FormField label="Priorität">
+            <select
+              onChange={(event) => set("priority", event.target.value)}
+              value={form.priority}
+            >
+              {Object.entries(PRIORITIES).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </FormField>
           <FormField label="Geschätzte Dauer (Minuten)">
             <input
