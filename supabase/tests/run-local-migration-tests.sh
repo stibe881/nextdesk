@@ -14992,4 +14992,21 @@ rollback;
 SQL
 
 
+# 0316: mehrere Phishing-Meldungen pro Sicherheitsfall.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.phishing_reports'::regclass
+      and contype = 'u'
+      and conkey = array[(select attnum from pg_attribute where attrelid = 'public.phishing_reports'::regclass and attname = 'ticket_id')]::smallint[]
+  ) then
+    raise exception 'phishing reports test: ticket_id must not be unique';
+  end if;
+  raise notice 'phishing multiple reports checks ran';
+end;
+$$;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
