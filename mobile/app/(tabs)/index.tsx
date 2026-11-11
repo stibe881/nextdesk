@@ -25,6 +25,7 @@ import { HomeLayoutSheet } from "@/components/home-layout-sheet";
 import { ApprovalInboxCard } from "@/components/approval-inbox-card";
 import { OnboardingHomeCard } from "@/components/onboarding-home-card";
 import { IncidentBanner } from "@/components/incident-banner";
+import { NotificationBellButton } from "@/components/notification-bell-button";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { RecentItemsCard } from "@/components/recent-items-card";
@@ -90,7 +91,11 @@ import { loadOwnProfilePhotoUrl } from "@/lib/nextdesk-assets-photo";
 import { loadTenantBranding, type TenantBranding } from "@/lib/tenant-branding";
 
 type FocusScope =
-  "assigned" | "solvedToday" | "firstResponse" | "resolution" | "slaDue";
+  | "assigned"
+  | "solvedToday"
+  | "firstResponse"
+  | "resolution"
+  | "slaDue";
 type TicketScope = "all" | "mine" | "open" | "unassigned" | FocusScope;
 
 const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
@@ -1473,6 +1478,13 @@ export default function HomeScreen() {
                 size={21}
               />
             </Pressable>
+            <NotificationBellButton
+              style={[
+                styles.avatar,
+                { backgroundColor: colors.primarySoft, overflow: "visible" },
+              ]}
+              tenantId={tenantId}
+            />
             <Pressable
               accessibilityLabel="Persönliche Einstellungen öffnen"
               accessibilityRole="button"

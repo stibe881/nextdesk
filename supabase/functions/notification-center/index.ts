@@ -15,6 +15,7 @@ type Action =
       unreadOnly?: boolean;
       limit: number;
     }
+  | { type: "get"; notificationId: string }
   | { type: "markRead"; notificationId: string }
   | { type: "markAllRead"; tenantId: string };
 
@@ -58,7 +59,7 @@ function isLimit(value: unknown): value is number {
   );
 }
 
-function parseAction(value: unknown): Action | null {
+export function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || typeof value.type !== "string") return null;
 
   if (
@@ -82,6 +83,14 @@ function parseAction(value: unknown): Action | null {
         : {}),
       limit: value.limit === undefined ? DEFAULT_LIMIT : value.limit,
     };
+  }
+
+  if (
+    value.type === "get" &&
+    hasOnlyKeys(value, ["type", "notificationId"]) &&
+    isUuid(value.notificationId)
+  ) {
+    return { type: "get", notificationId: value.notificationId };
   }
 
   if (
@@ -276,6 +285,96 @@ async function listNotifications(
   });
 }
 
+/**
+ * One notification of the caller, e.g. from the link in a notification
+ * e-mail (?benachrichtigung=<id>). Same shape as a list entry. Someone else's
+ * notification is "not found"; without an active membership or without
+ * access to the ticket the object is not opened.
+ */
+async function getNotification(
+  request: Request,
+  admin: any,
+  client: any,
+  actorId: string,
+  notificationId: string,
+): Promise<Response> {
+  const { data, error } = await admin
+    .from("ticket_notifications")
+    .select(NOTIFICATION_SELECT)
+    .eq("id", notificationId)
+    .eq("user_id", actorId)
+    .maybeSingle();
+  if (error)
+    return json(request, { error: { code: "notification_read_failed" } }, 500);
+  if (!data)
+    return json(request, { error: { code: "notification_not_found" } }, 404);
+  const notification = data as NotificationRow;
+
+  const membership = await hasActiveTenantMembership(
+    admin,
+    actorId,
+    notification.tenant_id,
+  );
+  if (membership === null)
+    return json(
+      request,
+      { error: { code: "authorization_check_failed" } },
+      500,
+    );
+  if (!membership)
+    return json(
+      request,
+      { error: { code: "tenant_membership_required" } },
+      403,
+    );
+
+  let ticketReference: {
+    id: string;
+    ticketNumber: string;
+    subject: string;
+  } | null = null;
+  if (notification.ticket_id) {
+    // Caller's own client: row-level security decides about the ticket.
+    const { data: ticket, error: ticketError } = await client
+      .from("tickets")
+      .select("id, tenant_id, ticket_number, subject")
+      .eq("id", notification.ticket_id)
+      .maybeSingle();
+    if (ticketError)
+      return json(
+        request,
+        { error: { code: "notification_ticket_reference_failed" } },
+        500,
+      );
+    const row = ticket as TicketRow | null;
+    if (!row || row.tenant_id !== notification.tenant_id)
+      return json(
+        request,
+        { error: { code: "notification_target_unavailable" } },
+        403,
+      );
+    ticketReference = {
+      id: row.id,
+      ticketNumber: row.ticket_number,
+      subject: row.subject,
+    };
+  }
+
+  return json(request, {
+    data: {
+      notification: {
+        id: notification.id,
+        tenantId: notification.tenant_id,
+        kind: notification.kind,
+        payload: notification.payload,
+        readAt: notification.read_at,
+        createdAt: notification.created_at,
+        ticket: ticketReference,
+      },
+    },
+  });
+}
+
 async function markRead(
   request: Request,
   admin: any,
@@ -421,6 +520,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       context.supabase,
       actorId,
       action,
+    );
+  if (action.type === "get")
+    return await getNotification(
+      request,
+      admin,
+      context.supabase,
+      actorId,
+      action.notificationId,
     );
   if (action.type === "markRead")
     return await markRead(request, admin, actorId, action.notificationId);

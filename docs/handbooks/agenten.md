@@ -1091,6 +1091,18 @@ gelten dieselben Rechte und Abteilungsgrenzen wie in der Weboberfläche.
   Checkliste abhaken und die Aufgabe erledigen; fällige Inventuren zeigen die
   Artikel des Lagerorts. Für Vertragsfristen und Netzwerkagenten gibt es in der
   App keine Ansicht; die App weist dann auf die Web-App hin.
+- Eine **Sammelmitteilung** («5 neue Hinweise in nextDesk») öffnet in der App die
+  **Mitteilungen**: die letzten Benachrichtigungen aller Arten (Tickets,
+  Bestellungen, Störungen, Lager …), Ungelesene markiert. Ein Tipp öffnet den
+  Eintrag wie die einzelne Push-Mitteilung und markiert ihn als gelesen;
+  **Alle gelesen** leert die Liste. Die Mitteilungen erreichen Sie jederzeit
+  über die **Glocke** oben auf der Startseite der App (mit Anzahl
+  ungelesener Einträge).
+- Der Knopf in einer **E-Mail-Benachrichtigung** öffnet in der Web-App genau
+  das auslösende Objekt. Sind Sie noch nicht angemeldet, öffnet es sich nach
+  der Anmeldung (auch per SSO); gehört es zu einem anderen Mandanten, in dem
+  Sie Mitglied sind, wechselt nextDesk zuerst dorthin. Haben Sie keinen
+  Zugriff mehr, erscheint ein Hinweis.
 - **Push-Benachrichtigungen** auf dem iPhone kommen ohne Einchecken. Unter
   _Persönliche Einstellungen → Benachrichtigungen → Benachrichtigungszeit_
   legen Sie fest, an welchen **Tagen** und zu welchen **Zeiten** Sie

@@ -1,5 +1,8 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { notificationEmailText } from "./notification-email.ts";
+import {
+  notificationEmailText,
+  notificationLinkUrl,
+} from "./notification-email.ts";
 
 Deno.test("ticket notification mails name the ticket", () => {
   const mail = notificationEmailText({
@@ -112,4 +115,23 @@ Deno.test("security, shop and inventory reminders", () => {
   );
   assertEquals(text("shop.order.loan_overdue").title, "Ausleihe überfällig");
   assertEquals(text("inventory.count_due").title, "Inventur fällig");
+});
+
+Deno.test("notification mail button opens the notification", () => {
+  assertEquals(
+    notificationLinkUrl(
+      "https://app.nextdesk.ch",
+      "7F3E2A10-0000-4000-8000-00000000AB12",
+    ),
+    "https://app.nextdesk.ch/?benachrichtigung=7f3e2a10-0000-4000-8000-00000000ab12",
+  );
+  // Only an opaque id; anything else falls back to the start page.
+  assertEquals(
+    notificationLinkUrl("https://app.nextdesk.ch", "../tickets?x=1"),
+    "https://app.nextdesk.ch/",
+  );
+  assertEquals(
+    notificationLinkUrl("https://app.nextdesk.ch", null),
+    "https://app.nextdesk.ch/",
+  );
 });

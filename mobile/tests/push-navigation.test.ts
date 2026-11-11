@@ -123,6 +123,21 @@ describe("pushRoute", () => {
     ).toMatchObject({ kind: "message", title: "Netzwerkagent offline" });
   });
 
+  it("öffnet bei Sammelmitteilungen die Mitteilungen der App", () => {
+    expect(pushRoute({ tenantId, kind: "summary" })).toEqual({
+      kind: "path",
+      path: "/inbox",
+    });
+    expect(
+      pushRoute({
+        tenantId,
+        kind: "summary",
+        notificationId: id,
+        ticketId: id,
+      }),
+    ).toEqual({ kind: "path", path: "/inbox" });
+  });
+
   it("zeigt bei Verträgen einen Hinweis statt einer leeren Seite", () => {
     expect(
       pushRoute({ tenantId, kind: "contract_deadline", contractId: id }),

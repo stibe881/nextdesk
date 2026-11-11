@@ -109,6 +109,15 @@ import {
   notificationTarget,
   type NotificationIpamFocus,
 } from "./lib/notification-target";
+import {
+  forgetNotificationLink,
+  notificationIdFromSearch,
+  notificationLinkMessage,
+  notificationLinkStep,
+  pendingNotificationLink,
+  rememberNotificationLink,
+  urlWithoutNotificationLink,
+} from "./lib/notification-link";
 import { normalizeQueueSelection, shouldShowQueueTabs } from "./lib/queue-tabs";
 import {
   collapsedNavigationCategoryAttentionCount,
@@ -186,7 +195,7 @@ import {
   resolveOwnerAccess,
   type OwnerAccess,
 } from "./platform-owner";
-import { functionErrorMessage } from "./lib/function-error";
+import { functionErrorCode, functionErrorMessage } from "./lib/function-error";
 import { TicketTrashDialog } from "./ticket-trash";
 import {
   bootstrapBrowserAuthSession,
@@ -2667,6 +2676,51 @@ const initialAssetLabelDeepLink: {
   }
 })();
 
+// "?benachrichtigung=<notification id>" is the button of a notification
+// e-mail. The id is removed from the address at once and kept in local
+// storage for up to an hour, so it survives the sign-in (SSO redirect or a
+// sign-in link opened in a new tab). See lib/notification-link.ts.
+(() => {
+  if (typeof window === "undefined") return;
+  try {
+    const notificationId = notificationIdFromSearch(window.location.search);
+    const cleanUrl = urlWithoutNotificationLink(window.location.href);
+    if (cleanUrl) {
+      window.history.replaceState(window.history.state, "", cleanUrl);
+    }
+    if (notificationId) {
+      rememberNotificationLink(window.localStorage, notificationId, Date.now());
+    }
+  } catch {
+    // No storage or history: the link opens the start page.
+  }
+})();
+
+function browserLinkStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+type NotificationLinkState = {
+  id: string;
+  status: "idle" | "loading" | "loaded" | "done";
+  notification: (NotificationItem & { tenantId: string }) | null;
+  switched: boolean;
+};
+
+function linkedNotificationFromResponse(
+  value: unknown,
+): (NotificationItem & { tenantId: string }) | null {
+  if (!isRecord(value) || !isRecord(value.data)) return null;
+  const raw = value.data.notification;
+  if (!isRecord(raw) || typeof raw.tenantId !== "string") return null;
+  const notification = notificationFromValue(raw);
+  return notification ? { ...notification, tenantId: raw.tenantId } : null;
+}
+
 function TicketList({
   assignment,
   loading = false,
@@ -3182,6 +3236,10 @@ function AuthenticatedApp() {
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState("");
   const [notificationStatus, setNotificationStatus] = useState("");
+  // Link from a notification e-mail (?benachrichtigung=<id>).
+  const notificationLinkRef = useRef<NotificationLinkState | null>(null);
+  const [notificationLinkRevision, setNotificationLinkRevision] = useState(0);
+  const [notificationLinkNotice, setNotificationLinkNotice] = useState("");
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [notificationActionPending, setNotificationActionPending] = useState<
     string | null
@@ -3644,6 +3702,122 @@ function AuthenticatedApp() {
     workspacePreferences.startWorkplaceView,
     workspacePreferencesHydrated,
     workspacePreferencesStorageKey,
+  ]);
+
+  // The hint must not block later workspace messages.
+  useEffect(() => {
+    if (!notificationLinkNotice) return;
+    const timeout = window.setTimeout(
+      () => setNotificationLinkNotice(""),
+      8_000,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [notificationLinkNotice]);
+
+  // Notification e-mail link: after sign-in and once the workspace is ready,
+  // load the notification, switch to its tenant if needed and open exactly
+  // its object. Declared after the start navigation so it wins over it.
+  useEffect(() => {
+    if (
+      !supabase ||
+      !session ||
+      !activeTenant ||
+      !workspacePreferencesHydrated ||
+      !workspaceNavigationReady
+    ) {
+      return;
+    }
+    const storage = browserLinkStorage();
+    let link = notificationLinkRef.current;
+    if (!link || link.status === "done") {
+      const pendingId = storage
+        ? pendingNotificationLink(storage, Date.now())
+        : null;
+      if (!pendingId) return;
+      link = {
+        id: pendingId,
+        status: "idle",
+        notification: null,
+        switched: false,
+      };
+      notificationLinkRef.current = link;
+    }
+    const current = link;
+    const finish = () => {
+      current.status = "done";
+      if (storage) forgetNotificationLink(storage);
+    };
+
+    if (current.status === "idle") {
+      current.status = "loading";
+      void supabase.functions
+        .invoke("notification-center", {
+          body: { type: "get", notificationId: current.id },
+        })
+        .then(({ data, error }) => {
+          if (error) throw error;
+          const notification = linkedNotificationFromResponse(data);
+          if (!notification) throw new Error("invalid_notification_response");
+          current.notification = notification;
+          current.status = "loaded";
+          setNotificationLinkRevision((value) => value + 1);
+        })
+        .catch(async (error: unknown) => {
+          finish();
+          setNotificationLinkNotice(
+            notificationLinkMessage(await functionErrorCode(error)),
+          );
+        });
+      return;
+    }
+    if (current.status !== "loaded" || !current.notification) return;
+
+    const notification = current.notification;
+    const step = notificationLinkStep({
+      notificationTenantId: notification.tenantId,
+      activeTenantId: activeTenant.id,
+      tenantIds: tenants.map((tenant) => tenant.id),
+    });
+    if (step === "switch" && !current.switched) {
+      // Runs again once the other tenant is ready.
+      current.switched = true;
+      activateTenant(notification.tenantId);
+      return;
+    }
+    finish();
+    if (step !== "open") {
+      setNotificationLinkNotice(notificationLinkMessage("tenant_unavailable"));
+      return;
+    }
+    if (!notification.readAt) {
+      void supabase.functions
+        .invoke("notification-center", {
+          body: { type: "markRead", notificationId: notification.id },
+        })
+        .then(({ error }) => {
+          if (error) return;
+          const readAt = new Date().toISOString();
+          setNotifications((items) =>
+            items.map((item) =>
+              item.id === notification.id ? { ...item, readAt } : item,
+            ),
+          );
+        })
+        .catch(() => undefined);
+    }
+    if (!openNotificationTarget(notification)) {
+      // Nothing to open (e.g. an older kind): show the bell instead.
+      setNotificationPanelOpen(true);
+    }
+    // activateTenant and openNotificationTarget only set state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    activeTenant,
+    notificationLinkRevision,
+    session,
+    tenants,
+    workspaceNavigationReady,
+    workspacePreferencesHydrated,
   ]);
 
   useEffect(() => {
@@ -4412,7 +4586,6 @@ function AuthenticatedApp() {
   async function handleNotificationClick(notification: NotificationItem) {
     if (!supabase) return;
 
-    const ticketId = notification.ticket?.id;
     setNotificationActionPending(notification.id);
     setNotificationsError("");
     setNotificationStatus("");
@@ -4438,18 +4611,22 @@ function AuthenticatedApp() {
       setNotificationActionPending(null);
     }
 
-    // Open exactly the object that triggered the notification.
+    openNotificationTarget(notification);
+  }
+
+  /** Opens exactly the object that triggered the notification. */
+  function openNotificationTarget(notification: NotificationItem): boolean {
     const target = notificationTarget({
       kind: notification.kind,
       payload: notification.payload,
-      ticketId: ticketId ?? null,
+      ticketId: notification.ticket?.id ?? null,
     });
-    if (!target) return;
+    if (!target) return false;
     setNotificationPanelOpen(false);
     if (target.type === "ticket") {
       setSection("Tickets");
       setSelectedTicketId(target.ticketId);
-      return;
+      return true;
     }
     const focus = target.focus;
     if (focus?.kind === "security") setSecurityFocusId(focus.id);
@@ -4468,6 +4645,7 @@ function AuthenticatedApp() {
       });
     }
     setSection(target.section);
+    return true;
   }
 
   async function markAllNotificationsAsRead() {
@@ -5439,35 +5617,42 @@ function AuthenticatedApp() {
         title: "Datenzugriff prüfen",
         tone: "error" as const,
       }
-    : notificationsError
+    : notificationLinkNotice
       ? {
-          id: `notification-error:${notificationsError}`,
-          message: notificationsError,
-          title: "Benachrichtigungen prüfen",
+          id: `notification-link:${notificationLinkNotice}`,
+          message: notificationLinkNotice,
+          title: "Benachrichtigung öffnen",
           tone: "error" as const,
         }
-      : ticketActionStatus
+      : notificationsError
         ? {
-            id: `ticket-status:${ticketActionStatus}`,
-            message: ticketActionStatus,
-            title: "Ticketstatus aktualisiert",
-            tone: "success" as const,
+            id: `notification-error:${notificationsError}`,
+            message: notificationsError,
+            title: "Benachrichtigungen prüfen",
+            tone: "error" as const,
           }
-        : notificationStatus
+        : ticketActionStatus
           ? {
-              id: `notification-status:${notificationStatus}`,
-              message: notificationStatus,
-              title: "Benachrichtigungen aktualisiert",
+              id: `ticket-status:${ticketActionStatus}`,
+              message: ticketActionStatus,
+              title: "Ticketstatus aktualisiert",
               tone: "success" as const,
             }
-          : experienceNotice
+          : notificationStatus
             ? {
-                id: `experience:${experienceNotice.tone}:${experienceNotice.message}`,
-                message: experienceNotice.message,
-                title: "Wiedervorlagen",
-                tone: experienceNotice.tone,
+                id: `notification-status:${notificationStatus}`,
+                message: notificationStatus,
+                title: "Benachrichtigungen aktualisiert",
+                tone: "success" as const,
               }
-            : null;
+            : experienceNotice
+              ? {
+                  id: `experience:${experienceNotice.tone}:${experienceNotice.message}`,
+                  message: experienceNotice.message,
+                  title: "Wiedervorlagen",
+                  tone: experienceNotice.tone,
+                }
+              : null;
 
   const workspaceLiveMessageId = workspaceLiveMessage?.id ?? null;
 

@@ -52,7 +52,9 @@ Oben rechts finden Sie:
 - die **globale Suche** («Global suchen …») über Ihre Tickets
 - die **Glocke** für Benachrichtigungen; ein Klick auf einen Eintrag öffnet
   das betroffene Ticket bzw. die Bestellung, mit «Alle als gelesen markieren»
-  leeren Sie die Liste
+  leeren Sie die Liste. Der Knopf in einer E-Mail-Benachrichtigung öffnet
+  ebenfalls direkt das Ticket bzw. die Bestellung, bei Bedarf nach der
+  Anmeldung
 
 Gibt es eine aktive Störung (z. B. «E-Mail ausgefallen»), erscheint oben ein
 Hinweis bzw. im Menü der Eintrag **Aktive Störung**, bei Bedarf mit den
@@ -266,7 +268,10 @@ für Antworten des Supports, pro Hinweis einzeln als **Push** und als **Mail**
 ein oder aus (gleich wie im Browser) und wählen unter **Benachrichtigungszeit**, an
 welchen Tagen und zu welchen Zeiten sie kommen. Ein Tipp auf eine
 Mitteilung öffnet direkt das betroffene Ticket bzw. die Bestellung im Shop,
-auch wenn die App vorher geschlossen war.
+auch wenn die App vorher geschlossen war. Über die **Glocke** oben auf der
+Startseite öffnen Sie die **Mitteilungen** mit Ihren letzten
+Benachrichtigungen; dorthin führt auch eine Sammelmitteilung mit mehreren
+Neuigkeiten.
 
 Die Handbücher finden Sie auch in der App: **Profil → Hilfe und
 Rechtliches**. Bildschirmfotos lassen sich dort antippen und vergrössern.
