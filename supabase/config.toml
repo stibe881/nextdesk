@@ -275,3 +275,6 @@ verify_jwt = false
 
 [functions.incidents]
 verify_jwt = true
+
+[functions.ipam-import]
+verify_jwt = true
