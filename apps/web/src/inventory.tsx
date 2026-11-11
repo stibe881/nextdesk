@@ -14,9 +14,12 @@ import {
   ClipboardList,
   MapPin,
   PackageCheck,
+  Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
 
 import {
@@ -223,6 +226,21 @@ type InventoryAction =
       tenantId: string;
       operation: "create";
       values: { code: string; name: string };
+      clientRequestId: string;
+    }
+  | {
+      type: "manageLocation";
+      tenantId: string;
+      locationId: string;
+      operation: "update";
+      values: { code?: string; name?: string; active?: boolean };
+      clientRequestId: string;
+    }
+  | {
+      type: "manageLocation";
+      tenantId: string;
+      locationId: string;
+      operation: "archive";
       clientRequestId: string;
     }
   | {
@@ -2388,14 +2406,13 @@ function InventoryLocations({
       {locations.length ? (
         <ul className="inventory__location-grid">
           {locations.map((location) => (
-            <li key={location.id}>
-              <MapPin aria-hidden="true" size={18} />
-              <div>
-                <strong>{location.name}</strong>
-                <small>{location.code ?? "Ohne Ortscode"}</small>
-              </div>
-              {!location.active ? <span>Inaktiv</span> : null}
-            </li>
+            <InventoryLocationRow
+              canManage={canManage}
+              key={location.id}
+              location={location}
+              onChanged={onChanged}
+              tenantId={tenantId}
+            />
           ))}
         </ul>
       ) : (
@@ -2408,6 +2425,178 @@ function InventoryLocations({
         />
       )}
     </section>
+  );
+}
+
+/** Ein Lagerort mit Bearbeiten, Löschen (archivieren) und Reaktivieren. */
+function InventoryLocationRow({
+  canManage,
+  location,
+  onChanged,
+  tenantId,
+}: {
+  canManage: boolean;
+  location: InventoryLocation;
+  onChanged: InventoryChangedHandler;
+  tenantId: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [code, setCode] = useState(location.code ?? "");
+  const [name, setName] = useState(location.name);
+  const [saving, setSaving] = useState(false);
+  const request = useClientRequestId(tenantId, `location-${location.id}`);
+
+  const run = async (
+    body:
+      | {
+          operation: "update";
+          values: { code?: string; name?: string; active?: boolean };
+        }
+      | { operation: "archive" },
+    message: string,
+  ): Promise<boolean> => {
+    setSaving(true);
+    const base = {
+      type: "manageLocation" as const,
+      tenantId,
+      locationId: location.id,
+      clientRequestId: request.requestId(),
+    };
+    const saved = await onChanged(
+      body.operation === "archive"
+        ? { ...base, operation: "archive" }
+        : { ...base, operation: "update", values: body.values },
+      message,
+    );
+    request.discard();
+    setSaving(false);
+    return Boolean(saved);
+  };
+
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!code.trim() || !name.trim() || saving) return;
+    const saved = await run(
+      {
+        operation: "update",
+        values: { code: code.trim(), name: name.trim() },
+      },
+      "Der Lagerort wurde gespeichert.",
+    );
+    if (saved) setEditing(false);
+  };
+
+  const archive = async () => {
+    if (
+      !window.confirm(
+        `Lagerort «${location.name}» löschen? Er steht danach nicht mehr zur Auswahl. Bisherige Buchungen bleiben erhalten; ein vorhandener Bestand sollte vorher umgebucht werden.`,
+      )
+    )
+      return;
+    await run({ operation: "archive" }, "Der Lagerort wurde gelöscht.");
+  };
+
+  const reactivate = () =>
+    run(
+      { operation: "update", values: { active: true } },
+      "Der Lagerort ist wieder aktiv.",
+    );
+
+  if (editing) {
+    return (
+      <li className="inventory__location-edit">
+        <form onSubmit={(event) => void save(event)}>
+          <FormGrid cols={2}>
+            <FormField label="Ortscode" required>
+              <input
+                autoComplete="off"
+                onChange={(event) => setCode(event.target.value)}
+                required
+                value={code}
+              />
+            </FormField>
+            <FormField label="Bezeichnung" required>
+              <input
+                autoComplete="off"
+                onChange={(event) => setName(event.target.value)}
+                required
+                value={name}
+              />
+            </FormField>
+          </FormGrid>
+          <div className="inventory__location-actions">
+            <button
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => {
+                setCode(location.code ?? "");
+                setName(location.name);
+                setEditing(false);
+              }}
+              type="button"
+            >
+              Abbrechen
+            </button>
+            <button
+              disabled={saving || !code.trim() || !name.trim()}
+              type="submit"
+            >
+              {saving ? "Wird gespeichert …" : "Speichern"}
+            </button>
+          </div>
+        </form>
+      </li>
+    );
+  }
+
+  return (
+    <li className={location.active ? undefined : "is-inactive"}>
+      <MapPin aria-hidden="true" size={18} />
+      <div>
+        <strong>{location.name}</strong>
+        <small>{location.code ?? "Ohne Ortscode"}</small>
+      </div>
+      {!location.active ? <span>Gelöscht</span> : null}
+      {canManage ? (
+        <span className="inventory__location-buttons">
+          {location.active ? (
+            <>
+              <button
+                aria-label={`${location.name} bearbeiten`}
+                className="icon-button"
+                disabled={saving}
+                onClick={() => setEditing(true)}
+                title="Bearbeiten"
+                type="button"
+              >
+                <Pencil aria-hidden="true" size={15} />
+              </button>
+              <button
+                aria-label={`${location.name} löschen`}
+                className="icon-button"
+                disabled={saving}
+                onClick={() => void archive()}
+                title="Löschen"
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={15} />
+              </button>
+            </>
+          ) : (
+            <button
+              aria-label={`${location.name} wieder aktivieren`}
+              className="icon-button"
+              disabled={saving}
+              onClick={() => void reactivate()}
+              title="Wieder aktivieren"
+              type="button"
+            >
+              <RotateCcw aria-hidden="true" size={15} />
+            </button>
+          )}
+        </span>
+      ) : null}
+    </li>
   );
 }
 
