@@ -2222,6 +2222,139 @@ export function serviceStatusPageUrl(
  * Systemstatus-Abo: Bestätigungsmail (Double-Opt-in) und Meldung bei einer
  * Statusänderung eines öffentlichen Dienstes, jeweils mit Abmeldelink.
  */
+const INCIDENT_STATE_LABEL: Record<string, string> = {
+  investigating: "Wird untersucht",
+  identified: "Ursache erkannt",
+  monitoring: "Wird beobachtet",
+  resolved: "Behoben",
+};
+
+function swissDateTime(value: unknown): string {
+  const date = new Date(String(value));
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat("de-CH", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "Europe/Zurich",
+    }).format(date)
+    : "";
+}
+
+async function publicServiceNames(
+  admin: Admin,
+  tenantId: string,
+  serviceIds: string[],
+): Promise<string[]> {
+  if (serviceIds.length === 0) return [];
+  const { data } = await admin
+    .from("services")
+    .select("name")
+    .eq("tenant_id", tenantId)
+    .eq("active", true)
+    .eq("status_public", true)
+    .in("id", serviceIds.slice(0, 100));
+  return ((data ?? []) as Record<string, unknown>[])
+    .flatMap((row) => (asString(row.name) ? [asString(row.name)!] : []))
+    .sort((a, b) => a.localeCompare(b, "de-CH"));
+}
+
+type StatusMailContent = { service: string; status: string; text: string };
+
+/** Inhalt der Mail zu einem Update einer öffentlichen Störungsmeldung. */
+async function serviceIncidentMailContent(
+  admin: Admin,
+  tenantId: string,
+  updateId: string,
+): Promise<StatusMailContent | null> {
+  const update = await admin
+    .from("service_incident_notice_updates")
+    .select("notice_id, status, title, body, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("id", updateId)
+    .maybeSingle();
+  const noticeId = asString(update.data?.notice_id);
+  if (!update.data || !noticeId) return null;
+  const [notice, links] = await Promise.all([
+    admin
+      .from("service_incident_notices")
+      .select("title, public_enabled")
+      .eq("tenant_id", tenantId)
+      .eq("id", noticeId)
+      .maybeSingle(),
+    admin
+      .from("service_incident_notice_services")
+      .select("service_id")
+      .eq("tenant_id", tenantId)
+      .eq("notice_id", noticeId)
+      .limit(100),
+  ]);
+  if (notice.data?.public_enabled !== true) return null;
+  const names = await publicServiceNames(
+    admin,
+    tenantId,
+    ((links.data ?? []) as Record<string, unknown>[]).flatMap((link) =>
+      asString(link.service_id) ? [asString(link.service_id)!] : []
+    ),
+  );
+  const title = asString(notice.data?.title) ??
+    asString(update.data.title) ?? "Störung";
+  const state = INCIDENT_STATE_LABEL[String(update.data.status)] ??
+    "Aktualisiert";
+  return {
+    service: title,
+    status: state,
+    text: `${String(update.data.body ?? "").trim()}` +
+      (names.length ? `\n\nBetroffene Dienste: ${names.join(", ")}.` : "") +
+      `\n\nStand: ${state}, ${swissDateTime(update.data.created_at)}.`,
+  };
+}
+
+/** Inhalt der Mail bei Beginn bzw. Ende eines öffentlichen Wartungsfensters. */
+async function serviceMaintenanceMailContent(
+  admin: Admin,
+  tenantId: string,
+  maintenanceId: string,
+  phase: "start" | "end",
+): Promise<StatusMailContent | null> {
+  const [maintenance, links] = await Promise.all([
+    admin
+      .from("service_status_maintenances")
+      .select("title, description, starts_at, ends_at, public_enabled, state")
+      .eq("tenant_id", tenantId)
+      .eq("id", maintenanceId)
+      .maybeSingle(),
+    admin
+      .from("service_status_maintenance_services")
+      .select("service_id")
+      .eq("tenant_id", tenantId)
+      .eq("maintenance_id", maintenanceId)
+      .limit(100),
+  ]);
+  if (maintenance.data?.public_enabled !== true) return null;
+  const names = await publicServiceNames(
+    admin,
+    tenantId,
+    ((links.data ?? []) as Record<string, unknown>[]).flatMap((link) =>
+      asString(link.service_id) ? [asString(link.service_id)!] : []
+    ),
+  );
+  const title = asString(maintenance.data.title) ?? "Wartung";
+  const description = asString(maintenance.data.description);
+  const status = phase === "start" ? "Wartung begonnen" : "Wartung beendet";
+  const services = names.length
+    ? `\n\nBetroffene Dienste: ${names.join(", ")}.`
+    : "";
+  const text = phase === "start"
+    ? `Die geplante Wartung «${title}» hat begonnen. Geplant bis ${
+      swissDateTime(maintenance.data.ends_at)
+    }.` + (description ? `\n\n${description}` : "") + services
+    : maintenance.data.state === "cancelled"
+    ? `Die Wartung «${title}» wurde vorzeitig beendet.` + services
+    : `Die Wartung «${title}» ist abgeschlossen. Die Dienste stehen wieder zur Verfügung.` +
+      services;
+  return { service: title, status, text };
+}
+
 async function dispatchServiceStatusMail(
   admin: Admin,
   message: Message,
@@ -2245,7 +2378,9 @@ async function dispatchServiceStatusMail(
     }
     const row = await admin
       .from("mail_messages")
-      .select("status_subscription_id, service_status_event_id")
+      .select(
+        "status_subscription_id, service_status_event_id, service_incident_update_id, service_status_maintenance_id, maintenance_phase",
+      )
       .eq("id", message.id)
       .maybeSingle();
     const subscriptionId = asString(row.data?.status_subscription_id);
@@ -2308,6 +2443,41 @@ async function dispatchServiceStatusMail(
         await ignore("status_subscription_not_confirmed");
         return;
       }
+      // Störungsmeldung (Update) oder Wartungsfenster (Beginn/Ende) statt
+      // einer einzelnen Statusänderung.
+      const incidentUpdateId = asString(row.data?.service_incident_update_id);
+      const maintenanceId = asString(row.data?.service_status_maintenance_id);
+      const extra = incidentUpdateId
+        ? await serviceIncidentMailContent(
+          admin,
+          message.tenant_id,
+          incidentUpdateId,
+        )
+        : maintenanceId
+        ? await serviceMaintenanceMailContent(
+          admin,
+          message.tenant_id,
+          maintenanceId,
+          asString(row.data?.maintenance_phase) === "end" ? "end" : "start",
+        )
+        : undefined;
+      if (extra === null) {
+        await ignore("status_event_unavailable");
+        return;
+      }
+      if (extra) {
+        const values = { service: extra.service, status: extra.status, pageTitle };
+        subject = template.text("subject", values);
+        intro = template.text("intro", values);
+        text = extra.text;
+        actions = [
+          {
+            label: template.text("button", { pageTitle }),
+            url: serviceStatusPageUrl(publicId),
+            primary: true,
+          },
+        ];
+      } else {
       const eventId = asString(row.data?.service_status_event_id);
       const event = eventId
         ? await admin
@@ -2369,6 +2539,7 @@ async function dispatchServiceStatusMail(
           primary: true,
         },
       ];
+      }
     }
     actions.push({ label: "Abmelden", url: unsubscribeUrl });
     const [tenant, settings] = await Promise.all([

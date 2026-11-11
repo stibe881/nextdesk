@@ -84,7 +84,10 @@ type ActiveIncidentNotice = Pick<
   | "status"
   | "title"
   | "updatedAt"
->;
+> & {
+  /** Betroffene Dienste der Störungsmeldung (fehlt bei älteren Serverständen). */
+  serviceNames: string[];
+};
 type Person = {
   id: string;
   name: string;
@@ -121,7 +124,20 @@ export function activeIncidentNoticesFromResponse(
   const notices = data.notices.map(incidentNoticeFromValue);
   return notices.every((notice): notice is IncidentNotice => notice !== null)
     ? notices.map(
-        ({
+        (
+          {
+            categoryId,
+            departmentId,
+            description,
+            id,
+            resolvedAt,
+            startsAt,
+            status,
+            title,
+            updatedAt,
+          },
+          index,
+        ) => ({
           categoryId,
           departmentId,
           description,
@@ -131,19 +147,25 @@ export function activeIncidentNoticesFromResponse(
           status,
           title,
           updatedAt,
-        }) => ({
-          categoryId,
-          departmentId,
-          description,
-          id,
-          resolvedAt,
-          startsAt,
-          status,
-          title,
-          updatedAt,
+          serviceNames: incidentServiceNames(
+            (data.notices as unknown[])[index],
+          ),
         }),
       )
     : null;
+}
+
+/** Namen der betroffenen Dienste einer Meldung (optional in der Antwort). */
+export function incidentServiceNames(value: unknown): string[] {
+  if (!isRecord(value) || !Array.isArray(value.service_names)) return [];
+  return value.service_names
+    .filter(
+      (name): name is string =>
+        typeof name === "string" &&
+        name.trim().length > 0 &&
+        name.length <= 240,
+    )
+    .slice(0, 20);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1676,6 +1698,11 @@ export function IncidentBanner({
           </span>
         </div>
         <p>{primary.description}</p>
+        {primary.serviceNames.length > 0 ? (
+          <p className="workbench-incident-banner__services">
+            Betroffene Dienste: {primary.serviceNames.join(", ")}
+          </p>
+        ) : null}
       </div>
       {notices.length > 1 && (
         <span className="workbench-incident-banner__count">

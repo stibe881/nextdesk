@@ -101,10 +101,20 @@ type ServiceReport = {
   averageSatisfaction: number | null;
   satisfactionSampleSize: number;
   deflectedTickets: number | null;
+  /** Verfügbarkeit der Dienste (30/90 Tage); null bei älteren Serverständen. */
+  serviceAvailability: ServiceAvailabilityMetric[] | null;
+};
+export type ServiceAvailabilityMetric = {
+  serviceId: string;
+  name: string;
+  days30: number | null;
+  days90: number | null;
+  maintenance90Percent: number | null;
 };
 type ReportLoadState =
   "idle" | "loading" | "forbidden" | "unavailable" | "error";
-type ReportSection = "overview" | "quality" | "distribution" | "time";
+type ReportSection =
+  "overview" | "quality" | "distribution" | "time" | "availability";
 
 type SummaryMetricProps = {
   label: string;
@@ -128,6 +138,7 @@ const REPORT_SECTIONS: readonly { key: ReportSection; label: string }[] = [
   { key: "quality", label: "Servicequalität" },
   { key: "distribution", label: "Verteilungen" },
   { key: "time", label: "Zeiterfassung" },
+  { key: "availability", label: "Verfügbarkeit" },
 ];
 const DATE_INPUT = /^\d{4}-\d{2}-\d{2}$/;
 const numberFormatter = new Intl.NumberFormat("de-CH");
@@ -327,7 +338,48 @@ function parseServiceReport(value: unknown): ServiceReport {
     averageSatisfaction: data.averageSatisfaction,
     satisfactionSampleSize: data.satisfactionSampleSize,
     deflectedTickets: optionalCount(data.deflectedTickets),
+    serviceAvailability: parseServiceAvailability(data.serviceAvailability),
   };
+}
+
+function percentValue(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 100
+    ? value
+    : null;
+}
+
+/** Optionale Verfügbarkeit pro Dienst (ungültige Einträge entfallen). */
+export function parseServiceAvailability(
+  value: unknown,
+): ServiceAvailabilityMetric[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.slice(0, 200).flatMap((entry) =>
+    isRecord(entry) &&
+    typeof entry.serviceId === "string" &&
+    typeof entry.name === "string" &&
+    entry.name.trim()
+      ? [
+          {
+            serviceId: entry.serviceId,
+            name: entry.name.trim(),
+            days30: percentValue(entry.days30),
+            days90: percentValue(entry.days90),
+            maintenance90Percent: percentValue(entry.maintenance90Percent),
+          },
+        ]
+      : [],
+  );
+}
+
+function formatPercent(value: number | null): string {
+  return value === null
+    ? "–"
+    : `${new Intl.NumberFormat("de-CH", {
+        maximumFractionDigits: value >= 99.95 && value < 100 ? 2 : 1,
+      }).format(value)} %`;
 }
 
 async function invokeServiceReporting(
@@ -609,6 +661,7 @@ export function ServiceReporting({
     quality: true,
     distribution: true,
     time: true,
+    availability: true,
   });
   const [view, setView] = useState<
     "metrics" | "feedback" | PredefinedReportKey
@@ -1250,6 +1303,56 @@ export function ServiceReporting({
                     ))}
                   </ul>
                 )}
+              </section>
+            ) : null}
+
+            {selected("availability") &&
+            report.serviceAvailability &&
+            report.serviceAvailability.length > 0 ? (
+              <section
+                className="service-reporting__panel"
+                aria-labelledby={`${headingId}-availability`}
+              >
+                <div className="service-reporting__section-heading">
+                  <div>
+                    <h2 id={`${headingId}-availability`}>
+                      Verfügbarkeit der Dienste
+                    </h2>
+                    <p className="service-reporting__detail">
+                      Aus dem Statusverlauf: «In Betrieb» und «Wartung» gelten
+                      als verfügbar, der Wartungsanteil ist separat ausgewiesen.
+                      Unabhängig vom gewählten Zeitraum.
+                    </p>
+                  </div>
+                </div>
+                <ul className="service-reporting__list">
+                  {[...report.serviceAvailability]
+                    .sort(
+                      (left, right) =>
+                        (left.days90 ?? 101) - (right.days90 ?? 101) ||
+                        left.name.localeCompare(right.name, "de-CH"),
+                    )
+                    .map((metric) => (
+                      <li key={metric.serviceId}>
+                        <div className="service-reporting__row">
+                          <div>
+                            <div className="service-reporting__row-label">
+                              {metric.name}
+                            </div>
+                            <p className="service-reporting__detail">
+                              30 Tage: {formatPercent(metric.days30)} · davon
+                              Wartung (90 Tage):{" "}
+                              {formatPercent(metric.maintenance90Percent)}
+                            </p>
+                          </div>
+                          <strong>
+                            {formatPercent(metric.days90)}{" "}
+                            <small>in 90 Tagen</small>
+                          </strong>
+                        </div>
+                      </li>
+                    ))}
+                </ul>
               </section>
             ) : null}
 

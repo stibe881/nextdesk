@@ -565,6 +565,29 @@ Fälle, Serviceaufgaben, Wissensartikel, Lagerartikel, Verträge und Lizenzen.
 
 ![Neues Ticket als Agent erfassen](images/ag-neues-ticket.jpg)
 
+## Dienste und Systemstatus
+
+Unter **Dienste** öffnet **Details** bei einem Dienst die Dienstansicht:
+
+- **Verfügbarkeit** der letzten 30 und 90 Tage, der Anteil geplanter Wartung
+  und die Verfügbarkeit ohne Wartung gerechnet
+- die **Geräte** des Dienstes mit IP-Adresse, Subnetz, VLAN und Switch-Port
+  (aus der IP-Adressverwaltung) und ihrem **Monitoring-Zustand**; fällt ein
+  Gerät aus, steht oben «Betroffen durch Ausfall» mit dem Gerät und der
+  Störung
+- die **Subnetze**, deren Adressen dem Dienst zugeordnet sind
+
+Die Dienste eines Geräts pflegen Sie in der **Infrastruktur** (mehrere Dienste
+möglich); im Asset-Katalog gilt der gewählte Dienst als erster Dienst des
+Geräts, weitere bleiben erhalten. Die **Assets** laden seitenweise: Suche und
+Filter wirken auf alle Assets, **Weitere Assets laden** zeigt die nächsten.
+
+In einer **Serviceaufgabe**, deren Gerät Dienste hat, plant **Wartungsfenster
+planen** ein Fenster im Systemstatus (Beginn und Ende, optional öffentlich).
+Während des Fensters stehen die Dienste auf Wartung; danach setzt nextDesk sie
+automatisch zurück. Der Abschluss der Aufgabe trägt die Wartung ins
+Wartungsprotokoll des Geräts ein.
+
 ## Wissensdatenbank pflegen
 
 Die Wissensdatenbank ist eine Suchzentrale: Tippen Sie ein Stichwort ins

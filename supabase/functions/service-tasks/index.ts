@@ -910,10 +910,20 @@ async function occurrenceDetail(
         1,
       )[0] ?? null)
     : null;
+  const maintenance = await maintenancePlanning(
+    admin,
+    tenantId,
+    String(occurrence.id),
+  );
   return {
     occurrence: occurrenceDto(occurrence, template ?? undefined, people, now),
     template: template ? templateDto(template, today) : null,
     nextDueOn: next,
+    maintenance: {
+      assetCount: maintenance.assetIds.length,
+      serviceCount: maintenance.serviceIds.length,
+      windows: maintenance.windows,
+    },
     history: (history ?? []).map((row: Row) =>
       occurrenceDto(row, template ?? undefined, people, now),
     ),
@@ -927,6 +937,183 @@ async function occurrenceDetail(
       createdAt: event.created_at,
     })),
   };
+}
+
+/** Wartungsfenster und Geräte/Dienste einer Aufgabe (für die Detailansicht). */
+async function maintenancePlanning(
+  admin: Admin,
+  tenantId: string,
+  occurrenceId: string,
+) {
+  const [targets, windows] = await Promise.all([
+    admin.rpc("service_task_maintenance_targets", {
+      p_tenant_id: tenantId,
+      p_occurrence_id: occurrenceId,
+    }),
+    admin
+      .from("service_status_maintenances")
+      .select("id, title, starts_at, ends_at, state, public_enabled")
+      .eq("tenant_id", tenantId)
+      .eq("service_task_occurrence_id", occurrenceId)
+      .order("starts_at", { ascending: false })
+      .limit(10),
+  ]);
+  const rows = (targets.error ? [] : (targets.data ?? [])) as Row[];
+  return {
+    assetIds: [...new Set(rows.map((row) => String(row.asset_id)))],
+    serviceIds: [
+      ...new Set(
+        rows.flatMap((row) =>
+          isUuid(row.service_id) ? [String(row.service_id)] : []
+        ),
+      ),
+    ],
+    windows: ((windows.error ? [] : windows.data ?? []) as Row[]).map((row) => ({
+      id: row.id,
+      title: row.title,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      state: row.state,
+      publicEnabled: row.public_enabled === true,
+    })),
+  };
+}
+
+function isoTimestamp(value: unknown): string | null {
+  if (
+    typeof value !== "string" ||
+    value.length > 64 ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/i
+      .test(value)
+  ) {
+    return null;
+  }
+  const epoch = Date.parse(value);
+  return Number.isFinite(epoch) ? new Date(epoch).toISOString() : null;
+}
+
+/**
+ * Serviceaufgabe → Wartungsfenster der Statusseite mit den Diensten der
+ * Geräte dieser Aufgabe. Nach dem Ende setzt die Wartungsautomatik die
+ * Dienste zurück; der Abschluss der Aufgabe protokolliert die Wartung.
+ */
+async function planMaintenanceWindow(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  body: Row,
+  visibility: Visibility,
+) {
+  const occurrence = await loadOccurrence(
+    admin,
+    tenantId,
+    body.occurrenceId,
+    visibility,
+  );
+  const states = await resolveTenantFeatureStates(admin, tenantId, [
+    "assets.management",
+  ]);
+  if (states?.["assets.management"] !== true) {
+    throw new HttpError(
+      403,
+      "asset_feature_disabled",
+      "Wartungsfenster erfordern das Asset-Management.",
+    );
+  }
+  const startsAt = isoTimestamp(body.startsAt);
+  const endsAt = isoTimestamp(body.endsAt);
+  if (!startsAt || !endsAt || Date.parse(endsAt) <= Date.parse(startsAt)) {
+    throw new HttpError(
+      422,
+      "invalid_data",
+      "Beginn und Ende des Wartungsfensters sind ungültig.",
+    );
+  }
+  if (typeof body.publicEnabled !== "boolean") {
+    throw new HttpError(422, "invalid_data", "Die Veröffentlichung ist ungültig.");
+  }
+  const planning = await maintenancePlanning(admin, tenantId, String(occurrence.id));
+  if (planning.serviceIds.length === 0) {
+    throw new HttpError(
+      422,
+      "no_services",
+      "Den Geräten dieser Aufgabe sind keine Dienste zugeordnet.",
+    );
+  }
+  if (
+    planning.windows.some((window) =>
+      window.state === "scheduled" || window.state === "active"
+    )
+  ) {
+    throw new HttpError(
+      409,
+      "maintenance_exists",
+      "Für diese Aufgabe ist bereits ein Wartungsfenster geplant.",
+    );
+  }
+  const { data: template } = await admin
+    .from("service_task_templates")
+    .select("title")
+    .eq("id", occurrence.template_id)
+    .maybeSingle();
+  const requestedTitle = typeof body.title === "string" ? body.title.trim() : "";
+  const title = (requestedTitle ||
+    String(template?.title ?? "Wartung")).slice(0, 180);
+  const { data: maintenanceId, error } = await admin.rpc(
+    "save_service_status_maintenance",
+    {
+      p_actor_id: actorId,
+      p_tenant_id: tenantId,
+      p_maintenance_id: null,
+      p_title: title.length >= 2 ? title : "Wartung",
+      p_description: "Geplant aus einer Serviceaufgabe.",
+      p_starts_at: startsAt,
+      p_ends_at: endsAt,
+      p_state: "scheduled",
+      p_public_enabled: body.publicEnabled,
+      p_service_ids: planning.serviceIds.slice(0, 100),
+    },
+  );
+  if (error?.code === "42501") {
+    throw new HttpError(
+      403,
+      "publication_denied",
+      "Öffentliche Wartungsfenster erfordern die Berechtigung für Mandanteneinstellungen.",
+    );
+  }
+  if (error || !isUuid(maintenanceId)) {
+    throw new HttpError(
+      422,
+      "maintenance_invalid",
+      "Das Wartungsfenster konnte nicht gespeichert werden.",
+    );
+  }
+  const [linked, assets] = await Promise.all([
+    admin
+      .from("service_status_maintenances")
+      .update({ service_task_occurrence_id: occurrence.id })
+      .eq("tenant_id", tenantId)
+      .eq("id", maintenanceId),
+    planning.assetIds.length
+      ? admin.from("service_status_maintenance_assets").insert(
+        planning.assetIds.map((assetId) => ({
+          tenant_id: tenantId,
+          maintenance_id: maintenanceId,
+          asset_id: assetId,
+        })),
+      )
+      : Promise.resolve({ error: null }),
+  ]);
+  if (linked.error || assets.error) throw databaseError();
+  await logEvent(
+    admin,
+    tenantId,
+    "maintenance_planned",
+    actorId,
+    { occurrenceId: String(occurrence.id) },
+    { maintenanceId, startsAt, endsAt },
+  );
+  return { maintenanceId };
 }
 
 async function updateOccurrence(
@@ -1517,6 +1704,29 @@ const userHandler = withSupabase(
               visibility,
             ),
           });
+        }
+        case "planMaintenanceWindow": {
+          if (!rights.canExecute) {
+            return json(request, { error: { code: "forbidden" } }, 403);
+          }
+          const planned = await planMaintenanceWindow(
+            admin,
+            tenantId,
+            actorId,
+            body,
+            visibility,
+          );
+          return json(request, {
+            data: {
+              ...planned,
+              ...(await occurrenceDetail(
+                admin,
+                tenantId,
+                body.occurrenceId,
+                visibility,
+              )),
+            },
+          }, 201);
         }
         case "calendar":
           return json(request, {

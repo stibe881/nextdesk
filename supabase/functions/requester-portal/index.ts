@@ -637,7 +637,38 @@ async function activeIncidentNotices(
     .order("starts_at", { ascending: false })
     .limit(100);
   if (result.error) db(result.error);
-  return reply(request, { data: { notices: result.data ?? [] } });
+  const notices = (result.data ?? []) as Record<string, unknown>[];
+  // Betroffene Dienste (nur aktive) für den Banner; fehlt die Zuordnung,
+  // bleibt der Banner wie bisher.
+  const ids = notices.flatMap((notice) =>
+    isUuid(notice.id) ? [notice.id as string] : []
+  );
+  const names = new Map<string, string[]>();
+  if (ids.length) {
+    const links = await admin
+      .from("service_incident_notice_services")
+      .select("notice_id, services!inner(name, active)")
+      .eq("tenant_id", item.tenantId)
+      .eq("services.active", true)
+      .in("notice_id", ids)
+      .limit(2000);
+    for (const link of (links.data ?? []) as Record<string, unknown>[]) {
+      const service = link.services as Record<string, unknown> | null;
+      const name = typeof service?.name === "string" ? service.name : null;
+      if (!name || typeof link.notice_id !== "string") continue;
+      names.set(link.notice_id, [...(names.get(link.notice_id) ?? []), name]);
+    }
+  }
+  return reply(request, {
+    data: {
+      notices: notices.map((notice) => ({
+        ...notice,
+        service_names: (names.get(String(notice.id)) ?? []).sort((a, b) =>
+          a.localeCompare(b, "de-CH")
+        ),
+      })),
+    },
+  });
 }
 async function myTicketTimeline(
   request: Request,

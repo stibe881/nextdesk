@@ -112,10 +112,25 @@ type Template = {
   ruleText: string;
   nextDates: string[];
 };
+/** Wartungsfenster der Statusseite zu einer Aufgabe (Geräte der Aufgabe). */
+type MaintenancePlanning = {
+  assetCount: number;
+  serviceCount: number;
+  windows: {
+    id: string;
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    state: "scheduled" | "active" | "completed" | "cancelled";
+    publicEnabled: boolean;
+  }[];
+};
 type Detail = {
   occurrence: Occurrence;
   template: Template | null;
   nextDueOn: string | null;
+  /** Fehlt bei älteren Serverständen. */
+  maintenance?: MaintenancePlanning;
   history: Occurrence[];
   events: {
     id: string;
@@ -508,7 +523,171 @@ const EVENT_LABELS: Record<string, string> = {
   reschedule: "hat den Termin verschoben",
   assign: "hat die Zuständigkeit geändert",
   escalated: "Ans Team übergeben (überfällig)",
+  maintenance_planned: "hat ein Wartungsfenster geplant",
 };
+
+const MAINTENANCE_STATE_LABELS: Record<
+  MaintenancePlanning["windows"][number]["state"],
+  string
+> = {
+  scheduled: "geplant",
+  active: "läuft",
+  completed: "abgeschlossen",
+  cancelled: "abgesagt",
+};
+
+/** Lokale Eingabe «YYYY-MM-DDTHH:mm» in einen ISO-Zeitpunkt. */
+export function localDateTimeToIso(value: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/** Vorschlag: Fälligkeitstag 18:00–20:00 Uhr (lokal). */
+export function defaultMaintenanceWindow(dueOn: string): {
+  startsAt: string;
+  endsAt: string;
+} {
+  return { startsAt: `${dueOn}T18:00`, endsAt: `${dueOn}T20:00` };
+}
+
+function MaintenanceWindowCard({
+  canPlan,
+  dueOn,
+  onPlan,
+  planning,
+}: {
+  canPlan: boolean;
+  dueOn: string;
+  onPlan: (body: Record<string, unknown>) => Promise<void>;
+  planning: MaintenancePlanning;
+}) {
+  const [open, setOpen] = useState(false);
+  const [range, setRange] = useState(() => defaultMaintenanceWindow(dueOn));
+  const [publicEnabled, setPublicEnabled] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (planning.assetCount === 0) return null;
+  const openWindow = planning.windows.some(
+    (entry) => entry.state === "scheduled" || entry.state === "active",
+  );
+  async function submit() {
+    const startsAt = localDateTimeToIso(range.startsAt);
+    const endsAt = localDateTimeToIso(range.endsAt);
+    if (!startsAt || !endsAt || Date.parse(endsAt) <= Date.parse(startsAt)) {
+      setError("Das Ende muss nach dem Beginn liegen.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await onPlan({ startsAt, endsAt, publicEnabled });
+      setOpen(false);
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error ? nextError.message : String(nextError),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="st-card">
+      <p className="st-label">Wartungsfenster</p>
+      <p className="st-muted">
+        {planning.assetCount === 1
+          ? "1 Gerät"
+          : `${planning.assetCount} Geräte`}{" "}
+        mit{" "}
+        {planning.serviceCount === 1
+          ? "1 Dienst"
+          : `${planning.serviceCount} Diensten`}
+        . Während des Fensters stehen die Dienste auf «Wartung»; danach setzt
+        nextDesk sie automatisch zurück.
+      </p>
+      {planning.windows.map((entry) => (
+        <p className="st-event" key={entry.id}>
+          {dateTimeLabel(entry.startsAt)} – {dateTimeLabel(entry.endsAt)} ·{" "}
+          {MAINTENANCE_STATE_LABELS[entry.state]}
+          {entry.publicEnabled ? " · öffentlich" : ""}
+        </p>
+      ))}
+      {canPlan && !openWindow && planning.serviceCount > 0 ? (
+        open ? (
+          <div className="st-maintenance-form">
+            <label>
+              Beginn
+              <input
+                disabled={busy}
+                onChange={(event) =>
+                  setRange({ ...range, startsAt: event.target.value })
+                }
+                type="datetime-local"
+                value={range.startsAt}
+              />
+            </label>
+            <label>
+              Ende
+              <input
+                disabled={busy}
+                onChange={(event) =>
+                  setRange({ ...range, endsAt: event.target.value })
+                }
+                type="datetime-local"
+                value={range.endsAt}
+              />
+            </label>
+            <label>
+              <input
+                checked={publicEnabled}
+                disabled={busy}
+                onChange={(event) => setPublicEnabled(event.target.checked)}
+                type="checkbox"
+              />{" "}
+              Auf der öffentlichen Statusseite zeigen
+            </label>
+            <div>
+              <button
+                className="st-button st-button--primary"
+                disabled={busy}
+                onClick={() => void submit()}
+                type="button"
+              >
+                {busy ? "Wird geplant …" : "Wartungsfenster planen"}
+              </button>{" "}
+              <button
+                className="st-button"
+                disabled={busy}
+                onClick={() => setOpen(false)}
+                type="button"
+              >
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            className="st-button"
+            onClick={() => setOpen(true)}
+            type="button"
+          >
+            Wartungsfenster planen
+          </button>
+        )
+      ) : null}
+      {canPlan && planning.serviceCount === 0 ? (
+        <p className="st-muted">
+          Den Geräten dieser Aufgabe sind keine Dienste zugeordnet.
+        </p>
+      ) : null}
+      {error ? (
+        <p className="st-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
 
 function DetailPanel({
   tenantId,
@@ -825,6 +1004,23 @@ function DetailPanel({
                 ) : null}
               </dl>
             </section>
+            {detail?.maintenance ? (
+              <MaintenanceWindowCard
+                canPlan={canWork}
+                dueOn={occurrence.dueOn}
+                onPlan={async (body) => {
+                  const next = await call<Detail>({
+                    type: "planMaintenanceWindow",
+                    tenantId,
+                    occurrenceId,
+                    ...body,
+                  });
+                  setDetail(next);
+                  onChanged();
+                }}
+                planning={detail.maintenance}
+              />
+            ) : null}
             {detail && detail.history.length ? (
               <section className="st-card">
                 <p className="st-label">Verlauf dieser Aufgabe</p>
