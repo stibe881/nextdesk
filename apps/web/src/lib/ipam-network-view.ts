@@ -34,6 +34,8 @@ export type NetworkAddress = {
   vrf: string | null;
   matchedBy: string[];
   findings: NetworkFinding[];
+  /** Dienste der Adresse bzw. des Geräts (nur ticketLookup). */
+  services: { id: string; name: string }[];
 };
 
 export type NetworkPrefix = {
@@ -50,6 +52,9 @@ export type NetworkPrefix = {
 export type NetworkLookup = {
   addresses: NetworkAddress[];
   prefixes: NetworkPrefix[];
+  /** Schon mit dem Ticket verknüpfte Geräte und Dienste (ticketLookup). */
+  linkedAssetIds: string[];
+  linkedServiceIds: string[];
 };
 
 function asRecord(value: unknown): Row | null {
@@ -125,6 +130,11 @@ export function parseNetworkAddress(row: Row): NetworkAddress | null {
           (entry): entry is string => typeof entry === "string",
         )
       : [],
+    services: rows(row.services).flatMap((service) => {
+      const serviceId = str(service.id);
+      const name = str(service.name);
+      return serviceId && name ? [{ id: serviceId, name }] : [];
+    }),
     findings: rows(row.findings).flatMap((finding) => {
       const findingId = str(finding.id);
       const kind = str(finding.kind);
@@ -145,7 +155,13 @@ export function parseNetworkAddress(row: Row): NetworkAddress | null {
 export function parseNetworkLookup(value: unknown): NetworkLookup | null {
   const data = asRecord(value);
   if (!data || !Array.isArray(data.addresses)) return null;
+  const ids = (value: unknown) =>
+    Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === "string")
+      : [];
   return {
+    linkedAssetIds: ids(data.linkedAssetIds),
+    linkedServiceIds: ids(data.linkedServiceIds),
     addresses: rows(data.addresses)
       .map(parseNetworkAddress)
       .filter((entry): entry is NetworkAddress => entry !== null),
@@ -203,6 +219,7 @@ const FINDING_LABELS: Record<string, string> = {
   stale: "Lange nicht gesehen",
   utilization: "Subnetz fast voll",
   outside_prefix: "Ausserhalb des Subnetzes",
+  coverage: "Nicht in PRTG überwacht",
 };
 
 export function findingLabel(kind: string): string {
@@ -242,4 +259,27 @@ export function networkContextLine(entry: {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** Was die Netzwerk-Box für eine Adresse ans Ticket hängen kann. */
+export function linkOptions(
+  entry: NetworkAddress,
+  lookup: Pick<NetworkLookup, "linkedAssetIds" | "linkedServiceIds">,
+): {
+  asset: { id: string; name: string; linked: boolean } | null;
+  services: { id: string; name: string; linked: boolean }[];
+} {
+  return {
+    asset: entry.asset
+      ? {
+          id: entry.asset.id,
+          name: entry.asset.name,
+          linked: lookup.linkedAssetIds.includes(entry.asset.id),
+        }
+      : null,
+    services: entry.services.map((service) => ({
+      ...service,
+      linked: lookup.linkedServiceIds.includes(service.id),
+    })),
+  };
 }

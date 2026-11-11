@@ -13666,7 +13666,7 @@ begin
     raise exception 'ipam discovery test: findings not opened/notified: %', v_result;
   end if;
   if not exists (select 1 from public.ticket_notifications
-                  where tenant_id = v_tenant and user_id = v_manager and kind = 'monitoring.ipam_finding'
+                  where tenant_id = v_tenant and user_id = v_manager and kind = 'ipam.finding'
                     and payload->>'number' = '192.0.2.22') then
     raise exception 'ipam discovery test: critical finding not notified';
   end if;
@@ -15007,6 +15007,311 @@ begin
   raise notice 'phishing multiple reports checks ran';
 end;
 $$;
+SQL
+
+# 0315: IP-Adressen & Querschnitt (Benachrichtigungsarten, IPAM-Automatik, Gerät-IP, Gruppierung, Aufbewahrung).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_manager constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_requester constant uuid := '00000000-0000-4000-8000-000000000001';
+  v_net uuid;
+  v_small uuid;
+  v_addr uuid;
+  v_gone uuid;
+  v_agent uuid;
+  v_asset uuid;
+  v_service uuid;
+  v_team uuid := gen_random_uuid();
+  v_notification uuid;
+  v_report uuid;
+  v_result jsonb;
+  v_count integer;
+  v_kind text;
+begin
+  -- Categories: every kind of the parts A–E.
+  for v_kind, v_result in
+    select item.key, to_jsonb(item.value)
+      from jsonb_each_text(jsonb_build_object(
+        'monitoring.incident', 'incident',
+        'monitoring.incident.reopened', 'incident',
+        'security.case_overdue', 'security_report',
+        'security.case_clicked', 'security_report',
+        'security.campaign', 'security_report',
+        'ticket.security_report', 'security_report',
+        'shop.order.loan_due', 'shop',
+        'shop.order.loan_overdue', 'shop',
+        'shop.order.approval_reminder', 'shop',
+        'inventory.low_stock', 'inventory_low_stock',
+        'inventory.reorder', 'inventory_low_stock',
+        'inventory.count_due', 'inventory_low_stock',
+        'ipam.finding', 'ipam',
+        'ipam.agent_offline', 'ipam',
+        'ipam.reservation_expiring', 'ipam',
+        'monitoring.ipam_finding', 'ipam',
+        'infrastructure.due', 'infrastructure',
+        'ticket.assigned', 'assigned')) as item
+  loop
+    if public.push_notification_category(v_kind) is distinct from (v_result #>> '{}') then
+      raise exception '0315 test: % maps to % instead of %', v_kind,
+        public.push_notification_category(v_kind), v_result #>> '{}';
+    end if;
+  end loop;
+  if public.push_notification_category('ipam.unknown') is not null
+     or not public.push_delivery_modes_valid('{"ipam": "summary"}'::jsonb)
+     or public.push_delivery_modes_valid('{"ipam": "loud"}'::jsonb) then
+    raise exception '0315 test: ipam category not accepted as expected';
+  end if;
+  insert into public.push_preferences (tenant_id, user_id, email_categories, category_modes)
+  values (v_tenant, v_requester, array['ipam', 'incident'], '{"ipam": "off"}')
+  on conflict (tenant_id, user_id) do update
+    set email_categories = excluded.email_categories, category_modes = excluded.category_modes;
+
+  if has_function_privilege('authenticated', 'public.ipam_notify(uuid, text, jsonb, uuid, uuid)', 'execute')
+     or has_function_privilege('authenticated', 'public.push_non_ticket_recipient_authorized(uuid, uuid, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.operational_data_prune(uuid)', 'execute')
+     or has_function_privilege('authenticated', 'public.ipam_automation_hourly()', 'execute')
+     or has_table_privilege('authenticated', 'public.ipam_reservation_reminders', 'select')
+     or not has_function_privilege('authenticated', 'public.ipam_ticket_mentions(uuid, text, text, integer)', 'execute')
+     or has_function_privilege('anon', 'public.ticket_similarity_clusters(uuid, timestamptz, integer, integer, boolean)', 'execute')
+     or not has_function_privilege('authenticated', 'public.ticket_similarity_clusters(uuid, timestamptz, integer, integer, boolean)', 'execute') then
+    raise exception '0315 test: grants wrong';
+  end if;
+
+  -- IPAM switched on, the manager may manage it.
+  insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+  values (v_tenant, 'ipam.management', true)
+  on conflict (tenant_id, feature_key) do update set enabled = true, pilot_ends_at = null;
+  insert into public.role_permissions (role_id, permission_code)
+  values ('16500000-0000-4000-8000-000000000002', 'ipam.manage'),
+         ('16500000-0000-4000-8000-000000000002', 'ipam.read')
+  on conflict do nothing;
+
+  -- Recipient rule without a ticket.
+  if not public.push_non_ticket_recipient_authorized(v_tenant, v_manager, 'ipam.finding')
+     or public.push_non_ticket_recipient_authorized(v_tenant, v_requester, 'ipam.finding')
+     or public.push_non_ticket_recipient_authorized(v_tenant, v_manager, 'unknown.kind')
+     or not public.push_non_ticket_recipient_authorized(v_tenant, v_requester, 'shop.order.loan_due')
+     or public.push_non_ticket_recipient_authorized(v_tenant, gen_random_uuid(), 'shop.order.loan_due') then
+    raise exception '0315 test: non-ticket recipient rule wrong';
+  end if;
+  -- The sweep no longer skips authorized notifications without a ticket.
+  insert into public.ticket_notifications (tenant_id, user_id, ticket_id, kind, payload)
+  values (v_tenant, v_manager, null, 'ipam.finding', '{"number": "test-sweep"}')
+  returning id into v_notification;
+  insert into public.push_outbox (tenant_id, user_id, notification_id)
+  values (v_tenant, v_manager, v_notification) on conflict (notification_id) do nothing;
+  insert into public.ticket_notifications (tenant_id, user_id, ticket_id, kind, payload)
+  values (v_tenant, v_requester, null, 'ipam.finding', '{"number": "test-sweep-denied"}')
+  returning id into v_notification;
+  insert into public.push_outbox (tenant_id, user_id, notification_id)
+  values (v_tenant, v_requester, v_notification) on conflict (notification_id) do nothing;
+  perform public.push_skip_unauthorized_ticket_outbox();
+  if exists (select 1 from public.push_outbox outbox
+               join public.ticket_notifications notification on notification.id = outbox.notification_id
+              where notification.payload ->> 'number' = 'test-sweep' and outbox.status = 'skipped')
+     or not exists (select 1 from public.push_outbox outbox
+               join public.ticket_notifications notification on notification.id = outbox.notification_id
+              where notification.payload ->> 'number' = 'test-sweep-denied' and outbox.status = 'skipped') then
+    raise exception '0315 test: sweep handled notifications without ticket wrongly';
+  end if;
+
+  -- Phishing team members always count as recipients of security notifications.
+  insert into public.teams (id, tenant_id, department_id, name, active)
+  values (v_team, v_tenant, '11000000-0000-4000-8000-000000000001', 'Phishing 0315', true);
+  insert into public.team_memberships (team_id, user_id) values (v_team, v_manager);
+  insert into public.phishing_report_settings (tenant_id, notify_team_id)
+  values (v_tenant, v_team)
+  on conflict (tenant_id) do update set notify_team_id = excluded.notify_team_id;
+  if not public.phishing_team_member(v_tenant, v_manager)
+     or public.phishing_team_member(v_tenant, v_requester) then
+    raise exception '0315 test: phishing team membership wrong';
+  end if;
+  if not public.push_security_delivery_forced(v_tenant, v_manager, 'security.case_clicked')
+     or public.push_security_delivery_forced(v_tenant, v_requester, 'security.case_clicked')
+     or public.push_security_delivery_forced(v_tenant, v_manager, 'ipam.finding')
+     or has_function_privilege('authenticated', 'public.push_security_delivery_forced(uuid, uuid, text)', 'execute') then
+    raise exception '0315 test: forced security delivery wrong';
+  end if;
+
+  -- 25: subnet over its threshold and a full DHCP scope.
+  insert into public.ipam_prefixes (tenant_id, prefix, description, utilization_warning_percent)
+  values (v_tenant, '10.231.1.0/29', 'Klein', 50) returning id into v_small;
+  insert into public.ipam_addresses (tenant_id, address, status)
+  select v_tenant, ('10.231.1.' || n)::inet, 'active' from generate_series(1, 4) n;
+  insert into public.ipam_prefixes (tenant_id, prefix, description)
+  values (v_tenant, '10.231.2.0/24', 'Clients') returning id into v_net;
+  insert into public.ipam_dhcp_scopes (tenant_id, server, scope_id, name, addresses_in_use, addresses_free, prefix_id)
+  values (v_tenant, 'DHCP01', '10.231.2.0', 'Clients', 95, 5, v_net);
+  v_result := public.ipam_utilization_findings(v_tenant);
+  if (v_result ->> 'opened')::integer <> 2
+     or not exists (select 1 from public.ipam_findings where tenant_id = v_tenant and kind = 'utilization'
+                     and prefix_id = v_small and status = 'open' and (details ->> 'percent')::integer = 66)
+     or not exists (select 1 from public.ipam_findings where tenant_id = v_tenant and kind = 'utilization'
+                     and address = '10.231.2.0' and (details ->> 'dhcpPercent')::integer = 95)
+     or not exists (select 1 from public.ticket_notifications where tenant_id = v_tenant
+                     and user_id = v_manager and kind = 'ipam.finding' and payload ->> 'number' = '10.231.1.0/29') then
+    raise exception '0315 test: utilization findings wrong: %', v_result;
+  end if;
+  v_result := public.ipam_utilization_findings(v_tenant);
+  if (v_result ->> 'opened')::integer <> 0 or (v_result ->> 'updated')::integer <> 2 then
+    raise exception '0315 test: utilization findings duplicated: %', v_result;
+  end if;
+  update public.ipam_dhcp_scopes set addresses_in_use = 10, addresses_free = 90 where tenant_id = v_tenant and server = 'DHCP01';
+  delete from public.ipam_addresses where tenant_id = v_tenant and address in ('10.231.1.3', '10.231.1.4');
+  v_result := public.ipam_utilization_findings(v_tenant);
+  if (v_result ->> 'resolved')::integer <> 2
+     or exists (select 1 from public.ipam_findings where tenant_id = v_tenant and kind = 'utilization' and status = 'open') then
+    raise exception '0315 test: utilization findings not resolved: %', v_result;
+  end if;
+
+  -- 27: server without PRTG → finding «coverage», ignoring sticks.
+  insert into public.ipam_addresses (tenant_id, address, hostname, device_type, status)
+  values (v_tenant, '10.231.2.10', 'SRV-0315', 'server', 'active') returning id into v_addr;
+  v_result := public.ipam_coverage_findings(v_tenant);
+  if not exists (select 1 from public.ipam_findings where address_id = v_addr and kind = 'coverage' and status = 'open') then
+    raise exception '0315 test: coverage finding missing: %', v_result;
+  end if;
+  update public.ipam_findings set status = 'ignored' where address_id = v_addr and kind = 'coverage';
+  perform public.ipam_coverage_findings(v_tenant);
+  if exists (select 1 from public.ipam_findings where address_id = v_addr and kind = 'coverage' and status = 'open') then
+    raise exception '0315 test: ignored coverage finding reopened';
+  end if;
+  insert into public.ipam_addresses (tenant_id, address, hostname, device_type, status)
+  values (v_tenant, '10.231.2.11', 'SW-0315', 'switch', 'active') returning id into v_gone;
+  perform public.ipam_coverage_findings(v_tenant);
+  update public.ipam_addresses set prtg_device_id = '9001' where id = v_gone;
+  perform public.ipam_coverage_findings(v_tenant);
+  if (select status from public.ipam_findings where address_id = v_gone and kind = 'coverage') <> 'resolved' then
+    raise exception '0315 test: covered device not resolved';
+  end if;
+
+  -- 26: agent offline once per outage.
+  insert into public.ipam_agents (tenant_id, name, token_hash, last_seen_at)
+  values (v_tenant, 'Agent 0315', repeat('c', 64), timezone('utc', now()) - interval '3 hours')
+  returning id into v_agent;
+  v_count := public.ipam_agents_offline_check(v_tenant);
+  if v_count <> 1 then
+    raise exception '0315 test: offline agent not announced (%)', v_count;
+  end if;
+  v_count := public.ipam_agents_offline_check(v_tenant);
+  if v_count <> 0
+     or not exists (select 1 from public.ticket_notifications where tenant_id = v_tenant and user_id = v_manager
+                     and kind = 'ipam.agent_offline' and payload ->> 'agentId' = v_agent::text) then
+    raise exception '0315 test: offline agent not announced exactly once';
+  end if;
+  update public.ipam_agents set last_seen_at = timezone('utc', now()) where id = v_agent;
+  if (select offline_notified_at from public.ipam_agents where id = v_agent) is not null then
+    raise exception '0315 test: offline marker not reset';
+  end if;
+
+  -- 24: reminder before reserved_until, then release.
+  update public.ipam_addresses
+     set status = 'reserved', owner_user_id = v_manager,
+         reserved_until = (timezone('Europe/Zurich', now()))::date + 2
+   where id = v_addr;
+  update public.ipam_addresses
+     set status = 'reserved', reserved_until = (timezone('Europe/Zurich', now()))::date - 1
+   where id = v_gone;
+  v_result := public.ipam_reservations_due(v_tenant);
+  if (v_result ->> 'reminded')::integer <> 1 or (v_result ->> 'released')::integer <> 1
+     or not exists (select 1 from public.ticket_notifications where tenant_id = v_tenant and user_id = v_manager
+                     and kind = 'ipam.reservation_expiring' and payload ->> 'address' = '10.231.2.10')
+     or (select status from public.ipam_addresses where id = v_gone) <> 'deprecated'
+     or not exists (select 1 from public.ipam_address_events where address_id = v_gone and kind = 'released'
+                     and details ->> 'reason' = 'reservation_expired')
+     or not exists (select 1 from public.ipam_change_log where object_id = v_gone and source = 'system') then
+    raise exception '0315 test: reservations wrong: %', v_result;
+  end if;
+  v_result := public.ipam_reservations_due(v_tenant);
+  if (v_result ->> 'reminded')::integer <> 0 then
+    raise exception '0315 test: reservation reminded twice';
+  end if;
+  perform public.ipam_automation_hourly();
+  perform public.ipam_automation_daily();
+
+  -- 40: foreign keys.
+  insert into public.services (tenant_id, name) values (v_tenant, 'Dienst 0315') returning id into v_service;
+  update public.ipam_addresses set service_id = v_service where id = v_addr;
+  begin
+    update public.ipam_addresses set service_id = gen_random_uuid() where id = v_addr;
+    raise exception '0315 test: unknown service accepted';
+  exception when foreign_key_violation then null;
+  end;
+  begin
+    update public.ipam_findings set ticket_id = gen_random_uuid() where address_id = v_addr;
+    raise exception '0315 test: unknown ticket accepted';
+  exception when foreign_key_violation then null;
+  end;
+
+  -- 37: device IP validated and synchronized.
+  insert into public.assets (tenant_id, name, kind) values (v_tenant, 'SRV-IP-0315', 'server') returning id into v_asset;
+  begin
+    insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address)
+    values (v_asset, v_tenant, 'server', 'kein-ip');
+    raise exception '0315 test: invalid device IP accepted';
+  exception when invalid_parameter_value then null;
+  end;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, hostname, ip_address)
+  values (v_asset, v_tenant, 'server', 'SRV-IP-0315', ' 10.231.2.40/24 ');
+  if (select ip_inet from public.asset_infrastructure where asset_id = v_asset) <> '10.231.2.40'::inet
+     or not exists (select 1 from public.ipam_addresses where tenant_id = v_tenant
+                     and address = '10.231.2.40' and asset_id = v_asset and hostname = 'SRV-IP-0315') then
+    raise exception '0315 test: device IP not documented in IPAM';
+  end if;
+  insert into public.assets (tenant_id, name, kind) values (v_tenant, 'SW-IP-0315', 'switch') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category) values (v_asset, v_tenant, 'switch');
+  update public.ipam_addresses set asset_id = v_asset where id = v_addr;
+  if (select ip_address from public.asset_infrastructure where asset_id = v_asset) <> '10.231.2.10' then
+    raise exception '0315 test: address link did not fill the device IP';
+  end if;
+
+  -- 33: ticket search by IP (trigram index, caller's rights).
+  select id into v_notification from public.tickets
+   where tenant_id = v_tenant and deleted_at is null order by created_at limit 1;
+  update public.tickets set subject = 'Drucker 10.231.2.99 offline' where id = v_notification;
+  if not exists (select 1 from public.ipam_ticket_mentions(v_tenant, '10.231.2.99', null, 10)
+                  where id = v_notification and matched = 'ip')
+     or exists (select 1 from public.ipam_ticket_mentions(v_tenant, '%', 'x', 10)) then
+    raise exception '0315 test: ticket mentions wrong';
+  end if;
+  if not exists (select 1 from pg_indexes where indexname = 'tickets_description_trgm_idx') then
+    raise notice '0315 test: pg_trgm not available, trigram index skipped';
+  end if;
+
+  -- 41: retention.
+  if (select monitoring_retention_months from public.tenant_data_retention_policies where tenant_id = v_tenant) <> 24
+     or (select phishing_retention_months from public.tenant_data_retention_policies where tenant_id = v_tenant) <> 12 then
+    raise exception '0315 test: retention defaults wrong';
+  end if;
+  insert into public.ipam_change_log (tenant_id, at, source, object_type, object_id, action)
+  values (v_tenant, timezone('utc', now()) - interval '30 months', 'user', 'address', v_addr, 'update');
+  insert into public.phishing_reports (tenant_id, reporter_email, channel, source, risk_score, risk_level,
+                                       fingerprint, analysis, original_from, created_at)
+  values (v_tenant, 'person@example.test', 'email', 'eml', 10, 'low', repeat('d', 64),
+          '{"headers": {"to": "person@example.test"}, "score": 10}', 'boese@example.test',
+          timezone('utc', now()) - interval '13 months')
+  returning id into v_report;
+  update public.tenant_data_retention_policies set legal_hold = true where tenant_id = v_tenant;
+  perform public.operational_data_prune(v_tenant);
+  if not exists (select 1 from public.ipam_change_log where tenant_id = v_tenant and at < timezone('utc', now()) - interval '29 months') then
+    raise exception '0315 test: prune ignored the legal hold';
+  end if;
+  update public.tenant_data_retention_policies set legal_hold = false where tenant_id = v_tenant;
+  v_result := public.operational_data_prune(v_tenant);
+  if exists (select 1 from public.ipam_change_log where tenant_id = v_tenant and at < timezone('utc', now()) - interval '29 months')
+     or (select reporter_email from public.phishing_reports where id = v_report) is not null
+     or (select analysis ? 'headers' from public.phishing_reports where id = v_report)
+     or (select original_from from public.phishing_reports where id = v_report) <> 'boese@example.test' then
+    raise exception '0315 test: prune wrong: %', v_result;
+  end if;
+
+  raise notice 'ipam automation and notification checks ran';
+end;
+$$;
+rollback;
 SQL
 
 echo "PostgreSQL 16 migration and RLS integration checks passed."

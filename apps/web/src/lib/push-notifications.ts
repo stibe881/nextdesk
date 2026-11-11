@@ -27,14 +27,18 @@ export const pushCategoryMeta = {
     label: "Infrastruktur",
   },
   inventory_low_stock: {
-    description:
-      "Wenn die Gesamtverfügbarkeit eines Artikels den Mindestbestand erreicht",
-    label: "Lagerunterbestand",
+    description: "Mindestbestand erreicht, Nachbestellung und fällige Inventur",
+    label: "Lager",
   },
   incident: {
     description:
       "Wenn PRTG eine Störung meldet und solange sie niemand bestätigt",
     label: "Störungen",
+  },
+  ipam: {
+    description:
+      "Neue Funde (z. B. IP-Konflikte, volle Subnetze), Netzwerkagenten offline und ablaufende Reservierungen",
+    label: "IP-Adressverwaltung",
   },
   mention: {
     description: "Wenn Sie in einem Ticket erwähnt werden",
@@ -49,11 +53,13 @@ export const pushCategoryMeta = {
     label: "Ticketlösungen",
   },
   security_report: {
-    description: "Wenn eine verdächtige E-Mail als Phishing gemeldet wird",
-    label: "Phishing-Meldungen",
+    description:
+      "Phishing-Meldungen, überfällige Sicherheitsfälle, «geklickt» und Kampagnen",
+    label: "Phishing und Sicherheitsfälle",
   },
   shop: {
-    description: "Freigaben, Bereitstellung und Status Ihrer Bestellungen",
+    description:
+      "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status Ihrer Bestellungen",
     label: "Shop",
   },
   sla: {
@@ -114,6 +120,11 @@ export type PushDevice = {
 
 export type PushStatus = {
   applicableCategories: PushCategory[];
+  /**
+   * Push categories delivered regardless of the personal setting (members of
+   * the phishing team always get phishing reports and security cases).
+   */
+  alwaysDeliveredCategories: PushCategory[];
   apnsConfigured: boolean;
   contentLevel: PushContentLevel;
   devices: PushDevice[];
@@ -397,6 +408,13 @@ function parseStatus(value: unknown): PushStatus {
 
   return {
     applicableCategories: knownCategories(applicableCategories),
+    alwaysDeliveredCategories: Array.isArray(value.alwaysDeliveredCategories)
+      ? knownCategories(
+          value.alwaysDeliveredCategories.filter(
+            (category): category is string => typeof category === "string",
+          ),
+        )
+      : [],
     apnsConfigured,
     contentLevel,
     devices: devices.map(parseDevice),

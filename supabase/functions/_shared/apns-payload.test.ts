@@ -295,3 +295,66 @@ Deno.test("phishing reports alert the security team", () => {
   assertEquals(alert.title, "Phishing-Meldung");
   assertStringIncludes(alert.body, "SEC-3");
 });
+
+Deno.test("IP address notifications open the address or the device", () => {
+  const payload = buildApnsPayload({
+    kind: "ipam",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000007",
+    ipamEvent: "reservation_expiring",
+    ipamNumber: "10.1.2.3",
+    ipamAddress: "10.1.2.3",
+    ipamTitle: "DRU-01",
+    dueOn: "2026-11-14",
+  });
+  const alert = (payload.aps as { alert: { title: string; body: string } })
+    .alert;
+  assertEquals(alert.title, "Reservierung läuft ab");
+  assertStringIncludes(alert.body, "14.11.2026");
+  const body = payload.body as Record<string, unknown>;
+  assertEquals(body.kind, "ipam");
+  assertEquals(body.ipamAddress, "10.1.2.3");
+  assertEquals(body.ticketId, undefined);
+
+  const offline = buildApnsPayload({
+    kind: "ipam",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000008",
+    ipamEvent: "agent_offline",
+    ipamAgentName: "Agent Baar",
+  });
+  assertEquals(
+    (offline.aps as { alert: { title: string } }).alert.title,
+    "Netzwerkagent offline",
+  );
+});
+
+Deno.test("security cases, shop and inventory reminders have own texts", () => {
+  const alert = (input: Parameters<typeof buildApnsPayload>[0]) =>
+    (buildApnsPayload(input).aps as { alert: { title: string; body: string } })
+      .alert;
+  const base = {
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000009",
+  };
+  assertEquals(
+    alert({ ...base, kind: "security_report", securityEvent: "overdue", ticketNumber: "SEC-4" }).title,
+    "Sicherheitsfall überfällig",
+  );
+  assertStringIncludes(
+    alert({ ...base, kind: "security_report", securityEvent: "campaign", securityCount: 3 }).body,
+    "3 Personen",
+  );
+  assertEquals(
+    alert({ ...base, kind: "shop", shopEvent: "loan_due", orderNumber: "B-7" }).title,
+    "Ausleihe endet bald",
+  );
+  assertEquals(
+    alert({ ...base, kind: "shop", shopEvent: "loan_overdue", shopEscalated: true }).title,
+    "Ausleihe im Team überfällig",
+  );
+  assertEquals(
+    alert({ ...base, kind: "inventory_low_stock", inventoryEvent: "count_due" }).title,
+    "Inventur fällig",
+  );
+});

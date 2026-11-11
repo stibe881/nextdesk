@@ -19,6 +19,7 @@ import {
 
 import "./ipam-discovery.css";
 import { functionErrorMessage } from "./lib/function-error";
+import { useVisibleInterval } from "./lib/use-visible-interval";
 import {
   configToForm,
   connectionLabel,
@@ -154,15 +155,10 @@ export function IpamDiscoveryPanel({ tenantId, canManage, onChanged }: Props) {
     void load();
   }, [load]);
 
-  // Offene Aufträge: alle 15 s nachladen, sonst jede Minute.
+  // Offene Aufträge: alle 15 s nachladen, sonst jede Minute (nur bei
+  // sichtbarem Tab).
   const hasOpenJobs = overview?.jobs.some(isJobOpen) ?? false;
-  useEffect(() => {
-    const timer = window.setInterval(
-      () => void load(),
-      hasOpenJobs ? 15000 : 60000,
-    );
-    return () => window.clearInterval(timer);
-  }, [hasOpenJobs, load]);
+  useVisibleInterval(() => void load(), hasOpenJobs ? 15000 : 60000);
 
   const manage = canManage && (overview?.canManage ?? canManage);
   const changed = useCallback(async () => {
@@ -421,6 +417,9 @@ function AgentsView({
                   <dt>Zuletzt gesehen</dt>
                   <dd title={dateTime(agent.lastSeenAt)}>
                     {relativeTime(agent.lastSeenAt)}
+                    {agent.connection === "offline" && agent.offlineNotifiedAt
+                      ? " · Ausfall gemeldet"
+                      : ""}
                   </dd>
                 </div>
                 <div>

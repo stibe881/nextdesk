@@ -891,9 +891,15 @@ Im Register **Funde** schalten Sie oben zwischen drei Ansichten um:
 
 - **Funde**: Die Discovery meldet Abweichungen – Konflikte und fremde MAC auf
   einer reservierten IP (rot), Ghost-IPs (aktiv, aber nicht dokumentiert),
-  DNS-Abweichungen und lange nicht gesehene Adressen. Ghost-IPs übernehmen Sie
-  mit **Übernehmen** als dokumentierte Adresse, mit **Ticket** entsteht ein
-  Ticket, mit **Erledigt** oder **Ignorieren** schliessen Sie den Fund.
+  DNS-Abweichungen und lange nicht gesehene Adressen. Stündlich prüft nextDesk
+  ausserdem die **Auslastung**: Ein Subnetz über seiner Warnschwelle oder ein
+  DHCP-Bereich über 90 % wird zum Fund und schliesst sich von selbst, sobald
+  die Auslastung wieder darunter liegt. Täglich erscheinen wichtige Geräte
+  (Server, Switches, Firewalls, Router) ohne PRTG-Überwachung als
+  **PRTG-Lücke**. Ghost-IPs übernehmen Sie mit **Übernehmen** als
+  dokumentierte Adresse, mit **Ticket** entsteht ein Ticket, mit **Erledigt**
+  oder **Ignorieren** schliessen Sie den Fund (ignorierte Funde kommen nicht
+  wieder).
 - **Soll / Ist** vergleicht je Subnetz die dokumentierten Adressen mit dem,
   was die Netzwerkagenten in den letzten 7 Tagen gesehen haben:
   Übereinstimmung in Prozent, «Nur gesehen» (nicht dokumentiert) und «Nur
@@ -930,8 +936,27 @@ DHCP-Bereiche mit Auslastung, Leases und den Vergleich der DNS-Einträge mit
 der Dokumentation. Mit **Jetzt scannen** stossen Sie einen Scan an. Dort
 beauftragen Sie auch DHCP-Reservierungen oder fehlende bzw. abweichende
 DNS-Einträge; der Agent führt den Auftrag aus, sobald eine Person mit
-Verwaltungsrecht ihn freigegeben hat. Neue Konflikte melden sich per Glocke,
-Push und E-Mail (Kategorie Störungen).
+Verwaltungsrecht ihn freigegeben hat. Neue Konflikte und volle Subnetze
+melden sich per Glocke, Push und E-Mail (Kategorie **IP-Adressverwaltung**).
+Meldet sich ein Agent länger als zwei Stunden nicht, erhalten alle mit
+Verwaltungsrecht einmal pro Ausfall die Mitteilung «Netzwerkagent offline»;
+die Karte des Agenten zeigt dann «Ausfall gemeldet».
+
+**Reservierungen mit Ablaufdatum**
+
+Hat eine reservierte Adresse ein Datum «Reserviert bis», erinnert nextDesk
+bis zu drei Tage vorher die verantwortliche Person und das Team
+(«Reservierung läuft ab»). Nach Ablauf wird die Adresse automatisch
+freigegeben (Status Veraltet); Verlauf und Änderungsprotokoll nennen als
+Herkunft «System».
+
+**Geräte-IP und IP-Adressverwaltung**
+
+Die IP-Adresse eines Infrastruktur-Geräts muss eine gültige IP sein (optional
+mit Präfixlänge, z. B. 10.1.2.3/24). Tragen Sie eine IP ein, verknüpft
+nextDesk die dokumentierte Adresse mit dem Gerät bzw. legt sie in einem
+bekannten Subnetz an. Umgekehrt ergänzt das Verknüpfen einer Adresse mit
+einem Gerät dessen IP, wenn sie noch leer ist.
 
 **Import**
 
@@ -973,12 +998,22 @@ Kommt in einem Ticket eine IP-Adresse, ein Subnetz, eine MAC-Adresse oder ein
 dokumentierter Hostname vor, zeigt das Ticket rechts die Box **Netzwerk**:
 Subnetz und VLAN, Gerät, Switch-Port, verantwortliche Person und zuletzt
 gesehen. Mit **In der IP-Adressverwaltung öffnen** springen Sie zur Adresse.
+Dürfen Sie das Ticket bearbeiten, hängen Sie mit **Gerät … ans Ticket
+hängen** bzw. **Dienst … ans Ticket hängen** das Gerät und seine Dienste
+direkt an (bereits verknüpfte erscheinen als «am Ticket»). Für eine erkannte,
+noch nicht dokumentierte IP in einem bekannten Subnetz reserviert **IP
+reservieren** die Adresse nach einer Bestätigung (braucht das Recht,
+IP-Adressen zu verwalten). Tickets zu einer Adresse findet die
+IP-Adressverwaltung über einen Suchindex auch in grossen Ticketbeständen
+schnell.
 
 **In der App**
 
 In der iPhone-App zeigen die Detailseiten von Assets und Infrastruktur-Geräten
 die Karte **Netzwerk** mit IP, Subnetz, VLAN, Gateway und Switch-Port. Scannen
-Sie den QR-Code am Gerät, sehen Sie diese Angaben direkt vor Ort.
+Sie den QR-Code am Gerät, sehen Sie diese Angaben direkt vor Ort. Tippen Sie
+auf eine Mitteilung der IP-Adressverwaltung, öffnet die App das Gerät oder
+die Netzwerkdaten der betroffenen Adresse.
 
 **KI-Assistent**
 
@@ -997,12 +1032,18 @@ gelten dieselben Rechte und Abteilungsgrenzen wie in der Weboberfläche.
   ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten
   Benachrichtigungszeit.
 - In der Tabelle **Benachrichtigungen** schalten Sie pro Benachrichtigung
-  (z. B. Zuweisungen, Eskalationen, Erwähnungen, Phishing-Meldungen)
-  einzeln **Push** und **E-Mail** ein oder aus. Für Agenten sind zu Beginn alle Benachrichtigungen
-  per Push und E-Mail eingeschaltet – ausser **Phishing-Meldungen**: Diese sind
+  (z. B. Zuweisungen, Eskalationen, Erwähnungen, Phishing und
+  Sicherheitsfälle, IP-Adressverwaltung) einzeln **Push** und **E-Mail** ein
+  oder aus. Für Agenten sind zu Beginn alle Benachrichtigungen per Push und
+  E-Mail eingeschaltet – ausser **Phishing und Sicherheitsfälle**: Diese sind
   ausgeschaltet. Wer sie erhalten möchte, schaltet sie dort selbst ein.
-  Mitglieder des Sicherheitsteams aus den Phishing-Einstellungen erhalten sie
-  immer. E-Mails kommen über das Exchange-Postfach
+  Mitglieder des in den Phishing-Einstellungen hinterlegten Teams erhalten
+  Phishing-Meldungen, überfällige Sicherheitsfälle, «geklickt» und Kampagnen
+  immer; die Tabelle weist darauf hin. **IP-Adressverwaltung** (Funde,
+  Netzwerkagent offline, ablaufende Reservierungen) sehen Personen mit Zugriff
+  auf die IP-Adressverwaltung; **Lager** umfasst Mindestbestand,
+  Nachbestellung und fällige Inventur, **Shop** auch Erinnerungen zu
+  Ausleihen und offenen Freigaben. E-Mails kommen über das Exchange-Postfach
   Ihres Unternehmens und sind verfügbar, sobald eines verbunden ist.
 - Das iPhone-Widget **Meine Prioritäten** zeigt Ihre wichtigsten Tickets in
   den Farben Ihres Unternehmens. Öffnen Sie die App einmal, damit es aktuell

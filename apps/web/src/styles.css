@@ -12932,6 +12932,28 @@ body:has(.ticket-list-filter-panel) {
   max-width: 12rem;
 }
 
+.tenant-retention__grid label small {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.tenant-retention__operational {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1rem;
+}
+
+.tenant-retention__operational legend {
+  padding: 0 0.35rem;
+  color: var(--ink);
+  font-weight: 700;
+}
+
 .tenant-retention__hold {
   display: flex;
   align-items: flex-start;

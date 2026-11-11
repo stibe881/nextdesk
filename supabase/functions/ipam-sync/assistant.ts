@@ -2,7 +2,7 @@
 // Die Frage wird deterministisch einer Abfrage zugeordnet; die Antwort
 // stammt immer aus der Datenbank, nie aus einem Sprachmodell.
 
-import { detectNetworkCandidates } from "./detect.ts";
+import { detectNetworkCandidates } from "../_shared/ipam-ticket-detect.ts";
 
 export type AssistantIntent =
   | {

@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
 import {
+  getMobileAddressNetwork,
   getMobileAssetNetwork,
   type MobileNetworkAddress,
   mobileFindingLabel,
@@ -18,13 +19,19 @@ import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 export function IpamNetworkCard({
   tenantId,
   assetId,
+  address,
   title = "Netzwerk",
   refreshKey,
+  onLoaded,
 }: {
   tenantId: string | null;
-  assetId: string;
+  /** Gerät (Assetdetail) oder … */
+  assetId?: string;
+  /** … eine IP-Adresse (Absprung aus einer Mitteilung). */
+  address?: string;
   title?: string;
   refreshKey?: unknown;
+  onLoaded?: (count: number) => void;
 }) {
   const styles = useStyles();
   const colors = useAppColors();
@@ -33,23 +40,34 @@ export function IpamNetworkCard({
     key: string;
     addresses: MobileNetworkAddress[];
   } | null>(null);
-  const key = `${tenantId ?? ""}:${assetId}`;
+  const target = assetId ?? `ip:${address ?? ""}`;
+  const key = `${tenantId ?? ""}:${target}`;
+  const loadedRef = useRef(onLoaded);
+  useEffect(() => {
+    loadedRef.current = onLoaded;
+  });
 
   useEffect(() => {
     let active = true;
-    if (!tenantId) return;
-    getMobileAssetNetwork(tenantId, assetId)
+    if (!tenantId || (!assetId && !address)) return;
+    const request = assetId
+      ? getMobileAssetNetwork(tenantId, assetId)
+      : getMobileAddressNetwork(tenantId, address!);
+    request
       .then((next) => {
-        if (active)
-          setLoaded({ key: `${tenantId}:${assetId}`, addresses: next });
+        if (!active) return;
+        setLoaded({ key: `${tenantId}:${target}`, addresses: next });
+        loadedRef.current?.(next.length);
       })
       .catch(() => {
-        if (active) setLoaded({ key: `${tenantId}:${assetId}`, addresses: [] });
+        if (!active) return;
+        setLoaded({ key: `${tenantId}:${target}`, addresses: [] });
+        loadedRef.current?.(0);
       });
     return () => {
       active = false;
     };
-  }, [assetId, refreshKey, tenantId]);
+  }, [address, assetId, refreshKey, target, tenantId]);
 
   const addresses = loaded?.key === key ? loaded.addresses : [];
   if (addresses.length === 0) return null;

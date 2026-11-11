@@ -4,9 +4,36 @@ import {
   addressStatusTone,
   findingLabel,
   lastSeenLabel,
+  linkOptions,
   networkContextLine,
   parseNetworkLookup,
 } from "./ipam-network-view";
+
+describe("linkOptions", () => {
+  it("zeigt Gerät und Dienste mit Verknüpfungsstand", () => {
+    const lookup = parseNetworkLookup({
+      addresses: [
+        {
+          id: "a1",
+          address: "10.20.30.22",
+          asset: { id: "as1", name: "SRV-01" },
+          services: [
+            { id: "sv1", name: "Mail" },
+            { id: "sv2", name: "" },
+          ],
+        },
+      ],
+      prefixes: [],
+      linkedAssetIds: ["as1"],
+      linkedServiceIds: [],
+    })!;
+    expect(linkOptions(lookup.addresses[0]!, lookup)).toEqual({
+      asset: { id: "as1", name: "SRV-01", linked: true },
+      services: [{ id: "sv1", name: "Mail", linked: false }],
+    });
+    expect(findingLabel("coverage")).toBe("Nicht in PRTG überwacht");
+  });
+});
 
 describe("parseNetworkLookup", () => {
   it("liest Adressen, Subnetze und Funde", () => {

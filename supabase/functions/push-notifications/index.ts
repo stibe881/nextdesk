@@ -10,6 +10,7 @@ const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "notifications.push";
 const INVENTORY_FEATURE = "inventory.management";
 const ASSETS_FEATURE = "assets.management";
+const IPAM_FEATURE = "ipam.management";
 const ALL_CATEGORIES = [
   "assigned",
   "requester_reply",
@@ -26,6 +27,7 @@ const ALL_CATEGORIES = [
   "infrastructure",
   "security_report",
   "incident",
+  "ipam",
 ] as const;
 const AGENT_CATEGORIES = [
   "assigned",
@@ -57,6 +59,7 @@ const MODE_ONLY_CATEGORIES: readonly Category[] = [
   "infrastructure",
   "security_report",
   "incident",
+  "ipam",
 ];
 // Phishing reports are opt-in: off unless the person switched them on.
 const OPT_IN_MODE_CATEGORIES: readonly Category[] = ["security_report"];
@@ -739,6 +742,8 @@ async function applicableCategories(
     { data: canManageInventory, error: inventoryPermissionError },
     inventoryFeatures,
     { data: canManageAssets, error: assetsPermissionError },
+    { data: canReadIpam, error: ipamReadError },
+    { data: canManageIpam, error: ipamManageError },
   ] = await Promise.all([
     client.rpc("is_tenant_ticket_agent", { p_tenant_id: tenantId }),
     client.rpc("is_contracts_management_client_enabled", {
@@ -752,10 +757,19 @@ async function applicableCategories(
       FEATURE,
       INVENTORY_FEATURE,
       ASSETS_FEATURE,
+      IPAM_FEATURE,
     ]),
     client.rpc("has_tenant_permission", {
       p_tenant_id: tenantId,
       p_permission_code: "asset.manage",
+    }),
+    client.rpc("has_tenant_permission", {
+      p_tenant_id: tenantId,
+      p_permission_code: "ipam.read",
+    }),
+    client.rpc("has_tenant_permission", {
+      p_tenant_id: tenantId,
+      p_permission_code: "ipam.manage",
     }),
   ]);
   if (
@@ -763,6 +777,8 @@ async function applicableCategories(
     contractsError ||
     inventoryPermissionError ||
     assetsPermissionError ||
+    ipamReadError ||
+    ipamManageError ||
     !inventoryFeatures ||
     typeof isAgent !== "boolean" ||
     typeof canManageContracts !== "boolean" ||
@@ -788,6 +804,13 @@ async function applicableCategories(
     canManageAssets === true
   ) {
     categories.add("infrastructure");
+  }
+  // IP-Adressverwaltung: Funde, Agenten offline, ablaufende Reservierungen.
+  if (
+    inventoryFeatures[IPAM_FEATURE] === true &&
+    (canReadIpam === true || canManageIpam === true)
+  ) {
+    categories.add("ipam");
   }
   return [...categories];
 }
@@ -929,14 +952,24 @@ async function getStatus(
   action: Extract<Action, { type: "getStatus" }>,
   actorId: string,
 ): Promise<Response> {
-  const [feature, preferences, devices, categories, emailAvailable] =
-    await Promise.all([
-      featureConfiguration(admin, action.tenantId),
-      readPreferences(admin, action.tenantId, actorId),
-      readDevices(admin, action.tenantId, actorId),
-      applicableCategories(client, admin, action.tenantId, actorId),
-      emailNotificationsAvailable(admin, action.tenantId),
-    ]);
+  const [
+    feature,
+    preferences,
+    devices,
+    categories,
+    emailAvailable,
+    phishingTeam,
+  ] = await Promise.all([
+    featureConfiguration(admin, action.tenantId),
+    readPreferences(admin, action.tenantId, actorId),
+    readDevices(admin, action.tenantId, actorId),
+    applicableCategories(client, admin, action.tenantId, actorId),
+    emailNotificationsAvailable(admin, action.tenantId),
+    admin.rpc("phishing_team_member", {
+      p_tenant_id: action.tenantId,
+      p_user_id: actorId,
+    }),
+  ]);
   const workHours = await readWorkHours(
     admin,
     action.tenantId,
@@ -949,6 +982,14 @@ async function getStatus(
       apnsConfigured: isApnsConfigured(),
       contentLevel: feature.contentLevel,
       applicableCategories: categories,
+      // Push categories delivered regardless of the personal setting:
+      // members of the phishing team always get phishing reports and
+      // security cases.
+      alwaysDeliveredCategories:
+        !phishingTeam.error && phishingTeam.data === true &&
+          categories.includes("security_report")
+          ? ["security_report"]
+          : [],
       emailAvailable,
       preferences: preferencesForResponse(preferences),
       devices: devices.map(deviceForResponse),

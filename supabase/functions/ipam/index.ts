@@ -606,7 +606,7 @@ async function addressDetail(ctx: Ctx, action: Extract<Action, { type: "addressD
       : Promise.resolve({ data: [], error: null }),
     ctx.admin.from("asset_infrastructure").select("asset_id, category, hostname, ip_address, mac_address")
       .eq("tenant_id", ctx.tenantId)
-      .or(assetId ? `ip_address.eq."${ip}",asset_id.eq.${assetId}` : `ip_address.eq."${ip}"`)
+      .or(assetId ? `ip_inet.eq."${ip}",asset_id.eq.${assetId}` : `ip_inet.eq."${ip}"`)
       .limit(10),
     assetId
       ? ctx.admin.from("assets").select("id, name, asset_tag").eq("tenant_id", ctx.tenantId).eq("id", assetId)
@@ -684,22 +684,21 @@ async function linkedTickets(
     }
   };
   try {
+    // One query over the trigram indexes (0315), with the caller's rights.
     const safeIp = ip.replace(/[^0-9a-fA-F.:]/g, "");
-    if (safeIp) {
-      const { data } = await ctx.client.from("tickets").select("id, ticket_number, subject, description, updated_at")
-        .eq("tenant_id", ctx.tenantId)
-        .or(`subject.ilike.*${safeIp}*,description.ilike.*${safeIp}*`)
-        .order("updated_at", { ascending: false }).limit(30);
-      for (const row of (data ?? []) as Row[]) {
-        if (textMentionsAddress(`${row.subject ?? ""}\n${row.description ?? ""}`, safeIp)) add(row, "ip");
-      }
-    }
     const host = hostname?.replace(/[^A-Za-z0-9._-]/g, "") ?? "";
-    if (host.length >= 3) {
-      const { data } = await ctx.client.from("tickets").select("id, ticket_number, subject, updated_at")
-        .eq("tenant_id", ctx.tenantId).or(`subject.ilike.*${host}*,description.ilike.*${host}*`)
-        .order("updated_at", { ascending: false }).limit(10);
-      for (const row of (data ?? []) as Row[]) add(row, "hostname");
+    if (safeIp || host.length >= 3) {
+      const { data } = await ctx.client.rpc("ipam_ticket_mentions", {
+        p_tenant_id: ctx.tenantId,
+        p_ip: safeIp || null,
+        p_hostname: host.length >= 3 ? host : null,
+        p_limit: 40,
+      });
+      for (const row of (data ?? []) as Row[]) {
+        const text = `${row.subject ?? ""}\n${row.description ?? ""}`;
+        if (safeIp && textMentionsAddress(text, safeIp)) add(row, "ip");
+        else if (row.matched === "hostname") add(row, "hostname");
+      }
     }
     const ids = new Set<string>();
     for (const finding of findings ?? []) if (finding.ticket_id) ids.add(String(finding.ticket_id));
@@ -1604,8 +1603,9 @@ const FINDING_LABELS: Record<string, string> = {
   foreign_mac: "Fremde MAC auf reservierter IP",
   dns_mismatch: "DNS stimmt nicht",
   stale: "Lange nicht gesehen",
-  utilization: "Subnetz-Auslastung",
+  utilization: "Subnetz oder DHCP-Bereich fast voll",
   outside_prefix: "Adresse ausserhalb der Subnetze",
+  coverage: "Wichtiges Gerät ohne PRTG-Überwachung",
 };
 
 type TicketDraft = {

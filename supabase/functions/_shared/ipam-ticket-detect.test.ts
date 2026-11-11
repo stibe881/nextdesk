@@ -1,5 +1,9 @@
-import { assertEquals } from "jsr:@std/assert@1";
-import { detectNetworkCandidates, networkLookupTerms } from "./detect.ts";
+import { assert, assertEquals } from "jsr:@std/assert@1";
+import {
+  detectNetworkCandidates,
+  networkLookupTerms,
+  textMentionsAddress,
+} from "./ipam-ticket-detect.ts";
 
 Deno.test("detector finds addresses, networks, MACs and host names", () => {
   const result = detectNetworkCandidates([
@@ -21,4 +25,13 @@ Deno.test("detector output becomes lookup terms", () => {
     ),
     { ips: ["10.1.1.5"], macs: ["f0:9f:c2:11:08:3c"], hostnames: ["AP7"] },
   );
+});
+
+Deno.test("an address is mentioned only as a whole", () => {
+  assert(textMentionsAddress("Drucker 10.20.30.21 druckt nicht", "10.20.30.21"));
+  assert(textMentionsAddress("IP: 10.20.30.21.", "10.20.30.21"));
+  assert(!textMentionsAddress("Drucker 10.20.30.211", "10.20.30.21"));
+  assert(!textMentionsAddress("110.20.30.21", "10.20.30.21"));
+  assert(textMentionsAddress("Server fd00::1 down", "fd00::1"));
+  assert(!textMentionsAddress("Server fd00::12", "fd00::1"));
 });

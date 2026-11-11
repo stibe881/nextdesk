@@ -21,3 +21,19 @@ export async function getMobileAssetNetwork(
   });
   return parseMobileAssetNetwork(response) ?? [];
 }
+
+/**
+ * Netzwerkdaten einer IP-Adresse (Absprung aus einer Mitteilung der
+ * IP-Adressverwaltung). Gleiche Antwortform wie beim Gerät.
+ */
+export async function getMobileAddressNetwork(
+  tenantId: string,
+  address: string,
+): Promise<MobileNetworkAddress[]> {
+  const response = await invokeNextDesk<unknown>("ipam-sync", {
+    type: "addressNetwork",
+    tenantId,
+    address,
+  });
+  return parseMobileAssetNetwork(response) ?? [];
+}

@@ -1,9 +1,27 @@
 import { describe, expect, it } from "vitest";
+import serverCopy from "../../../../supabase/functions/_shared/ipam-ticket-detect.ts?raw";
+import webCopy from "./ipam-ticket-detect.ts?raw";
 import {
   detectNetworkCandidates,
   hasNetworkCandidates,
   networkLookupTerms,
+  textMentionsAddress,
 } from "./ipam-ticket-detect";
+
+describe("ipam-ticket-detect", () => {
+  it("Web- und Function-Kopie sind identisch", () => {
+    expect(webCopy).toBe(serverCopy);
+  });
+
+  it("erkennt nur ganze Adressen im Text", () => {
+    expect(textMentionsAddress("Drucker 10.20.30.21.", "10.20.30.21")).toBe(
+      true,
+    );
+    expect(textMentionsAddress("Drucker 10.20.30.211", "10.20.30.21")).toBe(
+      false,
+    );
+  });
+});
 
 describe("detectNetworkCandidates", () => {
   it("findet IPv4-Adressen und Netze, aber keine Masken oder Versionen", () => {

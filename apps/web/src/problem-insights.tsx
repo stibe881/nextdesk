@@ -8,11 +8,11 @@ type CandidateTicket = {
   id: string;
   ticketNumber: string;
   subject: string;
-  categoryName: string | null;
+  categoryName?: string | null;
 };
 type CandidateGroup = {
   key: string;
-  kind: "category" | "keyword";
+  kind: "category" | "keyword" | "similar";
   label: string;
   tickets: CandidateTicket[];
 };
@@ -77,9 +77,9 @@ export function ProblemCandidates({
         Object.fromEntries(
           data.groups.map((group) => [
             group.key,
-            group.kind === "category"
-              ? `Häufung: ${group.label}`
-              : `Häufung «${group.label}»`,
+            group.kind === "keyword"
+              ? `Häufung «${group.label}»`
+              : `Häufung: ${group.label}`,
           ]),
         ),
       );
@@ -176,8 +176,12 @@ export function ProblemCandidates({
                 >
                   <strong>{group.tickets.length}</strong>
                   <span>
-                    {group.kind === "category" ? "Kategorie" : "Stichwort"} «
-                    {group.label}»
+                    {group.kind === "category"
+                      ? "Kategorie"
+                      : group.kind === "keyword"
+                        ? "Stichwort"
+                        : "Ähnlich wie"}{" "}
+                    «{group.label}»
                   </span>
                   {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                 </button>
