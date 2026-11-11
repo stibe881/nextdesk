@@ -145,6 +145,8 @@ einen Stern öffnet eine Seite mit Ihrer Auswahl; dort können Sie die Sterne no
 ändern, einen Kommentar schreiben und mit **Bewertung senden** bestätigen. Sie
 müssen dafür nicht angemeldet sein. Der Link ist persönlich und 14 Tage gültig.
 Ein Ticket lässt sich nur einmal per E-Mail-Link bewerten.
+Haben Sie drei Tage nach der Mail «Ticket gelöst» noch nicht bewertet, erhalten
+Sie einmalig eine freundliche Erinnerung mit denselben Sternen.
 
 ![Bewertung eines gelösten Tickets mit Sternen und Kommentar](images/ma-bewertung.jpg)
 
