@@ -13272,4 +13272,83 @@ end;
 $$;
 SQL
 
+# 0300: IP-Adressverwaltung (Grundlage).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_vrf uuid;
+  v_super uuid;
+  v_net uuid;
+  v_addr uuid;
+  v_next inet;
+  v_free cidr;
+begin
+  insert into public.ipam_vrfs (tenant_id, name) values (v_tenant, 'Gäste') returning id into v_vrf;
+  insert into public.ipam_prefixes (tenant_id, prefix, status, description)
+  values (v_tenant, '172.16.64.0/18', 'container', 'Campus Baar') returning id into v_super;
+  insert into public.ipam_prefixes (tenant_id, prefix, gateway, dhcp_start, dhcp_end, description)
+  values (v_tenant, '172.16.67.0/24', '172.16.67.1', '172.16.67.100', '172.16.67.199', 'Drucker')
+  returning id into v_net;
+
+  -- Adresse wird dem spezifischsten Prefix zugeordnet.
+  insert into public.ipam_addresses (tenant_id, address, hostname, status)
+  values (v_tenant, '172.16.67.2', 'DRU-01', 'active') returning id into v_addr;
+  if (select prefix_id from public.ipam_addresses where id = v_addr) <> v_net then
+    raise exception 'ipam test: address not assigned to most specific prefix';
+  end if;
+  -- Gleiche Adresse in anderem VRF ist erlaubt.
+  insert into public.ipam_addresses (tenant_id, vrf_id, address) values (v_tenant, v_vrf, '172.16.67.2');
+  begin
+    insert into public.ipam_addresses (tenant_id, address) values (v_tenant, '172.16.67.2');
+    raise exception 'ipam test: duplicate address accepted';
+  exception when unique_violation then null;
+  end;
+
+  -- Nächste freie: .1 Gateway, .2 belegt -> .3
+  v_next := public.ipam_next_free_address(v_tenant, v_net);
+  if host(v_next) <> '172.16.67.3' then
+    raise exception 'ipam test: next free address wrong: %', v_next;
+  end if;
+  v_next := public.ipam_next_free_address(v_tenant, v_net, '172.16.67.99');
+  if host(v_next) <> '172.16.67.200' then
+    raise exception 'ipam test: DHCP range not skipped: %', v_next;
+  end if;
+
+  -- Nächstes freies /24 im /18: .64 und .67 sind belegt? Nur .67 -> .64 frei
+  v_free := public.ipam_next_free_prefix(v_tenant, v_super, 24);
+  if v_free <> '172.16.64.0/24'::cidr then
+    raise exception 'ipam test: next free prefix wrong: %', v_free;
+  end if;
+  insert into public.ipam_prefixes (tenant_id, prefix) values (v_tenant, '172.16.64.0/22');
+  v_free := public.ipam_next_free_prefix(v_tenant, v_super, 24);
+  if v_free <> '172.16.68.0/24'::cidr then
+    raise exception 'ipam test: next free prefix after /22 wrong: %', v_free;
+  end if;
+
+  -- Neues, spezifischeres Prefix übernimmt bestehende Adressen.
+  insert into public.ipam_prefixes (tenant_id, prefix) values (v_tenant, '172.16.67.0/28');
+  if (select masklen(p.prefix) from public.ipam_addresses a join public.ipam_prefixes p on p.id = a.prefix_id where a.id = v_addr) <> 28 then
+    raise exception 'ipam test: addresses not reassigned to new prefix';
+  end if;
+
+  if (select used from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 1
+     or (select capacity from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 254 then
+    raise exception 'ipam test: usage wrong';
+  end if;
+  if public.ipam_record_utilization() < 1 then
+    raise exception 'ipam test: utilization not recorded';
+  end if;
+  begin
+    insert into public.ipam_prefixes (tenant_id, prefix, gateway) values (v_tenant, '10.9.9.0/24', '10.9.8.1');
+    raise exception 'ipam test: gateway outside prefix accepted';
+  exception when check_violation then null;
+  end;
+  raise notice 'ipam foundation checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
