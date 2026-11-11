@@ -1,3 +1,4 @@
+import { FormChips } from "./form-kit";
 import {
   ChevronLeft,
   ChevronRight,
@@ -3384,32 +3385,18 @@ export function CatalogEditor({
                         ? ` · ${draft.categoryIds.length} gewählt`
                         : ""}
                     </legend>
-                    <ul>
-                      {categories.map((entry) => {
-                        const checked = draft.categoryIds.includes(entry.id);
-                        return (
-                          <li key={entry.id}>
-                            <label>
-                              <input
-                                checked={checked}
-                                onChange={() =>
-                                  setDraft({
-                                    ...draft,
-                                    categoryIds: checked
-                                      ? draft.categoryIds.filter(
-                                          (id) => id !== entry.id,
-                                        )
-                                      : [...draft.categoryIds, entry.id],
-                                  })
-                                }
-                                type="checkbox"
-                              />
-                              {entry.name}
-                            </label>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                    <FormChips
+                      label="Kategorien"
+                      multiple
+                      onChange={(categoryIds) =>
+                        setDraft({ ...draft, categoryIds })
+                      }
+                      options={categories.map((entry) => ({
+                        label: entry.name,
+                        value: entry.id,
+                      }))}
+                      value={draft.categoryIds}
+                    />
                     <label className="shop__stacked-label">
                       Neue Kategorie hinzufügen (optional)
                       <input
