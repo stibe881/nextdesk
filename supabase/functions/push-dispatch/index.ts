@@ -68,7 +68,7 @@ function category(kind: string): Category | null {
   return notificationCategory(kind);
 }
 
-function payloadKind(
+export function payloadKind(
   kind: string,
   fallback: Category,
 ):
@@ -335,6 +335,20 @@ export function securityCaseFields(
   return fields;
 }
 
+/** Opaque ids the app opens for inventory notifications (no names). */
+export function inventoryTargetFields(
+  payload: Record<string, unknown>,
+): Record<string, string> {
+  const fields: Record<string, string> = {};
+  const itemId = payloadText(payload, "inventoryItemId", 36);
+  const locationId = payloadText(payload, "inventoryLocationId", 36);
+  if (itemId && UUID.test(itemId)) fields.inventoryItemId = itemId;
+  if (locationId && UUID.test(locationId)) {
+    fields.inventoryLocationId = locationId;
+  }
+  return fields;
+}
+
 /** Push fields of inventory reminders. */
 export function inventoryFields(
   kind: string,
@@ -539,12 +553,16 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     );
   }
   // Inventory: reorder and stock count reminders (low stock keeps its text).
+  // Low stock keeps its neutral text but now opens the article.
   let inventory: Record<string, string> = {};
-  if (isInventoryNotificationKind(row.kind) && row.kind !== "inventory.low_stock") {
-    inventory = inventoryFields(
-      row.kind,
-      await notificationPayload(admin, row.notification_id),
-    );
+  if (isInventoryNotificationKind(row.kind)) {
+    const payload = await notificationPayload(admin, row.notification_id);
+    inventory = {
+      ...(row.kind !== "inventory.low_stock"
+        ? inventoryFields(row.kind, payload)
+        : {}),
+      ...inventoryTargetFields(payload),
+    };
   }
   let watched: Record<string, string | boolean> = {};
   if (row.kind.startsWith("ticket.watch.") && row.notification_id) {
@@ -596,6 +614,7 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     ...incident,
     ...delegated,
     kind: payloadKind(row.kind, preferenceCategory),
+    notificationKind: row.kind,
     tenantId: row.tenant_id,
     notificationId: row.notification_id ?? row.outbox_id,
     ...(row.ticket_id ? { ticketId: row.ticket_id } : {}),

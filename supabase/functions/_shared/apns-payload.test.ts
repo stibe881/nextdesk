@@ -68,7 +68,7 @@ Deno.test("summary payload is source-neutral", () => {
   assertFalse(String(alert.body).toLowerCase().includes("ticket"));
 });
 
-Deno.test("low-stock payload contains no item data or deep link", () => {
+Deno.test("low-stock payload contains no item names or details", () => {
   const payload = buildApnsPayload({
     kind: "inventory_low_stock",
     tenantId: "00000000-0000-4000-8000-000000000001",
@@ -357,4 +357,61 @@ Deno.test("security cases, shop and inventory reminders have own texts", () => {
     alert({ ...base, kind: "inventory_low_stock", inventoryEvent: "count_due" }).title,
     "Inventur fällig",
   );
+});
+
+Deno.test("payload carries the exact kind and the ids the app opens", () => {
+  const base = {
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+  };
+  const itemId = "00000000-0000-4000-8000-000000000010";
+  const locationId = "00000000-0000-4000-8000-000000000011";
+  const body = (input: Parameters<typeof buildApnsPayload>[0]) =>
+    buildApnsPayload(input).body as Record<string, unknown>;
+
+  const reorder = body({
+    ...base,
+    kind: "inventory_low_stock",
+    notificationKind: "inventory.reorder",
+    inventoryEvent: "reorder",
+    inventoryItemId: itemId,
+  });
+  assertEquals(reorder.notificationKind, "inventory.reorder");
+  assertEquals(reorder.inventoryItemId, itemId);
+  assertFalse("inventoryLocationId" in reorder);
+
+  const count = body({
+    ...base,
+    kind: "inventory_low_stock",
+    notificationKind: "inventory.count_due",
+    inventoryLocationId: locationId,
+  });
+  assertEquals(count.inventoryLocationId, locationId);
+
+  // Only UUIDs and plain kinds, never names or paths.
+  const invalid = body({
+    ...base,
+    kind: "inventory_low_stock",
+    notificationKind: "Inventory Count",
+    inventoryItemId: "../x",
+  });
+  assertFalse("inventoryItemId" in invalid);
+  assertFalse("notificationKind" in invalid);
+
+  const task = body({
+    ...base,
+    kind: "service_task",
+    notificationKind: "service_task.overdue",
+    occurrenceId: itemId,
+  });
+  assertEquals(task.occurrenceId, itemId);
+  assertEquals(task.notificationKind, "service_task.overdue");
+
+  const summary = body({
+    ...base,
+    kind: "summary",
+    notificationKind: "ticket.assigned",
+    summaryCount: 2,
+  });
+  assertFalse("notificationKind" in summary);
 });

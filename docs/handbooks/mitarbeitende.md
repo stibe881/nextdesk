@@ -50,7 +50,8 @@ Oben rechts finden Sie:
 
 - **+ (Erfassen)** → **Ticket erfassen**
 - die **globale Suche** («Global suchen …») über Ihre Tickets
-- die **Glocke** für Benachrichtigungen; mit «Alle als gelesen markieren»
+- die **Glocke** für Benachrichtigungen; ein Klick auf einen Eintrag öffnet
+  das betroffene Ticket bzw. die Bestellung, mit «Alle als gelesen markieren»
   leeren Sie die Liste
 
 Gibt es eine aktive Störung (z. B. «E-Mail ausgefallen»), erscheint oben ein
@@ -263,7 +264,9 @@ Geräten (iPhone, Android) abgeglichen: Die letzte Änderung gilt überall. Auf 
 unterwegs, auf Wunsch mit Foto. In den App-Einstellungen schalten Sie Benachrichtigungen, z. B.
 für Antworten des Supports, pro Hinweis einzeln als **Push** und als **Mail**
 ein oder aus (gleich wie im Browser) und wählen unter **Benachrichtigungszeit**, an
-welchen Tagen und zu welchen Zeiten sie kommen.
+welchen Tagen und zu welchen Zeiten sie kommen. Ein Tipp auf eine
+Mitteilung öffnet direkt das betroffene Ticket bzw. die Bestellung im Shop,
+auch wenn die App vorher geschlossen war.
 
 Die Handbücher finden Sie auch in der App: **Profil → Hilfe und
 Rechtliches**. Bildschirmfotos lassen sich dort antippen und vergrössern.

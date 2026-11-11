@@ -50,7 +50,11 @@ export default function InventoryScreen() {
   );
   const [query, setQuery] = useState("");
   // «?item=…» from a scanned article label shows only this article.
-  const { item: itemParam } = useLocalSearchParams<{ item?: string }>();
+  // «?location=…» from an inventory reminder (count due) shows that location.
+  const { item: itemParam, location: locationParam } = useLocalSearchParams<{
+    item?: string;
+    location?: string;
+  }>();
   const scannedItemId =
     typeof itemParam === "string" && itemParam.trim()
       ? itemParam.trim().toLowerCase()
@@ -58,6 +62,15 @@ export default function InventoryScreen() {
   const [appliedItemId, setAppliedItemId] = useState(scannedItemId);
   if (scannedItemId !== "" && scannedItemId !== appliedItemId) {
     setAppliedItemId(scannedItemId);
+  }
+  const requestedLocationId =
+    typeof locationParam === "string" && locationParam.trim()
+      ? locationParam.trim().toLowerCase()
+      : "";
+  const [appliedLocationId, setAppliedLocationId] =
+    useState(requestedLocationId);
+  if (requestedLocationId !== "" && requestedLocationId !== appliedLocationId) {
+    setAppliedLocationId(requestedLocationId);
   }
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -118,17 +131,27 @@ export default function InventoryScreen() {
     () => new Set(overview?.lowStockIds ?? []),
     [overview],
   );
+  const appliedLocation = useMemo(
+    () =>
+      appliedLocationId
+        ? ((overview?.locations ?? []).find(
+            (location) => location.id.toLowerCase() === appliedLocationId,
+          ) ?? null)
+        : null,
+    [overview, appliedLocationId],
+  );
   const items = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("de-CH");
     return (overview?.items ?? []).filter(
       (item) =>
         (!appliedItemId || item.id.toLowerCase() === appliedItemId) &&
+        (!appliedLocation || item.locationName === appliedLocation.name) &&
         (!needle ||
-        `${item.name} ${item.articleNumber ?? ""} ${item.locationName ?? ""}`
-          .toLocaleLowerCase("de-CH")
-          .includes(needle)),
+          `${item.name} ${item.articleNumber ?? ""} ${item.locationName ?? ""}`
+            .toLocaleLowerCase("de-CH")
+            .includes(needle)),
     );
-  }, [overview, query, appliedItemId]);
+  }, [overview, query, appliedItemId, appliedLocation]);
 
   const canReceive = overview?.canMove === true;
   const locations = overview?.locations ?? [];
@@ -288,9 +311,25 @@ export default function InventoryScreen() {
           />
         </View>
 
+        {appliedLocation ? (
+          <Text style={styles.hint}>
+            Lagerort «{appliedLocation.name}».{" "}
+            <Text
+              accessibilityRole="button"
+              onPress={() => {
+                setAppliedLocationId("");
+                router.setParams({ location: "" } as never);
+              }}
+              style={{ color: colors.primaryText, fontWeight: "700" }}
+            >
+              Alle Artikel anzeigen
+            </Text>
+          </Text>
+        ) : null}
+
         {appliedItemId ? (
           <Text style={styles.hint}>
-            Gescannter Artikel.{" "}
+            Nur dieser Artikel.{" "}
             <Text
               accessibilityRole="button"
               onPress={() => {
