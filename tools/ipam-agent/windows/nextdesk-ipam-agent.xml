@@ -1,0 +1,36 @@
+<!--
+  WinSW-Konfiguration (https://github.com/winsw/winsw, Version 2.x oder 3.x).
+  WinSW-x64.exe neben diese Datei kopieren und in nextdesk-ipam-agent.exe
+  umbenennen; danach «nextdesk-ipam-agent.exe install» (siehe README und
+  install-service.ps1).
+-->
+<service>
+  <id>nextdesk-ipam-agent</id>
+  <name>nextDesk IPAM-Agent</name>
+  <description>Netzwerk-Discovery (Ping, ARP, SNMP, LLDP) und Microsoft DHCP/DNS für nextDesk. Verbindet sich nur ausgehend per HTTPS.</description>
+  <executable>%ProgramFiles%\nodejs\node.exe</executable>
+  <arguments>"%ProgramFiles%\nextDesk\ipam-agent\dist\main.js"</arguments>
+  <workingdirectory>%ProgramFiles%\nextDesk\ipam-agent</workingdirectory>
+  <env name="IPAM_AGENT_CONFIG" value="%ProgramData%\nextDesk\ipam-agent\config.json" />
+  <env name="NODE_ENV" value="production" />
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <onfailure action="restart" delay="30 sec" />
+  <onfailure action="restart" delay="2 min" />
+  <resetfailure>1 hour</resetfailure>
+  <logpath>%ProgramData%\nextDesk\ipam-agent\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+  <!--
+    Dienstkonto: am besten ein gMSA (z. B. DOMAIN\gmsa-ndipam$), Mitglied von
+    «DHCP Users» (lesen) und nur bei Schreibaufträgen zusätzlich
+    «DHCP Administrators» bzw. delegierte DNS-Rechte. Ohne DHCP/DNS genügt
+    «NT SERVICE\nextdesk-ipam-agent» bzw. LocalService.
+  <serviceaccount>
+    <username>DOMAIN\gmsa-ndipam$</username>
+    <allowservicelogon>true</allowservicelogon>
+  </serviceaccount>
+  -->
+</service>

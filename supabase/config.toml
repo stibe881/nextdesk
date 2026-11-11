@@ -289,3 +289,9 @@ verify_jwt = true
 # weckt die Funktion mit dem Dispatch-Geheimnis.
 [functions.ipam-api]
 verify_jwt = false
+
+[functions.ipam-agent]
+verify_jwt = false
+
+[functions.ipam-discovery]
+verify_jwt = true
