@@ -134,6 +134,7 @@ import { Infrastructure } from "./infrastructure";
 import { Ipam } from "./ipam";
 import { IpamImportWizard } from "./ipam-import";
 import { IpamApiSettings } from "./ipam-api-settings";
+import { IpamDiscoveryPanel } from "./ipam-discovery";
 import { Incidents } from "./incidents";
 import { SecurityCases } from "./security-cases";
 import {
@@ -1460,6 +1461,17 @@ function baseNotificationPresentation(
         description: `Eine verdächtige E-Mail wurde gemeldet (${ticketLabel}${risk ? `, Risiko ${risk}` : ""}).`,
         Icon: AlertTriangle,
         title: "Phishing-Meldung",
+      };
+    }
+    case "monitoring.ipam_finding": {
+      const address = notificationPayloadText(notification, "number", 60);
+      const title = notificationPayloadText(notification, "title", 200);
+      const critical =
+        notificationPayloadText(notification, "severity", 20) === "critical";
+      return {
+        description: `${address ? `${address}: ` : ""}${title ?? "Neuer Fund in der IP-Adressverwaltung"}`,
+        Icon: AlertTriangle,
+        title: critical ? "IP-Konflikt" : "IP-Adressverwaltung",
       };
     }
     case "monitoring.incident": {
@@ -4362,6 +4374,9 @@ function AuthenticatedApp() {
     } else if (notification.kind.startsWith("shop.order.")) {
       setSection("Shop");
       setNotificationPanelOpen(false);
+    } else if (notification.kind === "monitoring.ipam_finding") {
+      setSection("IP-Adressen");
+      setNotificationPanelOpen(false);
     } else if (notification.kind.startsWith("monitoring.")) {
       setIncidentFocusId(
         notificationPayloadText(notification, "incidentId", 64),
@@ -6366,6 +6381,7 @@ function AuthenticatedApp() {
                 tenantId={panel.tenantId}
               />
             )}
+            discoveryPanel={(panel) => <IpamDiscoveryPanel {...panel} />}
             importPanel={(panel) => <IpamImportWizard {...panel} />}
             key={activeTenant.id}
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}

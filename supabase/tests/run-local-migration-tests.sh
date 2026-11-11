@@ -13352,10 +13352,6 @@ rollback;
 SQL
 
 # 0301: IPAM Kern – freigegebene Adressen werden wieder angeboten.
-
-# 0303: IPAM-Integrationen (Intune/PRTG-Abgleich, Nachschlagen, API, Webhooks).
-
-# 0302: IPAM Discovery (Agenten, Aufträge, DHCP/DNS, Beobachtungen, Funde).
 psql -v ON_ERROR_STOP=1 <<'SQL'
 begin;
 do $$
@@ -13383,7 +13379,18 @@ begin
     raise exception 'ipam core test: usage wrong';
   end if;
   raise notice 'ipam core checks ran';
+end;
+$$;
+rollback;
+SQL
 
+# 0303: IPAM-Integrationen (Intune/PRTG-Abgleich, Nachschlagen, API, Webhooks).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_net uuid;
   v_pc uuid;
   v_srv uuid;
   v_asset uuid;
@@ -13540,7 +13547,17 @@ begin
     raise exception 'ipam integrations test: authenticated may access integration data';
   end if;
   raise notice 'ipam integrations checks ran';
+end;
+$$;
+rollback;
+SQL
 
+# 0302: IPAM Discovery (Agenten, Aufträge, DHCP/DNS, Beobachtungen, Funde).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
   v_manager constant uuid := '00000000-0000-4000-8000-000000000002';
   v_requester constant uuid := '00000000-0000-4000-8000-000000000001';
   v_agent uuid;

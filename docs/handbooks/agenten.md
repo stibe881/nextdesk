@@ -652,6 +652,17 @@ In der **Infrastruktur → Netzwerkkarte** zeigt jedes Gerät zusätzlich sein
 Subnetz und VLAN (aus der IP-Adresse des Geräts). Über die Legende über der
 Karte heben Sie die Geräte eines VLAN hervor.
 
+**Discovery**
+
+Im Register **Discovery** sehen Sie die Netzwerkagenten mit Status und
+letzter Meldung, die letzten **Scans** und unter **DHCP & DNS** die
+DHCP-Bereiche mit Auslastung, Leases und den Vergleich der DNS-Einträge mit
+der Dokumentation. Mit **Jetzt scannen** stossen Sie einen Scan an. Dort
+beauftragen Sie auch DHCP-Reservierungen oder fehlende bzw. abweichende
+DNS-Einträge; der Agent führt den Auftrag aus, sobald eine Person mit
+Verwaltungsrecht ihn freigegeben hat. Neue Konflikte melden sich per Glocke,
+Push und E-Mail (Kategorie Störungen).
+
 **Import**
 
 Im Register **Import** übernehmen Sie bestehende Listen in vier Schritten
