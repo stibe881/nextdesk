@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # Handbuch für Mitarbeitende
@@ -29,6 +29,10 @@ brauchen.
   eigenes Konto an. Nach der Bestätigung per E-Mail erstellen Sie Ihren
   eigenen Arbeitsbereich. Gehört Ihre E-Mail-Domain zu einem Unternehmen mit
   SSO, melden Sie sich stattdessen mit SSO an.
+
+Scheitert die Anmeldung, erscheint unter dem Formular eine rote Meldung mit dem
+Text des Anmeldedienstes (z. B. von Microsoft). Geben Sie diesen Text an Ihre
+IT weiter.
 
 ![Anmeldeseite mit SSO und Anmeldelink](images/login.jpg)
 
