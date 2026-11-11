@@ -405,10 +405,10 @@ const NAVIGATION_CATEGORIES = [
     sectionLabels: ["Raumplanung", "Eintritte", "Serviceaufgaben"],
   },
   {
-    heading: "WISSEN & RESSOURCEN",
+    heading: "RESSOURCEN",
     id: "navigation-category-resources",
-    navigationLabel: "Wissen und Ressourcen",
-    sectionLabels: ["Wissen", "Assets", "Lager", "Verträge", "Lizenzen"],
+    navigationLabel: "Ressourcen",
+    sectionLabels: ["Assets", "Lager", "Verträge", "Lizenzen"],
   },
   {
     heading: "DIENSTE & ÜBERWACHUNG",
@@ -5428,8 +5428,14 @@ function AuthenticatedApp() {
             : label === "Störungen"
               ? "aktive Störungen sind noch nicht bestätigt"
               : "Eintritte sind noch nicht in Bearbeitung";
-  // Berichte stands on its own below the categories.
-  const reportsNavigationItem = navigationItemsBySection.get("Berichte");
+  // Berichte und darunter die Wissensdatenbank stehen für sich unter den
+  // Kategorien.
+  const standaloneNavigationItems = (["Berichte", "Wissen"] as const).flatMap(
+    (label) => {
+      const item = navigationItemsBySection.get(label);
+      return item ? [item] : [];
+    },
+  );
   const navigationGroups = NAVIGATION_CATEGORIES.map((category) => ({
     ...category,
     items: category.sectionLabels.flatMap((label) => {
@@ -5735,35 +5741,30 @@ function AuthenticatedApp() {
                 );
               })}
             </div>
-            {reportsNavigationItem ? (
+            {standaloneNavigationItems.length > 0 ? (
               <nav
-                aria-label="Berichte"
+                aria-label="Berichte und Wissensdatenbank"
                 className="workplace-primary-navigation rail-reports-navigation"
               >
-                <button
-                  aria-current={
-                    navSection === reportsNavigationItem.label
-                      ? "page"
-                      : undefined
-                  }
-                  className={
-                    navSection === reportsNavigationItem.label
-                      ? "nav-item active"
-                      : "nav-item"
-                  }
-                  onClick={() => {
-                    setPersonalSettingsOpen(false);
-                    setSection(reportsNavigationItem.label);
-                  }}
-                  type="button"
-                >
-                  <reportsNavigationItem.Icon
-                    aria-hidden="true"
-                    size={18}
-                    strokeWidth={1.8}
-                  />
-                  {sectionDisplayLabel(reportsNavigationItem.label)}
-                </button>
+                {standaloneNavigationItems.map((item) => (
+                  <button
+                    aria-current={
+                      navSection === item.label ? "page" : undefined
+                    }
+                    className={
+                      navSection === item.label ? "nav-item active" : "nav-item"
+                    }
+                    key={item.label}
+                    onClick={() => {
+                      setPersonalSettingsOpen(false);
+                      setSection(item.label);
+                    }}
+                    type="button"
+                  >
+                    <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
+                    {sectionDisplayLabel(item.label)}
+                  </button>
+                ))}
               </nav>
             ) : null}
           </>
