@@ -22411,3 +22411,13 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 .shop__options-editor .fk-chips {
   margin-bottom: 10px;
 }
+
+/* Formulare im gemeinsamen Stil: alte Zwei-Spalten-Raster der Dialoge dürfen
+   das Layout (Zusammenfassung links, Abschnitte rechts) nicht eng drücken. */
+html body form:has(> .fk-layout) {
+  display: block;
+}
+.service-assets__asset-editor-dialog:has(.fk-layout),
+.service-assets__service-editor-dialog:has(.fk-layout) {
+  width: min(100%, 1040px);
+}
