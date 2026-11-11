@@ -45,6 +45,8 @@ export type IpamLookups = {
   people: NamedOption[];
   teams: NamedOption[];
   services: NamedOption[];
+  /** Prefixes (for supernet pickers); optional. */
+  prefixes?: IpamPrefix[];
 };
 
 type Saved = (message: string) => void;
@@ -211,19 +213,45 @@ export function VrfDialog({
 }
 
 export function SiteDialog({
+  assetLocations,
   initial,
   lookups,
   onClose,
   onSaved,
+  templates,
   tenantId,
 }: {
+  /** Asset locations for the link (IPAM-Redesign); hidden when missing. */
+  assetLocations?:
+    { id: string; name: string; linkedSiteId: string | null }[] | undefined;
   initial: IpamSite | null;
   lookups: IpamLookups;
   onClose: () => void;
   onSaved: Saved;
+  templates?: { id?: string; name: string }[] | undefined;
   tenantId: string;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
+  const [assetLocationId, setAssetLocationId] = useState(
+    initial?.assetLocationId ?? "",
+  );
+  const [vlanBase, setVlanBase] = useState(
+    initial?.vlanBase ? String(initial.vlanBase) : "",
+  );
+  const [supernetPrefixId, setSupernetPrefixId] = useState(
+    initial?.supernetPrefixId ?? "",
+  );
+  const [templateId, setTemplateId] = useState(initial?.templateId ?? "");
+  const supernets = useMemo(
+    () =>
+      (lookups.prefixes ?? [])
+        .filter((prefix) => prefix.status === "container")
+        .map((prefix) => ({
+          id: prefix.id,
+          name: `${prefix.prefix}${prefix.description ? ` · ${prefix.description}` : ""}`,
+        })),
+    [lookups.prefixes],
+  );
   const [code, setCode] = useState(initial?.code ?? "");
   const [address, setAddress] = useState(initial?.address ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
@@ -242,6 +270,14 @@ export function SiteDialog({
           address,
           description,
           departmentId: departmentId || null,
+          ...(assetLocations
+            ? {
+                assetLocationId: assetLocationId || null,
+                vlanBase: vlanBase ? Number(vlanBase) : null,
+                supernetPrefixId: supernetPrefixId || null,
+                templateId: templateId || null,
+              }
+            : {}),
         },
       });
       onSaved(initial ? "Standort gespeichert." : "Standort angelegt.");
@@ -297,6 +333,71 @@ export function SiteDialog({
           value={departmentId}
         />
       </FormCard>
+      {assetLocations ? (
+        <FormCard title="Verknüpfung und Vorlage">
+          <FormField
+            hint="Geräte, Racks und Tickets dieses Asset-Standorts erscheinen beim Standort."
+            label="Asset-Standort"
+            optional
+          >
+            <OptionSelect
+              empty="Nicht verknüpft"
+              onChange={setAssetLocationId}
+              options={assetLocations
+                .filter(
+                  (location) =>
+                    !location.linkedSiteId ||
+                    location.linkedSiteId === initial?.id,
+                )
+                .map((location) => ({ id: location.id, name: location.name }))}
+              value={assetLocationId}
+            />
+          </FormField>
+          <FormGrid>
+            <FormField
+              hint="Supernetz des Standorts für den Abgleich mit der Vorlage."
+              label="Standort-Supernetz"
+              optional
+            >
+              <OptionSelect
+                empty="Kein Supernetz"
+                onChange={setSupernetPrefixId}
+                options={supernets}
+                value={supernetPrefixId}
+              />
+            </FormField>
+            <FormField
+              hint="VLAN-ID = Basis + Versatz der Vorlage."
+              label="VLAN-Basis"
+              optional
+            >
+              <input
+                inputMode="numeric"
+                max={4094}
+                min={1}
+                onChange={(event) => setVlanBase(event.target.value)}
+                type="number"
+                value={vlanBase}
+              />
+            </FormField>
+          </FormGrid>
+          {templates && templates.some((template) => template.id) ? (
+            <FormField label="Standort-Vorlage" optional>
+              <OptionSelect
+                empty="Keine Vorlage"
+                onChange={setTemplateId}
+                options={templates
+                  .filter((template) => template.id)
+                  .map((template) => ({
+                    id: template.id!,
+                    name: template.name,
+                  }))}
+                value={templateId}
+              />
+            </FormField>
+          ) : null}
+        </FormCard>
+      ) : null}
     </FormDialog>
   );
 }
@@ -320,6 +421,8 @@ export function VlanDialog({
   const [name, setName] = useState(initial?.name ?? "");
   const [siteId, setSiteId] = useState(initial?.siteId ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
+  const [zone, setZone] = useState(initial?.zone ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [departmentId, setDepartmentId] = useState(initial?.departmentId ?? "");
   const { busy, error, run } = useSubmit(onClose);
   const submit = (event: FormEvent) => {
@@ -334,6 +437,8 @@ export function VlanDialog({
           name,
           siteId: siteId || null,
           description,
+          zone: zone.trim() || null,
+          notes: notes.trim() || null,
           departmentId: departmentId || null,
         },
       });
@@ -392,6 +497,23 @@ export function VlanDialog({
             value={description}
           />
         </FormField>
+        <FormGrid>
+          <FormField label="Zone" optional>
+            <input
+              maxLength={60}
+              onChange={(event) => setZone(event.target.value)}
+              placeholder="LAN, WLAN, MGMT …"
+              value={zone}
+            />
+          </FormField>
+          <FormField label="Notiz" optional>
+            <input
+              maxLength={4000}
+              onChange={(event) => setNotes(event.target.value)}
+              value={notes}
+            />
+          </FormField>
+        </FormGrid>
         <DepartmentField
           departments={lookups.departments}
           onChange={setDepartmentId}
@@ -403,27 +525,30 @@ export function VlanDialog({
 }
 
 export function PrefixDialog({
+  draft,
   initial,
   lookups,
   onClose,
   onSaved,
   tenantId,
 }: {
+  /** Prefilled values for a new prefix (e.g. a free block of the map). */
+  draft?: Partial<IpamPrefix> | undefined;
   initial: IpamPrefix | null;
   lookups: IpamLookups;
   onClose: () => void;
   onSaved: (message: string, id: string) => void;
   tenantId: string;
 }) {
-  const [prefix, setPrefix] = useState(initial?.prefix ?? "");
-  const [description, setDescription] = useState(initial?.description ?? "");
-  const [vrfId, setVrfId] = useState(initial?.vrfId ?? "");
-  const [status, setStatus] = useState<PrefixStatus>(
-    initial?.status ?? "active",
-  );
-  const [vlanId, setVlanId] = useState(initial?.vlanId ?? "");
-  const [siteId, setSiteId] = useState(initial?.siteId ?? "");
-  const [securityZone, setSecurityZone] = useState(initial?.securityZone ?? "");
+  const start: Partial<IpamPrefix> | null = initial ?? draft ?? null;
+  const [prefix, setPrefix] = useState(start?.prefix ?? "");
+  const [description, setDescription] = useState(start?.description ?? "");
+  const [notes, setNotes] = useState(start?.notes ?? "");
+  const [vrfId, setVrfId] = useState(start?.vrfId ?? "");
+  const [status, setStatus] = useState<PrefixStatus>(start?.status ?? "active");
+  const [vlanId, setVlanId] = useState(start?.vlanId ?? "");
+  const [siteId, setSiteId] = useState(start?.siteId ?? "");
+  const [securityZone, setSecurityZone] = useState(start?.securityZone ?? "");
   const [gateway, setGateway] = useState(initial?.gateway ?? "");
   const [gatewayDevice, setGatewayDevice] = useState(
     initial?.gatewayDevice ?? "",
@@ -438,7 +563,7 @@ export function PrefixDialog({
   const [fields, setFields] = useState<FieldRow[]>(
     customFieldRows(initial?.customFields),
   );
-  const [departmentId, setDepartmentId] = useState(initial?.departmentId ?? "");
+  const [departmentId, setDepartmentId] = useState(start?.departmentId ?? "");
   const { busy, error, run } = useSubmit(onClose);
   const valid = parseCidr(prefix.trim()) !== null;
   const submit = (event: FormEvent) => {
@@ -451,6 +576,7 @@ export function PrefixDialog({
           id: initial?.id ?? null,
           prefix,
           description,
+          notes: notes.trim() || null,
           vrfId: vrfId || null,
           status,
           vlanId: vlanId || null,
@@ -572,6 +698,18 @@ export function PrefixDialog({
             />
           </FormField>
         </FormGrid>
+        <FormField
+          hint="Interne Hinweise, z. B. «Terminiert neu im Datacenter»."
+          label="Notiz"
+          optional
+        >
+          <textarea
+            maxLength={4000}
+            onChange={(event) => setNotes(event.target.value)}
+            rows={2}
+            value={notes}
+          />
+        </FormField>
         <DepartmentField
           departments={lookups.departments}
           onChange={setDepartmentId}
