@@ -8,6 +8,8 @@ import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
 
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
+export type PolishLength = "short" | "detailed";
+
 /** Appends dictated text to existing text with a single space. */
 export function appendDictation(existing: string, dictated: string): string {
   const addition = dictated.trim();
@@ -18,7 +20,7 @@ export function appendDictation(existing: string, dictated: string): string {
 
 /**
  * Microphone button (on-device speech recognition, Swiss German → text) and
- * «Mit KI ausformulieren» for the reply field.
+ * «KI kurz» / «KI ausführlich» (rewrite, always friendly) for the reply field.
  */
 export function DictationControls({
   text,
@@ -28,13 +30,15 @@ export function DictationControls({
 }: {
   text: string;
   onTextChange: (text: string) => void;
-  onPolish?: (() => Promise<void>) | undefined;
+  onPolish?: ((length: PolishLength) => Promise<void>) | undefined;
   disabled?: boolean;
 }) {
   const colors = useAppColors();
   const styles = useStyles();
   const [listening, setListening] = useState(false);
-  const [polishing, setPolishing] = useState(false);
+  const [polishing, setPolishing] = useState<PolishLength | null>(null);
+  // Text before the last rewrite, so the original can be restored.
+  const [original, setOriginal] = useState<string | null>(null);
   const [interim, setInterim] = useState("");
   // Text before dictation started; final results are appended to it.
   const base = useRef("");
@@ -96,13 +100,15 @@ export function DictationControls({
     }
   }
 
-  async function polish() {
+  async function polish(length: PolishLength) {
     if (!onPolish || polishing) return;
-    setPolishing(true);
+    setPolishing(length);
+    const before = text;
     try {
-      await onPolish();
+      await onPolish(length);
+      setOriginal(before);
     } finally {
-      setPolishing(false);
+      setPolishing(null);
     }
   }
 
@@ -125,23 +131,50 @@ export function DictationControls({
           {listening ? "Stopp" : "Diktieren"}
         </Text>
       </Pressable>
-      {onPolish ? (
+      {onPolish
+        ? (
+            [
+              ["short", "KI kurz"],
+              ["detailed", "KI ausführlich"],
+            ] as const
+          ).map(([length, label]) => (
+            <Pressable
+              accessibilityLabel={
+                length === "short"
+                  ? "Text mit KI kurz und freundlich umformulieren"
+                  : "Text mit KI ausführlich und freundlich umformulieren"
+              }
+              accessibilityRole="button"
+              disabled={disabled || listening || polishing !== null || !text.trim()}
+              key={length}
+              onPress={() => void polish(length)}
+              style={[
+                styles.button,
+                disabled || listening || !text.trim() ? styles.disabled : null,
+              ]}
+            >
+              {polishing === length ? (
+                <ActivityIndicator color={colors.primaryText} size="small" />
+              ) : (
+                <Ionicons color={colors.primaryText} name="sparkles" size={15} />
+              )}
+              <Text style={styles.label}>{label}</Text>
+            </Pressable>
+          ))
+        : null}
+      {original !== null && original !== text ? (
         <Pressable
-          accessibilityLabel="Text mit KI ausformulieren"
+          accessibilityLabel="Originaltext wiederherstellen"
           accessibilityRole="button"
-          disabled={disabled || listening || polishing || !text.trim()}
-          onPress={() => void polish()}
-          style={[
-            styles.button,
-            disabled || listening || !text.trim() ? styles.disabled : null,
-          ]}
+          disabled={disabled || listening || polishing !== null}
+          onPress={() => {
+            onTextChange(original);
+            setOriginal(null);
+          }}
+          style={styles.button}
         >
-          {polishing ? (
-            <ActivityIndicator color={colors.primaryText} size="small" />
-          ) : (
-            <Ionicons color={colors.primaryText} name="sparkles" size={15} />
-          )}
-          <Text style={styles.label}>Mit KI ausformulieren</Text>
+          <Ionicons color={colors.primaryText} name="arrow-undo" size={15} />
+          <Text style={styles.label}>Original</Text>
         </Pressable>
       ) : null}
       {interim ? (

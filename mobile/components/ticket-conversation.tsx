@@ -12,7 +12,10 @@ import {
   type MobileTicketComment,
   type TicketCommentVisibility,
 } from "@/lib/nextdesk-tickets";
-import { DictationControls } from "@/components/dictation-controls";
+import {
+  DictationControls,
+  type PolishLength,
+} from "@/components/dictation-controls";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type TicketConversationProps = {
@@ -28,7 +31,7 @@ type TicketConversationProps = {
   isSending: boolean;
   onBodyChange: (body: string) => void;
   onSend: () => void;
-  onPolish?: (() => Promise<void>) | undefined;
+  onPolish?: ((length: PolishLength) => Promise<void>) | undefined;
   onVisibilityChange: (visibility: TicketCommentVisibility) => void;
   visibility: TicketCommentVisibility;
 };

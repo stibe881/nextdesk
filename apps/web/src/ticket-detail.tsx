@@ -1,6 +1,7 @@
 import { TicketAiTriage } from "./ticket-ai-triage";
 import { TicketMonitoringIncidentHint } from "./incidents-ticket-hint";
 import { TicketAiSummary } from "./ticket-ai-summary";
+import { TicketTextRewrite } from "./ticket-text-rewrite";
 import { RequesterTicketProgress } from "./requester-ticket-progress";
 import {
   absenceLabel,
@@ -7764,6 +7765,25 @@ export function TicketDetail({
                   value={commentBody}
                 />
               </label>
+              {requesterView ? null : (
+                <TicketTextRewrite
+                  audience={
+                    commentVisibility === "internal" ? "internal" : "customer"
+                  }
+                  disabled={
+                    busy ||
+                    attachmentBusy ||
+                    (commentVisibility === "external" && externalGreetingOnly)
+                  }
+                  onApply={(next) =>
+                    setCommentDrafts((current) =>
+                      updateTicketCommentDraft(current, commentVisibility, next),
+                    )
+                  }
+                  tenantId={tenantId}
+                  text={commentBody}
+                />
+              )}
               {canAttachCommentImages ? (
                 <div
                   className={`ticket-comment-image-dropzone${isCommentImageDropActive ? " ticket-comment-image-dropzone--active" : ""}`}
