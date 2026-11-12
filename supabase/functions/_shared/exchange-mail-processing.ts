@@ -38,6 +38,7 @@ import {
   processPhishingEmailReport,
 } from "./phishing-email-intake.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
+import { pickMailNotice, recordMailNotice } from "./requester-notices.ts";
 import { routeBackupEmail } from "./backup-monitoring.ts";
 import {
   notificationEmailText,
@@ -2889,6 +2890,28 @@ export async function dispatchOutboundMessage(
             supportsInlineCustomerEmailLogo(customerEmailKind),
           )
         : null;
+    const emailActions =
+      !internalDepartmentNotice && message.kind === "agent_reply"
+        ? await reminderEmailActions(admin, message.comment_id)
+        : !internalDepartmentNotice && message.kind === "security_notice"
+          ? await securityNoticeActions(admin, message.comment_id, recipient)
+          : [];
+    // Hinweis der ICT (nur normale Ticket-Mails; ein Fehler hier stoppt nie den Versand).
+    const pickedNotice =
+      !internalDepartmentNotice && ticket
+        ? await pickMailNotice(admin, {
+            tenantId: message.tenant_id as string,
+            recipient,
+            messageKind: asString(message.kind),
+            hasReminderActions: emailActions.length > 0,
+          }).catch(() => null)
+        : null;
+    const portalActionLabel =
+      message.kind === "agent_reply"
+        ? "Im Portal antworten"
+        : message.kind === "acknowledgement" || message.kind === "resolution"
+          ? "Ticket im Portal ansehen"
+          : null;
     const html = internalDepartmentNotice
       ? internalNoticeHtmlTemplate({
           text: bodyText,
@@ -2908,16 +2931,11 @@ export async function dispatchOutboundMessage(
                   message.tenant_id as string,
                 )
               : [],
-          actions:
-            message.kind === "agent_reply"
-              ? await reminderEmailActions(admin, message.comment_id)
-              : message.kind === "security_notice"
-                ? await securityNoticeActions(
-                    admin,
-                    message.comment_id,
-                    recipient,
-                  )
-                : [],
+          actions: emailActions,
+          ...(portalActionLabel && emailActions.length === 0
+            ? { primaryAction: { label: portalActionLabel, url: `${APP_ORIGIN}/` } }
+            : {}),
+          ...(pickedNotice ? { notice: pickedNotice.notice } : {}),
           text: bodyText,
           ticketNumber,
           subject: ticketSubject,
@@ -3012,6 +3030,11 @@ export async function dispatchOutboundMessage(
       );
     }
     await markProcessed(admin, message);
+    if (pickedNotice) {
+      await recordMailNotice(admin, message.tenant_id as string, pickedNotice).catch(
+        () => undefined,
+      );
+    }
     await admin
       .from("exchange_mail_channels")
       .update({ last_outbound_at: new Date().toISOString() })

@@ -29,6 +29,7 @@ import { NotificationBellButton } from "@/components/notification-bell-button";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { RecentItemsCard } from "@/components/recent-items-card";
+import { RequesterNoticeCard } from "@/components/requester-notice-card";
 import { ScreenContainer } from "@/components/screen-container";
 import { UndoToast } from "@/components/undo-toast";
 import {
@@ -1561,6 +1562,10 @@ export default function HomeScreen() {
             </Text>
           </View>
         ) : null}
+
+        <RequesterNoticeCard
+          tenantId={tenantContextMismatch ? null : tenantId}
+        />
 
         {shownSections.map((id) => (
           <Fragment key={id}>{homeSections[id]}</Fragment>

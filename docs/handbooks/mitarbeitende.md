@@ -93,6 +93,23 @@ Assistenten lösen** im Dialog klären und den vorbereiteten Entwurf übernehmen
 
 ![Neues Ticket erfassen](images/ma-ticket-erfassen.jpg)
 
+## Hinweise der ICT
+
+Die ICT weist Sie gelegentlich auf neue Angebote hin, zum Beispiel «Neu im
+Shop: Teams bestellen». Solche Hinweise erscheinen:
+
+- im Portal als **Banner** oben auf der Startseite oder als schmale
+  **Hinweisleiste**,
+- in der **iPhone- und Android-App** als Karte oben auf der Startseite,
+- in Ticket-Mails (Ticket erfasst, Antwort, gelöst) als Karte **unter** dem
+  eigentlichen Inhalt, gekennzeichnet mit «Neu bei der ICT».
+
+Mit **✕** blenden Sie einen Hinweis aus; er erscheint dann nicht mehr. Die
+Schaltfläche führt direkt zum Ziel (Shop, Wissensartikel, Ticket erfassen
+oder eine Seite). In Sicherheits-, Phishing-, Erinnerungs- und
+Freigabemails erscheinen nie Hinweise, und in Mails höchstens in der von der
+ICT festgelegten Häufigkeit (Standard: einmal pro Woche).
+
 ## Eigene Tickets verfolgen
 
 Unter **Tickets** sehen Sie alle Ihre Anliegen mit Nummer, Betreff und Status.

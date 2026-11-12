@@ -313,3 +313,9 @@ verify_jwt = true
 
 [functions.teams-settings]
 verify_jwt = true
+
+[functions.requester-notices]
+verify_jwt = true
+
+[functions.notice-click]
+verify_jwt = false
