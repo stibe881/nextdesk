@@ -3940,6 +3940,10 @@ export function TicketDetail({
     useState<PendingCloseConfirmation | null>(null);
   const [solutionPromptOpen, setSolutionPromptOpen] = useState(false);
   const [priorityKey, setPriorityKey] = useState("");
+  // Der gewählte Status wird sofort angezeigt, bis die Ansicht neu geladen ist.
+  const [optimisticStatusKey, setOptimisticStatusKey] = useState<string | null>(
+    null,
+  );
   const [isEditingTicket, setIsEditingTicket] = useState(false);
   // Description edited in place via the pencil in the «Beschreibung» card.
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -6086,6 +6090,9 @@ export function TicketDetail({
       previousChange.assignedAgentId = assignedAgentId || null;
     }
 
+    if (change.statusKey !== undefined && !closingStatus) {
+      setOptimisticStatusKey(change.statusKey);
+    }
     setPendingAction("update");
     setError("");
     try {
@@ -6117,8 +6124,17 @@ export function TicketDetail({
         });
       }
       onChanged();
-      await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
-      if (closingStatus) void offerSolutionArticle();
+      // Gespeichert: die Auswahl sofort wieder freigeben, die Ansicht lädt im
+      // Hintergrund neu (vorher blieb sie mehrere Sekunden gesperrt).
+      setPendingAction(null);
+      const refresh = Promise.all([
+        loadTicket(),
+        loadFeedback(),
+        loadQuality(),
+      ])
+        .catch(() => undefined)
+        .finally(() => setOptimisticStatusKey(null));
+      if (closingStatus) void refresh.then(() => offerSolutionArticle());
       if (shouldOfferUndo && Object.keys(previousChange).length > 0) {
         const label = change.priorityKey
           ? "Priorität"
@@ -6130,6 +6146,7 @@ export function TicketDetail({
         offerUndo({ change: previousChange, label });
       }
     } catch (nextError) {
+      setOptimisticStatusKey(null);
       if (change.assignedTeamId !== undefined) {
         setSelectedTeamId(detail.ticket.assigned_team_id ?? "");
       }
@@ -6164,7 +6181,10 @@ export function TicketDetail({
     try {
       await invokeTicketDepartmentChange({ tenantId, ticketId, departmentId });
       onChanged();
-      await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
+      setPendingAction(null);
+      void Promise.all([loadTicket(), loadFeedback(), loadQuality()]).catch(
+        () => undefined,
+      );
     } catch (nextError) {
       setSelectedDepartmentId(detail.ticket.department_id);
       setError(errorMessage(nextError));
@@ -8374,7 +8394,7 @@ export function TicketDetail({
                             statusKey: event.target.value,
                           });
                         }}
-                        value={selectedStatus?.key ?? ""}
+                        value={optimisticStatusKey ?? selectedStatus?.key ?? ""}
                       >
                         {selectableStatuses.map((status) => (
                           <option key={status.id} value={status.key}>

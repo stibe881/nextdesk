@@ -1,3 +1,4 @@
+import { salutationForFirstName } from "./first-name-gender";
 export type TicketCommentComposerMode = "internal" | "external";
 
 export type TicketCommentComposerCopy = {
@@ -98,7 +99,9 @@ export function ticketReplyGreeting(
   displayName: string | null | undefined,
 ): string | null {
   const firstName = requesterFirstName(displayName);
-  return firstName ? `Lieber ${firstName}\n\n` : null;
+  return firstName
+    ? `${salutationForFirstName(firstName)} ${firstName}\n\n`
+    : null;
 }
 
 /** Nur die vorbelegte Begrüssung, noch nichts geschrieben. */
