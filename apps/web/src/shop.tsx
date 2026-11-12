@@ -16,6 +16,12 @@ import {
   X,
 } from "lucide-react";
 import { ShopCadreDialog } from "./shop-cadre";
+import { MyTeams, TeamsTile, TeamWizard } from "./shop-teams";
+import {
+  teamsApi,
+  type TeamRequestSummary,
+  type TeamsContext,
+} from "./lib/teams";
 import {
   useCallback,
   useEffect,
@@ -47,7 +53,7 @@ import {
   type ShopPerson,
 } from "./lib/shop";
 
-type Tab = "catalog" | "mine" | "approvals" | "orders";
+type Tab = "catalog" | "mine" | "teams" | "approvals" | "orders";
 type CatalogLayout = "grid" | "list";
 const LAYOUT_STORAGE_KEY = "nextdesk.shop.catalogLayout";
 
@@ -112,6 +118,27 @@ export function Shop({
     onFocusConsumed?.();
   }, [focusOrderId, onFocusConsumed]);
   const [revision, setRevision] = useState(0);
+  const [teamsContext, setTeamsContext] = useState<TeamsContext | null>(null);
+  const [teamRequests, setTeamRequests] = useState<TeamRequestSummary[]>([]);
+  const [teamWizardOpen, setTeamWizardOpen] = useState(false);
+
+  const reloadTeams = useCallback(() => {
+    teamsApi
+      .context(tenantId)
+      .then((next) => {
+        setTeamsContext(next);
+        return teamsApi.list(tenantId);
+      })
+      .then(setTeamRequests)
+      .catch(() => {
+        setTeamsContext(null);
+        setTeamRequests([]);
+      });
+  }, [tenantId]);
+
+  useEffect(() => {
+    reloadTeams();
+  }, [reloadTeams]);
 
   const reloadContext = useCallback(() => {
     shopApi
@@ -149,9 +176,18 @@ export function Shop({
     );
   }
 
+  const expiringTeams = teamRequests.filter(
+    (request) =>
+      request.status === "ready" &&
+      request.daysLeft !== null &&
+      request.daysLeft <= 14,
+  ).length;
   const tabs: [Tab, string, number?][] = [
     ["catalog", "Katalog"],
     ["mine", "Meine Bestellungen"],
+    ...(teamsContext && (teamsContext.available || teamRequests.length > 0)
+      ? ([["teams", "Meine Teams", expiringTeams]] as [Tab, string, number][])
+      : []),
     ...(context.pendingApprovals > 0 || context.canFulfill
       ? ([["approvals", "Freigaben", context.pendingApprovals]] as [
           Tab,
@@ -194,7 +230,38 @@ export function Shop({
         ))}
       </nav>
 
-      {tab === "catalog" ? (
+      {tab === "catalog" && teamsContext ? (
+        <>
+          {expiringTeams > 0 ? (
+            <p className="shop-teams-warning" role="status">
+              {expiringTeams === 1
+                ? "Ein Team läuft in den nächsten 14 Tagen ab. "
+                : `${expiringTeams} Teams laufen in den nächsten 14 Tagen ab. `}
+              <button
+                className="text-button"
+                onClick={() => setTab("teams")}
+                type="button"
+              >
+                Laufzeit verlängern
+              </button>
+            </p>
+          ) : null}
+          {teamsContext.available || teamRequests.length > 0 ? (
+            <TeamsTile
+              context={teamsContext}
+              onOpen={() => setTeamWizardOpen(true)}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {tab === "teams" ? (
+        <MyTeams
+          onChanged={reloadTeams}
+          requests={teamRequests}
+          tenantId={tenantId}
+        />
+      ) : tab === "catalog" ? (
         <CatalogView
           cart={cart}
           canOrder={context.canOrder}
@@ -220,6 +287,19 @@ export function Shop({
           tenantId={tenantId}
         />
       )}
+
+      {teamWizardOpen && teamsContext ? (
+        <TeamWizard
+          context={teamsContext}
+          onClose={() => setTeamWizardOpen(false)}
+          onOrdered={() => {
+            setTeamWizardOpen(false);
+            setTab("teams");
+            reloadTeams();
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
 
       {openOrderId ? (
         <OrderDialog

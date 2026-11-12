@@ -159,6 +159,39 @@ Deno.test("notification mail button opens the notification", () => {
   );
 });
 
+Deno.test("Teams-Bestellung: Texte für bereit, bald ablaufend und archiviert", () => {
+  const base = { ticketNumber: null, ticketSubject: null };
+  const expiring = notificationEmailText({
+    ...base,
+    kind: "shop.order.team_expiring",
+    payload: { teamName: "Projekt Neubau", endDate: "2027-11-30", daysLeft: 7 },
+  });
+  assertEquals(expiring.title, "Team läuft in 7 Tagen ab: Projekt Neubau");
+  assertStringIncludes(expiring.message, "30.11.2027");
+  assertStringIncludes(expiring.message, "1, 3, 6 oder 12 Monate");
+
+  const tomorrow = notificationEmailText({
+    ...base,
+    kind: "shop.order.team_expiring",
+    payload: { teamName: "X", daysLeft: 1 },
+  });
+  assertStringIncludes(tomorrow.title, "morgen");
+
+  const ready = notificationEmailText({
+    ...base,
+    kind: "shop.order.team_ready",
+    payload: { teamName: "Projekt Neubau", warnings: 2 },
+  });
+  assertStringIncludes(ready.message, "nicht ergänzt");
+
+  const archived = notificationEmailText({
+    ...base,
+    kind: "shop.order.team_archived",
+    payload: { teamName: "Projekt Neubau" },
+  });
+  assertStringIncludes(archived.message, "archiviert");
+});
+
 Deno.test("Shop: Übergabe aus der Bestellung steht in der Mail", () => {
   const desk = notificationEmailText({
     kind: "shop.order.ready",
