@@ -142,6 +142,11 @@ const config: ExpoConfig = {
       {
         microphonePermission:
           "Allow $(PRODUCT_NAME) to access your microphone.",
+        // Standardmässig trägt das Plugin «audio» in UIBackgroundModes ein
+        // (Hintergrund-Wiedergabe). Die App spielt nichts im Hintergrund ab
+        // und nimmt nicht im Hintergrund auf: Apple lehnt sonst ab (2.5.4).
+        enableBackgroundPlayback: false,
+        enableBackgroundRecording: false,
       },
     ],
     [
