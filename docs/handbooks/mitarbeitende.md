@@ -202,7 +202,10 @@ Manche Artikel sind nur für bestimmte Kaderstufen freigegeben und erscheinen
 deshalb nicht bei allen Mitarbeitenden. Fehlt Ihnen ein Artikel, wenden Sie
 sich an den Support.
 
-Unter **Meine Bestellungen** sehen Sie den Stand. Als vorgesetzte Person
+Unter **Meine Bestellungen** sehen Sie den Stand. Die Benachrichtigungen zur
+Bestellung (Mail, Push) nennen die gewählte Übergabe: Ist sie bereit, heisst es
+bei Abholung «Bereit zur Abholung – Abholung beim Support», bei Lieferung
+«Bereit zur Lieferung» mit dem angegebenen Arbeitsplatz bzw. Raum. Als vorgesetzte Person
 entscheiden Sie im Register **Freigaben** über Bestellungen Ihres Teams.
 
 nextDesk erinnert automatisch (Benachrichtigung «Shop»):

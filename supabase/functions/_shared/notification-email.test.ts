@@ -50,29 +50,41 @@ Deno.test("shop, infrastructure and unknown events", () => {
   );
 });
 
-Deno.test("Phishing: eigene Texte für neue Meldung und «Melder hat geklickt»", () => {
-  const reported = notificationEmailText({
-    kind: "ticket.security_report",
-    payload: { riskLabel: "hoch", riskScore: 82 },
-    ticketNumber: "ICT-1",
-    ticketSubject: "Phishing-Meldung: Test",
-  });
-  if (!reported.message.includes("Sicherheitsfälle") || !reported.message.includes("hoch (82)")) {
-    throw new Error(`Meldungstext falsch: ${reported.message}`);
-  }
-  const clicked = notificationEmailText({
-    kind: "ticket.security_report",
-    payload: { event: "clicked", reporterEmail: "anna@muster.ch" },
-    ticketNumber: "ICT-1",
-    ticketSubject: "Phishing-Meldung: Test",
-  });
-  if (clicked.title !== "Melder hat geklickt" || !clicked.message.includes("anna@muster.ch")) {
-    throw new Error(`Klicktext falsch: ${clicked.title} ${clicked.message}`);
-  }
-  if (clicked.message.includes("Sie erhalten diese E-Mail") || !clicked.body.includes("Sie erhalten diese E-Mail")) {
-    throw new Error("Hinweis gehört nur in body/hint");
-  }
-});
+Deno.test(
+  "Phishing: eigene Texte für neue Meldung und «Melder hat geklickt»",
+  () => {
+    const reported = notificationEmailText({
+      kind: "ticket.security_report",
+      payload: { riskLabel: "hoch", riskScore: 82 },
+      ticketNumber: "ICT-1",
+      ticketSubject: "Phishing-Meldung: Test",
+    });
+    if (
+      !reported.message.includes("Sicherheitsfälle") ||
+      !reported.message.includes("hoch (82)")
+    ) {
+      throw new Error(`Meldungstext falsch: ${reported.message}`);
+    }
+    const clicked = notificationEmailText({
+      kind: "ticket.security_report",
+      payload: { event: "clicked", reporterEmail: "anna@muster.ch" },
+      ticketNumber: "ICT-1",
+      ticketSubject: "Phishing-Meldung: Test",
+    });
+    if (
+      clicked.title !== "Melder hat geklickt" ||
+      !clicked.message.includes("anna@muster.ch")
+    ) {
+      throw new Error(`Klicktext falsch: ${clicked.title} ${clicked.message}`);
+    }
+    if (
+      clicked.message.includes("Sie erhalten diese E-Mail") ||
+      !clicked.body.includes("Sie erhalten diese E-Mail")
+    ) {
+      throw new Error("Hinweis gehört nur in body/hint");
+    }
+  },
+);
 
 Deno.test("IP address management mails are not incidents", () => {
   const finding = notificationEmailText({
@@ -86,7 +98,10 @@ Deno.test("IP address management mails are not incidents", () => {
     ticketSubject: null,
   });
   assertEquals(finding.title, "IP-Adressverwaltung");
-  assertStringIncludes(finding.message, "10.20.30.0/24: Subnetz zu 92 % belegt");
+  assertStringIncludes(
+    finding.message,
+    "10.20.30.0/24: Subnetz zu 92 % belegt",
+  );
   const legacy = notificationEmailText({
     kind: "monitoring.ipam_finding",
     payload: { number: "10.1.1.5", title: "IP-Konflikt", severity: "critical" },
@@ -107,8 +122,16 @@ Deno.test("IP address management mails are not incidents", () => {
 
 Deno.test("security, shop and inventory reminders", () => {
   const text = (kind: string, payload: Record<string, unknown> = {}) =>
-    notificationEmailText({ kind, payload, ticketNumber: null, ticketSubject: null });
-  assertEquals(text("security.case_overdue").title, "Sicherheitsfall überfällig");
+    notificationEmailText({
+      kind,
+      payload,
+      ticketNumber: null,
+      ticketSubject: null,
+    });
+  assertEquals(
+    text("security.case_overdue").title,
+    "Sicherheitsfall überfällig",
+  );
   assertStringIncludes(
     text("security.campaign", { reporterCount: 5 }).message,
     "5 Personen",
@@ -167,4 +190,37 @@ Deno.test("Teams-Bestellung: Texte für bereit, bald ablaufend und archiviert", 
     payload: { teamName: "Projekt Neubau" },
   });
   assertStringIncludes(archived.message, "archiviert");
+});
+
+Deno.test("Shop: Übergabe aus der Bestellung steht in der Mail", () => {
+  const desk = notificationEmailText({
+    kind: "shop.order.ready",
+    payload: {
+      orderNumber: "B-0042",
+      deliveryMethod: "desk",
+      deliveryLocation: "Büro 2.14",
+    },
+    ticketNumber: null,
+    ticketSubject: null,
+  });
+  assertEquals(desk.subject, "Bereit zur Lieferung: B-0042");
+  assertStringIncludes(desk.body, "an Ihren Arbeitsplatz gebracht: Büro 2.14");
+  const pickup = notificationEmailText({
+    kind: "shop.order.ready",
+    payload: { orderNumber: "B-0043", deliveryMethod: "pickup" },
+    ticketNumber: null,
+    ticketSubject: null,
+  });
+  assertEquals(pickup.subject, "Bereit zur Abholung: B-0043");
+  assertStringIncludes(pickup.body, "Übergabe: Abholung beim Support.");
+  const progress = notificationEmailText({
+    kind: "shop.order.in_progress",
+    payload: { deliveryMethod: "desk", deliveryLocation: "Empfang" },
+    ticketNumber: null,
+    ticketSubject: null,
+  });
+  assertStringIncludes(
+    progress.body,
+    "Übergabe: an den Arbeitsplatz (Empfang).",
+  );
 });

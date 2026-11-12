@@ -227,8 +227,33 @@ export function notificationEmailText(
       kind.slice("shop.order.".length)
     ] ?? ["Shop", "Es gibt eine Neuigkeit zu einer Bestellung."];
     const number = text(payload.orderNumber, 40);
+    const event = kind.slice("shop.order.".length);
+    const toDesk = payload.deliveryMethod === "desk";
+    const deskLocation = text(payload.deliveryLocation, 200);
     title = number ? `${shopTitle}: ${number}` : shopTitle;
     lines = [shopBody];
+    // Where the order is handed over, as chosen when ordering.
+    if (event === "ready" && toDesk) {
+      title = number ? `Bereit zur Lieferung: ${number}` : "Bereit zur Lieferung";
+      lines = [
+        `Ihre Bestellung ist bereit und wird an Ihren Arbeitsplatz gebracht${deskLocation ? `: ${deskLocation}` : ""}.`,
+      ];
+    } else if (event === "ready" && payload.deliveryMethod === "pickup") {
+      lines = [
+        "Ihre Bestellung liegt für Sie bereit.",
+        "Übergabe: Abholung beim Support.",
+      ];
+    } else if (
+      ["placed_for_you", "approved", "in_progress", "issued", "note"].includes(event) &&
+      (payload.deliveryMethod === "pickup" || toDesk)
+    ) {
+      lines = [
+        ...lines,
+        toDesk
+          ? `Übergabe: an den Arbeitsplatz${deskLocation ? ` (${deskLocation})` : ""}.`
+          : "Übergabe: Abholung beim Support.",
+      ];
+    }
     // Eskalationen (0314): an Vorgesetzte bzw. Stellvertretung.
     if (kind === "shop.order.loan_overdue" && payload.audience === "manager") {
       lines = [
