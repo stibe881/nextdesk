@@ -641,6 +641,7 @@ export const EVENT_LABELS: Record<string, string> = {
   realert: "Erneut alarmiert",
   child: "Folgestörung",
   maintenance: "Wartung",
+  external: "Update vom Anbieter",
 };
 
 export type SensorTone = "down" | "warning" | "ok";

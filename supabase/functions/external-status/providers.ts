@@ -46,7 +46,7 @@ export const SOURCES: readonly SourceDefinition[] = [
   },
   {
     key: "claude",
-    label: "Claude (Anthropic)",
+    label: "Claude",
     description: "Offizielle Statusseite von Claude.ai und der Claude-API.",
     statusUrl: "https://status.claude.com",
   },
