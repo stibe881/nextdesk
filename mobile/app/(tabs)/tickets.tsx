@@ -1,3 +1,9 @@
+import {
+  matchesStatusSelection,
+  splitStatusFilter,
+  statusFilterOptions,
+  toggleStatus,
+} from "@/lib/ticket-status-filter";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -138,6 +144,7 @@ export default function TicketsScreen() {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [savedViews, setSavedViews] = useState<SavedTicketView[]>([]);
@@ -428,10 +435,12 @@ export default function TicketsScreen() {
       setActiveViewId(null);
       setScope("all");
       setQuery("");
+      setStatusFilter([]);
       return;
     }
     setActiveViewId(view.id);
     setQuery(view.filters.query);
+    setStatusFilter(splitStatusFilter(view.filters.status));
     if (view.filters.agent === "mine") setScope("mine");
     else if (view.filters.agent === "unassigned") setScope("unassigned");
     else if (view.filters.ticketScope === "mine") setScope("mine");
@@ -472,6 +481,7 @@ export default function TicketsScreen() {
   const normalizedQuery = query.trim().toLocaleLowerCase("de-CH");
   const visibleTickets = tickets.filter((ticket) => {
     if (undoDelete.hiddenIds.has(ticket.id)) return false;
+    if (!matchesStatusSelection(ticket.status, statusFilter)) return false;
     const matchesScope =
       scope === "mine"
         ? ticket.assignedToCurrentUser
@@ -624,6 +634,57 @@ export default function TicketsScreen() {
               </Text>
             </Pressable>
           ))}
+        </ScrollView>
+
+        <ScrollView
+          contentContainerStyle={styles.filters}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+        >
+          <Text style={[styles.viewsLabel, tokenStyles.muted]}>Status</Text>
+          {statusFilterOptions(
+            tickets.map((ticket) => ticket.status),
+            statusFilter,
+          ).map((label) => {
+            const active = statusFilter.includes(label);
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                key={label}
+                onPress={() => {
+                  setActiveViewId(null);
+                  setStatusFilter((current) => toggleStatus(current, label));
+                }}
+                style={[
+                  styles.filter,
+                  tokenStyles.card,
+                  active && tokenStyles.primary,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    tokenStyles.muted,
+                    active && tokenStyles.onPrimary,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {statusFilter.length > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setStatusFilter([])}
+              style={[styles.filter, tokenStyles.card]}
+            >
+              <Text style={[styles.filterText, tokenStyles.muted]}>
+                Zurücksetzen
+              </Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
 
         {savedViews.length > 0 ? (
@@ -830,6 +891,7 @@ export default function TicketsScreen() {
                   onPress={() => {
                     setScope("all");
                     setQuery("");
+                    setStatusFilter([]);
                     setActiveViewId(null);
                   }}
                   style={[styles.emptyButton, tokenStyles.control]}

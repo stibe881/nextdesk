@@ -48,6 +48,22 @@ export type LiveTicketListRefinement = {
   status: string;
 };
 
+/** Mehrfachauswahl wird als "A|B" gespeichert; "all" = kein Filter. */
+export const STATUS_FILTER_SEPARATOR = "|";
+
+export function splitStatusFilter(value: string): string[] {
+  if (!value || value === "all") return [];
+  return value
+    .split(STATUS_FILTER_SEPARATOR)
+    .map((label) => label.trim())
+    .filter(Boolean);
+}
+
+export function joinStatusFilter(labels: readonly string[]): string {
+  const unique = [...new Set(labels)];
+  return unique.length ? unique.join(STATUS_FILTER_SEPARATOR) : "all";
+}
+
 export type LiveTicketScope =
   "all" | "mine" | "unassigned" | "open" | "closed" | "delegated";
 
@@ -190,7 +206,12 @@ export function ticketListRpcArguments(
       : records
           .filter((record) => record.label === selectedLabel)
           .map((record) => record.id);
-  const statusIds = idsForLabel(statuses, activeRefinement.status);
+  const selectedStatusLabels = splitStatusFilter(activeRefinement.status);
+  const statusIds = selectedStatusLabels.length
+    ? statuses
+        .filter((record) => selectedStatusLabels.includes(record.label))
+        .map((record) => record.id)
+    : null;
   const priorityIds = idsForLabel(priorities, activeRefinement.priority);
   const departmentIds =
     activeRefinement.department === "all"

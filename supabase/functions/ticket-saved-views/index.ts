@@ -107,7 +107,7 @@ function parseFilters(value: unknown): Filters | null {
     [...queue].length < 1 ||
     [...queue].length > 120 ||
     (!["all", "mine", "unassigned"].includes(agent) && !isUuid(agent)) ||
-    [...status].length > 120 ||
+    [...status].length > 600 ||
     [...department].length > 120 ||
     [...priority].length > 120 ||
     !["updated", "agent", "status", "department", "priority"].includes(
