@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Sicherheitsfälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-11
+updated: 2026-11-12
 ---
 
 # Handbuch für Agenten
@@ -483,6 +483,15 @@ Wählen Sie im Antwortbereich den Modus:
   wählbar; der Hinweis am Knopf nennt, was fehlt.
 - **Interne Notiz** → **Interne Notiz speichern**. Nur für berechtigte
   Mitarbeitende sichtbar.
+
+Unter dem Antwortfeld können Sie Ihren Text mit **Mit KI umformulieren** von
+der KI überarbeiten lassen (falls KI-Assistenz aktiv): **Kurz** macht ihn knapp
+und auf den Punkt, **Ausführlich** erklärt die genannten Schritte vollständig.
+Der Ton ist immer professionell, aber persönlich und freundlich; die KI erfindet
+keine Fakten, Zusagen oder Termine. Eine vorhandene Begrüssung bleibt
+bestehen. Mit **Original wiederherstellen** holen Sie Ihren Text zurück. In der
+iPhone- und der Android-App heissen die Knöpfe unter dem Nachrichtenfeld **KI
+kurz** und **KI ausführlich** (mit **Original** zum Zurückholen).
 
 Praktische Helfer:
 

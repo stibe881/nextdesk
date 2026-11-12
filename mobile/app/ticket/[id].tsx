@@ -2826,7 +2826,7 @@ export default function TicketDetailScreen() {
               onSend={() => void sendComment()}
               onPolish={
                 tenant
-                  ? async () => {
+                  ? async (length) => {
                       try {
                         const result = await invokeNextDesk<{
                           data?: { text?: string };
@@ -2834,6 +2834,7 @@ export default function TicketDetailScreen() {
                           type: "polishText",
                           tenantId: tenant.id,
                           text: comment,
+                          length,
                           audience:
                             commentVisibility === "internal"
                               ? "internal"

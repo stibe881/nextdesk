@@ -22443,3 +22443,56 @@ html body form:has(> .fk-layout) {
 .service-assets__service-editor-dialog:has(.fk-layout) {
   width: min(100%, 1040px);
 }
+
+/* «Mit KI umformulieren» unter dem Antwortfeld */
+.ticket-rewrite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 2px 0 10px;
+}
+.ticket-rewrite__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.ticket-rewrite__button,
+.ticket-rewrite__undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 0;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--brand-primary, var(--primary));
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ticket-rewrite__undo {
+  border-style: dashed;
+  color: var(--muted);
+}
+.ticket-rewrite__button:disabled,
+.ticket-rewrite__undo:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ticket-rewrite__button:focus-visible,
+.ticket-rewrite__undo:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.ticket-rewrite__error {
+  flex-basis: 100%;
+  margin: 0;
+  color: #b3261e;
+  font-size: 12.5px;
+}
