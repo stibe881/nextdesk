@@ -770,24 +770,37 @@ Entra, gilt die neue Stufe nach dem nächsten Abgleich automatisch.
 ## Teams: alle Microsoft-Teams-Teams verwalten
 
 Der Menüpunkt **Teams** (Arbeitsbereich) erscheint nur mit dem Recht zur
-Shop-Verwaltung und wenn Microsoft Teams eingerichtet ist (siehe
-Installationshandbuch). Er zeigt **alle** Teams der Organisation, auch die
-bestehenden, nicht nur die über den Shop bestellten.
+Shop-Verwaltung, wenn die Funktion **Microsoft Teams im Shop** eingeschaltet
+und Microsoft Teams eingerichtet ist (siehe Installationshandbuch). Er zeigt
+**alle** Teams der Organisation, auch die bestehenden, nicht nur die über den
+Shop bestellten.
 
-- **Kennzahlen und Filter**: Teams gesamt, bald ablaufend (30 Tage), ohne
-  Owner, archiviert; Filter _Über nextDesk bestellt_, _Bestehend_, _Läuft bald
-  ab_, _Ohne Owner_, _Archiviert_ und Suche nach Team oder Owner.
+- **Kacheln mit Handlungsbedarf**: _Brauchen einen Owner_, _Laufen in 30
+  Tagen ab_, _Teams mit Gästen_ und _Teams gesamt_. Ein Klick auf eine Kachel
+  filtert die Liste; ein zweiter Klick hebt den Filter auf.
+- **Liste**: pro Team Symbol, Name, Beschreibung, Sichtbarkeit, Herkunft
+  (_über nextDesk_ oder _bestehend_), Gäste, Owner mit Avataren, Zahl der
+  Mitglieder, Erstellt-Datum, Laufzeit mit Fortschrittsbalken und Status
+  (_Aktiv_, _Läuft ab_, _Verwaist_, _Archiviert_). Filter: _Über nextDesk
+  bestellt_, _Bestehend_, _Läuft bald ab_, _Ohne Owner_, _Mit Gästen_, _Ohne
+  Ende_, _Archiviert_. Sortierung nach Name, Neueste, Ende oder Mitgliedern.
+- **Mehrfachauswahl**: Teams ankreuzen, dann in der blauen Leiste **Ende
+  setzen**, **Owner hinzufügen** oder **Archivieren** für alle auf einmal.
 - **Mit Microsoft abgleichen**: liest die Teams neu ein. Beim Öffnen läuft der
   Abgleich automatisch, wenn der Stand älter als ein Tag ist.
-- **Details** (Klick auf ein Team): Mitglieder und Owner ansehen, Personen
-  hinzufügen oder entfernen, zum Owner machen oder die Owner-Rolle entziehen
-  (der letzte Owner bleibt immer), **In Teams öffnen**, **Archivieren** und
-  **Wiederherstellen**.
-- **Ende setzen oder verlängern**: Auch bei bestehenden Teams lässt sich ein
-  Ende setzen (Datum oder +1, +3, +6 Monate, +1 Jahr). Ab dann erinnert
+- **Details** (Klick auf ein Team), drei Reiter:
+  - **Übersicht**: Kennzahlen, Laufzeit verlängern (+1, +3, +6 Monate, +1
+    Jahr) oder ein Ende setzen, **In Teams öffnen**, **Archivieren** bzw.
+    **Wiederherstellen**.
+  - **Personen**: Owner, Mitglieder und Gäste getrennt, Personen hinzufügen
+    oder entfernen, zum Owner machen oder die Owner-Rolle entziehen (der
+    letzte Owner bleibt immer). Bei einem Team ohne Owner wird die erste
+    hinzugefügte Person Owner.
+  - **Verlauf**: Zeitleiste aus dem Protokoll (bestellt, angelegt, verlängert,
+    Erinnerungen, Änderungen).
+- **Ende setzen**: Auch bei bestehenden Teams möglich. Ab dann erinnert
   nextDesk die Owner 14, 7 und 1 Tag vorher und archiviert das Team am Ende.
-  Bei einem bestehenden Team ohne Owner geht das nicht: zuerst einen Owner
-  festlegen.
+  Bei einem Team ohne Owner geht das nicht: zuerst einen Owner festlegen.
 
 Gelöscht wird nie: nextDesk archiviert nur; ein archiviertes Team bleibt
 lesbar und lässt sich wiederherstellen.

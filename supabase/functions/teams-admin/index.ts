@@ -8,6 +8,7 @@ import {
   removeTeamMember,
   setTeamMemberOwner,
   teamDetails,
+  teamMemberCounts,
   TeamsGraphError,
   unarchiveTeam,
 } from "../_shared/teams-graph.ts";
@@ -119,8 +120,12 @@ async function syncDirectory(admin: Admin, tenantId: string, token: string) {
   const teams = await listAllTeams(token);
   const rows = await mapInChunks(teams, SYNC_CONCURRENCY, async (team) => {
     let details = { ownerIds: [] as string[], isArchived: false, webUrl: null as string | null };
+    let counts: { members: number; guests: number } | null = null;
     try {
-      details = await teamDetails(token, team.id);
+      [details, counts] = await Promise.all([
+        teamDetails(token, team.id),
+        teamMemberCounts(token, team.id),
+      ]);
     } catch {
       // Ein einzelnes Team ohne Zugriff stoppt den Abgleich nicht.
     }
@@ -133,6 +138,8 @@ async function syncDirectory(admin: Admin, tenantId: string, token: string) {
       is_archived: details.isArchived,
       web_url: details.webUrl,
       owner_ids: details.ownerIds.filter((id) => UUID.test(id)),
+      member_count: counts?.members ?? null,
+      guest_count: counts?.guests ?? null,
       created_in_graph_at: team.createdAt,
       synced_at: new Date().toISOString(),
     };
@@ -169,10 +176,15 @@ async function refreshOne(
   token: string,
   teamId: string,
 ) {
-  const details = await teamDetails(token, teamId);
+  const [details, counts] = await Promise.all([
+    teamDetails(token, teamId),
+    teamMemberCounts(token, teamId).catch(() => null),
+  ]);
   await admin
     .from("teams_directory")
     .update({
+      member_count: counts?.members ?? null,
+      guest_count: counts?.guests ?? null,
       owner_ids: details.ownerIds.filter((id) => UUID.test(id)),
       is_archived: details.isArchived,
       web_url: details.webUrl,
@@ -244,14 +256,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       admin
         .from("teams_directory")
         .select(
-          "graph_team_id, display_name, description, visibility, is_archived, web_url, owner_ids, synced_at",
+          "graph_team_id, display_name, description, visibility, is_archived, web_url, owner_ids, member_count, guest_count, created_in_graph_at, synced_at",
         )
         .eq("tenant_id", tenantId)
         .order("display_name", { ascending: true })
         .limit(2000),
       admin
         .from("teams_requests")
-        .select("id, graph_team_id, status, end_date, source")
+        .select("id, graph_team_id, status, start_date, end_date, source")
         .eq("tenant_id", tenantId)
         .not("graph_team_id", "is", null)
         .limit(2000),
@@ -295,11 +307,77 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             source: request ? request.source : "existing",
             requestId: request?.id ?? null,
             requestStatus: request?.status ?? null,
+            startDate: request ? request.start_date : null,
             endDate: end,
             daysLeft: end ? daysBetween(today, end) : null,
+            createdAt: team.created_in_graph_at ?? null,
+            memberCount: team.member_count ?? null,
+            guestCount: team.guest_count ?? null,
           };
         }),
         syncedAt: ((teams ?? []) as Row[])[0]?.synced_at ?? null,
+      },
+    });
+  }
+
+  if (body.type === "history") {
+    const teamId =
+      typeof body.teamId === "string" && UUID.test(body.teamId)
+        ? body.teamId.toLowerCase()
+        : null;
+    if (!teamId) return fail(request, "invalid_request", 400);
+    const { data: linked } = await admin
+      .from("teams_requests")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("graph_team_id", teamId)
+      .maybeSingle();
+    const columns = "action, actor_id, after_data, before_data, metadata, occurred_at";
+    const [byTeam, byRequest] = await Promise.all([
+      admin
+        .from("audit_logs")
+        .select(columns)
+        .eq("tenant_id", tenantId)
+        .eq("entity_type", "teams_team")
+        .eq("metadata->>teamId", teamId)
+        .order("occurred_at", { ascending: false })
+        .limit(50),
+      linked
+        ? admin
+            .from("audit_logs")
+            .select(columns)
+            .eq("tenant_id", tenantId)
+            .eq("entity_type", "teams_request")
+            .eq("entity_id", linked.id)
+            .order("occurred_at", { ascending: false })
+            .limit(50)
+        : Promise.resolve({ data: [] }),
+    ]);
+    const rows = [...((byTeam.data ?? []) as Row[]), ...((byRequest.data ?? []) as Row[])]
+      .sort((a, b) => String(b.occurred_at).localeCompare(String(a.occurred_at)))
+      .slice(0, 50);
+    const actorIds = [...new Set(rows.map((row) => row.actor_id).filter(isUuid))];
+    const actors = new Map<string, string>();
+    if (actorIds.length > 0) {
+      const { data: profiles } = await admin
+        .from("user_profiles")
+        .select("id, display_name")
+        .in("id", actorIds);
+      for (const profile of (profiles ?? []) as Row[]) {
+        actors.set(String(profile.id), String(profile.display_name ?? ""));
+      }
+    }
+    return json(request, {
+      data: {
+        events: rows.map((row) => ({
+          action: row.action,
+          at: row.occurred_at,
+          actor: isUuid(row.actor_id) ? (actors.get(row.actor_id) ?? null) : null,
+          details: {
+            ...(isRecord(row.metadata) ? row.metadata : {}),
+            ...(isRecord(row.after_data) ? row.after_data : {}),
+          },
+        })),
       },
     });
   }
