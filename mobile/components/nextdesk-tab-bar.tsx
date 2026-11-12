@@ -11,6 +11,13 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { QuickCreateMenu } from "@/components/quick-create-menu";
+import {
+  badgeAccessibilityLabel,
+  badgeCount,
+  badgeLabel,
+  type NavigationBadges,
+  type NavigationBadgeKey,
+} from "@/lib/navigation-badges-model";
 import { useAppColors } from "@/lib/themed-styles";
 
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
@@ -22,6 +29,8 @@ export type NextDeskTabItem = {
   activeIcon: IoniconName;
   /** Fixed side of the Home button; without it the items are split evenly. */
   side?: "left" | "right";
+  /** Menu badge shown on the icon (open items, like the web sidebar). */
+  badge?: NavigationBadgeKey;
 };
 
 const HOME_ROUTE = "index";
@@ -51,6 +60,10 @@ function triggerHaptic(style: Haptics.ImpactFeedbackStyle) {
 type NextDeskTabBarProps = BottomTabBarProps & {
   /** Sichtbare Tabs ohne Home in fachlicher Reihenfolge. */
   items: NextDeskTabItem[];
+  /** Offene Einträge je Menüpunkt (Badges). */
+  badges?: NavigationBadges;
+  /** Wird beim Wechsel des Tabs aufgerufen (Badges neu laden). */
+  onNavigate?: () => void;
 };
 
 /**
@@ -63,6 +76,8 @@ export function NextDeskTabBar({
   state,
   navigation,
   items,
+  badges,
+  onNavigate,
 }: NextDeskTabBarProps) {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
@@ -99,6 +114,7 @@ export function NextDeskTabBar({
     });
     if (!isFocused && !event.defaultPrevented) {
       navigation.navigate(route.name, route.params);
+      onNavigate?.();
     }
   }
 
@@ -114,9 +130,10 @@ export function NextDeskTabBar({
   function renderSideItem(item: NextDeskTabItem) {
     const selected = activeName === item.name;
     const tint = selected ? colors.primaryText : colors.muted;
+    const count = item.badge ? badgeCount(badges?.[item.badge]) : 0;
     return (
       <Pressable
-        accessibilityLabel={item.label}
+        accessibilityLabel={badgeAccessibilityLabel(item.label, count)}
         accessibilityRole="tab"
         accessibilityState={{ selected }}
         key={item.name}
@@ -139,6 +156,21 @@ export function NextDeskTabBar({
             name={selected ? item.activeIcon : item.icon}
             size={22}
           />
+          {count > 0 ? (
+            <View
+              style={[
+                styles.badge,
+                {
+                  backgroundColor: colors.primary,
+                  borderColor: colors.surface,
+                },
+              ]}
+            >
+              <Text style={[styles.badgeText, { color: colors.onPrimary }]}>
+                {badgeLabel(count)}
+              </Text>
+            </View>
+          ) : null}
         </View>
         <Text
           adjustsFontSizeToFit
@@ -294,6 +326,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 0.1,
+  },
+  badge: {
+    position: "absolute",
+    top: -6,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    lineHeight: 12,
+    fontVariant: ["tabular-nums"],
   },
   homeSlot: {
     width: 92,
