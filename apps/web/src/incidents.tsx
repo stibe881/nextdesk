@@ -39,6 +39,8 @@ import {
   parseIncidentList,
   parseIncidentReport,
   SKIP_REASON_LABELS,
+  SENSOR_TONE_LABELS,
+  sensorTone,
   STATE_LABELS,
   ticketReplyText,
   type IncidentCause,
@@ -1040,11 +1042,12 @@ function IncidentView({
                             : ""}
                         </small>
                       </span>
+                      {/* Like the ticket status: red error, yellow warning. */}
                       <span
-                        className={`incident-chip incident-chip--${sensor.state === "open" ? "bad" : "ok"}`}
+                        className={`incident-chip incident-chip--${{ down: "bad", warning: "warn", ok: "ok" }[sensorTone(sensor)]}`}
+                        title={sensor.status ?? undefined}
                       >
-                        {sensor.status ??
-                          (sensor.state === "open" ? "gestört" : "OK")}
+                        {SENSOR_TONE_LABELS[sensorTone(sensor)]}
                       </span>
                     </li>
                   ))}

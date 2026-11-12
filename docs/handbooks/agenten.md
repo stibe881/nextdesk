@@ -338,7 +338,9 @@ Ein Klick öffnet die Störung:
    hinzufügen** halten Sie fest, was Sie geprüft oder veranlasst haben.
 3. **Letzte 24 Stunden** zeigt, wann das Gerät gestört war, und warnt, wenn
    es in dieser Woche mehrfach ausgefallen ist. Darunter stehen die
-   **Sensoren** mit ihrem letzten Stand.
+   **Sensoren** mit ihrem letzten Stand. Wie beim Ticketstatus zeigt ein
+   farbiges Abzeichen den Zustand jedes Sensors: **Fehler** (rot), **Warnung**
+   (gelb) oder **OK** (grün).
 4. Unter **Tickets** stehen die zugeordneten Tickets mit dem Grund der
    Zuordnung (Gerät, Dienst, im Text, von Hand). Mit **Ticketnummer
    zuordnen** ergänzen Sie ein Ticket, mit **×** lösen Sie eines wieder; ein
