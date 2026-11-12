@@ -719,3 +719,9 @@ button.incident-tile:focus-visible {
 .incident-collapsible > :not(summary) + :not(summary) {
   margin-top: 10px;
 }
+
+/* External status feed (Microsoft 365, GitHub, …): not in our own network. */
+.incident-chip--external {
+  background: var(--tone-info-soft, var(--surface));
+  color: var(--tone-info, var(--primary));
+}

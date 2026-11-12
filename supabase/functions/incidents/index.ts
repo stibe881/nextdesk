@@ -335,11 +335,15 @@ function summary(
     }),
     location: locationLabel(devices.get(text(row.asset_id) ?? "")),
     realertCount: Number(row.realert_count ?? 0),
+    // «external»: status feed of a provider (Microsoft 365, GitHub, …).
+    source: row.source === "external" ? "external" : "prtg",
+    externalProvider: text(row.external_provider),
+    externalUrl: text(row.external_url),
   };
 }
 
 const INCIDENT_SELECT =
-  "id, number, title, device_name, asset_id, severity, state, parent_incident_id, maintenance, acknowledged_at, acknowledged_by, assigned_agent_id, opened_at, resolved_at, closed_at, cause, service_ids, realert_count, team_id";
+  "id, number, title, device_name, asset_id, severity, state, parent_incident_id, maintenance, acknowledged_at, acknowledged_by, assigned_agent_id, opened_at, resolved_at, closed_at, cause, service_ids, realert_count, team_id, source, external_provider, external_url";
 
 function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : Number(value ?? 0) || 0;

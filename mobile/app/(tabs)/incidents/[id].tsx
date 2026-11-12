@@ -3,6 +3,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -234,8 +235,34 @@ export default function IncidentDetailScreen() {
             {detail.maintenance ? (
               <Text style={styles.badge}>Wartung</Text>
             ) : null}
+            {detail.source === "external" ? (
+              <Text style={styles.badge}>
+                Extern
+                {detail.externalProvider ? ` · ${detail.externalProvider}` : ""}
+              </Text>
+            ) : null}
           </View>
           <Text style={styles.titleSmall}>{detail.title}</Text>
+          {detail.source === "external" ? (
+            <View style={{ gap: 4 }}>
+              <Text style={styles.muted}>
+                Gemeldet von {detail.externalProvider ?? "einem Anbieter"}: Die
+                Ursache liegt beim Anbieter, nicht in Ihrem Netz. Die Störung
+                schliesst sich automatisch, sobald der Anbieter sie als behoben
+                meldet.
+              </Text>
+              {detail.externalUrl ? (
+                <Pressable
+                  accessibilityRole="link"
+                  onPress={() => void Linking.openURL(detail.externalUrl!)}
+                >
+                  <Text style={styles.backText}>
+                    Statusseite des Anbieters öffnen
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
           {detail.parent ? (
             <Pressable
               onPress={() =>
@@ -684,12 +711,12 @@ export default function IncidentDetailScreen() {
             </Text>
             {detail.state === "active" ? (
               <Text style={styles.muted}>
-                Meldet PRTG wieder OK, schliesst sich die Störung
-                automatisch. Abschliessen beendet sie auch ohne OK-Meldung.
+                Meldet PRTG wieder OK, schliesst sich die Störung automatisch.
+                Abschliessen beendet sie auch ohne OK-Meldung.
               </Text>
             ) : detail.state === "resolved" ? (
               <Text style={styles.muted}>
-                PRTG meldet wieder OK. Schliesse die Störung mit der Ursache ab.
+                PRTG meldet wieder OK. Trage die Ursache bei Bedarf nach.
               </Text>
             ) : null}
             <View style={styles.badgeRow}>

@@ -67,6 +67,10 @@ export type IncidentSummary = {
   services: IncidentService[];
   location: string | null;
   realertCount: number;
+  /** «external»: status feed of a provider (Microsoft 365, GitHub, …). */
+  source: "prtg" | "external";
+  externalProvider: string | null;
+  externalUrl: string | null;
   children: IncidentSummary[];
 };
 
@@ -255,6 +259,9 @@ function summaryOf(row: Row): IncidentSummary | null {
     }),
     location: str(row.location),
     realertCount: num(row.realertCount),
+    source: row.source === "external" ? "external" : "prtg",
+    externalProvider: str(row.externalProvider),
+    externalUrl: str(row.externalUrl),
     children: list(row.children).flatMap((child) => {
       const parsed = summaryOf(child);
       return parsed ? [parsed] : [];

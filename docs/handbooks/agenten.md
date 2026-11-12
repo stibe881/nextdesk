@@ -295,6 +295,16 @@ Meldungen aus PRTG landen nicht in der Ticketliste, sondern unter
 **Störungen** im Arbeitsbereich. Ein Ticket braucht es dafür nicht: Sie
 bearbeiten die Störung vollständig dort.
 
+**Externe Störungen**: Zusätzlich erscheinen Störungen, die Anbieter auf ihren
+offiziellen Statusseiten melden (z. B. Microsoft 365 mit Teams, Outlook,
+OneDrive und SharePoint, GitHub, Claude, Gemini, App Store, Google Play,
+Init7), gekennzeichnet mit **Extern · Anbieter**. Sie zeigen, dass die Ursache
+beim Anbieter liegt und nicht in Ihrem Netz, z. B. wenn mehrere Personen
+melden, dass Teams nicht geht. Das Team wird beim Auftreten einmal
+benachrichtigt (ohne Wiederholungsalarm); meldet der Anbieter die Störung als
+behoben, schliesst sie sich automatisch. **Statusseite des Anbieters öffnen**
+führt zu den Details beim Anbieter.
+
 - **Eine Störung pro Gerät**: Weitere Sensoren desselben Geräts (z. B. Ping
   und SNMP) hängen an derselben Störung. Kommt das Gerät innerhalb von
   10 Minuten erneut in Störung, öffnet sich die bisherige Störung wieder.

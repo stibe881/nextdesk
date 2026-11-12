@@ -55,6 +55,7 @@ import { TeamsSettings } from "./teams-settings";
 import { MonitoringSettings } from "./monitoring-settings";
 import { ExpiryMonitoringSettings } from "./expiry-monitoring-settings";
 import { BackupMonitoringSettings } from "./backup-monitoring-settings";
+import { ExternalStatusSettings } from "./external-status-settings";
 import { DepartmentManagement } from "./department-management";
 import { DepartmentModules } from "./department-modules";
 import { TicketTemplates } from "./ticket-templates";
@@ -3130,6 +3131,7 @@ export function TenantAdminSettings({
                 {assetsManagementEnabled ? (
                   <>
                     <MonitoringSettings tenantId={tenantId} />
+                    <ExternalStatusSettings tenantId={tenantId} />
                     <ExpiryMonitoringSettings tenantId={tenantId} />
                     <BackupMonitoringSettings tenantId={tenantId} />
                   </>

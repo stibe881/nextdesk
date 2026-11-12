@@ -278,6 +278,14 @@ export default function IncidentsScreen() {
                           {entry.assignedAgentName}
                         </Text>
                       ) : null}
+                      {entry.source === "external" ? (
+                        <Text style={styles.badge}>
+                          Extern
+                          {entry.externalProvider
+                            ? ` · ${entry.externalProvider}`
+                            : ""}
+                        </Text>
+                      ) : null}
                     </View>
                     <Text numberOfLines={2} style={styles.rowTitle}>
                       {entry.title}

@@ -360,9 +360,8 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
             PRTG Network Monitor meldet Störungen direkt an nextDesk: Jede
             Meldung öffnet oder ergänzt eine Störung im Arbeitsbereich
             «Störungen» (ohne Ticket) und alarmiert das Team sofort per Push und
-            Mail. Bei «Up» wird die Störung als behoben markiert und der
-            Systemstatus wiederhergestellt; abgeschlossen wird sie von einem
-            Agenten mit der Ursache.
+            Mail. Bei «Up» wird die Störung automatisch abgeschlossen und der
+            Systemstatus wiederhergestellt; die Ursache lässt sich nachtragen.
           </p>
         </div>
         <Activity aria-hidden="true" size={25} />
