@@ -154,11 +154,9 @@ export default function IncidentDetailScreen() {
   const back = (
     <Pressable
       accessibilityRole="button"
-      onPress={() =>
-        router.canGoBack()
-          ? router.back()
-          : router.replace("/incidents" as never)
-      }
+      // Always back to the list of this tab: router.back() would return to the
+      // tab visited before (e.g. Tickets after a push or the home screen).
+      onPress={() => router.navigate("/incidents" as never)}
       style={styles.back}
     >
       <Ionicons color={colors.primaryText} name="arrow-back" size={18} />
