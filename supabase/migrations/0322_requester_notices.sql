@@ -45,7 +45,7 @@ create table public.requester_notices (
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
   constraint requester_notices_dates_check check (ends_on >= starts_on),
-  constraint requester_notices_link_target_check check (
+  constraint requester_notices_link_pair_check check (
     (link_kind in ('shop', 'new_ticket') and link_target is null)
     or (link_kind in ('knowledge', 'url') and link_target is not null)
   )
