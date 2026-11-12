@@ -659,6 +659,14 @@ Drop oder Auswahl), Kategorien, Artikelnummer, Beschreibung, technische Angaben
 und alle weiteren Shop-Felder. Dazu kommen die Lagerangaben **Einheit** und
 **Mindest-/Zielbestand**.
 
+Unter **Zuständige Abteilung** legen Sie fest, welche Abteilung den Artikel
+betreut (z. B. ICT oder Infrastruktur). Geht im Shop eine Bestellung zu diesem
+Artikel ein, werden nur die Agenten dieser Abteilung benachrichtigt, die
+Shop-Bestellungen bearbeiten dürfen. Zur Auswahl stehen Ihre eigenen
+Abteilungen; sind Sie nur in einer, ist sie fest eingetragen. Hat ein Artikel
+keine Abteilung oder ist in der Abteilung niemand für Bestellungen zuständig,
+werden wie bisher alle benachrichtigt.
+
 - **Zum Bestellen anbieten** (Schieber): Eingeschaltet kann der Artikel im Shop
   bestellt werden. Er hat **Mindest- und Zielbestand**.
 - **Zum Ausleihen anbieten** (Schieber): Der Artikel wird im Shop ausgeliehen
