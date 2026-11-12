@@ -86,7 +86,9 @@ import {
 import {
   loadActiveTenants,
   loadLiveDashboard,
+  joinStatusFilter,
   loadProfileName,
+  splitStatusFilter,
   ticketTeamsFromResponse,
   type LiveDashboardSnapshot,
   type TicketAgentOption,
@@ -8587,6 +8589,58 @@ function SavedTicketViews({
   );
 }
 
+function TicketStatusMultiSelect({
+  onChange,
+  selected,
+  statuses,
+}: {
+  onChange: (labels: string[]) => void;
+  selected: string[];
+  statuses: readonly string[];
+}) {
+  const summary =
+    selected.length === 0
+      ? "Alle Status"
+      : selected.length <= 2
+        ? selected.join(", ")
+        : `${selected.length} Status gewählt`;
+  const toggle = (label: string) =>
+    onChange(
+      selected.includes(label)
+        ? selected.filter((entry) => entry !== label)
+        : [...selected, label],
+    );
+  return (
+    <div className="ticket-status-multi">
+      <span className="ticket-status-multi__label">Status</span>
+      <details className="ticket-status-multi__details">
+        <summary>{summary}</summary>
+        <div className="ticket-status-multi__options" role="group" aria-label="Status">
+          {statuses.map((status) => (
+            <label key={status}>
+              <input
+                checked={selected.includes(status)}
+                onChange={() => toggle(status)}
+                type="checkbox"
+              />
+              <span>{status}</span>
+            </label>
+          ))}
+          {selected.length > 0 ? (
+            <button
+              className="ticket-status-multi__reset"
+              onClick={() => onChange([])}
+              type="button"
+            >
+              Auswahl aufheben
+            </button>
+          ) : null}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function TicketListFilters({
   agents,
   currentUserId,
@@ -8805,20 +8859,13 @@ function TicketListFilters({
                     ))}
                   </select>
                 </label>
-                <label>
-                  <span>Status</span>
-                  <select
-                    onChange={(event) => update("status", event.target.value)}
-                    value={filters.status}
-                  >
-                    <option value="all">Alle Status</option>
-                    {statuses.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <TicketStatusMultiSelect
+                  onChange={(labels) =>
+                    update("status", joinStatusFilter(labels))
+                  }
+                  selected={splitStatusFilter(filters.status)}
+                  statuses={statuses}
+                />
                 <label>
                   <span>Abteilung</span>
                   <select
