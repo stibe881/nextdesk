@@ -83,6 +83,23 @@ Wichtige Funktionen und ihre Konfiguration:
 | Raumplanung, Eintritte, Bestandsverwaltung, Verträge, Serviceaufgaben | Zusatzmodule für einzelne Abteilungen                                                                                   |
 | Single Sign-On                                                        | Anmeldung mit Microsoft Entra ID (siehe Installationsanleitung)                                                         |
 
+### Microsoft Teams im Shop
+
+Die Funktion **Microsoft Teams im Shop** ist standardmässig aus. Schalten Sie
+sie ein, damit Mitarbeitende im Shop neue Teams bestellen können (Wizard mit
+Kanälen, Personen und Laufzeit; Erinnerung 14, 7 und 1 Tag vor dem Ende,
+danach Archivierung) und das Menü **Teams** erscheint.
+
+In der Karte der Funktion:
+
+1. **Zustimmungslink**: Der Microsoft-Admin öffnet ihn einmalig und erteilt
+   der nextDesk-App die Teams-Rechte.
+2. **Verbindung prüfen**: zeigt, ob alles erteilt ist oder welches Recht
+   noch fehlt. Nach der Zustimmung kann es einige Minuten dauern.
+3. **Längste Laufzeit** (Monate) und **Gäste dürfen eingeladen werden**.
+
+Die Einrichtungsschritte stehen im Installationshandbuch.
+
 ### SLA-Automatisierung konfigurieren
 
 Unter **Funktionen → SLA-Automatisierung → Konfigurieren**:

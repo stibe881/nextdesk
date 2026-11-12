@@ -19,6 +19,38 @@ function credentials(): { clientId: string; clientSecret: string } | null {
   return readIntuneGraphCredentials();
 }
 
+/** Rollen, die die Graph-App für Teams braucht (Anwendungsberechtigungen). */
+export const TEAMS_REQUIRED_ROLES = [
+  "Team.Create",
+  "TeamMember.ReadWrite.All",
+  "Channel.Create",
+  "TeamsTab.Create",
+  "TeamSettings.ReadWrite.All",
+  "Group.Read.All",
+  "Team.ReadBasic.All",
+] as const;
+export const TEAMS_GUEST_ROLE = "User.Invite.All";
+
+/** Öffentliche Client-Id der verwendeten Graph-App (für den Zustimmungslink). */
+export function teamsClientId(): string | null {
+  return credentials()?.clientId ?? null;
+}
+
+/** Anwendungsrollen eines Tokens (nur die Rollen, nie das Token). */
+export function tokenRoles(token: string): string[] {
+  try {
+    const part = token.split(".")[1] ?? "";
+    const claims = JSON.parse(
+      atob(part.replaceAll("-", "+").replaceAll("_", "/")),
+    ) as { roles?: unknown };
+    return Array.isArray(claims.roles)
+      ? claims.roles.filter((role): role is string => typeof role === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 export function teamsCredentialsConfigured(): boolean {
   return credentials() !== null;
 }

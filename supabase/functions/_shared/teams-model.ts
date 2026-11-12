@@ -147,7 +147,10 @@ function parseChannel(value: unknown): TeamChannel | null {
 export function validateTeamRequest(
   input: unknown,
   today: string,
+  options: { maxLifetimeMonths?: number; allowGuests?: boolean } = {},
 ): TeamValidation {
+  const maxMonths = options.maxLifetimeMonths ?? TEAM_LIMITS.maxLifetimeMonths;
+  const guestsAllowedByTenant = options.allowGuests ?? true;
   if (!isRecord(input)) return { ok: false, code: "invalid_request" };
   const name = clean(input.name, TEAM_LIMITS.nameMax);
   if (!name || [...name].length < TEAM_LIMITS.nameMin) {
@@ -205,8 +208,8 @@ export function validateTeamRequest(
     }
     if (!guests.includes(email)) guests.push(email);
   }
-  const allowGuests = input.allowGuests === true;
-  if (guests.length > 0 && !allowGuests) {
+  const allowGuests = input.allowGuests === true && guestsAllowedByTenant;
+  if (guests.length > 0 && (!allowGuests || !guestsAllowedByTenant)) {
     return { ok: false, code: "guests_not_allowed", field: "guests" };
   }
 
@@ -221,7 +224,7 @@ export function validateTeamRequest(
   if (endDate <= startDate) {
     return { ok: false, code: "end_before_start", field: "endDate" };
   }
-  const limit = addMonths(startDate, TEAM_LIMITS.maxLifetimeMonths);
+  const limit = addMonths(startDate, maxMonths);
   if (!limit || endDate > limit) {
     return { ok: false, code: "lifetime_too_long", field: "endDate" };
   }
