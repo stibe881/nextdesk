@@ -187,7 +187,42 @@ export function notificationEmailText(
   let title: string;
   let lines: string[];
 
-  if (kind.startsWith("shop.order.")) {
+  if (kind.startsWith("shop.order.team_")) {
+    const team = text(payload.teamName, 120) ?? "Ihr Team";
+    const until = day(payload.endDate);
+    const daysLeft = Number(payload.daysLeft);
+    if (kind === "shop.order.team_ready") {
+      title = `Team bereit: ${team}`;
+      lines = [`Das Team «${team}» wurde in Microsoft Teams angelegt.`];
+      if (Number(payload.warnings) > 0) {
+        lines.push(
+          "Einzelne Kanäle, Tabs oder Gäste konnten nicht ergänzt werden. Bitte in Teams prüfen oder den Support informieren.",
+        );
+      }
+    } else if (kind === "shop.order.team_failed") {
+      title = `Team konnte nicht angelegt werden: ${team}`;
+      lines = [
+        text(payload.reason, 300) ??
+          "Beim Anlegen des Teams ist ein Fehler aufgetreten.",
+      ];
+    } else if (kind === "shop.order.team_expiring") {
+      const when = daysLeft === 1
+        ? "morgen"
+        : Number.isInteger(daysLeft) && daysLeft > 1
+        ? `in ${daysLeft} Tagen`
+        : "bald";
+      title = `Team läuft ${when} ab: ${team}`;
+      lines = [
+        `Das Team «${team}» endet ${when}${until ? ` (${until})` : ""}.`,
+        "Möchten Sie es weiterführen? Verlängern Sie die Laufzeit um 1, 3, 6 oder 12 Monate unter «Teams». Ohne Verlängerung wird das Team nach Ablauf archiviert.",
+      ];
+    } else {
+      title = `Team archiviert: ${team}`;
+      lines = [
+        `Das Team «${team}» ist abgelaufen und wurde archiviert. Es bleibt lesbar und lässt sich in Teams wiederherstellen.`,
+      ];
+    }
+  } else if (kind.startsWith("shop.order.")) {
     const [shopTitle, shopBody] = SHOP_EVENTS[
       kind.slice("shop.order.".length)
     ] ?? ["Shop", "Es gibt eine Neuigkeit zu einer Bestellung."];

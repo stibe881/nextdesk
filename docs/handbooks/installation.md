@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-11
+updated: 2026-11-12
 ---
 
 # Installationsanleitung
@@ -240,6 +240,28 @@ Anwendungsberechtigungen mit Administratorzustimmung:
 Fehlt eine Berechtigung, zeigt nextDesk im Fall eine klare Meldung, und das
 Team erledigt den Schritt im Entra Admin Center. Ein Gerät isolieren geht nur
 in Microsoft Defender.
+
+### Microsoft Teams im Shop
+
+Mitarbeitende können im Shop ein neues Microsoft-Teams-Team bestellen
+(Wizard, ohne Genehmigung; nextDesk legt das Team über Microsoft Graph an,
+erinnert die Owner vor dem Ende und archiviert abgelaufene Teams).
+
+- **[Betreiber]** Die Graph-App (Standard: dieselbe wie für Intune, sonst
+  eigene App über `TEAMS_GRAPH_CLIENT_ID` und `TEAMS_GRAPH_CLIENT_SECRET`) braucht
+  die **Anwendungsberechtigungen** _Team.Create_, _TeamMember.ReadWrite.All_,
+  _Channel.Create_, _TeamsTab.Create_, _TeamSettings.ReadWrite.All_ und
+  _User.Invite.All_ (nur für Gäste).
+- **[Microsoft-Admin]** Zustimmung für diese Berechtigungen erteilen. Sie
+  erlauben der App, Teams anzulegen und zu archivieren; prüfen Sie den
+  Umfang mit Ihrer IT-Sicherheit.
+- Voraussetzungen: SSO mit der eigenen **Tenant-ID**, der
+  **Verzeichnisabgleich** (für die Personensuche) und die Funktion **Shop**.
+- Fehlt die Berechtigung, zeigt der Shop «Noch nicht eingerichtet» bzw. die
+  Bestellung erscheint unter _Meine Teams_ als _Fehlgeschlagen_.
+
+Das Anlegen läuft im Hintergrund (Cron `nextdesk-teams-lifecycle`, alle
+5 Minuten, Edge Function `teams-lifecycle`).
 
 ### Push-Benachrichtigungen (iOS)
 

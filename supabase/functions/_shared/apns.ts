@@ -485,6 +485,26 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
             title: "Bestellung storniert",
             body: `Bestellung${number} wurde storniert.`,
           };
+        case "team_ready":
+          return {
+            title: "Dein Team ist bereit",
+            body: "Das bestellte Microsoft-Teams-Team wurde angelegt.",
+          };
+        case "team_failed":
+          return {
+            title: "Team konnte nicht angelegt werden",
+            body: "Beim Anlegen des bestellten Teams ist ein Fehler aufgetreten.",
+          };
+        case "team_expiring":
+          return {
+            title: "Dein Team läuft bald ab",
+            body: "Ein Team endet bald. Jetzt verlängern oder archivieren lassen.",
+          };
+        case "team_archived":
+          return {
+            title: "Team archiviert",
+            body: "Ein Team ist abgelaufen und wurde archiviert.",
+          };
         default:
           return { title: "Shop", body: `Neuigkeit zu Bestellung${number}.` };
       }

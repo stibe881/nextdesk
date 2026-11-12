@@ -301,3 +301,9 @@ verify_jwt = true
 
 [functions.intune-scheduled-sync]
 verify_jwt = false
+
+[functions.teams-provisioning]
+verify_jwt = true
+
+[functions.teams-lifecycle]
+verify_jwt = false

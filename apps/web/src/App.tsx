@@ -1625,9 +1625,17 @@ function baseNotificationPresentation(
           "shop.order.rejected": "Bestellung abgelehnt",
           "shop.order.cancelled": "Bestellung storniert",
           "shop.order.note": "Nachricht zur Bestellung",
+          "shop.order.team_ready": "Team bereit",
+          "shop.order.team_failed": "Team konnte nicht angelegt werden",
+          "shop.order.team_expiring": "Team läuft bald ab",
+          "shop.order.team_archived": "Team archiviert",
         };
+        const teamName =
+          notificationPayloadText(notification, "teamName", 120) ?? "";
         return {
-          description: `Shop · Bestellung ${orderNumber}`.trim(),
+          description: notification.kind.startsWith("shop.order.team_")
+            ? `Shop · Team ${teamName}`.trim()
+            : `Shop · Bestellung ${orderNumber}`.trim(),
           Icon: ShoppingBag,
           title: shopTitles[notification.kind] ?? "Shop",
         };

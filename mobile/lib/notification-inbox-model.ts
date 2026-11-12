@@ -282,7 +282,7 @@ export function inboxPresentation(
       ? `${notification.ticket.ticketNumber} · ${subject}`
       : notification.ticket.ticketNumber;
   } else if (kind === "shop") {
-    detail = text(payload.orderNumber, 40);
+    detail = text(payload.orderNumber, 40) ?? text(payload.teamName, 80);
   } else if (kind === "incident") {
     const number = text(payload.number, 40);
     const name = text(payload.title, 80);

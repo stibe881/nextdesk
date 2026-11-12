@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-11
+updated: 2026-11-12
 ---
 
 # Handbuch für Mitarbeitende
@@ -218,6 +218,30 @@ Erhalten Sie ein Gerät aus dem Shop, ist es danach unter **Mein Bereich →
 Geräte** Ihnen zugewiesen.
 
 ![Shop mit Katalog, Suche und Warenkorb](images/ma-shop.jpg)
+
+### Microsoft Teams: neues Team bestellen
+
+Falls Ihr Unternehmen Microsoft Teams im Shop anbietet, erscheint im Katalog
+die Kachel **Microsoft Teams: neues Team**. Ein Team wird ohne Genehmigung
+bestellt und danach automatisch angelegt.
+
+1. **Team zusammenstellen …** wählen und die fünf Schritte durchgehen:
+   **Grunddaten** (Name, Beschreibung, _Privat_ oder _Öffentlich_, Gäste
+   erlauben), **Kanäle & Tabs** (weitere Kanäle, auch privat, mit
+   Website-Tabs), **Personen** (mindestens ein Owner, Mitglieder, bei
+   erlaubten Gästen deren E-Mail-Adressen) und **Laufzeit** (Start und Ende).
+2. In der **Übersicht** prüfen und **Verbindlich bestellen**.
+
+Das **Ende** ist eine Pflichtangabe (höchstens drei Jahre). Das Team wird am
+Ende nicht gelöscht: 14 Tage, 7 Tage und 1 Tag vorher erhalten die Owner und
+die bestellende Person eine Benachrichtigung (E-Mail und Push, Kategorie
+«Shop»). Unter **Meine Teams** verlängern Sie die Laufzeit mit einem Klick um
+1, 3, 6 Monate oder 1 Jahr. Ohne Verlängerung wird das Team nach dem Ende
+archiviert; es bleibt lesbar und kann in Teams wiederhergestellt werden.
+
+Gäste erhalten eine Einladung von Microsoft und erscheinen erst nach Annahme
+im Team. Weitere Tabs wie Planner oder OneNote ergänzt das Team danach in
+Teams selbst.
 
 ## Persönliche Einstellungen und Handbücher
 
