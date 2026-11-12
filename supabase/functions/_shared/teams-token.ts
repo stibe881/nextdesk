@@ -48,7 +48,9 @@ export async function teamsGraphToken(
     throw new TeamsGraphError("invalid");
   }
   try {
-    return await requestIntuneActionAccessToken(entraTenant, app, fetchImpl);
+    const token = await requestIntuneActionAccessToken(entraTenant, app, fetchImpl);
+    logTokenClaims(token);
+    return token;
   } catch (error) {
     if (error instanceof IntuneActionError) {
       console.error(`teams-token ${error.code} status=${error.graphStatus ?? ""}`);
@@ -59,5 +61,27 @@ export async function teamsGraphToken(
       if (error.code === "rate_limited") throw new TeamsGraphError("rate_limited");
     }
     throw new TeamsGraphError("unavailable");
+  }
+}
+
+/**
+ * Diagnose: App-Id und Anwendungsrollen des Tokens ins Protokoll (nur diese
+ * Angaben, nie das Token selbst). So ist sichtbar, ob eine erteilte
+ * Berechtigung schon im Token steht (Microsoft hält Tokens bis zu ~1 Stunde).
+ */
+export function logTokenClaims(token: string): void {
+  try {
+    const part = token.split(".")[1] ?? "";
+    const json = atob(part.replaceAll("-", "+").replaceAll("_", "/"));
+    const claims = JSON.parse(json) as { appid?: unknown; roles?: unknown };
+    const roles = Array.isArray(claims.roles)
+      ? claims.roles.filter((role): role is string => typeof role === "string")
+      : [];
+    const needed = ["Team.Create", "Group.Read.All", "TeamMember.ReadWrite.All"];
+    console.log(
+      `teams-token app=${String(claims.appid ?? "").slice(0, 36)} roles=${roles.length} missing=${needed.filter((role) => !roles.includes(role)).join(",") || "none"}`,
+    );
+  } catch {
+    // Diagnose darf nie scheitern.
   }
 }
