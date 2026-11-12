@@ -413,8 +413,9 @@ export async function listTeamMembers(
   token: string,
   teamId: string,
   fetcher: FetchLike = fetch,
+  top = 200,
 ): Promise<TeamMemberInfo[]> {
-  const body = await getJson(fetcher, token, `/teams/${teamId}/members?$top=200`);
+  const body = await getJson(fetcher, token, `/teams/${teamId}/members?$top=${top}`);
   const members: TeamMemberInfo[] = [];
   for (const entry of Array.isArray(body.value) ? body.value : []) {
     const row = entry as Json;
@@ -481,4 +482,15 @@ export async function unarchiveTeam(
     if (error instanceof TeamsGraphError && error.code === "conflict") return;
     throw error;
   }
+}
+
+/** Zahl der Mitglieder (ohne Gäste) und Gäste eines Teams (höchstens 999 gelesen). */
+export async function teamMemberCounts(
+  token: string,
+  teamId: string,
+  fetcher: FetchLike = fetch,
+): Promise<{ members: number; guests: number }> {
+  const members = await listTeamMembers(token, teamId, fetcher, 999);
+  const guests = members.filter((member) => member.isGuest).length;
+  return { members: members.length - guests, guests };
 }
