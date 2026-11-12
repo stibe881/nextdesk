@@ -1626,10 +1626,29 @@ function baseNotificationPresentation(
           "shop.order.cancelled": "Bestellung storniert",
           "shop.order.note": "Nachricht zur Bestellung",
         };
+        const toDesk =
+          notificationPayloadText(notification, "deliveryMethod", 20) ===
+          "desk";
+        const deskLocation = notificationPayloadText(
+          notification,
+          "deliveryLocation",
+          200,
+        );
+        const handover =
+          notification.kind === "shop.order.ready"
+            ? toDesk
+              ? ` · an den Arbeitsplatz${deskLocation ? ` (${deskLocation})` : ""}`
+              : notificationPayloadText(notification, "deliveryMethod", 20)
+                ? " · Abholung beim Support"
+                : ""
+            : "";
         return {
-          description: `Shop · Bestellung ${orderNumber}`.trim(),
+          description: `Shop · Bestellung ${orderNumber}${handover}`.trim(),
           Icon: ShoppingBag,
-          title: shopTitles[notification.kind] ?? "Shop",
+          title:
+            notification.kind === "shop.order.ready" && toDesk
+              ? "Bereit zur Lieferung"
+              : (shopTitles[notification.kind] ?? "Shop"),
         };
       }
       if (notification.kind === "license.reclaim_candidates") {
@@ -8615,7 +8634,11 @@ function TicketStatusMultiSelect({
       <span className="ticket-status-multi__label">Status</span>
       <details className="ticket-status-multi__details">
         <summary>{summary}</summary>
-        <div className="ticket-status-multi__options" role="group" aria-label="Status">
+        <div
+          className="ticket-status-multi__options"
+          role="group"
+          aria-label="Status"
+        >
           {statuses.map((status) => (
             <label key={status}>
               <input

@@ -51,6 +51,9 @@ export type ApnsPayloadInput = {
   shopEvent?: string;
   /** Shop reminder sent to the supervisor or stand-in (escalation). */
   shopEscalated?: boolean;
+  /** Handover chosen when ordering: pickup at the support or to the desk. */
+  shopDeliveryMethod?: string;
+  shopDeliveryLocation?: string;
   orderId?: string;
   orderNumber?: string;
   serviceTaskEvent?: string;
@@ -439,10 +442,15 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
             body: `Bestellung${number} wird vorbereitet.`,
           };
         case "ready":
-          return {
-            title: "Bereit zur Abholung",
-            body: `Bestellung${number} liegt für dich bereit.`,
-          };
+          return input.shopDeliveryMethod === "desk"
+            ? {
+              title: "Bereit zur Lieferung",
+              body: `Bestellung${number} wird an deinen Arbeitsplatz gebracht${input.shopDeliveryLocation ? `: ${input.shopDeliveryLocation.slice(0, 80)}` : ""}.`,
+            }
+            : {
+              title: "Bereit zur Abholung",
+              body: `Bestellung${number} liegt für dich bereit. Abholung beim Support.`,
+            };
         case "issued":
           return {
             title: "Bestellung ausgegeben",
