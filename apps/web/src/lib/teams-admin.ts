@@ -37,7 +37,9 @@ export type TeamsAdminContext = {
 const ERRORS: Record<string, string> = {
   teams_manage_denied: "Du darfst Teams nicht verwalten.",
   graph_consent_missing:
-    "Die Microsoft-Berechtigung fehlt. Bitte den Support informieren.",
+    "Microsoft verweigert den Zugriff: Die Berechtigung für Teams fehlt oder ist noch nicht übernommen.",
+  graph_token_failed:
+    "Die Anmeldung der Microsoft-App ist fehlgeschlagen (Geheimnis falsch oder abgelaufen).",
   graph_rate_limited:
     "Microsoft bremst gerade. Bitte in einer Minute erneut versuchen.",
   graph_unavailable: "Microsoft Teams ist gerade nicht erreichbar.",

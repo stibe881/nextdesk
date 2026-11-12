@@ -70,7 +70,9 @@ function errorCode(error: unknown): TeamsGraphErrorCode {
 export function failureReason(code: string): string {
   switch (code) {
     case "consent_missing":
-      return "Die Microsoft-Berechtigung für Teams fehlt. Bitte den Support informieren.";
+      return "Microsoft verweigert den Zugriff: Die Berechtigung für Teams fehlt. Bitte den Support informieren.";
+    case "token_failed":
+      return "Die Anmeldung der Microsoft-App ist fehlgeschlagen (Geheimnis falsch oder abgelaufen). Bitte den Support informieren.";
     case "invalid":
       return "Microsoft hat die Angaben abgelehnt (z. B. Name oder Personen). Bitte den Support informieren.";
     case "conflict":
@@ -165,7 +167,8 @@ async function handleStepError(
   error: unknown,
 ) {
   const code = errorCode(error);
-  const permanent = code === "consent_missing" || code === "invalid";
+  const permanent =
+    code === "consent_missing" || code === "token_failed" || code === "invalid";
   if (permanent || row.attempts + 1 >= MAX_ATTEMPTS) {
     await markFailed(admin, row, code);
     return;
