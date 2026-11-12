@@ -388,6 +388,8 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
       orderId?: string;
       orderNumber?: string;
       shopEscalated?: boolean;
+      shopDeliveryMethod?: string;
+      shopDeliveryLocation?: string;
     }
     | {} = {};
   if (preferenceCategory === "shop" && row.notification_id) {
@@ -404,6 +406,12 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
         : {}),
       ...(typeof payload.orderNumber === "string"
         ? { orderNumber: payload.orderNumber }
+        : {}),
+      ...(typeof payload.deliveryMethod === "string"
+        ? { shopDeliveryMethod: payload.deliveryMethod }
+        : {}),
+      ...(typeof payload.deliveryLocation === "string"
+        ? { shopDeliveryLocation: payload.deliveryLocation }
         : {}),
       // Eskalation: an Vorgesetzte (audience manager) bzw. Stellvertretung
       // (audience deputy) – siehe shop_send_reminders (0314).
