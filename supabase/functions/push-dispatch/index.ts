@@ -529,6 +529,8 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
         ["reason", "incidentReason"],
         ["severity", "incidentSeverity"],
         ["incidentId", "incidentId"],
+        ["source", "incidentSource"],
+        ["provider", "incidentProvider"],
       ]
     ) {
       if (typeof payload[from] === "string") incident[to] = payload[from];

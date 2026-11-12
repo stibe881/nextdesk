@@ -312,8 +312,8 @@ per Push und E-Mail alarmiert.
    bei Bedarf _Warnung_ und **zwingend** die Zeile «nicht mehr im Status …»
    (Up) mit derselben Vorlage. Ohne den Up-Trigger erfährt nextDesk nie, dass
    die Störung vorbei ist, und der Dienst bleibt im Systemstatus gestört. Bei
-   _Up_ wird die Störung als behoben markiert; abgeschlossen wird sie von einem
-   Agenten mit der Ursache. nextDesk versteht die
+   _Up_ wird die Störung automatisch abgeschlossen (die Ursache lässt sich
+   nachtragen). nextDesk versteht die
    Statuswörter deutsch (Fehler, Warnung, OK, Pausiert) und englisch (Down,
    Warning, Up, Paused).
 4. **Geräte und Dienste verknüpfen** (nur damit ändert sich der Systemstatus):
@@ -342,6 +342,26 @@ per Push und E-Mail alarmiert.
    **Uplink** (vorgelagertes Gerät) eintragen.
 
 ![Monitoring (PRTG) mit Token und Alarmierung](images/in-monitoring.jpg)
+
+### Externe Statusquellen (Microsoft 365, GitHub, Claude …)
+
+1. **[Admin]** **Einstellungen → Monitoring → Externe Statusquellen**: die
+   gewünschten Anbieter anhaken und **Speichern**. Die öffentlichen Quellen
+   (GitHub, Claude, Gemini, App Store, Google Play, Init7) brauchen keine
+   weitere Einrichtung.
+2. Für **Microsoft 365** liest nextDesk den Dienststatus Ihres Mandanten über
+   Microsoft Graph mit derselben Entra-App wie der Verzeichnisabgleich. In
+   Microsoft Entra unter _App-Registrierungen → nextDesk → API-Berechtigungen_
+   die **Anwendungsberechtigung** `ServiceHealth.Read.All` (Microsoft Graph)
+   hinzufügen und die **Administratorzustimmung erteilen**. Ohne diese
+   Berechtigung zeigt die Quelle «Berechtigung ServiceHealth.Read.All fehlt».
+   Berücksichtigt werden Vorfälle; reine Hinweise (Advisories) lösen keinen
+   Alarm aus.
+3. Mit **Jetzt prüfen** testen Sie die Verbindung; danach prüft nextDesk alle
+   5 Minuten selbständig.
+4. **WWZ und Swisscom** bieten keine maschinenlesbare Statusquelle. Legen Sie
+   dafür in PRTG einen Ping-Sensor auf das Gateway bzw. einen HTTP-Sensor an;
+   die Meldungen kommen dann wie gewohnt als Störung.
 
 ### Zertifikate, Domains und Backups
 

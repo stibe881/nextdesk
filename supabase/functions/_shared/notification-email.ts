@@ -327,7 +327,15 @@ export function notificationEmailText(
             ? `Erneut: ${what}`
             : what;
     if (number) title = `${title} ${number}`;
-    lines = [
+    if (payload.source === "external") {
+      // Status feed of a provider (Microsoft 365, GitHub, Claude, …).
+      const provider = text(payload.provider, 80) ?? "Ein externer Dienst";
+      title = `Externe Störung: ${provider}${number ? ` (${number})` : ""}`;
+      lines = [
+        `${provider} meldet eine Störung: ${name}.`,
+        "Die Ursache liegt beim Anbieter, nicht in Ihrem Netz. Details unter «Störungen»; die Störung schliesst sich, sobald der Anbieter sie als behoben meldet.",
+      ];
+    } else lines = [
       `${warning ? "PRTG meldet eine Warnung" : "PRTG meldet einen Ausfall"}: ${name}.`,
       payload.reason === "realert"
         ? "Die Störung ist noch von niemandem bestätigt. Bitte unter «Störungen» bestätigen."

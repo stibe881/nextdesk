@@ -313,3 +313,6 @@ verify_jwt = true
 
 [functions.teams-settings]
 verify_jwt = true
+
+[functions.external-status]
+verify_jwt = false

@@ -9,6 +9,7 @@ import {
   Network,
   Search,
   Wrench,
+  Globe,
 } from "lucide-react";
 import {
   useCallback,
@@ -571,6 +572,12 @@ function IncidentRow({
               <Wrench aria-hidden="true" size={12} /> Wartung
             </span>
           ) : null}
+          {entry.source === "external" ? (
+            <span className="incident-chip incident-chip--external">
+              <Globe aria-hidden="true" size={12} /> Extern
+              {entry.externalProvider ? ` · ${entry.externalProvider}` : ""}
+            </span>
+          ) : null}
           {entry.location ? (
             <span className="incident-chip incident-chip--line">
               {entry.location}
@@ -786,8 +793,36 @@ function IncidentView({
                     <Wrench aria-hidden="true" size={12} /> Wartung
                   </span>
                 ) : null}
+                {detail.source === "external" ? (
+                  <span className="incident-chip incident-chip--external">
+                    <Globe aria-hidden="true" size={12} /> Extern
+                    {detail.externalProvider
+                      ? ` · ${detail.externalProvider}`
+                      : ""}
+                  </span>
+                ) : null}
               </div>
               <h2 id="incident-title">{detail.title}</h2>
+              {detail.source === "external" ? (
+                <p className="incident__parent">
+                  Gemeldet von {detail.externalProvider ?? "einem Anbieter"}:
+                  Die Ursache liegt beim Anbieter, nicht in Ihrem Netz. Die
+                  Störung schliesst sich automatisch, sobald der Anbieter sie
+                  als behoben meldet.
+                  {detail.externalUrl ? (
+                    <>
+                      {" "}
+                      <a
+                        href={detail.externalUrl}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        Statusseite des Anbieters öffnen
+                      </a>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
               {detail.parent ? (
                 <p className="incident__parent">
                   Folgestörung von{" "}
