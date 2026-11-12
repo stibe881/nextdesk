@@ -18070,6 +18070,12 @@ html:has(.embed-status-badge) body {
   gap: 18px;
   align-items: start;
 }
+/* Katalog: Filter, Verwaltungsknöpfe und Artikel mit gleichmässigem Abstand */
+.shop__catalog {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
 .shop__filters {
   display: flex;
   flex-wrap: wrap;
