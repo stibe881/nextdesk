@@ -480,8 +480,9 @@ Wählen Sie im Antwortbereich den Modus:
 
 - **Antwort an anfragende Person** → **Externe Antwort senden**. Die Person
   sieht die Antwort im Portal und per E-Mail.
-  Im Antwortfeld steht bereits die Begrüssung «Lieber Vorname» mit Platz
-  darunter; ein Klick ins Feld setzt den Cursor direkt dahinter. Sie können die
+  Im Antwortfeld steht bereits die Begrüssung «Liebe Vorname» bzw. «Lieber
+  Vorname» (nach dem Vornamen; bei nicht eindeutigen Namen «Guten Tag
+  Vorname») mit Platz darunter; ein Klick ins Feld setzt den Cursor direkt dahinter. Sie können die
   Begrüssung ändern oder löschen. Eine Antwort, die nur aus der Begrüssung
   besteht, wird nicht gesendet.
   Antworten an die anfragende Person sind nur möglich, wenn das Ticket
@@ -494,7 +495,7 @@ Wählen Sie im Antwortbereich den Modus:
 Unter dem Antwortfeld können Sie Ihren Text mit **Mit KI umformulieren** von
 der KI überarbeiten lassen (falls KI-Assistenz aktiv): **Kurz** macht ihn knapp
 und auf den Punkt, **Ausführlich** erklärt die genannten Schritte vollständig.
-Der Ton ist immer professionell, aber persönlich und freundlich; die KI erfindet
+Die KI schreibt die anfragende Person immer per Du an. Der Ton ist immer professionell, aber persönlich und freundlich; die KI erfindet
 keine Fakten, Zusagen oder Termine. Eine vorhandene Begrüssung bleibt
 bestehen. Mit **Original wiederherstellen** holen Sie Ihren Text zurück. In der
 iPhone- und der Android-App heissen die Knöpfe unter dem Nachrichtenfeld **KI

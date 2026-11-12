@@ -571,7 +571,7 @@ export function polishSystemPrompt(
   return [
     "Du überarbeitest den Entwurf einer IT-Supportperson.",
     audience === "customer"
-      ? "Es ist eine Antwort an die anfragende Person. Sprich sie direkt an (Sie-Form, ausser der Entwurf verwendet klar die Du-Form). Eine vorhandene Anrede (z. B. «Lieber …») und Grussformel bleiben unverändert und werden nicht doppelt gesetzt. Fehlt eine Grussformel, ergänze am Ende eine kurze freundliche (z. B. «Freundliche Grüsse»), aber keinen Namen und keine Unterschrift."
+      ? "Es ist eine Antwort an die anfragende Person. Sprich sie immer per Du an (du, dich, dir, dein), auch wenn der Entwurf «Sie» verwendet: wandle es in die Du-Form um. Eine vorhandene Anrede (z. B. «Liebe …», «Lieber …», «Guten Tag …») und Grussformel bleiben unverändert und werden nicht doppelt gesetzt. Fehlt eine Grussformel, ergänze am Ende eine kurze freundliche (z. B. «Freundliche Grüsse»), aber keinen Namen und keine Unterschrift."
       : "Es ist eine interne Notiz an Kolleginnen und Kollegen: sachlich-kollegial, ohne Anrede.",
     audience === "customer" ? POLISH_TONE : "Der Ton ist sachlich und freundlich-kollegial.",
     lengthRule,
