@@ -231,88 +231,107 @@ export function IncidentNetworkCard({
   const down = [...network.subnetNeighbours, ...network.switchNeighbours]
     .filter((entry) => entry.state === "down")
     .map((entry) => entry.assetId ?? entry.name);
+  const neighbours =
+    network.subnetNeighbours.length + network.switchNeighbours.length;
+  const summary = [
+    network.addresses
+      .map((address) => address.address)
+      .filter(Boolean)
+      .join(", "),
+    neighbours
+      ? `${neighbours} ${neighbours === 1 ? "Nachbar" : "Nachbarn"}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <article className="incident-card">
-      <h3>
-        <Network aria-hidden="true" size={15} /> Netzwerk
-      </h3>
-      {network.addresses.map((address, index) => (
-        <dl
-          className="incident-kv"
-          key={`${address.address ?? "mac"}-${index}`}
-        >
-          {address.address ? (
-            <>
-              <dt>IP</dt>
-              <dd className="incident-mono">
-                {address.address}
-                {address.hostname ? ` · ${address.hostname}` : ""}
-              </dd>
-            </>
-          ) : null}
-          {address.prefix ? (
-            <>
-              <dt>Subnetz</dt>
-              <dd className="incident-mono">
-                {address.prefix}
-                {address.gateway ? ` · GW ${address.gateway}` : ""}
-              </dd>
-            </>
-          ) : null}
-          {address.vlanNumber !== null ? (
-            <>
-              <dt>VLAN</dt>
-              <dd>
-                {address.vlanNumber}
-                {address.vlanName ? ` · ${address.vlanName}` : ""}
-              </dd>
-            </>
-          ) : null}
-          {address.site ? (
-            <>
-              <dt>Standort</dt>
-              <dd>{address.site}</dd>
-            </>
-          ) : null}
-          {address.switchName ? (
-            <>
-              <dt>Switch-Port</dt>
-              <dd className="incident-mono">
-                {address.switchName}
-                {address.switchPort ? ` · ${address.switchPort}` : ""}
-                {address.portSource === "lldp" || address.portSource === "fdb"
-                  ? " (erkannt)"
-                  : ""}
-              </dd>
-            </>
-          ) : null}
-        </dl>
-      ))}
+      {/* Long list of neighbours: collapsed by default. */}
+      <details className="incident-collapsible">
+        <summary>
+          <h3>
+            <Network aria-hidden="true" size={15} /> Netzwerk
+          </h3>
+          {summary ? <span className="incident-muted">{summary}</span> : null}
+        </summary>
+        {network.addresses.map((address, index) => (
+          <dl
+            className="incident-kv"
+            key={`${address.address ?? "mac"}-${index}`}
+          >
+            {address.address ? (
+              <>
+                <dt>IP</dt>
+                <dd className="incident-mono">
+                  {address.address}
+                  {address.hostname ? ` · ${address.hostname}` : ""}
+                </dd>
+              </>
+            ) : null}
+            {address.prefix ? (
+              <>
+                <dt>Subnetz</dt>
+                <dd className="incident-mono">
+                  {address.prefix}
+                  {address.gateway ? ` · GW ${address.gateway}` : ""}
+                </dd>
+              </>
+            ) : null}
+            {address.vlanNumber !== null ? (
+              <>
+                <dt>VLAN</dt>
+                <dd>
+                  {address.vlanNumber}
+                  {address.vlanName ? ` · ${address.vlanName}` : ""}
+                </dd>
+              </>
+            ) : null}
+            {address.site ? (
+              <>
+                <dt>Standort</dt>
+                <dd>{address.site}</dd>
+              </>
+            ) : null}
+            {address.switchName ? (
+              <>
+                <dt>Switch-Port</dt>
+                <dd className="incident-mono">
+                  {address.switchName}
+                  {address.switchPort ? ` · ${address.switchPort}` : ""}
+                  {address.portSource === "lldp" || address.portSource === "fdb"
+                    ? " (erkannt)"
+                    : ""}
+                </dd>
+              </>
+            ) : null}
+          </dl>
+        ))}
+        {network.subnetNeighbours.length ? (
+          <>
+            <h4 className="incident-subhead">Weitere Geräte im Subnetz</h4>
+            <NeighbourList
+              entries={network.subnetNeighbours}
+              onOpen={onOpen}
+              withPort={false}
+            />
+          </>
+        ) : null}
+        {network.switchNeighbours.length ? (
+          <>
+            <h4 className="incident-subhead">Am selben Switch</h4>
+            <NeighbourList
+              entries={network.switchNeighbours}
+              onOpen={onOpen}
+              withPort
+            />
+          </>
+        ) : null}
+      </details>
       {new Set(down).size >= 2 ? (
         <p className="incident-muted">
           Mehrere Geräte im selben Netz sind gestört: Ursache eher im Netzwerk
           (Switch, Uplink, Strom) suchen.
         </p>
-      ) : null}
-      {network.subnetNeighbours.length ? (
-        <>
-          <h4 className="incident-subhead">Weitere Geräte im Subnetz</h4>
-          <NeighbourList
-            entries={network.subnetNeighbours}
-            onOpen={onOpen}
-            withPort={false}
-          />
-        </>
-      ) : null}
-      {network.switchNeighbours.length ? (
-        <>
-          <h4 className="incident-subhead">Am selben Switch</h4>
-          <NeighbourList
-            entries={network.switchNeighbours}
-            onOpen={onOpen}
-            withPort
-          />
-        </>
       ) : null}
     </article>
   );
