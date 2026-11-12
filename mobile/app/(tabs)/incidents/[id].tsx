@@ -13,6 +13,7 @@ import {
 } from "react-native";
 
 import { severityStyle, useIncidentStyles } from "@/components/incident-styles";
+import { SensorStatusBadge } from "@/components/sensor-status-badge";
 import { ScreenContainer } from "@/components/screen-container";
 import {
   acknowledgeIncident,
@@ -424,16 +425,10 @@ export default function IncidentDetailScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Sensoren</Text>
             {detail.sensors.map((sensor, index) => (
-              <View key={`${sensor.name}-${index}`} style={styles.kv}>
-                <View
-                  style={[
-                    styles.eventDot,
-                    sensor.state === "open" ? styles.sevBad : styles.sevOk,
-                  ]}
-                />
+              <View key={`${sensor.name}-${index}`} style={{ gap: 4 }}>
+                <SensorStatusBadge sensor={sensor} />
                 <Text style={styles.kvValue}>
                   <Text style={{ fontWeight: "800" }}>{sensor.name}</Text>
-                  {sensor.status ? ` · ${sensor.status}` : ""}
                   {sensor.message ? ` · ${sensor.message}` : ""}
                 </Text>
               </View>
