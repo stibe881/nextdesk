@@ -85,6 +85,9 @@ export type ApnsPayloadInput = {
   incidentTitle?: string;
   incidentReason?: string;
   incidentSeverity?: string;
+  /** «external»: status feed of a provider (Microsoft 365, GitHub, …). */
+  incidentSource?: string;
+  incidentProvider?: string;
   /**
    * Security case: a reporter said they clicked or entered data, the verdict
    * is overdue (optionally escalated to the team lead) or several people
@@ -345,6 +348,14 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
       };
     }
     case "incident": {
+      if (input.incidentSource === "external") {
+        const provider = input.incidentProvider?.trim().slice(0, 60) || "Externer Dienst";
+        const name = input.incidentTitle?.trim().slice(0, 120) || "Störung";
+        return {
+          title: `Externe Störung: ${provider}`,
+          body: input.incidentNumber ? `${input.incidentNumber}: ${name}` : name,
+        };
+      }
       const what = input.incidentSeverity === "warning" ? "Warnung" : "Störung";
       const title = input.incidentReason === "realert"
         ? `Noch unbestätigt: ${what}`

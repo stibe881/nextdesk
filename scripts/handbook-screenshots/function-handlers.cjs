@@ -741,6 +741,57 @@ const HANDLERS = {
     }
     return null;
   },
+  "external-status": () => {
+    const source = (key, label, description, extra = {}) => ({
+      key,
+      label,
+      description,
+      statusUrl: "https://example.com",
+      requiresEntra: false,
+      enabled: true,
+      lastCheckedAt: D.ago(3 * D.MIN),
+      lastError: null,
+      activeIncidents: 0,
+      ...extra,
+    });
+    return ok({
+      sources: [
+        source(
+          "microsoft365",
+          "Microsoft 365",
+          "Alle Dienste Ihres Mandanten: Teams, Outlook/Exchange, OneDrive, SharePoint und weitere.",
+          { requiresEntra: true, activeIncidents: 1 },
+        ),
+        source("github", "GitHub", "Offizielle Statusseite von GitHub."),
+        source(
+          "claude",
+          "Claude",
+          "Offizielle Statusseite von Claude.ai und der Claude-API.",
+        ),
+        source(
+          "gemini",
+          "Google Gemini",
+          "Gemini in Google Workspace und die Gemini-API.",
+        ),
+        source(
+          "apple_app_store",
+          "Apple App Store",
+          "App Store und Mac App Store (Apple Systemstatus).",
+        ),
+        source(
+          "google_play",
+          "Google Play Store",
+          "Offizielles Status-Dashboard von Google Play.",
+          { enabled: false, lastCheckedAt: null },
+        ),
+        source(
+          "init7",
+          "Init7",
+          "Aktuelle Störungen im Netz von Init7 (ohne geplante Wartungen).",
+        ),
+      ],
+    });
+  },
   "monitoring-integrations": (body) => {
     if (body.type !== "get") return null;
     return ok({

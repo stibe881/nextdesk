@@ -67,6 +67,10 @@ export type IncidentSummary = {
   services: IncidentService[];
   location: string | null;
   realertCount: number;
+  /** «external»: status feed of a provider (Microsoft 365, GitHub, …). */
+  source: "prtg" | "external";
+  externalProvider: string | null;
+  externalUrl: string | null;
   children: IncidentSummary[];
 };
 
@@ -255,6 +259,9 @@ function summaryOf(row: Row): IncidentSummary | null {
     }),
     location: str(row.location),
     realertCount: num(row.realertCount),
+    source: row.source === "external" ? "external" : "prtg",
+    externalProvider: str(row.externalProvider),
+    externalUrl: str(row.externalUrl),
     children: list(row.children).flatMap((child) => {
       const parsed = summaryOf(child);
       return parsed ? [parsed] : [];
@@ -634,4 +641,30 @@ export const EVENT_LABELS: Record<string, string> = {
   realert: "Erneut alarmiert",
   child: "Folgestörung",
   maintenance: "Wartung",
+  external: "Update vom Anbieter",
+};
+
+export type SensorTone = "down" | "warning" | "ok";
+
+/**
+ * Current state of a sensor for the status badge: «Fehler» (red), «Warnung»
+ * (yellow) or «OK» (green). PRTG texts such as «Warnung beendet (jetzt:
+ * Fehler)» name the current state in brackets.
+ */
+export function sensorTone(sensor: {
+  state: string;
+  status: string | null;
+}): SensorTone {
+  if (sensor.state !== "open") return "ok";
+  const text = (sensor.status ?? "").toLowerCase();
+  const current = /\((?:jetzt|now)\s*:\s*([^)]+)\)/.exec(text)?.[1] ?? text;
+  if (/^\s*(ok|up)\b/.test(current)) return "ok";
+  if (/warn|ungewöhnlich|unusual/.test(current)) return "warning";
+  return "down";
+}
+
+export const SENSOR_TONE_LABELS: Record<SensorTone, string> = {
+  down: "Fehler",
+  warning: "Warnung",
+  ok: "OK",
 };

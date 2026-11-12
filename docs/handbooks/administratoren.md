@@ -2,7 +2,7 @@
 title: Handbuch für Administratoren
 description: Mandant einrichten – Design, Funktionen, SLA, Abteilungen, Personen, Rollen, Datenschutz und Protokoll.
 audienceLabel: Administratoren
-updated: 2026-11-11
+updated: 2026-11-12
 ---
 
 # Handbuch für Administratoren
@@ -275,6 +275,16 @@ Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
   Status der Dienste, die am Gerät in der Infrastruktur hinterlegt sind (ein
   Gerät kann mehrere Dienste haben). Unter **Alarme aus PRTG** beenden Sie
   einen hängenden Alarm mit **Alarm beenden**.
+- **Externe Statusquellen** – offizielle Statusmeldungen von Anbietern, die
+  alle 5 Minuten gelesen werden: Microsoft 365 (alle Dienste Ihres Mandanten,
+  auch Teams, Outlook, OneDrive, SharePoint), GitHub, Claude, Google Gemini,
+  Apple App Store, Google Play Store und Init7. Haken Sie die gewünschten
+  Quellen an und **speichern** Sie; **Jetzt prüfen** liest sie sofort. Eine
+  gemeldete Störung erscheint unter **Störungen** als «Extern» und
+  benachrichtigt das Team für die Alarmierung einmal. Pro Quelle sehen Sie,
+  wann zuletzt geprüft wurde und ob ein Fehler auftrat. WWZ und Swisscom
+  bieten keine maschinenlesbare Quelle; überwachen Sie diese Anschlüsse mit
+  einem Ping- oder HTTP-Sensor in PRTG.
 - **Zertifikate und Domains** – Erinnerung vor Ablauf
 - **Backup-Überwachung** – z. B. Veeam-Jobs per E-Mail oder Webhook
 
@@ -395,10 +405,10 @@ werden täglich bereinigt. Die Aufbewahrungssperre hält beides an.
 Unter **Betriebsdaten (automatische Bereinigung)** legen Sie die Fristen in
 Monaten fest (1–120):
 
-| Bereich             | Standard  | Was bereinigt wird                                                                                       |
-| ------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
-| Monitoring          | 24 Monate | gelöste PRTG-Meldungen, Verlauf gelöster und geschlossener Störungen, veraltete Sensorzustände           |
-| IP-Adressverwaltung | 24 Monate | Beobachtungen der Discovery, Adressverlauf, Änderungsprotokoll; zugestellte Webhooks nach 30 Tagen       |
+| Bereich             | Standard  | Was bereinigt wird                                                                                        |
+| ------------------- | --------- | --------------------------------------------------------------------------------------------------------- |
+| Monitoring          | 24 Monate | gelöste PRTG-Meldungen, Verlauf gelöster und geschlossener Störungen, veraltete Sensorzustände            |
+| IP-Adressverwaltung | 24 Monate | Beobachtungen der Discovery, Adressverlauf, Änderungsprotokoll; zugestellte Webhooks nach 30 Tagen        |
 | Phishing-Meldungen  | 12 Monate | meldende Person und Kopfzeilen abgeschlossener Fälle werden anonymisiert; Absender, Links und IPs bleiben |
 
 ## Protokoll

@@ -3,6 +3,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,6 +14,7 @@ import {
 } from "react-native";
 
 import { severityStyle, useIncidentStyles } from "@/components/incident-styles";
+import { SensorStatusBadge } from "@/components/sensor-status-badge";
 import { ScreenContainer } from "@/components/screen-container";
 import {
   acknowledgeIncident,
@@ -80,6 +82,8 @@ export default function IncidentDetailScreen() {
   const [cause, setCause] = useState<IncidentCause | null>(null);
   const [closingNote, setClosingNote] = useState("");
   const [pickAgent, setPickAgent] = useState(false);
+  // «Netzwerk» is long (all neighbours); collapsed by default.
+  const [networkOpen, setNetworkOpen] = useState(false);
   const [notifyTickets, setNotifyTickets] = useState(true);
   const [now, setNow] = useState(() => Date.now());
   const [focused, setFocused] = useState(false);
@@ -151,11 +155,9 @@ export default function IncidentDetailScreen() {
   const back = (
     <Pressable
       accessibilityRole="button"
-      onPress={() =>
-        router.canGoBack()
-          ? router.back()
-          : router.replace("/incidents" as never)
-      }
+      // Always back to the list of this tab: router.back() would return to the
+      // tab visited before (e.g. Tickets after a push or the home screen).
+      onPress={() => router.navigate("/incidents" as never)}
       style={styles.back}
     >
       <Ionicons color={colors.primaryText} name="arrow-back" size={18} />
@@ -233,8 +235,34 @@ export default function IncidentDetailScreen() {
             {detail.maintenance ? (
               <Text style={styles.badge}>Wartung</Text>
             ) : null}
+            {detail.source === "external" ? (
+              <Text style={styles.badge}>
+                Extern
+                {detail.externalProvider ? ` · ${detail.externalProvider}` : ""}
+              </Text>
+            ) : null}
           </View>
           <Text style={styles.titleSmall}>{detail.title}</Text>
+          {detail.source === "external" ? (
+            <View style={{ gap: 4 }}>
+              <Text style={styles.muted}>
+                Gemeldet von {detail.externalProvider ?? "einem Anbieter"}: Die
+                Ursache liegt beim Anbieter, nicht in Ihrem Netz. Die Störung
+                schliesst sich automatisch, sobald der Anbieter sie als behoben
+                meldet.
+              </Text>
+              {detail.externalUrl ? (
+                <Pressable
+                  accessibilityRole="link"
+                  onPress={() => void Linking.openURL(detail.externalUrl!)}
+                >
+                  <Text style={styles.backText}>
+                    Statusseite des Anbieters öffnen
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
           {detail.parent ? (
             <Pressable
               onPress={() =>
@@ -422,16 +450,10 @@ export default function IncidentDetailScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Sensoren</Text>
             {detail.sensors.map((sensor, index) => (
-              <View key={`${sensor.name}-${index}`} style={styles.kv}>
-                <View
-                  style={[
-                    styles.eventDot,
-                    sensor.state === "open" ? styles.sevBad : styles.sevOk,
-                  ]}
-                />
+              <View key={`${sensor.name}-${index}`} style={{ gap: 4 }}>
+                <SensorStatusBadge sensor={sensor} />
                 <Text style={styles.kvValue}>
                   <Text style={{ fontWeight: "800" }}>{sensor.name}</Text>
-                  {sensor.status ? ` · ${sensor.status}` : ""}
                   {sensor.message ? ` · ${sensor.message}` : ""}
                 </Text>
               </View>
@@ -499,69 +521,110 @@ export default function IncidentDetailScreen() {
           detail.network.subnetNeighbours.length ||
           detail.network.switchNeighbours.length) ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Netzwerk</Text>
-            {detail.network.addresses.map((address, index) =>
-              [
-                ["IP", address.address],
-                [
-                  "Subnetz",
-                  address.prefix
-                    ? `${address.prefix}${address.gateway ? ` · GW ${address.gateway}` : ""}`
-                    : null,
-                ],
-                [
-                  "VLAN",
-                  address.vlanNumber !== null
-                    ? `${address.vlanNumber}${address.vlanName ? ` · ${address.vlanName}` : ""}`
-                    : null,
-                ],
-                ["Standort", address.site],
-                [
-                  "Switch-Port",
-                  address.switchName
-                    ? `${address.switchName}${address.switchPort ? ` · ${address.switchPort}` : ""}`
-                    : null,
-                ],
-              ]
-                .filter(([, value]) => value)
-                .map(([label, value]) => (
-                  <View key={`${index}-${label}`} style={styles.kv}>
-                    <Text style={styles.kvLabel}>{label}</Text>
-                    <Text style={styles.kvValue}>{value}</Text>
-                  </View>
-                )),
-            )}
-            {[
-              ["Im selben Subnetz", detail.network.subnetNeighbours],
-              ["Am selben Switch", detail.network.switchNeighbours],
-            ].map(([label, entries]) =>
-              (entries as IncidentNeighbour[]).length ? (
-                <View key={label as string} style={{ gap: 6 }}>
-                  <Text style={styles.muted}>{label as string}</Text>
-                  {(entries as IncidentNeighbour[]).map((entry, index) => (
-                    <Pressable
-                      disabled={!entry.incidentId}
-                      key={`${entry.assetId ?? entry.name}-${index}`}
-                      onPress={() =>
-                        entry.incidentId
-                          ? router.push(
-                              `/incidents/${entry.incidentId}` as never,
-                            )
-                          : undefined
-                      }
-                      style={styles.kv}
-                    >
-                      <View style={[styles.eventDot, neighbourDot(entry)]} />
-                      <Text style={styles.kvValue}>
-                        {entry.name}
-                        {entry.port ? ` · ${entry.port}` : ""}
-                        {entry.address ? ` · ${entry.address}` : ""}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null,
-            )}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: networkOpen }}
+              onPress={() => setNetworkOpen((value) => !value)}
+              style={{
+                alignItems: "center",
+                flexDirection: "row",
+                gap: 8,
+                justifyContent: "space-between",
+              }}
+            >
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.cardTitle}>Netzwerk</Text>
+                {!networkOpen ? (
+                  <Text numberOfLines={1} style={styles.muted}>
+                    {[
+                      detail.network.addresses
+                        .map((address) => address.address)
+                        .filter(Boolean)
+                        .join(", "),
+                      detail.network.subnetNeighbours.length +
+                      detail.network.switchNeighbours.length
+                        ? `${detail.network.subnetNeighbours.length + detail.network.switchNeighbours.length} Nachbarn`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
+                ) : null}
+              </View>
+              <Ionicons
+                color={colors.subtle}
+                name={networkOpen ? "chevron-up" : "chevron-down"}
+                size={20}
+              />
+            </Pressable>
+            {networkOpen ? (
+              <>
+                {detail.network.addresses.map((address, index) =>
+                  [
+                    ["IP", address.address],
+                    [
+                      "Subnetz",
+                      address.prefix
+                        ? `${address.prefix}${address.gateway ? ` · GW ${address.gateway}` : ""}`
+                        : null,
+                    ],
+                    [
+                      "VLAN",
+                      address.vlanNumber !== null
+                        ? `${address.vlanNumber}${address.vlanName ? ` · ${address.vlanName}` : ""}`
+                        : null,
+                    ],
+                    ["Standort", address.site],
+                    [
+                      "Switch-Port",
+                      address.switchName
+                        ? `${address.switchName}${address.switchPort ? ` · ${address.switchPort}` : ""}`
+                        : null,
+                    ],
+                  ]
+                    .filter(([, value]) => value)
+                    .map(([label, value]) => (
+                      <View key={`${index}-${label}`} style={styles.kv}>
+                        <Text style={styles.kvLabel}>{label}</Text>
+                        <Text style={styles.kvValue}>{value}</Text>
+                      </View>
+                    )),
+                )}
+                {[
+                  ["Im selben Subnetz", detail.network.subnetNeighbours],
+                  ["Am selben Switch", detail.network.switchNeighbours],
+                ].map(([label, entries]) =>
+                  (entries as IncidentNeighbour[]).length ? (
+                    <View key={label as string} style={{ gap: 6 }}>
+                      <Text style={styles.muted}>{label as string}</Text>
+                      {(entries as IncidentNeighbour[]).map((entry, index) => (
+                        <Pressable
+                          disabled={!entry.incidentId}
+                          key={`${entry.assetId ?? entry.name}-${index}`}
+                          onPress={() =>
+                            entry.incidentId
+                              ? router.push(
+                                  `/incidents/${entry.incidentId}` as never,
+                                )
+                              : undefined
+                          }
+                          style={styles.kv}
+                        >
+                          <View
+                            style={[styles.eventDot, neighbourDot(entry)]}
+                          />
+                          <Text style={styles.kvValue}>
+                            {entry.name}
+                            {entry.port ? ` · ${entry.port}` : ""}
+                            {entry.address ? ` · ${entry.address}` : ""}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null,
+                )}
+              </>
+            ) : null}
           </View>
         ) : null}
 
@@ -648,12 +711,12 @@ export default function IncidentDetailScreen() {
             </Text>
             {detail.state === "active" ? (
               <Text style={styles.muted}>
-                Meldet PRTG wieder OK, gilt die Störung als behoben.
+                Meldet PRTG wieder OK, schliesst sich die Störung automatisch.
                 Abschliessen beendet sie auch ohne OK-Meldung.
               </Text>
             ) : detail.state === "resolved" ? (
               <Text style={styles.muted}>
-                PRTG meldet wieder OK. Schliesse die Störung mit der Ursache ab.
+                PRTG meldet wieder OK. Trage die Ursache bei Bedarf nach.
               </Text>
             ) : null}
             <View style={styles.badgeRow}>

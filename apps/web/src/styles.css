@@ -22575,3 +22575,25 @@ html body form:has(> .fk-layout) {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* «Externe Statusquellen» in the monitoring settings. */
+.external-status__list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.external-status__list .asset-intune-settings__check {
+  align-items: flex-start;
+}
+.external-status__list .asset-intune-settings__check > span {
+  display: grid;
+  gap: 3px;
+}
+.external-status__list small {
+  color: var(--muted);
+}
+.external-status__list .monitoring-chip {
+  margin-left: 8px;
+}

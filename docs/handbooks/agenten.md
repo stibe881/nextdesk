@@ -295,6 +295,16 @@ Meldungen aus PRTG landen nicht in der Ticketliste, sondern unter
 **Störungen** im Arbeitsbereich. Ein Ticket braucht es dafür nicht: Sie
 bearbeiten die Störung vollständig dort.
 
+**Externe Störungen**: Zusätzlich erscheinen Störungen, die Anbieter auf ihren
+offiziellen Statusseiten melden (z. B. Microsoft 365 mit Teams, Outlook,
+OneDrive und SharePoint, GitHub, Claude, Gemini, App Store, Google Play,
+Init7), gekennzeichnet mit **Extern · Anbieter**. Sie zeigen, dass die Ursache
+beim Anbieter liegt und nicht in Ihrem Netz, z. B. wenn mehrere Personen
+melden, dass Teams nicht geht. Das Team wird beim Auftreten einmal
+benachrichtigt (ohne Wiederholungsalarm); meldet der Anbieter die Störung als
+behoben, schliesst sie sich automatisch. **Statusseite des Anbieters öffnen**
+führt zu den Details beim Anbieter.
+
 - **Eine Störung pro Gerät**: Weitere Sensoren desselben Geräts (z. B. Ping
   und SNMP) hängen an derselben Störung. Kommt das Gerät innerhalb von
   10 Minuten erneut in Störung, öffnet sich die bisherige Störung wieder.
@@ -313,14 +323,16 @@ bearbeiten die Störung vollständig dort.
   letzten 30 Tage) und _Verfügbarkeit_ der überwachten Geräte. Ein Klick auf
   eine Kachel zeigt darunter die passenden Störungen; **Filter aufheben** führt
   zurück zu den aktiven.
-- **Register**: _Aktiv_, _Behoben_ (PRTG meldet wieder OK, Ursache fehlt
-  noch), _Abgeschlossen_ und _Alle_. Die Dauer läuft live mit, und neue
+- **Register**: _Aktiv_, _Behoben_ und _Alle_. Die Dauer läuft live mit, und neue
   Meldungen erscheinen ohne Neuladen. Im Suchfeld finden Sie Störungen nach
   Nummer, Gerät oder Titel; ältere Störungen laden Sie mit **Weitere Störungen
   laden** nach.
-- **Behoben, dann abgeschlossen**: Meldet PRTG wieder OK, wechselt die
-  Störung auf _Behoben_ und die Alarmierung hört auf. Abgeschlossen ist sie
-  erst, wenn Sie sie mit der **Ursache** abschliessen (siehe unten).
+- **Automatisch abgeschlossen**: Meldet PRTG für alle Sensoren wieder OK,
+  wird die Störung automatisch abgeschlossen und erscheint unter _Behoben_.
+  Sie muss weder bestätigt noch von Hand abgeschlossen werden, und die
+  Alarmierung hört auf. Die **Ursache** tragen Sie bei Bedarf unter **Ursache
+  nachtragen (optional)** nach; dort lassen sich auch zugeordnete Tickets
+  informieren und ein Fall eröffnen (siehe unten).
 - **Tickets zur Störung**: Gehen während einer aktiven Störung Tickets zum
   betroffenen Gerät oder Dienst ein (Gerät bzw. Dienst am Ticket verknüpft
   oder Gerätename, Hostname oder IP-Adresse im Text), ordnet nextDesk sie der
@@ -338,21 +350,24 @@ Ein Klick öffnet die Störung:
    hinzufügen** halten Sie fest, was Sie geprüft oder veranlasst haben.
 3. **Letzte 24 Stunden** zeigt, wann das Gerät gestört war, und warnt, wenn
    es in dieser Woche mehrfach ausgefallen ist. Darunter stehen die
-   **Sensoren** mit ihrem letzten Stand.
+   **Sensoren** mit ihrem letzten Stand. Wie beim Ticketstatus zeigt ein
+   farbiges Abzeichen den Zustand jedes Sensors: **Fehler** (rot), **Warnung**
+   (gelb) oder **OK** (grün).
 4. Unter **Tickets** stehen die zugeordneten Tickets mit dem Grund der
    Zuordnung (Gerät, Dienst, im Text, von Hand). Mit **Ticketnummer
    zuordnen** ergänzen Sie ein Ticket, mit **×** lösen Sie eines wieder; ein
    gelöstes Ticket wird nicht erneut automatisch zugeordnet.
-5. Rechts sehen Sie **Gerät** (Ort, Adresse, PRTG-Objekt), **Netzwerk** (IP,
+5. Rechts sehen Sie **Gerät** (Ort, Adresse, PRTG-Objekt), **Netzwerk** (zu
+   Beginn eingeklappt, mit IP und Anzahl Nachbarn; ein Klick klappt auf: IP,
    Subnetz, VLAN, Standort und Switch-Port aus der IP-Adressverwaltung sowie
    weitere Geräte im selben Subnetz bzw. am selben Switch mit ihrem aktuellen
-   Zustand), die **Abhängigkeiten** (vorgelagerte Geräte und Folgestörungen)
+   Zustand; im Web wie in der App), die **Abhängigkeiten** (vorgelagerte Geräte und Folgestörungen)
    und die **betroffenen Dienste**. Der Systemstatus wird automatisch gesetzt
    und nach der Behebung zurückgesetzt.
 6. Unter **Statusseite** veröffentlichen Sie mit **Öffentliche Meldung** eine
    Meldung (Zustand, Titel, Text, betroffene Dienste) auf der Statusseite und
    ergänzen sie später mit **Update veröffentlichen**.
-7. **Abschliessen**: Wählen Sie die **Ursache** (Strom, Netzwerk, Hardware,
+7. **Abschliessen bzw. Ursache nachtragen**: Wählen Sie die **Ursache** (Strom, Netzwerk, Hardware,
    Software, Wartung, Extern, Unbekannt) und halten Sie die Lösung fest. Sind
    Tickets zugeordnet, ist **Tickets informieren und auf «Gelöst» setzen**
    eingeschaltet: Jedes offene Ticket erhält eine öffentliche Antwort mit der

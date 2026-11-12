@@ -1553,6 +1553,13 @@ function baseNotificationPresentation(
       const reason = notificationPayloadText(notification, "reason", 20);
       const warning =
         notificationPayloadText(notification, "severity", 20) === "warning";
+      if (notificationPayloadText(notification, "source", 20) === "external") {
+        return {
+          description: `${number ?? "Störung"}: ${title ?? "Störung beim Anbieter"}`,
+          Icon: AlertTriangle,
+          title: `Externe Störung: ${notificationPayloadText(notification, "provider", 80) ?? "Anbieter"}`,
+        };
+      }
       return {
         description: `${number ?? "Störung"}: ${title ?? "PRTG-Meldung"}`,
         Icon: AlertTriangle,
