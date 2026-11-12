@@ -71,7 +71,7 @@ export function TeamsTile({
   );
 }
 
-function PeoplePicker({
+export function PeoplePicker({
   label,
   onChange,
   selected,

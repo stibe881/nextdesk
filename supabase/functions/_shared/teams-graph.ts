@@ -309,3 +309,161 @@ export async function archiveTeam(
     throw error;
   }
 }
+
+// ----------------------------------------------------------------- Verwaltung
+// Menü «Teams»: bestehende Teams lesen, Mitglieder pflegen, (de)archivieren.
+
+export type GraphTeamSummary = {
+  id: string;
+  displayName: string;
+  description: string | null;
+  visibility: string | null;
+  createdAt: string | null;
+};
+
+type Json = Record<string, unknown>;
+
+async function getJson(
+  fetcher: FetchLike,
+  token: string,
+  path: string,
+): Promise<Json> {
+  const response = await call(fetcher, token, "GET", path);
+  return ((await response.json().catch(() => null)) ?? {}) as Json;
+}
+
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+/** Alle Teams (Microsoft-365-Gruppen mit Team), höchstens 2000. */
+export async function listAllTeams(
+  token: string,
+  fetcher: FetchLike = fetch,
+): Promise<GraphTeamSummary[]> {
+  const teams: GraphTeamSummary[] = [];
+  let next: string | null =
+    `${GRAPH}/groups?$filter=${encodeURIComponent(
+      "resourceProvisioningOptions/Any(x:x eq 'Team')",
+    )}&$select=id,displayName,description,visibility,createdDateTime&$top=100`;
+  for (let page = 0; next && page < 20; page += 1) {
+    if (!next.startsWith(`${GRAPH}/`)) throw new TeamsGraphError("invalid");
+    const body = await getJson(fetcher, token, next);
+    for (const entry of Array.isArray(body.value) ? body.value : []) {
+      const row = entry as Json;
+      const id = text(row.id);
+      if (!id) continue;
+      teams.push({
+        id: id.toLowerCase(),
+        displayName: text(row.displayName) ?? "(ohne Namen)",
+        description: text(row.description),
+        visibility: text(row.visibility)?.toLowerCase() ?? null,
+        createdAt: text(row.createdDateTime),
+      });
+    }
+    next = text(body["@odata.nextLink"]);
+  }
+  return teams;
+}
+
+/** Owner-Ids, Archivstatus und Web-Adresse eines Teams. */
+export async function teamDetails(
+  token: string,
+  teamId: string,
+  fetcher: FetchLike = fetch,
+): Promise<{ ownerIds: string[]; isArchived: boolean; webUrl: string | null }> {
+  const [owners, team] = await Promise.all([
+    getJson(fetcher, token, `/groups/${teamId}/owners?$select=id&$top=50`),
+    getJson(fetcher, token, `/teams/${teamId}?$select=isArchived,webUrl`),
+  ]);
+  return {
+    ownerIds: (Array.isArray(owners.value) ? owners.value : [])
+      .map((row) => text((row as Json).id)?.toLowerCase())
+      .filter((id): id is string => id !== undefined && id !== null),
+    isArchived: team.isArchived === true,
+    webUrl: text(team.webUrl),
+  };
+}
+
+export type TeamMemberInfo = {
+  membershipId: string;
+  userId: string | null;
+  displayName: string;
+  email: string | null;
+  isOwner: boolean;
+  isGuest: boolean;
+};
+
+export async function listTeamMembers(
+  token: string,
+  teamId: string,
+  fetcher: FetchLike = fetch,
+): Promise<TeamMemberInfo[]> {
+  const body = await getJson(fetcher, token, `/teams/${teamId}/members?$top=200`);
+  const members: TeamMemberInfo[] = [];
+  for (const entry of Array.isArray(body.value) ? body.value : []) {
+    const row = entry as Json;
+    const membershipId = text(row.id);
+    if (!membershipId) continue;
+    const roles = Array.isArray(row.roles) ? (row.roles as unknown[]) : [];
+    members.push({
+      membershipId,
+      userId: text(row.userId)?.toLowerCase() ?? null,
+      displayName: text(row.displayName) ?? "Unbekannt",
+      email: text(row.email),
+      isOwner: roles.includes("owner"),
+      isGuest: roles.includes("guest"),
+    });
+  }
+  return members;
+}
+
+export async function addTeamMember(
+  token: string,
+  teamId: string,
+  userId: string,
+  owner: boolean,
+  fetcher: FetchLike = fetch,
+): Promise<void> {
+  try {
+    await call(fetcher, token, "POST", `/teams/${teamId}/members`, memberBody(userId, owner));
+  } catch (error) {
+    if (error instanceof TeamsGraphError && error.code === "conflict") return;
+    throw error;
+  }
+}
+
+export async function removeTeamMember(
+  token: string,
+  teamId: string,
+  membershipId: string,
+  fetcher: FetchLike = fetch,
+): Promise<void> {
+  await call(fetcher, token, "DELETE", `/teams/${teamId}/members/${membershipId}`);
+}
+
+export async function setTeamMemberOwner(
+  token: string,
+  teamId: string,
+  membershipId: string,
+  owner: boolean,
+  fetcher: FetchLike = fetch,
+): Promise<void> {
+  await call(fetcher, token, "PATCH", `/teams/${teamId}/members/${membershipId}`, {
+    "@odata.type": "#microsoft.graph.aadUserConversationMember",
+    roles: owner ? ["owner"] : [],
+  });
+}
+
+export async function unarchiveTeam(
+  token: string,
+  teamId: string,
+  fetcher: FetchLike = fetch,
+): Promise<void> {
+  try {
+    await call(fetcher, token, "POST", `/teams/${teamId}/unarchive`);
+  } catch (error) {
+    if (error instanceof TeamsGraphError && error.code === "conflict") return;
+    throw error;
+  }
+}

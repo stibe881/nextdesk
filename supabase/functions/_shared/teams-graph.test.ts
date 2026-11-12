@@ -3,6 +3,9 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
   archiveTeam,
   createTeam,
+  listAllTeams,
+  listTeamMembers,
+  setTeamMemberOwner,
   finishTeam,
   parseTeamLocation,
   teamCreationStatus,
@@ -163,4 +166,48 @@ Deno.test("finishTeam reuses an existing channel on conflict", async () => {
 Deno.test("archiveTeam treats an already archived team as done", async () => {
   const { fetcher } = fakeFetch(() => new Response("{}", { status: 409 }));
   await archiveTeam("t", TEAM, fetcher);
+});
+
+Deno.test("listAllTeams follows paging and normalises ids", async () => {
+  let page = 0;
+  const { fetcher, calls } = fakeFetch(() => {
+    page += 1;
+    return new Response(
+      JSON.stringify(
+        page === 1
+          ? {
+              value: [{ id: TEAM.toUpperCase(), displayName: "A", visibility: "Private" }],
+              "@odata.nextLink": "https://graph.microsoft.com/v1.0/groups?$skiptoken=x",
+            }
+          : { value: [{ id: OP, displayName: "B" }] },
+      ),
+      { status: 200 },
+    );
+  });
+  const teams = await listAllTeams("t", fetcher);
+  assertEquals(teams.map((team) => team.id), [TEAM, OP]);
+  assertEquals(teams[0]!.visibility, "private");
+  assertEquals(calls.length, 2);
+});
+
+Deno.test("listTeamMembers reads roles; setTeamMemberOwner patches the role", async () => {
+  const { fetcher, calls } = fakeFetch((call) =>
+    call.method === "GET"
+      ? new Response(
+          JSON.stringify({
+            value: [
+              { id: "m1", userId: OWNER, displayName: "Stefan", roles: ["owner"] },
+              { id: "m2", userId: MEMBER, displayName: "Gast", email: "g@x.ch", roles: ["guest"] },
+            ],
+          }),
+          { status: 200 },
+        )
+      : new Response(null, { status: 200 }),
+  );
+  const members = await listTeamMembers("t", TEAM, fetcher);
+  assertEquals(members.map((m) => [m.isOwner, m.isGuest]), [[true, false], [false, true]]);
+  await setTeamMemberOwner("t", TEAM, "m2", true, fetcher);
+  const patch = calls.at(-1)!;
+  assertEquals(patch.method, "PATCH");
+  assertEquals((patch.body as { roles: string[] }).roles, ["owner"]);
 });

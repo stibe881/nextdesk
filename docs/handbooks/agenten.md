@@ -26,7 +26,8 @@ Die linke Navigation ist gegliedert in:
 - **Übersicht** – Ihre Startseite mit Kennzahlen
 - **Arbeitsplatz** – Team-Queues, Erwähnungen, Stellvertretung, Wiedervorlagen
 - **Teamführung** – nur für Leitungen von Abteilungen
-- **Arbeitsbereich**: Tickets, Shop, Fälle, Sicherheitsfälle, Störungen
+- **Arbeitsbereich**: Tickets, Shop, Teams (nur mit Recht zur Shop-Verwaltung),
+  Fälle, Sicherheitsfälle, Störungen
   (Sicherheitsfälle und Störungen nur für das zuständige Team, siehe unten)
 - **Planung und Betrieb**: Raumplanung, Eintritte, Serviceaufgaben
 - **Ressourcen**: Assets, Lager, Verträge, Lizenzen
@@ -757,6 +758,31 @@ Kaderstufe 1, Fachbereichsleitung und Angebotsleitung → Kaderstufe 2,
 Teamleitung → Kaderstufe 3). Dort können Sie für einzelne Personen eine Stufe
 auch von Hand festlegen oder «Kein Kader» setzen. Ändert sich die Funktion in
 Entra, gilt die neue Stufe nach dem nächsten Abgleich automatisch.
+
+## Teams: alle Microsoft-Teams-Teams verwalten
+
+Der Menüpunkt **Teams** (Arbeitsbereich) erscheint nur mit dem Recht zur
+Shop-Verwaltung und wenn Microsoft Teams eingerichtet ist (siehe
+Installationshandbuch). Er zeigt **alle** Teams der Organisation, auch die
+bestehenden, nicht nur die über den Shop bestellten.
+
+- **Kennzahlen und Filter**: Teams gesamt, bald ablaufend (30 Tage), ohne
+  Owner, archiviert; Filter _Über nextDesk bestellt_, _Bestehend_, _Läuft bald
+  ab_, _Ohne Owner_, _Archiviert_ und Suche nach Team oder Owner.
+- **Mit Microsoft abgleichen**: liest die Teams neu ein. Beim Öffnen läuft der
+  Abgleich automatisch, wenn der Stand älter als ein Tag ist.
+- **Details** (Klick auf ein Team): Mitglieder und Owner ansehen, Personen
+  hinzufügen oder entfernen, zum Owner machen oder die Owner-Rolle entziehen
+  (der letzte Owner bleibt immer), **In Teams öffnen**, **Archivieren** und
+  **Wiederherstellen**.
+- **Ende setzen oder verlängern**: Auch bei bestehenden Teams lässt sich ein
+  Ende setzen (Datum oder +1, +3, +6 Monate, +1 Jahr). Ab dann erinnert
+  nextDesk die Owner 14, 7 und 1 Tag vorher und archiviert das Team am Ende.
+  Bei einem bestehenden Team ohne Owner geht das nicht: zuerst einen Owner
+  festlegen.
+
+Gelöscht wird nie: nextDesk archiviert nur; ein archiviertes Team bleibt
+lesbar und lässt sich wiederherstellen.
 
 ## IP-Adressen
 

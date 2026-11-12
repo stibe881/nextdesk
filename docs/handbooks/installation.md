@@ -250,8 +250,9 @@ erinnert die Owner vor dem Ende und archiviert abgelaufene Teams).
 - **[Betreiber]** Die Graph-App (Standard: dieselbe wie für Intune, sonst
   eigene App über `TEAMS_GRAPH_CLIENT_ID` und `TEAMS_GRAPH_CLIENT_SECRET`) braucht
   die **Anwendungsberechtigungen** _Team.Create_, _TeamMember.ReadWrite.All_,
-  _Channel.Create_, _TeamsTab.Create_, _TeamSettings.ReadWrite.All_ und
-  _User.Invite.All_ (nur für Gäste).
+  _Channel.Create_, _TeamsTab.Create_, _TeamSettings.ReadWrite.All_,
+  _Group.Read.All_ und _Team.ReadBasic.All_ (für das Menü **Teams**: alle
+  Teams lesen) sowie _User.Invite.All_ (nur für Gäste).
 - **[Microsoft-Admin]** Zustimmung für diese Berechtigungen erteilen. Sie
   erlauben der App, Teams anzulegen und zu archivieren; prüfen Sie den
   Umfang mit Ihrer IT-Sicherheit.
@@ -259,6 +260,10 @@ erinnert die Owner vor dem Ende und archiviert abgelaufene Teams).
   **Verzeichnisabgleich** (für die Personensuche) und die Funktion **Shop**.
 - Fehlt die Berechtigung, zeigt der Shop «Noch nicht eingerichtet» bzw. die
   Bestellung erscheint unter _Meine Teams_ als _Fehlgeschlagen_.
+
+Das Menü **Teams** (alle Teams ansehen und verwalten, auch bestehende) sehen
+Personen mit dem Recht zur Shop-Verwaltung; der Abgleich mit Microsoft läuft
+beim Öffnen und auf Knopfdruck.
 
 Das Anlegen läuft im Hintergrund (Cron `nextdesk-teams-lifecycle`, alle
 5 Minuten, Edge Function `teams-lifecycle`).

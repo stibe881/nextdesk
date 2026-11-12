@@ -307,3 +307,6 @@ verify_jwt = true
 
 [functions.teams-lifecycle]
 verify_jwt = false
+
+[functions.teams-admin]
+verify_jwt = true

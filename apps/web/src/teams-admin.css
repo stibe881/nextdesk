@@ -1,0 +1,200 @@
+.teams-admin {
+  display: grid;
+  gap: 12px;
+}
+.teams-admin__kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.teams-admin__kpis > div {
+  border: 1px solid var(--border, #dde3ef);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: var(--surface, #fff);
+}
+.teams-admin__kpis small {
+  display: block;
+  color: var(--muted, #5d6f7a);
+}
+.teams-admin__kpis b {
+  font-size: 24px;
+}
+.teams-admin .is-warn {
+  color: #94480a;
+}
+.teams-admin .is-bad {
+  color: #b42318;
+}
+.teams-admin__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.teams-admin__toolbar input[type="search"] {
+  min-width: 240px;
+}
+.teams-admin__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+.teams-admin__filters button {
+  min-height: 0;
+  border: 1px solid var(--border, #dde3ef);
+  border-radius: 999px;
+  padding: 4px 13px;
+  background: var(--surface, #fff);
+  color: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.teams-admin__filters button.is-on {
+  border-color: var(--brand-primary, #4338ca);
+  background: color-mix(in srgb, var(--brand-primary, #4338ca) 12%, var(--surface, #fff));
+  color: var(--brand-primary, #4338ca);
+  font-weight: 600;
+}
+.teams-admin__hint,
+.teams-admin__muted {
+  margin: 0;
+  color: var(--muted, #5d6f7a);
+  font-size: 12.5px;
+}
+.teams-admin__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.teams-admin__layout.has-detail {
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+@media (max-width: 960px) {
+  .teams-admin__layout.has-detail,
+  .teams-admin__kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.teams-admin__table-wrap {
+  min-width: 0;
+  overflow-x: auto;
+}
+.teams-admin__table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border, #dde3ef);
+  background: var(--surface, #fff);
+}
+.teams-admin__table th,
+.teams-admin__table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border, #dde3ef);
+  text-align: left;
+  font-size: 13px;
+}
+.teams-admin__table th {
+  color: var(--muted, #5d6f7a);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--surface-subtle, #f4f6fb);
+}
+.teams-admin__table tbody tr {
+  cursor: pointer;
+}
+.teams-admin__table tbody tr.is-selected td {
+  background: color-mix(in srgb, var(--brand-primary, #4338ca) 10%, var(--surface, #fff));
+}
+.teams-admin__table small {
+  display: block;
+  color: var(--muted, #5d6f7a);
+}
+.teams-admin__name {
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.teams-admin__badge {
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.teams-admin__badge--ok {
+  background: #e3f6ec;
+  color: #1f7a45;
+}
+.teams-admin__badge--warn {
+  background: #fdf1dc;
+  color: #94480a;
+}
+.teams-admin__badge--bad {
+  background: #fde4e1;
+  color: #9b2a1c;
+}
+.teams-admin__badge--muted {
+  background: var(--surface-subtle, #f4f6fb);
+  color: var(--muted, #5d6f7a);
+}
+.teams-admin__detail {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border, #dde3ef);
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--surface, #fff);
+}
+.teams-admin__detail header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.teams-admin__detail h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.teams-admin__block {
+  display: grid;
+  gap: 8px;
+}
+.teams-admin__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.teams-admin__members {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 260px;
+  overflow: auto;
+}
+.teams-admin__members li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border, #dde3ef);
+  font-size: 13px;
+}
+.teams-admin__members em {
+  color: var(--brand-primary, #4338ca);
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 700;
+}

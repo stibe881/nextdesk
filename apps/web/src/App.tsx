@@ -175,6 +175,8 @@ import { EventSpaces } from "./event-spaces";
 import { Onboarding } from "./onboarding";
 import { Inventory } from "./inventory";
 import { Shop } from "./shop";
+import { TeamsAdmin } from "./teams-admin";
+import { teamsAdminApi } from "./lib/teams-admin";
 import { PersonalSettings } from "./personal-settings";
 import { ApprovalInboxCard } from "./approval-inbox";
 import {
@@ -244,6 +246,7 @@ type Section =
   | "Übersicht"
   | "Tickets"
   | "Shop"
+  | "Teams"
   | "Arbeitsplatz"
   | "Erwähnungen"
   | "Mein Portal"
@@ -387,6 +390,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Übersicht", Icon: LayoutDashboard },
     { label: "Tickets", Icon: Ticket },
     { label: "Shop", Icon: ShoppingBag },
+    { label: "Teams", Icon: UsersRound },
     { label: "Fälle", Icon: FileWarning },
     { label: "Sicherheitsfälle", Icon: ShieldAlert },
     { label: "Störungen", Icon: Activity },
@@ -415,6 +419,7 @@ const NAVIGATION_CATEGORIES = [
     sectionLabels: [
       "Tickets",
       "Shop",
+      "Teams",
       "Fälle",
       "Sicherheitsfälle",
       "Störungen",
@@ -3206,6 +3211,9 @@ function AuthenticatedApp() {
   const [eventSpaceAttentionRevision, setEventSpaceAttentionRevision] =
     useState(0);
   // Navigation badges for new shop orders and untouched onboarding entries.
+  const [teamsManage, setTeamsManage] = useState<{ today: string } | null>(
+    null,
+  );
   const [shopAttentionCount, setShopAttentionCount] = useState<number | null>(
     null,
   );
@@ -3603,6 +3611,29 @@ function AuthenticatedApp() {
     () => tenants.find((tenant) => tenant.id === activeTenantId) ?? null,
     [activeTenantId, tenants],
   );
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !activeTenant?.id) {
+      setTeamsManage(null);
+      return;
+    }
+    let active = true;
+    teamsAdminApi
+      .context(activeTenant.id)
+      .then((context) => {
+        if (active) {
+          setTeamsManage(
+            context.canManage && context.configured
+              ? { today: context.today }
+              : null,
+          );
+        }
+      })
+      .catch(() => active && setTeamsManage(null));
+    return () => {
+      active = false;
+    };
+  }, [activeTenant?.id]);
   // Eigenes Profilfoto aus Entra (nur wenn vorhanden; sonst Initialen).
   const [operatorPhotoUrl, setOperatorPhotoUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -5200,6 +5231,9 @@ function AuthenticatedApp() {
     }
     if (item.label === "Lager") return isFeatureEnabled("inventory.management");
     if (item.label === "Shop") return isFeatureEnabled("self_service.shop");
+    if (item.label === "Teams") {
+      return isFeatureEnabled("self_service.shop") && teamsManage !== null;
+    }
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
     if (item.label === "Verträge" || item.label === "Lizenzen") {
       return contractsAvailable;
@@ -6705,6 +6739,12 @@ function AuthenticatedApp() {
             key={activeTenant.id}
             onFocusConsumed={clearShopFocus}
             tenantId={activeTenant.id}
+          />
+        ) : section === "Teams" && activeTenant && teamsManage ? (
+          <TeamsAdmin
+            key={activeTenant.id}
+            tenantId={activeTenant.id}
+            today={teamsManage.today}
           />
         ) : section === "Serviceaufgaben" && activeTenant ? (
           <ServiceTasks
