@@ -245,25 +245,30 @@ in Microsoft Defender.
 
 Mitarbeitende können im Shop ein neues Microsoft-Teams-Team bestellen
 (Wizard, ohne Genehmigung; nextDesk legt das Team über Microsoft Graph an,
-erinnert die Owner vor dem Ende und archiviert abgelaufene Teams).
+erinnert die Owner vor dem Ende und archiviert abgelaufene Teams). Das
+Menü **Teams** zeigt und verwaltet alle Teams der Organisation.
 
-- **[Betreiber]** Die Graph-App (Standard: dieselbe wie für Intune, sonst
-  eigene App über `TEAMS_GRAPH_CLIENT_ID` und `TEAMS_GRAPH_CLIENT_SECRET`) braucht
-  die **Anwendungsberechtigungen** _Team.Create_, _TeamMember.ReadWrite.All_,
-  _Channel.Create_, _TeamsTab.Create_, _TeamSettings.ReadWrite.All_,
-  _Group.Read.All_ und _Team.ReadBasic.All_ (für das Menü **Teams**: alle
-  Teams lesen) sowie _User.Invite.All_ (nur für Gäste).
-- **[Microsoft-Admin]** Zustimmung für diese Berechtigungen erteilen. Sie
-  erlauben der App, Teams anzulegen und zu archivieren; prüfen Sie den
-  Umfang mit Ihrer IT-Sicherheit.
+1. **[Admin]** Unter **Einstellungen → Funktionen** den Schalter
+   **Microsoft Teams im Shop** einschalten (standardmässig aus).
+2. **[Microsoft-Admin]** In derselben Karte steht der **Zustimmungslink**.
+   Der Globale Administrator öffnet ihn und klickt **Akzeptieren**. Damit
+   erhält die nextDesk-App diese Anwendungsberechtigungen: _Team.Create_,
+   _TeamMember.ReadWrite.All_, _Channel.Create_, _TeamsTab.Create_,
+   _TeamSettings.ReadWrite.All_, _Group.Read.All_, _Team.ReadBasic.All_ und
+   für Gäste _User.Invite.All_. Prüfen Sie den Umfang mit Ihrer
+   IT-Sicherheit.
+3. **[Admin]** Nach einigen Minuten **Verbindung prüfen**. Die Karte nennt,
+   was noch fehlt (zum Beispiel ein einzelnes Recht). Dort stellen Sie auch
+   die längste Laufzeit und die Gastregel ein.
+
 - Voraussetzungen: SSO mit der eigenen **Tenant-ID**, der
   **Verzeichnisabgleich** (für die Personensuche) und die Funktion **Shop**.
-- Fehlt die Berechtigung, zeigt der Shop «Noch nicht eingerichtet» bzw. die
-  Bestellung erscheint unter _Meine Teams_ als _Fehlgeschlagen_.
-
-Das Menü **Teams** (alle Teams ansehen und verwalten, auch bestehende) sehen
-Personen mit dem Recht zur Shop-Verwaltung; der Abgleich mit Microsoft läuft
-beim Öffnen und auf Knopfdruck.
+- **[Betreiber]** Die zentrale Graph-App (dieselbe wie für Intune) braucht
+  die oben genannten Rechte einmalig als Anwendungsberechtigungen in ihrer
+  App-Registrierung. Optional kann eine eigene App über die Secrets
+  `TEAMS_GRAPH_CLIENT_ID` und `TEAMS_GRAPH_CLIENT_SECRET` verwendet werden.
+- Das Menü **Teams** sehen Personen mit dem Recht zur Shop-Verwaltung; der
+  Abgleich mit Microsoft läuft beim Öffnen und auf Knopfdruck.
 
 Das Anlegen läuft im Hintergrund (Cron `nextdesk-teams-lifecycle`, alle
 5 Minuten, Edge Function `teams-lifecycle`).

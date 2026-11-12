@@ -96,3 +96,16 @@ Deno.test("reminders: 14, 7 and 1 days, never three at once", () => {
   assertEquals(remindersCoveredBy(7), [14, 7]);
   assertEquals(dueReminder(-1, []), null);
 });
+
+Deno.test("tenant settings: shorter maximum lifetime and guests switched off", () => {
+  const short = validateTeamRequest(input({ endDate: "2027-11-30" }), "2026-11-12", {
+    maxLifetimeMonths: 6,
+  });
+  assertEquals(short.ok ? "ok" : short.code, "lifetime_too_long");
+  const noGuests = validateTeamRequest(
+    input({ allowGuests: true, guests: ["a@extern.ch"] }),
+    "2026-11-12",
+    { allowGuests: false },
+  );
+  assertEquals(noGuests.ok ? "ok" : noGuests.code, "guests_not_allowed");
+});

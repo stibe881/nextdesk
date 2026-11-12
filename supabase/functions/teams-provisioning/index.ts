@@ -16,6 +16,7 @@ import {
   teamsCredentialsConfigured,
   teamsEntraTenant,
 } from "../_shared/teams-token.ts";
+import { loadTeamsSettings, TEAMS_FEATURE } from "../_shared/teams-settings.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 /**
@@ -169,12 +170,16 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   const features = await resolveTenantFeatureStates(admin, tenantId, [
     SHOP_FEATURE,
+    TEAMS_FEATURE,
   ]);
   if (!features) return fail(request, "teams_unavailable", 503);
   const shopEnabled = features[SHOP_FEATURE] === true;
+  const teamsEnabled = features[TEAMS_FEATURE] === true;
+  const settings = await loadTeamsSettings(admin, tenantId);
 
   if (body.type === "getContext") {
-    const ordering = shopEnabled && (await canOrder(admin, actorId, tenantId));
+    const ordering =
+      shopEnabled && teamsEnabled && (await canOrder(admin, actorId, tenantId));
     const configured =
       teamsCredentialsConfigured() &&
       (await teamsEntraTenant(admin, tenantId)) !== null;
@@ -197,7 +202,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             }
           : null,
         available: ordering && configured,
-        reason: !shopEnabled
+        reason: !shopEnabled || !teamsEnabled
           ? "feature_disabled"
           : !ordering
             ? "denied"
@@ -205,13 +210,16 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
               ? "not_configured"
               : null,
         today: zurichToday(),
-        maxLifetimeMonths: TEAM_LIMITS.maxLifetimeMonths,
+        maxLifetimeMonths: settings.maxLifetimeMonths,
+        allowGuests: settings.allowGuests,
         limits: TEAM_LIMITS,
       },
     });
   }
 
-  if (!shopEnabled) return fail(request, "feature_disabled", 403);
+  if (!shopEnabled || !teamsEnabled) {
+    return fail(request, "feature_disabled", 403);
+  }
 
   if (body.type === "searchPeople") {
     if (!(await canOrder(admin, actorId, tenantId))) {
@@ -249,7 +257,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return fail(request, "teams_order_denied", 403);
     }
     const today = zurichToday();
-    const parsed = validateTeamRequest(body.request, today);
+    const parsed = validateTeamRequest(body.request, today, {
+      maxLifetimeMonths: settings.maxLifetimeMonths,
+      allowGuests: settings.allowGuests,
+    });
     if (!parsed.ok) {
       return fail(request, parsed.code, 422, { field: parsed.field ?? null });
     }
@@ -366,7 +377,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return fail(request, "teams_extend_not_possible", 409);
     }
     const next = addMonths(row.end_date, body.months);
-    const limit = addMonths(zurichToday(), TEAM_LIMITS.maxLifetimeMonths);
+    const limit = addMonths(zurichToday(), settings.maxLifetimeMonths);
     if (!next || !limit || next > limit) {
       return fail(request, "lifetime_too_long", 422);
     }

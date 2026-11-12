@@ -236,3 +236,39 @@
   gap: 8px;
   font-size: 13px;
 }
+
+.teams-settings {
+  display: grid;
+  gap: 12px;
+}
+.teams-settings__steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+}
+.teams-settings__ok {
+  color: #1f7a45;
+  font-weight: 600;
+}
+.teams-settings__bad {
+  color: #9b2a1c;
+  font-weight: 600;
+}
+.teams-settings__form {
+  display: grid;
+  gap: 10px;
+  max-width: 420px;
+}
+.teams-settings__form label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.teams-settings__form .teams-settings__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+}

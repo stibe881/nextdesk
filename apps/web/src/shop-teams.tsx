@@ -338,12 +338,14 @@ export function TeamWizard({
                 ? "Nur eingeladene Personen sehen das Team und treten bei."
                 : "Alle in der Organisation können das Team finden und beitreten."}
             </FormNote>
-            <FormSwitch
-              checked={draft.allowGuests}
-              hint="Externe Personen (z. B. Lieferanten) können als Gast eingeladen werden."
-              label="Gäste erlauben"
-              onChange={(allowGuests) => update({ allowGuests })}
-            />
+            {context.allowGuests ? (
+              <FormSwitch
+                checked={draft.allowGuests}
+                hint="Externe Personen (z. B. Lieferanten) können als Gast eingeladen werden."
+                label="Gäste erlauben"
+                onChange={(allowGuests) => update({ allowGuests })}
+              />
+            ) : null}
           </FormCard>
         </>
       ) : null}

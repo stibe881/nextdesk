@@ -14,6 +14,7 @@ export type TeamsContext = {
   reason: "feature_disabled" | "denied" | "not_configured" | null;
   today: string;
   maxLifetimeMonths: number;
+  allowGuests: boolean;
   me: TeamPerson | null;
 };
 

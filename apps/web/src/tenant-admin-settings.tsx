@@ -51,6 +51,7 @@ import {
 } from "./lib/push-notifications";
 import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
 import { AssetIntuneSettings } from "./asset-intune-settings";
+import { TeamsSettings } from "./teams-settings";
 import { MonitoringSettings } from "./monitoring-settings";
 import { ExpiryMonitoringSettings } from "./expiry-monitoring-settings";
 import { BackupMonitoringSettings } from "./backup-monitoring-settings";
@@ -3752,6 +3753,12 @@ export function TenantAdminSettings({
                                             {feature.feature_key ===
                                             "knowledge.base" ? (
                                               <PortalAssistantSettings
+                                                tenantId={tenantId}
+                                              />
+                                            ) : null}
+                                            {feature.feature_key ===
+                                            "teams.provisioning" ? (
+                                              <TeamsSettings
                                                 tenantId={tenantId}
                                               />
                                             ) : null}

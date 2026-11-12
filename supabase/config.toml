@@ -310,3 +310,6 @@ verify_jwt = false
 
 [functions.teams-admin]
 verify_jwt = true
+
+[functions.teams-settings]
+verify_jwt = true

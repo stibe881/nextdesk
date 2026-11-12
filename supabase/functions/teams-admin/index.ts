@@ -11,12 +11,13 @@ import {
   TeamsGraphError,
   unarchiveTeam,
 } from "../_shared/teams-graph.ts";
-import { addMonths, daysBetween, TEAM_LIMITS } from "../_shared/teams-model.ts";
+import { addMonths, daysBetween } from "../_shared/teams-model.ts";
 import {
   teamsCredentialsConfigured,
   teamsEntraTenant,
   teamsGraphToken,
 } from "../_shared/teams-token.ts";
+import { loadTeamsSettings, TEAMS_FEATURE } from "../_shared/teams-settings.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 /**
@@ -206,10 +207,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (!membership) return fail(request, "teams_tenant_access_denied", 403);
   const features = await resolveTenantFeatureStates(admin, tenantId, [
     SHOP_FEATURE,
+    TEAMS_FEATURE,
   ]);
   if (!features) return fail(request, "teams_unavailable", 503);
   const canManage =
-    features[SHOP_FEATURE] === true && (await allowed(admin, actorId, tenantId));
+    features[SHOP_FEATURE] === true &&
+    features[TEAMS_FEATURE] === true &&
+    (await allowed(admin, actorId, tenantId));
 
   if (body.type === "getContext") {
     const configured =
@@ -414,7 +418,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (body.type === "setEnd") {
     const today = zurichToday();
     const endDate = typeof body.endDate === "string" ? body.endDate : "";
-    const limit = addMonths(today, TEAM_LIMITS.maxLifetimeMonths);
+    const limit = addMonths(
+      today,
+      (await loadTeamsSettings(admin, tenantId)).maxLifetimeMonths,
+    );
     if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate <= today) {
       return fail(request, "dates_invalid");
     }
