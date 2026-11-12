@@ -2476,6 +2476,8 @@ export function CatalogEditor({
   stock?: StockEditor;
 }) {
   const chooseDepartment = departments.length > 1;
+  // Die zuständige Abteilung ist immer sichtbar; wählbar erst ab zwei eigenen.
+  const showDepartment = departments.length > 0;
   const [items, setItems] = useState<CatalogItem[] | null>(null);
   const [inventory, setInventory] = useState<InventoryOption[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -3523,23 +3525,39 @@ export function CatalogEditor({
                       Die erste gewählte Kategorie ist die Hauptkategorie.
                     </p>
                   </fieldset>
-                  {chooseDepartment ? (
+                  {showDepartment ? (
                     <label>
-                      Abteilung
+                      Zuständige Abteilung
                       <select
+                        disabled={!chooseDepartment}
                         onChange={(event) =>
                           setDraft({
                             ...draft,
                             departmentId: event.target.value,
                           })
                         }
-                        required={!(stock ? stock.item : draft.id)}
-                        value={draft.departmentId}
+                        required={
+                          chooseDepartment && !(stock ? stock.item : draft.id)
+                        }
+                        value={
+                          chooseDepartment
+                            ? draft.departmentId
+                            : draft.departmentId || (departments[0]?.id ?? "")
+                        }
                       >
-                        {!(stock ? stock.item : draft.id) ? (
+                        {chooseDepartment &&
+                        !(stock ? stock.item : draft.id) ? (
                           <option value="">Bitte wählen</option>
-                        ) : draft.departmentId === "" ? (
+                        ) : draft.departmentId === "" && chooseDepartment ? (
                           <option value="">Alle Abteilungen</option>
+                        ) : null}
+                        {draft.departmentId &&
+                        !departments.some(
+                          (department) => department.id === draft.departmentId,
+                        ) ? (
+                          <option value={draft.departmentId}>
+                            Andere Abteilung
+                          </option>
                         ) : null}
                         {departments.map((department) => (
                           <option key={department.id} value={department.id}>
@@ -3547,6 +3565,13 @@ export function CatalogEditor({
                           </option>
                         ))}
                       </select>
+                      <small className="shop__options-hint">
+                        Bestellungen dieses Artikels melden sich nur bei den
+                        Agenten dieser Abteilung.
+                        {chooseDepartment
+                          ? ""
+                          : " Zur Auswahl stehen Ihre eigenen Abteilungen."}
+                      </small>
                     </label>
                   ) : null}
                 </section>
