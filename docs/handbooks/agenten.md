@@ -47,6 +47,13 @@ sind, bei **Störungen** die aktiven Störungen, die noch niemand bestätigt
 hat, bei **Raumplanung**, **Shop** und
 **Eintritte** die offenen Anfragen. Die Zahlen aktualisieren sich jede Minute.
 
+In der **iOS- und Android-App** zeigt die untere Leiste dieselben Zahlen als
+kleines Abzeichen am Symbol: bei **Tickets**, **Störungen** und **Phishing**
+(den Sicherheitsfällen) sowie beim **Shop** die neuen Bestellungen, falls Sie
+Bestellungen bearbeiten. Raumplanung und Eintritte gibt es in der App nicht.
+Die Zahlen aktualisieren sich jede Minute, beim Zurückkehren in die App und
+beim Wechsel des Tabs.
+
 Das **Systemstatus-Badge** oben in der Navigation und die Seite
 **Systemstatus** aktualisieren sich selbst (alle 30 Sekunden und beim
 Zurückkehren in den Tab). In der **Infrastruktur** hat ein Gerät einen oder

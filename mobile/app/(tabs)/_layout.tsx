@@ -9,6 +9,7 @@ import {
 } from "@/components/nextdesk-tab-bar";
 import { PushCheckInPrompt } from "@/components/push-checkin-prompt";
 import { canWorkIncidents, canWorkSecurityCases } from "@/lib/incidents";
+import { useNavigationBadges } from "@/lib/navigation-badges";
 
 export default function TabLayout() {
   const { isEnabled, loading, needsWorkspace, tenantId } = useMobileFeatures();
@@ -38,6 +39,11 @@ export default function TabLayout() {
   const knowledgeVisible = !loading && isEnabled("knowledge.base");
   const scanVisible = !loading && isEnabled("assets.management");
   const shopVisible = !loading && isEnabled("self_service.shop");
+  // Menu badges like the web sidebar (open items per menu entry).
+  const { badges, refresh: refreshBadges } = useNavigationBadges(
+    tenantId ?? null,
+    shopVisible,
+  );
 
   // Links vom Home: Tickets, Störungen, Phishing (Arbeit);
   // rechts: Shop, Wissen, Scan.
@@ -48,6 +54,7 @@ export default function TabLayout() {
       icon: "ticket-outline",
       activeIcon: "ticket",
       side: "left",
+      badge: "tickets",
     },
   ];
   if (incidentsVisible) {
@@ -57,6 +64,7 @@ export default function TabLayout() {
       icon: "pulse-outline",
       activeIcon: "pulse",
       side: "left",
+      badge: "incidents",
     });
   }
   if (phishingVisible) {
@@ -66,6 +74,7 @@ export default function TabLayout() {
       icon: "shield-outline",
       activeIcon: "shield",
       side: "left",
+      badge: "phishing",
     });
   }
   if (shopVisible) {
@@ -75,6 +84,7 @@ export default function TabLayout() {
       icon: "bag-handle-outline",
       activeIcon: "bag-handle",
       side: "right",
+      badge: "shop",
     });
   }
   if (knowledgeVisible) {
@@ -103,7 +113,14 @@ export default function TabLayout() {
       <Tabs
         initialRouteName="index"
         screenOptions={{ headerShown: false }}
-        tabBar={(props) => <NextDeskTabBar {...props} items={tabItems} />}
+        tabBar={(props) => (
+          <NextDeskTabBar
+            {...props}
+            badges={badges}
+            items={tabItems}
+            onNavigate={refreshBadges}
+          />
+        )}
       >
         <Tabs.Screen name="tickets" options={{ title: "Tickets" }} />
         <Tabs.Screen
