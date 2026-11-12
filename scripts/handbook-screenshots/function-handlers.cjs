@@ -765,7 +765,7 @@ const HANDLERS = {
         source("github", "GitHub", "Offizielle Statusseite von GitHub."),
         source(
           "claude",
-          "Claude (Anthropic)",
+          "Claude",
           "Offizielle Statusseite von Claude.ai und der Claude-API.",
         ),
         source(
