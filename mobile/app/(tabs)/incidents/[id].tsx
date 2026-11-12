@@ -80,6 +80,8 @@ export default function IncidentDetailScreen() {
   const [cause, setCause] = useState<IncidentCause | null>(null);
   const [closingNote, setClosingNote] = useState("");
   const [pickAgent, setPickAgent] = useState(false);
+  // «Netzwerk» is long (all neighbours); collapsed by default.
+  const [networkOpen, setNetworkOpen] = useState(false);
   const [notifyTickets, setNotifyTickets] = useState(true);
   const [now, setNow] = useState(() => Date.now());
   const [focused, setFocused] = useState(false);
@@ -499,69 +501,110 @@ export default function IncidentDetailScreen() {
           detail.network.subnetNeighbours.length ||
           detail.network.switchNeighbours.length) ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Netzwerk</Text>
-            {detail.network.addresses.map((address, index) =>
-              [
-                ["IP", address.address],
-                [
-                  "Subnetz",
-                  address.prefix
-                    ? `${address.prefix}${address.gateway ? ` · GW ${address.gateway}` : ""}`
-                    : null,
-                ],
-                [
-                  "VLAN",
-                  address.vlanNumber !== null
-                    ? `${address.vlanNumber}${address.vlanName ? ` · ${address.vlanName}` : ""}`
-                    : null,
-                ],
-                ["Standort", address.site],
-                [
-                  "Switch-Port",
-                  address.switchName
-                    ? `${address.switchName}${address.switchPort ? ` · ${address.switchPort}` : ""}`
-                    : null,
-                ],
-              ]
-                .filter(([, value]) => value)
-                .map(([label, value]) => (
-                  <View key={`${index}-${label}`} style={styles.kv}>
-                    <Text style={styles.kvLabel}>{label}</Text>
-                    <Text style={styles.kvValue}>{value}</Text>
-                  </View>
-                )),
-            )}
-            {[
-              ["Im selben Subnetz", detail.network.subnetNeighbours],
-              ["Am selben Switch", detail.network.switchNeighbours],
-            ].map(([label, entries]) =>
-              (entries as IncidentNeighbour[]).length ? (
-                <View key={label as string} style={{ gap: 6 }}>
-                  <Text style={styles.muted}>{label as string}</Text>
-                  {(entries as IncidentNeighbour[]).map((entry, index) => (
-                    <Pressable
-                      disabled={!entry.incidentId}
-                      key={`${entry.assetId ?? entry.name}-${index}`}
-                      onPress={() =>
-                        entry.incidentId
-                          ? router.push(
-                              `/incidents/${entry.incidentId}` as never,
-                            )
-                          : undefined
-                      }
-                      style={styles.kv}
-                    >
-                      <View style={[styles.eventDot, neighbourDot(entry)]} />
-                      <Text style={styles.kvValue}>
-                        {entry.name}
-                        {entry.port ? ` · ${entry.port}` : ""}
-                        {entry.address ? ` · ${entry.address}` : ""}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null,
-            )}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: networkOpen }}
+              onPress={() => setNetworkOpen((value) => !value)}
+              style={{
+                alignItems: "center",
+                flexDirection: "row",
+                gap: 8,
+                justifyContent: "space-between",
+              }}
+            >
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.cardTitle}>Netzwerk</Text>
+                {!networkOpen ? (
+                  <Text numberOfLines={1} style={styles.muted}>
+                    {[
+                      detail.network.addresses
+                        .map((address) => address.address)
+                        .filter(Boolean)
+                        .join(", "),
+                      detail.network.subnetNeighbours.length +
+                      detail.network.switchNeighbours.length
+                        ? `${detail.network.subnetNeighbours.length + detail.network.switchNeighbours.length} Nachbarn`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
+                ) : null}
+              </View>
+              <Ionicons
+                color={colors.subtle}
+                name={networkOpen ? "chevron-up" : "chevron-down"}
+                size={20}
+              />
+            </Pressable>
+            {networkOpen ? (
+              <>
+                {detail.network.addresses.map((address, index) =>
+                  [
+                    ["IP", address.address],
+                    [
+                      "Subnetz",
+                      address.prefix
+                        ? `${address.prefix}${address.gateway ? ` · GW ${address.gateway}` : ""}`
+                        : null,
+                    ],
+                    [
+                      "VLAN",
+                      address.vlanNumber !== null
+                        ? `${address.vlanNumber}${address.vlanName ? ` · ${address.vlanName}` : ""}`
+                        : null,
+                    ],
+                    ["Standort", address.site],
+                    [
+                      "Switch-Port",
+                      address.switchName
+                        ? `${address.switchName}${address.switchPort ? ` · ${address.switchPort}` : ""}`
+                        : null,
+                    ],
+                  ]
+                    .filter(([, value]) => value)
+                    .map(([label, value]) => (
+                      <View key={`${index}-${label}`} style={styles.kv}>
+                        <Text style={styles.kvLabel}>{label}</Text>
+                        <Text style={styles.kvValue}>{value}</Text>
+                      </View>
+                    )),
+                )}
+                {[
+                  ["Im selben Subnetz", detail.network.subnetNeighbours],
+                  ["Am selben Switch", detail.network.switchNeighbours],
+                ].map(([label, entries]) =>
+                  (entries as IncidentNeighbour[]).length ? (
+                    <View key={label as string} style={{ gap: 6 }}>
+                      <Text style={styles.muted}>{label as string}</Text>
+                      {(entries as IncidentNeighbour[]).map((entry, index) => (
+                        <Pressable
+                          disabled={!entry.incidentId}
+                          key={`${entry.assetId ?? entry.name}-${index}`}
+                          onPress={() =>
+                            entry.incidentId
+                              ? router.push(
+                                  `/incidents/${entry.incidentId}` as never,
+                                )
+                              : undefined
+                          }
+                          style={styles.kv}
+                        >
+                          <View
+                            style={[styles.eventDot, neighbourDot(entry)]}
+                          />
+                          <Text style={styles.kvValue}>
+                            {entry.name}
+                            {entry.port ? ` · ${entry.port}` : ""}
+                            {entry.address ? ` · ${entry.address}` : ""}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null,
+                )}
+              </>
+            ) : null}
           </View>
         ) : null}
 

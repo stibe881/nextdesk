@@ -343,10 +343,11 @@ Ein Klick öffnet die Störung:
    Zuordnung (Gerät, Dienst, im Text, von Hand). Mit **Ticketnummer
    zuordnen** ergänzen Sie ein Ticket, mit **×** lösen Sie eines wieder; ein
    gelöstes Ticket wird nicht erneut automatisch zugeordnet.
-5. Rechts sehen Sie **Gerät** (Ort, Adresse, PRTG-Objekt), **Netzwerk** (IP,
+5. Rechts sehen Sie **Gerät** (Ort, Adresse, PRTG-Objekt), **Netzwerk** (zu
+   Beginn eingeklappt, mit IP und Anzahl Nachbarn; ein Klick klappt auf: IP,
    Subnetz, VLAN, Standort und Switch-Port aus der IP-Adressverwaltung sowie
    weitere Geräte im selben Subnetz bzw. am selben Switch mit ihrem aktuellen
-   Zustand), die **Abhängigkeiten** (vorgelagerte Geräte und Folgestörungen)
+   Zustand; im Web wie in der App), die **Abhängigkeiten** (vorgelagerte Geräte und Folgestörungen)
    und die **betroffenen Dienste**. Der Systemstatus wird automatisch gesetzt
    und nach der Behebung zurückgesetzt.
 6. Unter **Statusseite** veröffentlichen Sie mit **Öffentliche Meldung** eine
