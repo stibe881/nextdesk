@@ -404,6 +404,8 @@ der Übersicht, im Kanban und in der App.
   alles zurück.
 - **Gespeicherte Ansichten**: Filter als **Neue Ansicht** speichern und auf
   Wunsch mit der Abteilung teilen («Teilen mit»).
+- In der **iOS- und Android-App** wählen Sie in der Ticketliste unter **Status**
+  einen oder mehrere Status gleichzeitig; **Zurücksetzen** hebt die Auswahl auf.
 - **Ansicht**: Listendichte (_Kompakt / Standard / Komfortabel_) und
   Listen-Detail-Ansicht (Liste links, Ticket rechts).
 - **Mehrfachauswahl**: mehrere Tickets markieren → **Neuer Status** →

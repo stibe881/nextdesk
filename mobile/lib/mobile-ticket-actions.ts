@@ -154,6 +154,7 @@ export type SavedTicketView = {
   filters: {
     agent: string;
     query: string;
+    status: string;
     ticketScope: string;
   };
   id: string;
@@ -192,6 +193,7 @@ export async function listSavedTicketViews(): Promise<SavedTicketView[]> {
       filters: {
         agent: typeof filters.agent === "string" ? filters.agent : "all",
         query: typeof filters.query === "string" ? filters.query : "",
+        status: typeof filters.status === "string" ? filters.status : "all",
         ticketScope:
           typeof filters.ticketScope === "string" ? filters.ticketScope : "all",
       },
