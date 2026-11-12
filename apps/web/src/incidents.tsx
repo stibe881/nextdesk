@@ -836,7 +836,9 @@ function IncidentView({
                 </p>
               ) : null}
             </div>
-            {detail.state !== "closed" && !detail.acknowledgedAt ? (
+            {detail.state !== "closed" &&
+            detail.source !== "external" &&
+            !detail.acknowledgedAt ? (
               <button
                 className="primary-button"
                 disabled={busy !== null}
@@ -1090,55 +1092,59 @@ function IncidentView({
             </div>
 
             <div className="incident__side">
-              <article className="incident-card">
-                <div className="incident-card__head">
-                  <h3>Zuständig</h3>
-                  {currentUserId &&
-                  detail.state !== "closed" &&
-                  detail.assignedAgentId !== currentUserId &&
-                  detail.agents.some((agent) => agent.id === currentUserId) ? (
-                    <button
-                      className="text-button"
-                      disabled={busy !== null}
-                      onClick={() =>
+              {detail.source !== "external" ? (
+                <article className="incident-card">
+                  <div className="incident-card__head">
+                    <h3>Zuständig</h3>
+                    {currentUserId &&
+                    detail.state !== "closed" &&
+                    detail.assignedAgentId !== currentUserId &&
+                    detail.agents.some(
+                      (agent) => agent.id === currentUserId,
+                    ) ? (
+                      <button
+                        className="text-button"
+                        disabled={busy !== null}
+                        onClick={() =>
+                          void run("assign", {
+                            type: "assign",
+                            agentId: currentUserId,
+                          })
+                        }
+                        type="button"
+                      >
+                        Mir zuweisen
+                      </button>
+                    ) : null}
+                  </div>
+                  <label className="incident-field">
+                    <span className="sr-only">Zuständige Person</span>
+                    <select
+                      disabled={busy !== null || detail.state === "closed"}
+                      onChange={(event) =>
                         void run("assign", {
                           type: "assign",
-                          agentId: currentUserId,
+                          agentId: event.target.value || null,
                         })
                       }
-                      type="button"
+                      value={detail.assignedAgentId ?? ""}
                     >
-                      Mir zuweisen
-                    </button>
+                      <option value="">Nicht zugewiesen</option>
+                      {detail.agents.map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {detail.acknowledgedAt ? (
+                    <p className="incident-muted">
+                      Bestätigt von {detail.acknowledgedBy ?? "–"},{" "}
+                      {dateTime(detail.acknowledgedAt)}
+                    </p>
                   ) : null}
-                </div>
-                <label className="incident-field">
-                  <span className="sr-only">Zuständige Person</span>
-                  <select
-                    disabled={busy !== null || detail.state === "closed"}
-                    onChange={(event) =>
-                      void run("assign", {
-                        type: "assign",
-                        agentId: event.target.value || null,
-                      })
-                    }
-                    value={detail.assignedAgentId ?? ""}
-                  >
-                    <option value="">Nicht zugewiesen</option>
-                    {detail.agents.map((agent) => (
-                      <option key={agent.id} value={agent.id}>
-                        {agent.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {detail.acknowledgedAt ? (
-                  <p className="incident-muted">
-                    Bestätigt von {detail.acknowledgedBy ?? "–"},{" "}
-                    {dateTime(detail.acknowledgedAt)}
-                  </p>
-                ) : null}
-              </article>
+                </article>
+              ) : null}
 
               {detail.device ? (
                 <article className="incident-card">
@@ -1298,9 +1304,19 @@ function IncidentView({
                   <h3>
                     {detail.state === "closed"
                       ? "Ursache nachtragen (optional)"
-                      : "Abschliessen"}
+                      : detail.source === "external"
+                        ? "Von Hand abschliessen (optional)"
+                        : "Abschliessen"}
                   </h3>
-                  {detail.state === "active" ? (
+                  {detail.state === "active" && detail.source === "external" ? (
+                    <p className="incident-muted">
+                      <Clock3 aria-hidden="true" size={13} /> Schliesst sich
+                      automatisch, sobald{" "}
+                      {detail.externalProvider ?? "der Anbieter"} die Störung
+                      als behoben meldet. Von Hand abschliessen ist nur nötig,
+                      wenn die Meldung beim Anbieter hängen bleibt.
+                    </p>
+                  ) : detail.state === "active" ? (
                     <p className="incident-muted">
                       <Clock3 aria-hidden="true" size={13} /> PRTG meldet noch
                       eine Störung. Meldet PRTG wieder OK, schliesst sie sich
