@@ -684,8 +684,8 @@ export default function IncidentDetailScreen() {
             </Text>
             {detail.state === "active" ? (
               <Text style={styles.muted}>
-                Meldet PRTG wieder OK, gilt die Störung als behoben.
-                Abschliessen beendet sie auch ohne OK-Meldung.
+                Meldet PRTG wieder OK, schliesst sich die Störung
+                automatisch. Abschliessen beendet sie auch ohne OK-Meldung.
               </Text>
             ) : detail.state === "resolved" ? (
               <Text style={styles.muted}>

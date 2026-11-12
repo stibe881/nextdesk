@@ -31,8 +31,7 @@ import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 const FILTERS: { key: IncidentFilter; label: string }[] = [
   { key: "active", label: "Aktiv" },
   { key: "unacknowledged", label: "Unbestätigt" },
-  { key: "resolved", label: "Behoben" },
-  { key: "closed", label: "Abgeschlossen" },
+  { key: "closed", label: "Behoben" },
   { key: "all", label: "Alle" },
 ];
 
@@ -40,7 +39,7 @@ const EMPTY: Partial<Record<IncidentFilter, string>> = {
   active: "Keine aktiven Störungen. Alles läuft.",
   unacknowledged: "Alle aktiven Störungen sind bestätigt.",
   resolved: "Keine behobenen Störungen, die noch abgeschlossen werden müssen.",
-  closed: "Noch keine abgeschlossenen Störungen.",
+  closed: "Noch keine behobenen Störungen.",
 };
 
 /** «Störungen»: PRTG incidents, handled without tickets. Agents only. */
