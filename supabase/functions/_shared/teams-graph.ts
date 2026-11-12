@@ -13,6 +13,7 @@ const WEBSITE_TAB_APP = "com.microsoft.teamspace.tab.web";
 
 export type TeamsGraphErrorCode =
   | "consent_missing"
+  | "token_failed"
   | "rate_limited"
   | "not_ready"
   | "conflict"
@@ -63,7 +64,21 @@ async function call(
     throw new TeamsGraphError("unavailable");
   }
   if (!response.ok) {
-    await response.body?.cancel();
+    // Nur Status und Fehlercode von Microsoft ins Protokoll (keine Inhalte).
+    let detail = "";
+    try {
+      const payload = (await response.json()) as {
+        error?: { code?: unknown };
+      } | null;
+      if (typeof payload?.error?.code === "string") {
+        detail = payload.error.code.slice(0, 80);
+      }
+    } catch {
+      // Kein JSON.
+    }
+    console.error(
+      `teams-graph ${method} ${path.replace(/[0-9a-f-]{36}/gi, "{id}").slice(0, 80)} -> ${response.status} ${detail}`,
+    );
     throw new TeamsGraphError(codeForStatus(response.status), response.status);
   }
   return response;

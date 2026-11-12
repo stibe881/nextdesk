@@ -41,13 +41,20 @@ export async function teamsGraphToken(
 ): Promise<string> {
   const app = credentials();
   const entraTenant = await teamsEntraTenant(admin, tenantId);
-  if (!app || !entraTenant) throw new TeamsGraphError("invalid");
+  if (!app || !entraTenant) {
+    console.error(
+      `teams-token not configured (app=${app ? "yes" : "no"}, entraTenant=${entraTenant ? "yes" : "no"})`,
+    );
+    throw new TeamsGraphError("invalid");
+  }
   try {
     return await requestIntuneActionAccessToken(entraTenant, app, fetchImpl);
   } catch (error) {
     if (error instanceof IntuneActionError) {
+      console.error(`teams-token ${error.code} status=${error.graphStatus ?? ""}`);
+      // 400/401 beim Token: Geheimnis falsch/abgelaufen oder App im Mandanten unbekannt.
       if (error.code === "consent_missing") {
-        throw new TeamsGraphError("consent_missing");
+        throw new TeamsGraphError("token_failed", error.graphStatus ?? 0);
       }
       if (error.code === "rate_limited") throw new TeamsGraphError("rate_limited");
     }
