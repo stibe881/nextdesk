@@ -100,6 +100,32 @@ In der Karte der Funktion:
 
 Die Einrichtungsschritte stehen im Installationshandbuch.
 
+### Hinweise für Anfragende
+
+Mit der Funktion **Hinweise für Anfragende** (standardmässig aus) bewirbt die
+ICT eigene Dienste: als Karte in Ticket-Mails, als Banner oder Hinweisleiste
+im Portal und als Karte in der iPhone- und Android-App. Die Hinweise gelten
+immer für alle Anfragenden.
+
+In der Karte der Funktion:
+
+1. **Neuer Hinweis**: Titel (höchstens 60 Zeichen), Text (höchstens 220),
+   Schaltfläche und Ziel (_Shop_, _Wissensartikel_, _Ticket erfassen_ oder
+   eine https-Adresse), Symbol (bis 4 Zeichen) und Farbe.
+2. **Wo erscheint er?** Portal-Banner, Portal-Hinweisleiste, E-Mails an
+   Anfragende, App. Die Vorschau zeigt Portal und E-Mail.
+3. **Zeitplan:** Start (Standard heute) und **Ende** (Pflicht). Mit
+   **Veröffentlichen** wird der Hinweis aktiv, mit **Als Entwurf speichern**
+   nicht. Aktive Hinweise lassen sich pausieren.
+4. **Wegklicken erlauben**: Wer den Hinweis ausblendet, sieht ihn nicht mehr.
+5. **Statistik** pro Hinweis: Ansichten, Klicks und Wegklicks (Portal und App
+   getrennt von den Mails; ohne Personenbezug).
+
+**Allgemeine Regeln:** In Mails erscheint höchstens ein Hinweis, und pro
+Person höchstens einer alle _N_ Tage (Standard 7; 0 = immer). Mehrere
+aktive Hinweise wechseln sich ab. Sicherheits-, Phishing-, Erinnerungs- und
+Freigabemails enthalten nie einen Hinweis; das lässt sich nicht ändern.
+
 ### SLA-Automatisierung konfigurieren
 
 Unter **Funktionen → SLA-Automatisierung → Konfigurieren**:

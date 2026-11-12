@@ -51,6 +51,7 @@ import {
 } from "./lib/push-notifications";
 import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
 import { AssetIntuneSettings } from "./asset-intune-settings";
+import { RequesterNoticesSettings } from "./requester-notices-settings";
 import { TeamsSettings } from "./teams-settings";
 import { MonitoringSettings } from "./monitoring-settings";
 import { ExpiryMonitoringSettings } from "./expiry-monitoring-settings";
@@ -3761,6 +3762,12 @@ export function TenantAdminSettings({
                                             {feature.feature_key ===
                                             "teams.provisioning" ? (
                                               <TeamsSettings
+                                                tenantId={tenantId}
+                                              />
+                                            ) : null}
+                                            {feature.feature_key ===
+                                            "portal.notices" ? (
+                                              <RequesterNoticesSettings
                                                 tenantId={tenantId}
                                               />
                                             ) : null}

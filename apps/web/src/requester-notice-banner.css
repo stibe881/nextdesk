@@ -1,0 +1,130 @@
+.requester-notices {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.notice-banner {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 44px 18px 20px;
+  border-radius: 16px;
+  color: #fff;
+  background: linear-gradient(
+    135deg,
+    var(--notice-from, #4338ca),
+    var(--notice-to, #075985)
+  );
+}
+.notice-banner__symbol {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 20%);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+.notice-banner:not(:has(.notice-banner__symbol)) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.notice-banner__text small {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+.notice-banner__text h3 {
+  margin: 2px 0 4px;
+  font-size: 19px;
+  color: inherit;
+}
+.notice-banner__text p {
+  margin: 0;
+  color: inherit;
+  opacity: 0.95;
+  overflow-wrap: anywhere;
+}
+.notice-banner__action {
+  border: 1px solid #fff;
+  border-radius: 10px;
+  padding: 8px 16px;
+  background: #fff;
+  color: #17233f;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.notice-banner__action:hover {
+  background: #eef0ff;
+}
+.notice-banner__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+.notice-banner__close:hover {
+  background: rgb(255 255 255 / 22%);
+}
+
+.notice-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px 9px 14px;
+  border: 1px solid var(--notice-border, #075985);
+  border-radius: 12px;
+  background: var(--notice-bg, #eff8ff);
+  color: var(--notice-fg, #075985);
+}
+.notice-bar__text {
+  flex: 1 1 240px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.notice-bar__action {
+  border: 0;
+  background: transparent;
+  color: var(--primary, #4338ca);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.notice-bar__close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .notice-banner,
+  .notice-banner:not(:has(.notice-banner__symbol)) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .notice-banner__action {
+    justify-self: start;
+  }
+}

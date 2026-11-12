@@ -38,7 +38,7 @@ Deno.test(
     for (const required of [
       "Neue Nachricht zu Ihrem Ticket",
       "VPN einrichten",
-      "Ticket ICT-2026-000011",
+      "ICT-2026-000011 · VPN einrichten",
       "Ticketbenachrichtigung über Verein SONNENBERG Baar",
       "#1B67C9",
       "#15365F",
@@ -208,5 +208,147 @@ Deno.test("Erinnerungsmail zeigt nur sichere Ein-Klick-Aktionen", () => {
     !html.includes("einmal verwendbar")
   ) {
     throw new Error("Ein-Klick-Aktionen werden nicht sicher dargestellt.");
+  }
+});
+
+const links = [1, 2, 3, 4, 5].map((score) => ({
+  score,
+  url: `https://app.nextdesk.ch/#bewertung=${score}`,
+}));
+const notice = {
+  title: "Neu im Shop: <Teams>",
+  body: "Ein Team bestellen Sie jetzt & ohne Ticket.",
+  buttonLabel: "Zum Shop",
+  url: "https://app.nextdesk.ch/shop?a=1&b=2",
+  symbol: "<3",
+  color: "info" as const,
+};
+
+function renderWith(
+  extra: Record<string, unknown>,
+  kind: CustomerTicketEmailKind = "resolution",
+) {
+  return renderCustomerTicketEmail({
+    attachmentNotice: false,
+    branding,
+    kind,
+    subject: "VPN einrichten",
+    text: "Hallo",
+    ticketNumber: "ICT-1",
+    ...extra,
+  });
+}
+
+Deno.test("Hinweisblock der ICT wird gerendert und escaped", () => {
+  const html = renderWith({ notice, footerContact: "support@x.ch <ICT>" });
+  for (const required of [
+    "NEU BEI DER ICT",
+    "Neu im Shop: &lt;Teams&gt;",
+    "Ein Team bestellen Sie jetzt &amp; ohne Ticket.",
+    "Zum Shop",
+    'href="https://app.nextdesk.ch/shop?a=1&amp;b=2"',
+    "&lt;3",
+    "#075985",
+    "Hinweise der ICT erscheinen nur gelegentlich und nie in Sicherheitsmeldungen.",
+    "support@x.ch &lt;ICT&gt;",
+  ]) {
+    if (!html.includes(required)) throw new Error(`Fehlt: ${required}`);
+  }
+  if (html.includes("<Teams>") || html.includes("<ICT>")) {
+    throw new Error("Hinweis nicht escaped.");
+  }
+});
+
+Deno.test("Hinweisblock erscheint nur mit https-URL und ausserhalb von Sicherheitsmeldungen", () => {
+  const insecure = renderWith({ notice: { ...notice, url: "http://x.ch" } });
+  const script = renderWith({ notice: { ...notice, url: "javascript:1" } });
+  const security = renderWith({ notice }, "security_notice");
+  const none = renderWith({});
+  for (const html of [insecure, script, security, none]) {
+    if (html.includes("NEU BEI DER ICT") || html.includes("einmal pro Woche")) {
+      throw new Error("Hinweisblock darf nicht erscheinen.");
+    }
+  }
+});
+
+Deno.test("Hinweisblock kappt Längen und mappt Farben", () => {
+  const long = renderWith({
+    notice: {
+      ...notice,
+      title: "T".repeat(100),
+      body: "B".repeat(300),
+      buttonLabel: "L".repeat(60),
+      symbol: "ABCDEFG",
+    },
+  });
+  if (
+    long.includes("T".repeat(81)) ||
+    !long.includes("T".repeat(80)) ||
+    long.includes("B".repeat(261)) ||
+    !long.includes("B".repeat(260)) ||
+    long.includes("L".repeat(41)) ||
+    !long.includes("L".repeat(40)) ||
+    !long.includes("ABCD<") ||
+    long.includes("ABCDE")
+  ) {
+    throw new Error("Längen nicht gekappt.");
+  }
+  const expected: Array<[string, string]> = [
+    ["brand", "#1B67C9"],
+    ["info", "#075985"],
+    ["success", "#1F7A45"],
+    ["warning", "#B45309"],
+  ];
+  for (const [color, hex] of expected) {
+    const html = renderWith({ notice: { ...notice, color, symbol: null } });
+    const block = html.slice(html.indexOf("NEU BEI DER ICT") - 900);
+    if (!block.includes(`background-color:${hex}`)) {
+      throw new Error(`Farbe ${color} falsch.`);
+    }
+  }
+});
+
+Deno.test("Sterne erscheinen nur bei fünf https-Links", () => {
+  const five = renderWith({ ratingLinks: links });
+  if (
+    !five.includes("Wie zufrieden waren Sie?") ||
+    (five.match(/&#9733;/g) ?? []).length !== 5 ||
+    !five.includes("width:44px;height:44px")
+  ) {
+    throw new Error("Sterne fehlen.");
+  }
+  const four = renderWith({ ratingLinks: links.slice(0, 4) });
+  const mixed = renderWith({
+    ratingLinks: [...links.slice(0, 4), { score: 5, url: "http://x.ch" }],
+  });
+  for (const html of [four, mixed]) {
+    if (html.includes("&#9733;")) throw new Error("Sterne ohne 5 https-Links.");
+  }
+});
+
+Deno.test("Hauptbutton: oben ohne Sterne, ausgelagert mit Sternen, nur https", () => {
+  const primaryAction = { label: "Ticket öffnen", url: "https://app.nextdesk.ch/t/1" };
+  const plain = renderWith({ primaryAction }, "agent_reply");
+  if (!plain.includes("Ticket öffnen") || !plain.includes("https://app.nextdesk.ch/t/1")) {
+    throw new Error("Hauptbutton fehlt.");
+  }
+  if (plain.indexOf("Ticket öffnen") > plain.indexOf("Hallo")) {
+    throw new Error("Hauptbutton muss über der Nachricht stehen.");
+  }
+  const withStars = renderWith({ primaryAction, ratingLinks: links });
+  if (withStars.indexOf("Ticket öffnen") < withStars.indexOf("Hallo")) {
+    throw new Error("Zweiter Button muss unter der Nachricht stehen.");
+  }
+  const bad = renderWith({ primaryAction: { label: "X", url: "http://x.ch" } }, "agent_reply");
+  if (bad.includes("http://x.ch")) throw new Error("http-Button gerendert.");
+});
+
+Deno.test("Overrides für Titel, Einleitung und Hinweis wirken", () => {
+  const html = renderWith(
+    { eyebrow: "Eigener Titel", intro: "Eigene Einleitung", replyHint: "Eigener Hinweis" },
+    "agent_reply",
+  );
+  for (const required of ["Eigener Titel", "Eigene Einleitung", "Eigener Hinweis"]) {
+    if (!html.includes(required)) throw new Error(`Override fehlt: ${required}`);
   }
 });

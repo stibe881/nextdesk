@@ -192,6 +192,8 @@ import {
   type ActiveIncidentNotice,
   type TeamQueue,
 } from "./agent-workbench";
+import { RequesterNotices } from "./requester-notice-banner";
+import type { NoticeLink } from "./lib/requester-notices";
 import { RequesterPortalPanel } from "./requester-portal";
 import { IntroTip } from "./intro-tips";
 import {
@@ -2672,6 +2674,23 @@ const initialKnowledgeDeepLink: string | null = (() => {
   }
 })();
 
+// "?ziel=shop|neues-ticket" comes from links in e-mails (requester notices).
+// The parameter is removed afterwards.
+const TARGET_DEEP_LINK_PARAM = "ziel";
+const initialTargetDeepLink: "shop" | "neues-ticket" | null = (() => {
+  if (typeof window === "undefined") return null;
+  try {
+    const url = new URL(window.location.href);
+    const value = url.searchParams.get(TARGET_DEEP_LINK_PARAM);
+    if (value === null) return null;
+    url.searchParams.delete(TARGET_DEEP_LINK_PARAM);
+    window.history.replaceState(window.history.state, "", url.toString());
+    return value === "shop" || value === "neues-ticket" ? value : null;
+  } catch {
+    return null;
+  }
+})();
+
 // "?asset=<uuid>" and "?rack=<name>" are the web fallback of printed asset
 // labels (QR code). They open the asset list or the rack view.
 const LABEL_LINK_STORAGE_KEY = "nextdesk.pendingLabelLink";
@@ -3700,6 +3719,7 @@ function AuthenticatedApp() {
       canManageServiceStatus,
     });
   const knowledgeDeepLinkConsumedRef = useRef(false);
+  const targetDeepLinkConsumedRef = useRef(false);
   const assetLabelDeepLinkConsumedRef = useRef(false);
   // Rack from a label QR code; only for the first visit of the rack view.
   const [infrastructureRackFocus, setInfrastructureRackFocus] = useState<
@@ -3733,6 +3753,17 @@ function AuthenticatedApp() {
       knowledgeDeepLinkConsumedRef.current = true;
       setKnowledgeFocusArticleId(initialKnowledgeDeepLink);
       setSection("Wissen");
+      return;
+    }
+    // Link from a notice e-mail: open the shop or start a new ticket.
+    if (initialTargetDeepLink && !targetDeepLinkConsumedRef.current) {
+      targetDeepLinkConsumedRef.current = true;
+      if (initialTargetDeepLink === "neues-ticket") {
+        setSection("Tickets");
+        setTicketComposerOpen(true);
+      } else {
+        setSection("Shop");
+      }
       return;
     }
     // Asset label QR code (web fallback): open the asset or the rack.
@@ -5570,6 +5601,20 @@ function AuthenticatedApp() {
     );
   }
 
+  // Click on a requester notice (banner or bar in the portal).
+  function openRequesterNotice(link: NoticeLink) {
+    if (link.kind === "url") {
+      window.open(link.href, "_blank", "noopener");
+    } else if (link.kind === "knowledge") {
+      setKnowledgeFocusArticleId(link.id);
+      setSection("Wissen");
+    } else if (link.kind === "new_ticket") {
+      startQuickCreate("ticket");
+    } else {
+      setSection(link.section);
+    }
+  }
+
   function startQuickCreate(action: QuickCreateAction) {
     setPersonalSettingsOpen(false);
     closeQuickCreateMenu(false);
@@ -6911,23 +6956,31 @@ function AuthenticatedApp() {
               onUnreadMentionsChange={ignoreUnreadMentions}
               portalPanel={
                 requesterPortalEnabled ? (
-                  <RequesterPortalPanel
-                    embedded={
-                      agentWorkbenchEnabled || workplaceFollowUpsEnabled
-                    }
-                    onCreateTicket={() => startQuickCreate("ticket")}
-                    onOpenShop={
-                      workSections.some((item) => item.label === "Shop")
-                        ? () => setSection("Shop")
-                        : undefined
-                    }
-                    onOpenTicket={(ticketId) => {
-                      setSection("Tickets");
-                      setSelectedTicketId(ticketId);
-                    }}
-                    onOpenTickets={() => setSection("Tickets")}
-                    tenantId={activeTenant.id}
-                  />
+                  <>
+                    {isFeatureEnabled("portal.notices") ? (
+                      <RequesterNotices
+                        onNavigate={openRequesterNotice}
+                        tenantId={activeTenant.id}
+                      />
+                    ) : null}
+                    <RequesterPortalPanel
+                      embedded={
+                        agentWorkbenchEnabled || workplaceFollowUpsEnabled
+                      }
+                      onCreateTicket={() => startQuickCreate("ticket")}
+                      onOpenShop={
+                        workSections.some((item) => item.label === "Shop")
+                          ? () => setSection("Shop")
+                          : undefined
+                      }
+                      onOpenTicket={(ticketId) => {
+                        setSection("Tickets");
+                        setSelectedTicketId(ticketId);
+                      }}
+                      onOpenTickets={() => setSection("Tickets")}
+                      tenantId={activeTenant.id}
+                    />
+                  </>
                 ) : undefined
               }
               requestedView={
@@ -6946,6 +6999,15 @@ function AuthenticatedApp() {
           </>
         ) : section === "Tickets" ? (
           <>
+            {activeTenant &&
+            isSupabaseConfigured &&
+            !canWorkTickets &&
+            isFeatureEnabled("portal.notices") ? (
+              <RequesterNotices
+                onNavigate={openRequesterNotice}
+                tenantId={activeTenant.id}
+              />
+            ) : null}
             <section className="ticket-panel panel ticket-module">
               <div className="panel-heading">
                 <div>
