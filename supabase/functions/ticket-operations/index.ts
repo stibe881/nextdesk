@@ -2920,48 +2920,6 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         },
         403,
       );
-    // Staff may only answer the requester while the ticket is assigned and in
-    // progress (the requester's own replies are always possible).
-    if (action.visibility === "external" && actorId !== ticket.requester_id) {
-      const { data: replyState } = await context.supabaseAdmin
-        .from("tickets")
-        .select("assigned_agent_id, category_id, status:ticket_statuses(key)")
-        .eq("id", ticket.id)
-        .eq("tenant_id", ticket.tenant_id)
-        .maybeSingle();
-      const statusRelation = replyState?.status as
-        { key?: string } | { key?: string }[] | null | undefined;
-      const statusKey = Array.isArray(statusRelation)
-        ? statusRelation[0]?.key
-        : statusRelation?.key;
-      // A category is required where the department offers any (as when closing).
-      let categoryMissing = false;
-      if (replyState && !replyState.category_id) {
-        const { count } = await context.supabaseAdmin
-          .from("ticket_categories")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", ticket.tenant_id)
-          .eq("department_id", ticket.department_id)
-          .eq("active", true);
-        categoryMissing = (count ?? 0) > 0;
-      }
-      if (
-        !replyState?.assigned_agent_id ||
-        statusKey !== "in_progress" ||
-        categoryMissing
-      )
-        return response(
-          request,
-          {
-            error: {
-              code: "external_reply_requires_in_progress",
-              message:
-                "Eine Antwort an die anfragende Person ist nur möglich, wenn das Ticket zugewiesen, in Bearbeitung und einer Kategorie zugeordnet ist.",
-            },
-          },
-          422,
-        );
-    }
     let comment: {
       id: string;
       author_id: string;
@@ -3056,6 +3014,82 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             .eq("tenant_id", ticket.tenant_id)
             .eq("first_responded_at", firstResponseTicket.first_responded_at);
         }
+      }
+    }
+    // Whoever answers the requester takes the ticket: without an assignee it
+    // is assigned to the author (if they are an eligible agent), and a new
+    // ticket moves to "in progress". Failures never block the reply itself.
+    if (action.visibility === "external" && actorId !== ticket.requester_id) {
+      try {
+        const { data: currentStatus } = await context.supabaseAdmin
+          .from("ticket_statuses")
+          .select("key")
+          .eq("id", ticket.status_id)
+          .maybeSingle();
+        const takeUpdate: Record<string, unknown> = {};
+        const takeFields: string[] = [];
+        let assigneeAfter: string | null = ticket.assigned_agent_id ?? null;
+        if (!assigneeAfter && typeof actorId === "string") {
+          const eligible = await getEligibleTicketAgentIds(
+            context.supabaseAdmin,
+            ticket,
+          );
+          if (!eligible.error && eligible.agentIds.includes(actorId)) {
+            takeUpdate.assigned_agent_id = actorId;
+            takeFields.push("assignedAgent");
+            assigneeAfter = actorId;
+          }
+        }
+        let toStatusId: string | null = null;
+        if (currentStatus?.key === "new" && assigneeAfter) {
+          const { data: inProgress } = await context.supabaseAdmin
+            .from("ticket_statuses")
+            .select("id")
+            .eq("tenant_id", ticket.tenant_id)
+            .eq("key", "in_progress")
+            .maybeSingle();
+          if (inProgress) {
+            toStatusId = inProgress.id;
+            takeUpdate.status_id = inProgress.id;
+            takeUpdate.waiting_since = null;
+            takeFields.push("status");
+          }
+        }
+        if (takeFields.length > 0) {
+          const { error: takeError } = await context.supabaseAdmin
+            .from("tickets")
+            .update(takeUpdate)
+            .eq("id", ticket.id)
+            .setHeader(
+              "x-nextdesk-actor-id",
+              typeof actorId === "string" ? actorId : "",
+            );
+          if (!takeError) {
+            await context.supabaseAdmin.from("ticket_events").insert({
+              ticket_id: ticket.id,
+              actor_id: actorId,
+              event_type: "ticket.updated",
+              payload: {
+                changedFields: takeFields,
+                trigger: "external_reply",
+                ...(toStatusId
+                  ? {
+                      statusTransition: {
+                        fromStatusId: ticket.status_id,
+                        toStatusKey: "in_progress",
+                        isClosed: false,
+                        confirmed: false,
+                        occurredAt: new Date().toISOString(),
+                      },
+                    }
+                  : {}),
+              },
+            });
+          }
+        }
+      } catch {
+        // The reply is already saved; assignment and status follow on the
+        // next change.
       }
     }
     let copiesQueued = 0;
