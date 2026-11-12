@@ -513,10 +513,13 @@ async function resolveIncidentIfClear(
   if (open.error || ((open.data ?? []) as Row[]).length > 0) return false;
   const updated = await admin
     .from("monitoring_incidents")
-    // Back to OK: resolved. An agent closes it with the cause.
+    // Back to OK: closed automatically, nobody has to confirm or close it.
+    // The cause can be added afterwards (incidents «close» on a closed one).
     .update({
-      state: "resolved",
+      state: "closed",
       resolved_at: now.toISOString(),
+      closed_at: now.toISOString(),
+      closing_note: "Automatisch abgeschlossen: PRTG meldet wieder OK.",
       last_event_at: now.toISOString(),
     })
     .eq("id", incidentId)
@@ -524,7 +527,7 @@ async function resolveIncidentIfClear(
     .select("id");
   if (((updated.data ?? []) as Row[]).length) {
     await addIncidentEvent(admin, tenantId, incidentId, "resolved", null,
-      "PRTG meldet alle Sensoren wieder OK. Störung behoben – bitte mit Ursache abschliessen.");
+      "PRTG meldet alle Sensoren wieder OK. Störung automatisch abgeschlossen.");
     return true;
   }
   return false;
@@ -625,7 +628,12 @@ async function settleAfterDown(
   if (!stillOpen.error && ((stillOpen.data ?? []) as Row[]).length === 0) {
     await admin
       .from("monitoring_incidents")
-      .update({ state: "resolved", resolved_at: now.toISOString() })
+      .update({
+        state: "closed",
+        resolved_at: now.toISOString(),
+        closed_at: now.toISOString(),
+        closing_note: "Automatisch abgeschlossen: PRTG meldet wieder OK.",
+      })
       .eq("id", incidentId)
       .eq("state", "active");
   }

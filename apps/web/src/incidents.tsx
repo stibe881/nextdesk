@@ -140,8 +140,7 @@ function useIncidentChanges(
 
 const TABS: { key: IncidentFilter; label: string }[] = [
   { key: "active", label: "Aktiv" },
-  { key: "resolved", label: "Behoben" },
-  { key: "closed", label: "Abgeschlossen" },
+  { key: "closed", label: "Behoben" },
   { key: "all", label: "Alle" },
 ];
 
@@ -157,7 +156,7 @@ const EMPTY_TEXT: Record<IncidentFilter, string> = {
   services: "Keine Dienste betroffen.",
   recent: "In den letzten 30 Tagen wurde keine Störung behoben.",
   resolved: "Keine behobenen Störungen, die noch abgeschlossen werden müssen.",
-  closed: "Noch keine abgeschlossenen Störungen.",
+  closed: "Noch keine behobenen Störungen.",
   all: "Noch keine Störungen.",
 };
 
@@ -1269,8 +1268,9 @@ function IncidentView({
                   {detail.state === "active" ? (
                     <p className="incident-muted">
                       <Clock3 aria-hidden="true" size={13} /> PRTG meldet noch
-                      eine Störung. Meldet PRTG wieder OK, gilt sie als behoben.
-                      Abschliessen beendet sie auch ohne OK-Meldung.
+                      eine Störung. Meldet PRTG wieder OK, schliesst sie sich
+                      automatisch. Abschliessen beendet sie auch ohne
+                      OK-Meldung.
                     </p>
                   ) : detail.state === "resolved" ? (
                     <p className="incident-muted">

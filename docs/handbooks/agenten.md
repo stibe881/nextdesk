@@ -313,14 +313,16 @@ bearbeiten die Störung vollständig dort.
   letzten 30 Tage) und _Verfügbarkeit_ der überwachten Geräte. Ein Klick auf
   eine Kachel zeigt darunter die passenden Störungen; **Filter aufheben** führt
   zurück zu den aktiven.
-- **Register**: _Aktiv_, _Behoben_ (PRTG meldet wieder OK, Ursache fehlt
-  noch), _Abgeschlossen_ und _Alle_. Die Dauer läuft live mit, und neue
+- **Register**: _Aktiv_, _Behoben_ und _Alle_. Die Dauer läuft live mit, und neue
   Meldungen erscheinen ohne Neuladen. Im Suchfeld finden Sie Störungen nach
   Nummer, Gerät oder Titel; ältere Störungen laden Sie mit **Weitere Störungen
   laden** nach.
-- **Behoben, dann abgeschlossen**: Meldet PRTG wieder OK, wechselt die
-  Störung auf _Behoben_ und die Alarmierung hört auf. Abgeschlossen ist sie
-  erst, wenn Sie sie mit der **Ursache** abschliessen (siehe unten).
+- **Automatisch abgeschlossen**: Meldet PRTG für alle Sensoren wieder OK,
+  wird die Störung automatisch abgeschlossen und erscheint unter _Behoben_.
+  Sie muss weder bestätigt noch von Hand abgeschlossen werden, und die
+  Alarmierung hört auf. Die **Ursache** tragen Sie bei Bedarf unter **Ursache
+  nachtragen (optional)** nach; dort lassen sich auch zugeordnete Tickets
+  informieren und ein Fall eröffnen (siehe unten).
 - **Tickets zur Störung**: Gehen während einer aktiven Störung Tickets zum
   betroffenen Gerät oder Dienst ein (Gerät bzw. Dienst am Ticket verknüpft
   oder Gerätename, Hostname oder IP-Adresse im Text), ordnet nextDesk sie der
@@ -355,7 +357,7 @@ Ein Klick öffnet die Störung:
 6. Unter **Statusseite** veröffentlichen Sie mit **Öffentliche Meldung** eine
    Meldung (Zustand, Titel, Text, betroffene Dienste) auf der Statusseite und
    ergänzen sie später mit **Update veröffentlichen**.
-7. **Abschliessen**: Wählen Sie die **Ursache** (Strom, Netzwerk, Hardware,
+7. **Abschliessen bzw. Ursache nachtragen**: Wählen Sie die **Ursache** (Strom, Netzwerk, Hardware,
    Software, Wartung, Extern, Unbekannt) und halten Sie die Lösung fest. Sind
    Tickets zugeordnet, ist **Tickets informieren und auf «Gelöst» setzen**
    eingeschaltet: Jedes offene Ticket erhält eine öffentliche Antwort mit der
