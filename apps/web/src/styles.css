@@ -22624,3 +22624,16 @@ html body form:has(> .fk-layout) {
 .tenant-admin-settings__formality-option input {
   width: auto;
 }
+
+.article-editor__import {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px dashed var(--border, #d0d5dd);
+  border-radius: 10px;
+}
+
+.article-editor__import button {
+  justify-self: start;
+}

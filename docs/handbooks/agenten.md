@@ -734,6 +734,14 @@ Drop oder Auswahl), Kategorien, Artikelnummer, Beschreibung, technische Angaben
 und alle weiteren Shop-Felder. Dazu kommen die Lagerangaben **Einheit** und
 **Mindest-/Zielbestand**.
 
+**Artikel von Brack importieren:** Im Formular steht oben das Feld **Von Brack
+importieren**. Füge den Link einer Brack-Produktseite ein und wähle **Daten
+übernehmen**: nextDesk füllt Name, Beschreibung, Artikelnummer, Lieferanten-Link,
+technische Angaben, Kategorie und das Produktfoto vor. Bereits ausgefüllte Felder
+bleiben unverändert. Prüfe die Angaben und ergänze Genehmigung, Maximalmenge und
+Kategorie selbst. Lässt Brack den Abruf nicht zu, erscheint ein Hinweis und du
+erfasst den Artikel von Hand.
+
 Unter **Zuständige Abteilung** legst du fest, welche Abteilung den Artikel
 betreut (z. B. ICT oder Infrastruktur). Geht im Shop eine Bestellung zu diesem
 Artikel ein, werden nur die Agenten dieser Abteilung benachrichtigt, die

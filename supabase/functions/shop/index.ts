@@ -1,4 +1,8 @@
 import { msg } from "../_shared/formality.ts";
+import {
+  importProductFromUrl,
+  ProductImportError,
+} from "../_shared/product-import.ts";
 import { withSupabase } from "@supabase/server";
 import {
   ensureEntraPersonAccount,
@@ -76,6 +80,19 @@ class HttpError extends Error {
     message: string,
   ) {
     super(message);
+  }
+}
+
+function importErrorMessage(code: ProductImportError["code"]): string {
+  switch (code) {
+    case "invalid_url":
+      return "Bitte den Link einer Brack-Produktseite (https://www.brack.ch/…) angeben.";
+    case "blocked":
+      return "Brack lässt den automatischen Abruf dieser Seite nicht zu. Bitte die Angaben von Hand erfassen.";
+    case "no_product":
+      return "Auf dieser Seite wurden keine Produktdaten gefunden.";
+    default:
+      return "Die Brack-Seite ist gerade nicht erreichbar. Bitte später erneut versuchen.";
   }
 }
 
@@ -180,7 +197,13 @@ function databaseError(error: { code?: string; message?: string }): HttpError {
     return new HttpError(
       403,
       "item_not_for_cadre",
-      msg("Ein Artikel im Warenkorb ist für dich nicht freigegeben.", msg("Ein Artikel im Warenkorb ist für dich nicht freigegeben.", "Ein Artikel im Warenkorb ist für Sie nicht freigegeben.")),
+      msg(
+        "Ein Artikel im Warenkorb ist für dich nicht freigegeben.",
+        msg(
+          "Ein Artikel im Warenkorb ist für dich nicht freigegeben.",
+          "Ein Artikel im Warenkorb ist für Sie nicht freigegeben.",
+        ),
+      ),
     );
   }
   switch (error.code) {
@@ -2385,6 +2408,34 @@ const securedHandler = withSupabase(
             },
           });
         }
+        case "importProduct": {
+          if (!access.canManage || typeof body.url !== "string") {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Für diese Aktion fehlt die Berechtigung.",
+            );
+          }
+          try {
+            return json(request, {
+              data: await importProductFromUrl(body.url),
+            });
+          } catch (error) {
+            if (error instanceof ProductImportError) {
+              return json(
+                request,
+                {
+                  error: {
+                    code: error.code,
+                    message: importErrorMessage(error.code),
+                  },
+                },
+                422,
+              );
+            }
+            throw error;
+          }
+        }
         case "saveCatalogItem": {
           if (!access.canManage || !isRecord(body.item)) {
             throw new HttpError(
@@ -2787,7 +2838,13 @@ const securedHandler = withSupabase(
               throw new HttpError(
                 403,
                 "item_not_for_cadre",
-                msg(`«${blocked.name}» ist für dich nicht freigegeben.`, msg(`«${blocked.name}» ist für dich nicht freigegeben.`, `«${blocked.name}» ist für Sie nicht freigegeben.`)),
+                msg(
+                  `«${blocked.name}» ist für dich nicht freigegeben.`,
+                  msg(
+                    `«${blocked.name}» ist für dich nicht freigegeben.`,
+                    `«${blocked.name}» ist für Sie nicht freigegeben.`,
+                  ),
+                ),
               );
             }
           }
