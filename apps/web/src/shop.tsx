@@ -3087,7 +3087,11 @@ export function CatalogEditor({
       );
       setDraft((current) => {
         if (!current) return current;
-        const spec = product.specifications.properties;
+        const specifications = { ...current.specifications };
+        for (const [key, value] of Object.entries(product.specifications)) {
+          if (value && !specifications[key]?.trim())
+            specifications[key] = value;
+        }
         return {
           ...current,
           name: current.name.trim() ? current.name : product.name,
@@ -3108,10 +3112,7 @@ export function CatalogEditor({
             !current.newCategory.trim()
               ? product.category
               : current.newCategory,
-          specifications:
-            spec && !current.specifications.properties?.trim()
-              ? { ...current.specifications, properties: spec }
-              : current.specifications,
+          specifications,
         };
       });
       if (product.image) {
@@ -3130,7 +3131,7 @@ export function CatalogEditor({
         }
       }
       setImportNote(
-        `Übernommen${product.price ? ` (Preis bei Brack: ${product.price})` : ""}. Bitte prüfen und ergänzen: Genehmigung, Maximalmenge und Kategorie bleiben Deine Entscheidung.`,
+        `Übernommen${product.price ? ` (Preis bei Brack: ${product.price})` : ""}. ${(product.notes ?? []).join(" ")} Bitte prüfen und ergänzen: Genehmigung, Maximalmenge und Kategorie bleiben Deine Entscheidung.`,
       );
     } catch (nextError) {
       setImportNote(

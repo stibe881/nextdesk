@@ -137,7 +137,7 @@ function priceOf(offers: unknown): string {
 
 function imageOf(value: unknown, base: URL): string {
   for (const entry of asArray(value)) {
-    const raw = isRecord(entry) ? entry.url : entry;
+    const raw = isRecord(entry) ? (entry.url ?? entry.contentUrl) : entry;
     if (typeof raw !== "string" || !raw.trim()) continue;
     try {
       const url = new URL(raw.trim(), base);
@@ -147,6 +147,90 @@ function imageOf(value: unknown, base: URL): string {
     }
   }
   return "";
+}
+
+/** Bild aus <link rel="image_src"> oder dem ersten Produktbild der Seite. */
+function imageFromHtml(html: string, base: URL): string {
+  const link =
+    /<link\b[^>]*rel=["']image_src["'][^>]*href=["']([^"']+)["']/i.exec(
+      html,
+    )?.[1];
+  const fromLink = link ? imageOf(decodeEntities(link), base) : "";
+  if (fromLink) return fromLink;
+  const pattern =
+    /(?:src|data-src|data-zoom-image|data-large|content)=["']((?:https:)?\/\/[^"']*brack\.ch[^"']*\.(?:jpe?g|png|webp)(?:\?[^"']*)?)["']/gi;
+  for (const match of html.matchAll(pattern)) {
+    const url = decodeEntities(match[1]!);
+    if (/logo|icon|sprite|payment|badge|banner/i.test(url)) continue;
+    const resolved = imageOf(url.startsWith("//") ? `https:${url}` : url, base);
+    if (resolved) return resolved;
+  }
+  return "";
+}
+
+const SPEC_RULES: { field: string; pattern: RegExp }[] = [
+  {
+    field: "scope",
+    pattern:
+      /lieferumfang|inhalt der packung|packungsinhalt|zubehör inklusive/i,
+  },
+  { field: "usage", pattern: /anwendung|einsatz|verwendung|geeignet für/i },
+  {
+    field: "compatibility",
+    pattern: /kompatibil|betriebssystem|unterstützte|system.?voraussetzung/i,
+  },
+  { field: "equipment", pattern: /ausstattung|funktionen|features|merkmale/i },
+  {
+    field: "connectivity",
+    pattern:
+      /konnektiv|anschl|schnittstelle|bluetooth|usb|wlan|wi-?fi|funk|verbindung|empfänger|hdmi|displayport|ethernet|lan\b/i,
+  },
+];
+
+/** Schlüssel/Wert-Paare aus Tabellen und Definitionslisten (z. B. «Technische Daten»). */
+export function extractSpecPairs(html: string): [string, string][] {
+  const pairs: [string, string][] = [];
+  const seen = new Set<string>();
+  const add = (key: string, value: string) => {
+    const k = clean(key, 80).replace(/[:：]\s*$/, "");
+    const v = clean(value, 300);
+    if (!k || !v || k.length > 60) return;
+    const id = `${k.toLowerCase()}|${v.toLowerCase()}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    pairs.push([k, v]);
+  };
+  for (const row of html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const cells = [...row[1]!.matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)];
+    if (cells.length === 2) add(cells[0]![1]!, cells[1]![1]!);
+  }
+  for (const item of html.matchAll(
+    /<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi,
+  )) {
+    add(item[1]!, item[2]!);
+  }
+  return pairs.slice(0, 60);
+}
+
+/** Ordnet die Paare den Feldern des Artikels zu; der Rest kommt unter «Eigenschaften». */
+export function mapSpecifications(
+  pairs: [string, string][],
+  extra: string[] = [],
+): Record<string, string> {
+  const groups: Record<string, string[]> = {};
+  const rest: string[] = [...extra];
+  for (const [key, value] of pairs) {
+    const rule = SPEC_RULES.find((entry) => entry.pattern.test(key));
+    const line = rule?.field === "scope" ? value : `${key}: ${value}`;
+    if (rule) (groups[rule.field] ??= []).push(line);
+    else rest.push(`${key}: ${value}`);
+  }
+  if (rest.length > 0) groups.properties = rest;
+  const result: Record<string, string> = {};
+  for (const [field, lines] of Object.entries(groups)) {
+    result[field] = lines.join("\n").slice(0, 2000);
+  }
+  return result;
 }
 
 function breadcrumbCategory(nodes: Record<string, unknown>[]): string {
@@ -188,20 +272,18 @@ export function parseProductPage(
   const brand = nameOf(product?.brand);
   const image =
     imageOf(product?.image, pageUrl) ||
-    imageOf(metaContent(html, "og:image"), pageUrl);
+    imageOf(metaContent(html, "og:image"), pageUrl) ||
+    imageFromHtml(html, pageUrl);
 
-  const specifications: Record<string, string> = {};
-  const properties: string[] = [];
+  const extra: string[] = [];
   for (const entry of asArray(product?.additionalProperty)) {
     if (!isRecord(entry)) continue;
     const key = clean(entry.name, 80);
     const value = clean(entry.value, 200);
-    if (key && value) properties.push(`${key}: ${value}`);
+    if (key && value) extra.push(`${key}: ${value}`);
   }
-  if (brand) properties.unshift(`Hersteller: ${brand}`);
-  if (properties.length > 0) {
-    specifications.properties = properties.join("\n").slice(0, 2000);
-  }
+  if (brand) extra.unshift(`Hersteller: ${brand}`);
+  const specifications = mapSpecifications(extractSpecPairs(html), extra);
 
   return {
     name,
@@ -217,7 +299,7 @@ export function parseProductPage(
 }
 
 const MAX_PAGE_BYTES = 3_000_000;
-const MAX_IMAGE_BYTES = 2_000_000;
+const MAX_IMAGE_BYTES = 6_000_000;
 const FETCH_TIMEOUT_MS = 15_000;
 const HEADERS = {
   "user-agent":
@@ -293,7 +375,10 @@ export async function importProductFromUrl(
   rawUrl: string,
   fetcher: typeof fetch = fetch,
 ): Promise<
-  ImportedProduct & { image: { type: string; base64: string } | null }
+  ImportedProduct & {
+    image: { type: string; base64: string } | null;
+    notes: string[];
+  }
 > {
   const start = isAllowedProductUrl(rawUrl);
   if (!start) throw new ProductImportError("invalid_url");
@@ -321,14 +406,32 @@ export async function importProductFromUrl(
   if (!product) throw new ProductImportError("no_product");
 
   let image: { type: string; base64: string } | null = null;
+  const notes: string[] = [];
   const imageUrl = product.imageUrl
     ? isAllowedProductUrl(product.imageUrl)
     : null;
-  if (imageUrl) {
+  if (!product.imageUrl) {
+    notes.push("Auf der Seite wurde kein Foto gefunden.");
+  } else if (!imageUrl) {
+    notes.push("Das Foto liegt nicht bei Brack und wurde nicht geladen.");
+  } else {
     try {
       const result = await safeGet(imageUrl, "image/*", fetcher);
-      const type = result.response.headers.get("content-type") ?? "";
-      if (result.response.ok && /^image\/(jpeg|png|webp)/i.test(type)) {
+      const header = (result.response.headers.get("content-type") ?? "")
+        .split(";")[0]!
+        .trim()
+        .toLowerCase();
+      const byExtension = /\.png(\?|$)/i.test(imageUrl.pathname)
+        ? "image/png"
+        : /\.webp(\?|$)/i.test(imageUrl.pathname)
+          ? "image/webp"
+          : "image/jpeg";
+      const type = /^image\/(jpeg|png|webp)$/.test(header)
+        ? header
+        : header === "application/octet-stream" || header === ""
+          ? byExtension
+          : "";
+      if (result.response.ok && type) {
         const data = await readLimited(result.response, MAX_IMAGE_BYTES);
         if (data) {
           let binary = "";
@@ -337,17 +440,22 @@ export async function importProductFromUrl(
               ...data.subarray(index, index + 8192),
             );
           }
-          image = {
-            type: type.split(";")[0]!.toLowerCase(),
-            base64: btoa(binary),
-          };
+          image = { type, base64: btoa(binary) };
+        } else {
+          notes.push("Das Foto ist zu gross.");
         }
       } else {
         await result.response.body?.cancel();
+        notes.push(
+          `Das Foto konnte nicht geladen werden (${result.response.status}, ${header || "unbekannter Typ"}).`,
+        );
       }
     } catch {
-      image = null;
+      notes.push("Das Foto konnte nicht geladen werden.");
     }
   }
-  return { ...product, image };
+  if (Object.keys(product.specifications).length === 0) {
+    notes.push("Auf der Seite wurden keine technischen Daten gefunden.");
+  }
+  return { ...product, image, notes };
 }
