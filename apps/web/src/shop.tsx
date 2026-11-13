@@ -786,13 +786,6 @@ function CatalogView({
           {canManage ? (
             <div className="shop__manage-actions">
               <button
-                className="primary-button"
-                onClick={() => openEditor({ kind: "new" })}
-                type="button"
-              >
-                <Plus aria-hidden="true" size={16} /> Artikel hinzufügen
-              </button>
-              <button
                 className="secondary-button"
                 onClick={() => openEditor({ kind: "categories" })}
                 type="button"
@@ -3546,33 +3539,31 @@ export function CatalogEditor({
                         : ""}
                     </span>
                   </div>
-                  {shopFields ? (
-                    <div className="article-editor__import">
-                      <label>
-                        Von Brack importieren (optional)
-                        <input
-                          disabled={importing}
-                          onChange={(event) => setImportUrl(event.target.value)}
-                          placeholder="https://www.brack.ch/…"
-                          type="url"
-                          value={importUrl}
-                        />
-                      </label>
-                      <button
-                        className="button button--secondary"
-                        disabled={importing || !importUrl.trim()}
-                        onClick={() => void importFromUrl()}
-                        type="button"
-                      >
-                        {importing ? "Wird gelesen …" : "Daten übernehmen"}
-                      </button>
-                      {importNote ? (
-                        <p className="shop__muted" role="status">
-                          {importNote}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
+                  <div className="article-editor__import">
+                    <label>
+                      Von Brack importieren (optional)
+                      <input
+                        disabled={importing}
+                        onChange={(event) => setImportUrl(event.target.value)}
+                        placeholder="https://www.brack.ch/…"
+                        type="url"
+                        value={importUrl}
+                      />
+                    </label>
+                    <button
+                      className="button button--secondary"
+                      disabled={importing || !importUrl.trim()}
+                      onClick={() => void importFromUrl()}
+                      type="button"
+                    >
+                      {importing ? "Wird gelesen …" : "Daten übernehmen"}
+                    </button>
+                    {importNote ? (
+                      <p className="shop__muted" role="status">
+                        {importNote}
+                      </p>
+                    ) : null}
+                  </div>
                   <div className="article-editor__grid2">
                     <label>
                       {stock ? "Bezeichnung" : "Name im Shop"}

@@ -759,10 +759,14 @@ Drop oder Auswahl), Kategorien, Artikelnummer, Beschreibung, technische Angaben
 und alle weiteren Shop-Felder. Dazu kommen die Lagerangaben **Einheit** und
 **Mindest-/Zielbestand**.
 
-**Artikel von Brack importieren:** Im Formular steht oben das Feld **Von Brack
-importieren**. Füge den Link einer Brack-Produktseite ein und wähle **Daten
-übernehmen**: nextDesk füllt Name, Beschreibung, Artikelnummer, Lieferanten-Link,
-technische Angaben, Kategorie und das Produktfoto vor. Bereits ausgefüllte Felder
+Neue Artikel erfasst du nur im Lager; der Shop hat keinen Knopf **Artikel
+hinzufügen** mehr. Im Shop lassen sich bestehende Artikel weiter bearbeiten.
+
+**Artikel von Brack importieren:** Im Formular (Lager und Shop) steht oben das
+Feld **Von Brack importieren**. Füge den Link einer Brack-Produktseite (auch
+business.brack.ch) ein und wähle **Daten übernehmen**: nextDesk füllt Name,
+Beschreibung, Artikelnummer, Lieferanten-Link, technische Angaben, Kategorie und
+bis zu drei Produktfotos vor. Bereits ausgefüllte Felder
 bleiben unverändert. Prüfe die Angaben und ergänze Genehmigung, Maximalmenge und
 Kategorie selbst. Lässt Brack den Abruf nicht zu, erscheint ein Hinweis und du
 erfasst den Artikel von Hand.
@@ -861,7 +865,8 @@ Freigabe; in der Bestellung steht die Herkunft «Sicherheitsfall …
 
 ## Shop: Artikel nur für Kaderstufen
 
-Im Shop legst du beim **Artikel hinzufügen** bzw. **Bearbeiten** unter
+Beim Erfassen im Lager (**Zum Bestellen anbieten**) bzw. beim **Bearbeiten**
+im Shop legst du unter
 **Sichtbar für** fest, wer den Artikel sieht:
 
 - **Alle Mitarbeitenden** (Standard) – keine Einschränkung.
