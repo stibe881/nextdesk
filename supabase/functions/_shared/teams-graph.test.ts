@@ -156,6 +156,10 @@ Deno.test(
       members: unknown[];
     };
     assertEquals(channel.membershipType, "private");
+    assertEquals(
+      (channel as unknown as Record<string, unknown>)["@odata.type"],
+      "#Microsoft.Graph.channel",
+    );
     assertEquals(channel.members.length, 1);
   },
 );

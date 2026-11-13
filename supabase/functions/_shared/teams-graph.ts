@@ -352,7 +352,15 @@ async function ensureChannel(
         "POST",
         `/teams/${teamId}/channels`,
         {
+          // Private Kanäle: @odata.type und Beschreibung wie in der Microsoft-
+          // Dokumentation (ohne sie hängt die Anfrage bei Microsoft, 504).
+          ...(channel.isPrivate
+            ? { "@odata.type": "#Microsoft.Graph.channel" }
+            : {}),
           displayName: channel.name,
+          ...(channel.isPrivate
+            ? { description: `Privater Kanal ${channel.name}` }
+            : {}),
           membershipType: channel.isPrivate ? "private" : "standard",
           ...(channel.isPrivate
             ? { members: [memberBody(ownerId, true)] }
