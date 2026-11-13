@@ -7360,6 +7360,13 @@ body:has(.ticket-detail) {
   gap: 10px;
 }
 
+/* Fälle: auch als eigene Seite (ohne Register) mit Abstand zwischen
+   Überschrift, Filter und Liste. */
+.service-assets__problems-panel {
+  display: grid;
+  gap: 16px;
+}
+
 .service-assets .service-assets__asset-panel {
   display: grid;
   gap: 8px;
@@ -22042,6 +22049,33 @@ button.predefined-report__drill:hover:not(:disabled) strong {
   justify-content: flex-start;
   margin: 0 0 12px;
 }
+.inventory__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: var(--surface);
+  color: var(--muted);
+}
+.inventory__search:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.inventory__search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  box-shadow: none;
+  outline: none;
+}
 .inventory__focus-note {
   margin: 0 0 10px;
   color: var(--muted, #5d6f7a);
@@ -22650,4 +22684,72 @@ html body form:has(> .fk-layout) {
 .navigation-cluster__badge--muted {
   color: var(--text, var(--ink));
   background: var(--surface-muted, color-mix(in srgb, var(--text, #334) 14%, transparent));
+}
+
+/* Externe Statusquellen: Dienste der Statusseite pro Quelle. */
+.external-status__services {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 8px 28px;
+}
+
+.external-status__services > ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.external-status__services > ul > li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 4px 2px 10px;
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.external-status__services > ul > li > button {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.external-status__services > input {
+  max-width: 360px;
+}
+
+.external-status__matches {
+  display: grid;
+  gap: 2px;
+  max-width: 360px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  list-style: none;
+}
+
+.external-status__matches button {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.external-status__matches button:hover,
+.external-status__matches button:focus-visible {
+  background: rgba(37, 99, 235, 0.08);
 }

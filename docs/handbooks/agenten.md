@@ -311,7 +311,9 @@ als kurze deutsche Fassung ohne Floskeln (mit der KI übersetzt); den
 Originaltext findest du auf der Statusseite des Anbieters. Neue Texte des
 Anbieters erscheinen im Verlauf als «Update vom Anbieter»; das Team erhält dazu eine Benachrichtigung
 («Update: Anbieter» mit dem neuen Text) und eine weitere, sobald der Anbieter
-die Störung als behoben meldet («Behoben: Anbieter»). Auch externe Störungen
+die Störung als behoben meldet («Behoben: Anbieter»). Sind der Quelle in den Einstellungen Dienste zugeordnet, erscheint die
+Störung automatisch als öffentliche Meldung im Banner und auf der
+Statusseite. Auch externe Störungen
 bestätigst du mit **Bestätigen: ich kümmere mich** (sie werden aber nicht
 erneut alarmiert); unter **Zuständig** weist du sie einer Person zu, die sie
 verfolgt. Von Hand abschliessen ist nur nötig, wenn die Meldung
@@ -784,6 +786,12 @@ werden wie bisher alle benachrichtigt.
   der Artikel nur im Lager (nötig sind dann Bezeichnung, ein Bild, Kategorie,
   Artikelnummer und die Lagerangaben). Ausschalten nimmt die jeweilige Art beim
   Speichern aus dem Shop; der Lagerartikel bleibt bestehen.
+
+Über der Artikelliste steht ein **Suchfeld**: Es findet Artikel nach Name,
+Artikelnummer oder Lagerort, auch mit mehreren Wörtern (z. B. «logitech ergo»).
+**Alle sichtbaren** wählt dann nur die gefundenen Artikel für Etiketten aus. Hat
+ein Lagerartikel kein eigenes Bild, zeigt die Liste das Foto des verknüpften
+Shop-Artikels.
 
 **Etiketten drucken** wie bei den Assets: In der Artikelliste wählst du Artikel
 mit **Für Etikett auswählen** (oder **Alle sichtbaren**) und drucken mit
