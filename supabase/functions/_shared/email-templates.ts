@@ -219,7 +219,7 @@ export function emailTemplateDefinitions(
       category: "Phishing-Meldungen",
       label: "Phishing-Meldung: Danke",
       description:
-        "Geht an die Person, die eine verdächtige E-Mail gemeldet hat, sobald die Meldung eingegangen ist, und an die anfragende Person, wenn ein Agent ein Ticket als Spam/Phishing einstuft.",
+        "Geht an die Person, die eine verdächtige E-Mail gemeldet hat, sobald die Meldung eingegangen ist, und an die anfragende Person, wenn ein Agent ein Ticket als Spam-/Phishing-Verdacht markiert.",
       audience: "customer",
       placeholders: [
         { name: "ticketNumber", description: "Nummer des Sicherheitsfalls" },

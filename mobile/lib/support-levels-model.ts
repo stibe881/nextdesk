@@ -24,25 +24,25 @@ export type MobileTicketSupportLevel = {
   back: { level: MobileSupportLevel; teams: MobileLevelTeam[] }[];
   currentHandover: MobileLevelHandover | null;
   historyCount: number;
-  /** «Als Spam/Phishing einstufen» (reply + handover to the 2nd level). */
-  spam: {
-    marked: boolean;
-    canMark: boolean;
+  /** «Spam-/Phishing-Verdacht» (reply + handover to the 2nd level). */
+  suspicion: {
+    reported: boolean;
+    canReport: boolean;
     targetTeamName: string | null;
   };
 };
 
-export type MobileSpamReply =
+export type MobileSuspicionReply =
   | "queued"
   | "no_requester_email"
   | "template_disabled"
   | "no_mail_channel"
   | "failed";
 
-export type MobileSpamResult = {
+export type MobileSuspicionResult = {
   teamName: string;
   moved: boolean;
-  reply: MobileSpamReply;
+  reply: MobileSuspicionReply;
 };
 
 export const MOBILE_NOTE_MIN = 10;
@@ -140,20 +140,20 @@ export function parseMobileTicketSupportLevel(
           }
         : null,
     historyCount: Array.isArray(data.history) ? data.history.length : 0,
-    spam: {
-      marked: isRecord(data.spam) && data.spam.marked === true,
-      canMark: isRecord(data.spam) && data.spam.canMark === true,
+    suspicion: {
+      reported: isRecord(data.suspicion) && data.suspicion.reported === true,
+      canReport: isRecord(data.suspicion) && data.suspicion.canReport === true,
       targetTeamName:
-        isRecord(data.spam) &&
-        isRecord(data.spam.targetTeam) &&
-        typeof data.spam.targetTeam.name === "string"
-          ? data.spam.targetTeam.name
+        isRecord(data.suspicion) &&
+        isRecord(data.suspicion.targetTeam) &&
+        typeof data.suspicion.targetTeam.name === "string"
+          ? data.suspicion.targetTeam.name
           : null,
     },
   };
 }
 
-const SPAM_REPLIES: readonly MobileSpamReply[] = [
+const SUSPICION_REPLIES: readonly MobileSuspicionReply[] = [
   "queued",
   "no_requester_email",
   "template_disabled",
@@ -161,22 +161,22 @@ const SPAM_REPLIES: readonly MobileSpamReply[] = [
   "failed",
 ];
 
-export function parseMobileSpamResult(value: unknown): MobileSpamResult | null {
+export function parseMobileSuspicionResult(value: unknown): MobileSuspicionResult | null {
   const data = isRecord(value) ? value.data : null;
   if (!isRecord(data) || typeof data.teamName !== "string") return null;
   return {
     teamName: data.teamName,
     moved: data.moved === true,
-    reply: SPAM_REPLIES.find((entry) => entry === data.reply) ?? "failed",
+    reply: SUSPICION_REPLIES.find((entry) => entry === data.reply) ?? "failed",
   };
 }
 
-/** Text after «Als Spam/Phishing einstufen», incl. why no reply was sent. */
-export function mobileSpamResultText(result: MobileSpamResult): string {
+/** Text after «Spam-/Phishing-Verdacht», incl. why no reply was sent. */
+export function mobileSuspicionResultText(result: MobileSuspicionResult): string {
   const handover = result.moved
     ? `Das Ticket wurde an den 2nd Level (${result.teamName}) übergeben.`
     : `Das Ticket liegt bereits beim 2nd Level (${result.teamName}).`;
-  const reply: Record<MobileSpamReply, string> = {
+  const reply: Record<MobileSuspicionReply, string> = {
     queued: "Die Standardantwort an die anfragende Person ist unterwegs.",
     no_requester_email:
       "Die anfragende Person hat keine E-Mail-Adresse, darum wurde keine Antwort gesendet.",

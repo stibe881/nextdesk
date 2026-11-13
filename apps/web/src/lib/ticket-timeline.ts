@@ -304,15 +304,15 @@ function eventEntries(
           tone: "neutral",
         },
       ];
-    case "ticket.marked_spam":
+    case "ticket.phishing_suspicion":
       return [
         {
           ...base,
           id: event.id,
           kind: "escalation",
-          title: "Als Spam/Phishing eingestuft",
+          title: "Spam-/Phishing-Verdacht gemeldet",
           detail: textValue(payload.teamName),
-          tone: "danger",
+          tone: "warning",
         },
       ];
     case "ticket.escalation_opened":

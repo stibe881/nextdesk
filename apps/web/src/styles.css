@@ -4137,12 +4137,12 @@ body:has(.ticket-detail) {
   color: var(--primary);
 }
 
-.ticket-spam-button:hover:not(:disabled) {
+.ticket-suspicion-button:hover:not(:disabled) {
   border-color: var(--border-tint-edbbc4);
   color: var(--danger);
 }
 
-.ticket-spam-badge {
+.ticket-suspicion-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -9479,7 +9479,7 @@ body:has(.ticket-list-filter-panel) {
   }
 
   .ticket-detail-header-actions .ticket-watch-button,
-  .ticket-detail-header-actions .ticket-spam-button,
+  .ticket-detail-header-actions .ticket-suspicion-button,
   .ticket-detail-header-actions .ticket-focus-button,
   .ticket-detail-header-actions .ticket-experience__header-action,
   .ticket-detail-header-actions .ticket-pdf-record .secondary-button {

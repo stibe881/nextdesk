@@ -279,17 +279,17 @@ export function buildSupportLevelReport(input: {
   };
 }
 
-export type SpamTarget =
+export type SuspicionTarget =
   | { kind: "team"; team: LevelTeam }
   | { kind: "missing" }
   | { kind: "ambiguous" };
 
 /**
- * Target of «Als Spam/Phishing einstufen»: the single active 2nd level team
+ * Target of «Spam-/Phishing-Verdacht»: the single active 2nd level team
  * of the ticket's department (e.g. «System Engineer»). With none or several
  * the classification is refused instead of guessing.
  */
-export function spamTargetTeam(teams: readonly LevelTeam[]): SpamTarget {
+export function suspicionTargetTeam(teams: readonly LevelTeam[]): SuspicionTarget {
   const candidates = teams.filter(
     (team) => team.active && team.supportLevel === 2,
   );

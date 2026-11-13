@@ -271,8 +271,9 @@ Im Register **Abteilungen**:
 3. **Teams pro Abteilung**: Name, Abteilung und Supportstufe
    (1st/2nd/3rd Level). Über **Mitglieder verwalten** ordnest du Agenten zu.
    Das einzige aktive **2nd-Level-Team** einer Abteilung (z. B. «System
-   Engineer») erhält auch die Tickets, die Agenten als **Spam/Phishing**
-   einstufen. Gibt es keines oder mehrere, ist dieser Knopf ausgeblendet.
+   Engineer») erhält auch die Tickets, die Agenten als
+   **Spam-/Phishing-Verdacht** markieren. Gibt es keines oder mehrere, ist
+   dieser Knopf ausgeblendet.
 4. **Module pro Abteilung**: welche Abteilung welche Zusatzmodule nutzt.
 
 ## E-Mail-Vorlagen
@@ -284,7 +285,7 @@ automatisch versendet. Die Vorlagen sind nach Kategorie geordnet:
 - **Phishing-Meldungen**: Rückmeldungen an Personen, die eine Phishing-Mail gemeldet haben: Danke,
   Ergebnis (je Beurteilung eine eigene Vorlage) und Rückfrage «geklickt?».
   Die Vorlage «Danke» geht auch an die anfragende Person, wenn ein Agent ein
-  Ticket als **Spam/Phishing** einstuft. Die
+  Ticket als **Spam-/Phishing-Verdacht** markiert. Die
   Vorlage «Gestaltung» legt Überschrift und Hinweis fest; ausgeschaltet
   werden gar keine Rückmeldungen versendet
 - **Interne Mitteilungen**: Abteilungsrückfrage, Abteilungsantwort und

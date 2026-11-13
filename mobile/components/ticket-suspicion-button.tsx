@@ -9,20 +9,20 @@ import {
 } from "@/lib/mobile-haptics";
 import {
   getMobileTicketSupportLevel,
-  markMobileTicketSpam,
-  mobileSpamResultText,
+  reportMobilePhishingSuspicion,
+  mobileSuspicionResultText,
   type MobileTicketSupportLevel,
 } from "@/lib/support-levels";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 /**
- * «Als Spam/Phishing einstufen» in the ticket detail. After a confirmation
+ * «Spam-/Phishing-Verdacht» in the ticket detail. After a confirmation
  * the requester gets the same standard reply as for a mail reported in
  * Outlook and the ticket goes to the 2nd level team of its department
  * (e.g. «System Engineer»). Hidden without the rights or without a single
  * active 2nd level team; the server checks everything again.
  */
-export function TicketSpamButton({
+export function TicketSuspicionButton({
   onChanged,
   refreshKey,
   tenantId,
@@ -35,7 +35,7 @@ export function TicketSpamButton({
 }) {
   const styles = useStyles();
   const colors = useAppColors();
-  const [spam, setSpam] = useState<MobileTicketSupportLevel["spam"] | null>(
+  const [suspicion, setSuspicion] = useState<MobileTicketSupportLevel["suspicion"] | null>(
     null,
   );
   const [busy, setBusy] = useState(false);
@@ -44,41 +44,41 @@ export function TicketSpamButton({
     let active = true;
     void getMobileTicketSupportLevel(tenantId, ticketId)
       .then((state) => {
-        if (active) setSpam(state?.spam ?? null);
+        if (active) setSuspicion(state?.suspicion ?? null);
       })
       .catch(() => {
-        if (active) setSpam(null);
+        if (active) setSuspicion(null);
       });
     return () => {
       active = false;
     };
   }, [refreshKey, tenantId, ticketId]);
 
-  if (!spam) return null;
-  if (spam.marked) {
+  if (!suspicion) return null;
+  if (suspicion.reported) {
     return (
       <View
-        accessibilityLabel="Dieses Ticket wurde als Spam/Phishing eingestuft."
-        style={styles.marked}
+        accessibilityLabel="Für dieses Ticket wurde ein Spam-/Phishing-Verdacht gemeldet."
+        style={styles.reported}
       >
         <Ionicons color={colors.error} name="shield" size={17} />
-        <Text style={styles.markedText}>Als Spam/Phishing eingestuft</Text>
+        <Text style={styles.reportedText}>Spam-/Phishing-Verdacht gemeldet</Text>
       </View>
     );
   }
-  if (!spam.canMark || !spam.targetTeamName) return null;
-  const teamName = spam.targetTeamName;
+  if (!suspicion.canReport || !suspicion.targetTeamName) return null;
+  const teamName = suspicion.targetTeamName;
 
   async function mark() {
     setBusy(true);
     try {
-      const result = await markMobileTicketSpam(tenantId, ticketId);
-      setSpam((current) =>
-        current ? { ...current, marked: true, canMark: false } : current,
+      const result = await reportMobilePhishingSuspicion(tenantId, ticketId);
+      setSuspicion((current) =>
+        current ? { ...current, reported: true, canReport: false } : current,
       );
       if (result.reply === "queued") hapticSuccess();
       else hapticError();
-      Alert.alert("Als Spam/Phishing eingestuft", mobileSpamResultText(result));
+      Alert.alert("Spam-/Phishing-Verdacht gemeldet", mobileSuspicionResultText(result));
       onChanged();
     } catch (error) {
       hapticError();
@@ -86,7 +86,7 @@ export function TicketSpamButton({
         "Einstufung nicht möglich",
         error instanceof Error
           ? error.message
-          : "Das Ticket konnte nicht als Spam/Phishing eingestuft werden.",
+          : "Das Ticket konnte nicht als Spam-/Phishing-Verdacht markiert werden.",
       );
     } finally {
       setBusy(false);
@@ -97,7 +97,7 @@ export function TicketSpamButton({
     hapticSelection();
     Alert.alert(
       "Wirklich als Spam/Phishing markieren?",
-      `Die anfragende Person erhält die Standardantwort (wie bei einer Phishing-Meldung aus Outlook) und das Ticket wird an den 2nd Level (${teamName}) weitergeleitet. Das lässt sich nicht rückgängig machen.`,
+      `Die anfragende Person vermutet eine Spam- oder Phishing-Mail und erhält die Standardantwort (wie bei einer Phishing-Meldung aus Outlook), und das Ticket wird an den 2nd Level (${teamName}) weitergeleitet. Der Absender wird nicht gesperrt; dafür gibt es «Spam» in der Ticketliste. Das lässt sich nicht rückgängig machen.`,
       [
         { text: "Abbrechen", style: "cancel" },
         {
@@ -112,7 +112,7 @@ export function TicketSpamButton({
   return (
     <Pressable
       accessibilityHint={`Sendet die Standardantwort an die anfragende Person und leitet das Ticket an ${teamName} weiter. Vorher wird nachgefragt.`}
-      accessibilityLabel="Als Spam/Phishing einstufen"
+      accessibilityLabel="Spam-/Phishing-Verdacht melden"
       accessibilityRole="button"
       accessibilityState={{ busy, disabled: busy }}
       disabled={busy}
@@ -125,9 +125,9 @@ export function TicketSpamButton({
         <Ionicons color={colors.error} name="shield-outline" size={19} />
       )}
       <View style={styles.copy}>
-        <Text style={styles.title}>Als Spam/Phishing einstufen</Text>
+        <Text style={styles.title}>Spam-/Phishing-Verdacht</Text>
         <Text style={styles.hint}>
-          Standardantwort senden und an {teamName} weiterleiten
+          Anfragende Person vermutet Spam/Phishing: Standardantwort senden und an {teamName} weiterleiten
         </Text>
       </View>
     </Pressable>
@@ -151,7 +151,7 @@ const useStyles = makeThemedStyles((c) => ({
   copy: { flex: 1, gap: 2 },
   title: { color: c.error, fontSize: 15, fontWeight: "800" },
   hint: { color: c.muted, fontSize: 12, lineHeight: 17 },
-  marked: {
+  reported: {
     alignItems: "center",
     backgroundColor: c.errorSoft,
     borderRadius: 20,
@@ -160,5 +160,5 @@ const useStyles = makeThemedStyles((c) => ({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  markedText: { color: c.error, fontSize: 14, fontWeight: "800" },
+  reportedText: { color: c.error, fontSize: 14, fontWeight: "800" },
 }));

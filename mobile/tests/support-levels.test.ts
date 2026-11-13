@@ -5,8 +5,8 @@ import {
   mobileSupportLevelLabel,
   parseMobileTicketSupportLevel,
   shouldShowSupportLevelCard,
-  mobileSpamResultText,
-  parseMobileSpamResult,
+  mobileSuspicionResultText,
+  parseMobileSuspicionResult,
 } from "../lib/support-levels-model";
 
 describe("Supportstufen (mobil)", () => {
@@ -67,34 +67,34 @@ describe("Supportstufen (mobil)", () => {
   });
 });
 
-describe("Spam/Phishing einstufen (mobil)", () => {
-  it("liest den Spam-Zustand und blendet ihn bei alten Antworten aus", () => {
+describe("Spam-/Phishing-Verdacht (mobil)", () => {
+  it("liest den Verdachtszustand und blendet ihn bei alten Antworten aus", () => {
     const base = { targets: { next: null, back: [] }, history: [] };
     expect(
       parseMobileTicketSupportLevel({
         data: {
           ...base,
-          spam: {
-            marked: false,
-            canMark: true,
+          suspicion: {
+            reported: false,
+            canReport: true,
             targetTeam: { id: "t2", name: "System Engineer" },
           },
         },
-      })?.spam,
+      })?.suspicion,
     ).toEqual({
-      marked: false,
-      canMark: true,
+      reported: false,
+      canReport: true,
       targetTeamName: "System Engineer",
     });
-    expect(parseMobileTicketSupportLevel({ data: base })?.spam).toEqual({
-      marked: false,
-      canMark: false,
+    expect(parseMobileTicketSupportLevel({ data: base })?.suspicion).toEqual({
+      reported: false,
+      canReport: false,
       targetTeamName: null,
     });
   });
 
   it("beschreibt Übergabe und Antwort", () => {
-    const result = parseMobileSpamResult({
+    const result = parseMobileSuspicionResult({
       data: { teamName: "System Engineer", moved: true, reply: "queued" },
     });
     expect(result).toEqual({
@@ -102,16 +102,16 @@ describe("Spam/Phishing einstufen (mobil)", () => {
       moved: true,
       reply: "queued",
     });
-    expect(mobileSpamResultText(result!)).toBe(
+    expect(mobileSuspicionResultText(result!)).toBe(
       "Das Ticket wurde an den 2nd Level (System Engineer) übergeben. Die Standardantwort an die anfragende Person ist unterwegs.",
     );
     expect(
-      mobileSpamResultText({
+      mobileSuspicionResultText({
         teamName: "System Engineer",
         moved: false,
         reply: "no_mail_channel",
       }),
     ).toMatch(/kein aktives Exchange-Postfach/);
-    expect(parseMobileSpamResult({ data: {} })).toBeNull();
+    expect(parseMobileSuspicionResult({ data: {} })).toBeNull();
   });
 });

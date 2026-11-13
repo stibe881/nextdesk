@@ -2,13 +2,13 @@ begin;
 
 set local search_path = pg_catalog, public;
 
--- «Als Spam/Phishing einstufen» in the ticket detail: one atomic step that
+-- «Spam-/Phishing-Verdacht» in the ticket detail: one atomic step that
 -- writes an internal note, hands the ticket to the 2nd level team of its
 -- department (e.g. «System Engineer») and records the classification once.
 -- The standard reply to the requester (template «phishing_thanks») is queued
 -- by the Edge Function ticket-support-levels after this function succeeded.
 -- Permissions are checked there; only service_role may call this.
-create or replace function public.ticket_mark_spam(
+create or replace function public.ticket_report_phishing_suspicion(
   p_tenant_id uuid,
   p_ticket_id uuid,
   p_actor_id uuid,
@@ -30,8 +30,8 @@ declare
   v_moved boolean;
 begin
   if p_actor_id is null or p_target_team_id is null then
-    raise exception 'ticket_spam_invalid'
-      using errcode = '22023', hint = 'ticket_spam_invalid';
+    raise exception 'ticket_suspicion_invalid'
+      using errcode = '22023', hint = 'ticket_suspicion_invalid';
   end if;
 
   select * into v_ticket
@@ -49,10 +49,10 @@ begin
   -- The row lock above serialises concurrent clicks: the reply goes out once.
   if exists (
     select 1 from public.ticket_events event
-    where event.ticket_id = v_ticket.id and event.event_type = 'ticket.marked_spam'
+    where event.ticket_id = v_ticket.id and event.event_type = 'ticket.phishing_suspicion'
   ) then
-    raise exception 'ticket_spam_already_marked'
-      using errcode = '22023', hint = 'ticket_spam_already_marked';
+    raise exception 'ticket_suspicion_already_reported'
+      using errcode = '22023', hint = 'ticket_suspicion_already_reported';
   end if;
 
   select * into v_target
@@ -64,13 +64,13 @@ begin
     and support_level = 2
   for share;
   if not found then
-    raise exception 'ticket_spam_target_invalid'
-      using errcode = '22023', hint = 'ticket_spam_target_invalid';
+    raise exception 'ticket_suspicion_target_invalid'
+      using errcode = '22023', hint = 'ticket_suspicion_target_invalid';
   end if;
 
   v_current_level := public.team_support_level(v_ticket.assigned_team_id);
   v_moved := v_ticket.assigned_team_id is distinct from v_target.id;
-  v_note := 'Als Spam/Phishing eingestuft. Die anfragende Person erhält die Standardantwort, '
+  v_note := 'Spam-/Phishing-Verdacht der anfragenden Person. Sie erhält die Standardantwort, '
     || 'das Ticket geht an den 2nd Level (' || v_target.name || ').';
 
   insert into public.ticket_comments (ticket_id, author_id, visibility, body)
@@ -115,7 +115,7 @@ begin
         'toAgentId', null,
         'commentId', v_comment_id,
         'changeId', v_change_id,
-        'reason', 'spam'
+        'reason', 'phishing_suspicion'
       )
     );
   end if;
@@ -124,7 +124,7 @@ begin
   values (
     v_ticket.id,
     p_actor_id,
-    'ticket.marked_spam',
+    'ticket.phishing_suspicion',
     jsonb_build_object(
       'teamId', v_target.id,
       'teamName', v_target.name,
@@ -143,9 +143,9 @@ begin
 end;
 $$;
 
-revoke all on function public.ticket_mark_spam(uuid, uuid, uuid, uuid)
+revoke all on function public.ticket_report_phishing_suspicion(uuid, uuid, uuid, uuid)
   from public, anon, authenticated;
-grant execute on function public.ticket_mark_spam(uuid, uuid, uuid, uuid)
+grant execute on function public.ticket_report_phishing_suspicion(uuid, uuid, uuid, uuid)
   to service_role;
 
 commit;

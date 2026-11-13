@@ -112,7 +112,7 @@ import { TicketPdfRecord } from "./ticket-pdf-record";
 import { TicketCoordination } from "./ticket-coordination";
 import { TicketSlaBreachReason } from "./ticket-sla-breach-reason";
 import { TicketSupportLevel } from "./ticket-support-level";
-import { TicketSpamAction } from "./ticket-spam-action";
+import { TicketSuspicionAction } from "./ticket-suspicion-action";
 import { IpamTicketPanel } from "./ipam-ticket-panel";
 import {
   TicketFormAnswersBlock,
@@ -2377,7 +2377,7 @@ function eventLabel(
     "ticket.category_changed": "Kategorie aktualisiert",
     "ticket.support_level_changed":
       "Supportstufe gewechselt (mit Übergabenotiz)",
-    "ticket.marked_spam": "Als Spam/Phishing eingestuft",
+    "ticket.phishing_suspicion": "Spam-/Phishing-Verdacht gemeldet",
     "ticket.knowledge.sent":
       "Wissensartikel als externe Ticketantwort versendet",
   };
@@ -4100,13 +4100,13 @@ export function TicketDetail({
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
-  const [spamNotice, setSpamNotice] = useState<{
+  const [suspicionNotice, setSuspicionNotice] = useState<{
     tone: "success" | "error";
     text: string;
   } | null>(null);
   const [presence, setPresence] = useState<TicketPresencePerson[]>([]);
   useEffect(() => {
-    setSpamNotice(null);
+    setSuspicionNotice(null);
   }, [ticketId]);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [statusKey, setStatusKey] = useState("");
@@ -7414,10 +7414,10 @@ export function TicketDetail({
             ticketNumber={detail.ticket.ticket_number}
           />
           {requesterView || !detail.canUpdate ? null : (
-            <TicketSpamAction
+            <TicketSuspicionAction
               disabled={busy}
               onDone={(result) => {
-                setSpamNotice(result);
+                setSuspicionNotice(result);
                 onChanged();
                 void loadTicket();
               }}
@@ -7475,17 +7475,17 @@ export function TicketDetail({
         </p>
       )}
 
-      {spamNotice && (
+      {suspicionNotice && (
         <p
-          className={`ticket-detail-message ${spamNotice.tone}`}
-          role={spamNotice.tone === "error" ? "alert" : "status"}
+          className={`ticket-detail-message ${suspicionNotice.tone}`}
+          role={suspicionNotice.tone === "error" ? "alert" : "status"}
         >
-          {spamNotice.tone === "error" ? (
+          {suspicionNotice.tone === "error" ? (
             <AlertCircle aria-hidden="true" size={17} />
           ) : (
             <CircleCheck aria-hidden="true" size={17} />
           )}
-          {spamNotice.text}
+          {suspicionNotice.text}
         </p>
       )}
 

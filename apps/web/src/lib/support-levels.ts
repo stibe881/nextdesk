@@ -118,22 +118,22 @@ export type TicketSupportLevel = {
   };
   currentHandover: TicketSupportLevelEntry | null;
   history: TicketSupportLevelEntry[];
-  /** «Als Spam/Phishing einstufen» (reply + handover to the 2nd level). */
-  spam: {
-    marked: boolean;
-    canMark: boolean;
+  /** «Spam-/Phishing-Verdacht» (reply + handover to the 2nd level). */
+  suspicion: {
+    reported: boolean;
+    canReport: boolean;
     targetTeam: LevelTeamOption | null;
   };
 };
 
-export type SpamReply =
+export type SuspicionReply =
   | "queued"
   | "no_requester_email"
   | "template_disabled"
   | "no_mail_channel"
   | "failed";
 
-export type SpamResult = { teamName: string; moved: boolean; reply: SpamReply };
+export type SuspicionResult = { teamName: string; moved: boolean; reply: SuspicionReply };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -213,10 +213,10 @@ export function parseTicketSupportLevel(
         : [],
     },
     currentHandover: parseEntry(data.currentHandover),
-    spam: {
-      marked: isRecord(data.spam) && data.spam.marked === true,
-      canMark: isRecord(data.spam) && data.spam.canMark === true,
-      targetTeam: isRecord(data.spam) ? parseTeam(data.spam.targetTeam) : null,
+    suspicion: {
+      reported: isRecord(data.suspicion) && data.suspicion.reported === true,
+      canReport: isRecord(data.suspicion) && data.suspicion.canReport === true,
+      targetTeam: isRecord(data.suspicion) ? parseTeam(data.suspicion.targetTeam) : null,
     },
     history: Array.isArray(data.history)
       ? data.history.flatMap((item) => {
@@ -411,7 +411,7 @@ export async function loadSupportLevelReport(
   return parsed;
 }
 
-const SPAM_REPLIES: readonly SpamReply[] = [
+const SUSPICION_REPLIES: readonly SuspicionReply[] = [
   "queued",
   "no_requester_email",
   "template_disabled",
@@ -419,19 +419,19 @@ const SPAM_REPLIES: readonly SpamReply[] = [
   "failed",
 ];
 
-export function parseSpamResult(value: unknown): SpamResult | null {
+export function parseSuspicionResult(value: unknown): SuspicionResult | null {
   const data = isRecord(value) ? value.data : null;
   if (!isRecord(data) || typeof data.teamName !== "string") return null;
-  const reply = SPAM_REPLIES.find((entry) => entry === data.reply) ?? "failed";
+  const reply = SUSPICION_REPLIES.find((entry) => entry === data.reply) ?? "failed";
   return { teamName: data.teamName, moved: data.moved === true, reply };
 }
 
-/** Text after «Als Spam/Phishing einstufen», incl. why no reply was sent. */
-export function spamResultText(result: SpamResult): string {
+/** Text after «Spam-/Phishing-Verdacht», incl. why no reply was sent. */
+export function suspicionResultText(result: SuspicionResult): string {
   const handover = result.moved
     ? `Das Ticket wurde an den 2nd Level (${result.teamName}) übergeben.`
     : `Das Ticket liegt bereits beim 2nd Level (${result.teamName}).`;
-  const reply: Record<SpamReply, string> = {
+  const reply: Record<SuspicionReply, string> = {
     queued: "Die Standardantwort an die anfragende Person ist unterwegs.",
     no_requester_email:
       "Die anfragende Person hat keine E-Mail-Adresse, darum wurde keine Antwort gesendet.",
@@ -441,17 +441,17 @@ export function spamResultText(result: SpamResult): string {
       "Es ist kein aktives Exchange-Postfach verbunden, darum wurde keine Antwort gesendet.",
     failed: "Die Standardantwort konnte nicht vorbereitet werden.",
   };
-  return `Als Spam/Phishing eingestuft. ${handover} ${reply[result.reply]}`;
+  return `Als Spam-/Phishing-Verdacht markiert. ${handover} ${reply[result.reply]}`;
 }
 
-export async function markTicketSpam(
+export async function reportPhishingSuspicion(
   tenantId: string,
   ticketId: string,
-): Promise<SpamResult> {
-  const parsed = parseSpamResult(
+): Promise<SuspicionResult> {
+  const parsed = parseSuspicionResult(
     await invoke(
-      { type: "markSpam", tenantId, ticketId },
-      "Das Ticket konnte nicht als Spam/Phishing eingestuft werden.",
+      { type: "reportSuspicion", tenantId, ticketId },
+      "Das Ticket konnte nicht als Spam-/Phishing-Verdacht markiert werden.",
     ),
   );
   if (!parsed)

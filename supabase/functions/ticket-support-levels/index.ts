@@ -16,7 +16,7 @@ import {
   type LevelTeam,
   normalizeHandoverNote,
   type ReportTicket,
-  spamTargetTeam,
+  suspicionTargetTeam,
   SUPPORT_LEVELS,
   type SupportLevel,
   supportLevelLabel,
@@ -29,7 +29,7 @@ import {
  * - handover: "An nächste Stufe übergeben" / "Zurück an Stufe X"
  * - queueLevels: levels configured in the caller's departments (queue filter)
  * - report: first-level resolution, escalations per category, time per level
- * - markSpam: «Als Spam/Phishing einstufen»: standard reply to the requester
+ * - reportSuspicion: «Spam-/Phishing-Verdacht»: standard reply to the requester
  *   (same as a phishing report) and handover to the 2nd level team
  * Not related to ticket_escalations (management escalation, ticket-operations).
  */
@@ -51,7 +51,7 @@ type Action =
       expectedLevel: SupportLevel;
     }
   | { type: "queueLevels"; tenantId: string }
-  | { type: "markSpam"; tenantId: string; ticketId: string }
+  | { type: "reportSuspicion"; tenantId: string; ticketId: string }
   | { type: "report"; tenantId: string; startsAt: string; endsAt: string };
 
 const MAX_REPORT_DAYS = 400;
@@ -133,11 +133,11 @@ export function parseAction(value: unknown): Action | null {
         expectedLevel: value.expectedLevel,
       };
     }
-    case "markSpam":
+    case "reportSuspicion":
       return hasOnlyKeys(value, ["type", "tenantId", "ticketId"]) &&
         isUuid(value.ticketId)
         ? {
-            type: "markSpam",
+            type: "reportSuspicion",
             tenantId,
             ticketId: value.ticketId.toLowerCase(),
           }
@@ -364,7 +364,7 @@ async function getTicket(
     action.ticketId,
   );
   const { ticket } = context;
-  const [teams, changesResult, spamResult] = await Promise.all([
+  const [teams, changesResult, suspicionResult] = await Promise.all([
     departmentTeams(admin, action.tenantId, ticket.department_id),
     admin
       .from("ticket_support_level_changes")
@@ -379,11 +379,11 @@ async function getTicket(
       .from("ticket_events")
       .select("id")
       .eq("ticket_id", ticket.id)
-      .eq("event_type", "ticket.marked_spam")
+      .eq("event_type", "ticket.phishing_suspicion")
       .limit(1),
   ]);
   if (changesResult.error) throw new HttpError(500, "level_history_failed");
-  if (spamResult.error) throw new HttpError(500, "spam_state_failed");
+  if (suspicionResult.error) throw new HttpError(500, "suspicion_state_failed");
   const rows: Row[] = changesResult.data ?? [];
   const teamNames = new Map(teams.map((team) => [team.id, team.name]));
   const missingTeamIds = [
@@ -437,8 +437,8 @@ async function getTicket(
     createdAt: String(row.created_at),
   }));
   const handover = currentHandover(history, currentLevel);
-  const spamTarget = spamTargetTeam(teams);
-  const spamMarked = (spamResult.data ?? []).length > 0;
+  const suspicionTarget = suspicionTargetTeam(teams);
+  const suspicionReported = (suspicionResult.data ?? []).length > 0;
   return {
     levelsConfigured: teams.some(
       (team) => team.active && team.supportLevel !== null,
@@ -455,48 +455,48 @@ async function getTicket(
     history: history
       .map(({ ticketId: _ticketId, ...entry }) => entry)
       .reverse(),
-    spam: {
-      marked: spamMarked,
-      canMark:
+    suspicion: {
+      reported: suspicionReported,
+      canReport:
         context.canHandover &&
         !context.closed &&
-        !spamMarked &&
-        spamTarget.kind === "team",
+        !suspicionReported &&
+        suspicionTarget.kind === "team",
       targetTeam:
-        spamTarget.kind === "team"
-          ? { id: spamTarget.team.id, name: spamTarget.team.name }
+        suspicionTarget.kind === "team"
+          ? { id: suspicionTarget.team.id, name: suspicionTarget.team.name }
           : null,
     },
   };
 }
 
-const SPAM_ERRORS: Record<string, [number, string]> = {
-  ticket_spam_already_marked: [
+const SUSPICION_ERRORS: Record<string, [number, string]> = {
+  ticket_suspicion_already_reported: [
     409,
-    "Dieses Ticket wurde bereits als Spam/Phishing eingestuft.",
+    "Für dieses Ticket wurde der Spam-/Phishing-Verdacht bereits gemeldet.",
   ],
-  ticket_spam_target_invalid: [
+  ticket_suspicion_target_invalid: [
     409,
     "Das 2nd-Level-Team dieser Abteilung ist nicht mehr aktiv. Bitte neu laden.",
   ],
   support_level_ticket_closed: [
     409,
-    "Geschlossene Tickets können nicht als Spam/Phishing eingestuft werden.",
+    "Geschlossene Tickets können nicht als Spam-/Phishing-Verdacht markiert werden.",
   ],
   ticket_not_found: [404, "Das Ticket ist nicht mehr verfügbar."],
 };
 
-type SpamReply =
+type SuspicionReply =
   | "queued"
   | "no_requester_email"
   | "template_disabled"
   | "no_mail_channel"
   | "failed";
 
-async function markSpam(
+async function reportSuspicion(
   admin: Admin,
   actorId: string,
-  action: Extract<Action, { type: "markSpam" }>,
+  action: Extract<Action, { type: "reportSuspicion" }>,
 ) {
   const context = await loadTicketContext(
     admin,
@@ -507,34 +507,34 @@ async function markSpam(
   if (!context.canHandover) {
     throw new HttpError(
       403,
-      "ticket_spam_denied",
-      "Zum Einstufen als Spam/Phishing sind die Rechte «Tickets bearbeiten» und «Tickets zuweisen» in dieser Abteilung nötig.",
+      "ticket_suspicion_denied",
+      "Für den Spam-/Phishing-Verdacht sind die Rechte «Tickets bearbeiten» und «Tickets zuweisen» in dieser Abteilung nötig.",
     );
   }
   if (context.closed) {
-    const [status, message] = SPAM_ERRORS.support_level_ticket_closed;
+    const [status, message] = SUSPICION_ERRORS.support_level_ticket_closed;
     throw new HttpError(status, "support_level_ticket_closed", message);
   }
-  const target = spamTargetTeam(
+  const target = suspicionTargetTeam(
     await departmentTeams(admin, action.tenantId, context.ticket.department_id),
   );
   if (target.kind === "missing") {
     throw new HttpError(
       422,
-      "ticket_spam_target_missing",
+      "ticket_suspicion_target_missing",
       "In dieser Abteilung ist kein aktives Team mit Supportstufe «2nd Level» eingerichtet.",
     );
   }
   if (target.kind === "ambiguous") {
     throw new HttpError(
       422,
-      "ticket_spam_target_ambiguous",
+      "ticket_suspicion_target_ambiguous",
       "In dieser Abteilung gibt es mehrere 2nd-Level-Teams. Bitte das Ticket über «Supportstufe» übergeben.",
     );
   }
 
   const { data, error } = await admin
-    .rpc("ticket_mark_spam", {
+    .rpc("ticket_report_phishing_suspicion", {
       p_tenant_id: action.tenantId,
       p_ticket_id: context.ticket.id,
       p_actor_id: actorId,
@@ -544,18 +544,18 @@ async function markSpam(
     .setHeader("x-nextdesk-actor-id", actorId);
   if (error) {
     const known =
-      typeof error.hint === "string" ? SPAM_ERRORS[error.hint] : undefined;
+      typeof error.hint === "string" ? SUSPICION_ERRORS[error.hint] : undefined;
     if (known) throw new HttpError(known[0], error.hint, known[1]);
-    throw new HttpError(500, "ticket_spam_failed");
+    throw new HttpError(500, "ticket_suspicion_failed");
   }
 
   // The classification is stored; a failing reply must not undo it.
-  let reply: SpamReply = "failed";
+  let reply: SuspicionReply = "failed";
   try {
-    reply = await queueSpamReply(admin, actorId, action.tenantId, context.ticket.id);
+    reply = await queueSuspicionReply(admin, actorId, action.tenantId, context.ticket.id);
   } catch (replyError) {
     console.error(
-      "ticket_spam_reply_failed",
+      "ticket_suspicion_reply_failed",
       replyError instanceof Error ? replyError.message : "",
     );
   }
@@ -563,7 +563,7 @@ async function markSpam(
   await admin.from("audit_logs").insert({
     tenant_id: action.tenantId,
     actor_id: actorId,
-    action: "ticket.marked_spam",
+    action: "ticket.phishing_suspicion",
     entity_type: "ticket",
     entity_id: context.ticket.id,
     metadata: {
@@ -583,12 +583,12 @@ async function markSpam(
  * Same reply as for a mail reported in Outlook: template «phishing_thanks»
  * inside the «security_notice» frame, sent from the ticket's mailbox.
  */
-async function queueSpamReply(
+async function queueSuspicionReply(
   admin: Admin,
   actorId: string,
   tenantId: string,
   ticketId: string,
-): Promise<SpamReply> {
+): Promise<SuspicionReply> {
   const { data: ticket, error } = await admin
     .from("tickets")
     .select("ticket_number, requester_contact_id")
@@ -625,7 +625,7 @@ async function queueSpamReply(
     subject: thanks.text("subject", values),
     body: thanks.text("text", values),
     recipients: [email],
-    note: `Standardantwort Spam/Phishing an ${email.trim().toLowerCase()}:`,
+    note: `Standardantwort Spam-/Phishing-Verdacht an ${email.trim().toLowerCase()}:`,
   });
   if (!result.commentId) return "failed";
   return result.queued > 0 ? "queued" : "no_mail_channel";
@@ -1122,8 +1122,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             ? await handover(admin, actorId, action)
             : action.type === "queueLevels"
               ? await queueLevels(admin, actorId, action)
-              : action.type === "markSpam"
-                ? await markSpam(admin, actorId, action)
+              : action.type === "reportSuspicion"
+                ? await reportSuspicion(admin, actorId, action)
                 : await report(admin, actorId, action);
     return json(request, { data });
   } catch (error) {

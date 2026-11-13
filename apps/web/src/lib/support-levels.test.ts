@@ -8,14 +8,14 @@ import {
   handoverNoteError,
   levelChangeText,
   parseQueueLevels,
-  parseSpamResult,
+  parseSuspicionResult,
   parseSupportLevelReport,
   parseTicketSupportLevel,
   supportLevelFilterValue,
   supportLevelFromSelect,
   supportLevelLabel,
   supportLevelOfFilter,
-  spamResultText,
+  suspicionResultText,
 } from "./support-levels";
 
 describe("Supportstufen", () => {
@@ -146,34 +146,34 @@ describe("Supportstufen", () => {
   });
 });
 
-describe("Spam/Phishing einstufen", () => {
-  it("liest den Spam-Zustand aus der Ticketantwort", () => {
+describe("Spam-/Phishing-Verdacht", () => {
+  it("liest den Verdachtszustand aus der Ticketantwort", () => {
     const parsed = parseTicketSupportLevel({
       data: {
         targets: { next: null, back: [] },
         history: [],
-        spam: {
-          marked: false,
-          canMark: true,
+        suspicion: {
+          reported: false,
+          canReport: true,
           targetTeam: { id: "team-2", name: "System Engineer" },
         },
       },
     });
-    expect(parsed?.spam).toEqual({
-      marked: false,
-      canMark: true,
+    expect(parsed?.suspicion).toEqual({
+      reported: false,
+      canReport: true,
       targetTeam: { id: "team-2", name: "System Engineer" },
     });
-    // Ältere Antworten ohne Spam-Angaben blenden den Knopf aus.
+    // Ältere Antworten ohne Verdachtsangaben blenden den Knopf aus.
     expect(
       parseTicketSupportLevel({
         data: { targets: { next: null, back: [] }, history: [] },
-      })?.spam,
-    ).toEqual({ marked: false, canMark: false, targetTeam: null });
+      })?.suspicion,
+    ).toEqual({ reported: false, canReport: false, targetTeam: null });
   });
 
   it("beschreibt Übergabe und Antwort", () => {
-    const sent = parseSpamResult({
+    const sent = parseSuspicionResult({
       data: { teamName: "System Engineer", moved: true, reply: "queued" },
     });
     expect(sent).toEqual({
@@ -181,17 +181,17 @@ describe("Spam/Phishing einstufen", () => {
       moved: true,
       reply: "queued",
     });
-    expect(spamResultText(sent!)).toBe(
-      "Als Spam/Phishing eingestuft. Das Ticket wurde an den 2nd Level (System Engineer) übergeben. Die Standardantwort an die anfragende Person ist unterwegs.",
+    expect(suspicionResultText(sent!)).toBe(
+      "Als Spam-/Phishing-Verdacht markiert. Das Ticket wurde an den 2nd Level (System Engineer) übergeben. Die Standardantwort an die anfragende Person ist unterwegs.",
     );
-    const noMail = parseSpamResult({
+    const noMail = parseSuspicionResult({
       data: { teamName: "System Engineer", moved: false, reply: "no_requester_email" },
     });
-    expect(spamResultText(noMail!)).toMatch(/bereits beim 2nd Level/);
-    expect(spamResultText(noMail!)).toMatch(/keine E-Mail-Adresse/);
+    expect(suspicionResultText(noMail!)).toMatch(/bereits beim 2nd Level/);
+    expect(suspicionResultText(noMail!)).toMatch(/keine E-Mail-Adresse/);
     expect(
-      parseSpamResult({ data: { teamName: "X", reply: "unbekannt" } })?.reply,
+      parseSuspicionResult({ data: { teamName: "X", reply: "unbekannt" } })?.reply,
     ).toBe("failed");
-    expect(parseSpamResult({ data: {} })).toBeNull();
+    expect(parseSuspicionResult({ data: {} })).toBeNull();
   });
 });

@@ -1,8 +1,8 @@
 import { invokeNextDesk } from "@/lib/nextdesk-client";
 import {
-  parseMobileSpamResult,
+  parseMobileSuspicionResult,
   parseMobileTicketSupportLevel,
-  type MobileSpamResult,
+  type MobileSuspicionResult,
   type MobileSupportLevel,
   type MobileTicketSupportLevel,
 } from "@/lib/support-levels-model";
@@ -43,16 +43,16 @@ export async function handOverMobileTicketLevel(input: {
 }
 
 /**
- * «Als Spam/Phishing einstufen»: standard reply to the requester (as for a
+ * «Spam-/Phishing-Verdacht»: standard reply to the requester (as for a
  * phishing report from Outlook) and handover to the 2nd level team.
  */
-export async function markMobileTicketSpam(
+export async function reportMobilePhishingSuspicion(
   tenantId: string,
   ticketId: string,
-): Promise<MobileSpamResult> {
-  const result = parseMobileSpamResult(
+): Promise<MobileSuspicionResult> {
+  const result = parseMobileSuspicionResult(
     await invokeNextDesk<unknown>("ticket-support-levels", {
-      type: "markSpam",
+      type: "reportSuspicion",
       tenantId,
       ticketId,
     }),

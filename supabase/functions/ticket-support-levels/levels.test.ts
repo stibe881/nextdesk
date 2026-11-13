@@ -9,7 +9,7 @@ import {
   type LevelTeam,
   maxLevelReached,
   normalizeHandoverNote,
-  spamTargetTeam,
+  suspicionTargetTeam,
 } from "./levels.ts";
 import { parseAction } from "./index.ts";
 
@@ -327,7 +327,7 @@ Deno.test("actions are parsed strictly", () => {
   );
 });
 
-Deno.test("spam target is the single active 2nd level team", () => {
+Deno.test("suspicion target is the single active 2nd level team", () => {
   const team = (
     id: string,
     supportLevel: 1 | 2 | 3 | null,
@@ -342,15 +342,15 @@ Deno.test("spam target is the single active 2nd level team", () => {
   const serviceDesk = team("a1111111-1111-4111-8111-111111111111", 1);
   const engineers = team("b2222222-2222-4222-8222-222222222222", 2);
   const oldEngineers = team("c3333333-3333-4333-8333-333333333333", 2, false);
-  assertEquals(spamTargetTeam([serviceDesk, engineers, oldEngineers]), {
+  assertEquals(suspicionTargetTeam([serviceDesk, engineers, oldEngineers]), {
     kind: "team",
     team: engineers,
   });
-  assertEquals(spamTargetTeam([serviceDesk, oldEngineers]), {
+  assertEquals(suspicionTargetTeam([serviceDesk, oldEngineers]), {
     kind: "missing",
   });
   assertEquals(
-    spamTargetTeam([
+    suspicionTargetTeam([
       engineers,
       team("d4444444-4444-4444-8444-444444444444", 2),
     ]),
@@ -358,19 +358,19 @@ Deno.test("spam target is the single active 2nd level team", () => {
   );
 });
 
-Deno.test("markSpam action is parsed strictly", () => {
+Deno.test("reportSuspicion action is parsed strictly", () => {
   assertEquals(
-    parseAction({ type: "markSpam", tenantId: T, ticketId: TICKET }),
-    { type: "markSpam", tenantId: T, ticketId: TICKET },
+    parseAction({ type: "reportSuspicion", tenantId: T, ticketId: TICKET }),
+    { type: "reportSuspicion", tenantId: T, ticketId: TICKET },
   );
   assertEquals(
     parseAction({
-      type: "markSpam",
+      type: "reportSuspicion",
       tenantId: T,
       ticketId: TICKET,
       targetTeamId: TEAM,
     }),
     null,
   );
-  assertEquals(parseAction({ type: "markSpam", tenantId: T }), null);
+  assertEquals(parseAction({ type: "reportSuspicion", tenantId: T }), null);
 });

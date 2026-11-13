@@ -2,18 +2,19 @@ import { LoaderCircle, ShieldAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   loadTicketSupportLevel,
-  markTicketSpam,
-  spamResultText,
+  reportPhishingSuspicion,
+  suspicionResultText,
   type TicketSupportLevel,
 } from "./lib/support-levels";
 
 /**
- * «Spam/Phishing»: classifies the ticket after a confirmation. The requester
+ * «Spam-/Phishing-Verdacht»: the requester suspects a spam or phishing
+ * mail. After a confirmation The requester
  * gets the same standard reply as for a mail reported in Outlook, and the
  * ticket goes to the department's 2nd level team (e.g. «System Engineer»).
  * Hidden without the rights or without a single active 2nd level team.
  */
-export function TicketSpamAction({
+export function TicketSuspicionAction({
   disabled,
   onDone,
   refreshKey,
@@ -26,15 +27,15 @@ export function TicketSpamAction({
   tenantId: string;
   ticketId: string;
 }) {
-  const [spam, setSpam] = useState<TicketSupportLevel["spam"] | null>(null);
+  const [suspicion, setSuspicion] = useState<TicketSupportLevel["suspicion"] | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
-    setSpam(null);
+    setSuspicion(null);
     void loadTicketSupportLevel(tenantId, ticketId)
       .then((state) => {
-        if (active) setSpam(state.spam);
+        if (active) setSuspicion(state.suspicion);
       })
       // Without agent rights the button simply stays hidden.
       .catch(() => undefined);
@@ -43,35 +44,35 @@ export function TicketSpamAction({
     };
   }, [refreshKey, tenantId, ticketId]);
 
-  if (!spam) return null;
-  if (spam.marked) {
+  if (!suspicion) return null;
+  if (suspicion.reported) {
     return (
       <span
-        className="ticket-spam-badge"
-        title="Dieses Ticket wurde als Spam/Phishing eingestuft."
+        className="ticket-suspicion-badge"
+        title="Für dieses Ticket wurde ein Spam-/Phishing-Verdacht gemeldet."
       >
         <ShieldAlert aria-hidden="true" size={15} />
-        <span className="ticket-detail-action-label">Spam/Phishing</span>
+        <span className="ticket-detail-action-label">Spam-/Phishing-Verdacht</span>
       </span>
     );
   }
-  if (!spam.canMark || !spam.targetTeam) return null;
-  const teamName = spam.targetTeam.name;
+  if (!suspicion.canReport || !suspicion.targetTeam) return null;
+  const teamName = suspicion.targetTeam.name;
 
   async function mark() {
     const confirmed = window.confirm(
-      `Wirklich als Spam/Phishing markieren?\n\nDie anfragende Person erhält die Standardantwort (wie bei einer Phishing-Meldung aus Outlook) und das Ticket wird an den 2nd Level (${teamName}) weitergeleitet. Das lässt sich nicht rückgängig machen.`,
+      `Wirklich als Spam/Phishing markieren?\n\nDie anfragende Person vermutet eine Spam- oder Phishing-Mail und erhält die Standardantwort (wie bei einer Phishing-Meldung aus Outlook), und das Ticket wird an den 2nd Level (${teamName}) weitergeleitet. Der Absender wird nicht gesperrt; dafür gibt es «Spam» in der Ticketliste. Das lässt sich nicht rückgängig machen.`,
     );
     if (!confirmed) return;
     setBusy(true);
     try {
-      const result = await markTicketSpam(tenantId, ticketId);
-      setSpam((current) =>
-        current ? { ...current, marked: true, canMark: false } : current,
+      const result = await reportPhishingSuspicion(tenantId, ticketId);
+      setSuspicion((current) =>
+        current ? { ...current, reported: true, canReport: false } : current,
       );
       onDone({
         tone: result.reply === "queued" ? "success" : "error",
-        text: spamResultText(result),
+        text: suspicionResultText(result),
       });
     } catch (error) {
       onDone({
@@ -79,7 +80,7 @@ export function TicketSpamAction({
         text:
           error instanceof Error
             ? error.message
-            : "Das Ticket konnte nicht als Spam/Phishing eingestuft werden.",
+            : "Das Ticket konnte nicht als Spam-/Phishing-Verdacht markiert werden.",
       });
     } finally {
       setBusy(false);
@@ -88,11 +89,11 @@ export function TicketSpamAction({
 
   return (
     <button
-      aria-label="Als Spam/Phishing einstufen"
-      className="secondary-button ticket-spam-button"
+      aria-label="Spam-/Phishing-Verdacht melden"
+      className="secondary-button ticket-suspicion-button"
       disabled={disabled || busy}
       onClick={() => void mark()}
-      title={`Als Spam/Phishing einstufen: Standardantwort an die anfragende Person, Weiterleitung an ${teamName}`}
+      title={`Spam-/Phishing-Verdacht: Standardantwort an die anfragende Person, Weiterleitung an ${teamName}`}
       type="button"
     >
       {busy ? (
@@ -104,7 +105,7 @@ export function TicketSpamAction({
       ) : (
         <ShieldAlert aria-hidden="true" size={16} strokeWidth={1.8} />
       )}
-      <span className="ticket-detail-action-label">Spam/Phishing</span>
+      <span className="ticket-detail-action-label">Spam-/Phishing-Verdacht</span>
     </button>
   );
 }

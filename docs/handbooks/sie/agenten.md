@@ -530,21 +530,26 @@ Rechts unter der **Übersicht** liegt die Karte **Koordination**. Sie zeigt die
 **Verlauf der Stufen**) sowie Teil-Tickets und Drittanbieter (**Aufteilen**,
 **An Drittanbieter übergeben**).
 
-### Ticket als Spam/Phishing einstufen
+### Spam-/Phishing-Verdacht der anfragenden Person
 
-Ist ein Ticket eine Spam- oder Phishing-Mail, klicken Sie oben im Ticket auf
-**Spam/Phishing** (in der iOS- und Android-App: **Als Spam/Phishing
-einstufen** über der Karte zur Supportstufe). Nach der Rückfrage **Wirklich
-als Spam/Phishing markieren?** passiert Folgendes:
+Leitet eine Person eine Mail weiter, weil sie Spam oder Phishing vermutet,
+klicken Sie oben im Ticket auf **Spam-/Phishing-Verdacht** (in der iOS- und
+Android-App: **Spam-/Phishing-Verdacht** über der Karte zur Supportstufe). Nach
+der Rückfrage **Wirklich als Spam/Phishing markieren?** passiert Folgendes:
 
 - Die anfragende Person erhält per E-Mail dieselbe Standardantwort wie bei
   einer Phishing-Meldung aus Outlook (Vorlagen **Phishing-Meldung: Danke** und
   **Phishing-Meldung: Gestaltung**).
 - Das Ticket geht an das Team mit der Supportstufe **2nd Level** der
-  Abteilung (z. B. «System Engineer»). Die Zuweisung an eine Person wird
-  aufgehoben, im Verlauf stehen eine interne Notiz und die Übergabe.
-- Das Ticket zeigt danach den Hinweis **Spam/Phishing**; ein zweites Einstufen
-  ist nicht möglich.
+  Abteilung (z. B. «System Engineer»), das die Mail prüft. Die Zuweisung an
+  eine Person wird aufgehoben, im Verlauf stehen eine interne Notiz und die
+  Übergabe. Das Ticket bleibt sichtbar.
+- Danach zeigt das Ticket den Hinweis **Spam-/Phishing-Verdacht**; ein zweites
+  Melden ist nicht möglich.
+
+Das ist etwas anderes als **Spam** (Abschnitt «Spam» weiter oben): Dort ist der Absender des
+Tickets selbst Spam, das Ticket verschwindet und der Absender wird gesperrt.
+Beim Verdacht ist die anfragende Person eine echte Person, die Hilfe braucht.
 
 Der Knopf erscheint nur mit den Rechten «Tickets bearbeiten» und «Tickets
 zuweisen», bei offenen Tickets und wenn die Abteilung genau ein aktives
