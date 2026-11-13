@@ -12,13 +12,13 @@ import {
   TeamsGraphError,
   unarchiveTeam,
 } from "../_shared/teams-graph.ts";
-import { addMonths, daysBetween } from "../_shared/teams-model.ts";
+import { addMonths, daysBetween, TEAM_LIMITS } from "../_shared/teams-model.ts";
 import {
   teamsCredentialsConfigured,
   teamsEntraTenant,
   teamsGraphToken,
 } from "../_shared/teams-token.ts";
-import { loadTeamsSettings, TEAMS_FEATURE } from "../_shared/teams-settings.ts";
+import { TEAMS_FEATURE } from "../_shared/teams-settings.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 /**
@@ -496,10 +496,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (body.type === "setEnd") {
     const today = zurichToday();
     const endDate = typeof body.endDate === "string" ? body.endDate : "";
-    const limit = addMonths(
-      today,
-      (await loadTeamsSettings(admin, tenantId)).maxLifetimeMonths,
-    );
+    const limit = addMonths(today, TEAM_LIMITS.extensionHorizonMonths);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate <= today) {
       return fail(request, "dates_invalid");
     }

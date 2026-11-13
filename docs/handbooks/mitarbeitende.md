@@ -252,7 +252,7 @@ bestellt und danach automatisch angelegt.
    erlaubten Gästen deren E-Mail-Adressen) und **Laufzeit** (Start und Ende).
 2. In der **Übersicht** prüfen und **Verbindlich bestellen**.
 
-Das **Ende** ist eine Pflichtangabe (höchstens drei Jahre). Das Team wird am
+Das **Ende** ist eine Pflichtangabe (höchstens ein Jahr; die ICT kann das anders einstellen). Das Team wird am
 Ende nicht gelöscht: 14 Tage, 7 Tage und 1 Tag vorher erhalten die Owner und
 die bestellende Person eine Benachrichtigung (E-Mail und Push, Kategorie
 «Shop»). Unter **Meine Teams** verlängern Sie die Laufzeit mit einem Klick um

@@ -377,7 +377,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return fail(request, "teams_extend_not_possible", 409);
     }
     const next = addMonths(row.end_date, body.months);
-    const limit = addMonths(zurichToday(), settings.maxLifetimeMonths);
+    // Eine Verlängerung ist eine neue Prüfung: Obergrenze nur der Horizont, nicht die Bestelldauer.
+    const limit = addMonths(zurichToday(), TEAM_LIMITS.extensionHorizonMonths);
     if (!next || !limit || next > limit) {
       return fail(request, "lifetime_too_long", 422);
     }

@@ -13,6 +13,7 @@ import {
   emptyDraft,
   EXTENSIONS,
   formatTeamDate,
+  lifetimeLabel,
   stepIssue,
   teamsApi,
   WIZARD_STEPS,
@@ -583,7 +584,7 @@ export function TeamWizard({
               />
             </FormField>
             <FormField
-              hint={`Pflichtangabe, höchstens ${context.maxLifetimeMonths / 12} Jahre ab Start.`}
+              hint={`Pflichtangabe, höchstens ${lifetimeLabel(context.maxLifetimeMonths)} ab Start.`}
               label="Ende"
               required
             >

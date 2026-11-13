@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   addMonthsIso,
   emptyDraft,
+  lifetimeLabel,
   stepIssue,
   type TeamsContext,
 } from "./teams";
@@ -24,6 +25,12 @@ describe("teams wizard model", () => {
   it("adds months and clamps to the end of the month", () => {
     expect(addMonthsIso("2027-01-31", 1)).toBe("2027-02-28");
     expect(addMonthsIso("2026-11-12", 12)).toBe("2027-11-12");
+  });
+
+  it("labels the maximum lifetime", () => {
+    expect(lifetimeLabel(12)).toBe("1 Jahr");
+    expect(lifetimeLabel(36)).toBe("3 Jahre");
+    expect(lifetimeLabel(18)).toBe("18 Monate");
   });
 
   it("starts with the requester as owner and a one-year term", () => {
