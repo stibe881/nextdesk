@@ -272,3 +272,27 @@
   gap: 8px;
   font-weight: 400;
 }
+
+.shop-teams-edit__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shop-teams-edit__list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border, #dde3ef);
+  font-size: 13px;
+}
+.shop-teams-edit__who {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.shop-teams-edit__who small,
+.shop-teams-edit__muted {
+  color: var(--muted, #5d6f7a);
+}

@@ -1,6 +1,13 @@
 import { Check } from "lucide-react";
 import { tn } from "./lib/formality";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   FormCard,
   FormChips,
@@ -20,6 +27,7 @@ import {
   teamsApi,
   WIZARD_STEPS,
   type TeamDraft,
+  type TeamMember,
   type TeamPerson,
   type TeamRequestSummary,
   type TeamsContext,
@@ -676,6 +684,250 @@ export function TeamWizard({
   );
 }
 
+function TeamEditDialog({
+  onChanged,
+  onClose,
+  request,
+  tenantId,
+}: {
+  onChanged: () => void;
+  onClose: () => void;
+  request: TeamRequestSummary;
+  tenantId: string;
+}) {
+  const [members, setMembers] = useState<TeamMember[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmArchive, setConfirmArchive] = useState(false);
+
+  const load = useCallback(() => {
+    teamsApi
+      .members(tenantId, request.id)
+      .then(setMembers)
+      .catch((nextError: Error) => setError(nextError.message));
+  }, [request.id, tenantId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const run = async (work: () => Promise<unknown>, reload = true) => {
+    setBusy(true);
+    setError("");
+    try {
+      await work();
+      onChanged();
+      if (reload) load();
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Aktion fehlgeschlagen.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const owners = members?.filter((member) => member.isOwner) ?? [];
+  const regular =
+    members?.filter((member) => !member.isOwner && !member.isGuest) ?? [];
+  const guests = members?.filter((member) => member.isGuest) ?? [];
+  const row = (member: TeamMember) => (
+    <li key={member.membershipId}>
+      <span className="shop-teams-edit__who">
+        {member.displayName}
+        {member.email ? <small>{member.email}</small> : null}
+      </span>
+      {!member.isGuest ? (
+        <button
+          className="text-button"
+          disabled={busy}
+          onClick={() =>
+            void run(() =>
+              teamsApi.setOwner(
+                tenantId,
+                request.id,
+                member.membershipId,
+                !member.isOwner,
+              ),
+            )
+          }
+          type="button"
+        >
+          {member.isOwner ? "Kein Owner mehr" : "Zum Owner"}
+        </button>
+      ) : null}
+      <button
+        aria-label={`${member.displayName} entfernen`}
+        className="text-button"
+        disabled={busy}
+        onClick={() =>
+          void run(() =>
+            teamsApi.removeMember(tenantId, request.id, member.membershipId),
+          )
+        }
+        type="button"
+      >
+        ✕
+      </button>
+    </li>
+  );
+
+  return (
+    <div className="fk-backdrop" onClick={onClose} role="presentation">
+      <div
+        aria-label={`${request.name} bearbeiten`}
+        aria-modal="true"
+        className="fk-dialog"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header className="fk-head">
+          <div>
+            <p className="fk-eyebrow">Meine Teams</p>
+            <h2>{request.name}</h2>
+          </div>
+          <button
+            aria-label="Schliessen"
+            className="icon-button"
+            onClick={onClose}
+            type="button"
+          >
+            ×
+          </button>
+        </header>
+        <div className="fk-body">
+          <div className="fk-main">
+            <FormCard
+              sub={`Ende ${formatTeamDate(request.endDate)}`}
+              title="Laufzeit"
+            >
+              <div className="shop-teams-extend">
+                <span>Verlängern um:</span>
+                {EXTENSIONS.map((option) => (
+                  <button
+                    className="secondary-button"
+                    disabled={busy}
+                    key={option.months}
+                    onClick={() =>
+                      void run(
+                        () =>
+                          teamsApi.extend(tenantId, request.id, option.months),
+                        false,
+                      )
+                    }
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </FormCard>
+            <FormCard title="Personen">
+              <PeoplePicker
+                label="Person hinzufügen"
+                onChange={(added) => {
+                  const person = added[added.length - 1];
+                  if (person)
+                    void run(() =>
+                      teamsApi.addMember(
+                        tenantId,
+                        request.id,
+                        person.id,
+                        false,
+                      ),
+                    );
+                }}
+                selected={[]}
+                tenantId={tenantId}
+              />
+              {members === null ? (
+                <p className="shop-teams-edit__muted">Wird geladen …</p>
+              ) : (
+                <>
+                  <strong>Owner ({owners.length})</strong>
+                  <ul className="shop-teams-edit__list">{owners.map(row)}</ul>
+                  <strong>Mitglieder ({regular.length})</strong>
+                  <ul className="shop-teams-edit__list">{regular.map(row)}</ul>
+                  {guests.length > 0 ? (
+                    <>
+                      <strong>Gäste ({guests.length})</strong>
+                      <ul className="shop-teams-edit__list">
+                        {guests.map(row)}
+                      </ul>
+                    </>
+                  ) : null}
+                </>
+              )}
+            </FormCard>
+            <FormNote>
+              Name, Kanäle und Tabs ändern Sie direkt in Microsoft Teams. Hier
+              pflegen Sie Personen und Laufzeit.
+            </FormNote>
+          </div>
+        </div>
+        {error ? (
+          <p className="fk-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <footer className="fk-foot">
+          <div className="fk-foot-left">
+            {confirmArchive ? (
+              <>
+                <span>Team wirklich archivieren?</span>
+                <button
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      await teamsApi.archive(tenantId, request.id);
+                      onClose();
+                    }, false)
+                  }
+                  type="button"
+                >
+                  Ja, archivieren
+                </button>
+                <button
+                  className="secondary-button"
+                  onClick={() => setConfirmArchive(false)}
+                  type="button"
+                >
+                  Nein
+                </button>
+              </>
+            ) : (
+              <button
+                className="secondary-button"
+                disabled={busy}
+                onClick={() => setConfirmArchive(true)}
+                type="button"
+              >
+                Archivieren
+              </button>
+            )}
+          </div>
+          <div className="fk-foot-right">
+            <button className="primary-button" onClick={onClose} type="button">
+              Fertig
+            </button>
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 export function MyTeams({
   onChanged,
   requests,
@@ -687,6 +939,7 @@ export function MyTeams({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [editing, setEditing] = useState<TeamRequestSummary | null>(null);
   const extend = async (request: TeamRequestSummary, months: number) => {
     setBusy(request.id);
     setError("");
@@ -760,6 +1013,13 @@ export function MyTeams({
             ) : null}
             {request.status === "ready" ? (
               <div className="shop-teams-extend">
+                <button
+                  className="primary-button"
+                  onClick={() => setEditing(request)}
+                  type="button"
+                >
+                  Bearbeiten
+                </button>
                 <span>Laufzeit verlängern:</span>
                 {EXTENSIONS.map((option) => (
                   <button
@@ -777,6 +1037,14 @@ export function MyTeams({
           </article>
         );
       })}
+      {editing ? (
+        <TeamEditDialog
+          onChanged={onChanged}
+          onClose={() => setEditing(null)}
+          request={editing}
+          tenantId={tenantId}
+        />
+      ) : null}
     </div>
   );
 }
