@@ -278,9 +278,7 @@ export default function IncidentsScreen() {
                           {STATE_LABELS[entry.state]}
                         </Text>
                       )}
-                      {entry.state === "active" &&
-                      !entry.acknowledgedAt &&
-                      entry.source !== "external" ? (
+                      {entry.state === "active" && !entry.acknowledgedAt ? (
                         <Text style={[styles.badge, styles.badgeBad]}>
                           Unbestätigt
                         </Text>

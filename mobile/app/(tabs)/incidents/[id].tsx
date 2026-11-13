@@ -187,7 +187,7 @@ export default function IncidentDetailScreen() {
   const minutes = liveMinutes(detail.openedAt, detail.resolvedAt, now);
   const canChange = detail.state !== "closed";
   const showCauseForm = detail.state !== "closed" || !detail.cause;
-  // Provider issue (Microsoft 365, GitHub, …): nothing to confirm.
+  // Provider issue (Microsoft 365, GitHub, …).
   const external = detail.source === "external";
   const provider = detail.externalProvider ?? "der Anbieter";
   const assigned = detail.agents.find((a) => a.id === detail.assignedAgentId);
@@ -291,7 +291,7 @@ export default function IncidentDetailScreen() {
           </View>
         ) : null}
 
-        {canChange && !external && !detail.acknowledgedAt ? (
+        {canChange && !detail.acknowledgedAt ? (
           <Pressable
             accessibilityRole="button"
             disabled={busy !== null}
