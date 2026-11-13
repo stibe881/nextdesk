@@ -1721,6 +1721,14 @@ export async function processInboundMessage(
       (kind !== "new_ticket" && kind !== "reply")
     )
       throw new Error("inbound_commit_invalid");
+    // Team des Postfachs sofort setzen: Die folgenden Schritte (Anhänge,
+    // Kontakte, Raumplanung) können länger dauern. Bricht die Verarbeitung
+    // dort ab, bleibt das Ticket sonst ohne Team, denn die Nachricht gilt
+    // nach dem Commit als verarbeitet und wird nicht wiederholt. Bei einer
+    // Phishing-Meldung erst am Ende, weil sie die Abteilung ändern kann.
+    if (kind === "new_ticket" && !phishingSettings) {
+      await assignChannelTeam(admin, channel, ticketId);
+    }
     if (kind === "new_ticket" && !phishingSettings) {
       await processEventSpaceEmailTicketIntake(admin, {
         tenantId: channel.tenant_id,
@@ -1843,6 +1851,7 @@ export async function processInboundMessage(
       });
     }
     if (kind === "new_ticket") {
+      // Nach den Intakes erneut (no-op, wenn schon gesetzt): deckt Phishing ab.
       await assignChannelTeam(admin, channel, ticketId);
     }
     await audit(
