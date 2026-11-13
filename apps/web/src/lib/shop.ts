@@ -249,6 +249,7 @@ export type ImportedProduct = {
   price: string;
   specifications: Record<string, string>;
   image: { type: string; base64: string } | null;
+  notes?: string[];
 };
 
 export const shopApi = {

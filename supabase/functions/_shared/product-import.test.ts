@@ -50,3 +50,20 @@ Deno.test("isAllowedProductUrl erlaubt nur Brack über https", () => {
   assertEquals(!!isAllowedProductUrl("https://user:x@brack.ch/a"), false);
   assertEquals(!!isAllowedProductUrl("https://127.0.0.1/"), false);
 });
+
+Deno.test("Technische Daten aus Tabellen werden den Feldern zugeordnet", () => {
+  const html = `<html><head><meta property="og:title" content="Maus"></head><body>
+  <img src="https://assets.brack.ch/images/logo.png">
+  <img src="https://assets.brack.ch/images/maus-gross.jpg?x=1">
+  <table><tr><th>Lieferumfang</th><td>Maus, Empfänger, Kabel</td></tr>
+  <tr><th>Schnittstelle</th><td>USB-A</td></tr>
+  <tr><th>Gewicht</th><td>141 g</td></tr></table></body></html>`;
+  const product = parseProductPage(html, new URL("https://www.brack.ch/x"))!;
+  assertEquals(product.specifications.scope, "Maus, Empfänger, Kabel");
+  assertEquals(product.specifications.connectivity, "Schnittstelle: USB-A");
+  assertEquals(product.specifications.properties, "Gewicht: 141 g");
+  assertEquals(
+    product.imageUrl,
+    "https://assets.brack.ch/images/maus-gross.jpg?x=1",
+  );
+});
