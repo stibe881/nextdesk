@@ -1163,18 +1163,25 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
       await requireAgent(client, action.tenantId);
       const incident = await loadIncident(admin, action.tenantId, action.incidentId);
       if (!incident.acknowledged_at) {
+        // Whoever confirms takes the incident over.
+        const takesOver = incident.assigned_agent_id !== actorId;
         await admin.from("monitoring_incidents").update({
           acknowledged_at: new Date().toISOString(),
           acknowledged_by: actorId,
-          ...(incident.assigned_agent_id ? {} : { assigned_agent_id: actorId }),
+          assigned_agent_id: actorId,
         }).eq("id", action.incidentId);
         await addEvent(admin, action.tenantId, action.incidentId, "acknowledged", actorId, "Bestätigt: wird bearbeitet.");
+        if (takesOver) {
+          const people = await names(admin, [actorId]);
+          await addEvent(admin, action.tenantId, action.incidentId, "assigned", actorId,
+            `Zugewiesen an ${people.get(actorId) ?? "Agent"}.`);
+        }
       }
       return await detail(admin, client, action.tenantId, action.incidentId);
     }
     case "assign": {
       await requireAgent(client, action.tenantId);
-      await loadIncident(admin, action.tenantId, action.incidentId);
+      const current = await loadIncident(admin, action.tenantId, action.incidentId);
       if (action.agentId) {
         const check = await admin.rpc("user_is_ticket_agent", {
           p_tenant_id: action.tenantId,
@@ -1187,11 +1194,19 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
           throw new HttpError(422, "agent_invalid", "Diese Person kann keine Störungen bearbeiten.");
         }
       }
-      await admin.from("monitoring_incidents").update({ assigned_agent_id: action.agentId })
-        .eq("id", action.incidentId);
+      // Assigning someone confirms the incident (stops the re-alerting).
+      const confirms = Boolean(action.agentId) && !current.acknowledged_at;
+      await admin.from("monitoring_incidents").update({
+        assigned_agent_id: action.agentId,
+        ...(confirms ? { acknowledged_at: new Date().toISOString(), acknowledged_by: actorId } : {}),
+      }).eq("id", action.incidentId);
       const people = await names(admin, [action.agentId]);
       await addEvent(admin, action.tenantId, action.incidentId, "assigned", actorId,
         action.agentId ? `Zugewiesen an ${people.get(action.agentId) ?? "Agent"}.` : "Zuweisung entfernt.");
+      if (confirms) {
+        await addEvent(admin, action.tenantId, action.incidentId, "acknowledged", actorId,
+          "Bestätigt durch die Zuweisung.");
+      }
       return await detail(admin, client, action.tenantId, action.incidentId);
     }
     case "note": {

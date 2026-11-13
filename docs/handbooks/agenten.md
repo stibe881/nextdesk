@@ -355,9 +355,10 @@ beim Anbieter hängen bleibt.
 
 Ein Klick öffnet die Störung:
 
-1. **Bestätigen: ich kümmere mich** stoppt die erneute Alarmierung und weist
-   dir die Störung zu, falls noch niemand zuständig ist. Unter
-   **Zuständig** änderst du die Person (oder **Mir zuweisen**). Zur Auswahl
+1. **Bestätigen: ich kümmere mich** stoppt die erneute Alarmierung und macht
+   dich zur zuständigen Person. Unter **Zuständig** änderst du die Person
+   (oder **Mir zuweisen**); wer einer noch unbestätigten Störung zugewiesen
+   wird, bestätigt sie damit automatisch. Zur Auswahl
    stehen alle Agenten mit Zugriff auf das Modul Störungen, also die
    Mitglieder des Alarmierungsteams (ohne festgelegtes Team alle Agenten).
 2. Der **Verlauf** zeigt alle PRTG-Meldungen und was in nextDesk geschah
