@@ -73,7 +73,7 @@ export default function ServicesScreen() {
             <View style={styles.cardCopy}>
               <Text style={styles.primaryTitle}>Service anfragen</Text>
               <Text style={styles.primaryText}>
-                Erfasse ein Ticket mit Anliegen, Priorität und Abteilung.
+                {tn("Erfasse ein Ticket mit Anliegen, Priorität und Abteilung.", "Erfassen Sie ein Ticket mit Anliegen, Priorität und Abteilung.")}
               </Text>
             </View>
             <Ionicons color={colors.onPrimary} name="arrow-forward" size={21} />

@@ -1,7 +1,6 @@
+import { tn } from "./formality";
 // «Störungen» (incidents from PRTG): parsing of the incidents edge function
 // responses and small formatting helpers; pure.
-import { tn } from "./formality";
-
 
 export type IncidentFilter =
   | "active"
@@ -429,7 +428,7 @@ export function ticketReplyText(
 ): string {
   const device = incident.deviceName ?? incident.title;
   return [
-    "Guten Tag",
+    tn("Hallo", "Guten Tag"),
     "",
     tn(
       `Deine Meldung hängt mit einer Störung zusammen (${incident.number}, ${device}). Die Störung ist behoben.`,

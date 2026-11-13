@@ -10,7 +10,7 @@ updated: 2026-11-13
 Mit nextDesk meldest du Anliegen an den Support – zum Beispiel ein defektes
 Gerät, eine fehlende Berechtigung oder eine Frage – und verfolgen jederzeit,
 wie weit dein Anliegen ist. Dieses Handbuch erklärt alles, was du dafür
-brauchen.
+brauchst.
 
 ## Anmelden
 
@@ -114,13 +114,13 @@ ICT festgelegten Häufigkeit (Standard: einmal pro Woche).
 
 Unter **Tickets** siehst du alle deine Anliegen mit Nummer, Betreff und Status.
 
-| Status          | Bedeutung                                                   |
-| --------------- | ----------------------------------------------------------- |
-| Eingegangen/Neu | Das Ticket ist beim Support angekommen                      |
-| In Bearbeitung  | Jemand kümmert sich darum                                   |
-| Wartet auf dich | Der Support braucht eine Antwort oder Bestätigung von dir  |
-| Gelöst          | Der Support hat das Anliegen erledigt                       |
-| Geschlossen     | Das Ticket ist abgeschlossen                                |
+| Status          | Bedeutung                                                 |
+| --------------- | --------------------------------------------------------- |
+| Eingegangen/Neu | Das Ticket ist beim Support angekommen                    |
+| In Bearbeitung  | Jemand kümmert sich darum                                 |
+| Wartet auf dich | Der Support braucht eine Antwort oder Bestätigung von dir |
+| Gelöst          | Der Support hat das Anliegen erledigt                     |
+| Geschlossen     | Das Ticket ist abgeschlossen                              |
 
 ![Liste der eigenen Tickets](images/ma-meine-tickets.jpg)
 

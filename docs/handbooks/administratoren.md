@@ -356,7 +356,7 @@ Microsoft-Anmeldung übernommen.
 ## Rollen und Berechtigungen
 
 Das Register **Rollen** («Rollen & Zugriffe») hat zwei Ansichten, die du
-oben umschalten:
+oben umschaltest:
 
 **Personen zuweisen**
 

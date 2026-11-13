@@ -142,7 +142,7 @@ export function RequesterPicker({
   async function createRequester() {
     const displayName = newName.trim();
     if (Array.from(displayName).length < 2) {
-      setCreateError("Bitte gib einen Namen mit mindestens zwei Zeichen ein.");
+      setCreateError(tn("Bitte gib einen Namen mit mindestens zwei Zeichen ein.", "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein."));
       return;
     }
     setCreating(true);

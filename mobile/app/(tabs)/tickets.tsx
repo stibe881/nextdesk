@@ -890,7 +890,7 @@ export default function TicketsScreen() {
             <Text style={[styles.emptyText, tokenStyles.muted]}>
               {scope !== "all" || query
                 ? "Mit diesem Filter gibt es keine Treffer."
-                : "Hier ist noch nichts. Erfasse das erste Ticket."}
+                : tn("Hier ist noch nichts. Erfasse das erste Ticket.", "Hier ist noch nichts. Erfassen Sie das erste Ticket.")}
             </Text>
             <View style={styles.emptyActions}>
               {scope !== "all" || query ? (

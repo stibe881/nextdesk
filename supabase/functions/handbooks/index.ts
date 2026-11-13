@@ -7,6 +7,7 @@ import {
   type HandbookId,
   type HandbookRoleAssignment,
 } from "../_shared/handbook-access.ts";
+import { loadFormality, type Formality } from "../_shared/formality.ts";
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const UUID_PATTERN =
@@ -59,16 +60,39 @@ type DocumentRow = {
   description: string;
   audience_label: string;
   updated_on: string;
+  // Formal («Sie») wording (migration 0328); null until the next sync.
+  title_sie?: string | null;
+  description_sie?: string | null;
+  audience_label_sie?: string | null;
 };
 
-function summaryOf(row: DocumentRow) {
+type DocumentWithText = DocumentRow & {
+  markdown: string;
+  markdown_sie?: string | null;
+};
+
+/** Columns that are always read; the «Sie» wording is added per request. */
+const SUMMARY_COLUMNS = "id, title, description, audience_label, updated_on";
+const SUMMARY_COLUMNS_SIE =
+  "title_sie, description_sie, audience_label_sie";
+
+/** The wording in the tenant's form of address; «du» when no «Sie» text is stored. */
+export function summaryOf(row: DocumentRow, formality: Formality = "du") {
+  const sie = formality === "sie";
   return {
     id: row.id,
-    title: row.title,
-    description: row.description,
-    audienceLabel: row.audience_label,
+    title: (sie && row.title_sie) || row.title,
+    description: (sie && row.description_sie) || row.description,
+    audienceLabel: (sie && row.audience_label_sie) || row.audience_label,
     updatedAt: row.updated_on,
   };
+}
+
+export function markdownOf(
+  row: { markdown: string; markdown_sie?: string | null },
+  formality: Formality = "du",
+): string {
+  return (formality === "sie" && row.markdown_sie) || row.markdown;
 }
 
 export function referencedHandbookImages(markdown: string): string[] {
@@ -154,12 +178,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     ),
   );
 
-  // Content lives in public.handbook_documents / handbook_images (migration
-  // 0246), loaded from docs/handbooks/handbooks.bundle.json of a pinned commit.
+  // The handbooks come in the tenant's form of address (du or Sie).
+  const formality = await loadFormality(context.supabaseAdmin, action.tenantId);
+  const sie = formality === "sie";
+
+  // Content lives in public.handbook_documents / handbook_images (migrations
+  // 0246, 0328), loaded from docs/handbooks/handbooks.bundle.json of a pinned
+  // commit: the «du» wording in the plain columns, «Sie» in the *_sie columns.
   if (action.type === "list") {
     const { data: rows, error } = await context.supabaseAdmin
       .from("handbook_documents")
-      .select("id, title, description, audience_label, updated_on")
+      .select(sie ? `${SUMMARY_COLUMNS}, ${SUMMARY_COLUMNS_SIE}` : SUMMARY_COLUMNS)
       .in("id", allowed)
       .order("sort_order", { ascending: true });
     if (error) {
@@ -167,7 +196,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
     return json(request, {
       data: {
-        handbooks: (rows ?? []).map((row: DocumentRow) => summaryOf(row)),
+        handbooks: (rows ?? []).map((row: DocumentRow) =>
+          summaryOf(row, formality),
+        ),
       },
     });
   }
@@ -177,7 +208,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
   const { data: row, error: documentError } = await context.supabaseAdmin
     .from("handbook_documents")
-    .select("id, title, description, audience_label, updated_on, markdown")
+    .select(
+      sie
+        ? `${SUMMARY_COLUMNS}, ${SUMMARY_COLUMNS_SIE}, markdown, markdown_sie`
+        : `${SUMMARY_COLUMNS}, markdown`,
+    )
     .eq("id", action.handbookId)
     .maybeSingle();
   if (documentError) {
@@ -186,8 +221,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (!row) {
     return json(request, { error: { code: "handbook_not_found" } }, 404);
   }
-  const document = row as DocumentRow & { markdown: string };
-  const imageNames = referencedHandbookImages(document.markdown);
+  const document = row as DocumentWithText;
+  const markdown = markdownOf(document, formality);
+  const imageNames = referencedHandbookImages(markdown);
   const images: Record<string, { mime: string; data: string }> = {};
   if (imageNames.length) {
     const { data: imageRows, error: imageError } = await context.supabaseAdmin
@@ -208,8 +244,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   return json(request, {
     data: {
       handbook: {
-        ...summaryOf(document),
-        markdown: inlineHandbookImages(document.markdown, images),
+        ...summaryOf(document, formality),
+        markdown: inlineHandbookImages(markdown, images),
       },
     },
   });

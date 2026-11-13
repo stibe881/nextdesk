@@ -35,7 +35,7 @@ export function CreateWorkspaceScreen() {
   async function submit() {
     const trimmed = name.trim().replace(/\s+/g, " ");
     if (trimmed.length < 2) {
-      setMessage("Bitte gib einen Namen mit mindestens zwei Zeichen ein.");
+      setMessage(tn("Bitte gib einen Namen mit mindestens zwei Zeichen ein.", "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein."));
       return;
     }
     setPending(true);

@@ -77,7 +77,7 @@ export function TeamMembersCard({ tenantId }: { tenantId: string | null }) {
     if (!tenantId || !team) return;
     const address = email.trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
-      setError("Bitte gib eine gültige E-Mail-Adresse ein.");
+      setError(tn("Bitte gib eine gültige E-Mail-Adresse ein.", "Bitte geben Sie eine gültige E-Mail-Adresse ein."));
       return;
     }
     const displayName = name.trim().replace(/\s+/g, " ");

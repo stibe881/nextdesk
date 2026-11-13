@@ -56,6 +56,7 @@ export function verdictResultText(
   return {
     harmless: tone(
       formality,
+      // formality-ok: «Sie ist echt» meint die E-Mail (3. Person), keine Anrede
       "Wir haben die gemeldete E-Mail geprüft: Sie ist echt und ungefährlich. Du kannst sie normal bearbeiten.\n\nDanke, dass du aufmerksam warst und sie gemeldet hast.",
       "Wir haben die gemeldete E-Mail geprüft: Sie ist echt und ungefährlich. Sie können sie normal bearbeiten.\n\nDanke, dass Sie aufmerksam waren und sie gemeldet haben.",
     ),

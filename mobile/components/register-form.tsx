@@ -40,7 +40,7 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
       return;
     }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
-      setMessage("Bitte gib eine gültige E-Mail-Adresse ein.");
+      setMessage(tn("Bitte gib eine gültige E-Mail-Adresse ein.", "Bitte geben Sie eine gültige E-Mail-Adresse ein."));
       return;
     }
     if (password.length < MIN_PASSWORD_LENGTH) {

@@ -641,8 +641,7 @@ export default function SettingsScreen() {
                 </Text>
               </View>
               <Text style={[styles.cardHint, tokenStyles.muted]}>
-                Lege fest, welche Hinweise nextDesk auf diesem iPhone senden
-                darf.
+                {tn("Lege fest, welche Hinweise nextDesk auf diesem iPhone senden darf.", "Legen Sie fest, welche Hinweise nextDesk auf diesem iPhone senden darf.")}
               </Text>
               <Pressable
                 accessibilityHint="Öffnet die Push-Benachrichtigungseinstellungen."

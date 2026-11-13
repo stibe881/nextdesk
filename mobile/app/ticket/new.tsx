@@ -412,7 +412,7 @@ export default function NewTicketScreen() {
     const cleanDescription = description.trim();
     if (cleanSubject.length < 3) {
       hapticError();
-      setError("Bitte gib einen Betreff mit mindestens 3 Zeichen ein.");
+      setError(tn("Bitte gib einen Betreff mit mindestens 3 Zeichen ein.", "Bitte geben Sie einen Betreff mit mindestens 3 Zeichen ein."));
       return;
     }
     if (!departmentId || !priorityKey) {

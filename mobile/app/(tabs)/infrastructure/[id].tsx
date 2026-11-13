@@ -160,11 +160,11 @@ export default function InfrastructureDetailScreen() {
   async function submitMaintenance() {
     if (!device || saving) return;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(maintenanceDate)) {
-      Alert.alert("Datum prüfen", "Bitte gib das Datum als JJJJ-MM-TT ein.");
+      Alert.alert("Datum prüfen", tn("Bitte gib das Datum als JJJJ-MM-TT ein.", "Bitte geben Sie das Datum als JJJJ-MM-TT ein."));
       return;
     }
     if (!maintenanceNote.trim()) {
-      Alert.alert("Notiz fehlt", "Beschreibe kurz, was gemacht wurde.");
+      Alert.alert("Notiz fehlt", tn("Beschreibe kurz, was gemacht wurde.", "Beschreiben Sie kurz, was gemacht wurde."));
       return;
     }
     setSaving(true);

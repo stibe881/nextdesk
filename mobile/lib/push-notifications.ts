@@ -364,7 +364,7 @@ async function requestPushPermissionFromPerson(): Promise<void> {
       });
   if (!permission.granted) {
     throw new Error(
-      "Mitteilungen sind in iOS deaktiviert. Öffne die iPhone-Einstellungen, um Push-Benachrichtigungen zu erlauben.",
+      tn("Mitteilungen sind in iOS deaktiviert. Öffne die iPhone-Einstellungen, um Push-Benachrichtigungen zu erlauben.", "Mitteilungen sind in iOS deaktiviert. Öffnen Sie die iPhone-Einstellungen, um Push-Benachrichtigungen zu erlauben."),
     );
   }
 }

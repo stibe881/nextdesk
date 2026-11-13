@@ -732,7 +732,7 @@ export default function IncidentDetailScreen() {
               </Text>
             ) : detail.state === "resolved" ? (
               <Text style={styles.muted}>
-                PRTG meldet wieder OK. Trage die Ursache bei Bedarf nach.
+                {tn("PRTG meldet wieder OK. Trage die Ursache bei Bedarf nach.", "PRTG meldet wieder OK. Tragen Sie die Ursache bei Bedarf nach.")}
               </Text>
             ) : null}
             <View style={styles.badgeRow}>

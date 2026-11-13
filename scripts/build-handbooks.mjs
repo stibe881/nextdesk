@@ -3,12 +3,18 @@
  * Bundles the handbooks in docs/handbooks/*.md (plus referenced screenshots
  * in docs/handbooks/images/) into docs/handbooks/handbooks.bundle.json.
  *
+ * Every handbook exists in two wordings: informal «du» (docs/handbooks/*.md,
+ * the default) and formal «Sie» (docs/handbooks/sie/*.md). Both must have the
+ * same headings and screenshots; the bundle carries the «Sie» wording in the
+ * `sie` property of each handbook (migration 0328).
+ *
  *   node scripts/build-handbooks.mjs          regenerate the bundle
  *   node scripts/build-handbooks.mjs --check  fail if the bundle is stale
  *
  * The database loads this bundle from a pinned commit
- * (public.request_handbook_sync / apply_handbook_sync, migration 0246), and
- * the handbooks Function serves it only to the roles that may read it. The
+ * (public.request_handbook_sync / apply_handbook_sync, migrations 0246 and
+ * 0328), and the handbooks Function serves it only to the roles that may read
+ * it, in the form of address of the tenant. The
  * Markdown files are the single source of truth; never edit the bundle.
  */
 import {
@@ -23,6 +29,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceDir = join(root, "docs", "handbooks");
+const sieDir = join(sourceDir, "sie");
 const imageDir = join(sourceDir, "images");
 const target = join(sourceDir, "handbooks.bundle.json");
 
@@ -57,29 +64,71 @@ function parseFrontMatter(source, file) {
   return { meta, body: source.slice(match[0].length).trim() + "\n" };
 }
 
+/** Headings outside code fences, in order. */
+function headingsOf(body) {
+  const headings = [];
+  let fenced = false;
+  for (const line of body.split("\n")) {
+    if (/^\s*```/.test(line)) fenced = !fenced;
+    else if (!fenced && /^#{1,6}\s/.test(line)) headings.push(line.trim());
+  }
+  return headings;
+}
+
+function imagesOf(label, body) {
+  const names = [];
+  for (const [, name] of body.matchAll(/\]\(images\/([^)]+)\)/g)) {
+    if (!/^[A-Za-z0-9._-]+$/.test(name))
+      fail(`${label}: ungültiger Bildname ${name}`);
+    if (!existsSync(join(imageDir, name)))
+      fail(`${label}: Bild images/${name} fehlt.`);
+    names.push(name);
+  }
+  return names;
+}
+
+function readHandbook(dir, id, label) {
+  const file = join(dir, `${id}.md`);
+  if (!existsSync(file)) fail(`${label} fehlt.`);
+  return parseFrontMatter(readFileSync(file, "utf8"), label);
+}
+
 const handbooks = [];
 const usedImages = new Set();
 for (const id of ORDER) {
-  const file = join(sourceDir, `${id}.md`);
-  if (!existsSync(file)) fail(`docs/handbooks/${id}.md fehlt.`);
-  const { meta, body } = parseFrontMatter(
-    readFileSync(file, "utf8"),
-    `${id}.md`,
-  );
-  for (const [, name] of body.matchAll(/\]\(images\/([^)]+)\)/g)) {
-    if (!/^[A-Za-z0-9._-]+$/.test(name))
-      fail(`${id}.md: ungültiger Bildname ${name}`);
-    if (!existsSync(join(imageDir, name)))
-      fail(`${id}.md: Bild images/${name} fehlt.`);
-    usedImages.add(name);
+  const du = readHandbook(sourceDir, id, `docs/handbooks/${id}.md`);
+  const sie = readHandbook(sieDir, id, `docs/handbooks/sie/${id}.md`);
+  const duImages = imagesOf(`${id}.md`, du.body);
+  const sieImages = imagesOf(`sie/${id}.md`, sie.body);
+  if (JSON.stringify(duImages) !== JSON.stringify(sieImages)) {
+    fail(`${id}: du- und Sie-Fassung haben nicht dieselben Bilder.`);
   }
+  const duHeadings = headingsOf(du.body);
+  const sieHeadings = headingsOf(sie.body);
+  if (JSON.stringify(duHeadings) !== JSON.stringify(sieHeadings)) {
+    const index = duHeadings.findIndex(
+      (heading, position) => heading !== sieHeadings[position],
+    );
+    fail(
+      `${id}: du- und Sie-Fassung haben nicht dieselben Überschriften (erste Abweichung: «${duHeadings[index] ?? "–"}» gegen «${sieHeadings[index] ?? "–"}»).`,
+    );
+  }
+  for (const name of duImages) usedImages.add(name);
   handbooks.push({
     id,
-    title: meta.title,
-    description: meta.description,
-    audienceLabel: meta.audienceLabel,
-    updatedAt: meta.updated,
-    markdown: body,
+    title: du.meta.title,
+    description: du.meta.description,
+    audienceLabel: du.meta.audienceLabel,
+    // One date per handbook: the later of both wordings.
+    updatedAt:
+      du.meta.updated >= sie.meta.updated ? du.meta.updated : sie.meta.updated,
+    markdown: du.body,
+    sie: {
+      title: sie.meta.title,
+      description: sie.meta.description,
+      audienceLabel: sie.meta.audienceLabel,
+      markdown: sie.body,
+    },
   });
 }
 

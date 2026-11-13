@@ -243,7 +243,7 @@ export default function AuthScreen() {
   async function sendMagicLink() {
     const address = email.trim().toLowerCase();
     if (!address.includes("@")) {
-      setMessage("Bitte gib eine gültige E-Mail-Adresse ein.");
+      setMessage(tn("Bitte gib eine gültige E-Mail-Adresse ein.", "Bitte geben Sie eine gültige E-Mail-Adresse ein."));
       return;
     }
     setPending("magic");
@@ -280,7 +280,7 @@ export default function AuthScreen() {
   async function signInWithPassword() {
     const address = email.trim().toLowerCase();
     if (!address.includes("@") || !password) {
-      setMessage("Bitte gib E-Mail-Adresse und Passwort ein.");
+      setMessage(tn("Bitte gib E-Mail-Adresse und Passwort ein.", "Bitte geben Sie E-Mail-Adresse und Passwort ein."));
       return;
     }
     setPending("password");

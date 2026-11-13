@@ -769,7 +769,7 @@ const TOOLS: Tool[] = [
   {
     name: "arbeitsbereiche_anzeigen",
     description:
-      "Listet die Arbeitsbereiche (Mandanten), auf die du Zugriff hast.",
+      "Listet die Arbeitsbereiche (Mandanten), auf die du Zugriff hast.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Arbeitsbereiche" },
     inputSchema: {
       type: "object",
@@ -1144,7 +1144,7 @@ const TOOLS: Tool[] = [
   {
     name: "ticket_erfassen",
     description:
-      "Erfasst ein neues Ticket, für dich selbst oder für eine anfragende Person (anfragende_person aus anfragende_suchen). Frage vorher nach, ob das Ticket wirklich erfasst werden soll. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
+      "Erfasst ein neues Ticket, für dich selbst oder für eine anfragende Person (anfragende_person aus anfragende_suchen). Frage vorher nach, ob das Ticket wirklich erfasst werden soll. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1165,7 +1165,7 @@ const TOOLS: Tool[] = [
         anfragende_person: {
           type: "string",
           description:
-            "ID der anfragenden Person aus anfragende_suchen. Ohne Angabe wird das Ticket für dich selbst erfasst.",
+            "ID der anfragenden Person aus anfragende_suchen. Ohne Angabe wird das Ticket für dich selbst erfasst.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
         },
         vorlage: {
           type: "string",
@@ -1217,7 +1217,7 @@ const TOOLS: Tool[] = [
           : null;
       if (!requesterId) {
         throw new ToolError(
-          "Für dein Konto ist keine anfragende Person hinterlegt. Gib anfragende_person an (anfragende_suchen).",
+          "Für dein Konto ist keine anfragende Person hinterlegt. Gib anfragende_person an (anfragende_suchen).", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
         );
       }
       let template: Json | null = null;
@@ -1278,7 +1278,7 @@ const TOOLS: Tool[] = [
             abteilung: department.name,
             anfragendePerson: isUuid(args.anfragende_person)
               ? args.anfragende_person
-              : (requester?.displayName ?? "du selbst"),
+              : (requester?.displayName ?? "du selbst"), // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
             betreff: subject,
             beschreibung: clip(description, 2000),
             prioritaet: priority,
@@ -1417,7 +1417,7 @@ const TOOLS: Tool[] = [
   {
     name: "ticket_mir_zuweisen",
     description:
-      "Weist ein Ticket dir selbst (der angemeldeten Person) zu. Das Zuweisen an andere Personen ist nicht möglich.",
+      "Weist ein Ticket dir selbst (der angemeldeten Person) zu. Das Zuweisen an andere Personen ist nicht möglich.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1778,7 +1778,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "benachrichtigungen_anzeigen",
-    description: "Listet deine nextDesk-Benachrichtigungen (neueste zuerst).",
+    description: "Listet deine nextDesk-Benachrichtigungen (neueste zuerst).", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Benachrichtigungen" },
     inputSchema: {
       type: "object",
@@ -1866,7 +1866,7 @@ const TOOLS: Tool[] = [
   {
     name: "offene_freigaben_anzeigen",
     description:
-      "Listet Ticketfreigaben, die auf deinen Entscheid warten (Genehmigungseingang).",
+      "Listet Ticketfreigaben, die auf deinen Entscheid warten (Genehmigungseingang).", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Offene Freigaben" },
     inputSchema: {
       type: "object",
@@ -2097,7 +2097,7 @@ const TOOLS: Tool[] = [
   {
     name: "wiedervorlagen_anzeigen",
     description:
-      "Listet deine Wiedervorlagen (Erinnerungen), standardmässig nur offene. Optional nur die eines Tickets.",
+      "Listet deine Wiedervorlagen (Erinnerungen), standardmässig nur offene. Optional nur die eines Tickets.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Wiedervorlagen" },
     inputSchema: {
       type: "object",
@@ -2165,7 +2165,7 @@ const TOOLS: Tool[] = [
   {
     name: "wiedervorlage_erstellen",
     description:
-      "Erstellt eine Wiedervorlage (Erinnerung) für dich, optional zu einem Ticket. faellig als Datum/Zeit mit Zeitzone, z. B. 2026-11-10T08:00:00+01:00.",
+      "Erstellt eine Wiedervorlage (Erinnerung) für dich, optional zu einem Ticket. faellig als Datum/Zeit mit Zeitzone, z. B. 2026-11-10T08:00:00+01:00.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2276,7 +2276,7 @@ const TOOLS: Tool[] = [
   {
     name: "erwaehnungen_anzeigen",
     description:
-      "Listet Erwähnungen von dir in Ticketnotizen (@-Erwähnungen), standardmässig nur ungelesene.",
+      "Listet Erwähnungen von dir in Ticketnotizen (@-Erwähnungen), standardmässig nur ungelesene.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Erwähnungen" },
     inputSchema: {
       type: "object",
@@ -2357,7 +2357,7 @@ const TOOLS: Tool[] = [
   {
     name: "meine_kennzahlen",
     description:
-      "Deine persönlichen Kennzahlen: offene zugewiesene Tickets, heute gelöst, mittlere Erstreaktions- und Lösungszeit, fällige SLA.",
+      "Deine persönlichen Kennzahlen: offene zugewiesene Tickets, heute gelöst, mittlere Erstreaktions- und Lösungszeit, fällige SLA.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Meine Kennzahlen" },
     inputSchema: {
       type: "object",
@@ -2388,7 +2388,7 @@ const TOOLS: Tool[] = [
   {
     name: "warteschlangen_anzeigen",
     description:
-      "Zeigt die offenen Tickets je Abteilung und Team (Warteschlangen), die du sehen kannst.",
+      "Zeigt die offenen Tickets je Abteilung und Team (Warteschlangen), die du sehen kannst.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Warteschlangen" },
     inputSchema: {
       type: "object",
@@ -3568,7 +3568,7 @@ const TOOLS: Tool[] = [
         fuehrungsperson: { type: "string", description: "Führungsperson." },
         ict_verantwortung: {
           type: "string",
-          description: "ICT-Verantwortung. Standard: du selbst.",
+          description: "ICT-Verantwortung. Standard: du selbst.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
         },
         vorlage: {
           type: "string",
@@ -3632,7 +3632,7 @@ const TOOLS: Tool[] = [
             standort: location,
             fuehrungsperson: manager.displayName,
             ictVerantwortung:
-              "displayName" in ict ? ict.displayName : "du selbst",
+              "displayName" in ict ? ict.displayName : "du selbst", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
             vorlage: template.name,
           },
         );
@@ -4090,7 +4090,7 @@ const TOOLS: Tool[] = [
   {
     name: "ticketvorlagen_anzeigen",
     description:
-      "Listet die Ticketvorlagen einer Abteilung (Standard: alle Abteilungen, in denen du Tickets erfassen kannst). Eine Vorlage lässt sich bei ticket_erfassen mit vorlage verwenden.",
+      "Listet die Ticketvorlagen einer Abteilung (Standard: alle Abteilungen, in denen du Tickets erfassen kannst). Eine Vorlage lässt sich bei ticket_erfassen mit vorlage verwenden.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Ticketvorlagen" },
     inputSchema: {
       type: "object",
@@ -4926,7 +4926,7 @@ const TOOLS: Tool[] = [
   {
     name: "stellvertretungen_anzeigen",
     description:
-      "Zeigt deine Stellvertretungen (wer dich wann vertritt). Mit person die einer anderen Person, sofern du sie führst.",
+      "Zeigt deine Stellvertretungen (wer dich wann vertritt). Mit person die einer anderen Person, sofern du sie führst.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Stellvertretungen" },
     inputSchema: {
       type: "object",
@@ -4977,7 +4977,7 @@ const TOOLS: Tool[] = [
   {
     name: "stellvertretung_einrichten",
     description:
-      "Richtet eine Stellvertretung ein: vertretung vertritt dich (oder person, sofern du die Person führst) von beginn bis ende (ISO 8601). Frage vorher nach. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
+      "Richtet eine Stellvertretung ein: vertretung vertritt dich (oder person, sofern du die Person führst) von beginn bis ende (ISO 8601). Frage vorher nach. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -5042,7 +5042,7 @@ const TOOLS: Tool[] = [
         return draftResult(
           "Stellvertretung einrichten",
           {
-            vertretenePerson: agent ? agent.displayName : "du selbst",
+            vertretenePerson: agent ? agent.displayName : "du selbst", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
             vertretung: delegate.displayName,
             von: startsAt,
             bis: endsAt,
@@ -5583,7 +5583,7 @@ const TOOLS: Tool[] = [
   {
     name: "sla_eskalationen_anzeigen",
     description:
-      "Listet die neuesten SLA- und Ticket-Eskalationen der Abteilungen, die du sehen darfst.",
+      "Listet die neuesten SLA- und Ticket-Eskalationen der Abteilungen, die du sehen darfst.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "SLA-Eskalationen" },
     inputSchema: {
       type: "object",
@@ -6505,7 +6505,7 @@ const TOOLS: Tool[] = [
   {
     name: "im_shop_bestellen",
     description:
-      "Bestellt Artikel im Self-Service-Shop für dich (positionen: Name oder ID aus shop_katalog_anzeigen, mit Menge). begruendung ist Pflicht, ausser bei reinen Ausleihartikeln; bei Ausleihe ausleihe_von/ausleihe_bis (JJJJ-MM-TT) angeben. Je nach Artikel braucht es eine Freigabe. Ohne bestaetigt zeigt das Werkzeug zuerst die Bestellung als Entwurf; erst mit bestaetigt=true wird bestellt.",
+      "Bestellt Artikel im Self-Service-Shop für dich (positionen: Name oder ID aus shop_katalog_anzeigen, mit Menge). begruendung ist Pflicht, ausser bei reinen Ausleihartikeln; bei Ausleihe ausleihe_von/ausleihe_bis (JJJJ-MM-TT) angeben. Je nach Artikel braucht es eine Freigabe. Ohne bestaetigt zeigt das Werkzeug zuerst die Bestellung als Entwurf; erst mit bestaetigt=true wird bestellt.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -6649,7 +6649,7 @@ const TOOLS: Tool[] = [
   {
     name: "shop_bestellungen_anzeigen",
     description:
-      "Zeigt deine Shop-Bestellungen mit Status (bereich: mine, Standard). Mit bereich approvals die Bestellungen, die auf deine Freigabe warten.",
+      "Zeigt deine Shop-Bestellungen mit Status (bereich: mine, Standard). Mit bereich approvals die Bestellungen, die auf deine Freigabe warten.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Shop-Bestellungen" },
     inputSchema: {
       type: "object",
@@ -6974,18 +6974,18 @@ const PROMPTS: Prompt[] = [
     arguments: [
       {
         name: "frage",
-        description: "Deine Frage, z. B. «Wie bekomme ich Visio?»",
+        description: "Deine Frage, z. B. «Wie bekomme ich Visio?»", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
         required: true,
       },
     ],
     intro:
-      "Beantworte meine IT-Frage ausschliesslich mit dem Wissen aus nextDesk: zuerst wissen_suchen (und wissensartikel_lesen für den vollen Text), bei Software oder Material zusätzlich shop_katalog_anzeigen. Erfinde keine allgemeinen Anleitungen aus dem Web. Findest du nichts, sag das und biete an, mit der Vorlage ticket_erfassen ein Ticket zu erfassen.",
+      "Beantworte meine IT-Frage ausschliesslich mit dem Wissen aus nextDesk: zuerst wissen_suchen (und wissensartikel_lesen für den vollen Text), bei Software oder Material zusätzlich shop_katalog_anzeigen. Erfinde keine allgemeinen Anleitungen aus dem Web. Findest du nichts, sag das und biete an, mit der Vorlage ticket_erfassen ein Ticket zu erfassen.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     tool: "wissen_suchen",
   },
   {
     name: "ticket_erfassen",
     title: "Ticket erfassen",
-    description: "Neues Ticket für dich oder eine andere Person erfassen.",
+    description: "Neues Ticket für dich oder eine andere Person erfassen.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     arguments: [
       { name: "betreff", description: "Kurzer Betreff", required: true },
       {
@@ -6999,7 +6999,7 @@ const PROMPTS: Prompt[] = [
       { name: "abteilung", description: "Zuständige Abteilung (Name)" },
       {
         name: "fuer_person",
-        description: "Name der anfragenden Person, falls nicht du",
+        description: "Name der anfragenden Person, falls nicht du", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
       },
       { name: "vorlage", description: "Ticketvorlage (Name)" },
     ],
@@ -7040,7 +7040,7 @@ const PROMPTS: Prompt[] = [
         description: "Name der Software, z. B. Visio",
         required: true,
       },
-      { name: "grund", description: "Wofür brauchst du sie?" },
+      { name: "grund", description: "Wofür brauchst du sie?" }, // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     ],
     intro:
       "Suche zuerst mit wissen_suchen, wie man diese Software bekommt (z. B. über das Unternehmensportal), und erkläre mir den Weg. Ist sie im Shop (shop_katalog_anzeigen) bestellbar, biete die Bestellung mit im_shop_bestellen an. Gibt es beides nicht, erfasse ein Ticket mit dem Grund.",
@@ -7115,7 +7115,7 @@ const PROMPTS: Prompt[] = [
         description: "Name der Führungsperson",
         required: true,
       },
-      { name: "ict_verantwortung", description: "Name (Standard: du)" },
+      { name: "ict_verantwortung", description: "Name (Standard: du)" }, // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
       { name: "vorlage", description: "Onboarding-Vorlage (Name)" },
     ],
     tool: "eintritt_erfassen",

@@ -229,7 +229,7 @@ export function pushRoute(data: PushNavigationData): PushRoute | null {
       kind: "message",
       title: "Vertragsfrist",
       message:
-        "Verträge gibt es nur in der Web-App. Öffne dort «Verträge», um die Frist zu sehen.",
+        tn("Verträge gibt es nur in der Web-App. Öffne dort «Verträge», um die Frist zu sehen.", "Verträge gibt es nur in der Web-App. Öffnen Sie dort «Verträge», um die Frist zu sehen."),
     };
   }
   // Sammelmitteilung: kann Tickets, Shop, Störungen … enthalten. Die

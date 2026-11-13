@@ -259,8 +259,7 @@ export function validateAnswers(
       continue;
     }
     if (field.fieldType === "date" && !isValidIsoDate(trimmed)) {
-      errors[field.key] =
-        `Bitte bei «${label}» ein gültiges Datum eingeben.`;
+      errors[field.key] = `Bitte bei «${label}» ein gültiges Datum eingeben.`;
     }
   }
   return errors;

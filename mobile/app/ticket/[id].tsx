@@ -1418,7 +1418,7 @@ export default function TicketDetailScreen() {
     if (!ticket || !tenant) return;
     const body = comment.trim();
     if (!body) {
-      setError("Bitte schreib zuerst eine Nachricht.");
+      setError(tn("Bitte schreib zuerst eine Nachricht.", "Bitte schreiben Sie zuerst eine Nachricht."));
       return;
     }
     if (

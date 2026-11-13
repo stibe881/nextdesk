@@ -65,7 +65,7 @@ export default function NewFollowUpScreen() {
 
   async function save() {
     if (!tenantId || !title.trim()) {
-      setError("Bitte gib einen Titel ein.");
+      setError(tn("Bitte gib einen Titel ein.", "Bitte geben Sie einen Titel ein."));
       return;
     }
     setSaving(true);

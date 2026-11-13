@@ -1,4 +1,4 @@
-import { tn } from "./lib/formality";
+import { getFormality, tn } from "./lib/formality";
 import { Bot, BookOpen, Check, LoaderCircle, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -122,7 +122,7 @@ export function PortalAssistantPanel({
           tenantId,
           sessionId,
           departmentId,
-          address: "formal",
+          address: getFormality() === "sie" ? "formal" : "informal",
           messages: history,
         }),
       );
