@@ -3,6 +3,8 @@
  * helpers for labels, status, utilisation and the agent configuration form.
  */
 
+import { tn } from "./formality";
+
 export type Tone = "success" | "warning" | "danger" | "info" | "neutral";
 
 export type SnmpTargetConfig = {
@@ -717,8 +719,10 @@ export function formToConfig(form: ConfigForm): FormResult {
   if (!form.scanAllActive && !form.prefixIds.length) {
     return {
       ok: false,
-      message:
+      message: tn(
+        "Wähle mindestens ein Subnetz oder «alle aktiven Subnetze».",
         "Wählen Sie mindestens ein Subnetz oder «alle aktiven Subnetze».",
+      ),
     };
   }
   const snmpTargets: Record<string, unknown>[] = [];

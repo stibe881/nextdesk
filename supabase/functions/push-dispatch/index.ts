@@ -632,7 +632,7 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     ...(row.contract_id ? { contractId: row.contract_id } : {}),
     ...(row.ticket_number ? { ticketNumber: row.ticket_number } : {}),
     subject: row.subject,
-  });
+  }, await loadFormality(admin, row.tenant_id));
   const results = await Promise.all(
     currentDevices.map(async (device) => {
       const result = await sendApns(
@@ -677,7 +677,7 @@ async function deliverSummary(admin: any, rows: ClaimRow[]): Promise<void> {
     tenantId: anchor.tenant_id,
     notificationId: anchor.notification_id ?? anchor.outbox_id,
     summaryCount: authorizedRows.length,
-  });
+  }, await loadFormality(admin, anchor.tenant_id));
   const results = await Promise.all(
     [...uniqueDevices.values()].map(async (device) => {
       const result = await sendApns(

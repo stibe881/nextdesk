@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useState } from "react";
 import { buildTopology, type TopologyDevice } from "./lib/network-topology";
 import {
@@ -102,8 +103,10 @@ export function NetworkMap<T extends MapDevice>({
   if (!devices.some((device) => device.uplinkAssetId)) {
     return (
       <p className="empty-state">
-        Noch keine Verbindungen erfasst. Hinterlegen Sie bei den Geräten das
-        «Uplink-Gerät», damit die Netzwerkkarte die Topologie zeichnen kann.
+        {tn(
+          "Noch keine Verbindungen erfasst. Hinterlege bei den Geräten das «Uplink-Gerät», damit die Netzwerkkarte die Topologie zeichnen kann.",
+          "Noch keine Verbindungen erfasst. Hinterlegen Sie bei den Geräten das «Uplink-Gerät», damit die Netzwerkkarte die Topologie zeichnen kann.",
+        )}
       </p>
     );
   }
@@ -222,7 +225,7 @@ export function NetworkMap<T extends MapDevice>({
                 ? `Subnetz: ${subnetLabel(subnet)}${subnet ? ` (${subnet.prefix})` : ""}`
                 : null,
               ...alerts.map((alert) =>
-                `⚠ ${alert.sensor ?? "Sensor"}: ${alert.status ?? ""} ${alert.message ?? ""}`.trim(),
+                `Achtung: ${alert.sensor ?? "Sensor"}: ${alert.status ?? ""} ${alert.message ?? ""}`.trim(),
               ),
             ]
               .filter(Boolean)

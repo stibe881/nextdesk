@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -360,7 +361,10 @@ function isForbiddenError(error: unknown): boolean {
 
 function errorMessage(error: unknown, fallback: string): string {
   if (isForbiddenError(error)) {
-    return "Sie haben keine Berechtigung, Kundenorganisationen für diesen Mandanten zu verwalten.";
+    return tn(
+      "Du hast keine Berechtigung, Kundenorganisationen für diesen Mandanten zu verwalten.",
+      "Sie haben keine Berechtigung, Kundenorganisationen für diesen Mandanten zu verwalten.",
+    );
   }
   return error instanceof Error && error.message.trim()
     ? error.message
@@ -615,14 +619,24 @@ export function CustomerOrganizations({
   async function setMemberAccess(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedOrganization) {
-      setError("Wählen Sie zuerst eine Kundenorganisation aus.");
+      setError(
+        tn(
+          "Wähle zuerst eine Kundenorganisation aus.",
+          "Wählen Sie zuerst eine Kundenorganisation aus.",
+        ),
+      );
       return;
     }
     const person = activeTenantUsers.find(
       (member) => member.id === memberAssignmentForm.userId,
     );
     if (!person) {
-      setError("Wählen Sie eine aktive Mandantenbenutzer*in aus.");
+      setError(
+        tn(
+          "Wähle eine aktive Mandantenbenutzer*in aus.",
+          "Wählen Sie eine aktive Mandantenbenutzer*in aus.",
+        ),
+      );
       return;
     }
 
@@ -698,8 +712,10 @@ export function CustomerOrganizations({
           <p className="customer-organizations__eyebrow">Mandantenverwaltung</p>
           <h1 id="customer-organizations-title">Kundenorganisationen</h1>
           <p>
-            Verwalten Sie Ticketzugriff und Personen für die echten
-            Kundenorganisationen dieses Mandanten.
+            {tn(
+              "Verwalte Ticketzugriff und Personen für die echten Kundenorganisationen dieses Mandanten.",
+              "Verwalten Sie Ticketzugriff und Personen für die echten Kundenorganisationen dieses Mandanten.",
+            )}
           </p>
         </div>
       </header>
@@ -938,8 +954,10 @@ export function CustomerOrganizations({
             </h2>
             {!selectedOrganization ? (
               <p className="customer-organizations__empty-state">
-                Wählen Sie in der Organisationsliste eine Kundenorganisation
-                aus, um ihre Mitglieder zu verwalten.
+                {tn(
+                  "Wähle in der Organisationsliste eine Kundenorganisation aus, um ihre Mitglieder zu verwalten.",
+                  "Wählen Sie in der Organisationsliste eine Kundenorganisation aus, um ihre Mitglieder zu verwalten.",
+                )}
               </p>
             ) : (
               <>

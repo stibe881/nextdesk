@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useMemo, useState, type ChangeEvent } from "react";
 import { FileUp, X } from "lucide-react";
 import {
@@ -72,7 +73,12 @@ export function CsvImportDialog({
       return;
     }
     if (parsed.rows.length > 1000) {
-      setError("Bitte importieren Sie höchstens 1000 Zeilen auf einmal.");
+      setError(
+        tn(
+          "Bitte importiere höchstens 1000 Zeilen auf einmal.",
+          "Bitte importieren Sie höchstens 1000 Zeilen auf einmal.",
+        ),
+      );
       return;
     }
     setFileName(file.name);

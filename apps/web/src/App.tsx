@@ -242,6 +242,7 @@ import {
 } from "./lib/workplace-first-navigation";
 import { nextExpandedAccordionId } from "./lib/navigation-accordion";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
+import { setFormality } from "./lib/formality";
 import { loadServiceTaskAccess, ServiceTasks } from "./service-tasks";
 
 type Section =
@@ -3933,7 +3934,7 @@ function AuthenticatedApp() {
     void Promise.all([
       supabase
         .from("tenant_settings")
-        .select("portal_name")
+        .select("portal_name, formality")
         .eq("tenant_id", activeTenant.id)
         .maybeSingle(),
       supabase
@@ -3946,6 +3947,7 @@ function AuthenticatedApp() {
         if (settingsResult.error) throw settingsResult.error;
         if (brandingResult.error) throw brandingResult.error;
         if (!mounted) return;
+        setFormality(settingsResult.data?.formality === "sie" ? "sie" : "du");
         const portalName = settingsResult.data?.portal_name?.trim();
         setTenantWorkspaceBranding({
           accentColor: usableBrandColor(brandingResult.data?.accent_color),

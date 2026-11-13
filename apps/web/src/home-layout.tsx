@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { ArrowDown, ArrowUp, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
@@ -98,8 +99,10 @@ export function HomeLayoutEditor({
           aria-label="Startseite anpassen"
         >
           <p>
-            Blenden Sie Bereiche aus und ordnen Sie die Karten rechts nach Ihrem
-            Bedarf.
+            {tn(
+              "Blende Bereiche aus und ordne die Karten rechts nach deinem Bedarf.",
+              "Blenden Sie Bereiche aus und ordnen Sie die Karten rechts nach Ihrem Bedarf.",
+            )}
           </p>
           <ul>
             {[...fixed, ...sorted].map((block) => {

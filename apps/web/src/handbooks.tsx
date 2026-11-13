@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   ArrowLeft,
   BookOpen,
@@ -97,8 +98,10 @@ export function HandbookCard({
         <div>
           <h3 id="personal-handbooks-heading">Handbücher</h3>
           <p>
-            Schritt-für-Schritt-Anleitungen mit Bildschirmfotos – passend zu
-            deiner Rolle.
+            {tn(
+              "Schritt-für-Schritt-Anleitungen mit Bildschirmfotos – passend zu deiner Rolle.",
+              "Schritt-für-Schritt-Anleitungen mit Bildschirmfotos – passend zu Ihrer Rolle.",
+            )}
           </p>
         </div>
       </div>
@@ -115,7 +118,10 @@ export function HandbookCard({
       ) : null}
       {state === "loaded" && handbooks.length === 0 ? (
         <p className="personal-settings__hint">
-          Für dein Konto sind keine Handbücher verfügbar.
+          {tn(
+            "Für dein Konto sind keine Handbücher verfügbar.",
+            "Für Ihr Konto sind keine Handbücher verfügbar.",
+          )}
         </p>
       ) : null}
       {handbooks.length ? (
@@ -238,8 +244,10 @@ export function HandbookViewer({
       ) : null}
       {state === "error" ? (
         <p className="personal-settings__notice personal-settings__notice--error">
-          Dieses Handbuch ist für dein Konto nicht verfügbar oder konnte nicht
-          geladen werden.
+          {tn(
+            "Dieses Handbuch ist für dein Konto nicht verfügbar oder konnte nicht geladen werden.",
+            "Dieses Handbuch ist für Ihr Konto nicht verfügbar oder konnte nicht geladen werden.",
+          )}
         </p>
       ) : null}
 

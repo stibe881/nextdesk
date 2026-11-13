@@ -37,6 +37,7 @@ import {
   FormSwitch,
 } from "./form-kit";
 import { supabase } from "./lib/supabase";
+import { setFormality, tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
 import {
   groupRolePermissions,
@@ -138,6 +139,7 @@ type SettingsArea =
 
 type TenantSettings = {
   portal_name: string | null;
+  formality: "du" | "sie" | null;
   support_email: string | null;
   ticket_access_enabled: boolean | null;
   allow_external_ticket_access: boolean | null;
@@ -328,6 +330,7 @@ type FunctionEnvelope<T> = {
 
 type BrandingUpdate = {
   portalName: string | null;
+  formality?: "du" | "sie";
   logoUrl?: string | null;
   primaryColor?: string;
   secondaryColor?: string;
@@ -424,6 +427,7 @@ type TenantRoleManagementRequest =
 
 type BrandingForm = {
   portalName: string;
+  formality: "du" | "sie";
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
@@ -463,6 +467,7 @@ type EntraAgentForm = {
 
 const emptyBrandingForm: BrandingForm = {
   portalName: "",
+  formality: "du",
   primaryColor: "",
   secondaryColor: "",
   accentColor: "",
@@ -1329,6 +1334,8 @@ export function TenantAdminSettings({
       const branding = nextSettings.tenant_branding;
       setBrandingForm({
         portalName: nextSettings.tenant_settings?.portal_name ?? "",
+        formality:
+          nextSettings.tenant_settings?.formality === "sie" ? "sie" : "du",
         primaryColor: branding?.primary_color ?? "",
         secondaryColor: branding?.secondary_color ?? "",
         accentColor: branding?.accent_color ?? "",
@@ -1770,7 +1777,10 @@ export function TenantAdminSettings({
       return;
     }
 
-    const nextBranding: BrandingUpdate = { portalName: portalName || null };
+    const nextBranding: BrandingUpdate = {
+      portalName: portalName || null,
+      formality: brandingForm.formality,
+    };
 
     const colors: ReadonlyArray<
       readonly [
@@ -1825,6 +1835,7 @@ export function TenantAdminSettings({
         tenantId,
         branding: nextBranding,
       });
+      setFormality(brandingForm.formality);
       await loadData();
       onBrandingUpdated?.();
       setSuccess("Corporate Design wurde gespeichert.");
@@ -3245,6 +3256,44 @@ export function TenantAdminSettings({
                       nur das Logo sichtbar.
                     </span>
                   </label>
+                  <fieldset
+                    className="tenant-admin-settings__formality"
+                    disabled={saving !== null}
+                  >
+                    <legend>Anrede</legend>
+                    <p className="tenant-admin-settings__hint">
+                      {tn(
+                        "Lege fest, ob nextDesk alle Personen deines Mandanten duzt oder siezt. Die Einstellung gilt für die Oberfläche, die App, E-Mails, Mitteilungen und die Handbücher.",
+                        "Legen Sie fest, ob nextDesk alle Personen Ihres Mandanten duzt oder siezt. Die Einstellung gilt für die Oberfläche, die App, E-Mails, Mitteilungen und die Handbücher.",
+                      )}
+                    </p>
+                    {(
+                      [
+                        // formality-ok: names the choice itself
+                        ["du", "Du (Standard)"],
+                        ["sie", "Sie"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <label
+                        className="tenant-admin-settings__formality-option"
+                        key={value}
+                      >
+                        <input
+                          checked={brandingForm.formality === value}
+                          name="tenant-formality"
+                          onChange={() =>
+                            setBrandingForm((current) => ({
+                              ...current,
+                              formality: value,
+                            }))
+                          }
+                          type="radio"
+                          value={value}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </fieldset>
                   <div className="tenant-logo-upload">
                     <div>
                       <span className="tenant-logo-upload__label">

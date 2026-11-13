@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { ChevronDown, Network, Settings } from "lucide-react";
 import {
   useCallback,
@@ -473,8 +474,10 @@ export function Ipam({
               importPanel(panelProps)
             ) : (
               <Placeholder>
-                Hier übernehmen Sie Subnetze und Adressen aus Excel/CSV, phpIPAM
-                oder NetBox.
+                {tn(
+                  "Hier übernimmst du Subnetze und Adressen aus Excel/CSV, phpIPAM oder NetBox.",
+                  "Hier übernehmen Sie Subnetze und Adressen aus Excel/CSV, phpIPAM oder NetBox.",
+                )}
               </Placeholder>
             )
           ) : view === "discovery" ? (
@@ -530,7 +533,10 @@ export function Ipam({
           onReserve={(detail) => {
             if (!detail.prefix) {
               setError(
-                "Die Adresse liegt in keinem erfassten Subnetz. Bitte erfassen Sie sie direkt.",
+                tn(
+                  "Die Adresse liegt in keinem erfassten Subnetz. Bitte erfasse sie direkt.",
+                  "Die Adresse liegt in keinem erfassten Subnetz. Bitte erfassen Sie sie direkt.",
+                ),
               );
               return;
             }

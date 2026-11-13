@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 /** SLA breach causes and customer praise: labels and pure helpers. */
 
 export const SLA_BREACH_REASON_OPTIONS = [
@@ -59,10 +60,13 @@ export function validateReasonDraft(
   code: SlaBreachReasonCode | "",
   note: string,
 ): string | null {
-  if (!code) return "Bitte wählen Sie eine Ursache.";
+  if (!code) return tn("Bitte wähle eine Ursache.", "Bitte wählen Sie eine Ursache.");
   const trimmed = note.trim();
   if (code === "other" && !trimmed)
-    return "Bitte beschreiben Sie die Ursache kurz.";
+    return tn(
+      "Bitte beschreibe die Ursache kurz.",
+      "Bitte beschreiben Sie die Ursache kurz.",
+    );
   if ([...trimmed].length > SLA_BREACH_NOTE_MAX)
     return `Die Notiz darf höchstens ${SLA_BREACH_NOTE_MAX} Zeichen lang sein.`;
   return null;
@@ -80,10 +84,10 @@ export type KudosEntry = {
   createdAt: string;
 };
 
-/** «★★★★★» for a 1–5 score (empty stars fill up to five). */
+/** «4 von 5 Sternen» for a 1–5 score (clamped, rounded). */
 export function scoreStars(score: number): string {
   const value = Math.max(0, Math.min(5, Math.round(score)));
-  return "★".repeat(value) + "☆".repeat(5 - value);
+  return `${value} von 5 Sternen`;
 }
 
 /** Only the display name is shown – never an e-mail address. */

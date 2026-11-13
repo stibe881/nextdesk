@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { FormalityBoundary } from "./formality-boundary";
 import { captureOAuthAuthorizationId } from "./oauth-consent";
 import { isReminderActionHash } from "./lib/requester-reminder-action";
 import { RequesterReminderActionPage } from "./requester-reminder-action";
@@ -39,14 +40,16 @@ const ratingLink = isRatingLinkHash(window.location.hash);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {reminderAction ? (
-      <RequesterReminderActionPage />
-    ) : ratingLink ? (
-      <TicketRatingLinkPage />
-    ) : securityResponse ? (
-      <SecurityCaseResponsePage />
-    ) : (
-      <App />
-    )}
+    <FormalityBoundary>
+      {reminderAction ? (
+        <RequesterReminderActionPage />
+      ) : ratingLink ? (
+        <TicketRatingLinkPage />
+      ) : securityResponse ? (
+        <SecurityCaseResponsePage />
+      ) : (
+        <App />
+      )}
+    </FormalityBoundary>
   </StrictMode>,
 );
