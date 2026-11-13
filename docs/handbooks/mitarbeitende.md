@@ -259,6 +259,12 @@ die bestellende Person eine Benachrichtigung (E-Mail und Push, Kategorie
 1, 3, 6 Monate oder 1 Jahr. Ohne Verlängerung wird das Team nach dem Ende
 archiviert; es bleibt lesbar und kann in Teams wiederhergestellt werden.
 
+Unter **Meine Teams** bearbeiten Sie ein fertiges Team mit **Bearbeiten**
+(als Besteller oder Owner): Personen hinzufügen oder entfernen, zum Owner
+machen oder die Owner-Rolle entziehen (ein Owner bleibt immer), die Laufzeit
+verlängern und das Team **archivieren**. Name, Kanäle und Tabs ändern Sie
+direkt in Microsoft Teams.
+
 Gäste erhalten eine Einladung von Microsoft und erscheinen erst nach Annahme
 im Team. Weitere Tabs wie Planner oder OneNote ergänzt das Team danach in
 Teams selbst.

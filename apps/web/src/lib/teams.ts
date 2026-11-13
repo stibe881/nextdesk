@@ -40,6 +40,15 @@ export type TeamRequestSummary = {
   createdAt: string;
 };
 
+export type TeamMember = {
+  membershipId: string;
+  userId: string | null;
+  displayName: string;
+  email: string | null;
+  isOwner: boolean;
+  isGuest: boolean;
+};
+
 export type TeamChannelDraft = {
   name: string;
   isPrivate: boolean;
@@ -98,6 +107,19 @@ const errors = (): Record<string, string> => ({
     "Nur Besteller und Owner können die Laufzeit verlängern.",
   teams_extend_not_possible: "Dieses Team lässt sich nicht mehr verlängern.",
   teams_request_not_found: "Das Team wurde nicht gefunden.",
+  teams_edit_denied: "Nur Besteller und Owner können das Team bearbeiten.",
+  teams_edit_not_possible:
+    "Das Team lässt sich im Moment nicht bearbeiten (es wird noch erstellt oder ist archiviert).",
+  last_owner: "Ein Team braucht mindestens einen Owner.",
+  teams_member_not_found: "Die Person ist nicht (mehr) im Team.",
+  graph_consent_missing:
+    "Microsoft verweigert den Zugriff. Bitte den Support informieren.",
+  graph_unavailable: "Microsoft Teams ist gerade nicht erreichbar.",
+  graph_rate_limited:
+    "Microsoft bremst gerade. Bitte in einer Minute erneut versuchen.",
+  graph_invalid: "Microsoft hat die Anfrage abgelehnt.",
+  graph_not_ready:
+    "Das Team ist bei Microsoft noch nicht bereit. Bitte kurz warten.",
 });
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
@@ -164,6 +186,47 @@ export const teamsApi = {
         endDate: draft.endDate,
       },
     }),
+  members: (tenantId: string, requestId: string) =>
+    call<{ members: TeamMember[] }>({
+      type: "members",
+      tenantId,
+      requestId,
+    }).then((result) => (Array.isArray(result?.members) ? result.members : [])),
+  addMember: (
+    tenantId: string,
+    requestId: string,
+    userId: string,
+    owner: boolean,
+  ) =>
+    call<{ ok: true }>({
+      type: "addMember",
+      tenantId,
+      requestId,
+      userId,
+      owner,
+    }),
+  removeMember: (tenantId: string, requestId: string, membershipId: string) =>
+    call<{ ok: true }>({
+      type: "removeMember",
+      tenantId,
+      requestId,
+      membershipId,
+    }),
+  setOwner: (
+    tenantId: string,
+    requestId: string,
+    membershipId: string,
+    owner: boolean,
+  ) =>
+    call<{ ok: true }>({
+      type: "setOwner",
+      tenantId,
+      requestId,
+      membershipId,
+      owner,
+    }),
+  archive: (tenantId: string, requestId: string) =>
+    call<{ ok: true }>({ type: "archive", tenantId, requestId }),
   extend: (tenantId: string, requestId: string, months: number) =>
     call<{ endDate: string }>({ type: "extend", tenantId, requestId, months }),
 };

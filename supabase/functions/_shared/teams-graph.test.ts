@@ -19,9 +19,10 @@ const MEMBER = "22222222-2222-4222-8222-222222222222";
 
 type Call = { method: string; url: string; body: unknown };
 
-function fakeFetch(
-  responses: (call: Call) => Response,
-): { fetcher: typeof fetch; calls: Call[] } {
+function fakeFetch(responses: (call: Call) => Response): {
+  fetcher: typeof fetch;
+  calls: Call[];
+} {
   const calls: Call[] = [];
   const fetcher = ((url: string, init: RequestInit) => {
     const entry = {
@@ -37,44 +38,51 @@ function fakeFetch(
 
 Deno.test("parses team id and operation from the 202 headers", () => {
   assertEquals(
-    parseTeamLocation(`/teams('${TEAM}')`, `/teams('${TEAM}')/operations('${OP}')`),
+    parseTeamLocation(
+      `/teams('${TEAM}')`,
+      `/teams('${TEAM}')/operations('${OP}')`,
+    ),
     { teamId: TEAM, operation: OP },
   );
   assertEquals(parseTeamLocation(null, null), null);
 });
 
-Deno.test("createTeam sends owners with the owner role and reads the ids", async () => {
-  const { fetcher, calls } = fakeFetch(
-    () =>
-      new Response(null, {
-        status: 202,
-        headers: {
-          "Content-Location": `/teams('${TEAM}')`,
-          Location: `/teams('${TEAM}')/operations('${OP}')`,
-        },
-      }),
-  );
-  const result = await createTeam(
-    "token",
-    {
-      name: "Projekt",
-      description: null,
-      visibility: "private",
-      owners: [OWNER],
-      members: [MEMBER],
-    },
-    fetcher,
-  );
-  assertEquals(result, { teamId: TEAM, operation: OP });
-  const body = calls[0]!.body as {
-    visibility: string;
-    members: { roles: string[]; "user@odata.bind": string }[];
-  };
-  assertEquals(body.visibility, "Private");
-  assertEquals(body.members[0]!.roles, ["owner"]);
-  assertEquals(body.members[1]!.roles, []);
-  assertEquals(calls[0]!.url, "https://graph.microsoft.com/v1.0/teams");
-});
+Deno.test(
+  "createTeam sends owners with the owner role and reads the ids",
+  async () => {
+    const { fetcher, calls } = fakeFetch(
+      () =>
+        new Response(null, {
+          status: 202,
+          headers: {
+            "Content-Location": `/teams('${TEAM}')`,
+            Location: `/teams('${TEAM}')/operations('${OP}')`,
+          },
+        }),
+    );
+    const result = await createTeam(
+      "token",
+      {
+        name: "Projekt",
+        description: null,
+        visibility: "private",
+        owners: [OWNER],
+        members: [MEMBER],
+      },
+      fetcher,
+    );
+    assertEquals(result, { teamId: TEAM, operation: OP });
+    const body = calls[0]!.body as {
+      visibility: string;
+      members: { roles: string[]; "user@odata.bind": string }[];
+    };
+    assertEquals(body.visibility, "Private");
+    // Beim Anlegen nur der erste Owner (Anwendungsberechtigung erlaubt nur ein Mitglied).
+    assertEquals(body.members.length, 1);
+    assertEquals(body.members[0]!.roles, ["owner"]);
+    assertEquals(calls[0]!.url, "https://graph.microsoft.com/v1.0/teams");
+  },
+);
 
 Deno.test("403 means the consent is missing", async () => {
   const { fetcher } = fakeFetch(() => new Response("{}", { status: 403 }));
@@ -82,7 +90,13 @@ Deno.test("403 means the consent is missing", async () => {
     () =>
       createTeam(
         "token",
-        { name: "x", description: null, visibility: "public", owners: [OWNER], members: [] },
+        {
+          name: "x",
+          description: null,
+          visibility: "public",
+          owners: [OWNER],
+          members: [],
+        },
         fetcher,
       ),
     TeamsGraphError,
@@ -102,36 +116,49 @@ Deno.test("creation status follows the operation", async () => {
   assertEquals(await run("failed"), "failed");
 });
 
-Deno.test("finishTeam creates channels and website tabs; a failed tab is a warning", async () => {
-  const { fetcher, calls } = fakeFetch((call) => {
-    if (call.url.endsWith("/channels")) {
-      return new Response(JSON.stringify({ id: "channel-1" }), { status: 201 });
-    }
-    if (call.url.endsWith("/tabs")) return new Response("{}", { status: 400 });
-    return new Response("{}", { status: 200 });
-  });
-  const warnings = await finishTeam(
-    "t",
-    TEAM,
-    {
-      owners: [OWNER],
-      guests: [],
-      allowGuests: false,
-      channels: [
-        {
-          name: "Bauleitung",
-          isPrivate: true,
-          tabs: [{ type: "website", title: "Kamera", url: "https://x.ch/" }],
-        },
-      ],
-    },
-    fetcher,
-  );
-  assertEquals(warnings, [{ step: "tab:Bauleitung:Kamera", code: "invalid" }]);
-  const channel = calls[0]!.body as { membershipType: string; members: unknown[] };
-  assertEquals(channel.membershipType, "private");
-  assertEquals(channel.members.length, 1);
-});
+Deno.test(
+  "finishTeam creates channels and website tabs; a failed tab is a warning",
+  async () => {
+    const { fetcher, calls } = fakeFetch((call) => {
+      if (call.url.endsWith("/channels")) {
+        return new Response(JSON.stringify({ id: "channel-1" }), {
+          status: 201,
+        });
+      }
+      if (call.url.endsWith("/tabs"))
+        return new Response("{}", { status: 400 });
+      return new Response("{}", { status: 200 });
+    });
+    const warnings = await finishTeam(
+      "t",
+      TEAM,
+      {
+        owners: [OWNER],
+        guests: [],
+        allowGuests: false,
+        channels: [
+          {
+            name: "Bauleitung",
+            isPrivate: true,
+            tabs: [{ type: "website", title: "Kamera", url: "https://x.ch/" }],
+          },
+        ],
+      },
+      fetcher,
+    );
+    assertEquals(warnings, [
+      { step: "tab:Bauleitung:Kamera", code: "invalid" },
+    ]);
+    const channel = calls.find(
+      (entry) => entry.method === "POST" && entry.url.endsWith("/channels"),
+    )!.body as {
+      membershipType: string;
+      members: unknown[];
+    };
+    assertEquals(channel.membershipType, "private");
+    assertEquals(channel.members.length, 1);
+  },
+);
 
 Deno.test("finishTeam reuses an existing channel on conflict", async () => {
   const { fetcher, calls } = fakeFetch((call) => {
@@ -140,7 +167,9 @@ Deno.test("finishTeam reuses an existing channel on conflict", async () => {
     }
     if (call.method === "GET") {
       return new Response(
-        JSON.stringify({ value: [{ id: "channel-9", displayName: "planung" }] }),
+        JSON.stringify({
+          value: [{ id: "channel-9", displayName: "planung" }],
+        }),
         { status: 200 },
       );
     }
@@ -154,7 +183,11 @@ Deno.test("finishTeam reuses an existing channel on conflict", async () => {
       guests: [],
       allowGuests: false,
       channels: [
-        { name: "Planung", isPrivate: false, tabs: [{ type: "website", title: "A", url: "https://x.ch/" }] },
+        {
+          name: "Planung",
+          isPrivate: false,
+          tabs: [{ type: "website", title: "A", url: "https://x.ch/" }],
+        },
       ],
     },
     fetcher,
@@ -176,8 +209,15 @@ Deno.test("listAllTeams follows paging and normalises ids", async () => {
       JSON.stringify(
         page === 1
           ? {
-              value: [{ id: TEAM.toUpperCase(), displayName: "A", visibility: "Private" }],
-              "@odata.nextLink": "https://graph.microsoft.com/v1.0/groups?$skiptoken=x",
+              value: [
+                {
+                  id: TEAM.toUpperCase(),
+                  displayName: "A",
+                  visibility: "Private",
+                },
+              ],
+              "@odata.nextLink":
+                "https://graph.microsoft.com/v1.0/groups?$skiptoken=x",
             }
           : { value: [{ id: OP, displayName: "B" }] },
       ),
@@ -185,29 +225,111 @@ Deno.test("listAllTeams follows paging and normalises ids", async () => {
     );
   });
   const teams = await listAllTeams("t", fetcher);
-  assertEquals(teams.map((team) => team.id), [TEAM, OP]);
+  assertEquals(
+    teams.map((team) => team.id),
+    [TEAM, OP],
+  );
   assertEquals(teams[0]!.visibility, "private");
   assertEquals(calls.length, 2);
 });
 
-Deno.test("listTeamMembers reads roles; setTeamMemberOwner patches the role", async () => {
-  const { fetcher, calls } = fakeFetch((call) =>
-    call.method === "GET"
-      ? new Response(
-          JSON.stringify({
-            value: [
-              { id: "m1", userId: OWNER, displayName: "Stefan", roles: ["owner"] },
-              { id: "m2", userId: MEMBER, displayName: "Gast", email: "g@x.ch", roles: ["guest"] },
-            ],
-          }),
-          { status: 200 },
-        )
-      : new Response(null, { status: 200 }),
+Deno.test(
+  "listTeamMembers reads roles; setTeamMemberOwner patches the role",
+  async () => {
+    const { fetcher, calls } = fakeFetch((call) =>
+      call.method === "GET"
+        ? new Response(
+            JSON.stringify({
+              value: [
+                {
+                  id: "m1",
+                  userId: OWNER,
+                  displayName: "Stefan",
+                  roles: ["owner"],
+                },
+                {
+                  id: "m2",
+                  userId: MEMBER,
+                  displayName: "Gast",
+                  email: "g@x.ch",
+                  roles: ["guest"],
+                },
+              ],
+            }),
+            { status: 200 },
+          )
+        : new Response(null, { status: 200 }),
+    );
+    const members = await listTeamMembers("t", TEAM, fetcher);
+    assertEquals(
+      members.map((m) => [m.isOwner, m.isGuest]),
+      [
+        [true, false],
+        [false, true],
+      ],
+    );
+    await setTeamMemberOwner("t", TEAM, "m2", true, fetcher);
+    const patch = calls.at(-1)!;
+    assertEquals(patch.method, "PATCH");
+    assertEquals((patch.body as { roles: string[] }).roles, ["owner"]);
+  },
+);
+
+Deno.test("finishTeam adds further owners and members in bulk", async () => {
+  const { fetcher, calls } = fakeFetch(
+    () => new Response("{}", { status: 200 }),
   );
-  const members = await listTeamMembers("t", TEAM, fetcher);
-  assertEquals(members.map((m) => [m.isOwner, m.isGuest]), [[true, false], [false, true]]);
-  await setTeamMemberOwner("t", TEAM, "m2", true, fetcher);
-  const patch = calls.at(-1)!;
-  assertEquals(patch.method, "PATCH");
-  assertEquals((patch.body as { roles: string[] }).roles, ["owner"]);
+  const warnings = await finishTeam(
+    "t",
+    TEAM,
+    {
+      owners: [OWNER, "33333333-3333-4333-8333-333333333333"],
+      members: [MEMBER],
+      guests: [],
+      allowGuests: false,
+      channels: [],
+    },
+    fetcher,
+  );
+  assertEquals(warnings, []);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0]!.url.endsWith(`/teams/${TEAM}/members/add`), true);
+  const values = (calls[0]!.body as { values: { roles: string[] }[] }).values;
+  assertEquals(
+    values.map((value) => value.roles),
+    [["owner"], []],
+  );
 });
+
+Deno.test(
+  "finishTeam retries a channel that Microsoft rejects right after creation",
+  async () => {
+    let posts = 0;
+    const { fetcher } = fakeFetch((call) => {
+      if (call.method === "GET") {
+        return new Response(JSON.stringify({ value: [] }), { status: 200 });
+      }
+      if (call.url.endsWith("/channels")) {
+        posts += 1;
+        return posts < 3
+          ? new Response("{}", { status: 400 })
+          : new Response(JSON.stringify({ id: "channel-7" }), { status: 201 });
+      }
+      return new Response("{}", { status: 201 });
+    });
+    const warnings = await finishTeam(
+      "t",
+      TEAM,
+      {
+        owners: [OWNER],
+        guests: [],
+        allowGuests: false,
+        channels: [{ name: "Planung", isPrivate: false, tabs: [] }],
+      },
+      fetcher,
+      [0, 0, 0],
+    );
+    assertEquals(warnings, []);
+    assertEquals(posts, 3);
+  },
+);

@@ -141,11 +141,7 @@ async function audit(
   });
 }
 
-async function markFailed(
-  admin: Admin,
-  row: TeamRequestRow,
-  code: string,
-) {
+async function markFailed(admin: Admin, row: TeamRequestRow, code: string) {
   await admin
     .from("teams_requests")
     .update({ status: "failed", last_error: code })
@@ -179,7 +175,9 @@ async function handleStepError(
     .update({
       attempts: row.attempts + 1,
       last_error: code,
-      next_attempt_at: new Date(Date.now() + delayMinutes * 60_000).toISOString(),
+      next_attempt_at: new Date(
+        Date.now() + delayMinutes * 60_000,
+      ).toISOString(),
     })
     .eq("id", row.id);
 }
@@ -193,9 +191,28 @@ async function finish(
   const warnings = await finishTeam(token, teamId, {
     channels: row.channels,
     owners: row.owner_ids,
+    members: row.member_ids,
     guests: row.guest_emails,
     allowGuests: row.allow_guests,
   });
+  // Fehlen Kanäle noch (bei Microsoft oft nur vorübergehend), später erneut
+  // versuchen, bevor das Team als bereit gilt (höchstens 3 weitere Läufe).
+  if (
+    warnings.some((warning) => warning.step.startsWith("channel:")) &&
+    row.attempts < 3
+  ) {
+    await admin
+      .from("teams_requests")
+      .update({
+        status: "provisioning",
+        attempts: row.attempts + 1,
+        warnings,
+        last_error: "channels_pending",
+        next_attempt_at: new Date(Date.now() + 3 * 60_000).toISOString(),
+      })
+      .eq("id", row.id);
+    return;
+  }
   await admin
     .from("teams_requests")
     .update({

@@ -13,8 +13,17 @@ import {
   validateTeamRequest,
 } from "../_shared/teams-model.ts";
 import {
+  addTeamMember,
+  archiveTeam,
+  listTeamMembers,
+  removeTeamMember,
+  setTeamMemberOwner,
+  TeamsGraphError,
+} from "../_shared/teams-graph.ts";
+import {
   teamsCredentialsConfigured,
   teamsEntraTenant,
+  teamsGraphToken,
 } from "../_shared/teams-token.ts";
 import { loadTeamsSettings, TEAMS_FEATURE } from "../_shared/teams-settings.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
@@ -355,6 +364,108 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return json(request, {
       data: { requests: rows.map((row) => present(row, owners)) },
     });
+  }
+
+  // ----- Eigenes Team bearbeiten (Besteller und Owner): Personen, Archivieren
+  if (
+    ["members", "addMember", "removeMember", "setOwner", "archive"].includes(
+      body.type,
+    )
+  ) {
+    if (!isUuid(body.requestId)) return fail(request, "invalid_request", 400);
+    const { data: own } = await admin
+      .from("teams_requests")
+      .select(REQUEST_COLUMNS)
+      .eq("id", body.requestId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!own) return fail(request, "teams_request_not_found", 404);
+    const entraIds = await ownEntraIds(admin, tenantId, actorId);
+    const mine =
+      own.requested_by === actorId ||
+      (own.owner_ids as string[]).some((id) => entraIds.includes(id));
+    if (!mine) return fail(request, "teams_edit_denied", 403);
+    if (own.status !== "ready" || !own.graph_team_id) {
+      return fail(request, "teams_edit_not_possible", 409);
+    }
+    const teamId = String(own.graph_team_id);
+    const graphFailure = (error: unknown) => {
+      const code = error instanceof TeamsGraphError ? error.code : "unavailable";
+      return fail(
+        request,
+        `graph_${code}`,
+        code === "consent_missing" ? 403 : code === "rate_limited" ? 429 : 502,
+      );
+    };
+    const log = (action: string, extra: Row = {}) =>
+      admin.from("audit_logs").insert({
+        tenant_id: tenantId,
+        actor_id: actorId,
+        action,
+        entity_type: "teams_request",
+        entity_id: own.id,
+        severity: "info",
+        before_data: null,
+        after_data: null,
+        metadata: { teamName: own.name, ...extra },
+      });
+    try {
+      const token = await teamsGraphToken(admin, tenantId);
+      if (body.type === "members") {
+        return json(request, { data: { members: await listTeamMembers(token, teamId) } });
+      }
+      if (body.type === "addMember") {
+        if (!isUuid(body.userId)) return fail(request, "invalid_request", 400);
+        const { data: person } = await admin
+          .from("tenant_entra_directory_people")
+          .select("entra_object_id")
+          .eq("tenant_id", tenantId)
+          .eq("entra_object_id", body.userId)
+          .eq("account_enabled", true)
+          .is("inactive_at", null)
+          .maybeSingle();
+        if (!person) return fail(request, "person_unknown");
+        await addTeamMember(token, teamId, body.userId.toLowerCase(), body.owner === true);
+        await log("teams.member.added", { owner: body.owner === true });
+        return json(request, { data: { ok: true } });
+      }
+      if (body.type === "archive") {
+        await archiveTeam(token, teamId);
+        await admin
+          .from("teams_requests")
+          .update({ status: "archived", archived_at: new Date().toISOString() })
+          .eq("id", own.id)
+          .eq("status", "ready");
+        await admin
+          .from("teams_directory")
+          .update({ is_archived: true })
+          .eq("tenant_id", tenantId)
+          .eq("graph_team_id", teamId);
+        await log("teams.team.archived");
+        return json(request, { data: { ok: true } });
+      }
+      // removeMember / setOwner
+      if (typeof body.membershipId !== "string" || !body.membershipId) {
+        return fail(request, "invalid_request", 400);
+      }
+      const members = await listTeamMembers(token, teamId);
+      const target = members.find((member) => member.membershipId === body.membershipId);
+      if (!target) return fail(request, "teams_member_not_found", 404);
+      const owners = members.filter((member) => member.isOwner);
+      const losesOwner =
+        target.isOwner && (body.type === "removeMember" || body.owner !== true);
+      if (losesOwner && owners.length <= 1) return fail(request, "last_owner", 409);
+      if (body.type === "removeMember") {
+        await removeTeamMember(token, teamId, target.membershipId);
+        await log("teams.member.removed");
+      } else {
+        await setTeamMemberOwner(token, teamId, target.membershipId, body.owner === true);
+        await log("teams.member.role_changed", { owner: body.owner === true });
+      }
+      return json(request, { data: { ok: true } });
+    } catch (error) {
+      return graphFailure(error);
+    }
   }
 
   if (body.type === "extend") {

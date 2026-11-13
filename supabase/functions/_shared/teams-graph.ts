@@ -9,6 +9,8 @@ type FetchLike = typeof fetch;
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const TIMEOUT_MS = 30_000;
+/** Das Anlegen eines Teams kann bei Microsoft länger als eine halbe Minute dauern. */
+const CREATE_TIMEOUT_MS = 110_000;
 const WEBSITE_TAB_APP = "com.microsoft.teamspace.tab.web";
 
 export type TeamsGraphErrorCode =
@@ -44,6 +46,7 @@ async function call(
   method: string,
   path: string,
   body?: unknown,
+  timeoutMs: number = TIMEOUT_MS,
 ): Promise<Response> {
   let response: Response;
   try {
@@ -57,7 +60,7 @@ async function call(
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         redirect: "error",
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       },
     );
   } catch {
@@ -68,10 +71,14 @@ async function call(
     let detail = "";
     try {
       const payload = (await response.json()) as {
-        error?: { code?: unknown };
+        error?: { code?: unknown; message?: unknown };
       } | null;
       if (typeof payload?.error?.code === "string") {
         detail = payload.error.code.slice(0, 80);
+      }
+      // Die Meldung von Microsoft nennt die Ursache (z. B. Lizenz, ungültiger Wert).
+      if (typeof payload?.error?.message === "string") {
+        detail += ` | ${payload.error.message.replace(/\s+/g, " ").slice(0, 300)}`;
       }
     } catch {
       // Kein JSON.
@@ -120,21 +127,32 @@ export async function createTeam(
   >,
   fetcher: FetchLike = fetch,
 ): Promise<{ teamId: string; operation: string | null }> {
-  const response = await call(fetcher, token, "POST", "/teams", {
-    "template@odata.bind": `${GRAPH}/teamsTemplates('standard')`,
-    displayName: request.name,
-    description: request.description ?? "",
-    visibility: request.visibility === "public" ? "Public" : "Private",
-    members: [
-      ...request.owners.map((id) => memberBody(id, true)),
-      ...request.members.map((id) => memberBody(id, false)),
-    ],
-  });
+  const response = await call(
+    fetcher,
+    token,
+    "POST",
+    "/teams",
+    {
+      "template@odata.bind": `${GRAPH}/teamsTemplates('standard')`,
+      displayName: request.name,
+      ...(request.description ? { description: request.description } : {}),
+      visibility: request.visibility === "public" ? "Public" : "Private",
+      // Mit Anwendungsberechtigungen erlaubt Microsoft beim Anlegen nur ein
+      // Mitglied (den Owner); alle weiteren folgen in finishTeam.
+      members: [memberBody(request.owners[0]!, true)],
+    },
+    CREATE_TIMEOUT_MS,
+  );
   const parsed = parseTeamLocation(
     response.headers.get("Content-Location"),
     response.headers.get("Location"),
   );
-  if (!parsed) throw new TeamsGraphError("unavailable");
+  if (!parsed) {
+    console.error(
+      `teams-graph POST /teams -> ${response.status} ohne Team-Adresse in den Antwort-Kopfzeilen`,
+    );
+    throw new TeamsGraphError("unavailable");
+  }
   return parsed;
 }
 
@@ -207,8 +225,9 @@ export async function finishTeam(
   request: Pick<
     TeamRequestInput,
     "channels" | "owners" | "guests" | "allowGuests"
-  >,
+  > & { members?: string[] },
   fetcher: FetchLike = fetch,
+  retryDelaysMs: readonly number[] = CHANNEL_RETRY_DELAYS_MS,
 ): Promise<FinishWarning[]> {
   const warnings: FinishWarning[] = [];
   const failed = (step: string, error: unknown) =>
@@ -217,7 +236,28 @@ export async function finishTeam(
       code: error instanceof TeamsGraphError ? error.code : "unavailable",
     });
 
-  for (const channel of request.channels) {
+  // Weitere Owner und Mitglieder (der erste Owner ist beim Anlegen dabei).
+  const people = [
+    ...request.owners.slice(1).map((id) => memberBody(id, true)),
+    ...(request.members ?? []).map((id) => memberBody(id, false)),
+  ];
+  for (let index = 0; index < people.length; index += 100) {
+    try {
+      await call(fetcher, token, "POST", `/teams/${teamId}/members/add`, {
+        values: people.slice(index, index + 100),
+      });
+    } catch (error) {
+      failed(`members:${index}`, error);
+    }
+  }
+
+  // Private Kanäle zuletzt: Microsoft braucht dafür oft länger (504) und
+  // blockiert sonst die übrigen Kanäle.
+  const ordered = [
+    ...request.channels.filter((channel) => !channel.isPrivate),
+    ...request.channels.filter((channel) => channel.isPrivate),
+  ];
+  for (const channel of ordered) {
     try {
       const id = await ensureChannel(
         fetcher,
@@ -225,6 +265,7 @@ export async function finishTeam(
         teamId,
         channel,
         request.owners[0]!,
+        retryDelaysMs,
       );
       for (const tab of channel.tabs) {
         try {
@@ -275,37 +316,72 @@ export async function finishTeam(
   return warnings;
 }
 
+/** Kurz nach dem Anlegen eines Teams lehnt Microsoft Kanäle oft noch ab. */
+const CHANNEL_RETRY_DELAYS_MS = [5_000, 15_000] as const;
+const CHANNEL_TIMEOUT_MS = 50_000;
+
+const wait = (ms: number) =>
+  ms > 0
+    ? new Promise((resolve) => setTimeout(resolve, ms))
+    : Promise.resolve();
+
 async function ensureChannel(
   fetcher: FetchLike,
   token: string,
   teamId: string,
   channel: TeamChannel,
   ownerId: string,
+  retryDelaysMs: readonly number[],
 ): Promise<string> {
-  try {
-    const response = await call(
+  let lastError: unknown = new TeamsGraphError("unavailable");
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    if (attempt > 0) await wait(retryDelaysMs[attempt - 1]!);
+    // Ein früherer Versuch kann trotz Abbruch Erfolg gehabt haben.
+    const existing = await channelIdByName(
       fetcher,
       token,
-      "POST",
-      `/teams/${teamId}/channels`,
-      {
-        displayName: channel.name,
-        membershipType: channel.isPrivate ? "private" : "standard",
-        ...(channel.isPrivate ? { members: [memberBody(ownerId, true)] } : {}),
-      },
-    );
-    const body = (await response.json().catch(() => null)) as {
-      id?: unknown;
-    } | null;
-    if (typeof body?.id === "string") return body.id;
-  } catch (error) {
-    if (!(error instanceof TeamsGraphError && error.code === "conflict")) {
-      throw error;
+      teamId,
+      channel.name,
+    ).catch(() => null);
+    if (existing) return existing;
+    try {
+      const response = await call(
+        fetcher,
+        token,
+        "POST",
+        `/teams/${teamId}/channels`,
+        {
+          displayName: channel.name,
+          membershipType: channel.isPrivate ? "private" : "standard",
+          ...(channel.isPrivate
+            ? { members: [memberBody(ownerId, true)] }
+            : {}),
+        },
+        CHANNEL_TIMEOUT_MS,
+      );
+      const body = (await response.json().catch(() => null)) as {
+        id?: unknown;
+      } | null;
+      if (typeof body?.id === "string") return body.id;
+    } catch (error) {
+      lastError = error;
+      // Berechtigung fehlt oder Anfrage dauerhaft ungültig: nicht wiederholen.
+      if (
+        error instanceof TeamsGraphError &&
+        error.code === "consent_missing"
+      ) {
+        throw error;
+      }
     }
   }
-  const existing = await channelIdByName(fetcher, token, teamId, channel.name);
-  if (!existing) throw new TeamsGraphError("unavailable");
-  return existing;
+  const existing = await channelIdByName(
+    fetcher,
+    token,
+    teamId,
+    channel.name,
+  ).catch(() => null);
+  if (existing) return existing;
+  throw lastError;
 }
 
 /** Archiviert das Team (schreibgeschützt, in Teams wiederherstellbar). */
@@ -357,10 +433,9 @@ export async function listAllTeams(
   fetcher: FetchLike = fetch,
 ): Promise<GraphTeamSummary[]> {
   const teams: GraphTeamSummary[] = [];
-  let next: string | null =
-    `${GRAPH}/groups?$filter=${encodeURIComponent(
-      "resourceProvisioningOptions/Any(x:x eq 'Team')",
-    )}&$select=id,displayName,description,visibility,createdDateTime&$top=100`;
+  let next: string | null = `${GRAPH}/groups?$filter=${encodeURIComponent(
+    "resourceProvisioningOptions/Any(x:x eq 'Team')",
+  )}&$select=id,displayName,description,visibility,createdDateTime&$top=100`;
   for (let page = 0; next && page < 20; page += 1) {
     if (!next.startsWith(`${GRAPH}/`)) throw new TeamsGraphError("invalid");
     const body = await getJson(fetcher, token, next);
@@ -415,7 +490,11 @@ export async function listTeamMembers(
   fetcher: FetchLike = fetch,
   top = 200,
 ): Promise<TeamMemberInfo[]> {
-  const body = await getJson(fetcher, token, `/teams/${teamId}/members?$top=${top}`);
+  const body = await getJson(
+    fetcher,
+    token,
+    `/teams/${teamId}/members?$top=${top}`,
+  );
   const members: TeamMemberInfo[] = [];
   for (const entry of Array.isArray(body.value) ? body.value : []) {
     const row = entry as Json;
@@ -442,7 +521,13 @@ export async function addTeamMember(
   fetcher: FetchLike = fetch,
 ): Promise<void> {
   try {
-    await call(fetcher, token, "POST", `/teams/${teamId}/members`, memberBody(userId, owner));
+    await call(
+      fetcher,
+      token,
+      "POST",
+      `/teams/${teamId}/members`,
+      memberBody(userId, owner),
+    );
   } catch (error) {
     if (error instanceof TeamsGraphError && error.code === "conflict") return;
     throw error;
@@ -455,7 +540,12 @@ export async function removeTeamMember(
   membershipId: string,
   fetcher: FetchLike = fetch,
 ): Promise<void> {
-  await call(fetcher, token, "DELETE", `/teams/${teamId}/members/${membershipId}`);
+  await call(
+    fetcher,
+    token,
+    "DELETE",
+    `/teams/${teamId}/members/${membershipId}`,
+  );
 }
 
 export async function setTeamMemberOwner(
@@ -465,10 +555,16 @@ export async function setTeamMemberOwner(
   owner: boolean,
   fetcher: FetchLike = fetch,
 ): Promise<void> {
-  await call(fetcher, token, "PATCH", `/teams/${teamId}/members/${membershipId}`, {
-    "@odata.type": "#microsoft.graph.aadUserConversationMember",
-    roles: owner ? ["owner"] : [],
-  });
+  await call(
+    fetcher,
+    token,
+    "PATCH",
+    `/teams/${teamId}/members/${membershipId}`,
+    {
+      "@odata.type": "#microsoft.graph.aadUserConversationMember",
+      roles: owner ? ["owner"] : [],
+    },
+  );
 }
 
 export async function unarchiveTeam(
