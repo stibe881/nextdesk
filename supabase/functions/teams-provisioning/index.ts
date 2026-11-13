@@ -109,8 +109,27 @@ async function ownEntraIds(
     .filter((id): id is string => typeof id === "string");
 }
 
+/** Lesbare Bezeichnung der Schritte, die bei Microsoft nicht geklappt haben. */
+function warningLabels(warnings: unknown): string[] {
+  if (!Array.isArray(warnings)) return [];
+  const labels: string[] = [];
+  for (const entry of warnings) {
+    const step =
+      isRecord(entry) && typeof entry.step === "string" ? entry.step : "";
+    const [kind, first, second] = step.split(":");
+    if (kind === "channel" && first) labels.push(`Kanal «${first}»`);
+    else if (kind === "tab" && first && second)
+      labels.push(`Tab «${second}» in «${first}»`);
+    else if (kind === "guest" && first) labels.push(`Gast ${first}`);
+    else if (kind === "members") labels.push("einzelne Mitglieder");
+  }
+  return [...new Set(labels)].slice(0, 12);
+}
+
 function present(row: Row, owners: Map<string, string>) {
-  const ownerIds = Array.isArray(row.owner_ids) ? (row.owner_ids as string[]) : [];
+  const ownerIds = Array.isArray(row.owner_ids)
+    ? (row.owner_ids as string[])
+    : [];
   const today = zurichToday();
   return {
     id: row.id,
@@ -128,6 +147,7 @@ function present(row: Row, owners: Map<string, string>) {
     guestCount: Array.isArray(row.guest_emails) ? row.guest_emails.length : 0,
     channelCount: Array.isArray(row.channels) ? row.channels.length : 0,
     warningCount: Array.isArray(row.warnings) ? row.warnings.length : 0,
+    warningSteps: warningLabels(row.warnings),
     failed: row.status === "failed",
     createdAt: row.created_at,
   };
@@ -154,7 +174,8 @@ async function directoryNames(
 }
 
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
-  if (request.method !== "POST") return fail(request, "method_not_allowed", 405);
+  if (request.method !== "POST")
+    return fail(request, "method_not_allowed", 405);
   const body: unknown = await request.json().catch(() => null);
   const actorId = context.userClaims?.id;
   if (
@@ -211,13 +232,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             }
           : null,
         available: ordering && configured,
-        reason: !shopEnabled || !teamsEnabled
-          ? "feature_disabled"
-          : !ordering
-            ? "denied"
-            : !configured
-              ? "not_configured"
-              : null,
+        reason:
+          !shopEnabled || !teamsEnabled
+            ? "feature_disabled"
+            : !ordering
+              ? "denied"
+              : !configured
+                ? "not_configured"
+                : null,
         today: zurichToday(),
         maxLifetimeMonths: settings.maxLifetimeMonths,
         allowGuests: settings.allowGuests,
@@ -236,7 +258,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
     const query =
       typeof body.query === "string"
-        ? body.query.replace(/[%_\\,()]/g, " ").trim().slice(0, 80)
+        ? body.query
+            .replace(/[%_\\,()]/g, " ")
+            .trim()
+            .slice(0, 80)
         : "";
     if ([...query].length < 2) return json(request, { data: { people: [] } });
     const { data, error } = await admin
@@ -285,7 +310,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     if ((known ?? []).length !== people.length) {
       return fail(request, "person_unknown", 422, { field: "members" });
     }
-    if (!(await teamsEntraTenant(admin, tenantId)) || !teamsCredentialsConfigured()) {
+    if (
+      !(await teamsEntraTenant(admin, tenantId)) ||
+      !teamsCredentialsConfigured()
+    ) {
       return fail(request, "teams_not_configured", 503);
     }
     const { data: created, error } = await admin
@@ -356,11 +384,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .limit(100);
     if (error) return fail(request, "teams_list_failed", 500);
     const rows = (data ?? []) as Row[];
-    const owners = await directoryNames(
-      admin,
-      tenantId,
-      [...new Set(rows.flatMap((row) => (row.owner_ids as string[]) ?? []))],
-    );
+    const owners = await directoryNames(admin, tenantId, [
+      ...new Set(rows.flatMap((row) => (row.owner_ids as string[]) ?? [])),
+    ]);
     return json(request, {
       data: { requests: rows.map((row) => present(row, owners)) },
     });
@@ -390,7 +416,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
     const teamId = String(own.graph_team_id);
     const graphFailure = (error: unknown) => {
-      const code = error instanceof TeamsGraphError ? error.code : "unavailable";
+      const code =
+        error instanceof TeamsGraphError ? error.code : "unavailable";
       return fail(
         request,
         `graph_${code}`,
@@ -412,7 +439,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     try {
       const token = await teamsGraphToken(admin, tenantId);
       if (body.type === "members") {
-        return json(request, { data: { members: await listTeamMembers(token, teamId) } });
+        return json(request, {
+          data: { members: await listTeamMembers(token, teamId) },
+        });
       }
       if (body.type === "addMember") {
         if (!isUuid(body.userId)) return fail(request, "invalid_request", 400);
@@ -425,7 +454,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           .is("inactive_at", null)
           .maybeSingle();
         if (!person) return fail(request, "person_unknown");
-        await addTeamMember(token, teamId, body.userId.toLowerCase(), body.owner === true);
+        await addTeamMember(
+          token,
+          teamId,
+          body.userId.toLowerCase(),
+          body.owner === true,
+        );
         await log("teams.member.added", { owner: body.owner === true });
         return json(request, { data: { ok: true } });
       }
@@ -449,17 +483,25 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         return fail(request, "invalid_request", 400);
       }
       const members = await listTeamMembers(token, teamId);
-      const target = members.find((member) => member.membershipId === body.membershipId);
+      const target = members.find(
+        (member) => member.membershipId === body.membershipId,
+      );
       if (!target) return fail(request, "teams_member_not_found", 404);
       const owners = members.filter((member) => member.isOwner);
       const losesOwner =
         target.isOwner && (body.type === "removeMember" || body.owner !== true);
-      if (losesOwner && owners.length <= 1) return fail(request, "last_owner", 409);
+      if (losesOwner && owners.length <= 1)
+        return fail(request, "last_owner", 409);
       if (body.type === "removeMember") {
         await removeTeamMember(token, teamId, target.membershipId);
         await log("teams.member.removed");
       } else {
-        await setTeamMemberOwner(token, teamId, target.membershipId, body.owner === true);
+        await setTeamMemberOwner(
+          token,
+          teamId,
+          target.membershipId,
+          body.owner === true,
+        );
         await log("teams.member.role_changed", { owner: body.owner === true });
       }
       return json(request, { data: { ok: true } });
