@@ -900,13 +900,18 @@ Shop bestellten.
   bestellt_, _Bestehend_, _Läuft bald ab_, _Ohne Owner_, _Mit Gästen_, _Ohne
   Ende_, _Archiviert_. Sortierung nach Name, Neueste, Ende oder Mitgliedern.
 - **Mehrfachauswahl**: Teams ankreuzen, dann in der blauen Leiste **Ende
-  setzen**, **Owner hinzufügen** oder **Archivieren** für alle auf einmal.
+  setzen**, **Owner hinzufügen**, **Archivieren** oder **Löschen** für alle auf
+  einmal.
 - **Mit Microsoft abgleichen**: liest die Teams neu ein. Beim Öffnen läuft der
   Abgleich automatisch, wenn der Stand älter als ein Tag ist.
 - **Details** (Klick auf ein Team), drei Reiter:
   - **Übersicht**: Kennzahlen, Laufzeit verlängern (+1, +3, +6 Monate, +1
     Jahr) oder ein Ende setzen, **In Teams öffnen**, **Archivieren** bzw.
-    **Wiederherstellen**.
+    **Wiederherstellen** und **Team löschen**. Beim Löschen wird das Team bei
+    Microsoft entfernt (mit Dateien, Chats und Kanälen); Microsoft hält es noch
+    30 Tage im Papierkorb von Entra. Zur Bestätigung gibst du den Namen des
+    Teams ein (in der Mehrfachauswahl das Wort _LÖSCHEN_). Dafür braucht die
+    Microsoft-App das Recht _Group.ReadWrite.All_ (siehe Installationshandbuch).
   - **Personen**: Owner, Mitglieder und Gäste getrennt, Personen hinzufügen
     oder entfernen, zum Owner machen oder die Owner-Rolle entziehen (der
     letzte Owner bleibt immer). Bei einem Team ohne Owner wird die erste

@@ -445,7 +445,8 @@ function BulkBar({
   tenantId: string;
   today: string;
 }) {
-  const [mode, setMode] = useState<"end" | "owner" | null>(null);
+  const [mode, setMode] = useState<"end" | "owner" | "delete" | null>(null);
+  const [deleteWord, setDeleteWord] = useState("");
   const [endDate, setEndDate] = useState(addMonthsIso(today, 12));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -518,10 +519,45 @@ function BulkBar({
         >
           Archivieren
         </button>
+        <button
+          className="teams-admin__danger"
+          disabled={busy}
+          onClick={() => setMode(mode === "delete" ? null : "delete")}
+          type="button"
+        >
+          Löschen …
+        </button>
         <button disabled={busy} onClick={onClear} type="button">
           Auswahl aufheben
         </button>
       </div>
+      {mode === "delete" ? (
+        <div className="teams-admin__bulk-row teams-admin__delete">
+          <span>
+            {teams.length} Team(s) werden bei Microsoft gelöscht (30 Tage im
+            Papierkorb von Entra). Tippe zur Bestätigung LÖSCHEN:
+          </span>
+          <input
+            aria-label="Bestätigung"
+            onChange={(event) => setDeleteWord(event.target.value)}
+            placeholder="LÖSCHEN"
+            value={deleteWord}
+          />
+          <button
+            className="teams-admin__danger-solid"
+            disabled={busy || deleteWord.trim().toUpperCase() !== "LÖSCHEN"}
+            onClick={() => {
+              setDeleteWord("");
+              void runAll("Löschen", (team) =>
+                teamsAdminApi.remove(tenantId, team.teamId, team.name),
+              );
+            }}
+            type="button"
+          >
+            Endgültig löschen
+          </button>
+        </div>
+      ) : null}
       {mode === "end" ? (
         <div className="teams-admin__bulk-row">
           <input
@@ -610,6 +646,9 @@ function TeamDetail({
         .catch((nextError: Error) => setError(nextError.message));
     }
   }, [tab, members, history, loadMembers, tenantId, team.teamId]);
+
+  const [deleting, setDeleting] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
 
   const run = async (
     work: () => Promise<unknown>,
@@ -875,7 +914,48 @@ function TeamDetail({
               >
                 {team.archived ? "Wiederherstellen" : "Archivieren"}
               </button>
+              <button
+                className="secondary-button teams-admin__danger"
+                disabled={busy}
+                onClick={() => setDeleting((current) => !current)}
+                type="button"
+              >
+                Team löschen …
+              </button>
             </div>
+            {deleting ? (
+              <div className="teams-admin__delete" role="alert">
+                <p>
+                  <b>Das Team wird bei Microsoft gelöscht</b> (inklusive
+                  Dateien, Chats und Kanälen). Microsoft hält es noch 30 Tage im
+                  Papierkorb von Entra, danach ist es endgültig weg. Gib zur
+                  Bestätigung den Namen des Teams ein:
+                </p>
+                <input
+                  aria-label="Name des Teams zur Bestätigung"
+                  onChange={(event) => setConfirmName(event.target.value)}
+                  placeholder={team.name}
+                  value={confirmName}
+                />
+                <button
+                  className="primary-button teams-admin__danger-solid"
+                  disabled={busy || confirmName.trim() !== team.name.trim()}
+                  onClick={() => {
+                    void run(async () => {
+                      await teamsAdminApi.remove(
+                        tenantId,
+                        team.teamId,
+                        confirmName.trim(),
+                      );
+                      onClose();
+                    });
+                  }}
+                  type="button"
+                >
+                  Endgültig löschen
+                </button>
+              </div>
+            ) : null}
           </>
         ) : null}
 

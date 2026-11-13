@@ -45,7 +45,8 @@ const errors = (): Record<string, string> => ({
     "Sie dürfen Teams nicht verwalten.",
   ),
   graph_consent_missing:
-    "Microsoft verweigert den Zugriff: Die Berechtigung für Teams fehlt oder ist noch nicht übernommen.",
+    "Microsoft verweigert den Zugriff: Die Berechtigung für Teams fehlt oder ist noch nicht übernommen. Zum Löschen braucht die App das Recht «Group.ReadWrite.All».",
+  confirm_mismatch: "Der eingegebene Name stimmt nicht mit dem Team überein.",
   graph_token_failed:
     "Die Anmeldung der Microsoft-App ist fehlgeschlagen (Geheimnis falsch oder abgelaufen).",
   graph_rate_limited:
@@ -133,6 +134,8 @@ export const teamsAdminApi = {
       membershipId,
       owner,
     }),
+  remove: (tenantId: string, teamId: string, confirmName: string) =>
+    call<{ ok: true }>({ type: "delete", tenantId, teamId, confirmName }),
   archive: (tenantId: string, teamId: string, archive: boolean) =>
     call<{ ok: true }>({
       type: archive ? "archive" : "unarchive",
@@ -325,6 +328,8 @@ export function describeHistory(event: TeamHistoryEvent): {
       };
     case "teams.team.archived":
       return { title: "Archiviert", detail: "" };
+    case "teams.team.deleted":
+      return { title: "Gelöscht", detail: "" };
     case "teams.team.unarchived":
       return { title: "Wiederhergestellt", detail: "" };
     case "teams.team.end_set":

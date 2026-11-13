@@ -401,6 +401,25 @@ async function ensureChannel(
 }
 
 /** Archiviert das Team (schreibgeschützt, in Teams wiederherstellbar). */
+/**
+ * Löscht das Team samt Microsoft-365-Gruppe (Microsoft hält es danach noch
+ * 30 Tage im Papierkorb von Entra, dann ist es endgültig weg). Braucht das
+ * Recht Group.ReadWrite.All.
+ */
+export async function deleteTeam(
+  token: string,
+  teamId: string,
+  fetcher: FetchLike = fetch,
+): Promise<void> {
+  try {
+    await call(fetcher, token, "DELETE", `/groups/${teamId}`);
+  } catch (error) {
+    // Bereits gelöscht.
+    if (error instanceof TeamsGraphError && error.code === "not_ready") return;
+    throw error;
+  }
+}
+
 export async function archiveTeam(
   token: string,
   teamId: string,

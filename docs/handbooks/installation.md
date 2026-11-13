@@ -255,7 +255,9 @@ Menü **Teams** zeigt und verwaltet alle Teams der Organisation.
    erhält die nextDesk-App diese Anwendungsberechtigungen: _Team.Create_,
    _TeamMember.ReadWrite.All_, _Channel.Create_, _TeamsTab.Create_,
    _TeamSettings.ReadWrite.All_, _Group.Read.All_, _Team.ReadBasic.All_ und
-   für Gäste _User.Invite.All_. Prüfe den Umfang mit deiner
+   für Gäste _User.Invite.All_. Wer Teams im Menü **Teams** löschen will,
+   braucht zusätzlich _Group.ReadWrite.All_ (ohne dieses Recht bleibt das
+   Löschen gesperrt, alles andere funktioniert). Prüfe den Umfang mit deiner
    IT-Sicherheit.
 3. **[Admin]** Nach einigen Minuten **Verbindung prüfen**. Die Karte nennt,
    was noch fehlt (zum Beispiel ein einzelnes Recht). Dort stellst du auch

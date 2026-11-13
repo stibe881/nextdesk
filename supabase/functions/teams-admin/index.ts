@@ -3,6 +3,7 @@ import { zurichToday } from "../_shared/teams-lifecycle.ts";
 import {
   addTeamMember,
   archiveTeam,
+  deleteTeam,
   listAllTeams,
   listTeamMembers,
   removeTeamMember,
@@ -25,7 +26,7 @@ import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
  * Menü «Teams»: alle Teams des Microsoft-Mandanten ansehen und verwalten.
  * Nur für Personen mit shop.manage. Aktionen (POST, JWT):
  *   getContext, sync, list, members, addMember, removeMember, setOwner,
- *   archive, unarchive, setEnd, clearEnd
+ *   archive, unarchive, delete, setEnd, clearEnd
  */
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
@@ -111,7 +112,9 @@ async function mapInChunks<T, R>(
 ): Promise<R[]> {
   const out: R[] = [];
   for (let index = 0; index < items.length; index += size) {
-    out.push(...(await Promise.all(items.slice(index, index + size).map(work))));
+    out.push(
+      ...(await Promise.all(items.slice(index, index + size).map(work))),
+    );
   }
   return out;
 }
@@ -119,7 +122,11 @@ async function mapInChunks<T, R>(
 async function syncDirectory(admin: Admin, tenantId: string, token: string) {
   const teams = await listAllTeams(token);
   const rows = await mapInChunks(teams, SYNC_CONCURRENCY, async (team) => {
-    let details = { ownerIds: [] as string[], isArchived: false, webUrl: null as string | null };
+    let details = {
+      ownerIds: [] as string[],
+      isArchived: false,
+      webUrl: null as string | null,
+    };
     let counts: { members: number; guests: number } | null = null;
     try {
       [details, counts] = await Promise.all([
@@ -195,7 +202,8 @@ async function refreshOne(
 }
 
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
-  if (request.method !== "POST") return fail(request, "method_not_allowed", 405);
+  if (request.method !== "POST")
+    return fail(request, "method_not_allowed", 405);
   const body: unknown = await request.json().catch(() => null);
   const actorId = context.userClaims?.id;
   if (
@@ -269,11 +277,16 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .limit(2000),
     ]);
     const byTeam = new Map(
-      ((requests ?? []) as Row[]).map((row) => [String(row.graph_team_id), row]),
+      ((requests ?? []) as Row[]).map((row) => [
+        String(row.graph_team_id),
+        row,
+      ]),
     );
     const ownerIds = [
       ...new Set(
-        ((teams ?? []) as Row[]).flatMap((row) => (row.owner_ids as string[]) ?? []),
+        ((teams ?? []) as Row[]).flatMap(
+          (row) => (row.owner_ids as string[]) ?? [],
+        ),
       ),
     ];
     const names = new Map<string, string>();
@@ -284,7 +297,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .eq("tenant_id", tenantId)
         .in("entra_object_id", ownerIds.slice(index, index + 200));
       for (const person of (people ?? []) as Row[]) {
-        names.set(String(person.entra_object_id), String(person.display_name ?? ""));
+        names.set(
+          String(person.entra_object_id),
+          String(person.display_name ?? ""),
+        );
       }
     }
     const today = zurichToday();
@@ -292,7 +308,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       data: {
         teams: ((teams ?? []) as Row[]).map((team) => {
           const request = byTeam.get(String(team.graph_team_id));
-          const end = request && request.status === "ready" ? String(request.end_date) : null;
+          const end =
+            request && request.status === "ready"
+              ? String(request.end_date)
+              : null;
           return {
             teamId: team.graph_team_id,
             name: team.display_name,
@@ -332,7 +351,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .eq("tenant_id", tenantId)
       .eq("graph_team_id", teamId)
       .maybeSingle();
-    const columns = "action, actor_id, after_data, before_data, metadata, occurred_at";
+    const columns =
+      "action, actor_id, after_data, before_data, metadata, occurred_at";
     const [byTeam, byRequest] = await Promise.all([
       admin
         .from("audit_logs")
@@ -353,10 +373,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             .limit(50)
         : Promise.resolve({ data: [] }),
     ]);
-    const rows = [...((byTeam.data ?? []) as Row[]), ...((byRequest.data ?? []) as Row[])]
-      .sort((a, b) => String(b.occurred_at).localeCompare(String(a.occurred_at)))
+    const rows = [
+      ...((byTeam.data ?? []) as Row[]),
+      ...((byRequest.data ?? []) as Row[]),
+    ]
+      .sort((a, b) =>
+        String(b.occurred_at).localeCompare(String(a.occurred_at)),
+      )
       .slice(0, 50);
-    const actorIds = [...new Set(rows.map((row) => row.actor_id).filter(isUuid))];
+    const actorIds = [
+      ...new Set(rows.map((row) => row.actor_id).filter(isUuid)),
+    ];
     const actors = new Map<string, string>();
     if (actorIds.length > 0) {
       const { data: profiles } = await admin
@@ -372,7 +399,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         events: rows.map((row) => ({
           action: row.action,
           at: row.occurred_at,
-          actor: isUuid(row.actor_id) ? (actors.get(row.actor_id) ?? null) : null,
+          actor: isUuid(row.actor_id)
+            ? (actors.get(row.actor_id) ?? null)
+            : null,
           details: {
             ...(isRecord(row.metadata) ? row.metadata : {}),
             ...(isRecord(row.after_data) ? row.after_data : {}),
@@ -392,7 +421,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (body.type === "sync") {
     try {
       const count = await syncDirectory(admin, tenantId, token);
-      await audit(admin, tenantId, actorId, "teams.directory.synced", "all", { count });
+      await audit(admin, tenantId, actorId, "teams.directory.synced", "all", {
+        count,
+      });
       return json(request, { data: { count } });
     } catch (error) {
       return error instanceof TeamsGraphError
@@ -431,7 +462,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .is("inactive_at", null)
         .maybeSingle();
       if (!person) return fail(request, "person_unknown");
-      await addTeamMember(token, teamId, body.userId.toLowerCase(), body.owner === true);
+      await addTeamMember(
+        token,
+        teamId,
+        body.userId.toLowerCase(),
+        body.owner === true,
+      );
       await refreshOne(admin, tenantId, token, teamId);
       await audit(admin, tenantId, actorId, "teams.member.added", teamId, {
         owner: body.owner === true,
@@ -444,26 +480,62 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         return fail(request, "invalid_request", 400);
       }
       const members = await listTeamMembers(token, teamId);
-      const target = members.find((member) => member.membershipId === body.membershipId);
+      const target = members.find(
+        (member) => member.membershipId === body.membershipId,
+      );
       if (!target) return fail(request, "teams_member_not_found", 404);
       const owners = members.filter((member) => member.isOwner);
       const losesOwner =
         target.isOwner && (body.type === "removeMember" || body.owner !== true);
-      if (losesOwner && owners.length <= 1) return fail(request, "last_owner", 409);
+      if (losesOwner && owners.length <= 1)
+        return fail(request, "last_owner", 409);
       if (body.type === "removeMember") {
         await removeTeamMember(token, teamId, target.membershipId);
       } else {
-        await setTeamMemberOwner(token, teamId, target.membershipId, body.owner === true);
+        await setTeamMemberOwner(
+          token,
+          teamId,
+          target.membershipId,
+          body.owner === true,
+        );
       }
       await refreshOne(admin, tenantId, token, teamId);
       await audit(
         admin,
         tenantId,
         actorId,
-        body.type === "removeMember" ? "teams.member.removed" : "teams.member.role_changed",
+        body.type === "removeMember"
+          ? "teams.member.removed"
+          : "teams.member.role_changed",
         teamId,
         { owner: body.owner === true },
       );
+      return json(request, { data: { ok: true } });
+    }
+
+    if (body.type === "delete") {
+      // Sicherung: der Name des Teams muss mitgeschickt werden.
+      if (
+        typeof body.confirmName !== "string" ||
+        body.confirmName.trim() !== String(team.display_name).trim()
+      ) {
+        return fail(request, "confirm_mismatch", 400);
+      }
+      await deleteTeam(token, teamId);
+      await admin
+        .from("teams_requests")
+        .update({ status: "archived", archived_at: new Date().toISOString() })
+        .eq("tenant_id", tenantId)
+        .eq("graph_team_id", teamId)
+        .in("status", ["ready", "provisioning", "queued", "failed"]);
+      await admin
+        .from("teams_directory")
+        .delete()
+        .eq("tenant_id", tenantId)
+        .eq("graph_team_id", teamId);
+      await audit(admin, tenantId, actorId, "teams.team.deleted", teamId, {
+        name: String(team.display_name).slice(0, 120),
+      });
       return json(request, { data: { ok: true } });
     }
 
@@ -486,7 +558,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .eq("tenant_id", tenantId)
         .eq("graph_team_id", teamId)
         .in("status", archive ? ["ready"] : ["archived"]);
-      await audit(admin, tenantId, actorId, archive ? "teams.team.archived" : "teams.team.unarchived", teamId, {});
+      await audit(
+        admin,
+        tenantId,
+        actorId,
+        archive ? "teams.team.archived" : "teams.team.unarchived",
+        teamId,
+        {},
+      );
       return json(request, { data: { ok: true } });
     }
   } catch (error) {
@@ -508,7 +587,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .eq("graph_team_id", teamId)
       .maybeSingle();
     if (existing) {
-      if (existing.status !== "ready") return fail(request, "teams_extend_not_possible", 409);
+      if (existing.status !== "ready")
+        return fail(request, "teams_extend_not_possible", 409);
       await admin
         .from("teams_requests")
         .update({
@@ -519,7 +599,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         })
         .eq("id", existing.id);
     } else {
-      const owners = ((team.owner_ids as string[]) ?? []).filter((id) => UUID.test(id));
+      const owners = ((team.owner_ids as string[]) ?? []).filter((id) =>
+        UUID.test(id),
+      );
       if (owners.length === 0) return fail(request, "no_owner");
       const { error } = await admin.from("teams_requests").insert({
         tenant_id: tenantId,
@@ -536,7 +618,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       });
       if (error) return fail(request, "teams_end_failed", 500);
     }
-    await audit(admin, tenantId, actorId, "teams.team.end_set", teamId, { endDate });
+    await audit(admin, tenantId, actorId, "teams.team.end_set", teamId, {
+      endDate,
+    });
     return json(request, { data: { endDate } });
   }
 
