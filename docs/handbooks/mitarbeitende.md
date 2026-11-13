@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # Handbuch für Mitarbeitende
@@ -131,7 +131,7 @@ _Eingegangen → In Bearbeitung → Wartet auf Sie → Gelöst → Geschlossen_ 
 Zeitpunkten.
 
 - **Antworten:** Schreiben Sie in **Ihre Nachricht** und klicken Sie auf
-  **Nachricht senden**. Mit **Bilder hochladen** fügen Sie Screenshots hinzu.
+  **Nachricht senden**. Mit **Dateien anhängen** fügen Sie Screenshots oder Dokumente hinzu.
   Erlaubt sind u. a. PDF, Office-Dokumente, TXT, CSV, PNG und JPG.
 - **Wartet auf Sie:** nextDesk fragt «Ist Ihr Problem inzwischen gelöst?».
   Klicken Sie auf **Problem ist gelöst** oder **Ich brauche noch Hilfe**. Bei

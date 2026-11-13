@@ -482,7 +482,10 @@ Schritt eine andere Person aus, gilt diese Auswahl. Bei der Mehrfachauswahl
 
 Über der Beschreibung zeigt die kompakte **Ticket-Zeitachse** alle
 Ereignisse, die Reaktions- und Lösungsfrist sowie längere Lücken. Darunter
-folgt die **Unterhaltung** mit allen Nachrichten und Notizen.
+folgt die **Unterhaltung** mit allen Nachrichten und Notizen. Dateien
+erscheinen direkt bei der Nachricht, zu der sie gehören – auch die Anhänge der
+E-Mail, aus der das Ticket entstanden ist (unter der Beschreibung). Bilder
+werden als Vorschau gezeigt, andere Dateien öffnen Sie mit **Öffnen**.
 
 Rechts unter der **Übersicht** liegt die Karte **Koordination**. Sie zeigt die
 **Supportstufe** mit dem zuständigen Team (**An nächste Stufe übergeben**,
@@ -533,7 +536,8 @@ Praktische Helfer:
 
 - **Antwort senden und als gelöst markieren** in einem Schritt
 - `@Name` erwähnt Kolleginnen und Kollegen
-- **Bilder hochladen**, **Makro anwenden**, **KI-Entwurf erstellen**
+- **Dateien anhängen** (Bilder, PDF, Word, Excel, TXT, CSV; bis 5 Dateien pro
+  Nachricht), **Makro anwenden**, **KI-Entwurf erstellen**
   (falls KI-Assistenz aktiv)
 
 ![Antwort an die anfragende Person schreiben](images/ag-antworten.jpg)

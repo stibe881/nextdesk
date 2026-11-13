@@ -67,6 +67,7 @@ import {
 import {
   MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS,
   ticketCommentAttachmentIds,
+  requestAttachments,
   ticketCommentBodyWithAttachments,
 } from "./lib/ticket-comment-attachments";
 import { ticketWatchPresentation } from "./lib/ticket-watch-presentation";
@@ -584,6 +585,8 @@ type MergeSearchTarget = {
 type TicketAttachment = {
   id: string;
   commentId: string | null;
+  /** Inline e-mail image, already shown inside the message text. */
+  inline: boolean;
   visibility: CommentVisibility;
   originalFilename: string;
   contentType: string;
@@ -855,12 +858,6 @@ function isListedAttachmentType(contentType: string): boolean {
 }
 const ATTACHMENT_ALLOWLIST_LABEL =
   "PDF, TXT, CSV, DOC, DOCX, XLS, XLSX, PNG, JPG/JPEG und WebP";
-const COMMENT_IMAGE_CONTENT_TYPES = new Set<string>([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-]);
-const COMMENT_IMAGE_ACCEPT = [...COMMENT_IMAGE_CONTENT_TYPES].join(",");
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -1463,6 +1460,7 @@ function toTicketAttachment(value: unknown): TicketAttachment | null {
   return {
     id: attachment.id,
     commentId,
+    inline: attachment.inline === true,
     visibility,
     originalFilename,
     contentType,
@@ -2021,12 +2019,9 @@ function attachmentFileError(file: File): string | null {
   return null;
 }
 
+// Message attachments accept every allowed attachment type, not only images.
 function commentImageFileError(file: File): string | null {
-  const validationError = attachmentFileError(file);
-  if (validationError) return validationError;
-  return COMMENT_IMAGE_CONTENT_TYPES.has(file.type.trim().toLowerCase())
-    ? null
-    : "Hier können nur PNG-, JPG/JPEG- oder WebP-Bilder hochgeladen werden.";
+  return attachmentFileError(file);
 }
 
 function valuesOf<T>(value: unknown, guard: (item: unknown) => item is T): T[] {
@@ -4248,6 +4243,54 @@ export function TicketDetail({
     }
     return grouped;
   }, [attachments]);
+  const descriptionAttachments = useMemo(
+    () =>
+      detail ? requestAttachments(attachments, detail.ticket.created_at) : [],
+    [attachments, detail],
+  );
+
+  /** File list below a message (request, reply or note) in the conversation. */
+  function renderMessageAttachments(list: readonly TicketAttachment[]) {
+    return (
+      <ul className="ticket-comment-attachment-list">
+        {list.map((attachment) => (
+          <li key={attachment.id}>
+            {inlineImagesByAttachmentId[attachment.id] ? (
+              <button
+                aria-label={`${attachment.originalFilename} gross anzeigen`}
+                className="ticket-comment-image-preview"
+                onClick={() => void downloadAttachment(attachment)}
+                type="button"
+              >
+                <img
+                  alt={attachment.originalFilename}
+                  loading="lazy"
+                  onError={() => refreshInlineImageAfterError(attachment.id)}
+                  src={inlineImagesByAttachmentId[attachment.id]?.signedUrl}
+                />
+              </button>
+            ) : null}
+            <Paperclip aria-hidden="true" size={16} />
+            <span>
+              <strong>{attachment.originalFilename}</strong>
+              <small>{formatFileSize(attachment.byteSize)}</small>
+            </span>
+            <button
+              className="text-button"
+              disabled={attachmentBusy}
+              onClick={() => void downloadAttachment(attachment)}
+              type="button"
+            >
+              {pendingAttachmentAction === "download" &&
+              pendingAttachmentId === attachment.id
+                ? "Wird geöffnet …"
+                : "Öffnen"}
+            </button>
+          </li>
+        ))}
+      </ul>
+    );
+  }
   const commentComposer = requesterView
     ? {
         ...ticketCommentComposerCopy("external"),
@@ -5930,7 +5973,7 @@ export function TicketDetail({
     if (remaining < 1) {
       setCommentImageNotice({
         tone: "error",
-        text: `Pro Nachricht sind höchstens ${MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS} Bilder möglich.`,
+        text: `Pro Nachricht sind höchstens ${MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS} Dateien möglich.`,
       });
       return;
     }
@@ -5962,8 +6005,8 @@ export function TicketDetail({
       tone: "success",
       text:
         queuedImages.length === 1
-          ? "Bild vorgemerkt. Es wird erst beim Speichern der Nachricht hochgeladen."
-          : `${queuedImages.length} Bilder vorgemerkt. Sie werden erst beim Speichern der Nachricht hochgeladen.`,
+          ? "Datei vorgemerkt. Sie wird erst beim Senden der Nachricht hochgeladen."
+          : `${queuedImages.length} Dateien vorgemerkt. Sie werden erst beim Senden der Nachricht hochgeladen.`,
     });
     if (commentImageInputRef.current) commentImageInputRef.current.value = "";
   }
@@ -7348,6 +7391,9 @@ export function TicketDetail({
                   loading={inlineImagesLoading}
                   onImageError={refreshInlineImageAfterError}
                 />
+                {descriptionAttachments.length > 0
+                  ? renderMessageAttachments(descriptionAttachments)
+                  : null}
               </div>
             )}
             {storedFormAnswers?.ticketId === detail.ticket.id && (
@@ -7620,58 +7666,9 @@ export function TicketDetail({
                         loading={inlineImagesLoading}
                         onImageError={refreshInlineImageAfterError}
                       />
-                      {commentAttachments.length > 0 ? (
-                        <ul className="ticket-comment-attachment-list">
-                          {commentAttachments.map((attachment) => (
-                            <li key={attachment.id}>
-                              {inlineImagesByAttachmentId[attachment.id] ? (
-                                <button
-                                  aria-label={`${attachment.originalFilename} gross anzeigen`}
-                                  className="ticket-comment-image-preview"
-                                  onClick={() =>
-                                    void downloadAttachment(attachment)
-                                  }
-                                  type="button"
-                                >
-                                  <img
-                                    alt={attachment.originalFilename}
-                                    loading="lazy"
-                                    onError={() =>
-                                      refreshInlineImageAfterError(
-                                        attachment.id,
-                                      )
-                                    }
-                                    src={
-                                      inlineImagesByAttachmentId[attachment.id]
-                                        ?.signedUrl
-                                    }
-                                  />
-                                </button>
-                              ) : null}
-                              <ImagePlus aria-hidden="true" size={16} />
-                              <span>
-                                <strong>{attachment.originalFilename}</strong>
-                                <small>
-                                  {formatFileSize(attachment.byteSize)}
-                                </small>
-                              </span>
-                              <button
-                                className="text-button"
-                                disabled={attachmentBusy}
-                                onClick={() =>
-                                  void downloadAttachment(attachment)
-                                }
-                                type="button"
-                              >
-                                {pendingAttachmentAction === "download" &&
-                                pendingAttachmentId === attachment.id
-                                  ? "Wird geöffnet …"
-                                  : "Öffnen"}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
+                      {commentAttachments.length > 0
+                        ? renderMessageAttachments(commentAttachments)
+                        : null}
                     </li>
                   );
                 })}
@@ -7790,8 +7787,8 @@ export function TicketDetail({
                   onDrop={handleCommentImageDrop}
                 >
                   <input
-                    accept={COMMENT_IMAGE_ACCEPT}
-                    aria-label="Bilder für diese Nachricht auswählen"
+                    accept={ATTACHMENT_ACCEPT}
+                    aria-label="Dateien für diese Nachricht auswählen"
                     className="ticket-comment-image-input"
                     disabled={busy || attachmentBusy}
                     multiple
@@ -7804,12 +7801,13 @@ export function TicketDetail({
                     type="file"
                   />
                   <div className="ticket-comment-image-dropzone__copy">
-                    <ImagePlus aria-hidden="true" size={19} />
+                    <Paperclip aria-hidden="true" size={19} />
                     <span>
-                      <strong>Bilder zur Nachricht hinzufügen</strong>
+                      <strong>Dateien zur Nachricht hinzufügen</strong>
                       <small>
-                        Hierher ziehen oder hochladen · PNG, JPG/JPEG und WebP ·
-                        maximal 25 MiB pro Bild
+                        Hierher ziehen oder auswählen ·{" "}
+                        {ATTACHMENT_ALLOWLIST_LABEL} · höchstens{" "}
+                        {MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS} Dateien à 25 MiB
                       </small>
                     </span>
                   </div>
@@ -7819,14 +7817,14 @@ export function TicketDetail({
                     onClick={() => commentImageInputRef.current?.click()}
                     type="button"
                   >
-                    <ImagePlus aria-hidden="true" size={16} />
-                    Bilder hochladen
+                    <Paperclip aria-hidden="true" size={16} />
+                    Dateien anhängen
                   </button>
                   {activeCommentImageAttachments.length > 0 ? (
                     <ul className="ticket-comment-image-preview-list">
                       {activeCommentImageAttachments.map((attachment) => (
                         <li key={attachment.key}>
-                          <ImagePlus aria-hidden="true" size={19} />
+                          <Paperclip aria-hidden="true" size={19} />
                           <span>
                             <strong>{attachment.originalFilename}</strong>
                             <small>{formatFileSize(attachment.byteSize)}</small>
