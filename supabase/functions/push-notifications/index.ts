@@ -26,6 +26,7 @@ const ALL_CATEGORIES = [
   "shop",
   "infrastructure",
   "security_report",
+  "security_case",
   "incident",
   "ipam",
 ] as const;
@@ -38,6 +39,7 @@ const AGENT_CATEGORIES = [
   "approval",
   "follow_up",
   "security_report",
+  "security_case",
   "incident",
 ] as const;
 const REQUESTER_CATEGORIES = [
@@ -58,11 +60,15 @@ type Environment = "production" | "development";
 const MODE_ONLY_CATEGORIES: readonly Category[] = [
   "infrastructure",
   "security_report",
+  "security_case",
   "incident",
   "ipam",
 ];
 // Phishing reports are opt-in: off unless the person switched them on.
-const OPT_IN_MODE_CATEGORIES: readonly Category[] = ["security_report"];
+const OPT_IN_MODE_CATEGORIES: readonly Category[] = [
+  "security_report",
+  "security_case",
+];
 const DEFAULT_ENABLED_CATEGORIES = ALL_CATEGORIES.filter(
   (category) =>
     category !== "inventory_low_stock" &&
@@ -986,9 +992,10 @@ async function getStatus(
       // members of the phishing team always get phishing reports and
       // security cases.
       alwaysDeliveredCategories:
-        !phishingTeam.error && phishingTeam.data === true &&
-          categories.includes("security_report")
-          ? ["security_report"]
+        !phishingTeam.error && phishingTeam.data === true
+          ? (["security_report", "security_case"] as const).filter(
+              (category) => categories.includes(category),
+            )
           : [],
       emailAvailable,
       preferences: preferencesForResponse(preferences),

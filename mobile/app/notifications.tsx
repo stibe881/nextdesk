@@ -116,9 +116,13 @@ const CATEGORY_DETAILS: readonly {
   },
   {
     key: "security_report",
-    label: "Phishing und Sicherheitsfälle",
-    description:
-      "Phishing-Meldungen, überfällige Sicherheitsfälle, «geklickt» und Kampagnen.",
+    label: "Phishing",
+    description: "Neue Phishing-Meldungen.",
+  },
+  {
+    key: "security_case",
+    label: "Sicherheitsfälle",
+    description: "Überfällige Sicherheitsfälle, «geklickt» und Kampagnen.",
   },
   {
     key: "incident",

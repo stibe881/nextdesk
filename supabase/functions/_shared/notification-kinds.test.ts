@@ -13,9 +13,9 @@ const EXPECTED: Record<string, string | null> = {
   "monitoring.incident.reopened": "incident",
   // C – Security
   "ticket.security_report": "security_report",
-  "security.case_overdue": "security_report",
-  "security.case_clicked": "security_report",
-  "security.campaign": "security_report",
+  "security.case_overdue": "security_case",
+  "security.case_clicked": "security_case",
+  "security.campaign": "security_case",
   // D – Shop and inventory
   "shop.order.loan_due": "shop",
   "shop.order.loan_overdue": "shop",
