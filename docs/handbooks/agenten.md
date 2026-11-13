@@ -433,6 +433,12 @@ der Übersicht, im Kanban und in der App.
 - **SLA-Anzeige**: Jede Karte zeigt die verbleibende Zeit bis zur
   Lösungsfrist; Tickets in einem wartenden Status zeigen stattdessen **«SLA
   pausiert seit …»** (siehe «SLA-Pause in wartenden Status»).
+- **Suchfilter im Suchfeld**: `status:offen`, `prio:hoch`, `queue:ict`,
+  `agent:mir` sowie `sla:kritisch` (Lösungsfrist in weniger als 1 Stunde oder
+  überschritten), `sla:warnung` (1 bis 4 Stunden), `sla:ok` (mehr als
+  4 Stunden oder ohne Frist) und `sla:pausiert` (SLA pausiert, Ticket in
+  einem wartenden Status). Pausierte Tickets erscheinen nur unter
+  `sla:pausiert`, nie unter `sla:kritisch`, `sla:warnung` oder `sla:ok`.
 
 ### Gelöschte Tickets (Papierkorb)
 
@@ -600,7 +606,9 @@ dieser Status ist:
   statt der verbleibenden Zeit;
 - wird keine SLA-Verletzung ausgelöst und keine Warnung «SLA in Gefahr»
   verschickt; das Ticket zählt nicht als überfällig (Teamführung, Meine
-  Prioritäten, Zeitregeln «SLA läuft bald ab»);
+  Prioritäten, Zeitregeln «SLA läuft bald ab») und nicht als «SLA
+  überschritten» in den Drilldowns der Berichte;
+- finden Sie es in der Ticketliste mit dem Suchfilter `sla:pausiert`;
 - bleibt die Pause bestehen, wenn Sie zwischen zwei wartenden Status wechseln.
 
 Setzen Sie das Ticket wieder auf einen bearbeitenden Status (z. B. **In
@@ -610,7 +618,11 @@ die **Servicezeit** der SLA-Regel – bei Geschäftszeiten also nur die Stunden
 innerhalb der Geschäftszeiten. Schliessen Sie ein pausiertes Ticket direkt ab,
 endet die Pause ebenfalls; die Wartezeit zählt auch dann nicht gegen die SLA.
 Eine Frist, die **vor** Beginn der Pause schon überschritten war, bleibt
-überschritten.
+überschritten. Antworten Sie der anfragenden Person zum ersten Mal, während
+das Ticket noch wartet, wird die Reaktionsfrist um die bis zur Antwort
+pausierte Zeit verschoben. Berichte und SLA-Einhaltung messen gelöste
+Tickets an den verschobenen Fristen. In der **Ticket-Zeitachse** zeigt eine
+pausierte Frist **«SLA pausiert, Restzeit …»**.
 
 Im Verlauf des Tickets sehen Sie **SLA pausiert («Status»)** und **SLA
 fortgesetzt, Fristen um … Servicezeit verschoben**.

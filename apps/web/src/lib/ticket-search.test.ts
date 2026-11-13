@@ -37,6 +37,28 @@ describe("Ticket-Suchsyntax", () => {
     expect(matchesTicketSearch(ticket, search)).toBe(true);
   });
 
+  it("filtert pausierte SLA nur mit sla:pausiert", () => {
+    const paused: DashboardTicket = {
+      ...ticket,
+      risk: "ok",
+      sla: "SLA pausiert seit 14:30",
+      slaPaused: true,
+    };
+    const search = parseTicketSearch("sla:pausiert");
+
+    expect(search.chips.map((chip) => chip.label)).toEqual([
+      "SLA-Risiko: pausiert",
+    ]);
+    expect(search.filters.risk).toEqual(["pausiert"]);
+    expect(matchesTicketSearch(paused, search)).toBe(true);
+    expect(matchesTicketSearch(ticket, search)).toBe(false);
+    for (const value of ["ok", "warnung", "kritisch"]) {
+      expect(
+        matchesTicketSearch(paused, parseTicketSearch(`sla:${value}`)),
+      ).toBe(false);
+    }
+  });
+
   it("unterstützt Ticketnummer und persönliche oder unzugewiesene Auswahl", () => {
     expect(
       matchesTicketSearch(ticket, parseTicketSearch("ticket:0142 agent:mir")),
