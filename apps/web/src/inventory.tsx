@@ -19,6 +19,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Search,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
@@ -30,6 +31,7 @@ import {
 } from "./asset-label-dialog";
 import { FormField, FormGrid } from "./form-kit";
 import { inventoryLabelItem } from "./lib/asset-labels";
+import { filterInventoryItems } from "./lib/inventory-search";
 import { InventoryAutomation } from "./inventory-automation";
 import { InventoryProcurement } from "./inventory-procurement";
 import { functionErrorMessage } from "./lib/function-error";
@@ -1749,7 +1751,10 @@ function InventoryItems({
   // Shop-Verknüpfung: welcher Lagerartikel im Shop angeboten wird.
   const [shop, setShop] = useState<{
     canManage: boolean;
-    linked: Map<string, { name: string; active: boolean; kind: string }>;
+    linked: Map<
+      string,
+      { name: string; active: boolean; kind: string; imageUrl: string | null }
+    >;
   } | null>(null);
   const [shopNotice, setShopNotice] = useState("");
   const [shopError, setShopError] = useState("");
@@ -1765,6 +1770,11 @@ function InventoryItems({
   );
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const labelItems = items.filter((item) => labelSelection.has(item.id));
+  const [articleQuery, setArticleQuery] = useState("");
+  const visibleItems = useMemo(
+    () => filterInventoryItems(items, articleQuery),
+    [items, articleQuery],
+  );
   const openEditor = useCallback(
     (item: InventoryItemSummary | null) => {
       const activeLocations = locations
@@ -1814,7 +1824,7 @@ function InventoryItems({
       const catalog = await shopApi.catalog(tenantId, context.canManage);
       const linked = new Map<
         string,
-        { name: string; active: boolean; kind: string }
+        { name: string; active: boolean; kind: string; imageUrl: string | null }
       >();
       for (const entry of catalog) {
         if (entry.inventoryItemId) {
@@ -1822,6 +1832,7 @@ function InventoryItems({
             name: entry.name,
             active: entry.active,
             kind: entry.kind,
+            imageUrl: entry.imageUrl ?? null,
           });
         }
       }
@@ -1914,14 +1925,26 @@ function InventoryItems({
         </p>
       ) : null}
       {items.length > 0 ? (
+        <label className="inventory__search">
+          <span className="sr-only">Artikel suchen</span>
+          <Search aria-hidden="true" size={16} />
+          <input
+            onChange={(event) => setArticleQuery(event.target.value)}
+            placeholder="Artikel suchen: Name, Artikelnummer oder Lagerort"
+            type="search"
+            value={articleQuery}
+          />
+        </label>
+      ) : null}
+      {items.length > 0 ? (
         <LabelSelectionBar
           onClear={() => setLabelSelection(new Set())}
           onPrint={() => setLabelDialogOpen(true)}
           onSelectVisible={() =>
-            setLabelSelection(new Set(items.map((item) => item.id)))
+            setLabelSelection(new Set(visibleItems.map((item) => item.id)))
           }
           selectedCount={labelItems.length}
-          visibleCount={items.length}
+          visibleCount={visibleItems.length}
         />
       ) : null}
       {labelDialogOpen ? (
@@ -1950,7 +1973,11 @@ function InventoryItems({
           {shopError}
         </p>
       ) : null}
-      {items.length ? (
+      {items.length > 0 && visibleItems.length === 0 ? (
+        <p className="empty-state">
+          Kein Artikel passt zu «{articleQuery.trim()}».
+        </p>
+      ) : items.length ? (
         <div className="inventory__table-wrap">
           <table className="inventory__table">
             <thead>
@@ -1967,7 +1994,7 @@ function InventoryItems({
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
+              {visibleItems.map((item) => (
                 <tr key={item.id}>
                   <td>
                     <label className="asset-label-check">
@@ -2009,6 +2036,9 @@ function InventoryItems({
                     {/* Bilder werden nur im Artikelformular geändert. */}
                     <InventoryItemImage
                       canManage={false}
+                      fallbackImageUrl={
+                        shop?.linked.get(item.id)?.imageUrl ?? null
+                      }
                       item={item}
                       onImagesChanged={onImagesChanged}
                       tenantId={tenantId}
@@ -2156,11 +2186,14 @@ async function uploadInventoryItemImageFile(
 
 function InventoryItemImage({
   canManage,
+  fallbackImageUrl = null,
   item,
   onImagesChanged,
   tenantId,
 }: {
   canManage: boolean;
+  /** Bild des verknüpften Shop-Artikels, wenn der Lagerartikel kein eigenes hat. */
+  fallbackImageUrl?: string | null;
   item: InventoryItemSummary;
   onImagesChanged: () => Promise<boolean>;
   tenantId: string;
@@ -2320,7 +2353,10 @@ function InventoryItemImage({
     }
   }
 
-  const visibleImageUrl = localPreviewUrl ?? imageUrl;
+  const visibleImageUrl =
+    localPreviewUrl ??
+    imageUrl ??
+    (!item.hasPrimaryImage ? fallbackImageUrl : null);
   return (
     <div className="inventory__item-image">
       {visibleImageUrl ? (

@@ -787,6 +787,12 @@ werden wie bisher alle benachrichtigt.
   Artikelnummer und die Lagerangaben). Ausschalten nimmt die jeweilige Art beim
   Speichern aus dem Shop; der Lagerartikel bleibt bestehen.
 
+Über der Artikelliste steht ein **Suchfeld**: Es findet Artikel nach Name,
+Artikelnummer oder Lagerort, auch mit mehreren Wörtern (z. B. «logitech ergo»).
+**Alle sichtbaren** wählt dann nur die gefundenen Artikel für Etiketten aus. Hat
+ein Lagerartikel kein eigenes Bild, zeigt die Liste das Foto des verknüpften
+Shop-Artikels.
+
 **Etiketten drucken** wie bei den Assets: In der Artikelliste wählst du Artikel
 mit **Für Etikett auswählen** (oder **Alle sichtbaren**) und drucken mit
 **Etiketten drucken** Etiketten mit QR-Code, Bezeichnung, Artikelnummer und
