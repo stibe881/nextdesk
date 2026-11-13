@@ -303,7 +303,10 @@ beim Anbieter liegt und nicht in Ihrem Netz, z. B. wenn mehrere Personen
 melden, dass Teams nicht geht. Das Team wird beim Auftreten einmal
 benachrichtigt (ohne Wiederholungsalarm); meldet der Anbieter die Störung als
 behoben, schliesst sie sich automatisch. **Statusseite des Anbieters öffnen**
-führt zu den Details beim Anbieter.
+führt zu den Details beim Anbieter. Neue Texte des Anbieters erscheinen im
+Verlauf als «Update vom Anbieter». Externe Störungen müssen weder bestätigt
+noch zugewiesen werden; von Hand abschliessen ist nur nötig, wenn die Meldung
+beim Anbieter hängen bleibt.
 
 - **Eine Störung pro Gerät**: Weitere Sensoren desselben Geräts (z. B. Ping
   und SNMP) hängen an derselben Störung. Kommt das Gerät innerhalb von

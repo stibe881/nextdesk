@@ -186,6 +186,9 @@ export default function IncidentDetailScreen() {
   const minutes = liveMinutes(detail.openedAt, detail.resolvedAt, now);
   const canChange = detail.state !== "closed";
   const showCauseForm = detail.state !== "closed" || !detail.cause;
+  // Provider issue (Microsoft 365, GitHub, …): nothing to confirm or assign.
+  const external = detail.source === "external";
+  const provider = detail.externalProvider ?? "der Anbieter";
   const assigned = detail.agents.find((a) => a.id === detail.assignedAgentId);
   const openTickets = detail.tickets.filter((ticket) => !ticket.closed);
   const neighbourDot = (entry: IncidentNeighbour) =>
@@ -287,7 +290,7 @@ export default function IncidentDetailScreen() {
           </View>
         ) : null}
 
-        {canChange && !detail.acknowledgedAt ? (
+        {canChange && !external && !detail.acknowledgedAt ? (
           <Pressable
             accessibilityRole="button"
             disabled={busy !== null}
@@ -309,77 +312,84 @@ export default function IncidentDetailScreen() {
           </Pressable>
         ) : null}
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Zuständig</Text>
-          <Text style={styles.kvValue}>
-            {assigned?.name ?? "Nicht zugewiesen"}
-          </Text>
-          {detail.acknowledgedAt ? (
-            <Text style={styles.muted}>
-              Bestätigt von {detail.acknowledgedBy ?? "–"},{" "}
-              {DATE_TIME.format(new Date(detail.acknowledgedAt))}
+        {!external ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Zuständig</Text>
+            <Text style={styles.kvValue}>
+              {assigned?.name ?? "Nicht zugewiesen"}
             </Text>
-          ) : null}
-          {canChange ? (
-            <View style={styles.badgeRow}>
-              {userId &&
-              detail.assignedAgentId !== userId &&
-              detail.agents.some((a) => a.id === userId) ? (
+            {detail.acknowledgedAt ? (
+              <Text style={styles.muted}>
+                Bestätigt von {detail.acknowledgedBy ?? "–"},{" "}
+                {DATE_TIME.format(new Date(detail.acknowledgedAt))}
+              </Text>
+            ) : null}
+            {canChange ? (
+              <View style={styles.badgeRow}>
+                {userId &&
+                detail.assignedAgentId !== userId &&
+                detail.agents.some((a) => a.id === userId) ? (
+                  <Pressable
+                    disabled={busy !== null}
+                    onPress={() =>
+                      void run("assign", () =>
+                        assignIncident(tenantId, detail.id, userId),
+                      )
+                    }
+                    style={[styles.button, styles.buttonSecondary]}
+                  >
+                    <Text style={styles.buttonSecondaryText}>Mir zuweisen</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable
                   disabled={busy !== null}
-                  onPress={() =>
-                    void run("assign", () =>
-                      assignIncident(tenantId, detail.id, userId),
-                    )
-                  }
+                  onPress={() => setPickAgent((value) => !value)}
                   style={[styles.button, styles.buttonSecondary]}
                 >
-                  <Text style={styles.buttonSecondaryText}>Mir zuweisen</Text>
+                  <Text style={styles.buttonSecondaryText}>Ändern</Text>
                 </Pressable>
-              ) : null}
-              <Pressable
-                disabled={busy !== null}
-                onPress={() => setPickAgent((value) => !value)}
-                style={[styles.button, styles.buttonSecondary]}
-              >
-                <Text style={styles.buttonSecondaryText}>Ändern</Text>
-              </Pressable>
-            </View>
-          ) : null}
-          {pickAgent && canChange ? (
-            <View style={styles.list}>
-              {[{ id: "", name: "Nicht zugewiesen" }, ...detail.agents].map(
-                (agent) => {
-                  const selected = (detail.assignedAgentId ?? "") === agent.id;
-                  return (
-                    <Pressable
-                      key={agent.id || "none"}
-                      onPress={() => {
-                        setPickAgent(false);
-                        void run("assign", () =>
-                          assignIncident(tenantId, detail.id, agent.id || null),
-                        );
-                      }}
-                      style={[
-                        styles.option,
-                        selected ? styles.optionActive : null,
-                      ]}
-                    >
-                      <Text style={styles.optionText}>{agent.name}</Text>
-                      {selected ? (
-                        <Ionicons
-                          color={colors.primaryText}
-                          name="checkmark"
-                          size={18}
-                        />
-                      ) : null}
-                    </Pressable>
-                  );
-                },
-              )}
-            </View>
-          ) : null}
-        </View>
+              </View>
+            ) : null}
+            {pickAgent && canChange ? (
+              <View style={styles.list}>
+                {[{ id: "", name: "Nicht zugewiesen" }, ...detail.agents].map(
+                  (agent) => {
+                    const selected =
+                      (detail.assignedAgentId ?? "") === agent.id;
+                    return (
+                      <Pressable
+                        key={agent.id || "none"}
+                        onPress={() => {
+                          setPickAgent(false);
+                          void run("assign", () =>
+                            assignIncident(
+                              tenantId,
+                              detail.id,
+                              agent.id || null,
+                            ),
+                          );
+                        }}
+                        style={[
+                          styles.option,
+                          selected ? styles.optionActive : null,
+                        ]}
+                      >
+                        <Text style={styles.optionText}>{agent.name}</Text>
+                        {selected ? (
+                          <Ionicons
+                            color={colors.primaryText}
+                            name="checkmark"
+                            size={18}
+                          />
+                        ) : null}
+                      </Pressable>
+                    );
+                  },
+                )}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Verlauf</Text>
@@ -707,9 +717,17 @@ export default function IncidentDetailScreen() {
             <Text style={styles.cardTitle}>
               {detail.state === "closed"
                 ? "Ursache nachtragen (optional)"
-                : "Abschliessen"}
+                : external
+                  ? "Von Hand abschliessen (optional)"
+                  : "Abschliessen"}
             </Text>
-            {detail.state === "active" ? (
+            {detail.state === "active" && external ? (
+              <Text style={styles.muted}>
+                Schliesst sich automatisch, sobald {provider} die Störung als
+                behoben meldet. Von Hand abschliessen ist nur nötig, wenn die
+                Meldung beim Anbieter hängen bleibt.
+              </Text>
+            ) : detail.state === "active" ? (
               <Text style={styles.muted}>
                 Meldet PRTG wieder OK, schliesst sich die Störung automatisch.
                 Abschliessen beendet sie auch ohne OK-Meldung.
