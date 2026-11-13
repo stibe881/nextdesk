@@ -96,7 +96,7 @@ In der Karte der Funktion:
    der nextDesk-App die Teams-Rechte.
 2. **Verbindung prüfen**: zeigt, ob alles erteilt ist oder welches Recht
    noch fehlt. Nach der Zustimmung kann es einige Minuten dauern.
-3. **Längste Laufzeit** (Monate) und **Gäste dürfen eingeladen werden**.
+3. **Längste Laufzeit** (Monate, Standard 12) und **Gäste dürfen eingeladen werden**.
 
 Die Einrichtungsschritte stehen im Installationshandbuch.
 

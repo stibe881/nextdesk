@@ -83,7 +83,7 @@ const ERRORS: Record<string, string> = {
   dates_invalid: "Start und Ende müssen gültige Daten sein.",
   start_in_past: "Der Start darf nicht in der Vergangenheit liegen.",
   end_before_start: "Das Ende muss nach dem Start liegen.",
-  lifetime_too_long: "Die Laufzeit darf höchstens 3 Jahre betragen.",
+  lifetime_too_long: "Die Laufzeit ist länger als erlaubt.",
   person_unknown:
     "Eine gewählte Person ist im Verzeichnis nicht (mehr) aktiv. Bitte neu auswählen.",
   teams_not_configured:
@@ -178,6 +178,15 @@ export function addMonthsIso(date: string, months: number): string {
     .slice(0, 10);
 }
 
+/** «12» → «1 Jahr», «36» → «3 Jahre», «18» → «18 Monate». */
+export function lifetimeLabel(months: number): string {
+  if (months % 12 === 0) {
+    const years = months / 12;
+    return years === 1 ? "1 Jahr" : `${years} Jahre`;
+  }
+  return `${months} Monate`;
+}
+
 export function formatTeamDate(value: string): string {
   const [year, month, day] = value.split("-");
   return year && month && day ? `${day}.${month}.${year}` : value;
@@ -245,7 +254,7 @@ export function stepIssue(
     if (
       draft.endDate > addMonthsIso(draft.startDate, context.maxLifetimeMonths)
     ) {
-      return `Die Laufzeit darf höchstens ${context.maxLifetimeMonths / 12} Jahre betragen.`;
+      return `Die Laufzeit darf höchstens ${lifetimeLabel(context.maxLifetimeMonths)} betragen.`;
     }
   }
   return "";

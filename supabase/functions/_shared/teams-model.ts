@@ -15,7 +15,9 @@ export const TEAM_LIMITS = {
   ownersMax: 10,
   membersMax: 100,
   guestsMax: 20,
-  maxLifetimeMonths: 36,
+  maxLifetimeMonths: 12,
+  /** Obergrenze für Verlängerungen und das Setzen eines Endes im Menü «Teams». */
+  extensionHorizonMonths: 60,
 } as const;
 
 export const EXTENSION_MONTHS = [1, 3, 6, 12] as const;
