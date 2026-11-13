@@ -1741,36 +1741,59 @@ export function IncidentBanner({
 }: {
   notices: readonly ActiveIncidentNotice[];
 }) {
+  const [expanded, setExpanded] = useState(false);
   if (notices.length === 0) return null;
-  const primary = notices[0];
-  if (!primary) return null;
+  // Oldest notice first.
+  const sorted = [...notices].sort((a, b) =>
+    a.startsAt.localeCompare(b.startsAt),
+  );
+  const several = sorted.length > 1;
+  const shown = several && expanded ? sorted : sorted.slice(0, 1);
   return (
     <section
-      aria-label="Aktive Störung"
+      aria-label={several ? "Aktive Störungen" : "Aktive Störung"}
       className="workbench-incident-banner"
       role="status"
     >
       <AlertTriangle aria-hidden="true" size={21} strokeWidth={1.9} />
-      <div>
-        <div className="workbench-incident-banner__heading">
-          <strong>Aktive Störung: {primary.title}</strong>
-          <span>
-            {incidentStatusLabel(primary.status)} · Beginn{" "}
-            {displayDateTime(primary.startsAt)}
-          </span>
-        </div>
-        <p>{primary.description}</p>
-        {primary.serviceNames.length > 0 ? (
-          <p className="workbench-incident-banner__services">
-            Betroffene Dienste: {primary.serviceNames.join(", ")}
-          </p>
-        ) : null}
-      </div>
-      {notices.length > 1 && (
-        <span className="workbench-incident-banner__count">
-          +{notices.length - 1} weitere
-        </span>
-      )}
+      <ul className="workbench-incident-banner__list" id="incident-banner-list">
+        {shown.map((notice) => (
+          <li key={notice.id}>
+            <div className="workbench-incident-banner__heading">
+              <strong>Aktive Störung: {notice.title}</strong>
+              <span>
+                {incidentStatusLabel(notice.status)} · Beginn{" "}
+                {displayDateTime(notice.startsAt)}
+              </span>
+            </div>
+            {/* With several notices only an excerpt of each text. */}
+            <p
+              className={
+                several ? "workbench-incident-banner__excerpt" : undefined
+              }
+              title={several ? notice.description : undefined}
+            >
+              {notice.description}
+            </p>
+            {notice.serviceNames.length > 0 ? (
+              <p className="workbench-incident-banner__services">
+                Betroffene Dienste: {notice.serviceNames.join(", ")}
+              </p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {several ? (
+        <button
+          aria-controls="incident-banner-list"
+          aria-expanded={expanded}
+          className="workbench-incident-banner__count"
+          onClick={() => setExpanded((current) => !current)}
+          type="button"
+        >
+          {expanded ? "Weniger anzeigen" : `+${sorted.length - 1} weitere`}
+        </button>
+      ) : null}
     </section>
   );
 }

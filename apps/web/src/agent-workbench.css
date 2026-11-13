@@ -868,3 +868,34 @@
   margin-bottom: 12px;
   font-weight: 650;
 }
+
+/* Several active incidents: list (oldest first) with an excerpt each. */
+.workbench-incident-banner__list {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workbench-incident-banner__list > li + li {
+  border-top: 1px solid color-mix(in srgb, var(--warning) 22%, var(--border));
+  padding-top: 12px;
+}
+
+.workbench-incident-banner p.workbench-incident-banner__excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+button.workbench-incident-banner__count {
+  cursor: pointer;
+}
+
+button.workbench-incident-banner__count:hover {
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface));
+}
