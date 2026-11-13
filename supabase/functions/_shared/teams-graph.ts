@@ -68,10 +68,14 @@ async function call(
     let detail = "";
     try {
       const payload = (await response.json()) as {
-        error?: { code?: unknown };
+        error?: { code?: unknown; message?: unknown };
       } | null;
       if (typeof payload?.error?.code === "string") {
         detail = payload.error.code.slice(0, 80);
+      }
+      // Die Meldung von Microsoft nennt die Ursache (z. B. Lizenz, ungültiger Wert).
+      if (typeof payload?.error?.message === "string") {
+        detail += ` | ${payload.error.message.replace(/\s+/g, " ").slice(0, 300)}`;
       }
     } catch {
       // Kein JSON.
@@ -123,7 +127,7 @@ export async function createTeam(
   const response = await call(fetcher, token, "POST", "/teams", {
     "template@odata.bind": `${GRAPH}/teamsTemplates('standard')`,
     displayName: request.name,
-    description: request.description ?? "",
+    ...(request.description ? { description: request.description } : {}),
     visibility: request.visibility === "public" ? "Public" : "Private",
     members: [
       ...request.owners.map((id) => memberBody(id, true)),
