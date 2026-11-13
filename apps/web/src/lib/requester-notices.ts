@@ -71,11 +71,11 @@ export type NoticeDraft = {
 };
 
 export const TITLE_MAX = 60;
-export const BODY_MAX = 220;
+export const BODY_MAX = 300;
 export const BUTTON_MAX = 30;
 export const SYMBOL_MAX = 4;
 export const FREQUENCY_MAX_DAYS = 30;
-export const DEFAULT_FREQUENCY_DAYS = 7;
+export const DEFAULT_FREQUENCY_DAYS = 0;
 
 const ERRORS: Record<string, string> = {
   tenant_admin_required:

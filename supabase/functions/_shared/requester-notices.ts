@@ -10,7 +10,7 @@ type Row = Record<string, unknown>;
 
 export const NOTICE_FEATURE = "portal.notices";
 export const APP_ORIGIN = "https://app.nextdesk.ch";
-export const DEFAULT_FREQUENCY_DAYS = 7;
+export const DEFAULT_FREQUENCY_DAYS = 0;
 /** Mail-Arten, in denen ein Hinweis erscheinen darf (nie Sicherheits-, Phishing-, Erinnerungs-, Freigabemails). */
 export const NOTICE_MAIL_KINDS = ["acknowledgement", "agent_reply", "resolution"] as const;
 export const NOTICE_COLORS = ["brand", "info", "success", "warning"] as const;
@@ -71,7 +71,7 @@ export function validateNoticeInput(input: unknown, today: string): NoticeValida
   if (!isRecord(input)) return { ok: false, code: "invalid_request" };
   const title = text(input.title, 1, 60);
   if (!title) return { ok: false, code: "title_invalid" };
-  const body = text(input.body, 1, 220);
+  const body = text(input.body, 1, 300);
   if (!body) return { ok: false, code: "body_invalid" };
   const buttonLabel = text(input.buttonLabel, 1, 30);
   if (!buttonLabel) return { ok: false, code: "button_invalid" };

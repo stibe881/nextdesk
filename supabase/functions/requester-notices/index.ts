@@ -1,6 +1,7 @@
 import { loadFormality, tone } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import {
+  type CustomerTicketEmailNoticeColor,
   type CustomerTicketEmailKind,
   normalizeCustomerTicketEmailBranding,
   renderCustomerTicketEmail,
@@ -106,7 +107,8 @@ const NOTICE_COLUMNS =
   "id, title, body, button_label, link_kind, link_target, symbol, color, show_portal_banner, show_portal_bar, show_mail, show_app, dismissible, starts_on, ends_on, status, updated_at";
 
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
-  if (request.method !== "POST") return fail(request, "method_not_allowed", 405);
+  if (request.method !== "POST")
+    return fail(request, "method_not_allowed", 405);
   const body: unknown = await request.json().catch(() => null);
   const actorId = context.userClaims?.id;
   if (
@@ -132,7 +134,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   // ------------------------------------------------------------ Anfragende
   if (body.type === "active" || body.type === "track") {
-    const features = await resolveTenantFeatureStates(admin, tenantId, [NOTICE_FEATURE]);
+    const features = await resolveTenantFeatureStates(admin, tenantId, [
+      NOTICE_FEATURE,
+    ]);
     if (!features) return fail(request, "unavailable", 503);
     if (features[NOTICE_FEATURE] !== true) {
       return body.type === "active"
@@ -141,7 +145,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
 
     if (body.type === "active") {
-      const column = typeof body.placement === "string" ? PLACEMENTS[body.placement] : undefined;
+      const column =
+        typeof body.placement === "string"
+          ? PLACEMENTS[body.placement]
+          : undefined;
       if (!column) return fail(request, "invalid_request", 400);
       const { data: rows } = await admin
         .from("requester_notices")
@@ -159,28 +166,46 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             .from("requester_notice_dismissals")
             .select("notice_id")
             .eq("user_id", actorId)
-            .in("notice_id", list.map((row) => row.id))
+            .in(
+              "notice_id",
+              list.map((row) => row.id),
+            )
         : { data: [] };
-      const hidden = new Set(((dismissed ?? []) as Row[]).map((row) => String(row.notice_id)));
+      const hidden = new Set(
+        ((dismissed ?? []) as Row[]).map((row) => String(row.notice_id)),
+      );
       return json(request, {
-        data: { notices: list.filter((row) => !hidden.has(String(row.id))).slice(0, 1).map(publicView) },
+        data: {
+          notices: list
+            .filter((row) => !hidden.has(String(row.id)))
+            .slice(0, 1)
+            .map(publicView),
+        },
       });
     }
 
-    const channel = body.channel === "portal" || body.channel === "app" ? body.channel : null;
-    const event = ["view", "click", "dismiss"].includes(String(body.event)) ? String(body.event) : null;
-    if (!isUuid(body.noticeId) || !channel || !event) return fail(request, "invalid_request", 400);
+    const channel =
+      body.channel === "portal" || body.channel === "app" ? body.channel : null;
+    const event = ["view", "click", "dismiss"].includes(String(body.event))
+      ? String(body.event)
+      : null;
+    if (!isUuid(body.noticeId) || !channel || !event)
+      return fail(request, "invalid_request", 400);
     const { data: notice } = await admin
       .from("requester_notices")
       .select("id, dismissible, status")
       .eq("id", body.noticeId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
-    if (!notice || notice.status !== "active") return fail(request, "notice_not_found", 404);
+    if (!notice || notice.status !== "active")
+      return fail(request, "notice_not_found", 404);
     if (event === "dismiss" && notice.dismissible === true) {
       await admin
         .from("requester_notice_dismissals")
-        .upsert({ notice_id: notice.id, user_id: actorId }, { onConflict: "notice_id,user_id" });
+        .upsert(
+          { notice_id: notice.id, user_id: actorId },
+          { onConflict: "notice_id,user_id" },
+        );
     }
     await admin.rpc("requester_notice_count", {
       p_notice_id: notice.id,
@@ -191,7 +216,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   // -------------------------------------------------------- Administration
-  if (!String(body.type).startsWith("admin")) return fail(request, "invalid_request", 400);
+  if (!String(body.type).startsWith("admin"))
+    return fail(request, "invalid_request", 400);
   if (!(await isTenantAdministrator(admin, actorId, tenantId))) {
     return fail(request, "tenant_admin_required", 403);
   }
@@ -216,10 +242,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       const { data: stats } = await admin
         .from("requester_notice_stats")
         .select("notice_id, channel, views, clicks, dismissals")
-        .in("notice_id", list.map((row) => row.id));
+        .in(
+          "notice_id",
+          list.map((row) => row.id),
+        );
       for (const stat of (stats ?? []) as Row[]) {
         const entry = totals.get(String(stat.notice_id)) ?? {
-          views: 0, clicks: 0, dismissals: 0, mailViews: 0, mailClicks: 0,
+          views: 0,
+          clicks: 0,
+          dismissals: 0,
+          mailViews: 0,
+          mailClicks: 0,
         };
         if (stat.channel === "mail") {
           entry.mailViews += Number(stat.views);
@@ -238,7 +271,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           ...publicView(row),
           status: row.status,
           state: noticeState(
-            { status: String(row.status), starts_on: String(row.starts_on), ends_on: String(row.ends_on) },
+            {
+              status: String(row.status),
+              starts_on: String(row.starts_on),
+              ends_on: String(row.ends_on),
+            },
             today,
           ),
           showPortalBanner: row.show_portal_banner === true,
@@ -248,13 +285,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           startsOn: row.starts_on,
           endsOn: row.ends_on,
           stats: totals.get(String(row.id)) ?? {
-            views: 0, clicks: 0, dismissals: 0, mailViews: 0, mailClicks: 0,
+            views: 0,
+            clicks: 0,
+            dismissals: 0,
+            mailViews: 0,
+            mailClicks: 0,
           },
           updatedAt: row.updated_at,
         })),
         settings: {
           frequencyDays: Number.isInteger(settings?.frequency_days)
-            ? settings.frequency_days
+            ? Number(settings?.frequency_days)
             : DEFAULT_FREQUENCY_DAYS,
         },
       },
@@ -265,7 +306,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const parsed = validateNoticeInput(body.notice, today);
     if (!parsed.ok) return fail(request, parsed.code);
     const value = parsed.value;
-    const noticeId = isRecord(body.notice) && isUuid(body.notice.id) ? body.notice.id.toLowerCase() : null;
+    const noticeId =
+      isRecord(body.notice) && isUuid(body.notice.id)
+        ? body.notice.id.toLowerCase()
+        : null;
     const status = body.publish === true ? "active" : "draft";
     const row = {
       title: value.title,
@@ -317,7 +361,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (body.type === "adminSetStatus") {
-    if (!isUuid(body.noticeId) || (body.status !== "active" && body.status !== "paused")) {
+    if (
+      !isUuid(body.noticeId) ||
+      (body.status !== "active" && body.status !== "paused")
+    ) {
       return fail(request, "invalid_request", 400);
     }
     const { data } = await admin
@@ -327,7 +374,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .eq("tenant_id", tenantId)
       .select("id")
       .maybeSingle();
-    return data ? json(request, { data: { ok: true } }) : fail(request, "notice_not_found", 404);
+    return data
+      ? json(request, { data: { ok: true } })
+      : fail(request, "notice_not_found", 404);
   }
 
   if (body.type === "adminDelete") {
@@ -339,23 +388,43 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .eq("tenant_id", tenantId)
       .select("id")
       .maybeSingle();
-    return data ? json(request, { data: { ok: true } }) : fail(request, "notice_not_found", 404);
+    return data
+      ? json(request, { data: { ok: true } })
+      : fail(request, "notice_not_found", 404);
   }
 
   if (body.type === "adminSettings") {
     const days = body.frequencyDays;
-    if (typeof days !== "number" || !Number.isInteger(days) || days < 0 || days > 30) {
+    if (
+      typeof days !== "number" ||
+      !Number.isInteger(days) ||
+      days < 0 ||
+      days > 30
+    ) {
       return fail(request, "invalid_request", 400);
     }
     const { error } = await admin.from("requester_notice_settings").upsert(
-      { tenant_id: tenantId, frequency_days: days, updated_by: actorId, updated_at: new Date().toISOString() },
+      {
+        tenant_id: tenantId,
+        frequency_days: days,
+        updated_by: actorId,
+        updated_at: new Date().toISOString(),
+      },
       { onConflict: "tenant_id" },
     );
-    return error ? fail(request, "save_failed", 500) : json(request, { data: { ok: true } });
+    return error
+      ? fail(request, "save_failed", 500)
+      : json(request, { data: { ok: true } });
   }
 
   if (body.type === "adminArticles") {
-    const query = typeof body.query === "string" ? body.query.replace(/[%_\\,()]/g, " ").trim().slice(0, 80) : "";
+    const query =
+      typeof body.query === "string"
+        ? body.query
+            .replace(/[%_\\,()]/g, " ")
+            .trim()
+            .slice(0, 80)
+        : "";
     let select = admin
       .from("knowledge_articles")
       .select("id, title")
@@ -367,14 +436,27 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     if (query) select = select.ilike("title", `%${query}%`);
     const { data } = await select;
     return json(request, {
-      data: { articles: ((data ?? []) as Row[]).map((row) => ({ id: row.id, title: row.title })) },
+      data: {
+        articles: ((data ?? []) as Row[]).map((row) => ({
+          id: row.id,
+          title: row.title,
+        })),
+      },
     });
   }
 
   if (body.type === "adminPreviewMail") {
-    const parsed = validateNoticeInput(body.notice, today);
+    const raw = (
+      typeof body.notice === "object" && body.notice !== null ? body.notice : {}
+    ) as Record<string, unknown>;
+    const previewText = (value: unknown, max: number) =>
+      typeof value === "string" ? [...value.trim()].slice(0, max).join("") : "";
     const kind = body.kind;
-    if (kind !== "acknowledgement" && kind !== "agent_reply" && kind !== "resolution") {
+    if (
+      kind !== "acknowledgement" &&
+      kind !== "agent_reply" &&
+      kind !== "resolution"
+    ) {
       return fail(request, "invalid_request", 400);
     }
     const [{ data: branding }, { data: settings }] = await Promise.all([
@@ -383,10 +465,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .select("primary_color, secondary_color, accent_color")
         .eq("tenant_id", tenantId)
         .maybeSingle(),
-      admin.from("tenant_settings").select("portal_name").eq("tenant_id", tenantId).maybeSingle(),
+      admin
+        .from("tenant_settings")
+        .select("portal_name")
+        .eq("tenant_id", tenantId)
+        .maybeSingle(),
     ]);
     const formality = await loadFormality(admin, tenantId);
-    const samples: Record<string, { subject: string; text: string; label: string }> = {
+    const samples: Record<
+      string,
+      { subject: string; text: string; label: string }
+    > = {
       acknowledgement: {
         subject: "Drucker im 2. Stock druckt nicht",
         text: tone(
@@ -428,22 +517,30 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       }),
       primaryAction: { label: sample.label, url: `${APP_ORIGIN}/` },
       ...(kind === "resolution"
-        ? { ratingLinks: [1, 2, 3, 4, 5].map((score) => ({ score, url: `${APP_ORIGIN}/` })) }
-        : {}),
-      ...(parsed.ok
         ? {
-            notice: {
-              title: parsed.value.title,
-              body: parsed.value.body,
-              buttonLabel: parsed.value.buttonLabel,
+            ratingLinks: [1, 2, 3, 4, 5].map((score) => ({
+              score,
               url: `${APP_ORIGIN}/`,
-              symbol: parsed.value.symbol,
-              color: parsed.value.color,
-            },
+            })),
           }
         : {}),
+      // Die Vorschau zeigt den Hinweis auch bei unvollständigen Angaben
+      // (Platzhalter), damit sofort sichtbar ist, was man eingibt.
+      notice: {
+        title: previewText(raw.title, 60) || "Titel des Hinweises",
+        body:
+          previewText(raw.body, 300) || "Hier steht der Text des Hinweises.",
+        buttonLabel: previewText(raw.buttonLabel, 30) || "Mehr erfahren",
+        url: `${APP_ORIGIN}/`,
+        symbol: previewText(raw.symbol, 4) || null,
+        color: (typeof raw.color === "string"
+          ? raw.color
+          : "brand") as CustomerTicketEmailNoticeColor,
+      },
     });
-    return json(request, { data: { html, subject: `[ICT-2026-000412] ${sample.subject}` } });
+    return json(request, {
+      data: { html, subject: `[ICT-2026-000412] ${sample.subject}` },
+    });
   }
 
   return fail(request, "invalid_request", 400);

@@ -128,3 +128,11 @@
     justify-self: start;
   }
 }
+
+/* Der Text bleibt auch in Dialogen lesbar (dort gelten eigene Absatzfarben). */
+.notice-banner .notice-banner__text,
+.notice-banner .notice-banner__text h3,
+.notice-banner .notice-banner__text p,
+.notice-banner .notice-banner__text small {
+  color: #fff;
+}

@@ -43,7 +43,7 @@ Deno.test("validates texts, links, places and dates", () => {
   assertEquals(code({}), "ok");
   assertEquals(code({ title: "" }), "title_invalid");
   assertEquals(code({ title: "x".repeat(61) }), "title_invalid");
-  assertEquals(code({ body: "x".repeat(221) }), "body_invalid");
+  assertEquals(code({ body: "x".repeat(301) }), "body_invalid");
   assertEquals(code({ buttonLabel: "" }), "button_invalid");
   assertEquals(code({ linkKind: "url", linkTarget: "http://x.ch" }), "link_invalid");
   assertEquals(code({ linkKind: "url", linkTarget: "https://x.ch/a" }), "ok");

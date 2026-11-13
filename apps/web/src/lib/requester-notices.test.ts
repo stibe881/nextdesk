@@ -38,7 +38,7 @@ describe("Hinweise: Validierung", () => {
     expect(noticeIssue(valid({ title: "  " }))).toMatch(/Titel/);
     expect(noticeIssue(valid({ title: "x".repeat(61) }))).toMatch(/Titel/);
     expect(noticeIssue(valid({ body: "" }))).toMatch(/Text/);
-    expect(noticeIssue(valid({ body: "x".repeat(221) }))).toMatch(/Text/);
+    expect(noticeIssue(valid({ body: "x".repeat(301) }))).toMatch(/Text/);
     expect(noticeIssue(valid({ buttonLabel: "" }))).toMatch(/Schaltfläche/);
     expect(noticeIssue(valid({ buttonLabel: "x".repeat(31) }))).toMatch(
       /Schaltfläche/,

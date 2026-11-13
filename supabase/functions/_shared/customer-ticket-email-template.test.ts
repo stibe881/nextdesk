@@ -288,7 +288,7 @@ Deno.test("Hinweisblock kappt Längen und mappt Farben", () => {
     notice: {
       ...notice,
       title: "T".repeat(100),
-      body: "B".repeat(300),
+      body: "B".repeat(400),
       buttonLabel: "L".repeat(60),
       symbol: "ABCDEFG",
     },
@@ -296,8 +296,8 @@ Deno.test("Hinweisblock kappt Längen und mappt Farben", () => {
   if (
     long.includes("T".repeat(81)) ||
     !long.includes("T".repeat(80)) ||
-    long.includes("B".repeat(261)) ||
-    !long.includes("B".repeat(260)) ||
+    long.includes("B".repeat(321)) ||
+    !long.includes("B".repeat(320)) ||
     long.includes("L".repeat(41)) ||
     !long.includes("L".repeat(40)) ||
     !long.includes("ABCD<") ||
