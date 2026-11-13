@@ -156,6 +156,10 @@ Deno.test(
       members: unknown[];
     };
     assertEquals(channel.membershipType, "private");
+    assertEquals(
+      (channel as unknown as Record<string, unknown>)["@odata.type"],
+      "#Microsoft.Graph.channel",
+    );
     assertEquals(channel.members.length, 1);
   },
 );
@@ -333,3 +337,30 @@ Deno.test(
     assertEquals(posts, 3);
   },
 );
+
+Deno.test("finishTeam can postpone private channels", async () => {
+  const { fetcher, calls } = fakeFetch(
+    () => new Response(JSON.stringify({ id: "c1" }), { status: 201 }),
+  );
+  const warnings = await finishTeam(
+    "t",
+    TEAM,
+    {
+      owners: [OWNER],
+      guests: [],
+      allowGuests: false,
+      channels: [
+        { name: "offen", isPrivate: false, tabs: [] },
+        { name: "geheim", isPrivate: true, tabs: [] },
+      ],
+    },
+    fetcher,
+    [],
+    { skipPrivate: true },
+  );
+  assertEquals(warnings, [{ step: "channel:geheim", code: "not_ready" }]);
+  assertEquals(
+    calls.filter((entry) => entry.url.endsWith("/channels")).length,
+    1,
+  );
+});

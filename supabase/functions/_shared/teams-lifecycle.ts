@@ -188,13 +188,29 @@ async function finish(
   row: TeamRequestRow,
   teamId: string,
 ) {
-  const warnings = await finishTeam(token, teamId, {
-    channels: row.channels,
-    owners: row.owner_ids,
-    members: row.member_ids,
-    guests: row.guest_emails,
-    allowGuests: row.allow_guests,
-  });
+  const warnings = await finishTeam(
+    token,
+    teamId,
+    {
+      channels: row.channels,
+      owners: row.owner_ids,
+      members: row.member_ids,
+      guests: row.guest_emails,
+      allowGuests: row.allow_guests,
+    },
+    undefined,
+    undefined,
+    // Erster Lauf: private Kanäle erst später, wenn SharePoint bereit ist.
+    { skipPrivate: row.attempts === 0 },
+  );
+  const privateNames = new Set(
+    row.channels.filter((channel) => channel.isPrivate).map((c) => c.name),
+  );
+  const privatePending = warnings.some(
+    (warning) =>
+      warning.step.startsWith("channel:") &&
+      privateNames.has(warning.step.slice("channel:".length)),
+  );
   // Fehlen Kanäle noch (bei Microsoft oft nur vorübergehend), später erneut
   // versuchen, bevor das Team als bereit gilt (höchstens 3 weitere Läufe).
   if (
@@ -208,7 +224,9 @@ async function finish(
         attempts: row.attempts + 1,
         warnings,
         last_error: "channels_pending",
-        next_attempt_at: new Date(Date.now() + 3 * 60_000).toISOString(),
+        next_attempt_at: new Date(
+          Date.now() + (privatePending ? 15 : 3) * 60_000,
+        ).toISOString(),
       })
       .eq("id", row.id);
     return;
