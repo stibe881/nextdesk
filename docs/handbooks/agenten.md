@@ -27,8 +27,9 @@ Die linke Navigation ist gegliedert in:
 - **Arbeitsplatz** – Team-Queues, Erwähnungen, Stellvertretung, Wiedervorlagen
 - **Teamführung** – nur für Leitungen von Abteilungen
 - **Arbeitsbereich**: Tickets, Shop, Teams (nur mit Recht zur Shop-Verwaltung),
-  Fälle, Sicherheitsfälle, Störungen
-  (Sicherheitsfälle und Störungen nur für das zuständige Team, siehe unten)
+  Fälle
+- **Sicherheit und Störungen**: Sicherheitsfälle, Störungen
+  (nur für das zuständige Team, siehe unten)
 - **Planung und Betrieb**: Raumplanung, Eintritte, Serviceaufgaben
 - **Ressourcen**: Assets, Lager, Verträge, Lizenzen
 - **Dienste und Überwachung**: Dienste, Infrastruktur, IP-Adressen,

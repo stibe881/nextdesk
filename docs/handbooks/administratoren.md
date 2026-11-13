@@ -289,7 +289,7 @@ Lösung) gelten zusätzlich: Eine E-Mail wird nur gesendet, wenn beide aktiv sin
 Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
 
 - **Monitoring (PRTG)** – Störungen aus PRTG-Alarmen (ohne Tickets, im
-  Arbeitsbereich **Störungen**). Sie wählen das **Team für die Alarmierung**
+  Bereich **Sicherheit und Störungen**, Eintrag **Störungen**). Sie wählen das **Team für die Alarmierung**
   (nur dieses Team sieht Störungen),
   ob auch Warnungen eine Störung öffnen, wie oft unbestätigte Störungen erneut
   alarmieren, ob Folgestörungen gebündelt werden und ob während einer Wartung
@@ -443,7 +443,7 @@ exportieren Sie bei Bedarf als **CSV** oder **JSON**.
 
 ## Systemstatus veröffentlichen
 
-Der **Systemstatus** liegt im Arbeitsbereich (nicht in den Einstellungen).
+Der **Systemstatus** liegt im Bereich **Dienste und Überwachung** (nicht in den Einstellungen).
 Dort planen Sie **Wartungen** und veröffentlichen eine **öffentliche
 Statusseite** sowie ein **SharePoint-Badge** (SVG-Bild) für das Intranet.
 Das Badge in der Navigation und die Seiten aktualisieren sich selbst (intern

@@ -418,14 +418,13 @@ const NAVIGATION_CATEGORIES = [
     heading: "ARBEITSBEREICH",
     id: "navigation-category-workspace",
     navigationLabel: "Arbeitsbereich",
-    sectionLabels: [
-      "Tickets",
-      "Shop",
-      "Teams",
-      "Fälle",
-      "Sicherheitsfälle",
-      "Störungen",
-    ],
+    sectionLabels: ["Tickets", "Shop", "Teams", "Fälle"],
+  },
+  {
+    heading: "SICHERHEIT & STÖRUNGEN",
+    id: "navigation-category-security",
+    navigationLabel: "Sicherheit und Störungen",
+    sectionLabels: ["Sicherheitsfälle", "Störungen"],
   },
   {
     heading: "PLANUNG & BETRIEB",
