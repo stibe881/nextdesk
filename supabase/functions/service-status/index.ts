@@ -940,7 +940,13 @@ async function saveIncidentMessage(
     entity_type: "service_incident_notice",
     entity_id: result.data,
     severity: "info",
-    metadata: { source: "service_status", state: action.state },
+    metadata: {
+      source: "service_status",
+      state: action.state,
+      ...(action.serviceStatuses
+        ? { serviceStatuses: action.serviceStatuses }
+        : {}),
+    },
   });
   if (audit.error) {
     throw new HttpError(
@@ -949,7 +955,40 @@ async function saveIncidentMessage(
       "Die Änderung konnte nicht nachvollziehbar gespeichert werden.",
     );
   }
+  if (action.serviceStatuses) {
+    await applyServiceStatuses(admin, action.tenantId, action.serviceStatuses);
+  }
   return result.data.toLowerCase();
+}
+
+/**
+ * Setzt den Betriebszustand der in der Meldung gewählten Dienste. Der
+ * Statusverlauf (service_status_events) entsteht per Trigger.
+ */
+async function applyServiceStatuses(
+  admin: AdminClient,
+  tenantId: string,
+  statuses: Record<string, ServiceStatus>,
+): Promise<void> {
+  const groups = new Map<ServiceStatus, string[]>();
+  for (const [id, status] of Object.entries(statuses)) {
+    groups.set(status, [...(groups.get(status) ?? []), id]);
+  }
+  for (const [status, ids] of groups) {
+    const update = await admin
+      .from("services")
+      .update({ status })
+      .eq("tenant_id", tenantId)
+      .in("id", ids)
+      .neq("status", status);
+    if (update.error) {
+      throw new HttpError(
+        503,
+        "service_status_write_failed",
+        "Die Meldung ist gespeichert, der Betriebszustand der Dienste konnte aber nicht geändert werden.",
+      );
+    }
+  }
 }
 
 

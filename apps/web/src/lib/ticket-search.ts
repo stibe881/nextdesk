@@ -5,11 +5,21 @@ export type TicketSearchChip = {
   raw: string;
 };
 
+/** SLA search values; «pausiert» = SLA paused in a waiting status (0325). */
+export type TicketRiskFilter = DashboardTicket["risk"] | "pausiert";
+
+const RISK_FILTERS: readonly TicketRiskFilter[] = [
+  "ok",
+  "warnung",
+  "kritisch",
+  "pausiert",
+];
+
 type TicketSearchFilters = {
   assignment: "mine" | "unassigned" | null;
   priority: string[];
   queue: string[];
-  risk: DashboardTicket["risk"][];
+  risk: TicketRiskFilter[];
   status: string[];
   ticketNumber: string[];
 };
@@ -72,6 +82,12 @@ function matchesStatus(ticket: DashboardTicket, status: string): boolean {
   return includes(ticket.state, value);
 }
 
+/** A paused SLA only matches «pausiert», never ok/warnung/kritisch. */
+function matchesRisk(ticket: DashboardTicket, risk: TicketRiskFilter): boolean {
+  if (ticket.slaPaused) return risk === "pausiert";
+  return ticket.risk === risk;
+}
+
 function matchesAssignment(
   ticket: DashboardTicket,
   assignment: TicketSearchFilters["assignment"],
@@ -117,8 +133,8 @@ export function parseTicketSearch(query: string): ParsedTicketSearch {
     } else if (["queue", "team"].includes(key)) {
       filters.queue.push(value);
     } else if (["sla", "risiko"].includes(key)) {
-      if (["ok", "warnung", "kritisch"].includes(value)) {
-        filters.risk.push(value as DashboardTicket["risk"]);
+      if ((RISK_FILTERS as readonly string[]).includes(value)) {
+        filters.risk.push(value as TicketRiskFilter);
       } else {
         freeText.push(raw);
         continue;
@@ -152,7 +168,7 @@ export function matchesTicketSearch(
       (value) =>
         !includes(ticket.queue, value) && !includes(ticket.queueLabel, value),
     ) ||
-    filters.risk.some((value) => ticket.risk !== value) ||
+    filters.risk.some((value) => !matchesRisk(ticket, value)) ||
     !matchesAssignment(ticket, filters.assignment)
   ) {
     return false;

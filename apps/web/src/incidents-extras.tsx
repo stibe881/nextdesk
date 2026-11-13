@@ -18,8 +18,14 @@ import {
   INCIDENT_MESSAGE_STATE_LABELS,
   INCIDENT_MESSAGE_STATES,
   parseIncidentMessages,
+  parseStatusPageServices,
+  SERVICE_OPERATING_STATE_LABELS,
+  SERVICE_OPERATING_STATES,
+  suggestedServiceState,
   type IncidentMessage,
   type IncidentMessageState,
+  type ServiceOperatingState,
+  type StatusPageService,
 } from "./lib/incidents-public-messages";
 import { supabase } from "./lib/supabase";
 
@@ -354,6 +360,11 @@ export function IncidentPublicMessageCard({
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [serviceIds, setServiceIds] = useState<string[]>([]);
+  const [serviceStates, setServiceStates] = useState<
+    Record<string, ServiceOperatingState>
+  >({});
+  const [services, setServices] = useState<StatusPageService[] | null>(null);
+  const [servicesError, setServicesError] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -381,24 +392,104 @@ export function IncidentPublicMessageCard({
     void load();
   }, [load]);
 
+  async function loadServices(): Promise<StatusPageService[]> {
+    if (services) return services;
+    try {
+      const next = parseStatusPageServices(
+        await invoke(
+          "service-status",
+          { type: "getStatusOverview", tenantId },
+          "Die Dienste sind gerade nicht verfügbar.",
+        ),
+      );
+      setServices(next);
+      return next;
+    } catch (cause) {
+      setServicesError((cause as Error).message);
+      return [];
+    }
+  }
+
   function start() {
     const latest = messages?.[0];
-    setState(
-      latest
-        ? detail.state === "active"
-          ? "monitoring"
-          : "resolved"
-        : "investigating",
-    );
+    const nextState: IncidentMessageState = latest
+      ? detail.state === "active"
+        ? "monitoring"
+        : "resolved"
+      : "investigating";
+    setState(nextState);
     setTitle(
       latest?.title ??
         `Störung: ${detail.services.map((service) => service.name).join(", ") || detail.deviceName || detail.title}`,
     );
     setBody("");
-    setServiceIds(detail.services.map((service) => service.id));
+    // Linked services plus those named in the latest message.
+    const ids = [
+      ...new Set([
+        ...detail.services.map((service) => service.id),
+        ...(latest?.serviceIds ?? []),
+      ]),
+    ];
+    setServiceIds(ids);
+    setServiceStates({});
+    setServicesError("");
     setMessage("");
     setOpen(true);
+    void loadServices().then((list) => {
+      const byId = new Map(list.map((service) => [service.id, service]));
+      setServiceStates(
+        Object.fromEntries(
+          ids.flatMap((id) => {
+            const service = byId.get(id);
+            return service
+              ? [[id, suggestedServiceState(service.status, nextState)]]
+              : [];
+          }),
+        ),
+      );
+    });
   }
+
+  function changeState(next: IncidentMessageState) {
+    setState(next);
+    // «Behoben» sets the chosen services back to «Betriebsbereit».
+    if (next === "resolved") {
+      setServiceStates((current) =>
+        Object.fromEntries(
+          Object.keys(current).map((id) => [id, "operational" as const]),
+        ),
+      );
+    }
+  }
+
+  function addService(id: string) {
+    const service = services?.find((entry) => entry.id === id);
+    if (!service || serviceIds.includes(id)) return;
+    setServiceIds((current) => [...current, id]);
+    setServiceStates((current) => ({
+      ...current,
+      [id]: suggestedServiceState(service.status, state),
+    }));
+  }
+
+  function removeService(id: string) {
+    setServiceIds((current) => current.filter((entry) => entry !== id));
+    setServiceStates((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
+
+  const serviceById = new Map(
+    (services ?? []).map((service) => [service.id, service]),
+  );
+  const linkedNames = new Map(
+    detail.services.map((service) => [service.id, service.name]),
+  );
+  const availableServices = (services ?? []).filter(
+    (service) => !serviceIds.includes(service.id),
+  );
 
   async function publish(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -415,10 +506,21 @@ export function IncidentPublicMessageCard({
           state,
           title: title.trim(),
           body: body.trim(),
+          // Only services whose operating state actually changes.
+          serviceStatuses: Object.fromEntries(
+            serviceIds.flatMap((id) => {
+              const chosen = serviceStates[id];
+              const current = serviceById.get(id)?.status;
+              return chosen && current && chosen !== current
+                ? [[id, chosen]]
+                : [];
+            }),
+          ),
         },
         "Die Meldung konnte nicht veröffentlicht werden.",
       );
       setOpen(false);
+      setServices(null);
       setMessage("Die Meldung ist auf der Statusseite veröffentlicht.");
       await load();
     } catch (cause) {
@@ -478,7 +580,7 @@ export function IncidentPublicMessageCard({
             <select
               disabled={busy}
               onChange={(event) =>
-                setState(event.target.value as IncidentMessageState)
+                changeState(event.target.value as IncidentMessageState)
               }
               value={state}
             >
@@ -512,28 +614,87 @@ export function IncidentPublicMessageCard({
               value={body}
             />
           </label>
-          {detail.services.length ? (
-            <fieldset className="incident-checks">
-              <legend>Betroffene Dienste</legend>
-              {detail.services.map((service) => (
-                <label key={service.id}>
-                  <input
-                    checked={serviceIds.includes(service.id)}
-                    disabled={busy}
-                    onChange={(event) =>
-                      setServiceIds((current) =>
-                        event.target.checked
-                          ? [...current, service.id]
-                          : current.filter((id) => id !== service.id),
-                      )
-                    }
-                    type="checkbox"
-                  />
-                  {service.name}
-                </label>
-              ))}
-            </fieldset>
-          ) : null}
+          <fieldset className="incident-services">
+            <legend>Betroffene Dienste und Betriebszustand</legend>
+            {serviceIds.length ? (
+              <ul>
+                {serviceIds.map((id) => {
+                  const service = serviceById.get(id);
+                  const name = service?.name ?? linkedNames.get(id) ?? "Dienst";
+                  return (
+                    <li key={id}>
+                      <span>
+                        <strong>{name}</strong>
+                        {service ? (
+                          <small>
+                            Aktuell:{" "}
+                            {SERVICE_OPERATING_STATE_LABELS[service.status]}
+                          </small>
+                        ) : null}
+                      </span>
+                      <select
+                        aria-label={`Betriebszustand von ${name}`}
+                        disabled={busy || !service}
+                        onChange={(event) =>
+                          setServiceStates((current) => ({
+                            ...current,
+                            [id]: event.target.value as ServiceOperatingState,
+                          }))
+                        }
+                        value={serviceStates[id] ?? service?.status ?? ""}
+                      >
+                        {!service ? (
+                          <option value="">Wird geladen …</option>
+                        ) : null}
+                        {SERVICE_OPERATING_STATES.map((entry) => (
+                          <option key={entry} value={entry}>
+                            {SERVICE_OPERATING_STATE_LABELS[entry]}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        aria-label={`${name} entfernen`}
+                        disabled={busy}
+                        onClick={() => removeService(id)}
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={14} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="incident-muted">Noch kein Dienst gewählt.</p>
+            )}
+            <label className="incident-field">
+              Dienst hinzufügen
+              <select
+                disabled={busy || !services || !availableServices.length}
+                onChange={(event) => {
+                  addService(event.target.value);
+                  event.target.value = "";
+                }}
+                value=""
+              >
+                <option value="">
+                  {services ? "Dienst wählen …" : "Dienste werden geladen …"}
+                </option>
+                {availableServices.map((service) => (
+                  <option key={service.id} value={service.id}>
+                    {service.category
+                      ? `${service.name} (${service.category})`
+                      : service.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {servicesError ? (
+              <p className="incident-muted" role="alert">
+                {servicesError}
+              </p>
+            ) : null}
+          </fieldset>
           <div className="incident-actions">
             <button
               className="primary-button"
