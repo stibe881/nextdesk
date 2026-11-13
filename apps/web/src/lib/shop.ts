@@ -248,7 +248,7 @@ export type ImportedProduct = {
   brand: string;
   price: string;
   specifications: Record<string, string>;
-  image: { type: string; base64: string } | null;
+  images: { type: string; base64: string }[];
   notes?: string[];
 };
 

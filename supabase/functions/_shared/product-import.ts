@@ -10,13 +10,19 @@ export type ImportedProduct = {
   brand: string;
   price: string;
   imageUrl: string;
+  imageUrls: string[];
   specifications: Record<string, string>;
 };
 
 /** Nur diese Shops dürfen abgerufen werden (verhindert Abrufe interner Adressen). */
 const ALLOWED_HOSTS = ["brack.ch"];
+/** Produktbilder liegen bei Brack auf dem Bild-Server von Competec. */
+const IMAGE_HOSTS = ["brack.ch", "competec.ch"];
 
-export function isAllowedProductUrl(raw: string): URL | null {
+export function isAllowedProductUrl(
+  raw: string,
+  hosts: readonly string[] = ALLOWED_HOSTS,
+): URL | null {
   let url: URL;
   try {
     url = new URL(raw.trim());
@@ -26,11 +32,14 @@ export function isAllowedProductUrl(raw: string): URL | null {
   if (url.protocol !== "https:" || url.username || url.password) return null;
   if (url.port && url.port !== "443") return null;
   const host = url.hostname.toLowerCase();
-  const allowed = ALLOWED_HOSTS.some(
+  const allowed = hosts.some(
     (entry) => host === entry || host.endsWith(`.${entry}`),
   );
   return allowed ? url : null;
 }
+
+export const isAllowedImageUrl = (raw: string) =>
+  isAllowedProductUrl(raw, IMAGE_HOSTS);
 
 const ENTITIES: Record<string, string> = {
   amp: "&",
@@ -149,23 +158,38 @@ function imageOf(value: unknown, base: URL): string {
   return "";
 }
 
-/** Bild aus <link rel="image_src"> oder dem ersten Produktbild der Seite. */
-function imageFromHtml(html: string, base: URL): string {
+/** Produktbilder im HTML (Galerie), grosse Fassungen zuerst, ohne Vorschaubilder und Logos. */
+function imagesFromHtml(html: string, base: URL): string[] {
+  const found: string[] = [];
   const link =
     /<link\b[^>]*rel=["']image_src["'][^>]*href=["']([^"']+)["']/i.exec(
       html,
     )?.[1];
-  const fromLink = link ? imageOf(decodeEntities(link), base) : "";
-  if (fromLink) return fromLink;
+  if (link) {
+    const resolved = imageOf(decodeEntities(link), base);
+    if (resolved) found.push(resolved);
+  }
   const pattern =
-    /(?:src|data-src|data-zoom-image|data-large|content)=["']((?:https:)?\/\/[^"']*brack\.ch[^"']*\.(?:jpe?g|png|webp)(?:\?[^"']*)?)["']/gi;
+    /(?:src|data-src|data-zoom-image|data-large|href|content)=["']((?:https:)?\/\/[^"']*(?:brack|competec)\.ch[^"']*\.(?:jpe?g|png|webp)(?:\?[^"']*)?)["']/gi;
   for (const match of html.matchAll(pattern)) {
     const url = decodeEntities(match[1]!);
-    if (/logo|icon|sprite|payment|badge|banner/i.test(url)) continue;
+    if (/logo|icon|sprite|payment|badge|banner|manufacturers\//i.test(url)) {
+      continue;
+    }
+    if (/_(?:xxs|xs|s|m)\.(?:jpe?g|png|webp)/i.test(url)) continue;
     const resolved = imageOf(url.startsWith("//") ? `https:${url}` : url, base);
-    if (resolved) return resolved;
+    if (resolved && !found.includes(resolved)) found.push(resolved);
   }
-  return "";
+  // «_xxl3» ist dasselbe Bild in Vollgrösse: nur die «_xxl»-Fassung behalten.
+  const seen = new Set<string>();
+  return found
+    .map((url) => url.replace(/_xxl3\./i, "_xxl."))
+    .filter((url) => {
+      if (seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    })
+    .sort((a, b) => Number(/_xxl\./i.test(b)) - Number(/_xxl\./i.test(a)));
 }
 
 const SPEC_RULES: { field: string; pattern: RegExp }[] = [
@@ -187,29 +211,75 @@ const SPEC_RULES: { field: string; pattern: RegExp }[] = [
   },
 ];
 
-/** Schlüssel/Wert-Paare aus Tabellen und Definitionslisten (z. B. «Technische Daten»). */
+/** Diese Angaben stehen schon in eigenen Feldern oder sind für den Shop unnötig. */
+const SKIPPED_KEYS =
+  /^(artikelnummer|herst\.?-?\s*nr\.?|hersteller-?nummer|herstellerseite|verkauf seit|ean|gtin|lagerbestand|verfügbarkeit|preis|kategorie|menge|bewertung)/i;
+
+/** Ab hier beginnen bei Brack Zubehör und Varianten anderer Artikel. */
+const RELATED_SECTION_TAG =
+  />\s*(?:Zubehör|Varianten\s*Verfügbarkeit|Ähnliche Artikel|Kunden kauften|Passende Artikel|Mehr von)/i;
+
+/** Der Bereich der Seite, der zum Produkt selbst gehört (ab der Überschrift bis zum Zubehör). */
+export function productRegion(html: string): string {
+  const start = html.search(/<h1\b/i);
+  const from = start >= 0 ? html.slice(start) : html;
+  const body = from
+    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, "");
+  const rest = body.search(RELATED_SECTION_TAG);
+  return rest >= 0 ? body.slice(0, rest) : body;
+}
+
+/** Zeilen des Textes (Blockgrenzen werden zu Zeilenumbrüchen, Inline-Elemente bleiben in einer Zeile). */
+function textLines(html: string): string[] {
+  const text = html
+    .replace(
+      /<\/?(?:li|p|div|tr|br|ul|ol|section|table|tbody|h[1-6]|dt|dd|article|header|footer)\b[^>]*>/gi,
+      "\n",
+    )
+    .replace(/<[^>]*>/g, " ");
+  return decodeEntities(text)
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+/** Schlüssel/Wert-Paare aus Tabellen, Definitionslisten und «Name: Wert»-Zeilen. */
 export function extractSpecPairs(html: string): [string, string][] {
+  const region = productRegion(html);
   const pairs: [string, string][] = [];
-  const seen = new Set<string>();
+  const keys = new Set<string>();
   const add = (key: string, value: string) => {
-    const k = clean(key, 80).replace(/[:：]\s*$/, "");
+    const k = clean(key, 80)
+      .replace(/\s*[:：]\s*$/, "")
+      .trim();
     const v = clean(value, 300);
-    if (!k || !v || k.length > 60) return;
-    const id = `${k.toLowerCase()}|${v.toLowerCase()}`;
-    if (seen.has(id)) return;
-    seen.add(id);
+    if (!k || !v || k.length > 40 || k.split(" ").length > 5) return;
+    if (/^[\d\W]+$/.test(k) || /https?:/i.test(k)) return;
+    const id = k.toLowerCase();
+    if (keys.has(id)) return;
+    keys.add(id);
     pairs.push([k, v]);
   };
-  for (const row of html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+  for (const line of textLines(region)) {
+    const match = /^([A-ZÄÖÜ][^:]{1,38}?)\s*:\s+(\S.{0,299})$/.exec(line);
+    if (match && !match[2]!.startsWith("//")) add(match[1]!, match[2]!);
+  }
+  for (const row of region.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
     const cells = [...row[1]!.matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)];
     if (cells.length === 2) add(cells[0]![1]!, cells[1]![1]!);
   }
-  for (const item of html.matchAll(
+  for (const item of region.matchAll(
     /<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi,
   )) {
     add(item[1]!, item[2]!);
   }
   return pairs.slice(0, 60);
+}
+
+/** Eine Angabe der Seite, z. B. die Artikelnummer, aus den Paaren holen. */
+export function pairValue(pairs: [string, string][], pattern: RegExp): string {
+  return pairs.find(([key]) => pattern.test(key))?.[1] ?? "";
 }
 
 /** Ordnet die Paare den Feldern des Artikels zu; der Rest kommt unter «Eigenschaften». */
@@ -220,6 +290,7 @@ export function mapSpecifications(
   const groups: Record<string, string[]> = {};
   const rest: string[] = [...extra];
   for (const [key, value] of pairs) {
+    if (SKIPPED_KEYS.test(key)) continue;
     const rule = SPEC_RULES.find((entry) => entry.pattern.test(key));
     const line = rule?.field === "scope" ? value : `${key}: ${value}`;
     if (rule) (groups[rule.field] ??= []).push(line);
@@ -257,23 +328,36 @@ export function parseProductPage(
   const nodes = jsonLdNodes(html);
   const product = nodes.find((node) => typeOf(node).includes("product"));
 
-  const name = clean(product?.name, 160) || metaContent(html, "og:title");
+  const name =
+    clean(product?.name, 160) ||
+    metaContent(html, "og:title") ||
+    clean(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1], 160);
   if (!name) return null;
 
   const description =
     clean(product?.description, 2000) ||
     metaContent(html, "og:description") ||
     metaContent(html, "description");
+  const pairs = extractSpecPairs(html);
   const articleNumber =
     clean(product?.sku, 80) ||
     clean(product?.mpn, 80) ||
     clean(product?.productID, 80) ||
-    clean(product?.gtin13, 80);
+    clean(product?.gtin13, 80) ||
+    clean(pairValue(pairs, /^artikelnummer$/i), 80) ||
+    (/\/product\/(\d{4,12})|-(\d{4,12})\/?$/.exec(pageUrl.pathname)?.[1] ??
+      /-(\d{4,12})\/?$/.exec(pageUrl.pathname)?.[1] ??
+      "");
   const brand = nameOf(product?.brand);
-  const image =
-    imageOf(product?.image, pageUrl) ||
-    imageOf(metaContent(html, "og:image"), pageUrl) ||
-    imageFromHtml(html, pageUrl);
+  const images = [
+    ...new Set(
+      [
+        ...asArray(product?.image).map((entry) => imageOf(entry, pageUrl)),
+        imageOf(metaContent(html, "og:image"), pageUrl),
+        ...imagesFromHtml(html, pageUrl),
+      ].filter(Boolean),
+    ),
+  ].slice(0, 6);
 
   const extra: string[] = [];
   for (const entry of asArray(product?.additionalProperty)) {
@@ -283,7 +367,7 @@ export function parseProductPage(
     if (key && value) extra.push(`${key}: ${value}`);
   }
   if (brand) extra.unshift(`Hersteller: ${brand}`);
-  const specifications = mapSpecifications(extractSpecPairs(html), extra);
+  const specifications = mapSpecifications(pairs, extra);
 
   return {
     name,
@@ -293,13 +377,15 @@ export function parseProductPage(
     category: breadcrumbCategory(nodes),
     brand,
     price: priceOf(product?.offers),
-    imageUrl: image,
+    imageUrl: images[0] ?? "",
+    imageUrls: images,
     specifications,
   };
 }
 
 const MAX_PAGE_BYTES = 3_000_000;
-const MAX_IMAGE_BYTES = 6_000_000;
+const MAX_IMAGE_BYTES = 4_000_000;
+const MAX_IMAGES = 3;
 const FETCH_TIMEOUT_MS = 15_000;
 const HEADERS = {
   "user-agent":
@@ -348,6 +434,7 @@ async function safeGet(
   start: URL,
   accept: string,
   fetcher: typeof fetch,
+  allow: (raw: string) => URL | null = isAllowedProductUrl,
 ): Promise<{ response: Response; url: URL }> {
   let url = start;
   for (let hop = 0; hop < 4; hop += 1) {
@@ -359,9 +446,7 @@ async function safeGet(
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       await response.body?.cancel();
-      const next = location
-        ? isAllowedProductUrl(new URL(location, url).toString())
-        : null;
+      const next = location ? allow(new URL(location, url).toString()) : null;
       if (!next) throw new ProductImportError("blocked");
       url = next;
       continue;
@@ -376,7 +461,7 @@ export async function importProductFromUrl(
   fetcher: typeof fetch = fetch,
 ): Promise<
   ImportedProduct & {
-    image: { type: string; base64: string } | null;
+    images: { type: string; base64: string }[];
     notes: string[];
   }
 > {
@@ -405,18 +490,25 @@ export async function importProductFromUrl(
   );
   if (!product) throw new ProductImportError("no_product");
 
-  let image: { type: string; base64: string } | null = null;
+  const images: { type: string; base64: string }[] = [];
   const notes: string[] = [];
-  const imageUrl = product.imageUrl
-    ? isAllowedProductUrl(product.imageUrl)
-    : null;
-  if (!product.imageUrl) {
+  if (product.imageUrls.length === 0) {
     notes.push("Auf der Seite wurde kein Foto gefunden.");
-  } else if (!imageUrl) {
-    notes.push("Das Foto liegt nicht bei Brack und wurde nicht geladen.");
-  } else {
+  }
+  let skipped = "";
+  for (const raw of product.imageUrls.slice(0, MAX_IMAGES)) {
+    const imageUrl = isAllowedImageUrl(raw);
+    if (!imageUrl) {
+      skipped = "Ein Foto liegt nicht bei Brack und wurde nicht geladen.";
+      continue;
+    }
     try {
-      const result = await safeGet(imageUrl, "image/*", fetcher);
+      const result = await safeGet(
+        imageUrl,
+        "image/*",
+        fetcher,
+        isAllowedImageUrl,
+      );
       const header = (result.response.headers.get("content-type") ?? "")
         .split(";")[0]!
         .trim()
@@ -431,31 +523,33 @@ export async function importProductFromUrl(
         : header === "application/octet-stream" || header === ""
           ? byExtension
           : "";
-      if (result.response.ok && type) {
-        const data = await readLimited(result.response, MAX_IMAGE_BYTES);
-        if (data) {
-          let binary = "";
-          for (let index = 0; index < data.length; index += 8192) {
-            binary += String.fromCharCode(
-              ...data.subarray(index, index + 8192),
-            );
-          }
-          image = { type, base64: btoa(binary) };
-        } else {
-          notes.push("Das Foto ist zu gross.");
-        }
-      } else {
+      if (!result.response.ok || !type) {
         await result.response.body?.cancel();
-        notes.push(
-          `Das Foto konnte nicht geladen werden (${result.response.status}, ${header || "unbekannter Typ"}).`,
-        );
+        skipped = `Ein Foto konnte nicht geladen werden (${result.response.status}, ${header || "unbekannter Typ"}).`;
+        continue;
       }
+      const data = await readLimited(result.response, MAX_IMAGE_BYTES);
+      if (!data) {
+        skipped = "Ein Foto ist zu gross.";
+        continue;
+      }
+      let binary = "";
+      for (let index = 0; index < data.length; index += 8192) {
+        binary += String.fromCharCode(...data.subarray(index, index + 8192));
+      }
+      images.push({ type, base64: btoa(binary) });
     } catch {
-      notes.push("Das Foto konnte nicht geladen werden.");
+      skipped = "Ein Foto konnte nicht geladen werden.";
     }
+  }
+  if (
+    skipped &&
+    images.length < product.imageUrls.slice(0, MAX_IMAGES).length
+  ) {
+    notes.push(skipped);
   }
   if (Object.keys(product.specifications).length === 0) {
     notes.push("Auf der Seite wurden keine technischen Daten gefunden.");
   }
-  return { ...product, image, notes };
+  return { ...product, images, notes };
 }

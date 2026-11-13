@@ -3115,21 +3115,23 @@ export function CatalogEditor({
           specifications,
         };
       });
-      if (product.image) {
+      const files: File[] = [];
+      for (const [index, image] of product.images.entries()) {
         try {
-          const bytes = Uint8Array.from(atob(product.image.base64), (char) =>
+          const bytes = Uint8Array.from(atob(image.base64), (char) =>
             char.charCodeAt(0),
           );
-          const extension = product.image.type.split("/")[1] ?? "jpg";
-          await addFiles([
-            new File([bytes], `brack.${extension}`, {
-              type: product.image.type,
+          const extension = image.type.split("/")[1] ?? "jpg";
+          files.push(
+            new File([bytes], `brack-${index + 1}.${extension}`, {
+              type: image.type,
             }),
-          ]);
+          );
         } catch {
-          // Bild ist optional
+          // Einzelne Bilder sind optional
         }
       }
+      if (files.length > 0) await addFiles(files);
       setImportNote(
         `Übernommen${product.price ? ` (Preis bei Brack: ${product.price})` : ""}. ${(product.notes ?? []).join(" ")} Bitte prüfen und ergänzen: Genehmigung, Maximalmenge und Kategorie bleiben Deine Entscheidung.`,
       );
