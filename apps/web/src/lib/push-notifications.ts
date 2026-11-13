@@ -64,9 +64,12 @@ export const pushCategoryMeta = {
     label: "Ticketlösungen",
   },
   security_report: {
-    description:
-      "Phishing-Meldungen, überfällige Sicherheitsfälle, «geklickt» und Kampagnen",
-    label: "Phishing und Sicherheitsfälle",
+    description: "Neue Phishing-Meldungen",
+    label: "Phishing",
+  },
+  security_case: {
+    description: "Überfällige Sicherheitsfälle, «geklickt» und Kampagnen",
+    label: "Sicherheitsfälle",
   },
   shop: {
     get description() {

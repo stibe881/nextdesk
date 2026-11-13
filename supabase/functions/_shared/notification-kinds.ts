@@ -19,6 +19,7 @@ export const NOTIFICATION_CATEGORIES = [
   "service_task",
   "infrastructure",
   "security_report",
+  "security_case",
   "incident",
   "ipam",
 ] as const;
@@ -34,7 +35,7 @@ export const IPAM_NOTIFICATION_KINDS = [
   "monitoring.ipam_finding",
 ] as const;
 
-/** Security cases (category «security_report»). */
+/** Security cases (category «security_case»; phishing reports are «security_report»). */
 export const SECURITY_CASE_NOTIFICATION_KINDS = [
   "security.case_overdue",
   "security.case_clicked",
@@ -76,7 +77,7 @@ export function notificationCategory(kind: string): NotificationCategory | null 
   }
   if (kind === "ticket.escalation_opened") return "escalation";
   if (kind === "ticket.security_report") return "security_report";
-  if (oneOf(SECURITY_CASE_NOTIFICATION_KINDS, kind)) return "security_report";
+  if (oneOf(SECURITY_CASE_NOTIFICATION_KINDS, kind)) return "security_case";
   if (kind === "ticket.follow_up_due") return "follow_up";
   if (kind === "ticket.rule_reminder") return "follow_up";
   if (kind === "ticket.vendor_reminder") return "follow_up";

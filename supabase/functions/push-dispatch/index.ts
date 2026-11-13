@@ -74,7 +74,7 @@ export function payloadKind(
   kind: string,
   fallback: Category,
 ):
-  | Category
+  | Exclude<Category, "security_case">
   | "department_question_asked"
   | "department_question_answered"
   | "supervisor_request"
@@ -101,7 +101,9 @@ export function payloadKind(
   if (kind === "ticket.children_done") return "children_done";
   if (kind === "ticket.kudos") return "kudos";
   if (kind === "ticket.security_report") return "security_report";
-  return fallback;
+  // Sicherheitsfälle haben eine eigene Einstellung, aber denselben Mitteilungstext.
+  if (isSecurityCaseNotificationKind(kind)) return "security_report";
+  return fallback === "security_case" ? "security_report" : fallback;
 }
 
 function invalidDevice(result: Delivery): boolean {

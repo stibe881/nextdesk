@@ -30,6 +30,7 @@ export const PUSH_CATEGORIES = [
   "inventory_low_stock",
   "infrastructure",
   "security_report",
+  "security_case",
   "incident",
   "ipam",
 ] as const;

@@ -1275,11 +1275,11 @@ gelten dieselben Rechte und Abteilungsgrenzen wie in der Weboberfläche.
   ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten
   Benachrichtigungszeit.
 - In der Tabelle **Benachrichtigungen** schalten Sie pro Benachrichtigung
-  (z. B. Zuweisungen, Eskalationen, Erwähnungen, Phishing und
-  Sicherheitsfälle, IP-Adressverwaltung) einzeln **Push** und **E-Mail** ein
-  oder aus. Für Agenten sind zu Beginn alle Benachrichtigungen per Push und
-  E-Mail eingeschaltet – ausser **Phishing und Sicherheitsfälle**: Diese sind
-  ausgeschaltet. Wer sie erhalten möchte, schaltet sie dort selbst ein.
+  (z. B. Zuweisungen, Eskalationen, Erwähnungen, Phishing, Sicherheitsfälle,
+  Störungen, IP-Adressverwaltung) einzeln **Push** und **E-Mail** ein oder
+  aus. Für Agenten sind zu Beginn alle Benachrichtigungen per Push und
+  E-Mail eingeschaltet – ausser **Phishing** und **Sicherheitsfälle**: Diese
+  sind ausgeschaltet. Wer sie erhalten möchte, schaltet sie dort selbst ein.
   Mitglieder des in den Phishing-Einstellungen hinterlegten Teams erhalten
   Phishing-Meldungen, überfällige Sicherheitsfälle, «geklickt» und Kampagnen
   immer; die Tabelle weist darauf hin. **IP-Adressverwaltung** (Funde,
