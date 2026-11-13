@@ -239,6 +239,18 @@ export function sortCatalogByName<T extends { name: string }>(items: T[]): T[] {
   );
 }
 
+export type ImportedProduct = {
+  name: string;
+  description: string;
+  articleNumber: string;
+  supplierUrl: string;
+  category: string;
+  brand: string;
+  price: string;
+  specifications: Record<string, string>;
+  image: { type: string; base64: string } | null;
+};
+
 export const shopApi = {
   context: (tenantId: string) =>
     call<ShopContext>({ type: "getContext", tenantId }),
@@ -253,6 +265,8 @@ export const shopApi = {
       type: "listInventoryItems",
       tenantId,
     }).then((data) => data.items),
+  importProduct: (tenantId: string, url: string) =>
+    call<ImportedProduct>({ type: "importProduct", tenantId, url }),
   saveItem: (tenantId: string, item: Record<string, unknown>) =>
     call<{ id: string }>({ type: "saveCatalogItem", tenantId, item }),
   cadreSettings: (tenantId: string) =>

@@ -22625,6 +22625,19 @@ html body form:has(> .fk-layout) {
   width: auto;
 }
 
+.article-editor__import {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px dashed var(--border, #d0d5dd);
+  border-radius: 10px;
+}
+
+.article-editor__import button {
+  justify-self: start;
+}
+
 /* Navigation badges of «Sicherheitsfälle»/«Störungen»: red while something
    needs action (unassigned / unacknowledged), grey when merely open. */
 .nav-item__badge--urgent,

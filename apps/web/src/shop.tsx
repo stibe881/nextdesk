@@ -3072,6 +3072,77 @@ export function CatalogEditor({
     );
   };
 
+  const [importUrl, setImportUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importNote, setImportNote] = useState("");
+
+  const importFromUrl = async () => {
+    setImporting(true);
+    setImportNote("");
+    try {
+      const product = await shopApi.importProduct(tenantId, importUrl.trim());
+      const categoryMatch = categories.find(
+        (entry) =>
+          entry.name.toLowerCase() === product.category.trim().toLowerCase(),
+      );
+      setDraft((current) => {
+        if (!current) return current;
+        const spec = product.specifications.properties;
+        return {
+          ...current,
+          name: current.name.trim() ? current.name : product.name,
+          description: current.description.trim()
+            ? current.description
+            : product.description,
+          articleNumber: current.articleNumber.trim()
+            ? current.articleNumber
+            : product.articleNumber,
+          supplierUrl: product.supplierUrl,
+          categoryIds:
+            current.categoryIds.length === 0 && categoryMatch
+              ? [categoryMatch.id]
+              : current.categoryIds,
+          newCategory:
+            current.categoryIds.length === 0 &&
+            !categoryMatch &&
+            !current.newCategory.trim()
+              ? product.category
+              : current.newCategory,
+          specifications:
+            spec && !current.specifications.properties?.trim()
+              ? { ...current.specifications, properties: spec }
+              : current.specifications,
+        };
+      });
+      if (product.image) {
+        try {
+          const bytes = Uint8Array.from(atob(product.image.base64), (char) =>
+            char.charCodeAt(0),
+          );
+          const extension = product.image.type.split("/")[1] ?? "jpg";
+          await addFiles([
+            new File([bytes], `brack.${extension}`, {
+              type: product.image.type,
+            }),
+          ]);
+        } catch {
+          // Bild ist optional
+        }
+      }
+      setImportNote(
+        `Übernommen${product.price ? ` (Preis bei Brack: ${product.price})` : ""}. Bitte prüfen und ergänzen: Genehmigung, Maximalmenge und Kategorie bleiben Deine Entscheidung.`,
+      );
+    } catch (nextError) {
+      setImportNote(
+        nextError instanceof Error
+          ? nextError.message
+          : "Der Import hat nicht funktioniert.",
+      );
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const fromInventory =
     (option: InventoryOption | undefined) =>
     (current: Draft | null): Draft | null =>
@@ -3472,6 +3543,33 @@ export function CatalogEditor({
                         : ""}
                     </span>
                   </div>
+                  {shopFields ? (
+                    <div className="article-editor__import">
+                      <label>
+                        Von Brack importieren (optional)
+                        <input
+                          disabled={importing}
+                          onChange={(event) => setImportUrl(event.target.value)}
+                          placeholder="https://www.brack.ch/…"
+                          type="url"
+                          value={importUrl}
+                        />
+                      </label>
+                      <button
+                        className="button button--secondary"
+                        disabled={importing || !importUrl.trim()}
+                        onClick={() => void importFromUrl()}
+                        type="button"
+                      >
+                        {importing ? "Wird gelesen …" : "Daten übernehmen"}
+                      </button>
+                      {importNote ? (
+                        <p className="shop__muted" role="status">
+                          {importNote}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="article-editor__grid2">
                     <label>
                       {stock ? "Bezeichnung" : "Name im Shop"}
