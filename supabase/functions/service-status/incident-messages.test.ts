@@ -77,6 +77,69 @@ Deno.test("publishIncidentMessage follows the contract of the incident view", ()
   );
 });
 
+Deno.test("serviceStatuses sets the operating state of chosen services", () => {
+  const base = {
+    type: "publishIncidentMessage",
+    tenantId: TENANT,
+    monitoringIncidentId: INCIDENT,
+    serviceIds: [SERVICE],
+    state: "identified",
+    title: "Störung",
+    body: "Text der Meldung",
+  };
+  const action = parseIncidentAction(
+    { ...base, serviceStatuses: { [SERVICE.toUpperCase()]: "major_outage" } },
+    TENANT,
+  );
+  assert(action?.type === "publishIncidentMessage", "statuses rejected");
+  assert(
+    action.serviceStatuses?.[SERVICE] === "major_outage",
+    "status not normalized",
+  );
+  for (const serviceStatuses of [
+    { [SERVICE]: "kaputt" },
+    { [NOTICE]: "degraded" },
+    { "not-a-uuid": "degraded" },
+    [SERVICE],
+  ]) {
+    assert(
+      parseIncidentAction({ ...base, serviceStatuses }, TENANT) === null,
+      `invalid statuses accepted: ${JSON.stringify(serviceStatuses)}`,
+    );
+  }
+  const update = parseIncidentAction(
+    {
+      type: "updateIncidentMessage",
+      tenantId: TENANT,
+      messageId: NOTICE,
+      state: "resolved",
+      body: "Behoben.",
+      serviceIds: [SERVICE],
+      serviceStatuses: { [SERVICE]: "operational" },
+    },
+    TENANT,
+  );
+  assert(
+    update?.type === "updateIncidentMessage" &&
+      update.serviceStatuses?.[SERVICE] === "operational",
+    "update statuses rejected",
+  );
+  assert(
+    parseIncidentAction(
+      {
+        type: "updateIncidentMessage",
+        tenantId: TENANT,
+        messageId: NOTICE,
+        state: "resolved",
+        body: "Behoben.",
+        serviceStatuses: { [SERVICE]: "operational" },
+      },
+      TENANT,
+    ) === null,
+    "update statuses without serviceIds accepted",
+  );
+});
+
 Deno.test("updateIncidentMessage and incidentMessages validate their fields", () => {
   const update = parseIncidentAction(
     {
