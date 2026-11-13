@@ -853,6 +853,8 @@ Shop bestellten.
 Gelöscht wird nie: nextDesk archiviert nur; ein archiviertes Team bleibt
 lesbar und lässt sich wiederherstellen.
 
+![Menü «Teams» mit Handlungsbedarf, Liste und Detail](images/ag-teams.jpg)
+
 ## IP-Adressen
 
 Unter **Dienste und Überwachung → IP-Adressen** verwalten Sie Subnetze,
