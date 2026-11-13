@@ -294,7 +294,11 @@ speichern.
 ## nextDesk auf dem iPhone
 
 Laden Sie die **nextDesk-App** aus dem App Store und melden Sie sich wie im
-Browser an. Unten finden Sie links vom **Home**-Knopf **Tickets** und rechts
+Browser an. Im Ticket sehen Sie Dateien direkt in der **Unterhaltung** – auch die
+Anhänge Ihrer E-Mail unter der Beschreibung – und öffnen sie mit einem Tipp.
+Mit der **Büroklammer** neben dem Nachrichtenfeld hängen Sie Fotos aus der
+Mediathek oder Dateien (PDF, Word, Excel, TXT, CSV) an Ihre Nachricht an, bis
+fünf pro Nachricht. Unten finden Sie links vom **Home**-Knopf **Tickets** und rechts
 **Shop**, **Wissen** und **Scan**; wer im zuständigen Team ist, sieht links
 zusätzlich **Störungen** und **Phishing**. Unter **Wissen** (auch auf Android) suchen Sie Artikel, wischen durch
 die Themen und lesen sie im Design Ihres Unternehmens: oben «Kurz gesagt»,

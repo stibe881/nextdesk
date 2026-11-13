@@ -22,6 +22,7 @@ import {
   uploadMobileTicketPhoto,
   type MobileTicketAttachment,
 } from "@/lib/mobile-ticket-attachments";
+import { isImageAttachment } from "@/lib/ticket-message-attachments-model";
 import {
   hapticError,
   hapticSelection,
@@ -129,7 +130,13 @@ export function TicketPhotoAttachments({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setAttachments(await listMobileTicketAttachments({ tenantId, ticketId }));
+      // Only images belong in the photo section; other files are shown in
+      // the conversation.
+      setAttachments(
+        (await listMobileTicketAttachments({ tenantId, ticketId })).filter(
+          isImageAttachment,
+        ),
+      );
     } catch (error) {
       setNotice({
         tone: "error",

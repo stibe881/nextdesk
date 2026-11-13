@@ -1,4 +1,5 @@
 import { formatRequesterName } from "./person-name";
+import { messageBodyWithAttachments } from "@/lib/ticket-message-attachments-model";
 import {
   invokeNextDesk,
   loadCurrentTenant,
@@ -131,6 +132,8 @@ export type MobileTicketDetail = {
   requesterContact: TicketRequester | null;
   assignedAgentId: string | null;
   resolvedAt: string | null;
+  /** Creation time; files stored with the ticket belong to the request. */
+  createdAt: string | null;
   /** Start of a running SLA pause (waiting status); null while it runs. */
   slaPausedAt: string | null;
   subcategoryId: string | null;
@@ -736,6 +739,7 @@ export async function loadMobileTicketDetail(
         : null,
     resolvedAt:
       typeof record.resolved_at === "string" ? record.resolved_at : null,
+    createdAt: typeof record.created_at === "string" ? record.created_at : null,
     slaPausedAt: openSlaPause(
       record.sla_paused_at,
       typeof record.closed_at === "string",
@@ -799,8 +803,11 @@ export async function addMobileTicketComment(input: {
   ticketId: string;
   body: string;
   visibility: TicketCommentVisibility;
+  /** Files uploaded for this message (with the same visibility). */
+  attachmentIds?: string[];
 }): Promise<void> {
-  const body = input.body.trim();
+  const attachmentIds = input.attachmentIds ?? [];
+  const body = messageBodyWithAttachments(input.body, attachmentIds.length);
   if (!body || Array.from(body).length > 50_000 || body.includes("\u0000")) {
     throw new Error(
       "Die Nachricht muss zwischen 1 und 50'000 Zeichen lang sein.",
@@ -812,6 +819,7 @@ export async function addMobileTicketComment(input: {
     ticketId: input.ticketId,
     body,
     visibility: input.visibility,
+    ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
   });
 }
 

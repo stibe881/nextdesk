@@ -32,7 +32,29 @@ import { TicketSatisfactionCard } from "@/components/ticket-satisfaction-card";
 import { isRatableTicketStatus } from "@/lib/ticket-satisfaction-model";
 import { reminderAnswerFromParam } from "@/lib/requester-progress";
 import { personRoute } from "@/lib/person-overview";
-import { TicketConversation } from "@/components/ticket-conversation";
+import {
+  MessageAttachmentList,
+  TicketConversation,
+  type PendingMessageAttachment,
+} from "@/components/ticket-conversation";
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
+import * as WebBrowser from "expo-web-browser";
+import {
+  listMobileTicketAttachments,
+  openMobileTicketAttachment,
+  preparePickedPhoto,
+  uploadMobileTicketFile,
+} from "@/lib/mobile-ticket-attachments";
+import {
+  attachmentsByComment as groupAttachmentsByComment,
+  MAX_MESSAGE_ATTACHMENTS,
+  MESSAGE_ATTACHMENT_CONTENT_TYPES,
+  messageAttachmentContentType,
+  pickedFileError,
+  requestAttachments,
+  type MessageAttachment,
+} from "@/lib/ticket-message-attachments-model";
 import { TicketPhotoAttachments } from "@/components/ticket-photo-attachments";
 import { TicketSupportLevelCard } from "@/components/ticket-support-level-card";
 import {
@@ -95,6 +117,14 @@ import {
 } from "@/lib/nextdesk-tickets";
 import { recordRecentItem } from "@/lib/recent-items";
 import { draftRestoredLabel, pickNewestDraft } from "@/lib/recent-items-model";
+
+/** A file picked for the next message; uploaded when the message is sent. */
+type PickedMessageFile = PendingMessageAttachment & {
+  uri: string;
+  contentType: string;
+  /** Photos from the library are converted to JPEG without metadata. */
+  photo?: { width?: number; height?: number };
+};
 
 function roundUpToFiveMinutes(value: Date): Date {
   const rounded = new Date(value);
@@ -335,6 +365,10 @@ export default function TicketDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
+  const [ticketAttachments, setTicketAttachments] = useState<
+    MessageAttachment[]
+  >([]);
+  const [pickedFiles, setPickedFiles] = useState<PickedMessageFile[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [workspaceAvailable, setWorkspaceAvailable] = useState(true);
@@ -562,6 +596,26 @@ export default function TicketDetailScreen() {
       null,
     [ticket],
   );
+  const messageAttachments = useMemo(
+    () => groupAttachmentsByComment(ticketAttachments),
+    [ticketAttachments],
+  );
+  const descriptionAttachments = useMemo(
+    () =>
+      ticket?.createdAt
+        ? requestAttachments(ticketAttachments, ticket.createdAt)
+        : [],
+    [ticket?.createdAt, ticketAttachments],
+  );
+  const attachmentReloadKey = ticket
+    ? `${tenant?.id ?? ""}|${ticket.id}|${ticket.comments.length}`
+    : "";
+  useEffect(() => {
+    if (!attachmentReloadKey) return;
+    void loadTicketAttachments();
+    // Reload when the ticket or its number of messages changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachmentReloadKey]);
   const priority = useMemo(
     () =>
       ticket?.priorityOptions.find(
@@ -1377,10 +1431,157 @@ export default function TicketDetailScreen() {
     }
   }
 
+  async function loadTicketAttachments() {
+    if (!tenant || !ticket) return;
+    try {
+      setTicketAttachments(
+        await listMobileTicketAttachments({
+          tenantId: tenant.id,
+          ticketId: ticket.id,
+        }),
+      );
+    } catch {
+      // Files are optional in the conversation; the ticket stays usable.
+      setTicketAttachments([]);
+    }
+  }
+
+  async function openTicketAttachment(attachment: MessageAttachment) {
+    if (!tenant || !ticket) return;
+    try {
+      const url = await openMobileTicketAttachment({
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+        attachmentId: attachment.id,
+      });
+      await WebBrowser.openBrowserAsync(url);
+    } catch (openError) {
+      Alert.alert(
+        "Datei nicht verfügbar",
+        openError instanceof Error
+          ? openError.message
+          : "Die Datei konnte nicht geöffnet werden.",
+      );
+    }
+  }
+
+  function addPickedFiles(files: PickedMessageFile[]) {
+    const free = MAX_MESSAGE_ATTACHMENTS - pickedFiles.length;
+    if (files.length > free) {
+      Alert.alert(
+        "Zu viele Dateien",
+        `Pro Nachricht sind höchstens ${MAX_MESSAGE_ATTACHMENTS} Dateien möglich.`,
+      );
+    }
+    const accepted: PickedMessageFile[] = [];
+    for (const file of files.slice(0, Math.max(0, free))) {
+      const problem = pickedFileError({
+        name: file.name,
+        size: file.size,
+        contentType: file.contentType,
+      });
+      if (problem) {
+        Alert.alert("Datei nicht möglich", problem);
+        continue;
+      }
+      accepted.push(file);
+    }
+    if (accepted.length > 0) {
+      hapticSelection();
+      setPickedFiles((current) => [...current, ...accepted]);
+    }
+  }
+
+  async function pickPhotosForMessage() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsMultipleSelection: true,
+      exif: false,
+      mediaTypes: ["images"],
+      quality: 1,
+      selectionLimit: MAX_MESSAGE_ATTACHMENTS - pickedFiles.length,
+    });
+    if (result.canceled) return;
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    addPickedFiles(
+      result.assets.map((asset, index) => ({
+        key: `${asset.assetId ?? asset.uri}-${Date.now()}-${index}`,
+        uri: asset.uri,
+        name: `nextdesk-foto-${stamp}${index > 0 ? `-${index + 1}` : ""}.jpg`,
+        // The photo is re-encoded as JPEG before upload; the final size is
+        // checked again then.
+        size: Math.max(1, asset.fileSize ?? 1),
+        contentType: "image/jpeg",
+        photo: { width: asset.width, height: asset.height },
+      })),
+    );
+  }
+
+  async function pickDocumentsForMessage() {
+    const result = await DocumentPicker.getDocumentAsync({
+      copyToCacheDirectory: true,
+      multiple: true,
+      type: [...MESSAGE_ATTACHMENT_CONTENT_TYPES],
+    });
+    if (result.canceled) return;
+    addPickedFiles(
+      result.assets.map((asset, index) => ({
+        key: `${asset.uri}-${Date.now()}-${index}`,
+        uri: asset.uri,
+        name: asset.name,
+        size: asset.size ?? 0,
+        contentType:
+          messageAttachmentContentType(asset.name, asset.mimeType) ?? "",
+      })),
+    );
+  }
+
+  function chooseMessageAttachments() {
+    Alert.alert("Anhang hinzufügen", undefined, [
+      {
+        text: "Foto aus der Mediathek",
+        onPress: () => void pickPhotosForMessage(),
+      },
+      {
+        text: "Datei auswählen",
+        onPress: () => void pickDocumentsForMessage(),
+      },
+      { text: "Abbrechen", style: "cancel" },
+    ]);
+  }
+
+  async function uploadPickedFiles(
+    tenantId: string,
+    ticketId: string,
+    visibility: "internal" | "external",
+  ): Promise<string[]> {
+    const ids: string[] = [];
+    for (const file of pickedFiles) {
+      const bytes = file.photo
+        ? await preparePickedPhoto({ uri: file.uri, ...file.photo })
+        : await (async () => {
+            const response = await fetch(file.uri);
+            if (!response.ok) {
+              throw new Error(`«${file.name}» konnte nicht gelesen werden.`);
+            }
+            return response.arrayBuffer();
+          })();
+      const uploaded = await uploadMobileTicketFile({
+        tenantId,
+        ticketId,
+        filename: file.name,
+        contentType: file.contentType,
+        bytes,
+        visibility,
+      });
+      ids.push(uploaded.id);
+    }
+    return ids;
+  }
+
   async function sendComment() {
     if (!ticket || !tenant) return;
     const body = comment.trim();
-    if (!body) {
+    if (!body && pickedFiles.length === 0) {
       setError("Bitte schreib zuerst eine Nachricht.");
       return;
     }
@@ -1396,12 +1597,19 @@ export default function TicketDetailScreen() {
     setError("");
     setMessage("");
     try {
+      const attachmentIds = await uploadPickedFiles(
+        tenant.id,
+        ticket.id,
+        commentVisibility,
+      );
       await addMobileTicketComment({
         tenantId: tenant.id,
         ticketId: ticket.id,
         body,
         visibility: commentVisibility,
+        attachmentIds,
       });
+      setPickedFiles([]);
       setComment("");
       setDraftDirty(false);
       setDraftState("idle");
@@ -1421,6 +1629,7 @@ export default function TicketDetailScreen() {
         visibility: commentVisibility,
       });
       await load(false);
+      await loadTicketAttachments();
       setMessage("Nachricht wurde erfolgreich veröffentlicht.");
       hapticSuccess();
     } catch (nextError) {
@@ -2757,6 +2966,10 @@ export default function TicketDetailScreen() {
                 </Text>
               </Pressable>
             )}
+            <MessageAttachmentList
+              attachments={descriptionAttachments}
+              onOpen={(attachment) => void openTicketAttachment(attachment)}
+            />
           </View>
 
           {canUseRequesterPortal && ticketIsResolved && !reopenSubmitted ? (
@@ -2858,6 +3071,17 @@ export default function TicketDetailScreen() {
               }
               onVisibilityChange={changeCommentVisibility}
               visibility={commentVisibility}
+              attachmentsByComment={messageAttachments}
+              onOpenAttachment={(attachment) =>
+                void openTicketAttachment(attachment)
+              }
+              pendingAttachments={pickedFiles}
+              onAddAttachments={chooseMessageAttachments}
+              onRemovePendingAttachment={(key) =>
+                setPickedFiles((current) =>
+                  current.filter((file) => file.key !== key),
+                )
+              }
             />
           </View>
 
