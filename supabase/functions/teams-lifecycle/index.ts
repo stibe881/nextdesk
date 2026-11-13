@@ -18,6 +18,20 @@ const handler = withSupabase(
     ) {
       return new Response(null, { status: 401 });
     }
+    // Das Anlegen eines Teams kann länger dauern als der Aufruf des Crons wartet:
+    // im Hintergrund weiterlaufen lassen, sofort antworten.
+    // deno-lint-ignore no-explicit-any
+    const runtime = (globalThis as any).EdgeRuntime;
+    if (runtime?.waitUntil) {
+      runtime.waitUntil(runTeamsLifecycle(admin).catch(() => undefined));
+      return new Response(JSON.stringify({ data: { started: true } }), {
+        status: 202,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        },
+      });
+    }
     try {
       const summary = await runTeamsLifecycle(admin);
       return new Response(JSON.stringify({ data: summary }), {

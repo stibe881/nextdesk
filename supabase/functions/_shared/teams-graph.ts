@@ -9,6 +9,8 @@ type FetchLike = typeof fetch;
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const TIMEOUT_MS = 30_000;
+/** Das Anlegen eines Teams kann bei Microsoft länger als eine halbe Minute dauern. */
+const CREATE_TIMEOUT_MS = 110_000;
 const WEBSITE_TAB_APP = "com.microsoft.teamspace.tab.web";
 
 export type TeamsGraphErrorCode =
@@ -44,6 +46,7 @@ async function call(
   method: string,
   path: string,
   body?: unknown,
+  timeoutMs: number = TIMEOUT_MS,
 ): Promise<Response> {
   let response: Response;
   try {
@@ -57,7 +60,7 @@ async function call(
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         redirect: "error",
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       },
     );
   } catch {
@@ -124,20 +127,32 @@ export async function createTeam(
   >,
   fetcher: FetchLike = fetch,
 ): Promise<{ teamId: string; operation: string | null }> {
-  const response = await call(fetcher, token, "POST", "/teams", {
-    "template@odata.bind": `${GRAPH}/teamsTemplates('standard')`,
-    displayName: request.name,
-    ...(request.description ? { description: request.description } : {}),
-    visibility: request.visibility === "public" ? "Public" : "Private",
-    // Mit Anwendungsberechtigungen erlaubt Microsoft beim Anlegen nur ein
-    // Mitglied (den Owner); alle weiteren folgen in finishTeam.
-    members: [memberBody(request.owners[0]!, true)],
-  });
+  const response = await call(
+    fetcher,
+    token,
+    "POST",
+    "/teams",
+    {
+      "template@odata.bind": `${GRAPH}/teamsTemplates('standard')`,
+      displayName: request.name,
+      ...(request.description ? { description: request.description } : {}),
+      visibility: request.visibility === "public" ? "Public" : "Private",
+      // Mit Anwendungsberechtigungen erlaubt Microsoft beim Anlegen nur ein
+      // Mitglied (den Owner); alle weiteren folgen in finishTeam.
+      members: [memberBody(request.owners[0]!, true)],
+    },
+    CREATE_TIMEOUT_MS,
+  );
   const parsed = parseTeamLocation(
     response.headers.get("Content-Location"),
     response.headers.get("Location"),
   );
-  if (!parsed) throw new TeamsGraphError("unavailable");
+  if (!parsed) {
+    console.error(
+      `teams-graph POST /teams -> ${response.status} ohne Team-Adresse in den Antwort-Kopfzeilen`,
+    );
+    throw new TeamsGraphError("unavailable");
+  }
   return parsed;
 }
 
@@ -375,10 +390,9 @@ export async function listAllTeams(
   fetcher: FetchLike = fetch,
 ): Promise<GraphTeamSummary[]> {
   const teams: GraphTeamSummary[] = [];
-  let next: string | null =
-    `${GRAPH}/groups?$filter=${encodeURIComponent(
-      "resourceProvisioningOptions/Any(x:x eq 'Team')",
-    )}&$select=id,displayName,description,visibility,createdDateTime&$top=100`;
+  let next: string | null = `${GRAPH}/groups?$filter=${encodeURIComponent(
+    "resourceProvisioningOptions/Any(x:x eq 'Team')",
+  )}&$select=id,displayName,description,visibility,createdDateTime&$top=100`;
   for (let page = 0; next && page < 20; page += 1) {
     if (!next.startsWith(`${GRAPH}/`)) throw new TeamsGraphError("invalid");
     const body = await getJson(fetcher, token, next);
@@ -433,7 +447,11 @@ export async function listTeamMembers(
   fetcher: FetchLike = fetch,
   top = 200,
 ): Promise<TeamMemberInfo[]> {
-  const body = await getJson(fetcher, token, `/teams/${teamId}/members?$top=${top}`);
+  const body = await getJson(
+    fetcher,
+    token,
+    `/teams/${teamId}/members?$top=${top}`,
+  );
   const members: TeamMemberInfo[] = [];
   for (const entry of Array.isArray(body.value) ? body.value : []) {
     const row = entry as Json;
@@ -460,7 +478,13 @@ export async function addTeamMember(
   fetcher: FetchLike = fetch,
 ): Promise<void> {
   try {
-    await call(fetcher, token, "POST", `/teams/${teamId}/members`, memberBody(userId, owner));
+    await call(
+      fetcher,
+      token,
+      "POST",
+      `/teams/${teamId}/members`,
+      memberBody(userId, owner),
+    );
   } catch (error) {
     if (error instanceof TeamsGraphError && error.code === "conflict") return;
     throw error;
@@ -473,7 +497,12 @@ export async function removeTeamMember(
   membershipId: string,
   fetcher: FetchLike = fetch,
 ): Promise<void> {
-  await call(fetcher, token, "DELETE", `/teams/${teamId}/members/${membershipId}`);
+  await call(
+    fetcher,
+    token,
+    "DELETE",
+    `/teams/${teamId}/members/${membershipId}`,
+  );
 }
 
 export async function setTeamMemberOwner(
@@ -483,10 +512,16 @@ export async function setTeamMemberOwner(
   owner: boolean,
   fetcher: FetchLike = fetch,
 ): Promise<void> {
-  await call(fetcher, token, "PATCH", `/teams/${teamId}/members/${membershipId}`, {
-    "@odata.type": "#microsoft.graph.aadUserConversationMember",
-    roles: owner ? ["owner"] : [],
-  });
+  await call(
+    fetcher,
+    token,
+    "PATCH",
+    `/teams/${teamId}/members/${membershipId}`,
+    {
+      "@odata.type": "#microsoft.graph.aadUserConversationMember",
+      roles: owner ? ["owner"] : [],
+    },
+  );
 }
 
 export async function unarchiveTeam(
