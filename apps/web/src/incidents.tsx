@@ -10,6 +10,8 @@ import {
   Search,
   Wrench,
   Globe,
+  Megaphone,
+  UserRound,
 } from "lucide-react";
 import {
   useCallback,
@@ -26,6 +28,10 @@ import {
   IncidentTicketsCard,
 } from "./incidents-extras";
 import { tn } from "./lib/formality";
+import {
+  INCIDENT_MESSAGE_STATE_LABELS,
+  type IncidentMessageState,
+} from "./lib/incidents-public-messages";
 import { functionErrorMessage } from "./lib/function-error";
 import {
   ACTIVE_FILTERS,
@@ -557,15 +563,41 @@ function IncidentRow({
               {STATE_LABELS[entry.state]}
             </span>
           )}
-          {entry.state === "active" && !entry.acknowledgedAt ? (
+          {/* Provider issues are not confirmed, only assigned. */}
+          {entry.state === "active" &&
+          !entry.acknowledgedAt &&
+          entry.source !== "external" ? (
             <span className="incident-chip incident-chip--bad">
               Unbestätigt
             </span>
           ) : null}
           {entry.acknowledgedAt ? (
-            <span className="incident-chip incident-chip--ok">
-              Bestätigt
-              {entry.assignedAgentName ? ` · ${entry.assignedAgentName}` : ""}
+            <span className="incident-chip incident-chip--ok">Bestätigt</span>
+          ) : null}
+          {entry.assignedAgentName ? (
+            <span
+              className="incident-chip incident-chip--line"
+              title="Zuständig"
+            >
+              <UserRound aria-hidden="true" size={12} />{" "}
+              {entry.assignedAgentName}
+            </span>
+          ) : entry.state !== "closed" ? (
+            <span className="incident-chip incident-chip--line">
+              Nicht zugewiesen
+            </span>
+          ) : null}
+          {entry.statusPage ? (
+            <span
+              className={`incident-chip incident-chip--${entry.statusPage.state === "resolved" ? "ok" : "info"}`}
+              title={`Auf der Statusseite: ${INCIDENT_MESSAGE_STATE_LABELS[entry.statusPage.state as IncidentMessageState] ?? entry.statusPage.state}`}
+            >
+              <Megaphone aria-hidden="true" size={12} /> Statusseite
+              {INCIDENT_MESSAGE_STATE_LABELS[
+                entry.statusPage.state as IncidentMessageState
+              ]
+                ? ` · ${INCIDENT_MESSAGE_STATE_LABELS[entry.statusPage.state as IncidentMessageState]}`
+                : ""}
             </span>
           ) : null}
           {entry.maintenance ? (

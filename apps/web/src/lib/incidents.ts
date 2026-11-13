@@ -72,6 +72,8 @@ export type IncidentSummary = {
   source: "prtg" | "external";
   externalProvider: string | null;
   externalUrl: string | null;
+  /** Latest public message on the status page (list only). */
+  statusPage: { state: string; updatedAt: string } | null;
   children: IncidentSummary[];
 };
 
@@ -263,6 +265,16 @@ function summaryOf(row: Row): IncidentSummary | null {
     source: row.source === "external" ? "external" : "prtg",
     externalProvider: str(row.externalProvider),
     externalUrl: str(row.externalUrl),
+    statusPage:
+      row.statusPage &&
+      typeof row.statusPage === "object" &&
+      str((row.statusPage as Record<string, unknown>).state)
+        ? {
+            state: str((row.statusPage as Record<string, unknown>).state)!,
+            updatedAt:
+              str((row.statusPage as Record<string, unknown>).updatedAt) ?? "",
+          }
+        : null,
     children: list(row.children).flatMap((child) => {
       const parsed = summaryOf(child);
       return parsed ? [parsed] : [];
