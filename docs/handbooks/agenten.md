@@ -361,7 +361,10 @@ Ein Klick öffnet die Störung:
    stehen alle Agenten mit Zugriff auf das Modul Störungen, also die
    Mitglieder des Alarmierungsteams (ohne festgelegtes Team alle Agenten).
 2. Der **Verlauf** zeigt alle PRTG-Meldungen und was in nextDesk geschah
-   (geöffnet, alarmiert, bestätigt, Notizen). Mit **Notiz zum Verlauf
+   (geöffnet, alarmiert, bestätigt, Notizen). PRTG-Meldungen erscheinen als
+   kurze deutsche Texte, z. B. «Keine Antwort auf Ping (Zeitüberschreitung)»
+   statt englischer Texte mit Fehlercodes; im Titel fehlt der Sensortyp in
+   Klammern. Mit **Notiz zum Verlauf
    hinzufügen** hältst du fest, was du geprüft oder veranlasst hast.
 3. **Letzte 24 Stunden** zeigt, wann das Gerät gestört war, und warnt, wenn
    es in dieser Woche mehrfach ausgefallen ist. Darunter stehen die
