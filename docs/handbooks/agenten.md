@@ -902,7 +902,8 @@ Hilfen in allen Ansichten:
 
 - **Suche überall**: Ausserhalb der Übersicht steht das Suchfeld oben rechts.
   Die Taste **/** setzt den Cursor ins Suchfeld, mit ↑/↓ wählst du einen
-  Treffer, **Enter** öffnet ihn, **Esc** leert das Feld.
+  Treffer, **Enter** öffnet ihn, **Esc** leert das Feld. Tickets findest du
+  auch über einen Teil der Nummer: «82» oder «0082» findet ICT-2026-000082.
 - nextDesk merkt sich in diesem Browser das zuletzt gewählte Register und
   Netz; beim nächsten Öffnen geht es dort weiter.
 - Nach einer Änderung erscheint unten eine Meldung. Lässt sich die Änderung
