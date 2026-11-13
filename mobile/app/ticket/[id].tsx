@@ -32,7 +32,29 @@ import { TicketSatisfactionCard } from "@/components/ticket-satisfaction-card";
 import { isRatableTicketStatus } from "@/lib/ticket-satisfaction-model";
 import { reminderAnswerFromParam } from "@/lib/requester-progress";
 import { personRoute } from "@/lib/person-overview";
-import { TicketConversation } from "@/components/ticket-conversation";
+import {
+  MessageAttachmentList,
+  TicketConversation,
+  type PendingMessageAttachment,
+} from "@/components/ticket-conversation";
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
+import * as WebBrowser from "expo-web-browser";
+import {
+  listMobileTicketAttachments,
+  openMobileTicketAttachment,
+  preparePickedPhoto,
+  uploadMobileTicketFile,
+} from "@/lib/mobile-ticket-attachments";
+import {
+  attachmentsByComment as groupAttachmentsByComment,
+  MAX_MESSAGE_ATTACHMENTS,
+  MESSAGE_ATTACHMENT_CONTENT_TYPES,
+  messageAttachmentContentType,
+  pickedFileError,
+  requestAttachments,
+  type MessageAttachment,
+} from "@/lib/ticket-message-attachments-model";
 import { TicketPhotoAttachments } from "@/components/ticket-photo-attachments";
 import { TicketSupportLevelCard } from "@/components/ticket-support-level-card";
 import {
@@ -95,6 +117,15 @@ import {
 } from "@/lib/nextdesk-tickets";
 import { recordRecentItem } from "@/lib/recent-items";
 import { draftRestoredLabel, pickNewestDraft } from "@/lib/recent-items-model";
+import { tn } from "@/lib/formality";
+
+/** A file picked for the next message; uploaded when the message is sent. */
+type PickedMessageFile = PendingMessageAttachment & {
+  uri: string;
+  contentType: string;
+  /** Photos from the library are converted to JPEG without metadata. */
+  photo?: { width?: number; height?: number };
+};
 
 function roundUpToFiveMinutes(value: Date): Date {
   const rounded = new Date(value);
@@ -335,6 +366,10 @@ export default function TicketDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
+  const [ticketAttachments, setTicketAttachments] = useState<
+    MessageAttachment[]
+  >([]);
+  const [pickedFiles, setPickedFiles] = useState<PickedMessageFile[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [workspaceAvailable, setWorkspaceAvailable] = useState(true);
@@ -562,6 +597,26 @@ export default function TicketDetailScreen() {
       null,
     [ticket],
   );
+  const messageAttachments = useMemo(
+    () => groupAttachmentsByComment(ticketAttachments),
+    [ticketAttachments],
+  );
+  const descriptionAttachments = useMemo(
+    () =>
+      ticket?.createdAt
+        ? requestAttachments(ticketAttachments, ticket.createdAt)
+        : [],
+    [ticket?.createdAt, ticketAttachments],
+  );
+  const attachmentReloadKey = ticket
+    ? `${tenant?.id ?? ""}|${ticket.id}|${ticket.comments.length}`
+    : "";
+  useEffect(() => {
+    if (!attachmentReloadKey) return;
+    void loadTicketAttachments();
+    // Reload when the ticket or its number of messages changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachmentReloadKey]);
   const priority = useMemo(
     () =>
       ticket?.priorityOptions.find(
@@ -762,7 +817,10 @@ export default function TicketDetailScreen() {
     const reason = reopenReason.trim();
     if (!reason) {
       setReopenError(
-        "Bitte beschreibe kurz, weshalb das Ticket wieder geöffnet werden soll.",
+        tn(
+          "Bitte beschreibe kurz, weshalb das Ticket wieder geöffnet werden soll.",
+          "Bitte beschreiben Sie kurz, weshalb das Ticket wieder geöffnet werden soll.",
+        ),
       );
       return;
     }
@@ -778,7 +836,10 @@ export default function TicketDetailScreen() {
       setReopenSubmitted(true);
       setReopenSheetOpen(false);
       setMessage(
-        "Dein Antrag wurde übermittelt. Der Ticketstatus bleibt unverändert, bis ein berechtigter Agent entscheidet.",
+        tn(
+          "Dein Antrag wurde übermittelt. Der Ticketstatus bleibt unverändert, bis ein berechtigter Agent entscheidet.",
+          "Ihr Antrag wurde übermittelt. Der Ticketstatus bleibt unverändert, bis ein berechtigter Agent entscheidet.",
+        ),
       );
       hapticSuccess();
     } catch (nextError) {
@@ -950,7 +1011,12 @@ export default function TicketDetailScreen() {
       return;
     }
     if (!nextStatusKey || !nextPriorityKey) {
-      setError("Bitte wähle Status und Priorität.");
+      setError(
+        tn(
+          "Bitte wähle Status und Priorität.",
+          "Bitte wählen Sie Status und Priorität.",
+        ),
+      );
       return;
     }
     const nextStatus = ticket.statusOptions.find(
@@ -1060,7 +1126,12 @@ export default function TicketDetailScreen() {
       (categoryId !== null && !category) ||
       (subcategoryId !== null && !subcategory)
     ) {
-      setCategoryError("Bitte wähle eine gültige Kategorie aus.");
+      setCategoryError(
+        tn(
+          "Bitte wähle eine gültige Kategorie aus.",
+          "Bitte wählen Sie eine gültige Kategorie aus.",
+        ),
+      );
       return;
     }
 
@@ -1162,8 +1233,14 @@ export default function TicketDetailScreen() {
       setWatched(nextWatched);
       setMessage(
         nextWatched
-          ? "Du beobachtest dieses Ticket und wirst über Status, Nachrichten und Notizen benachrichtigt."
-          : "Du beobachtest dieses Ticket nicht mehr.",
+          ? tn(
+              "Du beobachtest dieses Ticket und wirst über Status, Nachrichten und Notizen benachrichtigt.",
+              "Sie beobachten dieses Ticket und werden über Status, Nachrichten und Notizen benachrichtigt.",
+            )
+          : tn(
+              "Du beobachtest dieses Ticket nicht mehr.",
+              "Sie beobachten dieses Ticket nicht mehr.",
+            ),
       );
       hapticSelection();
     } catch {
@@ -1234,7 +1311,12 @@ export default function TicketDetailScreen() {
   async function saveTicketFollowUp() {
     if (!ticket) return;
     if (followUpDueAt.getTime() <= Date.now()) {
-      setFollowUpError("Bitte wähle einen zukünftigen Zeitpunkt.");
+      setFollowUpError(
+        tn(
+          "Bitte wähle einen zukünftigen Zeitpunkt.",
+          "Bitte wählen Sie einen zukünftigen Zeitpunkt.",
+        ),
+      );
       return;
     }
     const description = followUpNote.trim();
@@ -1350,8 +1432,14 @@ export default function TicketDetailScreen() {
       setResolutionSheetOpen(false);
       setMessage(
         resolutionDecision
-          ? "Danke, deine Lösungsbestätigung wurde gespeichert."
-          : "Danke, deine Rückmeldung wurde gespeichert.",
+          ? tn(
+              "Danke, deine Lösungsbestätigung wurde gespeichert.",
+              "Danke, Ihre Lösungsbestätigung wurde gespeichert.",
+            )
+          : tn(
+              "Danke, deine Rückmeldung wurde gespeichert.",
+              "Danke, Ihre Rückmeldung wurde gespeichert.",
+            ),
       );
       hapticSuccess();
     } catch (nextError) {
@@ -1370,25 +1458,185 @@ export default function TicketDetailScreen() {
       setResolutionError(
         nextError instanceof Error
           ? nextError.message
-          : "Deine Rückmeldung konnte nicht gespeichert werden.",
+          : tn(
+              "Deine Rückmeldung konnte nicht gespeichert werden.",
+              "Ihre Rückmeldung konnte nicht gespeichert werden.",
+            ),
       );
     } finally {
       setSubmittingResolution(false);
     }
   }
 
+  async function loadTicketAttachments() {
+    if (!tenant || !ticket) return;
+    try {
+      setTicketAttachments(
+        await listMobileTicketAttachments({
+          tenantId: tenant.id,
+          ticketId: ticket.id,
+        }),
+      );
+    } catch {
+      // Files are optional in the conversation; the ticket stays usable.
+      setTicketAttachments([]);
+    }
+  }
+
+  async function openTicketAttachment(attachment: MessageAttachment) {
+    if (!tenant || !ticket) return;
+    try {
+      const url = await openMobileTicketAttachment({
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+        attachmentId: attachment.id,
+      });
+      await WebBrowser.openBrowserAsync(url);
+    } catch (openError) {
+      Alert.alert(
+        "Datei nicht verfügbar",
+        openError instanceof Error
+          ? openError.message
+          : "Die Datei konnte nicht geöffnet werden.",
+      );
+    }
+  }
+
+  function addPickedFiles(files: PickedMessageFile[]) {
+    const free = MAX_MESSAGE_ATTACHMENTS - pickedFiles.length;
+    if (files.length > free) {
+      Alert.alert(
+        "Zu viele Dateien",
+        `Pro Nachricht sind höchstens ${MAX_MESSAGE_ATTACHMENTS} Dateien möglich.`,
+      );
+    }
+    const accepted: PickedMessageFile[] = [];
+    for (const file of files.slice(0, Math.max(0, free))) {
+      const problem = pickedFileError({
+        name: file.name,
+        size: file.size,
+        contentType: file.contentType,
+      });
+      if (problem) {
+        Alert.alert("Datei nicht möglich", problem);
+        continue;
+      }
+      accepted.push(file);
+    }
+    if (accepted.length > 0) {
+      hapticSelection();
+      setPickedFiles((current) => [...current, ...accepted]);
+    }
+  }
+
+  async function pickPhotosForMessage() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsMultipleSelection: true,
+      exif: false,
+      mediaTypes: ["images"],
+      quality: 1,
+      selectionLimit: MAX_MESSAGE_ATTACHMENTS - pickedFiles.length,
+    });
+    if (result.canceled) return;
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    addPickedFiles(
+      result.assets.map((asset, index) => ({
+        key: `${asset.assetId ?? asset.uri}-${Date.now()}-${index}`,
+        uri: asset.uri,
+        name: `nextdesk-foto-${stamp}${index > 0 ? `-${index + 1}` : ""}.jpg`,
+        // The photo is re-encoded as JPEG before upload; the final size is
+        // checked again then.
+        size: Math.max(1, asset.fileSize ?? 1),
+        contentType: "image/jpeg",
+        photo: { width: asset.width, height: asset.height },
+      })),
+    );
+  }
+
+  async function pickDocumentsForMessage() {
+    const result = await DocumentPicker.getDocumentAsync({
+      copyToCacheDirectory: true,
+      multiple: true,
+      type: [...MESSAGE_ATTACHMENT_CONTENT_TYPES],
+    });
+    if (result.canceled) return;
+    addPickedFiles(
+      result.assets.map((asset, index) => ({
+        key: `${asset.uri}-${Date.now()}-${index}`,
+        uri: asset.uri,
+        name: asset.name,
+        size: asset.size ?? 0,
+        contentType:
+          messageAttachmentContentType(asset.name, asset.mimeType) ?? "",
+      })),
+    );
+  }
+
+  function chooseMessageAttachments() {
+    Alert.alert("Anhang hinzufügen", undefined, [
+      {
+        text: "Foto aus der Mediathek",
+        onPress: () => void pickPhotosForMessage(),
+      },
+      {
+        text: "Datei auswählen",
+        onPress: () => void pickDocumentsForMessage(),
+      },
+      { text: "Abbrechen", style: "cancel" },
+    ]);
+  }
+
+  async function uploadPickedFiles(
+    tenantId: string,
+    ticketId: string,
+    visibility: "internal" | "external",
+  ): Promise<string[]> {
+    const ids: string[] = [];
+    for (const file of pickedFiles) {
+      const bytes = file.photo
+        ? await preparePickedPhoto({ uri: file.uri, ...file.photo })
+        : await (async () => {
+            const response = await fetch(file.uri);
+            if (!response.ok) {
+              throw new Error(`«${file.name}» konnte nicht gelesen werden.`);
+            }
+            return response.arrayBuffer();
+          })();
+      const uploaded = await uploadMobileTicketFile({
+        tenantId,
+        ticketId,
+        filename: file.name,
+        contentType: file.contentType,
+        bytes,
+        visibility,
+      });
+      ids.push(uploaded.id);
+    }
+    return ids;
+  }
+
   async function sendComment() {
     if (!ticket || !tenant) return;
     const body = comment.trim();
-    if (!body) {
-      setError("Bitte schreib zuerst eine Nachricht.");
+    if (!body && pickedFiles.length === 0) {
+      setError(
+        tn(
+          "Bitte schreib zuerst eine Nachricht.",
+          "Bitte schreiben Sie zuerst eine Nachricht.",
+        ),
+      );
       return;
     }
     if (
       (commentVisibility === "internal" && !ticket.canWriteInternalNotes) ||
       (commentVisibility === "external" && !ticket.canCommentExternal)
     ) {
-      setError("Du bist nicht berechtigt, diese Nachricht zu veröffentlichen.");
+      setError(
+        tn(
+          "Du bist nicht berechtigt, diese Nachricht zu veröffentlichen.",
+          "Sie sind nicht berechtigt, diese Nachricht zu veröffentlichen.",
+        ),
+      );
       return;
     }
 
@@ -1396,12 +1644,19 @@ export default function TicketDetailScreen() {
     setError("");
     setMessage("");
     try {
+      const attachmentIds = await uploadPickedFiles(
+        tenant.id,
+        ticket.id,
+        commentVisibility,
+      );
       await addMobileTicketComment({
         tenantId: tenant.id,
         ticketId: ticket.id,
         body,
         visibility: commentVisibility,
+        attachmentIds,
       });
+      setPickedFiles([]);
       setComment("");
       setDraftDirty(false);
       setDraftState("idle");
@@ -1421,6 +1676,7 @@ export default function TicketDetailScreen() {
         visibility: commentVisibility,
       });
       await load(false);
+      await loadTicketAttachments();
       setMessage("Nachricht wurde erfolgreich veröffentlicht.");
       hapticSuccess();
     } catch (nextError) {
@@ -2643,10 +2899,16 @@ export default function TicketDetailScreen() {
                   <Text
                     style={[styles.experienceTitle, tokenStyles.foreground]}
                   >
-                    Wurde dein Anliegen gelöst?
+                    {tn(
+                      "Wurde dein Anliegen gelöst?",
+                      "Wurde Ihr Anliegen gelöst?",
+                    )}
                   </Text>
                   <Text style={[styles.experienceText, tokenStyles.muted]}>
-                    Deine Rückmeldung ändert den Ticketstatus nicht.
+                    {tn(
+                      "Deine Rückmeldung ändert den Ticketstatus nicht.",
+                      "Ihre Rückmeldung ändert den Ticketstatus nicht.",
+                    )}
                   </Text>
                 </View>
               </View>
@@ -2757,6 +3019,10 @@ export default function TicketDetailScreen() {
                 </Text>
               </Pressable>
             )}
+            <MessageAttachmentList
+              attachments={descriptionAttachments}
+              onOpen={(attachment) => void openTicketAttachment(attachment)}
+            />
           </View>
 
           {canUseRequesterPortal && ticketIsResolved && !reopenSubmitted ? (
@@ -2858,6 +3124,17 @@ export default function TicketDetailScreen() {
               }
               onVisibilityChange={changeCommentVisibility}
               visibility={commentVisibility}
+              attachmentsByComment={messageAttachments}
+              onOpenAttachment={(attachment) =>
+                void openTicketAttachment(attachment)
+              }
+              pendingAttachments={pickedFiles}
+              onAddAttachments={chooseMessageAttachments}
+              onRemovePendingAttachment={(key) =>
+                setPickedFiles((current) =>
+                  current.filter((file) => file.key !== key),
+                )
+              }
             />
           </View>
 
@@ -3131,7 +3408,10 @@ export default function TicketDetailScreen() {
                     maxLength={500}
                     multiline
                     onChangeText={setFollowUpNote}
-                    placeholder="Was möchtest du beachten?"
+                    placeholder={tn(
+                      "Was möchtest du beachten?",
+                      "Was möchten Sie beachten?",
+                    )}
                     placeholderTextColor={colors.subtle}
                     style={[
                       styles.followUpNoteInput,
@@ -3226,7 +3506,10 @@ export default function TicketDetailScreen() {
                       tokenStyles.foreground,
                     ]}
                   >
-                    Wurde dein Anliegen gelöst?
+                    {tn(
+                      "Wurde dein Anliegen gelöst?",
+                      "Wurde Ihr Anliegen gelöst?",
+                    )}
                   </Text>
                 </View>
                 <Pressable
@@ -3324,8 +3607,10 @@ export default function TicketDetailScreen() {
                   </Text>
                 </View>
                 <Text style={[styles.resolutionNotice, tokenStyles.muted]}>
-                  Diese Rückmeldung speichert nur deine Bestätigung oder
-                  Ablehnung. Der Ticketstatus bleibt unverändert.
+                  {tn(
+                    "Diese Rückmeldung speichert nur deine Bestätigung oder Ablehnung. Der Ticketstatus bleibt unverändert.",
+                    "Diese Rückmeldung speichert nur Ihre Bestätigung oder Ablehnung. Der Ticketstatus bleibt unverändert.",
+                  )}
                 </Text>
                 {resolutionError ? (
                   <View style={[styles.feedback, tokenStyles.error]}>
@@ -3441,8 +3726,10 @@ export default function TicketDetailScreen() {
                 <Text
                   style={[styles.experienceSheetDescription, tokenStyles.muted]}
                 >
-                  Bitte erläutere kurz, was weiterhin fehlt. Der Antrag ändert
-                  den Ticketstatus nicht.
+                  {tn(
+                    "Bitte erläutere kurz, was weiterhin fehlt. Der Antrag ändert den Ticketstatus nicht.",
+                    "Bitte erläutern Sie kurz, was weiterhin fehlt. Der Antrag ändert den Ticketstatus nicht.",
+                  )}
                 </Text>
                 <View style={styles.resolutionField}>
                   <Text style={[styles.cardLabel, tokenStyles.muted]}>

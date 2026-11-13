@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { Printer, QrCode, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -141,7 +142,10 @@ export function AssetLabelDialog({
     );
     if (!view) {
       setError(
-        "Das Druckfenster wurde blockiert. Bitte erlauben Sie Pop-ups für nextDesk.",
+        tn(
+          "Das Druckfenster wurde blockiert. Bitte erlaube Pop-ups für nextDesk.",
+          "Das Druckfenster wurde blockiert. Bitte erlauben Sie Pop-ups für nextDesk.",
+        ),
       );
       return;
     }
@@ -291,9 +295,18 @@ export function AssetLabelDialog({
             </label>
           ) : (
             <p className="asset-label-dialog__hint">
-              Stellen Sie im Druckdialog den Etikettendrucker und die
-              Papiergrösse {format.labelWidthMm} × {format.labelHeightMm} mm
-              ein, Ränder «Keine».
+              {tn(
+                <>
+                  Stelle im Druckdialog den Etikettendrucker und die
+                  Papiergrösse {format.labelWidthMm} × {format.labelHeightMm} mm
+                  ein, Ränder «Keine».
+                </>,
+                <>
+                  Stellen Sie im Druckdialog den Etikettendrucker und die
+                  Papiergrösse {format.labelWidthMm} × {format.labelHeightMm} mm
+                  ein, Ränder «Keine».
+                </>,
+              )}
             </p>
           )}
           {webOnly ? (

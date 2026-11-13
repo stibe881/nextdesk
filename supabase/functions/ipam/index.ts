@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isUuid, json, noContent } from "../_shared/http.ts";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
@@ -1004,7 +1005,7 @@ async function ensureRow(ctx: Ctx, table: string, id: string | null, message: st
 function conflict(error: { code?: string } | null, message: string): HttpError {
   if (error?.code === "23505") return new HttpError(409, "duplicate", message);
   if (error?.code === "23514" || error?.code === "23503") {
-    return new HttpError(422, "constraint_failed", "Die Angaben passen nicht zusammen. Bitte prüfen Sie die Eingaben.");
+    return new HttpError(422, "constraint_failed", msg("Die Angaben passen nicht zusammen. Bitte prüfe die Eingaben.", "Die Angaben passen nicht zusammen. Bitte prüfen Sie die Eingaben."));
   }
   return dbFailure();
 }
@@ -1109,7 +1110,10 @@ async function checkPrefixOverlap(ctx: Ctx, cidr: Cidr, vrfId: string | null, ow
         409,
         "prefix_exists",
         row.status === "deprecated"
-          ? `${formatCidr(cidr)} ist bereits als veraltetes Subnetz erfasst. Bitte reaktivieren Sie es.`
+          ? msg(
+              `${formatCidr(cidr)} ist bereits als veraltetes Subnetz erfasst. Bitte reaktiviere es.`,
+              `${formatCidr(cidr)} ist bereits als veraltetes Subnetz erfasst. Bitte reaktivieren Sie es.`,
+            )
           : `${formatCidr(cidr)} ist in diesem VRF bereits erfasst.`,
       );
     }
@@ -1297,7 +1301,7 @@ async function reserveAddress(ctx: Ctx, input: ReserveInput) {
   ).maybeSingle();
   if (error) throw dbFailure();
   if (existing && existing.status !== "deprecated") {
-    throw new HttpError(409, "address_taken", `${input.address} ist bereits vergeben. Bitte holen Sie einen neuen Vorschlag.`);
+    throw new HttpError(409, "address_taken", msg(`${input.address} ist bereits vergeben. Bitte hole einen neuen Vorschlag.`, `${input.address} ist bereits vergeben. Bitte holen Sie einen neuen Vorschlag.`));
   }
   const values = {
     status: "reserved",
@@ -1320,7 +1324,7 @@ async function reserveAddress(ctx: Ctx, input: ReserveInput) {
       created_by: ctx.actorId,
     }).select("id, prefix_id").single();
   if (result.error) {
-    throw conflict(result.error, `${input.address} wurde soeben vergeben. Bitte holen Sie einen neuen Vorschlag.`);
+    throw conflict(result.error, msg(`${input.address} wurde soeben vergeben. Bitte hole einen neuen Vorschlag.`, `${input.address} wurde soeben vergeben. Bitte holen Sie einen neuen Vorschlag.`));
   }
   const id = String(result.data.id);
   await addressEvent(ctx, id, "reserved", {
@@ -1465,7 +1469,7 @@ async function createPrefix(ctx: Ctx, action: Extract<Action, { type: "createPre
     created_by: ctx.actorId,
     ...stamp(ctx),
   }).select("id, prefix").single();
-  if (result.error) throw conflict(result.error, `${data} wurde soeben angelegt. Bitte versuchen Sie es erneut.`);
+  if (result.error) throw conflict(result.error, msg(`${data} wurde soeben angelegt. Bitte versuche es erneut.`, `${data} wurde soeben angelegt. Bitte versuchen Sie es erneut.`));
   await audit(ctx, "ipam.prefix.created", "ipam_prefix", String(result.data.id), { prefix: data, parentId: action.parentId });
   return json(ctx.request, { data: { id: String(result.data.id), prefix: String(result.data.prefix) } }, 201);
 }
@@ -2977,11 +2981,11 @@ const handler = withSupabase(
       const admin = context.supabaseAdmin;
       const features = await resolveUserFeatureStates(admin, action.tenantId, actorId, [FEATURE]);
       if (features?.[FEATURE] !== true) {
-        throw new HttpError(403, "feature_disabled", "Die IP-Adressverwaltung ist für Sie nicht eingeschaltet.");
+        throw new HttpError(403, "feature_disabled", msg("Die IP-Adressverwaltung ist für dich nicht eingeschaltet.", "Die IP-Adressverwaltung ist für Sie nicht eingeschaltet."));
       }
       const access = await permissions(context.supabase, action.tenantId);
       if (!access.canRead) {
-        throw new HttpError(403, "access_denied", "Für die IP-Adressverwaltung fehlt Ihnen die Berechtigung.");
+        throw new HttpError(403, "access_denied", msg("Für die IP-Adressverwaltung fehlt dir die Berechtigung.", "Für die IP-Adressverwaltung fehlt Ihnen die Berechtigung."));
       }
       const readOnly = redesign ? redesignIsRead(redesign) : READ_ACTIONS.has((action as Action).type);
       if (!readOnly && !access.canManage) {

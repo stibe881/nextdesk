@@ -42,6 +42,7 @@ import {
 } from "@/lib/push-notifications";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
+import { tn } from "@/lib/formality";
 
 const CATEGORY_DETAILS: readonly {
   key: PushCategory;
@@ -51,32 +52,62 @@ const CATEGORY_DETAILS: readonly {
   {
     key: "assigned",
     label: "Mir zugewiesene Tickets",
-    description: "Wenn dir ein Ticket neu zugeteilt wird.",
+    get description() {
+      return tn(
+        "Wenn dir ein Ticket neu zugeteilt wird.",
+        "Wenn Ihnen ein Ticket neu zugeteilt wird.",
+      );
+    },
   },
   {
     key: "requester_reply",
     label: "Antworten von Anfragenden",
-    description: "Wenn eine anfragende Person auf dein Ticket antwortet.",
+    get description() {
+      return tn(
+        "Wenn eine anfragende Person auf dein Ticket antwortet.",
+        "Wenn eine anfragende Person auf Ihr Ticket antwortet.",
+      );
+    },
   },
   {
     key: "support_reply",
     label: "Antworten vom Support",
-    description: "Wenn der Support auf dein Ticket antwortet.",
+    get description() {
+      return tn(
+        "Wenn der Support auf dein Ticket antwortet.",
+        "Wenn der Support auf Ihr Ticket antwortet.",
+      );
+    },
   },
   {
     key: "mention",
     label: "Erwähnungen",
-    description: "Wenn du in einer internen Notiz erwähnt wirst.",
+    get description() {
+      return tn(
+        "Wenn du in einer internen Notiz erwähnt wirst.",
+        "Wenn Sie in einer internen Notiz erwähnt werden.",
+      );
+    },
   },
   {
     key: "resolved",
     label: "Gelöste Tickets",
-    description: "Wenn ein Ticket für dich als gelöst markiert wird.",
+    get description() {
+      return tn(
+        "Wenn ein Ticket für dich als gelöst markiert wird.",
+        "Wenn ein Ticket für Sie als gelöst markiert wird.",
+      );
+    },
   },
   {
     key: "approval",
     label: "Freigaben",
-    description: "Wenn für ein Ticket dein Entscheid benötigt wird.",
+    get description() {
+      return tn(
+        "Wenn für ein Ticket dein Entscheid benötigt wird.",
+        "Wenn für ein Ticket Ihr Entscheid benötigt wird.",
+      );
+    },
   },
   {
     key: "escalation",
@@ -109,13 +140,18 @@ const CATEGORY_DETAILS: readonly {
   {
     key: "shop",
     label: "Shop",
-    description:
-      "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status deiner Bestellungen.",
+    get description() {
+      return tn(
+        "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status deiner Bestellungen.",
+        "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status Ihrer Bestellungen.",
+      );
+    },
   },
   {
     key: "inventory_low_stock",
     label: "Lager",
-    description: "Mindestbestand erreicht, Nachbestellung und fällige Inventur.",
+    description:
+      "Mindestbestand erreicht, Nachbestellung und fällige Inventur.",
   },
   {
     key: "ipam",
@@ -177,12 +213,18 @@ function testFeedback(
   results: Awaited<ReturnType<typeof sendPushTest>>["results"],
 ): string {
   if (results.some((result) => result.status === "sent")) {
-    return "Testmitteilung wurde an deine registrierten Geräte gesendet.";
+    return tn(
+      "Testmitteilung wurde an deine registrierten Geräte gesendet.",
+      "Testmitteilung wurde an Ihre registrierten Geräte gesendet.",
+    );
   }
   if (results.some((result) => result.status === "disabled")) {
     return "Dieses iPhone ist für Push-Benachrichtigungen derzeit nicht aktiv.";
   }
-  return "Die Testmitteilung konnte nicht gesendet werden. Bitte versuche es später erneut.";
+  return tn(
+    "Die Testmitteilung konnte nicht gesendet werden. Bitte versuche es später erneut.",
+    "Die Testmitteilung konnte nicht gesendet werden. Bitte versuchen Sie es später erneut.",
+  );
 }
 
 export default function NotificationsScreen() {
@@ -239,7 +281,10 @@ export default function NotificationsScreen() {
       setError(
         nextError instanceof Error
           ? nextError.message
-          : "Push-Benachrichtigungen konnten nicht geladen werden. Bitte versuche es später erneut.",
+          : tn(
+              "Push-Benachrichtigungen konnten nicht geladen werden. Bitte versuche es später erneut.",
+              "Push-Benachrichtigungen konnten nicht geladen werden. Bitte versuchen Sie es später erneut.",
+            ),
       );
     } finally {
       setLoading(false);
@@ -286,7 +331,10 @@ export default function NotificationsScreen() {
   const statusDescription = (() => {
     if (!status) return "Status wird geprüft";
     if (!status.featureEnabled) {
-      return "Für deinen Mandanten noch nicht aktiviert";
+      return tn(
+        "Für deinen Mandanten noch nicht aktiviert",
+        "Für Ihren Mandanten noch nicht aktiviert",
+      );
     }
     if (!status.apnsConfigured) {
       return "Apple-Zugang wird noch eingerichtet";
@@ -363,7 +411,12 @@ export default function NotificationsScreen() {
       setStatus((current) =>
         current ? { ...current, preferences: response.preferences } : current,
       );
-      setMessage("Deine Benachrichtigungseinstellungen wurden gespeichert.");
+      setMessage(
+        tn(
+          "Deine Benachrichtigungseinstellungen wurden gespeichert.",
+          "Ihre Benachrichtigungseinstellungen wurden gespeichert.",
+        ),
+      );
       hapticSuccess();
     } catch (nextError) {
       hapticError();
@@ -687,15 +740,19 @@ export default function NotificationsScreen() {
                       Kategorien
                     </Text>
                     <Text style={[styles.cardHint, { color: colors.muted }]}>
-                      Wähle pro Hinweis, ob er als Push, als Mail oder beides
-                      kommen soll.
+                      {tn(
+                        "Wähle pro Hinweis, ob er als Push, als Mail oder beides kommen soll.",
+                        "Wählen Sie pro Hinweis, ob er als Push, als Mail oder beides kommen soll.",
+                      )}
                     </Text>
                   </View>
                 </View>
                 {applicableCategories.length === 0 ? (
                   <Text style={[styles.emptyCopy, { color: colors.muted }]}>
-                    Für deine Rolle sind derzeit keine Push-Kategorien
-                    verfügbar.
+                    {tn(
+                      "Für deine Rolle sind derzeit keine Push-Kategorien verfügbar.",
+                      "Für Ihre Rolle sind derzeit keine Push-Kategorien verfügbar.",
+                    )}
                   </Text>
                 ) : (
                   <View style={styles.categoryList}>
@@ -740,8 +797,10 @@ export default function NotificationsScreen() {
                                   { color: colors.muted },
                                 ]}
                               >
-                                Als Mitglied des Phishing-Teams bekommst du
-                                diese Mitteilungen immer.
+                                {tn(
+                                  "Als Mitglied des Phishing-Teams bekommst du diese Mitteilungen immer.",
+                                  "Als Mitglied des Phishing-Teams bekommen Sie diese Mitteilungen immer.",
+                                )}
                               </Text>
                             ) : null}
                           </View>
@@ -853,8 +912,14 @@ export default function NotificationsScreen() {
                 </View>
                 <Text style={[styles.quietNote, { color: colors.muted }]}>
                   {deliveryLimited
-                    ? "Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit. In nextDesk siehst du alles sofort."
-                    : "Schalte ein, um Push-Mitteilungen nur an bestimmten Tagen und Zeiten zu erhalten."}
+                    ? tn(
+                        "Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit. In nextDesk siehst du alles sofort.",
+                        "Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit. In nextDesk sehen Sie alles sofort.",
+                      )
+                    : tn(
+                        "Schalte ein, um Push-Mitteilungen nur an bestimmten Tagen und Zeiten zu erhalten.",
+                        "Schalten Sie ein, um Push-Mitteilungen nur an bestimmten Tagen und Zeiten zu erhalten.",
+                      )}
                 </Text>
                 {deliveryLimited ? (
                   <>

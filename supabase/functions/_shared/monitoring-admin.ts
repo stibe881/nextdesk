@@ -2,6 +2,7 @@
 // (expiry-monitoring, backup-monitoring): permission check, option lists and
 // validation of referenced records.
 
+import { msg } from "./formality.ts";
 import { isRecord, isUuid } from "./http.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -57,7 +58,7 @@ export async function requireMonitoringAdmin(
     p_permission_code: "tenant.settings.manage",
   });
   if (allowed.error || allowed.data !== true) {
-    throw new HttpError(403, "forbidden", "Für die Monitoring-Einstellungen fehlt Ihnen die Berechtigung.");
+    throw new HttpError(403, "forbidden", msg("Für die Monitoring-Einstellungen fehlt dir die Berechtigung.", "Für die Monitoring-Einstellungen fehlt Ihnen die Berechtigung."));
   }
 }
 

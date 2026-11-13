@@ -52,6 +52,7 @@ import {
   SUPPORT_EMAIL,
   SUPPORT_URL,
 } from "@/lib/site-links";
+import { tn } from "@/lib/formality";
 
 const themeOptions: { label: string; value: ThemePreference }[] = [
   { label: "Hell", value: "light" },
@@ -305,10 +306,10 @@ export default function SettingsScreen() {
       if (updateError) throw updateError;
       setPassword("");
       setPasswordConfirmation("");
-      setMessage("Dein Passwort wurde erfolgreich geändert.");
+      setMessage(tn("Dein Passwort wurde erfolgreich geändert.", "Ihr Passwort wurde erfolgreich geändert."));
     } catch {
       setError(
-        "Das Passwort konnte nicht geändert werden. Bitte versuche es erneut.",
+        tn("Das Passwort konnte nicht geändert werden. Bitte versuche es erneut.", "Das Passwort konnte nicht geändert werden. Bitte versuchen Sie es erneut."),
       );
     } finally {
       setSaving(false);
@@ -384,8 +385,8 @@ export default function SettingsScreen() {
       availabilityDirty.current = false;
       setMessage(
         result.availability
-          ? "Deine Erreichbarkeit wurde gespeichert."
-          : "Deine Erreichbarkeit wurde entfernt.",
+          ? tn("Deine Erreichbarkeit wurde gespeichert.", "Ihre Erreichbarkeit wurde gespeichert.")
+          : tn("Deine Erreichbarkeit wurde entfernt.", "Ihre Erreichbarkeit wurde entfernt."),
       );
     } catch {
       // Die Einstellung ist optional. Bei jeder nicht verifizierbaren Grenze
@@ -498,7 +499,7 @@ export default function SettingsScreen() {
               Einstellungen
             </Text>
             <Text style={[styles.subtitle, tokenStyles.muted]}>
-              Verwalte deine persönlichen Zugangs- und Sicherheitsangaben.
+              {tn("Verwalte deine persönlichen Zugangs- und Sicherheitsangaben.", "Verwalten Sie Ihre persönlichen Zugangs- und Sicherheitsangaben.")}
             </Text>
           </View>
 
@@ -586,7 +587,7 @@ export default function SettingsScreen() {
               Mandanten.
             </Text>
             <Pressable
-              accessibilityHint="Öffnet die Auswahl deiner aktiven Arbeitsbereiche."
+              accessibilityHint={tn("Öffnet die Auswahl deiner aktiven Arbeitsbereiche.", "Öffnet die Auswahl Ihrer aktiven Arbeitsbereiche.")}
               accessibilityLabel={`Arbeitsbereich: ${currentTenant?.name ?? "wird geladen"}`}
               accessibilityRole="button"
               disabled={tenants.length < 2}
@@ -606,7 +607,7 @@ export default function SettingsScreen() {
                 </Text>
                 <Text style={[styles.tenantControlHint, tokenStyles.muted]}>
                   {tenants.length < 2
-                    ? "Dein einziger aktiver Mandant"
+                    ? tn("Dein einziger aktiver Mandant", "Ihr einziger aktiver Mandant")
                     : "Antippen zum Wechseln"}
                 </Text>
               </View>
@@ -640,8 +641,7 @@ export default function SettingsScreen() {
                 </Text>
               </View>
               <Text style={[styles.cardHint, tokenStyles.muted]}>
-                Lege fest, welche Hinweise nextDesk auf diesem iPhone senden
-                darf.
+                {tn("Lege fest, welche Hinweise nextDesk auf diesem iPhone senden darf.", "Legen Sie fest, welche Hinweise nextDesk auf diesem iPhone senden darf.")}
               </Text>
               <Pressable
                 accessibilityHint="Öffnet die Push-Benachrichtigungseinstellungen."
@@ -689,9 +689,7 @@ export default function SettingsScreen() {
                 </Text>
               </View>
               <Text style={[styles.cardHint, tokenStyles.muted]}>
-                Teile mit, wann oder wie du bei Rückfragen zu deinen Tickets
-                erreichbar bist. Der Hinweis ist nur für berechtigte Agenten in
-                deinem Mandanten sichtbar.
+                {tn("Teile mit, wann oder wie du bei Rückfragen zu deinen Tickets erreichbar bist. Der Hinweis ist nur für berechtigte Agenten in deinem Mandanten sichtbar.", "Teilen Sie mit, wann oder wie Sie bei Rückfragen zu Ihren Tickets erreichbar sind. Der Hinweis ist nur für berechtigte Agenten in Ihrem Mandanten sichtbar.")}
               </Text>
               <Text style={[styles.fieldLabel, tokenStyles.muted]}>
                 HINWEIS FÜR RÜCKFRAGEN
@@ -770,8 +768,7 @@ export default function SettingsScreen() {
                 </Text>
               </View>
               <Text style={[styles.cardHint, tokenStyles.muted]}>
-                Schützt deine geöffnete nextDesk-Sitzung nach der Rückkehr in
-                die App mit Face ID, Touch ID oder Gerätecode.
+                {tn("Schützt deine geöffnete nextDesk-Sitzung nach der Rückkehr in die App mit Face ID, Touch ID oder Gerätecode.", "Schützt Ihre geöffnete nextDesk-Sitzung nach der Rückkehr in die App mit Face ID, Touch ID oder Gerätecode.")}
               </Text>
               <Pressable
                 accessibilityHint="Die Änderung wird mit Face ID, Touch ID oder Gerätecode bestätigt."
@@ -948,7 +945,7 @@ export default function SettingsScreen() {
                   <Pressable
                     accessibilityHint={
                       option.value === "system"
-                        ? "Folgt der Bedienungshilfe deines Geräts."
+                        ? tn("Folgt der Bedienungshilfe deines Geräts.", "Folgt der Bedienungshilfe Ihres Geräts.")
                         : "Reduziert Bewegungen in dieser App."
                     }
                     accessibilityRole="button"
@@ -1000,8 +997,7 @@ export default function SettingsScreen() {
                 </Text>
               </View>
               <Text style={[styles.cardHint, tokenStyles.muted]}>
-                Verwende mindestens 12 Zeichen. Dein Passwort wird nie angezeigt
-                oder in deinem Profil hinterlegt.
+                {tn("Verwende mindestens 12 Zeichen. Dein Passwort wird nie angezeigt oder in deinem Profil hinterlegt.", "Verwenden Sie mindestens 12 Zeichen. Ihr Passwort wird nie angezeigt oder in Ihrem Profil hinterlegt.")}
               </Text>
               <TextInput
                 autoComplete="new-password"
@@ -1058,8 +1054,7 @@ export default function SettingsScreen() {
                   Passwort wird über SSO verwaltet
                 </Text>
                 <Text style={styles.ssoNoteText}>
-                  Dein Konto wird über Microsoft Entra authentifiziert. Ändere
-                  dein Passwort bitte direkt bei deinem Identitätsanbieter.
+                  {tn("Dein Konto wird über Microsoft Entra authentifiziert. Ändere dein Passwort bitte direkt bei deinem Identitätsanbieter.", "Ihr Konto wird über Microsoft Entra authentifiziert. Ändern Sie Ihr Passwort bitte direkt bei Ihrem Identitätsanbieter.")}
                 </Text>
               </View>
             </View>
@@ -1138,8 +1133,7 @@ export default function SettingsScreen() {
                   Konto wird über SSO verwaltet
                 </Text>
                 <Text style={styles.ssoNoteText}>
-                  Dein Konto gehört zu deiner Organisation und kann hier nicht
-                  gelöscht werden. Wende dich dafür an deine IT.
+                  {tn("Dein Konto gehört zu deiner Organisation und kann hier nicht gelöscht werden. Wende dich dafür an deine IT.", "Ihr Konto gehört zu Ihrer Organisation und kann hier nicht gelöscht werden. Wenden Sie sich dafür an Ihre IT.")}
                 </Text>
               </View>
             </View>

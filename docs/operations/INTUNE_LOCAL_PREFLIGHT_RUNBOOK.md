@@ -47,4 +47,4 @@ Mit Migration 0083 werden auch bereits gespeicherte Provider-Sync-Schalter manda
 
 ## Bewusst nicht freigegeben
 
-Eine echte Intune-/Graph-Synchronisation, ein App-Secret, Microsoft-Admin-Consent, ein periodischer Scheduler sowie ein Geräte- oder Compliance-Abgleich gehören **nicht** zu diesem P1.5-Preflight. Sie dürfen erst nach separater fachlicher und sicherheitlicher Freigabe geplant und aktiviert werden.
+Eine echte Intune-/Graph-Synchronisation, ein App-Secret, Microsoft-Admin-Consent, ein periodischer Scheduler sowie ein Geräte- oder Compliance-Abgleich gehören **nicht** zu diesem P1.5-Preflight. Diese dürfen erst nach separater fachlicher und sicherheitlicher Freigabe geplant und aktiviert werden.

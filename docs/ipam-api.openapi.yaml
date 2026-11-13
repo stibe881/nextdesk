@@ -7,7 +7,7 @@ info:
     REST-API der IP-Adressverwaltung (IPAM) eines nextDesk-Mandanten.
 
     **Authentifizierung:** API-Schlüssel des Mandanten (Einstellungen →
-    IP-Adressverwaltung → REST-API). Senden Sie ihn als
+    IP-Adressverwaltung → REST-API). Sende ihn als
     `Authorization: Bearer ndk_ipam_…` oder im Header `X-API-Key`.
     Schlüssel haben den Bereich `read` (nur lesen) oder `read` + `write`
     (reservieren, ändern, freigeben). Der Schlüssel wird nur beim Erstellen
@@ -26,7 +26,7 @@ info:
     **Webhooks:** Siehe Abschnitt `webhooks`. Jede Zustellung ist mit
     HMAC-SHA256 signiert: `X-NextDesk-Signature: t=<Unix-Zeit>,v1=<hex>`,
     berechnet über `"<t>.<roher Body>"` mit dem Signatur-Geheimnis des
-    Webhooks. Prüfen Sie die Signatur und verwerfen Sie Zustellungen, deren
+    Webhooks. Prüfe die Signatur und verwirf Zustellungen, deren
     Zeit mehr als 5 Minuten abweicht.
 servers:
   - url: https://{project}.supabase.co/functions/v1/ipam-api
@@ -361,7 +361,7 @@ webhooks:
         Ereignisse: `address.reserved`, `address.released`, `address.updated`,
         `prefix.created`, `finding.opened` (Test: `ping`). Header:
         `X-NextDesk-Event`, `X-NextDesk-Delivery` (ID der Zustellung),
-        `X-NextDesk-Signature`. Antworten Sie mit 2xx innerhalb von 10
+        `X-NextDesk-Signature`. Antworte mit 2xx innerhalb von 10
         Sekunden; sonst wiederholt nextDesk nach 1, 5, 15, 60, 120, 240 und
         480 Minuten (höchstens 8 Versuche). Weiterleitungen werden nicht
         verfolgt.

@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PeoplePicker } from "./shop-teams";
 import {
@@ -482,7 +483,7 @@ function BulkBar({
           onClick={() => {
             if (
               window.confirm(
-                `${teams.length} Team(s) archivieren? Sie bleiben lesbar und lassen sich wiederherstellen.`,
+                `${teams.length} Team(s) archivieren? Die Teams bleiben lesbar und lassen sich wiederherstellen.`,
               )
             ) {
               void runAll("Archivieren", (team) =>
@@ -661,7 +662,7 @@ function TeamDetail({
         }
         type="button"
       >
-        ✕
+        <X aria-hidden="true" size={14} />
       </button>
     </li>
   );
@@ -675,7 +676,7 @@ function TeamDetail({
             {team.source === "order" ? "über nextDesk" : "bestehend"}
           </span>
           <button aria-label="Schliessen" onClick={onClose} type="button">
-            ✕
+            <X aria-hidden="true" size={16} />
           </button>
         </div>
         <h3>{team.name}</h3>

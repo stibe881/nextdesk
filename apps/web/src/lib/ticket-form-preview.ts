@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 export type TicketFormPreviewField = {
   contextual?: boolean;
   fieldType: "text" | "textarea" | "select" | "number" | "date" | "checkbox";
@@ -88,7 +89,12 @@ export const STANDARD_TICKET_FORM_PREVIEW_SECTIONS: readonly TicketFormPreviewSe
         {
           label: "Beschreibung",
           fieldType: "textarea",
-          placeholder: "Beschreiben Sie das Anliegen so konkret wie möglich.",
+          get placeholder() {
+            return tn(
+              "Beschreibe das Anliegen so konkret wie möglich.",
+              "Beschreiben Sie das Anliegen so konkret wie möglich.",
+            );
+          },
           required: true,
         },
       ],

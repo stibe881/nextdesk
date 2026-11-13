@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # Installationsanleitung
@@ -10,14 +10,14 @@ updated: 2026-11-12
 Diese Anleitung führt Administratoren durch die Inbetriebnahme von nextDesk
 für ein Unternehmen. nextDesk wird als Cloud-Dienst betrieben – Server,
 Datenbank und zentrale Microsoft-Apps stellt der Plattformbetreiber (Gross
-ICT) bereit. Sie richten Ihren **Mandanten** ein und erteilen in Ihrem
+ICT) bereit. Du richtest deinen **Mandanten** ein und erteilst in deinem
 Microsoft-365-Konto die nötigen Freigaben.
 
 In jedem Abschnitt ist markiert, wer handelt:
 
 - **[Betreiber]** – Gross ICT (einmalig für die Plattform, meist bereits erledigt)
-- **[Admin]** – Sie als nextDesk-Administrator
-- **[Microsoft-Admin]** – globale Administratorin bzw. globaler Administrator Ihres Microsoft-365-Mandanten
+- **[Admin]** – du als nextDesk-Administrator
+- **[Microsoft-Admin]** – globale Administratorin bzw. globaler Administrator deines Microsoft-365-Mandanten
 
 ## Übersicht und Reihenfolge
 
@@ -38,28 +38,28 @@ zeigt jederzeit, was noch fehlt.
 
 - Ein aktueller Browser (Edge, Chrome, Firefox oder Safari) und die Adresse
   `https://app.nextdesk.ch`.
-- Ein nextDesk-Konto mit der Rolle **Administrator** in Ihrem Mandanten.
+- Ein nextDesk-Konto mit der Rolle **Administrator** in deinem Mandanten.
   Der Betreiber legt den Mandanten an und lädt die erste Administratorin
   bzw. den ersten Administrator per E-Mail ein.
 - Für die Microsoft-Integrationen: Zugang zu einem Konto mit der Rolle
   _Globaler Administrator_ (für die Freigaben) bzw. _Exchange-Administrator_
   (für Postfachberechtigungen).
-- Eine Liste Ihrer E-Mail-Domains, Abteilungen und Support-Postfächer.
+- Eine Liste deiner E-Mail-Domains, Abteilungen und Support-Postfächer.
 
 ## Schritt 1: Erste Anmeldung
 
-1. Öffnen Sie den Link in der Einladungs-E-Mail. Die Einladung ist 7 Tage
+1. Öffne den Link in der Einladungs-E-Mail. Die Einladung ist 7 Tage
    gültig.
-2. Melden Sie sich mit der eingeladenen E-Mail-Adresse an (Anmeldelink per
+2. Melde dich mit der eingeladenen E-Mail-Adresse an (Anmeldelink per
    E-Mail oder Passwort).
-3. Prüfen Sie, dass links unten der Menüpunkt **Einstellungen** erscheint.
+3. Prüfe, dass links unten der Menüpunkt **Einstellungen** erscheint.
 
 ![Anmeldeseite von nextDesk](images/login.jpg)
 
 ## Schritt 2: Grundeinstellungen
 
 1. **Einstellungen → Design**: Portalname, Logo und Farben hinterlegen,
-   **Corporate Design speichern**.
+   **Corporate Design speichern**. Unter **Anrede** stellst du ein, ob nextDesk alle Texte duzt (Standard) oder siezt.
 2. **Einstellungen → Abteilungen**: Abteilungen anlegen (z. B. ICT,
    Facility, HR), Leitungen bestimmen und **Teams pro Abteilung** mit
    Supportstufe erfassen.
@@ -74,17 +74,17 @@ Details zu jedem Register stehen im _Handbuch für Administratoren_.
 Mit SSO melden sich Mitarbeitende mit ihrem Microsoft-Konto an.
 
 **[Betreiber]** Die zentrale, mehrmandantenfähige App-Registrierung
-«nextDesk – Kunden SSO» ist bereits vorhanden. Sie erhalten vom Betreiber
+«nextDesk – Kunden SSO» ist bereits vorhanden. Du erhältst vom Betreiber
 deren **Client-ID** (Anwendungs-ID).
 
-**[Microsoft-Admin]** Erteilen Sie die Administratorzustimmung für Ihren
-Microsoft-Mandanten. Der Betreiber sendet Ihnen dafür einen Link der Form:
+**[Microsoft-Admin]** Erteile die Administratorzustimmung für deinen
+Microsoft-Mandanten. Der Betreiber sendet dir dafür einen Link der Form:
 
 ```text
-https://login.microsoftonline.com/<IHRE-TENANT-ID>/adminconsent?client_id=<CLIENT-ID>
+https://login.microsoftonline.com/<DEINE-TENANT-ID>/adminconsent?client_id=<CLIENT-ID>
 ```
 
-Ihre Tenant-ID finden Sie im Microsoft Entra Admin Center unter
+Deine Tenant-ID findest du im Microsoft Entra Admin Center unter
 _Übersicht → Mandanten-ID_.
 
 **[Admin]** In nextDesk unter **Einstellungen → Funktionen → Single Sign-On
@@ -105,7 +105,7 @@ _Übersicht → Mandanten-ID_.
 
 > Eine Domain kann nur einem nextDesk-Mandanten zugeordnet sein. Personen aus
 > zugelassenen Domains werden beim ersten Login als _anfragende Person_
-> angelegt – Agenten- und Adminrechte vergeben Sie separat.
+> angelegt – Agenten- und Adminrechte vergibst du separat.
 
 ![SSO-Konfiguration mit Microsoft Entra ID](images/in-sso.jpg)
 
@@ -119,7 +119,7 @@ _Übersicht → Mandanten-ID_.
 
 ## Schritt 5: Exchange Online (E-Mail-Kanal)
 
-E-Mails an Ihre Support-Adresse werden zu Tickets, Agentenantworten gehen als
+E-Mails an deine Support-Adresse werden zu Tickets, Agentenantworten gehen als
 E-Mail zurück.
 
 **[Betreiber]** Die App «nextDesk – Exchange Online» mit den delegierten
@@ -127,8 +127,8 @@ Berechtigungen _User.Read, Mail.Read, Mail.Send, Mail.Read.Shared,
 Mail.Send.Shared_ ist eingerichtet. nextDesk verwendet keine
 Anwendungsberechtigungen für Mail.
 
-**[Microsoft-Admin]** Bestimmen Sie ein Connector-Konto (z. B.
-`nextdesk-connector@muster.ch`). Geben Sie diesem Konto im Exchange Admin
+**[Microsoft-Admin]** Bestimme ein Connector-Konto (z. B.
+`nextdesk-connector@muster.ch`). Gib diesem Konto im Exchange Admin
 Center unter _Empfänger → Postfächer → Postfachdelegierung_ für **jedes**
 Support-Postfach die Rechte **Vollzugriff** und **Senden als**.
 
@@ -152,19 +152,19 @@ Benachrichtigungen_ pro Benachrichtigung einschalten. Für Agenten sind
 anfangs alle Benachrichtigungen per Push und E-Mail eingeschaltet. Der Knopf
 in diesen E-Mails verweist auf `https://app.nextdesk.ch/?benachrichtigung=<ID>`
 (nur die Kennung der Benachrichtigung, keine Inhalte); die Web-App prüft nach
-der Anmeldung den Zugriff und öffnet das Objekt. Optional aktivieren Sie im selben Bereich die
+der Anmeldung den Zugriff und öffnet das Objekt. Optional aktivierst du im selben Bereich die
 **Phishing-Meldungen** mit eigener Meldeadresse und Zielabteilung. Kategorie
-und Unterkategorie des Sicherheitstickets wählen Sie dort aus oder erfassen sie
+und Unterkategorie des Sicherheitstickets wählst du dort aus oder erfasst sie
 über **+ Neue Kategorie …** bzw. **+ Neue Unterkategorie …** direkt neu. Das
 **Sicherheitsteam** bekommt die Fälle zugewiesen und wird benachrichtigt; nur
 seine Mitglieder sehen die Sicherheitsfälle (Web) bzw. Phishing (App).
 Meldungen werden als **Sicherheitsfälle** bearbeitet (eigener Menüpunkt,
-nicht in der Ticketliste). Unter **Massnahmen je Urteil** legen Sie fest,
+nicht in der Ticketliste). Unter **Massnahmen je Urteil** legst du fest,
 welche Checkliste nach dem Urteil _Harmlos_, _Spam_, _Phishing_ oder
 _Gezielter Angriff_ erscheint; ohne eigene Liste gelten Standard-Checklisten.
 
 Damit Mitarbeitende in Outlook mit **Melden → Phishing melden** direkt an
-nextDesk melden können, tragen Sie in Microsoft Defender unter
+nextDesk melden können, trägst du in Microsoft Defender unter
 _Einstellungen → E-Mail und Zusammenarbeit → Von Benutzern gemeldete
 Einstellungen_ die Meldeadresse als **Meldepostfach** ein (_Nur mein
 Berichtspostfach_). Die Meldeadresse muss beim verbundenen Postfach ankommen.
@@ -187,7 +187,7 @@ dargestellt).
 
 Übernimmt Name, E-Mail, Funktion, Abteilung und Aktivstatus aus Entra.
 
-- Voraussetzung: SSO ist mit Ihrer **eigenen Tenant-ID** konfiguriert
+- Voraussetzung: SSO ist mit deiner **eigenen Tenant-ID** konfiguriert
   (nicht `common`).
 - **[Microsoft-Admin]** Zustimmung für die Berechtigung _User.Read.All_
   erteilen (Link vom Betreiber).
@@ -255,10 +255,10 @@ Menü **Teams** zeigt und verwaltet alle Teams der Organisation.
    erhält die nextDesk-App diese Anwendungsberechtigungen: _Team.Create_,
    _TeamMember.ReadWrite.All_, _Channel.Create_, _TeamsTab.Create_,
    _TeamSettings.ReadWrite.All_, _Group.Read.All_, _Team.ReadBasic.All_ und
-   für Gäste _User.Invite.All_. Prüfen Sie den Umfang mit Ihrer
+   für Gäste _User.Invite.All_. Prüfe den Umfang mit deiner
    IT-Sicherheit.
 3. **[Admin]** Nach einigen Minuten **Verbindung prüfen**. Die Karte nennt,
-   was noch fehlt (zum Beispiel ein einzelnes Recht). Dort stellen Sie auch
+   was noch fehlt (zum Beispiel ein einzelnes Recht). Dort stellst du auch
    die längste Laufzeit und die Gastregel ein.
 
 - Voraussetzungen: SSO mit der eigenen **Tenant-ID**, der
@@ -326,16 +326,16 @@ per Push und E-Mail alarmiert.
    Down wechseln alle
    gewählten Dienste auf «Teilweiser Ausfall» (Warning: «Eingeschränkt»), bei
    Up zurück auf «Betriebsbereit», sobald kein anderer Alarm sie mehr betrifft.
-5. Blockiert Ihre Firewall die Webhook-Adresse (typisch: Webfilter oder
-   HTTPS-Prüfung, PRTG meldet «403 Forbidden»), geben Sie die Domain
-   `supabase.co` für den PRTG-Server in der Firewall frei oder verwenden Sie
+5. Blockiert deine Firewall die Webhook-Adresse (typisch: Webfilter oder
+   HTTPS-Prüfung, PRTG meldet «403 Forbidden»), gib die Domain
+   `supabase.co` für den PRTG-Server in der Firewall frei oder verwende
    die Weiterleitung über die eigene Domain:
    `https://app.nextdesk.ch/prtg-relay.php?token=<TOKEN>`. Auch diese Domain
    muss die Firewall für den PRTG-Server zulassen; die Prüfung erfolgt mit
    `curl.exe -ik …` auf dem PRTG-Server (Antwort 401 mit falschem Token =
    erreichbar).
 6. Geht ein «Up» verloren, bleibt ein Alarm offen. Im Register **Monitoring**
-   beenden Sie ihn unter **Alarme aus PRTG → Alarm beenden**; dabei werden die
+   beendest du ihn unter **Alarme aus PRTG → Alarm beenden**; dabei werden die
    gestörten Dienste zurückgesetzt. Alternativ schliessen Agenten die Störung
    unter **Störungen** ab.
 7. Damit Folgestörungen erkannt werden, beim Gerät in der Infrastruktur den
@@ -349,7 +349,7 @@ per Push und E-Mail alarmiert.
    gewünschten Anbieter anhaken und **Speichern**. Die öffentlichen Quellen
    (GitHub, Claude, Gemini, App Store, Google Play, Init7) brauchen keine
    weitere Einrichtung.
-2. Für **Microsoft 365** liest nextDesk den Dienststatus Ihres Mandanten über
+2. Für **Microsoft 365** liest nextDesk den Dienststatus deines Mandanten über
    Microsoft Graph mit derselben Entra-App wie der Verzeichnisabgleich. In
    Microsoft Entra unter _App-Registrierungen → nextDesk → API-Berechtigungen_
    die **Anwendungsberechtigung** `ServiceHealth.Read.All` (Microsoft Graph)
@@ -357,15 +357,15 @@ per Push und E-Mail alarmiert.
    Berechtigung zeigt die Quelle «Berechtigung ServiceHealth.Read.All fehlt».
    Berücksichtigt werden Vorfälle; reine Hinweise (Advisories) lösen keinen
    Alarm aus.
-3. Mit **Jetzt prüfen** testen Sie die Verbindung; danach prüft nextDesk alle
+3. Mit **Jetzt prüfen** testest du die Verbindung; danach prüft nextDesk alle
    5 Minuten selbständig.
-4. **WWZ und Swisscom** bieten keine maschinenlesbare Statusquelle. Legen Sie
+4. **WWZ und Swisscom** bieten keine maschinenlesbare Statusquelle. Lege
    dafür in PRTG einen Ping-Sensor auf das Gateway bzw. einen HTTP-Sensor an;
    die Meldungen kommen dann wie gewohnt als Störung.
 
 ### Zertifikate, Domains und Backups
 
-Im selben Register erfassen Sie **Zertifikate und Domains** (Erinnerung vor
+Im selben Register erfasst du **Zertifikate und Domains** (Erinnerung vor
 Ablauf) und die **Backup-Überwachung** (z. B. Veeam per E-Mail oder Webhook mit
 erwartetem Intervall und Toleranz).
 

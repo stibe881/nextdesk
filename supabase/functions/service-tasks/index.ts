@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { listAssignableAgents } from "../_shared/assignable-agents.ts";
 import {
@@ -726,7 +727,7 @@ async function saveTemplate(
         throw new HttpError(
           422,
           "invalid_data",
-          "Bitte wählen Sie eine Abteilung.",
+          msg("Bitte wähle eine Abteilung.", msg("Bitte wähle eine Abteilung.", "Bitte wählen Sie eine Abteilung.")),
         );
       }
       fields.department_id = visibility.departments[0];

@@ -9,6 +9,7 @@ import {
   type DepartmentTicket,
 } from "@/lib/nextdesk-portal";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 type LoadState = "hidden" | "loading" | "ready";
 
@@ -96,7 +97,7 @@ export function RequesterCollaboration() {
           <Text style={styles.eyebrow}>ABTEILUNG</Text>
           <Text style={styles.title}>Aktuelle Serviceanfragen</Text>
           <Text style={styles.subtitle}>
-            Status und Titel der Tickets in deiner Abteilung.
+            {tn("Status und Titel der Tickets in deiner Abteilung.", "Status und Titel der Tickets in Ihrer Abteilung.")}
           </Text>
         </View>
       </View>
@@ -109,7 +110,7 @@ export function RequesterCollaboration() {
             size={21}
           />
           <Text style={styles.emptyText}>
-            Für deine Abteilung liegen aktuell keine Tickets vor.
+            {tn("Für deine Abteilung liegen aktuell keine Tickets vor.", "Für Ihre Abteilung liegen aktuell keine Tickets vor.")}
           </Text>
         </View>
       ) : (

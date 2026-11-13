@@ -1,6 +1,7 @@
 // Subnetz-Planer (Supernetz aufteilen, Vorschau, in einem Schritt anlegen)
 // und IP-Rechner (rein clientseitig).
 
+import { tn } from "./lib/formality";
 import { Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Notice, errorText, useDebounced, useIpamQuery } from "./ipam-ui";
@@ -94,8 +95,10 @@ export function IpamPlannerPage({
           <section className="ipam-card">
             <h3>Supernetz aufteilen</h3>
             <p className="ipam-muted">
-              Für den Planer brauchen Sie das Recht, IP-Adressen, Subnetze und
-              VLANs zu verwalten. Der IP-Rechner steht allen zur Verfügung.
+              {tn(
+                "Für den Planer brauchst du das Recht, IP-Adressen, Subnetze und VLANs zu verwalten. Der IP-Rechner steht allen zur Verfügung.",
+                "Für den Planer brauchen Sie das Recht, IP-Adressen, Subnetze und VLANs zu verwalten. Der IP-Rechner steht allen zur Verfügung.",
+              )}
             </p>
           </section>
         )}
@@ -261,8 +264,10 @@ function Planner({
       <section className="ipam-card">
         <h3>Supernetz aufteilen</h3>
         <p className="ipam-muted">
-          Es gibt noch kein Supernetz (Status «Container»). Legen Sie zuerst
-          eines an, z. B. 10.20.0.0/16.
+          {tn(
+            "Es gibt noch kein Supernetz (Status «Container»). Lege zuerst eines an, z. B. 10.20.0.0/16.",
+            "Es gibt noch kein Supernetz (Status «Container»). Legen Sie zuerst eines an, z. B. 10.20.0.0/16.",
+          )}
         </p>
       </section>
     );

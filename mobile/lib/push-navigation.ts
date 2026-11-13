@@ -7,6 +7,7 @@
 // hier ein Ziel; der Test prüft das für alle Arten in PUSH_PAYLOAD_KINDS.
 
 import type { MobileFeatureKey } from "@/lib/mobile-features";
+import { tn } from "./formality";
 
 /** Alle Push-Arten, die push-dispatch verschickt (ApnsPayloadKind). */
 export const PUSH_PAYLOAD_KINDS = [
@@ -191,7 +192,10 @@ export function pushRoute(data: PushNavigationData): PushRoute | null {
           kind: "message",
           title: "Serviceaufgabe",
           message:
+            tn(
             "Diese Serviceaufgabe lässt sich nicht mehr öffnen. Deine Aufgaben findest du in der Web-App unter «Serviceaufgaben».",
+            "Diese Serviceaufgabe lässt sich nicht mehr öffnen. Ihre Aufgaben finden Sie in der Web-App unter «Serviceaufgaben».",
+          ),
         };
   }
   if (kind === "ipam") {
@@ -210,8 +214,14 @@ export function pushRoute(data: PushNavigationData): PushRoute | null {
       kind: "message",
       title: agentOffline ? "Netzwerkagent offline" : "IP-Adressverwaltung",
       message: agentOffline
-        ? "Netzwerkagenten verwaltest du in der Web-App unter «IP-Adressen → Verwaltung → Discovery & Agenten»."
-        : "Details zu diesem Fund findest du in der Web-App unter «IP-Adressen → Funde».",
+        ? tn(
+            "Netzwerkagenten verwaltest du in der Web-App unter «IP-Adressen → Verwaltung → Discovery & Agenten».",
+            "Netzwerkagenten verwalten Sie in der Web-App unter «IP-Adressen → Verwaltung → Discovery & Agenten».",
+          )
+        : tn(
+            "Details zu diesem Fund findest du in der Web-App unter «IP-Adressen → Funde».",
+            "Details zu diesem Fund finden Sie in der Web-App unter «IP-Adressen → Funde».",
+          ),
     };
   }
   if (kind === "contract_deadline") {
@@ -219,7 +229,7 @@ export function pushRoute(data: PushNavigationData): PushRoute | null {
       kind: "message",
       title: "Vertragsfrist",
       message:
-        "Verträge gibt es nur in der Web-App. Öffne dort «Verträge», um die Frist zu sehen.",
+        tn("Verträge gibt es nur in der Web-App. Öffne dort «Verträge», um die Frist zu sehen.", "Verträge gibt es nur in der Web-App. Öffnen Sie dort «Verträge», um die Frist zu sehen."),
     };
   }
   // Sammelmitteilung: kann Tickets, Shop, Störungen … enthalten. Die

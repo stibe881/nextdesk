@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { ensureSecurityCase, openSecurityCaseFor } from "../_shared/security-cases.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
@@ -17,7 +18,7 @@ import {
   loadPhishingSettings,
   reportFingerprint,
   tenantReferenceDomains,
-  THANK_YOU_TEXT,
+  thankYouText,
 } from "../_shared/phishing-report-intake.ts";
 
 /**
@@ -250,7 +251,7 @@ async function handle(
       throw new HttpError(
         403,
         "settings_manage_required",
-        "Dafür fehlt Ihnen die Berechtigung «Mandanteneinstellungen verwalten».",
+        msg("Dafür fehlt dir die Berechtigung «Mandanteneinstellungen verwalten».", msg("Dafür fehlt dir die Berechtigung «Mandanteneinstellungen verwalten».", "Dafür fehlt Ihnen die Berechtigung «Mandanteneinstellungen verwalten».")),
       );
     }
     const options = await settingsOptions(admin, action.tenantId);
@@ -305,7 +306,7 @@ async function handle(
       throw new HttpError(
         403,
         "settings_manage_required",
-        "Dafür fehlt Ihnen die Berechtigung «Mandanteneinstellungen verwalten».",
+        msg("Dafür fehlt dir die Berechtigung «Mandanteneinstellungen verwalten».", msg("Dafür fehlt dir die Berechtigung «Mandanteneinstellungen verwalten».", "Dafür fehlt Ihnen die Berechtigung «Mandanteneinstellungen verwalten».")),
       );
     }
     if (action.type === "saveSettings") {
@@ -323,7 +324,7 @@ async function handle(
         throw new HttpError(422, "settings_invalid", "Abteilung, Kategorie oder Team ist ungültig.");
       }
       if (action.enabled && !action.departmentId) {
-        throw new HttpError(422, "department_required", "Bitte wählen Sie eine Zielabteilung.");
+        throw new HttpError(422, "department_required", msg("Bitte wähle eine Zielabteilung.", msg("Bitte wähle eine Zielabteilung.", "Bitte wählen Sie eine Zielabteilung.")));
       }
       const { error } = await admin.from("phishing_report_settings").upsert({
         tenant_id: action.tenantId,
@@ -382,14 +383,14 @@ async function handle(
   const recent = await admin.from("phishing_reports").select("id", { count: "exact", head: true })
     .eq("tenant_id", action.tenantId).eq("reporter_id", actorId).gte("created_at", since);
   if (!recent.error && Number(recent.count ?? 0) >= MAX_REPORTS_PER_HOUR) {
-    throw new HttpError(429, "too_many_reports", "Sie haben in kurzer Zeit sehr viele Meldungen gesendet. Bitte versuchen Sie es später erneut.");
+    throw new HttpError(429, "too_many_reports", msg("Du hast in kurzer Zeit sehr viele Meldungen gesendet. Bitte versuche es später erneut.", msg("Du hast in kurzer Zeit sehr viele Meldungen gesendet. Bitte versuche es später erneut.", "Sie haben in kurzer Zeit sehr viele Meldungen gesendet. Bitte versuchen Sie es später erneut.")));
   }
   const submission = readSubmission(action);
   if (!submission) {
     throw new HttpError(
       422,
       "submission_unreadable",
-      "Die E-Mail konnte nicht gelesen werden. Laden Sie eine .eml- oder .msg-Datei hoch oder fügen Sie die Kopfzeilen ein.",
+      msg("Die E-Mail konnte nicht gelesen werden. Lade eine .eml- oder .msg-Datei hoch oder füge die Kopfzeilen ein.", msg("Die E-Mail konnte nicht gelesen werden. Lade eine .eml- oder .msg-Datei hoch oder füge die Kopfzeilen ein.", "Die E-Mail konnte nicht gelesen werden. Laden Sie eine .eml- oder .msg-Datei hoch oder fügen Sie die Kopfzeilen ein.")),
     );
   }
   const references = await tenantReferenceDomains(admin, action.tenantId);
@@ -411,7 +412,7 @@ async function handle(
         ticketId: duplicate.data.ticket_id,
         ticketNumber: duplicateTicket.ticket_number,
         duplicate: true,
-        message: "Danke für die Meldung! Diese E-Mail haben Sie bereits gemeldet – unser Sicherheitsteam ist informiert.",
+        message: msg("Danke für die Meldung! Diese E-Mail hast du bereits gemeldet – unser Sicherheitsteam ist informiert.", msg("Danke für die Meldung! Diese E-Mail hast du bereits gemeldet – unser Sicherheitsteam ist informiert.", "Danke für die Meldung! Diese E-Mail haben Sie bereits gemeldet – unser Sicherheitsteam ist informiert.")),
       },
     });
   }
@@ -463,7 +464,7 @@ async function handle(
       ticketId: ticket.id,
       ticketNumber: ticket.ticketNumber,
       duplicate: false,
-      message: THANK_YOU_TEXT,
+      message: msg(thankYouText("du"), thankYouText("sie")),
     },
   }, 201);
 }

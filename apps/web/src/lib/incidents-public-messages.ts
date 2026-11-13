@@ -134,3 +134,18 @@ export function suggestedServiceState(
   if (messageState === "resolved") return "operational";
   return current === "operational" ? "partial_outage" : current;
 }
+
+/** Services whose name or category contain every word of the query. */
+export function filterStatusPageServices(
+  services: readonly StatusPageService[],
+  query: string,
+): StatusPageService[] {
+  const words = query.toLocaleLowerCase("de-CH").split(/\s+/).filter(Boolean);
+  if (!words.length) return [...services];
+  return services.filter((service) => {
+    const text = `${service.name} ${service.category}`.toLocaleLowerCase(
+      "de-CH",
+    );
+    return words.every((word) => text.includes(word));
+  });
+}

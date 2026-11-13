@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { msg } from "../_shared/formality.ts";
 import { corsHeaders, isRecord, isUuid } from "../_shared/http.ts";
 
 // Public endpoint (verify_jwt = false) for the «did you click?» question of a
@@ -29,7 +30,10 @@ function failure(request: Request, code: string, status: number): Response {
   const messages: Record<string, string> = {
     invalid_request: "Der Link ist ungültig.",
     token_invalid: "Der Link ist ungültig oder abgelaufen.",
-    unavailable: "Die Antwort kann gerade nicht gespeichert werden. Bitte versuchen Sie es später erneut.",
+    unavailable: msg(
+      "Die Antwort kann gerade nicht gespeichert werden. Bitte versuche es später erneut.",
+      "Die Antwort kann gerade nicht gespeichert werden. Bitte versuchen Sie es später erneut.",
+    ),
   };
   return respond(request, { error: { code, message: messages[code] ?? messages.unavailable } }, status);
 }
@@ -88,7 +92,7 @@ const handler = withSupabase(
             author_id: author,
             visibility: "internal",
             body: clicked
-              ? `⚠ ${question.email} hat angegeben, einen Link oder Anhang geöffnet oder Daten eingegeben zu haben. Massnahmen im Sicherheitsfall: Sitzungen widerrufen, Passwort-Reset erzwingen, Gerät synchronisieren und scannen; Anmeldungen prüfen.`
+              ? `Achtung: ${question.email} hat angegeben, einen Link oder Anhang geöffnet oder Daten eingegeben zu haben. Massnahmen im Sicherheitsfall: Sitzungen widerrufen, Passwort-Reset erzwingen, Gerät synchronisieren und scannen; Anmeldungen prüfen.`
               : `${question.email} hat angegeben, nichts geöffnet oder eingegeben zu haben.`,
           });
         }

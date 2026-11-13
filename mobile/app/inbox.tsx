@@ -29,6 +29,7 @@ import {
 } from "@/lib/notification-inbox-model";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 /**
  * Mitteilungen: die letzten Benachrichtigungen des Arbeitsbereichs (alle
@@ -89,7 +90,7 @@ export default function InboxScreen() {
     if (!route) {
       Alert.alert(
         "Mitteilung",
-        "Zu dieser Mitteilung gibt es in der App nichts zu öffnen. Details findest du in der Web-App.",
+        tn("Zu dieser Mitteilung gibt es in der App nichts zu öffnen. Details findest du in der Web-App.", "Zu dieser Mitteilung gibt es in der App nichts zu öffnen. Details finden Sie in der Web-App."),
       );
       return;
     }
@@ -104,7 +105,7 @@ export default function InboxScreen() {
     if (route.feature && !isEnabled(route.feature)) {
       Alert.alert(
         "Nicht verfügbar",
-        "Diese Funktion ist in deinem Arbeitsbereich nicht freigeschaltet oder dir fehlt die Berechtigung.",
+        tn("Diese Funktion ist in deinem Arbeitsbereich nicht freigeschaltet oder dir fehlt die Berechtigung.", "Diese Funktion ist in Ihrem Arbeitsbereich nicht freigeschaltet oder Ihnen fehlt die Berechtigung."),
       );
       return;
     }

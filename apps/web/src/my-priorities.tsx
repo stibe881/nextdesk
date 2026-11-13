@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useState, type DragEvent } from "react";
 import {
   Activity,
@@ -231,7 +232,12 @@ export function MyPrioritiesCard({
             ? "Von der KI priorisiert"
             : "Nach SLA, Priorität und Wartezeit sortiert"}{" "}
           um {time(list.rankedAt)}
-          {list.hasManualOrder ? " · Ihre Anpassungen haben Vorrang" : ""}
+          {list.hasManualOrder
+            ? tn(
+                " · Deine Anpassungen haben Vorrang",
+                " · Ihre Anpassungen haben Vorrang",
+              )
+            : ""}
         </p>
       ) : null}
       {error ? (
@@ -275,7 +281,10 @@ export function MyPrioritiesCard({
         <p className="empty-state">Prioritäten werden geladen …</p>
       ) : tickets.length === 0 && operations.length === 0 ? (
         <p className="empty-state">
-          Ihnen sind keine offenen Tickets zugewiesen.
+          {tn(
+            "Dir sind keine offenen Tickets zugewiesen.",
+            "Ihnen sind keine offenen Tickets zugewiesen.",
+          )}
         </p>
       ) : (
         <ol className="my-priorities__list">

@@ -27,6 +27,7 @@ import {
   startNotificationActions,
 } from "@/lib/notification-actions";
 import { startWatchBridge } from "@/lib/watch-bridge";
+import { tn } from "@/lib/formality";
 
 // Antwort-Knöpfe (iPhone-Sperrbildschirm, Apple Watch) und die Verbindung zur
 // Watch-App schon beim Laden des Moduls starten, damit sie auch bei einem
@@ -161,7 +162,7 @@ export function PushNotificationBridge() {
       if (route.feature && !enabled(route.feature)) {
         Alert.alert(
           "Nicht verfügbar",
-          "Diese Funktion ist in deinem Arbeitsbereich nicht freigeschaltet oder dir fehlt die Berechtigung.",
+          tn("Diese Funktion ist in deinem Arbeitsbereich nicht freigeschaltet oder dir fehlt die Berechtigung.","Diese Funktion ist in Ihrem Arbeitsbereich nicht freigeschaltet oder Ihnen fehlt die Berechtigung."),
         );
         return;
       }

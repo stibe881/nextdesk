@@ -1,6 +1,7 @@
 // Security cases: phishing reports are handled as their own kind of case
 // (see migration 0261). Shared by the mail worker, phishing-reports and
 // security-cases.
+import { type Formality, tone } from "./formality.ts";
 
 // deno-lint-ignore no-explicit-any
 type Admin = any;
@@ -49,19 +50,41 @@ export const DEFAULT_ACTIONS: Record<SecurityVerdict, string[]> = {
 };
 
 /** Result mail to every reporter, one text per verdict. */
-export const VERDICT_RESULT_TEXT: Record<SecurityVerdict, string> = {
-  harmless:
-    "Wir haben die gemeldete E-Mail geprüft: Sie ist echt und ungefährlich. Sie können sie normal bearbeiten.\n\nDanke, dass Sie aufmerksam waren und sie gemeldet haben.",
-  spam:
-    "Wir haben die gemeldete E-Mail geprüft: Es ist Werbung (Spam), aber kein Angriff. Sie können sie löschen.\n\nDanke, dass Sie aufmerksam waren und sie gemeldet haben.",
-  phishing:
-    "Wir haben die gemeldete E-Mail geprüft: Das war Phishing. Die Mail wollte Zugangsdaten oder persönliche Angaben abgreifen. Wir sperren den Absender und entfernen die Mail aus den Postfächern.\n\nSie müssen nichts weiter tun. Falls Sie einen Link geöffnet, einen Anhang geöffnet oder Ihr Passwort eingegeben haben, melden Sie sich bitte sofort beim Support.\n\nDanke, dass Sie aufmerksam waren und sie gemeldet haben.",
-  targeted:
-    "Wir haben die gemeldete E-Mail geprüft: Das war ein gezielter Angriff auf unsere Organisation. Wir sperren den Absender und entfernen die Mail aus den Postfächern.\n\nFalls Sie einen Link geöffnet, einen Anhang geöffnet oder Ihr Passwort eingegeben haben, melden Sie sich bitte sofort beim Support.\n\nDanke, dass Sie aufmerksam waren und sie gemeldet haben.",
-};
+export function verdictResultText(
+  formality: Formality = "du",
+): Record<SecurityVerdict, string> {
+  return {
+    harmless: tone(
+      formality,
+      // formality-ok: «Sie ist echt» meint die E-Mail (3. Person), keine Anrede
+      "Wir haben die gemeldete E-Mail geprüft: Sie ist echt und ungefährlich. Du kannst sie normal bearbeiten.\n\nDanke, dass du aufmerksam warst und sie gemeldet hast.",
+      "Wir haben die gemeldete E-Mail geprüft: Sie ist echt und ungefährlich. Sie können sie normal bearbeiten.\n\nDanke, dass Sie aufmerksam waren und sie gemeldet haben.",
+    ),
+    spam: tone(
+      formality,
+      "Wir haben die gemeldete E-Mail geprüft: Es ist Werbung (Spam), aber kein Angriff. Du kannst sie löschen.\n\nDanke, dass du aufmerksam warst und sie gemeldet hast.",
+      "Wir haben die gemeldete E-Mail geprüft: Es ist Werbung (Spam), aber kein Angriff. Sie können sie löschen.\n\nDanke, dass Sie aufmerksam waren und sie gemeldet haben.",
+    ),
+    phishing: tone(
+      formality,
+      "Wir haben die gemeldete E-Mail geprüft: Das war Phishing. Die Mail wollte Zugangsdaten oder persönliche Angaben abgreifen. Wir sperren den Absender und entfernen die Mail aus den Postfächern.\n\nDu musst nichts weiter tun. Falls du einen Link geöffnet, einen Anhang geöffnet oder dein Passwort eingegeben hast, melde dich bitte sofort beim Support.\n\nDanke, dass du aufmerksam warst und sie gemeldet hast.",
+      "Wir haben die gemeldete E-Mail geprüft: Das war Phishing. Die Mail wollte Zugangsdaten oder persönliche Angaben abgreifen. Wir sperren den Absender und entfernen die Mail aus den Postfächern.\n\nSie müssen nichts weiter tun. Falls Sie einen Link geöffnet, einen Anhang geöffnet oder Ihr Passwort eingegeben haben, melden Sie sich bitte sofort beim Support.\n\nDanke, dass Sie aufmerksam waren und sie gemeldet haben.",
+    ),
+    targeted: tone(
+      formality,
+      "Wir haben die gemeldete E-Mail geprüft: Das war ein gezielter Angriff auf unsere Organisation. Wir sperren den Absender und entfernen die Mail aus den Postfächern.\n\nFalls du einen Link geöffnet, einen Anhang geöffnet oder dein Passwort eingegeben hast, melde dich bitte sofort beim Support.\n\nDanke, dass du aufmerksam warst und sie gemeldet hast.",
+      "Wir haben die gemeldete E-Mail geprüft: Das war ein gezielter Angriff auf unsere Organisation. Wir sperren den Absender und entfernen die Mail aus den Postfächern.\n\nFalls Sie einen Link geöffnet, einen Anhang geöffnet oder Ihr Passwort eingegeben haben, melden Sie sich bitte sofort beim Support.\n\nDanke, dass Sie aufmerksam waren und sie gemeldet haben.",
+    ),
+  };
+}
 
-export const CLICK_QUESTION_TEXT =
-  "Danke für Ihre Phishing-Meldung. Damit wir den Schaden richtig einschätzen können, brauchen wir eine kurze Rückmeldung:\n\nHaben Sie in der gemeldeten E-Mail einen Link oder Anhang geöffnet oder irgendwo Ihr Passwort oder andere Daten eingegeben?\n\nBitte antworten Sie über die Schaltfläche unten. Ehrlich ist hier wichtig: Es passiert Ihnen nichts, wir müssen nur schnell reagieren können.";
+export function clickQuestionText(formality: Formality = "du"): string {
+  return tone(
+    formality,
+    "Danke für deine Phishing-Meldung. Damit wir den Schaden richtig einschätzen können, brauchen wir eine kurze Rückmeldung:\n\nHast du in der gemeldeten E-Mail einen Link oder Anhang geöffnet oder irgendwo dein Passwort oder andere Daten eingegeben?\n\nBitte antworte über die Schaltfläche unten. Ehrlich ist hier wichtig: Dir passiert nichts, wir müssen nur schnell reagieren können.",
+    "Danke für Ihre Phishing-Meldung. Damit wir den Schaden richtig einschätzen können, brauchen wir eine kurze Rückmeldung:\n\nHaben Sie in der gemeldeten E-Mail einen Link oder Anhang geöffnet oder irgendwo Ihr Passwort oder andere Daten eingegeben?\n\nBitte antworten Sie über die Schaltfläche unten. Ehrlich ist hier wichtig: Es passiert Ihnen nichts, wir müssen nur schnell reagieren können.",
+  );
+}
 
 /** Time until the verdict is due, by the automatic risk level. */
 export function decisionDueAt(level: string | null | undefined, from = new Date()): string {

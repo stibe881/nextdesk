@@ -60,6 +60,7 @@ import {
   type TicketFormOptions,
 } from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 const NEW_TICKET_DRAFT_ID = "new-ticket";
 const MAX_NEW_TICKET_PHOTOS = 5;
@@ -333,7 +334,12 @@ export default function NewTicketScreen() {
       if (source === "camera") {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
         if (!permission.granted) {
-          setError("Bitte erlaube den Kamerazugriff, um ein Foto aufzunehmen.");
+          setError(
+            tn(
+              "Bitte erlaube den Kamerazugriff, um ein Foto aufzunehmen.",
+              "Bitte erlauben Sie den Kamerazugriff, um ein Foto aufzunehmen.",
+            ),
+          );
           return;
         }
         const result = await ImagePicker.launchCameraAsync({
@@ -386,7 +392,10 @@ export default function NewTicketScreen() {
     router.back();
     Alert.alert(
       "Schön, dass es geklappt hat",
-      "Es wurde kein Ticket erstellt. Danke für deine Rückmeldung.",
+      tn(
+        "Es wurde kein Ticket erstellt. Danke für deine Rückmeldung.",
+        "Es wurde kein Ticket erstellt. Danke für Ihre Rückmeldung.",
+      ),
     );
   }
 
@@ -403,17 +412,27 @@ export default function NewTicketScreen() {
     const cleanDescription = description.trim();
     if (cleanSubject.length < 3) {
       hapticError();
-      setError("Bitte gib einen Betreff mit mindestens 3 Zeichen ein.");
+      setError(tn("Bitte gib einen Betreff mit mindestens 3 Zeichen ein.", "Bitte geben Sie einen Betreff mit mindestens 3 Zeichen ein."));
       return;
     }
     if (!departmentId || !priorityKey) {
       hapticError();
-      setError("Bitte wähle Abteilung und Priorität.");
+      setError(
+        tn(
+          "Bitte wähle Abteilung und Priorität.",
+          "Bitte wählen Sie Abteilung und Priorität.",
+        ),
+      );
       return;
     }
     if (!selectedRequester) {
       hapticError();
-      setError("Bitte wähle eine anfragende Person.");
+      setError(
+        tn(
+          "Bitte wähle eine anfragende Person.",
+          "Bitte wählen Sie eine anfragende Person.",
+        ),
+      );
       return;
     }
     setSaving(true);
@@ -478,7 +497,10 @@ export default function NewTicketScreen() {
       if (failedPhotos > 0) {
         Alert.alert(
           "Fotos nicht hochgeladen",
-          `${failedPhotos} Foto${failedPhotos === 1 ? "" : "s"} konnte${failedPhotos === 1 ? "" : "n"} nicht hochgeladen werden. Du kannst sie im Ticket erneut hinzufügen.`,
+          tn(
+            `${failedPhotos} Foto${failedPhotos === 1 ? "" : "s"} konnte${failedPhotos === 1 ? "" : "n"} nicht hochgeladen werden. Du kannst sie im Ticket erneut hinzufügen.`,
+            `${failedPhotos} Foto${failedPhotos === 1 ? "" : "s"} konnte${failedPhotos === 1 ? "" : "n"} nicht hochgeladen werden. Sie können sie im Ticket erneut hinzufügen.`,
+          ),
         );
       }
     } catch (nextError) {
@@ -519,10 +541,20 @@ export default function NewTicketScreen() {
         </View>
 
         <View style={styles.intro}>
-          <Text style={styles.title}>Was können wir für dich tun?</Text>
+          <Text style={styles.title}>
+            {tn("Was können wir für dich tun?", "Was können wir für Sie tun?")}
+          </Text>
           <Text style={styles.copy}>
-            Dein Ticket wird direkt im Mandanten {tenant?.name ?? "nextDesk"}{" "}
-            erfasst.
+            {tn(
+              <>
+                Dein Ticket wird direkt im Mandanten{" "}
+                {tenant?.name ?? "nextDesk"} erfasst.
+              </>,
+              <>
+                Ihr Ticket wird direkt im Mandanten {tenant?.name ?? "nextDesk"}{" "}
+                erfasst.
+              </>,
+            )}
           </Text>
         </View>
 
@@ -536,7 +568,10 @@ export default function NewTicketScreen() {
             {showAssistant && tenant ? (
               <>
                 <Pressable
-                  accessibilityHint="Beschreibe dein Problem in einem kurzen Chat"
+                  accessibilityHint={tn(
+                    "Beschreibe dein Problem in einem kurzen Chat",
+                    "Beschreiben Sie Ihr Problem in einem kurzen Chat",
+                  )}
                   accessibilityRole="button"
                   disabled={saving}
                   onPress={() => {
@@ -557,7 +592,10 @@ export default function NewTicketScreen() {
                     <Text style={styles.hint}>
                       {assistantResult
                         ? "Entwurf übernommen – prüfe ihn und erfasse das Ticket."
-                        : "Vielleicht gibt es schon eine Anleitung für dein Problem."}
+                        : tn(
+                            "Vielleicht gibt es schon eine Anleitung für dein Problem.",
+                            "Vielleicht gibt es schon eine Anleitung für Ihr Problem.",
+                          )}
                     </Text>
                   </View>
                 </Pressable>
@@ -598,8 +636,10 @@ export default function NewTicketScreen() {
                   <View style={styles.assistantCopy}>
                     <Text style={styles.assistantTitle}>Phishing melden</Text>
                     <Text style={styles.hint}>
-                      Verdächtige E-Mail? Füge die Kopfzeilen ein – wir prüfen
-                      sie für dich.
+                      {tn(
+                        "Verdächtige E-Mail? Füge die Kopfzeilen ein – wir prüfen sie für dich.",
+                        "Verdächtige E-Mail? Fügen Sie die Kopfzeilen ein – wir prüfen sie für Sie.",
+                      )}
                     </Text>
                   </View>
                 </Pressable>
@@ -646,7 +686,10 @@ export default function NewTicketScreen() {
               onFocus={() =>
                 revealFieldAboveKeyboard(descriptionInputRef.current)
               }
-              placeholder="Beschreibe dein Anliegen möglichst genau."
+              placeholder={tn(
+                "Beschreibe dein Anliegen möglichst genau.",
+                "Beschreiben Sie Ihr Anliegen möglichst genau.",
+              )}
               placeholderTextColor={colors.subtle}
               ref={descriptionInputRef}
               style={[styles.input, styles.descriptionInput]}

@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -253,8 +254,10 @@ export function TeamSupervision({
               .join(", ") || "Mein Team"}
           </h2>
           <p>
-            Auslastung, Umverteilung, Qualität und Monatsbericht Ihrer
-            Agent:innen.
+            {tn(
+              "Auslastung, Umverteilung, Qualität und Monatsbericht deiner Agent:innen.",
+              "Auslastung, Umverteilung, Qualität und Monatsbericht Ihrer Agent:innen.",
+            )}
           </p>
         </div>
       </header>
@@ -1278,7 +1281,12 @@ function Coaching({
   async function printSheet() {
     const sheetWindow = window.open("", "_blank");
     if (!sheetWindow) {
-      setError("Bitte erlauben Sie Pop-ups, um das Gesprächsblatt zu öffnen.");
+      setError(
+        tn(
+          "Bitte erlaube Pop-ups, um das Gesprächsblatt zu öffnen.",
+          "Bitte erlauben Sie Pop-ups, um das Gesprächsblatt zu öffnen.",
+        ),
+      );
       return;
     }
     sheetWindow.document.write(
@@ -1340,8 +1348,10 @@ function Coaching({
   return (
     <div className="team-supervision__coaching">
       <p className="data-caption">
-        Private Notizen für Mitarbeitergespräche. Nur Sie sehen Ihre Notizen;
-        daneben die letzten Qualitätsprüfungen und das Lob von Kund:innen.
+        {tn(
+          "Private Notizen für Mitarbeitergespräche. Nur du siehst deine Notizen; daneben die letzten Qualitätsprüfungen und das Lob von Kund:innen.",
+          "Private Notizen für Mitarbeitergespräche. Nur Sie sehen Ihre Notizen; daneben die letzten Qualitätsprüfungen und das Lob von Kund:innen.",
+        )}
       </p>
       <div className="team-supervision__coaching-toolbar">
         <label className="team-supervision__coaching-agent">

@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -261,7 +262,10 @@ export function Licenses({
       );
     } catch {
       setError(
-        "Lizenzen konnten nicht geladen werden. Prüfen Sie Ihre Berechtigung oder versuchen Sie es später erneut.",
+        tn(
+          "Lizenzen konnten nicht geladen werden. Prüfe deine Berechtigung oder versuche es später erneut.",
+          "Lizenzen konnten nicht geladen werden. Prüfen Sie Ihre Berechtigung oder versuchen Sie es später erneut.",
+        ),
       );
     } finally {
       setLoading(false);
@@ -489,7 +493,10 @@ export function Licenses({
         }
         if (failed > 0) {
           setError(
-            `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffnen Sie «Dokumente», um es erneut zu versuchen.`,
+            tn(
+              `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffne «Dokumente», um es erneut zu versuchen.`,
+              `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffnen Sie «Dokumente», um es erneut zu versuchen.`,
+            ),
           );
         }
       }
@@ -561,8 +568,10 @@ export function Licenses({
       <header className="page-heading">
         <div>
           <p>
-            Laufzeiten, Verlängerungen und Verantwortlichkeiten Ihrer Lizenzen
-            an einem Ort.
+            {tn(
+              "Laufzeiten, Verlängerungen und Verantwortlichkeiten deiner Lizenzen an einem Ort.",
+              "Laufzeiten, Verlängerungen und Verantwortlichkeiten Ihrer Lizenzen an einem Ort.",
+            )}
           </p>
         </div>
         <div className="contracts__actions">

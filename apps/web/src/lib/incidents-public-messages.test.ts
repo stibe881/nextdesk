@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  filterStatusPageServices,
   parseStatusPageServices,
   suggestedServiceState,
 } from "./incidents-public-messages";
@@ -44,5 +45,24 @@ describe("status page services of an incident message", () => {
     expect(suggestedServiceState("major_outage", "resolved")).toBe(
       "operational",
     );
+  });
+
+  it("finds services by name or category", () => {
+    const services = [
+      { id: "a", name: "E-Mail", category: "", status: "operational" as const },
+      {
+        id: "b",
+        name: "Teams",
+        category: "Microsoft 365",
+        status: "operational" as const,
+      },
+    ];
+    expect(filterStatusPageServices(services, "team").map((s) => s.id)).toEqual(
+      ["b"],
+    );
+    expect(
+      filterStatusPageServices(services, "microsoft tea").map((s) => s.id),
+    ).toEqual(["b"]);
+    expect(filterStatusPageServices(services, "  ")).toHaveLength(2);
   });
 });

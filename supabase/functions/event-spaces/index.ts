@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 import {
@@ -902,7 +903,7 @@ async function conflictSummary(admin: AdminClient, input: RequestInput) {
     throw new HttpError(
       409,
       "event_space_conflict_check_too_broad",
-      "Zu viele bestehende Raumaufträge überlappen diesen Zeitraum. Bitte planen Sie einen kürzeren Zeitraum oder eine kleinere Serie.",
+      msg("Zu viele bestehende Raumaufträge überlappen diesen Zeitraum. Bitte plane einen kürzeren Zeitraum oder eine kleinere Serie.", msg("Zu viele bestehende Raumaufträge überlappen diesen Zeitraum. Bitte plane einen kürzeren Zeitraum oder eine kleinere Serie.", "Zu viele bestehende Raumaufträge überlappen diesen Zeitraum. Bitte planen Sie einen kürzeren Zeitraum oder eine kleinere Serie.")),
     );
   }
   const possible = (candidates ?? []).filter(
@@ -945,7 +946,7 @@ async function conflictSummary(admin: AdminClient, input: RequestInput) {
       throw new HttpError(
         409,
         "event_space_conflict_check_too_broad",
-        "Zu viele bestehende Technikaufträge überlappen diesen Zeitraum. Bitte planen Sie einen kürzeren Zeitraum oder eine kleinere Serie.",
+        msg("Zu viele bestehende Technikaufträge überlappen diesen Zeitraum. Bitte plane einen kürzeren Zeitraum oder eine kleinere Serie.", msg("Zu viele bestehende Technikaufträge überlappen diesen Zeitraum. Bitte plane einen kürzeren Zeitraum oder eine kleinere Serie.", "Zu viele bestehende Technikaufträge überlappen diesen Zeitraum. Bitte planen Sie einen kürzeren Zeitraum oder eine kleinere Serie.")),
       );
     }
     equipmentConflictingRequestIds = (equipmentRows ?? [])
@@ -1009,7 +1010,7 @@ async function navigationSummary(
     throw new HttpError(
       403,
       "event_space_permission_denied",
-      "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.",
+      msg("Für die Raumplanung fehlt dir die erforderliche Berechtigung.", msg("Für die Raumplanung fehlt dir die erforderliche Berechtigung.", "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.")),
     );
   }
   const { count, error } = await admin
@@ -1038,7 +1039,7 @@ async function listWorkspace(
     throw new HttpError(
       403,
       "event_space_permission_denied",
-      "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.",
+      msg("Für die Raumplanung fehlt dir die erforderliche Berechtigung.", msg("Für die Raumplanung fehlt dir die erforderliche Berechtigung.", "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.")),
     );
   }
   const from = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
@@ -1385,7 +1386,7 @@ async function createRequest(
     throw new HttpError(
       409,
       "event_space_conflicts_confirmation_required",
-      "Bitte bestätigen Sie die angezeigte Überschneidung ausdrücklich oder passen Sie den Auftrag an.",
+      msg("Bitte bestätige die angezeigte Überschneidung ausdrücklich oder passe den Auftrag an.", msg("Bitte bestätige die angezeigte Überschneidung ausdrücklich oder passe den Auftrag an.", "Bitte bestätigen Sie die angezeigte Überschneidung ausdrücklich oder passen Sie den Auftrag an.")),
       preview,
     );
   }
@@ -1431,7 +1432,7 @@ async function createRequest(
     throw new HttpError(
       409,
       "event_space_conflicts_confirmation_required",
-      "Seit der Prüfung ist eine neue Überschneidung entstanden. Bitte prüfen und bestätigen Sie den Auftrag erneut.",
+      msg("Seit der Prüfung ist eine neue Überschneidung entstanden. Bitte prüfe und bestätige den Auftrag erneut.", msg("Seit der Prüfung ist eine neue Überschneidung entstanden. Bitte prüfe und bestätige den Auftrag erneut.", "Seit der Prüfung ist eine neue Überschneidung entstanden. Bitte prüfen und bestätigen Sie den Auftrag erneut.")),
       {
         conflicts: refreshed.conflicts,
         conflictSnapshot: refreshed.conflictSnapshot,
@@ -1802,7 +1803,7 @@ const handler = withSupabase(
         throw new HttpError(
           403,
           "event_spaces_feature_disabled",
-          "Die Raumplanung ist für dich nicht eingeschaltet.",
+          msg(msg("Die Raumplanung ist für dich nicht eingeschaltet.", "Die Raumplanung ist für Sie nicht eingeschaltet."), "Die Raumplanung ist für Sie nicht eingeschaltet."),
         );
       }
       if (action.type === "listWorkspace") {

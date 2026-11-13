@@ -32,6 +32,7 @@ import {
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 export default function KnowledgeScreen() {
   const router = useRouter();
@@ -219,7 +220,7 @@ export default function KnowledgeScreen() {
             </Text>
             <Text style={styles.emptyCopy}>
               {query
-                ? "Passe deinen Suchbegriff an oder versuche eine andere Formulierung."
+                ? tn("Passe deinen Suchbegriff an oder versuche eine andere Formulierung.", "Passen Sie Ihren Suchbegriff an oder versuchen Sie eine andere Formulierung.")
                 : "Freigegebene Artikel erscheinen hier automatisch."}
             </Text>
           </View>

@@ -20,6 +20,7 @@ import {
 } from "@/lib/nextdesk-tickets";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 type RequesterPickerProps = {
   autoOpen?: boolean;
@@ -141,7 +142,7 @@ export function RequesterPicker({
   async function createRequester() {
     const displayName = newName.trim();
     if (Array.from(displayName).length < 2) {
-      setCreateError("Bitte gib einen Namen mit mindestens zwei Zeichen ein.");
+      setCreateError(tn("Bitte gib einen Namen mit mindestens zwei Zeichen ein.", "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein."));
       return;
     }
     setCreating(true);
@@ -273,8 +274,10 @@ export function RequesterPicker({
             >
               {queryLength < 2 ? (
                 <Text style={styles.searchNote}>
-                  Gib mindestens zwei Buchstaben ein, um Personen dieses
-                  Mandanten zu suchen.
+                  {tn(
+                    "Gib mindestens zwei Buchstaben ein, um Personen dieses Mandanten zu suchen.",
+                    "Geben Sie mindestens zwei Buchstaben ein, um Personen dieses Mandanten zu suchen.",
+                  )}
                 </Text>
               ) : searchError ? (
                 <Text style={styles.error}>{searchError}</Text>

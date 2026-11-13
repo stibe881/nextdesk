@@ -20,6 +20,7 @@ import {
 } from "@/lib/account";
 import { getMobileUserId } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 /**
  * Team management for personal workspaces: the owner invites colleagues by
@@ -76,7 +77,7 @@ export function TeamMembersCard({ tenantId }: { tenantId: string | null }) {
     if (!tenantId || !team) return;
     const address = email.trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
-      setError("Bitte gib eine gültige E-Mail-Adresse ein.");
+      setError(tn("Bitte gib eine gültige E-Mail-Adresse ein.", "Bitte geben Sie eine gültige E-Mail-Adresse ein."));
       return;
     }
     const displayName = name.trim().replace(/\s+/g, " ");
@@ -160,8 +161,7 @@ export function TeamMembersCard({ tenantId }: { tenantId: string | null }) {
     <View style={styles.card}>
       <Text style={styles.title}>Team</Text>
       <Text style={styles.copy}>
-        Lade Personen per E-Mail in deinen Arbeitsbereich ein, um gemeinsam an
-        Tickets zu arbeiten.
+        {tn("Lade Personen per E-Mail in deinen Arbeitsbereich ein, um gemeinsam an Tickets zu arbeiten.", "Laden Sie Personen per E-Mail in Ihren Arbeitsbereich ein, um gemeinsam an Tickets zu arbeiten.")}
       </Text>
 
       {team?.members.map((member) => {
@@ -177,7 +177,7 @@ export function TeamMembersCard({ tenantId }: { tenantId: string | null }) {
             <View style={styles.rowCopy}>
               <Text style={styles.rowTitle}>
                 {label}
-                {isSelf ? " (du)" : ""}
+                {isSelf ? tn(" (du)", " (Sie)") : ""}
               </Text>
               <Text style={styles.rowMeta}>
                 {member.isTenantAdmin

@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   AlarmClock,
   CalendarClock,
@@ -484,12 +485,17 @@ function FollowUpFormDialog({
     const description = form.description.trim();
     const dueAt = isoFromLocalDateTime(form.dueAt);
     if (!title) {
-      setFormError("Bitte geben Sie einen Titel ein.");
+      setFormError(
+        tn("Bitte gib einen Titel ein.", "Bitte geben Sie einen Titel ein."),
+      );
       return;
     }
     if (form.dueAt && !dueAt) {
       setFormError(
-        "Die Fälligkeit ist ungültig. Bitte prüfen Sie Datum und Uhrzeit.",
+        tn(
+          "Die Fälligkeit ist ungültig. Bitte prüfe Datum und Uhrzeit.",
+          "Die Fälligkeit ist ungültig. Bitte prüfen Sie Datum und Uhrzeit.",
+        ),
       );
       return;
     }
@@ -534,7 +540,10 @@ function FollowUpFormDialog({
         );
       } else {
         setFormError(
-          "Die Wiedervorlage konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Wiedervorlage konnte nicht gespeichert werden. Bitte versuche es erneut.",
+            "Die Wiedervorlage konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+          ),
         );
       }
     } finally {
@@ -712,8 +721,10 @@ function FollowUpFormDialog({
               ))}
             </select>
             <span className="experience-field-note">
-              Es werden nur bereits geladene, für Sie sichtbare Tickets
-              angeboten.
+              {tn(
+                "Es werden nur bereits geladene, für dich sichtbare Tickets angeboten.",
+                "Es werden nur bereits geladene, für Sie sichtbare Tickets angeboten.",
+              )}
             </span>
           </label>
           {formError && (
@@ -803,7 +814,10 @@ export function ExperienceWorkspace({
           return;
         }
         setAvailabilityNote(
-          "Wiedervorlagen konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Wiedervorlagen konnten nicht geladen werden. Bitte versuche es erneut.",
+            "Wiedervorlagen konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+          ),
         );
       })
       .finally(() => {
@@ -864,7 +878,10 @@ export function ExperienceWorkspace({
         );
       } else {
         onNotice(
-          "Die Wiedervorlage konnte nicht erledigt werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Wiedervorlage konnte nicht erledigt werden. Bitte versuche es erneut.",
+            "Die Wiedervorlage konnte nicht erledigt werden. Bitte versuchen Sie es erneut.",
+          ),
           "error",
         );
       }
@@ -917,7 +934,10 @@ export function ExperienceWorkspace({
           <p className="eyebrow">PERSÖNLICHE ARBEIT</p>
           <h2 id="follow-ups-heading">Wiedervorlagen</h2>
           <p>
-            Behalten Sie Ihre nächsten Schritte und verknüpfte Tickets im Blick.
+            {tn(
+              "Behalte deine nächsten Schritte und verknüpfte Tickets im Blick.",
+              "Behalten Sie Ihre nächsten Schritte und verknüpfte Tickets im Blick.",
+            )}
           </p>
         </div>
         <button
@@ -991,7 +1011,10 @@ export function ExperienceWorkspace({
             <span>
               {showResolved
                 ? "Erledigte Wiedervorlagen bleiben hier als persönlicher Verlauf sichtbar."
-                : "Legen Sie eine Wiedervorlage an, um einen nächsten Schritt verbindlich festzuhalten."}
+                : tn(
+                    "Lege eine Wiedervorlage an, um einen nächsten Schritt verbindlich festzuhalten.",
+                    "Legen Sie eine Wiedervorlage an, um einen nächsten Schritt verbindlich festzuhalten.",
+                  )}
             </span>
           </div>
         </div>
@@ -1118,7 +1141,7 @@ export function MyDayCard({
       </div>
       {loading ? (
         <p aria-busy="true" className="my-day-card__empty" role="status">
-          Ihr Tag wird vorbereitet …
+          {tn("Dein Tag wird vorbereitet …", "Ihr Tag wird vorbereitet …")}
         </p>
       ) : (
         <div className="my-day-card__body">
@@ -1136,8 +1159,10 @@ export function MyDayCard({
               </p>
             ) : relevantFollowUps.length === 0 ? (
               <p className="my-day-card__empty">
-                Keine Wiedervorlage ist heute fällig. Planen Sie den nächsten
-                Schritt in Ruhe.
+                {tn(
+                  "Keine Wiedervorlage ist heute fällig. Plane den nächsten Schritt in Ruhe.",
+                  "Keine Wiedervorlage ist heute fällig. Planen Sie den nächsten Schritt in Ruhe.",
+                )}
               </p>
             ) : (
               <ul className="my-day-card__list">
@@ -1179,8 +1204,10 @@ export function MyDayCard({
             </div>
             {assignedTickets.length === 0 ? (
               <p className="my-day-card__empty">
-                Keine offenen, Ihnen zugewiesenen Tickets in den geladenen
-                Daten.
+                {tn(
+                  "Keine offenen, dir zugewiesenen Tickets in den geladenen Daten.",
+                  "Keine offenen, Ihnen zugewiesenen Tickets in den geladenen Daten.",
+                )}
               </p>
             ) : (
               <ul className="my-day-card__list">
@@ -1206,8 +1233,10 @@ export function MyDayCard({
       {!loading &&
         (relevantFollowUps.length > 4 || assignedTickets.length > 4) && (
           <p className="my-day-card__more">
-            Weitere Aufgaben finden Sie in Wiedervorlagen beziehungsweise
-            Tickets.
+            {tn(
+              "Weitere Aufgaben findest du in Wiedervorlagen beziehungsweise Tickets.",
+              "Weitere Aufgaben finden Sie in Wiedervorlagen beziehungsweise Tickets.",
+            )}
           </p>
         )}
     </article>

@@ -1,6 +1,7 @@
 // IPAM «VLANs»: Matrix Funktion × Standort gegen die Standort-Vorlage,
 // Liste nach Standort, Vorlagen-Editor und «Standort aus Vorlage».
 
+import { tn } from "./lib/formality";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
@@ -249,7 +250,10 @@ export function MatrixSection({
           Standort-Supernetzes). Dann zeigt die Matrix je Standort, was
           übereinstimmt, abweicht oder fehlt.
           {suggested
-            ? ` Aus Ihren Daten lässt sich eine Vorlage mit ${suggested.entries.length} Funktionen ableiten.`
+            ? tn(
+                ` Aus deinen Daten lässt sich eine Vorlage mit ${suggested.entries.length} Funktionen ableiten.`,
+                ` Aus Ihren Daten lässt sich eine Vorlage mit ${suggested.entries.length} Funktionen ableiten.`,
+              )
             : ""}
         </p>
         {canManage ? (
@@ -695,8 +699,14 @@ function TemplateEditor({
         {!initial.id ? (
           <FormNote>
             {initial.entries.length > 1
-              ? "Dieser Vorschlag wurde aus dem Standort mit den meisten VLANs abgeleitet. Prüfen und speichern Sie ihn."
-              : "Erfassen Sie je Funktion den VLAN-Versatz zur VLAN-Basis des Standorts und die Lage des Subnetzes im Standort-Supernetz."}
+              ? tn(
+                  "Dieser Vorschlag wurde aus dem Standort mit den meisten VLANs abgeleitet. Prüfe und speichere ihn.",
+                  "Dieser Vorschlag wurde aus dem Standort mit den meisten VLANs abgeleitet. Prüfen und speichern Sie ihn.",
+                )
+              : tn(
+                  "Erfasse je Funktion den VLAN-Versatz zur VLAN-Basis des Standorts und die Lage des Subnetzes im Standort-Supernetz.",
+                  "Erfassen Sie je Funktion den VLAN-Versatz zur VLAN-Basis des Standorts und die Lage des Subnetzes im Standort-Supernetz.",
+                )}
           </FormNote>
         ) : null}
         <FormGrid>

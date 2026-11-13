@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { LoaderCircle, Star } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -101,10 +102,10 @@ export function TicketRatingLinkPage() {
 
   const done = preview?.state === "done";
   const title = done
-    ? "Danke für Ihre Bewertung"
+    ? tn("Danke für deine Bewertung", "Danke für Ihre Bewertung")
     : preview?.state === "rated"
       ? "Dieses Ticket wurde bereits bewertet"
-      : "Wie zufrieden waren Sie?";
+      : tn("Wie zufrieden warst du?", "Wie zufrieden waren Sie?");
 
   return (
     <main className="reminder-action-page">
@@ -200,8 +201,10 @@ export function TicketRatingLinkPage() {
               ))}
             </div>
             <p role="status">
-              Ihre Bewertung wurde gespeichert. Sie können dieses Fenster
-              schliessen.
+              {tn(
+                "Deine Bewertung wurde gespeichert. Du kannst dieses Fenster schliessen.",
+                "Ihre Bewertung wurde gespeichert. Sie können dieses Fenster schliessen.",
+              )}
             </p>
           </>
         ) : null}

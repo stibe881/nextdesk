@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useState, type FormEvent } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import {
@@ -351,8 +352,10 @@ export function RackView<T extends RackDevice>({
       <>
         {toolbar}
         <p className="empty-state">
-          Noch keine Racks. Erfassen Sie ein Rack oder tragen Sie bei den
-          Geräten «Rack» und «Höheneinheit» ein (z. B. 12 oder 10-11).
+          {tn(
+            "Noch keine Racks. Erfasse ein Rack oder trage bei den Geräten «Rack» und «Höheneinheit» ein (z. B. 12 oder 10-11).",
+            "Noch keine Racks. Erfassen Sie ein Rack oder tragen Sie bei den Geräten «Rack» und «Höheneinheit» ein (z. B. 12 oder 10-11).",
+          )}
         </p>
       </>
     );

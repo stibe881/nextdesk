@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { Check, CircleHelp, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -96,16 +97,28 @@ export function RequesterTicketProgress({
       setMessage("");
       setNotice(
         response === "resolved"
-          ? "Danke für Ihre Rückmeldung. Das Ticket ist jetzt gelöst."
-          : "Danke. Das Support-Team kümmert sich wieder um Ihr Anliegen.",
+          ? tn(
+              "Danke für deine Rückmeldung. Das Ticket ist jetzt gelöst.",
+              "Danke für Ihre Rückmeldung. Das Ticket ist jetzt gelöst.",
+            )
+          : tn(
+              "Danke. Das Support-Team kümmert sich wieder um dein Anliegen.",
+              "Danke. Das Support-Team kümmert sich wieder um Ihr Anliegen.",
+            ),
       );
       await load();
       onChanged?.();
     } catch (cause) {
       setError(
         functionErrorStatus(cause) === 409
-          ? "Das Ticket wartet nicht mehr auf Ihre Rückmeldung. Bitte laden Sie die Ansicht neu."
-          : "Ihre Rückmeldung konnte nicht übermittelt werden. Bitte versuchen Sie es erneut.",
+          ? tn(
+              "Das Ticket wartet nicht mehr auf deine Rückmeldung. Bitte lade die Ansicht neu.",
+              "Das Ticket wartet nicht mehr auf Ihre Rückmeldung. Bitte laden Sie die Ansicht neu.",
+            )
+          : tn(
+              "Deine Rückmeldung konnte nicht übermittelt werden. Bitte versuche es erneut.",
+              "Ihre Rückmeldung konnte nicht übermittelt werden. Bitte versuchen Sie es erneut.",
+            ),
       );
     } finally {
       setPending(null);
@@ -161,7 +174,12 @@ export function RequesterTicketProgress({
       </ol>
       {progress.waitingForRequester ? (
         <div className="requester-progress__answer">
-          <p>Ist Ihr Problem inzwischen gelöst?</p>
+          <p>
+            {tn(
+              "Ist dein Problem inzwischen gelöst?",
+              "Ist Ihr Problem inzwischen gelöst?",
+            )}
+          </p>
           <div className="requester-progress__actions">
             <button
               className="primary-button"

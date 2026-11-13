@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import {
   delegatedExchangeCallbackUrl,
@@ -204,32 +205,53 @@ function message(code: string): string {
       "Die zentrale Microsoft-365-Verbindung von nextDesk ist noch nicht vollständig eingerichtet.",
     feature_disabled:
       "Der E-Mail-Kanal ist für diesen Mandanten nicht aktiviert.",
-    forbidden: "Sie dürfen diese Mandanteneinstellung nicht verwalten.",
-    tenant_access_denied: "Sie haben keinen Zugriff auf diesen Mandanten.",
+    forbidden: msg(
+      "Du darfst diese Mandanteneinstellung nicht verwalten.",
+      "Sie dürfen diese Mandanteneinstellung nicht verwalten.",
+    ),
+    tenant_access_denied: msg(
+      "Du hast keinen Zugriff auf diesen Mandanten.",
+      "Sie haben keinen Zugriff auf diesen Mandanten.",
+    ),
     invalid_settings:
       "Die Einstellungen für dieses Support-Postfach sind ungültig.",
     team_department_mismatch:
       "Das gewählte Team gehört zu einer anderen Abteilung als die Ziel-Abteilung dieses Postfachs.",
     exchange_verification_required:
-      "Bitte prüfen Sie dieses Support-Postfach erfolgreich, bevor Sie es aktivieren.",
+      msg(
+        "Bitte prüfe dieses Support-Postfach erfolgreich, bevor du es aktivierst.",
+        "Bitte prüfen Sie dieses Support-Postfach erfolgreich, bevor Sie es aktivieren.",
+      ),
     exchange_configuration_changed:
-      "Die Postfachkonfiguration wurde zwischenzeitlich geändert. Laden Sie die Einstellungen neu und prüfen Sie erneut.",
+      msg(
+        "Die Postfachkonfiguration wurde zwischenzeitlich geändert. Lade die Einstellungen neu und prüfe erneut.",
+        "Die Postfachkonfiguration wurde zwischenzeitlich geändert. Laden Sie die Einstellungen neu und prüfen Sie erneut.",
+      ),
     mailbox_in_use:
       "Dieses Support-Postfach ist bereits mit einem anderen Mandanten verbunden.",
     exchange_mailbox_not_found: "Das Support-Postfach wurde nicht gefunden.",
     exchange_access_denied:
-      "Microsoft 365 verweigert den Zugriff auf dieses Postfach. Geben Sie dem verbundenen Konto in Exchange Admin Center mindestens Vollzugriff und Senden als für dieses Postfach.",
+      msg(
+        "Microsoft 365 verweigert den Zugriff auf dieses Postfach. Gib dem verbundenen Konto in Exchange Admin Center mindestens Vollzugriff und Senden als für dieses Postfach.",
+        "Microsoft 365 verweigert den Zugriff auf dieses Postfach. Geben Sie dem verbundenen Konto in Exchange Admin Center mindestens Vollzugriff und Senden als für dieses Postfach.",
+      ),
     exchange_reauthorization_required:
       "Die Microsoft-365-Verbindung muss erneut angemeldet werden.",
     legacy_migration_required:
       "Dieser bisherige E-Mail-Kanal muss zuerst über Microsoft 365 migriert werden.",
     exchange_throttled:
-      "Microsoft Graph drosselt die Anfrage. Bitte versuchen Sie es später erneut.",
+      msg(
+        "Microsoft Graph drosselt die Anfrage. Bitte versuche es später erneut.",
+        "Microsoft Graph drosselt die Anfrage. Bitte versuchen Sie es später erneut.",
+      ),
     exchange_unavailable:
-      "Microsoft 365 ist vorübergehend nicht erreichbar. Bitte versuchen Sie es später erneut.",
+      msg(
+        "Microsoft 365 ist vorübergehend nicht erreichbar. Bitte versuche es später erneut.",
+        "Microsoft 365 ist vorübergehend nicht erreichbar. Bitte versuchen Sie es später erneut.",
+      ),
     connection_not_found:
       "Die gewählte Microsoft-365-Verbindung ist nicht verfügbar.",
-    not_authenticated: "Sie sind nicht angemeldet.",
+    not_authenticated: msg("Du bist nicht angemeldet.", "Sie sind nicht angemeldet."),
     invalid_request: "Die Anfrage ist ungültig.",
     operation_failed: "Die E-Mail-Kanal-Aktion konnte nicht ausgeführt werden.",
   };

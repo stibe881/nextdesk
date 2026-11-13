@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { functionErrorStatus } from "./lib/function-error";
 import {
@@ -181,7 +182,13 @@ export function KnowledgeSuggestions({
       const articleId = await invokeSuggestions(
         { type: "draft", tenantId, suggestionId },
         parseKnowledgeSuggestionDraft,
-        "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+        tn(
+          "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuche es erneut.",
+          tn(
+            "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuche es erneut.",
+            "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+          ),
+        ),
       );
       setList((current) =>
         current
@@ -261,10 +268,20 @@ export function KnowledgeSuggestions({
           <p className="eyebrow">Wissensdatenbank</p>
           <h2 id="knowledge-suggestions-heading">Artikelvorschläge</h2>
           <p className="knowledge-suggestions__intro">
-            Ähnliche Tickets, die in den letzten {list?.windowDays ?? 120} Tagen
-            mehrmals gleich gelöst wurden und noch keinen veröffentlichten
-            Artikel haben. Die KI schreibt einen Entwurf, den Sie prüfen und
-            speichern.
+            {tn(
+              <>
+                Ähnliche Tickets, die in den letzten {list?.windowDays ?? 120}{" "}
+                Tagen mehrmals gleich gelöst wurden und noch keinen
+                veröffentlichten Artikel haben. Die KI schreibt einen Entwurf,
+                den du prüfst und speicherst.
+              </>,
+              <>
+                Ähnliche Tickets, die in den letzten {list?.windowDays ?? 120}{" "}
+                Tagen mehrmals gleich gelöst wurden und noch keinen
+                veröffentlichten Artikel haben. Die KI schreibt einen Entwurf,
+                den Sie prüfen und speichern.
+              </>,
+            )}
           </p>
         </div>
         <button

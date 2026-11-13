@@ -1,17 +1,16 @@
 import * as ImageManipulator from "expo-image-manipulator";
 
 import { invokeNextDesk, requireNextDesk } from "@/lib/nextdesk-client";
+import {
+  MAX_MESSAGE_ATTACHMENT_BYTES,
+  parseMessageAttachment,
+  type MessageAttachment,
+} from "@/lib/ticket-message-attachments-model";
 
 const ATTACHMENT_BUCKET = "ticket-attachments";
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
-export type MobileTicketAttachment = {
-  byteSize: number;
-  contentType: "image/jpeg" | "image/png" | "image/webp";
-  createdAt: string;
-  id: string;
-  originalFilename: string;
-};
+export type MobileTicketAttachment = MessageAttachment;
 
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -26,33 +25,7 @@ function envelopeData(value: unknown): Record<string, unknown> {
   return data;
 }
 
-function attachment(value: unknown): MobileTicketAttachment | null {
-  const item = record(value);
-  const contentType = item?.content_type ?? item?.contentType;
-  const byteSize = item?.byte_size ?? item?.byteSize;
-  const createdAt = item?.created_at ?? item?.createdAt;
-  const filename = item?.original_filename ?? item?.originalFilename;
-  if (
-    !item ||
-    typeof item.id !== "string" ||
-    typeof filename !== "string" ||
-    typeof createdAt !== "string" ||
-    typeof byteSize !== "number" ||
-    !Number.isSafeInteger(byteSize) ||
-    (contentType !== "image/jpeg" &&
-      contentType !== "image/png" &&
-      contentType !== "image/webp")
-  ) {
-    return null;
-  }
-  return {
-    id: item.id,
-    originalFilename: filename,
-    contentType,
-    byteSize,
-    createdAt,
-  };
-}
+const attachment = parseMessageAttachment;
 
 export async function listMobileTicketAttachments(input: {
   tenantId: string;
@@ -77,20 +50,31 @@ export async function listMobileTicketAttachments(input: {
   return attachments;
 }
 
-export async function uploadMobileTicketPhoto(input: {
+/**
+ * Uploads a file to the ticket. With «visibility» the file is prepared for a
+ * message (it is linked when the message is sent); without it, it is a ticket
+ * attachment.
+ */
+export async function uploadMobileTicketFile(input: {
   tenantId: string;
   ticketId: string;
   filename: string;
+  contentType: string;
   bytes: ArrayBuffer;
+  visibility?: "internal" | "external";
 }): Promise<MobileTicketAttachment> {
-  if (input.bytes.byteLength < 1 || input.bytes.byteLength > MAX_PHOTO_BYTES) {
-    throw new Error("Das Foto darf maximal 10 MiB gross sein.");
+  if (
+    input.bytes.byteLength < 1 ||
+    input.bytes.byteLength > MAX_MESSAGE_ATTACHMENT_BYTES
+  ) {
+    throw new Error("Die Datei darf höchstens 25 MB gross sein.");
   }
   const filename = input.filename
     .replace(/[\\/\u0000-\u001f\u007f]/g, "-")
     .trim()
     .slice(0, 180);
-  if (!filename) throw new Error("Der Dateiname des Fotos ist ungültig.");
+  if (!filename) throw new Error("Der Dateiname ist ungültig.");
+  const visibility = input.visibility ? { visibility: input.visibility } : {};
 
   const uploadData = envelopeData(
     await invokeNextDesk<unknown>("ticket-attachments", {
@@ -98,8 +82,9 @@ export async function uploadMobileTicketPhoto(input: {
       tenantId: input.tenantId,
       ticketId: input.ticketId,
       filename,
-      contentType: "image/jpeg",
+      contentType: input.contentType,
       byteSize: input.bytes.byteLength,
+      ...visibility,
     }),
   );
   if (
@@ -116,12 +101,12 @@ export async function uploadMobileTicketPhoto(input: {
       uploadData.uploadToken,
       input.bytes,
       {
-        contentType: "image/jpeg",
+        contentType: input.contentType,
         upsert: false,
       },
     );
   if (uploadError) {
-    throw new Error("Das Foto konnte nicht sicher hochgeladen werden.");
+    throw new Error(`«${filename}» konnte nicht sicher hochgeladen werden.`);
   }
 
   const completed = envelopeData(
@@ -131,14 +116,50 @@ export async function uploadMobileTicketPhoto(input: {
       ticketId: input.ticketId,
       storageObjectPath: uploadData.storageObjectPath,
       originalFilename: filename,
-      contentType: "image/jpeg",
+      contentType: input.contentType,
       byteSize: input.bytes.byteLength,
+      ...visibility,
     }),
   );
   const result = attachment(completed.attachment);
   if (!result)
-    throw new Error("Der Fotoanhang konnte nicht registriert werden.");
+    throw new Error(`«${filename}» konnte nicht registriert werden.`);
   return result;
+}
+
+export async function uploadMobileTicketPhoto(input: {
+  tenantId: string;
+  ticketId: string;
+  filename: string;
+  bytes: ArrayBuffer;
+}): Promise<MobileTicketAttachment> {
+  if (input.bytes.byteLength > MAX_PHOTO_BYTES) {
+    throw new Error("Das Foto darf maximal 10 MiB gross sein.");
+  }
+  return uploadMobileTicketFile({ ...input, contentType: "image/jpeg" });
+}
+
+/** Prepares a picked photo (no metadata, max. 2560 px, JPEG) as bytes. */
+export async function preparePickedPhoto(input: {
+  uri: string;
+  width?: number;
+  height?: number;
+}): Promise<ArrayBuffer> {
+  const width = input.width ?? 0;
+  const height = input.height ?? 0;
+  const actions: ImageManipulator.Action[] =
+    width <= MAX_PHOTO_EDGE && height <= MAX_PHOTO_EDGE
+      ? []
+      : width >= height
+        ? [{ resize: { width: MAX_PHOTO_EDGE } }]
+        : [{ resize: { height: MAX_PHOTO_EDGE } }];
+  const image = await ImageManipulator.manipulateAsync(input.uri, actions, {
+    compress: 0.84,
+    format: ImageManipulator.SaveFormat.JPEG,
+  });
+  const response = await fetch(image.uri);
+  if (!response.ok) throw new Error("Das Foto konnte nicht gelesen werden.");
+  return response.arrayBuffer();
 }
 
 export async function openMobileTicketAttachment(input: {

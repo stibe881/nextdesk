@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -562,7 +563,10 @@ export function PersonOverview({
                     {tickets.length === 0 ? (
                       <p className="person-empty">
                         {data.tickets.length === 0
-                          ? `${firstName} hat noch keine Tickets, die Sie sehen dürfen.`
+                          ? tn(
+                              `${firstName} hat noch keine Tickets, die du sehen darfst.`,
+                              `${firstName} hat noch keine Tickets, die Sie sehen dürfen.`,
+                            )
                           : "Keine Tickets in dieser Auswahl."}
                       </p>
                     ) : (

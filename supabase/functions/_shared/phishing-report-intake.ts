@@ -12,6 +12,7 @@ import {
   storedAnalysis,
   summaryText,
 } from "./phishing-analysis.ts";
+import { type Formality, tone } from "./formality.ts";
 import { iocHitNote, processReportIntel } from "./phishing-campaigns.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -30,8 +31,15 @@ export type PhishingSettings = {
 
 export type PhishingChannel = "email" | "portal" | "mobile";
 
-export const THANK_YOU_TEXT =
-  "Danke für die Meldung! Unser Sicherheitsteam prüft die E-Mail. Bitte klicken Sie keine Links an und öffnen Sie keine Anhänge dieser Nachricht. Wenn Sie bereits Daten eingegeben haben, melden Sie sich bitte umgehend beim Support.";
+export function thankYouText(formality: Formality = "du"): string {
+  return tone(
+    formality,
+    "Danke für die Meldung! Unser Sicherheitsteam prüft die E-Mail. Bitte klicke keine Links an und öffne keine Anhänge dieser Nachricht. Wenn du bereits Daten eingegeben hast, melde dich bitte umgehend beim Support.",
+    "Danke für die Meldung! Unser Sicherheitsteam prüft die E-Mail. Bitte klicken Sie keine Links an und öffnen Sie keine Anhänge dieser Nachricht. Wenn Sie bereits Daten eingegeben haben, melden Sie sich bitte umgehend beim Support.",
+  );
+}
+
+export const THANK_YOU_TEXT = thankYouText("du");
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;

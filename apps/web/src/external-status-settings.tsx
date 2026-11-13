@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Globe, RefreshCw } from "lucide-react";
 
+import { tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
@@ -224,9 +225,10 @@ export function ExternalStatusSettings({ tenantId }: { tenantId: string }) {
             ))}
           </ul>
           <p className="asset-intune-settings__help">
-            WWZ und Swisscom bieten keine maschinenlesbare Statusquelle. Für
-            diese überwachen Sie Ihren Anschluss am besten mit einem Ping- oder
-            HTTP-Sensor in PRTG.
+            {tn(
+              "WWZ und Swisscom bieten keine maschinenlesbare Statusquelle. Für diese überwachst du deinen Anschluss am besten mit einem Ping- oder HTTP-Sensor in PRTG.",
+              "WWZ und Swisscom bieten keine maschinenlesbare Statusquelle. Für diese überwachen Sie Ihren Anschluss am besten mit einem Ping- oder HTTP-Sensor in PRTG.",
+            )}
           </p>
           {error ? (
             <p className="monitoring-settings__error" role="alert">

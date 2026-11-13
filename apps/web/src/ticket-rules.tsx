@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -763,8 +764,10 @@ export function TicketRules({ tenantId }: { tenantId: string }) {
         </ol>
       ) : !editing ? (
         <p className="empty-state">
-          Noch keine Regeln. Legen Sie zum Beispiel fest, dass Tickets mit
-          «Drucker» im Betreff automatisch an das Drucker-Team gehen.
+          {tn(
+            "Noch keine Regeln. Lege zum Beispiel fest, dass Tickets mit «Drucker» im Betreff automatisch an das Drucker-Team gehen.",
+            "Noch keine Regeln. Legen Sie zum Beispiel fest, dass Tickets mit «Drucker» im Betreff automatisch an das Drucker-Team gehen.",
+          )}
         </p>
       ) : null}
     </section>

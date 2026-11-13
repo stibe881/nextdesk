@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { functionErrorMessage } from "./function-error";
+import { setFormality } from "./formality";
 
 function functionFailure(code: string): { context: Response; status: number } {
   const status = 503;
@@ -34,5 +35,23 @@ describe("Teil-Tickets beim Abschluss", () => {
     await expect(
       functionErrorMessage(functionFailure("ticket_children_open"), "Fallback"),
     ).resolves.toContain("alle Teil-Tickets");
+  });
+
+  it("spricht in der Sie-Fassung formell an", async () => {
+    try {
+      await expect(
+        functionErrorMessage(functionFailure("forbidden"), "Fallback"),
+      ).resolves.toBe(
+        "Für diese Aktion fehlt dir die erforderliche Berechtigung.",
+      );
+      setFormality("sie");
+      await expect(
+        functionErrorMessage(functionFailure("forbidden"), "Fallback"),
+      ).resolves.toBe(
+        "Für diese Aktion fehlt Ihnen die erforderliche Berechtigung.",
+      );
+    } finally {
+      setFormality("du");
+    }
   });
 });

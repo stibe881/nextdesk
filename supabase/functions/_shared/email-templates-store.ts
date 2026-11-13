@@ -1,5 +1,6 @@
 // Lädt die vom Mandanten angepasste Vorlage; ohne Eintrag gelten die
 // Standardtexte und der Versand ist eingeschaltet.
+import type { Formality } from "./formality.ts";
 import {
   resolveEmailTemplate,
   type ResolvedEmailTemplate,
@@ -13,6 +14,7 @@ export async function loadEmailTemplate(
   admin: Admin,
   tenantId: string,
   key: string,
+  formality: Formality = "du",
 ): Promise<ResolvedEmailTemplate> {
   let stored: StoredEmailTemplate | null = null;
   const result = await admin
@@ -30,5 +32,5 @@ export async function loadEmailTemplate(
     }
     stored = { enabled: result.data.enabled !== false, fields };
   }
-  return resolveEmailTemplate(key, stored);
+  return resolveEmailTemplate(key, stored, formality);
 }

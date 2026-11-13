@@ -37,6 +37,7 @@ import {
   FormSwitch,
 } from "./form-kit";
 import { supabase } from "./lib/supabase";
+import { setFormality, tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
 import {
   groupRolePermissions,
@@ -138,6 +139,7 @@ type SettingsArea =
 
 type TenantSettings = {
   portal_name: string | null;
+  formality: "du" | "sie" | null;
   support_email: string | null;
   ticket_access_enabled: boolean | null;
   allow_external_ticket_access: boolean | null;
@@ -328,6 +330,7 @@ type FunctionEnvelope<T> = {
 
 type BrandingUpdate = {
   portalName: string | null;
+  formality?: "du" | "sie";
   logoUrl?: string | null;
   primaryColor?: string;
   secondaryColor?: string;
@@ -424,6 +427,7 @@ type TenantRoleManagementRequest =
 
 type BrandingForm = {
   portalName: string;
+  formality: "du" | "sie";
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
@@ -463,6 +467,7 @@ type EntraAgentForm = {
 
 const emptyBrandingForm: BrandingForm = {
   portalName: "",
+  formality: "du",
   primaryColor: "",
   secondaryColor: "",
   accentColor: "",
@@ -667,7 +672,12 @@ const MAX_LOGO_FILE_BYTES = 2 * 1024 * 1024;
 
 async function prepareLogoUpload(file: File): Promise<PreparedLogoUpload> {
   if (!LOGO_MIME_TYPES.has(file.type as PreparedLogoUpload["contentType"])) {
-    throw new Error("Bitte wählen Sie ein PNG-, JPEG- oder WebP-Bild aus.");
+    throw new Error(
+      tn(
+        "Bitte wähle ein PNG-, JPEG- oder WebP-Bild aus.",
+        "Bitte wählen Sie ein PNG-, JPEG- oder WebP-Bild aus.",
+      ),
+    );
   }
   if (file.size === 0 || file.size > MAX_LOGO_FILE_BYTES) {
     throw new Error("Das Logo darf höchstens 2 MB gross sein.");
@@ -828,7 +838,7 @@ function CorporateDesignPreview({
             <div className="tenant-branding-preview__intro">
               <div>
                 <p>HEUTE IM BLICK</p>
-                <strong>Ihr Arbeitstag</strong>
+                <strong>{tn("Dein Arbeitstag", "Ihr Arbeitstag")}</strong>
                 <span>Tickets, Prioritäten und nächste Schritte.</span>
               </div>
               <span className="tenant-branding-preview__status">
@@ -1329,6 +1339,8 @@ export function TenantAdminSettings({
       const branding = nextSettings.tenant_branding;
       setBrandingForm({
         portalName: nextSettings.tenant_settings?.portal_name ?? "",
+        formality:
+          nextSettings.tenant_settings?.formality === "sie" ? "sie" : "du",
         primaryColor: branding?.primary_color ?? "",
         secondaryColor: branding?.secondary_color ?? "",
         accentColor: branding?.accent_color ?? "",
@@ -1437,7 +1449,10 @@ export function TenantAdminSettings({
       await loadData();
       setSuccess(
         entraDirectoryEnabled
-          ? "Der Entra-Verzeichnisconnector wurde aktiviert. Prüfen Sie die Verbindung, bevor Sie einen manuellen Abgleich starten."
+          ? tn(
+              "Der Entra-Verzeichnisconnector wurde aktiviert. Prüfe die Verbindung, bevor du einen manuellen Abgleich startest.",
+              "Der Entra-Verzeichnisconnector wurde aktiviert. Prüfen Sie die Verbindung, bevor Sie einen manuellen Abgleich starten.",
+            )
           : "Der Entra-Verzeichnisconnector wurde gespeichert und deaktiviert.",
       );
     } catch (nextError) {
@@ -1455,7 +1470,10 @@ export function TenantAdminSettings({
   const testEntraDirectoryConnection = async () => {
     if (!supabase || !canTestEntraDirectory) {
       setError(
-        "Speichern Sie zuerst eine gültige, an das mandantenspezifische Entra-SSO gebundene Konfiguration.",
+        tn(
+          "Speichere zuerst eine gültige, an das mandantenspezifische Entra-SSO gebundene Konfiguration.",
+          "Speichern Sie zuerst eine gültige, an das mandantenspezifische Entra-SSO gebundene Konfiguration.",
+        ),
       );
       return;
     }
@@ -1489,7 +1507,10 @@ export function TenantAdminSettings({
     }
     if (!canSyncEntraDirectory) {
       setError(
-        "Aktivieren und testen Sie den an das mandantenspezifische Entra-SSO gebundenen Connector, bevor Sie den Abgleich starten.",
+        tn(
+          "Aktiviere und teste den an das mandantenspezifische Entra-SSO gebundenen Connector, bevor du den Abgleich startest.",
+          "Aktivieren und testen Sie den an das mandantenspezifische Entra-SSO gebundenen Connector, bevor Sie den Abgleich starten.",
+        ),
       );
       return;
     }
@@ -1770,7 +1791,10 @@ export function TenantAdminSettings({
       return;
     }
 
-    const nextBranding: BrandingUpdate = { portalName: portalName || null };
+    const nextBranding: BrandingUpdate = {
+      portalName: portalName || null,
+      formality: brandingForm.formality,
+    };
 
     const colors: ReadonlyArray<
       readonly [
@@ -1825,6 +1849,7 @@ export function TenantAdminSettings({
         tenantId,
         branding: nextBranding,
       });
+      setFormality(brandingForm.formality);
       await loadData();
       onBrandingUpdated?.();
       setSuccess("Corporate Design wurde gespeichert.");
@@ -1843,7 +1868,12 @@ export function TenantAdminSettings({
   async function saveSsoConfiguration(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!ssoForm.provider) {
-      setError("Wählen Sie einen SSO-Anbieter aus.");
+      setError(
+        tn(
+          "Wähle einen SSO-Anbieter aus.",
+          "Wählen Sie einen SSO-Anbieter aus.",
+        ),
+      );
       return;
     }
 
@@ -1874,7 +1904,12 @@ export function TenantAdminSettings({
       .map((domain) => domain.trim().toLowerCase())
       .filter(Boolean);
     if (domains.length > 50 || domains.some((domain) => !isDomain(domain))) {
-      setError("Geben Sie höchstens 50 gültige E-Mail-Domains ein.");
+      setError(
+        tn(
+          "Gib höchstens 50 gültige E-Mail-Domains ein.",
+          "Geben Sie höchstens 50 gültige E-Mail-Domains ein.",
+        ),
+      );
       return;
     }
     if (
@@ -2007,11 +2042,21 @@ export function TenantAdminSettings({
     event.preventDefault();
     const email = invitationEmail.trim().toLowerCase();
     if (!email) {
-      setError("Geben Sie eine E-Mail-Adresse für die Einladung ein.");
+      setError(
+        tn(
+          "Gib eine E-Mail-Adresse für die Einladung ein.",
+          "Geben Sie eine E-Mail-Adresse für die Einladung ein.",
+        ),
+      );
       return;
     }
     if (invitationPersonForm.isAgent && !invitationPersonForm.departmentId) {
-      setError("Wählen Sie für einen Agenten einen Ticketzugriffsbereich aus.");
+      setError(
+        tn(
+          "Wähle für einen Agenten einen Ticketzugriffsbereich aus.",
+          "Wählen Sie für einen Agenten einen Ticketzugriffsbereich aus.",
+        ),
+      );
       return;
     }
 
@@ -2043,7 +2088,12 @@ export function TenantAdminSettings({
     event.preventDefault();
     if (!editingPerson) return;
     if (personEditForm.isAgent && !personEditForm.departmentId) {
-      setError("Wählen Sie für einen Agenten einen Ticketzugriffsbereich aus.");
+      setError(
+        tn(
+          "Wähle für einen Agenten einen Ticketzugriffsbereich aus.",
+          "Wählen Sie für einen Agenten einen Ticketzugriffsbereich aus.",
+        ),
+      );
       return;
     }
     const target: SaveTarget = `person:${editingPerson.id}`;
@@ -2104,7 +2154,12 @@ export function TenantAdminSettings({
 
   async function saveEntraAgentAccess(person: TenantEntraDirectoryPerson) {
     if (entraAgentForm.enabled && !entraAgentForm.departmentId) {
-      setError("Wählen Sie für einen Support-Agenten eine Abteilung aus.");
+      setError(
+        tn(
+          "Wähle für einen Support-Agenten eine Abteilung aus.",
+          "Wählen Sie für einen Support-Agenten eine Abteilung aus.",
+        ),
+      );
       return;
     }
 
@@ -2299,7 +2354,10 @@ export function TenantAdminSettings({
           </ul>
         ) : (
           <p className="role-editor__hint">
-            Zuweisen können Sie unter «Personen zuweisen».
+            {tn(
+              "Zuweisen kannst du unter «Personen zuweisen».",
+              "Zuweisen können Sie unter «Personen zuweisen».",
+            )}
           </p>
         )}
       </div>
@@ -2821,7 +2879,10 @@ export function TenantAdminSettings({
       >
         <p className="tenant-admin-settings__entra-agent-note">
           {person.hasIndependentAgentAccess
-            ? "Eine getrennte Agentenzuordnung bleibt unverändert. Sie bearbeiten hier nur die Entra-Vormerkung."
+            ? tn(
+                "Eine getrennte Agentenzuordnung bleibt unverändert. Du bearbeitest hier nur die Entra-Vormerkung.",
+                "Eine getrennte Agentenzuordnung bleibt unverändert. Sie bearbeiten hier nur die Entra-Vormerkung.",
+              )
             : person.activeNextDeskMember
               ? "Die Zuordnung wird nach dem Speichern sofort wirksam."
               : "Die Person wird vorgemerkt. Name, vorgesetzte Person und Agentenzugang werden bei ihrer ersten Anmeldung mit Microsoft übernommen."}
@@ -2961,8 +3022,10 @@ export function TenantAdminSettings({
       <header className="tenant-admin-settings__header">
         <div>
           <p className="tenant-admin-settings__tenant-id">
-            Verwalten Sie Zugänge, Erscheinungsbild und Berechtigungen dieses
-            Mandanten.
+            {tn(
+              "Verwalte Zugänge, Erscheinungsbild und Berechtigungen dieses Mandanten.",
+              "Verwalten Sie Zugänge, Erscheinungsbild und Berechtigungen dieses Mandanten.",
+            )}
           </p>
         </div>
         <button
@@ -3138,9 +3201,10 @@ export function TenantAdminSettings({
                   </>
                 ) : (
                   <p className="tenant-admin-settings__feature-detail-note">
-                    Aktivieren Sie zuerst die Funktion «Assets» unter
-                    «Funktionen». Das Monitoring nutzt die Geräte der
-                    Infrastruktur.
+                    {tn(
+                      "Aktiviere zuerst die Funktion «Assets» unter «Funktionen». Das Monitoring nutzt die Geräte der Infrastruktur.",
+                      "Aktivieren Sie zuerst die Funktion «Assets» unter «Funktionen». Das Monitoring nutzt die Geräte der Infrastruktur.",
+                    )}
                   </p>
                 )}
               </section>
@@ -3245,6 +3309,45 @@ export function TenantAdminSettings({
                       nur das Logo sichtbar.
                     </span>
                   </label>
+                  <fieldset
+                    className="tenant-admin-settings__formality"
+                    disabled={saving !== null}
+                  >
+                    <legend>Anrede</legend>
+                    <p className="tenant-admin-settings__hint">
+                      {tn(
+                        "Lege fest, ob nextDesk alle Personen deines Mandanten duzt oder siezt. Die Einstellung gilt für die Oberfläche, die App, E-Mails, Mitteilungen und die Handbücher.",
+                        "Legen Sie fest, ob nextDesk alle Personen Ihres Mandanten duzt oder siezt. Die Einstellung gilt für die Oberfläche, die App, E-Mails, Mitteilungen und die Handbücher.",
+                      )}
+                    </p>
+                    {(
+                      [
+                        // formality-ok: names the choice itself
+                        ["du", "Du (Standard)"],
+                        // formality-ok: names the choice itself
+                        ["sie", "Sie"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <label
+                        className="tenant-admin-settings__formality-option"
+                        key={value}
+                      >
+                        <input
+                          checked={brandingForm.formality === value}
+                          name="tenant-formality"
+                          onChange={() =>
+                            setBrandingForm((current) => ({
+                              ...current,
+                              formality: value,
+                            }))
+                          }
+                          type="radio"
+                          value={value}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </fieldset>
                   <div className="tenant-logo-upload">
                     <div>
                       <span className="tenant-logo-upload__label">
@@ -3376,9 +3479,10 @@ export function TenantAdminSettings({
                       Funktionen & Integrationen
                     </h2>
                     <p>
-                      Aktivieren Sie nur die Funktionen, die dieser Mandant
-                      wirklich nutzt. Die jeweilige Konfiguration öffnen Sie
-                      gezielt direkt bei der passenden Funktion.
+                      {tn(
+                        "Aktiviere nur die Funktionen, die dieser Mandant wirklich nutzt. Die jeweilige Konfiguration öffnest du gezielt direkt bei der passenden Funktion.",
+                        "Aktivieren Sie nur die Funktionen, die dieser Mandant wirklich nutzt. Die jeweilige Konfiguration öffnen Sie gezielt direkt bei der passenden Funktion.",
+                      )}
                     </p>
                   </div>
                   <p className="tenant-admin-settings__functions-summary">
@@ -3723,11 +3827,10 @@ export function TenantAdminSettings({
 
                                         {!isTenantFeatureActive(feature) ? (
                                           <p className="tenant-admin-settings__feature-detail-note">
-                                            Aktivieren Sie diese Funktion
-                                            zuerst. Ihre bestehende
-                                            Konfiguration wird nicht verändert,
-                                            aber bis zur Aktivierung nicht
-                                            verwendet.
+                                            {tn(
+                                              "Aktiviere diese Funktion zuerst. Deine bestehende Konfiguration wird nicht verändert, aber bis zur Aktivierung nicht verwendet.",
+                                              "Aktivieren Sie diese Funktion zuerst. Ihre bestehende Konfiguration wird nicht verändert, aber bis zur Aktivierung nicht verwendet.",
+                                            )}
                                           </p>
                                         ) : (
                                           <>
@@ -3784,9 +3887,10 @@ export function TenantAdminSettings({
                                                   tenantId={tenantId}
                                                 />
                                                 <p className="tenant-admin-settings__feature-detail-note">
-                                                  PRTG-, Ablauf- und
-                                                  Backup-Überwachung finden Sie
-                                                  im Tab «Monitoring».
+                                                  {tn(
+                                                    "PRTG-, Ablauf- und Backup-Überwachung findest du im Tab «Monitoring».",
+                                                    "PRTG-, Ablauf- und Backup-Überwachung finden Sie im Tab «Monitoring».",
+                                                  )}
                                                 </p>
                                               </>
                                             ) : null}
@@ -3918,9 +4022,10 @@ export function TenantAdminSettings({
                                           SSO-Konfiguration
                                         </h4>
                                         <p>
-                                          Die zentrale Entra-App bleibt bei
-                                          Gross ICT; hier verwalten Sie nur die
-                                          mandantenspezifische Freigabe.
+                                          {tn(
+                                            "Die zentrale Entra-App bleibt bei Gross ICT; hier verwaltest du nur die mandantenspezifische Freigabe.",
+                                            "Die zentrale Entra-App bleibt bei Gross ICT; hier verwalten Sie nur die mandantenspezifische Freigabe.",
+                                          )}
                                         </p>
                                       </div>
                                     </div>
@@ -4196,9 +4301,10 @@ export function TenantAdminSettings({
                   Personen & Agenten
                 </h2>
                 <p>
-                  Ordnen Sie Mitarbeitende einer Abteilung zu, hinterlegen Sie
-                  Angebot und Funktion und bestimmen Sie, wer als Support-Agent
-                  in der Ticketbearbeitung arbeitet.
+                  {tn(
+                    "Ordne Mitarbeitende einer Abteilung zu, hinterlege Angebot und Funktion und bestimme, wer als Support-Agent in der Ticketbearbeitung arbeitet.",
+                    "Ordnen Sie Mitarbeitende einer Abteilung zu, hinterlegen Sie Angebot und Funktion und bestimmen Sie, wer als Support-Agent in der Ticketbearbeitung arbeitet.",
+                  )}
                 </p>
                 <section
                   className="tenant-admin-settings__directory-config"
@@ -5191,8 +5297,10 @@ export function TenantAdminSettings({
                           <div className="roles-empty">
                             <strong>Noch keine zuweisbaren Rollen</strong>
                             <p>
-                              Erstellen Sie unter «Rollen definieren» eine
-                              eigene Rolle.
+                              {tn(
+                                "Erstelle unter «Rollen definieren» eine eigene Rolle.",
+                                "Erstellen Sie unter «Rollen definieren» eine eigene Rolle.",
+                              )}
                             </p>
                           </div>
                         ) : matrixPeople.length === 0 ? (
@@ -5200,10 +5308,16 @@ export function TenantAdminSettings({
                             <strong>Keine Personen gefunden</strong>
                             <p>
                               {query
-                                ? "Passen Sie die Suche an."
+                                ? tn(
+                                    "Passe die Suche an.",
+                                    "Passen Sie die Suche an.",
+                                  )
                                 : roleMatrixAllPeople
                                   ? "Es gibt keine aktiven Personen."
-                                  : "Es gibt noch keine Agenten. Wählen Sie «Alle Personen» oder machen Sie unter «Personen» jemanden zum Agenten."}
+                                  : tn(
+                                      "Es gibt noch keine Agenten. Wähle «Alle Personen» oder mache unter «Personen» jemanden zum Agenten.",
+                                      "Es gibt noch keine Agenten. Wählen Sie «Alle Personen» oder machen Sie unter «Personen» jemanden zum Agenten.",
+                                    )}
                             </p>
                           </div>
                         ) : (
@@ -5518,6 +5632,7 @@ export function TenantAdminSettings({
                                   <h3>{roleLabel(selectedRole.name)}</h3>
                                   <p className="role-editor__hint">
                                     Systemrolle ·{" "}
+                                    {/* formality-ok: "Sie" bezeichnet die Rolle */}
                                     {roleScopeLabel(selectedRole.scope)}. Sie
                                     ist geschützt und kann nicht geändert
                                     werden.
@@ -5542,8 +5657,10 @@ export function TenantAdminSettings({
                             <div className="roles-empty">
                               <strong>Rolle auswählen</strong>
                               <p>
-                                Wählen Sie links eine Rolle aus oder erstellen
-                                Sie eine neue.
+                                {tn(
+                                  "Wähle links eine Rolle aus oder erstelle eine neue.",
+                                  "Wählen Sie links eine Rolle aus oder erstellen Sie eine neue.",
+                                )}
                               </p>
                             </div>
                           )}

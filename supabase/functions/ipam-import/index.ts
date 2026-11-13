@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { json, noContent } from "../_shared/http.ts";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
@@ -133,7 +134,10 @@ async function readBody(request: Request): Promise<unknown> {
     throw new HttpError(
       413,
       "payload_too_large",
-      "Die Anfrage ist zu gross. Senden Sie höchstens 500 Zeilen auf einmal.",
+      msg(
+        "Die Anfrage ist zu gross. Sende höchstens 500 Zeilen auf einmal.",
+        "Die Anfrage ist zu gross. Senden Sie höchstens 500 Zeilen auf einmal.",
+      ),
     );
   }
   try {
@@ -1060,7 +1064,10 @@ const handler = withSupabase(
         throw new HttpError(
           403,
           "feature_disabled",
-          "Die IP-Adressverwaltung ist für Sie nicht eingeschaltet.",
+          msg(
+            "Die IP-Adressverwaltung ist für dich nicht eingeschaltet.",
+            "Die IP-Adressverwaltung ist für Sie nicht eingeschaltet.",
+          ),
         );
       }
       if (
@@ -1069,7 +1076,10 @@ const handler = withSupabase(
         throw new HttpError(
           403,
           "manage_denied",
-          "Für den Import fehlt Ihnen die Berechtigung zur IP-Adressverwaltung.",
+          msg(
+            "Für den Import fehlt dir die Berechtigung zur IP-Adressverwaltung.",
+            "Für den Import fehlt Ihnen die Berechtigung zur IP-Adressverwaltung.",
+          ),
         );
       }
       const scope = await loadDepartmentScope(

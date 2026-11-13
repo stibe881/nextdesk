@@ -33,6 +33,7 @@ import {
   supportLevelFromSelect,
   supportLevelLabel,
 } from "./lib/support-levels";
+import { tn } from "./lib/formality";
 import { FormCard, FormField, FormGrid } from "./form-kit";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
@@ -288,7 +289,12 @@ function DepartmentQuestionRouting({ tenantId }: { tenantId: string }) {
 
   async function save(route: DepartmentQuestionRoute) {
     if (!route.primaryUserId) {
-      setError("Bitte wählen Sie zuerst eine Abteilungsleitung.");
+      setError(
+        tn(
+          "Bitte wähle zuerst eine Abteilungsleitung.",
+          "Bitte wählen Sie zuerst eine Abteilungsleitung.",
+        ),
+      );
       return;
     }
     setSavingDepartmentId(route.department.id);
@@ -621,7 +627,12 @@ function DepartmentTeams({ tenantId }: { tenantId: string }) {
         (department) => department.id === form.departmentId,
       )
     ) {
-      setError("Bitte wählen Sie eine aktive Abteilung für das Team aus.");
+      setError(
+        tn(
+          "Bitte wähle eine aktive Abteilung für das Team aus.",
+          "Bitte wählen Sie eine aktive Abteilung für das Team aus.",
+        ),
+      );
       return;
     }
 
@@ -688,7 +699,10 @@ function DepartmentTeams({ tenantId }: { tenantId: string }) {
     );
     if (userIds.length !== selectedMemberIds.length) {
       setError(
-        "Die Mitgliederauswahl wurde aktualisiert. Bitte prüfen Sie die Auswahl erneut.",
+        tn(
+          "Die Mitgliederauswahl wurde aktualisiert. Bitte prüfe die Auswahl erneut.",
+          "Die Mitgliederauswahl wurde aktualisiert. Bitte prüfen Sie die Auswahl erneut.",
+        ),
       );
       return;
     }
@@ -768,7 +782,10 @@ function DepartmentTeams({ tenantId }: { tenantId: string }) {
       {formVisible ? (
         <form className="department-management__team-form" onSubmit={saveTeam}>
           <FormCard
-            sub="Ordnen Sie jedes Team genau einer aktiven Abteilung zu."
+            sub={tn(
+              "Ordne jedes Team genau einer aktiven Abteilung zu.",
+              "Ordnen Sie jedes Team genau einer aktiven Abteilung zu.",
+            )}
             title={form.id ? "Team bearbeiten" : "Neues Team"}
           >
             <FormGrid cols={1}>

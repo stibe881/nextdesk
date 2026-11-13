@@ -32,6 +32,7 @@ import {
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 const quantityFormat = new Intl.NumberFormat("de-CH", {
   maximumFractionDigits: 2,
@@ -180,11 +181,13 @@ export default function InventoryScreen() {
     if (!receiptItem || !tenantId || receiptSaving) return;
     const quantity = parseReceiptQuantity(receiptQuantity);
     if (quantity === null) {
-      setReceiptError("Bitte gib eine gültige Menge grösser als 0 ein.");
+      setReceiptError(tn("Bitte gib eine gültige Menge grösser als 0 ein.", "Bitte geben Sie eine gültige Menge grösser als 0 ein."));
       return;
     }
     if (!receiptLocationId) {
-      setReceiptError("Bitte wähle einen Lagerort.");
+      setReceiptError(
+        tn("Bitte wähle einen Lagerort.", "Bitte wählen Sie einen Lagerort."),
+      );
       return;
     }
     setReceiptSaving(true);
@@ -345,7 +348,10 @@ export default function InventoryScreen() {
 
         {canReceive ? (
           <Text style={styles.hint}>
-            Tippe auf einen Artikel, um einen Wareneingang einzubuchen.
+            {tn(
+              "Tippe auf einen Artikel, um einen Wareneingang einzubuchen.",
+              "Tippen Sie auf einen Artikel, um einen Wareneingang einzubuchen.",
+            )}
           </Text>
         ) : null}
 
@@ -430,8 +436,7 @@ export default function InventoryScreen() {
               />
               <Text style={styles.emptyTitle}>Keine Artikel gefunden</Text>
               <Text style={styles.emptyText}>
-                Passe die Suche an oder ziehe die Ansicht zum Aktualisieren nach
-                unten.
+                {tn("Passe die Suche an oder ziehe die Ansicht zum Aktualisieren nach unten.", "Passen Sie die Suche an oder ziehen Sie die Ansicht zum Aktualisieren nach unten.")}
               </Text>
             </View>
           ) : null}
@@ -483,8 +488,10 @@ export default function InventoryScreen() {
                     size={19}
                   />
                   <Text style={styles.errorText}>
-                    Dieser Artikel wird mit Seriennummern geführt. Bitte buche
-                    ihn in der Webversion ein.
+                    {tn(
+                      "Dieser Artikel wird mit Seriennummern geführt. Bitte buche ihn in der Webversion ein.",
+                      "Dieser Artikel wird mit Seriennummern geführt. Bitte buchen Sie ihn in der Webversion ein.",
+                    )}
                   </Text>
                 </View>
               ) : (
@@ -533,8 +540,7 @@ export default function InventoryScreen() {
                     <Text style={styles.fieldLabel}>Lagerort</Text>
                     {locations.length === 0 ? (
                       <Text style={styles.itemMeta}>
-                        Es ist noch kein Lagerort erfasst. Lege ihn in der
-                        Webversion an.
+                        {tn("Es ist noch kein Lagerort erfasst. Lege ihn in der Webversion an.", "Es ist noch kein Lagerort erfasst. Legen Sie ihn in der Webversion an.")}
                       </Text>
                     ) : (
                       <View style={styles.locationList}>

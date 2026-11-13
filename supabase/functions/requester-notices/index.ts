@@ -1,3 +1,4 @@
+import { loadFormality, tone } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import {
   type CustomerTicketEmailKind,
@@ -384,15 +385,24 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .maybeSingle(),
       admin.from("tenant_settings").select("portal_name").eq("tenant_id", tenantId).maybeSingle(),
     ]);
+    const formality = await loadFormality(admin, tenantId);
     const samples: Record<string, { subject: string; text: string; label: string }> = {
       acknowledgement: {
         subject: "Drucker im 2. Stock druckt nicht",
-        text: "Ihre Anfrage ist bei uns eingegangen und wurde als Ticket erfasst. Wir melden uns, sobald jemand daran arbeitet.",
+        text: tone(
+          formality,
+          "Deine Anfrage ist bei uns eingegangen und wurde als Ticket erfasst. Wir melden uns, sobald jemand daran arbeitet.",
+          "Ihre Anfrage ist bei uns eingegangen und wurde als Ticket erfasst. Wir melden uns, sobald jemand daran arbeitet.",
+        ),
         label: "Ticket im Portal ansehen",
       },
       agent_reply: {
         subject: "Drucker im 2. Stock druckt nicht",
-        text: "Guten Tag Lea, ich habe den Sensor des Druckers zurückgesetzt. Bitte versuchen Sie es noch einmal und geben Sie mir kurz Bescheid.",
+        text: tone(
+          formality,
+          "Guten Tag Lea, ich habe den Sensor des Druckers zurückgesetzt. Bitte versuche es noch einmal und gib mir kurz Bescheid.",
+          "Guten Tag Lea, ich habe den Sensor des Druckers zurückgesetzt. Bitte versuchen Sie es noch einmal und geben Sie mir kurz Bescheid.",
+        ),
         label: "Im Portal antworten",
       },
       resolution: {
@@ -408,6 +418,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       text: sample.text,
       ticketNumber: "ICT-2026-000412",
       attachmentNotice: false,
+      formality,
       branding: normalizeCustomerTicketEmailBranding({
         accentColor: branding?.accent_color ?? "",
         displayName: settings?.portal_name || "Support",

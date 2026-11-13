@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Compass, X } from "lucide-react";
 import "./onboarding-tour.css";
@@ -9,38 +10,59 @@ export type TourStep = {
   section?: string;
 };
 
-export const AGENT_TOUR: TourStep[] = [
+export const agentTour = (): TourStep[] => [
   {
     title: "Willkommen bei nextDesk",
-    body: "In zwei Minuten zeigen wir Ihnen die wichtigsten Stellen. Sie können die Tour jederzeit beenden und später unter «Persönliche Einstellungen» erneut starten.",
+    body: tn(
+      "In zwei Minuten zeigen wir dir die wichtigsten Stellen. Du kannst die Tour jederzeit beenden und später unter «Persönliche Einstellungen» erneut starten.",
+      "In zwei Minuten zeigen wir Ihnen die wichtigsten Stellen. Sie können die Tour jederzeit beenden und später unter «Persönliche Einstellungen» erneut starten.",
+    ),
     section: "Übersicht",
   },
   {
-    title: "Ihre Startseite",
-    body: "Oben sehen Sie Ihre Kennzahlen, rechts «Meine Prioritäten»: Die KI ordnet Ihre zugewiesenen Tickets mit kurzer Begründung. Ziehen Sie Tickets, um die Reihenfolge selbst zu bestimmen. Mit «Startseite anpassen» blenden Sie Bereiche ein oder aus.",
+    title: tn("Deine Startseite", "Ihre Startseite"),
+    body: tn(
+      "Oben siehst du deine Kennzahlen, rechts «Meine Prioritäten»: Die KI ordnet deine zugewiesenen Tickets mit kurzer Begründung. Ziehe Tickets, um die Reihenfolge selbst zu bestimmen. Mit «Startseite anpassen» blendest du Bereiche ein oder aus.",
+      "Oben sehen Sie Ihre Kennzahlen, rechts «Meine Prioritäten»: Die KI ordnet Ihre zugewiesenen Tickets mit kurzer Begründung. Ziehen Sie Tickets, um die Reihenfolge selbst zu bestimmen. Mit «Startseite anpassen» blenden Sie Bereiche ein oder aus.",
+    ),
     section: "Übersicht",
   },
   {
     title: "Tickets bearbeiten",
-    body: "In «Tickets» filtern Sie nach Warteschlange, Status oder Priorität, wechseln zwischen Liste und Kanban und speichern Filter als Ansicht – auf Wunsch geteilt mit Ihrer Abteilung. Mehrere Tickets lassen sich gemeinsam bearbeiten.",
+    body: tn(
+      "In «Tickets» filterst du nach Warteschlange, Status oder Priorität, wechselst zwischen Liste und Kanban und speicherst Filter als Ansicht – auf Wunsch geteilt mit deiner Abteilung. Mehrere Tickets lassen sich gemeinsam bearbeiten.",
+      "In «Tickets» filtern Sie nach Warteschlange, Status oder Priorität, wechseln zwischen Liste und Kanban und speichern Filter als Ansicht – auf Wunsch geteilt mit Ihrer Abteilung. Mehrere Tickets lassen sich gemeinsam bearbeiten.",
+    ),
     section: "Tickets",
   },
   {
     title: "Im Ticket",
-    body: "Im Ticket antworten Sie oder schreiben interne Notizen, sehen wer gerade mitliest, lassen den Verlauf von der KI zusammenfassen und setzen Wiedervorlagen. Beobachten Sie ein Ticket, um über jede Änderung informiert zu werden.",
+    body: tn(
+      "Im Ticket antwortest du oder schreibst interne Notizen, siehst wer gerade mitliest, lässt den Verlauf von der KI zusammenfassen und setzt Wiedervorlagen. Beobachte ein Ticket, um über jede Änderung informiert zu werden.",
+      "Im Ticket antworten Sie oder schreiben interne Notizen, sehen wer gerade mitliest, lassen den Verlauf von der KI zusammenfassen und setzen Wiedervorlagen. Beobachten Sie ein Ticket, um über jede Änderung informiert zu werden.",
+    ),
     section: "Tickets",
   },
   {
     title: "Benachrichtigungen",
-    body: "Die Glocke oben rechts sammelt Zuweisungen, Antworten, SLA-Hinweise und Fristen. In der App erhalten Sie dieselben Mitteilungen als Push.",
+    body: tn(
+      "Die Glocke oben rechts sammelt Zuweisungen, Antworten, SLA-Hinweise und Fristen. In der App erhältst du dieselben Mitteilungen als Push.",
+      "Die Glocke oben rechts sammelt Zuweisungen, Antworten, SLA-Hinweise und Fristen. In der App erhalten Sie dieselben Mitteilungen als Push.",
+    ),
   },
   {
     title: "Darstellung und Einstellungen",
-    body: "Unter «Persönliche Einstellungen» wählen Sie Hell, Dunkel oder die Systemeinstellung, steuern Push-Mitteilungen und Ihre Abwesenheit mit Stellvertretung.",
+    body: tn(
+      "Unter «Persönliche Einstellungen» wählst du Hell, Dunkel oder die Systemeinstellung, steuerst Push-Mitteilungen und deine Abwesenheit mit Stellvertretung.",
+      "Unter «Persönliche Einstellungen» wählen Sie Hell, Dunkel oder die Systemeinstellung, steuern Push-Mitteilungen und Ihre Abwesenheit mit Stellvertretung.",
+    ),
   },
   {
     title: "Bereit",
-    body: "Das war's. Bei Fragen hilft die Wissensdatenbank – und Ihr Team. Viel Erfolg!",
+    body: tn(
+      "Das war's. Bei Fragen hilft die Wissensdatenbank – und dein Team. Viel Erfolg!",
+      "Das war's. Bei Fragen hilft die Wissensdatenbank – und Ihr Team. Viel Erfolg!",
+    ),
     section: "Übersicht",
   },
 ];

@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { Plus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { shopApi, type CadreSettings } from "./lib/shop";
@@ -250,7 +251,10 @@ export function ShopCadreDialog({
               <p className="shop__muted">
                 {query.trim()
                   ? "Suchergebnis (angemeldete Personen)."
-                  : "Personen mit Kaderstufe. Suchen Sie, um eine Stufe von Hand festzulegen."}
+                  : tn(
+                      "Personen mit Kaderstufe. Suche, um eine Stufe von Hand festzulegen.",
+                      "Personen mit Kaderstufe. Suchen Sie, um eine Stufe von Hand festzulegen.",
+                    )}
               </p>
               {members.length === 0 ? (
                 <p className="shop__muted">Keine Personen gefunden.</p>

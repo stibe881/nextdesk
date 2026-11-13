@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { setFormality } from "./formality";
 import {
   expectedResolutionText,
   formatProgressTime,
@@ -77,8 +78,17 @@ describe("parseRequesterProgress", () => {
 });
 
 describe("wording", () => {
-  it("uses the formal address", () => {
-    expect(progressStepLabel("waiting_for_requester")).toBe("Wartet auf Sie");
+  it("uses the informal address by default", () => {
+    expect(progressStepLabel("waiting_for_requester")).toBe("Wartet auf dich");
+  });
+
+  it("uses the formal address when switched", () => {
+    setFormality("sie");
+    try {
+      expect(progressStepLabel("waiting_for_requester")).toBe("Wartet auf Sie");
+    } finally {
+      setFormality("du");
+    }
   });
 
   it("formats relative days", () => {

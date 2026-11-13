@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 import { supabase } from "./supabase";
 
 /** Client für die Edge Function `teams-admin` (Menü «Teams»). */
@@ -38,8 +39,11 @@ export type TeamsAdminContext = {
   syncedAt: string | null;
 };
 
-const ERRORS: Record<string, string> = {
-  teams_manage_denied: "Du darfst Teams nicht verwalten.",
+const errors = (): Record<string, string> => ({
+  teams_manage_denied: tn(
+    "Du darfst Teams nicht verwalten.",
+    "Sie dürfen Teams nicht verwalten.",
+  ),
   graph_consent_missing:
     "Microsoft verweigert den Zugriff: Die Berechtigung für Teams fehlt oder ist noch nicht übernommen.",
   graph_token_failed:
@@ -60,7 +64,7 @@ const ERRORS: Record<string, string> = {
     "Das Team ist nicht (mehr) in der Liste. Bitte abgleichen.",
   teams_member_not_found: "Die Person ist nicht (mehr) im Team.",
   teams_sync_failed: "Der Abgleich ist fehlgeschlagen.",
-};
+});
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
   if (!supabase) throw new Error("nextDesk ist nicht konfiguriert.");
@@ -78,8 +82,8 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
         .json()
         .catch(() => null)) as { error?: { code?: unknown } } | null;
       const code = payload?.error?.code;
-      if (typeof code === "string" && ERRORS[code])
-        throw new Error(ERRORS[code]);
+      const message = typeof code === "string" ? errors()[code] : undefined;
+      if (message) throw new Error(message);
     }
     throw new Error("Die Teams-Verwaltung ist gerade nicht erreichbar.");
   }

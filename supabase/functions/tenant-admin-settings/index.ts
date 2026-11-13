@@ -13,6 +13,7 @@ const DOMAIN_PATTERN =
 
 const BRANDING_KEYS = new Set([
   "portalName",
+  "formality",
   "logoUrl",
   "primaryColor",
   "secondaryColor",
@@ -40,6 +41,7 @@ const ENTRA_DIRECTORY_CONFIGURATION_KEYS = new Set([
 
 type BrandingInput = {
   portalName?: string | null;
+  formality?: "du" | "sie";
   logoUrl?: string | null;
   primaryColor?: string;
   secondaryColor?: string;
@@ -215,6 +217,10 @@ function parseBranding(value: unknown): BrandingInput | null {
       if (!portalName) return null;
       branding.portalName = portalName;
     }
+  }
+  if (hasOwn(value, "formality")) {
+    if (value.formality !== "du" && value.formality !== "sie") return null;
+    branding.formality = value.formality;
   }
   if (hasOwn(value, "logoUrl")) {
     if (value.logoUrl === null) branding.logoUrl = null;
@@ -652,7 +658,7 @@ async function handleGetSettings(
     admin
       .from("tenant_settings")
       .select(
-        "portal_name, support_email, ticket_access_enabled, allow_external_ticket_access, updated_at",
+        "portal_name, formality, support_email, ticket_access_enabled, allow_external_ticket_access, updated_at",
       )
       .eq("tenant_id", tenantId)
       .maybeSingle(),
@@ -1168,15 +1174,20 @@ async function handleUpdateBranding(
         .upsert(brandingUpdate, { onConflict: "tenant_id" }),
     );
   }
+  const settingsUpdate: Record<string, unknown> = {
+    tenant_id: action.tenantId,
+  };
   if (action.branding.portalName !== undefined) {
+    settingsUpdate.portal_name = action.branding.portalName;
+  }
+  if (action.branding.formality !== undefined) {
+    settingsUpdate.formality = action.branding.formality;
+  }
+  if (Object.keys(settingsUpdate).length > 1) {
     writes.push(
-      admin.from("tenant_settings").upsert(
-        {
-          tenant_id: action.tenantId,
-          portal_name: action.branding.portalName,
-        },
-        { onConflict: "tenant_id" },
-      ),
+      admin
+        .from("tenant_settings")
+        .upsert(settingsUpdate, { onConflict: "tenant_id" }),
     );
   }
 

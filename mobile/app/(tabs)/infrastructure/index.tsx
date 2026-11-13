@@ -32,6 +32,7 @@ import {
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 type Filter = "all" | "due" | InfraCategory;
 
@@ -355,8 +356,8 @@ export default function InfrastructureScreen() {
               <Text style={styles.emptyTitle}>Keine Geräte gefunden</Text>
               <Text style={styles.emptyText}>
                 {devices.length === 0
-                  ? "Erfasse Geräte im Webportal unter Infrastruktur."
-                  : "Passe die Suche oder den Filter an."}
+                  ? tn("Erfasse Geräte im Webportal unter Infrastruktur.", "Erfassen Sie Geräte im Webportal unter Infrastruktur.")
+                  : tn("Passe die Suche oder den Filter an.", "Passen Sie die Suche oder den Filter an.")}
               </Text>
             </View>
           ) : null}

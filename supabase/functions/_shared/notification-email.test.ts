@@ -12,7 +12,16 @@ Deno.test("ticket notification mails name the ticket", () => {
     ticketSubject: "Laptop startet nicht",
   });
   assertEquals(mail.subject, "[ICT-2026-000041] Ticket zugewiesen");
-  assertStringIncludes(mail.body, "Ihnen wurde ein Ticket zugewiesen.");
+  assertStringIncludes(mail.body, "Dir wurde ein Ticket zugewiesen.");
+  const formal = notificationEmailText({
+    kind: "ticket.assigned",
+    payload: {},
+    ticketNumber: "ICT-2026-000041",
+    ticketSubject: "Laptop startet nicht",
+    formality: "sie",
+  });
+  assertStringIncludes(formal.body, "Ihnen wurde ein Ticket zugewiesen.");
+  assertStringIncludes(formal.hint, "Sie erhalten diese E-Mail");
   assertStringIncludes(mail.body, "ICT-2026-000041 · Laptop startet nicht");
 });
 
@@ -78,8 +87,8 @@ Deno.test(
       throw new Error(`Klicktext falsch: ${clicked.title} ${clicked.message}`);
     }
     if (
-      clicked.message.includes("Sie erhalten diese E-Mail") ||
-      !clicked.body.includes("Sie erhalten diese E-Mail")
+      clicked.message.includes("Du erhältst diese E-Mail") ||
+      !clicked.body.includes("Du erhältst diese E-Mail")
     ) {
       throw new Error("Hinweis gehört nur in body/hint");
     }
@@ -211,7 +220,7 @@ Deno.test("Shop: Übergabe aus der Bestellung steht in der Mail", () => {
     ticketSubject: null,
   });
   assertEquals(desk.subject, "Bereit zur Lieferung: B-0042");
-  assertStringIncludes(desk.body, "an Ihren Arbeitsplatz gebracht: Büro 2.14");
+  assertStringIncludes(desk.body, "an deinen Arbeitsplatz gebracht: Büro 2.14");
   const pickup = notificationEmailText({
     kind: "shop.order.ready",
     payload: { orderNumber: "B-0043", deliveryMethod: "pickup" },

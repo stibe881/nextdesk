@@ -46,7 +46,9 @@ describe("Hinweise: Validierung", () => {
   });
 
   it("zählt Emojis als ein Zeichen", () => {
+    // emoji-ok
     expect(charCount("🛡T")).toBe(2);
+    // emoji-ok
     expect(noticeIssue(valid({ symbol: "🛡🛡🛡🛡" }))).toBe("");
     expect(noticeIssue(valid({ symbol: "12345" }))).toMatch(/Symbol/);
   });

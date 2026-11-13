@@ -45,9 +45,14 @@ function text(value: unknown, max = 500): string | null {
 }
 
 /** Returns a German error text, or null when the file can be sent. */
+
+import { tn } from "./formality";
 export function validateReportFile(name: string, size: number): string | null {
   if (!/\.(eml|msg|txt)$/i.test(name)) {
-    return "Bitte laden Sie die E-Mail als .eml- oder .msg-Datei hoch.";
+    return tn(
+      "Bitte lade die E-Mail als .eml- oder .msg-Datei hoch.",
+      "Bitte laden Sie die E-Mail als .eml- oder .msg-Datei hoch.",
+    );
   }
   if (size <= 0) return "Die Datei ist leer.";
   if (size > MAX_REPORT_FILE_BYTES) {
@@ -153,7 +158,10 @@ export function settingsError(settings: PhishingSettings): string | null {
     return "Die Meldeadresse ist keine gültige E-Mail-Adresse.";
   }
   if (settings.enabled && !settings.departmentId) {
-    return "Bitte wählen Sie eine Zielabteilung.";
+    return tn(
+      "Bitte wähle eine Zielabteilung.",
+      "Bitte wählen Sie eine Zielabteilung.",
+    );
   }
   return null;
 }

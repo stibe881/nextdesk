@@ -72,6 +72,10 @@ Deno.test("Störungen: Texte für Tickets, Fall und Artikel", () => {
   assert(reply.includes("Ursache: Strom\nUSV getauscht"));
   assert(reply.includes("«Gelöst»"));
   assert(!reply.includes("ß"));
+  assert(reply.includes("Deine Meldung"));
+  const formalReply = ticketReplyText(incident, "power", "USV getauscht", "sie");
+  assert(formalReply.includes("Ihre Meldung"));
+  assert(formalReply.includes("antworten Sie bitte"));
 
   const description = caseDescription({
     incident: { ...incident, cause: "hardware", closingNote: "Netzteil defekt" },

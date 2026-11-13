@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import {
   isRecord,
@@ -183,7 +184,7 @@ const securedHandler = withSupabase(
               error: {
                 code: "organisation_sso_required",
                 message:
-                  "Ihre E-Mail-Adresse gehört zu einer Organisation mit SSO. Bitte melden Sie sich mit SSO an.",
+                  msg("Deine E-Mail-Adresse gehört zu einer Organisation mit SSO. Bitte melde dich mit SSO an.", msg("Deine E-Mail-Adresse gehört zu einer Organisation mit SSO. Bitte melde dich mit SSO an.", "Ihre E-Mail-Adresse gehört zu einer Organisation mit SSO. Bitte melden Sie sich mit SSO an.")),
               },
             },
             403,
@@ -229,7 +230,7 @@ const securedHandler = withSupabase(
           error: {
             code: "sso_account_deletion_not_allowed",
             message:
-              "Dieses Konto wird von Ihrer Organisation über SSO verwaltet und kann nicht selbst gelöscht werden.",
+              msg("Dieses Konto wird von deiner Organisation über SSO verwaltet und kann nicht selbst gelöscht werden.", msg("Dieses Konto wird von deiner Organisation über SSO verwaltet und kann nicht selbst gelöscht werden.", "Dieses Konto wird von Ihrer Organisation über SSO verwaltet und kann nicht selbst gelöscht werden.")),
           },
         },
         403,

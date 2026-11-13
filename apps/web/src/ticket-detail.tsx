@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { TicketAiTriage } from "./ticket-ai-triage";
 import { TicketMonitoringIncidentHint } from "./incidents-ticket-hint";
 import { TicketAiSummary } from "./ticket-ai-summary";
@@ -2194,7 +2195,10 @@ function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     const message = error.message.trim();
     if (message.includes("non-2xx") || message.includes("FunctionsHttpError")) {
-      return "Die Ticketdetails konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
+      return tn(
+        "Die Ticketdetails konnten nicht geladen werden. Bitte versuche es erneut.",
+        "Die Ticketdetails konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+      );
     }
     return message;
   }
@@ -2208,12 +2212,21 @@ function errorMessage(error: unknown): string {
 function mergeErrorMessage(error: unknown, action: "search" | "merge"): string {
   const status = functionErrorStatus(error);
   if (status === 401) {
-    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+    return tn(
+      "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+      "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+    );
   }
   if (status === 403) {
     return action === "search"
-      ? "Sie sind nicht berechtigt, mögliche Haupttickets zu suchen."
-      : "Sie sind nicht berechtigt, dieses Ticket zusammenzuführen.";
+      ? tn(
+          "Du bist nicht berechtigt, mögliche Haupttickets zu suchen.",
+          "Sie sind nicht berechtigt, mögliche Haupttickets zu suchen.",
+        )
+      : tn(
+          "Du bist nicht berechtigt, dieses Ticket zusammenzuführen.",
+          "Sie sind nicht berechtigt, dieses Ticket zusammenzuführen.",
+        );
   }
   if (status === 404) {
     return action === "search"
@@ -2221,7 +2234,10 @@ function mergeErrorMessage(error: unknown, action: "search" | "merge"): string {
       : "Das ausgewählte Hauptticket ist nicht mehr verfügbar.";
   }
   if (status === 409) {
-    return "Das Ticket wurde zwischenzeitlich geändert. Bitte laden Sie die Ticketdetails neu.";
+    return tn(
+      "Das Ticket wurde zwischenzeitlich geändert. Bitte lade die Ticketdetails neu.",
+      "Das Ticket wurde zwischenzeitlich geändert. Bitte laden Sie die Ticketdetails neu.",
+    );
   }
   if (status === 422) {
     return action === "search"
@@ -2229,8 +2245,14 @@ function mergeErrorMessage(error: unknown, action: "search" | "merge"): string {
       : "Dieses Ticket kann nicht in das ausgewählte Ticket zusammengeführt werden.";
   }
   return action === "search"
-    ? "Die möglichen Haupttickets konnten nicht geladen werden. Bitte versuchen Sie es erneut."
-    : "Das Ticket konnte nicht zusammengeführt werden. Bitte versuchen Sie es erneut.";
+    ? tn(
+        "Die möglichen Haupttickets konnten nicht geladen werden. Bitte versuche es erneut.",
+        "Die möglichen Haupttickets konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+      )
+    : tn(
+        "Das Ticket konnte nicht zusammengeführt werden. Bitte versuche es erneut.",
+        "Das Ticket konnte nicht zusammengeführt werden. Bitte versuchen Sie es erneut.",
+      );
 }
 
 function formatDateTime(timestamp: string): string {
@@ -2617,43 +2639,76 @@ function feedbackErrorMessage(
   const status = functionErrorStatus(error);
   if (status === 403) {
     return action === "submit"
-      ? "Sie sind nicht berechtigt, die Zufriedenheit für dieses Ticket zu bewerten."
+      ? tn(
+          "Du bist nicht berechtigt, die Zufriedenheit für dieses Ticket zu bewerten.",
+          "Sie sind nicht berechtigt, die Zufriedenheit für dieses Ticket zu bewerten.",
+        )
       : "Die Zufriedenheitsdaten sind für dieses Ticket nicht verfügbar.";
   }
   if (status === 422) {
     return action === "submit"
-      ? "Die Bewertung kann derzeit nicht abgegeben werden. Sie ist erst möglich, wenn das Ticket gelöst ist."
+      ? tn(
+          "Die Bewertung kann derzeit nicht abgegeben werden. Das ist erst möglich, wenn das Ticket gelöst ist.",
+          "Die Bewertung kann derzeit nicht abgegeben werden. Sie ist erst möglich, wenn das Ticket gelöst ist.",
+        )
       : "Die Zufriedenheitsdaten können für dieses Ticket derzeit nicht verarbeitet werden.";
   }
   return action === "submit"
-    ? "Die Bewertung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut."
-    : "Die Zufriedenheitsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
+    ? tn(
+        "Die Bewertung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+        "Die Bewertung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+      )
+    : tn(
+        "Die Zufriedenheitsdaten konnten nicht geladen werden. Bitte versuche es erneut.",
+        "Die Zufriedenheitsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+      );
 }
 
 function qualityErrorMessage(error: unknown, action: "get" | "submit"): string {
   const status = functionErrorStatus(error);
   if (status === 401) {
-    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+    return tn(
+      "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+      "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+    );
   }
   if (status === 403) {
     return action === "submit"
-      ? "Sie sind nicht berechtigt, für dieses Ticket eine Qualitätsprüfung abzugeben."
+      ? tn(
+          "Du bist nicht berechtigt, für dieses Ticket eine Qualitätsprüfung abzugeben.",
+          "Sie sind nicht berechtigt, für dieses Ticket eine Qualitätsprüfung abzugeben.",
+        )
       : "Die Qualitätsprüfungsdaten sind für dieses Ticket nicht verfügbar.";
   }
   if (status === 409) {
-    return "Die Qualitätsprüfung wurde zwischenzeitlich geändert. Bitte laden Sie die Ticketdetails neu.";
+    return tn(
+      "Die Qualitätsprüfung wurde zwischenzeitlich geändert. Bitte lade die Ticketdetails neu.",
+      "Die Qualitätsprüfung wurde zwischenzeitlich geändert. Bitte laden Sie die Ticketdetails neu.",
+    );
   }
   if (status === 422) {
     return action === "submit"
-      ? "Die Qualitätsprüfung kann nicht gespeichert werden. Sie ist nur für geschlossene Tickets möglich und nach der ersten Abgabe höchstens 14 Tage lang änderbar."
+      ? tn(
+          "Die Qualitätsprüfung kann nicht gespeichert werden. Das ist nur für geschlossene Tickets möglich und nach der ersten Abgabe höchstens 14 Tage lang änderbar.",
+          "Die Qualitätsprüfung kann nicht gespeichert werden. Sie ist nur für geschlossene Tickets möglich und nach der ersten Abgabe höchstens 14 Tage lang änderbar.",
+        )
       : "Die Qualitätsprüfungsdaten können für dieses Ticket derzeit nicht verarbeitet werden.";
   }
   if (status === 400) {
-    return "Die Anfrage zur Qualitätsprüfung ist ungültig. Bitte laden Sie die Ticketdetails neu.";
+    return tn(
+      "Die Anfrage zur Qualitätsprüfung ist ungültig. Bitte lade die Ticketdetails neu.",
+      "Die Anfrage zur Qualitätsprüfung ist ungültig. Bitte laden Sie die Ticketdetails neu.",
+    );
   }
   return action === "submit"
-    ? "Die Qualitätsprüfung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut."
-    : "Die Qualitätsprüfungsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
+    ? tn(
+        "Die Qualitätsprüfung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+        "Die Qualitätsprüfung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+      )
+    : tn(
+        "Die Qualitätsprüfungsdaten konnten nicht geladen werden. Bitte versuche es erneut.",
+        "Die Qualitätsprüfungsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+      );
 }
 
 function handoverErrorMessage(
@@ -2662,41 +2717,77 @@ function handoverErrorMessage(
 ): string {
   const status = functionErrorStatus(error);
   if (status === 401) {
-    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+    return tn(
+      "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+      "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+    );
   }
   if (status === 403) {
     return action === "list"
-      ? "Sie sind nicht berechtigt, die Übergaben dieses Tickets zu laden."
-      : "Sie sind nicht berechtigt, Übergaben für dieses Ticket zu bearbeiten.";
+      ? tn(
+          "Du bist nicht berechtigt, die Übergaben dieses Tickets zu laden.",
+          "Sie sind nicht berechtigt, die Übergaben dieses Tickets zu laden.",
+        )
+      : tn(
+          "Du bist nicht berechtigt, Übergaben für dieses Ticket zu bearbeiten.",
+          "Sie sind nicht berechtigt, Übergaben für dieses Ticket zu bearbeiten.",
+        );
   }
   if (status === 404) {
     return action === "list" || action === "create"
       ? "Das Ticket wurde nicht gefunden oder darf nicht eingesehen werden."
-      : "Die Übergabe ist nicht mehr verfügbar. Bitte laden Sie die Liste erneut.";
+      : tn(
+          "Die Übergabe ist nicht mehr verfügbar. Bitte lade die Liste erneut.",
+          "Die Übergabe ist nicht mehr verfügbar. Bitte laden Sie die Liste erneut.",
+        );
   }
   if (status === 409) {
     return action === "acknowledge"
-      ? "Die Übergabe wurde zwischenzeitlich bereits übernommen. Bitte laden Sie die Liste erneut."
+      ? tn(
+          "Die Übergabe wurde zwischenzeitlich bereits übernommen. Bitte lade die Liste erneut.",
+          "Die Übergabe wurde zwischenzeitlich bereits übernommen. Bitte laden Sie die Liste erneut.",
+        )
       : action === "resolve"
-        ? "Die Übergabe wurde zwischenzeitlich bereits als erledigt markiert. Bitte laden Sie die Liste erneut."
-        : "Die Übergabeliste wurde zwischenzeitlich geändert. Bitte laden Sie sie erneut.";
+        ? tn(
+            "Die Übergabe wurde zwischenzeitlich bereits als erledigt markiert. Bitte lade die Liste erneut.",
+            "Die Übergabe wurde zwischenzeitlich bereits als erledigt markiert. Bitte laden Sie die Liste erneut.",
+          )
+        : tn(
+            "Die Übergabeliste wurde zwischenzeitlich geändert. Bitte lade sie erneut.",
+            "Die Übergabeliste wurde zwischenzeitlich geändert. Bitte laden Sie sie erneut.",
+          );
   }
   if (status === 422) {
     return action === "create"
-      ? "Die Übergabe konnte nicht gespeichert werden. Bitte prüfen Sie Zusammenfassung, nächste Schritte und Risikostufe."
-      : "Die Übergabe konnte nicht aktualisiert werden. Bitte laden Sie die Liste erneut.";
+      ? tn(
+          "Die Übergabe konnte nicht gespeichert werden. Bitte prüfe Zusammenfassung, nächste Schritte und Risikostufe.",
+          "Die Übergabe konnte nicht gespeichert werden. Bitte prüfen Sie Zusammenfassung, nächste Schritte und Risikostufe.",
+        )
+      : tn(
+          "Die Übergabe konnte nicht aktualisiert werden. Bitte lade die Liste erneut.",
+          "Die Übergabe konnte nicht aktualisiert werden. Bitte laden Sie die Liste erneut.",
+        );
   }
   const messages: Record<
     "list" | Exclude<PendingHandoverAction, null>,
     string
   > = {
-    list: "Die Übergaben konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
-    create:
+    list: tn(
+      "Die Übergaben konnten nicht geladen werden. Bitte versuche es erneut.",
+      "Die Übergaben konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    ),
+    create: tn(
+      "Die Übergabe konnte nicht gespeichert werden. Bitte versuche es erneut.",
       "Die Übergabe konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
-    acknowledge:
+    ),
+    acknowledge: tn(
+      "Die Übergabe konnte nicht übernommen werden. Bitte versuche es erneut.",
       "Die Übergabe konnte nicht übernommen werden. Bitte versuchen Sie es erneut.",
-    resolve:
+    ),
+    resolve: tn(
+      "Die Übergabe konnte nicht als erledigt markiert werden. Bitte versuche es erneut.",
       "Die Übergabe konnte nicht als erledigt markiert werden. Bitte versuchen Sie es erneut.",
+    ),
   };
   return messages[action];
 }
@@ -2707,26 +2798,46 @@ function affectedItemsErrorMessage(
 ): string {
   const status = functionErrorStatus(error);
   if (status === 401) {
-    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+    return tn(
+      "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+      "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+    );
   }
   if (status === 403) {
     return action === "list"
-      ? "Sie sind nicht berechtigt, die betroffenen Elemente dieses Tickets zu laden."
-      : "Sie sind nicht berechtigt, betroffene Elemente für dieses Ticket zu bearbeiten.";
+      ? tn(
+          "Du bist nicht berechtigt, die betroffenen Elemente dieses Tickets zu laden.",
+          "Sie sind nicht berechtigt, die betroffenen Elemente dieses Tickets zu laden.",
+        )
+      : tn(
+          "Du bist nicht berechtigt, betroffene Elemente für dieses Ticket zu bearbeiten.",
+          "Sie sind nicht berechtigt, betroffene Elemente für dieses Ticket zu bearbeiten.",
+        );
   }
   if (status === 404) {
     return action === "unlink"
-      ? "Die Verknüpfung ist nicht mehr vorhanden. Bitte laden Sie die Liste erneut."
+      ? tn(
+          "Die Verknüpfung ist nicht mehr vorhanden. Bitte lade die Liste erneut.",
+          "Die Verknüpfung ist nicht mehr vorhanden. Bitte laden Sie die Liste erneut.",
+        )
       : "Das Ticket oder der ausgewählte Katalogeintrag ist nicht mehr verfügbar.";
   }
   if (status === 409 && action === "link") {
     return "Dieser Katalogeintrag ist bereits mit dem Ticket verknüpft.";
   }
   const messages: Record<"list" | "link" | "unlink", string> = {
-    list: "Die betroffenen Elemente konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
-    link: "Der Katalogeintrag konnte nicht mit dem Ticket verknüpft werden. Bitte versuchen Sie es erneut.",
-    unlink:
+    list: tn(
+      "Die betroffenen Elemente konnten nicht geladen werden. Bitte versuche es erneut.",
+      "Die betroffenen Elemente konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    ),
+    link: tn(
+      "Der Katalogeintrag konnte nicht mit dem Ticket verknüpft werden. Bitte versuche es erneut.",
+      "Der Katalogeintrag konnte nicht mit dem Ticket verknüpft werden. Bitte versuchen Sie es erneut.",
+    ),
+    unlink: tn(
+      "Die Verknüpfung konnte nicht entfernt werden. Bitte versuche es erneut.",
       "Die Verknüpfung konnte nicht entfernt werden. Bitte versuchen Sie es erneut.",
+    ),
   };
   return messages[action];
 }
@@ -2738,13 +2849,22 @@ function attachmentErrorMessage(
     Exclude<PendingAttachmentAction, null> | "list",
     string
   > = {
-    list: "Die Anhänge konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
-    upload:
+    list: tn(
+      "Die Anhänge konnten nicht geladen werden. Bitte versuche es erneut.",
+      "Die Anhänge konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    ),
+    upload: tn(
+      "Der Anhang konnte nicht hochgeladen werden. Bitte versuche es erneut.",
       "Der Anhang konnte nicht hochgeladen werden. Bitte versuchen Sie es erneut.",
-    download:
+    ),
+    download: tn(
+      "Der Anhang konnte nicht heruntergeladen werden. Bitte versuche es erneut.",
       "Der Anhang konnte nicht heruntergeladen werden. Bitte versuchen Sie es erneut.",
-    delete:
+    ),
+    delete: tn(
+      "Der Anhang konnte nicht gelöscht werden. Bitte versuche es erneut.",
       "Der Anhang konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+    ),
   };
   return messages[action];
 }
@@ -3003,54 +3123,94 @@ async function knowledgeErrorMessage(
   if (backendMessage) return backendMessage;
   const status = functionErrorStatus(error);
   if (status === 401)
-    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+    return tn(
+      "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+      "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+    );
   if (status === 403)
     return action === "createAndAttach"
-      ? "Sie sind nicht berechtigt, Wissensartikel zu erstellen. Dafür ist zusätzlich die Berechtigung zur Wissensverwaltung erforderlich."
-      : "Sie sind nicht berechtigt, diesen Wissensvorgang auszuführen.";
+      ? tn(
+          "Du bist nicht berechtigt, Wissensartikel zu erstellen. Dafür ist zusätzlich die Berechtigung zur Wissensverwaltung erforderlich.",
+          "Sie sind nicht berechtigt, Wissensartikel zu erstellen. Dafür ist zusätzlich die Berechtigung zur Wissensverwaltung erforderlich.",
+        )
+      : tn(
+          "Du bist nicht berechtigt, diesen Wissensvorgang auszuführen.",
+          "Sie sind nicht berechtigt, diesen Wissensvorgang auszuführen.",
+        );
   if (status === 404)
     return "Das Ticket oder der Artikel ist nicht mehr verfügbar oder darf nicht eingesehen werden.";
   if (status === 409)
-    return "Der Artikel ist bereits mit einer anderen Sichtbarkeit angehängt. Bitte prüfen Sie die aktualisierte Liste.";
+    return tn(
+      "Der Artikel ist bereits mit einer anderen Sichtbarkeit angehängt. Bitte prüfe die aktualisierte Liste.",
+      "Der Artikel ist bereits mit einer anderen Sichtbarkeit angehängt. Bitte prüfen Sie die aktualisierte Liste.",
+    );
   if (status === 413)
-    return "Der Artikeltext ist zu groß. Bitte kürzen Sie den Text.";
+    return tn(
+      "Der Artikeltext ist zu groß. Bitte kürze den Text.",
+      "Der Artikeltext ist zu groß. Bitte kürzen Sie den Text.",
+    );
   if (status === 422)
     return action === "sendToRequester"
-      ? "Nur veröffentlichte externe Artikel mit externer Verknüpfung und höchstens 50'000 Zeichen können versendet werden. Bitte prüfen Sie die aktualisierte Liste."
-      : "Die Wissensanfrage ist ungültig. Bitte prüfen Sie Text, Sichtbarkeit und Artikelauswahl.";
+      ? tn(
+          "Nur veröffentlichte externe Artikel mit externer Verknüpfung und höchstens 50'000 Zeichen können versendet werden. Bitte prüfe die aktualisierte Liste.",
+          "Nur veröffentlichte externe Artikel mit externer Verknüpfung und höchstens 50'000 Zeichen können versendet werden. Bitte prüfen Sie die aktualisierte Liste.",
+        )
+      : tn(
+          "Die Wissensanfrage ist ungültig. Bitte prüfe Text, Sichtbarkeit und Artikelauswahl.",
+          "Die Wissensanfrage ist ungültig. Bitte prüfen Sie Text, Sichtbarkeit und Artikelauswahl.",
+        );
   const messages: Record<TicketKnowledgeAction["type"], string> = {
-    list: "Die angehängten Wissensartikel konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
-    searchArticles:
+    list: tn(
+      "Die angehängten Wissensartikel konnten nicht geladen werden. Bitte versuche es erneut.",
+      "Die angehängten Wissensartikel konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    ),
+    searchArticles: tn(
+      "Die Artikelsuche ist fehlgeschlagen. Bitte versuche es erneut.",
       "Die Artikelsuche ist fehlgeschlagen. Bitte versuchen Sie es erneut.",
-    attach:
+    ),
+    attach: tn(
+      "Der Artikel konnte nicht angehängt werden. Bitte prüfe die Liste und versuche es erneut.",
       "Der Artikel konnte nicht angehängt werden. Bitte prüfen Sie die Liste und versuchen Sie es erneut.",
-    detach:
+    ),
+    detach: tn(
+      "Die Verknüpfung konnte nicht entfernt werden. Bitte prüfe die Liste und versuche es erneut.",
       "Die Verknüpfung konnte nicht entfernt werden. Bitte prüfen Sie die Liste und versuchen Sie es erneut.",
-    createAndAttach:
+    ),
+    createAndAttach: tn(
+      "Der Artikel konnte nicht bestätigt werden. Bitte prüfe vor einem erneuten Erstellen die aktualisierte Liste.",
       "Der Artikel konnte nicht bestätigt werden. Bitte prüfen Sie vor einem erneuten Erstellen die aktualisierte Liste.",
-    sendToRequester:
+    ),
+    sendToRequester: tn(
+      "Der Versand konnte nicht bestätigt werden. Bitte prüfe den Versandstatus, bevor du es erneut versuchst.",
       "Der Versand konnte nicht bestätigt werden. Bitte prüfen Sie den Versandstatus, bevor Sie es erneut versuchen.",
+    ),
   };
   // Database details are never rendered; only the curated error.message above.
   return messages[action];
 }
 
-const AI_TICKET_DRAFT_ERRORS: Record<string, string> = {
-  article_manage_denied:
+const aiTicketDraftErrors = (): Record<string, string> => ({
+  article_manage_denied: tn(
+    "Für einen Wissensartikel fehlt dir die Berechtigung zur Wissensverwaltung.",
     "Für einen Wissensartikel fehlt Ihnen die Berechtigung zur Wissensverwaltung.",
+  ),
   ai_feature_disabled:
     "Die KI-Unterstützung ist für diesen Mandanten nicht aktiviert.",
   ai_provider_not_approved:
     "Die KI-Unterstützung ist für diesen Mandanten noch nicht freigegeben.",
   ai_purpose_not_approved:
     "Die KI-Unterstützung für Wissensartikel ist noch nicht freigegeben.",
-  ai_budget_exceeded:
+  ai_budget_exceeded: tn(
+    "Das stündliche KI-Kontingent ist erreicht. Bitte versuche es später erneut.",
     "Das stündliche KI-Kontingent ist erreicht. Bitte versuchen Sie es später erneut.",
-  ai_provider_rate_limited:
+  ),
+  ai_provider_rate_limited: tn(
+    "Der KI-Dienst ist gerade ausgelastet. Bitte versuche es in einer Minute erneut.",
     "Der KI-Dienst ist gerade ausgelastet. Bitte versuchen Sie es in einer Minute erneut.",
+  ),
   ai_provider_not_configured: "Die KI-Anbindung ist noch nicht eingerichtet.",
   ticket_not_found: "Das Ticket ist nicht mehr verfügbar.",
-};
+});
 
 async function requestAiTicketDraft(
   tenantId: string,
@@ -3074,9 +3234,12 @@ async function requestAiTicketDraft(
       }
     }
     throw new Error(
-      AI_TICKET_DRAFT_ERRORS[code] ??
+      aiTicketDraftErrors()[code] ??
         (await knowledgeErrorBackendMessage(error)) ??
-        "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+        tn(
+          "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuche es erneut.",
+          "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+        ),
     );
   }
   const result = (data as { data?: unknown } | null)?.data;
@@ -3283,7 +3446,10 @@ function KnowledgeSection({
     if (!canUpdate || [...text].length < 2) return;
     if (!isKnowledgeText(text, 2, 120)) {
       setSearchError(
-        "Bitte geben Sie zwischen 2 und 120 gültige Zeichen für die Suche ein.",
+        tn(
+          "Bitte gib zwischen 2 und 120 gültige Zeichen für die Suche ein.",
+          "Bitte geben Sie zwischen 2 und 120 gültige Zeichen für die Suche ein.",
+        ),
       );
       return;
     }
@@ -3344,7 +3510,12 @@ function KnowledgeSection({
   function validDraft(send: boolean): boolean {
     if (!canUpdate || inFlight.current) return false;
     if (visibility === "internal" && !canUseInternalNotes) {
-      setActionError("Sie sind nicht berechtigt, interne Artikel anzuhängen.");
+      setActionError(
+        tn(
+          "Du bist nicht berechtigt, interne Artikel anzuhängen.",
+          "Sie sind nicht berechtigt, interne Artikel anzuhängen.",
+        ),
+      );
       return false;
     }
     if (!isKnowledgeText(title.trim(), 3, 240)) {
@@ -3777,9 +3948,10 @@ function KnowledgeSection({
         <div className="ticket-knowledge__block">
           <h3>Wissensartikel aus diesem Ticket erstellen</h3>
           <p className="data-caption">
-            Der Artikel wird als Entwurf in der Wissensdatenbank gespeichert.
-            Sobald Sie ihn dort geprüft und veröffentlicht haben, erscheint er
-            hier beim Ticket. Bitte keine Namen oder Kontaktdaten übernehmen.
+            {tn(
+              "Der Artikel wird als Entwurf in der Wissensdatenbank gespeichert. Sobald du ihn dort geprüft und veröffentlicht hast, erscheint er hier beim Ticket. Bitte keine Namen oder Kontaktdaten übernehmen.",
+              "Der Artikel wird als Entwurf in der Wissensdatenbank gespeichert. Sobald Sie ihn dort geprüft und veröffentlicht haben, erscheint er hier beim Ticket. Bitte keine Namen oder Kontaktdaten übernehmen.",
+            )}
           </p>
           <div className="ticket-knowledge__ai">
             <button
@@ -4294,9 +4466,12 @@ export function TicketDetail({
   const commentComposer = requesterView
     ? {
         ...ticketCommentComposerCopy("external"),
-        bodyLabel: "Ihre Nachricht",
+        bodyLabel: tn("Deine Nachricht", "Ihre Nachricht"),
         placeholder: "Nachricht an den Support schreiben …",
-        hint: "Der Support sieht Ihre Nachricht im Ticket und antwortet Ihnen hier.",
+        hint: tn(
+          "Der Support sieht deine Nachricht im Ticket und antwortet dir hier.",
+          "Der Support sieht Ihre Nachricht im Ticket und antwortet Ihnen hier.",
+        ),
         submitLabel: "Nachricht senden",
       }
     : ticketCommentComposerCopy(commentVisibility);
@@ -4520,7 +4695,10 @@ export function TicketDetail({
         if (requestId !== ticketCategoriesRequestSequence.current) return;
         setTicketCategories([]);
         setTicketCategoryError(
-          "Die Kategorien konnten nicht geladen werden. Bitte aktualisieren Sie das Ticket.",
+          tn(
+            "Die Kategorien konnten nicht geladen werden. Bitte aktualisiere das Ticket.",
+            "Die Kategorien konnten nicht geladen werden. Bitte aktualisieren Sie das Ticket.",
+          ),
         );
       } finally {
         if (requestId === ticketCategoriesRequestSequence.current) {
@@ -5619,7 +5797,10 @@ export function TicketDetail({
     }
     if (feedbackScore === null) {
       setFeedbackError(
-        "Bitte wählen Sie eine Bewertung von 1 bis 5 Sternen aus.",
+        tn(
+          "Bitte wähle eine Bewertung von 1 bis 5 Sternen aus.",
+          "Bitte wählen Sie eine Bewertung von 1 bis 5 Sternen aus.",
+        ),
       );
       return;
     }
@@ -5647,7 +5828,12 @@ export function TicketDetail({
       await invokeTicketFeedbackAction(action);
       onChanged();
       await loadFeedback();
-      setFeedbackSuccess("Ihre Bewertung wurde gespeichert.");
+      setFeedbackSuccess(
+        tn(
+          "Deine Bewertung wurde gespeichert.",
+          "Ihre Bewertung wurde gespeichert.",
+        ),
+      );
     } catch (nextError) {
       setFeedbackError(feedbackErrorMessage(nextError, "submit"));
     } finally {
@@ -5665,7 +5851,10 @@ export function TicketDetail({
     }
     if (!isTicketQualityScore(qualityScore)) {
       setQualityError(
-        "Bitte wählen Sie eine Qualitätsbewertung von 1 bis 5 Sternen aus.",
+        tn(
+          "Bitte wähle eine Qualitätsbewertung von 1 bis 5 Sternen aus.",
+          "Bitte wählen Sie eine Qualitätsbewertung von 1 bis 5 Sternen aus.",
+        ),
       );
       return;
     }
@@ -6005,8 +6194,10 @@ export function TicketDetail({
       tone: "success",
       text:
         queuedImages.length === 1
-          ? "Datei vorgemerkt. Sie wird erst beim Senden der Nachricht hochgeladen."
-          : `${queuedImages.length} Dateien vorgemerkt. Sie werden erst beim Senden der Nachricht hochgeladen.`,
+          ? // formality-ok: «Sie» ist hier die Datei, keine Anrede
+            "Datei vorgemerkt. Sie wird erst beim Senden der Nachricht hochgeladen."
+          : // formality-ok: «Sie» sind hier die Dateien, keine Anrede
+            `${queuedImages.length} Dateien vorgemerkt. Sie werden erst beim Senden der Nachricht hochgeladen.`,
     });
     if (commentImageInputRef.current) commentImageInputRef.current.value = "";
   }
@@ -6184,7 +6375,10 @@ export function TicketDetail({
         functionErrorStatus(nextError) === 422
       ) {
         setError(
-          "Das Team wurde nicht geändert, weil die zugewiesene Person diesem Team nicht angehört. Fügen Sie die Person zuerst zum Team hinzu oder heben Sie die Zuweisung bewusst auf.",
+          tn(
+            "Das Team wurde nicht geändert, weil die zugewiesene Person diesem Team nicht angehört. Füge die Person zuerst zum Team hinzu oder hebe die Zuweisung bewusst auf.",
+            "Das Team wurde nicht geändert, weil die zugewiesene Person diesem Team nicht angehört. Fügen Sie die Person zuerst zum Team hinzu oder heben Sie die Zuweisung bewusst auf.",
+          ),
         );
       } else if (change.statusKey !== undefined) {
         // e.g. required fields missing before closing: show the reason.
@@ -6345,7 +6539,10 @@ export function TicketDetail({
     );
     selectCommentMode("external");
     setCommentNotice(
-      "Die Lösung wurde in die Antwort übernommen. Bitte prüfen und anpassen, bevor Sie sie senden.",
+      tn(
+        "Die Lösung wurde in die Antwort übernommen. Bitte prüfen und anpassen, bevor du sie sendest.",
+        "Die Lösung wurde in die Antwort übernommen. Bitte prüfen und anpassen, bevor Sie sie senden.",
+      ),
     );
   }
 
@@ -6382,7 +6579,12 @@ export function TicketDetail({
       ? mentionedUserIds.filter((userId) => userId !== currentUserId)
       : [];
     if (!body) {
-      setError("Bitte geben Sie einen Kommentar ein.");
+      setError(
+        tn(
+          "Bitte gib einen Kommentar ein.",
+          "Bitte geben Sie einen Kommentar ein.",
+        ),
+      );
       return;
     }
     if (body.length > 50_000) {
@@ -6397,7 +6599,12 @@ export function TicketDetail({
       : undefined;
     if (resolveAfter) {
       if (!detail?.canClose || !resolvedStatus) {
-        setError("Sie dürfen dieses Ticket nicht schliessen.");
+        setError(
+          tn(
+            "Du darfst dieses Ticket nicht schliessen.",
+            "Sie dürfen dieses Ticket nicht schliessen.",
+          ),
+        );
         return;
       }
       const missing = [
@@ -6553,7 +6760,12 @@ export function TicketDetail({
     const minutes = Number(timeEntryMinutes);
     const note = timeEntryNote.trim();
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
-      setError("Bitte geben Sie eine ganze Minutenanzahl von 1 bis 1'440 ein.");
+      setError(
+        tn(
+          "Bitte gib eine ganze Minutenanzahl von 1 bis 1'440 ein.",
+          "Bitte geben Sie eine ganze Minutenanzahl von 1 bis 1'440 ein.",
+        ),
+      );
       return;
     }
     if (note.length > 500) {
@@ -6654,7 +6866,10 @@ export function TicketDetail({
     const description = checklistDescription.trim();
     if (!description) {
       setError(
-        "Bitte geben Sie eine Beschreibung für den Checklistenpunkt ein.",
+        tn(
+          "Bitte gib eine Beschreibung für den Checklistenpunkt ein.",
+          "Bitte geben Sie eine Beschreibung für den Checklistenpunkt ein.",
+        ),
       );
       return;
     }
@@ -6732,7 +6947,12 @@ export function TicketDetail({
       (categoryId !== null && !selectedCategory) ||
       (subcategoryId !== null && !selectedSubcategory)
     ) {
-      setTicketCategoryError("Bitte wählen Sie eine gültige Kategorie aus.");
+      setTicketCategoryError(
+        tn(
+          "Bitte wähle eine gültige Kategorie aus.",
+          "Bitte wählen Sie eine gültige Kategorie aus.",
+        ),
+      );
       return false;
     }
 
@@ -6761,7 +6981,10 @@ export function TicketDetail({
       return true;
     } catch {
       setTicketCategoryError(
-        "Die Kategorie konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+        tn(
+          "Die Kategorie konnte nicht gespeichert werden. Bitte versuche es erneut.",
+          "Die Kategorie konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+        ),
       );
       return false;
     } finally {
@@ -6786,7 +7009,10 @@ export function TicketDetail({
       /[\u0000-\u001f\u007f]/.test(name)
     ) {
       setTicketCategoryError(
-        "Bitte geben Sie einen Namen mit 2 bis 120 gültigen Zeichen ein.",
+        tn(
+          "Bitte gib einen Namen mit 2 bis 120 gültigen Zeichen ein.",
+          "Bitte geben Sie einen Namen mit 2 bis 120 gültigen Zeichen ein.",
+        ),
       );
       return;
     }
@@ -6825,7 +7051,10 @@ export function TicketDetail({
       );
     } catch {
       setTicketCategoryError(
-        "Die Kategorie konnte nicht erstellt werden. Bitte prüfen Sie den Namen und versuchen Sie es erneut.",
+        tn(
+          "Die Kategorie konnte nicht erstellt werden. Bitte prüfe den Namen und versuche es erneut.",
+          "Die Kategorie konnte nicht erstellt werden. Bitte prüfen Sie den Namen und versuchen Sie es erneut.",
+        ),
       );
     } finally {
       setTicketCategorySaving(false);
@@ -6861,7 +7090,12 @@ export function TicketDetail({
       (ticket) => ticket.id === selectedRelatedTicketId,
     );
     if (!relatedTicket) {
-      setError("Bitte wählen Sie ein ähnliches Ticket aus.");
+      setError(
+        tn(
+          "Bitte wähle ein ähnliches Ticket aus.",
+          "Bitte wählen Sie ein ähnliches Ticket aus.",
+        ),
+      );
       return;
     }
 
@@ -6958,7 +7192,10 @@ export function TicketDetail({
     );
     if (!item) {
       setAffectedItemsError(
-        "Bitte wählen Sie einen verfügbaren Katalogeintrag aus.",
+        tn(
+          "Bitte wähle einen verfügbaren Katalogeintrag aus.",
+          "Bitte wählen Sie einen verfügbaren Katalogeintrag aus.",
+        ),
       );
       return;
     }
@@ -7688,7 +7925,10 @@ export function TicketDetail({
                       }`,
                   )
                   .join(" · ")}
-                . Stimmen Sie sich ab, bevor Sie ebenfalls antworten.
+                {tn(
+                  ". Stimm dich ab, bevor du ebenfalls antwortest.",
+                  ". Stimmen Sie sich ab, bevor Sie ebenfalls antworten.",
+                )}
               </p>
             ) : null}
             <form className="ticket-comment-form" onSubmit={saveComment}>
@@ -8077,7 +8317,7 @@ export function TicketDetail({
               >
                 <h3 id="ticket-satisfaction-heading">
                   {requesterView
-                    ? "Wie zufrieden sind Sie?"
+                    ? tn("Wie zufrieden bist du?", "Wie zufrieden sind Sie?")
                     : "Bewertung der anfragenden Person"}
                 </h3>
                 {feedbackLoading ? (

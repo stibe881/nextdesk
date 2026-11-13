@@ -46,6 +46,7 @@ import {
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 type Sheet = "lifecycle" | "maintenance" | null;
 
@@ -149,7 +150,7 @@ export default function InfrastructureDetailScreen() {
         "Status nicht geändert",
         nextError instanceof Error
           ? nextError.message
-          : "Bitte versuche es erneut.",
+          : tn("Bitte versuche es erneut.", "Bitte versuchen Sie es erneut."),
       );
     } finally {
       setSaving(false);
@@ -159,11 +160,11 @@ export default function InfrastructureDetailScreen() {
   async function submitMaintenance() {
     if (!device || saving) return;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(maintenanceDate)) {
-      Alert.alert("Datum prüfen", "Bitte gib das Datum als JJJJ-MM-TT ein.");
+      Alert.alert("Datum prüfen", tn("Bitte gib das Datum als JJJJ-MM-TT ein.", "Bitte geben Sie das Datum als JJJJ-MM-TT ein."));
       return;
     }
     if (!maintenanceNote.trim()) {
-      Alert.alert("Notiz fehlt", "Beschreibe kurz, was gemacht wurde.");
+      Alert.alert("Notiz fehlt", tn("Beschreibe kurz, was gemacht wurde.", "Beschreiben Sie kurz, was gemacht wurde."));
       return;
     }
     setSaving(true);
@@ -183,7 +184,7 @@ export default function InfrastructureDetailScreen() {
         "Wartung nicht gespeichert",
         nextError instanceof Error
           ? nextError.message
-          : "Bitte versuche es erneut.",
+          : tn("Bitte versuche es erneut.", "Bitte versuchen Sie es erneut."),
       );
     } finally {
       setSaving(false);
