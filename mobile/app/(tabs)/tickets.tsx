@@ -5,8 +5,8 @@ import {
   toggleStatus,
 } from "@/lib/ticket-status-filter";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useFocusEffect, useNavigation, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionSheetIOS,
   Alert,
@@ -64,6 +64,8 @@ type TicketScope =
   | "open"
   | "resolved"
   | "unassigned";
+
+const DEFAULT_SCOPE: TicketScope = "mine";
 
 const scopes: { key: TicketScope; label: string }[] = [
   { key: "all", label: "Alle" },
@@ -133,7 +135,8 @@ export default function TicketsScreen() {
   const [tenantName, setTenantName] = useState("");
   const [tenantId, setTenantId] = useState("");
   const [currentUserId, setCurrentUserId] = useState("");
-  const [scope, setScope] = useState<TicketScope>("all");
+  // The list opens on «Meine» (assigned to me or requested by me).
+  const [scope, setScope] = useState<TicketScope>(DEFAULT_SCOPE);
   const [watchedIds, setWatchedIds] = useState<string[]>([]);
   const watchedIdsRef = useRef<string[]>([]);
   const [query, setQuery] = useState("");
@@ -218,6 +221,20 @@ export default function TicketsScreen() {
       setRefreshing(false);
     }
   }, [isOffline, router]);
+
+  const navigation = useNavigation();
+  useEffect(() => {
+    // Tapping «Tickets» in the tab bar from another tab starts again on
+    // «Meine». Returning from a ticket keeps the chosen filter, and so does
+    // tapping the tab while the list is already shown.
+    return navigation.addListener("tabPress" as never, () => {
+      if (navigation.isFocused()) return;
+      setScope(DEFAULT_SCOPE);
+      setActiveViewId(null);
+      setStatusFilter([]);
+      setQuery("");
+    });
+  }, [navigation]);
 
   useFocusEffect(
     useCallback(() => {
@@ -441,7 +458,7 @@ export default function TicketsScreen() {
   function applySavedView(view: SavedTicketView) {
     if (activeViewId === view.id) {
       setActiveViewId(null);
-      setScope("all");
+      setScope(DEFAULT_SCOPE);
       setQuery("");
       setStatusFilter([]);
       return;
@@ -842,7 +859,9 @@ export default function TicketsScreen() {
                 ? "Alle Tickets"
                 : scope === "watched"
                   ? "Favorisierte Tickets"
-                  : "Gefilterte Tickets"}
+                  : scope === "mine"
+                    ? "Meine Tickets"
+                    : "Gefilterte Tickets"}
             </Text>
             {!checkingFeatures &&
             !reducedMotion &&
