@@ -133,10 +133,12 @@ export const teamsApi = {
       query,
     }).then((result) => result.people),
   list: (tenantId: string) =>
-    call<{ requests: TeamRequestSummary[] }>({
+    call<{ requests?: TeamRequestSummary[] }>({
       type: "listMine",
       tenantId,
-    }).then((result) => result.requests),
+    }).then((result) =>
+      Array.isArray(result?.requests) ? result.requests : [],
+    ),
   create: (tenantId: string, draft: TeamDraft) =>
     call<{ id: string; status: TeamStatus }>({
       type: "createRequest",

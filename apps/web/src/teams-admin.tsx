@@ -88,7 +88,7 @@ export function TeamsAdmin({
 
   const load = useCallback(async () => {
     const result = await teamsAdminApi.list(tenantId);
-    setTeams(result.teams);
+    setTeams(Array.isArray(result.teams) ? result.teams : []);
     setSyncedAt(result.syncedAt);
     return result;
   }, [tenantId]);
