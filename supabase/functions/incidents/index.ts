@@ -241,6 +241,34 @@ async function requireAgent(client: Client, tenantId: string): Promise<void> {
   }
 }
 
+/**
+ * Of the given agents, those with access to the incident module: members of
+ * the alarm team of the PRTG settings (all agents when no team is set), as
+ * in can_work_incidents.
+ */
+async function incidentModuleAgents(
+  admin: Client,
+  tenantId: string,
+  agentIds: string[],
+): Promise<string[]> {
+  if (!agentIds.length) return [];
+  const integration = await admin.from("monitoring_integrations")
+    .select("team_id").eq("tenant_id", tenantId)
+    .not("team_id", "is", null).limit(1).maybeSingle();
+  if (integration.error) {
+    throw new HttpError(503, "agents_unavailable", "Die Agenten konnten nicht geladen werden.");
+  }
+  const teamId = text((integration.data as Row | null)?.team_id);
+  if (!teamId) return agentIds;
+  const members = await admin.from("team_memberships")
+    .select("user_id").eq("team_id", teamId).in("user_id", agentIds);
+  if (members.error) {
+    throw new HttpError(503, "agents_unavailable", "Die Agenten konnten nicht geladen werden.");
+  }
+  const allowed = new Set(((members.data ?? []) as Row[]).map((row) => String(row.user_id)));
+  return agentIds.filter((id) => allowed.has(id));
+}
+
 async function hasTenantPermission(client: Client, tenantId: string, code: string): Promise<boolean> {
   const { data, error } = await client.rpc("has_tenant_permission", {
     p_tenant_id: tenantId,
@@ -536,9 +564,10 @@ async function detail(admin: Client, client: Client, tenantId: string, incidentI
     ]);
   const eventRows = (events.data ?? []) as Row[];
   const childRows = (children.data ?? []) as Row[];
-  // Agents to assign: active members with agent rights.
+  // Agents to assign: active members with agent rights and access to the
+  // incident module.
   const memberIds = ((agentsResult.data ?? []) as Row[]).map((row) => String(row.user_id));
-  const agentIds: string[] = [];
+  let agentIds: string[] = [];
   for (let start = 0; start < memberIds.length; start += 25) {
     const chunk = memberIds.slice(start, start + 25);
     const checks = await Promise.all(chunk.map((userId) =>
@@ -548,6 +577,7 @@ async function detail(admin: Client, client: Client, tenantId: string, incidentI
       if (checks[index]?.data === true) agentIds.push(userId);
     });
   }
+  agentIds = await incidentModuleAgents(admin, tenantId, agentIds);
   const people = await names(admin, [
     text(incident.acknowledged_by),
     text(incident.assigned_agent_id),
@@ -1131,7 +1161,10 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
           p_tenant_id: action.tenantId,
           p_user_id: action.agentId,
         });
-        if (check.data !== true) {
+        if (
+          check.data !== true ||
+          !(await incidentModuleAgents(admin, action.tenantId, [action.agentId])).length
+        ) {
           throw new HttpError(422, "agent_invalid", "Diese Person kann keine Störungen bearbeiten.");
         }
       }

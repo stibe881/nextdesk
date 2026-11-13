@@ -1099,59 +1099,56 @@ function IncidentView({
             </div>
 
             <div className="incident__side">
-              {detail.source !== "external" ? (
-                <article className="incident-card">
-                  <div className="incident-card__head">
-                    <h3>Zuständig</h3>
-                    {currentUserId &&
-                    detail.state !== "closed" &&
-                    detail.assignedAgentId !== currentUserId &&
-                    detail.agents.some(
-                      (agent) => agent.id === currentUserId,
-                    ) ? (
-                      <button
-                        className="text-button"
-                        disabled={busy !== null}
-                        onClick={() =>
-                          void run("assign", {
-                            type: "assign",
-                            agentId: currentUserId,
-                          })
-                        }
-                        type="button"
-                      >
-                        Mir zuweisen
-                      </button>
-                    ) : null}
-                  </div>
-                  <label className="incident-field">
-                    <span className="sr-only">Zuständige Person</span>
-                    <select
-                      disabled={busy !== null || detail.state === "closed"}
-                      onChange={(event) =>
+              {/* Also for provider issues: someone follows up on them. */}
+              <article className="incident-card">
+                <div className="incident-card__head">
+                  <h3>Zuständig</h3>
+                  {currentUserId &&
+                  detail.state !== "closed" &&
+                  detail.assignedAgentId !== currentUserId &&
+                  detail.agents.some((agent) => agent.id === currentUserId) ? (
+                    <button
+                      className="text-button"
+                      disabled={busy !== null}
+                      onClick={() =>
                         void run("assign", {
                           type: "assign",
-                          agentId: event.target.value || null,
+                          agentId: currentUserId,
                         })
                       }
-                      value={detail.assignedAgentId ?? ""}
+                      type="button"
                     >
-                      <option value="">Nicht zugewiesen</option>
-                      {detail.agents.map((agent) => (
-                        <option key={agent.id} value={agent.id}>
-                          {agent.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {detail.acknowledgedAt ? (
-                    <p className="incident-muted">
-                      Bestätigt von {detail.acknowledgedBy ?? "–"},{" "}
-                      {dateTime(detail.acknowledgedAt)}
-                    </p>
+                      Mir zuweisen
+                    </button>
                   ) : null}
-                </article>
-              ) : null}
+                </div>
+                <label className="incident-field">
+                  <span className="sr-only">Zuständige Person</span>
+                  <select
+                    disabled={busy !== null || detail.state === "closed"}
+                    onChange={(event) =>
+                      void run("assign", {
+                        type: "assign",
+                        agentId: event.target.value || null,
+                      })
+                    }
+                    value={detail.assignedAgentId ?? ""}
+                  >
+                    <option value="">Nicht zugewiesen</option>
+                    {detail.agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {detail.acknowledgedAt ? (
+                  <p className="incident-muted">
+                    Bestätigt von {detail.acknowledgedBy ?? "–"},{" "}
+                    {dateTime(detail.acknowledgedAt)}
+                  </p>
+                ) : null}
+              </article>
 
               {detail.device ? (
                 <article className="incident-card">

@@ -306,8 +306,9 @@ behoben, schliesst sie sich automatisch. **Statusseite des Anbieters öffnen**
 führt zu den Details beim Anbieter. Neue Texte des Anbieters erscheinen im
 Verlauf als «Update vom Anbieter»; das Team erhält dazu eine Benachrichtigung
 («Update: Anbieter» mit dem neuen Text) und eine weitere, sobald der Anbieter
-die Störung als behoben meldet («Behoben: Anbieter»). Externe Störungen müssen weder bestätigt
-noch zugewiesen werden; von Hand abschliessen ist nur nötig, wenn die Meldung
+die Störung als behoben meldet («Behoben: Anbieter»). Externe Störungen müssen nicht bestätigt
+werden; unter **Zuständig** kannst du sie aber einer Person zuweisen, die sie
+verfolgt. Von Hand abschliessen ist nur nötig, wenn die Meldung
 beim Anbieter hängen bleibt.
 
 - **Eine Störung pro Gerät**: Weitere Sensoren desselben Geräts (z. B. Ping
@@ -349,7 +350,9 @@ Ein Klick öffnet die Störung:
 
 1. **Bestätigen: ich kümmere mich** stoppt die erneute Alarmierung und weist
    dir die Störung zu, falls noch niemand zuständig ist. Unter
-   **Zuständig** änderst du die Person (oder **Mir zuweisen**).
+   **Zuständig** änderst du die Person (oder **Mir zuweisen**). Zur Auswahl
+   stehen alle Agenten mit Zugriff auf das Modul Störungen, also die
+   Mitglieder des Alarmierungsteams (ohne festgelegtes Team alle Agenten).
 2. Der **Verlauf** zeigt alle PRTG-Meldungen und was in nextDesk geschah
    (geöffnet, alarmiert, bestätigt, Notizen). Mit **Notiz zum Verlauf
    hinzufügen** hältst du fest, was du geprüft oder veranlasst hast.
