@@ -306,7 +306,9 @@ Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
   Apple App Store, Google Play Store und Init7. Hake die gewünschten
   Quellen an und **speichere** sie; **Jetzt prüfen** liest sie sofort. Eine
   gemeldete Störung erscheint unter **Störungen** als «Extern» und
-  benachrichtigt das Team für die Alarmierung, ebenso jedes Update des Anbieters und die Behebung. Pro Quelle siehst du,
+  benachrichtigt das Team für die Alarmierung, ebenso jedes Update des Anbieters und die Behebung. Titel und Texte
+  der Anbieter erscheinen als kurze deutsche Fassung; dafür nutzt nextDesk die
+  konfigurierte KI (ANTHROPIC_API_KEY), sonst bleibt der Originaltext. Pro Quelle siehst du,
   wann zuletzt geprüft wurde und ob ein Fehler auftrat. WWZ und Swisscom
   bieten keine maschinenlesbare Quelle; überwache diese Anschlüsse mit
   einem Ping- oder HTTP-Sensor in PRTG.

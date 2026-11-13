@@ -22625,6 +22625,7 @@ html body form:has(> .fk-layout) {
   width: auto;
 }
 
+<<<<<<< HEAD
 .article-editor__import {
   display: grid;
   gap: 8px;
@@ -22636,4 +22637,18 @@ html body form:has(> .fk-layout) {
 
 .article-editor__import button {
   justify-self: start;
+=======
+/* Navigation badges of «Sicherheitsfälle»/«Störungen»: red while something
+   needs action (unassigned / unacknowledged), grey when merely open. */
+.nav-item__badge--urgent,
+.navigation-cluster__badge--urgent {
+  color: #fff;
+  background: var(--danger, #c0262d);
+}
+
+.nav-item__badge--muted,
+.navigation-cluster__badge--muted {
+  color: var(--text, var(--ink));
+  background: var(--surface-muted, color-mix(in srgb, var(--text, #334) 14%, transparent));
+>>>>>>> origin/main
 }

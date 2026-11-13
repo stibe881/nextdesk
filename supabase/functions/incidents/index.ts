@@ -241,6 +241,34 @@ async function requireAgent(client: Client, tenantId: string): Promise<void> {
   }
 }
 
+/**
+ * Of the given agents, those with access to the incident module: members of
+ * the alarm team of the PRTG settings (all agents when no team is set), as
+ * in can_work_incidents.
+ */
+async function incidentModuleAgents(
+  admin: Client,
+  tenantId: string,
+  agentIds: string[],
+): Promise<string[]> {
+  if (!agentIds.length) return [];
+  const integration = await admin.from("monitoring_integrations")
+    .select("team_id").eq("tenant_id", tenantId)
+    .not("team_id", "is", null).limit(1).maybeSingle();
+  if (integration.error) {
+    throw new HttpError(503, "agents_unavailable", "Die Agenten konnten nicht geladen werden.");
+  }
+  const teamId = text((integration.data as Row | null)?.team_id);
+  if (!teamId) return agentIds;
+  const members = await admin.from("team_memberships")
+    .select("user_id").eq("team_id", teamId).in("user_id", agentIds);
+  if (members.error) {
+    throw new HttpError(503, "agents_unavailable", "Die Agenten konnten nicht geladen werden.");
+  }
+  const allowed = new Set(((members.data ?? []) as Row[]).map((row) => String(row.user_id)));
+  return agentIds.filter((id) => allowed.has(id));
+}
+
 async function hasTenantPermission(client: Client, tenantId: string, code: string): Promise<boolean> {
   const { data, error } = await client.rpc("has_tenant_permission", {
     p_tenant_id: tenantId,
@@ -393,6 +421,24 @@ async function list(admin: Client, client: Client, action: Extract<Action, { typ
   ));
   const devices = await deviceInfo(admin, action.tenantId, all.map((row) => text(row.asset_id))
     .filter((id): id is string => id !== null));
+  // Latest public message on the status page per incident.
+  const notices = listedIds.length
+    ? await admin.from("service_incident_notices")
+      .select("monitoring_incident_id, status, updated_at")
+      .eq("tenant_id", action.tenantId).eq("public_enabled", true)
+      .in("monitoring_incident_id", listedIds)
+      .order("updated_at", { ascending: false }).limit(1000)
+    : { data: [] };
+  const statusPage = new Map<string, { state: string; updatedAt: string }>();
+  for (const notice of (notices.data ?? []) as Row[]) {
+    const incidentId = text(notice.monitoring_incident_id);
+    if (incidentId && !statusPage.has(incidentId)) {
+      statusPage.set(incidentId, {
+        state: String(notice.status),
+        updatedAt: String(notice.updated_at),
+      });
+    }
+  }
   const byParent = new Map<string, ReturnType<typeof summary>[]>();
   for (const row of childRows) {
     const parentId = String(row.parent_incident_id);
@@ -400,6 +446,7 @@ async function list(admin: Client, client: Client, action: Extract<Action, { typ
   }
   const incidents = rows.map((row) => ({
     ...summary(row, people, services, devices, now),
+    statusPage: statusPage.get(String(row.id)) ?? null,
     children: byParent.get(String(row.id)) ?? [],
   }));
   if (activeOnly) incidents.sort(compareIncidents);
@@ -536,9 +583,10 @@ async function detail(admin: Client, client: Client, tenantId: string, incidentI
     ]);
   const eventRows = (events.data ?? []) as Row[];
   const childRows = (children.data ?? []) as Row[];
-  // Agents to assign: active members with agent rights.
+  // Agents to assign: active members with agent rights and access to the
+  // incident module.
   const memberIds = ((agentsResult.data ?? []) as Row[]).map((row) => String(row.user_id));
-  const agentIds: string[] = [];
+  let agentIds: string[] = [];
   for (let start = 0; start < memberIds.length; start += 25) {
     const chunk = memberIds.slice(start, start + 25);
     const checks = await Promise.all(chunk.map((userId) =>
@@ -548,6 +596,7 @@ async function detail(admin: Client, client: Client, tenantId: string, incidentI
       if (checks[index]?.data === true) agentIds.push(userId);
     });
   }
+  agentIds = await incidentModuleAgents(admin, tenantId, agentIds);
   const people = await names(admin, [
     text(incident.acknowledged_by),
     text(incident.assigned_agent_id),
@@ -1114,32 +1163,50 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
       await requireAgent(client, action.tenantId);
       const incident = await loadIncident(admin, action.tenantId, action.incidentId);
       if (!incident.acknowledged_at) {
+        // Whoever confirms takes the incident over.
+        const takesOver = incident.assigned_agent_id !== actorId;
         await admin.from("monitoring_incidents").update({
           acknowledged_at: new Date().toISOString(),
           acknowledged_by: actorId,
-          ...(incident.assigned_agent_id ? {} : { assigned_agent_id: actorId }),
+          assigned_agent_id: actorId,
         }).eq("id", action.incidentId);
         await addEvent(admin, action.tenantId, action.incidentId, "acknowledged", actorId, "Bestätigt: wird bearbeitet.");
+        if (takesOver) {
+          const people = await names(admin, [actorId]);
+          await addEvent(admin, action.tenantId, action.incidentId, "assigned", actorId,
+            `Zugewiesen an ${people.get(actorId) ?? "Agent"}.`);
+        }
       }
       return await detail(admin, client, action.tenantId, action.incidentId);
     }
     case "assign": {
       await requireAgent(client, action.tenantId);
-      await loadIncident(admin, action.tenantId, action.incidentId);
+      const current = await loadIncident(admin, action.tenantId, action.incidentId);
       if (action.agentId) {
         const check = await admin.rpc("user_is_ticket_agent", {
           p_tenant_id: action.tenantId,
           p_user_id: action.agentId,
         });
-        if (check.data !== true) {
+        if (
+          check.data !== true ||
+          !(await incidentModuleAgents(admin, action.tenantId, [action.agentId])).length
+        ) {
           throw new HttpError(422, "agent_invalid", "Diese Person kann keine Störungen bearbeiten.");
         }
       }
-      await admin.from("monitoring_incidents").update({ assigned_agent_id: action.agentId })
-        .eq("id", action.incidentId);
+      // Assigning someone confirms the incident (stops the re-alerting).
+      const confirms = Boolean(action.agentId) && !current.acknowledged_at;
+      await admin.from("monitoring_incidents").update({
+        assigned_agent_id: action.agentId,
+        ...(confirms ? { acknowledged_at: new Date().toISOString(), acknowledged_by: actorId } : {}),
+      }).eq("id", action.incidentId);
       const people = await names(admin, [action.agentId]);
       await addEvent(admin, action.tenantId, action.incidentId, "assigned", actorId,
         action.agentId ? `Zugewiesen an ${people.get(action.agentId) ?? "Agent"}.` : "Zuweisung entfernt.");
+      if (confirms) {
+        await addEvent(admin, action.tenantId, action.incidentId, "acknowledged", actorId,
+          "Bestätigt durch die Zuweisung.");
+      }
       return await detail(admin, client, action.tenantId, action.incidentId);
     }
     case "note": {

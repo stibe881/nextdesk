@@ -154,30 +154,36 @@ Deno.test(
   },
 );
 
-Deno.test("Kundschafts-E-Mail zeigt das öffentliche Logo, wenn kein Inline-Logo möglich ist", () => {
-  const html = renderCustomerTicketEmail({
-    attachmentNotice: false,
-    branding: {
-      accentColor: "#1C8276",
-      displayName: "SONNENBERG",
-      logoContentId: null,
-      logoUrl: "https://example.supabase.co/storage/v1/object/public/tenant-branding/tenant/x/logo.png",
-      primaryColor: "#2563EB",
-      secondaryColor: "#0F172A",
-    },
-    kind: "agent_reply",
-    subject: "Drucker",
-    text: "Hallo",
-    ticketNumber: "ICT-1",
-  });
-  if (
-    !html.includes('src="https://example.supabase.co/storage/v1/object/public/tenant-branding/tenant/x/logo.png"') ||
-    !html.includes("Ticketbenachrichtigung über SONNENBERG") ||
-    html.includes("nextDesk")
-  ) {
-    throw new Error("Logo oder Mandantenname fehlen in der E-Mail.");
-  }
-});
+Deno.test(
+  "Kundschafts-E-Mail zeigt das öffentliche Logo, wenn kein Inline-Logo möglich ist",
+  () => {
+    const html = renderCustomerTicketEmail({
+      attachmentNotice: false,
+      branding: {
+        accentColor: "#1C8276",
+        displayName: "SONNENBERG",
+        logoContentId: null,
+        logoUrl:
+          "https://example.supabase.co/storage/v1/object/public/tenant-branding/tenant/x/logo.png",
+        primaryColor: "#2563EB",
+        secondaryColor: "#0F172A",
+      },
+      kind: "agent_reply",
+      subject: "Drucker",
+      text: "Hallo",
+      ticketNumber: "ICT-1",
+    });
+    if (
+      !html.includes(
+        'src="https://example.supabase.co/storage/v1/object/public/tenant-branding/tenant/x/logo.png"',
+      ) ||
+      !html.includes("Ticketbenachrichtigung über SONNENBERG") ||
+      html.includes("nextDesk")
+    ) {
+      throw new Error("Logo oder Mandantenname fehlen in der E-Mail.");
+    }
+  },
+);
 
 Deno.test("Erinnerungsmail zeigt nur sichere Ein-Klick-Aktionen", () => {
   const html = renderCustomerTicketEmail({
@@ -259,17 +265,23 @@ Deno.test("Hinweisblock der ICT wird gerendert und escaped", () => {
   }
 });
 
-Deno.test("Hinweisblock erscheint nur mit https-URL und ausserhalb von Sicherheitsmeldungen", () => {
-  const insecure = renderWith({ notice: { ...notice, url: "http://x.ch" } });
-  const script = renderWith({ notice: { ...notice, url: "javascript:1" } });
-  const security = renderWith({ notice }, "security_notice");
-  const none = renderWith({});
-  for (const html of [insecure, script, security, none]) {
-    if (html.includes("NEU BEI DER ICT") || html.includes("einmal pro Woche")) {
-      throw new Error("Hinweisblock darf nicht erscheinen.");
+Deno.test(
+  "Hinweisblock erscheint nur mit https-URL und ausserhalb von Sicherheitsmeldungen",
+  () => {
+    const insecure = renderWith({ notice: { ...notice, url: "http://x.ch" } });
+    const script = renderWith({ notice: { ...notice, url: "javascript:1" } });
+    const security = renderWith({ notice }, "security_notice");
+    const none = renderWith({});
+    for (const html of [insecure, script, security, none]) {
+      if (
+        html.includes("NEU BEI DER ICT") ||
+        html.includes("einmal pro Woche")
+      ) {
+        throw new Error("Hinweisblock darf nicht erscheinen.");
+      }
     }
-  }
-});
+  },
+);
 
 Deno.test("Hinweisblock kappt Längen und mappt Farben", () => {
   const long = renderWith({
@@ -326,30 +338,51 @@ Deno.test("Sterne erscheinen nur bei fünf https-Links", () => {
   }
 });
 
-Deno.test("Hauptbutton: oben ohne Sterne, ausgelagert mit Sternen, nur https", () => {
-  const primaryAction = { label: "Ticket öffnen", url: "https://app.nextdesk.ch/t/1" };
-  const plain = renderWith({ primaryAction }, "agent_reply");
-  if (!plain.includes("Ticket öffnen") || !plain.includes("https://app.nextdesk.ch/t/1")) {
-    throw new Error("Hauptbutton fehlt.");
-  }
-  if (plain.indexOf("Ticket öffnen") > plain.indexOf("Hallo")) {
-    throw new Error("Hauptbutton muss über der Nachricht stehen.");
-  }
-  const withStars = renderWith({ primaryAction, ratingLinks: links });
-  if (withStars.indexOf("Ticket öffnen") < withStars.indexOf("Hallo")) {
-    throw new Error("Zweiter Button muss unter der Nachricht stehen.");
-  }
-  const bad = renderWith({ primaryAction: { label: "X", url: "http://x.ch" } }, "agent_reply");
-  if (bad.includes("http://x.ch")) throw new Error("http-Button gerendert.");
-});
+Deno.test(
+  "Hauptbutton: oben ohne Sterne, ausgelagert mit Sternen, nur https",
+  () => {
+    const primaryAction = {
+      label: "Ticket öffnen",
+      url: "https://app.nextdesk.ch/t/1",
+    };
+    const plain = renderWith({ primaryAction }, "agent_reply");
+    if (
+      !plain.includes("Ticket öffnen") ||
+      !plain.includes("https://app.nextdesk.ch/t/1")
+    ) {
+      throw new Error("Hauptbutton fehlt.");
+    }
+    if (plain.indexOf("Ticket öffnen") > plain.indexOf("Hallo")) {
+      throw new Error("Hauptbutton muss über der Nachricht stehen.");
+    }
+    const withStars = renderWith({ primaryAction, ratingLinks: links });
+    if (withStars.indexOf("Ticket öffnen") < withStars.indexOf("Hallo")) {
+      throw new Error("Zweiter Button muss unter der Nachricht stehen.");
+    }
+    const bad = renderWith(
+      { primaryAction: { label: "X", url: "http://x.ch" } },
+      "agent_reply",
+    );
+    if (bad.includes("http://x.ch")) throw new Error("http-Button gerendert.");
+  },
+);
 
 Deno.test("Overrides für Titel, Einleitung und Hinweis wirken", () => {
   const html = renderWith(
-    { eyebrow: "Eigener Titel", intro: "Eigene Einleitung", replyHint: "Eigener Hinweis" },
+    {
+      eyebrow: "Eigener Titel",
+      intro: "Eigene Einleitung",
+      replyHint: "Eigener Hinweis",
+    },
     "agent_reply",
   );
-  for (const required of ["Eigener Titel", "Eigene Einleitung", "Eigener Hinweis"]) {
-    if (!html.includes(required)) throw new Error(`Override fehlt: ${required}`);
+  for (const required of [
+    "Eigener Titel",
+    "Eigene Einleitung",
+    "Eigener Hinweis",
+  ]) {
+    if (!html.includes(required))
+      throw new Error(`Override fehlt: ${required}`);
   }
 });
 
@@ -371,3 +404,58 @@ Deno.test("Kundschafts-E-Mail wechselt auf die Sie-Fassung", () => {
     if (!html.includes(required)) throw new Error(`Fehlt: ${required}`);
   }
 });
+
+Deno.test(
+  "Über dem Portal-Knopf steht, dass man auf die E-Mail antworten kann",
+  () => {
+    const action = {
+      label: "Im Portal antworten",
+      url: "https://app.example.ch/",
+    };
+    const line = "Antworte einfach auf diese E-Mail – oder im Portal:";
+    const reply = renderCustomerTicketEmail({
+      attachmentNotice: false,
+      branding,
+      kind: "agent_reply",
+      primaryAction: action,
+      subject: "VPN einrichten",
+      text: "Bitte kurz testen.",
+      ticketNumber: "ICT-2026-000011",
+    });
+    if (!reply.includes(line)) throw new Error("Hinweis fehlt");
+    if (reply.indexOf(line) > reply.indexOf("Im Portal antworten"))
+      throw new Error("Hinweis steht nicht über dem Knopf");
+
+    const formal = renderCustomerTicketEmail({
+      attachmentNotice: false,
+      branding,
+      formality: "sie",
+      kind: "acknowledgement",
+      primaryAction: { ...action, label: "Ticket im Portal ansehen" },
+      subject: "VPN einrichten",
+      text: "Eingegangen.",
+      ticketNumber: "ICT-2026-000011",
+    });
+    if (
+      !formal.includes(
+        "Antworten Sie einfach auf diese E-Mail – oder im Portal:",
+      )
+    )
+      throw new Error("Sie-Fassung fehlt");
+
+    // Ohne Knopf oder bei Mails ohne Antwortmöglichkeit kein Hinweis.
+    if (render("agent_reply").includes(line))
+      throw new Error("Hinweis ohne Knopf");
+    const notification = renderCustomerTicketEmail({
+      attachmentNotice: false,
+      branding,
+      kind: "notification",
+      primaryAction: action,
+      subject: "Neuigkeit",
+      text: "Info",
+      ticketNumber: "ICT-2026-000011",
+    });
+    if (notification.includes(line))
+      throw new Error("Hinweis bei Benachrichtigung");
+  },
+);

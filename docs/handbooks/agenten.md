@@ -44,17 +44,20 @@ Zahlen neben den Einträgen zeigen, was auf dich wartet: bei **Tickets** die
 offenen Tickets, die noch keinem Agenten zugewiesen sind (auch wenn schon ein
 Team gesetzt ist) – dieselbe Zahl wie in der Kachel «Nicht zugewiesene
 Tickets» –, bei
-**Sicherheitsfällen** die offenen Fälle, die noch niemandem zugewiesen
-sind, bei **Störungen** die aktiven Störungen, die noch niemand bestätigt
-hat, bei **Raumplanung**, **Shop** und
-**Eintritte** die offenen Anfragen. Die Zahlen aktualisieren sich jede Minute.
+**Sicherheitsfällen** alle offenen Fälle und bei **Störungen** alle aktiven
+Störungen – rot, solange davon ein Fall niemandem zugewiesen bzw. eine
+Störung nicht bestätigt ist, sonst grau –, bei **Raumplanung**, **Shop** und
+**Eintritte** die offenen Anfragen. Ist eine Kategorie zugeklappt, steht die
+Summe neben ihrem Namen. Die Zahlen aktualisieren sich alle 30 Sekunden.
 
 In der **iOS- und Android-App** zeigt die untere Leiste dieselben Zahlen als
 kleines Abzeichen am Symbol: bei **Tickets**, **Störungen** und **Phishing**
 (den Sicherheitsfällen) sowie beim **Shop** die neuen Bestellungen, falls du
-Bestellungen bearbeitest. Raumplanung und Eintritte gibt es in der App nicht.
-Die Zahlen aktualisieren sich jede Minute, beim Zurückkehren in die App und
-beim Wechsel des Tabs.
+Bestellungen bearbeitest. Wie im Web zählen **Störungen** alle aktiven
+Störungen und **Phishing** alle offenen Fälle – rot, solange etwas nicht
+bestätigt bzw. zugewiesen ist, sonst grau. Raumplanung und Eintritte gibt es
+in der App nicht. Die Zahlen aktualisieren sich alle 30 Sekunden, beim
+Zurückkehren in die App und beim Wechsel des Tabs.
 
 Das **Systemstatus-Badge** oben in der Navigation und die Seite
 **Systemstatus** aktualisieren sich selbst (alle 30 Sekunden und beim
@@ -303,11 +306,15 @@ Init7), gekennzeichnet mit **Extern · Anbieter**. Diese zeigen, dass die Ursach
 beim Anbieter liegt und nicht in deinem Netz, z. B. wenn mehrere Personen
 melden, dass Teams nicht geht. Das Team wird beim Auftreten benachrichtigt (ohne Wiederholungsalarm); meldet der Anbieter die Störung als
 behoben, schliesst sie sich automatisch. **Statusseite des Anbieters öffnen**
-führt zu den Details beim Anbieter. Neue Texte des Anbieters erscheinen im
-Verlauf als «Update vom Anbieter»; das Team erhält dazu eine Benachrichtigung
+führt zu den Details beim Anbieter. Titel und Texte der Anbieter zeigt nextDesk
+als kurze deutsche Fassung ohne Floskeln (mit der KI übersetzt); den
+Originaltext findest du auf der Statusseite des Anbieters. Neue Texte des
+Anbieters erscheinen im Verlauf als «Update vom Anbieter»; das Team erhält dazu eine Benachrichtigung
 («Update: Anbieter» mit dem neuen Text) und eine weitere, sobald der Anbieter
-die Störung als behoben meldet («Behoben: Anbieter»). Externe Störungen müssen weder bestätigt
-noch zugewiesen werden; von Hand abschliessen ist nur nötig, wenn die Meldung
+die Störung als behoben meldet («Behoben: Anbieter»). Auch externe Störungen
+bestätigst du mit **Bestätigen: ich kümmere mich** (sie werden aber nicht
+erneut alarmiert); unter **Zuständig** weist du sie einer Person zu, die sie
+verfolgt. Von Hand abschliessen ist nur nötig, wenn die Meldung
 beim Anbieter hängen bleibt.
 
 - **Eine Störung pro Gerät**: Weitere Sensoren desselben Geräts (z. B. Ping
@@ -328,6 +335,10 @@ beim Anbieter hängen bleibt.
   letzten 30 Tage) und _Verfügbarkeit_ der überwachten Geräte. Ein Klick auf
   eine Kachel zeigt darunter die passenden Störungen; **Filter aufheben** führt
   zurück zu den aktiven.
+- **Zeile einer Störung**: Neben Schwere und Quelle zeigt jede Störung, wer
+  zuständig ist (oder «Nicht zugewiesen») und, sobald eine öffentliche Meldung
+  besteht, **Statusseite** mit deren Zustand (z. B. «Statusseite · Wird
+  untersucht») und «Unbestätigt», solange niemand die Störung bestätigt hat.
 - **Register**: _Aktiv_, _Behoben_ und _Alle_. Die Dauer läuft live mit, und neue
   Meldungen erscheinen ohne Neuladen. Im Suchfeld findest du Störungen nach
   Nummer, Gerät oder Titel; ältere Störungen lädst du mit **Weitere Störungen
@@ -347,11 +358,17 @@ beim Anbieter hängen bleibt.
 
 Ein Klick öffnet die Störung:
 
-1. **Bestätigen: ich kümmere mich** stoppt die erneute Alarmierung und weist
-   dir die Störung zu, falls noch niemand zuständig ist. Unter
-   **Zuständig** änderst du die Person (oder **Mir zuweisen**).
+1. **Bestätigen: ich kümmere mich** stoppt die erneute Alarmierung und macht
+   dich zur zuständigen Person. Unter **Zuständig** änderst du die Person
+   (oder **Mir zuweisen**); wer einer noch unbestätigten Störung zugewiesen
+   wird, bestätigt sie damit automatisch. Zur Auswahl
+   stehen alle Agenten mit Zugriff auf das Modul Störungen, also die
+   Mitglieder des Alarmierungsteams (ohne festgelegtes Team alle Agenten).
 2. Der **Verlauf** zeigt alle PRTG-Meldungen und was in nextDesk geschah
-   (geöffnet, alarmiert, bestätigt, Notizen). Mit **Notiz zum Verlauf
+   (geöffnet, alarmiert, bestätigt, Notizen). PRTG-Meldungen erscheinen als
+   kurze deutsche Texte, z. B. «Keine Antwort auf Ping (Zeitüberschreitung)»
+   statt englischer Texte mit Fehlercodes; im Titel fehlt der Sensortyp in
+   Klammern. Mit **Notiz zum Verlauf
    hinzufügen** hältst du fest, was du geprüft oder veranlasst hast.
 3. **Letzte 24 Stunden** zeigt, wann das Gerät gestört war, und warnt, wenn
    es in dieser Woche mehrfach ausgefallen ist. Darunter stehen die
@@ -381,7 +398,12 @@ Ein Klick öffnet die Störung:
    **Behoben** werden die gewählten Dienste auf «Betriebsbereit» gesetzt; du
    kannst das vor dem Veröffentlichen noch ändern. Eine bereits
    veröffentlichte Meldung korrigierst du mit **Bearbeiten** (Zustand, Titel,
-   Text, Dienste) und **Änderungen speichern**.
+   Text, Dienste) und **Änderungen speichern**. Ist die Störung behoben (PRTG meldet
+   OK, der Anbieter meldet sie als behoben oder sie wird abgeschlossen), setzt
+   nextDesk ihre Meldungen automatisch auf **Behoben**: Sie verschwinden aus
+   dem Störungsbanner in Web und App, Abonnenten erhalten das Update, und die
+   Dienste der Meldung sind wieder betriebsbereit (ausser sie stehen noch in
+   einer anderen offenen Meldung).
 7. **Abschliessen bzw. Ursache nachtragen**: Wähle die **Ursache** (Strom, Netzwerk, Hardware,
    Software, Wartung, Extern, Unbekannt) und halte die Lösung fest. Sind
    Tickets zugeordnet, ist **Tickets informieren und auf «Gelöst» setzen**

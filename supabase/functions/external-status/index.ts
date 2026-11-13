@@ -33,12 +33,103 @@ import {
   SOURCES,
   sourceDefinition,
 } from "./providers.ts";
+import {
+  anthropicCredentials,
+  generateStructuredJson,
+} from "../_shared/anthropic-json.ts";
+import {
+  parseTranslation,
+  TRANSLATION_SCHEMA,
+  TRANSLATION_SYSTEM,
+  translationHash,
+  translationPrompt,
+} from "./translate.ts";
 
 // deno-lint-ignore no-explicit-any
 type Admin = any;
 type Row = Record<string, unknown>;
 
 const MAX_REQUEST_BYTES = 16_000;
+/** AI calls per source and run; the rest follows in the next run. */
+const MAX_TRANSLATIONS_PER_RUN = 8;
+
+/** Issue with the German short version of title and text. */
+type LocalIssue = ExternalIssue & {
+  /** Text as published by the provider (before translation). */
+  originalMessage: string | null;
+  /** Translation still missing (AI temporarily unavailable). */
+  pending: boolean;
+};
+
+/**
+ * German short version of the provider texts (cached per original text in
+ * external_status_translations). Without configured AI the original stays.
+ */
+async function translateIssues(
+  admin: Admin,
+  provider: string,
+  issues: ExternalIssue[],
+): Promise<LocalIssue[]> {
+  if (!issues.length) return [];
+  const credentials = anthropicCredentials();
+  const hashes = await Promise.all(
+    issues.map((issue) => translationHash(issue.title, issue.message)),
+  );
+  const cached = new Map<string, { title: string; message: string | null }>();
+  const { data } = await admin
+    .from("external_status_translations")
+    .select("source_hash, title_de, message_de")
+    .in("source_hash", hashes);
+  for (const row of (data ?? []) as Row[]) {
+    cached.set(String(row.source_hash), {
+      title: String(row.title_de),
+      message: typeof row.message_de === "string" ? row.message_de : null,
+    });
+  }
+  let calls = 0;
+  const result: LocalIssue[] = [];
+  for (const [index, issue] of issues.entries()) {
+    const hash = hashes[index]!;
+    let german = cached.get(hash) ?? null;
+    if (!german && credentials && calls < MAX_TRANSLATIONS_PER_RUN) {
+      calls += 1;
+      try {
+        german = parseTranslation(
+          await generateStructuredJson({
+            apiKey: credentials.apiKey,
+            model: credentials.model,
+            system: TRANSLATION_SYSTEM,
+            content: translationPrompt(provider, issue.title, issue.message),
+            schema: TRANSLATION_SCHEMA as unknown as Record<string, unknown>,
+            maxTokens: 1200,
+            timeoutMs: 25_000,
+          }),
+        );
+        if (german) {
+          await admin.from("external_status_translations").upsert({
+            source_hash: hash,
+            title_de: german.title,
+            message_de: issue.message ? german.message : null,
+          });
+        }
+      } catch (failure) {
+        console.error("external_status_translation_failed", {
+          provider,
+          error: failure instanceof Error ? failure.message : "unknown",
+        });
+        german = null;
+      }
+    }
+    result.push({
+      ...issue,
+      title: german?.title ?? issue.title,
+      message: german ? (issue.message ? german.message ?? issue.message : null) : issue.message,
+      originalMessage: issue.message,
+      pending: !german && credentials !== null,
+    });
+  }
+  return result;
+}
 const FETCH_TIMEOUT_MS = 15_000;
 
 async function fetchText(url: string, init: RequestInit = {}): Promise<string> {
@@ -170,7 +261,7 @@ export async function syncSource(
   admin: Admin,
   tenantId: string,
   key: SourceKey,
-  issues: ExternalIssue[],
+  issues: LocalIssue[],
   teamId: string | null,
   /** False when a source is switched off: close silently. */
   notify = true,
@@ -198,6 +289,8 @@ export async function syncSource(
     active.delete(incidentKey);
     const title = issue.title.slice(0, 300);
     if (existing) {
+      // Wait for the German version instead of posting the original.
+      if (issue.pending) continue;
       const changed =
         existing.title !== title || existing.severity !== issue.severity;
       if (changed) {
@@ -213,7 +306,7 @@ export async function syncSource(
       // New text from the provider: one entry in the history.
       const { data: last } = await admin
         .from("monitoring_incident_events")
-        .select("message")
+        .select("id, message")
         .eq("incident_id", existing.id)
         .in("kind", ["external", "opened"])
         .order("created_at", { ascending: false })
@@ -224,6 +317,18 @@ export async function syncSource(
         typeof last?.message === "string"
           ? last.message.replace(/^.{1,80}? meldet: /, "")
           : null;
+      // Same text, still in the original language: replace it in place.
+      if (
+        issue.message &&
+        lastText !== issue.message &&
+        lastText === issue.originalMessage
+      ) {
+        await admin
+          .from("monitoring_incident_events")
+          .update({ message: issue.message.slice(0, 4000) })
+          .eq("id", last.id);
+        continue;
+      }
       if (issue.message && lastText !== issue.message) {
         await addEvent(
           admin,
@@ -340,19 +445,29 @@ async function incidentTeam(
 
 /** Checks the given enabled sources; public feeds are fetched once per run. */
 async function runChecks(admin: Admin, rows: Row[]) {
-  const cache = new Map<SourceKey, Promise<ExternalIssue[]>>();
+  const cache = new Map<SourceKey, Promise<LocalIssue[]>>();
   const teams = new Map<string, string | null>();
   const result: Record<string, unknown>[] = [];
   for (const row of rows) {
     const tenantId = String(row.tenant_id);
     const key = String(row.source_key) as SourceKey;
     if (!sourceDefinition(key)) continue;
-    let issues: ExternalIssue[];
+    let issues: LocalIssue[];
+    const label = sourceDefinition(key)!.label;
     try {
       if (key === "microsoft365") {
-        issues = await microsoftIssues(admin, tenantId);
+        issues = await translateIssues(
+          admin,
+          label,
+          await microsoftIssues(admin, tenantId),
+        );
       } else {
-        if (!cache.has(key)) cache.set(key, publicIssues(key));
+        if (!cache.has(key)) {
+          cache.set(
+            key,
+            publicIssues(key).then((found) => translateIssues(admin, label, found)),
+          );
+        }
         issues = await cache.get(key)!;
       }
     } catch (failure) {

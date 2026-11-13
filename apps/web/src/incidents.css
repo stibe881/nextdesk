@@ -835,3 +835,13 @@ button.incident-tile:focus-visible {
 .incident-service-results small {
   color: var(--muted);
 }
+
+/* List: incident communicated on the status page. */
+.incident-chip--info {
+  background: var(--tone-info-soft, var(--surface));
+  color: var(--tone-info, var(--primary));
+}
+
+.incident-chip svg {
+  vertical-align: -2px;
+}

@@ -187,7 +187,7 @@ export default function IncidentDetailScreen() {
   const minutes = liveMinutes(detail.openedAt, detail.resolvedAt, now);
   const canChange = detail.state !== "closed";
   const showCauseForm = detail.state !== "closed" || !detail.cause;
-  // Provider issue (Microsoft 365, GitHub, …): nothing to confirm or assign.
+  // Provider issue (Microsoft 365, GitHub, …).
   const external = detail.source === "external";
   const provider = detail.externalProvider ?? "der Anbieter";
   const assigned = detail.agents.find((a) => a.id === detail.assignedAgentId);
@@ -250,7 +250,10 @@ export default function IncidentDetailScreen() {
           {detail.source === "external" ? (
             <View style={{ gap: 4 }}>
               <Text style={styles.muted}>
-                {tn(`Gemeldet von ${detail.externalProvider ?? "einem Anbieter"}: Die Ursache liegt beim Anbieter, nicht in deinem Netz. Die Störung schliesst sich automatisch, sobald der Anbieter sie als behoben meldet.`, `Gemeldet von ${detail.externalProvider ?? "einem Anbieter"}: Die Ursache liegt beim Anbieter, nicht in Ihrem Netz. Die Störung schliesst sich automatisch, sobald der Anbieter sie als behoben meldet.`)}
+                {tn(
+                  `Gemeldet von ${detail.externalProvider ?? "einem Anbieter"}: Die Ursache liegt beim Anbieter, nicht in deinem Netz. Die Störung schliesst sich automatisch, sobald der Anbieter sie als behoben meldet.`,
+                  `Gemeldet von ${detail.externalProvider ?? "einem Anbieter"}: Die Ursache liegt beim Anbieter, nicht in Ihrem Netz. Die Störung schliesst sich automatisch, sobald der Anbieter sie als behoben meldet.`,
+                )}
               </Text>
               {detail.externalUrl ? (
                 <Pressable
@@ -288,7 +291,7 @@ export default function IncidentDetailScreen() {
           </View>
         ) : null}
 
-        {canChange && !external && !detail.acknowledgedAt ? (
+        {canChange && !detail.acknowledgedAt ? (
           <Pressable
             accessibilityRole="button"
             disabled={busy !== null}
@@ -310,84 +313,78 @@ export default function IncidentDetailScreen() {
           </Pressable>
         ) : null}
 
-        {!external ? (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Zuständig</Text>
-            <Text style={styles.kvValue}>
-              {assigned?.name ?? "Nicht zugewiesen"}
+        {/* Also provider issues: someone follows up on them. */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Zuständig</Text>
+          <Text style={styles.kvValue}>
+            {assigned?.name ?? "Nicht zugewiesen"}
+          </Text>
+          {detail.acknowledgedAt ? (
+            <Text style={styles.muted}>
+              Bestätigt von {detail.acknowledgedBy ?? "–"},{" "}
+              {DATE_TIME.format(new Date(detail.acknowledgedAt))}
             </Text>
-            {detail.acknowledgedAt ? (
-              <Text style={styles.muted}>
-                Bestätigt von {detail.acknowledgedBy ?? "–"},{" "}
-                {DATE_TIME.format(new Date(detail.acknowledgedAt))}
-              </Text>
-            ) : null}
-            {canChange ? (
-              <View style={styles.badgeRow}>
-                {userId &&
-                detail.assignedAgentId !== userId &&
-                detail.agents.some((a) => a.id === userId) ? (
-                  <Pressable
-                    disabled={busy !== null}
-                    onPress={() =>
-                      void run("assign", () =>
-                        assignIncident(tenantId, detail.id, userId),
-                      )
-                    }
-                    style={[styles.button, styles.buttonSecondary]}
-                  >
-                    <Text style={styles.buttonSecondaryText}>Mir zuweisen</Text>
-                  </Pressable>
-                ) : null}
+          ) : null}
+          {canChange ? (
+            <View style={styles.badgeRow}>
+              {userId &&
+              detail.assignedAgentId !== userId &&
+              detail.agents.some((a) => a.id === userId) ? (
                 <Pressable
                   disabled={busy !== null}
-                  onPress={() => setPickAgent((value) => !value)}
+                  onPress={() =>
+                    void run("assign", () =>
+                      assignIncident(tenantId, detail.id, userId),
+                    )
+                  }
                   style={[styles.button, styles.buttonSecondary]}
                 >
-                  <Text style={styles.buttonSecondaryText}>Ändern</Text>
+                  <Text style={styles.buttonSecondaryText}>Mir zuweisen</Text>
                 </Pressable>
-              </View>
-            ) : null}
-            {pickAgent && canChange ? (
-              <View style={styles.list}>
-                {[{ id: "", name: "Nicht zugewiesen" }, ...detail.agents].map(
-                  (agent) => {
-                    const selected =
-                      (detail.assignedAgentId ?? "") === agent.id;
-                    return (
-                      <Pressable
-                        key={agent.id || "none"}
-                        onPress={() => {
-                          setPickAgent(false);
-                          void run("assign", () =>
-                            assignIncident(
-                              tenantId,
-                              detail.id,
-                              agent.id || null,
-                            ),
-                          );
-                        }}
-                        style={[
-                          styles.option,
-                          selected ? styles.optionActive : null,
-                        ]}
-                      >
-                        <Text style={styles.optionText}>{agent.name}</Text>
-                        {selected ? (
-                          <Ionicons
-                            color={colors.primaryText}
-                            name="checkmark"
-                            size={18}
-                          />
-                        ) : null}
-                      </Pressable>
-                    );
-                  },
-                )}
-              </View>
-            ) : null}
-          </View>
-        ) : null}
+              ) : null}
+              <Pressable
+                disabled={busy !== null}
+                onPress={() => setPickAgent((value) => !value)}
+                style={[styles.button, styles.buttonSecondary]}
+              >
+                <Text style={styles.buttonSecondaryText}>Ändern</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {pickAgent && canChange ? (
+            <View style={styles.list}>
+              {[{ id: "", name: "Nicht zugewiesen" }, ...detail.agents].map(
+                (agent) => {
+                  const selected = (detail.assignedAgentId ?? "") === agent.id;
+                  return (
+                    <Pressable
+                      key={agent.id || "none"}
+                      onPress={() => {
+                        setPickAgent(false);
+                        void run("assign", () =>
+                          assignIncident(tenantId, detail.id, agent.id || null),
+                        );
+                      }}
+                      style={[
+                        styles.option,
+                        selected ? styles.optionActive : null,
+                      ]}
+                    >
+                      <Text style={styles.optionText}>{agent.name}</Text>
+                      {selected ? (
+                        <Ionicons
+                          color={colors.primaryText}
+                          name="checkmark"
+                          size={18}
+                        />
+                      ) : null}
+                    </Pressable>
+                  );
+                },
+              )}
+            </View>
+          ) : null}
+        </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Verlauf</Text>
@@ -732,7 +729,10 @@ export default function IncidentDetailScreen() {
               </Text>
             ) : detail.state === "resolved" ? (
               <Text style={styles.muted}>
-                {tn("PRTG meldet wieder OK. Trage die Ursache bei Bedarf nach.", "PRTG meldet wieder OK. Tragen Sie die Ursache bei Bedarf nach.")}
+                {tn(
+                  "PRTG meldet wieder OK. Trage die Ursache bei Bedarf nach.",
+                  "PRTG meldet wieder OK. Tragen Sie die Ursache bei Bedarf nach.",
+                )}
               </Text>
             ) : null}
             <View style={styles.badgeRow}>

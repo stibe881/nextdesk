@@ -10,6 +10,8 @@ export const MAX_BODY_BYTES = 16 * 1024;
 export const COMMENT_THROTTLE_MS = 15 * 60 * 1000;
 const MAX_FIELD_LENGTH = 2000;
 
+import { germanPrtgMessage } from "./prtg-text.ts";
+
 export type StatusKind = "down" | "warning" | "up" | "ignore";
 
 export type PrtgEvent = {
@@ -194,7 +196,8 @@ export function buildEvent(
     sensor: value("sensor"),
     status: status ?? value("down") ?? kind,
     kind,
-    message: value("message"),
+    // Short German text (PRTG partly reports in English, with error codes).
+    message: germanPrtgMessage(value("message")),
     objectId: value("objectId"),
     sensorId: value("sensorId"),
     deviceId: value("deviceId"),

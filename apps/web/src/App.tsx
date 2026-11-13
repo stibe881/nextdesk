@@ -1,3 +1,4 @@
+import { useVisibleInterval } from "./lib/use-visible-interval";
 import { useTicketHoverPreview } from "./ticket-hover-preview";
 import {
   agentTour,
@@ -3371,6 +3372,12 @@ function AuthenticatedApp() {
   const [incidentAttentionCount, setIncidentAttentionCount] = useState<
     number | null
   >(null);
+  // Badges of «Sicherheitsfälle»/«Störungen» count all open cases / active
+  // incidents; red while some are unassigned / unacknowledged.
+  const [teamModuleUrgent, setTeamModuleUrgent] = useState({
+    securityCases: false,
+    incidents: false,
+  });
   const [incidentFocusId, setIncidentFocusId] = useState<string | null>(null);
   const clearIncidentFocus = useCallback(() => setIncidentFocusId(null), []);
   const [securityFocusId, setSecurityFocusId] = useState<string | null>(null);
@@ -3438,6 +3445,9 @@ function AuthenticatedApp() {
   const [tenantFeatures, setTenantFeatures] = useState<Record<string, boolean>>(
     {},
   );
+  // Reloads the incident banner so resolved incidents disappear by themselves.
+  const [incidentNoticeTick, setIncidentNoticeTick] = useState(0);
+  useVisibleInterval(() => setIncidentNoticeTick((tick) => tick + 1), 30_000);
   const [activeIncidentNotices, setActiveIncidentNotices] = useState<
     ActiveIncidentNotice[]
   >([]);
@@ -4293,11 +4303,11 @@ function AuthenticatedApp() {
     };
   }, [activeTenant?.id, eventSpaceAttentionRevision, session?.user.id]);
 
-  // Refresh the menu badges every minute and whenever the section changes.
+  // Refresh the menu badges every 30 seconds and whenever the section changes.
   useEffect(() => {
     const timer = window.setInterval(
       () => setNavigationAttentionTick((tick) => tick + 1),
-      60_000,
+      30_000,
     );
     return () => window.clearInterval(timer);
   }, []);
@@ -4354,8 +4364,21 @@ function AuthenticatedApp() {
               ? value
               : null;
           setTicketAttentionCount(count(summary?.unassignedTickets));
-          setSecurityAttentionCount(count(summary?.securityTriage));
-          setIncidentAttentionCount(count(summary?.incidentsUnacknowledged));
+          const securityTriage = count(summary?.securityTriage);
+          const incidentsUnacknowledged = count(
+            summary?.incidentsUnacknowledged,
+          );
+          // Older servers only report the counts needing action.
+          setSecurityAttentionCount(
+            count(summary?.securityOpen) ?? securityTriage,
+          );
+          setIncidentAttentionCount(
+            count(summary?.incidentsActive) ?? incidentsUnacknowledged,
+          );
+          setTeamModuleUrgent({
+            securityCases: (securityTriage ?? 0) > 0,
+            incidents: (incidentsUnacknowledged ?? 0) > 0,
+          });
           setTeamModuleAccess({
             securityCases: summary?.canWorkSecurityCases === true,
             incidents: summary?.canWorkIncidents === true,
@@ -4446,7 +4469,7 @@ function AuthenticatedApp() {
     return () => {
       mounted = false;
     };
-  }, [activeTenant, requesterPortalEnabled, session]);
+  }, [activeTenant, incidentNoticeTick, requesterPortalEnabled, session]);
 
   useEffect(() => {
     if (
@@ -5973,6 +5996,21 @@ function AuthenticatedApp() {
                   ? incidentAttentionCount
                   : null,
     );
+  /** Red badge (needs action) or grey (open, but taken over). */
+  const navigationBadgeTone = (label: Section): "urgent" | "muted" | null =>
+    label === "Sicherheitsfälle"
+      ? teamModuleUrgent.securityCases
+        ? "urgent"
+        : "muted"
+      : label === "Störungen"
+        ? teamModuleUrgent.incidents
+          ? "urgent"
+          : "muted"
+        : null;
+  const navigationBadgeClass = (
+    base: string,
+    tone: "urgent" | "muted" | null,
+  ) => (tone ? `${base} ${base.split(" ")[0]}--${tone}` : base);
   const navigationAttentionDescription = (label: Section): string =>
     label === "Raumplanung"
       ? "Raumaufträge benötigen Zuweisung oder Klärung"
@@ -5981,9 +6019,13 @@ function AuthenticatedApp() {
         : label === "Tickets"
           ? "Tickets sind noch keinem Agenten zugewiesen"
           : label === "Sicherheitsfälle"
-            ? "Sicherheitsfälle sind noch niemandem zugewiesen"
+            ? teamModuleUrgent.securityCases
+              ? "offene Sicherheitsfälle, davon nicht alle zugewiesen"
+              : "offene Sicherheitsfälle"
             : label === "Störungen"
-              ? "aktive Störungen sind noch nicht bestätigt"
+              ? teamModuleUrgent.incidents
+                ? "aktive Störungen, davon nicht alle bestätigt"
+                : "aktive Störungen"
               : "Eintritte sind noch nicht in Bearbeitung";
   // Berichte und darunter die Wissensdatenbank stehen für sich unter den
   // Kategorien.
@@ -6151,7 +6193,10 @@ function AuthenticatedApp() {
                       {hasAttention ? (
                         <span
                           aria-hidden="true"
-                          className="nav-item__badge nav-item__badge--trailing"
+                          className={navigationBadgeClass(
+                            "nav-item__badge nav-item__badge--trailing",
+                            navigationBadgeTone(item.label),
+                          )}
                         >
                           {attentionCount > 99 ? "99+" : attentionCount}
                         </span>
@@ -6198,6 +6243,17 @@ function AuthenticatedApp() {
                     ),
                   });
                 const hasCategoryAttention = categoryAttentionCount !== null;
+                // Grey only when every counted item is merely open.
+                const categoryTones = category.items
+                  .filter((item) => navigationAttentionFor(item.label) !== null)
+                  .map((item) => navigationBadgeTone(item.label));
+                const categoryBadgeTone: "urgent" | "muted" | null =
+                  categoryTones.includes("urgent")
+                    ? "urgent"
+                    : categoryTones.length > 0 &&
+                        categoryTones.every((tone) => tone === "muted")
+                      ? "muted"
+                      : null;
                 const panelId = `${category.id}-panel`;
 
                 return (
@@ -6225,7 +6281,10 @@ function AuthenticatedApp() {
                           {hasCategoryAttention ? (
                             <span
                               aria-hidden="true"
-                              className="navigation-cluster__badge"
+                              className={navigationBadgeClass(
+                                "navigation-cluster__badge",
+                                categoryBadgeTone,
+                              )}
                             >
                               {categoryAttentionCount > 99
                                 ? "99+"
@@ -6284,7 +6343,10 @@ function AuthenticatedApp() {
                               {hasAttention ? (
                                 <span
                                   aria-hidden="true"
-                                  className="nav-item__badge nav-item__badge--trailing"
+                                  className={navigationBadgeClass(
+                                    "nav-item__badge nav-item__badge--trailing",
+                                    navigationBadgeTone(item.label),
+                                  )}
                                 >
                                   {attentionCount > 99 ? "99+" : attentionCount}
                                 </span>

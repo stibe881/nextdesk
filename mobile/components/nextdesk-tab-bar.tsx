@@ -131,6 +131,12 @@ export function NextDeskTabBar({
     const selected = activeName === item.name;
     const tint = selected ? colors.primaryText : colors.muted;
     const count = item.badge ? badgeCount(badges?.[item.badge]) : 0;
+    const tone =
+      item.badge === "incidents" || item.badge === "phishing"
+        ? badges?.urgent?.[item.badge]
+          ? "urgent"
+          : "muted"
+        : null;
     return (
       <Pressable
         accessibilityLabel={badgeAccessibilityLabel(item.label, count)}
@@ -161,12 +167,31 @@ export function NextDeskTabBar({
               style={[
                 styles.badge,
                 {
-                  backgroundColor: colors.primary,
+                  // «Störungen»/«Phishing»: red with something to do,
+                  // grey when everything is taken over.
+                  backgroundColor:
+                    tone === "urgent"
+                      ? colors.error
+                      : tone === "muted"
+                        ? colors.surfaceSubtle
+                        : colors.primary,
                   borderColor: colors.surface,
                 },
               ]}
             >
-              <Text style={[styles.badgeText, { color: colors.onPrimary }]}>
+              <Text
+                style={[
+                  styles.badgeText,
+                  {
+                    color:
+                      tone === "urgent"
+                        ? "#fff"
+                        : tone === "muted"
+                          ? colors.muted
+                          : colors.onPrimary,
+                  },
+                ]}
+              >
                 {badgeLabel(count)}
               </Text>
             </View>
