@@ -227,6 +227,7 @@ export async function finishTeam(
     "channels" | "owners" | "guests" | "allowGuests"
   > & { members?: string[] },
   fetcher: FetchLike = fetch,
+  retryDelaysMs: readonly number[] = CHANNEL_RETRY_DELAYS_MS,
 ): Promise<FinishWarning[]> {
   const warnings: FinishWarning[] = [];
   const failed = (step: string, error: unknown) =>
@@ -258,6 +259,7 @@ export async function finishTeam(
         teamId,
         channel,
         request.owners[0]!,
+        retryDelaysMs,
       );
       for (const tab of channel.tabs) {
         try {
@@ -308,37 +310,72 @@ export async function finishTeam(
   return warnings;
 }
 
+/** Kurz nach dem Anlegen eines Teams lehnt Microsoft Kanäle oft noch ab. */
+const CHANNEL_RETRY_DELAYS_MS = [4_000, 10_000, 20_000] as const;
+const CHANNEL_TIMEOUT_MS = 60_000;
+
+const wait = (ms: number) =>
+  ms > 0
+    ? new Promise((resolve) => setTimeout(resolve, ms))
+    : Promise.resolve();
+
 async function ensureChannel(
   fetcher: FetchLike,
   token: string,
   teamId: string,
   channel: TeamChannel,
   ownerId: string,
+  retryDelaysMs: readonly number[],
 ): Promise<string> {
-  try {
-    const response = await call(
+  let lastError: unknown = new TeamsGraphError("unavailable");
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    if (attempt > 0) await wait(retryDelaysMs[attempt - 1]!);
+    // Ein früherer Versuch kann trotz Abbruch Erfolg gehabt haben.
+    const existing = await channelIdByName(
       fetcher,
       token,
-      "POST",
-      `/teams/${teamId}/channels`,
-      {
-        displayName: channel.name,
-        membershipType: channel.isPrivate ? "private" : "standard",
-        ...(channel.isPrivate ? { members: [memberBody(ownerId, true)] } : {}),
-      },
-    );
-    const body = (await response.json().catch(() => null)) as {
-      id?: unknown;
-    } | null;
-    if (typeof body?.id === "string") return body.id;
-  } catch (error) {
-    if (!(error instanceof TeamsGraphError && error.code === "conflict")) {
-      throw error;
+      teamId,
+      channel.name,
+    ).catch(() => null);
+    if (existing) return existing;
+    try {
+      const response = await call(
+        fetcher,
+        token,
+        "POST",
+        `/teams/${teamId}/channels`,
+        {
+          displayName: channel.name,
+          membershipType: channel.isPrivate ? "private" : "standard",
+          ...(channel.isPrivate
+            ? { members: [memberBody(ownerId, true)] }
+            : {}),
+        },
+        CHANNEL_TIMEOUT_MS,
+      );
+      const body = (await response.json().catch(() => null)) as {
+        id?: unknown;
+      } | null;
+      if (typeof body?.id === "string") return body.id;
+    } catch (error) {
+      lastError = error;
+      // Berechtigung fehlt oder Anfrage dauerhaft ungültig: nicht wiederholen.
+      if (
+        error instanceof TeamsGraphError &&
+        error.code === "consent_missing"
+      ) {
+        throw error;
+      }
     }
   }
-  const existing = await channelIdByName(fetcher, token, teamId, channel.name);
-  if (!existing) throw new TeamsGraphError("unavailable");
-  return existing;
+  const existing = await channelIdByName(
+    fetcher,
+    token,
+    teamId,
+    channel.name,
+  ).catch(() => null);
+  if (existing) return existing;
+  throw lastError;
 }
 
 /** Archiviert das Team (schreibgeschützt, in Teams wiederherstellbar). */
