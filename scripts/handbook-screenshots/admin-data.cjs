@@ -65,6 +65,16 @@ const FEATURE_CATALOG = {
     "Geräte und Zubehör im Self-Service bestellen.",
     "portal",
   ],
+  "teams.provisioning": [
+    "Microsoft Teams im Shop",
+    "Teams im Shop bestellen, Laufzeit und Erinnerungen, Menü «Teams».",
+    "integrations",
+  ],
+  "portal.notices": [
+    "Hinweise für Anfragende",
+    "Eigene Hinweise der ICT in Ticket-Mails, Portal und App.",
+    "integrations",
+  ],
   "service.tasks": [
     "Serviceaufgaben",
     "Wiederkehrende Wartungs- und Kontrollaufgaben planen.",

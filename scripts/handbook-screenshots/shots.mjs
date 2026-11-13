@@ -201,6 +201,26 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-teams",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Teams");
+      await h.waitText("Projekt Neubau Schulhaus");
+      await h.page
+        .getByRole("button", { name: "Projekt Neubau Schulhaus" })
+        .click();
+      await h.waitText("Laufzeit verlängern");
+      await h.page.evaluate(() => {
+        window.scrollTo(0, 0);
+        document
+          .querySelectorAll("main, .workspace, .app-shell")
+          .forEach((el) => el.scrollTo?.(0, 0));
+      });
+      await h.settle(300);
+    },
+  },
+  {
     name: "ag-personensuche",
     persona: "agent",
     async run(h) {

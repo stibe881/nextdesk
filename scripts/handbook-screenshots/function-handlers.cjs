@@ -49,6 +49,7 @@ const ENABLED_FEATURES = new Set([
   "ai.assist",
   "notifications.push",
   "self_service.shop",
+  "teams.provisioning",
 ]);
 const ALL_FEATURES = [
   "ticketing.detail",
@@ -73,6 +74,8 @@ const ALL_FEATURES = [
   "requester.portal",
   "requester.department-view",
   "notifications.push",
+  "teams.provisioning",
+  "portal.notices",
 ];
 
 const HANDBOOKS = [
@@ -1525,6 +1528,120 @@ const HANDLERS = {
       },
     });
   },
+  // Teams und Hinweise sind in den Demo-Daten ausgeschaltet.
+  "teams-admin": (body, { persona }) => {
+    if (body.type === "getContext") {
+      return ok({
+        canManage: persona.canWorkTickets,
+        configured: true,
+        today: "2026-11-12",
+        syncedAt: "2026-11-12T09:15:00.000Z",
+      });
+    }
+    if (body.type === "list") {
+      const team = (n, name, extra = {}) => ({
+        teamId: `aaaaaaaa-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`,
+        name,
+        description: null,
+        visibility: "private",
+        archived: false,
+        webUrl: "https://teams.microsoft.com/",
+        owners: ["Daniel Frei"],
+        ownerCount: 1,
+        source: "existing",
+        requestId: null,
+        requestStatus: null,
+        startDate: null,
+        endDate: null,
+        daysLeft: null,
+        createdAt: "2025-09-03T08:00:00Z",
+        memberCount: 12,
+        guestCount: 0,
+        ...extra,
+      });
+      return ok({
+        syncedAt: "2026-11-12T09:15:00.000Z",
+        teams: [
+          team(1, "Projekt Neubau Schulhaus", {
+            description: "Planung, Bauleitung und Bauherrschaft",
+            source: "order",
+            requestStatus: "ready",
+            startDate: "2026-11-12",
+            endDate: "2027-11-30",
+            daysLeft: 383,
+            createdAt: "2026-11-12T08:00:00Z",
+            memberCount: 9,
+            guestCount: 1,
+            owners: ["Daniel Frei", "Mara Keller"],
+            ownerCount: 2,
+          }),
+          team(2, "Marketing Kampagne Q1", {
+            source: "order",
+            requestStatus: "ready",
+            startDate: "2026-02-02",
+            endDate: "2026-11-19",
+            daysLeft: 7,
+            owners: ["Lena Brunner"],
+            memberCount: 12,
+          }),
+          team(3, "Klasse Kuhles", {
+            description: "Schulklasse, Schuljahr 26/27",
+            memberCount: 24,
+          }),
+          team(4, "Pilot Lernplattform", {
+            visibility: "public",
+            owners: [],
+            ownerCount: 0,
+            memberCount: 4,
+          }),
+          team(5, "Projekt Altbau 2025", {
+            archived: true,
+            source: "order",
+            requestStatus: "archived",
+            memberCount: 7,
+          }),
+        ],
+      });
+    }
+    if (body.type === "members") {
+      return ok({
+        members: [
+          {
+            membershipId: "m1",
+            userId: null,
+            displayName: "Daniel Frei",
+            email: "daniel.frei@muster.ch",
+            isOwner: true,
+            isGuest: false,
+          },
+          {
+            membershipId: "m2",
+            userId: null,
+            displayName: "Mara Keller",
+            email: "mara.keller@muster.ch",
+            isOwner: true,
+            isGuest: false,
+          },
+          {
+            membershipId: "m3",
+            userId: null,
+            displayName: "Lena Brunner",
+            email: "lena.brunner@muster.ch",
+            isOwner: false,
+            isGuest: false,
+          },
+        ],
+      });
+    }
+    if (body.type === "history") return ok({ events: [] });
+    return null;
+  },
+  "teams-provisioning": () => fail("feature_disabled", 403),
+  "teams-settings": () => fail("feature_disabled", 403),
+  "requester-notices": (body) =>
+    body.type === "active"
+      ? ok({ notices: [] })
+      : fail("feature_disabled", 403),
   "tenant-feature-flags": () =>
     ok({
       features: ALL_FEATURES.map((key) => ({
