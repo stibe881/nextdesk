@@ -303,8 +303,10 @@ Init7), gekennzeichnet mit **Extern · Anbieter**. Diese zeigen, dass die Ursach
 beim Anbieter liegt und nicht in deinem Netz, z. B. wenn mehrere Personen
 melden, dass Teams nicht geht. Das Team wird beim Auftreten benachrichtigt (ohne Wiederholungsalarm); meldet der Anbieter die Störung als
 behoben, schliesst sie sich automatisch. **Statusseite des Anbieters öffnen**
-führt zu den Details beim Anbieter. Neue Texte des Anbieters erscheinen im
-Verlauf als «Update vom Anbieter»; das Team erhält dazu eine Benachrichtigung
+führt zu den Details beim Anbieter. Titel und Texte der Anbieter zeigt nextDesk
+als kurze deutsche Fassung ohne Floskeln (mit der KI übersetzt); den
+Originaltext findest du auf der Statusseite des Anbieters. Neue Texte des
+Anbieters erscheinen im Verlauf als «Update vom Anbieter»; das Team erhält dazu eine Benachrichtigung
 («Update: Anbieter» mit dem neuen Text) und eine weitere, sobald der Anbieter
 die Störung als behoben meldet («Behoben: Anbieter»). Externe Störungen müssen nicht bestätigt
 werden; unter **Zuständig** kannst du sie aber einer Person zuweisen, die sie
