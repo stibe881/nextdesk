@@ -949,6 +949,27 @@ export function buildApnsPayload(
   return { aps, body: data };
 }
 
+/** Von Administratoren verfasste Mitteilung: Titel und Text, sonst keine Daten. */
+export function buildBroadcastPayload(input: {
+  title: string;
+  body: string;
+  tenantId: string;
+  broadcastId: string;
+}): Record<string, unknown> {
+  return {
+    aps: {
+      alert: {
+        title: input.title.slice(0, 60),
+        body: input.body.slice(0, 200),
+      },
+      sound: "default",
+    },
+    kind: "broadcast",
+    tenantId: input.tenantId,
+    notificationId: input.broadcastId,
+  };
+}
+
 export async function sendApns(
   token: string,
   environment: ApnsEnvironment,

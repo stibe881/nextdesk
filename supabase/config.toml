@@ -411,6 +411,14 @@ verify_jwt = false
 import_map = "./functions/deno.json"
 verify_jwt = true
 
+[functions.push-broadcast]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
+[functions.push-android]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
 [functions.teams-settings]
 import_map = "./functions/deno.json"
 verify_jwt = true

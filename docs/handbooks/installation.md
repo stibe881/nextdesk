@@ -286,6 +286,22 @@ Das Anlegen läuft im Hintergrund (Cron `nextdesk-teams-lifecycle`, alle
 - Anwenderinnen und Anwender testen in der iOS-App unter _Profil →
   Benachrichtigungen → Testmitteilung senden_.
 
+### Push-Mitteilungen auf Android
+
+Ticket-Mitteilungen gibt es nur auf dem iPhone. Die **Push-Mitteilungen der
+Administration** (Einstellungen → Funktionen → Push-Benachrichtigungen) gehen
+auch an Android-Geräte, und zwar über den Expo-Push-Dienst. Einmalig nötig:
+
+1. **[Betreiber]** In der Firebase-Konsole ein Projekt anlegen und die
+   Android-App mit der Paket-ID `ch.nextdesk.grossict` hinzufügen. Die Datei
+   `google-services.json` herunterladen.
+2. **[Betreiber]** In EAS die Datei als Datei-Variable `GOOGLE_SERVICES_JSON`
+   hinterlegen (oder in den Ordner `mobile` legen) und unter _Credentials →
+   Android → FCM V1_ den Dienstkonto-Schlüssel des Firebase-Projekts hochladen.
+3. **[Betreiber]** Einen neuen Android-Build erstellen und veröffentlichen.
+   Erst Geräte mit diesem Build melden sich für Push an (beim ersten Start
+   fragt Android nach der Erlaubnis für Benachrichtigungen).
+
 ### PRTG-Monitoring
 
 PRTG-Meldungen erzeugen keine Tickets, sondern **Störungen** im

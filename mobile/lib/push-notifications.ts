@@ -1,3 +1,4 @@
+import { unregisterAndroidPush } from "@/lib/android-push";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
@@ -542,6 +543,19 @@ export async function reregisterPushTokenIfEnabled(
  */
 export async function unregisterPushDeviceBeforeSignOut(): Promise<void> {
   const client = nextDesk;
+  if (Platform.OS === "android" && client) {
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, 3_000);
+      void loadCurrentTenant()
+        .then((tenant) => unregisterAndroidPush(tenant.id))
+        .catch(() => undefined)
+        .finally(() => {
+          clearTimeout(timeout);
+          resolve();
+        });
+    });
+    return;
+  }
   if (Platform.OS !== "ios" || !client) return;
 
   const cleanup = async () => {
