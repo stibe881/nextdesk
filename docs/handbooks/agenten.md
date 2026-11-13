@@ -311,7 +311,9 @@ als kurze deutsche Fassung ohne Floskeln (mit der KI übersetzt); den
 Originaltext findest du auf der Statusseite des Anbieters. Neue Texte des
 Anbieters erscheinen im Verlauf als «Update vom Anbieter»; das Team erhält dazu eine Benachrichtigung
 («Update: Anbieter» mit dem neuen Text) und eine weitere, sobald der Anbieter
-die Störung als behoben meldet («Behoben: Anbieter»). Auch externe Störungen
+die Störung als behoben meldet («Behoben: Anbieter»). Sind der Quelle in den Einstellungen Dienste zugeordnet, erscheint die
+Störung automatisch als öffentliche Meldung im Banner und auf der
+Statusseite. Auch externe Störungen
 bestätigst du mit **Bestätigen: ich kümmere mich** (sie werden aber nicht
 erneut alarmiert); unter **Zuständig** weist du sie einer Person zu, die sie
 verfolgt. Von Hand abschliessen ist nur nötig, wenn die Meldung

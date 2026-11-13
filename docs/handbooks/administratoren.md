@@ -308,7 +308,18 @@ Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
   gemeldete Störung erscheint unter **Störungen** als «Extern» und
   benachrichtigt das Team für die Alarmierung, ebenso jedes Update des Anbieters und die Behebung. Titel und Texte
   der Anbieter erscheinen als kurze deutsche Fassung; dafür nutzt nextDesk die
-  konfigurierte KI (ANTHROPIC_API_KEY), sonst bleibt der Originaltext. Pro Quelle siehst du,
+  konfigurierte KI (ANTHROPIC_API_KEY), sonst bleibt der Originaltext.
+  Unter **Automatisch auf der Statusseite melden für** ordnest du einer
+  aktivierten Quelle Dienste der Statusseite zu (z. B. Microsoft 365 →
+  Microsoft Teams, E-Mail, OneDrive, SharePoint; Claude → Claude AI). Meldet der
+  Anbieter eine Störung, erscheint sofort eine öffentliche Meldung im Banner
+  in Web und App und auf der Statusseite, die Dienste werden als gestört
+  markiert (Ausfall = «Teilweiser Ausfall», Warnung = «Beeinträchtigte
+  Leistung»), Abonnenten erhalten eine Mail, und jedes Update des Anbieters
+  ergänzt die Meldung. Mit der Behebung wird sie geschlossen und die Dienste
+  sind wieder betriebsbereit. Als Autor erscheint, wer die Zuordnung
+  gespeichert hat. Ohne zugeordnete Dienste gibt es keine öffentliche
+  Meldung. Pro Quelle siehst du,
   wann zuletzt geprüft wurde und ob ein Fehler auftrat. WWZ und Swisscom
   bieten keine maschinenlesbare Quelle; überwache diese Anschlüsse mit
   einem Ping- oder HTTP-Sensor in PRTG.

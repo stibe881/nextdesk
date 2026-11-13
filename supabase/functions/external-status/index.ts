@@ -256,6 +256,24 @@ async function addEvent(
   });
 }
 
+/**
+ * Public message on the status page (if the source has services assigned):
+ * created with the first text, extended with every new text of the provider.
+ */
+async function publishNotice(
+  admin: Admin,
+  incidentId: string,
+  message: string | null,
+) {
+  const { error } = await admin.rpc("monitoring_external_publish", {
+    p_incident_id: incidentId,
+    p_message: message,
+  });
+  if (error) {
+    console.error("external_status_publish_failed", { code: error.code });
+  }
+}
+
 /** Opens, updates and closes the external incidents of one tenant source. */
 export async function syncSource(
   admin: Admin,
@@ -327,6 +345,7 @@ export async function syncSource(
           .from("monitoring_incident_events")
           .update({ message: issue.message.slice(0, 4000) })
           .eq("id", last.id);
+        if (notify) await publishNotice(admin, String(existing.id), issue.message);
         continue;
       }
       if (issue.message && lastText !== issue.message) {
@@ -343,6 +362,7 @@ export async function syncSource(
           .eq("id", existing.id);
         // The team hears about every new text of the provider.
         if (notify) {
+          await publishNotice(admin, String(existing.id), issue.message);
           await admin.rpc("monitoring_incident_notify", {
             p_incident_id: String(existing.id),
             p_reason: "updated",
@@ -394,6 +414,7 @@ export async function syncSource(
       p_incident_id: incidentId,
       p_reason: "opened",
     });
+    await publishNotice(admin, incidentId, issue.message);
     opened += 1;
   }
 
@@ -512,7 +533,7 @@ async function sourcesForResponse(admin: Admin, tenantId: string) {
   const [{ data: stored, error }, { data: incidents }] = await Promise.all([
     admin
       .from("monitoring_external_sources")
-      .select("source_key, enabled, last_checked_at, last_error")
+      .select("source_key, enabled, last_checked_at, last_error, publish_service_ids")
       .eq("tenant_id", tenantId),
     admin
       .from("monitoring_incidents")
@@ -542,20 +563,65 @@ async function sourcesForResponse(admin: Admin, tenantId: string) {
       activeIncidents: activeKeys.filter((key) =>
         key.startsWith(`ext:${source.key}:`),
       ).length,
+      // Services of the status page published automatically.
+      serviceIds: Array.isArray(row?.publish_service_ids)
+        ? (row.publish_service_ids as string[])
+        : [],
     };
   });
+}
+
+/** Active services of the status page to assign to a source. */
+async function statusServices(admin: Admin, tenantId: string) {
+  const { data, error } = await admin
+    .from("services")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("active", true)
+    .order("name")
+    .limit(500);
+  if (error) throw dbFailure();
+  return ((data ?? []) as Row[]).map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+  }));
+}
+
+/** Valid service lists per source key; null when the input is invalid. */
+export function parseSourceServices(
+  value: unknown,
+): Record<string, string[]> | null {
+  if (value === undefined) return {};
+  if (!isRecord(value)) return null;
+  const result: Record<string, string[]> = {};
+  for (const [key, ids] of Object.entries(value)) {
+    if (!(SOURCE_KEYS as readonly string[]).includes(key)) return null;
+    if (!Array.isArray(ids) || ids.length > 100 || !ids.every(isUuid)) {
+      return null;
+    }
+    result[key] = [...new Set((ids as string[]).map((id) => id.toLowerCase()))];
+  }
+  return result;
 }
 
 async function save(
   admin: Admin,
   tenantId: string,
+  actorId: string,
   enabled: Record<string, unknown>,
+  services: Record<string, string[]>,
 ) {
   const rows = SOURCE_KEYS.map((key) => ({
     tenant_id: tenantId,
     source_key: key,
     enabled: enabled[key] === true,
     updated_at: new Date().toISOString(),
+    ...(services[key]
+      ? {
+        publish_service_ids: services[key],
+        publish_actor_id: services[key]!.length ? actorId : null,
+      }
+      : {}),
   }));
   const { error } = await admin
     .from("monitoring_external_sources")
@@ -564,6 +630,34 @@ async function save(
   // Switched off: its open incidents are closed (nobody watches them anymore).
   for (const key of SOURCE_KEYS.filter((key) => enabled[key] !== true)) {
     await syncSource(admin, tenantId, key, [], null, false);
+  }
+  // Newly assigned services: publish the incidents that are already active.
+  const keys = Object.keys(services).filter((key) =>
+    enabled[key] === true && services[key]!.length > 0
+  );
+  for (const key of keys) {
+    const { data: active } = await admin
+      .from("monitoring_incidents")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("source", "external")
+      .eq("state", "active")
+      .like("incident_key", `ext:${key}:%`);
+    for (const incident of (active ?? []) as Row[]) {
+      const { data: last } = await admin
+        .from("monitoring_incident_events")
+        .select("message")
+        .eq("incident_id", incident.id)
+        .in("kind", ["external", "opened"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      await publishNotice(
+        admin,
+        String(incident.id),
+        typeof last?.message === "string" ? last.message : null,
+      );
+    }
   }
 }
 
@@ -607,7 +701,20 @@ const userHandler = withSupabase(
             422,
           );
         }
-        await save(admin, tenantId, body.enabled);
+        const services = parseSourceServices(body.services);
+        if (!services) {
+          return json(
+            request,
+            {
+              error: {
+                code: "invalid_request",
+                message: "Die Anfrage ist ungültig.",
+              },
+            },
+            422,
+          );
+        }
+        await save(admin, tenantId, actorId, body.enabled, services);
       } else if (type === "checkNow") {
         const { data, error } = await admin
           .from("monitoring_external_sources")
@@ -629,7 +736,10 @@ const userHandler = withSupabase(
         );
       }
       return json(request, {
-        data: { sources: await sourcesForResponse(admin, tenantId) },
+        data: {
+          sources: await sourcesForResponse(admin, tenantId),
+          services: await statusServices(admin, tenantId),
+        },
       });
     } catch (error) {
       if (error instanceof HttpError) {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Globe, RefreshCw } from "lucide-react";
+import { Globe, RefreshCw, X } from "lucide-react";
 
 import { tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
@@ -16,7 +16,28 @@ export type ExternalStatusSource = {
   lastCheckedAt: string | null;
   lastError: string | null;
   activeIncidents: number;
+  /** Services of the status page published automatically. */
+  serviceIds: string[];
 };
+
+export type StatusPageServiceOption = { id: string; name: string };
+
+export function parseExternalServices(
+  value: unknown,
+): StatusPageServiceOption[] {
+  const data =
+    value && typeof value === "object" && "data" in value
+      ? (value as { data?: { services?: unknown } }).data
+      : null;
+  const rows = Array.isArray(data?.services) ? data.services : [];
+  return rows.flatMap((row: unknown) => {
+    if (!row || typeof row !== "object") return [];
+    const entry = row as Record<string, unknown>;
+    return typeof entry.id === "string" && typeof entry.name === "string"
+      ? [{ id: entry.id, name: entry.name }]
+      : [];
+  });
+}
 
 export function parseExternalSources(value: unknown): ExternalStatusSource[] {
   const data =
@@ -44,6 +65,11 @@ export function parseExternalSources(value: unknown): ExternalStatusSource[] {
         lastError: text(entry.lastError),
         activeIncidents:
           typeof entry.activeIncidents === "number" ? entry.activeIncidents : 0,
+        serviceIds: Array.isArray(entry.serviceIds)
+          ? entry.serviceIds.filter(
+              (id): id is string => typeof id === "string",
+            )
+          : [],
       },
     ];
   });
@@ -65,7 +91,99 @@ async function invoke(body: Record<string, unknown>) {
       ),
     );
   }
-  return parseExternalSources(data);
+  return {
+    sources: parseExternalSources(data),
+    services: parseExternalServices(data),
+  };
+}
+
+/** Services of the status page for one source: chips plus a search. */
+function SourceServicePicker({
+  disabled,
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  disabled: boolean;
+  label: string;
+  onChange: (ids: string[]) => void;
+  options: StatusPageServiceOption[];
+  value: string[];
+}) {
+  const [query, setQuery] = useState("");
+  const names = new Map(options.map((option) => [option.id, option.name]));
+  const words = query.toLocaleLowerCase("de-CH").split(/\s+/).filter(Boolean);
+  const matches = words.length
+    ? options
+        .filter((option) => !value.includes(option.id))
+        .filter((option) =>
+          words.every((word) =>
+            option.name.toLocaleLowerCase("de-CH").includes(word),
+          ),
+        )
+        .slice(0, 8)
+    : [];
+  return (
+    <div className="external-status__services">
+      <small>
+        Automatisch auf der Statusseite melden für:
+        {value.length ? null : " (keine Dienste – keine öffentliche Meldung)"}
+      </small>
+      {value.length ? (
+        <ul aria-label={`Dienste für ${label}`}>
+          {value.map((id) => (
+            <li key={id}>
+              {names.get(id) ?? "Gelöschter Dienst"}
+              <button
+                aria-label={`${names.get(id) ?? "Dienst"} entfernen`}
+                disabled={disabled}
+                onClick={() => onChange(value.filter((entry) => entry !== id))}
+                type="button"
+              >
+                <X aria-hidden="true" size={12} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <input
+        aria-label={`Dienst für ${label} hinzufügen`}
+        disabled={disabled}
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            if (matches[0]) {
+              onChange([...value, matches[0].id]);
+              setQuery("");
+            }
+          }
+        }}
+        placeholder="Dienst suchen, z. B. Teams …"
+        type="search"
+        value={query}
+      />
+      {matches.length ? (
+        <ul className="external-status__matches">
+          {matches.map((option) => (
+            <li key={option.id}>
+              <button
+                disabled={disabled}
+                onClick={() => {
+                  onChange([...value, option.id]);
+                  setQuery("");
+                }}
+                type="button"
+              >
+                {option.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 function dateTime(value: string | null): string {
@@ -84,16 +202,36 @@ function dateTime(value: string | null): string {
 export function ExternalStatusSettings({ tenantId }: { tenantId: string }) {
   const [sources, setSources] = useState<ExternalStatusSource[] | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [serviceOptions, setServiceOptions] = useState<
+    StatusPageServiceOption[]
+  >([]);
+  const [sourceServices, setSourceServices] = useState<
+    Record<string, string[]>
+  >({});
   const [busy, setBusy] = useState<"save" | "check" | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const apply = useCallback((next: ExternalStatusSource[]) => {
-    setSources(next);
-    setSelected(
-      Object.fromEntries(next.map((source) => [source.key, source.enabled])),
-    );
-  }, []);
+  const apply = useCallback(
+    (next: {
+      sources: ExternalStatusSource[];
+      services: StatusPageServiceOption[];
+    }) => {
+      setSources(next.sources);
+      setServiceOptions(next.services);
+      setSelected(
+        Object.fromEntries(
+          next.sources.map((source) => [source.key, source.enabled]),
+        ),
+      );
+      setSourceServices(
+        Object.fromEntries(
+          next.sources.map((source) => [source.key, source.serviceIds]),
+        ),
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
@@ -115,7 +253,14 @@ export function ExternalStatusSettings({ tenantId }: { tenantId: string }) {
     setMessage("");
     setError("");
     try {
-      apply(await invoke({ type: "save", tenantId, enabled: selected }));
+      apply(
+        await invoke({
+          type: "save",
+          tenantId,
+          enabled: selected,
+          services: sourceServices,
+        }),
+      );
       // Check right away so the status is visible without waiting 5 minutes.
       apply(await invoke({ type: "checkNow", tenantId }));
       setMessage("Die externen Statusquellen wurden gespeichert und geprüft.");
@@ -156,7 +301,11 @@ export function ExternalStatusSettings({ tenantId }: { tenantId: string }) {
             unter «Störungen» als «Extern» und das Team für die Alarmierung
             (siehe PRTG oben) wird benachrichtigt, ebenso bei jedem Update des
             Anbieters. Meldet der Anbieter die Störung als behoben, schliesst
-            sie sich automatisch.
+            sie sich automatisch. Sind einer Quelle Dienste zugeordnet,
+            erscheint die Störung sofort als öffentliche Meldung im Banner und
+            auf der Statusseite (die Dienste werden als gestört markiert);
+            Updates des Anbieters ergänzen sie, und mit der Behebung wird sie
+            geschlossen.
           </p>
         </div>
         <Globe aria-hidden="true" size={25} />
@@ -221,6 +370,20 @@ export function ExternalStatusSettings({ tenantId }: { tenantId: string }) {
                     ) : null}
                   </span>
                 </label>
+                {selected[source.key] ? (
+                  <SourceServicePicker
+                    disabled={busy !== null}
+                    label={source.label}
+                    onChange={(ids) =>
+                      setSourceServices({
+                        ...sourceServices,
+                        [source.key]: ids,
+                      })
+                    }
+                    options={serviceOptions}
+                    value={sourceServices[source.key] ?? []}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>
