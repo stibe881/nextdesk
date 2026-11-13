@@ -118,7 +118,22 @@ export type TicketSupportLevel = {
   };
   currentHandover: TicketSupportLevelEntry | null;
   history: TicketSupportLevelEntry[];
+  /** «Als Spam/Phishing einstufen» (reply + handover to the 2nd level). */
+  spam: {
+    marked: boolean;
+    canMark: boolean;
+    targetTeam: LevelTeamOption | null;
+  };
 };
+
+export type SpamReply =
+  | "queued"
+  | "no_requester_email"
+  | "template_disabled"
+  | "no_mail_channel"
+  | "failed";
+
+export type SpamResult = { teamName: string; moved: boolean; reply: SpamReply };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -198,6 +213,11 @@ export function parseTicketSupportLevel(
         : [],
     },
     currentHandover: parseEntry(data.currentHandover),
+    spam: {
+      marked: isRecord(data.spam) && data.spam.marked === true,
+      canMark: isRecord(data.spam) && data.spam.canMark === true,
+      targetTeam: isRecord(data.spam) ? parseTeam(data.spam.targetTeam) : null,
+    },
     history: Array.isArray(data.history)
       ? data.history.flatMap((item) => {
           const entry = parseEntry(item);
@@ -388,5 +408,53 @@ export async function loadSupportLevelReport(
     throw new Error(
       "Der Stufenbericht hat keine verwertbare Antwort geliefert.",
     );
+  return parsed;
+}
+
+const SPAM_REPLIES: readonly SpamReply[] = [
+  "queued",
+  "no_requester_email",
+  "template_disabled",
+  "no_mail_channel",
+  "failed",
+];
+
+export function parseSpamResult(value: unknown): SpamResult | null {
+  const data = isRecord(value) ? value.data : null;
+  if (!isRecord(data) || typeof data.teamName !== "string") return null;
+  const reply = SPAM_REPLIES.find((entry) => entry === data.reply) ?? "failed";
+  return { teamName: data.teamName, moved: data.moved === true, reply };
+}
+
+/** Text after «Als Spam/Phishing einstufen», incl. why no reply was sent. */
+export function spamResultText(result: SpamResult): string {
+  const handover = result.moved
+    ? `Das Ticket wurde an den 2nd Level (${result.teamName}) übergeben.`
+    : `Das Ticket liegt bereits beim 2nd Level (${result.teamName}).`;
+  const reply: Record<SpamReply, string> = {
+    queued: "Die Standardantwort an die anfragende Person ist unterwegs.",
+    no_requester_email:
+      "Die anfragende Person hat keine E-Mail-Adresse, darum wurde keine Antwort gesendet.",
+    template_disabled:
+      "Die Vorlage «Phishing-Meldung: Danke» oder «Phishing-Meldung: Gestaltung» ist ausgeschaltet, darum wurde keine Antwort gesendet.",
+    no_mail_channel:
+      "Es ist kein aktives Exchange-Postfach verbunden, darum wurde keine Antwort gesendet.",
+    failed: "Die Standardantwort konnte nicht vorbereitet werden.",
+  };
+  return `Als Spam/Phishing eingestuft. ${handover} ${reply[result.reply]}`;
+}
+
+export async function markTicketSpam(
+  tenantId: string,
+  ticketId: string,
+): Promise<SpamResult> {
+  const parsed = parseSpamResult(
+    await invoke(
+      { type: "markSpam", tenantId, ticketId },
+      "Das Ticket konnte nicht als Spam/Phishing eingestuft werden.",
+    ),
+  );
+  if (!parsed)
+    throw new Error("Die Einstufung hat keine verwertbare Antwort geliefert.");
   return parsed;
 }

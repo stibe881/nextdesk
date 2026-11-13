@@ -5,6 +5,8 @@ import {
   mobileSupportLevelLabel,
   parseMobileTicketSupportLevel,
   shouldShowSupportLevelCard,
+  mobileSpamResultText,
+  parseMobileSpamResult,
 } from "../lib/support-levels-model";
 
 describe("Supportstufen (mobil)", () => {
@@ -62,5 +64,54 @@ describe("Supportstufen (mobil)", () => {
     expect(shouldShowSupportLevelCard(state)).toBe(false);
     expect(shouldShowSupportLevelCard(null)).toBe(false);
     expect(parseMobileTicketSupportLevel({ data: {} })).toBeNull();
+  });
+});
+
+describe("Spam/Phishing einstufen (mobil)", () => {
+  it("liest den Spam-Zustand und blendet ihn bei alten Antworten aus", () => {
+    const base = { targets: { next: null, back: [] }, history: [] };
+    expect(
+      parseMobileTicketSupportLevel({
+        data: {
+          ...base,
+          spam: {
+            marked: false,
+            canMark: true,
+            targetTeam: { id: "t2", name: "System Engineer" },
+          },
+        },
+      })?.spam,
+    ).toEqual({
+      marked: false,
+      canMark: true,
+      targetTeamName: "System Engineer",
+    });
+    expect(parseMobileTicketSupportLevel({ data: base })?.spam).toEqual({
+      marked: false,
+      canMark: false,
+      targetTeamName: null,
+    });
+  });
+
+  it("beschreibt Übergabe und Antwort", () => {
+    const result = parseMobileSpamResult({
+      data: { teamName: "System Engineer", moved: true, reply: "queued" },
+    });
+    expect(result).toEqual({
+      teamName: "System Engineer",
+      moved: true,
+      reply: "queued",
+    });
+    expect(mobileSpamResultText(result!)).toBe(
+      "Das Ticket wurde an den 2nd Level (System Engineer) übergeben. Die Standardantwort an die anfragende Person ist unterwegs.",
+    );
+    expect(
+      mobileSpamResultText({
+        teamName: "System Engineer",
+        moved: false,
+        reply: "no_mail_channel",
+      }),
+    ).toMatch(/kein aktives Exchange-Postfach/);
+    expect(parseMobileSpamResult({ data: {} })).toBeNull();
   });
 });

@@ -219,7 +219,7 @@ export function emailTemplateDefinitions(
       category: "Phishing-Meldungen",
       label: "Phishing-Meldung: Danke",
       description:
-        "Geht an die Person, die eine verdächtige E-Mail gemeldet hat, sobald die Meldung eingegangen ist.",
+        "Geht an die Person, die eine verdächtige E-Mail gemeldet hat, sobald die Meldung eingegangen ist, und an die anfragende Person, wenn ein Agent ein Ticket als Spam/Phishing einstuft.",
       audience: "customer",
       placeholders: [
         { name: "ticketNumber", description: "Nummer des Sicherheitsfalls" },
@@ -244,6 +244,7 @@ export function emailTemplateDefinitions(
     },
     ...SECURITY_VERDICTS.map((verdict): EmailTemplateDefinition => ({
       key: `phishing_result_${verdict}`,
+      category: "Phishing-Meldungen",
       label: `Phishing-Meldung: Ergebnis «${VERDICT_LABELS[verdict]}»`,
       description: `Geht einmalig an alle meldenden Personen, wenn das Sicherheitsteam die Meldung als «${VERDICT_LABELS[verdict]}» beurteilt hat.`,
       audience: "customer",

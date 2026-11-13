@@ -112,6 +112,7 @@ import { TicketPdfRecord } from "./ticket-pdf-record";
 import { TicketCoordination } from "./ticket-coordination";
 import { TicketSlaBreachReason } from "./ticket-sla-breach-reason";
 import { TicketSupportLevel } from "./ticket-support-level";
+import { TicketSpamAction } from "./ticket-spam-action";
 import { IpamTicketPanel } from "./ipam-ticket-panel";
 import {
   TicketFormAnswersBlock,
@@ -2376,6 +2377,7 @@ function eventLabel(
     "ticket.category_changed": "Kategorie aktualisiert",
     "ticket.support_level_changed":
       "Supportstufe gewechselt (mit Übergabenotiz)",
+    "ticket.marked_spam": "Als Spam/Phishing eingestuft",
     "ticket.knowledge.sent":
       "Wissensartikel als externe Ticketantwort versendet",
   };
@@ -4098,7 +4100,14 @@ export function TicketDetail({
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
+  const [spamNotice, setSpamNotice] = useState<{
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
   const [presence, setPresence] = useState<TicketPresencePerson[]>([]);
+  useEffect(() => {
+    setSpamNotice(null);
+  }, [ticketId]);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [statusKey, setStatusKey] = useState("");
   const resolveAfterCommentRef = useRef(false);
@@ -7404,6 +7413,19 @@ export function TicketDetail({
             ticketId={ticketId}
             ticketNumber={detail.ticket.ticket_number}
           />
+          {requesterView || !detail.canUpdate ? null : (
+            <TicketSpamAction
+              disabled={busy}
+              onDone={(result) => {
+                setSpamNotice(result);
+                onChanged();
+                void loadTicket();
+              }}
+              refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}`}
+              tenantId={tenantId}
+              ticketId={ticketId}
+            />
+          )}
           {requesterView ? null : (
             <button
               aria-label={watchPresentation.actionLabel}
@@ -7450,6 +7472,20 @@ export function TicketDetail({
         <p className="ticket-detail-message error" role="alert">
           <AlertCircle aria-hidden="true" size={17} />
           {error}
+        </p>
+      )}
+
+      {spamNotice && (
+        <p
+          className={`ticket-detail-message ${spamNotice.tone}`}
+          role={spamNotice.tone === "error" ? "alert" : "status"}
+        >
+          {spamNotice.tone === "error" ? (
+            <AlertCircle aria-hidden="true" size={17} />
+          ) : (
+            <CircleCheck aria-hidden="true" size={17} />
+          )}
+          {spamNotice.text}
         </p>
       )}
 

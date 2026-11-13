@@ -1,6 +1,9 @@
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import { listAssignableAgents } from "../_shared/assignable-agents.ts";
+import { loadEmailTemplate } from "../_shared/email-templates-store.ts";
+import { loadFormality } from "../_shared/formality.ts";
+import { queueSecurityNotice } from "../_shared/security-cases.ts";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 import {
   buildSupportLevelReport,
@@ -13,6 +16,7 @@ import {
   type LevelTeam,
   normalizeHandoverNote,
   type ReportTicket,
+  spamTargetTeam,
   SUPPORT_LEVELS,
   type SupportLevel,
   supportLevelLabel,
@@ -25,6 +29,8 @@ import {
  * - handover: "An nächste Stufe übergeben" / "Zurück an Stufe X"
  * - queueLevels: levels configured in the caller's departments (queue filter)
  * - report: first-level resolution, escalations per category, time per level
+ * - markSpam: «Als Spam/Phishing einstufen»: standard reply to the requester
+ *   (same as a phishing report) and handover to the 2nd level team
  * Not related to ticket_escalations (management escalation, ticket-operations).
  */
 
@@ -45,6 +51,7 @@ type Action =
       expectedLevel: SupportLevel;
     }
   | { type: "queueLevels"; tenantId: string }
+  | { type: "markSpam"; tenantId: string; ticketId: string }
   | { type: "report"; tenantId: string; startsAt: string; endsAt: string };
 
 const MAX_REPORT_DAYS = 400;
@@ -126,6 +133,15 @@ export function parseAction(value: unknown): Action | null {
         expectedLevel: value.expectedLevel,
       };
     }
+    case "markSpam":
+      return hasOnlyKeys(value, ["type", "tenantId", "ticketId"]) &&
+        isUuid(value.ticketId)
+        ? {
+            type: "markSpam",
+            tenantId,
+            ticketId: value.ticketId.toLowerCase(),
+          }
+        : null;
     case "queueLevels":
       return hasOnlyKeys(value, ["type", "tenantId"])
         ? { type: "queueLevels", tenantId }
@@ -348,7 +364,7 @@ async function getTicket(
     action.ticketId,
   );
   const { ticket } = context;
-  const [teams, changesResult] = await Promise.all([
+  const [teams, changesResult, spamResult] = await Promise.all([
     departmentTeams(admin, action.tenantId, ticket.department_id),
     admin
       .from("ticket_support_level_changes")
@@ -359,8 +375,15 @@ async function getTicket(
       .eq("ticket_id", ticket.id)
       .order("seq", { ascending: true })
       .limit(200),
+    admin
+      .from("ticket_events")
+      .select("id")
+      .eq("ticket_id", ticket.id)
+      .eq("event_type", "ticket.marked_spam")
+      .limit(1),
   ]);
   if (changesResult.error) throw new HttpError(500, "level_history_failed");
+  if (spamResult.error) throw new HttpError(500, "spam_state_failed");
   const rows: Row[] = changesResult.data ?? [];
   const teamNames = new Map(teams.map((team) => [team.id, team.name]));
   const missingTeamIds = [
@@ -414,6 +437,8 @@ async function getTicket(
     createdAt: String(row.created_at),
   }));
   const handover = currentHandover(history, currentLevel);
+  const spamTarget = spamTargetTeam(teams);
+  const spamMarked = (spamResult.data ?? []).length > 0;
   return {
     levelsConfigured: teams.some(
       (team) => team.active && team.supportLevel !== null,
@@ -430,7 +455,180 @@ async function getTicket(
     history: history
       .map(({ ticketId: _ticketId, ...entry }) => entry)
       .reverse(),
+    spam: {
+      marked: spamMarked,
+      canMark:
+        context.canHandover &&
+        !context.closed &&
+        !spamMarked &&
+        spamTarget.kind === "team",
+      targetTeam:
+        spamTarget.kind === "team"
+          ? { id: spamTarget.team.id, name: spamTarget.team.name }
+          : null,
+    },
   };
+}
+
+const SPAM_ERRORS: Record<string, [number, string]> = {
+  ticket_spam_already_marked: [
+    409,
+    "Dieses Ticket wurde bereits als Spam/Phishing eingestuft.",
+  ],
+  ticket_spam_target_invalid: [
+    409,
+    "Das 2nd-Level-Team dieser Abteilung ist nicht mehr aktiv. Bitte neu laden.",
+  ],
+  support_level_ticket_closed: [
+    409,
+    "Geschlossene Tickets können nicht als Spam/Phishing eingestuft werden.",
+  ],
+  ticket_not_found: [404, "Das Ticket ist nicht mehr verfügbar."],
+};
+
+type SpamReply =
+  | "queued"
+  | "no_requester_email"
+  | "template_disabled"
+  | "no_mail_channel"
+  | "failed";
+
+async function markSpam(
+  admin: Admin,
+  actorId: string,
+  action: Extract<Action, { type: "markSpam" }>,
+) {
+  const context = await loadTicketContext(
+    admin,
+    actorId,
+    action.tenantId,
+    action.ticketId,
+  );
+  if (!context.canHandover) {
+    throw new HttpError(
+      403,
+      "ticket_spam_denied",
+      "Zum Einstufen als Spam/Phishing sind die Rechte «Tickets bearbeiten» und «Tickets zuweisen» in dieser Abteilung nötig.",
+    );
+  }
+  if (context.closed) {
+    const [status, message] = SPAM_ERRORS.support_level_ticket_closed;
+    throw new HttpError(status, "support_level_ticket_closed", message);
+  }
+  const target = spamTargetTeam(
+    await departmentTeams(admin, action.tenantId, context.ticket.department_id),
+  );
+  if (target.kind === "missing") {
+    throw new HttpError(
+      422,
+      "ticket_spam_target_missing",
+      "In dieser Abteilung ist kein aktives Team mit Supportstufe «2nd Level» eingerichtet.",
+    );
+  }
+  if (target.kind === "ambiguous") {
+    throw new HttpError(
+      422,
+      "ticket_spam_target_ambiguous",
+      "In dieser Abteilung gibt es mehrere 2nd-Level-Teams. Bitte das Ticket über «Supportstufe» übergeben.",
+    );
+  }
+
+  const { data, error } = await admin
+    .rpc("ticket_mark_spam", {
+      p_tenant_id: action.tenantId,
+      p_ticket_id: context.ticket.id,
+      p_actor_id: actorId,
+      p_target_team_id: target.team.id,
+    })
+    // Lets the push trigger recognise the acting person behind the write.
+    .setHeader("x-nextdesk-actor-id", actorId);
+  if (error) {
+    const known =
+      typeof error.hint === "string" ? SPAM_ERRORS[error.hint] : undefined;
+    if (known) throw new HttpError(known[0], error.hint, known[1]);
+    throw new HttpError(500, "ticket_spam_failed");
+  }
+
+  // The classification is stored; a failing reply must not undo it.
+  let reply: SpamReply = "failed";
+  try {
+    reply = await queueSpamReply(admin, actorId, action.tenantId, context.ticket.id);
+  } catch (replyError) {
+    console.error(
+      "ticket_spam_reply_failed",
+      replyError instanceof Error ? replyError.message : "",
+    );
+  }
+
+  await admin.from("audit_logs").insert({
+    tenant_id: action.tenantId,
+    actor_id: actorId,
+    action: "ticket.marked_spam",
+    entity_type: "ticket",
+    entity_id: context.ticket.id,
+    metadata: {
+      team_id: target.team.id,
+      moved: isRecord(data) ? data.moved === true : null,
+      reply,
+    },
+  });
+  return {
+    teamName: target.team.name,
+    moved: isRecord(data) ? data.moved === true : false,
+    reply,
+  };
+}
+
+/**
+ * Same reply as for a mail reported in Outlook: template «phishing_thanks»
+ * inside the «security_notice» frame, sent from the ticket's mailbox.
+ */
+async function queueSpamReply(
+  admin: Admin,
+  actorId: string,
+  tenantId: string,
+  ticketId: string,
+): Promise<SpamReply> {
+  const { data: ticket, error } = await admin
+    .from("tickets")
+    .select("ticket_number, requester_contact_id")
+    .eq("id", ticketId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (error || !ticket) return "failed";
+  if (!isUuid(ticket.requester_contact_id)) return "no_requester_email";
+  const { data: requester, error: requesterError } = await admin
+    .from("ticket_requesters")
+    .select("email, user_id")
+    .eq("id", ticket.requester_contact_id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (requesterError) return "failed";
+  let email: unknown = requester?.email;
+  if ((typeof email !== "string" || !email.trim()) && isUuid(requester?.user_id)) {
+    // Portal contacts with an account keep the address on the account.
+    const account = await admin.auth.admin.getUserById(requester.user_id);
+    email = account.data?.user?.email;
+  }
+  if (typeof email !== "string" || !email.trim()) return "no_requester_email";
+  const formality = await loadFormality(admin, tenantId);
+  const [thanks, frame] = await Promise.all([
+    loadEmailTemplate(admin, tenantId, "phishing_thanks", formality),
+    loadEmailTemplate(admin, tenantId, "security_notice", formality),
+  ]);
+  if (!thanks?.enabled || !frame?.enabled) return "template_disabled";
+  const values = { ticketNumber: String(ticket.ticket_number ?? "") };
+  const result = await queueSecurityNotice(admin, {
+    tenantId,
+    ticketId,
+    authorId: actorId,
+    subject: thanks.text("subject", values),
+    body: thanks.text("text", values),
+    recipients: [email],
+    note: `Standardantwort Spam/Phishing an ${email.trim().toLowerCase()}:`,
+  });
+  if (!result.commentId) return "failed";
+  return result.queued > 0 ? "queued" : "no_mail_channel";
 }
 
 async function teamAgents(
@@ -924,7 +1122,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             ? await handover(admin, actorId, action)
             : action.type === "queueLevels"
               ? await queueLevels(admin, actorId, action)
-              : await report(admin, actorId, action);
+              : action.type === "markSpam"
+                ? await markSpam(admin, actorId, action)
+                : await report(admin, actorId, action);
     return json(request, { data });
   } catch (error) {
     if (error instanceof HttpError) {

@@ -1,6 +1,8 @@
 import { invokeNextDesk } from "@/lib/nextdesk-client";
 import {
+  parseMobileSpamResult,
   parseMobileTicketSupportLevel,
+  type MobileSpamResult,
   type MobileSupportLevel,
   type MobileTicketSupportLevel,
 } from "@/lib/support-levels-model";
@@ -38,4 +40,24 @@ export async function handOverMobileTicketLevel(input: {
     note: input.note.trim(),
     expectedLevel: input.expectedLevel,
   });
+}
+
+/**
+ * «Als Spam/Phishing einstufen»: standard reply to the requester (as for a
+ * phishing report from Outlook) and handover to the 2nd level team.
+ */
+export async function markMobileTicketSpam(
+  tenantId: string,
+  ticketId: string,
+): Promise<MobileSpamResult> {
+  const result = parseMobileSpamResult(
+    await invokeNextDesk<unknown>("ticket-support-levels", {
+      type: "markSpam",
+      tenantId,
+      ticketId,
+    }),
+  );
+  if (!result)
+    throw new Error("Die Einstufung hat keine verwertbare Antwort geliefert.");
+  return result;
 }

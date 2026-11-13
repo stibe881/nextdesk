@@ -8,12 +8,14 @@ import {
   handoverNoteError,
   levelChangeText,
   parseQueueLevels,
+  parseSpamResult,
   parseSupportLevelReport,
   parseTicketSupportLevel,
   supportLevelFilterValue,
   supportLevelFromSelect,
   supportLevelLabel,
   supportLevelOfFilter,
+  spamResultText,
 } from "./support-levels";
 
 describe("Supportstufen", () => {
@@ -141,5 +143,55 @@ describe("Supportstufen", () => {
       }),
     ).toEqual([1, 2]);
     expect(parseQueueLevels(null)).toEqual([]);
+  });
+});
+
+describe("Spam/Phishing einstufen", () => {
+  it("liest den Spam-Zustand aus der Ticketantwort", () => {
+    const parsed = parseTicketSupportLevel({
+      data: {
+        targets: { next: null, back: [] },
+        history: [],
+        spam: {
+          marked: false,
+          canMark: true,
+          targetTeam: { id: "team-2", name: "System Engineer" },
+        },
+      },
+    });
+    expect(parsed?.spam).toEqual({
+      marked: false,
+      canMark: true,
+      targetTeam: { id: "team-2", name: "System Engineer" },
+    });
+    // Ältere Antworten ohne Spam-Angaben blenden den Knopf aus.
+    expect(
+      parseTicketSupportLevel({
+        data: { targets: { next: null, back: [] }, history: [] },
+      })?.spam,
+    ).toEqual({ marked: false, canMark: false, targetTeam: null });
+  });
+
+  it("beschreibt Übergabe und Antwort", () => {
+    const sent = parseSpamResult({
+      data: { teamName: "System Engineer", moved: true, reply: "queued" },
+    });
+    expect(sent).toEqual({
+      teamName: "System Engineer",
+      moved: true,
+      reply: "queued",
+    });
+    expect(spamResultText(sent!)).toBe(
+      "Als Spam/Phishing eingestuft. Das Ticket wurde an den 2nd Level (System Engineer) übergeben. Die Standardantwort an die anfragende Person ist unterwegs.",
+    );
+    const noMail = parseSpamResult({
+      data: { teamName: "System Engineer", moved: false, reply: "no_requester_email" },
+    });
+    expect(spamResultText(noMail!)).toMatch(/bereits beim 2nd Level/);
+    expect(spamResultText(noMail!)).toMatch(/keine E-Mail-Adresse/);
+    expect(
+      parseSpamResult({ data: { teamName: "X", reply: "unbekannt" } })?.reply,
+    ).toBe("failed");
+    expect(parseSpamResult({ data: {} })).toBeNull();
   });
 });

@@ -533,6 +533,28 @@ Rechts unter der **Übersicht** liegt die Karte **Koordination**. Die Karte zeig
 **Verlauf der Stufen**) sowie Teil-Tickets und Drittanbieter (**Aufteilen**,
 **An Drittanbieter übergeben**).
 
+### Ticket als Spam/Phishing einstufen
+
+Ist ein Ticket eine Spam- oder Phishing-Mail, klickst du oben im Ticket auf
+**Spam/Phishing** (in der iOS- und Android-App: **Als Spam/Phishing
+einstufen** über der Karte zur Supportstufe). Nach der Rückfrage **Wirklich
+als Spam/Phishing markieren?** passiert Folgendes:
+
+- Die anfragende Person erhält per E-Mail dieselbe Standardantwort wie bei
+  einer Phishing-Meldung aus Outlook (Vorlagen **Phishing-Meldung: Danke** und
+  **Phishing-Meldung: Gestaltung**).
+- Das Ticket geht an das Team mit der Supportstufe **2nd Level** der
+  Abteilung (z. B. «System Engineer»). Die Zuweisung an eine Person wird
+  aufgehoben, im Verlauf stehen eine interne Notiz und die Übergabe.
+- Das Ticket zeigt danach den Hinweis **Spam/Phishing**; ein zweites Einstufen
+  ist nicht möglich.
+
+Der Knopf erscheint nur mit den Rechten «Tickets bearbeiten» und «Tickets
+zuweisen», bei offenen Tickets und wenn die Abteilung genau ein aktives
+2nd-Level-Team hat. Fehlt die E-Mail-Adresse der anfragenden Person, ist die
+Vorlage ausgeschaltet oder kein Exchange-Postfach verbunden, wird das Ticket
+trotzdem übergeben; nextDesk zeigt dann, warum keine Antwort gesendet wurde.
+
 Tickets aus E-Mails enthalten die E-Mail-Signatur nicht mehr. Stammt die Mail
 von einer Adresse ausserhalb deiner Organisation, stehen unter **Anfragende
 Person** zusätzlich die E-Mail-Adresse und alle Telefonnummern aus der
