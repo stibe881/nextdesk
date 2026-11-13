@@ -1,324 +1,428 @@
 project_id = "nextdesk"
 
 [functions.create-tenant]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.account]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.shop]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 # Users authenticate inside the function; the periodic wake-up uses a shared
 # secret header instead of a JWT.
 [functions.service-tasks]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.invite-tenant-member]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.accept-tenant-invitation]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.manage-tenant]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.platform-control]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.owner-access]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 # Role-specific handbooks (docs/handbooks); access is checked in the Function.
 [functions.handbooks]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.tenant-sso-access]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.owner-console]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.tenant-users]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-actions]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-requesters]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-requester-context]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.person-overview]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-operations]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-department-change]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-category-selection]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-custom-fields]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-tags]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-agent-assignment]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-presence]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-saved-views]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-bulk-status]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-templates]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.tenant-admin-settings]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.entra-directory-sync]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.tenant-audit-log]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.knowledge-base]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.global-search]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.sla-management]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.sla-automation]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.ticket-automation]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.tenant-role-management]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.email-ingress]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.notification-center]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.customer-organizations]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.service-reporting]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-attachments]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-feedback]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.service-assets]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.service-status]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.service-status-public]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.event-spaces]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.onboarding]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.ai-assist]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.asset-registry]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.intune-asset-sync]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.intune-actions]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.inventory]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-quality]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-handovers]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-coordination]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-knowledge]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-suggestions]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.team-supervision]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.push-notifications]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.push-dispatch]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.exchange-mail-admin]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.email-templates]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.exchange-mail-webhook]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.exchange-mail-worker]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.exchange-mail-connect]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 # Öffentlich erreichbar, damit MCP-Clients die OAuth-Metadaten finden. Jede
 # Aktion verlangt ein gültiges Zugriffstoken; die Funktion prüft es selbst.
 [functions.mcp]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 # OAuth-Vermittler für Gemini-Connectors; die Funktion prüft Zugangsdaten selbst.
 [functions.oauth-proxy]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.health]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.problem-management]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.infrastructure]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.knowledge-suggestions]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.monitoring-webhook]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.monitoring-integrations]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 # Admin calls authenticate inside the function; the hourly/15-minute wake-up
 # uses the dispatch secret header and the backup webhook a per-tenant token.
 [functions.expiry-monitoring]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.backup-monitoring]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.my-priorities]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.recent-items]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-triage]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.reply-snippets]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.portal-assistant]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.sla-breach-reasons]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ticket-support-levels]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.requester-reminder-action]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.ticket-rating-link]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.license-reclaim]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.feedback-insights]
+import_map = "./functions/deno.json"
 # Nightly wake-up via dispatch secret; the user path verifies the JWT itself.
 verify_jwt = false
 
 [functions.phishing-reports]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.security-cases]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.security-case-response]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.incidents]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ipam]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ipam-import]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.ipam-sync]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 # IPAM-REST-API: API-Schlüssel des Mandanten; der Cron (Webhooks, Intune)
 # weckt die Funktion mit dem Dispatch-Geheimnis.
 [functions.ipam-api]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.ipam-agent]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.ipam-discovery]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.intune-scheduled-sync]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.teams-provisioning]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.teams-lifecycle]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.teams-admin]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.teams-settings]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.requester-notices]
+import_map = "./functions/deno.json"
 verify_jwt = true
 
 [functions.notice-click]
+import_map = "./functions/deno.json"
 verify_jwt = false
 
 [functions.external-status]
+import_map = "./functions/deno.json"
 verify_jwt = false
