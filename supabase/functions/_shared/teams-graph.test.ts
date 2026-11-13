@@ -7,6 +7,7 @@ import {
   listTeamMembers,
   setTeamMemberOwner,
   finishTeam,
+  deleteTeam,
   parseTeamLocation,
   teamCreationStatus,
   TeamsGraphError,
@@ -364,3 +365,15 @@ Deno.test("finishTeam can postpone private channels", async () => {
     1,
   );
 });
+
+Deno.test(
+  "deleteTeam löscht die Gruppe und akzeptiert ein bereits gelöschtes Team",
+  async () => {
+    const ok = fakeFetch(() => new Response(null, { status: 204 }));
+    await deleteTeam("t", TEAM, ok.fetcher);
+    assertEquals(ok.calls[0]!.method, "DELETE");
+    assertEquals(ok.calls[0]!.url.endsWith(`/groups/${TEAM}`), true);
+    const gone = fakeFetch(() => new Response("{}", { status: 404 }));
+    await deleteTeam("t", TEAM, gone.fetcher);
+  },
+);

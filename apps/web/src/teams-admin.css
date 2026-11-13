@@ -520,3 +520,39 @@
   order: 3;
   flex: 1 1 100%;
 }
+
+.teams-admin__danger {
+  color: var(--danger, #b42318);
+  border-color: currentColor;
+}
+
+.teams-admin__delete {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--danger, #b42318);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--danger, #b42318) 6%, transparent);
+}
+
+.teams-admin__delete p {
+  margin: 0;
+}
+
+.teams-admin__danger-solid {
+  justify-self: start;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: #fff;
+  background: var(--danger, #b42318);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.teams-admin__danger-solid:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
