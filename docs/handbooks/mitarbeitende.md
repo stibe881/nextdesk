@@ -49,7 +49,8 @@ Nach der Anmeldung siehst du links das Menü und rechts den Inhalt.
 Oben rechts findest du:
 
 - **+ (Erfassen)** → **Ticket erfassen**
-- die **globale Suche** («Global suchen …») über deine Tickets
+- die **globale Suche** («Global suchen …») über deine Tickets, auch mit
+  einem Teil der Ticketnummer (z. B. «82» für ICT-2026-000082)
 - die **Glocke** für Benachrichtigungen; ein Klick auf einen Eintrag öffnet
   das betroffene Ticket bzw. die Bestellung, mit «Alle als gelesen markieren»
   leerst du die Liste. Der Knopf in einer E-Mail-Benachrichtigung öffnet
