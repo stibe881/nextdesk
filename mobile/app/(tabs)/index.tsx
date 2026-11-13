@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Image,
   Pressable,
   RefreshControl,
@@ -94,11 +95,7 @@ import { loadTenantBranding, type TenantBranding } from "@/lib/tenant-branding";
 import { tn } from "@/lib/formality";
 
 type FocusScope =
-  | "assigned"
-  | "solvedToday"
-  | "firstResponse"
-  | "resolution"
-  | "slaDue";
+  "assigned" | "solvedToday" | "firstResponse" | "resolution" | "slaDue";
 type TicketScope = "all" | "mine" | "open" | "unassigned" | FocusScope;
 
 const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
@@ -478,6 +475,37 @@ export default function HomeScreen() {
     }, [load, recoveryEpoch]),
   );
 
+  // Incident banner: reloads every 30 seconds while the home screen is open
+  // and when the app returns to the foreground, so resolved incidents
+  // disappear without a manual refresh.
+  useFocusEffect(
+    useCallback(() => {
+      if (!requesterPortalEnabled) return;
+      const epoch = tenantEpoch.current;
+      let active = true;
+      const refresh = () => {
+        void listActiveIncidentNotices()
+          .then((result) => {
+            if (active && epoch === tenantEpoch.current) {
+              setIncidentNotices(result.notices);
+            }
+          })
+          .catch(() => {
+            // Keep the last state; the next run tries again.
+          });
+      };
+      const timer = setInterval(refresh, 30_000);
+      const subscription = AppState.addEventListener("change", (state) => {
+        if (state === "active") refresh();
+      });
+      return () => {
+        active = false;
+        clearInterval(timer);
+        subscription.remove();
+      };
+    }, [requesterPortalEnabled]),
+  );
+
   const loadBranding = useCallback(async (id: string) => {
     const requestId = brandingRequest.current + 1;
     brandingRequest.current = requestId;
@@ -587,8 +615,14 @@ export default function HomeScreen() {
       setWatchState({ ...watchState, ids });
       setActionMessage(
         nextWatched
-          ? tn(`Du beobachtest «${ticket.ticketNumber}» und wirst über Änderungen benachrichtigt.`, `Sie beobachten «${ticket.ticketNumber}» und werden über Änderungen benachrichtigt.`)
-          : tn(`Du beobachtest «${ticket.ticketNumber}» nicht mehr.`, `Sie beobachten «${ticket.ticketNumber}» nicht mehr.`),
+          ? tn(
+              `Du beobachtest «${ticket.ticketNumber}» und wirst über Änderungen benachrichtigt.`,
+              `Sie beobachten «${ticket.ticketNumber}» und werden über Änderungen benachrichtigt.`,
+            )
+          : tn(
+              `Du beobachtest «${ticket.ticketNumber}» nicht mehr.`,
+              `Sie beobachten «${ticket.ticketNumber}» nicht mehr.`,
+            ),
       );
     } catch {
       setActionMessage("Das Beobachten konnte nicht gespeichert werden.");
@@ -644,7 +678,12 @@ export default function HomeScreen() {
             : item,
         ),
       );
-      setActionMessage(tn(`«${ticket.ticketNumber}» wurde dir zugewiesen.`, `«${ticket.ticketNumber}» wurde Ihnen zugewiesen.`));
+      setActionMessage(
+        tn(
+          `«${ticket.ticketNumber}» wurde dir zugewiesen.`,
+          `«${ticket.ticketNumber}» wurde Ihnen zugewiesen.`,
+        ),
+      );
     } catch (nextError) {
       setActionMessage(
         nextError instanceof Error
@@ -1042,11 +1081,17 @@ export default function HomeScreen() {
             </Text>
             <Text style={[styles.sectionSub, tokenStyles.muted]}>
               {ticketScope === "all"
-                ? tn("Die fünf Tickets, die du zuletzt geöffnet hast", "Die fünf Tickets, die Sie zuletzt geöffnet haben")
+                ? tn(
+                    "Die fünf Tickets, die du zuletzt geöffnet hast",
+                    "Die fünf Tickets, die Sie zuletzt geöffnet haben",
+                  )
                 : focusLoading
                   ? "Passende Tickets werden geladen …"
                   : ticketScope === "resolution"
-                    ? tn(`${visibleTickets.length} Tickets · Grundlage deiner Lösungszeit`, `${visibleTickets.length} Tickets · Grundlage Ihrer Lösungszeit`)
+                    ? tn(
+                        `${visibleTickets.length} Tickets · Grundlage deiner Lösungszeit`,
+                        `${visibleTickets.length} Tickets · Grundlage Ihrer Lösungszeit`,
+                      )
                     : ticketScope === "firstResponse"
                       ? `${visibleTickets.length} Tickets · Grundlage der ersten Antwortzeit`
                       : `${visibleTickets.length} passende Vorgänge`}
@@ -1078,7 +1123,10 @@ export default function HomeScreen() {
           <View style={[styles.emptyList, tokenStyles.card]}>
             <Text style={[styles.emptyText, tokenStyles.muted]}>
               {ticketScope === "all"
-                ? tn("Du hast noch kein Ticket geöffnet.", "Sie haben noch kein Ticket geöffnet.")
+                ? tn(
+                    "Du hast noch kein Ticket geöffnet.",
+                    "Sie haben noch kein Ticket geöffnet.",
+                  )
                 : "Keine passenden Tickets vorhanden."}
             </Text>
             <Pressable
@@ -1575,7 +1623,10 @@ export default function HomeScreen() {
         ))}
         {shownSections.length === 0 ? (
           <Text style={[styles.sectionSub, tokenStyles.muted]}>
-            {tn("Alle Bereiche sind ausgeblendet. Über das Symbol oben rechts kannst du sie wieder einblenden.", "Alle Bereiche sind ausgeblendet. Über das Symbol oben rechts können Sie sie wieder einblenden.")}
+            {tn(
+              "Alle Bereiche sind ausgeblendet. Über das Symbol oben rechts kannst du sie wieder einblenden.",
+              "Alle Bereiche sind ausgeblendet. Über das Symbol oben rechts können Sie sie wieder einblenden.",
+            )}
           </Text>
         ) : null}
       </ScrollView>
