@@ -26,12 +26,32 @@ import "./teams-admin.css";
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 function statusPill(team: AdminTeam) {
-  if (team.archived) return { label: "Archiviert", tone: "mute" };
-  if (team.ownerCount === 0) return { label: "Verwaist", tone: "bad" };
-  if (team.daysLeft !== null && team.daysLeft <= 30) {
-    return { label: "Läuft ab", tone: "warn" };
+  if (team.archived) {
+    return {
+      label: "Archiviert",
+      tone: "mute",
+      hint: "Das Team ist archiviert: schreibgeschützt, es kann nicht mehr verwendet werden.",
+    };
   }
-  return { label: "Aktiv", tone: "ok" };
+  if (team.ownerCount === 0) {
+    return {
+      label: "Verwaist",
+      tone: "bad",
+      hint: "Das Team hat keinen Owner. Niemand ist dafür zuständig und kann Mitglieder oder die Laufzeit verwalten. Weise einen Owner zu.",
+    };
+  }
+  if (team.daysLeft !== null && team.daysLeft <= 30) {
+    return {
+      label: "Läuft ab",
+      tone: "warn",
+      hint: "Das Team endet in 30 Tagen oder früher und wird danach archiviert, wenn die Laufzeit nicht verlängert wird.",
+    };
+  }
+  return {
+    label: "Aktiv",
+    tone: "ok",
+    hint: "Das Team ist aktiv und hat mindestens einen Owner.",
+  };
 }
 
 function Avatar({ name }: { name: string }) {
@@ -385,7 +405,10 @@ export function TeamsAdmin({
                         : "–"}
                     </span>
                     <Lifetime team={team} today={today} />
-                    <span className={`teams-admin__pill is-${pill.tone}`}>
+                    <span
+                      className={`teams-admin__pill is-${pill.tone}`}
+                      title={pill.hint}
+                    >
                       {pill.label}
                     </span>
                   </div>

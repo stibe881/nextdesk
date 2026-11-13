@@ -894,7 +894,9 @@ Shop bestellten.
 - **Liste**: pro Team Symbol, Name, Beschreibung, Sichtbarkeit, Herkunft
   (_über nextDesk_ oder _bestehend_), Gäste, Owner mit Avataren, Zahl der
   Mitglieder, Erstellt-Datum, Laufzeit mit Fortschrittsbalken und Status
-  (_Aktiv_, _Läuft ab_, _Verwaist_, _Archiviert_). Filter: _Über nextDesk
+  (_Aktiv_, _Läuft ab_, _Verwaist_, _Archiviert_); fährst du mit der Maus über
+  den Status, erklärt ein Hinweis, was er bedeutet (_Verwaist_ = das Team hat
+  keinen Owner). Filter: _Über nextDesk
   bestellt_, _Bestehend_, _Läuft bald ab_, _Ohne Owner_, _Mit Gästen_, _Ohne
   Ende_, _Archiviert_. Sortierung nach Name, Neueste, Ende oder Mitgliedern.
 - **Mehrfachauswahl**: Teams ankreuzen, dann in der blauen Leiste **Ende
