@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -29,6 +30,7 @@ import {
   type MobileInventoryItem,
   type MobileInventoryOverview,
 } from "@/lib/inventory";
+import { useInventoryItemImages } from "@/lib/inventory-images";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
@@ -153,6 +155,10 @@ export default function InventoryScreen() {
             .includes(needle)),
     );
   }, [overview, query, appliedItemId, appliedLocation]);
+
+  // Pictures for all articles (not only the filtered ones), so typing in the
+  // search field does not request them again.
+  const images = useInventoryItemImages(tenantId, overview?.items ?? []);
 
   const canReceive = overview?.canMove === true;
   const locations = overview?.locations ?? [];
@@ -395,11 +401,23 @@ export default function InventoryScreen() {
               ]}
             >
               <View style={styles.itemIcon}>
-                <Ionicons
-                  color={colors.primaryText}
-                  name="cube-outline"
-                  size={22}
-                />
+                {images.has(item.id) ? (
+                  <Image
+                    accessibilityIgnoresInvertColors
+                    cachePolicy="memory"
+                    contentFit="cover"
+                    recyclingKey={item.id}
+                    source={{ uri: images.get(item.id) }}
+                    style={styles.itemImage}
+                    transition={150}
+                  />
+                ) : (
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="cube-outline"
+                    size={22}
+                  />
+                )}
               </View>
               <View style={styles.itemCopy}>
                 <Text numberOfLines={1} style={styles.itemName}>
@@ -739,8 +757,10 @@ const useStyles = makeThemedStyles((c) => ({
     borderRadius: 14,
     height: 46,
     justifyContent: "center",
+    overflow: "hidden",
     width: 46,
   },
+  itemImage: { height: "100%", width: "100%" },
   itemMeta: { color: c.muted, fontSize: 12 },
   itemName: { color: c.foreground, fontSize: 15, fontWeight: "800" },
   list: { gap: 10 },

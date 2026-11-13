@@ -845,7 +845,8 @@ werden wie bisher alle benachrichtigt.
 Artikelnummer oder Lagerort, auch mit mehreren Wörtern (z. B. «logitech ergo»).
 **Alle sichtbaren** wählt dann nur die gefundenen Artikel für Etiketten aus. Hat
 ein Lagerartikel kein eigenes Bild, zeigt die Liste das Foto des verknüpften
-Shop-Artikels.
+Shop-Artikels. Dasselbe gilt für die Bestandsliste unter **Lager** in der iOS- und
+Android-App.
 
 **Etiketten drucken** wie bei den Assets: In der Artikelliste wählst du Artikel
 mit **Für Etikett auswählen** (oder **Alle sichtbaren**) und drucken mit
