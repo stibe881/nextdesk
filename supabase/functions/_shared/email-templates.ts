@@ -267,7 +267,7 @@ export function emailTemplateDefinitions(
           key: "text",
           label: "Text",
           multiline: true,
-          default: verdictResultText(verdict, formality),
+          default: verdictResultText(formality)[verdict],
         },
       ],
     })),

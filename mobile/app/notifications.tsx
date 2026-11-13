@@ -52,32 +52,62 @@ const CATEGORY_DETAILS: readonly {
   {
     key: "assigned",
     label: "Mir zugewiesene Tickets",
-    description: "Wenn dir ein Ticket neu zugeteilt wird.",
+    get description() {
+      return tn(
+        "Wenn dir ein Ticket neu zugeteilt wird.",
+        "Wenn Ihnen ein Ticket neu zugeteilt wird.",
+      );
+    },
   },
   {
     key: "requester_reply",
     label: "Antworten von Anfragenden",
-    description: "Wenn eine anfragende Person auf dein Ticket antwortet.",
+    get description() {
+      return tn(
+        "Wenn eine anfragende Person auf dein Ticket antwortet.",
+        "Wenn eine anfragende Person auf Ihr Ticket antwortet.",
+      );
+    },
   },
   {
     key: "support_reply",
     label: "Antworten vom Support",
-    description: "Wenn der Support auf dein Ticket antwortet.",
+    get description() {
+      return tn(
+        "Wenn der Support auf dein Ticket antwortet.",
+        "Wenn der Support auf Ihr Ticket antwortet.",
+      );
+    },
   },
   {
     key: "mention",
     label: "Erwähnungen",
-    description: "Wenn du in einer internen Notiz erwähnt wirst.",
+    get description() {
+      return tn(
+        "Wenn du in einer internen Notiz erwähnt wirst.",
+        "Wenn Sie in einer internen Notiz erwähnt werden.",
+      );
+    },
   },
   {
     key: "resolved",
     label: "Gelöste Tickets",
-    description: "Wenn ein Ticket für dich als gelöst markiert wird.",
+    get description() {
+      return tn(
+        "Wenn ein Ticket für dich als gelöst markiert wird.",
+        "Wenn ein Ticket für Sie als gelöst markiert wird.",
+      );
+    },
   },
   {
     key: "approval",
     label: "Freigaben",
-    description: "Wenn für ein Ticket dein Entscheid benötigt wird.",
+    get description() {
+      return tn(
+        "Wenn für ein Ticket dein Entscheid benötigt wird.",
+        "Wenn für ein Ticket Ihr Entscheid benötigt wird.",
+      );
+    },
   },
   {
     key: "escalation",
@@ -110,8 +140,12 @@ const CATEGORY_DETAILS: readonly {
   {
     key: "shop",
     label: "Shop",
-    description:
-      "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status deiner Bestellungen.",
+    get description() {
+      return tn(
+        "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status deiner Bestellungen.",
+        "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status Ihrer Bestellungen.",
+      );
+    },
   },
   {
     key: "inventory_low_stock",

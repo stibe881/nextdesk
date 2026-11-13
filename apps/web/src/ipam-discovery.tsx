@@ -313,10 +313,10 @@ function AgentsView({
         <div>
           <h3>Netzwerkagenten</h3>
           <p>
-{tn(
-"Ein Agent läuft in deinem Netz (Docker oder Windows-Dienst), verbindet sich nur ausgehend per HTTPS und liefert Ping-, ARP-, SNMP- und LLDP-Daten sowie Microsoft DHCP/DNS. SNMP-Schlüssel und Dienstkonto bleiben in der lokalen config.json des Agenten.",
-"Ein Agent läuft in Ihrem Netz (Docker oder Windows-Dienst), verbindet sich nur ausgehend per HTTPS und liefert Ping-, ARP-, SNMP- und LLDP-Daten sowie Microsoft DHCP/DNS. SNMP-Schlüssel und Dienstkonto bleiben in der lokalen config.json des Agenten.",
-)}
+            {tn(
+              "Ein Agent läuft in deinem Netz (Docker oder Windows-Dienst), verbindet sich nur ausgehend per HTTPS und liefert Ping-, ARP-, SNMP- und LLDP-Daten sowie Microsoft DHCP/DNS. SNMP-Schlüssel und Dienstkonto bleiben in der lokalen config.json des Agenten.",
+              "Ein Agent läuft in Ihrem Netz (Docker oder Windows-Dienst), verbindet sich nur ausgehend per HTTPS und liefert Ping-, ARP-, SNMP- und LLDP-Daten sowie Microsoft DHCP/DNS. SNMP-Schlüssel und Dienstkonto bleiben in der lokalen config.json des Agenten.",
+            )}
           </p>
         </div>
         {canManage ? (
@@ -338,10 +338,10 @@ function AgentsView({
               Token für «{token.agent}» – wird nur jetzt angezeigt
             </strong>
             <p>
-{tn(
-"Trage ihn als «agentToken» in die config.json des Agenten ein.",
-"Tragen Sie ihn als «agentToken» in die config.json des Agenten ein.",
-)}
+              {tn(
+                "Trage ihn als «agentToken» in die config.json des Agenten ein.",
+                "Tragen Sie ihn als «agentToken» in die config.json des Agenten ein.",
+              )}
             </p>
             <code>{token.token}</code>
             <div className="ipam-discovery__actions">
@@ -352,9 +352,9 @@ function AgentsView({
                     (await copyText(token.token))
                       ? "Token kopiert."
                       : tn(
-"Kopieren war nicht möglich. Bitte markiere den Text.",
-"Kopieren war nicht möglich. Bitte markieren Sie den Text.",
-),
+                          "Kopieren war nicht möglich. Bitte markiere den Text.",
+                          "Kopieren war nicht möglich. Bitte markieren Sie den Text.",
+                        ),
                     false,
                   )
                 }
@@ -593,10 +593,12 @@ function AgentForm({
     event.preventDefault();
     setError("");
     if (!name.trim()) {
-      setError(tn(
-"Gib dem Agenten einen Namen.",
-"Geben Sie dem Agenten einen Namen.",
-));
+      setError(
+        tn(
+          "Gib dem Agenten einen Namen.",
+          "Geben Sie dem Agenten einen Namen.",
+        ),
+      );
       return;
     }
     const result = formToConfig(form);
@@ -709,10 +711,10 @@ function AgentForm({
       <fieldset>
         <legend>SNMP-Ziele (Switches, Router)</legend>
         <p className="ipam-discovery__muted">
-{tn(
-"Nur Hostname, Version und Benutzer. Community bzw. Schlüssel trägst du in der config.json des Agenten ein.",
-"Nur Hostname, Version und Benutzer. Community bzw. Schlüssel tragen Sie in der config.json des Agenten ein.",
-)}
+          {tn(
+            "Nur Hostname, Version und Benutzer. Community bzw. Schlüssel trägst du in der config.json des Agenten ein.",
+            "Nur Hostname, Version und Benutzer. Community bzw. Schlüssel tragen Sie in der config.json des Agenten ein.",
+          )}
         </p>
         {form.snmp.map((row, index) => (
           <div className="ipam-agent-form__snmp" key={index}>
@@ -1337,10 +1339,10 @@ function DhcpDnsView({
               </div>
             ) : (
               <p className="ipam-discovery__empty">
-{tn(
-"Noch keine DHCP-Daten. Trage beim Agenten DHCP-Server ein (Windows-Agent).",
-"Noch keine DHCP-Daten. Tragen Sie beim Agenten DHCP-Server ein (Windows-Agent).",
-)}
+                {tn(
+                  "Noch keine DHCP-Daten. Trage beim Agenten DHCP-Server ein (Windows-Agent).",
+                  "Noch keine DHCP-Daten. Tragen Sie beim Agenten DHCP-Server ein (Windows-Agent).",
+                )}
               </p>
             )}
           </section>
@@ -1404,10 +1406,10 @@ function DhcpDnsView({
             <h3>DNS-Abgleich mit der IP-Dokumentation</h3>
             {!data.zones.length ? (
               <p className="ipam-discovery__empty">
-{tn(
-"Noch keine DNS-Daten. Trage beim Agenten DNS-Server ein (Windows-Agent).",
-"Noch keine DNS-Daten. Tragen Sie beim Agenten DNS-Server ein (Windows-Agent).",
-)}
+                {tn(
+                  "Noch keine DNS-Daten. Trage beim Agenten DNS-Server ein (Windows-Agent).",
+                  "Noch keine DNS-Daten. Tragen Sie beim Agenten DNS-Server ein (Windows-Agent).",
+                )}
               </p>
             ) : data.diff.length ? (
               <div className="ipam-discovery__table-wrap">

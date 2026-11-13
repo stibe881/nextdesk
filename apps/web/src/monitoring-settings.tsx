@@ -575,7 +575,9 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
             <div className="panel-heading">
               <div>
                 <p className="eyebrow">EINRICHTUNG IN PRTG</p>
-                <h3 id="monitoring-setup-heading">{tn("So verbindest du PRTG", "So verbinden Sie PRTG")}</h3>
+                <h3 id="monitoring-setup-heading">
+                  {tn("So verbindest du PRTG", "So verbinden Sie PRTG")}
+                </h3>
               </div>
             </div>
             <ol>

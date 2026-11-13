@@ -601,21 +601,21 @@ function validationError(draft: RuleDraft): string | null {
   const priorityKey = draft.priorityKey.trim();
   if (name.length < 1 || name.length > 160) {
     return tn(
-"Bitte gib einen Namen mit höchstens 160 Zeichen ein.",
-"Bitte geben Sie einen Namen mit höchstens 160 Zeichen ein.",
-);
+      "Bitte gib einen Namen mit höchstens 160 Zeichen ein.",
+      "Bitte geben Sie einen Namen mit höchstens 160 Zeichen ein.",
+    );
   }
   if (priorityKey.length < 1 || priorityKey.length > 63) {
     return tn(
-"Bitte wähle eine gültige Priorität aus.",
-"Bitte wählen Sie eine gültige Priorität aus.",
-);
+      "Bitte wähle eine gültige Priorität aus.",
+      "Bitte wählen Sie eine gültige Priorität aus.",
+    );
   }
   if (draft.departmentId && !isUuid(draft.departmentId)) {
     return tn(
-"Bitte wähle eine gültige Abteilung aus.",
-"Bitte wählen Sie eine gültige Abteilung aus.",
-);
+      "Bitte wähle eine gültige Abteilung aus.",
+      "Bitte wählen Sie eine gültige Abteilung aus.",
+    );
   }
   if (draft.description.trim().length > 2000) {
     return "Die Definition darf höchstens 2000 Zeichen lang sein.";
@@ -623,9 +623,9 @@ function validationError(draft: RuleDraft): string | null {
   if (draft.serviceMode !== "always") {
     if (draft.weekdays.length === 0) {
       return tn(
-"Bitte wähle mindestens einen Wochentag für die Servicezeit.",
-"Bitte wählen Sie mindestens einen Wochentag für die Servicezeit.",
-);
+        "Bitte wähle mindestens einen Wochentag für die Servicezeit.",
+        "Bitte wählen Sie mindestens einen Wochentag für die Servicezeit.",
+      );
     }
     if (
       !TIME_PATTERN.test(draft.serviceStart) ||
@@ -633,9 +633,9 @@ function validationError(draft: RuleDraft): string | null {
       draft.serviceEnd <= draft.serviceStart
     ) {
       return tn(
-"Bitte gib eine gültige Servicezeit an (Ende nach Beginn).",
-"Bitte geben Sie eine gültige Servicezeit an (Ende nach Beginn).",
-);
+        "Bitte gib eine gültige Servicezeit an (Ende nach Beginn).",
+        "Bitte geben Sie eine gültige Servicezeit an (Ende nach Beginn).",
+      );
     }
   }
 
@@ -956,9 +956,9 @@ export function SlaManagement({
       } else {
         setError(
           tn(
-"SLA-Regeln und Eskalationen konnten nicht geladen werden. Bitte versuche es erneut.",
-"SLA-Regeln und Eskalationen konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
-),
+            "SLA-Regeln und Eskalationen konnten nicht geladen werden. Bitte versuche es erneut.",
+            "SLA-Regeln und Eskalationen konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+          ),
         );
       }
     } finally {
@@ -1046,16 +1046,16 @@ export function SlaManagement({
         setManageForbidden(true);
         setError(
           tn(
-"Du hast keine Berechtigung, SLA-Regeln zu erstellen oder zu bearbeiten. Wende dich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
-"Sie haben keine Berechtigung, SLA-Regeln zu erstellen oder zu bearbeiten. Wenden Sie sich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
-),
+            "Du hast keine Berechtigung, SLA-Regeln zu erstellen oder zu bearbeiten. Wende dich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
+            "Sie haben keine Berechtigung, SLA-Regeln zu erstellen oder zu bearbeiten. Wenden Sie sich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
+          ),
         );
       } else {
         setError(
           tn(
-"Die SLA-Regel konnte nicht gespeichert werden. Prüfe Priorität und Abteilung und versuche es erneut.",
-"Die SLA-Regel konnte nicht gespeichert werden. Prüfen Sie Priorität und Abteilung und versuchen Sie es erneut.",
-),
+            "Die SLA-Regel konnte nicht gespeichert werden. Prüfe Priorität und Abteilung und versuche es erneut.",
+            "Die SLA-Regel konnte nicht gespeichert werden. Prüfen Sie Priorität und Abteilung und versuchen Sie es erneut.",
+          ),
         );
       }
     } finally {
@@ -1093,16 +1093,16 @@ export function SlaManagement({
       if (isForbiddenError(requestError)) {
         setError(
           tn(
-"Du hast keine Berechtigung, diese Einstellung zu ändern. Dafür braucht es die mandantenweite Berechtigung „SLA-Profile verwalten“.",
-"Sie haben keine Berechtigung, diese Einstellung zu ändern. Dafür braucht es die mandantenweite Berechtigung „SLA-Profile verwalten“.",
-),
+            "Du hast keine Berechtigung, diese Einstellung zu ändern. Dafür braucht es die mandantenweite Berechtigung „SLA-Profile verwalten“.",
+            "Sie haben keine Berechtigung, diese Einstellung zu ändern. Dafür braucht es die mandantenweite Berechtigung „SLA-Profile verwalten“.",
+          ),
         );
       } else {
         setError(
           tn(
-"Die Einstellung konnte nicht gespeichert werden. Bitte versuche es erneut.",
-"Die Einstellung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
-),
+            "Die Einstellung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+            "Die Einstellung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+          ),
         );
       }
     } finally {
@@ -1134,16 +1134,16 @@ export function SlaManagement({
         setManageForbidden(true);
         setError(
           tn(
-"Du hast keine Berechtigung, SLA-Regeln zu archivieren. Wende dich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
-"Sie haben keine Berechtigung, SLA-Regeln zu archivieren. Wenden Sie sich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
-),
+            "Du hast keine Berechtigung, SLA-Regeln zu archivieren. Wende dich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
+            "Sie haben keine Berechtigung, SLA-Regeln zu archivieren. Wenden Sie sich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
+          ),
         );
       } else {
         setError(
           tn(
-"Die SLA-Regel konnte nicht archiviert werden. Bitte versuche es erneut.",
-"Die SLA-Regel konnte nicht archiviert werden. Bitte versuchen Sie es erneut.",
-),
+            "Die SLA-Regel konnte nicht archiviert werden. Bitte versuche es erneut.",
+            "Die SLA-Regel konnte nicht archiviert werden. Bitte versuchen Sie es erneut.",
+          ),
         );
       }
     } finally {

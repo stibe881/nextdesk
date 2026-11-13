@@ -1,5 +1,7 @@
 // Eskalationsstufen (1st/2nd/3rd Level) – reine Logik für die App, ohne
 // Netzwerkzugriff, damit sie getestet werden kann.
+import { tn } from "./formality";
+
 
 export type MobileSupportLevel = 1 | 2 | 3;
 

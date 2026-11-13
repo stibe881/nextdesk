@@ -1,6 +1,8 @@
 // Ticket progress for requesters («Paketverfolgung») and the answers to
 // waiting reminders. The server maps statuses by key; this module validates
 // the response and words it for the app («du»).
+import { tn } from "./formality";
+
 
 export type ProgressStepKey =
   | "received"

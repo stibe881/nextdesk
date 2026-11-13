@@ -1,4 +1,5 @@
 import { loadCurrentTenant, requireNextDesk } from "@/lib/nextdesk-client";
+import { tn } from "./formality";
 
 export type InboxApproval = {
   approvalId: string;

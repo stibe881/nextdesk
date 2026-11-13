@@ -4,6 +4,7 @@ import {
   requireNextDesk,
 } from "@/lib/nextdesk-client";
 import type { MobileTicket } from "@/lib/nextdesk-tickets";
+import { tn } from "./formality";
 
 export function followUpTitle(ticket: MobileTicket): string {
   return (

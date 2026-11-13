@@ -1,6 +1,8 @@
 // Maps stable nextDesk server error codes to clear German messages. The
 // server deliberately returns codes only, so the app never shows raw
 // technical texts such as "Edge Function returned a non-2xx status code".
+import { tn } from "./formality";
+
 const messagesByCode = (): Readonly<Record<string, string>> => ({
   invalid_request:
     tn("Die Anfrage war unvollständig oder ungültig. Bitte prüfe deine Eingaben.", "Die Anfrage war unvollständig oder ungültig. Bitte prüfen Sie Ihre Eingaben."),

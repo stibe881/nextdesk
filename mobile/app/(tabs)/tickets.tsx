@@ -421,6 +421,7 @@ export default function TicketsScreen() {
     const ids = [...selectedIds];
     Alert.alert(
       `${ids.length} Tickets löschen?`,
+      // formality-ok: «Sie» sind hier die Tickets
       "Sie werden endgültig gelöscht. Das kann nicht rückgängig gemacht werden.",
       [
         { style: "cancel", text: "Abbrechen" },

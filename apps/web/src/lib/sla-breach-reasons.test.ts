@@ -59,7 +59,9 @@ describe("Anrede", () => {
   it("liefert die Sie-Fassung nach der Umschaltung", () => {
     setFormality("sie");
     try {
-      expect(validateReasonDraft("", "")).toBe("Bitte wählen Sie eine Ursache.");
+      expect(validateReasonDraft("", "")).toBe(
+        "Bitte wählen Sie eine Ursache.",
+      );
     } finally {
       setFormality("du");
     }

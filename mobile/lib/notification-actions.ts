@@ -8,6 +8,7 @@ import {
   loadCurrentTenant,
   nextDesk,
 } from "@/lib/nextdesk-client";
+import { tn } from "./formality";
 
 /**
  * Antwort-Knöpfe in Mitteilungen (iPhone-Sperrbildschirm und Apple Watch).

@@ -750,10 +750,10 @@ function ServiceEditorFields({
             title="Serviceeinordnung"
           >
             <FormNote>
-{tn(
-"Wähle den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei Bedarf eine Kategorie und Unterkategorie.",
-"Wählen Sie den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei Bedarf eine Kategorie und Unterkategorie.",
-)}
+              {tn(
+                "Wähle den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei Bedarf eine Kategorie und Unterkategorie.",
+                "Wählen Sie den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei Bedarf eine Kategorie und Unterkategorie.",
+              )}
             </FormNote>
             <FormGrid cols={3}>
               <FormField label="Ort">
@@ -830,10 +830,10 @@ function ServiceEditorFields({
             </FormGrid>
             {rootCategories.length === 0 ? (
               <FormNote>
-{tn(
-"Es sind noch keine Orte und Kategorien angelegt. Du kannst die Einordnung später ergänzen.",
-"Es sind noch keine Orte und Kategorien angelegt. Sie können die Einordnung später ergänzen.",
-)}
+                {tn(
+                  "Es sind noch keine Orte und Kategorien angelegt. Du kannst die Einordnung später ergänzen.",
+                  "Es sind noch keine Orte und Kategorien angelegt. Sie können die Einordnung später ergänzen.",
+                )}
               </FormNote>
             ) : null}
           </FormCard>
@@ -942,29 +942,26 @@ const catalogPageCopy = (): Readonly<
   services: {
     eyebrow: "Dienstkatalog",
     title: "Dienste",
-    description:
-tn(
-"Verwalte die aktiven Dienste dieses Mandanten und ihre Kritikalität.",
-"Verwalten Sie die aktiven Dienste dieses Mandanten und ihre Kritikalität.",
-),
+    description: tn(
+      "Verwalte die aktiven Dienste dieses Mandanten und ihre Kritikalität.",
+      "Verwalten Sie die aktiven Dienste dieses Mandanten und ihre Kritikalität.",
+    ),
   },
   assets: {
     eyebrow: "Asset Management",
     title: "Assets",
-    description:
-tn(
-"Verwalte die aktiven Assets dieses Mandanten und ihre Zuordnung zu Diensten.",
-"Verwalten Sie die aktiven Assets dieses Mandanten und ihre Zuordnung zu Diensten.",
-),
+    description: tn(
+      "Verwalte die aktiven Assets dieses Mandanten und ihre Zuordnung zu Diensten.",
+      "Verwalten Sie die aktiven Assets dieses Mandanten und ihre Zuordnung zu Diensten.",
+    ),
   },
   problems: {
     eyebrow: "Fallmanagement",
     title: "Fälle",
-    description:
-tn(
-"Verfolge offene Fälle, dokumentiere Ursachen und verknüpfe betroffene Tickets.",
-"Verfolgen Sie offene Fälle, dokumentieren Sie Ursachen und verknüpfen Sie betroffene Tickets.",
-),
+    description: tn(
+      "Verfolge offene Fälle, dokumentiere Ursachen und verknüpfe betroffene Tickets.",
+      "Verfolgen Sie offene Fälle, dokumentieren Sie Ursachen und verknüpfen Sie betroffene Tickets.",
+    ),
   },
 });
 
@@ -1527,9 +1524,9 @@ function defaultTicketFollowUpMessage(
   lines.push(
     "",
     tn(
-"Bitte melde dich, falls das Problem weiterhin besteht.",
-"Bitte melden Sie sich, falls das Problem weiterhin besteht.",
-),
+      "Bitte melde dich, falls das Problem weiterhin besteht.",
+      "Bitte melden Sie sich, falls das Problem weiterhin besteht.",
+    ),
   );
   return lines.join("\n");
 }
@@ -1550,9 +1547,9 @@ function caseArticleMarkdown(form: {
   return sections.length > 0
     ? sections.join("\n\n")
     : tn(
-"## Lösung\n\nBeschreibe hier die Lösung.",
-"## Lösung\n\nBeschreiben Sie hier die Lösung.",
-);
+        "## Lösung\n\nBeschreibe hier die Lösung.",
+        "## Lösung\n\nBeschreiben Sie hier die Lösung.",
+      );
 }
 
 /** Creates a knowledge draft and returns its id. */
@@ -1683,21 +1680,21 @@ async function apiErrorMessage(
   }
   if (status === 401) {
     return tn(
-"Deine Anmeldung ist nicht mehr gültig. Bitte melde dich erneut an.",
-"Ihre Anmeldung ist nicht mehr gültig. Bitte melden Sie sich erneut an.",
-);
+      "Deine Anmeldung ist nicht mehr gültig. Bitte melde dich erneut an.",
+      "Ihre Anmeldung ist nicht mehr gültig. Bitte melden Sie sich erneut an.",
+    );
   }
   if (status === 403) {
     return tn(
-"Der Zugriff wurde von der API verweigert. Für diese Aktion fehlt dir die erforderliche Berechtigung.",
-"Der Zugriff wurde von der API verweigert. Für diese Aktion fehlt Ihnen die erforderliche Berechtigung.",
-);
+      "Der Zugriff wurde von der API verweigert. Für diese Aktion fehlt dir die erforderliche Berechtigung.",
+      "Der Zugriff wurde von der API verweigert. Für diese Aktion fehlt Ihnen die erforderliche Berechtigung.",
+    );
   }
   if (status === 503) {
     return tn(
-"Der Dienst oder die Berechtigungsprüfung ist derzeit nicht verfügbar. Bitte versuche es später erneut.",
-"Der Dienst oder die Berechtigungsprüfung ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.",
-);
+      "Der Dienst oder die Berechtigungsprüfung ist derzeit nicht verfügbar. Bitte versuche es später erneut.",
+      "Der Dienst oder die Berechtigungsprüfung ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.",
+    );
   }
   return fallback;
 }
@@ -2837,10 +2834,12 @@ export function ServiceAssets({
     event.preventDefault();
     const name = serviceForm.name.trim();
     if (!name) {
-      setError(tn(
-"Bitte gib einen Servicenamen ein.",
-"Bitte geben Sie einen Servicenamen ein.",
-));
+      setError(
+        tn(
+          "Bitte gib einen Servicenamen ein.",
+          "Bitte geben Sie einen Servicenamen ein.",
+        ),
+      );
       return;
     }
 
@@ -2910,10 +2909,12 @@ export function ServiceAssets({
     event.preventDefault();
     const name = serviceCategoryForm.name.trim();
     if (!name) {
-      setError(tn(
-"Bitte gib einen Namen für die Servicekategorie ein.",
-"Bitte geben Sie einen Namen für die Servicekategorie ein.",
-));
+      setError(
+        tn(
+          "Bitte gib einen Namen für die Servicekategorie ein.",
+          "Bitte geben Sie einen Namen für die Servicekategorie ein.",
+        ),
+      );
       return;
     }
     if (!supportsServiceCategories || !canManageServices) return;
@@ -3601,10 +3602,10 @@ export function ServiceAssets({
           )}
           <p>
             {pageCopy?.description ??
-tn(
-"Verwalte den aktuellen Katalog dieses Mandanten. Archivierte und gelöste Einträge werden von der API nicht mehr im Katalog angezeigt.",
-"Verwalten Sie den aktuellen Katalog dieses Mandanten. Archivierte und gelöste Einträge werden von der API nicht mehr im Katalog angezeigt.",
-)}
+              tn(
+                "Verwalte den aktuellen Katalog dieses Mandanten. Archivierte und gelöste Einträge werden von der API nicht mehr im Katalog angezeigt.",
+                "Verwalten Sie den aktuellen Katalog dieses Mandanten. Archivierte und gelöste Einträge werden von der API nicht mehr im Katalog angezeigt.",
+              )}
           </p>
         </div>
         {fixedTab === "services" ? (
@@ -3842,10 +3843,10 @@ tn(
               </form>
               {serviceCategories.length === 0 ? (
                 <p className="service-assets__category-manager-empty">
-{tn(
-"Lege den ersten Ort an, um Services strukturiert einzuordnen.",
-"Legen Sie den ersten Ort an, um Services strukturiert einzuordnen.",
-)}
+                  {tn(
+                    "Lege den ersten Ort an, um Services strukturiert einzuordnen.",
+                    "Legen Sie den ersten Ort an, um Services strukturiert einzuordnen.",
+                  )}
                 </p>
               ) : (
                 <ul
@@ -3924,10 +3925,10 @@ tn(
 
           {services.length === 0 ? (
             <p className="empty-state">
-{tn(
-"Für diesen Mandanten sind noch keine aktiven Services vorhanden. Erstelle den ersten Dienst über die Kopfaktion.",
-"Für diesen Mandanten sind noch keine aktiven Services vorhanden. Erstellen Sie den ersten Dienst über die Kopfaktion.",
-)}
+              {tn(
+                "Für diesen Mandanten sind noch keine aktiven Services vorhanden. Erstelle den ersten Dienst über die Kopfaktion.",
+                "Für diesen Mandanten sind noch keine aktiven Services vorhanden. Erstellen Sie den ersten Dienst über die Kopfaktion.",
+              )}
             </p>
           ) : filteredServices.length === 0 ? (
             <p className="empty-state">
@@ -4328,10 +4329,10 @@ tn(
                     Archivierte Services
                   </h4>
                   <p>
-{tn(
-"Archivierte Services werden nicht als aktiv angeboten. Diese können bewusst wiederhergestellt werden.",
-"Archivierte Services werden nicht als aktiv angeboten. Sie können bewusst wiederhergestellt werden.",
-)}
+                    {tn(
+                      "Archivierte Services werden nicht als aktiv angeboten. Diese können bewusst wiederhergestellt werden.",
+                      "Archivierte Services werden nicht als aktiv angeboten. Sie können bewusst wiederhergestellt werden.",
+                    )}
                   </p>
                 </div>
               </div>
@@ -4598,10 +4599,10 @@ tn(
 
           {assets.length === 0 ? (
             <p className="empty-state">
-{tn(
-"Für diesen Mandanten sind noch keine aktiven Assets vorhanden. Lege unten das erste Asset an.",
-"Für diesen Mandanten sind noch keine aktiven Assets vorhanden. Legen Sie unten das erste Asset an.",
-)}
+              {tn(
+                "Für diesen Mandanten sind noch keine aktiven Assets vorhanden. Lege unten das erste Asset an.",
+                "Für diesen Mandanten sind noch keine aktiven Assets vorhanden. Legen Sie unten das erste Asset an.",
+              )}
             </p>
           ) : filteredAssets.length === 0 ? (
             <p className="empty-state">Keine Assets entsprechen dem Filter.</p>
@@ -5145,10 +5146,10 @@ tn(
 
           {problems.length === 0 ? (
             <p className="empty-state">
-{tn(
-"Es sind keine Fälle vorhanden. Lege bei Bedarf mit «Neuer Fall» einen an.",
-"Es sind keine Fälle vorhanden. Legen Sie bei Bedarf mit «Neuer Fall» einen an.",
-)}
+              {tn(
+                "Es sind keine Fälle vorhanden. Lege bei Bedarf mit «Neuer Fall» einen an.",
+                "Es sind keine Fälle vorhanden. Legen Sie bei Bedarf mit «Neuer Fall» einen an.",
+              )}
             </p>
           ) : filteredProblems.length === 0 ? (
             <p className="empty-state">Keine Fälle entsprechen dem Filter.</p>
@@ -5440,10 +5441,10 @@ tn(
                         </>
                       ) : (
                         <p>
-{tn(
-"Beim Speichern wird dieser Fall als gelöst markiert. Gelöste Fälle findest du über den Statusfilter «Gelöst».",
-"Beim Speichern wird dieser Fall als gelöst markiert. Gelöste Fälle finden Sie über den Statusfilter «Gelöst».",
-)}
+                          {tn(
+                            "Beim Speichern wird dieser Fall als gelöst markiert. Gelöste Fälle findest du über den Statusfilter «Gelöst».",
+                            "Beim Speichern wird dieser Fall als gelöst markiert. Gelöste Fälle finden Sie über den Statusfilter «Gelöst».",
+                          )}
                         </p>
                       )}
                       <label>
@@ -5497,9 +5498,9 @@ tn(
                               {problemForm.id
                                 ? "Noch keine Tickets angehängt."
                                 : tn(
-"Suche Tickets, die zu diesem Fall gehören. Diese werden beim Anlegen angehängt.",
-"Suchen Sie Tickets, die zu diesem Fall gehören. Sie werden beim Anlegen angehängt.",
-)}
+                                    "Suche Tickets, die zu diesem Fall gehören. Diese werden beim Anlegen angehängt.",
+                                    "Suchen Sie Tickets, die zu diesem Fall gehören. Sie werden beim Anlegen angehängt.",
+                                  )}
                             </p>
                           ) : (
                             <ul aria-label="Verknüpfte Tickets">
@@ -5542,10 +5543,10 @@ tn(
                             />
                           </label>
                           <p id="service-assets-ticket-search-help">
-{tn(
-"Gib mindestens zwei Zeichen ein.",
-"Geben Sie mindestens zwei Zeichen ein.",
-)}
+                            {tn(
+                              "Gib mindestens zwei Zeichen ein.",
+                              "Geben Sie mindestens zwei Zeichen ein.",
+                            )}
                           </p>
                           {ticketSearchQuery.trim().length >= 2 &&
                           ticketSearchLoading ? (
@@ -5680,10 +5681,10 @@ tn(
                                 </select>
                               </label>
                               <p className="data-caption">
-{tn(
-"Der Artikel wird aus Beschreibung, Workaround und Ursache als Entwurf angelegt. Du kannst ihn danach in der Wissensdatenbank überarbeiten und freigeben.",
-"Der Artikel wird aus Beschreibung, Workaround und Ursache als Entwurf angelegt. Sie können ihn danach in der Wissensdatenbank überarbeiten und freigeben.",
-)}
+                                {tn(
+                                  "Der Artikel wird aus Beschreibung, Workaround und Ursache als Entwurf angelegt. Du kannst ihn danach in der Wissensdatenbank überarbeiten und freigeben.",
+                                  "Der Artikel wird aus Beschreibung, Workaround und Ursache als Entwurf angelegt. Sie können ihn danach in der Wissensdatenbank überarbeiten und freigeben.",
+                                )}
                               </p>
                             </>
                           ) : null}

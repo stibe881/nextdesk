@@ -3,6 +3,7 @@
 // server analyses it without opening links or attachments.
 
 import { invokeNextDesk } from "./nextdesk-client";
+import { tn } from "./formality";
 
 export const MAX_PHISHING_PASTE_CHARACTERS = 1_000_000;
 

@@ -180,7 +180,7 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
         </Text>
       </Pressable>
       <Text style={styles.legal}>
-        Mit der Registrierung akzeptierst du die{" "}
+        {tn("Mit der Registrierung akzeptierst du die", "Mit der Registrierung akzeptieren Sie die")}{" "}
         <Text
           accessibilityRole="link"
           onPress={() =>
@@ -190,7 +190,7 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
         >
           Datenschutzerklärung
         </Text>
-        . Du kannst dein Konto jederzeit in den Einstellungen löschen.
+        {tn(". Du kannst dein Konto jederzeit in den Einstellungen löschen.", ". Sie können Ihr Konto jederzeit in den Einstellungen löschen.")}
       </Text>
       {message ? (
         <Text accessibilityLiveRegion="polite" style={styles.message}>

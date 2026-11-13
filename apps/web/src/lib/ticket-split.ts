@@ -67,7 +67,10 @@ export function splitChildErrors(child: SplitDraftChild): SplitDraftErrors {
     errors.description = "Die Beschreibung ist zu lang.";
   }
   if (!child.departmentId) {
-    errors.departmentId = tn("Bitte wähle eine Abteilung.", "Bitte wählen Sie eine Abteilung.");
+    errors.departmentId = tn(
+      "Bitte wähle eine Abteilung.",
+      "Bitte wählen Sie eine Abteilung.",
+    );
   }
   return errors;
 }

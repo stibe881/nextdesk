@@ -74,11 +74,10 @@ function readableConsoleError(code: string | null) {
       "Der Einladungslink konnte nicht versendet werden. Bitte später erneut versuchen.",
     invitation_create_failed: "Die Einladung konnte nicht gespeichert werden.",
     user_remove_failed: "Die Benutzerzuordnung konnte nicht entfernt werden.",
-    self_removal_forbidden:
-tn(
-"Du kannst deinen eigenen Eigentümerzugang nicht aus dem Kundenmandanten entfernen.",
-"Sie können Ihren eigenen Eigentümerzugang nicht aus dem Kundenmandanten entfernen.",
-),
+    self_removal_forbidden: tn(
+      "Du kannst deinen eigenen Eigentümerzugang nicht aus dem Kundenmandanten entfernen.",
+      "Sie können Ihren eigenen Eigentümerzugang nicht aus dem Kundenmandanten entfernen.",
+    ),
     invitation_revoke_failed:
       "Die ausstehende Einladung konnte nicht zurückgezogen werden.",
   };
@@ -377,10 +376,10 @@ export function OwnerConsoleScreen({
     event.preventDefault();
     if (!userTenantId || !invitation.email.trim()) {
       setError(
-tn(
-"Wähle einen Kunden und gib eine E-Mail-Adresse ein.",
-"Wählen Sie einen Kunden und geben Sie eine E-Mail-Adresse ein.",
-),
+        tn(
+          "Wähle einen Kunden und gib eine E-Mail-Adresse ein.",
+          "Wählen Sie einen Kunden und geben Sie eine E-Mail-Adresse ein.",
+        ),
       );
       return;
     }
@@ -628,10 +627,10 @@ tn(
           <p className="eyebrow">NEUER KUNDE</p>
           <h2>Kundenmandant anlegen.</h2>
           <p className="console-copy">
-{tn(
-"Der Kunde erhält einen isolierten Mandanten. Du wirst zunächst als Mandantenadministrator eingesetzt und kannst danach Benutzer einladen.",
-"Der Kunde erhält einen isolierten Mandanten. Sie werden zunächst als Mandantenadministrator eingesetzt und können danach Benutzer einladen.",
-)}
+            {tn(
+              "Der Kunde erhält einen isolierten Mandanten. Du wirst zunächst als Mandantenadministrator eingesetzt und kannst danach Benutzer einladen.",
+              "Der Kunde erhält einen isolierten Mandanten. Sie werden zunächst als Mandantenadministrator eingesetzt und können danach Benutzer einladen.",
+            )}
           </p>
           <form className="console-form" onSubmit={createTenant}>
             <label>
@@ -821,20 +820,20 @@ tn(
           </form>
           {!userTenantId ? (
             <p className="console-empty">
-{tn(
-"Wähle einen Mandanten, um seine Benutzer zu sehen.",
-"Wählen Sie einen Mandanten, um seine Benutzer zu sehen.",
-)}
+              {tn(
+                "Wähle einen Mandanten, um seine Benutzer zu sehen.",
+                "Wählen Sie einen Mandanten, um seine Benutzer zu sehen.",
+              )}
             </p>
           ) : directoryLoading ? (
             <p className="console-empty">Benutzer werden geladen …</p>
           ) : directoryNotice ? (
             <p className="console-empty">
-{directoryNotice}{" "}
+              {directoryNotice}{" "}
               {tn(
-"Öffne den Mandanten mit einem Administratorkonto, um seine Benutzer zu verwalten.",
-"Öffnen Sie den Mandanten mit einem Administratorkonto, um seine Benutzer zu verwalten.",
-)}
+                "Öffne den Mandanten mit einem Administratorkonto, um seine Benutzer zu verwalten.",
+                "Öffnen Sie den Mandanten mit einem Administratorkonto, um seine Benutzer zu verwalten.",
+              )}
             </p>
           ) : (
             <>

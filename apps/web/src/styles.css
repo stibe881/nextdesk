@@ -22598,7 +22598,7 @@ html body form:has(> .fk-layout) {
   margin-left: 8px;
 }
 
-/* Tenant settings: choice of the form of address (du / Sie). */
+/* Tenant settings: choice of the form of address (informal / formal). */
 .tenant-admin-settings__formality {
   display: grid;
   gap: 8px;
@@ -22625,7 +22625,7 @@ html body form:has(> .fk-layout) {
   width: auto;
 }
 
-/* Tenant settings: choice of the form of address (du / Sie). */
+/* Tenant settings: choice of the form of address (informal / formal). */
 .tenant-admin-settings__formality {
   display: grid;
   gap: 8px;

@@ -129,9 +129,9 @@ const config: ExpoConfig = {
       "expo-speech-recognition",
       {
         microphonePermission:
-          "nextDesk nutzt das Mikrofon, damit du Antworten diktieren kannst.",
+          "nextDesk nutzt das Mikrofon, damit du Antworten diktieren kannst.", // formality-ok: Text steht zur Build-Zeit fest (Systemdialog, Widget)
         speechRecognitionPermission:
-          "nextDesk wandelt dein Diktat in Text um, damit du Antworten nicht tippen musst.",
+          "nextDesk wandelt dein Diktat in Text um, damit du Antworten nicht tippen musst.", // formality-ok: Text steht zur Build-Zeit fest (Systemdialog, Widget)
         androidSpeechServicePackages: [
           "com.google.android.googlequicksearchbox",
         ],
@@ -169,7 +169,7 @@ const config: ExpoConfig = {
       "expo-local-authentication",
       {
         faceIDPermission:
-          "nextDesk verwendet Face ID nur, um deine bereits angemeldete Sitzung auf diesem Gerät zu schützen.",
+          "nextDesk verwendet Face ID nur, um deine bereits angemeldete Sitzung auf diesem Gerät zu schützen.", // formality-ok: Text steht zur Build-Zeit fest (Systemdialog, Widget)
       },
     ],
     [
@@ -237,7 +237,7 @@ const config: ExpoConfig = {
             name: "NextDeskPriorities",
             label: "Meine Prioritäten",
             description:
-              "Deine drei wichtigsten Tickets mit SLA-Warnungen und offenen Freigaben.",
+              "Deine drei wichtigsten Tickets mit SLA-Warnungen und offenen Freigaben.", // formality-ok: Text steht zur Build-Zeit fest (Systemdialog, Widget)
             minWidth: "250dp",
             minHeight: "180dp",
             targetCellWidth: 4,
@@ -249,7 +249,7 @@ const config: ExpoConfig = {
             name: "NextDeskCounters",
             label: "SLA & Freigaben",
             description:
-              "Deine SLA-Warnungen (fällig in unter 4 Stunden) und offenen Freigaben.",
+              "Deine SLA-Warnungen (fällig in unter 4 Stunden) und offenen Freigaben.", // formality-ok: Text steht zur Build-Zeit fest (Systemdialog, Widget)
             minWidth: "180dp",
             minHeight: "110dp",
             targetCellWidth: 3,

@@ -9,6 +9,7 @@ import {
   type PushRoute,
   pushRoute,
 } from "./push-navigation";
+import { tn } from "./formality";
 
 export type InboxNotification = {
   id: string;

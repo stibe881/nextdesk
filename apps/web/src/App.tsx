@@ -727,9 +727,9 @@ function tenantFeatureFlagsFromResponse(
 function displayAuthError(message: string): string {
   if (message.toLocaleLowerCase("en-US").includes("email rate limit")) {
     return tn(
-"Zu viele Anmelde-E-Mails wurden für dieses Projekt versendet. Bitte warte bis zu einer Stunde und fordere danach nur einen neuen Magic Link an.",
-"Zu viele Anmelde-E-Mails wurden für dieses Projekt versendet. Bitte warten Sie bis zu einer Stunde und fordern Sie danach nur einen neuen Magic Link an.",
-);
+      "Zu viele Anmelde-E-Mails wurden für dieses Projekt versendet. Bitte warte bis zu einer Stunde und fordere danach nur einen neuen Magic Link an.",
+      "Zu viele Anmelde-E-Mails wurden für dieses Projekt versendet. Bitte warten Sie bis zu einer Stunde und fordern Sie danach nur einen neuen Magic Link an.",
+    );
   }
   return message;
 }
@@ -1171,9 +1171,9 @@ function SupervisorRequestReply({
     return (
       <p className="notification-reply__done" role="status">
         {tn(
-"Antwort gespeichert. Diese steht als interne Notiz im Ticket.",
-"Antwort gespeichert. Sie steht als interne Notiz im Ticket.",
-)}
+          "Antwort gespeichert. Diese steht als interne Notiz im Ticket.",
+          "Antwort gespeichert. Sie steht als interne Notiz im Ticket.",
+        )}
       </p>
     );
   }
@@ -1240,9 +1240,9 @@ function baseNotificationPresentation(
     case "ticket.assigned":
       return {
         description: tn(
-`${ticketLabel} wurde dir zugewiesen.`,
-`${ticketLabel} wurde Ihnen zugewiesen.`,
-),
+          `${ticketLabel} wurde dir zugewiesen.`,
+          `${ticketLabel} wurde Ihnen zugewiesen.`,
+        ),
         Icon: UserRound,
         title: "Ticket zugewiesen",
       };
@@ -1261,26 +1261,23 @@ function baseNotificationPresentation(
     case "ticket.requester_reminder":
       return {
         description: tn(
-`${ticketLabel} wartet auf deine Rückmeldung. Ist dein Problem gelöst?`,
-`${ticketLabel} wartet auf Ihre Rückmeldung. Ist Ihr Problem gelöst?`,
-),
+          `${ticketLabel} wartet auf deine Rückmeldung. Ist dein Problem gelöst?`,
+          `${ticketLabel} wartet auf Ihre Rückmeldung. Ist Ihr Problem gelöst?`,
+        ),
         Icon: MessageSquareText,
         title: tn(
-"Erinnerung: Deine Rückmeldung fehlt",
-"Erinnerung: Ihre Rückmeldung fehlt",
-),
+          "Erinnerung: Deine Rückmeldung fehlt",
+          "Erinnerung: Ihre Rückmeldung fehlt",
+        ),
       };
     case "ticket.mention":
       return {
         description: tn(
-`Du wurdest in ${ticketLabel} erwähnt.`,
-`Sie wurden in ${ticketLabel} erwähnt.`,
-),
+          `Du wurdest in ${ticketLabel} erwähnt.`,
+          `Sie wurden in ${ticketLabel} erwähnt.`,
+        ),
         Icon: AtSign,
-        title: tn(
-"Du wurdest erwähnt",
-"Sie wurden erwähnt",
-),
+        title: tn("Du wurdest erwähnt", "Sie wurden erwähnt"),
       };
     case "ticket.resolved":
       return {
@@ -1291,9 +1288,9 @@ function baseNotificationPresentation(
     case "ticket.approval.requested":
       return {
         description: tn(
-`Für ${ticketLabel} wird deine Freigabe benötigt.`,
-`Für ${ticketLabel} wird Ihre Freigabe benötigt.`,
-),
+          `Für ${ticketLabel} wird deine Freigabe benötigt.`,
+          `Für ${ticketLabel} wird Ihre Freigabe benötigt.`,
+        ),
         Icon: BadgeCheck,
         title: "Freigabe benötigt",
       };
@@ -1318,10 +1315,7 @@ function baseNotificationPresentation(
       return {
         description: `${askedBy} fragt zu ${ticketLabel}: ${question}`,
         Icon: MessageSquareText,
-        title: tn(
-"Anfrage an dich",
-"Anfrage an Sie",
-),
+        title: tn("Anfrage an dich", "Anfrage an Sie"),
       };
     }
     case "ticket.supervisor_answer": {
@@ -1333,10 +1327,7 @@ function baseNotificationPresentation(
       return {
         description: `${answeredBy} zu ${ticketLabel}: ${answer}`,
         Icon: MessageSquareText,
-        title: tn(
-"Antwort auf deine Anfrage",
-"Antwort auf Ihre Anfrage",
-),
+        title: tn("Antwort auf deine Anfrage", "Antwort auf Ihre Anfrage"),
       };
     }
     case "infrastructure.due": {
@@ -1876,10 +1867,9 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
     const name = fullName.trim().replace(/\s+/g, " ");
     if (name.length < 2) {
       setStatus("error");
-      setMessage(tn(
-"Bitte gib deinen Namen ein.",
-"Bitte geben Sie Ihren Namen ein.",
-));
+      setMessage(
+        tn("Bitte gib deinen Namen ein.", "Bitte geben Sie Ihren Namen ein."),
+      );
       return;
     }
     if (password.length < 8) {
@@ -1901,9 +1891,9 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
       setStatus("error");
       setMessage(
         tn(
-"Das Konto konnte nicht erstellt werden. Bitte prüfe deine Angaben und versuche es erneut.",
-"Das Konto konnte nicht erstellt werden. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut.",
-),
+          "Das Konto konnte nicht erstellt werden. Bitte prüfe deine Angaben und versuche es erneut.",
+          "Das Konto konnte nicht erstellt werden. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut.",
+        ),
       );
       return;
     }
@@ -1927,9 +1917,9 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
     setStatus("sent");
     setMessage(
       tn(
-"Fast geschafft: Wir haben dir eine E-Mail gesendet. Bestätige deine Adresse über den Link und erstelle danach deinen Arbeitsbereich. Ist die Adresse bereits registriert, enthält die E-Mail stattdessen einen Anmeldelink.",
-"Fast geschafft: Wir haben Ihnen eine E-Mail gesendet. Bestätigen Sie Ihre Adresse über den Link und erstellen Sie danach Ihren Arbeitsbereich. Ist die Adresse bereits registriert, enthält die E-Mail stattdessen einen Anmeldelink.",
-),
+        "Fast geschafft: Wir haben dir eine E-Mail gesendet. Bestätige deine Adresse über den Link und erstelle danach deinen Arbeitsbereich. Ist die Adresse bereits registriert, enthält die E-Mail stattdessen einen Anmeldelink.",
+        "Fast geschafft: Wir haben Ihnen eine E-Mail gesendet. Bestätigen Sie Ihre Adresse über den Link und erstellen Sie danach Ihren Arbeitsbereich. Ist die Adresse bereits registriert, enthält die E-Mail stattdessen einen Anmeldelink.",
+      ),
     );
   }
 
@@ -1946,9 +1936,9 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
       setStatus("error");
       setMessage(
         tn(
-"Die Anmeldung war nicht möglich. Bitte prüfe E-Mail-Adresse und Passwort.",
-"Die Anmeldung war nicht möglich. Bitte prüfen Sie E-Mail-Adresse und Passwort.",
-),
+          "Die Anmeldung war nicht möglich. Bitte prüfe E-Mail-Adresse und Passwort.",
+          "Die Anmeldung war nicht möglich. Bitte prüfen Sie E-Mail-Adresse und Passwort.",
+        ),
       );
       return;
     }
@@ -1977,9 +1967,9 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
       setStatus("error");
       setMessage(
         tn(
-"Gross-ICT-SSO ist noch nicht in Supabase eingerichtet. Hinterlege zuerst die Entra-App-Registrierung.",
-"Gross-ICT-SSO ist noch nicht in Supabase eingerichtet. Hinterlegen Sie zuerst die Entra-App-Registrierung.",
-),
+          "Gross-ICT-SSO ist noch nicht in Supabase eingerichtet. Hinterlege zuerst die Entra-App-Registrierung.",
+          "Gross-ICT-SSO ist noch nicht in Supabase eingerichtet. Hinterlegen Sie zuerst die Entra-App-Registrierung.",
+        ),
       );
     }
   }
@@ -2004,9 +1994,9 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
     setStatus("sent");
     setMessage(
       tn(
-"Der Anmeldelink wurde versendet. Öffne ihn in diesem Browser.",
-"Der Anmeldelink wurde versendet. Öffnen Sie ihn in diesem Browser.",
-),
+        "Der Anmeldelink wurde versendet. Öffne ihn in diesem Browser.",
+        "Der Anmeldelink wurde versendet. Öffnen Sie ihn in diesem Browser.",
+      ),
     );
   }
 
@@ -2030,9 +2020,9 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
         </h2>
         <p className="access-lead">
           {tn(
-"Auch ohne Firma: Erstelle ein Konto, verwalte deine Tickets und lade Teammitglieder zur Zusammenarbeit ein.",
-"Auch ohne Firma: Erstellen Sie ein Konto, verwalten Sie Ihre Tickets und laden Sie Teammitglieder zur Zusammenarbeit ein.",
-)}
+            "Auch ohne Firma: Erstelle ein Konto, verwalte deine Tickets und lade Teammitglieder zur Zusammenarbeit ein.",
+            "Auch ohne Firma: Erstellen Sie ein Konto, verwalten Sie Ihre Tickets und laden Sie Teammitglieder zur Zusammenarbeit ein.",
+          )}
         </p>
         <form className="access-form" onSubmit={register}>
           <label>
@@ -2255,9 +2245,9 @@ function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
     if (trimmed.length < 2) {
       setMessage(
         tn(
-"Bitte gib einen Namen mit mindestens zwei Zeichen ein.",
-"Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein.",
-),
+          "Bitte gib einen Namen mit mindestens zwei Zeichen ein.",
+          "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein.",
+        ),
       );
       return;
     }
@@ -2281,9 +2271,9 @@ function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
     if (
       !window.confirm(
         tn(
-"Konto endgültig löschen? Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht.",
-"Konto endgültig löschen? Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht.",
-),
+          "Konto endgültig löschen? Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht.",
+          "Konto endgültig löschen? Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht.",
+        ),
       )
     )
       return;
@@ -2308,9 +2298,9 @@ function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
       <h2>Arbeitsbereich erstellen.</h2>
       <p className="access-lead">
         {tn(
-"Dein Konto gehört noch zu keiner Organisation. Erstelle deinen eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten. Teammitglieder lädst du danach unter Einstellungen → Benutzer ein. Wurdest du von einem Team eingeladen, öffne den Link aus der Einladungs-E-Mail.",
-"Ihr Konto gehört noch zu keiner Organisation. Erstellen Sie Ihren eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten. Teammitglieder laden Sie danach unter Einstellungen → Benutzer ein. Wurden Sie von einem Team eingeladen, öffnen Sie den Link aus der Einladungs-E-Mail.",
-)}
+          "Dein Konto gehört noch zu keiner Organisation. Erstelle deinen eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten. Teammitglieder lädst du danach unter Einstellungen → Benutzer ein. Wurdest du von einem Team eingeladen, öffne den Link aus der Einladungs-E-Mail.",
+          "Ihr Konto gehört noch zu keiner Organisation. Erstellen Sie Ihren eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten. Teammitglieder laden Sie danach unter Einstellungen → Benutzer ein. Wurden Sie von einem Team eingeladen, öffnen Sie den Link aus der Einladungs-E-Mail.",
+        )}
       </p>
       <form className="access-form" onSubmit={submit}>
         <label>
@@ -2924,29 +2914,29 @@ function TicketList({
             ? "Keine Tickets entsprechen den aktiven Filtern."
             : onCreateTicket
               ? tn(
-"Deine Ticketliste ist bereit.",
-"Ihre Ticketliste ist bereit.",
-)
+                  "Deine Ticketliste ist bereit.",
+                  "Ihre Ticketliste ist bereit.",
+                )
               : tn(
-"Aktuell liegen keine Tickets in deiner Queue.",
-"Aktuell liegen keine Tickets in Ihrer Queue.",
-)}
+                  "Aktuell liegen keine Tickets in deiner Queue.",
+                  "Aktuell liegen keine Tickets in Ihrer Queue.",
+                )}
         </strong>
         <span>
           {hasActiveFilters
             ? tn(
-"Passe Suche oder Queue an oder setze alle Filter zurück.",
-"Passen Sie Suche oder Queue an oder setzen Sie alle Filter zurück.",
-)
+                "Passe Suche oder Queue an oder setze alle Filter zurück.",
+                "Passen Sie Suche oder Queue an oder setzen Sie alle Filter zurück.",
+              )
             : onCreateTicket
               ? tn(
-"Erfasse den ersten Vorgang, damit er priorisiert und nachvollziehbar bearbeitet werden kann.",
-"Erfassen Sie den ersten Vorgang, damit er priorisiert und nachvollziehbar bearbeitet werden kann.",
-)
+                  "Erfasse den ersten Vorgang, damit er priorisiert und nachvollziehbar bearbeitet werden kann.",
+                  "Erfassen Sie den ersten Vorgang, damit er priorisiert und nachvollziehbar bearbeitet werden kann.",
+                )
               : tn(
-"Prüfe später erneut oder wechsle zu einer anderen Queue.",
-"Prüfen Sie später erneut oder wechseln Sie zu einer anderen Queue.",
-)}
+                  "Prüfe später erneut oder wechsle zu einer anderen Queue.",
+                  "Prüfen Sie später erneut oder wechseln Sie zu einer anderen Queue.",
+                )}
         </span>
         {hasActiveFilters && onClearFilters ? (
           <button onClick={onClearFilters} type="button">
@@ -3135,9 +3125,9 @@ function TicketListDetailPreview({
         <h3>Ticket auswählen</h3>
         <p>
           {tn(
-"Wähle ein Ticket aus der Liste, um die Zusammenfassung hier zu sehen.",
-"Wählen Sie ein Ticket aus der Liste, um die Zusammenfassung hier zu sehen.",
-)}
+            "Wähle ein Ticket aus der Liste, um die Zusammenfassung hier zu sehen.",
+            "Wählen Sie ein Ticket aus der Liste, um die Zusammenfassung hier zu sehen.",
+          )}
         </p>
       </aside>
     );
@@ -3190,9 +3180,9 @@ function TicketListDetailPreview({
       </dl>
       <p className="ticket-list-detail__hint">
         {tn(
-"Diese Übersicht ändert nichts am Ticket. Öffne die vollständige Detailansicht für bestätigte Bearbeitungsschritte.",
-"Diese Übersicht ändert nichts am Ticket. Öffnen Sie die vollständige Detailansicht für bestätigte Bearbeitungsschritte.",
-)}
+          "Diese Übersicht ändert nichts am Ticket. Öffne die vollständige Detailansicht für bestätigte Bearbeitungsschritte.",
+          "Diese Übersicht ändert nichts am Ticket. Öffnen Sie die vollständige Detailansicht für bestätigte Bearbeitungsschritte.",
+        )}
       </p>
       <button className="primary-button" onClick={onOpenFull} type="button">
         Vollständige Details öffnen
@@ -3717,9 +3707,9 @@ function AuthenticatedApp() {
           await functionErrorMessage(
             error,
             tn(
-"Deine Anmeldung konnte keinem berechtigten Mandanten zugeordnet werden. Bitte wende dich an die Mandantenadministration.",
-"Ihre Anmeldung konnte keinem berechtigten Mandanten zugeordnet werden. Bitte wenden Sie sich an die Mandantenadministration.",
-),
+              "Deine Anmeldung konnte keinem berechtigten Mandanten zugeordnet werden. Bitte wende dich an die Mandantenadministration.",
+              "Ihre Anmeldung konnte keinem berechtigten Mandanten zugeordnet werden. Bitte wenden Sie sich an die Mandantenadministration.",
+            ),
           ),
         );
       })
@@ -4120,9 +4110,9 @@ function AuthenticatedApp() {
           await functionErrorMessage(
             error,
             tn(
-"Gespeicherte Ticketansichten konnten nicht geladen werden. Bitte versuche es erneut.",
-"Gespeicherte Ticketansichten konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
-),
+              "Gespeicherte Ticketansichten konnten nicht geladen werden. Bitte versuche es erneut.",
+              "Gespeicherte Ticketansichten konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+            ),
           ),
         );
       })
@@ -4678,7 +4668,10 @@ function AuthenticatedApp() {
         setErrorMessage(
           await functionErrorMessage(
             error,
-            "Die Ticketübersicht konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+            tn(
+              "Die Ticketübersicht konnte nicht geladen werden. Bitte versuche es erneut.",
+              "Die Ticketübersicht konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+            ),
           ),
         );
       })
@@ -7230,7 +7223,10 @@ function AuthenticatedApp() {
                     setTicketActionStatus(
                       cleanupPending > 0
                         ? `${deleted} Tickets wurden gelöscht. Die Bereinigung von ${cleanupPending} Dateianhängen ist protokolliert.`
-                        : `${deleted} Tickets wurden in den Papierkorb verschoben. Sie lassen sich 90 Tage lang über den Filter «Gelöschte Tickets» wiederherstellen.`,
+                        : tn(
+                            `${deleted} Tickets wurden in den Papierkorb verschoben. Diese lassen sich 90 Tage lang über den Filter «Gelöschte Tickets» wiederherstellen.`,
+                            `${deleted} Tickets wurden in den Papierkorb verschoben. Sie lassen sich 90 Tage lang über den Filter «Gelöschte Tickets» wiederherstellen.`,
+                          ),
                     );
                   }}
                   onClearSelection={clearTicketSelection}
@@ -7303,9 +7299,18 @@ function AuthenticatedApp() {
                   <div>
                     <strong>Aktive Suche</strong>
                     <span>
-                      Nutzen Sie z. B. <code>status:offen</code>,{" "}
-                      <code>prio:hoch</code>, <code>queue:ict</code>,{" "}
-                      <code>sla:kritisch</code> oder <code>agent:mir</code>.
+                      {tn(
+                        <>
+                          Nutze z. B. <code>status:offen</code>,{" "}
+                          <code>prio:hoch</code>, <code>queue:ict</code>,{" "}
+                          <code>sla:kritisch</code> oder <code>agent:mir</code>.
+                        </>,
+                        <>
+                          Nutzen Sie z. B. <code>status:offen</code>,{" "}
+                          <code>prio:hoch</code>, <code>queue:ict</code>,{" "}
+                          <code>sla:kritisch</code> oder <code>agent:mir</code>.
+                        </>,
+                      )}
                     </span>
                   </div>
                   <div
@@ -7749,8 +7754,10 @@ function AuthenticatedApp() {
               </button>
             </header>
             <p>
-              Die Kürzel sind in Eingabefeldern deaktiviert, damit Sie ungestört
-              suchen und schreiben können.
+              {tn(
+                "Die Kürzel sind in Eingabefeldern deaktiviert, damit du ungestört suchen und schreiben kannst.",
+                "Die Kürzel sind in Eingabefeldern deaktiviert, damit Sie ungestört suchen und schreiben können.",
+              )}
             </p>
             <dl>
               <div>
@@ -8047,7 +8054,12 @@ function AuthenticatedApp() {
         <aside className="ticket-success-toast" aria-live="polite">
           <CheckCircle2 aria-hidden="true" size={24} strokeWidth={1.8} />
           <div>
-            <strong>Ihr Entwurf wurde gespeichert</strong>
+            <strong>
+              {tn(
+                "Dein Entwurf wurde gespeichert",
+                "Ihr Entwurf wurde gespeichert",
+              )}
+            </strong>
             <span>
               Beim nächsten Öffnen von «Ticket erfassen» ist er wieder da.
             </span>
@@ -8362,8 +8374,10 @@ function BulkTicketStatusActions({
       <div>
         <strong>{selectedTicketIds.size} Tickets ausgewählt</strong>
         <span>
-          Der Status wird nur gesetzt, wenn Sie für jedes Ticket berechtigt
-          sind.
+          {tn(
+            "Der Status wird nur gesetzt, wenn du für jedes Ticket berechtigt bist.",
+            "Der Status wird nur gesetzt, wenn Sie für jedes Ticket berechtigt sind.",
+          )}
         </span>
       </div>
       <label>
@@ -8469,9 +8483,10 @@ function BulkTicketStatusActions({
               {deleteTicketIds.length} Tickets löschen?
             </strong>
             <p>
-              Die Tickets kommen in den Papierkorb und sind nirgends mehr
-              sichtbar. Sie lassen sich 90 Tage lang wiederherstellen und werden
-              danach endgültig entfernt.
+              {tn(
+                "Die Tickets kommen in den Papierkorb und sind nirgends mehr sichtbar. Diese lassen sich 90 Tage lang wiederherstellen und werden danach endgültig entfernt.",
+                "Die Tickets kommen in den Papierkorb und sind nirgends mehr sichtbar. Sie lassen sich 90 Tage lang wiederherstellen und werden danach endgültig entfernt.",
+              )}
             </p>
           </div>
           <div className="ticket-bulk-actions__confirmation-buttons">
@@ -8625,7 +8640,12 @@ function SavedTicketViews({
 
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setErrorMessage("Bitte geben Sie einen Namen für die Ansicht ein.");
+      setErrorMessage(
+        tn(
+          "Bitte gib einen Namen für die Ansicht ein.",
+          "Bitte geben Sie einen Namen für die Ansicht ein.",
+        ),
+      );
       return;
     }
 
@@ -8668,7 +8688,10 @@ function SavedTicketViews({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Ansicht konnte nicht gespeichert werden. Prüfen Sie Name und Berechtigung.",
+          tn(
+            "Die Ansicht konnte nicht gespeichert werden. Prüfe Name und Berechtigung.",
+            "Die Ansicht konnte nicht gespeichert werden. Prüfen Sie Name und Berechtigung.",
+          ),
         ),
       );
     } finally {
@@ -8717,7 +8740,12 @@ function SavedTicketViews({
       <div className="saved-ticket-views__heading">
         <div>
           <p className="eyebrow">GESPEICHERTE ANSICHTEN</p>
-          <p>Eigene Ansichten und Ansichten, die Ihr Team mit Ihnen teilt.</p>
+          <p>
+            {tn(
+              "Eigene Ansichten und Ansichten, die dein Team mit dir teilt.",
+              "Eigene Ansichten und Ansichten, die Ihr Team mit Ihnen teilt.",
+            )}
+          </p>
         </div>
       </div>
       <div className="saved-ticket-views__picker">
@@ -9072,8 +9100,10 @@ function TicketListFilters({
                 <p className="eyebrow">TICKETLISTE</p>
                 <h2 id="ticket-list-filter-heading">Filter &amp; Sortierung</h2>
                 <p id="ticket-list-filter-description">
-                  Verfeinern Sie die sichtbaren Tickets nach den gewünschten
-                  Kriterien.
+                  {tn(
+                    "Verfeinere die sichtbaren Tickets nach den gewünschten Kriterien.",
+                    "Verfeinern Sie die sichtbaren Tickets nach den gewünschten Kriterien.",
+                  )}
                 </p>
               </div>
               <button

@@ -670,9 +670,9 @@ async function errorMessage(error: unknown, fallback: string): Promise<string> {
   if (status === 403) return "Für diese Statusaktion fehlt die Berechtigung.";
   if (status === 401)
     return tn(
-"Deine Anmeldung ist nicht mehr gültig. Bitte melde dich erneut an.",
-"Ihre Anmeldung ist nicht mehr gültig. Bitte melden Sie sich erneut an.",
-);
+      "Deine Anmeldung ist nicht mehr gültig. Bitte melde dich erneut an.",
+      "Ihre Anmeldung ist nicht mehr gültig. Bitte melden Sie sich erneut an.",
+    );
   return fallback;
 }
 
@@ -1101,10 +1101,10 @@ function MaintenanceList({
           <p className="eyebrow">Serviceplanung</p>
           <h3 id="service-status-maintenance-title">Wartungen</h3>
           <p>
-{tn(
-"Erfasse geplante Arbeiten transparent. Zustandswechsel und Veröffentlichungen erfolgen nur nach deiner expliziten Eingabe.",
-"Erfassen Sie geplante Arbeiten transparent. Zustandswechsel und Veröffentlichungen erfolgen nur nach Ihrer expliziten Eingabe.",
-)}
+            {tn(
+              "Erfasse geplante Arbeiten transparent. Zustandswechsel und Veröffentlichungen erfolgen nur nach deiner expliziten Eingabe.",
+              "Erfassen Sie geplante Arbeiten transparent. Zustandswechsel und Veröffentlichungen erfolgen nur nach Ihrer expliziten Eingabe.",
+            )}
           </p>
         </div>
       </header>
@@ -1384,10 +1384,10 @@ function MaintenanceEditorDialog({
           <fieldset className="service-status__maintenance-services">
             <legend>Betroffene Services</legend>
             <p id="service-status-maintenance-services-help">
-{tn(
-"Wähle ausschliesslich Services aus, die in dieser Übersicht bereits serverautorisiert geladen wurden.",
-"Wählen Sie ausschliesslich Services aus, die in dieser Übersicht bereits serverautorisiert geladen wurden.",
-)}
+              {tn(
+                "Wähle ausschliesslich Services aus, die in dieser Übersicht bereits serverautorisiert geladen wurden.",
+                "Wählen Sie ausschliesslich Services aus, die in dieser Übersicht bereits serverautorisiert geladen wurden.",
+              )}
             </p>
             <div>
               {services.map((service) => {
@@ -1752,10 +1752,10 @@ export function ServiceStatus({
       });
       applyOverview(next);
       setNotice(
-tn(
-"Eine neue öffentliche Adresse wurde erstellt. Ersetze die frühere SharePoint-Bildadresse.",
-"Eine neue öffentliche Adresse wurde erstellt. Ersetzen Sie die frühere SharePoint-Bildadresse.",
-),
+        tn(
+          "Eine neue öffentliche Adresse wurde erstellt. Ersetze die frühere SharePoint-Bildadresse.",
+          "Eine neue öffentliche Adresse wurde erstellt. Ersetzen Sie die frühere SharePoint-Bildadresse.",
+        ),
       );
     } catch (nextError) {
       setError(
@@ -1873,9 +1873,9 @@ tn(
       setError(
         maintenanceDraft.serviceIds.length < 1
           ? tn(
-"Wähle mindestens einen betroffenen Service aus.",
-"Wählen Sie mindestens einen betroffenen Service aus.",
-)
+              "Wähle mindestens einen betroffenen Service aus.",
+              "Wählen Sie mindestens einen betroffenen Service aus.",
+            )
           : "Die ausgewählten Services sind nicht mehr verfügbar.",
       );
       return;
@@ -1958,9 +1958,9 @@ tn(
             {overview && !overview.canManage
               ? "Aktueller Zustand der Services und geplante Wartungen."
               : tn(
-"Zeige den bewusst gesetzten Zustand deiner Services und veröffentliche bei Bedarf eine datensparsame Statusseite.",
-"Zeigen Sie den bewusst gesetzten Zustand Ihrer Services und veröffentlichen Sie bei Bedarf eine datensparsame Statusseite.",
-)}
+                  "Zeige den bewusst gesetzten Zustand deiner Services und veröffentliche bei Bedarf eine datensparsame Statusseite.",
+                  "Zeigen Sie den bewusst gesetzten Zustand Ihrer Services und veröffentlichen Sie bei Bedarf eine datensparsame Statusseite.",
+                )}
           </p>
         </div>
       </header>
@@ -2106,10 +2106,10 @@ tn(
                 <div className="service-status__sharepoint">
                   <h4>In SharePoint einfügen</h4>
                   <p>
-{tn(
-"Für den Bild-Webpart verwendest du die Bildadresse und verlinkst das Badge mit der Statusseite. Für das Einbetten-Webpart zeigt der iFrame ausschliesslich das kompakte Statusbadge. nextDesk verändert keine SharePoint-Seite automatisch.",
-"Für den Bild-Webpart verwenden Sie die Bildadresse und verlinken das Badge mit der Statusseite. Für das Einbetten-Webpart zeigt der iFrame ausschliesslich das kompakte Statusbadge. nextDesk verändert keine SharePoint-Seite automatisch.",
-)}
+                    {tn(
+                      "Für den Bild-Webpart verwendest du die Bildadresse und verlinkst das Badge mit der Statusseite. Für das Einbetten-Webpart zeigt der iFrame ausschliesslich das kompakte Statusbadge. nextDesk verändert keine SharePoint-Seite automatisch.",
+                      "Für den Bild-Webpart verwenden Sie die Bildadresse und verlinken das Badge mit der Statusseite. Für das Einbetten-Webpart zeigt der iFrame ausschliesslich das kompakte Statusbadge. nextDesk verändert keine SharePoint-Seite automatisch.",
+                    )}
                   </p>
                   <label>
                     Öffentliche Statusseite

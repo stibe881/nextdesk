@@ -1,5 +1,7 @@
 // «Störungen» (incidents from PRTG): parsing of the incidents edge function
 // responses and small formatting helpers; pure.
+import { tn } from "./formality";
+
 
 export type IncidentFilter =
   | "active"

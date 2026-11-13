@@ -7,6 +7,7 @@
 // hier ein Ziel; der Test prüft das für alle Arten in PUSH_PAYLOAD_KINDS.
 
 import type { MobileFeatureKey } from "@/lib/mobile-features";
+import { tn } from "./formality";
 
 /** Alle Push-Arten, die push-dispatch verschickt (ApnsPayloadKind). */
 export const PUSH_PAYLOAD_KINDS = [

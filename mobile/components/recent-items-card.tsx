@@ -11,6 +11,7 @@ import {
   type RecentItemType,
 } from "@/lib/recent-items-model";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 const COLLAPSED = 5;
 

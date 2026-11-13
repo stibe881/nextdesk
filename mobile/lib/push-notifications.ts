@@ -13,6 +13,7 @@ import {
   NextDeskRequestError,
   nextDeskErrorMessage,
 } from "@/lib/nextdesk-error-messages";
+import { tn } from "./formality";
 
 export const PUSH_CATEGORIES = [
   "assigned",

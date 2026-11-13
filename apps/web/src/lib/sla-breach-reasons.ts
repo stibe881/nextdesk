@@ -60,7 +60,8 @@ export function validateReasonDraft(
   code: SlaBreachReasonCode | "",
   note: string,
 ): string | null {
-  if (!code) return tn("Bitte wähle eine Ursache.", "Bitte wählen Sie eine Ursache.");
+  if (!code)
+    return tn("Bitte wähle eine Ursache.", "Bitte wählen Sie eine Ursache.");
   const trimmed = note.trim();
   if (code === "other" && !trimmed)
     return tn(

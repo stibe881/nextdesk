@@ -7,6 +7,7 @@ import {
   validateMicrosoftIdToken,
 } from "../_shared/exchange-delegated-oauth.ts";
 import { ExchangeMailError } from "../_shared/exchange-graph.ts";
+import { loadFormality, tone } from "../_shared/formality.ts";
 
 const RETURN_URL = "https://app.nextdesk.ch/?microsoft365=connected";
 
@@ -81,14 +82,24 @@ const handler = withSupabase(
     if (!validOpaque(state, 32, 256))
       return html(
         "Microsoft-365-Verbindung abgebrochen",
-        "Der Rücksprung konnte nicht geprüft werden. Bitte starten Sie die Verbindung in nextDesk erneut.",
+        // Der Mandant ist hier noch unbekannt: Standardanrede «du».
+        tone(
+          "du",
+          "Der Rücksprung konnte nicht geprüft werden. Bitte starte die Verbindung in nextDesk erneut.",
+          "Der Rücksprung konnte nicht geprüft werden. Bitte starten Sie die Verbindung in nextDesk erneut.",
+        ),
       );
     const oauth = await consumeState(context.supabaseAdmin, state);
     if (!oauth)
       return html(
         "Microsoft-365-Verbindung abgebrochen",
-        "Dieser Rücksprung ist abgelaufen oder wurde bereits verwendet. Bitte starten Sie die Verbindung in nextDesk erneut.",
+        tone(
+          "du",
+          "Dieser Rücksprung ist abgelaufen oder wurde bereits verwendet. Bitte starte die Verbindung in nextDesk erneut.",
+          "Dieser Rücksprung ist abgelaufen oder wurde bereits verwendet. Bitte starten Sie die Verbindung in nextDesk erneut.",
+        ),
       );
+    const formality = await loadFormality(context.supabaseAdmin, oauth.tenant_id);
     if (providerError || !validOpaque(code, 8, 8192)) {
       await context.supabaseAdmin.from("audit_logs").insert({
         tenant_id: oauth.tenant_id,
@@ -122,7 +133,11 @@ const handler = withSupabase(
       });
       return html(
         "Microsoft-365-Verbindung nicht möglich",
-        "Ihre Mandantenadministration ist nicht mehr aktiv. Eine aktive Mandantenadministration kann die Verbindung erneut starten.",
+        tone(
+          formality,
+          "Deine Mandantenadministration ist nicht mehr aktiv. Eine aktive Mandantenadministration kann die Verbindung erneut starten.",
+          "Ihre Mandantenadministration ist nicht mehr aktiv. Eine aktive Mandantenadministration kann die Verbindung erneut starten.",
+        ),
       );
     }
     try {
@@ -196,7 +211,11 @@ const handler = withSupabase(
       });
       return html(
         "Microsoft 365 verbunden",
-        "Die Connector-Anmeldung wurde sicher gespeichert. Sie werden zurück zu nextDesk geleitet und können danach Support-Postfächer hinzufügen.",
+        tone(
+          formality,
+          "Die Connector-Anmeldung wurde sicher gespeichert. Du wirst zurück zu nextDesk geleitet und kannst danach Support-Postfächer hinzufügen.",
+          "Die Connector-Anmeldung wurde sicher gespeichert. Sie werden zurück zu nextDesk geleitet und können danach Support-Postfächer hinzufügen.",
+        ),
         true,
       );
     } catch (error) {
@@ -216,8 +235,16 @@ const handler = withSupabase(
       return html(
         "Microsoft-365-Verbindung nicht möglich",
         code === "exchange_access_denied"
-          ? "Microsoft hat nicht alle notwendigen, delegierten Mailberechtigungen freigegeben. Bitte lassen Sie die Freigabe vollständig abschliessen und versuchen Sie es erneut."
-          : "Die Verbindung konnte nicht sicher abgeschlossen werden. Es wurde kein verwendbarer Postfachzugriff aktiviert. Bitte starten Sie die Verbindung in nextDesk erneut.",
+          ? tone(
+              formality,
+              "Microsoft hat nicht alle notwendigen, delegierten Mailberechtigungen freigegeben. Bitte lass die Freigabe vollständig abschliessen und versuche es erneut.",
+              "Microsoft hat nicht alle notwendigen, delegierten Mailberechtigungen freigegeben. Bitte lassen Sie die Freigabe vollständig abschliessen und versuchen Sie es erneut.",
+            )
+          : tone(
+              formality,
+              "Die Verbindung konnte nicht sicher abgeschlossen werden. Es wurde kein verwendbarer Postfachzugriff aktiviert. Bitte starte die Verbindung in nextDesk erneut.",
+              "Die Verbindung konnte nicht sicher abgeschlossen werden. Es wurde kein verwendbarer Postfachzugriff aktiviert. Bitte starten Sie die Verbindung in nextDesk erneut.",
+            ),
       );
     }
   },
