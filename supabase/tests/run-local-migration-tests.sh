@@ -15532,4 +15532,174 @@ $$;
 rollback;
 SQL
 
+# 0325: SLA pause in list filters, drilldown and first response.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_department constant uuid := '11000000-0000-4000-8000-000000000001';
+  v_priority constant uuid := '14000000-0000-4000-8000-000000000001';
+  v_requester constant uuid := '00000000-0000-4000-8000-000000000001';
+  v_now timestamptz := timezone('utc', now());
+  v_open uuid;
+  v_wait uuid;
+  v_profile uuid;
+  v_priority_key text;
+  v_id uuid;
+  v_due timestamptz;
+  v_spec record;
+begin
+  -- Breach rule with pause: an open paused ticket is never breached; resolved
+  -- or closed tickets are judged against their stored due date.
+  if public.ticket_resolution_sla_breached(v_now - interval '1 hour', null, null, v_now - interval '2 hours')
+     or public.ticket_resolution_sla_breached(v_now - interval '3 hours', null, null, v_now - interval '2 hours')
+     or not public.ticket_resolution_sla_breached(v_now - interval '1 hour', null, null, null)
+     or public.ticket_resolution_sla_breached(v_now + interval '1 hour', null, null, null)
+     or not public.ticket_resolution_sla_breached('2026-01-01T10:00:00Z', '2026-01-01T11:00:00Z', null, null)
+     or public.ticket_resolution_sla_breached('2026-01-01T10:00:00Z', '2026-01-01T09:00:00Z', null, null)
+     or public.ticket_resolution_sla_breached(null, null, null, null) then
+    raise exception '0325 test: wrong pause-aware SLA breach rule';
+  end if;
+  if position('sla_paused_at' in pg_get_functiondef(
+       'public.list_authorized_ticket_list_page_by_level(uuid, uuid[], uuid[], uuid[], uuid, boolean, text, text, integer, integer, text, text, text[], text[], text[], text[], text[], text, text[], uuid[], uuid[], smallint)'::regprocedure)) = 0 then
+    raise exception '0325 test: list by level not pause-aware';
+  end if;
+
+  insert into public.ticket_statuses (tenant_id, key, label, is_closed, sort_order, pauses_sla) values
+    (v_tenant, 'sla_0325_open', 'SLA-0325 offen', false, 911, false),
+    (v_tenant, 'sla_0325_wait', 'SLA-0325 wartet', false, 912, true);
+  select id into v_open from public.ticket_statuses where tenant_id = v_tenant and key = 'sla_0325_open';
+  select id into v_wait from public.ticket_statuses where tenant_id = v_tenant and key = 'sla_0325_wait';
+
+  -- Calendar-time profile, chosen as newest tenant-wide profile.
+  select key into v_priority_key from public.ticket_priorities where id = v_priority;
+  insert into public.ticket_sla_profiles (tenant_id, name, timezone, service_hours, active, updated_at)
+  values (v_tenant, 'SLA-0325', 'UTC', '{"mode":"always"}', true, v_now + interval '2 days')
+  returning id into v_profile;
+  insert into public.ticket_sla_rules (sla_profile_id, priority_key, response_minutes, resolution_minutes)
+  values (v_profile, v_priority_key, 120, 2400);
+
+  -- List fixtures: key, resolution due offset, paused since (null = running).
+  for v_spec in
+    select * from (values
+      ('kritisch', interval '30 minutes', null::interval),
+      ('warnung', interval '2 hours', null),
+      ('ok', interval '10 hours', null),
+      ('overdue', interval '-1 hour', null),
+      ('paused_frozen', interval '-1 hour', interval '2 hours'),
+      ('paused_later', interval '10 hours', interval '1 hour')
+    ) as spec(key, due, paused)
+  loop
+    insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+    values (v_tenant, v_department, 'SLA-0325-' || v_spec.key, 'SLA 0325', v_spec.key, v_open, v_priority, v_requester)
+    returning id into v_id;
+    update public.tickets set resolution_due_at = v_now + v_spec.due where id = v_id;
+    if v_spec.paused is not null then
+      update public.tickets set status_id = v_wait, sla_paused_at = v_now - v_spec.paused where id = v_id;
+      if (select sla_paused_at from public.tickets where id = v_id) is null then
+        raise exception '0325 test: fixture % not paused', v_spec.key;
+      end if;
+    end if;
+  end loop;
+
+  -- First response during a running pause: response target moves by the
+  -- paused time up to the reply (calendar profile: elapsed time).
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  values (v_tenant, v_department, 'SLA-0325-R1', 'SLA 0325', 'Antwort', v_open, v_priority, v_requester)
+  returning id into v_id;
+  update public.tickets set response_due_at = v_now + interval '1 hour' where id = v_id;
+  update public.tickets set status_id = v_wait, sla_paused_at = v_now - interval '3 hours' where id = v_id;
+  update public.tickets set first_responded_at = v_now - interval '1 hour' where id = v_id;
+  select response_due_at into v_due from public.tickets where id = v_id;
+  if v_due <> v_now + interval '3 hours' then
+    raise exception '0325 test: response during pause not extended (%)', v_due;
+  end if;
+  -- Resuming afterwards does not move the answered target again.
+  update public.tickets set status_id = v_open where id = v_id;
+  if (select response_due_at from public.tickets where id = v_id) <> v_now + interval '3 hours'
+     or (select sla_paused_at from public.tickets where id = v_id) is not null then
+    raise exception '0325 test: answered response target moved at resume';
+  end if;
+
+  -- Reply and resume in one update.
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  values (v_tenant, v_department, 'SLA-0325-R2', 'SLA 0325', 'Antwort', v_open, v_priority, v_requester)
+  returning id into v_id;
+  update public.tickets set response_due_at = v_now + interval '1 hour' where id = v_id;
+  update public.tickets set status_id = v_wait, sla_paused_at = v_now - interval '2 hours' where id = v_id;
+  update public.tickets set status_id = v_open, first_responded_at = v_now where id = v_id;
+  select response_due_at into v_due from public.tickets where id = v_id;
+  if v_due < v_now + interval '3 hours' - interval '1 second'
+     or v_due > v_now + interval '3 hours' + interval '1 second' then
+    raise exception '0325 test: reply with resume not extended (%)', v_due;
+  end if;
+
+  -- Response target already missed before the pause stays.
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  values (v_tenant, v_department, 'SLA-0325-R3', 'SLA 0325', 'Antwort', v_open, v_priority, v_requester)
+  returning id into v_id;
+  update public.tickets set response_due_at = v_now - interval '4 hours' where id = v_id;
+  update public.tickets set status_id = v_wait, sla_paused_at = v_now - interval '2 hours' where id = v_id;
+  update public.tickets set first_responded_at = v_now where id = v_id;
+  if (select response_due_at from public.tickets where id = v_id) <> v_now - interval '4 hours' then
+    raise exception '0325 test: response target breached before the pause moved';
+  end if;
+end;
+$$;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_keys text[];
+  v_term text;
+  v_expected text[];
+begin
+  foreach v_term in array array['kritisch', 'warnung', 'ok', 'pausiert'] loop
+    v_expected := case v_term
+      when 'kritisch' then array['SLA-0325-kritisch', 'SLA-0325-overdue']
+      when 'warnung' then array['SLA-0325-warnung']
+      when 'ok' then array['SLA-0325-ok']
+      else array['SLA-0325-paused_frozen', 'SLA-0325-paused_later']
+    end;
+    select coalesce(array_agg(page.ticket_number order by page.ticket_number), '{}') into v_keys
+      from public.list_authorized_ticket_list_page_v2(
+        v_tenant, p_limit => 100,
+        p_search_ticket_numbers => array['SLA-0325-'],
+        p_search_risks => array[v_term]) page
+     where page.ticket_number not like 'SLA-0325-R%';
+    if v_keys is distinct from v_expected then
+      raise exception '0325 test: v2 sla:% returned %', v_term, v_keys;
+    end if;
+    select coalesce(array_agg(page.ticket_number order by page.ticket_number), '{}') into v_keys
+      from public.list_authorized_ticket_list_page(
+        v_tenant, p_limit => 100,
+        p_search_ticket_numbers => array['SLA-0325-'],
+        p_search_risks => array[v_term]) page
+     where page.ticket_number not like 'SLA-0325-R%';
+    if v_keys is distinct from v_expected then
+      raise exception '0325 test: list sla:% returned %', v_term, v_keys;
+    end if;
+  end loop;
+  perform public.list_authorized_ticket_list_page_by_level(
+    v_tenant, p_limit => 10, p_search_risks => array['pausiert'], p_support_level => 1::smallint);
+
+  -- Report drilldown «SLA überschritten»: paused tickets are not breached.
+  select coalesce(array_agg(page.ticket_number order by page.ticket_number), '{}') into v_keys
+    from public.list_authorized_ticket_list_page_v2(
+      v_tenant, p_limit => 100,
+      p_search_ticket_numbers => array['SLA-0325-'],
+      p_sla_breached => true) page
+   where page.ticket_number not like 'SLA-0325-R%';
+  if v_keys is distinct from array['SLA-0325-overdue'] then
+    raise exception '0325 test: drilldown breached returned %', v_keys;
+  end if;
+  raise notice 'sla pause consumers checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
