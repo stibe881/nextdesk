@@ -251,7 +251,13 @@ export async function finishTeam(
     }
   }
 
-  for (const channel of request.channels) {
+  // Private Kanäle zuletzt: Microsoft braucht dafür oft länger (504) und
+  // blockiert sonst die übrigen Kanäle.
+  const ordered = [
+    ...request.channels.filter((channel) => !channel.isPrivate),
+    ...request.channels.filter((channel) => channel.isPrivate),
+  ];
+  for (const channel of ordered) {
     try {
       const id = await ensureChannel(
         fetcher,
@@ -311,8 +317,8 @@ export async function finishTeam(
 }
 
 /** Kurz nach dem Anlegen eines Teams lehnt Microsoft Kanäle oft noch ab. */
-const CHANNEL_RETRY_DELAYS_MS = [4_000, 10_000, 20_000] as const;
-const CHANNEL_TIMEOUT_MS = 60_000;
+const CHANNEL_RETRY_DELAYS_MS = [5_000, 15_000] as const;
+const CHANNEL_TIMEOUT_MS = 50_000;
 
 const wait = (ms: number) =>
   ms > 0
