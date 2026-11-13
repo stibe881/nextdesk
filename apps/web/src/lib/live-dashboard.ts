@@ -693,10 +693,10 @@ export async function loadLiveDashboard(
   }
 
   const ticketRows = tickets.slice(0, TICKET_PAGE_SIZE).map((ticket) => {
-    const due = formatDueAt(
-      ticket.resolution_due_at,
-      ticket.status_is_closed ? null : (slaPausedAt.get(ticket.id) ?? null),
-    );
+    const pausedAt = ticket.status_is_closed
+      ? null
+      : (slaPausedAt.get(ticket.id) ?? null);
+    const due = formatDueAt(ticket.resolution_due_at, pausedAt);
     return {
       age: formatAge(ticket.created_at),
       assignedAgentId: ticket.assigned_agent_id,
@@ -730,6 +730,7 @@ export async function loadLiveDashboard(
       queueLabel: ticket.department_name,
       risk: due.risk,
       sla: due.label,
+      slaPaused: pausedAt !== null,
       state: ticket.status_label,
       statusOrder: ticket.status_sort_order,
       subject: ticket.subject,

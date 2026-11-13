@@ -121,6 +121,33 @@ describe("Ticket-Zeitachse", () => {
     expect(timeline.gaps).toEqual([]);
   });
 
+  it("zeigt bei pausierter SLA die Restzeit statt einer Verletzung", () => {
+    const timeline = buildTicketTimeline(
+      input({
+        ticket: {
+          ...input().ticket,
+          responseDueAt: at(1),
+          resolutionDueAt: at(6),
+          slaPausedAt: at(2),
+        },
+      }),
+      T0 + 10 * HOUR,
+    );
+    // Response target was missed before the pause: stays breached.
+    expect(
+      timeline.entries.find((entry) => entry.id === "sla-response"),
+    ).toMatchObject({ tone: "danger", future: false });
+    // Resolution target was running: frozen, 4 h left after resume.
+    expect(
+      timeline.entries.find((entry) => entry.id === "sla-resolution"),
+    ).toMatchObject({
+      tone: "neutral",
+      future: true,
+      time: T0 + 14 * HOUR,
+      detail: `SLA pausiert, Restzeit ${formatTimelineDuration(4 * HOUR)}`,
+    });
+  });
+
   it("bewertet SLA-Fristen als eingehalten, verletzt oder offen", () => {
     const met = buildTicketTimeline(
       input({
