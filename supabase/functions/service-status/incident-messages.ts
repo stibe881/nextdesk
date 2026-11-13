@@ -2,7 +2,8 @@
 // service-status: Validierung der Aktionen und Abbildung der Zeilen.
 //
 // Vertrag für die Störungsansicht (Monitoring):
-//   publishIncidentMessage { tenantId, monitoringIncidentId, serviceIds, state, title, body }
+//   publishIncidentMessage { tenantId, monitoringIncidentId, serviceIds, state, title, body,
+//                            serviceStatuses? }  (serviceStatuses: { dienstId: Betriebszustand })
 //     → { data: { messageId } }
 //   updateIncidentMessage  { tenantId, messageId, state, body, title?, serviceIds?, publicEnabled? }
 //     → { data: { messageId } }
@@ -17,6 +18,15 @@ export const INCIDENT_STATES = [
 ] as const;
 export type IncidentState = (typeof INCIDENT_STATES)[number];
 export const MAX_INCIDENT_SERVICES = 100;
+/** Betriebszustand eines Dienstes (services.status). */
+export const SERVICE_STATUSES = [
+  "operational",
+  "degraded",
+  "partial_outage",
+  "major_outage",
+  "maintenance",
+] as const;
+export type ServiceStatusValue = (typeof SERVICE_STATUSES)[number];
 
 export type IncidentAction =
   | {
@@ -28,6 +38,7 @@ export type IncidentAction =
       title: string;
       body: string;
       publicEnabled: boolean;
+      serviceStatuses?: Record<string, ServiceStatusValue>;
     }
   | {
       type: "updateIncidentMessage";
@@ -38,6 +49,7 @@ export type IncidentAction =
       title?: string;
       serviceIds?: string[];
       publicEnabled?: boolean;
+      serviceStatuses?: Record<string, ServiceStatusValue>;
     }
   | {
       type: "incidentMessages";
@@ -107,6 +119,34 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]) {
   return Object.keys(value).every((key) => allowed.has(key));
 }
 
+/**
+ * Optionaler neuer Betriebszustand je Dienst ({ dienstId: status }); jeder
+ * Dienst muss auch in serviceIds der Meldung stehen.
+ */
+export function parseServiceStatuses(
+  value: unknown,
+  serviceIds: readonly string[],
+): Record<string, ServiceStatusValue> | null {
+  if (!isRecord(value)) return null;
+  const entries = Object.entries(value);
+  if (entries.length > MAX_INCIDENT_SERVICES) return null;
+  const allowed = new Set(serviceIds);
+  const result: Record<string, ServiceStatusValue> = {};
+  for (const [id, status] of entries) {
+    const key = id.toLowerCase();
+    if (
+      !isUuid(id) ||
+      !allowed.has(key) ||
+      typeof status !== "string" ||
+      !(SERVICE_STATUSES as readonly string[]).includes(status)
+    ) {
+      return null;
+    }
+    result[key] = status as ServiceStatusValue;
+  }
+  return result;
+}
+
 /** 0–100 eindeutige Dienst-IDs (eine Meldung kann ohne Dienst sein). */
 export function parseIncidentServiceIds(value: unknown): string[] | null {
   if (!Array.isArray(value) || value.length > MAX_INCIDENT_SERVICES) {
@@ -150,6 +190,7 @@ export function parseIncidentAction(
         "title",
         "body",
         "publicEnabled",
+        "serviceStatuses",
       ])
     ) {
       return null;
@@ -167,10 +208,15 @@ export function parseIncidentAction(
         : isUuid(value.monitoringIncidentId)
           ? value.monitoringIncidentId.toLowerCase()
           : undefined;
+    const serviceStatuses =
+      value.serviceStatuses === undefined || !serviceIds
+        ? undefined
+        : parseServiceStatuses(value.serviceStatuses, serviceIds);
     if (
       !title ||
       !body ||
       !serviceIds ||
+      serviceStatuses === null ||
       monitoringIncidentId === undefined ||
       !isIncidentState(value.state) ||
       (value.publicEnabled !== undefined &&
@@ -187,6 +233,9 @@ export function parseIncidentAction(
       title,
       body,
       publicEnabled: value.publicEnabled !== false,
+      ...(serviceStatuses && Object.keys(serviceStatuses).length
+        ? { serviceStatuses }
+        : {}),
     };
   }
   if (value.type === "updateIncidentMessage") {
@@ -200,6 +249,7 @@ export function parseIncidentAction(
         "body",
         "serviceIds",
         "publicEnabled",
+        "serviceStatuses",
       ]) ||
       !isUuid(value.messageId) ||
       !isIncidentState(value.state)
@@ -213,10 +263,17 @@ export function parseIncidentAction(
       value.serviceIds === undefined
         ? undefined
         : parseIncidentServiceIds(value.serviceIds);
+    const serviceStatuses =
+      value.serviceStatuses === undefined
+        ? undefined
+        : serviceIds
+          ? parseServiceStatuses(value.serviceStatuses, serviceIds)
+          : null;
     if (
       !body ||
       title === null ||
       serviceIds === null ||
+      serviceStatuses === null ||
       (value.publicEnabled !== undefined &&
         typeof value.publicEnabled !== "boolean")
     ) {
@@ -232,6 +289,9 @@ export function parseIncidentAction(
       ...(serviceIds !== undefined ? { serviceIds } : {}),
       ...(typeof value.publicEnabled === "boolean"
         ? { publicEnabled: value.publicEnabled }
+        : {}),
+      ...(serviceStatuses && Object.keys(serviceStatuses).length
+        ? { serviceStatuses }
         : {}),
     };
   }
