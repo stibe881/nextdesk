@@ -32,10 +32,7 @@ export type CustomerTicketEmailAction = {
 export type CustomerTicketEmailPrimaryAction = { label: string; url: string };
 
 export type CustomerTicketEmailNoticeColor =
-  | "brand"
-  | "info"
-  | "success"
-  | "warning";
+  "brand" | "info" | "success" | "warning";
 
 /** Optional «Hinweisblock der ICT», shown below the content. Only https links. */
 export type CustomerTicketEmailNotice = {
@@ -390,11 +387,17 @@ function noticeHtml(
   branding: CustomerTicketEmailBrand,
 ): string {
   if (!notice || !isHttps(notice.url)) return "";
-  const title = String(notice.title ?? "").trim().slice(0, 80);
+  const title = String(notice.title ?? "")
+    .trim()
+    .slice(0, 80);
   if (!title) return "";
-  const body = String(notice.body ?? "").trim().slice(0, 260);
+  const body = String(notice.body ?? "")
+    .trim()
+    .slice(0, 260);
   const buttonLabel =
-    String(notice.buttonLabel ?? "").trim().slice(0, 40) || "Mehr erfahren";
+    String(notice.buttonLabel ?? "")
+      .trim()
+      .slice(0, 40) || "Mehr erfahren";
   const base =
     notice.color in NOTICE_COLORS
       ? NOTICE_COLORS[notice.color as keyof typeof NOTICE_COLORS]
@@ -422,6 +425,14 @@ function noticeHtml(
             </table>
           </td></tr>`;
 }
+
+/** Mails, auf die Anfragende antworten können (Antwort landet im Ticket). */
+const REPLYABLE_KINDS: ReadonlySet<CustomerTicketEmailKind> = new Set([
+  "acknowledgement",
+  "agent_reply",
+  "resolution",
+  "rating_reminder",
+]);
 
 /** Headline per kind; kinds without own title show the subject line. */
 function headline(
@@ -480,9 +491,21 @@ export function renderCustomerTicketEmail(
     : "";
   const stars = ratingHtml(input.ratingLinks, branding, formality);
   const action = primaryActionOf(input.primaryAction);
+  // Über dem Portal-Knopf: Anfragende sollen wissen, dass eine Antwort auf
+  // die E-Mail genügt. Nur bei Mails, auf die man antworten kann.
+  const replyLine =
+    action && REPLYABLE_KINDS.has(input.kind)
+      ? `<p style="margin:0 0 12px;color:${branding.secondaryColor};${FONT}font-size:15px;line-height:22px;text-align:center;">${escapeHtml(
+          tone(
+            formality,
+            "Antworte einfach auf diese E-Mail – oder im Portal:",
+            "Antworten Sie einfach auf diese E-Mail – oder im Portal:",
+          ),
+        )}</p>`
+      : "";
   const topAction =
     !stars && action
-      ? `${buttonHtml(action.label, action.url, { background: branding.primaryColor, border: branding.primaryColor, foreground: "#FFFFFF", large: true })}`
+      ? `${replyLine}${buttonHtml(action.label, action.url, { background: branding.primaryColor, border: branding.primaryColor, foreground: "#FFFFFF", large: true })}`
       : "";
   const focus = stars || topAction;
   const focusRow = focus
@@ -490,11 +513,11 @@ export function renderCustomerTicketEmail(
     : "";
   const secondAction =
     stars && action
-      ? `<tr><td align="center" style="padding:0 32px 20px;">${buttonHtml(action.label, action.url, { background: "#FFFFFF", border: branding.primaryColor, foreground: branding.primaryColor })}</td></tr>`
+      ? `<tr><td align="center" style="padding:0 32px 20px;">${replyLine}${buttonHtml(action.label, action.url, { background: "#FFFFFF", border: branding.primaryColor, foreground: branding.primaryColor })}</td></tr>`
       : "";
   const attachmentNotice = input.attachmentNotice
     ? // formality-ok: «Sie» steht hier für die Anhänge, keine Anrede.
-       `<tr><td style="padding:0 32px 20px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#FFF8E8" style="border:1px solid #F2CD74;border-radius:10px;background-color:#FFF8E8;"><tr><td style="padding:14px 16px;color:#6F4E12;${FONT}font-size:13px;line-height:19px;"><strong>Anhänge im Portal</strong><br>Einige Anhänge sind für den E-Mail-Versand zu gross. Sie stehen im Ticketportal bereit.</td></tr></table></td></tr>`
+      `<tr><td style="padding:0 32px 20px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#FFF8E8" style="border:1px solid #F2CD74;border-radius:10px;background-color:#FFF8E8;"><tr><td style="padding:14px 16px;color:#6F4E12;${FONT}font-size:13px;line-height:19px;"><strong>Anhänge im Portal</strong><br>Einige Anhänge sind für den E-Mail-Versand zu gross. Sie stehen im Ticketportal bereit.</td></tr></table></td></tr>`
     : "";
   const notice =
     input.kind === "security_notice" ? "" : noticeHtml(input.notice, branding);
