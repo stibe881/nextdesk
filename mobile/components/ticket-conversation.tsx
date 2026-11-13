@@ -17,6 +17,19 @@ import {
   type PolishLength,
 } from "@/components/dictation-controls";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import {
+  formatAttachmentSize,
+  isImageAttachment,
+  MAX_MESSAGE_ATTACHMENTS,
+  type MessageAttachment,
+} from "@/lib/ticket-message-attachments-model";
+
+/** A file picked for the next message, uploaded when it is sent. */
+export type PendingMessageAttachment = {
+  key: string;
+  name: string;
+  size: number;
+};
 
 type TicketConversationProps = {
   body: string;
@@ -34,7 +47,77 @@ type TicketConversationProps = {
   onPolish?: ((length: PolishLength) => Promise<void>) | undefined;
   onVisibilityChange: (visibility: TicketCommentVisibility) => void;
   visibility: TicketCommentVisibility;
+  /** Files per message (comment id). */
+  attachmentsByComment?: Record<string, MessageAttachment[]> | undefined;
+  onOpenAttachment?: ((attachment: MessageAttachment) => void) | undefined;
+  /** Files picked for the next message. */
+  pendingAttachments?: PendingMessageAttachment[] | undefined;
+  onAddAttachments?: (() => void) | undefined;
+  onRemovePendingAttachment?: ((key: string) => void) | undefined;
 };
+
+type AttachmentProps = {
+  attachmentsByComment: Record<string, MessageAttachment[]>;
+  onOpenAttachment?: ((attachment: MessageAttachment) => void) | undefined;
+};
+
+/** Tappable file rows below a message. */
+export function MessageAttachmentList({
+  attachments,
+  onOpen,
+  tone = "default",
+}: {
+  attachments: readonly MessageAttachment[];
+  onOpen?: ((attachment: MessageAttachment) => void) | undefined;
+  tone?: "default" | "onPrimary";
+}) {
+  const colors = useAppColors();
+  const styles = useStyles();
+  if (attachments.length === 0) return null;
+  const color = tone === "onPrimary" ? colors.onPrimary : colors.primaryText;
+  return (
+    <View style={styles.attachmentList}>
+      {attachments.map((attachment) => (
+        <Pressable
+          accessibilityHint="Öffnet die Datei"
+          accessibilityLabel={`Anhang ${attachment.originalFilename}, ${formatAttachmentSize(attachment.byteSize)}`}
+          accessibilityRole="button"
+          disabled={!onOpen}
+          key={attachment.id}
+          onPress={() => onOpen?.(attachment)}
+          style={[
+            styles.attachmentRow,
+            tone === "onPrimary" && styles.attachmentRowOnPrimary,
+          ]}
+        >
+          <Ionicons
+            color={color}
+            name={
+              isImageAttachment(attachment)
+                ? "image-outline"
+                : "document-attach-outline"
+            }
+            size={16}
+          />
+          <View style={styles.attachmentCopy}>
+            <Text numberOfLines={1} style={[styles.attachmentName, { color }]}>
+              {attachment.originalFilename}
+            </Text>
+            <Text
+              style={[
+                styles.attachmentSize,
+                tone === "onPrimary" && { color: colors.onPrimary },
+              ]}
+            >
+              {formatAttachmentSize(attachment.byteSize)}
+            </Text>
+          </View>
+          <Ionicons color={color} name="open-outline" size={14} />
+        </Pressable>
+      ))}
+    </View>
+  );
+}
 
 type MessageDirection = "incoming" | "internal" | "outgoing";
 
@@ -171,6 +254,11 @@ export function TicketConversation({
   onPolish,
   onVisibilityChange,
   visibility,
+  attachmentsByComment = {},
+  onOpenAttachment,
+  pendingAttachments = [],
+  onAddAttachments,
+  onRemovePendingAttachment,
 }: TicketConversationProps) {
   const colors = useAppColors();
   const styles = useStyles();
@@ -178,7 +266,11 @@ export function TicketConversation({
   const canChooseVisibility = canWriteInternalNotes && canCommentExternal;
   const isInternalDraft = visibility === "internal";
   const draftLabel = draftStatusLabel(draftState);
-  const sendDisabled = isSending || !body.trim();
+  const sendDisabled =
+    isSending || (!body.trim() && pendingAttachments.length === 0);
+  const canAddAttachments =
+    Boolean(onAddAttachments) &&
+    pendingAttachments.length < MAX_MESSAGE_ATTACHMENTS;
   const groups = buildGroups(comments);
   const countLabel =
     comments.length === 1 ? "1 Nachricht" : `${comments.length} Nachrichten`;
@@ -229,9 +321,17 @@ export function TicketConversation({
                 </View>
               ) : null}
               {group.direction === "internal" ? (
-                <InternalGroup group={group} />
+                <InternalGroup
+                  attachmentsByComment={attachmentsByComment}
+                  group={group}
+                  onOpenAttachment={onOpenAttachment}
+                />
               ) : (
-                <BubbleGroup group={group} />
+                <BubbleGroup
+                  attachmentsByComment={attachmentsByComment}
+                  group={group}
+                  onOpenAttachment={onOpenAttachment}
+                />
               )}
             </View>
           ))
@@ -331,7 +431,56 @@ export function TicketConversation({
             onTextChange={onBodyChange}
             text={body}
           />
+          {pendingAttachments.length > 0 ? (
+            <View style={styles.pendingList}>
+              {pendingAttachments.map((item) => (
+                <View key={item.key} style={styles.pendingItem}>
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="document-attach-outline"
+                    size={15}
+                  />
+                  <Text numberOfLines={1} style={styles.pendingName}>
+                    {item.name}
+                  </Text>
+                  <Text style={styles.attachmentSize}>
+                    {formatAttachmentSize(item.size)}
+                  </Text>
+                  {onRemovePendingAttachment ? (
+                    <Pressable
+                      accessibilityLabel={`${item.name} entfernen`}
+                      accessibilityRole="button"
+                      disabled={isSending}
+                      hitSlop={8}
+                      onPress={() => onRemovePendingAttachment(item.key)}
+                    >
+                      <Ionicons color={colors.muted} name="close" size={16} />
+                    </Pressable>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          ) : null}
           <View style={styles.inputRow}>
+            {onAddAttachments ? (
+              <Pressable
+                accessibilityHint={`Foto oder Datei anhängen, höchstens ${MAX_MESSAGE_ATTACHMENTS} pro Nachricht`}
+                accessibilityLabel="Datei anhängen"
+                accessibilityRole="button"
+                accessibilityState={{
+                  disabled: isSending || !canAddAttachments,
+                }}
+                disabled={isSending || !canAddAttachments}
+                onPress={onAddAttachments}
+                style={[
+                  styles.attachButton,
+                  (isSending || !canAddAttachments) &&
+                    styles.sendButtonDisabled,
+                ]}
+              >
+                <Ionicons color={colors.primaryText} name="attach" size={22} />
+              </Pressable>
+            ) : null}
             <TextInput
               accessibilityLabel={
                 isInternalDraft ? "Interne Notiz" : "Nachricht"
@@ -427,7 +576,11 @@ export function TicketConversation({
   );
 }
 
-function BubbleGroup({ group }: { group: MessageGroup }) {
+function BubbleGroup({
+  group,
+  attachmentsByComment,
+  onOpenAttachment,
+}: { group: MessageGroup } & AttachmentProps) {
   const colors = useAppColors();
   const styles = useStyles();
   const isOutgoing = group.direction === "outgoing";
@@ -493,6 +646,11 @@ function BubbleGroup({ group }: { group: MessageGroup }) {
                 >
                   {comment.body}
                 </Text>
+                <MessageAttachmentList
+                  attachments={attachmentsByComment[comment.id] ?? []}
+                  onOpen={onOpenAttachment}
+                  tone={isOutgoing ? "onPrimary" : "default"}
+                />
                 <View style={styles.bubbleMeta}>
                   {viaEmail ? (
                     <Ionicons color={metaColor} name="mail-outline" size={11} />
@@ -535,7 +693,11 @@ function BubbleGroup({ group }: { group: MessageGroup }) {
   );
 }
 
-function InternalGroup({ group }: { group: MessageGroup }) {
+function InternalGroup({
+  group,
+  attachmentsByComment,
+  onOpenAttachment,
+}: { group: MessageGroup } & AttachmentProps) {
   const colors = useAppColors();
   const styles = useStyles();
   return (
@@ -560,6 +722,10 @@ function InternalGroup({ group }: { group: MessageGroup }) {
           <Text selectable style={styles.internalBody}>
             {comment.body}
           </Text>
+          <MessageAttachmentList
+            attachments={attachmentsByComment[comment.id] ?? []}
+            onOpen={onOpenAttachment}
+          />
           <Text style={styles.internalTime}>
             {messageTime(comment.createdAt)}
           </Text>
@@ -741,6 +907,52 @@ const useStyles = makeThemedStyles((c) => ({
   segmentTextExternal: { color: c.primaryText },
   segmentTextInternal: { color: c.warning },
   inputRow: { alignItems: "flex-end", flexDirection: "row", gap: 8 },
+  attachButton: {
+    alignItems: "center",
+    backgroundColor: c.primarySoft,
+    borderRadius: 22,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
+  pendingList: { gap: 6 },
+  pendingItem: {
+    alignItems: "center",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  pendingName: {
+    color: c.foreground,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  attachmentList: { gap: 6, marginTop: 8 },
+  attachmentRow: {
+    alignItems: "center",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 44,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  attachmentRowOnPrimary: {
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
+    borderColor: "rgba(255, 255, 255, 0.35)",
+  },
+  attachmentCopy: { flex: 1, minWidth: 0 },
+  attachmentName: { fontSize: 14, fontWeight: "700" },
+  attachmentSize: { color: c.muted, fontSize: 12 },
   input: {
     backgroundColor: c.surfaceSubtle,
     borderColor: c.borderStrong,
