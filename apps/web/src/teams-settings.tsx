@@ -70,7 +70,7 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
 
 export function TeamsSettings({ tenantId }: { tenantId: string }) {
   const [view, setView] = useState<TeamsSettingsView | null>(null);
-  const [months, setMonths] = useState(36);
+  const [months, setMonths] = useState(12);
   const [guests, setGuests] = useState(true);
   const [check, setCheck] = useState<CheckResult | null>(null);
   const [busy, setBusy] = useState<"save" | "check" | null>(null);

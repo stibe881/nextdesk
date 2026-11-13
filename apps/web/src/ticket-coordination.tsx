@@ -187,6 +187,7 @@ export function parseCoordinationOverview(value: unknown): Overview | null {
         resolvedAt: str(ticket.resolvedAt),
         closedAt: str(ticket.closedAt),
         isClosed,
+        slaPausedAt: isClosed ? null : str(ticket.slaPausedAt),
       },
       events: list(data.events).map((row) => ({
         id: String(row.id),

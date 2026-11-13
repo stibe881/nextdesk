@@ -7303,12 +7303,14 @@ function AuthenticatedApp() {
                         <>
                           Nutze z. B. <code>status:offen</code>,{" "}
                           <code>prio:hoch</code>, <code>queue:ict</code>,{" "}
-                          <code>sla:kritisch</code> oder <code>agent:mir</code>.
+                          <code>sla:kritisch</code>, <code>sla:pausiert</code>{" "}
+                          oder <code>agent:mir</code>.
                         </>,
                         <>
                           Nutzen Sie z. B. <code>status:offen</code>,{" "}
                           <code>prio:hoch</code>, <code>queue:ict</code>,{" "}
-                          <code>sla:kritisch</code> oder <code>agent:mir</code>.
+                          <code>sla:kritisch</code>, <code>sla:pausiert</code>{" "}
+                          oder <code>agent:mir</code>.
                         </>,
                       )}
                     </span>

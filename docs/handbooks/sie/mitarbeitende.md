@@ -252,7 +252,7 @@ bestellt und danach automatisch angelegt.
    erlaubten Gästen deren E-Mail-Adressen) und **Laufzeit** (Start und Ende).
 2. In der **Übersicht** prüfen und **Verbindlich bestellen**.
 
-Das **Ende** ist eine Pflichtangabe (höchstens drei Jahre). Das Team wird am
+Das **Ende** ist eine Pflichtangabe (höchstens ein Jahr; die ICT kann das anders einstellen). Das Team wird am
 Ende nicht gelöscht: 14 Tage, 7 Tage und 1 Tag vorher erhalten die Owner und
 die bestellende Person eine Benachrichtigung (E-Mail und Push, Kategorie
 «Shop»). Unter **Meine Teams** verlängern Sie die Laufzeit mit einem Klick um
@@ -294,7 +294,11 @@ speichern.
 ## nextDesk auf dem iPhone
 
 Laden Sie die **nextDesk-App** aus dem App Store und melden Sie sich wie im
-Browser an. Unten finden Sie links vom **Home**-Knopf **Tickets** und rechts
+Browser an. Im Ticket sehen Sie Dateien direkt in der **Unterhaltung** – auch die
+Anhänge Ihrer E-Mail unter der Beschreibung – und öffnen sie mit einem Tipp.
+Mit der **Büroklammer** neben dem Nachrichtenfeld hängen Sie Fotos aus der
+Mediathek oder Dateien (PDF, Word, Excel, TXT, CSV) an Ihre Nachricht an, bis
+fünf pro Nachricht. Unten finden Sie links vom **Home**-Knopf **Tickets** und rechts
 **Shop**, **Wissen** und **Scan**; wer im zuständigen Team ist, sieht links
 zusätzlich **Störungen** und **Phishing**. Unter **Wissen** (auch auf Android) suchen Sie Artikel, wischen durch
 die Themen und lesen sie im Design Ihres Unternehmens: oben «Kurz gesagt»,

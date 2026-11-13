@@ -2,6 +2,7 @@ import { tn } from "./lib/formality";
 import {
   BookOpen,
   Megaphone,
+  Pencil,
   Network,
   Ticket as TicketIcon,
   X,
@@ -19,8 +20,15 @@ import {
   INCIDENT_MESSAGE_STATE_LABELS,
   INCIDENT_MESSAGE_STATES,
   parseIncidentMessages,
+  filterStatusPageServices,
+  parseStatusPageServices,
+  SERVICE_OPERATING_STATE_LABELS,
+  SERVICE_OPERATING_STATES,
+  suggestedServiceState,
   type IncidentMessage,
   type IncidentMessageState,
+  type ServiceOperatingState,
+  type StatusPageService,
 } from "./lib/incidents-public-messages";
 import { supabase } from "./lib/supabase";
 
@@ -361,6 +369,14 @@ export function IncidentPublicMessageCard({
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [serviceIds, setServiceIds] = useState<string[]>([]);
+  /** Message being edited; null publishes a new message (update). */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [serviceStates, setServiceStates] = useState<
+    Record<string, ServiceOperatingState>
+  >({});
+  const [services, setServices] = useState<StatusPageService[] | null>(null);
+  const [servicesError, setServicesError] = useState("");
+  const [serviceQuery, setServiceQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -388,24 +404,125 @@ export function IncidentPublicMessageCard({
     void load();
   }, [load]);
 
-  function start() {
+  async function loadServices(): Promise<StatusPageService[]> {
+    if (services) return services;
+    try {
+      const next = parseStatusPageServices(
+        await invoke(
+          "service-status",
+          { type: "getStatusOverview", tenantId },
+          "Die Dienste sind gerade nicht verfügbar.",
+        ),
+      );
+      setServices(next);
+      return next;
+    } catch (cause) {
+      setServicesError((cause as Error).message);
+      return [];
+    }
+  }
+
+  function start(edit?: IncidentMessage) {
     const latest = messages?.[0];
-    setState(
-      latest
+    const nextState: IncidentMessageState = edit
+      ? edit.state
+      : latest
         ? detail.state === "active"
           ? "monitoring"
           : "resolved"
-        : "investigating",
-    );
+        : "investigating";
+    setEditingId(edit?.id ?? null);
+    setState(nextState);
     setTitle(
-      latest?.title ??
+      edit?.title ??
+        latest?.title ??
         `Störung: ${detail.services.map((service) => service.name).join(", ") || detail.deviceName || detail.title}`,
     );
-    setBody("");
-    setServiceIds(detail.services.map((service) => service.id));
+    setBody(edit?.body ?? "");
+    // Editing keeps the message's services; otherwise the linked services
+    // plus those named in the latest message.
+    const ids = edit
+      ? edit.serviceIds
+      : [
+          ...new Set([
+            ...detail.services.map((service) => service.id),
+            ...(latest?.serviceIds ?? []),
+          ]),
+        ];
+    setServiceIds(ids);
+    setServiceStates({});
+    setServicesError("");
+    setServiceQuery("");
     setMessage("");
     setOpen(true);
+    void loadServices().then((list) => {
+      const byId = new Map(list.map((service) => [service.id, service]));
+      setServiceStates(
+        Object.fromEntries(
+          ids.flatMap((id) => {
+            const service = byId.get(id);
+            return service
+              ? [
+                  [
+                    id,
+                    // Editing a text must not change states unasked.
+                    edit
+                      ? service.status
+                      : suggestedServiceState(service.status, nextState),
+                  ],
+                ]
+              : [];
+          }),
+        ),
+      );
+    });
   }
+
+  function changeState(next: IncidentMessageState) {
+    setState(next);
+    // «Behoben» sets the chosen services back to «Betriebsbereit».
+    if (next === "resolved") {
+      setServiceStates((current) =>
+        Object.fromEntries(
+          Object.keys(current).map((id) => [id, "operational" as const]),
+        ),
+      );
+    }
+  }
+
+  function addService(id: string) {
+    const service = services?.find((entry) => entry.id === id);
+    if (!service || serviceIds.includes(id)) return;
+    setServiceIds((current) => [...current, id]);
+    setServiceQuery("");
+    setServiceStates((current) => ({
+      ...current,
+      [id]: suggestedServiceState(service.status, state),
+    }));
+  }
+
+  function removeService(id: string) {
+    setServiceIds((current) => current.filter((entry) => entry !== id));
+    setServiceStates((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
+
+  const serviceById = new Map(
+    (services ?? []).map((service) => [service.id, service]),
+  );
+  const linkedNames = new Map(
+    detail.services.map((service) => [service.id, service.name]),
+  );
+  const availableServices = (services ?? []).filter(
+    (service) => !serviceIds.includes(service.id),
+  );
+  const serviceMatches = filterStatusPageServices(
+    availableServices,
+    serviceQuery,
+  );
 
   async function publish(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -415,18 +532,38 @@ export function IncidentPublicMessageCard({
       await invoke(
         "service-status",
         {
-          type: "publishIncidentMessage",
+          ...(editingId
+            ? { type: "updateIncidentMessage", messageId: editingId }
+            : {
+                type: "publishIncidentMessage",
+                monitoringIncidentId: detail.id,
+              }),
           tenantId,
-          monitoringIncidentId: detail.id,
           serviceIds,
           state,
           title: title.trim(),
           body: body.trim(),
+          // Only services whose operating state actually changes.
+          serviceStatuses: Object.fromEntries(
+            serviceIds.flatMap((id) => {
+              const chosen = serviceStates[id];
+              const current = serviceById.get(id)?.status;
+              return chosen && current && chosen !== current
+                ? [[id, chosen]]
+                : [];
+            }),
+          ),
         },
         "Die Meldung konnte nicht veröffentlicht werden.",
       );
       setOpen(false);
-      setMessage("Die Meldung ist auf der Statusseite veröffentlicht.");
+      setServices(null);
+      setMessage(
+        editingId
+          ? "Die Meldung wurde auf der Statusseite aktualisiert."
+          : "Die Meldung ist auf der Statusseite veröffentlicht.",
+      );
+      setEditingId(null);
       await load();
     } catch (cause) {
       setMessage((cause as Error).message);
@@ -442,7 +579,7 @@ export function IncidentPublicMessageCard({
           <Megaphone aria-hidden="true" size={15} /> Statusseite
         </h3>
         {!open ? (
-          <button className="text-button" onClick={start} type="button">
+          <button className="text-button" onClick={() => start()} type="button">
             {messages?.length
               ? "Update veröffentlichen"
               : "Öffentliche Meldung"}
@@ -462,10 +599,22 @@ export function IncidentPublicMessageCard({
                   )}
                 </small>
               </span>
-              <span
-                className={`incident-chip incident-chip--${entry.state === "resolved" ? "ok" : "warn"}`}
-              >
-                {INCIDENT_MESSAGE_STATE_LABELS[entry.state]}
+              <span className="incident-message__side">
+                <span
+                  className={`incident-chip incident-chip--${entry.state === "resolved" ? "ok" : "warn"}`}
+                >
+                  {INCIDENT_MESSAGE_STATE_LABELS[entry.state]}
+                </span>
+                {!open ? (
+                  <button
+                    aria-label={`Meldung «${entry.title}» bearbeiten`}
+                    className="text-button"
+                    onClick={() => start(entry)}
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" size={13} /> Bearbeiten
+                  </button>
+                ) : null}
               </span>
             </li>
           ))}
@@ -488,7 +637,7 @@ export function IncidentPublicMessageCard({
             <select
               disabled={busy}
               onChange={(event) =>
-                setState(event.target.value as IncidentMessageState)
+                changeState(event.target.value as IncidentMessageState)
               }
               value={state}
             >
@@ -514,48 +663,138 @@ export function IncidentPublicMessageCard({
             Text
             <textarea
               disabled={busy}
-              maxLength={4000}
+              maxLength={10000}
               onChange={(event) => setBody(event.target.value)}
               placeholder="Was ist betroffen, was tun wir, wann gibt es das nächste Update?"
               required
-              rows={3}
+              rows={editingId ? 8 : 3}
               value={body}
             />
           </label>
-          {detail.services.length ? (
-            <fieldset className="incident-checks">
-              <legend>Betroffene Dienste</legend>
-              {detail.services.map((service) => (
-                <label key={service.id}>
-                  <input
-                    checked={serviceIds.includes(service.id)}
-                    disabled={busy}
-                    onChange={(event) =>
-                      setServiceIds((current) =>
-                        event.target.checked
-                          ? [...current, service.id]
-                          : current.filter((id) => id !== service.id),
-                      )
+          <fieldset className="incident-services">
+            <legend>Betroffene Dienste und Betriebszustand</legend>
+            {serviceIds.length ? (
+              <ul>
+                {serviceIds.map((id) => {
+                  const service = serviceById.get(id);
+                  const name = service?.name ?? linkedNames.get(id) ?? "Dienst";
+                  return (
+                    <li key={id}>
+                      <span>
+                        <strong>{name}</strong>
+                        {service ? (
+                          <small>
+                            Aktuell:{" "}
+                            {SERVICE_OPERATING_STATE_LABELS[service.status]}
+                          </small>
+                        ) : null}
+                      </span>
+                      <select
+                        aria-label={`Betriebszustand von ${name}`}
+                        disabled={busy || !service}
+                        onChange={(event) =>
+                          setServiceStates((current) => ({
+                            ...current,
+                            [id]: event.target.value as ServiceOperatingState,
+                          }))
+                        }
+                        value={serviceStates[id] ?? service?.status ?? ""}
+                      >
+                        {!service ? (
+                          <option value="">Wird geladen …</option>
+                        ) : null}
+                        {SERVICE_OPERATING_STATES.map((entry) => (
+                          <option key={entry} value={entry}>
+                            {SERVICE_OPERATING_STATE_LABELS[entry]}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        aria-label={`${name} entfernen`}
+                        disabled={busy}
+                        onClick={() => removeService(id)}
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={14} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="incident-muted">Noch kein Dienst gewählt.</p>
+            )}
+            <label className="incident-field">
+              Dienst hinzufügen
+              <input
+                autoComplete="off"
+                disabled={busy || !services || !availableServices.length}
+                onChange={(event) => setServiceQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  // Enter adds the first match instead of submitting.
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    if (serviceQuery.trim() && serviceMatches[0]) {
+                      addService(serviceMatches[0].id);
                     }
-                    type="checkbox"
-                  />
-                  {service.name}
-                </label>
-              ))}
-            </fieldset>
-          ) : null}
+                  }
+                }}
+                placeholder={
+                  services
+                    ? "Dienst suchen, z. B. Teams …"
+                    : "Dienste werden geladen …"
+                }
+                type="search"
+                value={serviceQuery}
+              />
+            </label>
+            {serviceQuery.trim() ? (
+              serviceMatches.length ? (
+                <ul
+                  aria-label="Gefundene Dienste"
+                  className="incident-service-results"
+                >
+                  {serviceMatches.slice(0, 8).map((service) => (
+                    <li key={service.id}>
+                      <button
+                        disabled={busy}
+                        onClick={() => addService(service.id)}
+                        type="button"
+                      >
+                        <strong>{service.name}</strong>
+                        <small>
+                          {service.category ? `${service.category} · ` : ""}
+                          {SERVICE_OPERATING_STATE_LABELS[service.status]}
+                        </small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="incident-muted">Kein Dienst gefunden.</p>
+              )
+            ) : null}
+            {servicesError ? (
+              <p className="incident-muted" role="alert">
+                {servicesError}
+              </p>
+            ) : null}
+          </fieldset>
           <div className="incident-actions">
             <button
               className="primary-button"
               disabled={busy || !title.trim() || !body.trim()}
               type="submit"
             >
-              Veröffentlichen
+              {editingId ? "Änderungen speichern" : "Veröffentlichen"}
             </button>
             <button
               className="secondary-button"
               disabled={busy}
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setOpen(false);
+                setEditingId(null);
+              }}
               type="button"
             >
               Abbrechen

@@ -196,7 +196,7 @@ Deno.test("the wording follows the form of address of the tenant", () => {
 
 Deno.test("the Sie columns are added without breaking existing rows", async () => {
   const migration = await Deno.readTextFile(
-    new URL("../../migrations/0328_handbook_formality.sql", import.meta.url),
+    new URL("../../migrations/0330_handbook_formality.sql", import.meta.url),
   );
   for (const required of [
     "add column if not exists markdown_sie text",

@@ -6,14 +6,14 @@
  * Every handbook exists in two wordings: informal «du» (docs/handbooks/*.md,
  * the default) and formal (docs/handbooks/sie/*.md). Both must have the
  * same headings and screenshots; the bundle carries the formal wording in the
- * `sie` property of each handbook (migration 0328).
+ * `sie` property of each handbook (migration 0330).
  *
  *   node scripts/build-handbooks.mjs          regenerate the bundle
  *   node scripts/build-handbooks.mjs --check  fail if the bundle is stale
  *
  * The database loads this bundle from a pinned commit
  * (public.request_handbook_sync / apply_handbook_sync, migrations 0246 and
- * 0328), and the handbooks Function serves it only to the roles that may read
+ * 0330), and the handbooks Function serves it only to the roles that may read
  * it, in the form of address of the tenant. The
  * Markdown files are the single source of truth; never edit the bundle.
  */

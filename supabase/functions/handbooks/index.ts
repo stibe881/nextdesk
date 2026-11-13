@@ -60,7 +60,7 @@ type DocumentRow = {
   description: string;
   audience_label: string;
   updated_on: string;
-  // Formal («Sie») wording (migration 0328); null until the next sync.
+  // Formal («Sie») wording (migration 0330); null until the next sync.
   title_sie?: string | null;
   description_sie?: string | null;
   audience_label_sie?: string | null;
@@ -183,7 +183,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const sie = formality === "sie";
 
   // Content lives in public.handbook_documents / handbook_images (migrations
-  // 0246, 0328), loaded from docs/handbooks/handbooks.bundle.json of a pinned
+  // 0246, 0330), loaded from docs/handbooks/handbooks.bundle.json of a pinned
   // commit: the «du» wording in the plain columns, «Sie» in the *_sie columns.
   if (action.type === "list") {
     const { data: rows, error } = await context.supabaseAdmin
