@@ -491,3 +491,32 @@
     grid-column: 2;
   }
 }
+
+/* Werkzeugleiste und Liste: globale Feldbreiten überschreiben, Spalten nicht überlaufen lassen */
+.teams-admin__toolbar input[type="search"] {
+  flex: 1 1 240px;
+  width: auto;
+  min-width: 200px;
+}
+.teams-admin__toolbar select,
+.teams-admin__toolbar > button {
+  width: auto;
+  flex: none;
+}
+.teams-admin__row > * {
+  min-width: 0;
+}
+.teams-admin__name {
+  overflow: hidden;
+}
+.teams-admin__layout.has-detail .teams-admin__row {
+  grid-template-columns: 26px minmax(0, 1.7fr) minmax(0, 1.1fr) 108px 84px;
+}
+.teams-admin__layout.has-detail .teams-admin__row > :nth-child(4) {
+  display: none;
+}
+
+.teams-admin__filters {
+  order: 3;
+  flex: 1 1 100%;
+}

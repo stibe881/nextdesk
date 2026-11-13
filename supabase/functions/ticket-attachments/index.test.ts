@@ -61,7 +61,7 @@ Deno.test(
       Deno.readTextFile(new URL("./index.ts", import.meta.url)),
       Deno.readTextFile(
         new URL(
-          "../../migrations/0325_comment_attachments_all_file_types.sql",
+          "../../migrations/0326_comment_attachments_all_file_types.sql",
           import.meta.url,
         ),
       ),

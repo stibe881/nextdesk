@@ -301,11 +301,12 @@ offiziellen Statusseiten melden (z. B. Microsoft 365 mit Teams, Outlook,
 OneDrive und SharePoint, GitHub, Claude, Gemini, App Store, Google Play,
 Init7), gekennzeichnet mit **Extern · Anbieter**. Sie zeigen, dass die Ursache
 beim Anbieter liegt und nicht in Ihrem Netz, z. B. wenn mehrere Personen
-melden, dass Teams nicht geht. Das Team wird beim Auftreten einmal
-benachrichtigt (ohne Wiederholungsalarm); meldet der Anbieter die Störung als
+melden, dass Teams nicht geht. Das Team wird beim Auftreten benachrichtigt (ohne Wiederholungsalarm); meldet der Anbieter die Störung als
 behoben, schliesst sie sich automatisch. **Statusseite des Anbieters öffnen**
 führt zu den Details beim Anbieter. Neue Texte des Anbieters erscheinen im
-Verlauf als «Update vom Anbieter». Externe Störungen müssen weder bestätigt
+Verlauf als «Update vom Anbieter»; das Team erhält dazu eine Benachrichtigung
+(«Update: Anbieter» mit dem neuen Text) und eine weitere, sobald der Anbieter
+die Störung als behoben meldet («Behoben: Anbieter»). Externe Störungen müssen weder bestätigt
 noch zugewiesen werden; von Hand abschliessen ist nur nötig, wenn die Meldung
 beim Anbieter hängen bleibt.
 
@@ -856,6 +857,8 @@ Shop bestellten.
 
 Gelöscht wird nie: nextDesk archiviert nur; ein archiviertes Team bleibt
 lesbar und lässt sich wiederherstellen.
+
+![Menü «Teams» mit Handlungsbedarf, Liste und Detail](images/ag-teams.jpg)
 
 ## IP-Adressen
 
