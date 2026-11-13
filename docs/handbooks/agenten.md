@@ -53,9 +53,11 @@ Summe neben ihrem Namen. Die Zahlen aktualisieren sich alle 30 Sekunden.
 In der **iOS- und Android-App** zeigt die untere Leiste dieselben Zahlen als
 kleines Abzeichen am Symbol: bei **Tickets**, **Störungen** und **Phishing**
 (den Sicherheitsfällen) sowie beim **Shop** die neuen Bestellungen, falls du
-Bestellungen bearbeitest. Raumplanung und Eintritte gibt es in der App nicht.
-Die Zahlen aktualisieren sich jede Minute, beim Zurückkehren in die App und
-beim Wechsel des Tabs.
+Bestellungen bearbeitest. Wie im Web zählen **Störungen** alle aktiven
+Störungen und **Phishing** alle offenen Fälle – rot, solange etwas nicht
+bestätigt bzw. zugewiesen ist, sonst grau. Raumplanung und Eintritte gibt es
+in der App nicht. Die Zahlen aktualisieren sich alle 30 Sekunden, beim
+Zurückkehren in die App und beim Wechsel des Tabs.
 
 Das **Systemstatus-Badge** oben in der Navigation und die Seite
 **Systemstatus** aktualisieren sich selbst (alle 30 Sekunden und beim
