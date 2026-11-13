@@ -228,6 +228,7 @@ export async function finishTeam(
   > & { members?: string[] },
   fetcher: FetchLike = fetch,
   retryDelaysMs: readonly number[] = CHANNEL_RETRY_DELAYS_MS,
+  options: { skipPrivate?: boolean } = {},
 ): Promise<FinishWarning[]> {
   const warnings: FinishWarning[] = [];
   const failed = (step: string, error: unknown) =>
@@ -258,6 +259,12 @@ export async function finishTeam(
     ...request.channels.filter((channel) => channel.isPrivate),
   ];
   for (const channel of ordered) {
+    if (channel.isPrivate && options.skipPrivate) {
+      // Microsoft legt private Kanäle erst zuverlässig an, wenn die
+      // SharePoint-Site des Teams bereit ist; der nächste Lauf holt sie nach.
+      warnings.push({ step: `channel:${channel.name}`, code: "not_ready" });
+      continue;
+    }
     try {
       const id = await ensureChannel(
         fetcher,
