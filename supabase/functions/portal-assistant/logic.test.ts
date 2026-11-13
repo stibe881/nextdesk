@@ -33,9 +33,9 @@ Deno.test("finish needs the matching reference", () => {
   assertEquals(parseAction({ type: "finish", tenantId, sessionId, outcome: "open" }), null);
 });
 
-Deno.test("turn defaults to the formal address", () => {
+Deno.test("turn defaults to the informal address", () => {
   const turn = parseAction({ type: "turn", tenantId, messages: [{ role: "user", text: "VPN geht nicht" }] });
-  assertEquals(turn?.type === "turn" && turn.address, "formal");
+  assertEquals(turn?.type === "turn" && turn.address, "informal");
   assertEquals(
     parseAction({ type: "turn", tenantId, address: "casual", messages: [{ role: "user", text: "x" }] }),
     null,
@@ -89,5 +89,6 @@ Deno.test("fallback draft uses the first sentence and keeps the answers", () => 
 
 Deno.test("search reply respects the address", () => {
   assertEquals(searchReply(0, "informal").includes("Du kannst"), true);
-  assertEquals(searchReply(2).includes("erstellen Sie"), true);
+  assertEquals(searchReply(2).includes("erstelle direkt"), true);
+  assertEquals(searchReply(2, "formal").includes("erstellen Sie"), true);
 });

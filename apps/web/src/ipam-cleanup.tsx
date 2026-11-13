@@ -1,6 +1,7 @@
 // Bereinigungs-Assistent: Vorschläge des Backends (cleanupSuggestions)
 // auswählen und in einem Schritt übernehmen (applyCleanup).
 
+import { tn } from "./lib/formality";
 import { useEffect, useState, type FormEvent } from "react";
 import { FormDialog, FormNote } from "./form-kit";
 import { errorText, useIpamQuery } from "./ipam-ui";
@@ -102,9 +103,10 @@ export function IpamCleanupDialog({
           <FormNote>
             nextDesk hat {suggestions.length}{" "}
             {suggestions.length === 1 ? "Auffälligkeit" : "Auffälligkeiten"}{" "}
-            gefunden, z. B. aus einem Import. Wählen Sie, was übernommen werden
-            soll. Jede Änderung erscheint im Änderungsprotokoll und lässt sich
-            dort rückgängig machen.
+            {tn(
+              "gefunden, z. B. aus einem Import. Wähle, was übernommen werden soll. Jede Änderung erscheint im Änderungsprotokoll und lässt sich dort rückgängig machen.",
+              "gefunden, z. B. aus einem Import. Wählen Sie, was übernommen werden soll. Jede Änderung erscheint im Änderungsprotokoll und lässt sich dort rückgängig machen.",
+            )}
           </FormNote>
           <ul className="ipam-cleanup">
             {suggestions.map((entry) => {

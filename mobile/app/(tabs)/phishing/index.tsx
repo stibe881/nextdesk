@@ -29,6 +29,7 @@ import {
 } from "@/lib/security-cases";
 import { useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 const FILTERS: { key: SecurityStateFilter; label: string }[] = [
   { key: "triage", label: "Zu beurteilen" },
@@ -149,9 +150,7 @@ export default function PhishingScreen() {
           <Text style={styles.eyebrow}>SICHERHEIT</Text>
           <Text style={styles.title}>Phishing</Text>
           <Text style={styles.subtitle}>
-            Gemeldete Phishing-Mails. Meldungen derselben Mail sind ein Fall.
-            Beurteilen Sie den Fall und arbeiten Sie die Massnahmen ab; alle
-            Melder erhalten das Ergebnis automatisch.
+            {tn("Gemeldete Phishing-Mails. Meldungen derselben Mail sind ein Fall. Beurteile den Fall und arbeite die Massnahmen ab; alle Melder erhalten das Ergebnis automatisch.", "Gemeldete Phishing-Mails. Meldungen derselben Mail sind ein Fall. Beurteilen Sie den Fall und arbeiten Sie die Massnahmen ab; alle Melder erhalten das Ergebnis automatisch.")}
           </Text>
         </View>
 

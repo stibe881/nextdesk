@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 // External status sources: catalog and parsers for the official status feeds
 // of the providers. Pure functions (no I/O), see index.ts for fetching.
 
@@ -34,7 +35,10 @@ export const SOURCES: readonly SourceDefinition[] = [
     key: "microsoft365",
     label: "Microsoft 365",
     description:
-      "Alle Dienste Ihres Mandanten: Teams, Outlook/Exchange, OneDrive, SharePoint und weitere (Dienststatus aus dem Microsoft 365 Admin Center).",
+      msg(
+        "Alle Dienste deines Mandanten: Teams, Outlook/Exchange, OneDrive, SharePoint und weitere (Dienststatus aus dem Microsoft 365 Admin Center).",
+        "Alle Dienste Ihres Mandanten: Teams, Outlook/Exchange, OneDrive, SharePoint und weitere (Dienststatus aus dem Microsoft 365 Admin Center).",
+      ),
     statusUrl: "https://admin.microsoft.com/#/servicehealth",
     requiresEntra: true,
   },

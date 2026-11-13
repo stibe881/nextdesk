@@ -17,6 +17,7 @@ import {
   parseTicketFeedback,
   type TicketFeedback,
 } from "@/lib/ticket-satisfaction-model";
+import { tn } from "@/lib/formality";
 
 type Props = {
   tenantId: string;
@@ -92,12 +93,12 @@ export function TicketSatisfactionCard({
         ...(trimmed ? { comment: trimmed } : {}),
       });
       hapticSuccess();
-      setNotice("Danke für deine Bewertung!");
+      setNotice(tn("Danke für deine Bewertung!", "Danke für Ihre Bewertung!"));
       await load();
     } catch {
       hapticError();
       setError(
-        "Deine Bewertung konnte nicht gespeichert werden. Eine Bewertung lässt sich innerhalb von 14 Tagen einmal ändern.",
+        tn("Deine Bewertung konnte nicht gespeichert werden. Eine Bewertung lässt sich innerhalb von 14 Tagen einmal ändern.", "Ihre Bewertung konnte nicht gespeichert werden. Eine Bewertung lässt sich innerhalb von 14 Tagen einmal ändern."),
       );
     } finally {
       setSaving(false);
@@ -119,7 +120,7 @@ export function TicketSatisfactionCard({
       <Text style={[styles.eyebrow, { color: colors.muted }]}>BEWERTUNG</Text>
       <Text style={[styles.title, { color: colors.foreground }]}>
         {feedback.canRate
-          ? "Wie zufrieden bist du?"
+          ? tn("Wie zufrieden bist du?", "Wie zufrieden sind Sie?")
           : "Bewertung der anfragenden Person"}
       </Text>
 

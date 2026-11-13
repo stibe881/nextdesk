@@ -9,6 +9,8 @@
 export const NOTIFICATION_LINK_PARAM = "benachrichtigung";
 export const NOTIFICATION_LINK_STORAGE_KEY = "nextdesk.pendingNotificationLink";
 /** Länger offen gelassene Anmeldungen öffnen die Benachrichtigung nicht mehr. */
+
+import { tn } from "./formality";
 export const NOTIFICATION_LINK_MAX_AGE_MS = 60 * 60 * 1000;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -111,13 +113,25 @@ export function notificationLinkStep(input: {
 export function notificationLinkMessage(code: string | null): string {
   switch (code) {
     case "notification_not_found":
-      return "Diese Benachrichtigung wurde nicht gefunden. Vielleicht sind Sie mit einem anderen Konto angemeldet als dem, an das die E-Mail ging.";
+      return tn(
+        "Diese Benachrichtigung wurde nicht gefunden. Vielleicht bist du mit einem anderen Konto angemeldet als dem, an das die E-Mail ging.",
+        "Diese Benachrichtigung wurde nicht gefunden. Vielleicht sind Sie mit einem anderen Konto angemeldet als dem, an das die E-Mail ging.",
+      );
     case "tenant_membership_required":
     case "tenant_unavailable":
-      return "Diese Benachrichtigung gehört zu einem Arbeitsbereich, auf den Sie mit dieser Anmeldung keinen Zugriff haben.";
+      return tn(
+        "Diese Benachrichtigung gehört zu einem Arbeitsbereich, auf den du mit dieser Anmeldung keinen Zugriff hast.",
+        "Diese Benachrichtigung gehört zu einem Arbeitsbereich, auf den Sie mit dieser Anmeldung keinen Zugriff haben.",
+      );
     case "notification_target_unavailable":
-      return "Sie haben keinen Zugriff mehr auf diesen Eintrag, oder er wurde gelöscht.";
+      return tn(
+        "Du hast keinen Zugriff mehr auf diesen Eintrag, oder er wurde gelöscht.",
+        "Sie haben keinen Zugriff mehr auf diesen Eintrag, oder er wurde gelöscht.",
+      );
     default:
-      return "Die Benachrichtigung konnte nicht geöffnet werden. Sie finden sie auch in den Benachrichtigungen (Glocke).";
+      return tn(
+        "Die Benachrichtigung konnte nicht geöffnet werden. Du findest sie auch in den Benachrichtigungen (Glocke).",
+        "Die Benachrichtigung konnte nicht geöffnet werden. Sie finden sie auch in den Benachrichtigungen (Glocke).",
+      );
   }
 }

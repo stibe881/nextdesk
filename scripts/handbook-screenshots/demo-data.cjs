@@ -521,7 +521,7 @@ const COMMENTS = {
       "mara",
       "public",
       2 * HOUR + 50 * MIN,
-      "Guten Tag Frau Brunner\n\nDanke für Ihre Meldung. Ich schaue mir das sofort an. Können Sie mir sagen, ob beim Start eine Fehlermeldung oder ein Code angezeigt wird?\n\nFreundliche Grüsse\nMara Keller",
+      "Hallo Lena\n\nDanke für deine Meldung. Ich schaue mir das sofort an. Kannst du mir sagen, ob beim Start eine Fehlermeldung oder ein Code angezeigt wird?\n\nFreundliche Grüsse\nMara Keller",
     ],
     [
       "lena",
@@ -539,7 +539,7 @@ const COMMENTS = {
       "mara",
       "public",
       25 * MIN,
-      "Ich habe für Sie ein Ersatzgerät vorbereitet. Sie können es ab 14 Uhr am ICT-Schalter (EG) abholen. Ihre Daten sind über OneDrive synchronisiert.",
+      "Ich habe für dich ein Ersatzgerät vorbereitet. Du kannst es ab 14 Uhr am ICT-Schalter (EG) abholen. Deine Daten sind über OneDrive synchronisiert.",
     ],
   ],
   2: [
@@ -547,7 +547,7 @@ const COMMENTS = {
       "jonas",
       "public",
       1 * DAY + 20 * HOUR,
-      "Guten Tag Frau Brunner\n\nGerne richte ich den Zugriff ein. Bitte bestätigen Sie noch, ob Frau Koch nur Lese- oder auch Schreibrechte benötigt.",
+      "Hallo Lena\n\nGerne richte ich den Zugriff ein. Bitte bestätige noch, ob Frau Koch nur Lese- oder auch Schreibrechte benötigt.",
     ],
     [
       "jonas",
@@ -561,7 +561,7 @@ const COMMENTS = {
       "mara",
       "public",
       8 * DAY,
-      "Der Monitor (Dell P2723D) ist bestellt und wird Ihnen direkt nach Hause geliefert.",
+      "Der Monitor (Dell P2723D) ist bestellt und wird dir direkt nach Hause geliefert.",
     ],
     [
       "lena",
@@ -575,7 +575,7 @@ const COMMENTS = {
       "mara",
       "public",
       4 * HOUR,
-      "Guten Tag Herr Baumann\n\nKönnen Sie mir bitte die Version des VPN-Clients senden (Rechtsklick auf das Symbol → Info)?",
+      "Hallo Reto\n\nKannst du mir bitte die Version des VPN-Clients senden (Rechtsklick auf das Symbol → Info)?",
     ],
     ["reto", "public", 3 * HOUR + 20 * MIN, "Version 5.1.3.62, Windows 11."],
     [
@@ -590,7 +590,7 @@ const COMMENTS = {
       "mara",
       "public",
       3 * HOUR,
-      "Das Online-Archiv ist aktiviert. Bitte melden Sie sich, ob die automatische Archivierung nach 24 Stunden greift.",
+      "Das Online-Archiv ist aktiviert. Bitte melde dich, ob die automatische Archivierung nach 24 Stunden greift.",
     ],
   ],
   9: [
@@ -620,7 +620,7 @@ const COMMENTS = {
       "jonas",
       "public",
       1 * DAY + 5 * HOUR,
-      "Ihr SAP-Konto ist entsperrt. Das neue Initialpasswort erhalten Sie per SMS.",
+      "Dein SAP-Konto ist entsperrt. Das neue Initialpasswort erhältst du per SMS.",
     ],
   ],
   12: [
@@ -671,7 +671,7 @@ const KNOWLEDGE_ARTICLES = [
     views: 412,
     helpful: 38,
     updated: 6 * DAY,
-    body: "Mit dem VPN greifen Sie von zu Hause sicher auf Laufwerke und interne Anwendungen zu.\n\n## Voraussetzungen\n\n- Firmenlaptop mit aktuellem Windows 11 oder macOS\n- Microsoft Authenticator auf dem Smartphone\n\n## Verbindung herstellen\n\n1. Klicken Sie in der Taskleiste auf das VPN-Symbol.\n2. Geben Sie als Portal **vpn.muster.ch** ein.\n3. Melden Sie sich mit Ihrem Firmenkonto an und bestätigen Sie die MFA-Anfrage.\n\n## Häufige Probleme\n\nBricht die Verbindung regelmässig ab, prüfen Sie bitte die Client-Version (mindestens 5.2).",
+    body: "Mit dem VPN greifst du von zu Hause sicher auf Laufwerke und interne Anwendungen zu.\n\n## Voraussetzungen\n\n- Firmenlaptop mit aktuellem Windows 11 oder macOS\n- Microsoft Authenticator auf dem Smartphone\n\n## Verbindung herstellen\n\n1. Klicke in der Taskleiste auf das VPN-Symbol.\n2. Gib als Portal **vpn.muster.ch** ein.\n3. Melde dich mit deinem Firmenkonto an und bestätige die MFA-Anfrage.\n\n## Häufige Probleme\n\nBricht die Verbindung regelmässig ab, prüfe bitte die Client-Version (mindestens 5.2).",
   },
   {
     n: 2,
@@ -679,11 +679,11 @@ const KNOWLEDGE_ARTICLES = [
     collection: 2,
     dep: "ict",
     summary:
-      "So setzen Sie Ihr Passwort selbst zurück – ohne Anruf beim Servicedesk.",
+      "So setzt du dein Passwort selbst zurück – ohne Anruf beim Servicedesk.",
     views: 958,
     helpful: 102,
     updated: 14 * DAY,
-    body: "Ein gesperrtes Konto oder ein vergessenes Passwort können Sie in wenigen Minuten selbst zurücksetzen.\n\n## Passwort selbst zurücksetzen\n\n1. Öffnen Sie **passwort.muster.ch**.\n2. Bestätigen Sie Ihre Identität mit dem Authenticator.\n3. Wählen Sie ein neues Passwort (mindestens 14 Zeichen).\n\nBei gesperrten SAP-Konten erfassen Sie bitte ein Ticket in der Kategorie «Zugriff & Berechtigungen».",
+    body: "Ein gesperrtes Konto oder ein vergessenes Passwort kannst du in wenigen Minuten selbst zurücksetzen.\n\n## Passwort selbst zurücksetzen\n\n1. Öffne **passwort.muster.ch**.\n2. Bestätige deine Identität mit dem Authenticator.\n3. Wähle ein neues Passwort (mindestens 14 Zeichen).\n\nBei gesperrten SAP-Konten erfasse bitte ein Ticket in der Kategorie «Zugriff & Berechtigungen».",
   },
   {
     n: 3,
@@ -695,7 +695,7 @@ const KNOWLEDGE_ARTICLES = [
     views: 233,
     helpful: 17,
     updated: 21 * DAY,
-    body: "Alle Multifunktionsgeräte sind für Follow-Me-Printing eingerichtet.\n\n## Follow-Me-Printing\n\nDrucken Sie auf **Muster-FollowMe** und holen Sie den Ausdruck mit Ihrem Badge an jedem Gerät ab.\n\n## Papierstau\n\nÖffnen Sie Klappe A und B und entfernen Sie Papierreste. Meldet das Gerät weiterhin Stau, erfassen Sie ein Ticket.",
+    body: "Alle Multifunktionsgeräte sind für Follow-Me-Printing eingerichtet.\n\n## Follow-Me-Printing\n\nDrucke auf **Muster-FollowMe** und hole den Ausdruck mit deinem Badge an jedem Gerät ab.\n\n## Papierstau\n\nÖffne Klappe A und B und entferne Papierreste. Meldet das Gerät weiterhin Stau, erfasse ein Ticket.",
   },
   {
     n: 4,
@@ -706,7 +706,7 @@ const KNOWLEDGE_ARTICLES = [
     views: 187,
     helpful: 12,
     updated: 30 * DAY,
-    body: "Sitzungszimmer buchen Sie direkt in Outlook, inklusive Ausstattung.\n\n## Raum buchen\n\nÖffnen Sie in Outlook einen neuen Termin und fügen Sie über **Raumsuche** das gewünschte Zimmer hinzu.\n\n| Raum | Plätze | Ausstattung |\n|---|---|---|\n| Säntis | 12 | Teams-Raum, Whiteboard |\n| Pilatus | 6 | Bildschirm |\n| Rigi | 4 | Bildschirm |",
+    body: "Sitzungszimmer buchst du direkt in Outlook, inklusive Ausstattung.\n\n## Raum buchen\n\nÖffne in Outlook einen neuen Termin und füge über **Raumsuche** das gewünschte Zimmer hinzu.\n\n| Raum | Plätze | Ausstattung |\n|---|---|---|\n| Säntis | 12 | Teams-Raum, Whiteboard |\n| Pilatus | 6 | Bildschirm |\n| Rigi | 4 | Bildschirm |",
   },
   {
     n: 5,
@@ -717,7 +717,7 @@ const KNOWLEDGE_ARTICLES = [
     views: 341,
     helpful: 29,
     updated: 9 * DAY,
-    body: "Spesen werden digital erfasst und von der vorgesetzten Person freigegeben.\n\n## Spesen erfassen\n\n1. Öffnen Sie das Spesentool im Intranet.\n2. Fotografieren Sie den Beleg mit der App.\n3. Wählen Sie Kostenstelle und Projekt.\n\nAbrechnungen bis zum 5. des Folgemonats einreichen.",
+    body: "Spesen werden digital erfasst und von der vorgesetzten Person freigegeben.\n\n## Spesen erfassen\n\n1. Öffne das Spesentool im Intranet.\n2. Fotografiere den Beleg mit der App.\n3. Wähle Kostenstelle und Projekt.\n\nAbrechnungen bis zum 5. des Folgemonats einreichen.",
   },
   {
     n: 6,
@@ -729,7 +729,7 @@ const KNOWLEDGE_ARTICLES = [
     views: 276,
     helpful: 21,
     updated: 4 * DAY,
-    body: "Firmen-Smartphones werden mit Microsoft Intune verwaltet.\n\n## Unternehmensportal\n\nInstallieren Sie die App **Intune-Unternehmensportal** und melden Sie sich mit Ihrem Firmenkonto an. Die Firmen-Apps werden danach automatisch installiert.",
+    body: "Firmen-Smartphones werden mit Microsoft Intune verwaltet.\n\n## Unternehmensportal\n\nInstalliere die App **Intune-Unternehmensportal** und melde dich mit deinem Firmenkonto an. Die Firmen-Apps werden danach automatisch installiert.",
   },
 ].map((a) => ({
   ...a,

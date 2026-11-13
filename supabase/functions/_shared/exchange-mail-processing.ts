@@ -40,6 +40,7 @@ import {
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
 import { pickMailNotice, recordMailNotice } from "./requester-notices.ts";
 import { routeBackupEmail } from "./backup-monitoring.ts";
+import { type Formality, loadFormality, tone } from "./formality.ts";
 import {
   notificationEmailText,
   notificationLinkUrl,
@@ -516,11 +517,13 @@ export function internalNoticeHtmlTemplate(input: {
   subject: string;
   portalName: string;
   attachmentNotice: boolean;
+  formality?: Formality;
 }): string {
+  const formality = input.formality ?? "du";
   const attachment = input.attachmentNotice
-    ? "<p>Einige Anhänge sind zu gross für den E-Mail-Versand. Bitte verwenden Sie das Portal.</p>"
+    ? `<p>${tone(formality, "Einige Anhänge sind zu gross für den E-Mail-Versand. Bitte verwende das Portal.", "Einige Anhänge sind zu gross für den E-Mail-Versand. Bitte verwenden Sie das Portal.")}</p>`
     : "";
-  return `<div style="font-family:Arial,sans-serif;line-height:1.5">${escapeHtml(input.text).replace(/\n/g, "<br>")}${attachment}<hr style="border:0;border-top:1px solid #ddd;margin:24px 0"><p style="color:#666;font-size:12px">${escapeHtml(input.ticketNumber)} · ${escapeHtml(input.subject)} · ${escapeHtml(input.portalName)}</p><p style="color:#666;font-size:12px">Antworten Sie direkt auf diese E-Mail. Bitte lassen Sie die Ticketnummer im Betreff stehen.</p></div>`;
+  return `<div style="font-family:Arial,sans-serif;line-height:1.5">${escapeHtml(input.text).replace(/\n/g, "<br>")}${attachment}<hr style="border:0;border-top:1px solid #ddd;margin:24px 0"><p style="color:#666;font-size:12px">${escapeHtml(input.ticketNumber)} · ${escapeHtml(input.subject)} · ${escapeHtml(input.portalName)}</p><p style="color:#666;font-size:12px">${tone(formality, "Antworte direkt auf diese E-Mail. Bitte lass die Ticketnummer im Betreff stehen.", "Antworten Sie direkt auf diese E-Mail. Bitte lassen Sie die Ticketnummer im Betreff stehen.")}</p></div>`;
 }
 
 function retryDelaySeconds(attempt: number, retryAfter?: number): number {
@@ -2059,10 +2062,12 @@ async function dispatchNotificationMail(
     });
   try {
     if (!(await claimMessage(admin, message.id))) return;
+    const formality = await loadFormality(admin, message.tenant_id);
     const template = await loadEmailTemplate(
       admin,
       message.tenant_id,
       "notification",
+      formality,
     );
     if (!template.enabled) {
       await ignore("template_disabled");
@@ -2149,6 +2154,7 @@ async function dispatchNotificationMail(
       payload: (notification.data.payload ?? {}) as Record<string, unknown>,
       ticketNumber,
       ticketSubject,
+      formality,
     });
     // Same branded layout as the other nextDesk mails.
     const branding = await customerEmailBranding(
@@ -2175,6 +2181,7 @@ async function dispatchNotificationMail(
       ],
       branding: branding.branding,
       attachmentNotice: false,
+      formality,
     });
     if (!(await activeChannel(admin, channel))) {
       await ignore("channel_reconfigured");
@@ -2387,10 +2394,12 @@ async function dispatchServiceStatusMail(
     });
   try {
     if (!(await claimMessage(admin, message.id))) return;
+    const formality = await loadFormality(admin, message.tenant_id);
     const template = await loadEmailTemplate(
       admin,
       message.tenant_id,
       message.kind,
+      formality,
     );
     if (!template.enabled) {
       await ignore("template_disabled");
@@ -2593,10 +2602,15 @@ async function dispatchServiceStatusMail(
       replyHint:
         message.kind === "status_change"
           ? template.text("hint", { pageTitle })
-          : "Sie erhalten diese E-Mail, weil Sie den Systemstatus abonniert haben. Über «Abmelden» beenden Sie das Abo jederzeit.",
+          : tone(
+              formality,
+              "Du erhältst diese E-Mail, weil du den Systemstatus abonniert hast. Über «Abmelden» beendest du das Abo jederzeit.",
+              "Sie erhalten diese E-Mail, weil Sie den Systemstatus abonniert haben. Über «Abmelden» beenden Sie das Abo jederzeit.",
+            ),
       actions,
       branding: branding.branding,
       attachmentNotice: false,
+      formality,
     });
     if (!(await activeChannel(admin, channel))) {
       await ignore("channel_reconfigured");
@@ -2706,8 +2720,9 @@ export async function dispatchOutboundMessage(
       .eq("id", message.tenant_id)
       .maybeSingle();
     let portalName = asString(tenantName.data?.name) ?? "Support";
+    const formality = await loadFormality(admin, message.tenant_id);
     const emailTemplate = emailTemplateDefinition(message.kind)
-      ? await loadEmailTemplate(admin, message.tenant_id, message.kind)
+      ? await loadEmailTemplate(admin, message.tenant_id, message.kind, formality)
       : null;
     if (emailTemplate && !emailTemplate.enabled) {
       await updateMessage(admin, message.id, {
@@ -2841,18 +2856,29 @@ export async function dispatchOutboundMessage(
           throw new Error("department_question_unavailable");
         bodyText =
           message.kind === "department_question"
-            ? `${templateText("text", "Eine Abteilungsrückfrage benötigt Ihre Antwort:")}\n\n${cleanText(question.data.question)}`
-            : `${templateText("text", "Die Abteilungsleitung hat auf Ihre Rückfrage geantwortet:")}\n\n${cleanText(question.data.answer)}`;
+            ? `${templateText("text", tone(formality, "Eine Abteilungsrückfrage benötigt deine Antwort:", "Eine Abteilungsrückfrage benötigt Ihre Antwort:"))}\n\n${cleanText(question.data.question)}`
+            : `${templateText("text", tone(formality, "Die Abteilungsleitung hat auf deine Rückfrage geantwortet:", "Die Abteilungsleitung hat auf Ihre Rückfrage geantwortet:"))}\n\n${cleanText(question.data.answer)}`;
       }
     }
     if (!recipient) throw new Error("recipient_unavailable");
     if (message.kind === "acknowledgement")
       bodyText = templateText(
         "text",
-        "Ihre Anfrage ist bei uns eingegangen und wurde als Ticket erfasst.",
+        tone(
+          formality,
+          "Deine Anfrage ist bei uns eingegangen und wurde als Ticket erfasst.",
+          "Ihre Anfrage ist bei uns eingegangen und wurde als Ticket erfasst.",
+        ),
       );
     if (message.kind === "resolution")
-      bodyText = templateText("text", "Ihr Ticket wurde als gelöst markiert.");
+      bodyText = templateText(
+        "text",
+        tone(
+          formality,
+          "Dein Ticket wurde als gelöst markiert.",
+          "Ihr Ticket wurde als gelöst markiert.",
+        ),
+      );
     if (message.kind === "rating_reminder") {
       // Erinnerung nur, solange das Ticket gelöst und noch nicht bewertet ist.
       const rated = await admin
@@ -2876,8 +2902,11 @@ export async function dispatchOutboundMessage(
         });
         return;
       }
-      bodyText =
-        "Wir haben Ihr Ticket vor drei Tagen als gelöst markiert. Wir möchten wissen, wie zufrieden Sie waren. Ein Klick auf die Sterne genügt.";
+      bodyText = tone(
+        formality,
+        "Wir haben dein Ticket vor drei Tagen als gelöst markiert. Wir möchten wissen, wie zufrieden du warst. Ein Klick auf die Sterne genügt.",
+        "Wir haben Ihr Ticket vor drei Tagen als gelöst markiert. Wir möchten wissen, wie zufrieden Sie waren. Ein Klick auf die Sterne genügt.",
+      );
     }
     if (message.kind === "test")
       bodyText = "Dies ist eine Testmail des nextDesk E-Mail-Kanals.";
@@ -2928,6 +2957,7 @@ export async function dispatchOutboundMessage(
           subject: ticketSubject,
           portalName,
           attachmentNotice: attachments.omitted,
+          formality,
         })
       : renderCustomerTicketEmail({
           ratingLinks:
@@ -2951,6 +2981,7 @@ export async function dispatchOutboundMessage(
           branding: customerBranding!.branding,
           attachmentNotice: attachments.omitted,
           kind: customerEmailKind!,
+          formality,
           ...(emailTemplate
             ? {
                 eyebrow: templateText("eyebrow", ""),
@@ -2976,7 +3007,7 @@ export async function dispatchOutboundMessage(
           : message.kind === "agent_reply"
             ? `AW: [${ticketNumber}] ${ticketSubject}`
             : message.kind === "rating_reminder"
-              ? `Wie zufrieden waren Sie? [${ticketNumber}] ${ticketSubject}`
+              ? `${tone(formality, "Wie zufrieden warst du?", "Wie zufrieden waren Sie?")} [${ticketNumber}] ${ticketSubject}`
               : `[${ticketNumber}] ${ticketSubject}`,
       body: { contentType: "HTML", content: html },
       toRecipients: [{ emailAddress: { address: recipient } }],

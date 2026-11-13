@@ -1,3 +1,5 @@
+import { tn } from "./formality";
+
 /**
  * Home screen layout of the app: every person arranges the sections and hides
  * what they do not need. Stored on the device per signed-in person.
@@ -16,7 +18,12 @@ export const HOME_SECTIONS = [
   {
     id: "recent",
     label: "Zuletzt geöffnet",
-    description: "Tickets und Artikel, die du zuletzt angesehen hast",
+    get description() {
+      return tn(
+        "Tickets und Artikel, die du zuletzt angesehen hast",
+        "Tickets und Artikel, die Sie zuletzt angesehen haben",
+      );
+    },
   },
   {
     id: "overview",
@@ -31,7 +38,12 @@ export const HOME_SECTIONS = [
   {
     id: "inbox",
     label: "Freigaben für mich",
-    description: "Anfragen, die deine Entscheidung brauchen",
+    get description() {
+      return tn(
+        "Anfragen, die deine Entscheidung brauchen",
+        "Anfragen, die Ihre Entscheidung brauchen",
+      );
+    },
   },
   {
     id: "onboarding",
@@ -41,17 +53,32 @@ export const HOME_SECTIONS = [
   {
     id: "mentions",
     label: "Erwähnungen",
-    description: "Wo du in Tickets erwähnt wurdest",
+    get description() {
+      return tn(
+        "Wo du in Tickets erwähnt wurdest",
+        "Wo Sie in Tickets erwähnt wurden",
+      );
+    },
   },
   {
     id: "approvals",
     label: "Meine Freigabeanfragen",
-    description: "Anfragen, die du gestellt hast",
+    get description() {
+      return tn(
+        "Anfragen, die du gestellt hast",
+        "Anfragen, die Sie gestellt haben",
+      );
+    },
   },
   {
     id: "devices",
     label: "Meine Geräte",
-    description: "Dir zugeordnete Geräte",
+    get description() {
+      return tn(
+        "Dir zugeordnete Geräte",
+        "Ihnen zugeordnete Geräte",
+      );
+    },
   },
 ] as const;
 

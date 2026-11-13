@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useState, type FormEvent } from "react";
 import { CalendarClock, ClipboardList } from "lucide-react";
 import { FormCard, FormField, FormGrid, FormSwitch } from "./form-kit";
@@ -271,7 +272,10 @@ export function MaintenancePlanning({
           </ol>
         ) : (
           <p className="empty-state">
-            Noch keine Checkliste. Erfassen Sie die Punkte unter «Bearbeiten».
+            {tn(
+              "Noch keine Checkliste. Erfasse die Punkte unter «Bearbeiten».",
+              "Noch keine Checkliste. Erfassen Sie die Punkte unter «Bearbeiten».",
+            )}
           </p>
         )}
         {canManage && checklist.length ? (

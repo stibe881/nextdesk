@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 // Parsing and texts for the knowledge article suggestions
 // (edge function `knowledge-suggestions`).
 
@@ -103,35 +104,51 @@ export function parseKnowledgeSuggestionDraft(value: unknown): string {
   return data.articleId;
 }
 
-const MESSAGES: Record<string, string> = {
-  article_manage_denied:
+const messages = (): Record<string, string> => ({
+  article_manage_denied: tn(
+    "Für Artikelvorschläge fehlt dir die Berechtigung zur Wissensverwaltung.",
     "Für Artikelvorschläge fehlt Ihnen die Berechtigung zur Wissensverwaltung.",
-  knowledge_feature_disabled:
+  ),
+  knowledge_feature_disabled: tn(
+    "Die Wissensdatenbank ist für dich nicht aktiviert.",
     "Die Wissensdatenbank ist für Sie nicht aktiviert.",
+  ),
   ai_feature_disabled:
     "Die KI-Unterstützung ist für diesen Mandanten nicht aktiviert. Eine Administratorin oder ein Administrator kann sie in den Einstellungen einschalten.",
   ai_provider_not_approved:
     "Die KI-Unterstützung ist für diesen Mandanten noch nicht freigegeben. Eine Administratorin oder ein Administrator kann sie in den Einstellungen freigeben.",
   ai_purpose_not_approved:
     "Die KI-Unterstützung für Wissensartikel ist für diesen Mandanten noch nicht freigegeben.",
-  ai_governance_unavailable:
+  ai_governance_unavailable: tn(
+    "Die KI-Freigabe kann im Moment nicht geprüft werden. Bitte versuche es später erneut.",
     "Die KI-Freigabe kann im Moment nicht geprüft werden. Bitte versuchen Sie es später erneut.",
-  ai_budget_exceeded:
+  ),
+  ai_budget_exceeded: tn(
+    "Das stündliche KI-Kontingent ist erreicht. Bitte versuche es später erneut.",
     "Das stündliche KI-Kontingent ist erreicht. Bitte versuchen Sie es später erneut.",
-  ai_provider_rate_limited:
+  ),
+  ai_provider_rate_limited: tn(
+    "Der KI-Dienst ist gerade ausgelastet. Bitte versuche es in einer Minute erneut.",
     "Der KI-Dienst ist gerade ausgelastet. Bitte versuchen Sie es in einer Minute erneut.",
+  ),
   ai_provider_not_configured: "Die KI-Anbindung ist noch nicht eingerichtet.",
   ai_object_not_available:
     "Die Tickets dieses Vorschlags sind nicht mehr verfügbar.",
-  tickets_not_found:
+  tickets_not_found: tn(
+    "Die Tickets dieses Vorschlags sind für dich nicht verfügbar.",
     "Die Tickets dieses Vorschlags sind für Sie nicht verfügbar.",
+  ),
   suggestion_not_found: "Der Vorschlag ist nicht mehr verfügbar.",
   suggestion_closed: "Der Vorschlag wurde bereits abgeschlossen.",
-  draft_in_progress:
+  draft_in_progress: tn(
+    "Für diesen Vorschlag wird gerade ein Entwurf erstellt. Bitte warte einen Moment.",
     "Für diesen Vorschlag wird gerade ein Entwurf erstellt. Bitte warten Sie einen Moment.",
-  article_department_required:
+  ),
+  article_department_required: tn(
+    "Bitte lege zuerst fest, welcher Abteilung der Artikel gehören soll.",
     "Bitte legen Sie zuerst fest, welcher Abteilung der Artikel gehören soll.",
-};
+  ),
+});
 
 /** Codes for which the AI is not usable for this tenant at all. */
 export const AI_UNAVAILABLE_CODES = new Set([
@@ -145,5 +162,5 @@ export function knowledgeSuggestionMessage(
   code: string | null | undefined,
   fallback: string,
 ): string {
-  return (code && MESSAGES[code]) || fallback;
+  return (code && messages()[code]) || fallback;
 }

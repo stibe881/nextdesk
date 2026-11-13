@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -203,7 +204,10 @@ export function ExpiryMonitoringSettings({ tenantId }: { tenantId: string }) {
         },
       },
       "Der Eintrag wurde hinzugefügt und wird in Kürze geprüft.",
-      "Der Eintrag konnte nicht gespeichert werden. Bitte prüfen Sie Hostname bzw. Domain.",
+      tn(
+        "Der Eintrag konnte nicht gespeichert werden. Bitte prüfe Hostname bzw. Domain.",
+        "Der Eintrag konnte nicht gespeichert werden. Bitte prüfen Sie Hostname bzw. Domain.",
+      ),
     );
     if (payload) setForm(EMPTY_FORM);
   }

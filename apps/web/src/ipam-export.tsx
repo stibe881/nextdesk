@@ -2,6 +2,7 @@
 
 import { Download } from "lucide-react";
 import { useState } from "react";
+import { tn } from "./lib/formality";
 import { errorText } from "./ipam-ui";
 import { downloadFile, ipamCall } from "./lib/ipam-api";
 import type { IpamFile, IpamOverview } from "./lib/ipam-model";
@@ -59,9 +60,10 @@ export function IpamExportPanel({
       <section className="ipam-panel">
         <h3>Daten exportieren</h3>
         <p className="ipam-muted">
-          Subnetze, Adressen und VLANs als CSV (für Excel) oder JSON (für
-          Skripte und Backups). Es werden nur Einträge exportiert, die Sie sehen
-          dürfen.
+          {tn(
+            "Subnetze, Adressen und VLANs als CSV (für Excel) oder JSON (für Skripte und Backups). Es werden nur Einträge exportiert, die du sehen darfst.",
+            "Subnetze, Adressen und VLANs als CSV (für Excel) oder JSON (für Skripte und Backups). Es werden nur Einträge exportiert, die Sie sehen dürfen.",
+          )}
         </p>
         <label className="ipam-export__field">
           Umfang
@@ -103,10 +105,10 @@ export function IpamExportPanel({
       <section className="ipam-panel">
         <h3>Firewall-Objekte (Sophos)</h3>
         <p className="ipam-muted">
-          Netzwerke und einzelne Hosts als IP-Host-Objekte für Sophos Firewall
-          (SFOS). Die XML-Datei importieren Sie unter «Backup &amp; Firmware →
-          Import/Export». Je Subnetz entsteht auf Wunsch eine Hostgruppe mit den
-          dokumentierten Hosts.
+          {tn(
+            "Netzwerke und einzelne Hosts als IP-Host-Objekte für Sophos Firewall (SFOS). Die XML-Datei importierst du unter «Backup & Firmware → Import/Export». Je Subnetz entsteht auf Wunsch eine Hostgruppe mit den dokumentierten Hosts.",
+            "Netzwerke und einzelne Hosts als IP-Host-Objekte für Sophos Firewall (SFOS). Die XML-Datei importieren Sie unter «Backup & Firmware → Import/Export». Je Subnetz entsteht auf Wunsch eine Hostgruppe mit den dokumentierten Hosts.",
+          )}
         </p>
         <label className="ipam-export__field">
           Adressraum

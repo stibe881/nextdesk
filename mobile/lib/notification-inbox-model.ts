@@ -9,6 +9,7 @@ import {
   type PushRoute,
   pushRoute,
 } from "./push-navigation";
+import { tn } from "./formality";
 
 export type InboxNotification = {
   id: string;
@@ -211,19 +212,19 @@ export function inboxRoute(notification: InboxNotification): PushRoute | null {
   return pushRoute(inboxNavigationData(notification));
 }
 
-const TITLES: Record<string, [string, InboxIcon]> = {
+const titles = (): Record<string, [string, InboxIcon]> => ({
   assigned: ["Ticket zugewiesen", "ticket-outline"],
   requester_reply: ["Neue Antwort", "ticket-outline"],
   support_reply: ["Antwort vom Support", "ticket-outline"],
-  requester_reminder: ["Wir warten auf deine Antwort", "ticket-outline"],
-  mention: ["Du wurdest erwähnt", "ticket-outline"],
-  supervisor_request: ["Anfrage an dich", "ticket-outline"],
-  supervisor_answer: ["Antwort auf deine Anfrage", "ticket-outline"],
+  requester_reminder: [tn("Wir warten auf deine Antwort", "Wir warten auf Ihre Antwort"), "ticket-outline"],
+  mention: [tn("Du wurdest erwähnt", "Sie wurden erwähnt"), "ticket-outline"],
+  supervisor_request: [tn("Anfrage an dich", "Anfrage an Sie"), "ticket-outline"],
+  supervisor_answer: [tn("Antwort auf deine Anfrage", "Antwort auf Ihre Anfrage"), "ticket-outline"],
   watched: ["Beobachtetes Ticket geändert", "ticket-outline"],
   resolved: ["Ticket gelöst", "checkmark-circle-outline"],
   kudos: ["Lob erhalten", "checkmark-circle-outline"],
   approval: ["Freigabe benötigt", "checkmark-circle-outline"],
-  department_question_asked: ["Rückfrage an dein Team", "ticket-outline"],
+  department_question_asked: [tn("Rückfrage an dein Team", "Rückfrage an Ihr Team"), "ticket-outline"],
   department_question_answered: ["Rückfrage beantwortet", "ticket-outline"],
   escalation: ["Ticket eskaliert", "alarm-outline"],
   security_report: ["Phishing und Sicherheitsfälle", "shield-outline"],
@@ -239,7 +240,7 @@ const TITLES: Record<string, [string, InboxIcon]> = {
   infrastructure: ["Infrastruktur", "server-outline"],
   ipam: ["IP-Adressverwaltung", "git-network-outline"],
   incident: ["Störung", "pulse-outline"],
-};
+});
 
 const SPECIFIC_TITLES: Record<string, string> = {
   "ticket.security_report": "Phishing-Meldung",
@@ -262,7 +263,7 @@ export function inboxPresentation(
 ): InboxPresentation {
   const { payload } = notification;
   const kind = pushKindForNotification(notification.kind);
-  const [baseTitle, icon] = TITLES[kind] ?? [
+  const [baseTitle, icon] = titles()[kind] ?? [
     "Benachrichtigung",
     "notifications-outline",
   ];

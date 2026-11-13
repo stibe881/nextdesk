@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { CsvImportDialog } from "./csv-import-dialog";
 import { INFRASTRUCTURE_IMPORT_FIELDS } from "./lib/import-fields";
 import { RackView, type RackInput } from "./infrastructure-racks";
@@ -1995,8 +1996,10 @@ function DeviceEditor({
       <FormCard collapsed title="Wartungscheckliste und Notizen">
         <div className="infrastructure__checklist-editor">
           <p className="infrastructure__checklist-hint">
-            Pro Punkt können Sie ein Datum eintragen, z. B. wann er erledigt
-            wurde oder wann er dran ist.
+            {tn(
+              "Pro Punkt kannst du ein Datum eintragen, z. B. wann er erledigt wurde oder wann er dran ist.",
+              "Pro Punkt können Sie ein Datum eintragen, z. B. wann er erledigt wurde oder wann er dran ist.",
+            )}
           </p>
           {(form.maintenanceChecklist ?? []).length === 0 ? (
             <p className="infrastructure__checklist-hint">

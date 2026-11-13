@@ -16,6 +16,7 @@
 //   beta  /deviceManagement/managedDevices/{id}/rotateLocalAdminPassword
 //         (Windows LAPS; only available in the beta endpoint)
 
+import { msg } from "./formality.ts";
 import type {
   FetchLike,
   IntuneGraphCredentials,
@@ -335,7 +336,10 @@ export function intuneActionErrorMessage(code: IntuneActionErrorCode): string {
     case "action_not_supported":
       return "Diese Aktion wird für das Gerät nicht unterstützt.";
     case "rate_limited":
-      return "Microsoft Intune hat zu viele Anfragen erhalten. Bitte versuchen Sie es später erneut.";
+      return msg(
+        "Microsoft Intune hat zu viele Anfragen erhalten. Bitte versuche es später erneut.",
+        "Microsoft Intune hat zu viele Anfragen erhalten. Bitte versuchen Sie es später erneut.",
+      );
     case "invalid_device":
       return "Die Intune-Geräte-ID ist ungültig.";
     default:

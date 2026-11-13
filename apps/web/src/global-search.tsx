@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useEffect,
   useId,
@@ -443,7 +444,10 @@ export function GlobalSearch({
             </p>
           ) : loading ? (
             <p className="global-search__state" role="status">
-              Durchsuche Ihre zugänglichen Inhalte …
+              {tn(
+                "Durchsuche deine zugänglichen Inhalte …",
+                "Durchsuche Ihre zugänglichen Inhalte …",
+              )}
             </p>
           ) : scopedResults.length === 0 && shownPeople.length === 0 ? (
             <p className="global-search__state">

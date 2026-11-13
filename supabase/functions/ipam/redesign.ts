@@ -3,6 +3,7 @@
 // planner, site templates, VLAN matrix, sites, target/actual comparison).
 // No database access so everything can be tested with `deno test`.
 
+import { msg } from "../_shared/formality.ts";
 import {
   addressBits,
   type Cidr,
@@ -98,7 +99,7 @@ function optionalUuid(value: unknown, label: string): string | null {
 export function parseTemplate(value: unknown): Template {
   if (!isRecord(value)) throw new InputError("Die Angaben zur Vorlage fehlen.");
   const name = optionalText(value.name, 120, "Der Name");
-  if (!name) throw new InputError("Bitte erfassen Sie einen Namen für die Vorlage.");
+  if (!name) throw new InputError(msg("Bitte erfasse einen Namen für die Vorlage.", msg("Bitte erfasse einen Namen für die Vorlage.", "Bitte erfassen Sie einen Namen für die Vorlage.")));
   const prefixLength = integer(value.prefixLength, "Die Länge des Supernetzes", 8, 30);
   if (!Array.isArray(value.entries) || value.entries.length > 128) {
     throw new InputError("Eine Vorlage hat höchstens 128 Einträge.");
@@ -110,7 +111,7 @@ export function parseTemplate(value: unknown): Template {
   const entries = value.entries.map((raw, index): TemplateEntry => {
     if (!isRecord(raw)) throw new InputError(`Eintrag ${index + 1} der Vorlage ist ungültig.`);
     const fn = optionalText(raw.function, 120, "Die Funktion");
-    if (!fn) throw new InputError(`Eintrag ${index + 1}: Bitte erfassen Sie die Funktion.`);
+    if (!fn) throw new InputError(msg(`Eintrag ${index + 1}: Bitte erfasse die Funktion.`, msg(`Eintrag ${index + 1}: Bitte erfasse die Funktion.`, `Eintrag ${index + 1}: Bitte erfassen Sie die Funktion.`)));
     if (seenFunctions.has(fn.toLowerCase())) throw new InputError(`Die Funktion «${fn}» kommt doppelt vor.`);
     seenFunctions.add(fn.toLowerCase());
     const vlanOffset = integer(raw.vlanOffset, `«${fn}»: Der VLAN-Abstand`, 0, 4093);
@@ -370,18 +371,18 @@ function parseBulkPatch(value: unknown): BulkPatch {
     patch.securityZone = optionalText(value.securityZone, 60, "Die Sicherheitszone");
   }
   if (value.siteId !== undefined) patch.siteId = optionalUuid(value.siteId, "Der Standort");
-  if (!Object.keys(patch).length) throw new InputError("Bitte wählen Sie mindestens eine Änderung.");
+  if (!Object.keys(patch).length) throw new InputError(msg("Bitte wähle mindestens eine Änderung.", msg("Bitte wähle mindestens eine Änderung.", "Bitte wählen Sie mindestens eine Änderung.")));
   return patch;
 }
 
 function parsePlanItems(value: unknown): PlanItemInput[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > 64) {
-    throw new InputError("Bitte planen Sie 1 bis 64 Teilnetze.");
+    throw new InputError(msg("Bitte plane 1 bis 64 Teilnetze.", msg("Bitte plane 1 bis 64 Teilnetze.", "Bitte planen Sie 1 bis 64 Teilnetze.")));
   }
   return value.map((raw, index) => {
     if (!isRecord(raw)) throw new InputError(`Teilnetz ${index + 1} ist ungültig.`);
     const name = optionalText(raw.name, 120, "Der Name");
-    if (!name) throw new InputError(`Teilnetz ${index + 1}: Bitte erfassen Sie einen Namen.`);
+    if (!name) throw new InputError(msg(`Teilnetz ${index + 1}: Bitte erfasse einen Namen.`, msg(`Teilnetz ${index + 1}: Bitte erfasse einen Namen.`, `Teilnetz ${index + 1}: Bitte erfassen Sie einen Namen.`)));
     const vlan = raw.vlanNumber === undefined || raw.vlanNumber === null || raw.vlanNumber === ""
       ? null
       : integer(raw.vlanNumber, `«${name}»: Die VLAN-ID`, 1, 4094);
@@ -450,7 +451,7 @@ export function parseRedesignAction(body: unknown): RedesignAction | null {
       };
     case "applyCleanup": {
       if (!Array.isArray(body.keys) || body.keys.length === 0 || body.keys.length > 500) {
-        throw new InputError("Bitte wählen Sie 1 bis 500 Vorschläge.");
+        throw new InputError(msg("Bitte wähle 1 bis 500 Vorschläge.", msg("Bitte wähle 1 bis 500 Vorschläge.", "Bitte wählen Sie 1 bis 500 Vorschläge.")));
       }
       const keys = body.keys.map((key) => {
         if (typeof key !== "string" || !/^[a-z_]+:[0-9a-f-]{36}$/i.test(key)) {
@@ -496,7 +497,7 @@ export function parseRedesignAction(body: unknown): RedesignAction | null {
     }
     case "createSiteFromTemplate": {
       const name = optionalText(body.name, 120, "Der Name");
-      if (!name) throw new InputError("Bitte erfassen Sie einen Namen für den Standort.");
+      if (!name) throw new InputError(msg("Bitte erfasse einen Namen für den Standort.", msg("Bitte erfasse einen Namen für den Standort.", "Bitte erfassen Sie einen Namen für den Standort.")));
       const supernet = parsePrefixText(body.supernet);
       if (supernet.version !== 4) throw new InputError("Das Supernetz muss ein IPv4-Netz sein.");
       if (!Array.isArray(body.functions) || body.functions.length > 128) {

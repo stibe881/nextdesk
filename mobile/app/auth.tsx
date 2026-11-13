@@ -28,6 +28,7 @@ import {
 } from "@/lib/nextdesk-client";
 import { withTimeout } from "@/lib/pkce";
 import { IMPRINT_URL, PRIVACY_URL, SUPPORT_URL } from "@/lib/site-links";
+import { tn } from "@/lib/formality";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -55,7 +56,10 @@ function preparationFailureMessage(error: unknown): string {
   const detail = error instanceof Error ? error.message.trim() : "";
   return detail
     ? `Die SSO-Anmeldung konnte nicht vorbereitet werden. ${detail}`
-    : "Die SSO-Anmeldung konnte nicht vorbereitet werden. Bitte versuche es erneut.";
+    : tn(
+        "Die SSO-Anmeldung konnte nicht vorbereitet werden. Bitte versuche es erneut.",
+        "Die SSO-Anmeldung konnte nicht vorbereitet werden. Bitte versuchen Sie es erneut.",
+      );
 }
 
 async function openNativeSsoInSafari(providerUrl: string): Promise<void> {
@@ -91,7 +95,7 @@ export default function AuthScreen() {
     (pending === null && typeof authError === "string"
       ? nextDeskAuthFailureMessage(authError)
       : accountDeleted === "1"
-        ? "Dein Konto wurde gelöscht."
+        ? tn("Dein Konto wurde gelöscht.", "Ihr Konto wurde gelöscht.")
         : "");
 
   async function continueWithSso() {
@@ -121,7 +125,10 @@ export default function AuthScreen() {
           : await withTimeout(
               createNativeNextDeskOAuthUrl(redirectTo),
               NATIVE_SSO_PREPARE_TIMEOUT_MS,
-              "Die Vorbereitung hat zu lange gedauert. Bitte versuche es erneut.",
+              tn(
+                "Die Vorbereitung hat zu lange gedauert. Bitte versuche es erneut.",
+                "Die Vorbereitung hat zu lange gedauert. Bitte versuchen Sie es erneut.",
+              ),
             );
       if (!providerUrl)
         throw new Error("Die SSO-Anmeldung konnte nicht vorbereitet werden.");
@@ -170,7 +177,10 @@ export default function AuthScreen() {
           setMessage("Die Anmeldung wird in Safari geöffnet …");
           await openNativeSsoInSafari(providerUrl);
           setMessage(
-            "Melde dich in Safari an. nextDesk öffnet sich danach automatisch.",
+            tn(
+              "Melde dich in Safari an. nextDesk öffnet sich danach automatisch.",
+              "Melden Sie sich in Safari an. nextDesk öffnet sich danach automatisch.",
+            ),
           );
         } else {
           setMessage("Die SSO-Anmeldung wurde abgebrochen.");
@@ -185,11 +195,17 @@ export default function AuthScreen() {
         setMessage("Die Anmeldung wird in Safari geöffnet …");
         await openNativeSsoInSafari(providerUrl);
         setMessage(
-          "Melde dich in Safari an. nextDesk öffnet sich danach automatisch.",
+          tn(
+            "Melde dich in Safari an. nextDesk öffnet sich danach automatisch.",
+            "Melden Sie sich in Safari an. nextDesk öffnet sich danach automatisch.",
+          ),
         );
       } else {
         setMessage(
-          "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuche die SSO-Anmeldung erneut.",
+          tn(
+            "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuche die SSO-Anmeldung erneut.",
+            "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuchen Sie die SSO-Anmeldung erneut.",
+          ),
         );
       }
     } catch (error) {
@@ -227,7 +243,7 @@ export default function AuthScreen() {
   async function sendMagicLink() {
     const address = email.trim().toLowerCase();
     if (!address.includes("@")) {
-      setMessage("Bitte gib eine gültige E-Mail-Adresse ein.");
+      setMessage(tn("Bitte gib eine gültige E-Mail-Adresse ein.", "Bitte geben Sie eine gültige E-Mail-Adresse ein."));
       return;
     }
     setPending("magic");
@@ -242,12 +258,18 @@ export default function AuthScreen() {
       });
       if (error) throw error;
       setMessage(
-        "Der Anmeldelink wurde versendet. Öffne ihn auf diesem Gerät.",
+        tn(
+          "Der Anmeldelink wurde versendet. Öffne ihn auf diesem Gerät.",
+          "Der Anmeldelink wurde versendet. Öffnen Sie ihn auf diesem Gerät.",
+        ),
       );
     } catch {
       await clearNextDeskAuthTransaction();
       setMessage(
-        "Der Anmeldelink konnte nicht versendet werden. Bitte versuche es erneut.",
+        tn(
+          "Der Anmeldelink konnte nicht versendet werden. Bitte versuche es erneut.",
+          "Der Anmeldelink konnte nicht versendet werden. Bitte versuchen Sie es erneut.",
+        ),
       );
     } finally {
       setPending(null);
@@ -258,7 +280,7 @@ export default function AuthScreen() {
   async function signInWithPassword() {
     const address = email.trim().toLowerCase();
     if (!address.includes("@") || !password) {
-      setMessage("Bitte gib E-Mail-Adresse und Passwort ein.");
+      setMessage(tn("Bitte gib E-Mail-Adresse und Passwort ein.", "Bitte geben Sie E-Mail-Adresse und Passwort ein."));
       return;
     }
     setPending("password");
@@ -278,7 +300,10 @@ export default function AuthScreen() {
       router.replace("/");
     } catch {
       setMessage(
-        "Die Anmeldung war nicht möglich. Bitte prüfe E-Mail-Adresse und Passwort.",
+        tn(
+          "Die Anmeldung war nicht möglich. Bitte prüfe E-Mail-Adresse und Passwort.",
+          "Die Anmeldung war nicht möglich. Bitte prüfen Sie E-Mail-Adresse und Passwort.",
+        ),
       );
     } finally {
       setPending(null);
@@ -297,8 +322,14 @@ export default function AuthScreen() {
         <Text style={styles.brand}>nextDesk</Text>
         <Text style={styles.title}>
           {registering
-            ? "Tickets und Aufgaben für dich und dein Team."
-            : "Melde dich an, um deine Tickets zu bearbeiten."}
+            ? tn(
+                "Tickets und Aufgaben für dich und dein Team.",
+                "Tickets und Aufgaben für Sie und Ihr Team.",
+              )
+            : tn(
+                "Melde dich an, um deine Tickets zu bearbeiten.",
+                "Melden Sie sich an, um Ihre Tickets zu bearbeiten.",
+              )}
         </Text>
 
         {registering ? (

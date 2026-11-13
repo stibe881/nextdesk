@@ -24,6 +24,7 @@ import {
 } from "@/lib/handbooks";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 // Handbook screenshots are captured at 1280×800.
 const SCREENSHOT_ASPECT_RATIO = 1.6;
@@ -80,7 +81,7 @@ export default function HandbookScreen() {
       setHandbook(await loadMobileHandbook(tenant.id, handbookId));
     } catch {
       setError(
-        "Dieses Handbuch ist für dein Konto nicht verfügbar oder konnte nicht geladen werden.",
+        tn("Dieses Handbuch ist für dein Konto nicht verfügbar oder konnte nicht geladen werden.", "Dieses Handbuch ist für Ihr Konto nicht verfügbar oder konnte nicht geladen werden."),
       );
     } finally {
       setLoading(false);

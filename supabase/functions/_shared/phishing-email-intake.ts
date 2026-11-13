@@ -33,6 +33,7 @@ import {
   tenantReferenceDomains,
 } from "./phishing-report-intake.ts";
 import { loadEmailTemplate } from "./email-templates-store.ts";
+import { loadFormality } from "./formality.ts";
 
 // deno-lint-ignore no-explicit-any
 type Admin = any;
@@ -255,11 +256,24 @@ export async function processPhishingEmailReport(
       fingerprint,
       bundled: caseTicketId !== input.ticketId,
     });
+    const formality = input.thankYou
+      ? await loadFormality(admin, input.tenantId)
+      : "du";
     const thanks = input.thankYou
-      ? await loadEmailTemplate(admin, input.tenantId, "phishing_thanks")
+      ? await loadEmailTemplate(
+          admin,
+          input.tenantId,
+          "phishing_thanks",
+          formality,
+        )
       : null;
     const frame = input.thankYou
-      ? await loadEmailTemplate(admin, input.tenantId, "security_notice")
+      ? await loadEmailTemplate(
+          admin,
+          input.tenantId,
+          "security_notice",
+          formality,
+        )
       : null;
     if (input.thankYou && thanks?.enabled && frame?.enabled) {
       const values = { ticketNumber: caseTicketNumber };

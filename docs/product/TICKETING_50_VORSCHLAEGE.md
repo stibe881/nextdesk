@@ -20,7 +20,7 @@
 ### 1. Ticket-Detailansicht
 
 **Priorität:** P0  
-Eine vollständige Detailseite zeigt Beschreibung, Status, Priorität, Kategorie, anfragende Person, Zuweisung, Zeitstempel, SLA und gesamten Verlauf. Sie ist die zentrale Arbeitsoberfläche für Support-Mitarbeitende.
+Eine vollständige Detailseite zeigt Beschreibung, Status, Priorität, Kategorie, anfragende Person, Zuweisung, Zeitstempel, SLA und gesamten Verlauf. Diese ist die zentrale Arbeitsoberfläche für Support-Mitarbeitende.
 
 ### 2. Statuswechsel mit klarer Zustandslogik
 
@@ -75,7 +75,7 @@ Ein Major Incident kann als übergeordnetes Ticket mehrere Kundentickets bündel
 ### 12. Ticketvorlagen
 
 **Priorität:** P1  
-Vorlagen beschleunigen wiederkehrende Vorgänge, etwa Onboarding, neue Arbeitsplätze, Passwortprobleme oder VPN-Zugänge. Sie können Betreff, Beschreibung, Kategorie, Priorität, Checkliste und Standardantwort enthalten.
+Vorlagen beschleunigen wiederkehrende Vorgänge, etwa Onboarding, neue Arbeitsplätze, Passwortprobleme oder VPN-Zugänge. Diese können Betreff, Beschreibung, Kategorie, Priorität, Checkliste und Standardantwort enthalten.
 
 ### 13. Checklisten im Ticket
 
@@ -168,7 +168,7 @@ Kundenbenutzer können eine befristete Vertretung definieren, etwa bei Ferien od
 ### 29. Kundenportal mit verständlicher Sprache
 
 **Priorität:** P1  
-Die Kundenansicht reduziert technische Details und zeigt klare Formulierungen: **Anliegen eingegangen**, **Wir arbeiten daran**, **Wir benötigen Ihre Rückmeldung**, **Gelöst**. Interne Technikerinformationen bleiben verborgen.
+Die Kundenansicht reduziert technische Details und zeigt klare Formulierungen: **Anliegen eingegangen**, **Wir arbeiten daran**, **Wir benötigen deine Rückmeldung**, **Gelöst**. Interne Technikerinformationen bleiben verborgen.
 
 ### 30. Zufriedenheitsabfrage nach Lösung
 

@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import {
@@ -467,7 +468,10 @@ async function reassign(
     throw new HttpError(
       403,
       "ticket_outside_supervision",
-      "Mindestens ein Ticket gehört nicht zu Ihren Teams.",
+      msg(
+        "Mindestens ein Ticket gehört nicht zu deinen Teams.",
+        "Mindestens ein Ticket gehört nicht zu Ihren Teams.",
+      ),
     );
   }
   if (action.agentId) {
@@ -584,7 +588,7 @@ async function saveReview(
     throw new HttpError(
       403,
       "ticket_outside_supervision",
-      "Das Ticket gehört nicht zu Ihren Teams.",
+      msg("Das Ticket gehört nicht zu deinen Teams.", "Das Ticket gehört nicht zu Ihren Teams."),
     );
   }
   const { error: saveError } = await admin
@@ -663,7 +667,7 @@ async function requireSupervisedAgent(
     throw new HttpError(
       403,
       "agent_not_supervised",
-      "Diese Person gehört nicht zu Ihrem Team.",
+      msg("Diese Person gehört nicht zu deinem Team.", "Diese Person gehört nicht zu Ihrem Team."),
     );
   }
 }
@@ -1583,7 +1587,7 @@ async function setSkillLevel(
       throw new HttpError(
         403,
         "agent_not_supervised",
-        "Diese Person gehört nicht zu Ihrem Team.",
+        msg("Diese Person gehört nicht zu deinem Team.", "Diese Person gehört nicht zu Ihrem Team."),
       );
     }
   } else {

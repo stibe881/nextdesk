@@ -14,6 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
 import {
   backupOverdue,
@@ -519,7 +520,10 @@ export function BackupMonitoringSettings({ tenantId }: { tenantId: string }) {
         },
       },
       "Die Einstellungen wurden gespeichert.",
-      "Die Einstellungen konnten nicht gespeichert werden. Bitte prüfen Sie die Absenderadressen.",
+      tn(
+        "Die Einstellungen konnten nicht gespeichert werden. Bitte prüfe die Absenderadressen.",
+        "Die Einstellungen konnten nicht gespeichert werden. Bitte prüfen Sie die Absenderadressen.",
+      ),
     );
     const next = payload ? parseBackupSettings(payload.settings) : null;
     if (next) applySettings(next);
@@ -750,7 +754,10 @@ export function BackupMonitoringSettings({ tenantId }: { tenantId: string }) {
             <div className="monitoring-settings__secret" role="status">
               <strong>Webhook-Adresse (wird nur jetzt angezeigt)</strong>
               <p>
-                Senden Sie Berichte per POST an diese Adresse, z. B. als JSON:{" "}
+                {tn(
+                  "Sende Berichte per POST an diese Adresse, z. B. als JSON:",
+                  "Senden Sie Berichte per POST an diese Adresse, z. B. als JSON:",
+                )}{" "}
                 <code>{WEBHOOK_EXAMPLE}</code>. Erlaubte Status: success,
                 warning, failed.
               </p>
@@ -763,7 +770,10 @@ export function BackupMonitoringSettings({ tenantId }: { tenantId: string }) {
                       () => setCopied(true),
                       () =>
                         setMessage(
-                          "Kopieren war nicht möglich. Bitte markieren Sie den Text.",
+                          tn(
+                            "Kopieren war nicht möglich. Bitte markiere den Text.",
+                            "Kopieren war nicht möglich. Bitte markieren Sie den Text.",
+                          ),
                         ),
                     )
                   }

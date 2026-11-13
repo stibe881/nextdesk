@@ -1,3 +1,5 @@
+import { type Formality, tone } from "./formality.ts";
+
 type ApnsEnvironment = "production" | "development";
 
 /** Must match the category the mobile app registers (push-notification-bridge). */
@@ -223,7 +225,10 @@ function truncateSubject(subject: string): string {
     : `${characters.slice(0, 79).join("")}…`;
 }
 
-function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
+function alertFor(
+  input: ApnsPayloadInput,
+  formality: Formality = "du",
+): { title: string; body: string } {
   const ticketNumber = input.ticketNumber ?? "";
   const subject =
     typeof input.subject === "string" ? truncateSubject(input.subject) : null;
@@ -233,8 +238,16 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
       return {
         title: "Ticket zugewiesen",
         body: subject
-          ? `${ticketNumber} wurde dir zugewiesen: ${subject}`
-          : `${ticketNumber} wurde dir zugewiesen.`,
+          ? tone(
+              formality,
+              `${ticketNumber} wurde dir zugewiesen: ${subject}`,
+              `${ticketNumber} wurde Ihnen zugewiesen: ${subject}`,
+            )
+          : tone(
+              formality,
+              `${ticketNumber} wurde dir zugewiesen.`,
+              `${ticketNumber} wurde Ihnen zugewiesen.`,
+            ),
       };
     case "requester_reply":
       return {
@@ -247,22 +260,50 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
       return {
         title: "Antwort vom Support",
         body: subject
-          ? `Es gibt eine neue Antwort zu deinem Ticket ${ticketNumber}: ${subject}`
-          : `Es gibt eine neue Antwort zu deinem Ticket ${ticketNumber}.`,
+          ? tone(
+              formality,
+              `Es gibt eine neue Antwort zu deinem Ticket ${ticketNumber}: ${subject}`,
+              `Es gibt eine neue Antwort zu Ihrem Ticket ${ticketNumber}: ${subject}`,
+            )
+          : tone(
+              formality,
+              `Es gibt eine neue Antwort zu deinem Ticket ${ticketNumber}.`,
+              `Es gibt eine neue Antwort zu Ihrem Ticket ${ticketNumber}.`,
+            ),
       };
     case "requester_reminder":
       return {
-        title: "Wir warten auf deine Antwort",
+        title: tone(
+          formality,
+          "Wir warten auf deine Antwort",
+          "Wir warten auf Ihre Antwort",
+        ),
         body: subject
-          ? `${ticketNumber}: ${subject} – Ist dein Problem gelöst? Tippe hier zum Antworten.`
-          : `${ticketNumber} wartet auf deine Rückmeldung. Ist dein Problem gelöst?`,
+          ? tone(
+              formality,
+              `${ticketNumber}: ${subject} – Ist dein Problem gelöst? Tippe hier zum Antworten.`,
+              `${ticketNumber}: ${subject} – Ist Ihr Problem gelöst? Tippen Sie hier zum Antworten.`,
+            )
+          : tone(
+              formality,
+              `${ticketNumber} wartet auf deine Rückmeldung. Ist dein Problem gelöst?`,
+              `${ticketNumber} wartet auf Ihre Rückmeldung. Ist Ihr Problem gelöst?`,
+            ),
       };
     case "mention":
       return {
-        title: "Du wurdest erwähnt",
+        title: tone(formality, "Du wurdest erwähnt", "Sie wurden erwähnt"),
         body: subject
-          ? `Du wurdest in ${ticketNumber} in einer internen Notiz erwähnt: ${subject}`
-          : `Du wurdest in ${ticketNumber} in einer internen Notiz erwähnt.`,
+          ? tone(
+              formality,
+              `Du wurdest in ${ticketNumber} in einer internen Notiz erwähnt: ${subject}`,
+              `Sie wurden in ${ticketNumber} in einer internen Notiz erwähnt: ${subject}`,
+            )
+          : tone(
+              formality,
+              `Du wurdest in ${ticketNumber} in einer internen Notiz erwähnt.`,
+              `Sie wurden in ${ticketNumber} in einer internen Notiz erwähnt.`,
+            ),
       };
     case "resolved":
       return {
@@ -275,36 +316,80 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
       return {
         title: "Freigabe benötigt",
         body: subject
-          ? `Für ${ticketNumber} wird deine Freigabe benötigt: ${subject}`
-          : `Für ${ticketNumber} wird deine Freigabe benötigt.`,
+          ? tone(
+              formality,
+              `Für ${ticketNumber} wird deine Freigabe benötigt: ${subject}`,
+              `Für ${ticketNumber} wird Ihre Freigabe benötigt: ${subject}`,
+            )
+          : tone(
+              formality,
+              `Für ${ticketNumber} wird deine Freigabe benötigt.`,
+              `Für ${ticketNumber} wird Ihre Freigabe benötigt.`,
+            ),
       };
     case "department_question_asked":
       return {
         title: "Abteilungsrückfrage",
         body: subject
-          ? `Für ${ticketNumber} wird Ihre Antwort benötigt: ${subject}`
-          : `Für ${ticketNumber} wird Ihre Antwort benötigt.`,
+          ? tone(
+              formality,
+              `Für ${ticketNumber} wird deine Antwort benötigt: ${subject}`,
+              `Für ${ticketNumber} wird Ihre Antwort benötigt: ${subject}`,
+            )
+          : tone(
+              formality,
+              `Für ${ticketNumber} wird deine Antwort benötigt.`,
+              `Für ${ticketNumber} wird Ihre Antwort benötigt.`,
+            ),
       };
     case "department_question_answered":
       return {
         title: "Antwort der Abteilungsleitung",
         body: subject
-          ? `Es gibt eine Antwort zu Ihrer Rückfrage in ${ticketNumber}: ${subject}`
-          : `Es gibt eine Antwort zu Ihrer Rückfrage in ${ticketNumber}.`,
+          ? tone(
+              formality,
+              `Es gibt eine Antwort zu deiner Rückfrage in ${ticketNumber}: ${subject}`,
+              `Es gibt eine Antwort zu Ihrer Rückfrage in ${ticketNumber}: ${subject}`,
+            )
+          : tone(
+              formality,
+              `Es gibt eine Antwort zu deiner Rückfrage in ${ticketNumber}.`,
+              `Es gibt eine Antwort zu Ihrer Rückfrage in ${ticketNumber}.`,
+            ),
       };
     case "supervisor_request":
       return {
-        title: "Anfrage an dich",
+        title: tone(formality, "Anfrage an dich", "Anfrage an Sie"),
         body: subject
-          ? `Zu ${ticketNumber} wird deine Antwort benötigt: ${subject}`
-          : `Zu ${ticketNumber} wird deine Antwort benötigt.`,
+          ? tone(
+              formality,
+              `Zu ${ticketNumber} wird deine Antwort benötigt: ${subject}`,
+              `Zu ${ticketNumber} wird Ihre Antwort benötigt: ${subject}`,
+            )
+          : tone(
+              formality,
+              `Zu ${ticketNumber} wird deine Antwort benötigt.`,
+              `Zu ${ticketNumber} wird Ihre Antwort benötigt.`,
+            ),
       };
     case "supervisor_answer":
       return {
-        title: "Antwort auf deine Anfrage",
+        title: tone(
+          formality,
+          "Antwort auf deine Anfrage",
+          "Antwort auf Ihre Anfrage",
+        ),
         body: subject
-          ? `Deine Anfrage zu ${ticketNumber} wurde beantwortet: ${subject}`
-          : `Deine Anfrage zu ${ticketNumber} wurde beantwortet.`,
+          ? tone(
+              formality,
+              `Deine Anfrage zu ${ticketNumber} wurde beantwortet: ${subject}`,
+              `Ihre Anfrage zu ${ticketNumber} wurde beantwortet: ${subject}`,
+            )
+          : tone(
+              formality,
+              `Deine Anfrage zu ${ticketNumber} wurde beantwortet.`,
+              `Ihre Anfrage zu ${ticketNumber} wurde beantwortet.`,
+            ),
       };
     case "escalation":
       return {
@@ -345,7 +430,7 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
       const score = input.kudosScore ? ` (${input.kudosScore}/5)` : "";
       return {
         title: "Lob von Kund:innen",
-        body: `${from} hat ${ticketNumber} sehr gut bewertet${score}. Danke für deinen Einsatz!`,
+        body: `${from} hat ${ticketNumber} sehr gut bewertet${score}. ${tone(formality, "Danke für deinen Einsatz!", "Danke für Ihren Einsatz!")}`,
       };
     }
     case "incident": {
@@ -437,7 +522,11 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
     case "contract_deadline":
       return {
         title: "Vertragsfrist",
-        body: "Eine Vertragsfrist erfordert deine Aufmerksamkeit.",
+        body: tone(
+          formality,
+          "Eine Vertragsfrist erfordert deine Aufmerksamkeit.",
+          "Eine Vertragsfrist erfordert Ihre Aufmerksamkeit.",
+        ),
       };
     case "shop": {
       const number = input.orderNumber ? ` ${input.orderNumber}` : "";
@@ -445,12 +534,24 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         case "approval_requested":
           return {
             title: "Freigabe für Bestellung",
-            body: `Bestellung${number} wartet auf deine Freigabe.`,
+            body: tone(
+              formality,
+              `Bestellung${number} wartet auf deine Freigabe.`,
+              `Bestellung${number} wartet auf Ihre Freigabe.`,
+            ),
           };
         case "placed_for_you":
           return {
-            title: "Bestellung für dich erfasst",
-            body: `Der Support hat Bestellung${number} für dich erfasst.`,
+            title: tone(
+              formality,
+              "Bestellung für dich erfasst",
+              "Bestellung für Sie erfasst",
+            ),
+            body: tone(
+              formality,
+              `Der Support hat Bestellung${number} für dich erfasst.`,
+              `Der Support hat Bestellung${number} für Sie erfasst.`,
+            ),
           };
         case "submitted":
           return {
@@ -471,11 +572,19 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           return input.shopDeliveryMethod === "desk"
             ? {
                 title: "Bereit zur Lieferung",
-                body: `Bestellung${number} wird an deinen Arbeitsplatz gebracht${input.shopDeliveryLocation ? `: ${input.shopDeliveryLocation.slice(0, 80)}` : ""}.`,
+                body: `${tone(
+                  formality,
+                  `Bestellung${number} wird an deinen Arbeitsplatz gebracht`,
+                  `Bestellung${number} wird an Ihren Arbeitsplatz gebracht`,
+                )}${input.shopDeliveryLocation ? `: ${input.shopDeliveryLocation.slice(0, 80)}` : ""}.`,
               }
             : {
                 title: "Bereit zur Abholung",
-                body: `Bestellung${number} liegt für dich bereit. Abholung beim Support.`,
+                body: tone(
+                  formality,
+                  `Bestellung${number} liegt für dich bereit. Abholung beim Support.`,
+                  `Bestellung${number} liegt für Sie bereit. Abholung beim Support.`,
+                ),
               };
         case "issued":
           return {
@@ -491,7 +600,11 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           return input.shopEscalated
             ? {
                 title: "Ausleihe im Team überfällig",
-                body: `Die Ausleihe${number} einer Person aus deinem Team ist seit mehreren Tagen überfällig.`,
+                body: tone(
+                  formality,
+                  `Die Ausleihe${number} einer Person aus deinem Team ist seit mehreren Tagen überfällig.`,
+                  `Die Ausleihe${number} einer Person aus Ihrem Team ist seit mehreren Tagen überfällig.`,
+                ),
               }
             : {
                 title: "Ausleihe überfällig",
@@ -521,7 +634,7 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           };
         case "team_ready":
           return {
-            title: "Dein Team ist bereit",
+            title: tone(formality, "Dein Team ist bereit", "Ihr Team ist bereit"),
             body: "Das bestellte Microsoft-Teams-Team wurde angelegt.",
           };
         case "team_failed":
@@ -531,7 +644,11 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           };
         case "team_expiring":
           return {
-            title: "Dein Team läuft bald ab",
+            title: tone(
+              formality,
+              "Dein Team läuft bald ab",
+              "Ihr Team läuft bald ab",
+            ),
             body: "Ein Team endet bald. Jetzt verlängern oder archivieren lassen.",
           };
         case "team_archived":
@@ -733,8 +850,9 @@ const APNS_AGENT_TICKET_KINDS: ReadonlySet<ApnsPayloadKind> = new Set([
 /** Builds only the APNs JSON body; no device token or secret enters this payload. */
 export function buildApnsPayload(
   input: ApnsPayloadInput,
+  formality: Formality = "du",
 ): Record<string, unknown> {
-  const baseAlert = alertFor(input);
+  const baseAlert = alertFor(input, formality);
   const delegatedFrom = input.delegatedFromName
     ? truncateSubject(input.delegatedFromName)
     : null;

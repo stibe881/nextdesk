@@ -7,6 +7,7 @@ import { useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
 
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 export type PolishLength = "short" | "detailed";
 
@@ -79,7 +80,7 @@ export function DictationControls({
       if (!permission.granted) {
         Alert.alert(
           "Mikrofon nicht freigegeben",
-          "Erlaube Mikrofon und Spracherkennung in den Einstellungen, um zu diktieren.",
+          tn("Erlaube Mikrofon und Spracherkennung in den Einstellungen, um zu diktieren.", "Erlauben Sie Mikrofon und Spracherkennung in den Einstellungen, um zu diktieren."),
         );
         return;
       }

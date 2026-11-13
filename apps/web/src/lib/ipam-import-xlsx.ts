@@ -3,6 +3,7 @@
  * with read-excel-file, loaded only when needed (dynamic import).
  */
 
+import { tn } from "./formality";
 import { workbookFromCsv, workbookFromSheets } from "./ipam-import";
 import type { Workbook } from "./ipam-import-model";
 
@@ -28,7 +29,10 @@ export async function readWorkbookFile(file: File): Promise<Workbook> {
   if (!isSpreadsheetName(file.name)) {
     if (/\.xls$/i.test(file.name)) {
       throw new Error(
-        "Das alte Excel-Format (.xls) wird nicht unterstützt. Bitte speichern Sie die Datei als .xlsx oder .csv.",
+        tn(
+          "Das alte Excel-Format (.xls) wird nicht unterstützt. Bitte speichere die Datei als .xlsx oder .csv.",
+          "Das alte Excel-Format (.xls) wird nicht unterstützt. Bitte speichern Sie die Datei als .xlsx oder .csv.",
+        ),
       );
     }
     return workbookFromCsv(

@@ -203,7 +203,7 @@ export const MEASURE_CONFIRM_TEXT: Record<MeasureKind, string> = {
   intune_defender_scan:
     "Microsoft Defender startet auf dem Gerät einen Schnellscan. Die Person kann weiterarbeiten.",
   entra_revoke_sessions:
-    "Alle Anmeldesitzungen und Aktualisierungstoken der Person werden in Microsoft Entra widerrufen. Sie muss sich auf allen Geräten neu anmelden.",
+    "Alle Anmeldesitzungen und Aktualisierungstoken der Person werden in Microsoft Entra widerrufen. Die Person muss sich auf allen Geräten neu anmelden.",
   entra_force_password_change:
     "Die Person muss bei der nächsten Anmeldung ein neues Passwort festlegen.",
 };

@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { useTicketHoverPreview } from "./ticket-hover-preview";
 
@@ -121,7 +122,10 @@ export function TicketKanban({
       {hoverPreview.overlay}
       <div className="ticket-kanban__toolbar">
         <p>
-          Ziehen Sie eine Karte in eine andere Spalte, um den Status zu ändern.
+          {tn(
+            "Ziehe eine Karte in eine andere Spalte, um den Status zu ändern.",
+            "Ziehen Sie eine Karte in eine andere Spalte, um den Status zu ändern.",
+          )}
         </p>
         <label>
           <input

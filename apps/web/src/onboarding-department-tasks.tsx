@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
@@ -123,9 +124,10 @@ export function OnboardingDepartmentTasks({ tenantId }: { tenantId: string }) {
             Teilaufgaben der Abteilungen
           </h3>
           <p className="onboarding__hint">
-            Legen Sie fest, welche Abteilungen bei jedem neuen Ein- oder
-            Austritt welche Aufgaben erhalten. Alle Mitglieder der Abteilung
-            können ihre Aufgaben erledigen.
+            {tn(
+              "Lege fest, welche Abteilungen bei jedem neuen Ein- oder Austritt welche Aufgaben erhalten. Alle Mitglieder der Abteilung können ihre Aufgaben erledigen.",
+              "Legen Sie fest, welche Abteilungen bei jedem neuen Ein- oder Austritt welche Aufgaben erhalten. Alle Mitglieder der Abteilung können ihre Aufgaben erledigen.",
+            )}
           </p>
         </div>
         <div

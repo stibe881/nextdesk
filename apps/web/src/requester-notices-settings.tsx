@@ -39,6 +39,7 @@ import {
   type NoticeState,
   type NoticeView,
 } from "./lib/requester-notices";
+import { tn } from "./lib/formality";
 import { NoticeBanner, NoticeBar } from "./requester-notice-banner";
 import "./requester-notices-settings.css";
 
@@ -186,7 +187,10 @@ export function RequesterNoticesSettings({ tenantId }: { tenantId: string }) {
       {visible.length === 0 ? (
         <p className="empty-state">
           {notices.length === 0
-            ? "Noch keine Hinweise. Mit «+ Neuer Hinweis» legen Sie den ersten an."
+            ? tn(
+                "Noch keine Hinweise. Mit «+ Neuer Hinweis» legst du den ersten an.",
+                "Noch keine Hinweise. Mit «+ Neuer Hinweis» legen Sie den ersten an.",
+              )
             : "Keine Hinweise in dieser Ansicht."}
         </p>
       ) : (

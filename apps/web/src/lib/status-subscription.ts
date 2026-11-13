@@ -10,6 +10,8 @@ const UUID =
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /** Bestätigungs- bzw. Abmeldelink aus der Mail (?status-subscription=…). */
+
+import { tn } from "./formality";
 export function readStatusSubscriptionAction(
   search: string,
 ): StatusSubscriptionAction | null {
@@ -42,34 +44,52 @@ export function statusSubscriptionMessage(
     if (kind === "subscribe") {
       return {
         tone: "success",
-        text: "Fast geschafft: Bitte bestätigen Sie die Anmeldung über den Link in der E-Mail, die wir Ihnen gerade geschickt haben.",
+        text: tn(
+          "Fast geschafft: Bitte bestätige die Anmeldung über den Link in der E-Mail, die wir dir gerade geschickt haben.",
+          "Fast geschafft: Bitte bestätigen Sie die Anmeldung über den Link in der E-Mail, die wir Ihnen gerade geschickt haben.",
+        ),
       };
     }
     return kind === "confirm"
       ? {
           tone: "success",
-          text: "Ihre Anmeldung ist bestätigt. Sie erhalten ab jetzt eine E-Mail, wenn sich der Status eines Dienstes ändert.",
+          text: tn(
+            "Deine Anmeldung ist bestätigt. Du erhältst ab jetzt eine E-Mail, wenn sich der Status eines Dienstes ändert.",
+            "Ihre Anmeldung ist bestätigt. Sie erhalten ab jetzt eine E-Mail, wenn sich der Status eines Dienstes ändert.",
+          ),
         }
       : {
           tone: "success",
-          text: "Sie sind abgemeldet und erhalten keine Statusmeldungen mehr.",
+          text: tn(
+            "Du bist abgemeldet und erhältst keine Statusmeldungen mehr.",
+            "Sie sind abgemeldet und erhalten keine Statusmeldungen mehr.",
+          ),
         };
   }
   switch (code) {
     case "invalid_email":
       return {
         tone: "error",
-        text: "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
+        text: tn(
+          "Bitte gib eine gültige E-Mail-Adresse ein.",
+          "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
+        ),
       };
     case "status_subscription_not_found":
       return {
         tone: "error",
-        text: "Dieser Link ist nicht mehr gültig. Melden Sie sich bei Bedarf erneut an.",
+        text: tn(
+          "Dieser Link ist nicht mehr gültig. Melde dich bei Bedarf erneut an.",
+          "Dieser Link ist nicht mehr gültig. Melden Sie sich bei Bedarf erneut an.",
+        ),
       };
     case "status_subscription_busy":
       return {
         tone: "error",
-        text: "Gerade gehen sehr viele Anmeldungen ein. Bitte versuchen Sie es später erneut.",
+        text: tn(
+          "Gerade gehen sehr viele Anmeldungen ein. Bitte versuche es später erneut.",
+          "Gerade gehen sehr viele Anmeldungen ein. Bitte versuchen Sie es später erneut.",
+        ),
       };
     case "status_mail_unavailable":
       return {
@@ -79,7 +99,10 @@ export function statusSubscriptionMessage(
     default:
       return {
         tone: "error",
-        text: "Das hat nicht geklappt. Bitte versuchen Sie es später erneut.",
+        text: tn(
+          "Das hat nicht geklappt. Bitte versuche es später erneut.",
+          "Das hat nicht geklappt. Bitte versuchen Sie es später erneut.",
+        ),
       };
   }
 }

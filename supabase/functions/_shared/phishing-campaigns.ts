@@ -254,7 +254,7 @@ export const INDICATOR_LABELS: Record<IndicatorKind, string> = {
 export function iocHitNote(hits: readonly { kind: IndicatorKind; value: string }[]): string {
   const lines = hits.slice(0, 15).map((hit) => `• ${INDICATOR_LABELS[hit.kind]}: ${hit.value}`);
   return [
-    `⚠ IOC-Treffer: Diese Meldung enthält ${hits.length === 1 ? "einen bekannten Indikator" : `${hits.length} bekannte Indikatoren`} aus früheren Fällen.`,
+    `Achtung: IOC-Treffer: Diese Meldung enthält ${hits.length === 1 ? "einen bekannten Indikator" : `${hits.length} bekannte Indikatoren`} aus früheren Fällen.`,
     ...lines,
   ].join("\n");
 }

@@ -9,7 +9,7 @@
 - Hetzner-SSH-Benutzer `jqviwy`
 - Bereitgestelltes Skript [`scripts/run-sla-automation.sh`](../../scripts/run-sla-automation.sh)
 
-Die Funktion nimmt **keine Browser-JWTs** an und sendet keine CORS-Header. Sie wird ausschließlich durch ein geheimes Automations-Token geschützt.
+Die Funktion nimmt **keine Browser-JWTs** an und sendet keine CORS-Header. Diese wird ausschließlich durch ein geheimes Automations-Token geschützt.
 
 ## Einmalige sichere Einrichtung
 

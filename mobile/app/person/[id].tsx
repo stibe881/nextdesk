@@ -28,6 +28,7 @@ import {
   type PersonTicket,
 } from "@/lib/person-overview";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 type Tab = "tickets" | "devices" | "licenses" | "orders" | "history";
 type TicketFilter = "all" | "open" | "closed";
@@ -574,7 +575,7 @@ export default function PersonScreen() {
                   {tickets.length === 0 ? (
                     <Text style={styles.muted}>
                       {data.tickets.length === 0
-                        ? `${firstName} hat noch keine Tickets, die du sehen darfst.`
+                        ? tn(`${firstName} hat noch keine Tickets, die du sehen darfst.`, `${firstName} hat noch keine Tickets, die Sie sehen dürfen.`)
                         : "Keine Tickets in dieser Auswahl."}
                     </Text>
                   ) : (

@@ -10,6 +10,7 @@ import {
   type HomeLayout,
 } from "@/lib/home-layout";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 /**
  * «Home anpassen»: sections of the home screen can be switched on and off and
@@ -43,8 +44,7 @@ export function HomeLayoutSheet({
               Home anpassen
             </Text>
             <Text style={styles.subtitle}>
-              Bereiche ein- oder ausblenden und mit den Pfeilen verschieben. Das
-              gilt nur für dich.
+              {tn("Bereiche ein- oder ausblenden und mit den Pfeilen verschieben. Das gilt nur für dich.", "Bereiche ein- oder ausblenden und mit den Pfeilen verschieben. Das gilt nur für Sie.")}
             </Text>
           </View>
           <Pressable

@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
   EMAIL_TEMPLATES,
+  emailTemplateDefinitions,
   fillEmailTemplate,
   resolveEmailTemplate,
   sanitizeTemplateFields,
@@ -18,7 +19,21 @@ Deno.test("uses defaults, enabled by default", () => {
   assertEquals(template.enabled, true);
   assertEquals(
     template.text("intro", {}),
+    "Dein Ticket wurde als gelöst markiert.",
+  );
+});
+
+Deno.test("uses the formal defaults for «Sie»", () => {
+  const template = resolveEmailTemplate("resolution", null, "sie");
+  assertEquals(
+    template.text("intro", {}),
     "Ihr Ticket wurde als gelöst markiert.",
+  );
+  assertEquals(
+    sanitizeTemplateFields("acknowledgement", {
+      intro: "Ihre Anfrage ist eingegangen.",
+    }),
+    {},
   );
 });
 
@@ -38,7 +53,7 @@ Deno.test("uses custom text and respects the switch", () => {
 Deno.test("keeps only known, changed fields and single-line subjects", () => {
   const fields = sanitizeTemplateFields("acknowledgement", {
     subject: "Hallo\nBcc: x@y.z",
-    intro: "Ihre Anfrage ist eingegangen.",
+    intro: "Deine Anfrage ist eingegangen.",
     evil: "x",
   });
   assertEquals(fields, { subject: "Hallo Bcc: x@y.z" });
@@ -48,7 +63,10 @@ Deno.test("keeps only known, changed fields and single-line subjects", () => {
 Deno.test("keys are unique and defaults use known placeholders", () => {
   const keys = EMAIL_TEMPLATES.map((template) => template.key);
   assertEquals(new Set(keys).size, keys.length);
-  for (const template of EMAIL_TEMPLATES) {
+  for (const template of [
+    ...EMAIL_TEMPLATES,
+    ...emailTemplateDefinitions("sie"),
+  ]) {
     const known = new Set(template.placeholders.map((p) => p.name));
     for (const field of template.fields) {
       for (const match of field.default.matchAll(/\{\{\s*(\w+)\s*\}\}/g)) {

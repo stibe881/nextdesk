@@ -157,9 +157,9 @@ describe("ticket template form", () => {
 
   it("validates required fields and types with German messages", () => {
     expect(validateAnswers(laptopFields, {})).toEqual({
-      person: "Bitte füllen Sie das Feld «Name der Person» aus.",
-      eintritt: "Bitte füllen Sie das Feld «Eintrittsdatum» aus.",
-      modell: "Bitte wählen Sie eine Option für «Modell».",
+      person: "Bitte das Feld «Name der Person» ausfüllen.",
+      eintritt: "Bitte das Feld «Eintrittsdatum» ausfüllen.",
+      modell: "Bitte eine Option für «Modell» wählen.",
     });
     expect(
       validateAnswers(laptopFields, {
@@ -170,9 +170,9 @@ describe("ticket template form", () => {
         docking_typ: " ",
       }),
     ).toEqual({
-      eintritt: "Bitte geben Sie bei «Eintrittsdatum» ein gültiges Datum ein.",
-      modell: "Bitte wählen Sie für «Modell» eine der angebotenen Optionen.",
-      docking_typ: "Bitte füllen Sie das Feld «Typ der Docking-Station» aus.",
+      eintritt: "Bitte bei «Eintrittsdatum» ein gültiges Datum eingeben.",
+      modell: "Bitte für «Modell» eine der angebotenen Optionen wählen.",
+      docking_typ: "Bitte das Feld «Typ der Docking-Station» ausfüllen.",
     });
     expect(
       validateAnswers(laptopFields, {
@@ -182,7 +182,7 @@ describe("ticket template form", () => {
         ram: "viel",
       }),
     ).toEqual({
-      ram: "Bitte geben Sie bei «Arbeitsspeicher (GB)» eine Zahl ein.",
+      ram: "Bitte bei «Arbeitsspeicher (GB)» eine Zahl eingeben.",
     });
     expect(
       validateAnswers(laptopFields, {
@@ -205,7 +205,7 @@ describe("ticket template form", () => {
       }),
     ];
     expect(validateAnswers(fields, {})).toEqual({
-      ok: "Bitte bestätigen Sie «Richtlinie gelesen».",
+      ok: "Bitte «Richtlinie gelesen» bestätigen.",
     });
     expect(validateAnswers(fields, { ok: true })).toEqual({});
     expect(validateAnswers(fields, { ok: "true" })).toEqual({
@@ -315,7 +315,7 @@ describe("ticket template form", () => {
         field({ key: "m", label: "Modell", fieldType: "select" }),
       ]),
     ).toBe(
-      "Bitte erfassen Sie für das Auswahlfeld «Modell» mindestens eine Option.",
+      "Bitte für das Auswahlfeld «Modell» mindestens eine Option erfassen.",
     );
     expect(
       validateFieldDefinitions(laptopFields, [

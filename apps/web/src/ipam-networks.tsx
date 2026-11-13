@@ -3,6 +3,7 @@
 // Subnetz-Detail mit Belegung (Heatmap, Zoom je /24, Bereichsauswahl),
 // Adressliste, Verlauf & Prognose und Funden. Brotkrumen oben im Detail.
 
+import { tn } from "./lib/formality";
 import {
   Archive,
   ChevronDown,
@@ -212,9 +213,10 @@ export function IpamNetworksPage(props: Props) {
       <div className="ipam-placeholder">
         <h3>Noch keine Subnetze erfasst</h3>
         <p>
-          Legen Sie zuerst ein Supernetz (z. B. 10.20.0.0/16) an und teilen Sie
-          es im Subnetz-Planer auf, oder übernehmen Sie bestehende Listen über
-          «Verwaltung → Import».
+          {tn(
+            "Lege zuerst ein Supernetz (z. B. 10.20.0.0/16) an und teile es im Subnetz-Planer auf, oder übernimm bestehende Listen über «Verwaltung → Import».",
+            "Legen Sie zuerst ein Supernetz (z. B. 10.20.0.0/16) an und teilen Sie es im Subnetz-Planer auf, oder übernehmen Sie bestehende Listen über «Verwaltung → Import».",
+          )}
         </p>
         {canManage ? (
           <button
@@ -614,8 +616,10 @@ export function IpamNetworksPage(props: Props) {
           ) : (
             <div className="ipam-card">
               <p className="ipam-empty">
-                Wählen Sie links ein Netz, um Belegung, Adressen und Verlauf zu
-                sehen.
+                {tn(
+                  "Wähle links ein Netz, um Belegung, Adressen und Verlauf zu sehen.",
+                  "Wählen Sie links ein Netz, um Belegung, Adressen und Verlauf zu sehen.",
+                )}
               </p>
             </div>
           )}
@@ -1119,7 +1123,10 @@ function SupernetDetail(props: DetailProps) {
         <p className="ipam-empty">
           Dieses Supernetz enthält noch keine Teilnetze.{" "}
           {canManage
-            ? "Klicken Sie auf einen freien Block in der Karte oder teilen Sie es im Planer auf."
+            ? tn(
+                "Klicke auf einen freien Block in der Karte oder teile es im Planer auf.",
+                "Klicken Sie auf einen freien Block in der Karte oder teilen Sie es im Planer auf.",
+              )
             : null}
         </p>
       )}
@@ -1263,7 +1270,10 @@ export function SpaceMap({
               )
             ) : (
               <span className="ipam-muted">
-                Zeigen Sie auf ein Feld, um Netz und Belegung zu sehen.
+                {tn(
+                  "Zeige auf ein Feld, um Netz und Belegung zu sehen.",
+                  "Zeigen Sie auf ein Feld, um Netz und Belegung zu sehen.",
+                )}
               </span>
             )}
           </div>
@@ -2437,7 +2447,10 @@ function AddressList({
         <p className="ipam-empty">
           {term || status !== "all"
             ? "Keine Adressen für diesen Filter."
-            : "Noch keine Adressen erfasst. Reservieren Sie die nächste freie Adresse oder übernehmen Sie Listen über «Verwaltung → Import»."}
+            : tn(
+                "Noch keine Adressen erfasst. Reserviere die nächste freie Adresse oder übernimm Listen über «Verwaltung → Import».",
+                "Noch keine Adressen erfasst. Reservieren Sie die nächste freie Adresse oder übernehmen Sie Listen über «Verwaltung → Import».",
+              )}
         </p>
       ) : (
         <div className="ipam-table-wrap ipam-table-wrap--sticky">

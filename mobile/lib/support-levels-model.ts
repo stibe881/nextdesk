@@ -1,5 +1,7 @@
 // Eskalationsstufen (1st/2nd/3rd Level) – reine Logik für die App, ohne
 // Netzwerkzugriff, damit sie getestet werden kann.
+import { tn } from "./formality";
+
 
 export type MobileSupportLevel = 1 | 2 | 3;
 
@@ -41,7 +43,10 @@ export function mobileSupportLevelLabel(level: MobileSupportLevel): string {
 export function mobileHandoverNoteError(note: string): string | null {
   const length = Array.from(note.trim()).length;
   if (length < MOBILE_NOTE_MIN)
-    return `Beschreibe in mindestens ${MOBILE_NOTE_MIN} Zeichen, was du schon versucht hast und was du herausgefunden hast.`;
+    return tn(
+      `Beschreibe in mindestens ${MOBILE_NOTE_MIN} Zeichen, was du schon versucht hast und was du herausgefunden hast.`,
+      `Beschreiben Sie in mindestens ${MOBILE_NOTE_MIN} Zeichen, was Sie schon versucht und herausgefunden haben.`,
+    );
   if (length > MOBILE_NOTE_MAX)
     return `Die Notiz darf höchstens ${MOBILE_NOTE_MAX} Zeichen lang sein.`;
   return null;

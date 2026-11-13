@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { msg } from "../_shared/formality.ts";
 import { corsHeaders, isRecord } from "../_shared/http.ts";
 import { verifyRatingLinkToken } from "../_shared/rating-link-token.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
@@ -16,12 +17,17 @@ const ERRORS: Record<string, { status: number; message: string }> = {
   invalid_request: { status: 400, message: "Die Anfrage ist ungültig." },
   token_invalid: {
     status: 400,
-    message: "Dieser Link ist ungültig. Bitte öffnen Sie das Ticket im Portal.",
+    message: msg(
+      "Dieser Link ist ungültig. Bitte öffne das Ticket im Portal.",
+      "Dieser Link ist ungültig. Bitte öffnen Sie das Ticket im Portal.",
+    ),
   },
   token_expired: {
     status: 410,
-    message:
+    message: msg(
+      "Dieser Link ist abgelaufen. Bitte öffne das Ticket im Portal.",
       "Dieser Link ist abgelaufen. Bitte öffnen Sie das Ticket im Portal.",
+    ),
   },
   ticket_not_available: {
     status: 404,

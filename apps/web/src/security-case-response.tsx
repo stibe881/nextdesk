@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { LoaderCircle, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -92,8 +93,11 @@ export function SecurityCaseResponsePage() {
         <p className="eyebrow">SICHERHEIT</p>
         <h1 id="security-response-heading">
           {preview?.state === "answered"
-            ? "Danke für Ihre Antwort"
-            : "Kurze Rückfrage zu Ihrer Phishing-Meldung"}
+            ? tn("Danke für deine Antwort", "Danke für Ihre Antwort")
+            : tn(
+                "Kurze Rückfrage zu deiner Phishing-Meldung",
+                "Kurze Rückfrage zu Ihrer Phishing-Meldung",
+              )}
         </h1>
         {preview?.subject ? (
           <p>
@@ -113,10 +117,10 @@ export function SecurityCaseResponsePage() {
         {preview?.state === "open" ? (
           <>
             <p>
-              Haben Sie in dieser E-Mail einen Link oder Anhang geöffnet oder
-              irgendwo Ihr Passwort oder andere Daten eingegeben? Ehrlich ist
-              hier wichtig: Es passiert Ihnen nichts, wir müssen nur schnell
-              reagieren können.
+              {tn(
+                "Hast du in dieser E-Mail einen Link oder Anhang geöffnet oder irgendwo dein Passwort oder andere Daten eingegeben? Ehrlich ist hier wichtig: Es passiert dir nichts, wir müssen nur schnell reagieren können.",
+                "Haben Sie in dieser E-Mail einen Link oder Anhang geöffnet oder irgendwo Ihr Passwort oder andere Daten eingegeben? Ehrlich ist hier wichtig: Es passiert Ihnen nichts, wir müssen nur schnell reagieren können.",
+              )}
             </p>
             <div className="security-response__actions">
               <button
@@ -143,8 +147,14 @@ export function SecurityCaseResponsePage() {
         {preview?.state === "answered" ? (
           <p role="status">
             {preview.answer === "yes"
-              ? "Danke. Das Sicherheitsteam meldet sich bei Ihnen. Ändern Sie bis dahin vorsorglich Ihr Passwort, falls Sie es eingegeben haben."
-              : "Danke, dann ist für Sie nichts weiter zu tun. Sie können dieses Fenster schliessen."}
+              ? tn(
+                  "Danke. Das Sicherheitsteam meldet sich bei dir. Ändere bis dahin vorsorglich dein Passwort, falls du es eingegeben hast.",
+                  "Danke. Das Sicherheitsteam meldet sich bei Ihnen. Ändern Sie bis dahin vorsorglich Ihr Passwort, falls Sie es eingegeben haben.",
+                )
+              : tn(
+                  "Danke, dann ist für dich nichts weiter zu tun. Du kannst dieses Fenster schliessen.",
+                  "Danke, dann ist für Sie nichts weiter zu tun. Sie können dieses Fenster schliessen.",
+                )}
           </p>
         ) : null}
         {error ? (

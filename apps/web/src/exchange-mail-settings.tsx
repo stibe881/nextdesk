@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -135,18 +136,29 @@ const emptyForm: ExchangeSettingsForm = {
   sendResolution: false,
 };
 
-const ERROR_FALLBACKS: Record<string, string> = {
-  exchange_platform_not_configured:
+const errorFallbacks = (): Record<string, string> => ({
+  exchange_platform_not_configured: tn(
     "Die zentrale Microsoft-365-Verbindung von nextDesk ist noch nicht vollständig eingerichtet. Bitte wende dich an Gross ICT.",
+    "Die zentrale Microsoft-365-Verbindung von nextDesk ist noch nicht vollständig eingerichtet. Bitte wenden Sie sich an Gross ICT.",
+  ),
   feature_disabled:
     "Der E-Mail-Kanal (Microsoft 365) ist für diesen Mandanten derzeit deaktiviert.",
-  forbidden: "Für diese Aktion fehlt Ihnen die erforderliche Berechtigung.",
-  invalid_settings:
+  forbidden: tn(
+    "Für diese Aktion fehlt dir die erforderliche Berechtigung.",
+    "Für diese Aktion fehlt Ihnen die erforderliche Berechtigung.",
+  ),
+  invalid_settings: tn(
+    "Bitte prüfe die gewählte Verbindung und die Angaben zum Support-Postfach.",
     "Bitte prüfen Sie die gewählte Verbindung und die Angaben zum Support-Postfach.",
-  exchange_verification_required:
+  ),
+  exchange_verification_required: tn(
+    "Prüfe dieses Support-Postfach erfolgreich, bevor du es aktivierst.",
     "Prüfen Sie dieses Support-Postfach erfolgreich, bevor Sie es aktivieren.",
-  exchange_configuration_changed:
+  ),
+  exchange_configuration_changed: tn(
+    "Die Postfachkonfiguration wurde zwischenzeitlich geändert. Lade die Einstellungen neu und prüfe erneut.",
     "Die Postfachkonfiguration wurde zwischenzeitlich geändert. Laden Sie die Einstellungen neu und prüfen Sie erneut.",
+  ),
   mailbox_in_use:
     "Dieses Support-Postfach wird bereits von einem anderen Mandanten verwendet.",
   connection_not_found:
@@ -155,15 +167,23 @@ const ERROR_FALLBACKS: Record<string, string> = {
     "Die Microsoft-365-Verbindung muss erneut angemeldet werden.",
   legacy_migration_required:
     "Dieser bisherige E-Mail-Kanal muss zuerst über Microsoft 365 migriert werden.",
-  exchange_mailbox_not_found:
+  exchange_mailbox_not_found: tn(
+    "Das Support-Postfach wurde nicht gefunden. Bitte prüfe die E-Mail-Adresse.",
     "Das Support-Postfach wurde nicht gefunden. Bitte prüfen Sie die E-Mail-Adresse.",
-  exchange_access_denied:
+  ),
+  exchange_access_denied: tn(
+    "Microsoft 365 verweigert den Zugriff. Öffne das Exchange Admin Center und gib dem verbundenen Konto für dieses Support-Postfach Vollzugriff und Senden als.",
     "Microsoft 365 verweigert den Zugriff. Öffnen Sie Exchange Admin Center und geben Sie dem verbundenen Konto für dieses Support-Postfach Vollzugriff und Senden als.",
-  exchange_throttled:
+  ),
+  exchange_throttled: tn(
+    "Microsoft 365 begrenzt Anfragen momentan. Bitte versuche es später erneut.",
     "Microsoft 365 begrenzt Anfragen momentan. Bitte versuchen Sie es später erneut.",
-  exchange_unavailable:
+  ),
+  exchange_unavailable: tn(
+    "Microsoft 365 ist vorübergehend nicht erreichbar. Bitte versuche es später erneut.",
     "Microsoft 365 ist vorübergehend nicht erreichbar. Bitte versuchen Sie es später erneut.",
-};
+  ),
+});
 
 const STATUS_PRESENTATION: Record<
   ExchangeChannelStatus,
@@ -367,7 +387,7 @@ function toChecks(value: unknown): ExchangeConnectionCheck[] | null {
 }
 
 function errorFallback(code: string | null, fallback: string): string {
-  return (code && ERROR_FALLBACKS[code]) || fallback;
+  return (code && errorFallbacks()[code]) || fallback;
 }
 
 async function functionError(error: unknown, fallback: string): Promise<Error> {
@@ -607,8 +627,10 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
         setForm(emptyForm);
         setFeedback({
           kind: "success",
-          message:
+          message: tn(
+            "Das Support-Postfach wurde gespeichert. Prüfe es jetzt, bevor du es aktivierst.",
             "Das Support-Postfach wurde gespeichert. Prüfen Sie es jetzt, bevor Sie es aktivieren.",
+          ),
         });
       }
     } catch (error) {
@@ -716,8 +738,10 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
       await load();
       setFeedback({
         kind: "success",
-        message:
+        message: tn(
+          "Die Testmail wurde in die Versandwarteschlange gestellt und geht an deine hinterlegte nextDesk-E-Mail-Adresse.",
           "Die Testmail wurde in die Versandwarteschlange gestellt und geht an Ihre hinterlegte nextDesk-E-Mail-Adresse.",
+        ),
       });
     } catch (error) {
       setFeedback({
@@ -753,9 +777,10 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
           <span className="eyebrow">MICROSOFT 365</span>
           <h3 id="exchange-mail-settings-heading">E-Mail-Kanäle</h3>
           <p>
-            Verbinden Sie Microsoft 365 einmal und fügen Sie danach mehrere
-            Support-Postfächer hinzu. Jedes Ticket bleibt beim ursprünglichen
-            Postfach.
+            {tn(
+              "Verbinde Microsoft 365 einmal und füge danach mehrere Support-Postfächer hinzu. Jedes Ticket bleibt beim ursprünglichen Postfach.",
+              "Verbinden Sie Microsoft 365 einmal und fügen Sie danach mehrere Support-Postfächer hinzu. Jedes Ticket bleibt beim ursprünglichen Postfach.",
+            )}
           </p>
         </div>
         <Mail aria-hidden="true" size={23} />
@@ -793,8 +818,10 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
               role="status"
             >
               <AlertCircle aria-hidden="true" size={17} />
-              Die zentrale Microsoft-365-Verbindung von nextDesk ist noch nicht
-              vollständig eingerichtet. Bitte wenden Sie sich an Gross ICT.
+              {tn(
+                "Die zentrale Microsoft-365-Verbindung von nextDesk ist noch nicht vollständig eingerichtet. Bitte wende dich an Gross ICT.",
+                "Die zentrale Microsoft-365-Verbindung von nextDesk ist noch nicht vollständig eingerichtet. Bitte wenden Sie sich an Gross ICT.",
+              )}
             </p>
           ) : null}
           {!status.featureEnabled ? (
@@ -803,7 +830,10 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
               role="status"
             >
               <TriangleAlert aria-hidden="true" size={17} />
-              Aktivieren Sie zuerst den Funktionsschalter für E-Mail-Kanäle.
+              {tn(
+                "Aktiviere zuerst den Funktionsschalter für E-Mail-Kanäle.",
+                "Aktivieren Sie zuerst den Funktionsschalter für E-Mail-Kanäle.",
+              )}
             </p>
           ) : null}
 
@@ -864,9 +894,10 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
               </div>
             ) : (
               <p className="exchange-mail-settings__empty">
-                Noch keine Microsoft-365-Verbindung vorhanden. Melden Sie sich
-                mit dem Konto an, dem Sie in Exchange Zugriff auf die
-                Support-Postfächer geben.
+                {tn(
+                  "Noch keine Microsoft-365-Verbindung vorhanden. Melde dich mit dem Konto an, dem du in Exchange Zugriff auf die Support-Postfächer gibst.",
+                  "Noch keine Microsoft-365-Verbindung vorhanden. Melden Sie sich mit dem Konto an, dem Sie in Exchange Zugriff auf die Support-Postfächer geben.",
+                )}
               </p>
             )}
           </section>

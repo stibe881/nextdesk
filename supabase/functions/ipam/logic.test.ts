@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@1";
 import {
   changedFields,
@@ -66,8 +67,8 @@ Deno.test("validates prefixes, gateway and DHCP range", () => {
       return (error as Error).message;
     }
   };
-  assertEquals(message({ prefix: "10.20.30.5/24" }), "«10.20.30.5/24» ist keine Netzadresse. Meinten Sie 10.20.30.0/24?");
-  assertEquals(message({ prefix: "10.20.30.0" }), "Bitte geben Sie die Präfixlänge an (z. B. 10.20.30.0/24).");
+  assertEquals(message({ prefix: "10.20.30.5/24" }), msg("«10.20.30.5/24» ist keine Netzadresse. Meintest du 10.20.30.0/24?", "«10.20.30.5/24» ist keine Netzadresse. Meinten Sie 10.20.30.0/24?"));
+  assertEquals(message({ prefix: "10.20.30.0" }), msg("Bitte gib die Präfixlänge an (z. B. 10.20.30.0/24).", "Bitte geben Sie die Präfixlänge an (z. B. 10.20.30.0/24)."));
   assert(message({ prefix: "10.20.30.0/24", gateway: "10.20.31.1" })?.includes("liegt nicht im Subnetz"));
   assert(message({ prefix: "10.20.30.0/24", dhcpStart: "10.20.30.10" })?.includes("Beginn und Ende"));
   assert(message({ prefix: "10.20.30.0/24", dhcpStart: "10.20.30.20", dhcpEnd: "10.20.30.10" })?.includes("nach dessen Ende"));

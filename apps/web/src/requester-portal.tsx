@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -478,7 +479,10 @@ export function RequesterPortalPanel(props: {
       /\p{Cs}/u.test(next)
     ) {
       setAvailabilityNotice(
-        "Bitte geben Sie höchstens 300 gültige Zeichen für Ihre Erreichbarkeit ein.",
+        tn(
+          "Bitte gib höchstens 300 gültige Zeichen für deine Erreichbarkeit ein.",
+          "Bitte geben Sie höchstens 300 gültige Zeichen für Ihre Erreichbarkeit ein.",
+        ),
       );
       return;
     }
@@ -501,8 +505,14 @@ export function RequesterPortalPanel(props: {
       setAvailabilityDraft(saved ?? "");
       setAvailabilityNotice(
         saved
-          ? "Ihre Erreichbarkeit wurde gespeichert."
-          : "Ihre Erreichbarkeit wurde entfernt.",
+          ? tn(
+              "Deine Erreichbarkeit wurde gespeichert.",
+              "Ihre Erreichbarkeit wurde gespeichert.",
+            )
+          : tn(
+              "Deine Erreichbarkeit wurde entfernt.",
+              "Ihre Erreichbarkeit wurde entfernt.",
+            ),
       );
     } catch (error) {
       if (await requesterPortalUnavailable(error)) {
@@ -511,7 +521,10 @@ export function RequesterPortalPanel(props: {
         return;
       }
       setAvailabilityNotice(
-        "Die Erreichbarkeit konnte nicht gespeichert werden. Bitte versuchen Sie es später erneut.",
+        tn(
+          "Die Erreichbarkeit konnte nicht gespeichert werden. Bitte versuche es später erneut.",
+          "Die Erreichbarkeit konnte nicht gespeichert werden. Bitte versuchen Sie es später erneut.",
+        ),
       );
     } finally {
       setAvailabilitySaving(false);
@@ -552,8 +565,10 @@ export function RequesterPortalPanel(props: {
                 Alles Wichtige auf einen Blick
               </h2>
               <p>
-                Störungen, offene Freigaben, Ihre Geräte und Ihre Anfragen an
-                einem Ort.
+                {tn(
+                  "Störungen, offene Freigaben, deine Geräte und deine Anfragen an einem Ort.",
+                  "Störungen, offene Freigaben, Ihre Geräte und Ihre Anfragen an einem Ort.",
+                )}
               </p>
             </>
           )}
@@ -608,8 +623,10 @@ export function RequesterPortalPanel(props: {
           <div>
             <strong>Portal momentan nicht verfügbar</strong>
             <span>
-              Ihre persönlichen Angaben konnten nicht geladen werden. Bitte
-              versuchen Sie es später erneut.
+              {tn(
+                "Deine persönlichen Angaben konnten nicht geladen werden. Bitte versuche es später erneut.",
+                "Ihre persönlichen Angaben konnten nicht geladen werden. Bitte versuchen Sie es später erneut.",
+              )}
             </span>
           </div>
           <button
@@ -693,7 +710,12 @@ export function RequesterPortalPanel(props: {
               </span>
               <div>
                 <h3 id="requester-approvals-heading">Offene Freigaben</h3>
-                <p>Ihre noch ausstehenden Entscheidungen.</p>
+                <p>
+                  {tn(
+                    "Deine noch ausstehenden Entscheidungen.",
+                    "Ihre noch ausstehenden Entscheidungen.",
+                  )}
+                </p>
               </div>
             </div>
             {data?.approvals.length ? (
@@ -724,13 +746,18 @@ export function RequesterPortalPanel(props: {
               </ul>
             ) : (
               <p className="requester-portal__empty">
-                Keine offenen Freigaben. Sie müssen derzeit nichts bestätigen.
+                {tn(
+                  "Keine offenen Freigaben. Du musst derzeit nichts bestätigen.",
+                  "Keine offenen Freigaben. Sie müssen derzeit nichts bestätigen.",
+                )}
               </p>
             )}
             {onOpenTicket ? null : (
               <p className="requester-portal__hint">
-                Öffnen Sie die Ticketübersicht, um eine Freigabe im zugehörigen
-                Ticket zu bearbeiten.
+                {tn(
+                  "Öffne die Ticketübersicht, um eine Freigabe im zugehörigen Ticket zu bearbeiten.",
+                  "Öffnen Sie die Ticketübersicht, um eine Freigabe im zugehörigen Ticket zu bearbeiten.",
+                )}
               </p>
             )}
           </section>
@@ -745,7 +772,12 @@ export function RequesterPortalPanel(props: {
               </span>
               <div>
                 <h3 id="requester-devices-heading">Meine Geräte</h3>
-                <p>Aktuell Ihnen zugeordnete Geräte.</p>
+                <p>
+                  {tn(
+                    "Aktuell dir zugeordnete Geräte.",
+                    "Aktuell Ihnen zugeordnete Geräte.",
+                  )}
+                </p>
               </div>
             </div>
             {!data?.devicesAvailable ? (
@@ -754,7 +786,10 @@ export function RequesterPortalPanel(props: {
               </p>
             ) : data.devices.length === 0 ? (
               <p className="requester-portal__empty">
-                Derzeit ist Ihnen kein Gerät zugeordnet.
+                {tn(
+                  "Derzeit ist dir kein Gerät zugeordnet.",
+                  "Derzeit ist Ihnen kein Gerät zugeordnet.",
+                )}
               </p>
             ) : (
               <ul className="requester-portal__list requester-portal__device-list">
@@ -782,8 +817,10 @@ export function RequesterPortalPanel(props: {
                     Meine Erreichbarkeit
                   </h3>
                   <p>
-                    Teilen Sie dem Support mit, wann oder wie Sie gut erreichbar
-                    sind.
+                    {tn(
+                      "Teile dem Support mit, wann oder wie du gut erreichbar bist.",
+                      "Teilen Sie dem Support mit, wann oder wie Sie gut erreichbar sind.",
+                    )}
                   </p>
                 </div>
               </div>
@@ -807,7 +844,10 @@ export function RequesterPortalPanel(props: {
                 id="requester-availability-help"
               >
                 {availability
-                  ? "Löschen Sie den Text und speichern Sie, um den Hinweis zu entfernen."
+                  ? tn(
+                      "Lösche den Text und speichere, um den Hinweis zu entfernen.",
+                      "Löschen Sie den Text und speichern Sie, um den Hinweis zu entfernen.",
+                    )
                   : "Derzeit ist kein Hinweis hinterlegt."}
               </p>
               <div className="requester-portal__availability-actions">
@@ -851,7 +891,10 @@ export function RequesterPortalPanel(props: {
               </div>
               {departmentTickets.length === 0 ? (
                 <p className="requester-portal__empty">
-                  Für Ihre Abteilung sind keine Tickets sichtbar.
+                  {tn(
+                    "Für deine Abteilung sind keine Tickets sichtbar.",
+                    "Für Ihre Abteilung sind keine Tickets sichtbar.",
+                  )}
                 </p>
               ) : (
                 <ul className="requester-portal__department-list">
@@ -883,13 +926,19 @@ export function RequesterPortalPanel(props: {
                 </span>
                 <div>
                   <h3 id="requester-tickets-heading">Meine Tickets</h3>
-                  <p>Status und öffentlicher Verlauf Ihrer eigenen Anfragen.</p>
+                  <p>
+                    {tn(
+                      "Status und öffentlicher Verlauf deiner eigenen Anfragen.",
+                      "Status und öffentlicher Verlauf Ihrer eigenen Anfragen.",
+                    )}
+                  </p>
                 </div>
               </div>
               <p className="requester-portal__empty">
-                Ihre Tickets werden in der Ticketübersicht angezeigt. Dort sehen
-                Sie den Status in Klartext und können den öffentlichen Verlauf
-                eines Tickets öffnen.
+                {tn(
+                  "Deine Tickets werden in der Ticketübersicht angezeigt. Dort siehst du den Status in Klartext und kannst den öffentlichen Verlauf eines Tickets öffnen.",
+                  "Ihre Tickets werden in der Ticketübersicht angezeigt. Dort sehen Sie den Status in Klartext und können den öffentlichen Verlauf eines Tickets öffnen.",
+                )}
               </p>
             </section>
           )}

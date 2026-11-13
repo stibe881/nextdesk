@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Copy, KeyRound, LoaderCircle, Webhook } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -127,7 +128,10 @@ export function IpamApiSettings({ tenantId, canManage }: Props) {
       setSecret({
         title: `API-Schlüssel «${keyName.trim()}»`,
         value: data.secret,
-        hint: "Kopieren Sie den Schlüssel jetzt. Er wird nur dieses eine Mal angezeigt.",
+        hint: tn(
+          "Kopiere den Schlüssel jetzt. Er wird nur dieses eine Mal angezeigt.",
+          "Kopieren Sie den Schlüssel jetzt. Er wird nur dieses eine Mal angezeigt.",
+        ),
       });
       setKeyName("");
       setKeyWrite(false);

@@ -1,6 +1,8 @@
 // Text of e-mail notifications (same events as push notifications).
 // Pure: no database or network access, see notification-email.test.ts.
 
+import { type Formality, tone } from "./formality.ts";
+
 type Payload = Record<string, unknown>;
 
 export type NotificationEmailInput = {
@@ -8,6 +10,8 @@ export type NotificationEmailInput = {
   payload: Payload;
   ticketNumber: string | null;
   ticketSubject: string | null;
+  /** Form of address of the tenant; «du» when omitted. */
+  formality?: Formality;
 };
 
 export type NotificationEmailText = {
@@ -39,39 +43,93 @@ function day(value: unknown): string | null {
   return match ? `${match[3]}.${match[2]}.${match[1]}` : null;
 }
 
-const SHOP_EVENTS: Record<string, [string, string]> = {
-  approval_requested: [
-    "Freigabe für Bestellung",
-    "Eine Bestellung wartet auf Ihre Freigabe.",
-  ],
-  placed_for_you: [
-    "Bestellung für Sie erfasst",
-    "Der Support hat eine Bestellung für Sie erfasst.",
-  ],
-  submitted: ["Neue Bestellung", "Eine Bestellung ist eingegangen."],
-  approved: ["Bestellung freigegeben", "Ihre Bestellung wurde freigegeben."],
-  in_progress: [
-    "Bestellung in Bearbeitung",
-    "Ihre Bestellung wird vorbereitet.",
-  ],
-  ready: ["Bereit zur Abholung", "Ihre Bestellung liegt für Sie bereit."],
-  issued: ["Bestellung ausgegeben", "Ihre Bestellung wurde ausgegeben."],
-  returned: ["Rückgabe bestätigt", "Die Ausleihe wurde zurückgenommen."],
-  loan_due: [
-    "Ausleihe endet bald",
-    "Ihre Ausleihe endet in zwei Tagen. Bitte geben Sie das Gerät rechtzeitig zurück.",
-  ],
-  loan_overdue: [
-    "Ausleihe überfällig",
-    "Ihre Ausleihe ist überfällig. Bitte geben Sie das Gerät zurück.",
-  ],
-  approval_reminder: [
-    "Freigabe ausstehend",
-    "Eine Bestellung wartet noch auf Ihre Freigabe.",
-  ],
-  rejected: ["Bestellung abgelehnt", "Ihre Bestellung wurde abgelehnt."],
-  cancelled: ["Bestellung storniert", "Die Bestellung wurde storniert."],
-};
+function shopEvents(formality: Formality): Record<string, [string, string]> {
+  return {
+    approval_requested: [
+      "Freigabe für Bestellung",
+      tone(
+        formality,
+        "Eine Bestellung wartet auf deine Freigabe.",
+        "Eine Bestellung wartet auf Ihre Freigabe.",
+      ),
+    ],
+    placed_for_you: [
+      tone(formality, "Bestellung für dich erfasst", "Bestellung für Sie erfasst"),
+      tone(
+        formality,
+        "Der Support hat eine Bestellung für dich erfasst.",
+        "Der Support hat eine Bestellung für Sie erfasst.",
+      ),
+    ],
+    submitted: ["Neue Bestellung", "Eine Bestellung ist eingegangen."],
+    approved: [
+      "Bestellung freigegeben",
+      tone(
+        formality,
+        "Deine Bestellung wurde freigegeben.",
+        "Ihre Bestellung wurde freigegeben.",
+      ),
+    ],
+    in_progress: [
+      "Bestellung in Bearbeitung",
+      tone(
+        formality,
+        "Deine Bestellung wird vorbereitet.",
+        "Ihre Bestellung wird vorbereitet.",
+      ),
+    ],
+    ready: [
+      "Bereit zur Abholung",
+      tone(
+        formality,
+        "Deine Bestellung liegt für dich bereit.",
+        "Ihre Bestellung liegt für Sie bereit.",
+      ),
+    ],
+    issued: [
+      "Bestellung ausgegeben",
+      tone(
+        formality,
+        "Deine Bestellung wurde ausgegeben.",
+        "Ihre Bestellung wurde ausgegeben.",
+      ),
+    ],
+    returned: ["Rückgabe bestätigt", "Die Ausleihe wurde zurückgenommen."],
+    loan_due: [
+      "Ausleihe endet bald",
+      tone(
+        formality,
+        "Deine Ausleihe endet in zwei Tagen. Bitte gib das Gerät rechtzeitig zurück.",
+        "Ihre Ausleihe endet in zwei Tagen. Bitte geben Sie das Gerät rechtzeitig zurück.",
+      ),
+    ],
+    loan_overdue: [
+      "Ausleihe überfällig",
+      tone(
+        formality,
+        "Deine Ausleihe ist überfällig. Bitte gib das Gerät zurück.",
+        "Ihre Ausleihe ist überfällig. Bitte geben Sie das Gerät zurück.",
+      ),
+    ],
+    approval_reminder: [
+      "Freigabe ausstehend",
+      tone(
+        formality,
+        "Eine Bestellung wartet noch auf deine Freigabe.",
+        "Eine Bestellung wartet noch auf Ihre Freigabe.",
+      ),
+    ],
+    rejected: [
+      "Bestellung abgelehnt",
+      tone(
+        formality,
+        "Deine Bestellung wurde abgelehnt.",
+        "Ihre Bestellung wurde abgelehnt.",
+      ),
+    ],
+    cancelled: ["Bestellung storniert", "Die Bestellung wurde storniert."],
+  };
+}
 
 const INFRASTRUCTURE_REASONS: Record<string, string> = {
   warranty: "Die Garantie",
@@ -81,94 +139,149 @@ const INFRASTRUCTURE_REASONS: Record<string, string> = {
   replacement: "Der geplante Ersatz",
 };
 
-const TICKET_EVENTS: Record<string, [string, string]> = {
-  "ticket.assigned": [
-    "Ticket zugewiesen",
-    "Ihnen wurde ein Ticket zugewiesen.",
-  ],
-  "ticket.requester_reply": [
-    "Neue Nachricht",
-    "Die anfragende Person hat auf ein Ticket geantwortet.",
-  ],
-  "ticket.support_reply": [
-    "Antwort vom Support",
-    "Der Support hat auf Ihr Ticket geantwortet.",
-  ],
-  "ticket.requester_reminder": [
-    "Wir warten auf Ihre Antwort",
-    "Der Support braucht noch eine Rückmeldung von Ihnen.",
-  ],
-  "ticket.mention": [
-    "Sie wurden erwähnt",
-    "Sie wurden in einem Ticket erwähnt.",
-  ],
-  "ticket.supervisor_request": [
-    "Anfrage an Sie",
-    "Zu einem Ticket wird Ihre Einschätzung benötigt.",
-  ],
-  "ticket.supervisor_answer": [
-    "Antwort auf Ihre Anfrage",
-    "Ihre Rückfrage zu einem Ticket wurde beantwortet.",
-  ],
-  "ticket.resolved": ["Ticket gelöst", "Ein Ticket wurde als gelöst markiert."],
-  "ticket.kudos": [
-    "Lob von Kund:innen",
-    "Ein Ticket wurde sehr gut bewertet. Danke für Ihren Einsatz!",
-  ],
-  "ticket.approval.requested": [
-    "Freigabe benötigt",
-    "Eine Freigabe wartet auf Ihre Entscheidung.",
-  ],
-  "ticket.follow_up_due": [
-    "Wiedervorlage fällig",
-    "Eine Wiedervorlage ist fällig.",
-  ],
-  "ticket.rule_reminder": [
-    "Erinnerung",
-    "Ein Ticket braucht Ihre Aufmerksamkeit.",
-  ],
-  "ticket.vendor_reminder": [
-    "Drittanbieter nachfassen",
-    "Der Drittanbieter hat sich zu einem Ticket noch nicht gemeldet.",
-  ],
-  "ticket.children_done": [
-    "Teil-Tickets erledigt",
-    "Alle Teil-Tickets sind erledigt.",
-  ],
-  "ticket.escalation_opened": [
-    "Ticket eskaliert",
-    "Ein Ticket wurde eskaliert.",
-  ],
-  "ticket.security_report": [
-    "Phishing-Meldung",
-    "Eine verdächtige E-Mail wurde gemeldet.",
-  ],
-  "contract.deadline": [
-    "Vertragsfrist",
-    "Eine Vertragsfrist erfordert Ihre Aufmerksamkeit.",
-  ],
-  "inventory.low_stock": [
-    "Lagerunterbestand",
-    "Ein Artikel hat den Mindestbestand erreicht.",
-  ],
-  "inventory.reorder": [
-    "Nachbestellen",
-    "Ein Artikel hat den Mindestbestand erreicht. Bitte nachbestellen.",
-  ],
-  "inventory.count_due": ["Inventur fällig", "Eine Inventur ist fällig."],
-  "security.case_overdue": [
-    "Sicherheitsfall überfällig",
-    "Die Frist für das Urteil zu einem Sicherheitsfall ist abgelaufen. Bitte unter «Sicherheitsfälle» entscheiden.",
-  ],
-  "security.case_clicked": [
-    "Melder hat geklickt",
-    "Eine meldende Person hat angegeben, in der gemeldeten E-Mail einen Link oder Anhang geöffnet oder Daten eingegeben zu haben. Bitte Passwort zurücksetzen und Anmeldungen prüfen.",
-  ],
-  "security.campaign": [
-    "Phishing-Kampagne",
-    "Mehrere Personen haben dieselbe verdächtige E-Mail gemeldet.",
-  ],
-};
+function ticketEvents(
+  formality: Formality,
+): Record<string, [string, string]> {
+  return {
+    "ticket.assigned": [
+      "Ticket zugewiesen",
+      tone(
+        formality,
+        "Dir wurde ein Ticket zugewiesen.",
+        "Ihnen wurde ein Ticket zugewiesen.",
+      ),
+    ],
+    "ticket.requester_reply": [
+      "Neue Nachricht",
+      "Die anfragende Person hat auf ein Ticket geantwortet.",
+    ],
+    "ticket.support_reply": [
+      "Antwort vom Support",
+      tone(
+        formality,
+        "Der Support hat auf dein Ticket geantwortet.",
+        "Der Support hat auf Ihr Ticket geantwortet.",
+      ),
+    ],
+    "ticket.requester_reminder": [
+      tone(
+        formality,
+        "Wir warten auf deine Antwort",
+        "Wir warten auf Ihre Antwort",
+      ),
+      tone(
+        formality,
+        "Der Support braucht noch eine Rückmeldung von dir.",
+        "Der Support braucht noch eine Rückmeldung von Ihnen.",
+      ),
+    ],
+    "ticket.mention": [
+      tone(formality, "Du wurdest erwähnt", "Sie wurden erwähnt"),
+      tone(
+        formality,
+        "Du wurdest in einem Ticket erwähnt.",
+        "Sie wurden in einem Ticket erwähnt.",
+      ),
+    ],
+    "ticket.supervisor_request": [
+      tone(formality, "Anfrage an dich", "Anfrage an Sie"),
+      tone(
+        formality,
+        "Zu einem Ticket wird deine Einschätzung benötigt.",
+        "Zu einem Ticket wird Ihre Einschätzung benötigt.",
+      ),
+    ],
+    "ticket.supervisor_answer": [
+      tone(
+        formality,
+        "Antwort auf deine Anfrage",
+        "Antwort auf Ihre Anfrage",
+      ),
+      tone(
+        formality,
+        "Deine Rückfrage zu einem Ticket wurde beantwortet.",
+        "Ihre Rückfrage zu einem Ticket wurde beantwortet.",
+      ),
+    ],
+    "ticket.resolved": [
+      "Ticket gelöst",
+      "Ein Ticket wurde als gelöst markiert.",
+    ],
+    "ticket.kudos": [
+      "Lob von Kund:innen",
+      tone(
+        formality,
+        "Ein Ticket wurde sehr gut bewertet. Danke für deinen Einsatz!",
+        "Ein Ticket wurde sehr gut bewertet. Danke für Ihren Einsatz!",
+      ),
+    ],
+    "ticket.approval.requested": [
+      "Freigabe benötigt",
+      tone(
+        formality,
+        "Eine Freigabe wartet auf deine Entscheidung.",
+        "Eine Freigabe wartet auf Ihre Entscheidung.",
+      ),
+    ],
+    "ticket.follow_up_due": [
+      "Wiedervorlage fällig",
+      "Eine Wiedervorlage ist fällig.",
+    ],
+    "ticket.rule_reminder": [
+      "Erinnerung",
+      tone(
+        formality,
+        "Ein Ticket braucht deine Aufmerksamkeit.",
+        "Ein Ticket braucht Ihre Aufmerksamkeit.",
+      ),
+    ],
+    "ticket.vendor_reminder": [
+      "Drittanbieter nachfassen",
+      "Der Drittanbieter hat sich zu einem Ticket noch nicht gemeldet.",
+    ],
+    "ticket.children_done": [
+      "Teil-Tickets erledigt",
+      "Alle Teil-Tickets sind erledigt.",
+    ],
+    "ticket.escalation_opened": [
+      "Ticket eskaliert",
+      "Ein Ticket wurde eskaliert.",
+    ],
+    "ticket.security_report": [
+      "Phishing-Meldung",
+      "Eine verdächtige E-Mail wurde gemeldet.",
+    ],
+    "contract.deadline": [
+      "Vertragsfrist",
+      tone(
+        formality,
+        "Eine Vertragsfrist erfordert deine Aufmerksamkeit.",
+        "Eine Vertragsfrist erfordert Ihre Aufmerksamkeit.",
+      ),
+    ],
+    "inventory.low_stock": [
+      "Lagerunterbestand",
+      "Ein Artikel hat den Mindestbestand erreicht.",
+    ],
+    "inventory.reorder": [
+      "Nachbestellen",
+      "Ein Artikel hat den Mindestbestand erreicht. Bitte nachbestellen.",
+    ],
+    "inventory.count_due": ["Inventur fällig", "Eine Inventur ist fällig."],
+    "security.case_overdue": [
+      "Sicherheitsfall überfällig",
+      "Die Frist für das Urteil zu einem Sicherheitsfall ist abgelaufen. Bitte unter «Sicherheitsfälle» entscheiden.",
+    ],
+    "security.case_clicked": [
+      "Melder hat geklickt",
+      "Eine meldende Person hat angegeben, in der gemeldeten E-Mail einen Link oder Anhang geöffnet oder Daten eingegeben zu haben. Bitte Passwort zurücksetzen und Anmeldungen prüfen.",
+    ],
+    "security.campaign": [
+      "Phishing-Kampagne",
+      "Mehrere Personen haben dieselbe verdächtige E-Mail gemeldet.",
+    ],
+  };
+}
 
 const IPAM_TITLES: Record<string, string> = {
   "ipam.finding": "IP-Adressverwaltung",
@@ -181,6 +294,7 @@ export function notificationEmailText(
   input: NotificationEmailInput,
 ): NotificationEmailText {
   const { kind, payload } = input;
+  const formality = input.formality ?? "du";
   const ticket = input.ticketNumber
     ? `${input.ticketNumber}${input.ticketSubject ? ` · ${text(input.ticketSubject)}` : ""}`
     : null;
@@ -188,7 +302,7 @@ export function notificationEmailText(
   let lines: string[];
 
   if (kind.startsWith("shop.order.team_")) {
-    const team = text(payload.teamName, 120) ?? "Ihr Team";
+    const team = text(payload.teamName, 120) ?? tone(formality, "Dein Team", "Ihr Team");
     const until = day(payload.endDate);
     const daysLeft = Number(payload.daysLeft);
     if (kind === "shop.order.team_ready") {
@@ -215,7 +329,11 @@ export function notificationEmailText(
       title = `Team läuft ${when} ab: ${team}`;
       lines = [
         `Das Team «${team}» endet ${when}${until ? ` (${until})` : ""}.`,
-        "Möchten Sie es weiterführen? Verlängern Sie die Laufzeit um 1, 3, 6 oder 12 Monate unter «Teams». Ohne Verlängerung wird das Team nach Ablauf archiviert.",
+        tone(
+          formality,
+          "Möchtest du es weiterführen? Verlängere die Laufzeit um 1, 3, 6 oder 12 Monate unter «Teams». Ohne Verlängerung wird das Team nach Ablauf archiviert.",
+          "Möchten Sie es weiterführen? Verlängern Sie die Laufzeit um 1, 3, 6 oder 12 Monate unter «Teams». Ohne Verlängerung wird das Team nach Ablauf archiviert.",
+        ),
       ];
     } else {
       title = `Team archiviert: ${team}`;
@@ -224,7 +342,7 @@ export function notificationEmailText(
       ];
     }
   } else if (kind.startsWith("shop.order.")) {
-    const [shopTitle, shopBody] = SHOP_EVENTS[
+    const [shopTitle, shopBody] = shopEvents(formality)[
       kind.slice("shop.order.".length)
     ] ?? ["Shop", "Es gibt eine Neuigkeit zu einer Bestellung."];
     const number = text(payload.orderNumber, 40);
@@ -239,11 +357,19 @@ export function notificationEmailText(
         ? `Bereit zur Lieferung: ${number}`
         : "Bereit zur Lieferung";
       lines = [
-        `Ihre Bestellung ist bereit und wird an Ihren Arbeitsplatz gebracht${deskLocation ? `: ${deskLocation}` : ""}.`,
+        tone(
+          formality,
+          `Deine Bestellung ist bereit und wird an deinen Arbeitsplatz gebracht${deskLocation ? `: ${deskLocation}` : ""}.`,
+          `Ihre Bestellung ist bereit und wird an Ihren Arbeitsplatz gebracht${deskLocation ? `: ${deskLocation}` : ""}.`,
+        ),
       ];
     } else if (event === "ready" && payload.deliveryMethod === "pickup") {
       lines = [
-        "Ihre Bestellung liegt für Sie bereit.",
+        tone(
+          formality,
+          "Deine Bestellung liegt für dich bereit.",
+          "Ihre Bestellung liegt für Sie bereit.",
+        ),
         "Übergabe: Abholung beim Support.",
       ];
     } else if (
@@ -262,14 +388,22 @@ export function notificationEmailText(
     // Eskalationen (0314): an Vorgesetzte bzw. Stellvertretung.
     if (kind === "shop.order.loan_overdue" && payload.audience === "manager") {
       lines = [
-        "Eine Ausleihe einer Person aus Ihrem Team ist seit mehreren Tagen überfällig.",
+        tone(
+          formality,
+          "Eine Ausleihe einer Person aus deinem Team ist seit mehreren Tagen überfällig.",
+          "Eine Ausleihe einer Person aus Ihrem Team ist seit mehreren Tagen überfällig.",
+        ),
       ];
     } else if (
       kind === "shop.order.approval_reminder" &&
       (payload.audience === "deputy" || payload.audience === "manager")
     ) {
       lines = [
-        "Eine Bestellung wartet seit mehreren Tagen auf Freigabe. Sie erhalten diese Erinnerung als Stellvertretung.",
+        tone(
+          formality,
+          "Eine Bestellung wartet seit mehreren Tagen auf Freigabe. Du erhältst diese Erinnerung als Stellvertretung.",
+          "Eine Bestellung wartet seit mehreren Tagen auf Freigabe. Sie erhalten diese Erinnerung als Stellvertretung.",
+        ),
       ];
     }
   } else if (kind.startsWith("service_task.")) {
@@ -302,7 +436,11 @@ export function notificationEmailText(
       const agent = text(payload.agentName) ?? where ?? "Ein Netzwerkagent";
       lines = [
         `${agent} hat sich seit über zwei Stunden nicht gemeldet.`,
-        "Bitte prüfen Sie den Dienst auf dem Server. Details unter «IP-Adressen → Discovery».",
+        tone(
+          formality,
+          "Bitte prüfe den Dienst auf dem Server. Details unter «IP-Adressen → Discovery».",
+          "Bitte prüfen Sie den Dienst auf dem Server. Details unter «IP-Adressen → Discovery».",
+        ),
       ];
     } else if (kind === "ipam.reservation_expiring") {
       const until = day(payload.reservedUntil);
@@ -352,7 +490,11 @@ export function notificationEmailText(
         title = `Externe Störung: ${provider}${number ? ` (${number})` : ""}`;
         lines = [
           `${provider} meldet eine Störung: ${name}.`,
-          "Die Ursache liegt beim Anbieter, nicht in Ihrem Netz. Details unter «Störungen»; die Störung schliesst sich, sobald der Anbieter sie als behoben meldet.",
+          tone(
+            formality,
+            "Die Ursache liegt beim Anbieter, nicht in deinem Netz. Details unter «Störungen»; die Störung schliesst sich, sobald der Anbieter sie als behoben meldet.",
+            "Die Ursache liegt beim Anbieter, nicht in Ihrem Netz. Details unter «Störungen»; die Störung schliesst sich, sobald der Anbieter sie als behoben meldet.",
+          ),
         ];
       }
     } else
@@ -379,9 +521,15 @@ export function notificationEmailText(
     lines = ["Eine SLA-Frist eines Tickets ist betroffen."];
   } else if (kind.startsWith("ticket.watch.")) {
     title = "Änderung an beobachtetem Ticket";
-    lines = ["An einem Ticket, das Sie beobachten, hat sich etwas geändert."];
+    lines = [
+      tone(
+        formality,
+        "An einem Ticket, das du beobachtest, hat sich etwas geändert.",
+        "An einem Ticket, das Sie beobachten, hat sich etwas geändert.",
+      ),
+    ];
   } else {
-    const [eventTitle, eventBody] = TICKET_EVENTS[kind] ?? [
+    const [eventTitle, eventBody] = ticketEvents(formality)[kind] ?? [
       "Benachrichtigung",
       "Es gibt eine Neuigkeit in nextDesk.",
     ];
@@ -427,7 +575,12 @@ export function notificationEmailText(
             ? ` (${payload.riskScore})`
             : "";
         lines = [
-          "Eine verdächtige E-Mail wurde gemeldet. Sie wartet unter «Sicherheitsfälle» auf Ihr Urteil.",
+          tone(
+            formality,
+            // formality-ok: «Sie» ist hier das Pronomen für die E-Mail, keine Anrede.
+            "Eine verdächtige E-Mail wurde gemeldet. Sie wartet unter «Sicherheitsfälle» auf dein Urteil.",
+            "Eine verdächtige E-Mail wurde gemeldet. Sie wartet unter «Sicherheitsfälle» auf Ihr Urteil.",
+          ),
           ...(risk ? [`Automatische Risikoeinschätzung: ${risk}${score}`] : []),
         ];
       }
@@ -436,8 +589,11 @@ export function notificationEmailText(
 
   const message = lines.join("\n\n");
   if (ticket) lines.push(`Ticket: ${ticket}`);
-  const hint =
-    "Sie erhalten diese E-Mail, weil Sie diese Benachrichtigung in nextDesk unter «Persönliche Einstellungen → Benachrichtigungen» per E-Mail eingeschaltet haben.";
+  const hint = tone(
+    formality,
+    "Du erhältst diese E-Mail, weil du diese Benachrichtigung in nextDesk unter «Persönliche Einstellungen → Benachrichtigungen» per E-Mail eingeschaltet hast.",
+    "Sie erhalten diese E-Mail, weil Sie diese Benachrichtigung in nextDesk unter «Persönliche Einstellungen → Benachrichtigungen» per E-Mail eingeschaltet haben.",
+  );
   lines.push(hint);
   return {
     subject: input.ticketNumber ? `[${input.ticketNumber}] ${title}` : title,

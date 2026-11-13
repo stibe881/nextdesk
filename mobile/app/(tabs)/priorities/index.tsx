@@ -23,6 +23,7 @@ import {
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 function clock(value: string): string {
   return new Date(value).toLocaleTimeString("de-CH", {
@@ -140,8 +141,8 @@ export default function PrioritiesScreen() {
           <Text style={styles.title}>Meine Prioritäten</Text>
           <Text style={styles.subtitle}>
             {list?.rankedAt
-              ? `${list.source === "ai" ? "Von der KI priorisiert" : "Nach SLA, Priorität und Wartezeit sortiert"} um ${clock(list.rankedAt)}${list.hasManualOrder ? " · deine Anpassungen haben Vorrang" : ""}`
-              : "Deine zugewiesenen Tickets in sinnvoller Reihenfolge"}
+              ? `${list.source === "ai" ? "Von der KI priorisiert" : "Nach SLA, Priorität und Wartezeit sortiert"} um ${clock(list.rankedAt)}${list.hasManualOrder ? tn(" · deine Anpassungen haben Vorrang", " · Ihre Anpassungen haben Vorrang") : ""}`
+              : tn("Deine zugewiesenen Tickets in sinnvoller Reihenfolge", "Ihre zugewiesenen Tickets in sinnvoller Reihenfolge")}
           </Text>
         </View>
 
@@ -239,7 +240,7 @@ export default function PrioritiesScreen() {
             />
             <Text style={styles.emptyTitle}>Nichts offen</Text>
             <Text style={styles.emptyText}>
-              Dir sind keine offenen Tickets zugewiesen.
+              {tn("Dir sind keine offenen Tickets zugewiesen.", "Ihnen sind keine offenen Tickets zugewiesen.")}
             </Text>
           </View>
         ) : null}

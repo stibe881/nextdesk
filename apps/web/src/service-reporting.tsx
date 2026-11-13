@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -914,8 +915,10 @@ export function ServiceReporting({
                 Eigenen Bericht zusammenstellen
               </h2>
               <p>
-                Wählen Sie Titel und Abschnitte für die aktuelle, bereits
-                autorisiert geladene Auswertung.
+                {tn(
+                  "Wähle Titel und Abschnitte für die aktuelle, bereits autorisiert geladene Auswertung.",
+                  "Wählen Sie Titel und Abschnitte für die aktuelle, bereits autorisiert geladene Auswertung.",
+                )}
               </p>
             </div>
             <button
@@ -972,8 +975,10 @@ export function ServiceReporting({
         <section className="service-reporting__state" role="alert">
           <h2>Kein Zugriff auf Berichte</h2>
           <p>
-            Sie haben für diesen Mandanten keine Berechtigung, Service-Berichte
-            zu lesen.
+            {tn(
+              "Du hast für diesen Mandanten keine Berechtigung, Service-Berichte zu lesen.",
+              "Sie haben für diesen Mandanten keine Berechtigung, Service-Berichte zu lesen.",
+            )}
           </p>
         </section>
       ) : null}
@@ -990,7 +995,10 @@ export function ServiceReporting({
         <section className="service-reporting__state" role="alert">
           <h2>Bericht konnte nicht geladen werden</h2>
           <p>
-            Bitte prüfen Sie den Zeitraum oder versuchen Sie es später erneut.
+            {tn(
+              "Bitte prüfe den Zeitraum oder versuche es später erneut.",
+              "Bitte prüfen Sie den Zeitraum oder versuchen Sie es später erneut.",
+            )}
           </p>
         </section>
       ) : null}
@@ -1074,7 +1082,10 @@ export function ServiceReporting({
                       report.comparison.deflectedTickets,
                       formatNumber,
                     )}
-                    detail="Mit einem Artikel aus den Abteilungen Ihrer Teams oder ohne Abteilung gelöst, kein Ticket erstellt"
+                    detail={tn(
+                      "Mit einem Artikel aus den Abteilungen deiner Teams oder ohne Abteilung gelöst, kein Ticket erstellt",
+                      "Mit einem Artikel aus den Abteilungen Ihrer Teams oder ohne Abteilung gelöst, kein Ticket erstellt",
+                    )}
                     label="Vermiedene Tickets (Wissensdatenbank)"
                     value={formatNumber(report.deflectedTickets)}
                   />

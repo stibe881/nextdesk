@@ -769,7 +769,7 @@ const HANDLERS = {
         source(
           "microsoft365",
           "Microsoft 365",
-          "Alle Dienste Ihres Mandanten: Teams, Outlook/Exchange, OneDrive, SharePoint und weitere.",
+          "Alle Dienste deines Mandanten: Teams, Outlook/Exchange, OneDrive, SharePoint und weitere.",
           { requiresEntra: true, activeIncidents: 1 },
         ),
         source("github", "GitHub", "Offizielle Statusseite von GitHub."),
@@ -1333,7 +1333,7 @@ const HANDLERS = {
       {
         ticketId: "sec-40",
         ticketNumber: "ICT-2026-000040",
-        subject: "Ihre Lieferung konnte nicht zugestellt werden",
+        subject: "Deine Lieferung konnte nicht zugestellt werden",
         from: "info@paket-zustellung24.net",
         state: "triage",
         verdict: null,

@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import {
   SLA_REASON_REQUIRED_MESSAGE,
@@ -2900,7 +2901,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           error: {
             code: "internal_note_denied",
             message:
-              "Sie sind nicht berechtigt, interne Kommentare zu verfassen.",
+              msg(
+                "Du bist nicht berechtigt, interne Kommentare zu verfassen.",
+                "Sie sind nicht berechtigt, interne Kommentare zu verfassen.",
+              ),
           },
         },
         403,
@@ -2915,7 +2919,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           error: {
             code: "external_comment_denied",
             message:
-              "Sie sind nicht berechtigt, externe Portalantworten zu veröffentlichen.",
+              msg(
+                "Du bist nicht berechtigt, externe Portalantworten zu veröffentlichen.",
+                "Sie sind nicht berechtigt, externe Portalantworten zu veröffentlichen.",
+              ),
           },
         },
         403,

@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, LoaderCircle, Sparkles, X } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -119,9 +120,10 @@ export function TicketSolutionPrompt({
         Lösung als Wissensartikel speichern?
       </strong>
       <p>
-        Das Ticket ist abgeschlossen und noch mit keinem Wissensartikel
-        verknüpft. Die KI erstellt aus Betreff, Beschreibung und Verlauf einen
-        internen Entwurf, den Sie prüfen und veröffentlichen können.
+        {tn(
+          "Das Ticket ist abgeschlossen und noch mit keinem Wissensartikel verknüpft. Die KI erstellt aus Betreff, Beschreibung und Verlauf einen internen Entwurf, den du prüfen und veröffentlichen kannst.",
+          "Das Ticket ist abgeschlossen und noch mit keinem Wissensartikel verknüpft. Die KI erstellt aus Betreff, Beschreibung und Verlauf einen internen Entwurf, den Sie prüfen und veröffentlichen können.",
+        )}
       </p>
       {createdArticleId ? (
         <p>
@@ -375,8 +377,14 @@ export function TicketIncidentBanner({
       setProblemFormOpen(false);
       setNotice(
         linked === incident.tickets.length
-          ? `Der Fall wurde erstellt und mit ${linked} Tickets verknüpft. Sie finden ihn unter „Fälle“.`
-          : `Der Fall wurde erstellt und mit ${linked} von ${incident.tickets.length} Tickets verknüpft. Für die übrigen Tickets fehlt Ihnen die Berechtigung oder sie sind nicht mehr verfügbar.`,
+          ? tn(
+              `Der Fall wurde erstellt und mit ${linked} Tickets verknüpft. Du findest ihn unter „Fälle“.`,
+              `Der Fall wurde erstellt und mit ${linked} Tickets verknüpft. Sie finden ihn unter „Fälle“.`,
+            )
+          : tn(
+              `Der Fall wurde erstellt und mit ${linked} von ${incident.tickets.length} Tickets verknüpft. Für die übrigen Tickets fehlt dir die Berechtigung oder sie sind nicht mehr verfügbar.`,
+              `Der Fall wurde erstellt und mit ${linked} von ${incident.tickets.length} Tickets verknüpft. Für die übrigen Tickets fehlt Ihnen die Berechtigung oder sie sind nicht mehr verfügbar.`,
+            ),
       );
     } catch (nextError) {
       const status = errorStatus(nextError);
@@ -384,10 +392,19 @@ export function TicketIncidentBanner({
       setError(
         message ??
           (status === 403
-            ? "Sie sind nicht berechtigt, Fälle zu erstellen."
+            ? tn(
+                "Du bist nicht berechtigt, Fälle zu erstellen.",
+                "Sie sind nicht berechtigt, Fälle zu erstellen.",
+              )
             : status === 400 || status === 422
-              ? "Der Fall konnte für diese Abteilung nicht erstellt werden. Bitte erstellen Sie ihn unter „Fälle“."
-              : "Der Fall konnte nicht erstellt werden. Bitte versuchen Sie es erneut."),
+              ? tn(
+                  "Der Fall konnte für diese Abteilung nicht erstellt werden. Bitte erstelle ihn unter „Fälle“.",
+                  "Der Fall konnte für diese Abteilung nicht erstellt werden. Bitte erstellen Sie ihn unter „Fälle“.",
+                )
+              : tn(
+                  "Der Fall konnte nicht erstellt werden. Bitte versuche es erneut.",
+                  "Der Fall konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+                )),
       );
     } finally {
       setPending(null);
@@ -398,7 +415,10 @@ export function TicketIncidentBanner({
     if (!incident) return;
     setNoticeTitle(shorten(`Störung: ${subject}`, 240));
     setNoticeDescription(
-      "Wir haben mehrere Meldungen zu dieser Störung erhalten und prüfen die Ursache. Sie müssen kein weiteres Ticket erstellen; wir informieren Sie hier über den Stand.",
+      tn(
+        "Wir haben mehrere Meldungen zu dieser Störung erhalten und prüfen die Ursache. Du musst kein weiteres Ticket erstellen; wir informieren dich hier über den Stand.",
+        "Wir haben mehrere Meldungen zu dieser Störung erhalten und prüfen die Ursache. Sie müssen kein weiteres Ticket erstellen; wir informieren Sie hier über den Stand.",
+      ),
     );
     setNoticeFormOpen(true);
     setProblemFormOpen(false);
@@ -442,8 +462,14 @@ export function TicketIncidentBanner({
       setError(
         message ??
           (errorStatus(nextError) === 403
-            ? "Sie sind nicht berechtigt, Störungsmeldungen zu veröffentlichen."
-            : "Die Störungsmeldung konnte nicht veröffentlicht werden. Bitte versuchen Sie es erneut."),
+            ? tn(
+                "Du bist nicht berechtigt, Störungsmeldungen zu veröffentlichen.",
+                "Sie sind nicht berechtigt, Störungsmeldungen zu veröffentlichen.",
+              )
+            : tn(
+                "Die Störungsmeldung konnte nicht veröffentlicht werden. Bitte versuche es erneut.",
+                "Die Störungsmeldung konnte nicht veröffentlicht werden. Bitte versuchen Sie es erneut.",
+              )),
       );
     } finally {
       setPending(null);
@@ -538,7 +564,12 @@ export function TicketIncidentBanner({
           onSubmit={(event) => {
             event.preventDefault();
             if (!problemDepartmentId) {
-              setError("Bitte wählen Sie eine Abteilung.");
+              setError(
+                tn(
+                  "Bitte wähle eine Abteilung.",
+                  "Bitte wählen Sie eine Abteilung.",
+                ),
+              );
               return;
             }
             void createProblem(problemDepartmentId);

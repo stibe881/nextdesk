@@ -22,6 +22,7 @@ import { clearMobileWorkspace, nextDesk } from "@/lib/nextdesk-client";
 import { unregisterPushDeviceBeforeSignOut } from "@/lib/push-notifications";
 import { loadTenantBranding, type TenantBranding } from "@/lib/tenant-branding";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 /**
  * Antwortet die native Face-ID-/Gerätecode-Abfrage nicht, wird die Taste
@@ -142,14 +143,25 @@ export function DeviceProtection() {
         setLockState("unlocked");
       } else if (result.error === "timeout") {
         setMessage(
-          "Die Entsperrung hat nicht geantwortet. Bitte tippe erneut auf «Jetzt entsperren».",
+          tn(
+            "Die Entsperrung hat nicht geantwortet. Bitte tippe erneut auf «Jetzt entsperren».",
+            "Die Entsperrung hat nicht geantwortet. Bitte tippen Sie erneut auf «Jetzt entsperren».",
+          ),
         );
       } else {
-        setMessage("Entsperre nextDesk mit Face ID, Touch ID oder Gerätecode.");
+        setMessage(
+          tn(
+            "Entsperre nextDesk mit Face ID, Touch ID oder Gerätecode.",
+            "Entsperren Sie nextDesk mit Face ID, Touch ID oder Gerätecode.",
+          ),
+        );
       }
     } catch {
       setMessage(
-        "Der Geräteschutz konnte nicht gestartet werden. Bitte versuche es erneut.",
+        tn(
+          "Der Geräteschutz konnte nicht gestartet werden. Bitte versuche es erneut.",
+          "Der Geräteschutz konnte nicht gestartet werden. Bitte versuchen Sie es erneut.",
+        ),
       );
     } finally {
       checkingRef.current = false;
@@ -226,7 +238,10 @@ export function DeviceProtection() {
           <Text style={styles.copy}>
             {lockState === "checking-session"
               ? "Vertrauliche Arbeitsdaten werden erst nach der Sicherheitsprüfung angezeigt."
-              : "Entsperre deine aktuelle Sitzung, bevor vertrauliche Ticket- und Assetdaten angezeigt werden."}
+              : tn(
+                  "Entsperre deine aktuelle Sitzung, bevor vertrauliche Ticket- und Assetdaten angezeigt werden.",
+                  "Entsperren Sie Ihre aktuelle Sitzung, bevor vertrauliche Ticket- und Assetdaten angezeigt werden.",
+                )}
           </Text>
           {message ? <Text style={styles.message}>{message}</Text> : null}
           {lockState === "checking-session" ? (

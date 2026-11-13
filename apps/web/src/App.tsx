@@ -1,6 +1,6 @@
 import { useTicketHoverPreview } from "./ticket-hover-preview";
 import {
-  AGENT_TOUR,
+  agentTour,
   markTourSeen,
   OnboardingTour,
   tourSeen,
@@ -242,6 +242,7 @@ import {
 } from "./lib/workplace-first-navigation";
 import { nextExpandedAccordionId } from "./lib/navigation-accordion";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
+import { setFormality, tn } from "./lib/formality";
 import { loadServiceTaskAccess, ServiceTasks } from "./service-tasks";
 
 type Section =
@@ -725,7 +726,10 @@ function tenantFeatureFlagsFromResponse(
 
 function displayAuthError(message: string): string {
   if (message.toLocaleLowerCase("en-US").includes("email rate limit")) {
-    return "Zu viele Anmelde-E-Mails wurden für dieses Projekt versendet. Bitte warten Sie bis zu einer Stunde und fordern Sie danach nur einen neuen Magic Link an.";
+    return tn(
+      "Zu viele Anmelde-E-Mails wurden für dieses Projekt versendet. Bitte warte bis zu einer Stunde und fordere danach nur einen neuen Magic Link an.",
+      "Zu viele Anmelde-E-Mails wurden für dieses Projekt versendet. Bitte warten Sie bis zu einer Stunde und fordern Sie danach nur einen neuen Magic Link an.",
+    );
   }
   return message;
 }
@@ -1166,7 +1170,10 @@ function SupervisorRequestReply({
   if (state === "done") {
     return (
       <p className="notification-reply__done" role="status">
-        Antwort gespeichert. Sie steht als interne Notiz im Ticket.
+        {tn(
+          "Antwort gespeichert. Diese steht als interne Notiz im Ticket.",
+          "Antwort gespeichert. Sie steht als interne Notiz im Ticket.",
+        )}
       </p>
     );
   }
@@ -1232,7 +1239,10 @@ function baseNotificationPresentation(
   switch (notification.kind) {
     case "ticket.assigned":
       return {
-        description: `${ticketLabel} wurde dir zugewiesen.`,
+        description: tn(
+          `${ticketLabel} wurde dir zugewiesen.`,
+          `${ticketLabel} wurde Ihnen zugewiesen.`,
+        ),
         Icon: UserRound,
         title: "Ticket zugewiesen",
       };
@@ -1250,15 +1260,24 @@ function baseNotificationPresentation(
       };
     case "ticket.requester_reminder":
       return {
-        description: `${ticketLabel} wartet auf Ihre Rückmeldung. Ist Ihr Problem gelöst?`,
+        description: tn(
+          `${ticketLabel} wartet auf deine Rückmeldung. Ist dein Problem gelöst?`,
+          `${ticketLabel} wartet auf Ihre Rückmeldung. Ist Ihr Problem gelöst?`,
+        ),
         Icon: MessageSquareText,
-        title: "Erinnerung: Ihre Rückmeldung fehlt",
+        title: tn(
+          "Erinnerung: Deine Rückmeldung fehlt",
+          "Erinnerung: Ihre Rückmeldung fehlt",
+        ),
       };
     case "ticket.mention":
       return {
-        description: `Du wurdest in ${ticketLabel} erwähnt.`,
+        description: tn(
+          `Du wurdest in ${ticketLabel} erwähnt.`,
+          `Sie wurden in ${ticketLabel} erwähnt.`,
+        ),
         Icon: AtSign,
-        title: "Du wurdest erwähnt",
+        title: tn("Du wurdest erwähnt", "Sie wurden erwähnt"),
       };
     case "ticket.resolved":
       return {
@@ -1268,7 +1287,10 @@ function baseNotificationPresentation(
       };
     case "ticket.approval.requested":
       return {
-        description: `Für ${ticketLabel} wird deine Freigabe benötigt.`,
+        description: tn(
+          `Für ${ticketLabel} wird deine Freigabe benötigt.`,
+          `Für ${ticketLabel} wird Ihre Freigabe benötigt.`,
+        ),
         Icon: BadgeCheck,
         title: "Freigabe benötigt",
       };
@@ -1293,7 +1315,7 @@ function baseNotificationPresentation(
       return {
         description: `${askedBy} fragt zu ${ticketLabel}: ${question}`,
         Icon: MessageSquareText,
-        title: "Anfrage an dich",
+        title: tn("Anfrage an dich", "Anfrage an Sie"),
       };
     }
     case "ticket.supervisor_answer": {
@@ -1305,7 +1327,7 @@ function baseNotificationPresentation(
       return {
         description: `${answeredBy} zu ${ticketLabel}: ${answer}`,
         Icon: MessageSquareText,
-        title: "Antwort auf deine Anfrage",
+        title: tn("Antwort auf deine Anfrage", "Antwort auf Ihre Anfrage"),
       };
     }
     case "infrastructure.due": {
@@ -1425,7 +1447,7 @@ function baseNotificationPresentation(
       const open = notificationPayloadNumber(notification, "openTickets");
       const overdue = notificationPayloadNumber(notification, "overdueTickets");
       return {
-        description: `${agent}${department ? ` (${department})` : ""} trägt ${open ?? "viele"} offene Tickets${overdue ? `, davon ${overdue} mit überschrittener SLA` : ""}. Prüfen Sie eine Umverteilung.`,
+        description: `${agent}${department ? ` (${department})` : ""} trägt ${open ?? "viele"} offene Tickets${overdue ? `, davon ${overdue} mit überschrittener SLA` : ""}. ${tn("Prüfe eine Umverteilung.", "Prüfen Sie eine Umverteilung.")}`,
         Icon: AlertTriangle,
         title: "Frühwarnung: Überlastung",
       };
@@ -1607,7 +1629,10 @@ function baseNotificationPresentation(
       };
       const note = notificationPayloadText(notification, "note", 2000);
       return {
-        description: `Du vertrittst ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Wiedervorlagen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
+        description: tn(
+          `Du vertrittst ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Wiedervorlagen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
+          `Sie vertreten ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Wiedervorlagen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
+        ),
         Icon: UserRound,
         title: "Stellvertretung beginnt",
       };
@@ -1615,7 +1640,7 @@ function baseNotificationPresentation(
     case "delegation.ended": {
       const delegate =
         notificationPayloadText(notification, "delegateName", 200) ??
-        "Deine Stellvertretung";
+        tn("Deine Stellvertretung", "Ihre Stellvertretung");
       const count = (key: string) => {
         const value = isRecord(notification.payload)
           ? notification.payload[key]
@@ -1623,7 +1648,10 @@ function baseNotificationPresentation(
         return typeof value === "number" ? value : 0;
       };
       return {
-        description: `Willkommen zurück! ${delegate} hat ${count("handledTickets")} deiner Tickets bearbeitet, ${count("resolvedTickets")} wurden gelöst. Offen: ${count("openTickets")}.`,
+        description: tn(
+          `Willkommen zurück! ${delegate} hat ${count("handledTickets")} deiner Tickets bearbeitet, ${count("resolvedTickets")} wurden gelöst. Offen: ${count("openTickets")}.`,
+          `Willkommen zurück! ${delegate} hat ${count("handledTickets")} Ihrer Tickets bearbeitet, ${count("resolvedTickets")} wurden gelöst. Offen: ${count("openTickets")}.`,
+        ),
         Icon: UserRound,
         title: "Stellvertretung beendet",
       };
@@ -1635,7 +1663,10 @@ function baseNotificationPresentation(
         const shopTitles: Record<string, string> = {
           "shop.order.approval_requested": "Freigabe für Bestellung",
           "shop.order.submitted": "Neue Bestellung",
-          "shop.order.placed_for_you": "Bestellung für dich erfasst",
+          "shop.order.placed_for_you": tn(
+            "Bestellung für dich erfasst",
+            "Bestellung für Sie erfasst",
+          ),
           "shop.order.approved": "Bestellung freigegeben",
           "shop.order.in_progress": "Bestellung in Bearbeitung",
           "shop.order.ready": "Bereit zur Abholung",
@@ -1722,7 +1753,10 @@ function baseNotificationPresentation(
       return {
         description: ticketNumber
           ? `Neue Benachrichtigung zu ${ticketLabel}.`
-          : "Neue Benachrichtigung in deinem Mandanten.",
+          : tn(
+              "Neue Benachrichtigung in deinem Mandanten.",
+              "Neue Benachrichtigung in Ihrem Mandanten.",
+            ),
         Icon: Bell,
         title: "Benachrichtigung",
       };
@@ -1833,7 +1867,9 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
     const name = fullName.trim().replace(/\s+/g, " ");
     if (name.length < 2) {
       setStatus("error");
-      setMessage("Bitte geben Sie Ihren Namen ein.");
+      setMessage(
+        tn("Bitte gib deinen Namen ein.", "Bitte geben Sie Ihren Namen ein."),
+      );
       return;
     }
     if (password.length < 8) {
@@ -1854,7 +1890,10 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
     if (error) {
       setStatus("error");
       setMessage(
-        "Das Konto konnte nicht erstellt werden. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut.",
+        tn(
+          "Das Konto konnte nicht erstellt werden. Bitte prüfe deine Angaben und versuche es erneut.",
+          "Das Konto konnte nicht erstellt werden. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut.",
+        ),
       );
       return;
     }
@@ -1877,7 +1916,10 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
     }
     setStatus("sent");
     setMessage(
-      "Fast geschafft: Wir haben Ihnen eine E-Mail gesendet. Bestätigen Sie Ihre Adresse über den Link und erstellen Sie danach Ihren Arbeitsbereich. Ist die Adresse bereits registriert, enthält die E-Mail stattdessen einen Anmeldelink.",
+      tn(
+        "Fast geschafft: Wir haben dir eine E-Mail gesendet. Bestätige deine Adresse über den Link und erstelle danach deinen Arbeitsbereich. Ist die Adresse bereits registriert, enthält die E-Mail stattdessen einen Anmeldelink.",
+        "Fast geschafft: Wir haben Ihnen eine E-Mail gesendet. Bestätigen Sie Ihre Adresse über den Link und erstellen Sie danach Ihren Arbeitsbereich. Ist die Adresse bereits registriert, enthält die E-Mail stattdessen einen Anmeldelink.",
+      ),
     );
   }
 
@@ -1893,7 +1935,10 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
     if (error) {
       setStatus("error");
       setMessage(
-        "Die Anmeldung war nicht möglich. Bitte prüfen Sie E-Mail-Adresse und Passwort.",
+        tn(
+          "Die Anmeldung war nicht möglich. Bitte prüfe E-Mail-Adresse und Passwort.",
+          "Die Anmeldung war nicht möglich. Bitte prüfen Sie E-Mail-Adresse und Passwort.",
+        ),
       );
       return;
     }
@@ -1921,7 +1966,10 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
     if (error) {
       setStatus("error");
       setMessage(
-        "Gross-ICT-SSO ist noch nicht in Supabase eingerichtet. Hinterlegen Sie zuerst die Entra-App-Registrierung.",
+        tn(
+          "Gross-ICT-SSO ist noch nicht in Supabase eingerichtet. Hinterlege zuerst die Entra-App-Registrierung.",
+          "Gross-ICT-SSO ist noch nicht in Supabase eingerichtet. Hinterlegen Sie zuerst die Entra-App-Registrierung.",
+        ),
       );
     }
   }
@@ -1945,7 +1993,10 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
 
     setStatus("sent");
     setMessage(
-      "Der Anmeldelink wurde versendet. Öffnen Sie ihn in diesem Browser.",
+      tn(
+        "Der Anmeldelink wurde versendet. Öffne ihn in diesem Browser.",
+        "Der Anmeldelink wurde versendet. Öffnen Sie ihn in diesem Browser.",
+      ),
     );
   }
 
@@ -1954,13 +2005,24 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
       <AccessShell>
         <p className="eyebrow">KONTO ERSTELLEN</p>
         <h2>
-          Ihr eigener
-          <br />
-          Arbeitsbereich.
+          {tn(
+            <>
+              Dein eigener
+              <br />
+              Arbeitsbereich.
+            </>,
+            <>
+              Ihr eigener
+              <br />
+              Arbeitsbereich.
+            </>,
+          )}
         </h2>
         <p className="access-lead">
-          Auch ohne Firma: Erstellen Sie ein Konto, verwalten Sie Ihre Tickets
-          und laden Sie Teammitglieder zur Zusammenarbeit ein.
+          {tn(
+            "Auch ohne Firma: Erstelle ein Konto, verwalte deine Tickets und lade Teammitglieder zur Zusammenarbeit ein.",
+            "Auch ohne Firma: Erstellen Sie ein Konto, verwalten Sie Ihre Tickets und laden Sie Teammitglieder zur Zusammenarbeit ein.",
+          )}
         </p>
         <form className="access-form" onSubmit={register}>
           <label>
@@ -2007,9 +2069,18 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
             {status === "sending" ? "Konto wird erstellt …" : "Konto erstellen"}
           </button>
           <p className="access-legal">
-            Mit der Registrierung akzeptieren Sie die{" "}
-            <a href={PRIVACY_URL}>Datenschutzerklärung</a>. Ihr Konto können Sie
-            jederzeit in den persönlichen Einstellungen löschen.
+            {tn(
+              <>
+                Mit der Registrierung akzeptierst du die{" "}
+                <a href={PRIVACY_URL}>Datenschutzerklärung</a>. Dein Konto
+                kannst du jederzeit in den persönlichen Einstellungen löschen.
+              </>,
+              <>
+                Mit der Registrierung akzeptieren Sie die{" "}
+                <a href={PRIVACY_URL}>Datenschutzerklärung</a>. Ihr Konto können
+                Sie jederzeit in den persönlichen Einstellungen löschen.
+              </>,
+            )}
           </p>
           <button
             className="access-toggle"
@@ -2034,9 +2105,18 @@ function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
     <AccessShell>
       <p className="eyebrow">KUNDEN-LOGIN</p>
       <h2>
-        Sicher in Ihre
-        <br />
-        Servicezentrale.
+        {tn(
+          <>
+            Sicher in deine
+            <br />
+            Servicezentrale.
+          </>,
+          <>
+            Sicher in Ihre
+            <br />
+            Servicezentrale.
+          </>,
+        )}
       </h2>
       <p className="access-lead">
         Organisationen melden sich über ihr Unternehmens-SSO an und werden
@@ -2164,7 +2244,10 @@ function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
     const trimmed = name.trim().replace(/\s+/g, " ");
     if (trimmed.length < 2) {
       setMessage(
-        "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein.",
+        tn(
+          "Bitte gib einen Namen mit mindestens zwei Zeichen ein.",
+          "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein.",
+        ),
       );
       return;
     }
@@ -2187,7 +2270,10 @@ function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
   async function removeAccount() {
     if (
       !window.confirm(
-        "Konto endgültig löschen? Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht.",
+        tn(
+          "Konto endgültig löschen? Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht.",
+          "Konto endgültig löschen? Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht.",
+        ),
       )
     )
       return;
@@ -2211,11 +2297,10 @@ function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
       <p className="eyebrow">WILLKOMMEN BEI NEXTDESK</p>
       <h2>Arbeitsbereich erstellen.</h2>
       <p className="access-lead">
-        Ihr Konto gehört noch zu keiner Organisation. Erstellen Sie Ihren
-        eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten.
-        Teammitglieder laden Sie danach unter Einstellungen → Benutzer ein.
-        Wurden Sie von einem Team eingeladen, öffnen Sie den Link aus der
-        Einladungs-E-Mail.
+        {tn(
+          "Dein Konto gehört noch zu keiner Organisation. Erstelle deinen eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten. Teammitglieder lädst du danach unter Einstellungen → Benutzer ein. Wurdest du von einem Team eingeladen, öffne den Link aus der Einladungs-E-Mail.",
+          "Ihr Konto gehört noch zu keiner Organisation. Erstellen Sie Ihren eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten. Teammitglieder laden Sie danach unter Einstellungen → Benutzer ein. Wurden Sie von einem Team eingeladen, öffnen Sie den Link aus der Einladungs-E-Mail.",
+        )}
       </p>
       <form className="access-form" onSubmit={submit}>
         <label>
@@ -2828,15 +2913,30 @@ function TicketList({
           {hasActiveFilters
             ? "Keine Tickets entsprechen den aktiven Filtern."
             : onCreateTicket
-              ? "Ihre Ticketliste ist bereit."
-              : "Aktuell liegen keine Tickets in Ihrer Queue."}
+              ? tn(
+                  "Deine Ticketliste ist bereit.",
+                  "Ihre Ticketliste ist bereit.",
+                )
+              : tn(
+                  "Aktuell liegen keine Tickets in deiner Queue.",
+                  "Aktuell liegen keine Tickets in Ihrer Queue.",
+                )}
         </strong>
         <span>
           {hasActiveFilters
-            ? "Passen Sie Suche oder Queue an oder setzen Sie alle Filter zurück."
+            ? tn(
+                "Passe Suche oder Queue an oder setze alle Filter zurück.",
+                "Passen Sie Suche oder Queue an oder setzen Sie alle Filter zurück.",
+              )
             : onCreateTicket
-              ? "Erfassen Sie den ersten Vorgang, damit er priorisiert und nachvollziehbar bearbeitet werden kann."
-              : "Prüfen Sie später erneut oder wechseln Sie zu einer anderen Queue."}
+              ? tn(
+                  "Erfasse den ersten Vorgang, damit er priorisiert und nachvollziehbar bearbeitet werden kann.",
+                  "Erfassen Sie den ersten Vorgang, damit er priorisiert und nachvollziehbar bearbeitet werden kann.",
+                )
+              : tn(
+                  "Prüfe später erneut oder wechsle zu einer anderen Queue.",
+                  "Prüfen Sie später erneut oder wechseln Sie zu einer anderen Queue.",
+                )}
         </span>
         {hasActiveFilters && onClearFilters ? (
           <button onClick={onClearFilters} type="button">
@@ -3024,8 +3124,10 @@ function TicketListDetailPreview({
         <p className="eyebrow">DETAIL</p>
         <h3>Ticket auswählen</h3>
         <p>
-          Wählen Sie ein Ticket aus der Liste, um die Zusammenfassung hier zu
-          sehen.
+          {tn(
+            "Wähle ein Ticket aus der Liste, um die Zusammenfassung hier zu sehen.",
+            "Wählen Sie ein Ticket aus der Liste, um die Zusammenfassung hier zu sehen.",
+          )}
         </p>
       </aside>
     );
@@ -3077,8 +3179,10 @@ function TicketListDetailPreview({
         </div>
       </dl>
       <p className="ticket-list-detail__hint">
-        Diese Übersicht ändert nichts am Ticket. Öffnen Sie die vollständige
-        Detailansicht für bestätigte Bearbeitungsschritte.
+        {tn(
+          "Diese Übersicht ändert nichts am Ticket. Öffne die vollständige Detailansicht für bestätigte Bearbeitungsschritte.",
+          "Diese Übersicht ändert nichts am Ticket. Öffnen Sie die vollständige Detailansicht für bestätigte Bearbeitungsschritte.",
+        )}
       </p>
       <button className="primary-button" onClick={onOpenFull} type="button">
         Vollständige Details öffnen
@@ -3602,7 +3706,10 @@ function AuthenticatedApp() {
         setTenantLoadError(
           await functionErrorMessage(
             error,
-            "Ihre Anmeldung konnte keinem berechtigten Mandanten zugeordnet werden. Bitte wenden Sie sich an die Mandantenadministration.",
+            tn(
+              "Deine Anmeldung konnte keinem berechtigten Mandanten zugeordnet werden. Bitte wende dich an die Mandantenadministration.",
+              "Ihre Anmeldung konnte keinem berechtigten Mandanten zugeordnet werden. Bitte wenden Sie sich an die Mandantenadministration.",
+            ),
           ),
         );
       })
@@ -3933,7 +4040,7 @@ function AuthenticatedApp() {
     void Promise.all([
       supabase
         .from("tenant_settings")
-        .select("portal_name")
+        .select("portal_name, formality")
         .eq("tenant_id", activeTenant.id)
         .maybeSingle(),
       supabase
@@ -3946,6 +4053,7 @@ function AuthenticatedApp() {
         if (settingsResult.error) throw settingsResult.error;
         if (brandingResult.error) throw brandingResult.error;
         if (!mounted) return;
+        setFormality(settingsResult.data?.formality === "sie" ? "sie" : "du");
         const portalName = settingsResult.data?.portal_name?.trim();
         setTenantWorkspaceBranding({
           accentColor: usableBrandColor(brandingResult.data?.accent_color),
@@ -4001,7 +4109,10 @@ function AuthenticatedApp() {
         setErrorMessage(
           await functionErrorMessage(
             error,
-            "Gespeicherte Ticketansichten konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+            tn(
+              "Gespeicherte Ticketansichten konnten nicht geladen werden. Bitte versuche es erneut.",
+              "Gespeicherte Ticketansichten konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+            ),
           ),
         );
       })
@@ -4557,7 +4668,10 @@ function AuthenticatedApp() {
         setErrorMessage(
           await functionErrorMessage(
             error,
-            "Die Ticketübersicht konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+            tn(
+              "Die Ticketübersicht konnte nicht geladen werden. Bitte versuche es erneut.",
+              "Die Ticketübersicht konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+            ),
           ),
         );
       })
@@ -7109,7 +7223,10 @@ function AuthenticatedApp() {
                     setTicketActionStatus(
                       cleanupPending > 0
                         ? `${deleted} Tickets wurden gelöscht. Die Bereinigung von ${cleanupPending} Dateianhängen ist protokolliert.`
-                        : `${deleted} Tickets wurden in den Papierkorb verschoben. Sie lassen sich 90 Tage lang über den Filter «Gelöschte Tickets» wiederherstellen.`,
+                        : tn(
+                            `${deleted} Tickets wurden in den Papierkorb verschoben. Diese lassen sich 90 Tage lang über den Filter «Gelöschte Tickets» wiederherstellen.`,
+                            `${deleted} Tickets wurden in den Papierkorb verschoben. Sie lassen sich 90 Tage lang über den Filter «Gelöschte Tickets» wiederherstellen.`,
+                          ),
                     );
                   }}
                   onClearSelection={clearTicketSelection}
@@ -7182,10 +7299,20 @@ function AuthenticatedApp() {
                   <div>
                     <strong>Aktive Suche</strong>
                     <span>
-                      Nutzen Sie z. B. <code>status:offen</code>,{" "}
-                      <code>prio:hoch</code>, <code>queue:ict</code>,{" "}
-                      <code>sla:kritisch</code>, <code>sla:pausiert</code> oder{" "}
-                      <code>agent:mir</code>.
+                      {tn(
+                        <>
+                          Nutze z. B. <code>status:offen</code>,{" "}
+                          <code>prio:hoch</code>, <code>queue:ict</code>,{" "}
+                          <code>sla:kritisch</code>, <code>sla:pausiert</code>{" "}
+                          oder <code>agent:mir</code>.
+                        </>,
+                        <>
+                          Nutzen Sie z. B. <code>status:offen</code>,{" "}
+                          <code>prio:hoch</code>, <code>queue:ict</code>,{" "}
+                          <code>sla:kritisch</code>, <code>sla:pausiert</code>{" "}
+                          oder <code>agent:mir</code>.
+                        </>,
+                      )}
                     </span>
                   </div>
                   <div
@@ -7568,7 +7695,7 @@ function AuthenticatedApp() {
             if (session?.user.id) markTourSeen(session.user.id, true);
           }}
           onNavigate={navigateForTour}
-          steps={AGENT_TOUR}
+          steps={agentTour()}
         />
       ) : null}
       {workspaceLiveMessage &&
@@ -7629,8 +7756,10 @@ function AuthenticatedApp() {
               </button>
             </header>
             <p>
-              Die Kürzel sind in Eingabefeldern deaktiviert, damit Sie ungestört
-              suchen und schreiben können.
+              {tn(
+                "Die Kürzel sind in Eingabefeldern deaktiviert, damit du ungestört suchen und schreiben kannst.",
+                "Die Kürzel sind in Eingabefeldern deaktiviert, damit Sie ungestört suchen und schreiben können.",
+              )}
             </p>
             <dl>
               <div>
@@ -7927,7 +8056,12 @@ function AuthenticatedApp() {
         <aside className="ticket-success-toast" aria-live="polite">
           <CheckCircle2 aria-hidden="true" size={24} strokeWidth={1.8} />
           <div>
-            <strong>Ihr Entwurf wurde gespeichert</strong>
+            <strong>
+              {tn(
+                "Dein Entwurf wurde gespeichert",
+                "Ihr Entwurf wurde gespeichert",
+              )}
+            </strong>
             <span>
               Beim nächsten Öffnen von «Ticket erfassen» ist er wieder da.
             </span>
@@ -8242,8 +8376,10 @@ function BulkTicketStatusActions({
       <div>
         <strong>{selectedTicketIds.size} Tickets ausgewählt</strong>
         <span>
-          Der Status wird nur gesetzt, wenn Sie für jedes Ticket berechtigt
-          sind.
+          {tn(
+            "Der Status wird nur gesetzt, wenn du für jedes Ticket berechtigt bist.",
+            "Der Status wird nur gesetzt, wenn Sie für jedes Ticket berechtigt sind.",
+          )}
         </span>
       </div>
       <label>
@@ -8349,9 +8485,10 @@ function BulkTicketStatusActions({
               {deleteTicketIds.length} Tickets löschen?
             </strong>
             <p>
-              Die Tickets kommen in den Papierkorb und sind nirgends mehr
-              sichtbar. Sie lassen sich 90 Tage lang wiederherstellen und werden
-              danach endgültig entfernt.
+              {tn(
+                "Die Tickets kommen in den Papierkorb und sind nirgends mehr sichtbar. Diese lassen sich 90 Tage lang wiederherstellen und werden danach endgültig entfernt.",
+                "Die Tickets kommen in den Papierkorb und sind nirgends mehr sichtbar. Sie lassen sich 90 Tage lang wiederherstellen und werden danach endgültig entfernt.",
+              )}
             </p>
           </div>
           <div className="ticket-bulk-actions__confirmation-buttons">
@@ -8505,7 +8642,12 @@ function SavedTicketViews({
 
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setErrorMessage("Bitte geben Sie einen Namen für die Ansicht ein.");
+      setErrorMessage(
+        tn(
+          "Bitte gib einen Namen für die Ansicht ein.",
+          "Bitte geben Sie einen Namen für die Ansicht ein.",
+        ),
+      );
       return;
     }
 
@@ -8548,7 +8690,10 @@ function SavedTicketViews({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Ansicht konnte nicht gespeichert werden. Prüfen Sie Name und Berechtigung.",
+          tn(
+            "Die Ansicht konnte nicht gespeichert werden. Prüfe Name und Berechtigung.",
+            "Die Ansicht konnte nicht gespeichert werden. Prüfen Sie Name und Berechtigung.",
+          ),
         ),
       );
     } finally {
@@ -8597,7 +8742,12 @@ function SavedTicketViews({
       <div className="saved-ticket-views__heading">
         <div>
           <p className="eyebrow">GESPEICHERTE ANSICHTEN</p>
-          <p>Eigene Ansichten und Ansichten, die Ihr Team mit Ihnen teilt.</p>
+          <p>
+            {tn(
+              "Eigene Ansichten und Ansichten, die dein Team mit dir teilt.",
+              "Eigene Ansichten und Ansichten, die Ihr Team mit Ihnen teilt.",
+            )}
+          </p>
         </div>
       </div>
       <div className="saved-ticket-views__picker">
@@ -8952,8 +9102,10 @@ function TicketListFilters({
                 <p className="eyebrow">TICKETLISTE</p>
                 <h2 id="ticket-list-filter-heading">Filter &amp; Sortierung</h2>
                 <p id="ticket-list-filter-description">
-                  Verfeinern Sie die sichtbaren Tickets nach den gewünschten
-                  Kriterien.
+                  {tn(
+                    "Verfeinere die sichtbaren Tickets nach den gewünschten Kriterien.",
+                    "Verfeinern Sie die sichtbaren Tickets nach den gewünschten Kriterien.",
+                  )}
                 </p>
               </div>
               <button

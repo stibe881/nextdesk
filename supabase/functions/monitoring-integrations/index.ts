@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 
@@ -190,7 +191,7 @@ async function requireTenantAdmin(
     throw new HttpError(
       403,
       "forbidden",
-      "Für die Monitoring-Einstellungen fehlt Ihnen die Berechtigung.",
+      msg("Für die Monitoring-Einstellungen fehlt dir die Berechtigung.", msg("Für die Monitoring-Einstellungen fehlt dir die Berechtigung.", "Für die Monitoring-Einstellungen fehlt Ihnen die Berechtigung.")),
     );
   }
 }

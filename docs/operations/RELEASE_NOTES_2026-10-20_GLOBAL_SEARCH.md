@@ -6,7 +6,7 @@
 
 ## Ausgeliefert
 
-Die Suche in der Kopfzeile der Übersicht ist nun eine globale Volltextsuche für den aktiven Mandanten. Sie findet berechtigte Treffer aus Tickets, persönlichen Wiedervorlagen, Wissensartikeln, Veranstaltungsräumen im navigierbaren Planungsfenster und Eintritten. Treffer führen direkt zu ihrem Ziel; je nach Bereich wird der weiterhin berechtigte Eintrag gezielt nachgeladen oder sichtbar hervorgehoben.
+Die Suche in der Kopfzeile der Übersicht ist nun eine globale Volltextsuche für den aktiven Mandanten. Diese findet berechtigte Treffer aus Tickets, persönlichen Wiedervorlagen, Wissensartikeln, Veranstaltungsräumen im navigierbaren Planungsfenster und Eintritten. Treffer führen direkt zu ihrem Ziel; je nach Bereich wird der weiterhin berechtigte Eintrag gezielt nachgeladen oder sichtbar hervorgehoben.
 
 ## Zugriffsschutz und Datenminimierung
 

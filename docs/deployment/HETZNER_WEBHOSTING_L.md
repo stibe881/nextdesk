@@ -4,7 +4,7 @@
 
 Hetzner Webhosting L kann die React-Weboberfläche ausliefern, eigene Domains und TLS verwalten, SSH-Zugang bereitstellen sowie Node.js-Anwendungen dauerhaft pro Domain betreiben. Node.js wird in konsoleH für eine Domain aktiviert; dabei werden andere Webanwendungen wie PHP oder statisches HTML auf **dieser** Domain deaktiviert. Für TicketHub ist daher eine Trennung in `app.<domain>` für die React-App und `api.<domain>` für ein Node-Backend sinnvoll.[1] [2]
 
-Webhosting L besitzt keinen Root-Zugang und kein Docker. Die vorhandene Supabase-Architektur ist deshalb nicht unverändert auf Webhosting L übertragbar: Sie beruht auf PostgreSQL, datenbankseitigem RLS, PostgreSQL-Funktionen, Supabase Auth, Private Storage, Realtime und Edge Functions. Hetzners Webhosting-Dokumentation nennt Apache, PHP/CGI und optionales Node.js, aber keine selbst verwaltbare PostgreSQL-/Supabase-Laufzeit.[1] [2]
+Webhosting L besitzt keinen Root-Zugang und kein Docker. Die vorhandene Supabase-Architektur ist deshalb nicht unverändert auf Webhosting L übertragbar: Diese beruht auf PostgreSQL, datenbankseitigem RLS, PostgreSQL-Funktionen, Supabase Auth, Private Storage, Realtime und Edge Functions. Hetzners Webhosting-Dokumentation nennt Apache, PHP/CGI und optionales Node.js, aber keine selbst verwaltbare PostgreSQL-/Supabase-Laufzeit.[1] [2]
 
 ## Zwei gangbare Zielbilder
 
@@ -12,7 +12,7 @@ Webhosting L besitzt keinen Root-Zugang und kein Docker. Die vorhandene Supabase
 
 Die React-Anwendung und ein Node-Backend laufen auf Hetzner. Das Backend kapselt alle privilegierten Aktionen, etwa Plattform-Eigentümerverwaltung, GitHub-Deploy-Auslösung und Integrationen. Supabase in Zürich bleibt für PostgreSQL-RLS, Auth und Storage bestehen. Damit bleiben die vorhandenen Migrationen, Berechtigungsmodell und Mandantenisolation nutzbar.
 
-Diese Variante erfüllt **nicht** den Wunsch, jeden Dienst von Supabase zu Hetzner zu verschieben. Sie ist jedoch die einzige Variante, die auf Webhosting L ohne Neuimplementierung des sicherheitskritischen Backends realistisch und risikoarm betrieben werden kann.
+Diese Variante erfüllt **nicht** den Wunsch, jeden Dienst von Supabase zu Hetzner zu verschieben. Diese ist jedoch die einzige Variante, die auf Webhosting L ohne Neuimplementierung des sicherheitskritischen Backends realistisch und risikoarm betrieben werden kann.
 
 ### Vollständiger Hetzner-Umzug: Backend neu bauen oder Hetzner-Server einsetzen
 
@@ -29,7 +29,7 @@ Für die empfohlene Übergangsarchitektur:
 
 1. `app.<domain>` liefert den mit Vite erzeugten statischen Ordner `apps/web/dist` über Apache aus.
 2. `api.<domain>` erhält in konsoleH die Node.js-Konfiguration mit einem langlebigen Node-Prozess. Nur diese Subdomain wird für Node.js aktiviert.
-3. Der Node-Prozess erhält seine Secrets ausschließlich als konsoleH-Umgebungsvariablen. Dazu zählen Supabase-Service-Role-Key, GitHub-Dispatch-Token, CORS-Origin und E-Mail-/Integrationssecrets. Sie gehören nie in das React-Bundle oder Git.
+3. Der Node-Prozess erhält seine Secrets ausschließlich als konsoleH-Umgebungsvariablen. Dazu zählen Supabase-Service-Role-Key, GitHub-Dispatch-Token, CORS-Origin und E-Mail-/Integrationssecrets. Diese gehören nie in das React-Bundle oder Git.
 4. GitHub Actions baut die Website und lädt das Ergebnis per SFTP/SSH auf `app.<domain>` hoch. SSH ist bei Webhosting L verfügbar, läuft über Port `222` und sollte mit einem SSH-Key des Haupt-FTP-Benutzers abgesichert werden.[3]
 5. Wiederkehrende, kurze Aufgaben laufen über konsoleH-Cronjobs. Das Mindestintervall beträgt eine Minute; ressourcenintensive Jobs können beendet werden. Dauerhafte Worker, Malware-Scans oder eine Queue gehören daher nicht in Webhosting L.[4]
 

@@ -1,3 +1,4 @@
+import { getFormality, tn } from "./lib/formality";
 import { Bot, BookOpen, Check, LoaderCircle, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -121,7 +122,7 @@ export function PortalAssistantPanel({
           tenantId,
           sessionId,
           departmentId,
-          address: "formal",
+          address: getFormality() === "sie" ? "formal" : "informal",
           messages: history,
         }),
       );
@@ -182,8 +183,10 @@ export function PortalAssistantPanel({
         <div>
           <h3 id="portal-assistant-heading">Mit dem Assistenten lösen</h3>
           <p className="data-caption">
-            Beschreiben Sie Ihr Problem. Der Assistent sucht passende Artikel
-            und bereitet bei Bedarf ein Ticket für Sie vor.
+            {tn(
+              "Beschreibe dein Problem. Der Assistent sucht passende Artikel und bereitet bei Bedarf ein Ticket für dich vor.",
+              "Beschreiben Sie Ihr Problem. Der Assistent sucht passende Artikel und bereitet bei Bedarf ein Ticket für Sie vor.",
+            )}
           </p>
         </div>
         <button
@@ -204,7 +207,7 @@ export function PortalAssistantPanel({
               key={`${index}-${message.role}`}
             >
               <span className="sr-only">
-                {message.role === "user" ? "Sie: " : "Assistent: "}
+                {message.role === "user" ? tn("Du: ", "Sie: ") : "Assistent: "}
               </span>
               {message.text}
             </li>
@@ -276,7 +279,9 @@ export function PortalAssistantPanel({
       {canAnswer ? (
         <div className="portal-assistant__form">
           <label className="sr-only" htmlFor="portal-assistant-input">
-            {turn?.question ? "Ihre Antwort" : "Ihr Problem"}
+            {turn?.question
+              ? tn("Deine Antwort", "Ihre Antwort")
+              : tn("Dein Problem", "Ihr Problem")}
           </label>
           <textarea
             disabled={busy}
@@ -291,7 +296,7 @@ export function PortalAssistantPanel({
             }}
             placeholder={
               turn?.question
-                ? "Ihre Antwort …"
+                ? tn("Deine Antwort …", "Ihre Antwort …")
                 : "z. B. «Mein Laptop verbindet sich nicht mit dem WLAN.»"
             }
             ref={inputRef}

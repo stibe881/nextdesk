@@ -1,3 +1,5 @@
+import { type Formality, tone } from "./formality.ts";
+
 export type CustomerTicketEmailKind =
   | "acknowledgement"
   | "agent_reply"
@@ -72,6 +74,8 @@ type CustomerTicketEmailInput = {
   replyHint?: string;
   /** Overrides the small heading above the headline. */
   eyebrow?: string;
+  /** Form of address of the tenant; «du» when omitted. */
+  formality?: Formality;
 };
 
 type EmailPresentation = {
@@ -150,28 +154,50 @@ export function normalizeCustomerTicketEmailBranding(
   };
 }
 
-function presentation(kind: CustomerTicketEmailKind): EmailPresentation {
+function presentation(
+  kind: CustomerTicketEmailKind,
+  formality: Formality,
+): EmailPresentation {
+  const replyHint = tone(
+    formality,
+    "Du kannst direkt auf diese E-Mail antworten. Bitte lass die Ticketnummer im Betreff stehen.",
+    "Sie können direkt auf diese E-Mail antworten. Bitte lassen Sie die Ticketnummer im Betreff stehen.",
+  );
+  const openHint = tone(
+    formality,
+    "Ist noch etwas offen? Antworte direkt auf diese E-Mail. Bitte lass die Ticketnummer im Betreff stehen.",
+    "Ist noch etwas offen? Antworten Sie direkt auf diese E-Mail. Bitte lassen Sie die Ticketnummer im Betreff stehen.",
+  );
   switch (kind) {
     case "acknowledgement":
       return {
         eyebrow: "Ticket erfasst",
-        intro: "Ihre Anfrage ist eingegangen.",
-        replyHint:
-          "Sie können direkt auf diese E-Mail antworten. Bitte lassen Sie die Ticketnummer im Betreff stehen.",
+        intro: tone(
+          formality,
+          "Deine Anfrage ist eingegangen.",
+          "Ihre Anfrage ist eingegangen.",
+        ),
+        replyHint,
       };
     case "resolution":
       return {
         eyebrow: "Ticket gelöst",
-        intro: "Ihr Ticket wurde als gelöst markiert.",
-        replyHint:
-          "Ist noch etwas offen? Antworten Sie direkt auf diese E-Mail. Bitte lassen Sie die Ticketnummer im Betreff stehen.",
+        intro: tone(
+          formality,
+          "Dein Ticket wurde als gelöst markiert.",
+          "Ihr Ticket wurde als gelöst markiert.",
+        ),
+        replyHint: openHint,
       };
     case "rating_reminder":
       return {
-        eyebrow: "Ihre Meinung zählt",
-        intro: "Wie zufrieden waren Sie mit dem Support?",
-        replyHint:
-          "Ist noch etwas offen? Antworten Sie direkt auf diese E-Mail. Bitte lassen Sie die Ticketnummer im Betreff stehen.",
+        eyebrow: tone(formality, "Deine Meinung zählt", "Ihre Meinung zählt"),
+        intro: tone(
+          formality,
+          "Wie zufrieden warst du mit dem Support?",
+          "Wie zufrieden waren Sie mit dem Support?",
+        ),
+        replyHint: openHint,
       };
     case "test":
       return {
@@ -184,22 +210,40 @@ function presentation(kind: CustomerTicketEmailKind): EmailPresentation {
       return {
         eyebrow: "Benachrichtigung",
         intro: "Es gibt eine Neuigkeit.",
-        replyHint: "Bitte antworten Sie nicht auf diese E-Mail.",
+        replyHint: tone(
+          formality,
+          "Bitte antworte nicht auf diese E-Mail.",
+          "Bitte antworten Sie nicht auf diese E-Mail.",
+        ),
       };
     case "security_notice":
       return {
         eyebrow: "Sicherheit",
-        intro: "Nachricht zu Ihrer Phishing-Meldung",
-        replyHint:
+        intro: tone(
+          formality,
+          "Nachricht zu deiner Phishing-Meldung",
+          "Nachricht zu Ihrer Phishing-Meldung",
+        ),
+        replyHint: tone(
+          formality,
+          "Bitte antworte nicht auf diese E-Mail. Bei Fragen wende dich an den Support.",
           "Bitte antworten Sie nicht auf diese E-Mail. Bei Fragen wenden Sie sich an den Support.",
+        ),
       };
     case "agent_reply":
     default:
       return {
-        eyebrow: "Neue Nachricht zu Ihrem Ticket",
-        intro: "Sie haben eine neue Antwort erhalten.",
-        replyHint:
-          "Sie können direkt auf diese E-Mail antworten. Bitte lassen Sie die Ticketnummer im Betreff stehen.",
+        eyebrow: tone(
+          formality,
+          "Neue Nachricht zu deinem Ticket",
+          "Neue Nachricht zu Ihrem Ticket",
+        ),
+        intro: tone(
+          formality,
+          "Du hast eine neue Antwort erhalten.",
+          "Sie haben eine neue Antwort erhalten.",
+        ),
+        replyHint,
       };
   }
 }
@@ -321,6 +365,7 @@ function actionsHtml(
 function ratingHtml(
   links: readonly CustomerTicketEmailRatingLink[] | undefined,
   branding: CustomerTicketEmailBrand,
+  formality: Formality,
 ): string {
   const safe = (links ?? []).filter(
     (link) =>
@@ -337,7 +382,7 @@ function ratingHtml(
         `<td align="center" width="44" style="padding:0 4px;"><a href="${escapeHtml(link.url)}" title="${link.score} von 5 Sternen" style="display:block;width:44px;height:44px;border:1px solid #F2CD74;border-radius:10px;background-color:#FFF8E1;color:#F2A900;${FONT}font-size:28px;line-height:44px;text-align:center;text-decoration:none;">&#9733;</a></td>`,
     )
     .join("");
-  return `<p style="margin:18px 0 10px;color:${branding.secondaryColor};${FONT}font-size:16px;font-weight:700;line-height:22px;text-align:center;">Wie zufrieden waren Sie?</p><table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;"><tr>${stars}</tr></table><p style="margin:10px 0 0;color:#607089;${FONT}font-size:12px;line-height:18px;text-align:center;">1 Stern bedeutet unzufrieden, 5 Sterne sehr zufrieden. Der Link ist persönlich und 14 Tage gültig.</p>`;
+  return `<p style="margin:18px 0 10px;color:${branding.secondaryColor};${FONT}font-size:16px;font-weight:700;line-height:22px;text-align:center;">${tone(formality, "Wie zufrieden warst du?", "Wie zufrieden waren Sie?")}</p><table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;"><tr>${stars}</tr></table><p style="margin:10px 0 0;color:#607089;${FONT}font-size:12px;line-height:18px;text-align:center;">1 Stern bedeutet unzufrieden, 5 Sterne sehr zufrieden. Der Link ist persönlich und 14 Tage gültig.</p>`;
 }
 
 function noticeHtml(
@@ -379,16 +424,31 @@ function noticeHtml(
 }
 
 /** Headline per kind; kinds without own title show the subject line. */
-function headline(kind: CustomerTicketEmailKind): string | null {
+function headline(
+  kind: CustomerTicketEmailKind,
+  formality: Formality,
+): string | null {
   switch (kind) {
     case "acknowledgement":
-      return "Wir haben Ihre Anfrage erhalten";
+      return tone(
+        formality,
+        "Wir haben deine Anfrage erhalten",
+        "Wir haben Ihre Anfrage erhalten",
+      );
     case "agent_reply":
-      return "Neue Antwort zu Ihrem Ticket";
+      return tone(
+        formality,
+        "Neue Antwort zu deinem Ticket",
+        "Neue Antwort zu Ihrem Ticket",
+      );
     case "resolution":
-      return "Ihr Ticket ist gelöst";
+      return tone(formality, "Dein Ticket ist gelöst", "Ihr Ticket ist gelöst");
     case "rating_reminder":
-      return "Bitte bewerten Sie den Support";
+      return tone(
+        formality,
+        "Bitte bewerte den Support",
+        "Bitte bewerten Sie den Support",
+      );
     default:
       return null;
   }
@@ -403,7 +463,8 @@ export function renderCustomerTicketEmail(
   input: CustomerTicketEmailInput,
 ): string {
   const branding = normalizeCustomerTicketEmailBranding(input.branding);
-  const base = presentation(input.kind);
+  const formality = input.formality ?? "du";
+  const base = presentation(input.kind, formality);
   const copy = {
     ...base,
     eyebrow: input.eyebrow ?? base.eyebrow,
@@ -411,13 +472,13 @@ export function renderCustomerTicketEmail(
     replyHint: input.replyHint ?? base.replyHint,
   };
   const ticketNumber = input.ticketNumber;
-  const title = headline(input.kind);
+  const title = headline(input.kind, formality);
   const ticketLine = ticketNumber
     ? title
       ? `${escapeHtml(ticketNumber)} · ${escapeHtml(input.subject)}`
       : `Ticket ${escapeHtml(ticketNumber)}`
     : "";
-  const stars = ratingHtml(input.ratingLinks, branding);
+  const stars = ratingHtml(input.ratingLinks, branding, formality);
   const action = primaryActionOf(input.primaryAction);
   const topAction =
     !stars && action
@@ -432,7 +493,8 @@ export function renderCustomerTicketEmail(
       ? `<tr><td align="center" style="padding:0 32px 20px;">${buttonHtml(action.label, action.url, { background: "#FFFFFF", border: branding.primaryColor, foreground: branding.primaryColor })}</td></tr>`
       : "";
   const attachmentNotice = input.attachmentNotice
-    ? `<tr><td style="padding:0 32px 20px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#FFF8E8" style="border:1px solid #F2CD74;border-radius:10px;background-color:#FFF8E8;"><tr><td style="padding:14px 16px;color:#6F4E12;${FONT}font-size:13px;line-height:19px;"><strong>Anhänge im Portal</strong><br>Einige Anhänge sind für den E-Mail-Versand zu gross. Sie stehen im Ticketportal bereit.</td></tr></table></td></tr>`
+    ? // formality-ok: «Sie» steht hier für die Anhänge, keine Anrede.
+       `<tr><td style="padding:0 32px 20px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#FFF8E8" style="border:1px solid #F2CD74;border-radius:10px;background-color:#FFF8E8;"><tr><td style="padding:14px 16px;color:#6F4E12;${FONT}font-size:13px;line-height:19px;"><strong>Anhänge im Portal</strong><br>Einige Anhänge sind für den E-Mail-Versand zu gross. Sie stehen im Ticketportal bereit.</td></tr></table></td></tr>`
     : "";
   const notice =
     input.kind === "security_notice" ? "" : noticeHtml(input.notice, branding);

@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
 
@@ -19,7 +20,7 @@ type CheckResult = {
   requiredRoles: string[];
 };
 
-const STATE_TEXT: Record<string, { ok: boolean; text: string }> = {
+const stateText = (): Record<string, { ok: boolean; text: string }> => ({
   ok: { ok: true, text: "Verbindung in Ordnung: alle Rechte sind erteilt." },
   guest_role_missing: {
     ok: false,
@@ -31,11 +32,17 @@ const STATE_TEXT: Record<string, { ok: boolean; text: string }> = {
   },
   not_consented: {
     ok: false,
-    text: "Die nextDesk-App ist in Ihrem Microsoft-Mandanten noch nicht freigegeben. Der Microsoft-Admin muss die Zustimmung erteilen.",
+    text: tn(
+      "Die nextDesk-App ist in deinem Microsoft-Mandanten noch nicht freigegeben. Der Microsoft-Admin muss die Zustimmung erteilen.",
+      "Die nextDesk-App ist in Ihrem Microsoft-Mandanten noch nicht freigegeben. Der Microsoft-Admin muss die Zustimmung erteilen.",
+    ),
   },
   sso_missing: {
     ok: false,
-    text: "SSO mit Ihrer eigenen Microsoft-Tenant-ID ist noch nicht eingerichtet.",
+    text: tn(
+      "SSO mit deiner eigenen Microsoft-Tenant-ID ist noch nicht eingerichtet.",
+      "SSO mit Ihrer eigenen Microsoft-Tenant-ID ist noch nicht eingerichtet.",
+    ),
   },
   platform_not_configured: {
     ok: false,
@@ -49,7 +56,7 @@ const STATE_TEXT: Record<string, { ok: boolean; text: string }> = {
     ok: false,
     text: "Microsoft ist gerade nicht erreichbar. Bitte später erneut prüfen.",
   },
-};
+});
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
   if (!supabase) throw new Error("nextDesk ist nicht konfiguriert.");
@@ -135,7 +142,7 @@ export function TeamsSettings({ tenantId }: { tenantId: string }) {
     );
   }
   const result = check
-    ? (STATE_TEXT[check.state] ?? { ok: false, text: "Unbekanntes Ergebnis." })
+    ? (stateText()[check.state] ?? { ok: false, text: "Unbekanntes Ergebnis." })
     : null;
   const link = check?.consentUrl ?? view.consentUrl;
 
@@ -173,7 +180,10 @@ export function TeamsSettings({ tenantId }: { tenantId: string }) {
             <em>
               {view.ssoConfigured
                 ? "Die Plattform hat noch keine Microsoft-App hinterlegt."
-                : "Zuerst SSO mit Ihrer Tenant-ID einrichten."}
+                : tn(
+                    "Zuerst SSO mit deiner Tenant-ID einrichten.",
+                    "Zuerst SSO mit Ihrer Tenant-ID einrichten.",
+                  )}
             </em>
           )}
         </li>

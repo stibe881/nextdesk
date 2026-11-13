@@ -1,6 +1,6 @@
 # Verifizierte Architekturquellen
 
-Die folgenden Quellen wurden am 16. Oktober 2026 für die Phase-1-Architektur geprüft. Sie sind keine Freigabe für Konfigurationen; Verfügbarkeit und Preispläne werden vor Produktionssetzung erneut verifiziert.
+Die folgenden Quellen wurden am 16. Oktober 2026 für die Phase-1-Architektur geprüft. Diese sind keine Freigabe für Konfigurationen; Verfügbarkeit und Preispläne werden vor Produktionssetzung erneut verifiziert.
 
 1. [Supabase Available regions](https://supabase.com/docs/guides/platform/regions): nennt Central Europe (Zurich) als spezifische Region `eu-central-2` und erläutert, dass Regionswahl Datenresidenz steuert, aber Compliance nicht nachweist.
 2. [Supabase Regional Invocations](https://supabase.com/docs/guides/functions/regional-invocation): führt `eu-central-2` als Region für Edge-Function-Aufrufe auf und dokumentiert `x-region` bzw. den SDK-Regionparameter.

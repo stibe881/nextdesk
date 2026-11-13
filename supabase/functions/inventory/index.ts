@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import {
   resolveTenantFeatureStatesCached,
@@ -3194,7 +3195,7 @@ export function itemDepartmentChange(
       throw new HttpError(
         422,
         "invalid_department",
-        "Bitte wählen Sie eine Abteilung.",
+        msg("Bitte wähle eine Abteilung.", "Bitte wählen Sie eine Abteilung."),
       );
     }
   } else if (action.operation !== "create") {

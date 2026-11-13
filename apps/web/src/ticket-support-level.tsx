@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -192,8 +193,10 @@ export function TicketSupportLevel({
 
       {state.currentLevel === null && !state.ticketClosed ? (
         <p className="ticket-support-level__muted">
-          Das Ticket ist keinem Team mit Supportstufe zugewiesen. Weisen Sie es
-          einem Stufen-Team zu, um es später übergeben zu können.
+          {tn(
+            "Das Ticket ist keinem Team mit Supportstufe zugewiesen. Weise es einem Stufen-Team zu, um es später übergeben zu können.",
+            "Das Ticket ist keinem Team mit Supportstufe zugewiesen. Weisen Sie es einem Stufen-Team zu, um es später übergeben zu können.",
+          )}
         </p>
       ) : null}
 
@@ -336,7 +339,12 @@ function HandoverDialog({
   async function submit() {
     setTouched(true);
     if (!teamId) {
-      setError(`Bitte wählen Sie ein Team der Stufe ${label}.`);
+      setError(
+        tn(
+          `Bitte wähle ein Team der Stufe ${label}.`,
+          `Bitte wählen Sie ein Team der Stufe ${label}.`,
+        ),
+      );
       return;
     }
     if (noteError) return;

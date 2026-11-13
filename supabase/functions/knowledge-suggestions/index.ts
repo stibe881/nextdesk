@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import {
@@ -143,7 +144,7 @@ async function requireKnowledgeManager(
     throw new HttpError(503, "authorization_check_failed", "Die Berechtigung konnte nicht geprüft werden.");
   }
   if (permission.data !== true) {
-    throw new HttpError(403, "article_manage_denied", "Für Artikelvorschläge fehlt Ihnen die Berechtigung zur Wissensverwaltung.");
+    throw new HttpError(403, "article_manage_denied", msg("Für Artikelvorschläge fehlt dir die Berechtigung zur Wissensverwaltung.", msg("Für Artikelvorschläge fehlt dir die Berechtigung zur Wissensverwaltung.", "Für Artikelvorschläge fehlt Ihnen die Berechtigung zur Wissensverwaltung.")));
   }
   if (features === null) {
     throw new HttpError(503, "tenant_feature_lookup_failed", "Die Module konnten nicht geprüft werden.");
@@ -523,7 +524,7 @@ async function draft(
     throw new HttpError(
       409,
       "draft_in_progress",
-      "Für diesen Vorschlag wird gerade ein Entwurf erstellt. Bitte warten Sie einen Moment.",
+      msg("Für diesen Vorschlag wird gerade ein Entwurf erstellt. Bitte warte einen Moment.", msg("Für diesen Vorschlag wird gerade ein Entwurf erstellt. Bitte warte einen Moment.", "Für diesen Vorschlag wird gerade ein Entwurf erstellt. Bitte warten Sie einen Moment.")),
     );
   }
   let response: Response | null = null;
@@ -588,7 +589,7 @@ async function draftClaimed(
   const visible = new Map(((ticketRows ?? []) as Row[]).map((row) => [String(row.id), row]));
   const visibleIds = clusterIds.filter((id) => visible.has(id));
   if (!visibleIds.length) {
-    throw new HttpError(404, "tickets_not_found", "Die Tickets dieses Vorschlags sind für Sie nicht verfügbar.");
+    throw new HttpError(404, "tickets_not_found", msg("Die Tickets dieses Vorschlags sind für dich nicht verfügbar.", msg("Die Tickets dieses Vorschlags sind für dich nicht verfügbar.", "Die Tickets dieses Vorschlags sind für Sie nicht verfügbar.")));
   }
   const sourceIds = visibleIds.slice(0, MAX_SOURCE_TICKETS);
   const { data: comments, error: commentError } = await client

@@ -35,6 +35,7 @@ import {
 } from "@/lib/security-cases";
 import { useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 const DATE_TIME = new Intl.DateTimeFormat("de-CH", {
   dateStyle: "short",
@@ -297,9 +298,7 @@ export default function PhishingCaseScreen() {
           <View style={styles.errorCard}>
             <Ionicons color={colors.error} name="warning-outline" size={19} />
             <Text style={styles.errorText}>
-              Jemand hat geklickt. Sitzungen widerrufen, Passwort-Reset
-              erzwingen und Gerät scannen kannst du im Web unter «Kontext und
-              Massnahmen».
+              {tn("Jemand hat geklickt. Sitzungen widerrufen, Passwort-Reset erzwingen und Gerät scannen kannst du im Web unter «Kontext und Massnahmen».", "Jemand hat geklickt. Sitzungen widerrufen, Passwort-Reset erzwingen und Gerät scannen können Sie im Web unter «Kontext und Massnahmen».")}
             </Text>
           </View>
         ) : null}
@@ -440,7 +439,21 @@ export default function PhishingCaseScreen() {
             <Text style={styles.cardTitle}>Ausgeführte Massnahmen</Text>
             {detail.measures.slice(0, 10).map((entry) => (
               <Text key={entry.id} style={styles.muted}>
-                {entry.status === "succeeded" ? "✓" : "✗"} {entry.label}
+                <Ionicons
+                  accessibilityLabel={
+                    entry.status === "succeeded" ? "Erfolgreich" : "Fehlgeschlagen"
+                  }
+                  color={
+                    entry.status === "succeeded" ? colors.success : colors.error
+                  }
+                  name={
+                    entry.status === "succeeded"
+                      ? "checkmark-circle-outline"
+                      : "close-circle-outline"
+                  }
+                  size={14}
+                />{" "}
+                {entry.label}
                 {entry.target ? ` · ${entry.target}` : ""} ·{" "}
                 {when(entry.createdAt)}
               </Text>

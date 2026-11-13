@@ -6,6 +6,7 @@
 // filter themselves; reads through the user's own client are already limited
 // by the restrictive RLS policy `<table>_department_scope` (migration 0177).
 
+import { msg } from "./formality.ts";
 import { userFeatureDepartments } from "./tenant-features.ts";
 
 export type DepartmentScope = {
@@ -75,7 +76,7 @@ export function resolveRecordDepartment(
     if (scope.departments.length === 1) {
       return { departmentId: scope.departments[0] ?? null };
     }
-    return { error: "Bitte wählen Sie eine Abteilung." };
+    return { error: msg("Bitte wähle eine Abteilung.", "Bitte wählen Sie eine Abteilung.") };
   }
   const id = String(requested).toLowerCase();
   if (!scope.departments.includes(id)) {

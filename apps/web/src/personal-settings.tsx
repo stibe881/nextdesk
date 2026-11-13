@@ -12,6 +12,7 @@ import {
 import { useEffect, useState, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 
+import { tn } from "./lib/formality";
 import { HandbookCard, HandbookViewer } from "./handbooks";
 import { deleteAccount } from "./lib/account";
 import type { HandbookId } from "./lib/handbooks";
@@ -73,8 +74,10 @@ function providerSummary(user: User, ssoEnforced: boolean): ProviderSummary {
       canChangePassword: true,
       usesSso: false,
       label: "E-Mail-Anmeldung",
-      passwordNote:
+      passwordNote: tn(
         "Das Passwort gehört nur zu deinem persönlichen nextDesk-Konto.",
+        "Das Passwort gehört nur zu Ihrem persönlichen nextDesk-Konto.",
+      ),
     };
   }
   return {
@@ -139,7 +142,10 @@ function weekdaysLabel(days: readonly number[]): string {
 
 function deliverySummary(window: DeliveryWindow): string {
   if (window.mode === "always") {
-    return "Du erhältst Benachrichtigungen jederzeit.";
+    return tn(
+      "Du erhältst Benachrichtigungen jederzeit.",
+      "Sie erhalten Benachrichtigungen jederzeit.",
+    );
   }
   const allDay = window.startHour === 0 && window.endHour === 24;
   const days = weekdaysLabel(window.days);
@@ -292,7 +298,12 @@ export function PersonalSettings({
       );
       setDeliveryDraft(null);
       setPushMessageKind("success");
-      setPushMessage("Deine Benachrichtigungszeit wurde gespeichert.");
+      setPushMessage(
+        tn(
+          "Deine Benachrichtigungszeit wurde gespeichert.",
+          "Ihre Benachrichtigungszeit wurde gespeichert.",
+        ),
+      );
     } catch (error) {
       setPushMessageKind("error");
       setPushMessage(
@@ -326,7 +337,12 @@ export function PersonalSettings({
         current ? { ...current, preferences } : current,
       );
       setPushMessageKind("success");
-      setPushMessage("Deine Benachrichtigungen wurden gespeichert.");
+      setPushMessage(
+        tn(
+          "Deine Benachrichtigungen wurden gespeichert.",
+          "Ihre Benachrichtigungen wurden gespeichert.",
+        ),
+      );
     } catch (error) {
       setPushMessageKind("error");
       setPushMessage(
@@ -366,7 +382,12 @@ export function PersonalSettings({
     setPassword("");
     setPasswordConfirmation("");
     setSaveState("success");
-    setMessage("Dein Passwort wurde erfolgreich geändert.");
+    setMessage(
+      tn(
+        "Dein Passwort wurde erfolgreich geändert.",
+        "Ihr Passwort wurde erfolgreich geändert.",
+      ),
+    );
   }
 
   async function signOutOtherDevices() {
@@ -409,8 +430,10 @@ export function PersonalSettings({
             Persönliche Einstellungen
           </h2>
           <p>
-            Verwalte deine eigenen Zugangs- und Sicherheitsangaben. Diese Seite
-            betrifft nur dein Konto, nicht die Mandanteneinstellungen.
+            {tn(
+              "Verwalte deine eigenen Zugangs- und Sicherheitsangaben. Diese Seite betrifft nur dein Konto, nicht die Mandanteneinstellungen.",
+              "Verwalten Sie Ihre eigenen Zugangs- und Sicherheitsangaben. Diese Seite betrifft nur Ihr Konto, nicht die Mandanteneinstellungen.",
+            )}
           </p>
         </div>
         <button className="secondary-button" onClick={onBack} type="button">
@@ -428,7 +451,10 @@ export function PersonalSettings({
             <div>
               <h3>Profil und Anmeldung</h3>
               <p>
-                Die E-Mail-Adresse wird aus deiner aktiven Anmeldung gelesen.
+                {tn(
+                  "Die E-Mail-Adresse wird aus deiner aktiven Anmeldung gelesen.",
+                  "Die E-Mail-Adresse wird aus Ihrer aktiven Anmeldung gelesen.",
+                )}
               </p>
             </div>
           </div>
@@ -511,8 +537,10 @@ export function PersonalSettings({
                 />
               </label>
               <p className="personal-settings__hint">
-                Mindestens 12 Zeichen. Das Passwort wird nicht angezeigt und nie
-                in deinem Profil hinterlegt.
+                {tn(
+                  "Mindestens 12 Zeichen. Das Passwort wird nicht angezeigt und nie in deinem Profil hinterlegt.",
+                  "Mindestens 12 Zeichen. Das Passwort wird nicht angezeigt und nie in Ihrem Profil hinterlegt.",
+                )}
               </p>
               {message && (
                 <p
@@ -553,8 +581,10 @@ export function PersonalSettings({
               </div>
             </div>
             <p className="personal-settings__sso-copy">
-              Für SSO-Konten steht keine lokale Passwortänderung zur Verfügung.
-              Ändere dein Passwort direkt bei deinem Identitätsanbieter.
+              {tn(
+                "Für SSO-Konten steht keine lokale Passwortänderung zur Verfügung. Ändere dein Passwort direkt bei deinem Identitätsanbieter.",
+                "Für SSO-Konten steht keine lokale Passwortänderung zur Verfügung. Ändern Sie Ihr Passwort direkt bei Ihrem Identitätsanbieter.",
+              )}
             </p>
           </article>
         )}
@@ -581,8 +611,10 @@ export function PersonalSettings({
             <div>
               <h3 id="personal-push-heading">Benachrichtigungen</h3>
               <p>
-                Wann und wie du informiert wirst: per Push auf dein iPhone oder
-                per E-Mail.
+                {tn(
+                  "Wann und wie du informiert wirst: per Push auf dein iPhone oder per E-Mail.",
+                  "Wann und wie Sie informiert werden: per Push auf Ihr iPhone oder per E-Mail.",
+                )}
               </p>
             </div>
           </div>
@@ -775,8 +807,10 @@ export function PersonalSettings({
                   Benachrichtigungen
                 </h4>
                 <p className="personal-settings__hint">
-                  Wähle pro Benachrichtigung, ob du sie als Push auf deinem
-                  iPhone, per E-Mail oder auf beiden Wegen erhältst.
+                  {tn(
+                    "Wähle pro Benachrichtigung, ob du sie als Push auf deinem iPhone, per E-Mail oder auf beiden Wegen erhältst.",
+                    "Wählen Sie pro Benachrichtigung, ob Sie sie als Push auf Ihrem iPhone, per E-Mail oder auf beiden Wegen erhalten.",
+                  )}
                 </p>
                 {!pushStatus.emailAvailable ? (
                   <p className="personal-settings__hint">
@@ -824,8 +858,10 @@ export function PersonalSettings({
                           <small>{meta.description}</small>
                           {alwaysPush ? (
                             <small>
-                              Als Mitglied des Phishing-Teams erhalten Sie diese
-                              Mitteilungen immer per Push.
+                              {tn(
+                                "Als Mitglied des Phishing-Teams erhältst du diese Mitteilungen immer per Push.",
+                                "Als Mitglied des Phishing-Teams erhalten Sie diese Mitteilungen immer per Push.",
+                              )}
                             </small>
                           ) : null}
                         </th>
@@ -867,7 +903,10 @@ export function PersonalSettings({
           ) : null}
           {pushStatusState === "loaded" && pushStatus?.devices.length === 0 ? (
             <p className="personal-settings__hint">
-              Für dein Konto sind noch keine iOS-Geräte registriert.
+              {tn(
+                "Für dein Konto sind noch keine iOS-Geräte registriert.",
+                "Für Ihr Konto sind noch keine iOS-Geräte registriert.",
+              )}
             </p>
           ) : null}
           {pushStatus?.devices.length ? (
@@ -908,8 +947,10 @@ export function PersonalSettings({
                         role="alert"
                       >
                         <p>
-                          Möchtest du {deviceName} wirklich für
-                          Push-Benachrichtigungen entfernen?
+                          {tn(
+                            `Möchtest du ${deviceName} wirklich für Push-Benachrichtigungen entfernen?`,
+                            `Möchten Sie ${deviceName} wirklich für Push-Benachrichtigungen entfernen?`,
+                          )}
                         </p>
                         <div>
                           <button
@@ -957,8 +998,10 @@ export function PersonalSettings({
             </ul>
           ) : null}
           <p className="personal-settings__hint">
-            Push-Benachrichtigungen richtest du in der nextDesk-iOS-App unter
-            Profil → Benachrichtigungen ein.
+            {tn(
+              "Push-Benachrichtigungen richtest du in der nextDesk-iOS-App unter Profil → Benachrichtigungen ein.",
+              "Push-Benachrichtigungen richten Sie in der nextDesk-iOS-App unter Profil → Benachrichtigungen ein.",
+            )}
           </p>
           {pushMessage ? (
             <p
@@ -998,8 +1041,10 @@ export function PersonalSettings({
         {otherSessionsState === "confirming" ? (
           <div className="personal-settings__form">
             <p className="personal-settings__hint">
-              Möchtest du dich wirklich auf allen anderen Geräten abmelden?
-              Diese Aktion betrifft nicht die aktuelle Sitzung.
+              {tn(
+                "Möchtest du dich wirklich auf allen anderen Geräten abmelden? Diese Aktion betrifft nicht die aktuelle Sitzung.",
+                "Möchten Sie sich wirklich auf allen anderen Geräten abmelden? Diese Aktion betrifft nicht die aktuelle Sitzung.",
+              )}
             </p>
             <button
               className="personal-settings__signout-button"
@@ -1044,7 +1089,12 @@ export function PersonalSettings({
       <article className="personal-settings__signout">
         <div>
           <strong>Sitzung beenden</strong>
-          <span>Du wirst auf diesem Gerät von nextDesk abgemeldet.</span>
+          <span>
+            {tn(
+              "Du wirst auf diesem Gerät von nextDesk abgemeldet.",
+              "Sie werden auf diesem Gerät von nextDesk abgemeldet.",
+            )}
+          </span>
         </div>
         <button
           className="personal-settings__signout-button"
@@ -1061,8 +1111,10 @@ export function PersonalSettings({
           <div>
             <strong>Konto löschen</strong>
             <span>
-              Dein Konto wird von deiner Organisation über SSO verwaltet und
-              kann hier nicht gelöscht werden. Wende dich dafür an deine IT.
+              {tn(
+                "Dein Konto wird von deiner Organisation über SSO verwaltet und kann hier nicht gelöscht werden. Wende dich dafür an deine IT.",
+                "Ihr Konto wird von Ihrer Organisation über SSO verwaltet und kann hier nicht gelöscht werden. Wenden Sie sich dafür an Ihre IT.",
+              )}
             </span>
           </div>
         </article>
@@ -1084,7 +1136,10 @@ function DeleteAccountPanel() {
   async function removeAccount() {
     if (
       !window.confirm(
-        "Konto endgültig löschen?\n\nIhr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht. Besitzen Sie einen eigenen Arbeitsbereich, wird er mit allen Tickets, Dateien und Einträgen ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; Sie verlieren nur Ihren Zugriff.",
+        tn(
+          "Konto endgültig löschen?\n\nDein Konto und deine persönlichen Daten werden unwiderruflich gelöscht. Besitzt du einen eigenen Arbeitsbereich, wird er mit allen Tickets, Dateien und Einträgen ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; du verlierst nur deinen Zugriff.",
+          "Konto endgültig löschen?\n\nIhr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht. Besitzen Sie einen eigenen Arbeitsbereich, wird er mit allen Tickets, Dateien und Einträgen ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; Sie verlieren nur Ihren Zugriff.",
+        ),
       )
     )
       return;
@@ -1108,8 +1163,10 @@ function DeleteAccountPanel() {
       <div>
         <strong>Konto löschen</strong>
         <span>
-          Löscht Ihr Konto, Ihren eigenen Arbeitsbereich und alle darin
-          gespeicherten Daten unwiderruflich.
+          {tn(
+            "Löscht dein Konto, deinen eigenen Arbeitsbereich und alle darin gespeicherten Daten unwiderruflich.",
+            "Löscht Ihr Konto, Ihren eigenen Arbeitsbereich und alle darin gespeicherten Daten unwiderruflich.",
+          )}
         </span>
         {message && (
           <span

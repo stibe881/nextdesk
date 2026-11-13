@@ -13,6 +13,7 @@ import {
   NextDeskRequestError,
   nextDeskErrorMessage,
 } from "@/lib/nextdesk-error-messages";
+import { tn } from "./formality";
 
 export const PUSH_CATEGORIES = [
   "assigned",
@@ -59,7 +60,10 @@ export function pushNotificationSecondaryText(
       typeof payload.excerpt === "string" && payload.excerpt.trim()
         ? ` «${payload.excerpt.trim()}»`
         : "";
-    return `${name} hat dich gelobt.${excerpt}`;
+    return tn(
+      `${name} hat dich gelobt.${excerpt}`,
+      `${name} hat Sie gelobt.${excerpt}`,
+    );
   }
   if (kind !== "ticket.follow_up_due" || !isRecord(payload)) return null;
   const title = payload.title;
@@ -307,7 +311,10 @@ function tokenFromDevicePushToken(
     !APNS_TOKEN_PATTERN.test(token.data)
   ) {
     throw new Error(
-      "Der Apple-Gerätetoken ist ungültig. Bitte versuche es nochmals.",
+      tn(
+        "Der Apple-Gerätetoken ist ungültig. Bitte versuche es nochmals.",
+        "Der Apple-Gerätetoken ist ungültig. Bitte versuchen Sie es nochmals.",
+      ),
     );
   }
   return token.data;
@@ -357,7 +364,7 @@ async function requestPushPermissionFromPerson(): Promise<void> {
       });
   if (!permission.granted) {
     throw new Error(
-      "Mitteilungen sind in iOS deaktiviert. Öffne die iPhone-Einstellungen, um Push-Benachrichtigungen zu erlauben.",
+      tn("Mitteilungen sind in iOS deaktiviert. Öffne die iPhone-Einstellungen, um Push-Benachrichtigungen zu erlauben.", "Mitteilungen sind in iOS deaktiviert. Öffnen Sie die iPhone-Einstellungen, um Push-Benachrichtigungen zu erlauben."),
     );
   }
 }

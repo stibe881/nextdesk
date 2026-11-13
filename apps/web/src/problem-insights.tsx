@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { ChevronDown, ChevronUp, Lightbulb, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -107,7 +108,10 @@ export function ProblemCandidates({
         ticketIds: ids,
       });
       setMessage(
-        `Fall angelegt und ${result.linked} Tickets verknüpft. Ergänzen Sie dort Ursache und Workaround.`,
+        tn(
+          `Fall angelegt und ${result.linked} Tickets verknüpft. Ergänze dort Ursache und Workaround.`,
+          `Fall angelegt und ${result.linked} Tickets verknüpft. Ergänzen Sie dort Ursache und Workaround.`,
+        ),
       );
       setOpen(null);
       await load();

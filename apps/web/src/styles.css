@@ -22570,3 +22570,57 @@ html body form:has(> .fk-layout) {
 .external-status__list .monitoring-chip {
   margin-left: 8px;
 }
+
+/* Tenant settings: choice of the form of address (informal / formal). */
+.tenant-admin-settings__formality {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.tenant-admin-settings__formality legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.tenant-admin-settings__formality-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.tenant-admin-settings__formality-option input {
+  width: auto;
+}
+
+/* Tenant settings: choice of the form of address (informal / formal). */
+.tenant-admin-settings__formality {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.tenant-admin-settings__formality legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.tenant-admin-settings__formality-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.tenant-admin-settings__formality-option input {
+  width: auto;
+}

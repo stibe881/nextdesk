@@ -1,3 +1,4 @@
+import { Frown, Meh, Smile } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -720,19 +721,19 @@ function SatisfactionReport({ insights }: { insights: Insights }) {
     {
       key: "happy",
       label: "Zufrieden",
-      emoji: "🙂",
+      Icon: Smile,
       value: satisfaction.happyPercent,
     },
     {
       key: "neutral",
       label: "Neutral",
-      emoji: "😐",
+      Icon: Meh,
       value: satisfaction.neutralPercent,
     },
     {
       key: "unhappy",
       label: "Unzufrieden",
-      emoji: "🙁",
+      Icon: Frown,
       value: satisfaction.unhappyPercent,
     },
   ] as const;
@@ -747,7 +748,7 @@ function SatisfactionReport({ insights }: { insights: Insights }) {
                   aria-hidden="true"
                   className="predefined-report__mood-icon"
                 >
-                  {entry.emoji}
+                  <entry.Icon aria-hidden="true" size={28} />
                 </span>
                 <strong>{formatPercent(entry.value)}</strong>
                 <small>{entry.label}</small>

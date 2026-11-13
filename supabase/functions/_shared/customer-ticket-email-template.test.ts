@@ -36,7 +36,7 @@ Deno.test(
       ticketNumber: "ICT-2026-000011",
     });
     for (const required of [
-      "Neue Nachricht zu Ihrem Ticket",
+      "Neue Nachricht zu deinem Ticket",
       "VPN einrichten",
       "ICT-2026-000011 · VPN einrichten",
       "Ticketbenachrichtigung über Verein SONNENBERG Baar",
@@ -102,8 +102,8 @@ Deno.test(
   "Kundschafts-E-Mail unterscheidet Bestätigung, Lösung und Testmail",
   () => {
     const expectations: Array<[CustomerTicketEmailKind, string]> = [
-      ["acknowledgement", "Ihre Anfrage ist eingegangen."],
-      ["resolution", "Ihr Ticket wurde als gelöst markiert."],
+      ["acknowledgement", "Deine Anfrage ist eingegangen."],
+      ["resolution", "Dein Ticket wurde als gelöst markiert."],
       ["test", "Testmail erfolgreich versendet."],
     ];
     for (const [kind, text] of expectations) {
@@ -197,7 +197,7 @@ Deno.test("Erinnerungsmail zeigt nur sichere Ein-Klick-Aktionen", () => {
     branding,
     kind: "agent_reply",
     subject: "VPN einrichten",
-    text: "Wir warten noch auf Ihre Rückmeldung.",
+    text: "Wir warten noch auf deine Rückmeldung.",
     ticketNumber: "ICT-2026-000011",
   });
   if (
@@ -311,7 +311,7 @@ Deno.test("Hinweisblock kappt Längen und mappt Farben", () => {
 Deno.test("Sterne erscheinen nur bei fünf https-Links", () => {
   const five = renderWith({ ratingLinks: links });
   if (
-    !five.includes("Wie zufrieden waren Sie?") ||
+    !five.includes("Wie zufrieden warst du?") ||
     (five.match(/&#9733;/g) ?? []).length !== 5 ||
     !five.includes("width:44px;height:44px")
   ) {
@@ -350,5 +350,24 @@ Deno.test("Overrides für Titel, Einleitung und Hinweis wirken", () => {
   );
   for (const required of ["Eigener Titel", "Eigene Einleitung", "Eigener Hinweis"]) {
     if (!html.includes(required)) throw new Error(`Override fehlt: ${required}`);
+  }
+});
+
+Deno.test("Kundschafts-E-Mail wechselt auf die Sie-Fassung", () => {
+  const html = renderCustomerTicketEmail({
+    attachmentNotice: false,
+    branding,
+    formality: "sie",
+    kind: "acknowledgement",
+    subject: "VPN einrichten",
+    text: "Bitte kurz testen.",
+    ticketNumber: "ICT-2026-000011",
+  });
+  for (const required of [
+    "Wir haben Ihre Anfrage erhalten",
+    "Ihre Anfrage ist eingegangen.",
+    "Sie können direkt auf diese E-Mail antworten.",
+  ]) {
+    if (!html.includes(required)) throw new Error(`Fehlt: ${required}`);
   }
 });
