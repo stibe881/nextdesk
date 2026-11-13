@@ -8,6 +8,8 @@ import {
   type CSSProperties,
 } from "react";
 import { FeedbackInsights } from "./feedback-insights";
+import { SpamReportPanel } from "./spam-report";
+import "./spam-report.css";
 import { functionErrorMessage } from "./lib/function-error";
 import {
   PREDEFINED_REPORTS,
@@ -665,7 +667,7 @@ export function ServiceReporting({
     availability: true,
   });
   const [view, setView] = useState<
-    "metrics" | "feedback" | PredefinedReportKey
+    "metrics" | "feedback" | "spam" | PredefinedReportKey
   >("overview");
   const [refreshKey, setRefreshKey] = useState(0);
   const requestVersion = useRef(0);
@@ -789,9 +791,18 @@ export function ServiceReporting({
         >
           Feedback-Themen
         </button>
+        <button
+          aria-selected={view === "spam"}
+          onClick={() => setView("spam")}
+          role="tab"
+          type="button"
+        >
+          Spam
+        </button>
       </nav>
       {view === "feedback" ? <FeedbackInsights tenantId={tenantId} /> : null}
-      {view !== "feedback" ? (
+      {view === "spam" ? <SpamReportPanel tenantId={tenantId} /> : null}
+      {view !== "feedback" && view !== "spam" ? (
         <header className="service-reporting__header">
           <div>
             <p className="service-reporting__intro">
@@ -844,7 +855,7 @@ export function ServiceReporting({
         </header>
       ) : null}
 
-      {period === "custom" && view !== "feedback" ? (
+      {period === "custom" && view !== "feedback" && view !== "spam" ? (
         <form
           className="service-reporting__custom-period"
           onSubmit={(event) => {
@@ -891,7 +902,7 @@ export function ServiceReporting({
         </form>
       ) : null}
 
-      {view !== "metrics" && view !== "feedback" ? (
+      {view !== "metrics" && view !== "feedback" && view !== "spam" ? (
         <PredefinedReports
           onOpenTicketList={onOpenTicketList}
           branding={{ logoUrl: branding.logoUrl, name: branding.name }}

@@ -149,6 +149,8 @@ declare
   v_name text;
   v_def text;
   v_new text;
+  v_head text;
+  v_body text;
 begin
   foreach v_name in array array[
     'enqueue_event_space_ticket_intake',
@@ -165,12 +167,15 @@ begin
       raise exception 'Trigger-Funktion % nicht gefunden oder nicht plpgsql', v_name;
     end if;
     if position('new.spam_at is not null' in v_def) = 0 then
-      v_new := regexp_replace(
-        v_def,
-        E'\nbegin\n',
-        E'\nbegin\n  -- Spam-Tickets lösen nichts aus.\n  if new.spam_at is not null then\n    return new;\n  end if;\n',
+      v_head := substring(v_def from '^.*?\$function\$');
+      v_body := substring(v_def from length(v_head) + 1);
+      v_body := regexp_replace(
+        v_body,
+        '(\s)begin(\s)',
+        E'\\1begin if new.spam_at is not null then return new; end if;\\2',
         ''
       );
+      v_new := v_head || v_body;
       if v_new = v_def then
         raise exception 'Trigger-Funktion %: Muster nicht gefunden', v_name;
       end if;

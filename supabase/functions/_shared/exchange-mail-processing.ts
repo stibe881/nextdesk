@@ -1724,6 +1724,17 @@ export async function processInboundMessage(
       (kind !== "new_ticket" && kind !== "reply")
     )
       throw new Error("inbound_commit_invalid");
+    // Gesperrter Absender (Spam): Das Ticket wurde schon als Spam angelegt.
+    // Keine Zuteilung, Anhänge, Kontakte oder Raumplanung.
+    if (kind === "new_ticket") {
+      const spam = await admin
+        .from("tickets")
+        .select("spam_at")
+        .eq("id", ticketId)
+        .eq("tenant_id", channel.tenant_id)
+        .maybeSingle();
+      if (asString(spam.data?.spam_at)) return;
+    }
     // Team des Postfachs sofort setzen: Die folgenden Schritte (Anhänge,
     // Kontakte, Raumplanung) können länger dauern. Bricht die Verarbeitung
     // dort ab, bleibt das Ticket sonst ohne Team, denn die Nachricht gilt
