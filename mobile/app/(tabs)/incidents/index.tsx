@@ -29,6 +29,14 @@ import { useAppActiveInterval } from "@/lib/use-app-active-interval";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 import { tn } from "@/lib/formality";
 
+/** State of the public message on the status page. */
+const STATUS_PAGE_LABELS: Record<string, string> = {
+  investigating: "Wird untersucht",
+  identified: "Ursache bekannt",
+  monitoring: "Wird beobachtet",
+  resolved: "Behoben",
+};
+
 const FILTERS: { key: IncidentFilter; label: string }[] = [
   { key: "active", label: "Aktiv" },
   { key: "unacknowledged", label: "Unbestätigt" },
@@ -146,7 +154,10 @@ export default function IncidentsScreen() {
           <Text style={styles.eyebrow}>BETRIEB</Text>
           <Text style={styles.title}>Störungen</Text>
           <Text style={styles.subtitle}>
-            {tn("Meldungen aus PRTG. Bestätige eine Störung, sobald du dich darum kümmerst. Meldet PRTG wieder OK, gilt sie als behoben – abschliessen mit Ursache musst du sie selbst.", "Meldungen aus PRTG. Bestätigen Sie eine Störung, sobald Sie sich darum kümmern. Meldet PRTG wieder OK, gilt sie als behoben – abschliessen mit Ursache müssen Sie sie selbst.")}
+            {tn(
+              "Meldungen aus PRTG. Bestätige eine Störung, sobald du dich darum kümmerst. Meldet PRTG wieder OK, gilt sie als behoben – abschliessen mit Ursache musst du sie selbst.",
+              "Meldungen aus PRTG. Bestätigen Sie eine Störung, sobald Sie sich darum kümmern. Meldet PRTG wieder OK, gilt sie als behoben – abschliessen mit Ursache müssen Sie sie selbst.",
+            )}
           </Text>
         </View>
 
@@ -267,14 +278,38 @@ export default function IncidentsScreen() {
                           {STATE_LABELS[entry.state]}
                         </Text>
                       )}
-                      {entry.state === "active" && !entry.acknowledgedAt ? (
+                      {entry.state === "active" &&
+                      !entry.acknowledgedAt &&
+                      entry.source !== "external" ? (
                         <Text style={[styles.badge, styles.badgeBad]}>
                           Unbestätigt
                         </Text>
                       ) : null}
-                      {entry.acknowledgedAt && entry.assignedAgentName ? (
-                        <Text style={[styles.badge, styles.badgeOk]}>
+                      {entry.assignedAgentName ? (
+                        <Text
+                          style={[
+                            styles.badge,
+                            entry.acknowledgedAt ? styles.badgeOk : null,
+                          ]}
+                        >
                           {entry.assignedAgentName}
+                        </Text>
+                      ) : entry.state !== "closed" ? (
+                        <Text style={styles.badge}>Nicht zugewiesen</Text>
+                      ) : null}
+                      {entry.statusPage ? (
+                        <Text
+                          style={[
+                            styles.badge,
+                            entry.statusPage.state === "resolved"
+                              ? styles.badgeOk
+                              : null,
+                          ]}
+                        >
+                          Statusseite
+                          {STATUS_PAGE_LABELS[entry.statusPage.state]
+                            ? ` · ${STATUS_PAGE_LABELS[entry.statusPage.state]}`
+                            : ""}
                         </Text>
                       ) : null}
                       {entry.source === "external" ? (

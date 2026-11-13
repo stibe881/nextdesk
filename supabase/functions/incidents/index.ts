@@ -421,6 +421,24 @@ async function list(admin: Client, client: Client, action: Extract<Action, { typ
   ));
   const devices = await deviceInfo(admin, action.tenantId, all.map((row) => text(row.asset_id))
     .filter((id): id is string => id !== null));
+  // Latest public message on the status page per incident.
+  const notices = listedIds.length
+    ? await admin.from("service_incident_notices")
+      .select("monitoring_incident_id, status, updated_at")
+      .eq("tenant_id", action.tenantId).eq("public_enabled", true)
+      .in("monitoring_incident_id", listedIds)
+      .order("updated_at", { ascending: false }).limit(1000)
+    : { data: [] };
+  const statusPage = new Map<string, { state: string; updatedAt: string }>();
+  for (const notice of (notices.data ?? []) as Row[]) {
+    const incidentId = text(notice.monitoring_incident_id);
+    if (incidentId && !statusPage.has(incidentId)) {
+      statusPage.set(incidentId, {
+        state: String(notice.status),
+        updatedAt: String(notice.updated_at),
+      });
+    }
+  }
   const byParent = new Map<string, ReturnType<typeof summary>[]>();
   for (const row of childRows) {
     const parentId = String(row.parent_incident_id);
@@ -428,6 +446,7 @@ async function list(admin: Client, client: Client, action: Extract<Action, { typ
   }
   const incidents = rows.map((row) => ({
     ...summary(row, people, services, devices, now),
+    statusPage: statusPage.get(String(row.id)) ?? null,
     children: byParent.get(String(row.id)) ?? [],
   }));
   if (activeOnly) incidents.sort(compareIncidents);

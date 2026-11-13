@@ -329,6 +329,11 @@ beim Anbieter hängen bleibt.
   letzten 30 Tage) und _Verfügbarkeit_ der überwachten Geräte. Ein Klick auf
   eine Kachel zeigt darunter die passenden Störungen; **Filter aufheben** führt
   zurück zu den aktiven.
+- **Zeile einer Störung**: Neben Schwere und Quelle zeigt jede Störung, wer
+  zuständig ist (oder «Nicht zugewiesen») und, sobald eine öffentliche Meldung
+  besteht, **Statusseite** mit deren Zustand (z. B. «Statusseite · Wird
+  untersucht»). «Unbestätigt» erscheint nur bei Störungen aus PRTG; externe
+  Störungen werden nicht bestätigt.
 - **Register**: _Aktiv_, _Behoben_ und _Alle_. Die Dauer läuft live mit, und neue
   Meldungen erscheinen ohne Neuladen. Im Suchfeld findest du Störungen nach
   Nummer, Gerät oder Titel; ältere Störungen lädst du mit **Weitere Störungen
