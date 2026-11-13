@@ -344,7 +344,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       typeof body.teamId === "string" && UUID.test(body.teamId)
         ? body.teamId.toLowerCase()
         : null;
-    if (!teamId) return fail(request, "invalid_request", 400);
+    if (!teamId) return fail(request, "invalid_team_id_history", 400);
     const { data: linked } = await admin
       .from("teams_requests")
       .select("id")
@@ -436,7 +436,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     typeof body.teamId === "string" && UUID.test(body.teamId)
       ? body.teamId.toLowerCase()
       : null;
-  if (!teamId) return fail(request, "invalid_request", 400);
+  if (!teamId) return fail(request, "invalid_team_id", 400);
   const { data: team } = await admin
     .from("teams_directory")
     .select("graph_team_id, display_name, owner_ids")
@@ -452,7 +452,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
 
     if (body.type === "addMember") {
-      if (!isUuid(body.userId)) return fail(request, "invalid_request", 400);
+      if (!isUuid(body.userId)) return fail(request, "invalid_user_id", 400);
       const { data: person } = await admin
         .from("tenant_entra_directory_people")
         .select("entra_object_id")
@@ -477,7 +477,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
     if (body.type === "removeMember" || body.type === "setOwner") {
       if (typeof body.membershipId !== "string" || !body.membershipId) {
-        return fail(request, "invalid_request", 400);
+        return fail(request, "invalid_membership_id", 400);
       }
       const members = await listTeamMembers(token, teamId);
       const target = members.find(
@@ -636,7 +636,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return json(request, { data: { ok: true } });
   }
 
-  return fail(request, "invalid_request", 400);
+  return fail(request, "unknown_type", 400);
 });
 
 export default {
