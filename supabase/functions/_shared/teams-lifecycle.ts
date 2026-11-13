@@ -193,6 +193,7 @@ async function finish(
   const warnings = await finishTeam(token, teamId, {
     channels: row.channels,
     owners: row.owner_ids,
+    members: row.member_ids,
     guests: row.guest_emails,
     allowGuests: row.allow_guests,
   });

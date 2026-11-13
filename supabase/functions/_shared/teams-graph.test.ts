@@ -71,8 +71,9 @@ Deno.test("createTeam sends owners with the owner role and reads the ids", async
     members: { roles: string[]; "user@odata.bind": string }[];
   };
   assertEquals(body.visibility, "Private");
+  // Beim Anlegen nur der erste Owner (Anwendungsberechtigung erlaubt nur ein Mitglied).
+  assertEquals(body.members.length, 1);
   assertEquals(body.members[0]!.roles, ["owner"]);
-  assertEquals(body.members[1]!.roles, []);
   assertEquals(calls[0]!.url, "https://graph.microsoft.com/v1.0/teams");
 });
 
@@ -210,4 +211,25 @@ Deno.test("listTeamMembers reads roles; setTeamMemberOwner patches the role", as
   const patch = calls.at(-1)!;
   assertEquals(patch.method, "PATCH");
   assertEquals((patch.body as { roles: string[] }).roles, ["owner"]);
+});
+
+Deno.test("finishTeam adds further owners and members in bulk", async () => {
+  const { fetcher, calls } = fakeFetch(() => new Response("{}", { status: 200 }));
+  const warnings = await finishTeam(
+    "t",
+    TEAM,
+    {
+      owners: [OWNER, "33333333-3333-4333-8333-333333333333"],
+      members: [MEMBER],
+      guests: [],
+      allowGuests: false,
+      channels: [],
+    },
+    fetcher,
+  );
+  assertEquals(warnings, []);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0]!.url.endsWith(`/teams/${TEAM}/members/add`), true);
+  const values = (calls[0]!.body as { values: { roles: string[] }[] }).values;
+  assertEquals(values.map((value) => value.roles), [["owner"], []]);
 });

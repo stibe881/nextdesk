@@ -129,10 +129,9 @@ export async function createTeam(
     displayName: request.name,
     ...(request.description ? { description: request.description } : {}),
     visibility: request.visibility === "public" ? "Public" : "Private",
-    members: [
-      ...request.owners.map((id) => memberBody(id, true)),
-      ...request.members.map((id) => memberBody(id, false)),
-    ],
+    // Mit Anwendungsberechtigungen erlaubt Microsoft beim Anlegen nur ein
+    // Mitglied (den Owner); alle weiteren folgen in finishTeam.
+    members: [memberBody(request.owners[0]!, true)],
   });
   const parsed = parseTeamLocation(
     response.headers.get("Content-Location"),
@@ -211,7 +210,7 @@ export async function finishTeam(
   request: Pick<
     TeamRequestInput,
     "channels" | "owners" | "guests" | "allowGuests"
-  >,
+  > & { members?: string[] },
   fetcher: FetchLike = fetch,
 ): Promise<FinishWarning[]> {
   const warnings: FinishWarning[] = [];
@@ -220,6 +219,21 @@ export async function finishTeam(
       step,
       code: error instanceof TeamsGraphError ? error.code : "unavailable",
     });
+
+  // Weitere Owner und Mitglieder (der erste Owner ist beim Anlegen dabei).
+  const people = [
+    ...request.owners.slice(1).map((id) => memberBody(id, true)),
+    ...(request.members ?? []).map((id) => memberBody(id, false)),
+  ];
+  for (let index = 0; index < people.length; index += 100) {
+    try {
+      await call(fetcher, token, "POST", `/teams/${teamId}/members/add`, {
+        values: people.slice(index, index + 100),
+      });
+    } catch (error) {
+      failed(`members:${index}`, error);
+    }
+  }
 
   for (const channel of request.channels) {
     try {
