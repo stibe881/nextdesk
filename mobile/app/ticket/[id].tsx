@@ -18,6 +18,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { TicketSlaPauseText } from "@/components/ticket-status-badge";
 import {
   MobileFeatureLoadingScreen,
   MobileFeatureUnavailableScreen,
@@ -1664,6 +1665,8 @@ export default function TicketDetailScreen() {
                 ) : null}
               </Pressable>
             ) : null}
+            {/* Waiting statuses stop the SLA (no countdown while paused). */}
+            <TicketSlaPauseText pausedAt={ticket.slaPausedAt} />
           </View>
 
           {canUseRequesterPortal &&

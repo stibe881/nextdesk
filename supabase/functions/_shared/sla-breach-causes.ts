@@ -38,6 +38,8 @@ export type SlaTicketTimes = {
   resolutionDueAt: string | null;
   resolvedAt: string | null;
   closedAt: string | null;
+  /** Start of a running SLA pause (waiting status); the clock stopped there. */
+  slaPausedAt?: string | null;
 };
 
 export type DetectedBreach = { kind: SlaBreachKind; dueAt: string };
@@ -57,12 +59,15 @@ export function detectBreaches(
 ): DetectedBreach[] {
   const events = new Set(eventTypes);
   const breaches: DetectedBreach[] = [];
+  // While the SLA is paused, open targets are measured at the pause start.
+  const pausedAt = time(ticket.slaPausedAt ?? null);
+  const clock = Number.isFinite(pausedAt) ? Math.min(now, pausedAt) : now;
   const responseDue = time(ticket.responseDueAt);
   if (Number.isFinite(responseDue)) {
     const responded = time(ticket.firstRespondedAt);
     const missed = Number.isFinite(responded)
       ? responded > responseDue
-      : responseDue < now;
+      : responseDue < clock;
     if (missed || events.has("response_breached")) {
       breaches.push({ kind: "response", dueAt: ticket.responseDueAt as string });
     }
@@ -72,7 +77,7 @@ export function detectBreaches(
     const resolved = time(ticket.resolvedAt ?? ticket.closedAt);
     const missed = Number.isFinite(resolved)
       ? resolved > resolutionDue
-      : resolutionDue < now;
+      : resolutionDue < clock;
     if (missed || events.has("resolution_breached")) {
       breaches.push({
         kind: "resolution",

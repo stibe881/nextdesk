@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Sicherheitsfälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # Handbuch für Agenten
@@ -430,6 +430,9 @@ der Übersicht, im Kanban und in der App.
   Listen-Detail-Ansicht (Liste links, Ticket rechts).
 - **Mehrfachauswahl**: mehrere Tickets markieren → **Neuer Status** →
   **Status für Auswahl setzen**.
+- **SLA-Anzeige**: Jede Karte zeigt die verbleibende Zeit bis zur
+  Lösungsfrist; Tickets in einem wartenden Status zeigen stattdessen **«SLA
+  pausiert seit …»** (siehe «SLA-Pause in wartenden Status»).
 
 ### Gelöschte Tickets (Papierkorb)
 
@@ -585,6 +588,32 @@ Wird eine SLA verletzt, erfassen Sie die **Ursache der SLA-Verletzung**. Das
 ist Pflicht: Ein Ticket mit verletzter SLA lässt sich erst **lösen oder
 schliessen**, wenn die Ursache erfasst ist (auch bei der Sammelaktion). Beim
 Abschluss kann sie direkt im Bestätigungsfeld eingetragen werden.
+
+### SLA-Pause in wartenden Status
+
+In den Status **Wartend**, **Wartend auf Kunde** und **Wartend auf
+Drittanbieter** hält die SLA an (die Mandantenadministration kann das pro
+Status ändern, siehe Administrationshandbuch). Solange ein Ticket in einem
+dieser Status ist:
+
+- zeigen Ticketliste, Übersicht, Ticketkopf und App **«SLA pausiert seit …»**
+  statt der verbleibenden Zeit;
+- wird keine SLA-Verletzung ausgelöst und keine Warnung «SLA in Gefahr»
+  verschickt; das Ticket zählt nicht als überfällig (Teamführung, Meine
+  Prioritäten, Zeitregeln «SLA läuft bald ab»);
+- bleibt die Pause bestehen, wenn Sie zwischen zwei wartenden Status wechseln.
+
+Setzen Sie das Ticket wieder auf einen bearbeitenden Status (z. B. **In
+Bearbeitung**), läuft die SLA weiter: Die Fristen für Erstantwort (falls noch
+offen) und Lösung werden um die pausierte Zeit verschoben. Gezählt wird nur
+die **Servicezeit** der SLA-Regel – bei Geschäftszeiten also nur die Stunden
+innerhalb der Geschäftszeiten. Schliessen Sie ein pausiertes Ticket direkt ab,
+endet die Pause ebenfalls; die Wartezeit zählt auch dann nicht gegen die SLA.
+Eine Frist, die **vor** Beginn der Pause schon überschritten war, bleibt
+überschritten.
+
+Im Verlauf des Tickets sehen Sie **SLA pausiert («Status»)** und **SLA
+fortgesetzt, Fristen um … Servicezeit verschoben**.
 
 ### Bewertung der anfragenden Person
 
@@ -1226,8 +1255,8 @@ Zusätzlich zu den Karten für Mitarbeitende sehen Agenten:
 ## Gute Praxis
 
 - Neue Tickets zeitnah **zuweisen** – auch wenn Sie sie nicht sofort lösen.
-- Für Rückfragen einen wartenden Status (z. B. «wartet») setzen, damit die SLA
-  pausiert und die Person erinnert wird.
+- Für Rückfragen einen wartenden Status (z. B. **Wartend auf Kunde**) setzen,
+  damit die SLA pausiert und die Person erinnert wird.
 - Interne Informationen immer als **Interne Notiz**, nie als externe Antwort.
 - Lösungen, die mehr als einmal gebraucht werden, als **Wissensartikel**
   festhalten.

@@ -1,4 +1,5 @@
 import { formatPersonDisplayName } from "./person-display-name";
+import { slaPausedLabel } from "./sla-pause";
 import { supabase } from "./supabase";
 import { parseTicketSearch } from "./ticket-search";
 import {
@@ -366,10 +367,16 @@ function formatAge(timestamp: string): string {
   return `${Math.floor(hours / 24)} T`;
 }
 
-function formatDueAt(dueAt: string | null): {
+export function formatDueAt(
+  dueAt: string | null,
+  slaPausedAt: string | null = null,
+): {
   label: string;
   risk: DashboardTicket["risk"];
 } {
+  // A paused SLA (waiting status) shows its start instead of a countdown.
+  const paused = slaPausedLabel(slaPausedAt);
+  if (paused) return { label: paused, risk: "ok" };
   if (!dueAt) return { label: "kein SLA-Ziel", risk: "ok" };
   const difference = Date.parse(dueAt) - Date.now();
   if (difference <= 0) return { label: "SLA überfällig", risk: "kritisch" };
@@ -393,6 +400,8 @@ function normaliseEvent(eventType: string): string {
   const labels: Record<string, string> = {
     "ticket.created": "Ticket erstellt",
     "ticket.updated": "Ticket aktualisiert",
+    "ticket.sla.paused": "SLA pausiert",
+    "ticket.sla.resumed": "SLA fortgesetzt",
     "comment.external_added": "Externer Kommentar hinzugefügt",
     "comment.internal_added": "Interne Notiz hinzugefügt",
     "ticket.tag_added": "Einordnung aktualisiert",
@@ -641,13 +650,14 @@ export async function loadLiveDashboard(
     .slice(0, TICKET_PAGE_SIZE)
     .map((ticket) => ticket.id);
   const ticketTeamIds = new Map<string, string | null>();
+  const slaPausedAt = new Map<string, string>();
   const teamNames = new Map<string, string>();
   const requesterNames = new Map<string, string>();
   if (listedTicketIds.length > 0) {
     const [teamRowsResult, teamsResult, requesterResult] = await Promise.all([
       client
         .from("tickets")
-        .select("id, assigned_team_id")
+        .select("id, assigned_team_id, sla_paused_at")
         .in("id", listedTicketIds),
       client.functions.invoke("ticket-agent-assignment", {
         body: { tenantId: tenant.id, type: "listTeams" },
@@ -672,8 +682,10 @@ export async function loadLiveDashboard(
     for (const row of (teamRowsResult.data ?? []) as {
       id: string;
       assigned_team_id: string | null;
+      sla_paused_at?: string | null;
     }[]) {
       ticketTeamIds.set(row.id, row.assigned_team_id ?? null);
+      if (row.sla_paused_at) slaPausedAt.set(row.id, row.sla_paused_at);
     }
     for (const team of ticketTeamsFromResponse(teamsResult.data)) {
       teamNames.set(team.id, team.name);
@@ -681,7 +693,10 @@ export async function loadLiveDashboard(
   }
 
   const ticketRows = tickets.slice(0, TICKET_PAGE_SIZE).map((ticket) => {
-    const due = formatDueAt(ticket.resolution_due_at);
+    const due = formatDueAt(
+      ticket.resolution_due_at,
+      ticket.status_is_closed ? null : (slaPausedAt.get(ticket.id) ?? null),
+    );
     return {
       age: formatAge(ticket.created_at),
       assignedAgentId: ticket.assigned_agent_id,

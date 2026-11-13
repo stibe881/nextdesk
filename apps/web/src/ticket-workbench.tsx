@@ -1,4 +1,5 @@
 import { formatSlaRemaining } from "./lib/live-dashboard";
+import { slaPausedLabel } from "./lib/sla-pause";
 import {
   AlertCircle,
   BookOpenCheck,
@@ -98,6 +99,8 @@ type ReopenRequest = {
 type SlaExpectation = {
   responseDueAt: string | null;
   resolutionDueAt: string | null;
+  /** Start of a running SLA pause (waiting status). */
+  slaPausedAt?: string | null;
   message: string;
 };
 
@@ -230,6 +233,8 @@ function eventLabel(value: string): string {
     "ticket.comment.external": "Externe Nachricht",
     "ticket.created": "Ticket erstellt",
     "ticket.resolved": "Ticket gelöst",
+    "ticket.sla.paused": "SLA pausiert",
+    "ticket.sla.resumed": "SLA fortgesetzt",
     "ticket.status_changed": "Status geändert",
   };
   return (
@@ -401,6 +406,7 @@ function parseAgentContext(value: unknown): AgentContext | null {
           expectation: {
             responseDueAt: ticket.response_due_at ?? null,
             resolutionDueAt: ticket.resolution_due_at ?? null,
+            slaPausedAt: ticket.sla_paused_at ?? null,
             message: "SLA-Zeiten aus den Ticketdaten.",
           },
         },
@@ -423,13 +429,20 @@ function parseSlaExpectation(value: unknown): SlaExpectation | null {
   if (!expectation || typeof expectation.message !== "string") return null;
   const responseDueAt = stringOrNull(expectation.responseDueAt);
   const resolutionDueAt = stringOrNull(expectation.resolutionDueAt);
+  const slaPausedAt = stringOrNull(expectation.slaPausedAt);
   if (
     (responseDueAt !== null && !isTimestamp(responseDueAt)) ||
     (resolutionDueAt !== null && !isTimestamp(resolutionDueAt))
   ) {
     return null;
   }
-  return { responseDueAt, resolutionDueAt, message: expectation.message };
+  return {
+    responseDueAt,
+    resolutionDueAt,
+    slaPausedAt:
+      slaPausedAt !== null && isTimestamp(slaPausedAt) ? slaPausedAt : null,
+    message: expectation.message,
+  };
 }
 
 function parseTimeline(value: unknown): PublicTimelineItem[] | null {
@@ -1012,12 +1025,16 @@ function SlaLine({ expectation }: { expectation: SlaExpectation | null }) {
   );
   const response = relativeSlaLabel(expectation?.responseDueAt ?? null, now);
   const value = resolution ?? response;
+  // Waiting statuses stop the SLA: show since when instead of a countdown.
+  const paused = slaPausedLabel(expectation?.slaPausedAt, now);
   return (
     <span className="ticket-workbench__context-value">
       <Clock3 aria-hidden="true" size={15} />
-      {value
-        ? `SLA ${resolution ? "Lösung" : "Antwort"}: ${value}`
-        : (expectation?.message ?? "SLA-Zeit nicht verfügbar")}
+      {paused
+        ? paused
+        : value
+          ? `SLA ${resolution ? "Lösung" : "Antwort"}: ${value}`
+          : (expectation?.message ?? "SLA-Zeit nicht verfügbar")}
     </span>
   );
 }

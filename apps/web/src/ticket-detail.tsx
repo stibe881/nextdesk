@@ -122,6 +122,7 @@ import {
   type CopyRecipient,
   useTicketReplyDraft,
 } from "./ticket-workbench";
+import { slaPauseEventLabel } from "./lib/sla-pause";
 
 type CommentVisibility = "external" | "internal";
 type BillingKind = "internal" | "billable" | "goodwill";
@@ -2347,6 +2348,8 @@ function eventLabel(
   if (eventType === "asset.intune_action") {
     return intuneActionEventLabel(payload ?? null);
   }
+  const slaPause = slaPauseEventLabel(eventType, payload);
+  if (slaPause) return slaPause;
   const labels: Record<string, string> = {
     "ticket.created": "Ticket erstellt",
     "comment.external_added": "Externer Kommentar hinzugefügt",
@@ -6111,11 +6114,7 @@ export function TicketDetail({
       // Gespeichert: die Auswahl sofort wieder freigeben, die Ansicht lädt im
       // Hintergrund neu (vorher blieb sie mehrere Sekunden gesperrt).
       setPendingAction(null);
-      const refresh = Promise.all([
-        loadTicket(),
-        loadFeedback(),
-        loadQuality(),
-      ])
+      const refresh = Promise.all([loadTicket(), loadFeedback(), loadQuality()])
         .catch(() => undefined)
         .finally(() => setOptimisticStatusKey(null));
       if (closingStatus) void refresh.then(() => offerSolutionArticle());
@@ -7727,9 +7726,7 @@ export function TicketDetail({
                     <Send aria-hidden="true" size={17} strokeWidth={1.8} />
                     <span>
                       <strong>Antwort an anfragende Person</strong>
-                      <small>
-                        Für die anfragende Person sichtbar
-                      </small>
+                      <small>Für die anfragende Person sichtbar</small>
                     </span>
                   </button>
                 </div>
@@ -7774,7 +7771,11 @@ export function TicketDetail({
                   }
                   onApply={(next) =>
                     setCommentDrafts((current) =>
-                      updateTicketCommentDraft(current, commentVisibility, next),
+                      updateTicketCommentDraft(
+                        current,
+                        commentVisibility,
+                        next,
+                      ),
                     )
                   }
                   tenantId={tenantId}

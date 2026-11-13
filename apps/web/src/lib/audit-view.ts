@@ -213,6 +213,7 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "tickets.update": "Ticket geändert",
   "tickets.delete": "Ticket gelöscht",
   "ticket.status_changed": "Ticketstatus geändert",
+  "ticket.status.sla_pause_updated": "SLA-Pause eines Status geändert",
   "ticket.assigned": "Ticket zugewiesen",
   "ticket.department_changed": "Ticket in andere Abteilung verschoben",
   "ticket.csv_exported": "Tickets als CSV exportiert",

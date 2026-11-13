@@ -41,6 +41,22 @@ Deno.test("rule score puts SLA breaches above waiting tickets", () => {
   assertEquals(waiting.reason, "Priorität Hoch · Wartet auf Rückmeldung");
 });
 
+Deno.test("a paused SLA is not due and needs no first answer", () => {
+  const paused = ruleScore(
+    ticket({
+      statusKey: "waiting_customer",
+      resolutionDueAt: "2026-11-07T11:00:00Z",
+      firstRespondedAt: null,
+      responseDueAt: "2026-11-07T11:00:00Z",
+      slaPausedAt: "2026-11-07T09:00:00Z",
+    }),
+    now,
+  );
+  const running = ruleScore(ticket({ resolutionDueAt: "2026-11-07T11:00:00Z" }), now);
+  assertEquals(paused.reason, "SLA pausiert · Wartet auf Rückmeldung");
+  assertEquals(running.score > paused.score, true);
+});
+
 Deno.test("manual order wins, new tickets are slotted in by proposal", () => {
   const ranks = new Map([
     ["a", { ai_rank: 1, manual_rank: 2 }],

@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, View } from "react-native";
 
 import type { MobileTicket } from "@/lib/nextdesk-tickets";
+import { slaPausedLabel } from "@/lib/sla-pause";
 import { formatTicketCreatedAt } from "@/lib/ticket-created-at";
 import { useAppColors } from "@/lib/themed-styles";
 
@@ -108,6 +109,25 @@ export function TicketCreatedText({
     <View accessibilityLabel={label} style={styles.priority}>
       <Ionicons color={colors.muted} name="time-outline" size={12} />
       <Text style={[styles.createdText, { color: colors.muted }]}>{label}</Text>
+    </View>
+  );
+}
+
+/** «SLA pausiert seit …» while a waiting status stops the SLA. */
+export function TicketSlaPauseText({
+  pausedAt,
+}: {
+  pausedAt: MobileTicket["slaPausedAt"];
+}) {
+  const colors = useAppColors();
+  const label = slaPausedLabel(pausedAt);
+  if (!label) return null;
+  return (
+    <View accessibilityLabel={label} style={styles.priority}>
+      <Ionicons color={colors.warning} name="pause-outline" size={12} />
+      <Text style={[styles.createdText, { color: colors.warning }]}>
+        {label}
+      </Text>
     </View>
   );
 }

@@ -203,7 +203,7 @@ async function ownTicket(
   const result = await admin
     .from("tickets")
     .select(
-      "id, tenant_id, requester_id, affected_user_id, priority_id, category_id, response_due_at, resolution_due_at, resolved_at, closed_at, subject, ticket_number, created_at",
+      "id, tenant_id, requester_id, affected_user_id, priority_id, category_id, response_due_at, resolution_due_at, sla_paused_at, resolved_at, closed_at, subject, ticket_number, created_at",
     )
     .is("deleted_at", null)
     .eq("tenant_id", tenantId)
@@ -748,10 +748,13 @@ async function slaExpectation(
       expectation: {
         responseDueAt: current.response_due_at ?? null,
         resolutionDueAt: current.resolution_due_at ?? null,
-        message:
-          current.response_due_at || current.resolution_due_at
-            ? "Die angezeigten Zeiten sind Erwartungen aus den vorhandenen SLA-Daten."
-            : "Für dieses Ticket ist keine konkrete SLA-Erwartung hinterlegt.",
+        // Waiting statuses stop the SLA (0324); the due dates move on resume.
+        slaPausedAt: current.closed_at ? null : (current.sla_paused_at ?? null),
+        message: current.sla_paused_at && !current.closed_at
+          ? "Die SLA ist angehalten, solange das Ticket auf eine Rückmeldung wartet."
+          : current.response_due_at || current.resolution_due_at
+          ? "Die angezeigten Zeiten sind Erwartungen aus den vorhandenen SLA-Daten."
+          : "Für dieses Ticket ist keine konkrete SLA-Erwartung hinterlegt.",
       },
     },
   });

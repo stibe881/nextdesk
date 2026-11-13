@@ -43,6 +43,12 @@ type Action =
       active: boolean;
     }
   | { type: "archiveRule"; tenantId: string; ruleId: string }
+  | {
+      type: "setStatusPause";
+      tenantId: string;
+      statusId: string;
+      pausesSla: boolean;
+    }
   | { type: "listEscalations"; tenantId: string; limit: number };
 
 type PermissionScopes = {
@@ -217,6 +223,20 @@ function parseAction(value: unknown): Action | null {
       type: "listEscalations",
       tenantId: value.tenantId,
       limit: (value.limit as number | undefined) ?? DEFAULT_ESCALATION_LIMIT,
+    };
+  }
+
+  if (
+    value.type === "setStatusPause" &&
+    hasOnlyKeys(value, ["type", "tenantId", "statusId", "pausesSla"]) &&
+    isUuid(value.statusId) &&
+    typeof value.pausesSla === "boolean"
+  ) {
+    return {
+      type: "setStatusPause",
+      tenantId: value.tenantId,
+      statusId: value.statusId,
+      pausesSla: value.pausesSla,
     };
   }
 
@@ -485,6 +505,84 @@ function normalizeRule(rule: SlaRule) {
   };
 }
 
+type StatusRow = {
+  id: string;
+  key: string;
+  label: string;
+  is_closed: boolean;
+  sort_order: number;
+  pauses_sla: boolean | null;
+};
+
+function normalizeStatus(status: StatusRow) {
+  return {
+    id: status.id,
+    key: status.key,
+    label: status.label,
+    isClosed: status.is_closed,
+    // Closed statuses end the SLA anyway; the flag only matters while open.
+    pausesSla: status.pauses_sla === true && !status.is_closed,
+  };
+}
+
+/**
+ * «Hält die SLA an»: tickets in this status stop their SLA clock. Switching
+ * the flag pauses or resumes the status' open tickets in the database
+ * (trigger ticket_statuses_sla_pause_changed, migration 0324).
+ */
+async function setStatusPause(
+  admin: any,
+  request: Request,
+  action: Extract<Action, { type: "setStatusPause" }>,
+  actorId: string,
+  scopes: PermissionScopes,
+): Promise<Response> {
+  // Statuses are tenant-wide, so only a tenant-wide SLA manager may switch.
+  if (!scopes.tenantWide) {
+    return json(request, { error: { code: "ticket_sla_manage_denied" } }, 403);
+  }
+  const { data: before, error: readError } = await admin
+    .from("ticket_statuses")
+    .select("id, key, label, is_closed, sort_order, pauses_sla")
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.statusId)
+    .maybeSingle();
+  if (readError) {
+    return json(request, { error: { code: "sla_status_read_failed" } }, 500);
+  }
+  if (!before) {
+    return json(request, { error: { code: "sla_status_not_found" } }, 404);
+  }
+  if ((before as StatusRow).is_closed && action.pausesSla) {
+    return json(request, { error: { code: "sla_status_closed" } }, 422);
+  }
+  const { data: after, error: updateError } = await admin
+    .from("ticket_statuses")
+    .update({ pauses_sla: action.pausesSla })
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.statusId)
+    .select("id, key, label, is_closed, sort_order, pauses_sla")
+    .single();
+  if (updateError || !after) {
+    return json(request, { error: { code: "sla_status_update_failed" } }, 422);
+  }
+  const { error: auditError } = await admin.from("audit_logs").insert({
+    tenant_id: action.tenantId,
+    actor_id: actorId,
+    action: "ticket.status.sla_pause_updated",
+    entity_type: "ticket_status",
+    entity_id: action.statusId,
+    severity: "info",
+    before_data: normalizeStatus(before as StatusRow),
+    after_data: normalizeStatus(after as StatusRow),
+    metadata: { statusId: action.statusId, pausesSla: action.pausesSla },
+  });
+  if (auditError) {
+    return json(request, { error: { code: "sla_rule_audit_failed" } }, 500);
+  }
+  return json(request, { data: { status: normalizeStatus(after as StatusRow) } });
+}
+
 function auditData(rule: SlaRule): Record<string, unknown> {
   const normalized = normalizeRule(rule);
   return normalized ?? { id: rule.id };
@@ -590,6 +688,16 @@ async function listRules(
     return json(request, { error: { code: "sla_rule_list_failed" } }, 500);
   }
 
+  const statusesResult = await admin
+    .from("ticket_statuses")
+    .select("id, key, label, is_closed, sort_order, pauses_sla")
+    .eq("tenant_id", tenantId)
+    .order("sort_order", { ascending: true })
+    .limit(200);
+  if (statusesResult.error) {
+    return json(request, { error: { code: "sla_rule_list_failed" } }, 500);
+  }
+
   const rules = ((data ?? []) as SlaRule[])
     .filter((rule) => {
       const profile = profileFromRule(rule);
@@ -604,7 +712,11 @@ async function listRules(
     .map(normalizeRule)
     .filter((rule): rule is NonNullable<typeof rule> => rule !== null);
   return json(request, {
-    data: { rules, truncated: (data ?? []).length === MAX_RULES },
+    data: {
+      rules,
+      truncated: (data ?? []).length === MAX_RULES,
+      statuses: (statusesResult.data ?? []).map(normalizeStatus),
+    },
   });
 }
 
@@ -1027,6 +1139,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
   if (action.type === "saveRule") {
     return saveRule(admin, request, action, actorId, scopes);
+  }
+  if (action.type === "setStatusPause") {
+    return setStatusPause(admin, request, action, actorId, scopes);
   }
   return archiveRule(admin, request, action, actorId, scopes);
 });

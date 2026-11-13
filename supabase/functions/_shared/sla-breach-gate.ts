@@ -23,7 +23,7 @@ export async function ticketIdsWithOpenSlaBreach(
     admin
       .from("tickets")
       .select(
-        "id, response_due_at, first_responded_at, resolution_due_at, resolved_at, closed_at",
+        "id, response_due_at, first_responded_at, resolution_due_at, resolved_at, closed_at, sla_paused_at",
       )
       .eq("tenant_id", tenantId)
       .in("id", ticketIds),
@@ -62,6 +62,7 @@ export async function ticketIdsWithOpenSlaBreach(
         resolutionDueAt: (ticket.resolution_due_at as string | null) ?? null,
         resolvedAt: (ticket.resolved_at as string | null) ?? null,
         closedAt: (ticket.closed_at as string | null) ?? null,
+        slaPausedAt: (ticket.sla_paused_at as string | null) ?? null,
       },
       eventsByTicket.get(id) ?? [],
     );
