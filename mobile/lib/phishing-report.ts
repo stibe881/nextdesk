@@ -85,7 +85,12 @@ export async function submitPhishingReport(
 ): Promise<PhishingSubmitResult> {
   const trimmed = rawText.slice(0, MAX_PHISHING_PASTE_CHARACTERS);
   if (!trimmed.trim()) {
-    throw new Error("Füge zuerst die Kopfzeilen oder den Text der E-Mail ein.");
+    throw new Error(
+      tn(
+        "Füge zuerst die Kopfzeilen oder den Text der E-Mail ein.",
+        "Fügen Sie zuerst die Kopfzeilen oder den Text der E-Mail ein.",
+      ),
+    );
   }
   const result = parsePhishingSubmit(
     await invokeNextDesk<unknown>("phishing-reports", {

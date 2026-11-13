@@ -190,7 +190,10 @@ export function TicketPhotoAttachments({
         setPermissionBlocked(!permission.canAskAgain);
         setNotice({
           tone: "error",
-          text: "Bitte erlaube den Kamerazugriff, um ein Foto direkt aufzunehmen.",
+          text: tn(
+            "Bitte erlaube den Kamerazugriff, um ein Foto direkt aufzunehmen.",
+            "Bitte erlauben Sie den Kamerazugriff, um ein Foto direkt aufzunehmen.",
+          ),
         });
         return null;
       }
@@ -396,7 +399,10 @@ export function TicketPhotoAttachments({
               <Text style={styles.actionPrimaryText}>Kamera</Text>
             </Pressable>
             <Pressable
-              accessibilityHint={tn(`Wähle bis zu ${MAX_LIBRARY_SELECTION} Bilder aus deiner Mediathek.`, `Wählen Sie bis zu ${MAX_LIBRARY_SELECTION} Bilder aus Ihrer Mediathek.`)}
+              accessibilityHint={tn(
+                `Wähle bis zu ${MAX_LIBRARY_SELECTION} Bilder aus deiner Mediathek.`,
+                `Wählen Sie bis zu ${MAX_LIBRARY_SELECTION} Bilder aus Ihrer Mediathek.`,
+              )}
               accessibilityLabel="Fotos aus der Mediathek auswählen"
               accessibilityRole="button"
               accessibilityState={{ disabled: uploading }}
@@ -423,8 +429,10 @@ export function TicketPhotoAttachments({
                 : `${staged.length} Fotos bereit`}
             </Text>
             <Text style={styles.stagedHint}>
-              Tippe auf «Markieren», um Pfeile, Text oder Schwärzungen
-              hinzuzufügen.
+              {tn(
+                "Tippe auf «Markieren», um Pfeile, Text oder Schwärzungen hinzuzufügen.",
+                "Tippen Sie auf «Markieren», um Pfeile, Text oder Schwärzungen hinzuzufügen.",
+              )}
             </Text>
             <View style={styles.stagedRow}>
               {staged.map((asset, index) => (
@@ -606,7 +614,10 @@ export function TicketPhotoAttachments({
             <Text style={styles.emptyTitle}>Noch keine Fotos</Text>
             <Text style={styles.emptyText}>
               {canUpload
-                ? tn("Halte das Problem direkt mit der Kamera fest oder wähle Bilder aus deiner Mediathek.", "Halten Sie das Problem direkt mit der Kamera fest oder wählen Sie Bilder aus Ihrer Mediathek.")
+                ? tn(
+                    "Halte das Problem direkt mit der Kamera fest oder wähle Bilder aus deiner Mediathek.",
+                    "Halten Sie das Problem direkt mit der Kamera fest oder wählen Sie Bilder aus Ihrer Mediathek.",
+                  )
                 : "Zu diesem Ticket wurden noch keine Fotos hinzugefügt."}
             </Text>
           </View>

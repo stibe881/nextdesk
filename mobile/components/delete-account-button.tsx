@@ -38,7 +38,10 @@ export function DeleteAccountButton({
       setError(
         nextError instanceof Error && nextError.message
           ? nextError.message
-          : "Das Konto konnte nicht gelöscht werden. Bitte versuche es erneut.",
+          : tn(
+              "Das Konto konnte nicht gelöscht werden. Bitte versuche es erneut.",
+              "Das Konto konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+            ),
       );
     } finally {
       setDeleting(false);
@@ -49,10 +52,19 @@ export function DeleteAccountButton({
     Alert.alert(
       "Konto endgültig löschen?",
       ownsWorkspace === true
-        ? tn("Dein Konto, dein Arbeitsbereich und alle darin gespeicherten Tickets, Dateien und Einträge werden unwiderruflich gelöscht. Eingeladene Teammitglieder verlieren den Zugriff auf diesen Arbeitsbereich.", "Ihr Konto, Ihr Arbeitsbereich und alle darin gespeicherten Tickets, Dateien und Einträge werden unwiderruflich gelöscht. Eingeladene Teammitglieder verlieren den Zugriff auf diesen Arbeitsbereich.")
+        ? tn(
+            "Dein Konto, dein Arbeitsbereich und alle darin gespeicherten Tickets, Dateien und Einträge werden unwiderruflich gelöscht. Eingeladene Teammitglieder verlieren den Zugriff auf diesen Arbeitsbereich.",
+            "Ihr Konto, Ihr Arbeitsbereich und alle darin gespeicherten Tickets, Dateien und Einträge werden unwiderruflich gelöscht. Eingeladene Teammitglieder verlieren den Zugriff auf diesen Arbeitsbereich.",
+          )
         : ownsWorkspace === false
-          ? tn("Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht.", "Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht.")
-          : tn("Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht. Besitzt du einen eigenen Arbeitsbereich, wird er mit allen Tickets und Dateien ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; du verlierst nur deinen Zugriff.", "Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht. Besitzen Sie einen eigenen Arbeitsbereich, wird er mit allen Tickets und Dateien ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; Sie verlieren nur Ihren Zugriff."),
+          ? tn(
+              "Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht.",
+              "Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht.",
+            )
+          : tn(
+              "Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht. Besitzt du einen eigenen Arbeitsbereich, wird er mit allen Tickets und Dateien ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; du verlierst nur deinen Zugriff.",
+              "Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht. Besitzen Sie einen eigenen Arbeitsbereich, wird er mit allen Tickets und Dateien ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; Sie verlieren nur Ihren Zugriff.",
+            ),
       [
         { style: "cancel", text: "Abbrechen" },
         {

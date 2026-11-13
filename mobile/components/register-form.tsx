@@ -34,7 +34,9 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
     const displayName = name.trim().replace(/\s+/g, " ");
     const address = email.trim().toLowerCase();
     if (displayName.length < 2) {
-      setMessage(tn("Bitte gib deinen Namen ein.", "Bitte geben Sie Ihren Namen ein."));
+      setMessage(
+        tn("Bitte gib deinen Namen ein.", "Bitte geben Sie Ihren Namen ein."),
+      );
       return;
     }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
@@ -88,10 +90,19 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
       const detail = error instanceof Error ? error.message.toLowerCase() : "";
       setMessage(
         detail.includes("password")
-          ? "Dieses Passwort ist zu schwach. Bitte wähle ein längeres Passwort."
+          ? tn(
+              "Dieses Passwort ist zu schwach. Bitte wähle ein längeres Passwort.",
+              "Dieses Passwort ist zu schwach. Bitte wählen Sie ein längeres Passwort.",
+            )
           : detail.includes("signup") || detail.includes("sign up")
-            ? tn("Die Registrierung ist derzeit nicht möglich. Bitte versuche es später erneut.", "Die Registrierung ist derzeit nicht möglich. Bitte versuchen Sie es später erneut.")
-            : tn("Das Konto konnte nicht erstellt werden. Bitte prüfe deine Angaben und versuche es erneut.", "Das Konto konnte nicht erstellt werden. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut."),
+            ? tn(
+                "Die Registrierung ist derzeit nicht möglich. Bitte versuche es später erneut.",
+                "Die Registrierung ist derzeit nicht möglich. Bitte versuchen Sie es später erneut.",
+              )
+            : tn(
+                "Das Konto konnte nicht erstellt werden. Bitte prüfe deine Angaben und versuche es erneut.",
+                "Das Konto konnte nicht erstellt werden. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut.",
+              ),
       );
     } finally {
       setPending(false);
@@ -101,9 +112,29 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
   if (done) {
     return (
       <View style={styles.wrap}>
-        <Text style={styles.heading}>{tn("Bestätige deine E-Mail-Adresse", "Bestätigen Sie Ihre E-Mail-Adresse")}</Text>
+        <Text style={styles.heading}>
+          {tn(
+            "Bestätige deine E-Mail-Adresse",
+            "Bestätigen Sie Ihre E-Mail-Adresse",
+          )}
+        </Text>
         <Text style={styles.copy}>
-          {tn(<>Wir haben dir eine E-Mail an {email.trim().toLowerCase()} gesendet. Öffne den Bestätigungslink auf diesem iPhone. Danach kannst du deinen Arbeitsbereich erstellen. Falls die Adresse bereits registriert ist, enthält die E-Mail stattdessen einen Anmeldelink.</>, <>Wir haben Ihnen eine E-Mail an {email.trim().toLowerCase()} gesendet. Öffnen Sie den Bestätigungslink auf diesem iPhone. Danach können Sie Ihren Arbeitsbereich erstellen. Falls die Adresse bereits registriert ist, enthält die E-Mail stattdessen einen Anmeldelink.</>)}
+          {tn(
+            <>
+              Wir haben dir eine E-Mail an {email.trim().toLowerCase()}{" "}
+              gesendet. Öffne den Bestätigungslink auf diesem iPhone. Danach
+              kannst du deinen Arbeitsbereich erstellen. Falls die Adresse
+              bereits registriert ist, enthält die E-Mail stattdessen einen
+              Anmeldelink.
+            </>,
+            <>
+              Wir haben Ihnen eine E-Mail an {email.trim().toLowerCase()}{" "}
+              gesendet. Öffnen Sie den Bestätigungslink auf diesem iPhone.
+              Danach können Sie Ihren Arbeitsbereich erstellen. Falls die
+              Adresse bereits registriert ist, enthält die E-Mail stattdessen
+              einen Anmeldelink.
+            </>,
+          )}
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -120,7 +151,10 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
     <View style={styles.wrap}>
       <Text style={styles.heading}>Konto erstellen</Text>
       <Text style={styles.copy}>
-        {tn("Auch ohne Firma: Du erhältst deinen eigenen Arbeitsbereich und kannst Teammitglieder zur Zusammenarbeit einladen.", "Auch ohne Firma: Sie erhalten Ihren eigenen Arbeitsbereich und können Teammitglieder zur Zusammenarbeit einladen.")}
+        {tn(
+          "Auch ohne Firma: Du erhältst deinen eigenen Arbeitsbereich und kannst Teammitglieder zur Zusammenarbeit einladen.",
+          "Auch ohne Firma: Sie erhalten Ihren eigenen Arbeitsbereich und können Teammitglieder zur Zusammenarbeit einladen.",
+        )}
       </Text>
       <TextInput
         accessibilityLabel="Name"
@@ -180,7 +214,10 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
         </Text>
       </Pressable>
       <Text style={styles.legal}>
-        {tn("Mit der Registrierung akzeptierst du die", "Mit der Registrierung akzeptieren Sie die")}{" "}
+        {tn(
+          "Mit der Registrierung akzeptierst du die",
+          "Mit der Registrierung akzeptieren Sie die",
+        )}{" "}
         <Text
           accessibilityRole="link"
           onPress={() =>
@@ -190,7 +227,10 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
         >
           Datenschutzerklärung
         </Text>
-        {tn(". Du kannst dein Konto jederzeit in den Einstellungen löschen.", ". Sie können Ihr Konto jederzeit in den Einstellungen löschen.")}
+        {tn(
+          ". Du kannst dein Konto jederzeit in den Einstellungen löschen.",
+          ". Sie können Ihr Konto jederzeit in den Einstellungen löschen.",
+        )}
       </Text>
       {message ? (
         <Text accessibilityLiveRegion="polite" style={styles.message}>

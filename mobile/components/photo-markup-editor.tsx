@@ -50,6 +50,7 @@ import {
   type Point,
 } from "@/lib/photo-annotation";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 export type MarkupPhoto = { uri: string; width?: number; height?: number };
 export type MarkupResult = { uri: string; width: number; height: number };
@@ -546,7 +547,10 @@ function MarkupWorkspace({
           {tool === "redact"
             ? "Ziehe ein Feld über vertrauliche Inhalte – es wird fest geschwärzt."
             : tool === "text"
-              ? "Tippe auf die Stelle, an der der Text stehen soll."
+              ? tn(
+                  "Tippe auf die Stelle, an der der Text stehen soll.",
+                  "Tippen Sie auf die Stelle, an der der Text stehen soll.",
+                )
               : tool === "pen"
                 ? "Zeichne frei mit dem Finger."
                 : "Ziehe auf dem Foto, um zu markieren."}

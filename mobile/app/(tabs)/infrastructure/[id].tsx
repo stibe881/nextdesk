@@ -46,6 +46,7 @@ import {
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 type Sheet = "lifecycle" | "maintenance" | null;
 
@@ -149,7 +150,7 @@ export default function InfrastructureDetailScreen() {
         "Status nicht geändert",
         nextError instanceof Error
           ? nextError.message
-          : "Bitte versuche es erneut.",
+          : tn("Bitte versuche es erneut.", "Bitte versuchen Sie es erneut."),
       );
     } finally {
       setSaving(false);
@@ -183,7 +184,7 @@ export default function InfrastructureDetailScreen() {
         "Wartung nicht gespeichert",
         nextError instanceof Error
           ? nextError.message
-          : "Bitte versuche es erneut.",
+          : tn("Bitte versuche es erneut.", "Bitte versuchen Sie es erneut."),
       );
     } finally {
       setSaving(false);

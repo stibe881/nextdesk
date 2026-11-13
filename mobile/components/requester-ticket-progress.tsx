@@ -92,7 +92,10 @@ export function RequesterTicketProgress({
       setMessage("");
       setNotice(
         response === "resolved"
-          ? tn("Danke! Dein Ticket ist jetzt gelöst.", "Danke! Ihr Ticket ist jetzt gelöst.")
+          ? tn(
+              "Danke! Dein Ticket ist jetzt gelöst.",
+              "Danke! Ihr Ticket ist jetzt gelöst.",
+            )
           : "Danke! Das Support-Team kümmert sich wieder darum.",
       );
       await load();
@@ -102,8 +105,14 @@ export function RequesterTicketProgress({
       setError(
         cause instanceof NextDeskPortalError &&
           cause.code === "ticket_not_waiting"
-          ? tn("Das Ticket wartet nicht mehr auf deine Rückmeldung.", "Das Ticket wartet nicht mehr auf Ihre Rückmeldung.")
-          : tn("Deine Rückmeldung konnte nicht gesendet werden. Versuch es bitte nochmals.", "Ihre Rückmeldung konnte nicht gesendet werden. Versuchen Sie es bitte nochmals."),
+          ? tn(
+              "Das Ticket wartet nicht mehr auf deine Rückmeldung.",
+              "Das Ticket wartet nicht mehr auf Ihre Rückmeldung.",
+            )
+          : tn(
+              "Deine Rückmeldung konnte nicht gesendet werden. Versuch es bitte nochmals.",
+              "Ihre Rückmeldung konnte nicht gesendet werden. Versuchen Sie es bitte nochmals.",
+            ),
       );
     } finally {
       setSending(false);
@@ -255,8 +264,10 @@ export function RequesterTicketProgress({
           </View>
           {answer === "resolved" ? (
             <Text style={[styles.text, { color: colors.muted }]}>
-              Tippe nochmals, um zu bestätigen. Das Ticket wird dann als gelöst
-              markiert.
+              {tn(
+                "Tippe nochmals, um zu bestätigen. Das Ticket wird dann als gelöst markiert.",
+                "Tippen Sie nochmals, um zu bestätigen. Das Ticket wird dann als gelöst markiert.",
+              )}
             </Text>
           ) : null}
           {answer === "need_help" ? (

@@ -106,7 +106,7 @@ export function TicketSupportLevelCard({
     if (!mode || !state?.currentLevel) return;
     setTouched(true);
     if (!teamId) {
-      setError("Wähle ein Team aus.");
+      setError(tn("Wähle ein Team aus.", "Wählen Sie ein Team aus."));
       return;
     }
     if (noteError) return;
@@ -328,7 +328,10 @@ export function TicketSupportLevelCard({
                   multiline
                   onBlur={() => setTouched(true)}
                   onChangeText={setNote}
-                  placeholder={tn("Was hast du schon versucht? Was hast du herausgefunden?", "Was haben Sie schon versucht? Was haben Sie herausgefunden?")}
+                  placeholder={tn(
+                    "Was hast du schon versucht? Was hast du herausgefunden?",
+                    "Was haben Sie schon versucht? Was haben Sie herausgefunden?",
+                  )}
                   placeholderTextColor={colors.subtle}
                   style={styles.input}
                   textAlignVertical="top"

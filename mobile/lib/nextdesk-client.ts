@@ -111,8 +111,11 @@ export const nextDeskPublicConfig = { url, publishableKey } as const;
 const AUTH_TRANSACTION_KEY = "nextdesk:mobile:auth-transaction:v1";
 const AUTH_TRANSACTION_TTL_MS = 10 * 60 * 1_000;
 const AUTH_STORAGE_STEP_TIMEOUT_MS = 6_000;
-const AUTH_STORAGE_TIMEOUT_MESSAGE =
-  "Der sichere Gerätespeicher hat nicht rechtzeitig geantwortet. Bitte entsperre das iPhone und versuche es erneut.";
+const authStorageTimeoutMessage = () =>
+  tn(
+    "Der sichere Gerätespeicher hat nicht rechtzeitig geantwortet. Bitte entsperre das iPhone und versuche es erneut.",
+    "Der sichere Gerätespeicher hat nicht rechtzeitig geantwortet. Bitte entsperren Sie das iPhone und versuchen Sie es erneut.",
+  );
 const SUPABASE_AUTH_STORAGE_KEY = (() => {
   try {
     return `sb-${new URL(url).hostname.split(".")[0]}-auth-token`;
@@ -160,15 +163,17 @@ export const nextDesk: SupabaseClient | null = isNextDeskConfigured
 export function requireNextDesk(): SupabaseClient {
   if (!nextDesk) {
     throw new Error(
-      "Die mobile nextDesk-Verbindung ist noch nicht konfiguriert. Bitte aktualisiere die App.",
+      tn(
+        "Die mobile nextDesk-Verbindung ist noch nicht konfiguriert. Bitte aktualisiere die App.",
+        "Die mobile nextDesk-Verbindung ist noch nicht konfiguriert. Bitte aktualisieren Sie die App.",
+      ),
     );
   }
   return nextDesk;
 }
 
 let pendingAuthCompletion:
-  | { callbackKey: string; promise: Promise<void> }
-  | undefined;
+  { callbackKey: string; promise: Promise<void> } | undefined;
 let lastCompletedCallbackKey: string | undefined;
 
 export type NextDeskAuthFailureCode =
@@ -216,17 +221,35 @@ export function nextDeskAuthFailureMessage(
     case "provider_email_missing":
       return "Microsoft Entra hat für dieses Konto keine E-Mail-Adresse an nextDesk übermittelt. Die Entra-Anmeldung benötigt den E-Mail-Anspruch.";
     case "pkce_verifier_missing":
-      return "Die sichere Anmelderückkehr ist abgelaufen. Bitte starte die SSO-Anmeldung erneut in dieser App.";
+      return tn(
+        "Die sichere Anmelderückkehr ist abgelaufen. Bitte starte die SSO-Anmeldung erneut in dieser App.",
+        "Die sichere Anmelderückkehr ist abgelaufen. Bitte starten Sie die SSO-Anmeldung erneut in dieser App.",
+      );
     case "provider_rejected":
-      return "Die Microsoft-Anmeldung wurde nicht bestätigt. Bitte versuche es erneut.";
+      return tn(
+        "Die Microsoft-Anmeldung wurde nicht bestätigt. Bitte versuche es erneut.",
+        "Die Microsoft-Anmeldung wurde nicht bestätigt. Bitte versuchen Sie es erneut.",
+      );
     case "callback_invalid":
-      return "Die Anmelderückkehr ist ungültig oder abgelaufen. Bitte starte die SSO-Anmeldung erneut.";
+      return tn(
+        "Die Anmelderückkehr ist ungültig oder abgelaufen. Bitte starte die SSO-Anmeldung erneut.",
+        "Die Anmelderückkehr ist ungültig oder abgelaufen. Bitte starten Sie die SSO-Anmeldung erneut.",
+      );
     case "callback_unexpected":
-      return "Diese Anmelderückkehr gehört nicht zur aktuellen nextDesk-Anmeldung. Bitte starte die SSO-Anmeldung erneut.";
+      return tn(
+        "Diese Anmelderückkehr gehört nicht zur aktuellen nextDesk-Anmeldung. Bitte starte die SSO-Anmeldung erneut.",
+        "Diese Anmelderückkehr gehört nicht zur aktuellen nextDesk-Anmeldung. Bitte starten Sie die SSO-Anmeldung erneut.",
+      );
     case "session_not_saved":
-      return "Die Anmeldung konnte nicht sicher auf diesem Gerät gespeichert werden. Bitte versuche es erneut.";
+      return tn(
+        "Die Anmeldung konnte nicht sicher auf diesem Gerät gespeichert werden. Bitte versuche es erneut.",
+        "Die Anmeldung konnte nicht sicher auf diesem Gerät gespeichert werden. Bitte versuchen Sie es erneut.",
+      );
     default:
-      return "Die SSO-Anmeldung konnte nicht abgeschlossen werden. Bitte versuche es erneut.";
+      return tn(
+        "Die SSO-Anmeldung konnte nicht abgeschlossen werden. Bitte versuche es erneut.",
+        "Die SSO-Anmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
+      );
   }
 }
 
@@ -317,7 +340,7 @@ export async function beginNextDeskOAuth(): Promise<void> {
       JSON.stringify(transaction),
     ),
     AUTH_STORAGE_STEP_TIMEOUT_MS,
-    AUTH_STORAGE_TIMEOUT_MESSAGE,
+    authStorageTimeoutMessage(),
   );
 }
 
@@ -367,7 +390,7 @@ export async function createNativeNextDeskOAuthUrl(
       JSON.stringify(verifier),
     ),
     AUTH_STORAGE_STEP_TIMEOUT_MS,
-    AUTH_STORAGE_TIMEOUT_MESSAGE,
+    authStorageTimeoutMessage(),
   );
 
   const authorizationUrl = new URL(
@@ -549,10 +572,12 @@ export async function selectMobileTenant(
   }
   const tenant = tenants.find((candidate) => candidate.id === tenantId);
   if (!tenant) {
-    throw new Error(tn(
+    throw new Error(
+      tn(
         "Dieser Mandant ist für dein Konto nicht aktiv.",
         "Dieser Mandant ist für Ihr Konto nicht aktiv.",
-      ));
+      ),
+    );
   }
   return withTenantSelectionLock(async () => {
     if (selectionGeneration !== tenantSelectionGeneration)

@@ -20,6 +20,7 @@ import {
 } from "@/lib/nextdesk-tickets";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 type RequesterPickerProps = {
   autoOpen?: boolean;
@@ -273,8 +274,10 @@ export function RequesterPicker({
             >
               {queryLength < 2 ? (
                 <Text style={styles.searchNote}>
-                  Gib mindestens zwei Buchstaben ein, um Personen dieses
-                  Mandanten zu suchen.
+                  {tn(
+                    "Gib mindestens zwei Buchstaben ein, um Personen dieses Mandanten zu suchen.",
+                    "Geben Sie mindestens zwei Buchstaben ein, um Personen dieses Mandanten zu suchen.",
+                  )}
                 </Text>
               ) : searchError ? (
                 <Text style={styles.error}>{searchError}</Text>

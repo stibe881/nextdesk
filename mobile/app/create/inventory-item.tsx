@@ -62,7 +62,12 @@ export default function NewInventoryItemScreen() {
     const minimum = wholeNumber(minimumStock);
     const target = wholeNumber(targetStock);
     if (!articleNumber.trim() || !name.trim() || !category.trim()) {
-      setError("Bitte fülle Artikelnummer, Name und Kategorie aus.");
+      setError(
+        tn(
+          "Bitte fülle Artikelnummer, Name und Kategorie aus.",
+          "Bitte füllen Sie Artikelnummer, Name und Kategorie aus.",
+        ),
+      );
       return;
     }
     if (minimum === null || target === null) {
@@ -100,7 +105,10 @@ export default function NewInventoryItemScreen() {
   return (
     <CreateScreen
       heading="Neuer Lagerartikel"
-      intro={tn("Der Artikel wird im Lager angelegt. Bestand buchst du danach über einen Wareneingang.", "Der Artikel wird im Lager angelegt. Bestand buchen Sie danach über einen Wareneingang.")}
+      intro={tn(
+        "Der Artikel wird im Lager angelegt. Bestand buchst du danach über einen Wareneingang.",
+        "Der Artikel wird im Lager angelegt. Bestand buchen Sie danach über einen Wareneingang.",
+      )}
       title="Lagerartikel erfassen"
     >
       {!setup && !error ? (
@@ -108,7 +116,10 @@ export default function NewInventoryItemScreen() {
       ) : setup && !setup.canManage ? (
         <FormCard>
           <FormMessage
-            text={tn("Für das Erfassen von Lagerartikeln fehlt dir die Berechtigung.", "Für das Erfassen von Lagerartikeln fehlt Ihnen die Berechtigung.")}
+            text={tn(
+              "Für das Erfassen von Lagerartikeln fehlt dir die Berechtigung.",
+              "Für das Erfassen von Lagerartikeln fehlt Ihnen die Berechtigung.",
+            )}
             tone="info"
           />
         </FormCard>

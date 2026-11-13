@@ -311,7 +311,10 @@ function tokenFromDevicePushToken(
     !APNS_TOKEN_PATTERN.test(token.data)
   ) {
     throw new Error(
-      "Der Apple-Gerätetoken ist ungültig. Bitte versuche es nochmals.",
+      tn(
+        "Der Apple-Gerätetoken ist ungültig. Bitte versuche es nochmals.",
+        "Der Apple-Gerätetoken ist ungültig. Bitte versuchen Sie es nochmals.",
+      ),
     );
   }
   return token.data;
