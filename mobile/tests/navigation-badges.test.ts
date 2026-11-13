@@ -33,8 +33,26 @@ describe("navigation badges", () => {
         incidentsUnacknowledged: 2,
         canWorkSecurityCases: true,
       }),
-    ).toEqual({ tickets: 16, phishing: 1, incidents: 2 });
-    expect(parseTicketAttention(null)).toEqual({
+    ).toMatchObject({
+      tickets: 16,
+      phishing: 1,
+      incidents: 2,
+      urgent: { incidents: true, phishing: true },
+    });
+    expect(
+      parseTicketAttention({
+        unassignedTickets: 0,
+        securityTriage: 0,
+        securityOpen: 3,
+        incidentsUnacknowledged: 1,
+        incidentsActive: 4,
+      }),
+    ).toMatchObject({
+      phishing: 3,
+      incidents: 4,
+      urgent: { incidents: true, phishing: false },
+    });
+    expect(parseTicketAttention(null)).toMatchObject({
       tickets: 0,
       phishing: 0,
       incidents: 0,

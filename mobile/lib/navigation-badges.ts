@@ -57,7 +57,7 @@ export function useNavigationBadges(
   useEffect(() => {
     refresh();
   }, [refresh]);
-  useAppActiveInterval(refresh, 60_000, Boolean(tenantId));
+  useAppActiveInterval(refresh, 30_000, Boolean(tenantId));
 
   return {
     badges: state && state.tenantId === tenantId ? state.badges : {},

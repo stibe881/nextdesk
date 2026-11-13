@@ -1,12 +1,16 @@
 /**
  * Menu badges of the bottom navigation (counterpart of the web sidebar):
- * «Tickets» = tickets without an assigned agent, «Störungen» = active
- * incidents nobody acknowledged, «Phishing» = open security cases without an
- * agent, «Shop» = new orders (only for people who fulfil orders).
+ * «Tickets» = tickets without an assigned agent, «Störungen» = all active
+ * incidents, «Phishing» = all open security cases (both red while some are
+ * unacknowledged / unassigned, otherwise grey), «Shop» = new orders (only for
+ * people who fulfil orders).
  */
 
 export type NavigationBadgeKey = "tickets" | "incidents" | "phishing" | "shop";
-export type NavigationBadges = Partial<Record<NavigationBadgeKey, number>>;
+export type NavigationBadges = Partial<Record<NavigationBadgeKey, number>> & {
+  /** Badges that need action (red); the others of «Störungen»/«Phishing» are grey. */
+  urgent?: Partial<Record<NavigationBadgeKey, boolean>>;
+};
 
 /** Only positive, safe integers count; everything else shows no badge. */
 export function badgeCount(value: unknown): number {
@@ -29,10 +33,27 @@ function record(value: unknown): Record<string, unknown> | null {
 /** Result of the `navigation_ticket_attention` RPC. */
 export function parseTicketAttention(data: unknown): NavigationBadges {
   const summary = record(data);
+  const unacknowledged = badgeCount(summary?.incidentsUnacknowledged);
+  const unassigned = badgeCount(summary?.securityTriage);
+  // Older servers only report the counts needing action.
+  const active =
+    summary?.incidentsActive === undefined
+      ? unacknowledged
+      : badgeCount(summary.incidentsActive);
+  const open =
+    summary?.securityOpen === undefined
+      ? unassigned
+      : badgeCount(summary.securityOpen);
   return {
     tickets: badgeCount(summary?.unassignedTickets),
-    incidents: badgeCount(summary?.incidentsUnacknowledged),
-    phishing: badgeCount(summary?.securityTriage),
+    incidents: active,
+    phishing: open,
+    urgent: {
+      tickets: true,
+      incidents: unacknowledged > 0,
+      phishing: unassigned > 0,
+      shop: true,
+    },
   };
 }
 
