@@ -22625,7 +22625,6 @@ html body form:has(> .fk-layout) {
   width: auto;
 }
 
-<<<<<<< HEAD
 .article-editor__import {
   display: grid;
   gap: 8px;
@@ -22637,7 +22636,8 @@ html body form:has(> .fk-layout) {
 
 .article-editor__import button {
   justify-self: start;
-=======
+}
+
 /* Navigation badges of «Sicherheitsfälle»/«Störungen»: red while something
    needs action (unassigned / unacknowledged), grey when merely open. */
 .nav-item__badge--urgent,
@@ -22650,5 +22650,4 @@ html body form:has(> .fk-layout) {
 .navigation-cluster__badge--muted {
   color: var(--text, var(--ink));
   background: var(--surface-muted, color-mix(in srgb, var(--text, #334) 14%, transparent));
->>>>>>> origin/main
 }
