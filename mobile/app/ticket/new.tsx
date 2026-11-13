@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Alert,
   findNodeHandle,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -180,6 +182,29 @@ export default function NewTicketScreen() {
     })();
   }, [initialPrefill, isOffline]);
 
+  useEffect(() => {
+    // Android may end nextDesk while the camera app or photo picker is open
+    // (low memory). The pick is then delivered on the next start and would be
+    // lost without this call.
+    if (Platform.OS !== "android") return;
+    let active = true;
+    void ImagePicker.getPendingResultAsync()
+      .then((result) => {
+        if (!active || !result || !("assets" in result)) return;
+        if (result.canceled || !result.assets?.length) return;
+        const images = result.assets.filter(
+          (asset) => !asset.type || asset.type === "image",
+        );
+        setPhotos((current) =>
+          [...current, ...images].slice(0, MAX_NEW_TICKET_PHOTOS),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const selectedDepartment = useMemo(
     () =>
       options?.departments.find(
@@ -188,6 +213,7 @@ export default function NewTicketScreen() {
     [departmentId, options],
   );
   const selectedRequester = requester ?? options?.currentRequester ?? null;
+  const photosFull = photos.length >= MAX_NEW_TICKET_PHOTOS;
   // Offered to people who create a ticket for themselves.
   const showAssistant =
     assistantEnabled &&
@@ -327,17 +353,45 @@ export default function NewTicketScreen() {
     });
   }
 
+  function explainBlockedCamera() {
+    // The system dialog is not shown again after a permanent refusal. The
+    // choice is respected; only a way to change it is offered, and photos
+    // from the media library keep working without camera access.
+    Alert.alert(
+      "Kamerazugriff ist ausgeschaltet",
+      tn(
+        "Du kannst den Kamerazugriff für nextDesk in den Einstellungen erlauben oder stattdessen ein Bild aus der Mediathek wählen.",
+        "Sie können den Kamerazugriff für nextDesk in den Einstellungen erlauben oder stattdessen ein Bild aus der Mediathek wählen.",
+      ),
+      [
+        { text: "Abbrechen", style: "cancel" },
+        {
+          text: "Einstellungen öffnen",
+          onPress: () => void Linking.openSettings().catch(() => undefined),
+        },
+      ],
+    );
+  }
+
   async function addPhoto(source: "camera" | "library") {
-    if (photos.length >= MAX_NEW_TICKET_PHOTOS) return;
+    const remaining = MAX_NEW_TICKET_PHOTOS - photos.length;
+    if (remaining <= 0) return;
     hapticSelection();
+    setError("");
     try {
       if (source === "camera") {
+        // Asked only now, when the person wants to take a photo, never in
+        // advance (Apple HIG «Privacy», Android «Request permissions»).
         const permission = await ImagePicker.requestCameraPermissionsAsync();
         if (!permission.granted) {
+          if (!permission.canAskAgain) {
+            explainBlockedCamera();
+            return;
+          }
           setError(
             tn(
-              "Bitte erlaube den Kamerazugriff, um ein Foto aufzunehmen.",
-              "Bitte erlauben Sie den Kamerazugriff, um ein Foto aufzunehmen.",
+              "Ohne Kamerazugriff kannst du kein Foto aufnehmen. Du kannst stattdessen ein Bild aus der Mediathek wählen.",
+              "Ohne Kamerazugriff können Sie kein Foto aufnehmen. Sie können stattdessen ein Bild aus der Mediathek wählen.",
             ),
           );
           return;
@@ -356,14 +410,18 @@ export default function NewTicketScreen() {
         }
         return;
       }
+      // System photo picker (PHPicker on iOS, Android Photo Picker): it runs
+      // outside the app, needs no library permission and hands over only the
+      // selected images (Apple 5.1.1(iii), Google Play photo and video
+      // permissions policy).
       const result = await ImagePicker.launchImageLibraryAsync({
         allowsEditing: false,
-        allowsMultipleSelection: true,
+        allowsMultipleSelection: remaining > 1,
         exif: false,
         mediaTypes: ["images"],
         orderedSelection: true,
         quality: 1,
-        selectionLimit: MAX_NEW_TICKET_PHOTOS - photos.length,
+        selectionLimit: remaining,
       });
       if (!result.canceled) {
         setPhotos((current) =>
@@ -371,7 +429,12 @@ export default function NewTicketScreen() {
         );
       }
     } catch {
-      setError("Das Foto konnte nicht ausgewählt werden.");
+      hapticError();
+      setError(
+        source === "camera"
+          ? "Die Kamera konnte nicht geöffnet werden. Möglicherweise hat dieses Gerät keine Kamera."
+          : "Die Mediathek konnte nicht geöffnet werden.",
+      );
     }
   }
 
@@ -747,10 +810,17 @@ export default function NewTicketScreen() {
             <FieldLabel label="FOTOS (OPTIONAL)" />
             <View style={styles.photoActions}>
               <Pressable
+                accessibilityHint="Öffnet die Kamera, um ein Foto direkt aufzunehmen."
+                accessibilityLabel="Foto mit der Kamera aufnehmen"
                 accessibilityRole="button"
-                disabled={photos.length >= MAX_NEW_TICKET_PHOTOS}
+                accessibilityState={{ disabled: photosFull }}
+                disabled={photosFull}
                 onPress={() => void addPhoto("camera")}
-                style={styles.photoButton}
+                style={({ pressed }) => [
+                  styles.photoButton,
+                  pressed && styles.photoButtonPressed,
+                  photosFull && styles.photoButtonDisabled,
+                ]}
               >
                 <Ionicons
                   color={colors.primaryText}
@@ -760,10 +830,20 @@ export default function NewTicketScreen() {
                 <Text style={styles.photoButtonText}>Foto aufnehmen</Text>
               </Pressable>
               <Pressable
+                accessibilityHint={tn(
+                  `Wähle bis zu ${MAX_NEW_TICKET_PHOTOS} Bilder aus deiner Mediathek.`,
+                  `Wählen Sie bis zu ${MAX_NEW_TICKET_PHOTOS} Bilder aus Ihrer Mediathek.`,
+                )}
+                accessibilityLabel="Fotos aus der Mediathek auswählen"
                 accessibilityRole="button"
-                disabled={photos.length >= MAX_NEW_TICKET_PHOTOS}
+                accessibilityState={{ disabled: photosFull }}
+                disabled={photosFull}
                 onPress={() => void addPhoto("library")}
-                style={styles.photoButton}
+                style={({ pressed }) => [
+                  styles.photoButton,
+                  pressed && styles.photoButtonPressed,
+                  photosFull && styles.photoButtonDisabled,
+                ]}
               >
                 <Ionicons
                   color={colors.primaryText}
@@ -773,6 +853,11 @@ export default function NewTicketScreen() {
                 <Text style={styles.photoButtonText}>Aus Mediathek</Text>
               </Pressable>
             </View>
+            <Text style={styles.hint}>
+              {photosFull
+                ? `Maximal ${MAX_NEW_TICKET_PHOTOS} Fotos pro Ticket erreicht. Weitere ${tn("kannst du", "können Sie")} im Ticket ergänzen.`
+                : `${photos.length} von ${MAX_NEW_TICKET_PHOTOS} Fotos. Standortdaten werden vor dem Hochladen entfernt.`}
+            </Text>
             {photos.length > 0 ? (
               <View style={styles.photoRow}>
                 {photos.map((photo, index) => (
@@ -984,6 +1069,8 @@ const useStyles = makeThemedStyles((c) => ({
     paddingHorizontal: 12,
   },
   photoButtonText: { color: c.primaryText, fontSize: 13, fontWeight: "800" },
+  photoButtonPressed: { opacity: 0.75 },
+  photoButtonDisabled: { opacity: 0.45 },
   photoImage: { borderRadius: 12, height: "100%", width: "100%" },
   photoRemove: {
     alignItems: "center",
