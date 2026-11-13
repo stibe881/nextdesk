@@ -395,7 +395,12 @@ Ein Klick öffnet die Störung:
    **Behoben** werden die gewählten Dienste auf «Betriebsbereit» gesetzt; du
    kannst das vor dem Veröffentlichen noch ändern. Eine bereits
    veröffentlichte Meldung korrigierst du mit **Bearbeiten** (Zustand, Titel,
-   Text, Dienste) und **Änderungen speichern**.
+   Text, Dienste) und **Änderungen speichern**. Ist die Störung behoben (PRTG meldet
+   OK, der Anbieter meldet sie als behoben oder sie wird abgeschlossen), setzt
+   nextDesk ihre Meldungen automatisch auf **Behoben**: Sie verschwinden aus
+   dem Störungsbanner in Web und App, Abonnenten erhalten das Update, und die
+   Dienste der Meldung sind wieder betriebsbereit (ausser sie stehen noch in
+   einer anderen offenen Meldung).
 7. **Abschliessen bzw. Ursache nachtragen**: Wähle die **Ursache** (Strom, Netzwerk, Hardware,
    Software, Wartung, Extern, Unbekannt) und halte die Lösung fest. Sind
    Tickets zugeordnet, ist **Tickets informieren und auf «Gelöst» setzen**

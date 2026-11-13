@@ -1,3 +1,4 @@
+import { useVisibleInterval } from "./lib/use-visible-interval";
 import { useTicketHoverPreview } from "./ticket-hover-preview";
 import {
   agentTour,
@@ -3438,6 +3439,9 @@ function AuthenticatedApp() {
   const [tenantFeatures, setTenantFeatures] = useState<Record<string, boolean>>(
     {},
   );
+  // Reloads the incident banner so resolved incidents disappear by themselves.
+  const [incidentNoticeTick, setIncidentNoticeTick] = useState(0);
+  useVisibleInterval(() => setIncidentNoticeTick((tick) => tick + 1), 60_000);
   const [activeIncidentNotices, setActiveIncidentNotices] = useState<
     ActiveIncidentNotice[]
   >([]);
@@ -4446,7 +4450,7 @@ function AuthenticatedApp() {
     return () => {
       mounted = false;
     };
-  }, [activeTenant, requesterPortalEnabled, session]);
+  }, [activeTenant, incidentNoticeTick, requesterPortalEnabled, session]);
 
   useEffect(() => {
     if (
