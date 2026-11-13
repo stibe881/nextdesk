@@ -84,6 +84,8 @@ export type PriorityTicket = {
   responseDueAt: string | null;
   firstRespondedAt: string | null;
   waitingSince: string | null;
+  /** Start of a running SLA pause (waiting status); null while running. */
+  slaPausedAt?: string | null;
 };
 
 function priorityWeight(label: string): number {
@@ -104,7 +106,10 @@ export function ruleScore(
   const reasons: string[] = [];
   let score = priorityWeight(ticket.priorityLabel) * 10;
   if (score >= 30) reasons.push(`Priorität ${ticket.priorityLabel}`);
-  const due = ticket.resolutionDueAt ? Date.parse(ticket.resolutionDueAt) : NaN;
+  // While the SLA is paused nothing is due; the ticket waits for others.
+  const paused = Boolean(ticket.slaPausedAt);
+  const due = ticket.resolutionDueAt && !paused ? Date.parse(ticket.resolutionDueAt) : NaN;
+  if (paused) reasons.push("SLA pausiert");
   if (Number.isFinite(due)) {
     if (due < now) {
       score += 40;
@@ -118,7 +123,7 @@ export function ruleScore(
     }
   }
   const responseDue = ticket.responseDueAt ? Date.parse(ticket.responseDueAt) : NaN;
-  if (!ticket.firstRespondedAt) {
+  if (!ticket.firstRespondedAt && !paused) {
     score += 8;
     if (Number.isFinite(responseDue) && responseDue < now) {
       score += 12;
@@ -249,7 +254,7 @@ async function loadTickets(admin: Admin, tenantId: string, actorId: string) {
   const { data, error } = await admin
     .from("tickets")
     .select(
-      "id, ticket_number, subject, description, created_at, updated_at, resolution_due_at, response_due_at, first_responded_at, waiting_since, status:ticket_statuses!inner(key, label, is_closed), priority:ticket_priorities(label)",
+      "id, ticket_number, subject, description, created_at, updated_at, resolution_due_at, response_due_at, first_responded_at, waiting_since, sla_paused_at, status:ticket_statuses!inner(key, label, is_closed), priority:ticket_priorities(label)",
     )
     .is("deleted_at", null)
     .eq("tenant_id", tenantId)
@@ -277,6 +282,7 @@ async function loadTickets(admin: Admin, tenantId: string, actorId: string) {
       responseDueAt: (row.response_due_at as string | null) ?? null,
       firstRespondedAt: (row.first_responded_at as string | null) ?? null,
       waitingSince: (row.waiting_since as string | null) ?? null,
+      slaPausedAt: (row.sla_paused_at as string | null) ?? null,
     };
   });
 }
@@ -318,9 +324,11 @@ async function rank(
             [
               `#${index + 1} ${redact(ticket.subject).slice(0, 160)}`,
               `Priorität: ${ticket.priorityLabel || "–"}; Status: ${ticket.statusLabel}`,
-              `SLA Lösung: ${hoursUntil(ticket.resolutionDueAt, now)}; Erstantwort: ${
-                ticket.firstRespondedAt ? "erfolgt" : `offen (${hoursUntil(ticket.responseDueAt, now)})`
-              }`,
+              ticket.slaPausedAt
+                ? "SLA pausiert (wartet auf Rückmeldung)"
+                : `SLA Lösung: ${hoursUntil(ticket.resolutionDueAt, now)}; Erstantwort: ${
+                  ticket.firstRespondedAt ? "erfolgt" : `offen (${hoursUntil(ticket.responseDueAt, now)})`
+                }`,
               `Alter: ${Math.round((now - Date.parse(ticket.createdAt)) / HOUR)} h`,
               `Beschreibung: ${redact(ticket.description).slice(0, 300)}`,
             ].join("\n")
@@ -496,7 +504,9 @@ async function respond(
           subject: ticket.subject,
           statusLabel: ticket.statusLabel,
           priorityLabel: ticket.priorityLabel,
-          resolutionDueAt: ticket.resolutionDueAt,
+          // A paused SLA has no running due date (widgets, lists).
+          resolutionDueAt: ticket.slaPausedAt ? null : ticket.resolutionDueAt,
+          slaPausedAt: ticket.slaPausedAt ?? null,
           reason: rankRow?.ai_reason ?? null,
           aiRank: rankRow?.ai_rank ?? null,
           manual: rankRow?.manual_rank != null,

@@ -4,6 +4,8 @@
  * child tickets) and finds the gaps where time was lost.
  */
 
+import { slaPauseEventLabel } from "./sla-pause";
+
 export type TimelineTone =
   "neutral" | "info" | "success" | "warning" | "danger" | "accent";
 
@@ -14,6 +16,7 @@ export type TimelineEntryKind =
   | "priority"
   | "department"
   | "sla_due"
+  | "sla_pause"
   | "first_response"
   | "requester_reply"
   | "agent_reply"
@@ -261,6 +264,18 @@ function eventEntries(
       }
       return entries;
     }
+    case "ticket.sla.paused":
+    case "ticket.sla.resumed":
+      return [
+        {
+          ...base,
+          id: event.id,
+          kind: "sla_pause",
+          title: slaPauseEventLabel(event.type, payload) ?? "SLA",
+          detail: null,
+          tone: event.type === "ticket.sla.paused" ? "warning" : "info",
+        },
+      ];
     case "ticket.department_changed":
       return [
         {

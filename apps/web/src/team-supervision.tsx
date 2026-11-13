@@ -36,6 +36,7 @@ import { callTeamSupervision } from "./team-supervision-api";
 import { buildOneOnOneSheet } from "./lib/one-on-one-sheet";
 import { supabase } from "./lib/supabase";
 import "./team-supervision.css";
+import { slaPausedLabel } from "./lib/sla-pause";
 
 type Absence = {
   endsAt: string;
@@ -78,6 +79,8 @@ type TeamTicket = {
   priorityLabel: string;
   createdAt: string;
   resolutionDueAt: string | null;
+  /** Start of a running SLA pause (waiting status). */
+  slaPausedAt?: string | null;
   overdue: boolean;
   atRisk: boolean;
   noFirstResponse: boolean;
@@ -758,9 +761,11 @@ function Redistribute({
                         <span>{ticket.subject}</span>
                         <small>
                           {ticket.priorityLabel} · {ticket.statusLabel}
-                          {ticket.resolutionDueAt
-                            ? ` · SLA ${dateTime(ticket.resolutionDueAt)}`
-                            : ""}
+                          {ticket.slaPausedAt
+                            ? ` · ${slaPausedLabel(ticket.slaPausedAt) ?? "SLA pausiert"}`
+                            : ticket.resolutionDueAt
+                              ? ` · SLA ${dateTime(ticket.resolutionDueAt)}`
+                              : ""}
                         </small>
                       </button>
                     </li>

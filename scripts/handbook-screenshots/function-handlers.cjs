@@ -629,6 +629,13 @@ const HANDLERS = {
     if (body.type === "listRules") {
       return ok({
         truncated: false,
+        statuses: D.STATUSES.map((status) => ({
+          id: status.id,
+          key: status.key,
+          label: status.label,
+          isClosed: status.is_closed,
+          pausesSla: status.key.startsWith("waiting") && !status.is_closed,
+        })),
         rules: [
           ...D.SLA_POLICIES.map((policy, index) => ({
             id: policy.id,
