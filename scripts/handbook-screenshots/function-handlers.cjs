@@ -2354,8 +2354,34 @@ const HANDLERS = {
   },
   "portal-assistant": (body) =>
     body.type === "getSettings" ? ok({ enabled: false }) : null,
-  "ticket-attachments": (body) =>
-    body.type === "list" ? ok({ attachments: [] }) : null,
+  // The e-mail of «Laptop startet nach Windows-Update nicht mehr» came with a
+  // PDF; it is shown below the description in the conversation.
+  "ticket-attachments": (body) => {
+    if (body.type !== "list") return null;
+    const ticket = D.TICKETS.find((entry) => entry.id === body.ticketId);
+    if (!ticket || !ticket.subject.startsWith("Laptop startet")) {
+      return ok({ attachments: [] });
+    }
+    return ok({
+      attachments: [
+        {
+          id: D.uid("17171717", 1),
+          ticket_id: ticket.id,
+          comment_id: null,
+          visibility: "external",
+          original_filename: "Fehlermeldung-Startbildschirm.pdf",
+          content_type: "application/pdf",
+          byte_size: 184320,
+          malware_status: "clean",
+          uploaded_by: ticket.requester_id,
+          created_at: new Date(
+            Date.parse(ticket.created_at) + 5000,
+          ).toISOString(),
+          inline: false,
+        },
+      ],
+    });
+  },
   shop: (body, { persona }) => {
     if (body.type === "getContext") {
       return ok({

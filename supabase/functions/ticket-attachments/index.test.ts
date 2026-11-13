@@ -53,3 +53,34 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  "messages may carry every allowed file type; only images need an image signature",
+  async () => {
+    const [source, migration] = await Promise.all([
+      Deno.readTextFile(new URL("./index.ts", import.meta.url)),
+      Deno.readTextFile(
+        new URL(
+          "../../migrations/0325_comment_attachments_all_file_types.sql",
+          import.meta.url,
+        ),
+      ),
+    ]);
+    for (const required of [
+      "TICKET_COMMENT_IMAGE_CONTENT_TYPES.has(action.contentType)",
+      'inline: typeof inline_content_id === "string"',
+    ]) {
+      if (!source.includes(required)) throw new Error(`missing: ${required}`);
+    }
+    for (const required of [
+      "'application/pdf'",
+      "'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'",
+      "attachment.uploaded_by = p_author_id",
+      "attachment.comment_id is null",
+      "attachment.visibility = p_visibility",
+      "auth.role() <> 'service_role'",
+    ]) {
+      if (!migration.includes(required)) throw new Error(`missing: ${required}`);
+    }
+  },
+);
