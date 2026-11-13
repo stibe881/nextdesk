@@ -393,7 +393,7 @@ function noticeHtml(
   if (!title) return "";
   const body = String(notice.body ?? "")
     .trim()
-    .slice(0, 260);
+    .slice(0, 320);
   const buttonLabel =
     String(notice.buttonLabel ?? "")
       .trim()

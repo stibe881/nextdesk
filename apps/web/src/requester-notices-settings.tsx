@@ -590,8 +590,24 @@ function NoticeEditor({
         />
         {tab === "portal" ? (
           <div className="notices-settings__preview">
-            <NoticeBanner notice={preview} />
-            <NoticeBar notice={preview} />
+            {!draft.showPortalBanner && !draft.showPortalBar ? (
+              <p className="notices-settings__hint">
+                Wähle unter «Orte» Portal-Banner oder Hinweisleiste, dann
+                erscheint hier die Vorschau.
+              </p>
+            ) : null}
+            {draft.showPortalBanner ? (
+              <>
+                <p className="notices-settings__hint">Portal-Banner</p>
+                <NoticeBanner notice={preview} />
+              </>
+            ) : null}
+            {draft.showPortalBar ? (
+              <>
+                <p className="notices-settings__hint">Hinweisleiste</p>
+                <NoticeBar notice={preview} />
+              </>
+            ) : null}
           </div>
         ) : (
           <div className="notices-settings__mail">

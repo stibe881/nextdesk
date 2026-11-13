@@ -111,11 +111,11 @@ immer für alle Anfragenden.
 
 In der Karte der Funktion:
 
-1. **Neuer Hinweis**: Titel (höchstens 60 Zeichen), Text (höchstens 220),
+1. **Neuer Hinweis**: Titel (höchstens 60 Zeichen), Text (höchstens 300),
    Schaltfläche und Ziel (_Shop_, _Wissensartikel_, _Ticket erfassen_ oder
    eine https-Adresse), Symbol (bis 4 Zeichen) und Farbe.
 2. **Wo erscheint er?** Portal-Banner, Portal-Hinweisleiste, E-Mails an
-   Anfragende, App. Die Vorschau zeigt Portal und E-Mail.
+   Anfragende, App. Die Vorschau zeigt je gewählten Ort das Portal-Banner, die Hinweisleiste und die E-Mail.
 3. **Zeitplan:** Start (Standard heute) und **Ende** (Pflicht). Mit
    **Veröffentlichen** wird der Hinweis aktiv, mit **Als Entwurf speichern**
    nicht. Aktive Hinweise lassen sich pausieren.
@@ -124,7 +124,7 @@ In der Karte der Funktion:
    getrennt von den Mails; ohne Personenbezug).
 
 **Allgemeine Regeln:** In Mails erscheint höchstens ein Hinweis, und pro
-Person höchstens einer alle _N_ Tage (Standard 7; 0 = immer). Mehrere
+Person höchstens einer alle _N_ Tage (Standard 0 = immer). Mehrere
 aktive Hinweise wechseln sich ab. Sicherheits-, Phishing-, Erinnerungs- und
 Freigabemails enthalten nie einen Hinweis; das lässt sich nicht ändern.
 
