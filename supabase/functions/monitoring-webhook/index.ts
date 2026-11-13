@@ -15,6 +15,7 @@ import {
   targetServiceStatus,
   TOKEN_PATTERN,
 } from "./prtg.ts";
+import { shortSensorName } from "./prtg-text.ts";
 
 /**
  * PRTG monitoring webhook («Execute HTTP Action»).
@@ -259,7 +260,9 @@ function incidentKey(event: PrtgEvent, device: ResolvedDevice | null, key: strin
 
 function incidentTitle(event: PrtgEvent, device: ResolvedDevice | null): string {
   const name = device?.name ?? event.device ?? event.host ?? "Unbekanntes Gerät";
-  const sensor = event.sensor ? ` – ${event.sensor}` : "";
+  // Without the sensor type PRTG appends in brackets («Ping (Ping)»).
+  const sensorName = shortSensorName(event.sensor);
+  const sensor = sensorName ? ` – ${sensorName}` : "";
   const title = `${name}${sensor}`.replace(/\s+/g, " ").trim();
   return title.length > 300 ? `${title.slice(0, 299)}…` : title;
 }
