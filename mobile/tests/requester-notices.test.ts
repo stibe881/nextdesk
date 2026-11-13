@@ -105,6 +105,7 @@ describe("requester notice symbols", () => {
       kind: "icon",
       name: "gift-outline",
     });
+    // emoji-ok: Testdaten für die Erkennung von Emoji-Symbolen
     expect(resolveNoticeSymbol("🎁")).toEqual({ kind: "text", text: "🎁" });
     expect(resolveNoticeSymbol(null)).toEqual({
       kind: "icon",

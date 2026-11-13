@@ -9,4 +9,4 @@ if (!url) {
 }
 
 await QRCode.toFile("expo-qr-code.png", url, { width: 512 });
-console.log(`✅ QR code saved to expo-qr-code.png`);
+console.log(`Done: QR code saved to expo-qr-code.png`);

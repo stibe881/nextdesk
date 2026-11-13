@@ -3,7 +3,7 @@
  * with read-excel-file, loaded only when needed (dynamic import).
  */
 
-import { tn } from "../formality";
+import { tn } from "./formality";
 import { workbookFromCsv, workbookFromSheets } from "./ipam-import";
 import type { Workbook } from "./ipam-import-model";
 

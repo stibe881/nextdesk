@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 
 import {
@@ -29,12 +30,18 @@ const ERROR_MESSAGES = {
   },
   method_not_allowed: {
     title: "Methode nicht erlaubt",
-    detail: "Verwenden Sie für diese Funktion eine POST-Anfrage.",
+    detail: msg(
+      "Verwende für diese Funktion eine POST-Anfrage.",
+      "Verwenden Sie für diese Funktion eine POST-Anfrage.",
+    ),
     retryable: false,
   },
   unsupported_media_type: {
     title: "Nicht unterstützter Inhaltstyp",
-    detail: "Verwenden Sie Content-Type application/json.",
+    detail: msg(
+      "Verwende Content-Type application/json.",
+      "Verwenden Sie Content-Type application/json.",
+    ),
     retryable: false,
   },
   request_too_large: {
@@ -50,7 +57,10 @@ const ERROR_MESSAGES = {
   invalid_request: {
     title: "Ungültige Anfrage",
     detail:
-      "Prüfen Sie Mandant, Filter und Eingaben und versuchen Sie es erneut.",
+      msg(
+        "Prüfe Mandant, Filter und Eingaben und versuche es erneut.",
+        "Prüfen Sie Mandant, Filter und Eingaben und versuchen Sie es erneut.",
+      ),
     retryable: false,
   },
   authorization_check_failed: {

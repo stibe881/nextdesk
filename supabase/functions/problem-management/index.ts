@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 
@@ -175,7 +176,7 @@ async function requireCaseManager(client: Client, tenantId: string) {
   });
   if (error) throw new HttpError(503, "permission_check_failed", "Die Berechtigung konnte nicht geprüft werden.");
   if (data !== true) {
-    throw new HttpError(403, "case_manage_required", "Für Fälle fehlt Ihnen die Berechtigung.");
+    throw new HttpError(403, "case_manage_required", msg("Für Fälle fehlt dir die Berechtigung.", "Für Fälle fehlt Ihnen die Berechtigung."));
   }
 }
 

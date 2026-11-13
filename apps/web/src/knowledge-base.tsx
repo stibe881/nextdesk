@@ -2685,7 +2685,9 @@ export function KnowledgeBase({
     }
     const chooseDepartment = departments.length > 1;
     if (chooseDepartment && !draft.departmentId) {
-      setError(tn("Bitte wähle eine Abteilung.", "Bitte wählen Sie eine Abteilung."));
+      setError(
+        tn("Bitte wähle eine Abteilung.", "Bitte wählen Sie eine Abteilung."),
+      );
       setSuccess("");
       return;
     }

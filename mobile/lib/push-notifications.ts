@@ -59,7 +59,10 @@ export function pushNotificationSecondaryText(
       typeof payload.excerpt === "string" && payload.excerpt.trim()
         ? ` «${payload.excerpt.trim()}»`
         : "";
-    return `${name} hat dich gelobt.${excerpt}`;
+    return tn(
+      `${name} hat dich gelobt.${excerpt}`,
+      `${name} hat Sie gelobt.${excerpt}`,
+    );
   }
   if (kind !== "ticket.follow_up_due" || !isRecord(payload)) return null;
   const title = payload.title;

@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import {
   ensureEntraPersonAccount,
@@ -179,7 +180,7 @@ function databaseError(error: { code?: string; message?: string }): HttpError {
     return new HttpError(
       403,
       "item_not_for_cadre",
-      "Ein Artikel im Warenkorb ist für Sie nicht freigegeben.",
+      msg("Ein Artikel im Warenkorb ist für dich nicht freigegeben.", msg("Ein Artikel im Warenkorb ist für dich nicht freigegeben.", "Ein Artikel im Warenkorb ist für Sie nicht freigegeben.")),
     );
   }
   switch (error.code) {
@@ -2786,7 +2787,7 @@ const securedHandler = withSupabase(
               throw new HttpError(
                 403,
                 "item_not_for_cadre",
-                `«${blocked.name}» ist für Sie nicht freigegeben.`,
+                msg(`«${blocked.name}» ist für dich nicht freigegeben.`, msg(`«${blocked.name}» ist für dich nicht freigegeben.`, `«${blocked.name}» ist für Sie nicht freigegeben.`)),
               );
             }
           }

@@ -1,4 +1,4 @@
-import { loadFormality } from "../_shared/formality.ts";
+import { loadFormality, msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import {
@@ -829,7 +829,7 @@ async function openCase(
   includeRecurring: boolean,
 ): Promise<string> {
   if (!(await hasTenantPermission(client, tenantId, "asset.manage"))) {
-    throw new HttpError(403, "case_manage_required", "Für Fälle fehlt Ihnen die Berechtigung.");
+    throw new HttpError(403, "case_manage_required", msg("Für Fälle fehlt dir die Berechtigung.", msg("Für Fälle fehlt dir die Berechtigung.", "Für Fälle fehlt Ihnen die Berechtigung.")));
   }
   const incidentId = String(incident.id);
   let incidentIds = await familyIds(admin, tenantId, incidentId);
@@ -976,11 +976,11 @@ async function draftArticle(admin: Client, client: Client, actorId: string, tena
   const cause = text(incident.cause) as Cause | null;
   if (incident.state !== "closed" || !cause || !(CAUSES as readonly string[]).includes(cause)) {
     throw new HttpError(422, "incident_not_closed",
-      "Einen Artikel erstellen Sie aus einer abgeschlossenen Störung mit Ursache.");
+      msg("Einen Artikel erstellst du aus einer abgeschlossenen Störung mit Ursache.", msg("Einen Artikel erstellst du aus einer abgeschlossenen Störung mit Ursache.", "Einen Artikel erstellen Sie aus einer abgeschlossenen Störung mit Ursache.")));
   }
   if (!(await hasTenantPermission(client, tenantId, "knowledge.manage"))) {
     throw new HttpError(403, "article_manage_denied",
-      "Für einen Wissensartikel fehlt Ihnen die Berechtigung zur Wissensverwaltung.");
+      msg("Für einen Wissensartikel fehlt dir die Berechtigung zur Wissensverwaltung.", msg("Für einen Wissensartikel fehlt dir die Berechtigung zur Wissensverwaltung.", "Für einen Wissensartikel fehlt Ihnen die Berechtigung zur Wissensverwaltung.")));
   }
   const scope = await loadDepartmentScope(admin, tenantId, actorId, "knowledge.base");
   if (!scope) throw new HttpError(503, "department_scope_lookup_failed", "Die Abteilungen konnten nicht geladen werden.");

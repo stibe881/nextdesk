@@ -485,12 +485,17 @@ function FollowUpFormDialog({
     const description = form.description.trim();
     const dueAt = isoFromLocalDateTime(form.dueAt);
     if (!title) {
-      setFormError(tn("Bitte gib einen Titel ein.", "Bitte geben Sie einen Titel ein."));
+      setFormError(
+        tn("Bitte gib einen Titel ein.", "Bitte geben Sie einen Titel ein."),
+      );
       return;
     }
     if (form.dueAt && !dueAt) {
       setFormError(
-        tn("Die Fälligkeit ist ungültig. Bitte prüfe Datum und Uhrzeit.", "Die Fälligkeit ist ungültig. Bitte prüfen Sie Datum und Uhrzeit."),
+        tn(
+          "Die Fälligkeit ist ungültig. Bitte prüfe Datum und Uhrzeit.",
+          "Die Fälligkeit ist ungültig. Bitte prüfen Sie Datum und Uhrzeit.",
+        ),
       );
       return;
     }
@@ -535,7 +540,10 @@ function FollowUpFormDialog({
         );
       } else {
         setFormError(
-          tn("Die Wiedervorlage konnte nicht gespeichert werden. Bitte versuche es erneut.", "Die Wiedervorlage konnte nicht gespeichert werden. Bitte versuchen Sie es erneut."),
+          tn(
+            "Die Wiedervorlage konnte nicht gespeichert werden. Bitte versuche es erneut.",
+            "Die Wiedervorlage konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+          ),
         );
       }
     } finally {
@@ -806,7 +814,10 @@ export function ExperienceWorkspace({
           return;
         }
         setAvailabilityNote(
-          tn("Wiedervorlagen konnten nicht geladen werden. Bitte versuche es erneut.", "Wiedervorlagen konnten nicht geladen werden. Bitte versuchen Sie es erneut."),
+          tn(
+            "Wiedervorlagen konnten nicht geladen werden. Bitte versuche es erneut.",
+            "Wiedervorlagen konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+          ),
         );
       })
       .finally(() => {
@@ -867,7 +878,10 @@ export function ExperienceWorkspace({
         );
       } else {
         onNotice(
-          tn("Die Wiedervorlage konnte nicht erledigt werden. Bitte versuche es erneut.", "Die Wiedervorlage konnte nicht erledigt werden. Bitte versuchen Sie es erneut."),
+          tn(
+            "Die Wiedervorlage konnte nicht erledigt werden. Bitte versuche es erneut.",
+            "Die Wiedervorlage konnte nicht erledigt werden. Bitte versuchen Sie es erneut.",
+          ),
           "error",
         );
       }

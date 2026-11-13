@@ -549,7 +549,10 @@ export async function selectMobileTenant(
   }
   const tenant = tenants.find((candidate) => candidate.id === tenantId);
   if (!tenant) {
-    throw new Error("Dieser Mandant ist für dein Konto nicht aktiv.");
+    throw new Error(tn(
+        "Dieser Mandant ist für dein Konto nicht aktiv.",
+        "Dieser Mandant ist für Ihr Konto nicht aktiv.",
+      ));
   }
   return withTenantSelectionLock(async () => {
     if (selectionGeneration !== tenantSelectionGeneration)
@@ -680,7 +683,10 @@ export async function invokeNextDesk<T>(
       );
     }
     throw new NextDeskRequestError(
-      "nextDesk ist nicht erreichbar. Bitte prüfe deine Internetverbindung.",
+      tn(
+        "nextDesk ist nicht erreichbar. Bitte prüfe deine Internetverbindung.",
+        "nextDesk ist nicht erreichbar. Bitte prüfen Sie Ihre Internetverbindung.",
+      ),
       null,
     );
   }

@@ -262,7 +262,10 @@ export function Licenses({
       );
     } catch {
       setError(
-        tn("Lizenzen konnten nicht geladen werden. Prüfe deine Berechtigung oder versuche es später erneut.", "Lizenzen konnten nicht geladen werden. Prüfen Sie Ihre Berechtigung oder versuchen Sie es später erneut."),
+        tn(
+          "Lizenzen konnten nicht geladen werden. Prüfe deine Berechtigung oder versuche es später erneut.",
+          "Lizenzen konnten nicht geladen werden. Prüfen Sie Ihre Berechtigung oder versuchen Sie es später erneut.",
+        ),
       );
     } finally {
       setLoading(false);
@@ -490,7 +493,10 @@ export function Licenses({
         }
         if (failed > 0) {
           setError(
-            tn(`Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffne «Dokumente», um es erneut zu versuchen.`, `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffnen Sie «Dokumente», um es erneut zu versuchen.`),
+            tn(
+              `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffne «Dokumente», um es erneut zu versuchen.`,
+              `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffnen Sie «Dokumente», um es erneut zu versuchen.`,
+            ),
           );
         }
       }

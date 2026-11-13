@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -310,12 +311,21 @@ function fieldsFromDraft(draft: TemplateDraft): TemplateFields {
 
 function validateDraft(draft: TemplateDraft): string | null {
   if (!draft.name.trim())
-    return "Bitte geben Sie einen Namen für die Vorlage ein.";
+    return tn(
+      "Bitte gib einen Namen für die Vorlage ein.",
+      "Bitte geben Sie einen Namen für die Vorlage ein.",
+    );
   if (!draft.subjectTemplate.trim()) {
-    return "Bitte geben Sie eine Betreffvorlage ein.";
+    return tn(
+      "Bitte gib eine Betreffvorlage ein.",
+      "Bitte geben Sie eine Betreffvorlage ein.",
+    );
   }
   if (!draft.descriptionTemplate.trim()) {
-    return "Bitte geben Sie eine Beschreibungsvorlage ein.";
+    return tn(
+      "Bitte gib eine Beschreibungsvorlage ein.",
+      "Bitte geben Sie eine Beschreibungsvorlage ein.",
+    );
   }
   if (
     !hasOnlySafeTemplatePlaceholders(draft.subjectTemplate) ||
@@ -324,7 +334,10 @@ function validateDraft(draft: TemplateDraft): string | null {
     return "Es sind nur die sicheren Platzhalter {{anfragende_person}}, {{abteilung}}, {{heute}} und {{ticket_nummer}} erlaubt.";
   }
   if (draft.checklistItems.some((item) => !item.description.trim())) {
-    return "Bitte füllen Sie jeden Checklistenpunkt aus oder entfernen Sie leere Punkte.";
+    return tn(
+      "Bitte fülle jeden Checklistenpunkt aus oder entferne leere Punkte.",
+      "Bitte füllen Sie jeden Checklistenpunkt aus oder entfernen Sie leere Punkte.",
+    );
   }
   return validateFieldDefinitions(
     draft.fieldDrafts.map(fieldFromDraft),
@@ -339,12 +352,21 @@ function preview(value: string): string {
 
 function genericError(action: "load" | "save" | "delete"): string {
   if (action === "load") {
-    return "Die Vorlagen konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
+    return tn(
+      "Die Vorlagen konnten nicht geladen werden. Bitte versuche es erneut.",
+      "Die Vorlagen konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    );
   }
   if (action === "delete") {
-    return "Die Vorlage konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.";
+    return tn(
+      "Die Vorlage konnte nicht gelöscht werden. Bitte versuche es erneut.",
+      "Die Vorlage konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+    );
   }
-  return "Die Vorlage konnte nicht gespeichert werden. Bitte prüfen Sie Ihre Eingaben und versuchen Sie es erneut.";
+  return tn(
+    "Die Vorlage konnte nicht gespeichert werden. Bitte prüfe deine Eingaben und versuche es erneut.",
+    "Die Vorlage konnte nicht gespeichert werden. Bitte prüfen Sie Ihre Eingaben und versuchen Sie es erneut.",
+  );
 }
 
 async function invokeTicketTemplates(action: TemplateAction): Promise<unknown> {
@@ -821,7 +843,10 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
     } catch {
       if (createdTemplate) {
         setError(
-          "Die Vorlage wurde angelegt, aber ihr Aktivstatus konnte nicht gesetzt werden. Bitte laden Sie die Liste neu und bearbeiten Sie die Vorlage.",
+          tn(
+            "Die Vorlage wurde angelegt, aber ihr Aktivstatus konnte nicht gesetzt werden. Bitte lade die Liste neu und bearbeite die Vorlage.",
+            "Die Vorlage wurde angelegt, aber ihr Aktivstatus konnte nicht gesetzt werden. Bitte laden Sie die Liste neu und bearbeiten Sie die Vorlage.",
+          ),
         );
       } else {
         setError(genericError("save"));
@@ -833,7 +858,10 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
 
   async function archiveTemplate(template: TicketTemplate) {
     const confirmed = window.confirm(
-      `Möchten Sie die Vorlage „${template.name}“ archivieren? Sie bleibt nachvollziehbar, ist aber nicht mehr auswählbar.`,
+      tn(
+        `Möchtest du die Vorlage „${template.name}“ archivieren? Die Vorlage bleibt nachvollziehbar, ist aber nicht mehr auswählbar.`,
+        `Möchten Sie die Vorlage „${template.name}“ archivieren? Sie bleibt nachvollziehbar, ist aber nicht mehr auswählbar.`,
+      ),
     );
     if (!confirmed) return;
 
@@ -1076,7 +1104,10 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
                       descriptionTemplate: event.target.value,
                     }))
                   }
-                  placeholder="Beschreiben Sie den Standardablauf oder die benötigten Angaben."
+                  placeholder={tn(
+                    "Beschreibe den Standardablauf oder die benötigten Angaben.",
+                    "Beschreiben Sie den Standardablauf oder die benötigten Angaben.",
+                  )}
                   required
                   rows={5}
                   value={draft.descriptionTemplate}
@@ -1159,8 +1190,10 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
                 </div>
                 {draft.checklistItems.length === 0 ? (
                   <p className="ticket-templates__description">
-                    Keine Checklistenpunkte. Sie können die Vorlage auch ohne
-                    Checkliste speichern.
+                    {tn(
+                      "Keine Checklistenpunkte. Du kannst die Vorlage auch ohne Checkliste speichern.",
+                      "Keine Checklistenpunkte. Sie können die Vorlage auch ohne Checkliste speichern.",
+                    )}
                   </p>
                 ) : (
                   draft.checklistItems.map((item, index) => (

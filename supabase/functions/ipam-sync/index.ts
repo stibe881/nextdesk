@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
@@ -914,7 +915,7 @@ const handler = withSupabase(
         throw new HttpError(
           403,
           "feature_disabled",
-          "Die IP-Adressverwaltung ist für Sie nicht eingeschaltet.",
+          msg("Die IP-Adressverwaltung ist für dich nicht eingeschaltet.", msg("Die IP-Adressverwaltung ist für dich nicht eingeschaltet.", "Die IP-Adressverwaltung ist für Sie nicht eingeschaltet.")),
         );
       }
       const permission = MANAGE_ACTIONS.has(type) ? "ipam.manage" : "ipam.read";
@@ -922,7 +923,7 @@ const handler = withSupabase(
         throw new HttpError(
           403,
           "access_denied",
-          "Für die IP-Adressverwaltung fehlt Ihnen die Berechtigung.",
+          msg("Für die IP-Adressverwaltung fehlt dir die Berechtigung.", msg("Für die IP-Adressverwaltung fehlt dir die Berechtigung.", "Für die IP-Adressverwaltung fehlt Ihnen die Berechtigung.")),
         );
       }
       const scope = await loadDepartmentScope(

@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import {
@@ -347,7 +348,7 @@ async function searchColleagues(
     throw new HttpError(
       400,
       "invalid_request",
-      "Bitte geben Sie mindestens zwei gültige Zeichen ein.",
+      msg("Bitte gib mindestens zwei gültige Zeichen ein.", msg("Bitte gib mindestens zwei gültige Zeichen ein.", "Bitte geben Sie mindestens zwei gültige Zeichen ein.")),
     );
   const pattern = `%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
   const memberships = await admin
@@ -841,7 +842,7 @@ async function ticketProgress(
 const RESPOND_ERRORS: Record<string, [number, string]> = {
   ticket_not_waiting: [
     409,
-    "Das Ticket wartet nicht mehr auf Ihre Rückmeldung.",
+    msg("Das Ticket wartet nicht mehr auf deine Rückmeldung.", msg("Das Ticket wartet nicht mehr auf deine Rückmeldung.", "Das Ticket wartet nicht mehr auf Ihre Rückmeldung.")),
   ],
   ticket_not_available: [404, "Das Ticket ist nicht verfügbar."],
   status_missing: [
@@ -888,7 +889,7 @@ async function respondToWaiting(
       throw new HttpError(
         409,
         "status_rule",
-        "Der Status kann gerade nicht geändert werden. Bitte antworten Sie mit einer Nachricht.",
+        msg("Der Status kann gerade nicht geändert werden. Bitte antworte mit einer Nachricht.", msg("Der Status kann gerade nicht geändert werden. Bitte antworte mit einer Nachricht.", "Der Status kann gerade nicht geändert werden. Bitte antworten Sie mit einer Nachricht.")),
       );
     db(result.error);
   }

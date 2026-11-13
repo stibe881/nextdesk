@@ -98,30 +98,42 @@ export function parseRequesterProgress(
   };
 }
 
-const LABELS: Record<ProgressStepKey, string> = {
+const labels = (): Record<ProgressStepKey, string> => ({
   received: "Eingegangen",
   in_progress: "In Bearbeitung",
-  waiting_for_requester: "Wartet auf dich",
+  waiting_for_requester: tn("Wartet auf dich", "Wartet auf Sie"),
   resolved: "Gelöst",
   closed: "Geschlossen",
-};
+});
 
 export function progressStepLabel(key: ProgressStepKey): string {
-  return LABELS[key];
+  return labels()[key];
 }
 
-const HINTS: Record<ProgressStepKey, string> = {
-  received: "Dein Anliegen ist eingegangen und wird bald zugeteilt.",
-  in_progress: "Eine Fachperson kümmert sich um dein Anliegen.",
+const hints = (): Record<ProgressStepKey, string> => ({
+  received: tn(
+    "Dein Anliegen ist eingegangen und wird bald zugeteilt.",
+    "Ihr Anliegen ist eingegangen und wird bald zugeteilt.",
+  ),
+  in_progress: tn(
+    "Eine Fachperson kümmert sich um dein Anliegen.",
+    "Eine Fachperson kümmert sich um Ihr Anliegen.",
+  ),
   waiting_for_requester:
-    "Wir brauchen deine Rückmeldung, damit wir weiterarbeiten können.",
+    tn(
+      "Wir brauchen deine Rückmeldung, damit wir weiterarbeiten können.",
+      "Wir brauchen Ihre Rückmeldung, damit wir weiterarbeiten können.",
+    ),
   resolved:
-    "Dein Anliegen wurde gelöst. Melde dich, falls noch etwas offen ist.",
+    tn(
+      "Dein Anliegen wurde gelöst. Melde dich, falls noch etwas offen ist.",
+      "Ihr Anliegen wurde gelöst. Melden Sie sich, falls noch etwas offen ist.",
+    ),
   closed: "Das Ticket ist abgeschlossen.",
-};
+});
 
 export function progressStepHint(key: ProgressStepKey): string {
-  return HINTS[key];
+  return hints()[key];
 }
 
 /** «heute, 14:00», «morgen, 09:05» or «Do., 12. Nov., 09:05». */

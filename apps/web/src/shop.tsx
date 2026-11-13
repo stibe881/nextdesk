@@ -1214,7 +1214,10 @@ function CartPanel({
                 : " (kein Kader)"}{" "}
               freigegeben:{" "}
               {notForPerson.map((line) => line.item.name).join(", ")}.{" "}
-              {tn("Du kannst trotzdem bestellen.", "Sie können trotzdem bestellen.")}
+              {tn(
+                "Du kannst trotzdem bestellen.",
+                "Sie können trotzdem bestellen.",
+              )}
             </p>
           ) : null}
           <ul className="shop__cart-lines">
@@ -1394,7 +1397,10 @@ function CartPanel({
             <p className="shop__hint">
               {forOther
                 ? "Mindestens ein Artikel braucht die Freigabe der vorgesetzten Person der bestellenden Person."
-                : tn("Mindestens ein Artikel braucht die Freigabe deiner vorgesetzten Person.", "Mindestens ein Artikel braucht die Freigabe Ihrer vorgesetzten Person.")}
+                : tn(
+                    "Mindestens ein Artikel braucht die Freigabe deiner vorgesetzten Person.",
+                    "Mindestens ein Artikel braucht die Freigabe Ihrer vorgesetzten Person.",
+                  )}
             </p>
           ) : null}
           {error ? (
@@ -1488,7 +1494,10 @@ function OrderList({
       ) : orders.length === 0 ? (
         <p className="empty-state">
           {scope === "approvals"
-            ? tn("Keine Bestellungen warten auf deine Freigabe.", "Keine Bestellungen warten auf Ihre Freigabe.")
+            ? tn(
+                "Keine Bestellungen warten auf deine Freigabe.",
+                "Keine Bestellungen warten auf Ihre Freigabe.",
+              )
             : "Keine Bestellungen."}
         </p>
       ) : (
@@ -3575,7 +3584,10 @@ export function CatalogEditor({
                         Agenten dieser Abteilung.
                         {chooseDepartment
                           ? ""
-                          : tn(" Zur Auswahl stehen deine eigenen Abteilungen.", " Zur Auswahl stehen Ihre eigenen Abteilungen.")}
+                          : tn(
+                              " Zur Auswahl stehen deine eigenen Abteilungen.",
+                              " Zur Auswahl stehen Ihre eigenen Abteilungen.",
+                            )}
                       </small>
                     </label>
                   ) : null}

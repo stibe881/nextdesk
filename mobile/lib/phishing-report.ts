@@ -50,11 +50,17 @@ export function parsePhishingSubmit(
   };
 }
 
-/** The server answers in «Sie»; the app talks to the person with «du». */
+/** The server answers formally; the app uses the form of address of the tenant. */
 export function informalThanks(result: PhishingSubmitResult): string {
   return result.duplicate
-    ? `Danke für die Meldung! Diese E-Mail hast du bereits gemeldet (${result.ticketNumber}) – unser Sicherheitsteam ist informiert.`
-    : `Danke für die Meldung! Unser Sicherheitsteam prüft die E-Mail (${result.ticketNumber}). Klicke keine Links an und öffne keine Anhänge. Falls du schon Daten eingegeben hast, melde dich bitte sofort beim Support.`;
+    ? tn(
+        `Danke für die Meldung! Diese E-Mail hast du bereits gemeldet (${result.ticketNumber}) – unser Sicherheitsteam ist informiert.`,
+        `Danke für die Meldung! Diese E-Mail haben Sie bereits gemeldet (${result.ticketNumber}) – unser Sicherheitsteam ist informiert.`,
+      )
+    : tn(
+        `Danke für die Meldung! Unser Sicherheitsteam prüft die E-Mail (${result.ticketNumber}). Klicke keine Links an und öffne keine Anhänge. Falls du schon Daten eingegeben hast, melde dich bitte sofort beim Support.`,
+        `Danke für die Meldung! Unser Sicherheitsteam prüft die E-Mail (${result.ticketNumber}). Klicken Sie keine Links an und öffnen Sie keine Anhänge. Falls Sie schon Daten eingegeben haben, melden Sie sich bitte sofort beim Support.`,
+      );
 }
 
 export async function loadPhishingConfig(

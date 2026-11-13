@@ -207,9 +207,7 @@ export function PortalAssistantPanel({
               key={`${index}-${message.role}`}
             >
               <span className="sr-only">
-                {message.role === "user"
- ? tn("Du: ", "Sie: ")
- : "Assistent: "}
+                {message.role === "user" ? tn("Du: ", "Sie: ") : "Assistent: "}
               </span>
               {message.text}
             </li>
@@ -282,8 +280,8 @@ export function PortalAssistantPanel({
         <div className="portal-assistant__form">
           <label className="sr-only" htmlFor="portal-assistant-input">
             {turn?.question
- ? tn("Deine Antwort", "Ihre Antwort")
- : tn("Dein Problem", "Ihr Problem")}
+              ? tn("Deine Antwort", "Ihre Antwort")
+              : tn("Dein Problem", "Ihr Problem")}
           </label>
           <textarea
             disabled={busy}

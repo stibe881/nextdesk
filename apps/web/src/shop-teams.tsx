@@ -57,7 +57,10 @@ export function TeamsTile({
           <small>
             {context.reason === "not_configured"
               ? "Noch nicht eingerichtet. Bitte den Support informieren."
-              : tn("Für dich derzeit nicht verfügbar.", "Für Sie derzeit nicht verfügbar.")}
+              : tn(
+                  "Für dich derzeit nicht verfügbar.",
+                  "Für Sie derzeit nicht verfügbar.",
+                )}
           </small>
         ) : null}
       </div>
@@ -700,9 +703,14 @@ export function MyTeams({
     }
   };
   if (requests.length === 0) {
-    return <p className="empty-state">
-        {tn("Du hast noch kein Team bestellt.", "Sie haben noch kein Team bestellt.")}
-      </p>;
+    return (
+      <p className="empty-state">
+        {tn(
+          "Du hast noch kein Team bestellt.",
+          "Sie haben noch kein Team bestellt.",
+        )}
+      </p>
+    );
   }
   return (
     <div className="shop-teams-list">

@@ -312,7 +312,10 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
       setMessage(
         await functionErrorMessage(
           error,
-          tn("Die vorgemerkten Tickets konnten nicht geschlossen werden. Bitte prüfe die Vorschau erneut.", "Die vorgemerkten Tickets konnten nicht geschlossen werden. Bitte prüfen Sie die Vorschau erneut."),
+          tn(
+            "Die vorgemerkten Tickets konnten nicht geschlossen werden. Bitte prüfe die Vorschau erneut.",
+            "Die vorgemerkten Tickets konnten nicht geschlossen werden. Bitte prüfen Sie die Vorschau erneut.",
+          ),
         ),
       );
     } finally {

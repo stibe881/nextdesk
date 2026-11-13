@@ -337,7 +337,10 @@ function AssetReturnsPanel({
       setError(
         await functionErrorMessage(
           loadError,
-          tn("Die Geräte konnten nicht geladen werden. Bitte versuche es erneut.", "Die Geräte konnten nicht geladen werden. Bitte versuchen Sie es erneut."),
+          tn(
+            "Die Geräte konnten nicht geladen werden. Bitte versuche es erneut.",
+            "Die Geräte konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -797,7 +800,10 @@ export function Onboarding({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          tn("Die Eintritte konnten nicht geladen werden. Bitte versuche es erneut.", "Die Eintritte konnten nicht geladen werden. Bitte versuchen Sie es erneut."),
+          tn(
+            "Die Eintritte konnten nicht geladen werden. Bitte versuche es erneut.",
+            "Die Eintritte konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -855,7 +861,10 @@ export function Onboarding({
       !draft.templateId
     ) {
       setErrorMessage(
-        tn("Bitte fülle Name, Eintrittsdatum, Führungsperson, ICT-Verantwortung und Vorlage aus.", "Bitte füllen Sie Name, Eintrittsdatum, Führungsperson, ICT-Verantwortung und Vorlage aus."),
+        tn(
+          "Bitte fülle Name, Eintrittsdatum, Führungsperson, ICT-Verantwortung und Vorlage aus.",
+          "Bitte füllen Sie Name, Eintrittsdatum, Führungsperson, ICT-Verantwortung und Vorlage aus.",
+        ),
       );
       return;
     }
@@ -889,7 +898,10 @@ export function Onboarding({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          tn("Der Eintritt konnte nicht erstellt werden. Bitte versuche es erneut.", "Der Eintritt konnte nicht erstellt werden. Bitte versuchen Sie es erneut."),
+          tn(
+            "Der Eintritt konnte nicht erstellt werden. Bitte versuche es erneut.",
+            "Der Eintritt konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {

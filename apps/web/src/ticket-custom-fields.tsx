@@ -525,7 +525,10 @@ export function TicketCustomFields({
     if (missingRequiredDefinition) {
       setStatusMessage(null);
       setErrorMessage(
-        tn(`Bitte fülle das Pflichtfeld „${missingRequiredDefinition.label}“ aus.`, `Bitte füllen Sie das Pflichtfeld „${missingRequiredDefinition.label}“ aus.`),
+        tn(
+          `Bitte fülle das Pflichtfeld „${missingRequiredDefinition.label}“ aus.`,
+          `Bitte füllen Sie das Pflichtfeld „${missingRequiredDefinition.label}“ aus.`,
+        ),
       );
       return;
     }

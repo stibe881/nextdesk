@@ -89,7 +89,10 @@ const errors = (): Record<string, string> => ({
     "Eine gewählte Person ist im Verzeichnis nicht (mehr) aktiv. Bitte neu auswählen.",
   teams_not_configured:
     "Microsoft Teams ist für diese Organisation noch nicht eingerichtet. Bitte den Support informieren.",
-  teams_order_denied: tn("Du darfst im Shop nicht bestellen.", "Sie dürfen im Shop nicht bestellen."),
+  teams_order_denied: tn(
+    "Du darfst im Shop nicht bestellen.",
+    "Sie dürfen im Shop nicht bestellen.",
+  ),
   feature_disabled: "Der Shop ist nicht aktiviert.",
   teams_extend_denied:
     "Nur Besteller und Owner können die Laufzeit verlängern.",

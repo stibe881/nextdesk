@@ -1869,7 +1869,10 @@ export function TenantAdminSettings({
     event.preventDefault();
     if (!ssoForm.provider) {
       setError(
-        tn("Wähle einen SSO-Anbieter aus.", "Wählen Sie einen SSO-Anbieter aus."),
+        tn(
+          "Wähle einen SSO-Anbieter aus.",
+          "Wählen Sie einen SSO-Anbieter aus.",
+        ),
       );
       return;
     }
@@ -5305,7 +5308,10 @@ export function TenantAdminSettings({
                             <strong>Keine Personen gefunden</strong>
                             <p>
                               {query
-                                ? tn("Passe die Suche an.", "Passen Sie die Suche an.")
+                                ? tn(
+                                    "Passe die Suche an.",
+                                    "Passen Sie die Suche an.",
+                                  )
                                 : roleMatrixAllPeople
                                   ? "Es gibt keine aktiven Personen."
                                   : tn(

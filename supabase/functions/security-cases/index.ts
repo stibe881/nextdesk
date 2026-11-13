@@ -1,3 +1,4 @@
+import { loadFormality, msg, tone } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import { loadEmailTemplate } from "../_shared/email-templates-store.ts";
@@ -106,7 +107,7 @@ class HttpError extends Error {
 }
 
 const forbidden = () =>
-  new HttpError(403, "forbidden", "Dafür fehlt Ihnen die Berechtigung.");
+  new HttpError(403, "forbidden", msg("Dafür fehlt dir die Berechtigung.", "Dafür fehlt Ihnen die Berechtigung."));
 const notFound = () =>
   new HttpError(404, "case_not_found", "Der Sicherheitsfall wurde nicht gefunden.");
 
@@ -615,9 +616,10 @@ async function setVerdict(
       .eq("ticket_id", action.ticketId).order("created_at").limit(1).maybeSingle();
     const original = text(subjectRow.data?.original_subject);
     const recipients = await caseReporterEmails(admin, action.tenantId, action.ticketId);
+    const formality = await loadFormality(admin, action.tenantId);
     const [frame, template] = await Promise.all([
-      loadEmailTemplate(admin, action.tenantId, "security_notice"),
-      loadEmailTemplate(admin, action.tenantId, `phishing_result_${action.verdict}`),
+      loadEmailTemplate(admin, action.tenantId, "security_notice", formality),
+      loadEmailTemplate(admin, action.tenantId, `phishing_result_${action.verdict}`, formality),
     ]);
     const values = { originalSubject: original ? original.slice(0, 120) : "" };
     const result = frame.enabled && template.enabled
@@ -626,7 +628,7 @@ async function setVerdict(
         ticketId: action.ticketId,
         authorId: actorId,
         subject: template.text("subject", values).replace(/\s*:?\s*«\s*»/g, "").trim() ||
-          "Ergebnis Ihrer Phishing-Meldung",
+          tone(formality, "Ergebnis deiner Phishing-Meldung", "Ergebnis Ihrer Phishing-Meldung"),
         body: template.text("text", values),
         recipients,
         note: `Ergebnis «${VERDICT_LABELS[action.verdict]}» an ${recipients.length} meldende Person(en):`,
@@ -646,9 +648,10 @@ async function askClicked(admin: Client, client: Client, actorId: string, tenant
   const known = new Set(((asked.data ?? []) as Row[]).map((row) => String(row.email).toLowerCase()));
   const recipients = all.filter((email) => !known.has(email));
   if (!recipients.length) return { asked: 0 };
+  const formality = await loadFormality(admin, tenantId);
   const [frame, template] = await Promise.all([
-    loadEmailTemplate(admin, tenantId, "security_notice"),
-    loadEmailTemplate(admin, tenantId, "phishing_click_question"),
+    loadEmailTemplate(admin, tenantId, "security_notice", formality),
+    loadEmailTemplate(admin, tenantId, "phishing_click_question", formality),
   ]);
   if (!frame.enabled || !template.enabled) return { asked: 0 };
   const result = await queueSecurityNotice(admin, {

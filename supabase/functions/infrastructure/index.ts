@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import { resolveTenantFeatureStates, resolveUserFeatureStates } from "../_shared/tenant-features.ts";
@@ -1093,7 +1094,7 @@ async function deleteRack(
     throw new HttpError(
       409,
       "rack_not_empty",
-      `Im Rack sind noch ${members.length} Geräte. Entfernen Sie zuerst die Geräte aus dem Rack.`,
+      msg(`Im Rack sind noch ${members.length} Geräte. Entferne zuerst die Geräte aus dem Rack.`, msg(`Im Rack sind noch ${members.length} Geräte. Entferne zuerst die Geräte aus dem Rack.`, `Im Rack sind noch ${members.length} Geräte. Entfernen Sie zuerst die Geräte aus dem Rack.`)),
     );
   }
   const { error: deleteError } = await admin.from("infrastructure_racks").delete()
@@ -1177,7 +1178,7 @@ async function scheduleChecklist(
   if (!asset || !infra) throw new HttpError(404, "device_not_found", "Das Gerät ist nicht verfügbar.");
   const checklist = checklistItems(infra.maintenance_checklist).map((item) => item.label);
   if (checklist.length === 0) {
-    throw new HttpError(422, "checklist_empty", "Erfassen Sie zuerst die Punkte der Wartungscheckliste.");
+    throw new HttpError(422, "checklist_empty", msg("Erfasse zuerst die Punkte der Wartungscheckliste.", msg("Erfasse zuerst die Punkte der Wartungscheckliste.", "Erfassen Sie zuerst die Punkte der Wartungscheckliste.")));
   }
   if (action.assigneeId) {
     const { data: member, error } = await admin.from("tenant_memberships").select("user_id")
@@ -1266,11 +1267,11 @@ const handler = withSupabase(
         "assets.management",
       ]);
       if (features?.["assets.management"] !== true) {
-        throw new HttpError(403, "feature_disabled", "Die Infrastruktur ist für Sie nicht eingeschaltet.");
+        throw new HttpError(403, "feature_disabled", msg("Die Infrastruktur ist für dich nicht eingeschaltet.", msg("Die Infrastruktur ist für dich nicht eingeschaltet.", "Die Infrastruktur ist für Sie nicht eingeschaltet.")));
       }
       const access = await permissions(context.supabase, action.tenantId);
       if (!access.canRead) {
-        throw new HttpError(403, "access_denied", "Für die Infrastruktur fehlt Ihnen die Berechtigung.");
+        throw new HttpError(403, "access_denied", msg("Für die Infrastruktur fehlt dir die Berechtigung.", msg("Für die Infrastruktur fehlt dir die Berechtigung.", "Für die Infrastruktur fehlt Ihnen die Berechtigung.")));
       }
       if (action.type === "list") return await list(request, admin, action.tenantId, access.canManage);
       if (action.type === "detail") return await detail(request, admin, action.tenantId, action.assetId);

@@ -2090,7 +2090,10 @@ function InventoryItems({
           text={
             canManage
               ? "Noch keine Artikel. Erfasse zuerst einen Lagerartikel über die Lagerverwaltung."
-              : tn("Für deine Rolle sind keine aktiven Lagerartikel sichtbar.", "Für Ihre Rolle sind keine aktiven Lagerartikel sichtbar.")
+              : tn(
+                  "Für deine Rolle sind keine aktiven Lagerartikel sichtbar.",
+                  "Für Ihre Rolle sind keine aktiven Lagerartikel sichtbar.",
+                )
           }
         />
       )}
@@ -2743,7 +2746,10 @@ function InventoryReservations({
       <p className="inventory__muted">
         {canMove
           ? "Reservationen werden bei jeder Änderung atomar gegen den aktuellen verfügbaren Bestand geprüft."
-          : tn("Für Reservationen benötigt deine Rolle die Berechtigung zur Lagerbewegung.", "Für Reservationen benötigt Ihre Rolle die Berechtigung zur Lagerbewegung.")}
+          : tn(
+              "Für Reservationen benötigt deine Rolle die Berechtigung zur Lagerbewegung.",
+              "Für Reservationen benötigt Ihre Rolle die Berechtigung zur Lagerbewegung.",
+            )}
       </p>
       {canMove ? (
         <>
@@ -3158,7 +3164,12 @@ function InventoryOpenReservationList({
       ))}
     </ul>
   ) : (
-    <EmptyInventoryState text={tn("Keine offenen Reservationen für deinen Mandanten.", "Keine offenen Reservationen für Ihren Mandanten.")} />
+    <EmptyInventoryState
+      text={tn(
+        "Keine offenen Reservationen für deinen Mandanten.",
+        "Keine offenen Reservationen für Ihren Mandanten.",
+      )}
+    />
   );
 }
 
@@ -3291,7 +3302,10 @@ function InventoryCounts({
       </p>
       <p className="inventory__muted">
         {canClose
-          ? tn("Du darfst Inventuren abschliessen. Differenzen werden dabei unter Sperre geprüft und als eigene Bewegungen gebucht.", "Sie dürfen Inventuren abschliessen. Differenzen werden dabei unter Sperre geprüft und als eigene Bewegungen gebucht.")
+          ? tn(
+              "Du darfst Inventuren abschliessen. Differenzen werden dabei unter Sperre geprüft und als eigene Bewegungen gebucht.",
+              "Sie dürfen Inventuren abschliessen. Differenzen werden dabei unter Sperre geprüft und als eigene Bewegungen gebucht.",
+            )
           : "Das Abschliessen einer Inventur benötigt eine gesonderte Berechtigung."}
       </p>
       {canManage || canClose ? (

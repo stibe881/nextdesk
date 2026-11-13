@@ -91,11 +91,10 @@ const sourceHints = (): Record<ImportSource, string> => ({
     "Excel-Liste mit Standort, IP Adresse, Bezeichnung und Switch-Modell. Legt Adressen und Switches an.",
   aruba_ap:
     "Excel-Liste mit Gebäude, Standort, AP-Nummer, MAC-Adresse und Seriennummer. Legt Access Points an.",
-  generic:
-    tn(
-      "Beliebige CSV- oder Excel-Tabelle. Du ordnest die Spalten selbst zu.",
-      "Beliebige CSV- oder Excel-Tabelle. Sie ordnen die Spalten selbst zu.",
-    ),
+  generic: tn(
+    "Beliebige CSV- oder Excel-Tabelle. Du ordnest die Spalten selbst zu.",
+    "Beliebige CSV- oder Excel-Tabelle. Sie ordnen die Spalten selbst zu.",
+  ),
   phpipam: "CSV-Export der Subnetze oder Adressen aus phpIPAM.",
   netbox: "CSV-Export aus NetBox (Prefixes, IP Addresses oder VLANs).",
 });
@@ -561,8 +560,11 @@ export function IpamImportWizard({
       {step === "source" ? (
         <div className="ipam-import__panel">
           <h3>
-{tn("Welche Daten möchtest du importieren?","Welche Daten möchten Sie importieren?")}
-</h3>
+            {tn(
+              "Welche Daten möchtest du importieren?",
+              "Welche Daten möchten Sie importieren?",
+            )}
+          </h3>
           <div
             className="ipam-import__sources"
             role="radiogroup"

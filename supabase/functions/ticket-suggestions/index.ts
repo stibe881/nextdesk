@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
@@ -548,7 +549,7 @@ const handler = withSupabase(
           {
             error: {
               code: "tenant_membership_required",
-              message: "Sie sind in diesem Mandanten nicht aktiv.",
+              message: msg("Du bist in diesem Mandanten nicht aktiv.", msg("Du bist in diesem Mandanten nicht aktiv.", "Sie sind in diesem Mandanten nicht aktiv.")),
             },
           },
           403,

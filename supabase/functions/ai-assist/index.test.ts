@@ -72,7 +72,7 @@ Deno.test("KI-Umformulierung: kurz oder ausführlich, stets freundlicher Ton", (
     source.includes("immer per Du an") &&
       source.includes("professionell, aber persönlich und freundlich") &&
       source.includes("erfinde nichts dazu") &&
-      source.includes("polishSystemPrompt(action.audience, action.length)"),
+      source.includes("polishSystemPrompt(action.audience, action.length, formality)"),
     "The rewrite prompt must keep the friendly tone and forbid invented facts.",
   );
 });

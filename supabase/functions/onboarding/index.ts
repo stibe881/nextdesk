@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 import {
@@ -1105,7 +1106,10 @@ async function updateTaskStatus(
     throw new HttpError(
       403,
       "onboarding_permission_denied",
-      "Für diese Aufgabe fehlt Ihnen die erforderliche Berechtigung.",
+      msg(
+        "Für diese Aufgabe fehlt dir die erforderliche Berechtigung.",
+        "Für diese Aufgabe fehlt Ihnen die erforderliche Berechtigung.",
+      ),
     );
   const { error } = await admin
     .from("onboarding_tasks")
@@ -1165,7 +1169,10 @@ async function linkExceptionTicket(
     throw new HttpError(
       403,
       "onboarding_permission_denied",
-      "Für diesen Eintritt fehlt Ihnen die erforderliche Berechtigung.",
+      msg(
+        "Für diesen Eintritt fehlt dir die erforderliche Berechtigung.",
+        "Für diesen Eintritt fehlt Ihnen die erforderliche Berechtigung.",
+      ),
     );
   if (action.taskId) {
     const { data: task, error } = await admin
@@ -1262,7 +1269,10 @@ async function requireOffboardingEntry(
     throw new HttpError(
       403,
       "onboarding_permission_denied",
-      "Für diesen Austritt fehlt Ihnen die erforderliche Berechtigung.",
+      msg(
+        "Für diesen Austritt fehlt dir die erforderliche Berechtigung.",
+        "Für diesen Austritt fehlt Ihnen die erforderliche Berechtigung.",
+      ),
     );
   if (entry.kind !== "offboarding")
     throw new HttpError(
@@ -1870,7 +1880,10 @@ const handler = withSupabase(
         throw new HttpError(
           403,
           "onboarding_feature_disabled",
+          msg(
           "Die Eintritte sind für dich nicht eingeschaltet.",
+          "Die Eintritte sind für Sie nicht eingeschaltet.",
+        ),
         );
       if (action.type === "navigationSummary")
         return json(request, {

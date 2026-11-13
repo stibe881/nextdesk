@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   CalendarDays,
@@ -421,7 +422,10 @@ export function EventSpaces({
         setErrorMessage(
           await functionErrorMessage(
             error,
-            "Die Raumplanung konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+            tn(
+              "Die Raumplanung konnte nicht geladen werden. Bitte versuche es erneut.",
+              "Die Raumplanung konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+            ),
           ),
         );
       }
@@ -618,7 +622,10 @@ export function EventSpaces({
     const payload = requestPayload();
     if (!payload) {
       setErrorMessage(
-        "Bitte füllen Sie Raum, Anlass, Zeitraum und die Wiederholung vollständig aus.",
+        tn(
+          "Bitte fülle Raum, Anlass, Zeitraum und die Wiederholung vollständig aus.",
+          "Bitte füllen Sie Raum, Anlass, Zeitraum und die Wiederholung vollständig aus.",
+        ),
       );
       return;
     }
@@ -645,7 +652,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Raumplanung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Raumplanung konnte nicht geprüft werden. Bitte versuche es erneut.",
+            "Die Raumplanung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -690,7 +700,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Der Raumauftrag konnte nicht gespeichert werden. Bitte prüfen Sie die Angaben und versuchen Sie es erneut.",
+          tn(
+            "Der Raumauftrag konnte nicht gespeichert werden. Bitte prüfe die Angaben und versuche es erneut.",
+            "Der Raumauftrag konnte nicht gespeichert werden. Bitte prüfen Sie die Angaben und versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -710,7 +723,10 @@ export function EventSpaces({
         (!Number.isInteger(capacity) || capacity < 1 || capacity > 10000))
     ) {
       setErrorMessage(
-        "Bitte geben Sie einen Raumnamen und gegebenenfalls eine gültige Kapazität ein.",
+        tn(
+          "Bitte gib einen Raumnamen und gegebenenfalls eine gültige Kapazität ein.",
+          "Bitte geben Sie einen Raumnamen und gegebenenfalls eine gültige Kapazität ein.",
+        ),
       );
       return;
     }
@@ -741,7 +757,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Der Raum konnte nicht angelegt werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Der Raum konnte nicht angelegt werden. Bitte versuche es erneut.",
+            "Der Raum konnte nicht angelegt werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -765,7 +784,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Der Status konnte nicht aktualisiert werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Der Status konnte nicht aktualisiert werden. Bitte versuche es erneut.",
+            "Der Status konnte nicht aktualisiert werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -786,7 +808,10 @@ export function EventSpaces({
     const endsAt = swissWallTimeToInstant(input.endsAt);
     if (!startsAt || !endsAt || endsAt <= startsAt) {
       setErrorMessage(
-        "Bitte geben Sie einen gültigen Zeitraum in der Zeitzone Europe/Zurich an.",
+        tn(
+          "Bitte gib einen gültigen Zeitraum in der Zeitzone Europe/Zurich an.",
+          "Bitte geben Sie einen gültigen Zeitraum in der Zeitzone Europe/Zurich an.",
+        ),
       );
       return false;
     }
@@ -815,7 +840,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Raumplanungsdetails konnten nicht gespeichert werden. Bitte prüfen Sie Raum, Zeitraum und Zuweisungen.",
+          tn(
+            "Die Raumplanungsdetails konnten nicht gespeichert werden. Bitte prüfe Raum, Zeitraum und Zuweisungen.",
+            "Die Raumplanungsdetails konnten nicht gespeichert werden. Bitte prüfen Sie Raum, Zeitraum und Zuweisungen.",
+          ),
         ),
       );
       return false;
@@ -851,7 +879,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Raumplanung konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Raumplanung konnte nicht gelöscht werden. Bitte versuche es erneut.",
+            "Die Raumplanung konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -885,7 +916,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Agent:in konnte nicht zugewiesen werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Agent:in konnte nicht zugewiesen werden. Bitte versuche es erneut.",
+            "Die Agent:in konnte nicht zugewiesen werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -921,7 +955,10 @@ export function EventSpaces({
     );
     if (!draft?.spaceId || !draft.responsibleUserId || !start) {
       setErrorMessage(
-        "Bitte geben Sie einen gültigen Schweizer Beginn sowie Raum und Agent:in an.",
+        tn(
+          "Bitte gib einen gültigen Schweizer Beginn sowie Raum und Agent:in an.",
+          "Bitte geben Sie einen gültigen Schweizer Beginn sowie Raum und Agent:in an.",
+        ),
       );
       return;
     }
@@ -952,7 +989,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Der Klärungsfall konnte nicht geplant werden. Bitte prüfen Sie Raum, Zeit und Technik.",
+          tn(
+            "Der Klärungsfall konnte nicht geplant werden. Bitte prüfe Raum, Zeit und Technik.",
+            "Der Klärungsfall konnte nicht geplant werden. Bitte prüfen Sie Raum, Zeit und Technik.",
+          ),
         ),
       );
     } finally {
@@ -1016,7 +1056,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Aufgabe konnte nicht aktualisiert werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Aufgabe konnte nicht aktualisiert werden. Bitte versuche es erneut.",
+            "Die Aufgabe konnte nicht aktualisiert werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -1045,8 +1088,10 @@ export function EventSpaces({
           <p className="eyebrow">Planung statt Ticket</p>
           <h2 id="event-spaces-heading">Raumplanung</h2>
           <p>
-            Planen Sie technische Einrichtungen für Aula und Sitzungszimmer. Ein
-            Ticket entsteht nur bei einem tatsächlichen Problem.
+            {tn(
+              "Plane technische Einrichtungen für Aula und Sitzungszimmer. Ein Ticket entsteht nur bei einem tatsächlichen Problem.",
+              "Planen Sie technische Einrichtungen für Aula und Sitzungszimmer. Ein Ticket entsteht nur bei einem tatsächlichen Problem.",
+            )}
           </p>
         </div>
         <div className="event-spaces__hero-actions">
@@ -1181,8 +1226,10 @@ export function EventSpaces({
               <p className="eyebrow">Neue E-Mail-Anfragen</p>
               <h3>Klärung und Übernahme erforderlich</h3>
               <p>
-                Neue Anfragen reservieren weder Raum noch Technik. Weisen Sie
-                zuerst eine Agent:in zu und ergänzen Sie danach Raum und Zeit.
+                {tn(
+                  "Neue Anfragen reservieren weder Raum noch Technik. Weise zuerst eine Agent:in zu und ergänze danach Raum und Zeit.",
+                  "Neue Anfragen reservieren weder Raum noch Technik. Weisen Sie zuerst eine Agent:in zu und ergänzen Sie danach Raum und Zeit.",
+                )}
               </p>
             </div>
             <strong>{clarifications.length}</strong>
@@ -1618,8 +1665,10 @@ export function EventSpaces({
               <div>
                 <strong>Noch kein Raum vorhanden</strong>
                 <p>
-                  Legen Sie zuerst einen Raum an. Danach können Sie technische
-                  Einrichtungen planen.
+                  {tn(
+                    "Lege zuerst einen Raum an. Danach kannst du technische Einrichtungen planen.",
+                    "Legen Sie zuerst einen Raum an. Danach können Sie technische Einrichtungen planen.",
+                  )}
                 </p>
               </div>
             </div>
@@ -1958,8 +2007,10 @@ export function EventSpaces({
         workspace.pagination.nextOffset !== null ? (
           <div className="event-spaces__load-more">
             <p>
-              Weitere Raumaufträge im Planungsjahr sind vorhanden. Laden Sie sie
-              nach, bevor Sie in spätere Wochen wechseln.
+              {tn(
+                "Weitere Raumaufträge im Planungsjahr sind vorhanden. Lade sie nach, bevor du in spätere Wochen wechselst.",
+                "Weitere Raumaufträge im Planungsjahr sind vorhanden. Laden Sie sie nach, bevor Sie in spätere Wochen wechseln.",
+              )}
             </p>
             <button
               className="secondary-button"
@@ -1977,8 +2028,10 @@ export function EventSpaces({
 
       {!canRequest && !canManage ? (
         <p className="event-spaces__access-note">
-          Sie können die Raumplanung sehen, aber noch keine Raumaufträge
-          erfassen oder verwalten.
+          {tn(
+            "Du kannst die Raumplanung sehen, aber noch keine Raumaufträge erfassen oder verwalten.",
+            "Sie können die Raumplanung sehen, aber noch keine Raumaufträge erfassen oder verwalten.",
+          )}
         </p>
       ) : null}
     </section>
@@ -2249,8 +2302,10 @@ function RequestCard({
                 <p className="eyebrow">Raumplanung bearbeiten</p>
                 <h5>{request.title}</h5>
                 <p>
-                  Ändern Sie Raum, Zeitraum und die anfragende Person. Die
-                  Agent:innenzuweisung bleibt davon getrennt.
+                  {tn(
+                    "Ändere Raum, Zeitraum und die anfragende Person. Die Agent:innenzuweisung bleibt davon getrennt.",
+                    "Ändern Sie Raum, Zeitraum und die anfragende Person. Die Agent:innenzuweisung bleibt davon getrennt.",
+                  )}
                 </p>
               </div>
               <div className="event-spaces__form-grid">

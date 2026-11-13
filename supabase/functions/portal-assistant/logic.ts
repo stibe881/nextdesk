@@ -1,6 +1,7 @@
 // Pure helpers of the portal-assistant function: input parsing, validation
 // of the AI answer and the fallback ticket draft. No I/O.
 
+import { tone } from "../_shared/formality.ts";
 import { isRecord, isUuid } from "../_shared/http.ts";
 
 /** The assistant asks at most this many clarifying questions. */
@@ -83,7 +84,7 @@ export function parseAction(value: unknown): Action | null {
       if (value.address !== undefined && value.address !== "formal" && value.address !== "informal") {
         return null;
       }
-      const address: Address = value.address === "informal" ? "informal" : "formal";
+      const address: Address = value.address === "formal" ? "formal" : "informal";
       return { type: "turn", tenantId, address, sessionId, departmentId, messages };
     }
     case "finish": {
@@ -187,13 +188,17 @@ export function parseAiAnswer(
 }
 
 /** Reply text when no AI is used (plain article search). */
-export function searchReply(articleCount: number, address: Address = "formal"): string {
-  if (address === "informal") {
-    return articleCount > 0
-      ? "Diese Artikel aus der Wissensdatenbank könnten dir weiterhelfen. Wenn keiner passt, erstelle direkt ein Ticket."
-      : "Dazu habe ich keinen passenden Artikel gefunden. Du kannst direkt ein Ticket mit deiner Beschreibung erstellen.";
-  }
+export function searchReply(articleCount: number, address: Address = "informal"): string {
+  const formality = address === "informal" ? "du" : "sie";
   return articleCount > 0
-    ? "Diese Artikel aus der Wissensdatenbank könnten weiterhelfen. Wenn keiner passt, erstellen Sie direkt ein Ticket."
-    : "Dazu habe ich keinen passenden Artikel gefunden. Sie können direkt ein Ticket mit Ihrer Beschreibung erstellen.";
+    ? tone(
+      formality,
+      "Diese Artikel aus der Wissensdatenbank könnten dir weiterhelfen. Wenn keiner passt, erstelle direkt ein Ticket.",
+      "Diese Artikel aus der Wissensdatenbank könnten weiterhelfen. Wenn keiner passt, erstellen Sie direkt ein Ticket.",
+    )
+    : tone(
+      formality,
+      "Dazu habe ich keinen passenden Artikel gefunden. Du kannst direkt ein Ticket mit deiner Beschreibung erstellen.",
+      "Dazu habe ich keinen passenden Artikel gefunden. Sie können direkt ein Ticket mit Ihrer Beschreibung erstellen.",
+    );
 }

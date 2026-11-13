@@ -142,7 +142,10 @@ export function AssetLabelDialog({
     );
     if (!view) {
       setError(
-        tn("Das Druckfenster wurde blockiert. Bitte erlaube Pop-ups für nextDesk.", "Das Druckfenster wurde blockiert. Bitte erlauben Sie Pop-ups für nextDesk."),
+        tn(
+          "Das Druckfenster wurde blockiert. Bitte erlaube Pop-ups für nextDesk.",
+          "Das Druckfenster wurde blockiert. Bitte erlauben Sie Pop-ups für nextDesk.",
+        ),
       );
       return;
     }

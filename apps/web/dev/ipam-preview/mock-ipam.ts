@@ -1963,9 +1963,9 @@ export function handle(body: Record<string, unknown>): unknown {
       if (existing && existing.status !== "deprecated") {
         throw new Error(
           tn(
-`${ip} ist bereits vergeben. Bitte hol dir einen neuen Vorschlag.`,
-`${ip} ist bereits vergeben. Bitte holen Sie einen neuen Vorschlag.`,
-),
+            `${ip} ist bereits vergeben. Bitte hol dir einen neuen Vorschlag.`,
+            `${ip} ist bereits vergeben. Bitte holen Sie einen neuen Vorschlag.`,
+          ),
         );
       }
       if (existing) {

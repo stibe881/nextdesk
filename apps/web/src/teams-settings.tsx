@@ -180,7 +180,10 @@ export function TeamsSettings({ tenantId }: { tenantId: string }) {
             <em>
               {view.ssoConfigured
                 ? "Die Plattform hat noch keine Microsoft-App hinterlegt."
-                : tn("Zuerst SSO mit deiner Tenant-ID einrichten.", "Zuerst SSO mit Ihrer Tenant-ID einrichten.")}
+                : tn(
+                    "Zuerst SSO mit deiner Tenant-ID einrichten.",
+                    "Zuerst SSO mit Ihrer Tenant-ID einrichten.",
+                  )}
             </em>
           )}
         </li>

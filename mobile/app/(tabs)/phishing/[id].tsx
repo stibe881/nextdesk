@@ -439,7 +439,21 @@ export default function PhishingCaseScreen() {
             <Text style={styles.cardTitle}>Ausgeführte Massnahmen</Text>
             {detail.measures.slice(0, 10).map((entry) => (
               <Text key={entry.id} style={styles.muted}>
-                {entry.status === "succeeded" ? "✓" : "✗"} {entry.label}
+                <Ionicons
+                  accessibilityLabel={
+                    entry.status === "succeeded" ? "Erfolgreich" : "Fehlgeschlagen"
+                  }
+                  color={
+                    entry.status === "succeeded" ? colors.success : colors.error
+                  }
+                  name={
+                    entry.status === "succeeded"
+                      ? "checkmark-circle-outline"
+                      : "close-circle-outline"
+                  }
+                  size={14}
+                />{" "}
+                {entry.label}
                 {entry.target ? ` · ${entry.target}` : ""} ·{" "}
                 {when(entry.createdAt)}
               </Text>

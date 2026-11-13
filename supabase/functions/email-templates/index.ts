@@ -1,10 +1,10 @@
 import { withSupabase } from "@supabase/server";
 import { renderTemplatePreview } from "../_shared/email-template-preview.ts";
 import { normalizeCustomerTicketEmailBranding } from "../_shared/customer-ticket-email-template.ts";
-import { loadFormality } from "../_shared/formality.ts";
+import { loadFormality, msg } from "../_shared/formality.ts";
 import {
-  EMAIL_TEMPLATES,
   emailTemplateDefinition,
+  emailTemplateDefinitions,
   sanitizeTemplateFields,
 } from "../_shared/email-templates.ts";
 
@@ -129,9 +129,9 @@ function reply(request: Request, body: Row, status = 200): Response {
 }
 
 const MESSAGES: Record<string, string> = {
-  not_authenticated: "Bitte melden Sie sich erneut an.",
-  tenant_access_denied: "Sie haben keinen Zugriff auf diesen Mandanten.",
-  forbidden: "Dafür fehlt Ihnen die Berechtigung.",
+  not_authenticated: msg("Bitte melde dich erneut an.", msg("Bitte melde dich erneut an.", "Bitte melden Sie sich erneut an.")),
+  tenant_access_denied: msg("Du hast keinen Zugriff auf diesen Mandanten.", msg("Du hast keinen Zugriff auf diesen Mandanten.", "Sie haben keinen Zugriff auf diesen Mandanten.")),
+  forbidden: msg("Dafür fehlt dir die Berechtigung.", msg("Dafür fehlt dir die Berechtigung.", "Dafür fehlt Ihnen die Berechtigung.")),
   invalid_request: "Die Anfrage ist ungültig.",
   operation_failed: "Die E-Mail-Vorlagen konnten nicht verarbeitet werden.",
 };
@@ -185,7 +185,9 @@ async function list(request: Request, admin: Admin, tenantId: string) {
   );
   return reply(request, {
     data: {
-      templates: EMAIL_TEMPLATES.map((template) => {
+      templates: emailTemplateDefinitions(
+        await loadFormality(admin, tenantId),
+      ).map((template) => {
         const row = byKey.get(template.key);
         return {
           ...template,

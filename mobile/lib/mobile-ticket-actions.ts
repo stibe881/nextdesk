@@ -19,15 +19,17 @@ export function dueToday(): string {
   return due.toISOString();
 }
 
-const DELETE_ERROR_MESSAGES: Record<string, string> = {
-  bulk_ticket_delete_permission_denied:
+const deleteErrorMessages = (): Record<string, string> => ({
+  bulk_ticket_delete_permission_denied: tn(
     "Du hast keine Berechtigung, dieses Ticket zu löschen.",
+    "Sie haben keine Berechtigung, dieses Ticket zu löschen.",
+  ),
   bulk_ticket_delete_legal_hold:
     "Dieses Ticket unterliegt einer Aufbewahrungssperre und kann nicht gelöscht werden.",
   bulk_ticket_delete_dependency_blocked:
     "Dieses Ticket ist mit anderen Daten verknüpft und kann nicht gelöscht werden.",
   bulk_ticket_delete_target_missing: "Dieses Ticket ist nicht mehr verfügbar.",
-};
+});
 
 async function deleteErrorMessage(error: unknown): Promise<string> {
   const context =
@@ -47,9 +49,9 @@ async function deleteErrorMessage(error: unknown): Promise<string> {
       (payload as { error: { code?: unknown } | null }).error !== null
         ? (payload as { error: { code?: unknown } }).error.code
         : undefined;
-    if (typeof code === "string" && DELETE_ERROR_MESSAGES[code]) {
-      return DELETE_ERROR_MESSAGES[code];
-    }
+    const known =
+      typeof code === "string" ? deleteErrorMessages()[code] : undefined;
+    if (known) return known;
   }
   return "Das Ticket konnte nicht gelöscht werden.";
 }

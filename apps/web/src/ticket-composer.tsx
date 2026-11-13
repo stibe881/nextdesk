@@ -284,17 +284,35 @@ async function requesterErrorMessage(
   // Backend text is never rendered. Only known codes select our own messages.
   switch (response.error.code) {
     case "invalid_requester_query":
-      return tn("Bitte gib einen Suchbegriff mit 2 bis 120 gültigen Zeichen ein.", "Bitte geben Sie einen Suchbegriff mit 2 bis 120 gültigen Zeichen ein.");
+      return tn(
+        "Bitte gib einen Suchbegriff mit 2 bis 120 gültigen Zeichen ein.",
+        "Bitte geben Sie einen Suchbegriff mit 2 bis 120 gültigen Zeichen ein.",
+      );
     case "invalid_requester_name":
-      return tn("Bitte gib einen Namen mit 2 bis 160 gültigen Zeichen ein.", "Bitte geben Sie einen Namen mit 2 bis 160 gültigen Zeichen ein.");
+      return tn(
+        "Bitte gib einen Namen mit 2 bis 160 gültigen Zeichen ein.",
+        "Bitte geben Sie einen Namen mit 2 bis 160 gültigen Zeichen ein.",
+      );
     case "invalid_requester_email":
-      return tn("Bitte gib eine gültige E-Mail-Adresse ein oder lass das Feld leer.", "Bitte geben Sie eine gültige E-Mail-Adresse ein oder lassen Sie das Feld leer.");
+      return tn(
+        "Bitte gib eine gültige E-Mail-Adresse ein oder lass das Feld leer.",
+        "Bitte geben Sie eine gültige E-Mail-Adresse ein oder lassen Sie das Feld leer.",
+      );
     case "invalid_requester_contact":
-      return tn("Die ausgewählte anfragende Person ist nicht mehr gültig. Bitte wähle eine Person erneut aus.", "Die ausgewählte anfragende Person ist nicht mehr gültig. Bitte wählen Sie eine Person erneut aus.");
+      return tn(
+        "Die ausgewählte anfragende Person ist nicht mehr gültig. Bitte wähle eine Person erneut aus.",
+        "Die ausgewählte anfragende Person ist nicht mehr gültig. Bitte wählen Sie eine Person erneut aus.",
+      );
     case "requester_selection_denied":
-      return tn("Für die gewählte Abteilung darfst du kein Ticket für eine andere Person erstellen. Wähle deine eigene Person oder eine Abteilung, für die du berechtigt bist.", "Für die gewählte Abteilung dürfen Sie kein Ticket für eine andere Person erstellen. Wählen Sie Ihre eigene Person oder eine Abteilung, für die Sie berechtigt sind.");
+      return tn(
+        "Für die gewählte Abteilung darfst du kein Ticket für eine andere Person erstellen. Wähle deine eigene Person oder eine Abteilung, für die du berechtigt bist.",
+        "Für die gewählte Abteilung dürfen Sie kein Ticket für eine andere Person erstellen. Wählen Sie Ihre eigene Person oder eine Abteilung, für die Sie berechtigt sind.",
+      );
     case "requester_permission_check_failed":
-      return tn("Die Berechtigung für die anfragende Person konnte nicht geprüft werden. Bitte versuche es später erneut.", "Die Berechtigung für die anfragende Person konnte nicht geprüft werden. Bitte versuchen Sie es später erneut.");
+      return tn(
+        "Die Berechtigung für die anfragende Person konnte nicht geprüft werden. Bitte versuche es später erneut.",
+        "Die Berechtigung für die anfragende Person konnte nicht geprüft werden. Bitte versuchen Sie es später erneut.",
+      );
     default:
       return fallback;
   }
@@ -1023,7 +1041,10 @@ export function TicketComposer({
           allowed: false,
           error: isPermissionDenied(requestError)
             ? ""
-            : tn("Die Berechtigung zur Personenauswahl konnte nicht geprüft werden. Deine eigene Person bleibt ausgewählt.", "Die Berechtigung zur Personenauswahl konnte nicht geprüft werden. Ihre eigene Person bleibt ausgewählt."),
+            : tn(
+                "Die Berechtigung zur Personenauswahl konnte nicht geprüft werden. Deine eigene Person bleibt ausgewählt.",
+                "Die Berechtigung zur Personenauswahl konnte nicht geprüft werden. Ihre eigene Person bleibt ausgewählt.",
+              ),
         });
       });
     return () => {
@@ -1051,8 +1072,10 @@ export function TicketComposer({
         query,
         status: "error",
         requesters: [],
-        error:
-          tn("Bitte gib eine Suchanfrage mit 2 bis 120 gültigen Zeichen ein.", "Bitte geben Sie eine Suchanfrage mit 2 bis 120 gültigen Zeichen ein."),
+        error: tn(
+          "Bitte gib eine Suchanfrage mit 2 bis 120 gültigen Zeichen ein.",
+          "Bitte geben Sie eine Suchanfrage mit 2 bis 120 gültigen Zeichen ein.",
+        ),
       });
       return;
     }
@@ -1092,13 +1115,19 @@ export function TicketComposer({
             setSelectedRequester(options.currentRequester);
             setRequesterQuery("");
             setRequesterError(
-              tn("Du bist nicht berechtigt, eine andere anfragende Person auszuwählen. Deine eigene Person ist ausgewählt.", "Sie sind nicht berechtigt, eine andere anfragende Person auszuwählen. Ihre eigene Person ist ausgewählt."),
+              tn(
+                "Du bist nicht berechtigt, eine andere anfragende Person auszuwählen. Deine eigene Person ist ausgewählt.",
+                "Sie sind nicht berechtigt, eine andere anfragende Person auszuwählen. Ihre eigene Person ist ausgewählt.",
+              ),
             );
             return;
           }
           const message = await requesterErrorMessage(
             requestError,
-            tn("Die Personensuche konnte nicht ausgeführt werden. Bitte ändere die Suche oder versuche es später erneut.", "Die Personensuche konnte nicht ausgeführt werden. Bitte ändern Sie die Suche oder versuchen Sie es später erneut."),
+            tn(
+              "Die Personensuche konnte nicht ausgeführt werden. Bitte ändere die Suche oder versuche es später erneut.",
+              "Die Personensuche konnte nicht ausgeführt werden. Bitte ändern Sie die Suche oder versuchen Sie es später erneut.",
+            ),
           );
           if (requesterSearchRef.current !== requestId) return;
           setRequesterLookup({
@@ -1228,8 +1257,10 @@ export function TicketComposer({
           departmentId,
           status: "error",
           categories: [],
-          error:
-            tn("Die Kategorien konnten nicht geladen werden. Bitte versuche es später erneut.", "Die Kategorien konnten nicht geladen werden. Bitte versuchen Sie es später erneut."),
+          error: tn(
+            "Die Kategorien konnten nicht geladen werden. Bitte versuche es später erneut.",
+            "Die Kategorien konnten nicht geladen werden. Bitte versuchen Sie es später erneut.",
+          ),
         });
       });
 
@@ -1285,8 +1316,10 @@ export function TicketComposer({
           departmentId,
           status: "error",
           templates: [],
-          error:
-            tn("Die Ticketvorlagen konnten nicht geladen werden. Du kannst das Ticket weiterhin ohne Vorlage erfassen.", "Die Ticketvorlagen konnten nicht geladen werden. Sie können das Ticket weiterhin ohne Vorlage erfassen."),
+          error: tn(
+            "Die Ticketvorlagen konnten nicht geladen werden. Du kannst das Ticket weiterhin ohne Vorlage erfassen.",
+            "Die Ticketvorlagen konnten nicht geladen werden. Sie können das Ticket weiterhin ohne Vorlage erfassen.",
+          ),
         });
       });
 
@@ -1377,7 +1410,10 @@ export function TicketComposer({
       isUuid(displayName)
     ) {
       setRequesterError(
-        tn("Bitte gib einen Namen mit 2 bis 160 Zeichen ein, keine E-Mail-Adresse oder ID.", "Bitte geben Sie einen Namen mit 2 bis 160 Zeichen ein, keine E-Mail-Adresse oder ID."),
+        tn(
+          "Bitte gib einen Namen mit 2 bis 160 Zeichen ein, keine E-Mail-Adresse oder ID.",
+          "Bitte geben Sie einen Namen mit 2 bis 160 Zeichen ein, keine E-Mail-Adresse oder ID.",
+        ),
       );
       return;
     }
@@ -1386,7 +1422,10 @@ export function TicketComposer({
       (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email))
     ) {
       setRequesterError(
-        tn("Bitte gib eine gültige E-Mail-Adresse ein oder lass das Feld leer.", "Bitte geben Sie eine gültige E-Mail-Adresse ein oder lassen Sie das Feld leer."),
+        tn(
+          "Bitte gib eine gültige E-Mail-Adresse ein oder lass das Feld leer.",
+          "Bitte geben Sie eine gültige E-Mail-Adresse ein oder lassen Sie das Feld leer.",
+        ),
       );
       return;
     }
@@ -1426,12 +1465,18 @@ export function TicketComposer({
         setSelectedRequester(options.currentRequester);
         setRequesterDraft(null);
         setRequesterError(
-          tn("Du bist nicht berechtigt, anfragende Personen anzulegen. Deine eigene Person ist ausgewählt.", "Sie sind nicht berechtigt, anfragende Personen anzulegen. Ihre eigene Person ist ausgewählt."),
+          tn(
+            "Du bist nicht berechtigt, anfragende Personen anzulegen. Deine eigene Person ist ausgewählt.",
+            "Sie sind nicht berechtigt, anfragende Personen anzulegen. Ihre eigene Person ist ausgewählt.",
+          ),
         );
       } else {
         const message = await requesterErrorMessage(
           requestError,
-          tn("Die anfragende Person konnte nicht gespeichert oder bestätigt werden. Bitte prüfe Name und E-Mail-Adresse und versuche es erneut.", "Die anfragende Person konnte nicht gespeichert oder bestätigt werden. Bitte prüfen Sie Name und E-Mail-Adresse und versuchen Sie es erneut."),
+          tn(
+            "Die anfragende Person konnte nicht gespeichert oder bestätigt werden. Bitte prüfe Name und E-Mail-Adresse und versuche es erneut.",
+            "Die anfragende Person konnte nicht gespeichert oder bestätigt werden. Bitte prüfen Sie Name und E-Mail-Adresse und versuchen Sie es erneut.",
+          ),
         );
         if (requesterScopeRef.current === requestId) setRequesterError(message);
       }
@@ -1463,7 +1508,10 @@ export function TicketComposer({
     const nameLength = Array.from(name).length;
     if (nameLength < 2 || nameLength > 120 || name.includes("\0")) {
       setCategoryError(
-        tn("Bitte gib einen Namen mit 2 bis 120 Zeichen ein.", "Bitte geben Sie einen Namen mit 2 bis 120 Zeichen ein."),
+        tn(
+          "Bitte gib einen Namen mit 2 bis 120 Zeichen ein.",
+          "Bitte geben Sie einen Namen mit 2 bis 120 Zeichen ein.",
+        ),
       );
       return;
     }
@@ -1472,7 +1520,10 @@ export function TicketComposer({
       !rootCategories.some((category) => category.id === parentId)
     ) {
       setCategoryError(
-        tn("Bitte wähle eine gültige übergeordnete Kategorie.", "Bitte wählen Sie eine gültige übergeordnete Kategorie."),
+        tn(
+          "Bitte wähle eine gültige übergeordnete Kategorie.",
+          "Bitte wählen Sie eine gültige übergeordnete Kategorie.",
+        ),
       );
       return;
     }
@@ -1514,7 +1565,10 @@ export function TicketComposer({
     } catch {
       if (categoryRequestRef.current === requestId)
         setCategoryError(
-          tn("Die Kategorie konnte nicht gespeichert werden. Bitte prüfe den Namen und versuche es erneut.", "Die Kategorie konnte nicht gespeichert werden. Bitte prüfen Sie den Namen und versuchen Sie es erneut."),
+          tn(
+            "Die Kategorie konnte nicht gespeichert werden. Bitte prüfe den Namen und versuche es erneut.",
+            "Die Kategorie konnte nicht gespeichert werden. Bitte prüfen Sie den Namen und versuchen Sie es erneut.",
+          ),
         );
     } finally {
       if (categoryRequestRef.current === requestId) setCategorySaving(false);
@@ -1544,12 +1598,16 @@ export function TicketComposer({
       selectedTemplatePreview?.description ?? description
     ).trim();
     if (Array.from(draftSubject).length < 3) {
-      nextErrors.subject =
-        tn("Bitte beschreibe dein Anliegen im Betreff mit mindestens 3 Zeichen.", "Bitte beschreiben Sie Ihr Anliegen im Betreff mit mindestens 3 Zeichen.");
+      nextErrors.subject = tn(
+        "Bitte beschreibe dein Anliegen im Betreff mit mindestens 3 Zeichen.",
+        "Bitte beschreiben Sie Ihr Anliegen im Betreff mit mindestens 3 Zeichen.",
+      );
     }
     if (!draftDescription) {
-      nextErrors.description =
-        tn("Bitte schildere kurz, was passiert ist oder was du benötigst.", "Bitte schildern Sie kurz, was passiert ist oder was Sie benötigen.");
+      nextErrors.description = tn(
+        "Bitte schildere kurz, was passiert ist oder was du benötigst.",
+        "Bitte schildern Sie kurz, was passiert ist oder was Sie benötigen.",
+      );
     }
     setFieldErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -1585,7 +1643,12 @@ export function TicketComposer({
     const client = supabase;
     if (!client || !lookup || watcherSaving) return;
     if (watcherIds.length === 0) {
-      setWatcherNotice(tn("Bitte wähle mindestens eine Person aus.", "Bitte wählen Sie mindestens eine Person aus."));
+      setWatcherNotice(
+        tn(
+          "Bitte wähle mindestens eine Person aus.",
+          "Bitte wählen Sie mindestens eine Person aus.",
+        ),
+      );
       return;
     }
     setWatcherSaving(true);
@@ -1628,7 +1691,10 @@ export function TicketComposer({
       }
       if (failures.length > 0) {
         setWatcherNotice(
-          tn("Nicht alle Personen konnten in Kopie gesetzt werden. Bitte versuche es erneut.", "Nicht alle Personen konnten in Kopie gesetzt werden. Bitte versuchen Sie es erneut."),
+          tn(
+            "Nicht alle Personen konnten in Kopie gesetzt werden. Bitte versuche es erneut.",
+            "Nicht alle Personen konnten in Kopie gesetzt werden. Bitte versuchen Sie es erneut.",
+          ),
         );
       } else {
         setWatcherNotice(
@@ -1644,7 +1710,10 @@ export function TicketComposer({
     if (!validateTicketDraft()) return;
     if (!currentSelectedRequester) {
       setError(
-        tn("Bitte wähle eine anfragende Person aus. Ohne ausgewählte Person kann kein Ticket erstellt werden.", "Bitte wählen Sie eine anfragende Person aus. Ohne ausgewählte Person kann kein Ticket erstellt werden."),
+        tn(
+          "Bitte wähle eine anfragende Person aus. Ohne ausgewählte Person kann kein Ticket erstellt werden.",
+          "Bitte wählen Sie eine anfragende Person aus. Ohne ausgewählte Person kann kein Ticket erstellt werden.",
+        ),
       );
       return;
     }
@@ -1726,7 +1795,10 @@ export function TicketComposer({
           setTemplateId("");
           setAssignedAgentId("");
           setError(
-            tn("Das Ticket wurde erstellt, aber die Agentenzuweisung konnte nicht gespeichert werden. Öffne das Ticket und versuche die Zuweisung erneut.", "Das Ticket wurde erstellt, aber die Agentenzuweisung konnte nicht gespeichert werden. Öffnen Sie das Ticket und versuchen Sie die Zuweisung erneut."),
+            tn(
+              "Das Ticket wurde erstellt, aber die Agentenzuweisung konnte nicht gespeichert werden. Öffne das Ticket und versuche die Zuweisung erneut.",
+              "Das Ticket wurde erstellt, aber die Agentenzuweisung konnte nicht gespeichert werden. Öffnen Sie das Ticket und versuchen Sie die Zuweisung erneut.",
+            ),
           );
           return;
         }
@@ -1804,7 +1876,10 @@ export function TicketComposer({
     } catch (requestError: unknown) {
       const message = await requesterErrorMessage(
         requestError,
-        tn("Das Ticket konnte nicht erstellt oder bestätigt werden. Bitte prüfe deine Eingaben und versuche es erneut.", "Das Ticket konnte nicht erstellt oder bestätigt werden. Bitte prüfen Sie Ihre Eingaben und versuchen Sie es erneut."),
+        tn(
+          "Das Ticket konnte nicht erstellt oder bestätigt werden. Bitte prüfe deine Eingaben und versuche es erneut.",
+          "Das Ticket konnte nicht erstellt oder bestätigt werden. Bitte prüfen Sie Ihre Eingaben und versuchen Sie es erneut.",
+        ),
       );
       if (requesterScopeRef.current === requestId) setError(message);
     } finally {
@@ -2115,8 +2190,14 @@ export function TicketComposer({
                   <div className="portal-assistant-entry">
                     <p className="data-caption">
                       {assistantSessionId
-                        ? tn("Der Entwurf des Assistenten wurde übernommen. Bitte prüfe und erstelle das Ticket.", "Der Entwurf des Assistenten wurde übernommen. Bitte prüfen und erstellen Sie das Ticket.")
-                        : tn("Vielleicht lässt sich dein Problem gleich lösen: Der Assistent sucht passende Anleitungen.", "Vielleicht lässt sich Ihr Problem gleich lösen: Der Assistent sucht passende Anleitungen.")}
+                        ? tn(
+                            "Der Entwurf des Assistenten wurde übernommen. Bitte prüfe und erstelle das Ticket.",
+                            "Der Entwurf des Assistenten wurde übernommen. Bitte prüfen und erstellen Sie das Ticket.",
+                          )
+                        : tn(
+                            "Vielleicht lässt sich dein Problem gleich lösen: Der Assistent sucht passende Anleitungen.",
+                            "Vielleicht lässt sich Ihr Problem gleich lösen: Der Assistent sucht passende Anleitungen.",
+                          )}
                     </p>
                     {assistantSessionId ? null : (
                       <button
@@ -2171,8 +2252,8 @@ export function TicketComposer({
                     <>
                       <strong>Für eine schnelle Lösung:</strong> Nennen Sie im
                       Betreff das Ziel, beschreiben Sie den Fehler und seit wann
-                      er auftritt. Ergänzen Sie bereits versuchte Schritte
-                      sowie Meldungen oder Auswirkungen – aber keine Passwörter,
+                      er auftritt. Ergänzen Sie bereits versuchte Schritte sowie
+                      Meldungen oder Auswirkungen – aber keine Passwörter,
                       Schlüssel oder andere Geheimnisse.
                     </>,
                   )}
@@ -2188,9 +2269,8 @@ export function TicketComposer({
                       {tn(
                         <>
                           <strong>Passende aktive Störung:</strong> Prüfe vor
-                          dem Erstellen, ob dein Anliegen bereits betroffen
-                          ist. Ein Ticket kann bei Bedarf trotzdem erfasst
-                          werden.
+                          dem Erstellen, ob dein Anliegen bereits betroffen ist.
+                          Ein Ticket kann bei Bedarf trotzdem erfasst werden.
                         </>,
                         <>
                           <strong>Passende aktive Störung:</strong> Prüfen Sie

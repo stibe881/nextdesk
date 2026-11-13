@@ -514,11 +514,10 @@ function TeamQueuesPanel({
           {tn(
             <>
               Deine eigenen Teams stehen oben. «Ohne Teamzuordnung» sind offene
-              Tickets, die noch keinem Team zugeteilt sind – verteile sie,
-              damit sich jemand zuständig fühlt. «ohne Bearbeiter» zählt
-              Tickets, die noch niemandem zugewiesen sind. Du siehst nur
-              Tickets, die du öffnen darfst; eine Warteschlange weist nichts
-              automatisch zu.
+              Tickets, die noch keinem Team zugeteilt sind – verteile sie, damit
+              sich jemand zuständig fühlt. «ohne Bearbeiter» zählt Tickets, die
+              noch niemandem zugewiesen sind. Du siehst nur Tickets, die du
+              öffnen darfst; eine Warteschlange weist nichts automatisch zu.
             </>,
             <>
               Ihre eigenen Teams stehen oben. «Ohne Teamzuordnung» sind offene
@@ -719,8 +718,11 @@ function MentionsPanel({
         </p>
       ) : mentions.length === 0 ? (
         <p className="workbench-empty">
-{tn("Keine Erwähnungen in deinem Eingang.","Keine Erwähnungen in Ihrem Eingang.")}
-</p>
+          {tn(
+            "Keine Erwähnungen in deinem Eingang.",
+            "Keine Erwähnungen in Ihrem Eingang.",
+          )}
+        </p>
       ) : (
         <ul className="workbench-mention-list">
           {mentions.map((mention) => (

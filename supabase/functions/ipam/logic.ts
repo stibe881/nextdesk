@@ -1,6 +1,7 @@
 // IPAM edge function: request parsing, validation, forecast and exports.
 // Pure code without database access so it can be tested with `deno test`.
 
+import { msg } from "../_shared/formality.ts";
 import {
   addressInRange,
   type Cidr,
@@ -75,7 +76,7 @@ export function optionalText(value: unknown, max: number, label: string): string
 
 function requiredText(value: unknown, max: number, label: string): string {
   const text = optionalText(value, max, label);
-  if (!text) throw new InputError(`Bitte erfassen Sie ${label}.`);
+  if (!text) throw new InputError(msg(`Bitte erfasse ${label}.`, `Bitte erfassen Sie ${label}.`));
   return text;
 }
 
@@ -156,10 +157,10 @@ function optionalAddressText(value: unknown, label: string): string | null {
 /** Prefix in CIDR notation; host bits produce a helpful message. */
 export function parsePrefixText(value: unknown): Cidr {
   if (typeof value !== "string" || !value.trim()) {
-    throw new InputError("Bitte erfassen Sie das Subnetz in CIDR-Schreibweise (z. B. 10.20.30.0/24).");
+    throw new InputError(msg("Bitte erfasse das Subnetz in CIDR-Schreibweise (z. B. 10.20.30.0/24).", "Bitte erfassen Sie das Subnetz in CIDR-Schreibweise (z. B. 10.20.30.0/24)."));
   }
   if (!value.includes("/")) {
-    throw new InputError("Bitte geben Sie die Präfixlänge an (z. B. 10.20.30.0/24).");
+    throw new InputError(msg("Bitte gib die Präfixlänge an (z. B. 10.20.30.0/24).", "Bitte geben Sie die Präfixlänge an (z. B. 10.20.30.0/24)."));
   }
   const parsed = parseCidrInput(value);
   if (!parsed) {
@@ -167,7 +168,10 @@ export function parsePrefixText(value: unknown): Cidr {
   }
   if (parsed.hostBitsSet) {
     throw new InputError(
-      `«${value.trim()}» ist keine Netzadresse. Meinten Sie ${formatCidr(parsed.cidr)}?`,
+      msg(
+        `«${value.trim()}» ist keine Netzadresse. Meintest du ${formatCidr(parsed.cidr)}?`,
+        `«${value.trim()}» ist keine Netzadresse. Meinten Sie ${formatCidr(parsed.cidr)}?`,
+      ),
     );
   }
   return parsed.cidr;
@@ -364,7 +368,7 @@ export function validatePrefixRanges(
     throw new InputError(`Das Gateway ${gateway} liegt nicht im Subnetz ${formatCidr(cidr)}.`);
   }
   if ((dhcpStart === null) !== (dhcpEnd === null)) {
-    throw new InputError("Bitte erfassen Sie Beginn und Ende des DHCP-Bereichs.");
+    throw new InputError(msg("Bitte erfasse Beginn und Ende des DHCP-Bereichs.", "Bitte erfassen Sie Beginn und Ende des DHCP-Bereichs."));
   }
   if (dhcpStart && dhcpEnd) {
     if (!inside(dhcpStart) || !inside(dhcpEnd)) {
@@ -560,7 +564,7 @@ export function parseAction(body: unknown): Action {
     }
     case "search": {
       const query = optionalText(body.query, 100, "Die Suche");
-      if (!query || query.length < 2) throw new InputError("Bitte geben Sie mindestens zwei Zeichen ein.");
+      if (!query || query.length < 2) throw new InputError(msg("Bitte gib mindestens zwei Zeichen ein.", "Bitte geben Sie mindestens zwei Zeichen ein."));
       return { type: "search", tenantId, query };
     }
     case "saveVrf":

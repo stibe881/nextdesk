@@ -224,8 +224,12 @@ function PhishingReportDialog({
             <p>{result.message}</p>
             <p className="phishing-report__hint">
               {tn(
-                <>Deine Meldung wurde als Ticket {result.ticketNumber} erfasst.</>,
-                <>Ihre Meldung wurde als Ticket {result.ticketNumber} erfasst.</>,
+                <>
+                  Deine Meldung wurde als Ticket {result.ticketNumber} erfasst.
+                </>,
+                <>
+                  Ihre Meldung wurde als Ticket {result.ticketNumber} erfasst.
+                </>,
               )}
             </p>
             <div className="phishing-report__actions">

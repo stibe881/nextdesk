@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { LoaderCircle, Sparkles, Undo2 } from "lucide-react";
 import { useState } from "react";
 
@@ -53,7 +54,8 @@ export function TicketTextRewrite({
   const [pending, setPending] = useState<RewriteLength | null>(null);
   const [error, setError] = useState("");
   const [original, setOriginal] = useState<string | null>(null);
-  const blocked = Boolean(disabled) || pending !== null || text.trim().length < 2;
+  const blocked =
+    Boolean(disabled) || pending !== null || text.trim().length < 2;
 
   async function rewrite(length: RewriteLength) {
     if (!supabase || blocked) return;
@@ -64,14 +66,23 @@ export function TicketTextRewrite({
       const { data, error: invokeError } = await supabase.functions.invoke(
         "ai-assist",
         {
-          body: { type: "polishText", tenantId, text: source, audience, length },
+          body: {
+            type: "polishText",
+            tenantId,
+            text: source,
+            audience,
+            length,
+          },
         },
       );
       if (invokeError) {
         const code = await errorCode(invokeError);
         setError(
           ERRORS[code] ??
-            "Der Text konnte nicht umformuliert werden. Bitte versuchen Sie es erneut.",
+            tn(
+              "Der Text konnte nicht umformuliert werden. Bitte versuche es erneut.",
+              "Der Text konnte nicht umformuliert werden. Bitte versuchen Sie es erneut.",
+            ),
         );
         return;
       }

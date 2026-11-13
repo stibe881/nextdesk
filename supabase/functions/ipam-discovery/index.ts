@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import {
@@ -449,7 +450,10 @@ async function queueJob(request: Request, admin: Admin, actorId: string, action:
       throw new HttpError(
         422,
         "writes_disabled",
-        "Schreiben ist für diesen Agenten nicht freigegeben. Aktivieren Sie «Änderungen an DHCP/DNS erlauben» in der Agent-Konfiguration.",
+        msg(
+          "Schreiben ist für diesen Agenten nicht freigegeben. Aktiviere «Änderungen an DHCP/DNS erlauben» in der Agent-Konfiguration.",
+          "Schreiben ist für diesen Agenten nicht freigegeben. Aktivieren Sie «Änderungen an DHCP/DNS erlauben» in der Agent-Konfiguration.",
+        ),
       );
     }
     return writer;
@@ -467,7 +471,7 @@ async function queueJob(request: Request, admin: Admin, actorId: string, action:
       scopeContains(String(row.scope_id), row.subnet_mask ? String(row.subnet_mask) : null, ip.address)
     );
     if (!scope) {
-      throw new HttpError(422, "scope_missing", "Kein bekannter DHCP-Bereich enthält diese Adresse. Lassen Sie den Agenten zuerst scannen.");
+      throw new HttpError(422, "scope_missing", msg("Kein bekannter DHCP-Bereich enthält diese Adresse. Lass den Agenten zuerst scannen.", "Kein bekannter DHCP-Bereich enthält diese Adresse. Lassen Sie den Agenten zuerst scannen."));
     }
     const server = String(scope.server);
     agentId = pickAgent(server, "dhcp").id as string;
@@ -553,7 +557,7 @@ async function approveJob(request: Request, admin: Admin, actorId: string, actio
     .select("id, agent_id, kind, status, payload, result, error, address_id, created_at, started_at, finished_at")
     .maybeSingle();
   if (error) {
-    if (error.code === "42501") throw new HttpError(403, "approval_denied", "Sie dürfen diesen Auftrag nicht freigeben.");
+    if (error.code === "42501") throw new HttpError(403, "approval_denied", msg("Du darfst diesen Auftrag nicht freigeben.", "Sie dürfen diesen Auftrag nicht freigeben."));
     throw dbFailure();
   }
   if (!data) throw new HttpError(409, "job_not_pending", "Der Auftrag wartet nicht auf eine Freigabe.");
@@ -717,11 +721,11 @@ const handler = withSupabase(
       const admin = context.supabaseAdmin;
       const features = await resolveUserFeatureStates(admin, action.tenantId, actorId, ["ipam.management"]);
       if (features?.["ipam.management"] !== true) {
-        throw new HttpError(403, "feature_disabled", "Die IP-Adressverwaltung ist für Sie nicht eingeschaltet.");
+        throw new HttpError(403, "feature_disabled", msg("Die IP-Adressverwaltung ist für dich nicht eingeschaltet.", "Die IP-Adressverwaltung ist für Sie nicht eingeschaltet."));
       }
       const access = await permissions(context.supabase, action.tenantId);
       if (!access.canRead) {
-        throw new HttpError(403, "access_denied", "Für die IP-Adressverwaltung fehlt Ihnen die Berechtigung.");
+        throw new HttpError(403, "access_denied", msg("Für die IP-Adressverwaltung fehlt dir die Berechtigung.", "Für die IP-Adressverwaltung fehlt Ihnen die Berechtigung."));
       }
       if (action.type === "overview") return await overview(request, admin, action.tenantId, access.canManage);
       if (action.type === "dhcpDns") return await dhcpDns(request, admin, action);

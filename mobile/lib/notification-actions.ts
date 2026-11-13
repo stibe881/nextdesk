@@ -200,7 +200,7 @@ export async function handleNotificationAction(
           ticketId: data.ticketId,
           assignedAgentId: userId,
         });
-        await feedback("Das Ticket ist dir zugewiesen.");
+        await feedback(tn("Das Ticket ist dir zugewiesen.", "Das Ticket ist Ihnen zugewiesen."));
         break;
       }
       case ACTION_PROGRESS: {

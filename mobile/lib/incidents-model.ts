@@ -429,11 +429,17 @@ export function ticketReplyText(
   return [
     "Guten Tag",
     "",
-    `Ihre Meldung hängt mit einer Störung zusammen (${incident.number}, ${device}). Die Störung ist behoben.`,
+    tn(
+      `Deine Meldung hängt mit einer Störung zusammen (${incident.number}, ${device}). Die Störung ist behoben.`,
+      `Ihre Meldung hängt mit einer Störung zusammen (${incident.number}, ${device}). Die Störung ist behoben.`,
+    ),
     "",
     `Ursache: ${CAUSE_LABELS[cause]}${note ? `\n${note}` : ""}`,
     "",
-    "Wir setzen Ihr Ticket deshalb auf «Gelöst». Besteht das Problem weiterhin, antworten Sie bitte auf diese Nachricht.",
+    tn(
+      "Wir setzen dein Ticket deshalb auf «Gelöst». Besteht das Problem weiterhin, antworte bitte auf diese Nachricht.",
+      "Wir setzen Ihr Ticket deshalb auf «Gelöst». Besteht das Problem weiterhin, antworten Sie bitte auf diese Nachricht.",
+    ),
     "",
     "Freundliche Grüsse",
   ].join("\n");
