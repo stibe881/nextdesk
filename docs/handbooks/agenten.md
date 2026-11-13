@@ -373,12 +373,15 @@ Ein Klick öffnet die Störung:
    Meldung (Zustand, Titel, Text) auf der Statusseite und ergänzen sie später
    mit **Update veröffentlichen**. Unter **Betroffene Dienste und
    Betriebszustand** stehen die verknüpften Dienste und die Dienste der letzten
-   Meldung; mit **Dienst hinzufügen** wählen Sie weitere Dienste aus der
-   Statusseite, auch bei externen Störungen. Pro Dienst stellen Sie direkt den
+   Meldung; unter **Dienst hinzufügen** suchen Sie nach Name oder Kategorie
+   und wählen weitere Dienste aus der Statusseite, auch bei externen
+   Störungen. Pro Dienst stellen Sie direkt den
    Betriebszustand ein (Betriebsbereit, Beeinträchtigte Leistung, Teilweiser
    Ausfall, Schwerwiegender Ausfall, Wird gewartet). Mit dem Zustand
    **Behoben** werden die gewählten Dienste auf «Betriebsbereit» gesetzt; Sie
-   können das vor dem Veröffentlichen noch ändern.
+   können das vor dem Veröffentlichen noch ändern. Eine bereits
+   veröffentlichte Meldung korrigieren Sie mit **Bearbeiten** (Zustand, Titel,
+   Text, Dienste) und **Änderungen speichern**.
 7. **Abschliessen bzw. Ursache nachtragen**: Wählen Sie die **Ursache** (Strom, Netzwerk, Hardware,
    Software, Wartung, Extern, Unbekannt) und halten Sie die Lösung fest. Sind
    Tickets zugeordnet, ist **Tickets informieren und auf «Gelöst» setzen**

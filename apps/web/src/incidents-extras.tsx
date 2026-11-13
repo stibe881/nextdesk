@@ -1,6 +1,7 @@
 import {
   BookOpen,
   Megaphone,
+  Pencil,
   Network,
   Ticket as TicketIcon,
   X,
@@ -18,6 +19,7 @@ import {
   INCIDENT_MESSAGE_STATE_LABELS,
   INCIDENT_MESSAGE_STATES,
   parseIncidentMessages,
+  filterStatusPageServices,
   parseStatusPageServices,
   SERVICE_OPERATING_STATE_LABELS,
   SERVICE_OPERATING_STATES,
@@ -360,11 +362,14 @@ export function IncidentPublicMessageCard({
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [serviceIds, setServiceIds] = useState<string[]>([]);
+  /** Message being edited; null publishes a new message (update). */
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [serviceStates, setServiceStates] = useState<
     Record<string, ServiceOperatingState>
   >({});
   const [services, setServices] = useState<StatusPageService[] | null>(null);
   const [servicesError, setServicesError] = useState("");
+  const [serviceQuery, setServiceQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -410,29 +415,37 @@ export function IncidentPublicMessageCard({
     }
   }
 
-  function start() {
+  function start(edit?: IncidentMessage) {
     const latest = messages?.[0];
-    const nextState: IncidentMessageState = latest
-      ? detail.state === "active"
-        ? "monitoring"
-        : "resolved"
-      : "investigating";
+    const nextState: IncidentMessageState = edit
+      ? edit.state
+      : latest
+        ? detail.state === "active"
+          ? "monitoring"
+          : "resolved"
+        : "investigating";
+    setEditingId(edit?.id ?? null);
     setState(nextState);
     setTitle(
-      latest?.title ??
+      edit?.title ??
+        latest?.title ??
         `Störung: ${detail.services.map((service) => service.name).join(", ") || detail.deviceName || detail.title}`,
     );
-    setBody("");
-    // Linked services plus those named in the latest message.
-    const ids = [
-      ...new Set([
-        ...detail.services.map((service) => service.id),
-        ...(latest?.serviceIds ?? []),
-      ]),
-    ];
+    setBody(edit?.body ?? "");
+    // Editing keeps the message's services; otherwise the linked services
+    // plus those named in the latest message.
+    const ids = edit
+      ? edit.serviceIds
+      : [
+          ...new Set([
+            ...detail.services.map((service) => service.id),
+            ...(latest?.serviceIds ?? []),
+          ]),
+        ];
     setServiceIds(ids);
     setServiceStates({});
     setServicesError("");
+    setServiceQuery("");
     setMessage("");
     setOpen(true);
     void loadServices().then((list) => {
@@ -442,7 +455,15 @@ export function IncidentPublicMessageCard({
           ids.flatMap((id) => {
             const service = byId.get(id);
             return service
-              ? [[id, suggestedServiceState(service.status, nextState)]]
+              ? [
+                  [
+                    id,
+                    // Editing a text must not change states unasked.
+                    edit
+                      ? service.status
+                      : suggestedServiceState(service.status, nextState),
+                  ],
+                ]
               : [];
           }),
         ),
@@ -466,6 +487,7 @@ export function IncidentPublicMessageCard({
     const service = services?.find((entry) => entry.id === id);
     if (!service || serviceIds.includes(id)) return;
     setServiceIds((current) => [...current, id]);
+    setServiceQuery("");
     setServiceStates((current) => ({
       ...current,
       [id]: suggestedServiceState(service.status, state),
@@ -490,6 +512,10 @@ export function IncidentPublicMessageCard({
   const availableServices = (services ?? []).filter(
     (service) => !serviceIds.includes(service.id),
   );
+  const serviceMatches = filterStatusPageServices(
+    availableServices,
+    serviceQuery,
+  );
 
   async function publish(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -499,9 +525,13 @@ export function IncidentPublicMessageCard({
       await invoke(
         "service-status",
         {
-          type: "publishIncidentMessage",
+          ...(editingId
+            ? { type: "updateIncidentMessage", messageId: editingId }
+            : {
+                type: "publishIncidentMessage",
+                monitoringIncidentId: detail.id,
+              }),
           tenantId,
-          monitoringIncidentId: detail.id,
           serviceIds,
           state,
           title: title.trim(),
@@ -521,7 +551,12 @@ export function IncidentPublicMessageCard({
       );
       setOpen(false);
       setServices(null);
-      setMessage("Die Meldung ist auf der Statusseite veröffentlicht.");
+      setMessage(
+        editingId
+          ? "Die Meldung wurde auf der Statusseite aktualisiert."
+          : "Die Meldung ist auf der Statusseite veröffentlicht.",
+      );
+      setEditingId(null);
       await load();
     } catch (cause) {
       setMessage((cause as Error).message);
@@ -537,7 +572,7 @@ export function IncidentPublicMessageCard({
           <Megaphone aria-hidden="true" size={15} /> Statusseite
         </h3>
         {!open ? (
-          <button className="text-button" onClick={start} type="button">
+          <button className="text-button" onClick={() => start()} type="button">
             {messages?.length
               ? "Update veröffentlichen"
               : "Öffentliche Meldung"}
@@ -557,10 +592,22 @@ export function IncidentPublicMessageCard({
                   )}
                 </small>
               </span>
-              <span
-                className={`incident-chip incident-chip--${entry.state === "resolved" ? "ok" : "warn"}`}
-              >
-                {INCIDENT_MESSAGE_STATE_LABELS[entry.state]}
+              <span className="incident-message__side">
+                <span
+                  className={`incident-chip incident-chip--${entry.state === "resolved" ? "ok" : "warn"}`}
+                >
+                  {INCIDENT_MESSAGE_STATE_LABELS[entry.state]}
+                </span>
+                {!open ? (
+                  <button
+                    aria-label={`Meldung «${entry.title}» bearbeiten`}
+                    className="text-button"
+                    onClick={() => start(entry)}
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" size={13} /> Bearbeiten
+                  </button>
+                ) : null}
               </span>
             </li>
           ))}
@@ -606,11 +653,11 @@ export function IncidentPublicMessageCard({
             Text
             <textarea
               disabled={busy}
-              maxLength={4000}
+              maxLength={10000}
               onChange={(event) => setBody(event.target.value)}
               placeholder="Was ist betroffen, was tun wir, wann gibt es das nächste Update?"
               required
-              rows={3}
+              rows={editingId ? 8 : 3}
               value={body}
             />
           </label>
@@ -669,26 +716,54 @@ export function IncidentPublicMessageCard({
             )}
             <label className="incident-field">
               Dienst hinzufügen
-              <select
+              <input
+                autoComplete="off"
                 disabled={busy || !services || !availableServices.length}
-                onChange={(event) => {
-                  addService(event.target.value);
-                  event.target.value = "";
+                onChange={(event) => setServiceQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  // Enter adds the first match instead of submitting.
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    if (serviceQuery.trim() && serviceMatches[0]) {
+                      addService(serviceMatches[0].id);
+                    }
+                  }
                 }}
-                value=""
-              >
-                <option value="">
-                  {services ? "Dienst wählen …" : "Dienste werden geladen …"}
-                </option>
-                {availableServices.map((service) => (
-                  <option key={service.id} value={service.id}>
-                    {service.category
-                      ? `${service.name} (${service.category})`
-                      : service.name}
-                  </option>
-                ))}
-              </select>
+                placeholder={
+                  services
+                    ? "Dienst suchen, z. B. Teams …"
+                    : "Dienste werden geladen …"
+                }
+                type="search"
+                value={serviceQuery}
+              />
             </label>
+            {serviceQuery.trim() ? (
+              serviceMatches.length ? (
+                <ul
+                  aria-label="Gefundene Dienste"
+                  className="incident-service-results"
+                >
+                  {serviceMatches.slice(0, 8).map((service) => (
+                    <li key={service.id}>
+                      <button
+                        disabled={busy}
+                        onClick={() => addService(service.id)}
+                        type="button"
+                      >
+                        <strong>{service.name}</strong>
+                        <small>
+                          {service.category ? `${service.category} · ` : ""}
+                          {SERVICE_OPERATING_STATE_LABELS[service.status]}
+                        </small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="incident-muted">Kein Dienst gefunden.</p>
+              )
+            ) : null}
             {servicesError ? (
               <p className="incident-muted" role="alert">
                 {servicesError}
@@ -701,12 +776,15 @@ export function IncidentPublicMessageCard({
               disabled={busy || !title.trim() || !body.trim()}
               type="submit"
             >
-              Veröffentlichen
+              {editingId ? "Änderungen speichern" : "Veröffentlichen"}
             </button>
             <button
               className="secondary-button"
               disabled={busy}
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setOpen(false);
+                setEditingId(null);
+              }}
               type="button"
             >
               Abbrechen
