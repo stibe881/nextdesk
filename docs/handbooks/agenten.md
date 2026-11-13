@@ -308,8 +308,9 @@ als kurze deutsche Fassung ohne Floskeln (mit der KI übersetzt); den
 Originaltext findest du auf der Statusseite des Anbieters. Neue Texte des
 Anbieters erscheinen im Verlauf als «Update vom Anbieter»; das Team erhält dazu eine Benachrichtigung
 («Update: Anbieter» mit dem neuen Text) und eine weitere, sobald der Anbieter
-die Störung als behoben meldet («Behoben: Anbieter»). Externe Störungen müssen nicht bestätigt
-werden; unter **Zuständig** kannst du sie aber einer Person zuweisen, die sie
+die Störung als behoben meldet («Behoben: Anbieter»). Auch externe Störungen
+bestätigst du mit **Bestätigen: ich kümmere mich** (sie werden aber nicht
+erneut alarmiert); unter **Zuständig** weist du sie einer Person zu, die sie
 verfolgt. Von Hand abschliessen ist nur nötig, wenn die Meldung
 beim Anbieter hängen bleibt.
 
@@ -334,8 +335,7 @@ beim Anbieter hängen bleibt.
 - **Zeile einer Störung**: Neben Schwere und Quelle zeigt jede Störung, wer
   zuständig ist (oder «Nicht zugewiesen») und, sobald eine öffentliche Meldung
   besteht, **Statusseite** mit deren Zustand (z. B. «Statusseite · Wird
-  untersucht»). «Unbestätigt» erscheint nur bei Störungen aus PRTG; externe
-  Störungen werden nicht bestätigt.
+  untersucht») und «Unbestätigt», solange niemand die Störung bestätigt hat.
 - **Register**: _Aktiv_, _Behoben_ und _Alle_. Die Dauer läuft live mit, und neue
   Meldungen erscheinen ohne Neuladen. Im Suchfeld findest du Störungen nach
   Nummer, Gerät oder Titel; ältere Störungen lädst du mit **Weitere Störungen

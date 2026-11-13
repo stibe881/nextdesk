@@ -563,10 +563,7 @@ function IncidentRow({
               {STATE_LABELS[entry.state]}
             </span>
           )}
-          {/* Provider issues are not confirmed, only assigned. */}
-          {entry.state === "active" &&
-          !entry.acknowledgedAt &&
-          entry.source !== "external" ? (
+          {entry.state === "active" && !entry.acknowledgedAt ? (
             <span className="incident-chip incident-chip--bad">
               Unbestätigt
             </span>
@@ -875,9 +872,7 @@ function IncidentView({
                 </p>
               ) : null}
             </div>
-            {detail.state !== "closed" &&
-            detail.source !== "external" &&
-            !detail.acknowledgedAt ? (
+            {detail.state !== "closed" && !detail.acknowledgedAt ? (
               <button
                 className="primary-button"
                 disabled={busy !== null}
