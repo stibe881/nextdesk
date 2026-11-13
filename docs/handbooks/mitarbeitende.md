@@ -62,7 +62,9 @@ Hinweis bzw. im Menü der Eintrag **Aktive Störung**, bei Bedarf mit den
 **betroffenen Diensten**. Bei mehreren Störungen steht die älteste oben; mit
 **+1 weitere** (bzw. **+2 weitere** …) klappst du alle auf, jede mit einem
 Ausschnitt des Textes (in der App tippst du auf den Text, um ihn ganz zu
-lesen). Dann musst du dafür kein eigenes Ticket erfassen.
+lesen). Ist eine Störung behoben, verschwindet der Hinweis von selbst
+(spätestens nach 30 Sekunden, ohne neu zu laden). Dann musst du dafür kein
+eigenes Ticket erfassen.
 Hast du den Systemstatus per E-Mail abonniert, erhältst du zu jeder
 öffentlichen Störungsmeldung und jedem Update eine E-Mail.
 

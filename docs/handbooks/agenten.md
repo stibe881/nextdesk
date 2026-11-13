@@ -44,10 +44,11 @@ Zahlen neben den Einträgen zeigen, was auf dich wartet: bei **Tickets** die
 offenen Tickets, die noch keinem Agenten zugewiesen sind (auch wenn schon ein
 Team gesetzt ist) – dieselbe Zahl wie in der Kachel «Nicht zugewiesene
 Tickets» –, bei
-**Sicherheitsfällen** die offenen Fälle, die noch niemandem zugewiesen
-sind, bei **Störungen** die aktiven Störungen, die noch niemand bestätigt
-hat, bei **Raumplanung**, **Shop** und
-**Eintritte** die offenen Anfragen. Die Zahlen aktualisieren sich jede Minute.
+**Sicherheitsfällen** alle offenen Fälle und bei **Störungen** alle aktiven
+Störungen – rot, solange davon ein Fall niemandem zugewiesen bzw. eine
+Störung nicht bestätigt ist, sonst grau –, bei **Raumplanung**, **Shop** und
+**Eintritte** die offenen Anfragen. Ist eine Kategorie zugeklappt, steht die
+Summe neben ihrem Namen. Die Zahlen aktualisieren sich alle 30 Sekunden.
 
 In der **iOS- und Android-App** zeigt die untere Leiste dieselben Zahlen als
 kleines Abzeichen am Symbol: bei **Tickets**, **Störungen** und **Phishing**
