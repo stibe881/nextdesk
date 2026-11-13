@@ -7360,6 +7360,13 @@ body:has(.ticket-detail) {
   gap: 10px;
 }
 
+/* Fälle: auch als eigene Seite (ohne Register) mit Abstand zwischen
+   Überschrift, Filter und Liste. */
+.service-assets__problems-panel {
+  display: grid;
+  gap: 16px;
+}
+
 .service-assets .service-assets__asset-panel {
   display: grid;
   gap: 8px;
@@ -22041,6 +22048,33 @@ button.predefined-report__drill:hover:not(:disabled) strong {
   display: flex;
   justify-content: flex-start;
   margin: 0 0 12px;
+}
+.inventory__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: var(--surface);
+  color: var(--muted);
+}
+.inventory__search:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.inventory__search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  box-shadow: none;
+  outline: none;
 }
 .inventory__focus-note {
   margin: 0 0 10px;
