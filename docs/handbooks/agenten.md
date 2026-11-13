@@ -489,6 +489,28 @@ Gelöschte Tickets anzeigen**. Dort siehst du, wer ein Ticket wann gelöscht hat
 und wie lange es noch wiederherstellbar ist. Ein Klick zeigt das Ticket mit
 Beschreibung und Verlauf; **Wiederherstellen** holt es unverändert zurück.
 
+### Spam
+
+Mit der Berechtigung zum Löschen kannst du Tickets als **Spam** einstufen:
+
+- **iPhone und Android:** Wische ein Ticket nach links. Links neben **Löschen**
+  steht **Spam**. Eine Rückfrage warnt dich: «Alle zukünftigen Tickets von
+  diesem Absender gehen automatisch in den Spam.»
+- **Web:** Tickets in der Liste markieren und **Als Spam markieren** wählen
+  (mit derselben Rückfrage).
+
+Das Ticket und alle **künftigen** Tickets dieses Absenders landen im Spam. Spam
+löst keine Regeln, SLA, KI-Triage, Bestätigungsmail oder Mitteilung aus und
+zählt in keiner Statistik. Absender, die selbst Personen deines Arbeitsbereichs
+sind, werden nie gesperrt; dann geht nur das einzelne Ticket in den Spam.
+
+Den Spam öffnest du in der Ticketliste über **Filter & Sortierung → Spam
+anzeigen**: Dort siehst du Absender und Zeitpunkt, **Kein Spam** holt ein Ticket
+zurück und gibt den Absender frei. Unter **Gesperrte Absender** gibst du
+Absender auch einzeln frei. Spam bleibt 90 Tage erhalten. Eine Auswertung
+(Verlauf pro Tag, häufigste Absender, Abteilungen, automatisch abgefangen oder
+von Hand markiert) findest du unter **Berichte → Spam**.
+
 **Tastenkürzel:** `?` zeigt die Hilfe, `J`/`K` springen zum nächsten bzw.
 vorherigen Ticket, `Enter` öffnet, `Esc` schliesst.
 

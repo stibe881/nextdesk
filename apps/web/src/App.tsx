@@ -64,6 +64,7 @@ import {
   List,
   ListChecks,
   Package,
+  MailX,
   Trash2,
   X,
   type LucideIcon,
@@ -203,6 +204,7 @@ import {
   type OwnerAccess,
 } from "./platform-owner";
 import { functionErrorCode, functionErrorMessage } from "./lib/function-error";
+import { TicketSpamDialog } from "./ticket-spam";
 import { TicketTrashDialog } from "./ticket-trash";
 import {
   bootstrapBrowserAuthSession,
@@ -7291,6 +7293,18 @@ function AuthenticatedApp() {
                           ),
                     );
                   }}
+                  onSpammed={(marked, blockedSenders) => {
+                    clearTicketSelection();
+                    setTicketPage(0);
+                    setDashboardRevision((current) => current + 1);
+                    setTicketActionStatus(
+                      `${marked} Tickets wurden als Spam markiert${
+                        blockedSenders > 0
+                          ? `, ${blockedSenders} Absender gesperrt`
+                          : ""
+                      }. Sie sind über den Filter «Spam» auffindbar.`,
+                    );
+                  }}
                   onClearSelection={clearTicketSelection}
                   selectedTicketIds={selectedTicketIds}
                   tenantId={activeTenant.id}
@@ -8263,12 +8277,14 @@ export function App() {
 function BulkTicketStatusActions({
   onApplied,
   onDeleted,
+  onSpammed,
   onClearSelection,
   selectedTicketIds,
   tenantId,
 }: {
   onApplied: (updated: number, statusLabel: string) => void;
   onDeleted: (deleted: number, cleanupPending: number) => void;
+  onSpammed: (marked: number, blockedSenders: number) => void;
   onClearSelection: () => void;
   selectedTicketIds: ReadonlySet<string>;
   tenantId: string;
@@ -8283,6 +8299,7 @@ function BulkTicketStatusActions({
   const [deleteConfirmationPending, setDeleteConfirmationPending] =
     useState(false);
   const [deleteTicketIds, setDeleteTicketIds] = useState<string[] | null>(null);
+  const [spamTicketIds, setSpamTicketIds] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -8293,6 +8310,7 @@ function BulkTicketStatusActions({
     setCloseConfirmationPending(false);
     setDeleteConfirmationPending(false);
     setDeleteTicketIds(null);
+    setSpamTicketIds(null);
     void supabase.functions
       .invoke("ticket-bulk-status", {
         body: { type: "listStatusOptions", tenantId },
@@ -8380,8 +8398,64 @@ function BulkTicketStatusActions({
       return;
     }
     setCloseConfirmationPending(false);
+    setSpamTicketIds(null);
     setDeleteTicketIds([...selectedTicketIds]);
     setDeleteConfirmationPending(true);
+  }
+
+  function prepareTicketSpam() {
+    if (selectedTicketIds.size > 50) {
+      setErrorMessage(
+        "Für Spam können höchstens 50 Tickets auf einmal ausgewählt werden.",
+      );
+      return;
+    }
+    setCloseConfirmationPending(false);
+    setDeleteConfirmationPending(false);
+    setDeleteTicketIds(null);
+    setSpamTicketIds([...selectedTicketIds]);
+  }
+
+  async function markTicketsSpam() {
+    if (!supabase || !spamTicketIds || spamTicketIds.length < 1) return;
+    setPending(true);
+    setErrorMessage("");
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "ticket-bulk-status",
+        {
+          body: {
+            type: "markSpam",
+            tenantId,
+            ticketIds: spamTicketIds,
+            confirmSpam: true,
+          },
+        },
+      );
+      if (error) throw error;
+      if (
+        !isRecord(data) ||
+        !isRecord(data.data) ||
+        typeof data.data.marked !== "number"
+      ) {
+        throw new Error("invalid_bulk_ticket_spam_response");
+      }
+      onSpammed(
+        data.data.marked,
+        typeof data.data.blockedSenders === "number"
+          ? data.data.blockedSenders
+          : 0,
+      );
+    } catch (error: unknown) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          "Die ausgewählten Tickets konnten nicht als Spam markiert werden.",
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
   }
 
   async function deleteTickets() {
@@ -8499,7 +8573,51 @@ function BulkTicketStatusActions({
         >
           Tickets löschen
         </button>
+        <button
+          className="ticket-bulk-actions__delete-button"
+          disabled={pending}
+          onClick={prepareTicketSpam}
+          type="button"
+        >
+          Als Spam markieren
+        </button>
       </div>
+      {spamTicketIds && (
+        <div
+          aria-labelledby="bulk-spam-confirmation-title"
+          className="ticket-bulk-actions__confirmation ticket-bulk-actions__confirmation--danger"
+          role="group"
+        >
+          <div>
+            <strong id="bulk-spam-confirmation-title">
+              {spamTicketIds.length} Tickets als Spam markieren?
+            </strong>
+            <p>
+              Alle zukünftigen Tickets dieser Absender gehen automatisch in den
+              Spam: ohne Regeln, Mitteilungen und Statistik. Die Tickets sind
+              über den Filter «Spam» auffindbar.
+            </p>
+          </div>
+          <div className="ticket-bulk-actions__confirmation-buttons">
+            <button
+              className="ticket-bulk-actions__delete-button"
+              disabled={pending}
+              onClick={() => void markTicketsSpam()}
+              type="button"
+            >
+              Als Spam markieren
+            </button>
+            <button
+              className="secondary-button"
+              disabled={pending}
+              onClick={() => setSpamTicketIds(null)}
+              type="button"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
       {closeConfirmationPending && selectedStatus?.isClosed && (
         <div
           aria-labelledby="bulk-close-confirmation-title"
@@ -9040,6 +9158,7 @@ function TicketListFilters({
 }) {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isTrashOpen, setIsTrashOpen] = useState(false);
+  const [isSpamOpen, setIsSpamOpen] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const savedViewsSelectRef = useRef<HTMLSelectElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -9304,6 +9423,21 @@ function TicketListFilters({
                 Gelöschte Tickets 90 Tage lang ansehen und wiederherstellen.
               </small>
             </div>
+            <div className="ticket-list-filter-panel__trash">
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  setIsPanelOpen(false);
+                  setIsSpamOpen(true);
+                }}
+                type="button"
+              >
+                <MailX aria-hidden="true" size={16} /> Spam anzeigen
+              </button>
+              <small>
+                Als Spam eingestufte Tickets ansehen und Absender freigeben.
+              </small>
+            </div>
             <footer className="ticket-list-filter-panel__footer">
               <button
                 className="secondary-button"
@@ -9323,6 +9457,16 @@ function TicketListFilters({
             </footer>
           </section>
         </div>
+      )}
+      {isSpamOpen && (
+        <TicketSpamDialog
+          onClose={() => {
+            setIsSpamOpen(false);
+            window.requestAnimationFrame(() => triggerRef.current?.focus());
+          }}
+          onRestored={(count) => onTicketsRestored?.(count)}
+          tenantId={tenantId}
+        />
       )}
       {isTrashOpen && (
         <TicketTrashDialog
