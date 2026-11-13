@@ -323,7 +323,17 @@ aus und verschieben sie mit den Pfeilen. **Standard wiederherstellen** setzt
 alles zurück. Die Einstellung gilt nur für dich und wird zwischen deinen
 Geräten (iPhone, Android) abgeglichen: Die letzte Änderung gilt überall. Auf jeder Ticketkarte steht, wann das Ticket erstellt wurde
 (z. B. «Erstellt heute, 14:32»). Über **Neues Ticket** erfasst du Anliegen
-unterwegs, auf Wunsch mit Foto. In den App-Einstellungen schaltest du Benachrichtigungen, z. B.
+unterwegs. Unter **Fotos (optional)** nimmst du mit **Foto aufnehmen** direkt
+ein Bild mit der Kamera auf oder wählst mit **Aus Mediathek** bestehende Bilder
+aus, insgesamt bis zu fünf pro Ticket. Mit **Markieren** kennzeichnest du eine
+Stelle im Bild, mit dem **×** entfernst du es wieder. Die Kamera fragt beim
+ersten Mal nach deiner Erlaubnis; für die Mediathek braucht nextDesk keinen
+Zugriff auf alle Fotos, sondern erhält nur die Bilder, die du auswählst.
+Standortdaten werden vor dem Hochladen entfernt. Hast du den Kamerazugriff
+abgelehnt, kannst du ihn in den Einstellungen des Geräts erlauben oder
+stattdessen ein Bild aus der Mediathek wählen.
+
+In den App-Einstellungen schaltest du Benachrichtigungen, z. B.
 für Antworten des Supports, pro Hinweis einzeln als **Push** und als **Mail**
 ein oder aus (gleich wie im Browser) und wählst unter **Benachrichtigungszeit**, an
 welchen Tagen und zu welchen Zeiten sie kommen. Ein Tipp auf eine
