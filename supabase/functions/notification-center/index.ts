@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { unreadNotificationCount } from "../_shared/notification-badge.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const DEFAULT_LIMIT = 50;
@@ -17,7 +18,8 @@ type Action =
     }
   | { type: "get"; notificationId: string }
   | { type: "markRead"; notificationId: string }
-  | { type: "markAllRead"; tenantId: string };
+  | { type: "markAllRead"; tenantId: string }
+  | { type: "unreadCount" };
 
 type NotificationRow = {
   id: string;
@@ -83,6 +85,10 @@ export function parseAction(value: unknown): Action | null {
         : {}),
       limit: value.limit === undefined ? DEFAULT_LIMIT : value.limit,
     };
+  }
+
+  if (value.type === "unreadCount" && hasOnlyKeys(value, ["type"])) {
+    return { type: "unreadCount" };
   }
 
   if (
@@ -521,6 +527,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       actorId,
       action,
     );
+  if (action.type === "unreadCount") {
+    return json(request, {
+      data: { count: await unreadNotificationCount(admin, actorId) },
+    });
+  }
   if (action.type === "get")
     return await getNotification(
       request,

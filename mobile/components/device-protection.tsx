@@ -1,3 +1,4 @@
+import { setAppBadge } from "@/lib/app-badge";
 import * as LocalAuthentication from "expo-local-authentication";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -203,6 +204,7 @@ export function DeviceProtection() {
       await nextDesk?.auth.signOut();
     } finally {
       await clearMobileWorkspace();
+      void setAppBadge(0);
       setLockState("unlocked");
       router.replace("/auth");
     }

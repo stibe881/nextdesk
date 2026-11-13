@@ -1,3 +1,4 @@
+import { syncAppBadge } from "@/lib/app-badge";
 import { invokeNextDesk } from "@/lib/nextdesk-client";
 import {
   type InboxNotification,
@@ -30,6 +31,7 @@ export async function markInboxNotificationRead(
     type: "markRead",
     notificationId,
   });
+  void syncAppBadge();
 }
 
 export async function markAllInboxNotificationsRead(
@@ -39,4 +41,5 @@ export async function markAllInboxNotificationsRead(
     type: "markAllRead",
     tenantId,
   });
+  void syncAppBadge();
 }

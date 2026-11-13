@@ -435,3 +435,25 @@ Deno.test("push texts follow the tenant's form of address", () => {
   assertEquals(text("du"), "Für NX-1 wird deine Freigabe benötigt.");
   assertEquals(text("sie"), "Für NX-1 wird Ihre Freigabe benötigt.");
 });
+
+Deno.test("Die Zahl auf dem App-Symbol (badge) wird nur für gültige Zahlen gesetzt", () => {
+  const base = {
+    kind: "test" as const,
+    tenantId: "11111111-1111-4111-8111-111111111111",
+    notificationId: "22222222-2222-4222-8222-222222222222",
+  };
+  const withBadge = buildApnsPayload({ ...base, badge: 7 }) as {
+    aps: Record<string, unknown>;
+  };
+  if (withBadge.aps.badge !== 7) throw new Error("badge fehlt");
+  const clamped = buildApnsPayload({ ...base, badge: 123456 }) as {
+    aps: Record<string, unknown>;
+  };
+  if (clamped.aps.badge !== 9999) throw new Error("badge nicht begrenzt");
+  for (const badge of [undefined, -1, 1.5, Number.NaN]) {
+    const payload = buildApnsPayload({ ...base, badge }) as {
+      aps: Record<string, unknown>;
+    };
+    if ("badge" in payload.aps) throw new Error("ungültiges badge gesetzt");
+  }
+});

@@ -4,6 +4,7 @@ import {
   isApnsConfigured,
   sendApns,
 } from "../_shared/apns.ts";
+import { unreadNotificationCount } from "../_shared/notification-badge.ts";
 import { loadFormality } from "../_shared/formality.ts";
 import {
   isInventoryNotificationKind,
@@ -612,7 +613,9 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
       delegated = { delegatedFromName: name.trim() };
     }
   }
+  const badge = await unreadNotificationCount(admin, row.user_id);
   const payload = buildApnsPayload({
+    badge,
     ...shop,
     ...serviceTask,
     ...infrastructure,
@@ -678,6 +681,7 @@ async function deliverSummary(admin: any, rows: ClaimRow[]): Promise<void> {
     tenantId: anchor.tenant_id,
     notificationId: anchor.notification_id ?? anchor.outbox_id,
     summaryCount: authorizedRows.length,
+    badge: await unreadNotificationCount(admin, anchor.user_id),
   });
   const results = await Promise.all(
     [...uniqueDevices.values()].map(async (device) => {
