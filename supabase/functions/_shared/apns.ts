@@ -50,6 +50,8 @@ export type ApnsPayloadInput = {
   ticketNumber?: string;
   subject?: string | null;
   summaryCount?: number;
+  /** Zahl auf dem App-Symbol: ungelesene Mitteilungen der Person. */
+  badge?: number;
   shopEvent?: string;
   /** Shop reminder sent to the supervisor or stand-in (escalation). */
   shopEscalated?: boolean;
@@ -916,6 +918,13 @@ export function buildApnsPayload(
     alert,
     sound: "default",
   };
+  if (
+    typeof input.badge === "number" &&
+    Number.isInteger(input.badge) &&
+    input.badge >= 0
+  ) {
+    aps.badge = Math.min(input.badge, 9999);
+  }
   // iOS shows «Problem ist gelöst» / «Ich brauche noch Hilfe» as notification
   // actions; both open the ticket in the app, where the person confirms.
   if (input.kind === "requester_reminder" && input.ticketId) {

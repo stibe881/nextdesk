@@ -10,6 +10,7 @@ import {
   loadCurrentTenant,
   nextDesk,
 } from "@/lib/nextdesk-client";
+import { syncAppBadge } from "@/lib/app-badge";
 import { reregisterPushTokenIfEnabled } from "@/lib/push-notifications";
 import {
   parsePushNavigationData,
@@ -81,11 +82,6 @@ type PendingTap = {
   /** Wechsel in den Arbeitsbereich der Mitteilung wurde schon versucht. */
   switchTried: boolean;
 };
-
-async function clearBadge(): Promise<void> {
-  if (Platform.OS !== "ios") return;
-  await Notifications.setBadgeCountAsync(0).catch(() => undefined);
-}
 
 export function PushNotificationBridge() {
   const router = useRouter();
@@ -247,14 +243,18 @@ export function PushNotificationBridge() {
     });
 
     let previousAppState: AppStateStatus = AppState.currentState;
-    void clearBadge();
+    void syncAppBadge();
+    // Eine Mitteilung im Vordergrund: Zahl neu lesen (der Server hat sie gerade angelegt).
+    const receivedSubscription = Notifications.addNotificationReceivedListener(
+      () => void syncAppBadge(),
+    );
     const appStateSubscription = AppState.addEventListener(
       "change",
       (state) => {
         const becameActive =
           previousAppState !== "active" && state === "active";
         previousAppState = state;
-        if (becameActive) void clearBadge();
+        if (becameActive) void syncAppBadge();
       },
     );
 
@@ -263,6 +263,7 @@ export function PushNotificationBridge() {
       responseSubscription.remove();
       tokenSubscription.remove();
       appStateSubscription.remove();
+      receivedSubscription.remove();
     };
   }, [process]);
 

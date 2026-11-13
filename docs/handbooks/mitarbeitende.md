@@ -333,6 +333,13 @@ Startseite öffnest du die **Mitteilungen** mit deinen letzten
 Benachrichtigungen; dorthin führt auch eine Sammelmitteilung mit mehreren
 Neuigkeiten.
 
+Auf dem **App-Symbol** zeigt eine rote Zahl, wie viele Mitteilungen du noch nicht
+gelesen hast (alle Arbeitsbereiche zusammen). Sie sinkt, sobald du Mitteilungen
+liest oder alle als gelesen markierst. Auf dem iPhone aktualisiert sie sich auch
+bei neuen Mitteilungen, wenn die App geschlossen ist. Auf Android erscheint sie,
+wenn dein Startbildschirm Zahlen auf Symbolen unterstützt, und wird beim Öffnen
+der App aktualisiert.
+
 Die Handbücher findest du auch in der App: **Profil → Hilfe und
 Rechtliches**. Bildschirmfotos lassen sich dort antippen und vergrössern.
 
