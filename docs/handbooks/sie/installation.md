@@ -255,7 +255,9 @@ Menü **Teams** zeigt und verwaltet alle Teams der Organisation.
    erhält die nextDesk-App diese Anwendungsberechtigungen: _Team.Create_,
    _TeamMember.ReadWrite.All_, _Channel.Create_, _TeamsTab.Create_,
    _TeamSettings.ReadWrite.All_, _Group.Read.All_, _Team.ReadBasic.All_ und
-   für Gäste _User.Invite.All_. Prüfen Sie den Umfang mit Ihrer
+   für Gäste _User.Invite.All_. Wer Teams im Menü **Teams** löschen will,
+   braucht zusätzlich _Group.ReadWrite.All_ (ohne dieses Recht bleibt das
+   Löschen gesperrt, alles andere funktioniert). Prüfen Sie den Umfang mit Ihrer
    IT-Sicherheit.
 3. **[Admin]** Nach einigen Minuten **Verbindung prüfen**. Die Karte nennt,
    was noch fehlt (zum Beispiel ein einzelnes Recht). Dort stellen Sie auch
@@ -283,6 +285,22 @@ Das Anlegen läuft im Hintergrund (Cron `nextdesk-teams-lifecycle`, alle
   Benachrichtigung Push und E-Mail ein.
 - Anwenderinnen und Anwender testen in der iOS-App unter _Profil →
   Benachrichtigungen → Testmitteilung senden_.
+
+### Push-Mitteilungen auf Android
+
+Ticket-Mitteilungen gibt es nur auf dem iPhone. Die **Push-Mitteilungen der
+Administration** (Einstellungen → Funktionen → Push-Benachrichtigungen) gehen
+auch an Android-Geräte, und zwar über den Expo-Push-Dienst. Einmalig nötig:
+
+1. **[Betreiber]** In der Firebase-Konsole ein Projekt anlegen und die
+   Android-App mit der Paket-ID `ch.nextdesk.grossict` hinzufügen. Die Datei
+   `google-services.json` herunterladen.
+2. **[Betreiber]** In EAS die Datei als Datei-Variable `GOOGLE_SERVICES_JSON`
+   hinterlegen (oder in den Ordner `mobile` legen) und unter _Credentials →
+   Android → FCM V1_ den Dienstkonto-Schlüssel des Firebase-Projekts hochladen.
+3. **[Betreiber]** Einen neuen Android-Build erstellen und veröffentlichen.
+   Erst Geräte mit diesem Build melden sich für Push an (beim ersten Start
+   fragt Android nach der Erlaubnis für Benachrichtigungen).
 
 ### PRTG-Monitoring
 

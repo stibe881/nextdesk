@@ -734,6 +734,18 @@ Drop oder Auswahl), Kategorien, Artikelnummer, Beschreibung, technische Angaben
 und alle weiteren Shop-Felder. Dazu kommen die Lagerangaben **Einheit** und
 **Mindest-/Zielbestand**.
 
+Neue Artikel erfassen Sie nur im Lager; der Shop hat keinen Knopf **Artikel
+hinzufügen** mehr. Im Shop lassen sich bestehende Artikel weiter bearbeiten.
+
+**Artikel von Brack importieren:** Im Formular (Lager und Shop) steht oben das
+Feld **Von Brack importieren**. Fügen Sie den Link einer Brack-Produktseite (auch
+business.brack.ch) ein und wählen Sie **Daten übernehmen**: nextDesk füllt Name,
+Beschreibung, Artikelnummer, Lieferanten-Link, technische Angaben, Kategorie und
+bis zu drei Produktfotos vor. Bereits ausgefüllte Felder bleiben unverändert.
+Prüfen Sie die Angaben und ergänzen Sie Genehmigung, Maximalmenge und Kategorie
+selbst. Lässt Brack den Abruf nicht zu, erscheint ein Hinweis, und Sie erfassen
+den Artikel von Hand.
+
 Unter **Zuständige Abteilung** legen Sie fest, welche Abteilung den Artikel
 betreut (z. B. ICT oder Infrastruktur). Geht im Shop eine Bestellung zu diesem
 Artikel ein, werden nur die Agenten dieser Abteilung benachrichtigt, die
@@ -822,7 +834,8 @@ Freigabe; in der Bestellung steht die Herkunft «Sicherheitsfall …
 
 ## Shop: Artikel nur für Kaderstufen
 
-Im Shop legen Sie beim **Artikel hinzufügen** bzw. **Bearbeiten** unter
+Beim Erfassen im Lager (**Zum Bestellen anbieten**) bzw. beim **Bearbeiten**
+im Shop legen Sie unter
 **Sichtbar für** fest, wer den Artikel sieht:
 
 - **Alle Mitarbeitenden** (Standard) – keine Einschränkung.
@@ -856,17 +869,24 @@ Shop bestellten.
 - **Liste**: pro Team Symbol, Name, Beschreibung, Sichtbarkeit, Herkunft
   (_über nextDesk_ oder _bestehend_), Gäste, Owner mit Avataren, Zahl der
   Mitglieder, Erstellt-Datum, Laufzeit mit Fortschrittsbalken und Status
-  (_Aktiv_, _Läuft ab_, _Verwaist_, _Archiviert_). Filter: _Über nextDesk
+  (_Aktiv_, _Läuft ab_, _Verwaist_, _Archiviert_); fahren Sie mit der Maus über
+  den Status, erklärt ein Hinweis, was er bedeutet (_Verwaist_ = das Team hat
+  keinen Owner). Filter: _Über nextDesk
   bestellt_, _Bestehend_, _Läuft bald ab_, _Ohne Owner_, _Mit Gästen_, _Ohne
   Ende_, _Archiviert_. Sortierung nach Name, Neueste, Ende oder Mitgliedern.
 - **Mehrfachauswahl**: Teams ankreuzen, dann in der blauen Leiste **Ende
-  setzen**, **Owner hinzufügen** oder **Archivieren** für alle auf einmal.
+  setzen**, **Owner hinzufügen**, **Archivieren** oder **Löschen** für alle auf
+  einmal.
 - **Mit Microsoft abgleichen**: liest die Teams neu ein. Beim Öffnen läuft der
   Abgleich automatisch, wenn der Stand älter als ein Tag ist.
 - **Details** (Klick auf ein Team), drei Reiter:
   - **Übersicht**: Kennzahlen, Laufzeit verlängern (+1, +3, +6 Monate, +1
     Jahr) oder ein Ende setzen, **In Teams öffnen**, **Archivieren** bzw.
-    **Wiederherstellen**.
+    **Wiederherstellen** und **Team löschen**. Beim Löschen wird das Team bei
+    Microsoft entfernt (mit Dateien, Chats und Kanälen); Microsoft hält es noch
+    30 Tage im Papierkorb von Entra. Zur Bestätigung geben Sie den Namen des
+    Teams ein (in der Mehrfachauswahl das Wort _LÖSCHEN_). Dafür braucht die
+    Microsoft-App das Recht _Group.ReadWrite.All_ (siehe Installationshandbuch).
   - **Personen**: Owner, Mitglieder und Gäste getrennt, Personen hinzufügen
     oder entfernen, zum Owner machen oder die Owner-Rolle entziehen (der
     letzte Owner bleibt immer). Bei einem Team ohne Owner wird die erste

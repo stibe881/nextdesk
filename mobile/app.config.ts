@@ -1,5 +1,6 @@
 // Load environment variables with proper priority (system > .env)
 import "./scripts/load-env.js";
+import { existsSync } from "node:fs";
 import type { ExpoConfig } from "expo/config";
 import type { WithAndroidWidgetsParams } from "react-native-android-widget";
 
@@ -26,6 +27,13 @@ const bundleId =
 // unique to the production app and matches the redirect URI registered in
 // Supabase, avoiding a redirect to a different or older development scheme.
 const schemeFromBundleId = "ch.grossict.nextdesk";
+
+// Android-Push über Expo braucht die Firebase-Datei google-services.json: als
+// EAS-Datei-Variable GOOGLE_SERVICES_JSON oder als Datei im Projektordner.
+// Fehlt sie, baut die App ohne Push-Zugangsdaten (Mitteilungen bleiben aus).
+const googleServicesFile =
+  process.env.GOOGLE_SERVICES_JSON ??
+  (existsSync("./google-services.json") ? "./google-services.json" : undefined);
 
 const env = {
   // App branding - update these values directly (do not use env vars)
@@ -100,6 +108,7 @@ const config: ExpoConfig = {
     },
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
+    ...(googleServicesFile ? { googleServicesFile } : {}),
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
       {

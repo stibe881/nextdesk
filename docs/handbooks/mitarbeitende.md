@@ -338,7 +338,9 @@ gelesen hast (alle Arbeitsbereiche zusammen). Sie sinkt, sobald du Mitteilungen
 liest oder alle als gelesen markierst. Auf dem iPhone aktualisiert sie sich auch
 bei neuen Mitteilungen, wenn die App geschlossen ist. Auf Android erscheint sie,
 wenn dein Startbildschirm Zahlen auf Symbolen unterstützt, und wird beim Öffnen
-der App aktualisiert.
+der App aktualisiert. Auf Android erhältst du ausserdem die Push-Mitteilungen der
+Administration (zum Beispiel zu Wartungen), sobald du die Benachrichtigungen der
+App erlaubt hast.
 
 Die Handbücher findest du auch in der App: **Profil → Hilfe und
 Rechtliches**. Bildschirmfotos lassen sich dort antippen und vergrössern.

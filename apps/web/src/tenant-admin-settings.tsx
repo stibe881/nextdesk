@@ -52,6 +52,7 @@ import {
 } from "./lib/push-notifications";
 import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
 import { AssetIntuneSettings } from "./asset-intune-settings";
+import { PushBroadcastSettings } from "./push-broadcast-settings";
 import { RequesterNoticesSettings } from "./requester-notices-settings";
 import { TeamsSettings } from "./teams-settings";
 import { MonitoringSettings } from "./monitoring-settings";
@@ -1146,7 +1147,7 @@ const FEATURE_PRESENTATION: Readonly<
   "notifications.push": {
     name: "Push-Benachrichtigungen",
     description:
-      "Direkte Hinweise zu Tickets in der nextDesk-iOS-App über Apple Push Notification service.",
+      "Direkte Hinweise zu Tickets in der nextDesk-iPhone-App über Apple Push Notification service. Administratoren können eigene Mitteilungen an iPhone und Android senden.",
     Icon: Bell,
   },
   "integrations.email": {
@@ -3823,6 +3824,13 @@ export function TenantAdminSettings({
                                               </p>
                                             ) : null}
                                           </section>
+                                        ) : null}
+                                        {isDetailsOpen &&
+                                        feature.feature_key ===
+                                          "notifications.push" ? (
+                                          <PushBroadcastSettings
+                                            tenantId={tenantId}
+                                          />
                                         ) : null}
 
                                         {!isTenantFeatureActive(feature) ? (

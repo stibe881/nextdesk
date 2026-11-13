@@ -28,7 +28,9 @@ export async function setAppBadge(count: number): Promise<void> {
 /** Setzt die Zahl auf den Stand der Datenbank; ohne Anmeldung auf 0. */
 export async function syncAppBadge(): Promise<void> {
   try {
-    const session = nextDesk ? (await nextDesk.auth.getSession()).data.session : null;
+    const session = nextDesk
+      ? (await nextDesk.auth.getSession()).data.session
+      : null;
     if (!session) {
       await setAppBadge(0);
       return;

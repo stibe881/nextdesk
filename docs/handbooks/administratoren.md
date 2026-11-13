@@ -77,7 +77,7 @@ Wichtige Funktionen und ihre Konfiguration:
 | Ticketvorlagen                                                        | **Vorlagen verwalten → Neue Vorlage**: Name, Betreff- und Beschreibungsvorlage, Abteilung, Priorität, Checklistenpunkte |
 | SLA-Automatisierung                                                   | Erinnerungen, automatisches Lösen/Schliessen, Regeln für neue Tickets, KI-Triage, Drittanbieter (siehe unten)           |
 | E-Mail-Kanal (Exchange Online)                                        | Support-Postfächer, Phishing-Meldungen und Massnahmen je Urteil für Sicherheitsfälle (siehe Installationsanleitung)     |
-| Push-Benachrichtigungen                                               | Inhaltsstufe («Nur Ticketnummer» empfohlen); wann jemand Mitteilungen erhält, legt jede Person selbst fest              |
+| Push-Benachrichtigungen                                               | Inhaltsstufe («Nur Ticketnummer» empfohlen); eigene **Push-Mitteilung senden** an iPhone und Android (siehe unten)      |
 | KI-Assistenz                                                          | Freigabe für Wissensentwürfe mit Claude und Selbstbedienungs-Assistent im Portal                                        |
 | Asset-Management                                                      | Geräte und Microsoft Intune; Monitoring liegt im Register «Monitoring»                                                  |
 | IP-Adressverwaltung                                                   | Subnetze, VLANs, IP-Adressen und Funde unter «IP-Adressen»; je Abteilung abschaltbar                                    |
@@ -170,6 +170,26 @@ Eintrag; mit **Aktiv** schaltest du einen Anbieter ab, ohne ihn zu löschen.
 
 Bei der Übergabe wechselt das Ticket auf **Wartend auf Drittanbieter**. Ist es
 noch niemandem zugewiesen, bleibt der Status **Neu**, bis jemand es übernimmt.
+
+### Eigene Push-Mitteilung senden
+
+Unter **Einstellungen → Funktionen → Push-Benachrichtigungen** (Funktion
+eingeschaltet) steht die Karte **Push-Mitteilung senden**. Damit informierst du
+die Mitarbeitenden direkt auf dem Gerät, zum Beispiel über eine Wartung:
+
+1. **Titel** (höchstens 60 Zeichen) und **Text** (höchstens 200 Zeichen). Die
+   Vorschau zeigt, wie die Mitteilung auf dem Sperrbildschirm aussieht.
+2. **Zielgruppe**: _Alle_, _Nach Rolle_ oder _Nach Abteilung_ (mehrere Rollen
+   bzw. Abteilungen sind möglich). Eine Zeile nennt, wie viele Personen und
+   Geräte (iPhone und Android) erreicht werden.
+3. **Senden …** und mit **Jetzt senden** bestätigen. Eine gesendete Mitteilung
+   lässt sich nicht zurückholen.
+
+Es erhalten nur Personen die Mitteilung, die Push in der App eingeschaltet
+haben (auf Android: die Benachrichtigungen der App erlaubt haben). Der
+**Verlauf** darunter zeigt pro Mitteilung Zeitpunkt, Absender, Zielgruppe sowie
+Zustellungen und Fehlschläge je Gerätetyp. Zwischen zwei Mitteilungen liegen
+mindestens 15 Sekunden.
 
 ## Ticket-Lebenszyklus
 

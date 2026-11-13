@@ -10,6 +10,7 @@ import {
   loadCurrentTenant,
   nextDesk,
 } from "@/lib/nextdesk-client";
+import { registerAndroidPush } from "@/lib/android-push";
 import { syncAppBadge } from "@/lib/app-badge";
 import { reregisterPushTokenIfEnabled } from "@/lib/push-notifications";
 import {
@@ -180,6 +181,36 @@ export function PushNotificationBridge() {
   useEffect(() => {
     void process();
   }, [process, ready, retry, tenantId]);
+
+  // Android: Mitteilungen der Administration (Expo-Push) empfangen, Zahl auf
+  // dem Symbol nachführen.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+    void syncAppBadge();
+    const received = Notifications.addNotificationReceivedListener(
+      () => void syncAppBadge(),
+    );
+    const appState = AppState.addEventListener("change", (state) => {
+      if (state === "active") void syncAppBadge();
+    });
+    return () => {
+      received.remove();
+      appState.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || !ready || !tenantId) return;
+    void registerAndroidPush(tenantId);
+  }, [ready, tenantId]);
 
   useEffect(() => {
     if (Platform.OS !== "ios") return;

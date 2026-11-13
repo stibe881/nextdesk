@@ -321,6 +321,15 @@ Startseite öffnen Sie die **Mitteilungen** mit Ihren letzten
 Benachrichtigungen; dorthin führt auch eine Sammelmitteilung mit mehreren
 Neuigkeiten.
 
+Auf dem **App-Symbol** zeigt eine rote Zahl, wie viele Mitteilungen Sie noch nicht
+gelesen haben (alle Arbeitsbereiche zusammen). Sie sinkt, sobald Sie Mitteilungen
+lesen oder alle als gelesen markieren. Auf dem iPhone aktualisiert sie sich auch
+bei neuen Mitteilungen, wenn die App geschlossen ist. Auf Android erscheint sie,
+wenn Ihr Startbildschirm Zahlen auf Symbolen unterstützt, und wird beim Öffnen
+der App aktualisiert. Auf Android erhalten Sie ausserdem die Push-Mitteilungen der
+Administration (zum Beispiel zu Wartungen), sobald Sie die Benachrichtigungen der
+App erlaubt haben.
+
 Die Handbücher finden Sie auch in der App: **Profil → Hilfe und
 Rechtliches**. Bildschirmfotos lassen sich dort antippen und vergrössern.
 
