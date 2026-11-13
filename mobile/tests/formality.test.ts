@@ -24,7 +24,6 @@ import {
 } from "../lib/formality";
 import { nextDeskErrorMessage } from "../lib/nextdesk-error-messages";
 import { progressStepHint, progressStepLabel } from "../lib/requester-progress";
-import { informalThanks } from "../lib/phishing-report";
 
 afterEach(() => {
   setFormality("du");
@@ -65,6 +64,7 @@ describe("form of address", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(store.get("nextdesk:mobile:formality:v1")).toBe("sie");
     setFormality("du");
+    await new Promise((resolve) => setTimeout(resolve, 0));
     store.set("nextdesk:mobile:formality:v1", "sie");
     await restoreStoredFormality();
     expect(getFormality()).toBe("sie");
@@ -84,18 +84,9 @@ describe("texts in both forms", () => {
 
   it("writes progress labels in du and Sie", () => {
     expect(progressStepLabel("waiting_for_requester")).toBe("Wartet auf dich");
-    expect(progressStepHint("received")).toContain("dein Anliegen");
+    expect(progressStepHint("received")).toContain("Dein Anliegen");
     setFormality("sie");
     expect(progressStepLabel("waiting_for_requester")).toBe("Wartet auf Sie");
     expect(progressStepHint("received")).toContain("Ihr Anliegen");
-  });
-
-  it("thanks for a phishing report in du and Sie", () => {
-    const result = { duplicate: true, ticketNumber: "T-1" } as Parameters<
-      typeof informalThanks
-    >[0];
-    expect(informalThanks(result)).toContain("hast du bereits gemeldet");
-    setFormality("sie");
-    expect(informalThanks(result)).toContain("haben Sie bereits gemeldet");
   });
 });

@@ -34,8 +34,12 @@ import { tn } from "./lib/formality";
 // Text mit Markup: tn() nimmt auch JSX
 <p>
   {tn(
-    <>Wähle <strong>Speichern</strong>, um deine Änderungen zu übernehmen.</>,
-    <>Wählen Sie <strong>Speichern</strong>, um Ihre Änderungen zu übernehmen.</>,
+    <>
+      Wähle <strong>Speichern</strong>, um deine Änderungen zu übernehmen.
+    </>,
+    <>
+      Wählen Sie <strong>Speichern</strong>, um Ihre Änderungen zu übernehmen.
+    </>,
   )}
 </p>;
 
@@ -57,10 +61,18 @@ import { loadFormality, msg, tone } from "../_shared/formality.ts";
 
 // Text, den die Function selbst erzeugt (E-Mail, Push, PDF)
 const formality = await loadFormality(admin, tenantId);
-const subject = tone(formality, "Deine Anfrage wurde gelöst", "Ihre Anfrage wurde gelöst");
+const subject = tone(
+  formality,
+  "Deine Anfrage wurde gelöst",
+  "Ihre Anfrage wurde gelöst",
+);
 
 // Text in einer JSON-Antwort: beide Fassungen, der Client wählt
-throw new HttpError(403, "forbidden", msg("Dir fehlt die Berechtigung.", "Ihnen fehlt die Berechtigung."));
+throw new HttpError(
+  403,
+  "forbidden",
+  msg("Dir fehlt die Berechtigung.", "Ihnen fehlt die Berechtigung."),
+);
 ```
 
 `msg()` liefert «⟦du␞sie⟧». Web und Mobile-App lösen das beim Empfang auf. Nutze

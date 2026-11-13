@@ -94,9 +94,7 @@ function report(file, line, kind, text) {
 }
 
 function lineExempt(lines, index, marker) {
-  return (
-    lines[index]?.includes(marker) || lines[index - 1]?.includes(marker)
-  );
+  return lines[index]?.includes(marker) || lines[index - 1]?.includes(marker);
 }
 
 function isTestFile(path) {
@@ -153,9 +151,16 @@ function checkCode(path, source) {
       node.expression.text === "tn" &&
       !insideFunction(node)
     ) {
-      const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line;
+      const line = sourceFile.getLineAndCharacterOfPosition(
+        node.getStart(sourceFile),
+      ).line;
       if (!lineExempt(lines, line, "formality-ok")) {
-        report(path, line + 1, "tn-Modulebene", node.getText(sourceFile).replace(/\s+/g, " "));
+        report(
+          path,
+          line + 1,
+          "tn-Modulebene",
+          node.getText(sourceFile).replace(/\s+/g, " "),
+        );
       }
     }
     let text = null;
@@ -170,7 +175,9 @@ function checkCode(path, source) {
       text = node.text ?? node.getText(sourceFile);
     }
     if (text !== null) {
-      const start = ts.isJsxText(node) ? node.getStart(sourceFile) : node.getStart(sourceFile);
+      const start = ts.isJsxText(node)
+        ? node.getStart(sourceFile)
+        : node.getStart(sourceFile);
       const line = sourceFile.getLineAndCharacterOfPosition(start).line;
       if (!testFile && FORMAL.test(text) && !insideHelperArgument(node)) {
         if (!lineExempt(lines, line, "formality-ok")) {
@@ -226,9 +233,12 @@ const duOnly = findings.filter((f) => f.kind === "Du-ohne-Sie");
 const moduleLevel = findings.filter((f) => f.kind === "tn-Modulebene");
 const emoji = findings.filter((f) => f.kind === "Emoji");
 const shown = listAll ? findings : findings.slice(0, 60);
-for (const f of shown) console.log(`${f.file}:${f.line}: [${f.kind}] ${f.text}`);
+for (const f of shown)
+  console.log(`${f.file}:${f.line}: [${f.kind}] ${f.text}`);
 if (!listAll && findings.length > shown.length) {
-  console.log(`… und ${findings.length - shown.length} weitere (mit --list alle).`);
+  console.log(
+    `… und ${findings.length - shown.length} weitere (mit --list alle).`,
+  );
 }
 console.log(
   `\nverify-formality: ${sie.length} Stellen mit Sie-Form ausserhalb von tn()/tone()/msg(), ${duOnly.length} du-Texte ohne Sie-Fassung, ${moduleLevel.length} tn() auf Modulebene, ${emoji.length} Emojis.`,

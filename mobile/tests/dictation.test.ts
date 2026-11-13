@@ -10,6 +10,9 @@ vi.mock("@/lib/themed-styles", () => ({
   makeThemedStyles: () => () => ({}),
   useAppColors: () => ({}),
 }));
+vi.mock("@/lib/formality", () => ({
+  tn: (du: string) => du,
+}));
 
 describe("appendDictation", () => {
   it("joins dictated text with one space", async () => {

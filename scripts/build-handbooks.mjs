@@ -4,8 +4,8 @@
  * in docs/handbooks/images/) into docs/handbooks/handbooks.bundle.json.
  *
  * Every handbook exists in two wordings: informal «du» (docs/handbooks/*.md,
- * the default) and formal «Sie» (docs/handbooks/sie/*.md). Both must have the
- * same headings and screenshots; the bundle carries the «Sie» wording in the
+ * the default) and formal (docs/handbooks/sie/*.md). Both must have the
+ * same headings and screenshots; the bundle carries the formal wording in the
  * `sie` property of each handbook (migration 0328).
  *
  *   node scripts/build-handbooks.mjs          regenerate the bundle
@@ -101,7 +101,9 @@ for (const id of ORDER) {
   const duImages = imagesOf(`${id}.md`, du.body);
   const sieImages = imagesOf(`sie/${id}.md`, sie.body);
   if (JSON.stringify(duImages) !== JSON.stringify(sieImages)) {
-    fail(`${id}: du- und Sie-Fassung haben nicht dieselben Bilder.`);
+    fail(
+      `${id}: die du- und die förmliche Fassung haben nicht dieselben Bilder.`,
+    );
   }
   const duHeadings = headingsOf(du.body);
   const sieHeadings = headingsOf(sie.body);
@@ -110,7 +112,7 @@ for (const id of ORDER) {
       (heading, position) => heading !== sieHeadings[position],
     );
     fail(
-      `${id}: du- und Sie-Fassung haben nicht dieselben Überschriften (erste Abweichung: «${duHeadings[index] ?? "–"}» gegen «${sieHeadings[index] ?? "–"}»).`,
+      `${id}: die du- und die förmliche Fassung haben nicht dieselben Überschriften (erste Abweichung: «${duHeadings[index] ?? "–"}» gegen «${sieHeadings[index] ?? "–"}»).`,
     );
   }
   for (const name of duImages) usedImages.add(name);

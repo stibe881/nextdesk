@@ -196,7 +196,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
     return json(request, {
       data: {
-        handbooks: (rows ?? []).map((row: DocumentRow) =>
+        // The column list depends on the form of address, so the client cannot
+        // infer the row type from it.
+        handbooks: ((rows ?? []) as unknown as DocumentRow[]).map((row) =>
           summaryOf(row, formality),
         ),
       },
@@ -221,7 +223,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (!row) {
     return json(request, { error: { code: "handbook_not_found" } }, 404);
   }
-  const document = row as DocumentWithText;
+  const document = row as unknown as DocumentWithText;
   const markdown = markdownOf(document, formality);
   const imageNames = referencedHandbookImages(markdown);
   const images: Record<string, { mime: string; data: string }> = {};
