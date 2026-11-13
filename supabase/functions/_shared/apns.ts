@@ -88,6 +88,8 @@ export type ApnsPayloadInput = {
   /** «external»: status feed of a provider (Microsoft 365, GitHub, …). */
   incidentSource?: string;
   incidentProvider?: string;
+  /** Latest text of the provider (updates of external incidents). */
+  incidentMessage?: string;
   /**
    * Security case: a reporter said they clicked or entered data, the verdict
    * is overdue (optionally escalated to the team lead) or several people
@@ -195,11 +197,11 @@ async function apnsJwt(configuration: ApnsConfiguration): Promise<string> {
     ["sign"],
   );
   const issuedAt = Math.floor(now / 1000);
-  const unsigned = `${
-    utf8Base64url(JSON.stringify({ alg: "ES256", kid: configuration.keyId }))
-  }.${
-    utf8Base64url(JSON.stringify({ iss: configuration.teamId, iat: issuedAt }))
-  }`;
+  const unsigned = `${utf8Base64url(
+    JSON.stringify({ alg: "ES256", kid: configuration.keyId }),
+  )}.${utf8Base64url(
+    JSON.stringify({ iss: configuration.teamId, iat: issuedAt }),
+  )}`;
   const signature = new Uint8Array(
     await crypto.subtle.sign(
       { name: "ECDSA", hash: "SHA-256" },
@@ -223,9 +225,8 @@ function truncateSubject(subject: string): string {
 
 function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
   const ticketNumber = input.ticketNumber ?? "";
-  const subject = typeof input.subject === "string"
-    ? truncateSubject(input.subject)
-    : null;
+  const subject =
+    typeof input.subject === "string" ? truncateSubject(input.subject) : null;
 
   switch (input.kind) {
     case "assigned":
@@ -349,21 +350,34 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
     }
     case "incident": {
       if (input.incidentSource === "external") {
-        const provider = input.incidentProvider?.trim().slice(0, 60) || "Externer Dienst";
+        const provider =
+          input.incidentProvider?.trim().slice(0, 60) || "Externer Dienst";
         const name = input.incidentTitle?.trim().slice(0, 120) || "Störung";
+        const update = input.incidentMessage?.trim().slice(0, 140);
         return {
-          title: `Externe Störung: ${provider}`,
-          body: input.incidentNumber ? `${input.incidentNumber}: ${name}` : name,
+          title:
+            input.incidentReason === "updated"
+              ? `Update: ${provider}`
+              : input.incidentReason === "resolved"
+                ? `Behoben: ${provider}`
+                : `Externe Störung: ${provider}`,
+          body:
+            input.incidentReason === "updated" && update
+              ? `${name} – ${update}`
+              : input.incidentNumber
+                ? `${input.incidentNumber}: ${name}`
+                : name,
         };
       }
       const what = input.incidentSeverity === "warning" ? "Warnung" : "Störung";
-      const title = input.incidentReason === "realert"
-        ? `Noch unbestätigt: ${what}`
-        : input.incidentReason === "escalated"
-          ? "Störung: jetzt Ausfall"
-          : input.incidentReason === "reopened"
-            ? `Erneut: ${what}`
-            : what;
+      const title =
+        input.incidentReason === "realert"
+          ? `Noch unbestätigt: ${what}`
+          : input.incidentReason === "escalated"
+            ? "Störung: jetzt Ausfall"
+            : input.incidentReason === "reopened"
+              ? `Erneut: ${what}`
+              : what;
       const name = input.incidentTitle?.trim().slice(0, 120) || "Ein Gerät";
       return {
         title,
@@ -391,9 +405,10 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         };
       }
       if (input.securityEvent === "campaign") {
-        const count = input.securityCount && input.securityCount > 1
-          ? `${input.securityCount} Personen haben`
-          : "Mehrere Personen haben";
+        const count =
+          input.securityCount && input.securityCount > 1
+            ? `${input.securityCount} Personen haben`
+            : "Mehrere Personen haben";
         return {
           title: "Phishing-Kampagne",
           body: `${count} dieselbe verdächtige E-Mail gemeldet${ticketNumber ? ` (${ticketNumber})` : ""}.`,
@@ -455,13 +470,13 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         case "ready":
           return input.shopDeliveryMethod === "desk"
             ? {
-              title: "Bereit zur Lieferung",
-              body: `Bestellung${number} wird an deinen Arbeitsplatz gebracht${input.shopDeliveryLocation ? `: ${input.shopDeliveryLocation.slice(0, 80)}` : ""}.`,
-            }
+                title: "Bereit zur Lieferung",
+                body: `Bestellung${number} wird an deinen Arbeitsplatz gebracht${input.shopDeliveryLocation ? `: ${input.shopDeliveryLocation.slice(0, 80)}` : ""}.`,
+              }
             : {
-              title: "Bereit zur Abholung",
-              body: `Bestellung${number} liegt für dich bereit. Abholung beim Support.`,
-            };
+                title: "Bereit zur Abholung",
+                body: `Bestellung${number} liegt für dich bereit. Abholung beim Support.`,
+              };
         case "issued":
           return {
             title: "Bestellung ausgegeben",
@@ -475,13 +490,13 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         case "loan_overdue":
           return input.shopEscalated
             ? {
-              title: "Ausleihe im Team überfällig",
-              body: `Die Ausleihe${number} einer Person aus deinem Team ist seit mehreren Tagen überfällig.`,
-            }
+                title: "Ausleihe im Team überfällig",
+                body: `Die Ausleihe${number} einer Person aus deinem Team ist seit mehreren Tagen überfällig.`,
+              }
             : {
-              title: "Ausleihe überfällig",
-              body: `Die Ausleihe${number} ist überfällig. Bitte zurückgeben.`,
-            };
+                title: "Ausleihe überfällig",
+                body: `Die Ausleihe${number} ist überfällig. Bitte zurückgeben.`,
+              };
         case "approval_reminder":
           return {
             title: input.shopEscalated
@@ -529,17 +544,17 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
       }
     }
     case "service_task": {
-      const title = input.serviceTaskTitle?.trim().slice(0, 80) ||
-        "Eine Serviceaufgabe";
+      const title =
+        input.serviceTaskTitle?.trim().slice(0, 80) || "Eine Serviceaufgabe";
       return input.serviceTaskEvent === "overdue"
         ? {
-          title: "Serviceaufgabe überfällig",
-          body: `${title} ist überfällig.`,
-        }
+            title: "Serviceaufgabe überfällig",
+            body: `${title} ist überfällig.`,
+          }
         : {
-          title: "Serviceaufgabe heute fällig",
-          body: `${title} ist heute fällig.`,
-        };
+            title: "Serviceaufgabe heute fällig",
+            body: `${title} ist heute fällig.`,
+          };
     }
     case "infrastructure": {
       const device = input.assetName?.trim().slice(0, 80) || "Ein Gerät";
@@ -554,23 +569,23 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         case "warranty":
           return overdue
             ? {
-              title: "Garantie abgelaufen",
-              body: `${device}: Garantie abgelaufen${since}.`,
-            }
+                title: "Garantie abgelaufen",
+                body: `${device}: Garantie abgelaufen${since}.`,
+              }
             : {
-              title: "Garantie läuft ab",
-              body: `${device}: Garantie endet${on}.`,
-            };
+                title: "Garantie läuft ab",
+                body: `${device}: Garantie endet${on}.`,
+              };
         case "support":
           return overdue
             ? {
-              title: "Herstellersupport beendet",
-              body: `${device}: Herstellersupport beendet${since}.`,
-            }
+                title: "Herstellersupport beendet",
+                body: `${device}: Herstellersupport beendet${since}.`,
+              }
             : {
-              title: "Support läuft ab",
-              body: `${device}: Herstellersupport endet${on}.`,
-            };
+                title: "Support läuft ab",
+                body: `${device}: Herstellersupport endet${on}.`,
+              };
         case "end_of_life":
           return {
             title: "End of Life",
@@ -581,13 +596,13 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         default:
           return overdue
             ? {
-              title: "Wartung überfällig",
-              body: `${device}: Wartung überfällig${since}.`,
-            }
+                title: "Wartung überfällig",
+                body: `${device}: Wartung überfällig${since}.`,
+              }
             : {
-              title: "Wartung fällig",
-              body: `${device}: Wartung fällig${on}.`,
-            };
+                title: "Wartung fällig",
+                body: `${device}: Wartung fällig${on}.`,
+              };
       }
     }
     case "watched": {
@@ -649,10 +664,13 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
     }
     case "ipam": {
       const what = input.ipamTitle?.trim().slice(0, 120);
-      const where = input.ipamNumber?.trim().slice(0, 60) ||
+      const where =
+        input.ipamNumber?.trim().slice(0, 60) ||
         input.ipamAddress?.trim().slice(0, 45);
       if (input.ipamEvent === "agent_offline") {
-        const agent = input.ipamAgentName?.trim().slice(0, 80) || where ||
+        const agent =
+          input.ipamAgentName?.trim().slice(0, 80) ||
+          where ||
           "Ein Netzwerkagent";
         return {
           title: "Netzwerkagent offline",
@@ -668,20 +686,23 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         };
       }
       return {
-        title: input.ipamSeverity === "critical"
-          ? "IP-Adressverwaltung: kritischer Fund"
-          : "IP-Adressverwaltung",
-        body: where && what
-          ? `${where}: ${what}`
-          : what ?? where ?? "Neuer Fund in der IP-Adressverwaltung.",
+        title:
+          input.ipamSeverity === "critical"
+            ? "IP-Adressverwaltung: kritischer Fund"
+            : "IP-Adressverwaltung",
+        body:
+          where && what
+            ? `${where}: ${what}`
+            : (what ?? where ?? "Neuer Fund in der IP-Adressverwaltung."),
       };
     }
     case "summary":
       return {
         title: "nextDesk",
-        body: `${
-          Math.max(1, input.summaryCount ?? 1)
-        } neue Hinweise in nextDesk.`,
+        body: `${Math.max(
+          1,
+          input.summaryCount ?? 1,
+        )} neue Hinweise in nextDesk.`,
       };
     case "test":
       return {
@@ -811,9 +832,10 @@ export async function sendApns(
   if (!configuration) return { status: 0, reason: "apns_not_configured" };
   try {
     const authorization = await apnsJwt(configuration);
-    const host = environment === "development"
-      ? "https://api.sandbox.push.apple.com"
-      : "https://api.push.apple.com";
+    const host =
+      environment === "development"
+        ? "https://api.sandbox.push.apple.com"
+        : "https://api.push.apple.com";
     const response = await fetch(`${host}/3/device/${token}`, {
       method: "POST",
       headers: {

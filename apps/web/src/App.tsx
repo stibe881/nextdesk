@@ -1556,7 +1556,13 @@ function baseNotificationPresentation(
         return {
           description: `${number ?? "Störung"}: ${title ?? "Störung beim Anbieter"}`,
           Icon: AlertTriangle,
-          title: `Externe Störung: ${notificationPayloadText(notification, "provider", 80) ?? "Anbieter"}`,
+          title: `${
+            reason === "updated"
+              ? "Update"
+              : reason === "resolved"
+                ? "Behoben"
+                : "Externe Störung"
+          }: ${notificationPayloadText(notification, "provider", 80) ?? "Anbieter"}`,
         };
       }
       return {

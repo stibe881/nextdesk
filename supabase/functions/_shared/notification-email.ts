@@ -206,11 +206,12 @@ export function notificationEmailText(
           "Beim Anlegen des Teams ist ein Fehler aufgetreten.",
       ];
     } else if (kind === "shop.order.team_expiring") {
-      const when = daysLeft === 1
-        ? "morgen"
-        : Number.isInteger(daysLeft) && daysLeft > 1
-        ? `in ${daysLeft} Tagen`
-        : "bald";
+      const when =
+        daysLeft === 1
+          ? "morgen"
+          : Number.isInteger(daysLeft) && daysLeft > 1
+            ? `in ${daysLeft} Tagen`
+            : "bald";
       title = `Team läuft ${when} ab: ${team}`;
       lines = [
         `Das Team «${team}» endet ${when}${until ? ` (${until})` : ""}.`,
@@ -234,7 +235,9 @@ export function notificationEmailText(
     lines = [shopBody];
     // Where the order is handed over, as chosen when ordering.
     if (event === "ready" && toDesk) {
-      title = number ? `Bereit zur Lieferung: ${number}` : "Bereit zur Lieferung";
+      title = number
+        ? `Bereit zur Lieferung: ${number}`
+        : "Bereit zur Lieferung";
       lines = [
         `Ihre Bestellung ist bereit und wird an Ihren Arbeitsplatz gebracht${deskLocation ? `: ${deskLocation}` : ""}.`,
       ];
@@ -244,7 +247,9 @@ export function notificationEmailText(
         "Übergabe: Abholung beim Support.",
       ];
     } else if (
-      ["placed_for_you", "approved", "in_progress", "issued", "note"].includes(event) &&
+      ["placed_for_you", "approved", "in_progress", "issued", "note"].includes(
+        event,
+      ) &&
       (payload.deliveryMethod === "pickup" || toDesk)
     ) {
       lines = [
@@ -330,17 +335,33 @@ export function notificationEmailText(
     if (payload.source === "external") {
       // Status feed of a provider (Microsoft 365, GitHub, Claude, …).
       const provider = text(payload.provider, 80) ?? "Ein externer Dienst";
-      title = `Externe Störung: ${provider}${number ? ` (${number})` : ""}`;
+      const update = text(payload.message, 1000);
+      if (payload.reason === "updated") {
+        title = `Update zur externen Störung: ${provider}${number ? ` (${number})` : ""}`;
+        lines = [
+          `${provider} hat die Meldung zu «${name}» ergänzt${update ? ":" : "."}`,
+          ...(update ? [update] : []),
+          "Details unter «Störungen».",
+        ];
+      } else if (payload.reason === "resolved") {
+        title = `Externe Störung behoben: ${provider}${number ? ` (${number})` : ""}`;
+        lines = [
+          `${provider} meldet «${name}» als behoben. Die Störung wurde automatisch abgeschlossen.`,
+        ];
+      } else {
+        title = `Externe Störung: ${provider}${number ? ` (${number})` : ""}`;
+        lines = [
+          `${provider} meldet eine Störung: ${name}.`,
+          "Die Ursache liegt beim Anbieter, nicht in Ihrem Netz. Details unter «Störungen»; die Störung schliesst sich, sobald der Anbieter sie als behoben meldet.",
+        ];
+      }
+    } else
       lines = [
-        `${provider} meldet eine Störung: ${name}.`,
-        "Die Ursache liegt beim Anbieter, nicht in Ihrem Netz. Details unter «Störungen»; die Störung schliesst sich, sobald der Anbieter sie als behoben meldet.",
+        `${warning ? "PRTG meldet eine Warnung" : "PRTG meldet einen Ausfall"}: ${name}.`,
+        payload.reason === "realert"
+          ? "Die Störung ist noch von niemandem bestätigt. Bitte unter «Störungen» bestätigen."
+          : "Details und Bestätigen unter «Störungen».",
       ];
-    } else lines = [
-      `${warning ? "PRTG meldet eine Warnung" : "PRTG meldet einen Ausfall"}: ${name}.`,
-      payload.reason === "realert"
-        ? "Die Störung ist noch von niemandem bestätigt. Bitte unter «Störungen» bestätigen."
-        : "Details und Bestätigen unter «Störungen».",
-    ];
   } else if (kind === "ticket.sla.supervisor_no_response") {
     const agent = text(payload.agentName, 200);
     title = "Team: Ticket ohne Antwort";
@@ -377,7 +398,9 @@ export function notificationEmailText(
     if (kind === "security.campaign") {
       const count = payload.reporterCount ?? payload.count;
       if (typeof count === "number" && Number.isInteger(count) && count > 1) {
-        lines = [`${count} Personen haben dieselbe verdächtige E-Mail gemeldet.`];
+        lines = [
+          `${count} Personen haben dieselbe verdächtige E-Mail gemeldet.`,
+        ];
       }
     }
     if (
@@ -400,7 +423,9 @@ export function notificationEmailText(
       } else {
         const risk = text(payload.riskLabel, 40);
         const score =
-          typeof payload.riskScore === "number" ? ` (${payload.riskScore})` : "";
+          typeof payload.riskScore === "number"
+            ? ` (${payload.riskScore})`
+            : "";
         lines = [
           "Eine verdächtige E-Mail wurde gemeldet. Sie wartet unter «Sicherheitsfälle» auf Ihr Urteil.",
           ...(risk ? [`Automatische Risikoeinschätzung: ${risk}${score}`] : []),

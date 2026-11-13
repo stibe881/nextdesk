@@ -172,6 +172,8 @@ export async function syncSource(
   key: SourceKey,
   issues: ExternalIssue[],
   teamId: string | null,
+  /** False when a source is switched off: close silently. */
+  notify = true,
 ): Promise<{ opened: number; closed: number }> {
   const definition = sourceDefinition(key)!;
   const prefix = `ext:${key}:`;
@@ -234,6 +236,13 @@ export async function syncSource(
           .from("monitoring_incidents")
           .update({ last_event_at: now })
           .eq("id", existing.id);
+        // The team hears about every new text of the provider.
+        if (notify) {
+          await admin.rpc("monitoring_incident_notify", {
+            p_incident_id: String(existing.id),
+            p_reason: "updated",
+          });
+        }
       }
       continue;
     }
@@ -305,6 +314,12 @@ export async function syncSource(
         "resolved",
         `${definition.label} meldet die Störung als behoben. Automatisch abgeschlossen.`,
       );
+      if (notify) {
+        await admin.rpc("monitoring_incident_notify", {
+          p_incident_id: String(row.id),
+          p_reason: "resolved",
+        });
+      }
       closed += 1;
     }
   }
@@ -433,7 +448,7 @@ async function save(
   if (error) throw dbFailure();
   // Switched off: its open incidents are closed (nobody watches them anymore).
   for (const key of SOURCE_KEYS.filter((key) => enabled[key] !== true)) {
-    await syncSource(admin, tenantId, key, [], null);
+    await syncSource(admin, tenantId, key, [], null, false);
   }
 }
 

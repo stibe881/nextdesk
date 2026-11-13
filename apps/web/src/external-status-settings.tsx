@@ -153,8 +153,9 @@ export function ExternalStatusSettings({ tenantId }: { tenantId: string }) {
             nextDesk liest alle 5 Minuten die offiziellen Statusmeldungen der
             gewählten Anbieter. Meldet ein Anbieter eine Störung, erscheint sie
             unter «Störungen» als «Extern» und das Team für die Alarmierung
-            (siehe PRTG oben) wird einmal benachrichtigt. Meldet der Anbieter
-            die Störung als behoben, schliesst sie sich automatisch.
+            (siehe PRTG oben) wird benachrichtigt, ebenso bei jedem Update des
+            Anbieters. Meldet der Anbieter die Störung als behoben, schliesst
+            sie sich automatisch.
           </p>
         </div>
         <Globe aria-hidden="true" size={25} />
