@@ -616,7 +616,10 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: flex-start;
   gap: 12px;
-  margin-top: 18px;
+  /* Unten derselbe Abstand wie oben: Seiten ohne eigenen Abstand oben (z. B.
+     Störungen) kleben sonst am Banner. Mit Seiten, die oben selbst Abstand
+     haben, fällt der Rand zusammen (kein doppelter Abstand). */
+  margin: 18px 0;
   border-color: color-mix(in srgb, var(--warning) 42%, var(--border));
   padding: 14px 16px;
   background: var(--warning-soft);
