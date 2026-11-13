@@ -343,10 +343,13 @@ export function knowledgeCollectionDeletionQuestion(
   if (!isSubcategory) {
     parts.push(
       impact.subcategoryCount === 0
-        ? "Sie hat keine Unterkategorien."
+        ? // formality-ok: "Sie" bezeichnet die Kategorie
+          "Sie hat keine Unterkategorien."
         : impact.subcategoryCount === 1
-          ? "Ihre 1 Unterkategorie wird ebenfalls gelöscht."
-          : `Ihre ${impact.subcategoryCount} Unterkategorien werden ebenfalls gelöscht.`,
+          ? // formality-ok: "Ihre" bezeichnet die Kategorie
+            "Ihre 1 Unterkategorie wird ebenfalls gelöscht."
+          : // formality-ok: "Ihre" bezeichnet die Kategorie
+            `Ihre ${impact.subcategoryCount} Unterkategorien werden ebenfalls gelöscht.`,
     );
   }
   parts.push(

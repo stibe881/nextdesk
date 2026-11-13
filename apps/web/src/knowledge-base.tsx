@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -1523,12 +1524,24 @@ function writeErrorMessage(error: unknown, action: "save" | "archive"): string {
   }
   if (error instanceof KnowledgeBaseRequestError && error.status === 403) {
     return action === "archive"
-      ? "Sie dürfen diesen Artikel nicht archivieren. Bitte wenden Sie sich an eine zuständige Person mit Verwaltungsberechtigung."
-      : "Sie dürfen Artikel nicht erstellen oder ändern. Bitte wenden Sie sich an eine zuständige Person mit Verwaltungsberechtigung.";
+      ? tn(
+          "Du darfst diesen Artikel nicht archivieren. Bitte wende dich an eine zuständige Person mit Verwaltungsberechtigung.",
+          "Sie dürfen diesen Artikel nicht archivieren. Bitte wenden Sie sich an eine zuständige Person mit Verwaltungsberechtigung.",
+        )
+      : tn(
+          "Du darfst Artikel nicht erstellen oder ändern. Bitte wende dich an eine zuständige Person mit Verwaltungsberechtigung.",
+          "Sie dürfen Artikel nicht erstellen oder ändern. Bitte wenden Sie sich an eine zuständige Person mit Verwaltungsberechtigung.",
+        );
   }
   return action === "archive"
-    ? "Der Artikel konnte nicht archiviert werden. Bitte versuchen Sie es erneut."
-    : "Der Artikel konnte nicht gespeichert werden. Bitte prüfen Sie Ihre Eingaben und versuchen Sie es erneut.";
+    ? tn(
+        "Der Artikel konnte nicht archiviert werden. Bitte versuche es erneut.",
+        "Der Artikel konnte nicht archiviert werden. Bitte versuchen Sie es erneut.",
+      )
+    : tn(
+        "Der Artikel konnte nicht gespeichert werden. Bitte prüfe deine Eingaben und versuche es erneut.",
+        "Der Artikel konnte nicht gespeichert werden. Bitte prüfen Sie Ihre Eingaben und versuchen Sie es erneut.",
+      );
 }
 
 /**
@@ -2376,7 +2389,10 @@ export function KnowledgeBase({
       setCollectionActionError(
         selectedCategory
           ? "Zu diesem importierten Thema können keine weiteren Unterkategorien angelegt werden."
-          : "Wählen Sie zuerst eine Kategorie für die neue Unterkategorie.",
+          : tn(
+              "Wähle zuerst eine Kategorie für die neue Unterkategorie.",
+              "Wählen Sie zuerst eine Kategorie für die neue Unterkategorie.",
+            ),
       );
       return;
     }
@@ -2422,7 +2438,10 @@ export function KnowledgeBase({
     }
     if (collectionCreator === "child" && !parentId) {
       setCollectionActionError(
-        "Wählen Sie zuerst eine Kategorie für die neue Unterkategorie.",
+        tn(
+          "Wähle zuerst eine Kategorie für die neue Unterkategorie.",
+          "Wählen Sie zuerst eine Kategorie für die neue Unterkategorie.",
+        ),
       );
       return;
     }
@@ -2586,7 +2605,10 @@ export function KnowledgeBase({
     const normalizedRawContent = rawContent.trim();
     if (!normalizedRawContent) {
       setError(
-        "Erfassen Sie zuerst den fachlichen Rohinhalt für die KI-Aufbereitung.",
+        tn(
+          "Erfasse zuerst den fachlichen Rohinhalt für die KI-Aufbereitung.",
+          "Erfassen Sie zuerst den fachlichen Rohinhalt für die KI-Aufbereitung.",
+        ),
       );
       setSuccess("");
       return;
@@ -2614,7 +2636,10 @@ export function KnowledgeBase({
         bodyMarkdown: prepared.bodyMarkdown,
       }));
       setSuccess(
-        "Der KI-Entwurf wurde eingesetzt. Prüfen und ändern Sie ihn bei Bedarf, bevor Sie den Artikel speichern.",
+        tn(
+          "Der KI-Entwurf wurde eingesetzt. Prüfe und ändere ihn bei Bedarf, bevor du den Artikel speicherst.",
+          "Der KI-Entwurf wurde eingesetzt. Prüfen und ändern Sie ihn bei Bedarf, bevor Sie den Artikel speichern.",
+        ),
       );
     } catch (nextError) {
       const status =
@@ -2640,7 +2665,10 @@ export function KnowledgeBase({
       setError(
         collectionLoadError
           ? "Der Artikel kann erst gespeichert werden, wenn die Kategorien sicher geladen sind. Die aktuelle Einordnung würde sonst nicht zuverlässig erhalten bleiben."
-          : "Die Kategorien werden noch geladen. Bitte warten Sie, bevor Sie den Artikel speichern.",
+          : tn(
+              "Die Kategorien werden noch geladen. Bitte warte, bevor du den Artikel speicherst.",
+              "Die Kategorien werden noch geladen. Bitte warten Sie, bevor Sie den Artikel speichern.",
+            ),
       );
       setSuccess("");
       return;
@@ -2657,7 +2685,7 @@ export function KnowledgeBase({
     }
     const chooseDepartment = departments.length > 1;
     if (chooseDepartment && !draft.departmentId) {
-      setError("Bitte wählen Sie eine Abteilung.");
+      setError(tn("Bitte wähle eine Abteilung.", "Bitte wählen Sie eine Abteilung."));
       setSuccess("");
       return;
     }
@@ -2728,7 +2756,10 @@ export function KnowledgeBase({
           setError(
             isEditing
               ? "Der Artikel wurde gespeichert. Die bisherige Einordnung blieb unverändert, weil die neue Einordnung nicht sicher gespeichert werden konnte."
-              : "Der Artikel wurde gespeichert, aber die Einordnung wurde nicht gespeichert. Öffnen Sie den Artikel erneut und versuchen Sie die Einordnung nochmals.",
+              : tn(
+                  "Der Artikel wurde gespeichert, aber die Einordnung wurde nicht gespeichert. Öffne den Artikel erneut und versuche die Einordnung nochmals.",
+                  "Der Artikel wurde gespeichert, aber die Einordnung wurde nicht gespeichert. Öffnen Sie den Artikel erneut und versuchen Sie die Einordnung nochmals.",
+                ),
           );
           setSuccess("");
           return;
@@ -2768,7 +2799,10 @@ export function KnowledgeBase({
   async function archiveArticle() {
     if (!selected) return;
     const confirmed = window.confirm(
-      `Möchten Sie den Artikel „${selected.article.title}“ wirklich archivieren?`,
+      tn(
+        `Möchtest du den Artikel „${selected.article.title}“ wirklich archivieren?`,
+        `Möchten Sie den Artikel „${selected.article.title}“ wirklich archivieren?`,
+      ),
     );
     if (!confirmed) return;
 
@@ -2829,8 +2863,14 @@ export function KnowledgeBase({
       setError(
         nextError instanceof KnowledgeBaseRequestError &&
           nextError.status === 403
-          ? "Sie dürfen diesen Artikel nicht löschen. Bitte wenden Sie sich an eine zuständige Person mit Verwaltungsberechtigung."
-          : "Der Artikel konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+          ? tn(
+              "Du darfst diesen Artikel nicht löschen. Bitte wende dich an eine zuständige Person mit Verwaltungsberechtigung.",
+              "Sie dürfen diesen Artikel nicht löschen. Bitte wenden Sie sich an eine zuständige Person mit Verwaltungsberechtigung.",
+            )
+          : tn(
+              "Der Artikel konnte nicht gelöscht werden. Bitte versuche es erneut.",
+              "Der Artikel konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+            ),
       );
     } finally {
       setSaving(null);
@@ -3549,7 +3589,10 @@ export function KnowledgeBase({
             ) : visibleArticles.length === 0 ? (
               <p className="knowledge-base__empty">
                 {activeQuery || isListFiltered
-                  ? "Nichts gefunden. Versuchen Sie ein anderes Stichwort oder erstellen Sie ein Ticket."
+                  ? tn(
+                      "Nichts gefunden. Versuche ein anderes Stichwort oder erstelle ein Ticket.",
+                      "Nichts gefunden. Versuchen Sie ein anderes Stichwort oder erstellen Sie ein Ticket.",
+                    )
                   : "Es sind noch keine Wissensartikel vorhanden."}
               </p>
             ) : (
@@ -3692,8 +3735,10 @@ export function KnowledgeBase({
                   title={draft.title.trim()}
                 />
                 <FormNote>
-                  Live-Vorschau: Banner, «Kurz gesagt» und Inhalt erscheinen
-                  weiter unten, sobald Sie schreiben.
+                  {tn(
+                    "Live-Vorschau: Banner, «Kurz gesagt» und Inhalt erscheinen weiter unten, sobald du schreibst.",
+                    "Live-Vorschau: Banner, «Kurz gesagt» und Inhalt erscheinen weiter unten, sobald Sie schreiben.",
+                  )}
                 </FormNote>
               </>
             }
@@ -3755,9 +3800,10 @@ export function KnowledgeBase({
                   onDrop={handleMarkdownDrop}
                   onPaste={handleMarkdownPaste}
                   ref={markdownInputRef}
-                  placeholder={
-                    "# Überschrift\n\nBeschreiben Sie hier die Lösung oder den Ablauf in Markdown."
-                  }
+                  placeholder={tn(
+                    "# Überschrift\n\nBeschreibe hier die Lösung oder den Ablauf in Markdown.",
+                    "# Überschrift\n\nBeschreiben Sie hier die Lösung oder den Ablauf in Markdown.",
+                  )}
                   rows={12}
                   value={draft.bodyMarkdown}
                 />
@@ -3858,9 +3904,10 @@ export function KnowledgeBase({
                 nicht nötig. Frühere Fassungen bleiben im Verlauf erhalten.
               </FormNote>
               <p className="knowledge-base__collection-intro">
-                Optional können Sie den Artikel einer Kategorie und einer
-                passenden Unterkategorie zuordnen. Bei einer Unterkategorie wird
-                nur diese gespeichert.
+                {tn(
+                  "Optional kannst du den Artikel einer Kategorie und einer passenden Unterkategorie zuordnen. Bei einer Unterkategorie wird nur diese gespeichert.",
+                  "Optional können Sie den Artikel einer Kategorie und einer passenden Unterkategorie zuordnen. Bei einer Unterkategorie wird nur diese gespeichert.",
+                )}
               </p>
 
               {collectionsLoading ? (

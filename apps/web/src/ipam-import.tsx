@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   ArrowLeft,
   ArrowRight,
@@ -83,7 +84,7 @@ const STATE_LABELS: Record<RowState, string> = {
   error: "Fehler",
 };
 
-const SOURCE_HINTS: Record<ImportSource, string> = {
+const sourceHints = (): Record<ImportSource, string> => ({
   sonnenberg:
     "Excel-Liste mit Blatt «Overview» (Lokation, Security Zone, IP Prefix, PL, Default GW, VLAN …) und je einem Blatt pro Subnetz.",
   switch_list:
@@ -91,10 +92,13 @@ const SOURCE_HINTS: Record<ImportSource, string> = {
   aruba_ap:
     "Excel-Liste mit Gebäude, Standort, AP-Nummer, MAC-Adresse und Seriennummer. Legt Access Points an.",
   generic:
-    "Beliebige CSV- oder Excel-Tabelle. Sie ordnen die Spalten selbst zu.",
+    tn(
+      "Beliebige CSV- oder Excel-Tabelle. Du ordnest die Spalten selbst zu.",
+      "Beliebige CSV- oder Excel-Tabelle. Sie ordnen die Spalten selbst zu.",
+    ),
   phpipam: "CSV-Export der Subnetze oder Adressen aus phpIPAM.",
   netbox: "CSV-Export aus NetBox (Prefixes, IP Addresses oder VLANs).",
-};
+});
 
 const SOURCES: (ImportSource | "auto")[] = [
   "auto",
@@ -483,8 +487,11 @@ export function IpamImportWizard({
     return (
       <section className="ipam-import">
         <p className="ipam-import__notice">
-          <Info aria-hidden size={16} /> Für den Import benötigen Sie die
-          Berechtigung, IP-Adressen zu verwalten.
+          <Info aria-hidden size={16} />{" "}
+          {tn(
+            "Für den Import benötigst du die Berechtigung, IP-Adressen zu verwalten.",
+            "Für den Import benötigen Sie die Berechtigung, IP-Adressen zu verwalten.",
+          )}
         </p>
       </section>
     );
@@ -519,9 +526,10 @@ export function IpamImportWizard({
         <div>
           <h2 id="ipam-import-title">Daten importieren</h2>
           <p>
-            Übernehmen Sie bestehende IP-Listen, Switch- und Access-Point-Listen
-            oder Exporte aus phpIPAM und NetBox. Bestehende Einträge werden
-            erkannt und nicht doppelt angelegt.
+            {tn(
+              "Übernimm bestehende IP-Listen, Switch- und Access-Point-Listen oder Exporte aus phpIPAM und NetBox. Bestehende Einträge werden erkannt und nicht doppelt angelegt.",
+              "Übernehmen Sie bestehende IP-Listen, Switch- und Access-Point-Listen oder Exporte aus phpIPAM und NetBox. Bestehende Einträge werden erkannt und nicht doppelt angelegt.",
+            )}
           </p>
         </div>
         <ol className="ipam-import__steps" aria-label="Schritte">
@@ -552,7 +560,9 @@ export function IpamImportWizard({
 
       {step === "source" ? (
         <div className="ipam-import__panel">
-          <h3>Welche Daten möchten Sie importieren?</h3>
+          <h3>
+{tn("Welche Daten möchtest du importieren?","Welche Daten möchten Sie importieren?")}
+</h3>
           <div
             className="ipam-import__sources"
             role="radiogroup"
@@ -576,8 +586,11 @@ export function IpamImportWizard({
                 </strong>
                 <small>
                   {entry === "auto"
-                    ? "Das Format wird anhand der Spalten und Blätter erkannt. Sie können es danach ändern."
-                    : SOURCE_HINTS[entry]}
+                    ? tn(
+                        "Das Format wird anhand der Spalten und Blätter erkannt. Du kannst es danach ändern.",
+                        "Das Format wird anhand der Spalten und Blätter erkannt. Sie können es danach ändern.",
+                      )
+                    : sourceHints()[entry]}
                 </small>
               </label>
             ))}
@@ -598,10 +611,10 @@ export function IpamImportWizard({
         <div className="ipam-import__panel">
           <h3>Datei hochladen</h3>
           <p className="ipam-import__muted">
-            Excel (.xlsx) oder CSV, höchstens 10 MB. Die Datei wird in Ihrem
-            Browser gelesen; übertragen werden nur die erkannten Einträge.
-            Blätter mit Zugangsdaten (z. B. WLAN-Schlüssel) werden nie
-            übernommen.
+            {tn(
+              "Excel (.xlsx) oder CSV, höchstens 10 MB. Die Datei wird in deinem Browser gelesen; übertragen werden nur die erkannten Einträge. Blätter mit Zugangsdaten (z. B. WLAN-Schlüssel) werden nie übernommen.",
+              "Excel (.xlsx) oder CSV, höchstens 10 MB. Die Datei wird in Ihrem Browser gelesen; übertragen werden nur die erkannten Einträge. Blätter mit Zugangsdaten (z. B. WLAN-Schlüssel) werden nie übernommen.",
+            )}
           </p>
           <label className="ipam-import__drop">
             <Upload aria-hidden size={20} />
@@ -1038,7 +1051,10 @@ export function IpamImportWizard({
                 </label>
                 {!context?.canManageAssets ? (
                   <small>
-                    Dafür benötigen Sie die Berechtigung zur Asset-Verwaltung.
+                    {tn(
+                      "Dafür benötigst du die Berechtigung zur Asset-Verwaltung.",
+                      "Dafür benötigen Sie die Berechtigung zur Asset-Verwaltung.",
+                    )}
                   </small>
                 ) : null}
                 <label className="ipam-import__check">

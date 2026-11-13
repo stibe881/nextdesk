@@ -54,6 +54,8 @@ speichern** übernehmen Sie die Änderungen für alle Personen des Mandanten.
 
 ![Corporate Design mit Farbwahl und Vorschau](images/ad-branding.jpg)
 
+**Anrede:** Unter **Design → Anrede** legen Sie fest, ob nextDesk alle Texte duzt (Standard) oder siezt. Die Einstellung gilt für die Oberfläche, die Mobile-App, E-Mails, Mitteilungen und die Handbücher und wirkt sofort für alle Personen des Mandanten.
+
 ## Funktionen & Integrationen
 
 Im Register **Funktionen** schalten Sie Module für den ganzen Mandanten ein

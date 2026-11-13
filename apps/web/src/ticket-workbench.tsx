@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { formatSlaRemaining } from "./lib/live-dashboard";
 import { slaPausedLabel } from "./lib/sla-pause";
 import {
@@ -1174,11 +1175,17 @@ function MacroPanel({
       await onApplyMacro(preview);
       setPreview(null);
       setNotice(
-        "Makro wurde in den Antwortentwurf und die bestehenden Ticketfelder übernommen. Bitte prüfen und speichern Sie Ihre Antwort getrennt.",
+        tn(
+          "Makro wurde in den Antwortentwurf und die bestehenden Ticketfelder übernommen. Bitte prüfe und speichere deine Antwort getrennt.",
+          "Makro wurde in den Antwortentwurf und die bestehenden Ticketfelder übernommen. Bitte prüfen und speichern Sie Ihre Antwort getrennt.",
+        ),
       );
     } catch {
       setNotice(
-        "Das Makro konnte nicht übernommen werden. Bitte versuchen Sie es erneut.",
+        tn(
+          "Das Makro konnte nicht übernommen werden. Bitte versuche es erneut.",
+          "Das Makro konnte nicht übernommen werden. Bitte versuchen Sie es erneut.",
+        ),
       );
     } finally {
       setApplying(false);
@@ -1692,7 +1699,10 @@ function KnowledgeDraftButton({
       if (isUnavailable(error)) setAvailable(false);
       else
         setNotice(
-          "Der Wissensentwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Der Wissensentwurf konnte nicht erstellt werden. Bitte versuche es erneut.",
+            "Der Wissensentwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+          ),
         );
     } finally {
       setPending(false);
@@ -1952,7 +1962,10 @@ function RequesterPortal({
     const cleaned = reason.trim();
     if (cleaned.length < 3 || cleaned.length > 3_000 || pending) {
       setNotice(
-        "Bitte begründen Sie die Wiedereröffnung mit 3 bis 3'000 Zeichen.",
+        tn(
+          "Bitte begründe die Wiedereröffnung mit 3 bis 3'000 Zeichen.",
+          "Bitte begründen Sie die Wiedereröffnung mit 3 bis 3'000 Zeichen.",
+        ),
       );
       return;
     }
@@ -1975,13 +1988,19 @@ function RequesterPortal({
       setShowReopen(false);
       setReason("");
       setNotice(
-        "Ihre Wiedereröffnungsanfrage wurde übermittelt. Der Ticketstatus wurde nicht automatisch geändert.",
+        tn(
+          "Deine Wiedereröffnungsanfrage wurde übermittelt. Der Ticketstatus wurde nicht automatisch geändert.",
+          "Ihre Wiedereröffnungsanfrage wurde übermittelt. Der Ticketstatus wurde nicht automatisch geändert.",
+        ),
       );
     } catch (error) {
       if (isUnavailable(error)) setAvailability("unavailable");
       else
         setNotice(
-          "Die Wiedereröffnungsanfrage konnte nicht übermittelt werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Wiedereröffnungsanfrage konnte nicht übermittelt werden. Bitte versuche es erneut.",
+            "Die Wiedereröffnungsanfrage konnte nicht übermittelt werden. Bitte versuchen Sie es erneut.",
+          ),
         );
     } finally {
       setPending(false);
@@ -1998,7 +2017,9 @@ function RequesterPortal({
       <div className="ticket-workbench__panel-heading">
         <div>
           <p className="eyebrow">ÖFFENTLICHER VERLAUF</p>
-          <h3 id="ticket-public-timeline-heading">Ihr Ticketverlauf</h3>
+          <h3 id="ticket-public-timeline-heading">
+            {tn("Dein Ticketverlauf", "Ihr Ticketverlauf")}
+          </h3>
         </div>
         <button
           aria-label="Ticketverlauf aktualisieren"
@@ -2184,7 +2205,10 @@ function ReopenRequests({
       if (isUnavailable(error)) setAvailability("unavailable");
       else
         setNotice(
-          "Die Entscheidung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Entscheidung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+            "Die Entscheidung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+          ),
         );
     } finally {
       setPending(false);

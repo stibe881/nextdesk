@@ -27,6 +27,7 @@ import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { useAppColors } from "@/lib/themed-styles";
 import { useAppActiveInterval } from "@/lib/use-app-active-interval";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 const FILTERS: { key: IncidentFilter; label: string }[] = [
   { key: "active", label: "Aktiv" },
@@ -145,9 +146,7 @@ export default function IncidentsScreen() {
           <Text style={styles.eyebrow}>BETRIEB</Text>
           <Text style={styles.title}>Störungen</Text>
           <Text style={styles.subtitle}>
-            Meldungen aus PRTG. Bestätige eine Störung, sobald du dich darum
-            kümmerst. Meldet PRTG wieder OK, gilt sie als behoben – abschliessen
-            mit Ursache musst du sie selbst.
+            {tn("Meldungen aus PRTG. Bestätige eine Störung, sobald du dich darum kümmerst. Meldet PRTG wieder OK, gilt sie als behoben – abschliessen mit Ursache musst du sie selbst.", "Meldungen aus PRTG. Bestätigen Sie eine Störung, sobald Sie sich darum kümmern. Meldet PRTG wieder OK, gilt sie als behoben – abschliessen mit Ursache müssen Sie sie selbst.")}
           </Text>
         </View>
 

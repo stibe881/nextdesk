@@ -24,6 +24,7 @@ import {
 import { loadServiceTask, updateServiceTask } from "@/lib/service-tasks";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 /**
  * Serviceaufgabe aus einer Mitteilung («heute fällig», «überfällig»): zeigt
@@ -126,8 +127,7 @@ export default function ServiceTaskScreen() {
           <ActivityIndicator color={colors.primary} />
         ) : !enabled ? (
           <Text style={styles.hint}>
-            Serviceaufgaben sind in deinem Arbeitsbereich nicht freigeschaltet
-            oder dir fehlt die Berechtigung.
+            {tn("Serviceaufgaben sind in deinem Arbeitsbereich nicht freigeschaltet oder dir fehlt die Berechtigung.", "Serviceaufgaben sind in Ihrem Arbeitsbereich nicht freigeschaltet oder Ihnen fehlt die Berechtigung.")}
           </Text>
         ) : error && !task ? (
           <Text accessibilityRole="alert" style={styles.error}>
@@ -257,7 +257,7 @@ export default function ServiceTaskScreen() {
             ) : null}
             {!canExecute && open ? (
               <Text style={styles.hint}>
-                Du kannst diese Aufgabe ansehen, aber nicht erledigen.
+                {tn("Du kannst diese Aufgabe ansehen, aber nicht erledigen.", "Sie können diese Aufgabe ansehen, aber nicht erledigen.")}
               </Text>
             ) : null}
             {notice ? (
@@ -271,8 +271,7 @@ export default function ServiceTaskScreen() {
               </Text>
             ) : null}
             <Text style={styles.hint}>
-              Vorlagen, Planung und Verlauf findest du in der Web-App unter
-              «Serviceaufgaben».
+              {tn("Vorlagen, Planung und Verlauf findest du in der Web-App unter «Serviceaufgaben».", "Vorlagen, Planung und Verlauf finden Sie in der Web-App unter «Serviceaufgaben».")}
             </Text>
           </>
         )}

@@ -28,6 +28,7 @@ import {
 } from "@/lib/nextdesk-client";
 import { withTimeout } from "@/lib/pkce";
 import { IMPRINT_URL, PRIVACY_URL, SUPPORT_URL } from "@/lib/site-links";
+import { tn } from "@/lib/formality";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -91,7 +92,7 @@ export default function AuthScreen() {
     (pending === null && typeof authError === "string"
       ? nextDeskAuthFailureMessage(authError)
       : accountDeleted === "1"
-        ? "Dein Konto wurde gelöscht."
+        ? tn("Dein Konto wurde gelöscht.", "Ihr Konto wurde gelöscht.")
         : "");
 
   async function continueWithSso() {
@@ -170,7 +171,7 @@ export default function AuthScreen() {
           setMessage("Die Anmeldung wird in Safari geöffnet …");
           await openNativeSsoInSafari(providerUrl);
           setMessage(
-            "Melde dich in Safari an. nextDesk öffnet sich danach automatisch.",
+            tn("Melde dich in Safari an. nextDesk öffnet sich danach automatisch.", "Melden Sie sich in Safari an. nextDesk öffnet sich danach automatisch."),
           );
         } else {
           setMessage("Die SSO-Anmeldung wurde abgebrochen.");
@@ -185,11 +186,11 @@ export default function AuthScreen() {
         setMessage("Die Anmeldung wird in Safari geöffnet …");
         await openNativeSsoInSafari(providerUrl);
         setMessage(
-          "Melde dich in Safari an. nextDesk öffnet sich danach automatisch.",
+          tn("Melde dich in Safari an. nextDesk öffnet sich danach automatisch.", "Melden Sie sich in Safari an. nextDesk öffnet sich danach automatisch."),
         );
       } else {
         setMessage(
-          "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuche die SSO-Anmeldung erneut.",
+          tn("Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuche die SSO-Anmeldung erneut.", "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuchen Sie die SSO-Anmeldung erneut."),
         );
       }
     } catch (error) {
@@ -297,8 +298,8 @@ export default function AuthScreen() {
         <Text style={styles.brand}>nextDesk</Text>
         <Text style={styles.title}>
           {registering
-            ? "Tickets und Aufgaben für dich und dein Team."
-            : "Melde dich an, um deine Tickets zu bearbeiten."}
+            ? tn("Tickets und Aufgaben für dich und dein Team.", "Tickets und Aufgaben für Sie und Ihr Team.")
+            : tn("Melde dich an, um deine Tickets zu bearbeiten.", "Melden Sie sich an, um Ihre Tickets zu bearbeiten.")}
         </Text>
 
         {registering ? (

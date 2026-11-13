@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { OnboardingDepartmentTasks } from "./onboarding-department-tasks";
 import {
@@ -336,7 +337,7 @@ function AssetReturnsPanel({
       setError(
         await functionErrorMessage(
           loadError,
-          "Die Geräte konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+          tn("Die Geräte konnten nicht geladen werden. Bitte versuche es erneut.", "Die Geräte konnten nicht geladen werden. Bitte versuchen Sie es erneut."),
         ),
       );
     } finally {
@@ -457,8 +458,14 @@ function AssetReturnsPanel({
             <div className="onboarding__returns-picker">
               <p className="onboarding__hint">
                 {overview.matches.length > 1
-                  ? `Mehrere Personen heissen «${entry.employeeName}». Bitte wählen Sie die richtige Person aus.`
-                  : `Zu «${entry.employeeName}» wurde keine Person mit Geräten gefunden. Bitte wählen Sie die Person aus, deren Geräte zurückgegeben werden.`}
+                  ? tn(
+                      `Mehrere Personen heissen «${entry.employeeName}». Bitte wähle die richtige Person aus.`,
+                      `Mehrere Personen heissen «${entry.employeeName}». Bitte wählen Sie die richtige Person aus.`,
+                    )
+                  : tn(
+                      `Zu «${entry.employeeName}» wurde keine Person mit Geräten gefunden. Bitte wähle die Person aus, deren Geräte zurückgegeben werden.`,
+                      `Zu «${entry.employeeName}» wurde keine Person mit Geräten gefunden. Bitte wählen Sie die Person aus, deren Geräte zurückgegeben werden.`,
+                    )}
               </p>
               <label>
                 Person
@@ -790,7 +797,7 @@ export function Onboarding({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Eintritte konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+          tn("Die Eintritte konnten nicht geladen werden. Bitte versuche es erneut.", "Die Eintritte konnten nicht geladen werden. Bitte versuchen Sie es erneut."),
         ),
       );
     } finally {
@@ -848,7 +855,7 @@ export function Onboarding({
       !draft.templateId
     ) {
       setErrorMessage(
-        "Bitte füllen Sie Name, Eintrittsdatum, Führungsperson, ICT-Verantwortung und Vorlage aus.",
+        tn("Bitte fülle Name, Eintrittsdatum, Führungsperson, ICT-Verantwortung und Vorlage aus.", "Bitte füllen Sie Name, Eintrittsdatum, Führungsperson, ICT-Verantwortung und Vorlage aus."),
       );
       return;
     }
@@ -882,7 +889,7 @@ export function Onboarding({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Der Eintritt konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+          tn("Der Eintritt konnte nicht erstellt werden. Bitte versuche es erneut.", "Der Eintritt konnte nicht erstellt werden. Bitte versuchen Sie es erneut."),
         ),
       );
     } finally {
@@ -1206,9 +1213,18 @@ export function Onboarding({
         >
           <FormCard title="Ausnahmeticket">
             <FormNote>
-              Erstellen Sie das Ticket zuerst bewusst im Bereich «Tickets».
-              Danach verknüpfen Sie dessen Ticketnummer mit «
-              {exceptionTarget.taskTitle}».
+              {tn(
+                <>
+                  Erstelle das Ticket zuerst bewusst im Bereich «Tickets».
+                  Danach verknüpfst du dessen Ticketnummer mit «
+                  {exceptionTarget.taskTitle}».
+                </>,
+                <>
+                  Erstellen Sie das Ticket zuerst bewusst im Bereich «Tickets».
+                  Danach verknüpfen Sie dessen Ticketnummer mit «
+                  {exceptionTarget.taskTitle}».
+                </>,
+              )}
             </FormNote>
             <FormGrid cols={2}>
               <FormField label="Ticketnummer" required>
@@ -1430,8 +1446,10 @@ export function Onboarding({
             <div>
               <strong>Noch keine Eintritte sichtbar</strong>
               <p>
-                Planen Sie einen Eintritt, damit Zuständigkeiten und
-                Fälligkeiten vorbereitet sind.
+                {tn(
+                  "Plane einen Eintritt, damit Zuständigkeiten und Fälligkeiten vorbereitet sind.",
+                  "Planen Sie einen Eintritt, damit Zuständigkeiten und Fälligkeiten vorbereitet sind.",
+                )}
               </p>
             </div>
           </div>

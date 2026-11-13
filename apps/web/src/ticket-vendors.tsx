@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { LoaderCircle, Pencil, Plus } from "lucide-react";
+import { tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 import { FormField, FormGrid, FormSwitch } from "./form-kit";
@@ -56,7 +57,10 @@ async function vendorError(error: unknown, fallback: string): Promise<string> {
         return "Ein Drittanbieter mit diesem Namen ist bereits erfasst.";
       }
       if (code === "vendor_manage_denied") {
-        return "Für die Verwaltung der Drittanbieter fehlt Ihnen die Berechtigung «Automationen verwalten».";
+        return tn(
+          "Für die Verwaltung der Drittanbieter fehlt dir die Berechtigung «Automationen verwalten».",
+          "Für die Verwaltung der Drittanbieter fehlt Ihnen die Berechtigung «Automationen verwalten».",
+        );
       }
     } catch {
       // fall through to the generic message
@@ -119,7 +123,12 @@ export function TicketVendors({ tenantId }: { tenantId: string }) {
     if (!draft) return;
     const hours = Number(draft.reminderAfterHours);
     if (draft.name.trim().length < 2) {
-      setError("Bitte geben Sie einen Namen mit mindestens 2 Zeichen ein.");
+      setError(
+        tn(
+          "Bitte gib einen Namen mit mindestens 2 Zeichen ein.",
+          "Bitte geben Sie einen Namen mit mindestens 2 Zeichen ein.",
+        ),
+      );
       return;
     }
     if (!Number.isInteger(hours) || hours < 1 || hours > 2160) {

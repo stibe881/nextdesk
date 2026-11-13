@@ -62,7 +62,7 @@ Die UI folgt dem Stil **„ruhige operative Klarheit“**: informationsdichte, a
 
 ## Hintergrundarbeit und Integrationen
 
-Zeitbasierte SLA-Prüfungen, E-Mail-Abholung, Webhooks, Exporte, Malware-Scans und Zustellwiederholungen sind zustandsbehaftete Jobs. Sie werden als Datenbank-Job mit Idempotenzschlüssel und Retry-Status modelliert und durch einen externen Scheduler oder einen dafür geeigneten Serverless-Trigger ausgelöst. Statisches Webhosting wird nicht als dauerhafter Worker missbraucht.
+Zeitbasierte SLA-Prüfungen, E-Mail-Abholung, Webhooks, Exporte, Malware-Scans und Zustellwiederholungen sind zustandsbehaftete Jobs. Diese werden als Datenbank-Job mit Idempotenzschlüssel und Retry-Status modelliert und durch einen externen Scheduler oder einen dafür geeigneten Serverless-Trigger ausgelöst. Statisches Webhosting wird nicht als dauerhafter Worker missbraucht.
 
 ## Nicht Teil von Phase 1
 

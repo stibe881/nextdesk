@@ -26,7 +26,7 @@ gegliedert:
 | Betrieb              | Funktionen, SLA, Ticket-Lebenszyklus, Ticketfelder, Abteilungen, E-Mail-Vorlagen, Monitoring |
 | Zugriff & Sicherheit | Personen, Rollen, Datenschutz, Protokoll                                                     |
 
-Mit **Schliessen** kehren Sie in den Arbeitsbereich zurück.
+Mit **Schliessen** kehrst du in den Arbeitsbereich zurück.
 
 ![Einstellungen – Mandantenüberblick mit Checkliste «Bereit für den Arbeitsstart»](images/ad-einstellungen.jpg)
 
@@ -35,12 +35,12 @@ Mit **Schliessen** kehren Sie in den Arbeitsbereich zurück.
 Der **Mandantenüberblick** zeigt Portalname, Support-E-Mail, Ticketzugang und
 externen Ticketzugang. Darunter führt die Checkliste **«Bereit für den
 Arbeitsstart»** durch die wichtigsten Einrichtungsschritte; jeder Punkt
-springt direkt in das passende Register. Arbeiten Sie die Checkliste beim
+springt direkt in das passende Register. Arbeite die Checkliste beim
 Start eines neuen Mandanten von oben nach unten ab.
 
 ## Design (Corporate Design)
 
-Unter **Design → Corporate Design bearbeiten** passen Sie das Portal an Ihr
+Unter **Design → Corporate Design bearbeiten** passt du das Portal an dein
 Unternehmen an:
 
 - **Portalname** (optional, max. 160 Zeichen). Leer lassen, wenn nur das Logo
@@ -50,14 +50,16 @@ Unternehmen an:
 - **Primärfarbe, Sekundärfarbe, Akzentfarbe**.
 
 Die **Portalansicht** zeigt die Wirkung sofort. Mit **Corporate Design
-speichern** übernehmen Sie die Änderungen für alle Personen des Mandanten.
+speichern** übernimmst du die Änderungen für alle Personen des Mandanten.
 
 ![Corporate Design mit Farbwahl und Vorschau](images/ad-branding.jpg)
 
+**Anrede:** Unter **Design → Anrede** legst du fest, ob nextDesk alle Texte duzt (Standard) oder siezt. Die Einstellung gilt für die Oberfläche, die Mobile-App, E-Mails, Mitteilungen und die Handbücher und wirkt sofort für alle Personen des Mandanten.
+
 ## Funktionen & Integrationen
 
-Im Register **Funktionen** schalten Sie Module für den ganzen Mandanten ein
-oder aus. Suchen Sie über **Funktionen durchsuchen** oder filtern Sie nach
+Im Register **Funktionen** schaltest du Module für den ganzen Mandanten ein
+oder aus. Suche über **Funktionen durchsuchen** oder filtere nach
 _Alle / Aktiv / Deaktiviert_. Jede Karte hat **Aktivieren** bzw.
 **Deaktivieren** und – wo vorhanden – **Konfigurieren**.
 
@@ -85,7 +87,7 @@ Wichtige Funktionen und ihre Konfiguration:
 
 ### Microsoft Teams im Shop
 
-Die Funktion **Microsoft Teams im Shop** ist standardmässig aus. Schalten Sie
+Die Funktion **Microsoft Teams im Shop** ist standardmässig aus. Schalte
 sie ein, damit Mitarbeitende im Shop neue Teams bestellen können (Wizard mit
 Kanälen, Personen und Laufzeit; Erinnerung 14, 7 und 1 Tag vor dem Ende,
 danach Archivierung) und das Menü **Teams** erscheint.
@@ -133,11 +135,11 @@ Unter **Funktionen → SLA-Automatisierung → Konfigurieren**:
 - **Erinnern, lösen, schliessen** (läuft stündlich) hat ein eigenes Register
   **Ticket-Lebenszyklus**, siehe unten.
 - **Regeln für neue Tickets**: Auslöser «Beim Erstellen eines Tickets» oder
-  «Zeitgesteuert». Im Teil **Wenn …** definieren Sie Bedingungen (z. B.
+  «Zeitgesteuert». Im Teil **Wenn …** definierst du Bedingungen (z. B.
   Stichworte in Betreff oder Beschreibung), im Teil **… dann** die Aktion
   (Team zuweisen, Person zuweisen, Priorität setzen). **Regel speichern**.
 - **Neue Tickets automatisch einordnen** (KI-Triage).
-- **Automatisierungen**: Mit **Vorschau ausführen** prüfen Sie Regeln vor
+- **Automatisierungen**: Mit **Vorschau ausführen** prüfst du Regeln vor
   dem Einsatz, das **Prüfintervall in Tagen** erinnert an die regelmässige
   Kontrolle.
 - **Drittanbieter**: externe Lieferanten, an die Agenten Tickets übergeben
@@ -152,18 +154,18 @@ Firma (z. B. Hersteller oder Support-Partner) weitergeben. Dafür muss
 mindestens ein Drittanbieter erfasst sein. Sonst zeigt der Dialog den Hinweis
 «Es sind noch keine Drittanbieter erfasst».
 
-1. Öffnen Sie **Funktionen → SLA-Automatisierung → Konfigurieren** und
-   scrollen Sie zum Bereich **Drittanbieter**.
-2. Wählen Sie **Drittanbieter erfassen** und füllen Sie aus: _Name_ (Pflicht),
+1. Öffne **Funktionen → SLA-Automatisierung → Konfigurieren** und
+   scrolle zum Bereich **Drittanbieter**.
+2. Wähle **Drittanbieter erfassen** und fülle aus: _Name_ (Pflicht),
    _E-Mail_, _Telefon_ und _Erinnerung nach (Stunden)_.
-3. Lassen Sie **Aktiv** eingeschaltet und wählen Sie **Speichern**.
+3. Lass **Aktiv** eingeschaltet und wähle **Speichern**.
 
 _Erinnerung nach (Stunden)_ ist die Frist, nach der die zugewiesene Person
 erinnert wird, wenn der Anbieter nicht antwortet. Erlaubt sind 1 bis 2160
-Stunden (90 Tage), voreingestellt sind 48. Mit dem Stift bearbeiten Sie einen
-Eintrag; mit **Aktiv** schalten Sie einen Anbieter ab, ohne ihn zu löschen.
+Stunden (90 Tage), voreingestellt sind 48. Mit dem Stift bearbeitest du einen
+Eintrag; mit **Aktiv** schaltest du einen Anbieter ab, ohne ihn zu löschen.
 
-> Sie benötigen die Berechtigung **Automationen verwalten**. Ohne sie
+> Du benötigst die Berechtigung **Automationen verwalten**. Ohne sie
 > verweist der Dialog der Agenten auf die Mandantenadministration.
 
 Bei der Übergabe wechselt das Ticket auf **Wartend auf Drittanbieter**. Ist es
@@ -187,7 +189,7 @@ Das automatische Schliessen verlangt keine SLA-Ursache.
 ## SLA-Regeln
 
 Das Register **SLA** erscheint, sobald die SLA-Automatisierung aktiv ist.
-Mit **Neue SLA-Regel** legen Sie fest:
+Mit **Neue SLA-Regel** legst du fest:
 
 - **Name der Regel** und **Definition & Auswirkung**
 - **Priorität** und **Abteilung** (oder _Mandantenweit_)
@@ -201,13 +203,13 @@ Leitungen richten sich danach: «Team: Ticket ohne Antwort» kommt, sobald die
 **Reaktionszeit** in Servicezeit abgelaufen ist (ohne SLA nach 24 Stunden
 Servicezeit), «Team: SLA in Gefahr» eine Stunde vor Ablauf der Lösungszeit.
 
-Unter **Aktuelle Eskalationen** sehen Sie Tickets, deren SLA gefährdet oder
-verletzt ist. Nicht mehr benötigte Regeln **archivieren** Sie, statt sie zu
+Unter **Aktuelle Eskalationen** siehst du Tickets, deren SLA gefährdet oder
+verletzt ist. Nicht mehr benötigte Regeln **archivierst** du, statt sie zu
 löschen.
 
 ### SLA-Pause nach Status
 
-Im Abschnitt **SLA-Pause nach Status** legen Sie pro offenem Status fest, ob
+Im Abschnitt **SLA-Pause nach Status** legst du pro offenem Status fest, ob
 er **die SLA anhält**. Voreingestellt (auch für neue Mandanten) halten
 **Wartend**, **Wartend auf Kunde** und **Wartend auf Drittanbieter** die SLA
 an; abgeschlossene Status erscheinen nicht, dort endet die SLA ohnehin.
@@ -222,7 +224,7 @@ an; abgeschlossene Status erscheinen nicht, dort endet die SLA ohnehin.
   Tickets galt. Das gilt auch, wenn ein pausiertes Ticket direkt gelöst oder
   geschlossen wird, damit die Wartezeit in den SLA-Berichten nicht zählt.
 - Bereits überschrittene Fristen bleiben überschritten.
-- Ändern Sie die Einstellung, werden offene Tickets in diesem Status sofort
+- Änderst du die Einstellung, werden offene Tickets in diesem Status sofort
   pausiert bzw. fortgesetzt.
 
 Die Einstellung braucht die mandantenweite Berechtigung **SLA-Profile
@@ -232,11 +234,11 @@ verwalten**. Jede Änderung steht im Protokoll.
 
 ## Ticketfelder
 
-Unter **Ticketfelder** gestalten Sie das Ticketformular. Felder unter
-_Immer enthalten_ sind fix. Weitere Felder fügen Sie über **Feld auswählen**
+Unter **Ticketfelder** gestaltest du das Ticketformular. Felder unter
+_Immer enthalten_ sind fix. Weitere Felder fügst du über **Feld auswählen**
 bzw. **Feld hinzufügen** hinzu, legen den Feldtyp fest, markieren sie bei
 Bedarf als **Pflichtfeld** und speichern mit **Feld speichern**. Die
-Reihenfolge ändern Sie per Ziehen und Ablegen.
+Reihenfolge änderst du per Ziehen und Ablegen.
 
 ## Abteilungen und Teams
 
@@ -247,12 +249,12 @@ Im Register **Abteilungen**:
 2. **Abteilungsleitungen**: Leitung und Stellvertretung für interne
    Rückfragen zu Tickets.
 3. **Teams pro Abteilung**: Name, Abteilung und Supportstufe
-   (1st/2nd/3rd Level). Über **Mitglieder verwalten** ordnen Sie Agenten zu.
+   (1st/2nd/3rd Level). Über **Mitglieder verwalten** ordnest du Agenten zu.
 4. **Module pro Abteilung**: welche Abteilung welche Zusatzmodule nutzt.
 
 ## E-Mail-Vorlagen
 
-Im Register **E-Mail-Vorlagen** steuern Sie alle E-Mails, die nextDesk
+Im Register **E-Mail-Vorlagen** steuerst du alle E-Mails, die nextDesk
 automatisch versendet. Die Vorlagen sind nach Kategorie geordnet:
 
 - **Tickets**: Eingangsbestätigung, Antwort des Supports, Ticket gelöst
@@ -264,21 +266,21 @@ automatisch versendet. Die Vorlagen sind nach Kategorie geordnet:
   Benachrichtigungen an Mitarbeitende
 - **Statusseite**: Anmeldung bestätigen und Statusänderung
 
-Jede Vorlage hat rechts einen Schieber. Damit schalten Sie den Versand sofort
+Jede Vorlage hat rechts einen Schieber. Damit schaltest du den Versand sofort
 ein oder aus; ausgeschaltet wird diese E-Mail nicht mehr gesendet (die
-Nachricht bleibt als «Vorlage deaktiviert» markiert). Öffnen Sie eine Vorlage,
+Nachricht bleibt als «Vorlage deaktiviert» markiert). Öffne eine Vorlage,
 um die Texte zu bearbeiten:
 
 1. Betreff, Überschriften, Texte und Hinweise anpassen. In den Feldern steht
-   genau der Text, der versendet wird. Rechts sehen Sie eine **Vorschau mit
+   genau der Text, der versendet wird. Rechts siehst du eine **Vorschau mit
    Beispieldaten**, die sich beim Tippen aktualisiert. Ein geleertes Feld
    verwendet wieder den Standardtext.
 2. Mit Platzhaltern wie `{{ticketNumber}}`, `{{ticketSubject}}` oder
-   `{{portalName}}` fügen Sie Werte ein. Welche Platzhalter gelten, steht
+   `{{portalName}}` fügst du Werte ein. Welche Platzhalter gelten, steht
    unter dem Formular.
-3. **Speichern**. Mit **Auf Standard** setzen Sie die Vorlage zurück.
+3. **Speichern**. Mit **Auf Standard** setzt du die Vorlage zurück.
 
-Der Text einer Antwort des Supports (was Ihre Agenten im Ticket schreiben)
+Der Text einer Antwort des Supports (was deine Agenten im Ticket schreiben)
 und die Details der Ereignisse
 (z. B. Ticketbetreff in Benachrichtigungen) bleiben unverändert. Die Schalter
 unter _Funktionen → E-Mail-Kanäle_ (Eingangsbestätigung, Agentenantworten,
@@ -289,24 +291,24 @@ Lösung) gelten zusätzlich: Eine E-Mail wird nur gesendet, wenn beide aktiv sin
 Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
 
 - **Monitoring (PRTG)** – Störungen aus PRTG-Alarmen (ohne Tickets, im
-  Bereich **Sicherheit und Störungen**, Eintrag **Störungen**). Sie wählen das **Team für die Alarmierung**
+  Bereich **Sicherheit und Störungen**, Eintrag **Störungen**). Du wählst das **Team für die Alarmierung**
   (nur dieses Team sieht Störungen),
   ob auch Warnungen eine Störung öffnen, wie oft unbestätigte Störungen erneut
   alarmieren, ob Folgestörungen gebündelt werden und ob während einer Wartung
   alarmiert wird. Ist die Option
   «Systemstatus des verknüpften Dienstes anpassen» aktiv, ändern Alarme den
   Status der Dienste, die am Gerät in der Infrastruktur hinterlegt sind (ein
-  Gerät kann mehrere Dienste haben). Unter **Alarme aus PRTG** beenden Sie
+  Gerät kann mehrere Dienste haben). Unter **Alarme aus PRTG** beendest du
   einen hängenden Alarm mit **Alarm beenden**.
 - **Externe Statusquellen** – offizielle Statusmeldungen von Anbietern, die
-  alle 5 Minuten gelesen werden: Microsoft 365 (alle Dienste Ihres Mandanten,
+  alle 5 Minuten gelesen werden: Microsoft 365 (alle Dienste deines Mandanten,
   auch Teams, Outlook, OneDrive, SharePoint), GitHub, Claude, Google Gemini,
-  Apple App Store, Google Play Store und Init7. Haken Sie die gewünschten
-  Quellen an und **speichern** Sie; **Jetzt prüfen** liest sie sofort. Eine
+  Apple App Store, Google Play Store und Init7. Hake die gewünschten
+  Quellen an und **speichere** sie; **Jetzt prüfen** liest sie sofort. Eine
   gemeldete Störung erscheint unter **Störungen** als «Extern» und
-  benachrichtigt das Team für die Alarmierung, ebenso jedes Update des Anbieters und die Behebung. Pro Quelle sehen Sie,
+  benachrichtigt das Team für die Alarmierung, ebenso jedes Update des Anbieters und die Behebung. Pro Quelle siehst du,
   wann zuletzt geprüft wurde und ob ein Fehler auftrat. WWZ und Swisscom
-  bieten keine maschinenlesbare Quelle; überwachen Sie diese Anschlüsse mit
+  bieten keine maschinenlesbare Quelle; überwache diese Anschlüsse mit
   einem Ping- oder HTTP-Sensor in PRTG.
 - **Zertifikate und Domains** – Erinnerung vor Ablauf
 - **Backup-Überwachung** – z. B. Veeam-Jobs per E-Mail oder Webhook
@@ -315,7 +317,7 @@ Die Einrichtung ist in der _Installationsanleitung_ beschrieben.
 
 ## Personen und Agenten
 
-Im Register **Personen** (Überschrift «Personen & Agenten») verwalten Sie
+Im Register **Personen** (Überschrift «Personen & Agenten») verwaltest du
 alle Zugänge.
 
 ### Person einladen
@@ -328,11 +330,11 @@ alle Zugänge.
    Zusammenfassung links.
 3. **Einladung versenden**. Die Einladung ist 7 Tage gültig.
 
-Offene Einladungen sehen Sie unter **Offene Einladungen** und können sie dort
+Offene Einladungen siehst du unter **Offene Einladungen** und kannst sie dort
 widerrufen. Darunter stehen die Listen **Agenten** (mit Suche) und
 **Angemeldete Personen**.
 
-Mit **Bearbeiten** ändern Sie bei einer Person Name, vorgesetzte Person,
+Mit **Bearbeiten** änderst du bei einer Person Name, vorgesetzte Person,
 Ticketzugriffsbereich und **Team** (z. B. _Servicedesk_ oder _System
 Engineer_). Die Teams erscheinen, sobald der Ticketzugriffsbereich gewählt
 ist – bei Agenten und bei Mandantenadministratoren, die automatisch
@@ -347,60 +349,60 @@ Agentenzugang haben. Speichern mit **Person speichern**.
 ### Personen aus Microsoft Entra
 
 Ist der Verzeichnisabgleich eingerichtet, erscheinen Personen aus Entra in
-der Liste. Sie können eine Person **als Agent vormerken** – Name, vorgesetzte
+der Liste. Du kannst eine Person **als Agent vormerken** – Name, vorgesetzte
 Person, Ticketzugriffsbereich und Team werden bei der ersten
 Microsoft-Anmeldung übernommen.
 
 ## Rollen und Berechtigungen
 
-Das Register **Rollen** («Rollen & Zugriffe») hat zwei Ansichten, die Sie
+Das Register **Rollen** («Rollen & Zugriffe») hat zwei Ansichten, die du
 oben umschalten:
 
 **Personen zuweisen**
 
-- Suchen Sie über **Person suchen …** und filtern Sie nach **Agenten** oder
+- Suche über **Person suchen …** und filtere nach **Agenten** oder
   **Alle Personen**.
-- In der Tabelle setzen Sie pro Person ein Häkchen bei der gewünschten Rolle;
+- In der Tabelle setzt du pro Person ein Häkchen bei der gewünschten Rolle;
   ohne Häkchen ist die Rolle wieder entzogen. Die Änderung wirkt sofort für
   den ganzen Mandanten.
 - Rollen, die nur für eine Abteilung oder ein Team gelten, stehen unter
-  **Auf Abteilung oder Team begrenzte Zuweisungen**; dort nehmen Sie sie mit
+  **Auf Abteilung oder Team begrenzte Zuweisungen**; dort nimmst du sie mit
   **Entziehen** wieder weg.
 
 **Rollen definieren**
 
-- Links wählen Sie eine bestehende Rolle oder **+ Neue Rolle**.
+- Links wählst du eine bestehende Rolle oder **+ Neue Rolle**.
   Systemrollen sind mit «System» markiert und geschützt.
-- Bei einer neuen Rolle geben Sie den **Namen der neuen Rolle** ein, wählen
+- Bei einer neuen Rolle gibst du den **Namen der neuen Rolle** ein, wählst
   unter **Berechtigungen** die gewünschten Rechte (je Gruppe mit **Alle
   auswählen**) und klicken auf **Rolle erstellen**. Unter jeder Berechtigung
   steht kurz, was sie erlaubt; Rechte mit weitreichendem Zugriff sind als
   «Erweitert» markiert.
-- Bestehende eigene Rollen ändern Sie und speichern mit **Änderungen
-  speichern**; mit **Rolle deaktivieren** bzw. **Rolle aktivieren** schalten
-  Sie sie ab oder wieder ein.
+- Bestehende eigene Rollen änderst du und speicherst mit **Änderungen
+  speichern**; mit **Rolle deaktivieren** bzw. **Rolle aktivieren** schaltest
+  du sie ab oder wieder ein.
 
 Für die IP-Adressverwaltung gibt es die Rechte «IP-Adressverwaltung
 ansehen» und «IP-Adressen, Subnetze und VLANs verwalten». Bestehende Rollen
 mit Asset-Verwaltung haben beide Rechte erhalten, Rollen mit Asset-Lesen das
-Ansehen; passen Sie das bei Bedarf hier an. Das Modul lässt sich wie andere
+Ansehen; passe das bei Bedarf hier an. Das Modul lässt sich wie andere
 Module pro Abteilung einschalten; Subnetze, VLANs und Standorte mit einer
 Abteilung sehen nur deren Mitglieder.
 
 **IP-Adressverwaltung: API und Webhooks**
 
 Im Register **API & Webhooks** der IP-Adressverwaltung (Recht «IP-Adressen,
-Subnetze und VLANs verwalten») richten Sie die REST-API für andere Systeme
+Subnetze und VLANs verwalten») richtest du die REST-API für andere Systeme
 ein:
 
 - **API-Schlüssel**: Name und Rechte («Nur lesen» oder «Lesen und
   schreiben») wählen. Der Schlüssel wird nur einmal angezeigt; Systeme senden
   ihn als `Authorization: Bearer …`. Nicht mehr benötigte Schlüssel
-  widerrufen Sie sofort.
+  widerrufst du sofort.
 - **Webhooks**: Adresse (HTTPS) und Ereignisse wählen (z. B. Adresse
   reserviert, Subnetz geändert, neuer Fund). Jede Zustellung ist mit dem
-  angezeigten Geheimnis signiert; mit **Testen** senden Sie eine
-  Probenachricht, mit **Pausieren** halten Sie die Zustellung an.
+  angezeigten Geheimnis signiert; mit **Testen** sendest du eine
+  Probenachricht, mit **Pausieren** hältst du die Zustellung an.
 
 Die Beschreibung der Endpunkte liegt im Repository unter
 `docs/ipam-api.openapi.yaml`, Beispiele unter `docs/ipam-api-beispiele.md`.
@@ -417,7 +419,7 @@ Die Basisrollen _Requester_ (alle angemeldeten Personen) und _Support agent_
 
 ## Datenschutz und Aufbewahrung
 
-Unter **Datenschutz** («Aufbewahrung & Datenschutz») legen Sie Fristen in
+Unter **Datenschutz** («Aufbewahrung & Datenschutz») legst du Fristen in
 Tagen fest für _Geschlossene Tickets_, _Private Anhänge_ und das
 _Audit-Protokoll_. Die **Rechtliche Aufbewahrungssperre** verhindert jede
 Bereinigung. Diese Werte sind Richtlinien – Tickets und Anhänge löscht
@@ -425,7 +427,7 @@ nextDesk nie automatisch. Ausnahmen: Gelöschte Tickets liegen 90 Tage im
 Papierkorb und werden danach endgültig entfernt, und die **Betriebsdaten**
 werden täglich bereinigt. Die Aufbewahrungssperre hält beides an.
 
-Unter **Betriebsdaten (automatische Bereinigung)** legen Sie die Fristen in
+Unter **Betriebsdaten (automatische Bereinigung)** legst du die Fristen in
 Monaten fest (1–120):
 
 | Bereich             | Standard  | Was bereinigt wird                                                                                        |
@@ -437,14 +439,14 @@ Monaten fest (1–120):
 ## Protokoll
 
 Das **Protokoll** (Änderungsprotokoll) zeichnet alle administrativen
-Änderungen auf. Filtern Sie nach Person, Aktion, Objekt, Schweregrad und
-Zeitraum, öffnen Sie einen Eintrag für _Änderungen_ und _Metadaten_ und
-exportieren Sie bei Bedarf als **CSV** oder **JSON**.
+Änderungen auf. Filtere nach Person, Aktion, Objekt, Schweregrad und
+Zeitraum, öffne einen Eintrag für _Änderungen_ und _Metadaten_ und
+exportiere bei Bedarf als **CSV** oder **JSON**.
 
 ## Systemstatus veröffentlichen
 
 Der **Systemstatus** liegt im Bereich **Dienste und Überwachung** (nicht in den Einstellungen).
-Dort planen Sie **Wartungen** und veröffentlichen eine **öffentliche
+Dort planst du **Wartungen** und veröffentlichst eine **öffentliche
 Statusseite** sowie ein **SharePoint-Badge** (SVG-Bild) für das Intranet.
 Das Badge in der Navigation und die Seiten aktualisieren sich selbst (intern
 alle 30 Sekunden, öffentlich jede Minute); ein manuelles Neuladen ist nicht
@@ -452,10 +454,10 @@ nötig.
 
 ### Störungsmeldungen
 
-Unter **Störungsmeldungen** erfassen Sie mit **Neue Meldung** eine Meldung mit
+Unter **Störungsmeldungen** erfasst du mit **Neue Meldung** eine Meldung mit
 **Titel**, **Zustand** (Wird untersucht, Ursache erkannt, Wird beobachtet,
 Behoben), **Text** und den **betroffenen Diensten**. Mit **Update erfassen**
-ergänzen Sie den Verlauf; jedes Update ändert Zustand und Text, der bisherige
+ergänzt du den Verlauf; jedes Update ändert Zustand und Text, der bisherige
 Verlauf bleibt sichtbar. Ist **Auf der öffentlichen Statusseite zeigen und
 Abonnenten informieren** aktiv, erscheint die Meldung auf der öffentlichen
 Statusseite (aktuelle Meldungen und die der letzten 14 Tage mit Verlauf).
@@ -469,7 +471,7 @@ mit der Berechtigung, Assets zu verwalten.
 
 Zu Beginn eines Wartungsfensters setzt nextDesk die verknüpften Dienste
 automatisch auf **Wartung** (Prüfung alle 5 Minuten) und merkt sich den
-vorherigen Status. Am Ende oder wenn Sie das Fenster abschliessen oder absagen,
+vorherigen Status. Am Ende oder wenn du das Fenster abschliesst oder absagst,
 wird der Status zurückgesetzt – aber nur, wenn der Dienst noch auf Wartung
 steht und kein anderes laufendes Fenster ihn betrifft. Während der Wartung
 unterdrückt die Monitoring-Anbindung Alarme für diese Dienste (sofern unter
@@ -482,14 +484,14 @@ dem Ende ein Eintrag im **Wartungsprotokoll** der Geräte.
 Mit **Verfügbarkeit in Prozent zeigen** erscheint auf der öffentlichen
 Statusseite pro Dienst die Verfügbarkeit der letzten 90 Tage (z. B. «99.8 % in
 90 Tagen»). Die Berechnung stützt sich auf den Statusverlauf: «In Betrieb» und
-«Wartung» gelten als verfügbar. Intern sehen Sie die Werte immer, ebenso im
+«Wartung» gelten als verfügbar. Intern siehst du die Werte immer, ebenso im
 **Servicebericht** (Abschnitt Verfügbarkeit) und in den **Details** eines
 Dienstes.
 
 ### Statusmeldungen per E-Mail
 
 Auf der öffentlichen Statusseite können sich Besucherinnen und Besucher unter
-**Per E-Mail benachrichtigen** mit ihrer Adresse anmelden. Sie erhalten zuerst
+**Per E-Mail benachrichtigen** mit ihrer Adresse anmelden. Diese erhalten zuerst
 eine Mail mit dem Knopf **Anmeldung bestätigen** (Schutz davor, dass fremde
 Adressen eingetragen werden). Danach bekommen sie bei jeder Statusänderung
 eines öffentlich sichtbaren Dienstes eine E-Mail mit altem und neuem Status,
@@ -498,13 +500,13 @@ Beginn und Ende eines öffentlichen Wartungsfensters je eine E-Mail (statt
 einzelner Mails pro Dienst). Jede Mail enthält einen Link **Abmelden**.
 
 Voraussetzung ist ein aktives Exchange-Postfach (Einstellungen → E-Mail); die
-Mails gehen über dieses Postfach. Text und Betreff passen Sie unter
+Mails gehen über dieses Postfach. Text und Betreff passt du unter
 **E-Mail-Vorlagen → Statusseite: Statusänderung** an.
 
 ## Eigenes Profil und Handbücher
 
-Ihre persönlichen Einstellungen öffnen Sie unten links über Ihren Namen →
-**Persönliche Einstellungen**. Unter **Handbücher** finden Sie alle vier
+Deine persönlichen Einstellungen öffnest du unten links über deinen Namen →
+**Persönliche Einstellungen**. Unter **Handbücher** findest du alle vier
 Handbücher.
 
 ![Persönliche Einstellungen eines Administrators mit allen Handbüchern](images/ad-profil.jpg)

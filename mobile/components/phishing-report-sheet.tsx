@@ -21,6 +21,7 @@ import {
   type PhishingSubmitResult,
 } from "@/lib/phishing-report";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 /**
  * «Phishing melden» (mobile): the person pastes the headers or the text of a
@@ -152,7 +153,7 @@ export function PhishingReportSheet({
                   anzeigen) oder den ganzen Text der E-Mail und füge ihn hier
                   ein.
                   {reportAddress
-                    ? ` Du kannst die E-Mail auch an ${reportAddress} weiterleiten.`
+                    ? tn(` Du kannst die E-Mail auch an ${reportAddress} weiterleiten.`, ` Sie können die E-Mail auch an ${reportAddress} weiterleiten.`)
                     : ""}
                 </Text>
                 <TextInput

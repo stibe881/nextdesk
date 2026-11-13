@@ -25,6 +25,7 @@ import {
   IncidentPublicMessageCard,
   IncidentTicketsCard,
 } from "./incidents-extras";
+import { tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
 import {
   ACTIVE_FILTERS,
@@ -322,10 +323,10 @@ export function Incidents({
           <p className="eyebrow">BETRIEB</p>
           <h2 id="incidents-title">Störungen</h2>
           <p>
-            Meldungen aus PRTG: eine Störung pro Gerät, Geräte hinter einem
-            gestörten Gerät als Folgestörung. Bestätigen Sie eine Störung,
-            sobald Sie sich darum kümmern. Meldet PRTG wieder OK, gilt sie als
-            behoben; abgeschlossen wird sie von Ihnen mit der Ursache.
+{tn(
+"Meldungen aus PRTG: eine Störung pro Gerät, Geräte hinter einem gestörten Gerät als Folgestörung. Bestätige eine Störung, sobald du dich darum kümmerst. Meldet PRTG wieder OK, gilt sie als behoben; abgeschlossen wird sie von dir mit der Ursache.",
+"Meldungen aus PRTG: eine Störung pro Gerät, Geräte hinter einem gestörten Gerät als Folgestörung. Bestätigen Sie eine Störung, sobald Sie sich darum kümmern. Meldet PRTG wieder OK, gilt sie als behoben; abgeschlossen wird sie von Ihnen mit der Ursache.",
+)}
           </p>
         </div>
         <button
@@ -729,7 +730,11 @@ function IncidentView({
     });
     if (value && parseCaseResult(value)) {
       setCaseFormOpen(false);
-      setNotice("Der Fall wurde eröffnet. Sie finden ihn unter «Fälle».");
+      setNotice(
+tn(
+"Der Fall wurde eröffnet. Du findest ihn unter «Fälle».",
+"Der Fall wurde eröffnet. Sie finden ihn unter «Fälle».",
+));
     }
   }
 
@@ -805,10 +810,11 @@ function IncidentView({
               <h2 id="incident-title">{detail.title}</h2>
               {detail.source === "external" ? (
                 <p className="incident__parent">
-                  Gemeldet von {detail.externalProvider ?? "einem Anbieter"}:
-                  Die Ursache liegt beim Anbieter, nicht in Ihrem Netz. Die
-                  Störung schliesst sich automatisch, sobald der Anbieter sie
-                  als behoben meldet.
+                  Gemeldet von {detail.externalProvider ?? "einem Anbieter"}:{" "}
+                  {tn(
+"Die Ursache liegt beim Anbieter, nicht in deinem Netz. Die Störung schliesst sich automatisch, sobald der Anbieter sie als behoben meldet.",
+"Die Ursache liegt beim Anbieter, nicht in Ihrem Netz. Die Störung schliesst sich automatisch, sobald der Anbieter sie als behoben meldet.",
+)}
                   {detail.externalUrl ? (
                     <>
                       {" "}
@@ -1195,10 +1201,11 @@ function IncidentView({
                 <article className="incident-card">
                   <h3>Gerät</h3>
                   <p className="incident-muted">
-                    «{detail.deviceName ?? detail.title}» ist keinem Gerät der
-                    Infrastruktur zugeordnet. Tragen Sie beim Gerät die
-                    PRTG-Objekt-ID ein, dann erscheinen Ort, Abhängigkeiten und
-                    Dienste.
+                    «{detail.deviceName ?? detail.title}»{" "}
+                    {tn(
+"ist keinem Gerät der Infrastruktur zugeordnet. Trage beim Gerät die PRTG-Objekt-ID ein, dann erscheinen Ort, Abhängigkeiten und Dienste.",
+"ist keinem Gerät der Infrastruktur zugeordnet. Tragen Sie beim Gerät die PRTG-Objekt-ID ein, dann erscheinen Ort, Abhängigkeiten und Dienste.",
+)}
                   </p>
                 </article>
               )}
@@ -1325,8 +1332,10 @@ function IncidentView({
                     </p>
                   ) : detail.state === "resolved" ? (
                     <p className="incident-muted">
-                      PRTG meldet wieder OK. Schliessen Sie die Störung mit der
-                      Ursache ab.
+{tn(
+"PRTG meldet wieder OK. Schliesse die Störung mit der Ursache ab.",
+"PRTG meldet wieder OK. Schliessen Sie die Störung mit der Ursache ab.",
+)}
                     </p>
                   ) : null}
                   <form

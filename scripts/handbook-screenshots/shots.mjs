@@ -144,7 +144,7 @@ export const SHOTS = [
       await h.clickText("Offene Tickets", { exact: true });
       await h.click("Kanban");
       await h.scrollToText(
-        "Ziehen Sie eine Karte in eine andere Spalte, um den Status zu ändern.",
+        "Ziehe eine Karte in eine andere Spalte, um den Status zu ändern.",
         90,
       );
     },
@@ -262,7 +262,7 @@ export const SHOTS = [
         .filter({ visible: true })
         .first();
       await textarea.fill(
-        "Guten Tag Herr Baumann\n\nIch habe Ihnen die neue VPN-Version 5.2 über das Unternehmensportal zugewiesen. Bitte starten Sie Ihren Laptop heute Abend neu und melden Sie sich morgen kurz, ob die Verbindung stabil bleibt.\n\nFreundliche Grüsse\nMara Keller",
+        "Hallo Reto\n\nIch habe dir die neue VPN-Version 5.2 über das Unternehmensportal zugewiesen. Bitte starte deinen Laptop heute Abend neu und melde dich morgen kurz, ob die Verbindung stabil bleibt.\n\nFreundliche Grüsse\nMara Keller",
       );
       await h.settle(400);
       await h.scrollTo(

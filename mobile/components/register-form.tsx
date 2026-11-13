@@ -10,6 +10,7 @@ import {
 } from "@/lib/nextdesk-client";
 import { PRIVACY_URL } from "@/lib/site-links";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 const CONFIRMATION_LINK_TTL_MS = 24 * 60 * 60 * 1_000;
 const MIN_PASSWORD_LENGTH = 8;
@@ -33,7 +34,7 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
     const displayName = name.trim().replace(/\s+/g, " ");
     const address = email.trim().toLowerCase();
     if (displayName.length < 2) {
-      setMessage("Bitte gib deinen Namen ein.");
+      setMessage(tn("Bitte gib deinen Namen ein.", "Bitte geben Sie Ihren Namen ein."));
       return;
     }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
@@ -89,8 +90,8 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
         detail.includes("password")
           ? "Dieses Passwort ist zu schwach. Bitte wähle ein längeres Passwort."
           : detail.includes("signup") || detail.includes("sign up")
-            ? "Die Registrierung ist derzeit nicht möglich. Bitte versuche es später erneut."
-            : "Das Konto konnte nicht erstellt werden. Bitte prüfe deine Angaben und versuche es erneut.",
+            ? tn("Die Registrierung ist derzeit nicht möglich. Bitte versuche es später erneut.", "Die Registrierung ist derzeit nicht möglich. Bitte versuchen Sie es später erneut.")
+            : tn("Das Konto konnte nicht erstellt werden. Bitte prüfe deine Angaben und versuche es erneut.", "Das Konto konnte nicht erstellt werden. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut."),
       );
     } finally {
       setPending(false);
@@ -100,12 +101,9 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
   if (done) {
     return (
       <View style={styles.wrap}>
-        <Text style={styles.heading}>Bestätige deine E-Mail-Adresse</Text>
+        <Text style={styles.heading}>{tn("Bestätige deine E-Mail-Adresse", "Bestätigen Sie Ihre E-Mail-Adresse")}</Text>
         <Text style={styles.copy}>
-          Wir haben dir eine E-Mail an {email.trim().toLowerCase()} gesendet.
-          Öffne den Bestätigungslink auf diesem iPhone. Danach kannst du deinen
-          Arbeitsbereich erstellen. Falls die Adresse bereits registriert ist,
-          enthält die E-Mail stattdessen einen Anmeldelink.
+          {tn(<>Wir haben dir eine E-Mail an {email.trim().toLowerCase()} gesendet. Öffne den Bestätigungslink auf diesem iPhone. Danach kannst du deinen Arbeitsbereich erstellen. Falls die Adresse bereits registriert ist, enthält die E-Mail stattdessen einen Anmeldelink.</>, <>Wir haben Ihnen eine E-Mail an {email.trim().toLowerCase()} gesendet. Öffnen Sie den Bestätigungslink auf diesem iPhone. Danach können Sie Ihren Arbeitsbereich erstellen. Falls die Adresse bereits registriert ist, enthält die E-Mail stattdessen einen Anmeldelink.</>)}
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -122,8 +120,7 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
     <View style={styles.wrap}>
       <Text style={styles.heading}>Konto erstellen</Text>
       <Text style={styles.copy}>
-        Auch ohne Firma: Du erhältst deinen eigenen Arbeitsbereich und kannst
-        Teammitglieder zur Zusammenarbeit einladen.
+        {tn("Auch ohne Firma: Du erhältst deinen eigenen Arbeitsbereich und kannst Teammitglieder zur Zusammenarbeit einladen.", "Auch ohne Firma: Sie erhalten Ihren eigenen Arbeitsbereich und können Teammitglieder zur Zusammenarbeit einladen.")}
       </Text>
       <TextInput
         accessibilityLabel="Name"

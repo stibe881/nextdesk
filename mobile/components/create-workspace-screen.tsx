@@ -16,6 +16,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { createPersonalWorkspace } from "@/lib/account";
 import { clearMobileWorkspace, nextDesk } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 /**
  * Shown after a self-registration: the person does not belong to any
@@ -72,9 +73,7 @@ export function CreateWorkspaceScreen() {
           <Text style={styles.eyebrow}>WILLKOMMEN BEI NEXTDESK</Text>
           <Text style={styles.title}>Arbeitsbereich erstellen</Text>
           <Text style={styles.copy}>
-            Dein Konto gehört noch zu keiner Organisation. Erstelle deinen
-            eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten.
-            Teammitglieder kannst du danach in den Einstellungen einladen.
+            {tn("Dein Konto gehört noch zu keiner Organisation. Erstelle deinen eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten. Teammitglieder kannst du danach in den Einstellungen einladen.", "Ihr Konto gehört noch zu keiner Organisation. Erstellen Sie Ihren eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten. Teammitglieder können Sie danach in den Einstellungen einladen.")}
           </Text>
           <TextInput
             accessibilityLabel="Name des Arbeitsbereichs"
@@ -108,9 +107,7 @@ export function CreateWorkspaceScreen() {
           </Pressable>
           {message ? <Text style={styles.message}>{message}</Text> : null}
           <Text style={styles.hint}>
-            Wurdest du von einem Team eingeladen? Öffne den Einladungslink aus
-            der E-Mail mit derselben E-Mail-Adresse – du wirst dann automatisch
-            dem Team zugeordnet.
+            {tn("Wurdest du von einem Team eingeladen? Öffne den Einladungslink aus der E-Mail mit derselben E-Mail-Adresse – du wirst dann automatisch dem Team zugeordnet.", "Wurden Sie von einem Team eingeladen? Öffnen Sie den Einladungslink aus der E-Mail mit derselben E-Mail-Adresse – Sie werden dann automatisch dem Team zugeordnet.")}
           </Text>
           <View style={styles.footer}>
             <Pressable

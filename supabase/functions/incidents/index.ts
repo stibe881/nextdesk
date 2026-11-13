@@ -1,3 +1,4 @@
+import { loadFormality } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import {
@@ -1240,7 +1241,7 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
             number: String(incident.number),
             title: String(incident.title),
             deviceName: text(incident.device_name),
-          }, action.cause, action.note),
+          }, action.cause, action.note, await loadFormality(admin, action.tenantId)),
         );
         if (tickets.notified) {
           await addEvent(admin, action.tenantId, action.incidentId, "note", actorId,

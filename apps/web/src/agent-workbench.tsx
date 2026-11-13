@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   AlertTriangle,
   AtSign,
@@ -510,11 +511,24 @@ function TeamQueuesPanel({
           </p>
         </div>
         <HelpHint label="Team-Warteschlangen">
-          Ihre eigenen Teams stehen oben. «Ohne Teamzuordnung» sind offene
-          Tickets, die noch keinem Team zugeteilt sind – verteilen Sie sie,
-          damit sich jemand zuständig fühlt. «ohne Bearbeiter» zählt Tickets,
-          die noch niemandem zugewiesen sind. Sie sehen nur Tickets, die Sie
-          öffnen dürfen; eine Warteschlange weist nichts automatisch zu.
+          {tn(
+            <>
+              Deine eigenen Teams stehen oben. «Ohne Teamzuordnung» sind offene
+              Tickets, die noch keinem Team zugeteilt sind – verteile sie,
+              damit sich jemand zuständig fühlt. «ohne Bearbeiter» zählt
+              Tickets, die noch niemandem zugewiesen sind. Du siehst nur
+              Tickets, die du öffnen darfst; eine Warteschlange weist nichts
+              automatisch zu.
+            </>,
+            <>
+              Ihre eigenen Teams stehen oben. «Ohne Teamzuordnung» sind offene
+              Tickets, die noch keinem Team zugeteilt sind – verteilen Sie sie,
+              damit sich jemand zuständig fühlt. «ohne Bearbeiter» zählt
+              Tickets, die noch niemandem zugewiesen sind. Sie sehen nur
+              Tickets, die Sie öffnen dürfen; eine Warteschlange weist nichts
+              automatisch zu.
+            </>,
+          )}
         </HelpHint>
       </div>
       {state === "loading" ? (
@@ -666,7 +680,10 @@ function MentionsPanel({
           onUnreadChange(0);
         } else {
           setMessage(
-            "Die Erwähnung konnte nicht als gelesen markiert werden. Bitte versuchen Sie es erneut.",
+            tn(
+              "Die Erwähnung konnte nicht als gelesen markiert werden. Bitte versuche es erneut.",
+              "Die Erwähnung konnte nicht als gelesen markiert werden. Bitte versuchen Sie es erneut.",
+            ),
           );
         }
       } finally {
@@ -701,7 +718,9 @@ function MentionsPanel({
           Erwähnungen sind für diesen Mandanten derzeit nicht verfügbar.
         </p>
       ) : mentions.length === 0 ? (
-        <p className="workbench-empty">Keine Erwähnungen in Ihrem Eingang.</p>
+        <p className="workbench-empty">
+{tn("Keine Erwähnungen in deinem Eingang.","Keine Erwähnungen in Ihrem Eingang.")}
+</p>
       ) : (
         <ul className="workbench-mention-list">
           {mentions.map((mention) => (
@@ -864,7 +883,10 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
       Date.parse(end) <= Date.parse(start)
     ) {
       setMessage(
-        "Bitte wählen Sie eine aktive Person sowie einen gültigen, positiven Zeitraum.",
+        tn(
+          "Bitte wähle eine aktive Person sowie einen gültigen, positiven Zeitraum.",
+          "Bitte wählen Sie eine aktive Person sowie einen gültigen, positiven Zeitraum.",
+        ),
       );
       return;
     }
@@ -892,7 +914,10 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
       if (isQuietUnavailable(error)) setState("unavailable");
       else {
         setMessage(
-          "Die Stellvertretung konnte nicht gespeichert werden. Prüfen Sie Zeitraum und Berechtigung.",
+          tn(
+            "Die Stellvertretung konnte nicht gespeichert werden. Prüfe Zeitraum und Berechtigung.",
+            "Die Stellvertretung konnte nicht gespeichert werden. Prüfen Sie Zeitraum und Berechtigung.",
+          ),
         );
       }
     } finally {
@@ -915,7 +940,10 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
       if (isQuietUnavailable(error)) setState("unavailable");
       else {
         setMessage(
-          "Die Stellvertretung konnte nicht beendet werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Stellvertretung konnte nicht beendet werden. Bitte versuche es erneut.",
+            "Die Stellvertretung konnte nicht beendet werden. Bitte versuchen Sie es erneut.",
+          ),
         );
       }
     } finally {
@@ -934,15 +962,32 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
           <h2 id="workbench-delegations-heading">Stellvertretung</h2>
           <p>
             {managedAgents.length > 0
-              ? "Verwalten Sie Ihre Stellvertretungen und die Ihres Teams."
-              : "Verwalten Sie Ihre eigenen Stellvertretungen."}
+              ? tn(
+                  "Verwalte deine Stellvertretungen und die deines Teams.",
+                  "Verwalten Sie Ihre Stellvertretungen und die Ihres Teams.",
+                )
+              : tn(
+                  "Verwalte deine eigenen Stellvertretungen.",
+                  "Verwalten Sie Ihre eigenen Stellvertretungen.",
+                )}
           </p>
         </div>
         <HelpHint label="Stellvertretung">
-          Während der Stellvertretung erhält die stellvertretende Person Ihre
-          Ticketbenachrichtigungen, sieht Ihre Tickets, Wiedervorlagen und
-          Serviceaufgaben, und neue Zuweisungen an Sie gehen an sie. Zu Beginn
-          und am Ende gibt es eine Übergabe-Zusammenfassung.
+          {tn(
+            <>
+              Während der Stellvertretung erhält die stellvertretende Person
+              deine Ticketbenachrichtigungen, sieht deine Tickets,
+              Wiedervorlagen und Serviceaufgaben, und neue Zuweisungen an dich
+              gehen an sie. Zu Beginn und am Ende gibt es eine
+              Übergabe-Zusammenfassung.
+            </>,
+            <>
+              Während der Stellvertretung erhält die stellvertretende Person
+              Ihre Ticketbenachrichtigungen, sieht Ihre Tickets, Wiedervorlagen
+              und Serviceaufgaben, und neue Zuweisungen an Sie gehen an sie. Zu
+              Beginn und am Ende gibt es eine Übergabe-Zusammenfassung.
+            </>,
+          )}
         </HelpHint>
       </div>
       {state === "loading" ? (
@@ -1225,7 +1270,10 @@ function IncidentsPanel({
       (departmentId && !isUuid(departmentId))
     ) {
       setMessage(
-        "Bitte prüfen Sie Titel, Beschreibung, Zeitpunkt sowie optionale Kategorie- und Abteilungs-ID.",
+        tn(
+          "Bitte prüfe Titel, Beschreibung, Zeitpunkt sowie optionale Kategorie- und Abteilungs-ID.",
+          "Bitte prüfen Sie Titel, Beschreibung, Zeitpunkt sowie optionale Kategorie- und Abteilungs-ID.",
+        ),
       );
       return;
     }
@@ -1254,7 +1302,10 @@ function IncidentsPanel({
       if (isQuietUnavailable(error)) setState("unavailable");
       else {
         setMessage(
-          "Die Störungsmeldung konnte nicht gespeichert werden. Prüfen Sie Ihre Berechtigung.",
+          tn(
+            "Die Störungsmeldung konnte nicht gespeichert werden. Prüfe deine Berechtigung.",
+            "Die Störungsmeldung konnte nicht gespeichert werden. Prüfen Sie Ihre Berechtigung.",
+          ),
         );
       }
     } finally {
@@ -1277,6 +1328,7 @@ function IncidentsPanel({
           </p>
         </div>
         <HelpHint label="Störungsmeldungen">
+          {/* formality-ok: «Sie» bezieht sich auf die Meldung */}
           Eine Meldung informiert über eine Störung. Sie verändert keine
           Tickets, Zuweisungen oder Abschlüsse.
         </HelpHint>
@@ -1540,8 +1592,16 @@ export function AgentMetricsCard({
           <h2 id="workbench-metrics-heading">Meine Kennzahlen</h2>
         </div>
         <HelpHint label="Meine Kennzahlen">
-          Die Werte beziehen sich nur auf Ihre eigene Arbeit im aktiven
-          Mandanten.
+          {tn(
+            <>
+              Die Werte beziehen sich nur auf deine eigene Arbeit im aktiven
+              Mandanten.
+            </>,
+            <>
+              Die Werte beziehen sich nur auf Ihre eigene Arbeit im aktiven
+              Mandanten.
+            </>,
+          )}
         </HelpHint>
       </div>
       {state === "loading" ? (

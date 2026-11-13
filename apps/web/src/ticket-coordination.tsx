@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -279,14 +280,14 @@ async function coordinationError(
     case "ticket_split_parent_closed":
       return "Ein gelöstes, geschlossenes oder zusammengeführtes Ticket kann nicht aufgeteilt werden.";
     case "ticket_split_department_invalid":
-      return "Mindestens eine gewählte Abteilung ist nicht mehr aktiv. Bitte prüfen Sie die Auswahl.";
+      return tn("Mindestens eine gewählte Abteilung ist nicht mehr aktiv. Bitte prüfe die Auswahl.", "Mindestens eine gewählte Abteilung ist nicht mehr aktiv. Bitte prüfen Sie die Auswahl.");
     case "ticket_split_team_invalid":
       return "Mindestens ein gewähltes Team gehört nicht zur Abteilung oder ist nicht aktiv.";
     case "assigned_agent_invalid":
     case "ticket_split_assignment_invalid":
       return "Mindestens eine gewählte Person ist für Abteilung oder Team nicht zuweisbar.";
     case "ticket_assign_denied":
-      return "Für die Zuweisung in mindestens einer Abteilung fehlt Ihnen die Berechtigung. Lassen Sie Team und Person leer.";
+      return tn("Für die Zuweisung in mindestens einer Abteilung fehlt dir die Berechtigung. Lass Team und Person leer.", "Für die Zuweisung in mindestens einer Abteilung fehlt Ihnen die Berechtigung. Lassen Sie Team und Person leer.");
     case "vendor_case_exists":
       return "Für diesen Drittanbieter ist bereits ein offener Fall erfasst.";
     case "vendor_case_ticket_closed":
@@ -297,9 +298,9 @@ async function coordinationError(
       return "Der Lieferantenfall ist bereits abgeschlossen oder nicht mehr verfügbar.";
     case "ticket_update_denied":
     case "ticket_coordination_denied":
-      return "Für diese Aktion fehlt Ihnen die Berechtigung.";
+      return tn("Für diese Aktion fehlt dir die Berechtigung.", "Für diese Aktion fehlt Ihnen die Berechtigung.");
   }
-  if (status === 403) return "Für diese Aktion fehlt Ihnen die Berechtigung.";
+  if (status === 403) return tn("Für diese Aktion fehlt dir die Berechtigung.", "Für diese Aktion fehlt Ihnen die Berechtigung.");
   return functionErrorMessage(error, fallback);
 }
 
@@ -1111,8 +1112,10 @@ function TicketSplitDialog({
                 </div>
                 {department && !department.canAssign ? (
                   <small className="ticket-coordination__muted">
-                    In dieser Abteilung dürfen Sie nicht zuweisen; das
-                    Teil-Ticket landet in der Abteilungsqueue.
+                    {tn(
+                      "In dieser Abteilung darfst du nicht zuweisen; das Teil-Ticket landet in der Abteilungsqueue.",
+                      "In dieser Abteilung dürfen Sie nicht zuweisen; das Teil-Ticket landet in der Abteilungsqueue.",
+                    )}
                   </small>
                 ) : null}
               </fieldset>
@@ -1191,7 +1194,7 @@ function VendorCaseDialog({
 
   async function submit() {
     if (!vendorId) {
-      setError("Bitte wählen Sie einen Drittanbieter.");
+      setError(tn("Bitte wähle einen Drittanbieter.", "Bitte wählen Sie einen Drittanbieter."));
       return;
     }
     setSaving(true);
@@ -1245,8 +1248,10 @@ function VendorCaseDialog({
             <p className="eyebrow">LIEFERANTENFALL</p>
             <h3 id="vendor-case-heading">An Drittanbieter übergeben</h3>
             <p className="ticket-coordination__muted">
-              Das Ticket wechselt auf «Wartend auf Drittanbieter». Ohne
-              Rückmeldung werden Sie automatisch erinnert.
+              {tn(
+                "Das Ticket wechselt auf «Wartend auf Drittanbieter». Ohne Rückmeldung wirst du automatisch erinnert.",
+                "Das Ticket wechselt auf «Wartend auf Drittanbieter». Ohne Rückmeldung werden Sie automatisch erinnert.",
+              )}
             </p>
           </div>
           <button
@@ -1269,8 +1274,8 @@ function VendorCaseDialog({
           <p className="ticket-coordination__hint">
             Es sind noch keine Drittanbieter erfasst.{" "}
             {canManageVendors
-              ? "Erfassen Sie Drittanbieter in den Mandanteneinstellungen unter Automationen."
-              : "Bitte wenden Sie sich an die Mandantenadministration."}
+              ? tn("Erfasse Drittanbieter in den Mandanteneinstellungen unter Automationen.", "Erfassen Sie Drittanbieter in den Mandanteneinstellungen unter Automationen.")
+              : tn("Bitte wende dich an die Mandantenadministration.", "Bitte wenden Sie sich an die Mandantenadministration.")}
           </p>
         ) : (
           <form

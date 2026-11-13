@@ -18,6 +18,7 @@ import {
   type ServiceTaskRepeat,
   type ServiceTaskSetup,
 } from "@/lib/quick-create";
+import { tn } from "@/lib/formality";
 
 type Start = "today" | "tomorrow" | "nextWeek";
 
@@ -115,7 +116,7 @@ export default function NewServiceTaskScreen() {
       ) : setup && !setup.canManage ? (
         <FormCard>
           <FormMessage
-            text="Für das Erfassen von Serviceaufgaben fehlt dir die Berechtigung."
+            text={tn("Für das Erfassen von Serviceaufgaben fehlt dir die Berechtigung.", "Für das Erfassen von Serviceaufgaben fehlt Ihnen die Berechtigung.")}
             tone="info"
           />
         </FormCard>

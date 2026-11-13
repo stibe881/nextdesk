@@ -14,6 +14,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 export default function ServicesScreen() {
   const router = useRouter();
@@ -96,7 +97,7 @@ export default function ServicesScreen() {
                 <View style={styles.cardCopy}>
                   <Text style={styles.actionTitle}>Meine Serviceanfragen</Text>
                   <Text style={styles.actionText}>
-                    Prüfe Status, Antworten und Bearbeitung deiner Tickets.
+                    {tn("Prüfe Status, Antworten und Bearbeitung deiner Tickets.", "Prüfen Sie Status, Antworten und Bearbeitung Ihrer Tickets.")}
                   </Text>
                 </View>
                 <Ionicons

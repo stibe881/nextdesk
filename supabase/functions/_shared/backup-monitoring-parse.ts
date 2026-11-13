@@ -362,7 +362,7 @@ export function missingTicketDescription(input: {
         : "noch nie"
     }`,
     "",
-    "Bitte prüfen Sie, ob der Job läuft und der Bericht versendet wird (Zeitplan, Mailversand, Webhook).",
+    "Bitte prüfen, ob der Job läuft und der Bericht versendet wird (Zeitplan, Mailversand, Webhook).",
   ];
   if (input.assetName) lines.push("", `Verknüpftes Asset: ${input.assetName}`);
   if (input.serviceName) lines.push(`Verknüpfter Dienst: ${input.serviceName}`);

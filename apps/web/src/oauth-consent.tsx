@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useState, type ReactNode } from "react";
 import { supabase } from "./lib/supabase";
 
@@ -66,11 +67,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const SCOPE_LABELS: Record<string, string> = {
-  email: "deine E-Mail-Adresse",
-  openid: "deine Anmeldung bestätigen",
-  profile: "deinen Namen",
-};
+const scopeLabels = (): Record<string, string> => ({
+  email: tn("deine E-Mail-Adresse", "Ihre E-Mail-Adresse"),
+  openid: tn("deine Anmeldung bestätigen", "Ihre Anmeldung bestätigen"),
+  profile: tn("deinen Namen", "Ihren Namen"),
+});
 
 export function OAuthConsentScreen({
   authorizationId,
@@ -177,16 +178,19 @@ export function OAuthConsentScreen({
         <>
           <p className="access-lead">
             {details.clientName} möchte als <strong>{userLabel}</strong> auf
-            nextDesk zugreifen. Alle Aktionen laufen mit deinen Rechten und in
-            deinem Namen.
+            nextDesk zugreifen.{" "}
+            {tn(
+              "Alle Aktionen laufen mit deinen Rechten und in deinem Namen.",
+              "Alle Aktionen laufen mit Ihren Rechten und in Ihrem Namen.",
+            )}
           </p>
           <ul>
             <li>Tickets, Wissensartikel und Geräte lesen</li>
             <li>Tickets erfassen und interne Notizen schreiben</li>
             {details.scopes
-              .filter((scope) => SCOPE_LABELS[scope])
+              .filter((scope) => scopeLabels()[scope])
               .map((scope) => (
-                <li key={scope}>{SCOPE_LABELS[scope]}</li>
+                <li key={scope}>{scopeLabels()[scope]}</li>
               ))}
           </ul>
           {details.redirectHost && (

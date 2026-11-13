@@ -7,6 +7,7 @@ import { deleteAccount } from "@/lib/account";
 import { clearMobileWorkspace, nextDesk } from "@/lib/nextdesk-client";
 import { unregisterPushDeviceBeforeSignOut } from "@/lib/push-notifications";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 /**
  * In-app account deletion (App Store Review Guideline 5.1.1(v)). Deletes the
@@ -48,10 +49,10 @@ export function DeleteAccountButton({
     Alert.alert(
       "Konto endgültig löschen?",
       ownsWorkspace === true
-        ? "Dein Konto, dein Arbeitsbereich und alle darin gespeicherten Tickets, Dateien und Einträge werden unwiderruflich gelöscht. Eingeladene Teammitglieder verlieren den Zugriff auf diesen Arbeitsbereich."
+        ? tn("Dein Konto, dein Arbeitsbereich und alle darin gespeicherten Tickets, Dateien und Einträge werden unwiderruflich gelöscht. Eingeladene Teammitglieder verlieren den Zugriff auf diesen Arbeitsbereich.", "Ihr Konto, Ihr Arbeitsbereich und alle darin gespeicherten Tickets, Dateien und Einträge werden unwiderruflich gelöscht. Eingeladene Teammitglieder verlieren den Zugriff auf diesen Arbeitsbereich.")
         : ownsWorkspace === false
-          ? "Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht."
-          : "Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht. Besitzt du einen eigenen Arbeitsbereich, wird er mit allen Tickets und Dateien ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; du verlierst nur deinen Zugriff.",
+          ? tn("Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht.", "Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht.")
+          : tn("Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht. Besitzt du einen eigenen Arbeitsbereich, wird er mit allen Tickets und Dateien ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; du verlierst nur deinen Zugriff.", "Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht. Besitzen Sie einen eigenen Arbeitsbereich, wird er mit allen Tickets und Dateien ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; Sie verlieren nur Ihren Zugriff."),
       [
         { style: "cancel", text: "Abbrechen" },
         {

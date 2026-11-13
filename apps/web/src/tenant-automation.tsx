@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useState } from "react";
 import { LoaderCircle, Play, RefreshCw } from "lucide-react";
 import { functionErrorMessage } from "./lib/function-error";
@@ -311,7 +312,7 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
       setMessage(
         await functionErrorMessage(
           error,
-          "Die vorgemerkten Tickets konnten nicht geschlossen werden. Bitte prüfen Sie die Vorschau erneut.",
+          tn("Die vorgemerkten Tickets konnten nicht geschlossen werden. Bitte prüfe die Vorschau erneut.", "Die vorgemerkten Tickets konnten nicht geschlossen werden. Bitte prüfen Sie die Vorschau erneut."),
         ),
       );
     } finally {

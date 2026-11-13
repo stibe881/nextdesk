@@ -30,6 +30,7 @@ import {
   type MobileTicketSupportLevel,
 } from "@/lib/support-levels";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 type Mode = {
   direction: "escalated" | "returned";
@@ -327,7 +328,7 @@ export function TicketSupportLevelCard({
                   multiline
                   onBlur={() => setTouched(true)}
                   onChangeText={setNote}
-                  placeholder="Was hast du schon versucht? Was hast du herausgefunden?"
+                  placeholder={tn("Was hast du schon versucht? Was hast du herausgefunden?", "Was haben Sie schon versucht? Was haben Sie herausgefunden?")}
                   placeholderTextColor={colors.subtle}
                   style={styles.input}
                   textAlignVertical="top"

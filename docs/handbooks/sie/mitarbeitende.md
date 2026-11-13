@@ -104,7 +104,7 @@ Shop: Teams bestellen». Solche Hinweise erscheinen:
 - in Ticket-Mails (Ticket erfasst, Antwort, gelöst) als Karte **unter** dem
   eigentlichen Inhalt, gekennzeichnet mit «Neu bei der ICT».
 
-Mit **✕** blenden Sie einen Hinweis aus; er erscheint dann nicht mehr. Die
+Mit dem **X-Symbol** blenden Sie einen Hinweis aus; er erscheint dann nicht mehr. Die
 Schaltfläche führt direkt zum Ziel (Shop, Wissensartikel, Ticket erfassen
 oder eine Seite). In Sicherheits-, Phishing-, Erinnerungs- und
 Freigabemails erscheinen nie Hinweise, und in Mails höchstens in der von der

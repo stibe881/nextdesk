@@ -35,6 +35,7 @@ import {
 } from "@/lib/person-overview";
 import type { MobileTicket } from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 type GlobalSearchProps = {
   platformName: string;
@@ -277,7 +278,7 @@ export function GlobalSearch({
   return (
     <>
       <Pressable
-        accessibilityHint="Durchsucht freigegebene Tickets, Assets und Wissensartikel in deinem aktuellen Mandanten."
+        accessibilityHint={tn("Durchsucht freigegebene Tickets, Assets und Wissensartikel in deinem aktuellen Mandanten.", "Durchsucht freigegebene Tickets, Assets und Wissensartikel in Ihrem aktuellen Mandanten.")}
         accessibilityLabel="Globale Suche öffnen"
         accessibilityRole="button"
         onPress={openSearch}
@@ -550,7 +551,7 @@ export function GlobalSearch({
                   articles.length === 0 ? (
                     <Text style={styles.note}>
                       {assetSearchUnavailable
-                        ? "Keine passenden Tickets gefunden. Assetergebnisse stehen für deine Rolle nicht zur Verfügung."
+                        ? tn("Keine passenden Tickets gefunden. Assetergebnisse stehen für deine Rolle nicht zur Verfügung.", "Keine passenden Tickets gefunden. Assetergebnisse stehen für Ihre Rolle nicht zur Verfügung.")
                         : "Keine passenden Tickets, Assets oder Wissensartikel gefunden."}
                     </Text>
                   ) : null}

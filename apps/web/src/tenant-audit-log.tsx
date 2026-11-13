@@ -31,6 +31,7 @@ import {
   redactAuditSecrets,
   type AuditFilters,
 } from "./lib/audit-view";
+import { tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 import "./tenant-audit-log.css";
@@ -299,8 +300,10 @@ export function TenantAuditLog({
         <div>
           <h2 id="tenant-audit-heading">Änderungsprotokoll</h2>
           <p>
-            Wer hat wann was geändert? Filtern Sie nach Person, Aktion, Objekt,
-            Schweregrad und Zeitraum. Vertrauliche Werte werden verborgen.
+            {tn(
+              "Wer hat wann was geändert? Filtere nach Person, Aktion, Objekt, Schweregrad und Zeitraum. Vertrauliche Werte werden verborgen.",
+              "Wer hat wann was geändert? Filtern Sie nach Person, Aktion, Objekt, Schweregrad und Zeitraum. Vertrauliche Werte werden verborgen.",
+            )}
           </p>
         </div>
         <div className="audit-view__export">

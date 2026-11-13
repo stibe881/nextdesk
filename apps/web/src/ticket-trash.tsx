@@ -1,5 +1,6 @@
 import { ArrowLeft, RotateCcw, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 import {
@@ -266,8 +267,10 @@ export function TicketTrashDialog({
             <p className="ticket-trash__muted">Papierkorb wird geladen …</p>
           ) : tickets.length === 0 ? (
             <p className="ticket-trash__muted">
-              Der Papierkorb ist leer – oder Ihnen fehlt das Recht, Tickets zu
-              löschen.
+              {tn(
+                "Der Papierkorb ist leer – oder dir fehlt das Recht, Tickets zu löschen.",
+                "Der Papierkorb ist leer – oder Ihnen fehlt das Recht, Tickets zu löschen.",
+              )}
             </p>
           ) : (
             <ul className="ticket-trash__list">

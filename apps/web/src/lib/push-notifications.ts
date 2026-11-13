@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 import { functionErrorMessage } from "./function-error";
 import { supabase } from "./supabase";
 
@@ -9,7 +10,12 @@ export const pushCategoryMeta = {
     label: "Freigaben",
   },
   assigned: {
-    description: "Wenn Ihnen ein Ticket zugewiesen wird",
+    get description() {
+      return tn(
+        "Wenn dir ein Ticket zugewiesen wird",
+        "Wenn Ihnen ein Ticket zugewiesen wird",
+      );
+    },
     label: "Zuweisungen",
   },
   escalation: {
@@ -41,7 +47,12 @@ export const pushCategoryMeta = {
     label: "IP-Adressverwaltung",
   },
   mention: {
-    description: "Wenn Sie in einem Ticket erwähnt werden",
+    get description() {
+      return tn(
+        "Wenn du in einem Ticket erwähnt wirst",
+        "Wenn Sie in einem Ticket erwähnt werden",
+      );
+    },
     label: "Erwähnungen",
   },
   requester_reply: {
@@ -58,8 +69,12 @@ export const pushCategoryMeta = {
     label: "Phishing und Sicherheitsfälle",
   },
   shop: {
-    description:
-      "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status Ihrer Bestellungen",
+    get description() {
+      return tn(
+        "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status deiner Bestellungen",
+        "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status Ihrer Bestellungen",
+      );
+    },
     label: "Shop",
   },
   sla: {
@@ -67,7 +82,12 @@ export const pushCategoryMeta = {
     label: "SLA-Hinweise",
   },
   support_reply: {
-    description: "Antworten des Supports zu Ihren Tickets",
+    get description() {
+      return tn(
+        "Antworten des Supports zu deinen Tickets",
+        "Antworten des Supports zu Ihren Tickets",
+      );
+    },
     label: "Support-Antworten",
   },
 } as const;

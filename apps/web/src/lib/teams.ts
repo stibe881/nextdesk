@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 import { supabase } from "./supabase";
 
 /** Client für die Edge Function `teams-provisioning` (Shop: Microsoft Teams). */
@@ -65,7 +66,7 @@ export const EXTENSIONS = [
   { months: 12, label: "+ 1 Jahr" },
 ] as const;
 
-const ERRORS: Record<string, string> = {
+const errors = (): Record<string, string> => ({
   name_invalid: "Bitte einen Namen mit 3 bis 120 Zeichen eingeben.",
   description_invalid: "Die Beschreibung ist zu lang oder ungültig.",
   visibility_invalid: "Bitte «Öffentlich» oder «Privat» wählen.",
@@ -88,13 +89,13 @@ const ERRORS: Record<string, string> = {
     "Eine gewählte Person ist im Verzeichnis nicht (mehr) aktiv. Bitte neu auswählen.",
   teams_not_configured:
     "Microsoft Teams ist für diese Organisation noch nicht eingerichtet. Bitte den Support informieren.",
-  teams_order_denied: "Du darfst im Shop nicht bestellen.",
+  teams_order_denied: tn("Du darfst im Shop nicht bestellen.", "Sie dürfen im Shop nicht bestellen."),
   feature_disabled: "Der Shop ist nicht aktiviert.",
   teams_extend_denied:
     "Nur Besteller und Owner können die Laufzeit verlängern.",
   teams_extend_not_possible: "Dieses Team lässt sich nicht mehr verlängern.",
   teams_request_not_found: "Das Team wurde nicht gefunden.",
-};
+});
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
   if (!supabase) throw new Error("nextDesk ist nicht konfiguriert.");
@@ -115,8 +116,8 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
         .json()
         .catch(() => null)) as { error?: { code?: unknown } } | null;
       const code = payload?.error?.code;
-      if (typeof code === "string" && ERRORS[code])
-        throw new Error(ERRORS[code]);
+      const known = typeof code === "string" ? errors()[code] : undefined;
+      if (known) throw new Error(known);
     }
     throw new Error("Microsoft Teams ist gerade nicht erreichbar.");
   }

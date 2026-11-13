@@ -4,6 +4,7 @@ import {
   isApnsConfigured,
   sendApns,
 } from "../_shared/apns.ts";
+import { loadFormality } from "../_shared/formality.ts";
 import {
   isInventoryNotificationKind,
   isIpamNotificationKind,
@@ -677,7 +678,7 @@ async function deliverSummary(admin: any, rows: ClaimRow[]): Promise<void> {
     tenantId: anchor.tenant_id,
     notificationId: anchor.notification_id ?? anchor.outbox_id,
     summaryCount: authorizedRows.length,
-  }, await loadFormality(admin, anchor.tenant_id));
+  });
   const results = await Promise.all(
     [...uniqueDevices.values()].map(async (device) => {
       const result = await sendApns(

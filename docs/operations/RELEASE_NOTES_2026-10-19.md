@@ -22,8 +22,8 @@
 
 ## Datenbank und Edge Functions
 
-- **Migrationen:** `0076_authorized_ticket_list_sorting.sql` ergänzt die additive RPC `public.list_authorized_ticket_list_page`. Sie verändert keine bestehenden Tickets, Status, Zuordnungen oder gespeicherten Ansichten.
-- **Edge Functions:** `ticket-agent-assignment` v12 ist JWT-geschützt aktiv. Sie stellt die berechtigte Agentenauswahl und erlaubte Anzeigenamen für die Ticketliste bereit.
+- **Migrationen:** `0076_authorized_ticket_list_sorting.sql` ergänzt die additive RPC `public.list_authorized_ticket_list_page`. Diese verändert keine bestehenden Tickets, Status, Zuordnungen oder gespeicherten Ansichten.
+- **Edge Functions:** `ticket-agent-assignment` v12 ist JWT-geschützt aktiv. Diese stellt die berechtigte Agentenauswahl und erlaubte Anzeigenamen für die Ticketliste bereit.
 
 ## Prüfungen
 

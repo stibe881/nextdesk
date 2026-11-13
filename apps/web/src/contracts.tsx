@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -310,7 +311,7 @@ export function Contracts({
       );
     } catch {
       setError(
-        "Verträge konnten nicht geladen werden. Prüfen Sie Ihre Berechtigung oder versuchen Sie es später erneut.",
+        tn("Verträge konnten nicht geladen werden. Prüfe deine Berechtigung oder versuche es später erneut.", "Verträge konnten nicht geladen werden. Prüfen Sie Ihre Berechtigung oder versuchen Sie es später erneut."),
       );
     } finally {
       setLoading(false);
@@ -533,7 +534,7 @@ export function Contracts({
         }
         if (failed > 0) {
           setError(
-            `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffnen Sie «Dokumente», um es erneut zu versuchen.`,
+            tn(`Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffne «Dokumente», um es erneut zu versuchen.`, `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffnen Sie «Dokumente», um es erneut zu versuchen.`),
           );
         }
       }
@@ -543,7 +544,7 @@ export function Contracts({
         reason instanceof Error && reason.message === "invalid_cost"
           ? "Die Kosten müssen eine Zahl ab 0 sein."
           : reason instanceof Error && reason.message === "cost_period_missing"
-            ? "Bitte wählen Sie die Kostenperiode."
+            ? tn("Bitte wähle die Kostenperiode.", "Bitte wählen Sie die Kostenperiode.")
             : reason instanceof Error && reason.message === "invalid_renewal"
               ? "Die Verlängerung muss zwischen 1 und 120 Monaten liegen."
               : reason instanceof Error && reason.message === "invalid_dates"

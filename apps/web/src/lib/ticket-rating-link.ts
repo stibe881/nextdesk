@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 // Star rating from the «ticket resolved» e-mail (#ticket-bewertung=<token>).
 
 export type RatingLinkState = "open" | "done" | "rated" | "not_ratable";
@@ -77,21 +78,28 @@ export function parseRatingLinkResponse(
   };
 }
 
-const MESSAGES: Record<string, string> = {
-  token_invalid:
+const messages = (): Record<string, string> => ({
+  token_invalid: tn(
+    "Dieser Link ist ungültig. Bitte melde dich an und bewerte das Ticket im Portal.",
     "Dieser Link ist ungültig. Bitte melden Sie sich an und bewerten Sie das Ticket im Portal.",
-  token_expired:
+  ),
+  token_expired: tn(
+    "Dieser Link ist abgelaufen. Bitte melde dich an und bewerte das Ticket im Portal.",
     "Dieser Link ist abgelaufen. Bitte melden Sie sich an und bewerten Sie das Ticket im Portal.",
+  ),
   ticket_not_available: "Das Ticket ist nicht verfügbar.",
   comment_too_long: "Der Kommentar ist zu lang (höchstens 3000 Zeichen).",
   rated: "Dieses Ticket wurde bereits bewertet. Danke!",
   not_ratable:
     "Dieses Ticket kann noch nicht bewertet werden. Es ist noch nicht gelöst.",
-};
+});
 
 export function ratingLinkErrorText(code: string): string {
   return (
-    MESSAGES[code] ??
-    "Die Bewertung konnte nicht übermittelt werden. Bitte versuchen Sie es später erneut."
+    messages()[code] ??
+    tn(
+      "Die Bewertung konnte nicht übermittelt werden. Bitte versuche es später erneut.",
+      "Die Bewertung konnte nicht übermittelt werden. Bitte versuchen Sie es später erneut.",
+    )
   );
 }

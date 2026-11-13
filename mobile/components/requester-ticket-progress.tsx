@@ -25,6 +25,7 @@ import {
   type RequesterProgress,
 } from "@/lib/requester-progress";
 import { useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 type Props = {
   ticketId: string;
@@ -91,7 +92,7 @@ export function RequesterTicketProgress({
       setMessage("");
       setNotice(
         response === "resolved"
-          ? "Danke! Dein Ticket ist jetzt gelöst."
+          ? tn("Danke! Dein Ticket ist jetzt gelöst.", "Danke! Ihr Ticket ist jetzt gelöst.")
           : "Danke! Das Support-Team kümmert sich wieder darum.",
       );
       await load();
@@ -101,8 +102,8 @@ export function RequesterTicketProgress({
       setError(
         cause instanceof NextDeskPortalError &&
           cause.code === "ticket_not_waiting"
-          ? "Das Ticket wartet nicht mehr auf deine Rückmeldung."
-          : "Deine Rückmeldung konnte nicht gesendet werden. Versuch es bitte nochmals.",
+          ? tn("Das Ticket wartet nicht mehr auf deine Rückmeldung.", "Das Ticket wartet nicht mehr auf Ihre Rückmeldung.")
+          : tn("Deine Rückmeldung konnte nicht gesendet werden. Versuch es bitte nochmals.", "Ihre Rückmeldung konnte nicht gesendet werden. Versuchen Sie es bitte nochmals."),
       );
     } finally {
       setSending(false);
@@ -209,7 +210,7 @@ export function RequesterTicketProgress({
       {progress.waitingForRequester ? (
         <View style={[styles.answer, { backgroundColor: colors.warningSoft }]}>
           <Text style={[styles.answerTitle, { color: colors.foreground }]}>
-            Ist dein Problem gelöst?
+            {tn("Ist dein Problem gelöst?", "Ist Ihr Problem gelöst?")}
           </Text>
           <View style={styles.actions}>
             <Pressable

@@ -1,6 +1,6 @@
 # nextDesk IPAM-Agent
 
-Der Netzwerkagent läuft in Ihrem LAN und liefert der IP-Adressverwaltung von
+Der Netzwerkagent läuft in deinem LAN und liefert der IP-Adressverwaltung von
 nextDesk, was nextDesk aus der Cloud nicht sehen kann:
 
 - **Ping-Sweep** der Subnetze (IPv4) und lokale **ARP/NDP-Tabelle**
@@ -52,7 +52,7 @@ snmpv3 group operatorauth user nextdesk-ro sec-model ver3
 snmpv3 only
 ```
 
-Die Schlüssel tragen Sie **nur** in die lokale `config.json` des Agenten ein –
+Die Schlüssel trägst du **nur** in die lokale `config.json` des Agenten ein –
 in nextDesk stehen lediglich Gerätename, SNMP-Version und Benutzername.
 
 ## Installation
@@ -60,7 +60,7 @@ in nextDesk stehen lediglich Gerätename, SNMP-Version und Benutzername.
 ### 1. Agent in nextDesk anlegen
 
 IP-Adressen → Discovery → **Agenten** → «Agent anlegen». nextDesk zeigt den
-Token **einmal** an – kopieren und sicher aufbewahren. Dort legen Sie auch
+Token **einmal** an – kopieren und sicher aufbewahren. Dort legst du auch
 fest, welche Subnetze gescannt werden, den Zeitplan, die SNMP-Ziele und die
 DHCP/DNS-Server.
 
@@ -124,7 +124,7 @@ allein genügt nicht, weil Node.js kein Windows-Dienstprogramm ist.
 | `ouiFile`                   | Optional: Pfad zur IEEE-Liste (`oui.txt` oder `oui.csv` von standards-oui.ieee.org) für vollständige Herstellernamen.                                                                          |
 | `logLevel`                  | `debug`, `info`, `warn`, `error`                                                                                                                                                               |
 
-Zeitplan, Subnetze, SNMP-Ziele und DHCP/DNS-Server stellen Sie in nextDesk
+Zeitplan, Subnetze, SNMP-Ziele und DHCP/DNS-Server stellst du in nextDesk
 ein; der Agent holt sie bei jedem Kontakt (etwa jede Minute) neu.
 
 Ablauf: Anmeldung (`hello`) → Aufträge ausführen → Scan nach Zeitplan →
@@ -157,7 +157,7 @@ pro Server freigeben. Am besten ein Group Managed Service Account (gMSA).
   den Server nie. `config.json` nur für Administratoren und das Dienstkonto
   lesbar machen (Linux `chmod 600`, Windows erledigt das Installationsskript).
   nextDesk lehnt Konfigurationen mit Feldern wie `community` oder `authKey` ab.
-- **Nur lesend per SNMP:** Der Agent führt nur GET/GETBULK aus. Verwenden Sie
+- **Nur lesend per SNMP:** Der Agent führt nur GET/GETBULK aus. Verwende
   einen Read-only-Benutzer bzw. eine Read-only-Community mit ACL.
 - **Schreiben nur mit doppelter Freigabe:** DHCP/DNS-Aufträge führt der Agent
   nur aus, wenn `allowWrites` lokal **und** in nextDesk aktiv ist, der Server

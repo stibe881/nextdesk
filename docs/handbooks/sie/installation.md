@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # Installationsanleitung
@@ -59,7 +59,7 @@ zeigt jederzeit, was noch fehlt.
 ## Schritt 2: Grundeinstellungen
 
 1. **Einstellungen → Design**: Portalname, Logo und Farben hinterlegen,
-   **Corporate Design speichern**.
+   **Corporate Design speichern**. Unter **Anrede** stellen Sie ein, ob nextDesk alle Texte duzt (Standard) oder siezt.
 2. **Einstellungen → Abteilungen**: Abteilungen anlegen (z. B. ICT,
    Facility, HR), Leitungen bestimmen und **Teams pro Abteilung** mit
    Supportstufe erfassen.

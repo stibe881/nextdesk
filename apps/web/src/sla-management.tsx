@@ -16,6 +16,7 @@ import {
   FormSummary,
   FormSwitch,
 } from "./form-kit";
+import { tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 import { parseSlaStatuses, type SlaStatusSetting } from "./lib/sla-pause";
@@ -599,27 +600,42 @@ function validationError(draft: RuleDraft): string | null {
   const name = draft.name.trim();
   const priorityKey = draft.priorityKey.trim();
   if (name.length < 1 || name.length > 160) {
-    return "Bitte geben Sie einen Namen mit höchstens 160 Zeichen ein.";
+    return tn(
+"Bitte gib einen Namen mit höchstens 160 Zeichen ein.",
+"Bitte geben Sie einen Namen mit höchstens 160 Zeichen ein.",
+);
   }
   if (priorityKey.length < 1 || priorityKey.length > 63) {
-    return "Bitte wählen Sie eine gültige Priorität aus.";
+    return tn(
+"Bitte wähle eine gültige Priorität aus.",
+"Bitte wählen Sie eine gültige Priorität aus.",
+);
   }
   if (draft.departmentId && !isUuid(draft.departmentId)) {
-    return "Bitte wählen Sie eine gültige Abteilung aus.";
+    return tn(
+"Bitte wähle eine gültige Abteilung aus.",
+"Bitte wählen Sie eine gültige Abteilung aus.",
+);
   }
   if (draft.description.trim().length > 2000) {
     return "Die Definition darf höchstens 2000 Zeichen lang sein.";
   }
   if (draft.serviceMode !== "always") {
     if (draft.weekdays.length === 0) {
-      return "Bitte wählen Sie mindestens einen Wochentag für die Servicezeit.";
+      return tn(
+"Bitte wähle mindestens einen Wochentag für die Servicezeit.",
+"Bitte wählen Sie mindestens einen Wochentag für die Servicezeit.",
+);
     }
     if (
       !TIME_PATTERN.test(draft.serviceStart) ||
       !TIME_PATTERN.test(draft.serviceEnd) ||
       draft.serviceEnd <= draft.serviceStart
     ) {
-      return "Bitte geben Sie eine gültige Servicezeit an (Ende nach Beginn).";
+      return tn(
+"Bitte gib eine gültige Servicezeit an (Ende nach Beginn).",
+"Bitte geben Sie eine gültige Servicezeit an (Ende nach Beginn).",
+);
     }
   }
 
@@ -939,7 +955,10 @@ export function SlaManagement({
         setReadForbidden(true);
       } else {
         setError(
-          "SLA-Regeln und Eskalationen konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+          tn(
+"SLA-Regeln und Eskalationen konnten nicht geladen werden. Bitte versuche es erneut.",
+"SLA-Regeln und Eskalationen konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+),
         );
       }
     } finally {
@@ -1026,11 +1045,17 @@ export function SlaManagement({
       if (isForbiddenError(requestError)) {
         setManageForbidden(true);
         setError(
-          "Sie haben keine Berechtigung, SLA-Regeln zu erstellen oder zu bearbeiten. Wenden Sie sich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
+          tn(
+"Du hast keine Berechtigung, SLA-Regeln zu erstellen oder zu bearbeiten. Wende dich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
+"Sie haben keine Berechtigung, SLA-Regeln zu erstellen oder zu bearbeiten. Wenden Sie sich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
+),
         );
       } else {
         setError(
-          "Die SLA-Regel konnte nicht gespeichert werden. Prüfen Sie Priorität und Abteilung und versuchen Sie es erneut.",
+          tn(
+"Die SLA-Regel konnte nicht gespeichert werden. Prüfe Priorität und Abteilung und versuche es erneut.",
+"Die SLA-Regel konnte nicht gespeichert werden. Prüfen Sie Priorität und Abteilung und versuchen Sie es erneut.",
+),
         );
       }
     } finally {
@@ -1067,11 +1092,17 @@ export function SlaManagement({
     } catch (requestError) {
       if (isForbiddenError(requestError)) {
         setError(
-          "Sie haben keine Berechtigung, diese Einstellung zu ändern. Dafür braucht es die mandantenweite Berechtigung „SLA-Profile verwalten“.",
+          tn(
+"Du hast keine Berechtigung, diese Einstellung zu ändern. Dafür braucht es die mandantenweite Berechtigung „SLA-Profile verwalten“.",
+"Sie haben keine Berechtigung, diese Einstellung zu ändern. Dafür braucht es die mandantenweite Berechtigung „SLA-Profile verwalten“.",
+),
         );
       } else {
         setError(
-          "Die Einstellung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+          tn(
+"Die Einstellung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+"Die Einstellung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+),
         );
       }
     } finally {
@@ -1102,11 +1133,17 @@ export function SlaManagement({
       if (isForbiddenError(requestError)) {
         setManageForbidden(true);
         setError(
-          "Sie haben keine Berechtigung, SLA-Regeln zu archivieren. Wenden Sie sich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
+          tn(
+"Du hast keine Berechtigung, SLA-Regeln zu archivieren. Wende dich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
+"Sie haben keine Berechtigung, SLA-Regeln zu archivieren. Wenden Sie sich an eine Person mit der Berechtigung „SLA-Profile verwalten“.",
+),
         );
       } else {
         setError(
-          "Die SLA-Regel konnte nicht archiviert werden. Bitte versuchen Sie es erneut.",
+          tn(
+"Die SLA-Regel konnte nicht archiviert werden. Bitte versuche es erneut.",
+"Die SLA-Regel konnte nicht archiviert werden. Bitte versuchen Sie es erneut.",
+),
         );
       }
     } finally {
@@ -1444,9 +1481,10 @@ export function SlaManagement({
           className="sla-management__message sla-management__message--error"
           role="alert"
         >
-          Sie haben keine Berechtigung, SLA-Regeln oder Eskalationen für diesen
-          Mandanten anzuzeigen. Bitte wenden Sie sich an eine berechtigte
-          Person.
+          {tn(
+            "Du hast keine Berechtigung, SLA-Regeln oder Eskalationen für diesen Mandanten anzuzeigen. Bitte wende dich an eine berechtigte Person.",
+            "Sie haben keine Berechtigung, SLA-Regeln oder Eskalationen für diesen Mandanten anzuzeigen. Bitte wenden Sie sich an eine berechtigte Person.",
+          )}
         </p>
       )}
       {error && !readForbidden && !(isFormVisible && editingRuleId) && (

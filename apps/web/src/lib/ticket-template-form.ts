@@ -223,7 +223,7 @@ export function validateAnswers(
       if (value !== undefined && value !== null && typeof value !== "boolean") {
         errors[field.key] = `Die Angabe «${label}» ist ungültig.`;
       } else if (field.required && value !== true) {
-        errors[field.key] = `Bitte bestätigen Sie «${label}».`;
+        errors[field.key] = `Bitte «${label}» bestätigen.`;
       }
       continue;
     }
@@ -232,14 +232,14 @@ export function validateAnswers(
       if (field.required)
         errors[field.key] =
           field.fieldType === "select"
-            ? `Bitte wählen Sie eine Option für «${label}».`
-            : `Bitte füllen Sie das Feld «${label}» aus.`;
+            ? `Bitte eine Option für «${label}» wählen.`
+            : `Bitte das Feld «${label}» ausfüllen.`;
       continue;
     }
 
     if (field.fieldType === "number") {
       if (parseNumber(value) === null)
-        errors[field.key] = `Bitte geben Sie bei «${label}» eine Zahl ein.`;
+        errors[field.key] = `Bitte bei «${label}» eine Zahl eingeben.`;
       continue;
     }
 
@@ -255,12 +255,12 @@ export function validateAnswers(
     }
     if (field.fieldType === "select" && !field.options.includes(trimmed)) {
       errors[field.key] =
-        `Bitte wählen Sie für «${label}» eine der angebotenen Optionen.`;
+        `Bitte für «${label}» eine der angebotenen Optionen wählen.`;
       continue;
     }
     if (field.fieldType === "date" && !isValidIsoDate(trimmed)) {
       errors[field.key] =
-        `Bitte geben Sie bei «${label}» ein gültiges Datum ein.`;
+        `Bitte bei «${label}» ein gültiges Datum eingeben.`;
     }
   }
   return errors;
@@ -379,14 +379,14 @@ export function validateFieldDefinitions(
       return `Der Schlüssel «${field.key}» ist mehrfach vergeben.`;
     const label = field.label.trim();
     if (!label || label.length > 160)
-      return `Bitte geben Sie für Feld ${number} eine Bezeichnung mit höchstens 160 Zeichen ein.`;
+      return `Bitte für Feld ${number} eine Bezeichnung mit höchstens 160 Zeichen eingeben.`;
     if (!isTemplateFieldType(field.fieldType))
       return `Der Feldtyp von «${label}» ist ungültig.`;
     if (field.helpText !== null && field.helpText.length > 500)
       return `Der Hilfetext von «${label}» darf höchstens 500 Zeichen lang sein.`;
     if (field.fieldType === "select") {
       if (field.options.length === 0)
-        return `Bitte erfassen Sie für das Auswahlfeld «${label}» mindestens eine Option.`;
+        return `Bitte für das Auswahlfeld «${label}» mindestens eine Option erfassen.`;
       if (field.options.length > MAX_FIELD_OPTIONS)
         return `Das Auswahlfeld «${label}» darf höchstens ${MAX_FIELD_OPTIONS} Optionen haben.`;
       if (
@@ -416,7 +416,7 @@ export function validateFieldDefinitions(
     if (!target)
       return `${subject} verweist auf ein Feld, das es nicht gibt («${condition.fieldKey}»).`;
     if (!condition.equals || condition.equals.length > 160)
-      return `${subject}: Bitte geben Sie einen Vergleichswert mit höchstens 160 Zeichen an.`;
+      return `${subject}: Bitte einen Vergleichswert mit höchstens 160 Zeichen angeben.`;
     if (
       target.fieldType === "checkbox" &&
       condition.equals !== "true" &&

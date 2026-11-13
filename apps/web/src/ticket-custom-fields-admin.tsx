@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -442,12 +443,12 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
       draft.fieldType === "select" ? optionsFromDraft(draft.options) : [];
     if (options === null) {
       setError(
-        "Für ein Auswahlfeld benötigen Sie mindestens eine eindeutige Option pro Zeile.",
+        tn("Für ein Auswahlfeld benötigst du mindestens eine eindeutige Option pro Zeile.", "Für ein Auswahlfeld benötigen Sie mindestens eine eindeutige Option pro Zeile."),
       );
       return;
     }
     if (!draft.sectionId) {
-      setError("Wählen Sie zuerst einen Abschnitt aus.");
+      setError(tn("Wähle zuerst einen Abschnitt aus.", "Wählen Sie zuerst einen Abschnitt aus."));
       return;
     }
 
@@ -586,7 +587,7 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
       setError(
         await functionErrorMessage(
           requestError,
-          "Die Reihenfolge konnte nicht gespeichert werden. Bitte laden Sie den Editor neu.",
+          tn("Die Reihenfolge konnte nicht gespeichert werden. Bitte lade den Editor neu.", "Die Reihenfolge konnte nicht gespeichert werden. Bitte laden Sie den Editor neu."),
         ),
       );
       await loadLayout();
@@ -642,7 +643,7 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
       );
       if (insertedDefinition) beginEdit(insertedDefinition);
       setMessage(
-        `„${preset.label}“ wurde eingefügt. Prüfen Sie die Einstellungen.`,
+        tn(`„${preset.label}“ wurde eingefügt. Prüfe die Einstellungen.`, `„${preset.label}“ wurde eingefügt. Prüfen Sie die Einstellungen.`),
       );
     } catch (requestError) {
       const message = await functionErrorMessage(
@@ -712,9 +713,10 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
             Ticketformular gestalten
           </h2>
           <p>
-            Ordnen Sie zusätzliche Felder per Drag-and-Drop oder mit den
-            Pfeiltasten in Abschnitten an. Die Vorschau zeigt das Formular, wie
-            es später im Ticket erscheint.
+{tn(
+              "Ordne zusätzliche Felder per Drag-and-Drop oder mit den Pfeiltasten in Abschnitten an. Die Vorschau zeigt das Formular, wie es später im Ticket erscheint.",
+              "Ordnen Sie zusätzliche Felder per Drag-and-Drop oder mit den Pfeiltasten in Abschnitten an. Die Vorschau zeigt das Formular, wie es später im Ticket erscheint.",
+            )}
           </p>
         </div>
         <Settings2 aria-hidden="true" size={22} />
@@ -735,8 +737,10 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
         <div>
           <p className="eyebrow">FORMULARAUFBAU</p>
           <p className="ticket-form-builder__toolbar-copy">
-            Ziehen Sie ein Feld in einen Abschnitt oder wählen Sie es mit einem
-            Klick aus. Die Ticketbasis bleibt immer erhalten.
+{tn(
+              "Ziehe ein Feld in einen Abschnitt oder wähle es mit einem Klick aus. Die Ticketbasis bleibt immer erhalten.",
+              "Ziehen Sie ein Feld in einen Abschnitt oder wählen Sie es mit einem Klick aus. Die Ticketbasis bleibt immer erhalten.",
+            )}
           </p>
         </div>
         <div className="ticket-form-builder__toolbar-actions">
@@ -812,13 +816,17 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
               <Plus aria-hidden="true" size={18} />
             </div>
             <p className="ticket-form-builder__palette-copy">
-              Ziehen Sie ein Feld in einen Abschnitt. Ein Klick fügt es in den
-              ersten Abschnitt ein und öffnet danach die Einstellungen.
+{tn(
+                "Ziehe ein Feld in einen Abschnitt. Ein Klick fügt es in den ersten Abschnitt ein und öffnet danach die Einstellungen.",
+                "Ziehen Sie ein Feld in einen Abschnitt. Ein Klick fügt es in den ersten Abschnitt ein und öffnet danach die Einstellungen.",
+              )}
             </p>
             {layout?.sections.length === 0 && (
               <p className="ticket-form-builder__palette-notice">
-                Legen Sie zuerst einen Abschnitt an, bevor Sie Felder
-                hinzufügen.
+{tn(
+                  "Lege zuerst einen Abschnitt an, bevor du Felder hinzufügst.",
+                  "Legen Sie zuerst einen Abschnitt an, bevor Sie Felder hinzufügen.",
+                )}
               </p>
             )}
             {PALETTE_CATEGORIES.map((category) => (
@@ -889,8 +897,13 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
             <div className="ticket-form-builder__canvas-heading">
               <div>
                 <p className="eyebrow">FORMULARFLÄCHE</p>
-                <h3>Ihr Ticketformular</h3>
-                <p>Ordnen Sie Zusatzfelder nach dem tatsächlichen Ablauf an.</p>
+                <h3>{tn("Dein Ticketformular", "Ihr Ticketformular")}</h3>
+                <p>
+                  {tn(
+                    "Ordne Zusatzfelder nach dem tatsächlichen Ablauf an.",
+                    "Ordnen Sie Zusatzfelder nach dem tatsächlichen Ablauf an.",
+                  )}
+                </p>
               </div>
             </div>
 
@@ -921,8 +934,10 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
 
             {layout?.sections.length === 0 && (
               <p className="ticket-form-builder__section-empty">
-                Noch keine zusätzlichen Abschnitte. Legen Sie einen Abschnitt
-                an, um Felder aus der Palette einzufügen.
+{tn(
+                  "Noch keine zusätzlichen Abschnitte. Lege einen Abschnitt an, um Felder aus der Palette einzufügen.",
+                  "Noch keine zusätzlichen Abschnitte. Legen Sie einen Abschnitt an, um Felder aus der Palette einzufügen.",
+                )}
               </p>
             )}
 
@@ -1153,7 +1168,10 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
             })}
             {activeDefinitions.length === 0 && (
               <p className="ticket-form-builder__preview-empty-custom-fields">
-                Ziehen Sie ein Feld aus der Palette in einen Abschnitt.
+{tn(
+                  "Ziehe ein Feld aus der Palette in einen Abschnitt.",
+                  "Ziehen Sie ein Feld aus der Palette in einen Abschnitt.",
+                )}
               </p>
             )}
           </aside>
@@ -1307,9 +1325,10 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
               <p className="eyebrow">FELDINSPEKTOR</p>
               <h3>Feld auswählen</h3>
               <p>
-                Wählen Sie eine Feldkarte oder ziehen Sie ein neues Feld aus der
-                Palette in einen Abschnitt, um dessen Einstellungen zu
-                bearbeiten.
+{tn(
+                  "Wähle eine Feldkarte oder ziehe ein neues Feld aus der Palette in einen Abschnitt, um dessen Einstellungen zu bearbeiten.",
+                  "Wählen Sie eine Feldkarte oder ziehen Sie ein neues Feld aus der Palette in einen Abschnitt, um dessen Einstellungen zu bearbeiten.",
+                )}
               </p>
             </section>
           )}

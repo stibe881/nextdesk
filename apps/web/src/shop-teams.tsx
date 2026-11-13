@@ -1,3 +1,5 @@
+import { Check } from "lucide-react";
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   FormCard,
@@ -55,7 +57,7 @@ export function TeamsTile({
           <small>
             {context.reason === "not_configured"
               ? "Noch nicht eingerichtet. Bitte den Support informieren."
-              : "Für dich derzeit nicht verfügbar."}
+              : tn("Für dich derzeit nicht verfügbar.", "Für Sie derzeit nicht verfügbar.")}
           </small>
         ) : null}
       </div>
@@ -187,7 +189,9 @@ function Stepper({ step }: { step: number }) {
           }
           key={label}
         >
-          <i>{index < step ? "✓" : index + 1}</i>
+          <i>
+            {index < step ? <Check aria-hidden="true" size={14} /> : index + 1}
+          </i>
           {label}
         </li>
       ))}
@@ -261,7 +265,7 @@ export function TeamWizard({
         "Allgemein",
         ...draft.channels.map(
           (channel) =>
-            `${channel.name}${channel.isPrivate ? " 🔒" : ""}${
+            `${channel.name}${channel.isPrivate ? " (privat)" : ""}${
               channel.tabs.length ? ` (${channel.tabs.length} Tab)` : ""
             }`,
         ),
@@ -293,7 +297,7 @@ export function TeamWizard({
       submitting={busy}
       title={
         step === last
-          ? "Übersicht deiner Bestellung"
+          ? tn("Übersicht deiner Bestellung", "Übersicht Ihrer Bestellung")
           : "Neues Team zusammenstellen"
       }
     >
@@ -600,10 +604,11 @@ export function TeamWizard({
             </FormField>
           </FormGrid>
           <FormNote>
-            Was passiert am Ende? Das Team wird nicht gelöscht. Ihr werdet 14
-            Tage, 7 Tage und 1 Tag vorher per E-Mail und Push gefragt, ob das
-            Team weitergeführt (Laufzeit verlängern) werden soll. Ohne
-            Verlängerung wird es nach dem Ende archiviert und bleibt lesbar.
+            {tn(
+              // formality-ok: "Ihr" ist hier die Du-Form im Plural
+              "Was passiert am Ende? Das Team wird nicht gelöscht. Ihr werdet 14 Tage, 7 Tage und 1 Tag vorher per E-Mail und Push gefragt, ob das Team weitergeführt (Laufzeit verlängern) werden soll. Ohne Verlängerung wird es nach dem Ende archiviert und bleibt lesbar.",
+              "Was passiert am Ende? Das Team wird nicht gelöscht. Sie werden 14 Tage, 7 Tage und 1 Tag vorher per E-Mail und Push gefragt, ob das Team weitergeführt (Laufzeit verlängern) werden soll. Ohne Verlängerung wird es nach dem Ende archiviert und bleibt lesbar.",
+            )}
           </FormNote>
         </FormCard>
       ) : null}
@@ -656,7 +661,10 @@ export function TeamWizard({
             {draft.startDate > context.today
               ? ` und entsteht am ${formatTeamDate(draft.startDate)}`
               : " und erscheint innerhalb weniger Minuten in Microsoft Teams"}
-            . Den Stand siehst du unter «Meine Teams».
+            {tn(
+              ". Den Stand siehst du unter «Meine Teams».",
+              ". Den Stand sehen Sie unter «Meine Teams».",
+            )}
           </FormNote>
         </FormCard>
       ) : null}
@@ -692,7 +700,9 @@ export function MyTeams({
     }
   };
   if (requests.length === 0) {
-    return <p className="empty-state">Du hast noch kein Team bestellt.</p>;
+    return <p className="empty-state">
+        {tn("Du hast noch kein Team bestellt.", "Sie haben noch kein Team bestellt.")}
+      </p>;
   }
   return (
     <div className="shop-teams-list">
@@ -727,8 +737,10 @@ export function MyTeams({
             </p>
             {request.status === "failed" ? (
               <p className="shop-teams-warning">
-                Das Team konnte nicht angelegt werden. Der Support wurde
-                informiert; bitte melde dich bei Rückfragen dort.
+                {tn(
+                  "Das Team konnte nicht angelegt werden. Der Support wurde informiert; bitte melde dich bei Rückfragen dort.",
+                  "Das Team konnte nicht angelegt werden. Der Support wurde informiert; bitte melden Sie sich bei Rückfragen dort.",
+                )}
               </p>
             ) : null}
             {request.status === "ready" && request.warningCount > 0 ? (

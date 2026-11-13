@@ -95,6 +95,7 @@ import {
 } from "@/lib/nextdesk-tickets";
 import { recordRecentItem } from "@/lib/recent-items";
 import { draftRestoredLabel, pickNewestDraft } from "@/lib/recent-items-model";
+import { tn } from "@/lib/formality";
 
 function roundUpToFiveMinutes(value: Date): Date {
   const rounded = new Date(value);
@@ -778,7 +779,7 @@ export default function TicketDetailScreen() {
       setReopenSubmitted(true);
       setReopenSheetOpen(false);
       setMessage(
-        "Dein Antrag wurde übermittelt. Der Ticketstatus bleibt unverändert, bis ein berechtigter Agent entscheidet.",
+        tn("Dein Antrag wurde übermittelt. Der Ticketstatus bleibt unverändert, bis ein berechtigter Agent entscheidet.", "Ihr Antrag wurde übermittelt. Der Ticketstatus bleibt unverändert, bis ein berechtigter Agent entscheidet."),
       );
       hapticSuccess();
     } catch (nextError) {
@@ -1162,8 +1163,8 @@ export default function TicketDetailScreen() {
       setWatched(nextWatched);
       setMessage(
         nextWatched
-          ? "Du beobachtest dieses Ticket und wirst über Status, Nachrichten und Notizen benachrichtigt."
-          : "Du beobachtest dieses Ticket nicht mehr.",
+          ? tn("Du beobachtest dieses Ticket und wirst über Status, Nachrichten und Notizen benachrichtigt.", "Sie beobachten dieses Ticket und werden über Status, Nachrichten und Notizen benachrichtigt.")
+          : tn("Du beobachtest dieses Ticket nicht mehr.", "Sie beobachten dieses Ticket nicht mehr."),
       );
       hapticSelection();
     } catch {
@@ -1350,8 +1351,8 @@ export default function TicketDetailScreen() {
       setResolutionSheetOpen(false);
       setMessage(
         resolutionDecision
-          ? "Danke, deine Lösungsbestätigung wurde gespeichert."
-          : "Danke, deine Rückmeldung wurde gespeichert.",
+          ? tn("Danke, deine Lösungsbestätigung wurde gespeichert.", "Danke, Ihre Lösungsbestätigung wurde gespeichert.")
+          : tn("Danke, deine Rückmeldung wurde gespeichert.", "Danke, Ihre Rückmeldung wurde gespeichert."),
       );
       hapticSuccess();
     } catch (nextError) {
@@ -1370,7 +1371,7 @@ export default function TicketDetailScreen() {
       setResolutionError(
         nextError instanceof Error
           ? nextError.message
-          : "Deine Rückmeldung konnte nicht gespeichert werden.",
+          : tn("Deine Rückmeldung konnte nicht gespeichert werden.", "Ihre Rückmeldung konnte nicht gespeichert werden."),
       );
     } finally {
       setSubmittingResolution(false);
@@ -1388,7 +1389,7 @@ export default function TicketDetailScreen() {
       (commentVisibility === "internal" && !ticket.canWriteInternalNotes) ||
       (commentVisibility === "external" && !ticket.canCommentExternal)
     ) {
-      setError("Du bist nicht berechtigt, diese Nachricht zu veröffentlichen.");
+      setError(tn("Du bist nicht berechtigt, diese Nachricht zu veröffentlichen.", "Sie sind nicht berechtigt, diese Nachricht zu veröffentlichen."));
       return;
     }
 
@@ -2643,10 +2644,10 @@ export default function TicketDetailScreen() {
                   <Text
                     style={[styles.experienceTitle, tokenStyles.foreground]}
                   >
-                    Wurde dein Anliegen gelöst?
+                    {tn("Wurde dein Anliegen gelöst?", "Wurde Ihr Anliegen gelöst?")}
                   </Text>
                   <Text style={[styles.experienceText, tokenStyles.muted]}>
-                    Deine Rückmeldung ändert den Ticketstatus nicht.
+                    {tn("Deine Rückmeldung ändert den Ticketstatus nicht.", "Ihre Rückmeldung ändert den Ticketstatus nicht.")}
                   </Text>
                 </View>
               </View>
@@ -3131,7 +3132,7 @@ export default function TicketDetailScreen() {
                     maxLength={500}
                     multiline
                     onChangeText={setFollowUpNote}
-                    placeholder="Was möchtest du beachten?"
+                    placeholder={tn("Was möchtest du beachten?", "Was möchten Sie beachten?")}
                     placeholderTextColor={colors.subtle}
                     style={[
                       styles.followUpNoteInput,
@@ -3226,7 +3227,7 @@ export default function TicketDetailScreen() {
                       tokenStyles.foreground,
                     ]}
                   >
-                    Wurde dein Anliegen gelöst?
+                    {tn("Wurde dein Anliegen gelöst?", "Wurde Ihr Anliegen gelöst?")}
                   </Text>
                 </View>
                 <Pressable
@@ -3324,8 +3325,7 @@ export default function TicketDetailScreen() {
                   </Text>
                 </View>
                 <Text style={[styles.resolutionNotice, tokenStyles.muted]}>
-                  Diese Rückmeldung speichert nur deine Bestätigung oder
-                  Ablehnung. Der Ticketstatus bleibt unverändert.
+                  {tn("Diese Rückmeldung speichert nur deine Bestätigung oder Ablehnung. Der Ticketstatus bleibt unverändert.", "Diese Rückmeldung speichert nur Ihre Bestätigung oder Ablehnung. Der Ticketstatus bleibt unverändert.")}
                 </Text>
                 {resolutionError ? (
                   <View style={[styles.feedback, tokenStyles.error]}>

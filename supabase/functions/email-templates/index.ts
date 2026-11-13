@@ -1,6 +1,7 @@
 import { withSupabase } from "@supabase/server";
 import { renderTemplatePreview } from "../_shared/email-template-preview.ts";
 import { normalizeCustomerTicketEmailBranding } from "../_shared/customer-ticket-email-template.ts";
+import { loadFormality } from "../_shared/formality.ts";
 import {
   EMAIL_TEMPLATES,
   emailTemplateDefinition,
@@ -240,6 +241,7 @@ async function preview(
     fields: action.fields,
     frameFields,
     portalName,
+    formality: await loadFormality(admin, action.tenantId),
     branding: normalizeCustomerTicketEmailBranding({
       accentColor: str(branding.data?.accent_color),
       displayName: portalName,

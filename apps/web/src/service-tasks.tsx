@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
@@ -451,7 +452,10 @@ function OverviewView({
               {scope === "done"
                 ? "In den letzten 30 Tagen wurde nichts erledigt."
                 : scope === "mine"
-                  ? "Für dich stehen keine Serviceaufgaben an."
+                  ? tn(
+                      "Für dich stehen keine Serviceaufgaben an.",
+                      "Für Sie stehen keine Serviceaufgaben an.",
+                    )
                   : "Es stehen keine Serviceaufgaben an."}
             </p>
           ) : (
@@ -1034,7 +1038,7 @@ function DetailPanel({
                       <span>{dateLabel(entry.dueOn, false)}</span>
                       <span>
                         {entry.status === "done"
-                          ? `✔ erledigt${entry.completedBy ? ` · ${entry.completedBy}` : ""}`
+                          ? `erledigt${entry.completedBy ? ` · ${entry.completedBy}` : ""}`
                           : entry.status === "skipped"
                             ? `↷ übersprungen · «${entry.skippedReason ?? ""}»`
                             : entry.overdue

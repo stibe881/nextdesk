@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   BookOpen,
   Megaphone,
@@ -132,8 +133,14 @@ export function IncidentTicketsCard({
       {detail.hiddenTickets ? (
         <p className="incident-muted">
           {detail.hiddenTickets === 1
-            ? "1 weiteres Ticket sehen Sie nicht (andere Abteilung)."
-            : `${detail.hiddenTickets} weitere Tickets sehen Sie nicht (andere Abteilung).`}
+            ? tn(
+                "1 weiteres Ticket siehst du nicht (andere Abteilung).",
+                "1 weiteres Ticket sehen Sie nicht (andere Abteilung).",
+              )
+            : tn(
+                `${detail.hiddenTickets} weitere Tickets siehst du nicht (andere Abteilung).`,
+                `${detail.hiddenTickets} weitere Tickets sehen Sie nicht (andere Abteilung).`,
+              )}
         </p>
       ) : null}
       {detail.state !== "closed" ? (
@@ -465,7 +472,10 @@ export function IncidentPublicMessageCard({
         </ul>
       ) : !open ? (
         <p className="incident-muted">
-          Informieren Sie Mitarbeitende und Abonnenten über die Statusseite.
+          {tn(
+            "Informiere Mitarbeitende und Abonnenten über die Statusseite.",
+            "Informieren Sie Mitarbeitende und Abonnenten über die Statusseite.",
+          )}
         </p>
       ) : null}
       {open ? (
@@ -622,8 +632,10 @@ export function IncidentKnowledgeCard({
       ) : (
         <>
           <p className="incident-muted">
-            Halten Sie Ursache und Lösung als internen Wissensartikel fest. Der
-            Entwurf wird erst nach Ihrer Prüfung veröffentlicht.
+            {tn(
+              "Halte Ursache und Lösung als internen Wissensartikel fest. Der Entwurf wird erst nach deiner Prüfung veröffentlicht.",
+              "Halten Sie Ursache und Lösung als internen Wissensartikel fest. Der Entwurf wird erst nach Ihrer Prüfung veröffentlicht.",
+            )}
           </p>
           <button
             className="secondary-button"

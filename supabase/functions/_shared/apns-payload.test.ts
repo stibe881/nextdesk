@@ -415,3 +415,23 @@ Deno.test("payload carries the exact kind and the ids the app opens", () => {
   });
   assertFalse("notificationKind" in summary);
 });
+
+Deno.test("push texts follow the tenant's form of address", () => {
+  const input = {
+    kind: "approval" as const,
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "event-1",
+    ticketNumber: "NX-1",
+  };
+  const text = (formality?: "du" | "sie") =>
+    (
+      (formality
+        ? buildApnsPayload(input, formality)
+        : buildApnsPayload(input)
+      ).aps as { alert: { body: string } }
+    ).alert.body;
+
+  assertEquals(text(), "Für NX-1 wird deine Freigabe benötigt.");
+  assertEquals(text("du"), "Für NX-1 wird deine Freigabe benötigt.");
+  assertEquals(text("sie"), "Für NX-1 wird Ihre Freigabe benötigt.");
+});

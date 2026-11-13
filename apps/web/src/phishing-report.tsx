@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   CheckCircle2,
   FileUp,
@@ -135,7 +136,12 @@ function PhishingReportDialog({
     let body: Record<string, unknown>;
     if (mode === "file") {
       if (!file) {
-        setError("Bitte wählen Sie die E-Mail-Datei aus.");
+        setError(
+          tn(
+            "Bitte wähle die E-Mail-Datei aus.",
+            "Bitte wählen Sie die E-Mail-Datei aus.",
+          ),
+        );
         return;
       }
       const invalid = validateReportFile(file.name, file.size);
@@ -152,7 +158,12 @@ function PhishingReportDialog({
       };
     } else {
       if (!pasted.trim()) {
-        setError("Bitte fügen Sie die Kopfzeilen oder den Quelltext ein.");
+        setError(
+          tn(
+            "Bitte füge die Kopfzeilen oder den Quelltext ein.",
+            "Bitte fügen Sie die Kopfzeilen oder den Quelltext ein.",
+          ),
+        );
         return;
       }
       body = { type: "submit", tenantId, channel: "portal", rawText: pasted };
@@ -212,7 +223,10 @@ function PhishingReportDialog({
             <CheckCircle2 aria-hidden="true" size={28} />
             <p>{result.message}</p>
             <p className="phishing-report__hint">
-              Ihre Meldung wurde als Ticket {result.ticketNumber} erfasst.
+              {tn(
+                <>Deine Meldung wurde als Ticket {result.ticketNumber} erfasst.</>,
+                <>Ihre Meldung wurde als Ticket {result.ticketNumber} erfasst.</>,
+              )}
             </p>
             <div className="phishing-report__actions">
               {onOpenTicket ? (
@@ -244,15 +258,25 @@ function PhishingReportDialog({
             }}
           >
             <p className="phishing-report__warning">
-              Klicken Sie in der verdächtigen E-Mail keine Links an und öffnen
-              Sie keine Anhänge. Wir prüfen die Nachricht, ohne Links oder
-              Anhänge zu öffnen.
+              {tn(
+                "Klicke in der verdächtigen E-Mail keine Links an und öffne keine Anhänge. Wir prüfen die Nachricht, ohne Links oder Anhänge zu öffnen.",
+                "Klicken Sie in der verdächtigen E-Mail keine Links an und öffnen Sie keine Anhänge. Wir prüfen die Nachricht, ohne Links oder Anhänge zu öffnen.",
+              )}
             </p>
             {reportAddress ? (
               <p className="phishing-report__hint">
-                Alternativ können Sie die E-Mail als Anlage an{" "}
-                <strong>{reportAddress}</strong> weiterleiten. Schreiben Sie
-                dabei «Phishing» in den Betreff.
+                {tn(
+                  <>
+                    Alternativ kannst du die E-Mail als Anlage an{" "}
+                    <strong>{reportAddress}</strong> weiterleiten. Schreibe
+                    dabei «Phishing» in den Betreff.
+                  </>,
+                  <>
+                    Alternativ können Sie die E-Mail als Anlage an{" "}
+                    <strong>{reportAddress}</strong> weiterleiten. Schreiben Sie
+                    dabei «Phishing» in den Betreff.
+                  </>,
+                )}
               </p>
             ) : null}
             <div

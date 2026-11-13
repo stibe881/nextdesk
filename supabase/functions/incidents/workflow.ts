@@ -1,5 +1,6 @@
 // Pure helpers of the incidents function: list cursor, sorting, texts for
 // the linked tickets, the case and the knowledge article draft.
+import { type Formality, tone } from "../_shared/formality.ts";
 
 export const CAUSES = [
   "power",
@@ -85,21 +86,30 @@ type IncidentText = {
   deviceName: string | null;
 };
 
-/** Public reply to the tickets of an incident (requesters: «Sie»). */
+/** Public reply to the tickets of an incident (to the requesters). */
 export function ticketReplyText(
   incident: IncidentText,
   cause: Cause,
   note: string | null,
+  formality: Formality = "du",
 ): string {
   const device = incident.deviceName ?? incident.title;
   return [
     "Guten Tag",
     "",
-    `Ihre Meldung hängt mit einer Störung zusammen (${incident.number}, ${device}). Die Störung ist behoben.`,
+    tone(
+      formality,
+      `Deine Meldung hängt mit einer Störung zusammen (${incident.number}, ${device}). Die Störung ist behoben.`,
+      `Ihre Meldung hängt mit einer Störung zusammen (${incident.number}, ${device}). Die Störung ist behoben.`,
+    ),
     "",
     `Ursache: ${CAUSE_LABELS[cause]}${note ? `\n${note}` : ""}`,
     "",
-    "Wir setzen Ihr Ticket deshalb auf «Gelöst». Besteht das Problem weiterhin, antworten Sie bitte auf diese Nachricht.",
+    tone(
+      formality,
+      "Wir setzen dein Ticket deshalb auf «Gelöst». Besteht das Problem weiterhin, antworte bitte auf diese Nachricht.",
+      "Wir setzen Ihr Ticket deshalb auf «Gelöst». Besteht das Problem weiterhin, antworten Sie bitte auf diese Nachricht.",
+    ),
     "",
     "Freundliche Grüsse",
   ].join("\n");

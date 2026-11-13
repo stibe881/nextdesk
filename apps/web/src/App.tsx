@@ -1,6 +1,6 @@
 import { useTicketHoverPreview } from "./ticket-hover-preview";
 import {
-  AGENT_TOUR,
+  agentTour,
   markTourSeen,
   OnboardingTour,
   tourSeen,
@@ -7569,7 +7569,7 @@ function AuthenticatedApp() {
             if (session?.user.id) markTourSeen(session.user.id, true);
           }}
           onNavigate={navigateForTour}
-          steps={AGENT_TOUR}
+          steps={agentTour()}
         />
       ) : null}
       {workspaceLiveMessage &&

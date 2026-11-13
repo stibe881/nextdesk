@@ -4,6 +4,7 @@
 
 import { Search } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
+import { tn } from "./lib/formality";
 import { Meter, Pill, useDebounced, useIpamQuery, errorText } from "./ipam-ui";
 import { RingGauge, Sparkline, StackedBar, type StackPart } from "./ipam-viz";
 import { ipamCall } from "./lib/ipam-api";
@@ -519,8 +520,10 @@ export function DashboardView({
           </div>
           {dashboard.topUtilization.length === 0 ? (
             <p className="ipam-empty">
-              Noch keine aktiven IPv4-Subnetze. Legen Sie unter «Netze» ein
-              Subnetz an oder importieren Sie bestehende Listen.
+              {tn(
+                "Noch keine aktiven IPv4-Subnetze. Lege unter «Netze» ein Subnetz an oder importiere bestehende Listen.",
+                "Noch keine aktiven IPv4-Subnetze. Legen Sie unter «Netze» ein Subnetz an oder importieren Sie bestehende Listen.",
+              )}
             </p>
           ) : (
             <ul className="ipam-top">

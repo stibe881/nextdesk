@@ -7,6 +7,7 @@ import {
 } from "react";
 import { Activity, Copy, KeyRound, RefreshCw, ShieldCheck } from "lucide-react";
 
+import { tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
@@ -337,7 +338,12 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
       await copyText(value);
       setCopied(label);
     } catch {
-      setMessage("Kopieren war nicht möglich. Bitte markieren Sie den Text.");
+      setMessage(
+        tn(
+          "Kopieren war nicht möglich. Bitte markiere den Text.",
+          "Kopieren war nicht möglich. Bitte markieren Sie den Text.",
+        ),
+      );
     }
   }
 
@@ -518,8 +524,10 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
                   Neuen Token erzeugen?
                 </strong>
                 <p>
-                  Die bisherige Webhook-Adresse funktioniert danach nicht mehr.
-                  Sie müssen die neue Adresse in PRTG hinterlegen.
+                  {tn(
+                    "Die bisherige Webhook-Adresse funktioniert danach nicht mehr. Du musst die neue Adresse in PRTG hinterlegen.",
+                    "Die bisherige Webhook-Adresse funktioniert danach nicht mehr. Sie müssen die neue Adresse in PRTG hinterlegen.",
+                  )}
                 </p>
                 <div className="asset-intune-settings__actions">
                   <button onClick={() => void rotate()} type="button">
@@ -541,8 +549,10 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
             <div className="monitoring-settings__secret" role="status">
               <strong>Webhook-Adresse (wird nur jetzt angezeigt)</strong>
               <p>
-                Kopieren Sie die Adresse jetzt. nextDesk speichert nur einen
-                Hash des Tokens und kann die Adresse später nicht mehr anzeigen.
+                {tn(
+                  "Kopiere die Adresse jetzt. nextDesk speichert nur einen Hash des Tokens und kann die Adresse später nicht mehr anzeigen.",
+                  "Kopieren Sie die Adresse jetzt. nextDesk speichert nur einen Hash des Tokens und kann die Adresse später nicht mehr anzeigen.",
+                )}
               </p>
               <div className="monitoring-settings__copy">
                 <code>{newUrl}</code>
@@ -565,26 +575,53 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
             <div className="panel-heading">
               <div>
                 <p className="eyebrow">EINRICHTUNG IN PRTG</p>
-                <h3 id="monitoring-setup-heading">So verbinden Sie PRTG</h3>
+                <h3 id="monitoring-setup-heading">{tn("So verbindest du PRTG", "So verbinden Sie PRTG")}</h3>
               </div>
             </div>
             <ol>
               <li>
-                Erzeugen Sie oben einen Token und kopieren Sie die
-                Webhook-Adresse.
+                {tn(
+                  "Erzeuge oben einen Token und kopiere die Webhook-Adresse.",
+                  "Erzeugen Sie oben einen Token und kopieren Sie die Webhook-Adresse.",
+                )}
               </li>
               <li>
-                Öffnen Sie in PRTG{" "}
-                <em>Setup → Kontoeinstellungen → Benachrichtigungsvorlagen</em>{" "}
-                und legen Sie eine neue Vorlage an.
+                {tn(
+                  <>
+                    Öffne in PRTG{" "}
+                    <em>
+                      Setup → Kontoeinstellungen → Benachrichtigungsvorlagen
+                    </em>{" "}
+                    und lege eine neue Vorlage an.
+                  </>,
+                  <>
+                    Öffnen Sie in PRTG{" "}
+                    <em>
+                      Setup → Kontoeinstellungen → Benachrichtigungsvorlagen
+                    </em>{" "}
+                    und legen Sie eine neue Vorlage an.
+                  </>,
+                )}
               </li>
               <li>
-                Aktivieren Sie <em>HTTP-Aktion ausführen</em> (Execute HTTP
-                Action), fügen Sie die Webhook-Adresse als URL ein und wählen
-                Sie die Methode <strong>POST</strong>.
+                {tn(
+                  <>
+                    Aktiviere <em>HTTP-Aktion ausführen</em> (Execute HTTP
+                    Action), füge die Webhook-Adresse als URL ein und wähle die
+                    Methode <strong>POST</strong>.
+                  </>,
+                  <>
+                    Aktivieren Sie <em>HTTP-Aktion ausführen</em> (Execute HTTP
+                    Action), fügen Sie die Webhook-Adresse als URL ein und
+                    wählen Sie die Methode <strong>POST</strong>.
+                  </>,
+                )}
               </li>
               <li>
-                Tragen Sie als Postdata (Payload) Folgendes ein:
+                {tn(
+                  "Trage als Postdata (Payload) Folgendes ein:",
+                  "Tragen Sie als Postdata (Payload) Folgendes ein:",
+                )}
                 <div className="monitoring-settings__copy">
                   <code>{PRTG_POSTDATA}</code>
                   <button
@@ -598,14 +635,16 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
                 </div>
               </li>
               <li>
-                Hinterlegen Sie die Vorlage als Benachrichtigungs-Trigger
-                (Zustand «Down», bei Bedarf «Warning», sowie «Up») auf der
-                gewünschten Gruppe oder dem Gerät.
+                {tn(
+                  "Hinterlege die Vorlage als Benachrichtigungs-Trigger (Zustand «Down», bei Bedarf «Warning», sowie «Up») auf der gewünschten Gruppe oder dem Gerät.",
+                  "Hinterlegen Sie die Vorlage als Benachrichtigungs-Trigger (Zustand «Down», bei Bedarf «Warning», sowie «Up») auf der gewünschten Gruppe oder dem Gerät.",
+                )}
               </li>
               <li>
-                Optional: Tragen Sie die PRTG-ID des Geräts oder Sensors in der
-                Infrastruktur unter «PRTG-Objekt-ID» ein, damit die Zuordnung
-                eindeutig ist.
+                {tn(
+                  "Optional: Trage die PRTG-ID des Geräts oder Sensors in der Infrastruktur unter «PRTG-Objekt-ID» ein, damit die Zuordnung eindeutig ist.",
+                  "Optional: Tragen Sie die PRTG-ID des Geräts oder Sensors in der Infrastruktur unter «PRTG-Objekt-ID» ein, damit die Zuordnung eindeutig ist.",
+                )}
               </li>
             </ol>
             <p className="asset-intune-settings__help">

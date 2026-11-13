@@ -10,6 +10,11 @@ import {
   prepareMobileUserContext,
   setSelectedTenantId,
 } from "@/lib/mobile-private-state";
+import {
+  FORMALITY_PAIR_START,
+  resolveFormalityPairs,
+  tn,
+} from "@/lib/formality";
 import { mobileSecureStorage } from "@/lib/mobile-secure-storage";
 import { base64UrlEncode, pkceS256Challenge, withTimeout } from "@/lib/pkce";
 import {
@@ -116,8 +121,29 @@ const SUPABASE_AUTH_STORAGE_KEY = (() => {
   }
 })();
 
+/**
+ * Server texts can carry both forms of address as «⟦du␞sie⟧». Function
+ * answers are resolved here, once, for the form the tenant uses.
+ */
+async function resolveFunctionResponse(response: Response): Promise<Response> {
+  if (!response.url.includes("/functions/v1/")) return response;
+  const type = response.headers.get("content-type") ?? "";
+  if (!type.includes("json") && !type.includes("text")) return response;
+  const text = await response.clone().text();
+  if (!text.includes(FORMALITY_PAIR_START)) return response;
+  return new Response(resolveFormalityPairs(text), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 export const nextDesk: SupabaseClient | null = isNextDeskConfigured
   ? createClient(url, publishableKey, {
+      global: {
+        fetch: async (input, init) =>
+          resolveFunctionResponse(await fetch(input, init)),
+      },
       auth: {
         autoRefreshToken: true,
         detectSessionInUrl: false,

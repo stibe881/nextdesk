@@ -184,7 +184,10 @@ export function KnowledgeSuggestions({
         parseKnowledgeSuggestionDraft,
         tn(
           "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuche es erneut.",
-          "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuche es erneut.",
+            "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
       setList((current) =>

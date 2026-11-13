@@ -20,6 +20,7 @@ import {
 } from "@/lib/account";
 import { getMobileUserId } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 /**
  * Team management for personal workspaces: the owner invites colleagues by
@@ -160,8 +161,7 @@ export function TeamMembersCard({ tenantId }: { tenantId: string | null }) {
     <View style={styles.card}>
       <Text style={styles.title}>Team</Text>
       <Text style={styles.copy}>
-        Lade Personen per E-Mail in deinen Arbeitsbereich ein, um gemeinsam an
-        Tickets zu arbeiten.
+        {tn("Lade Personen per E-Mail in deinen Arbeitsbereich ein, um gemeinsam an Tickets zu arbeiten.", "Laden Sie Personen per E-Mail in Ihren Arbeitsbereich ein, um gemeinsam an Tickets zu arbeiten.")}
       </Text>
 
       {team?.members.map((member) => {
@@ -177,7 +177,7 @@ export function TeamMembersCard({ tenantId }: { tenantId: string | null }) {
             <View style={styles.rowCopy}>
               <Text style={styles.rowTitle}>
                 {label}
-                {isSelf ? " (du)" : ""}
+                {isSelf ? tn(" (du)", " (Sie)") : ""}
               </Text>
               <Text style={styles.rowMeta}>
                 {member.isTenantAdmin

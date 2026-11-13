@@ -55,6 +55,7 @@ import { isNextDeskConfigured, nextDesk } from "@/lib/nextdesk-client";
 import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
+import { tn } from "@/lib/formality";
 
 type TicketScope =
   | "all"
@@ -243,8 +244,8 @@ export default function TicketsScreen() {
       setWatchedIds(nextIds);
       setMessage(
         nextWatched
-          ? `Du beobachtest «${ticket.ticketNumber}» und wirst über Änderungen benachrichtigt.`
-          : `Du beobachtest «${ticket.ticketNumber}» nicht mehr.`,
+          ? tn(`Du beobachtest «${ticket.ticketNumber}» und wirst über Änderungen benachrichtigt.`, `Sie beobachten «${ticket.ticketNumber}» und werden über Änderungen benachrichtigt.`)
+          : tn(`Du beobachtest «${ticket.ticketNumber}» nicht mehr.`, `Sie beobachten «${ticket.ticketNumber}» nicht mehr.`),
       );
     } catch {
       setError("Das Beobachten konnte nicht gespeichert werden.");
@@ -309,7 +310,7 @@ export default function TicketsScreen() {
             : item,
         ),
       );
-      setMessage(`«${ticket.ticketNumber}» wurde dir zugewiesen.`);
+      setMessage(tn(`«${ticket.ticketNumber}» wurde dir zugewiesen.`, `«${ticket.ticketNumber}» wurde Ihnen zugewiesen.`));
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -363,7 +364,7 @@ export default function TicketsScreen() {
       }
       return result.failed > 0
         ? `${result.succeeded} Tickets zugewiesen, ${result.failed} nicht möglich.`
-        : `${result.succeeded} Tickets wurden dir zugewiesen.`;
+        : tn(`${result.succeeded} Tickets wurden dir zugewiesen.`, `${result.succeeded} Tickets wurden Ihnen zugewiesen.`);
     }, "Die Tickets konnten nicht zugewiesen werden.");
   }
 
@@ -388,7 +389,7 @@ export default function TicketsScreen() {
       setWatchedIds(nextIds);
       return succeeded < ids.length
         ? `${succeeded} Tickets werden beobachtet, ${ids.length - succeeded} nicht möglich.`
-        : `Du beobachtest jetzt ${succeeded} Tickets.`;
+        : tn(`Du beobachtest jetzt ${succeeded} Tickets.`, `Sie beobachten jetzt ${succeeded} Tickets.`);
     }, "Die Tickets konnten nicht beobachtet werden.");
   }
 
@@ -469,7 +470,7 @@ export default function TicketsScreen() {
       {
         cancelButtonIndex: 0,
         message:
-          "Beim Beobachten wirst du über Status, Nachrichten und Notizen benachrichtigt.",
+          tn("Beim Beobachten wirst du über Status, Nachrichten und Notizen benachrichtigt.", "Beim Beobachten werden Sie über Status, Nachrichten und Notizen benachrichtigt."),
         options: [
           "Abbrechen",
           isWatched ? "Nicht mehr beobachten" : "Beobachten",
@@ -588,7 +589,7 @@ export default function TicketsScreen() {
             </Text>
             <Text style={[styles.title, tokenStyles.foreground]}>Tickets</Text>
             <Text style={[styles.subtitle, tokenStyles.muted]}>
-              {tenantName || "Deine autorisierten Vorgänge"}
+              {tenantName || tn("Deine autorisierten Vorgänge", "Ihre autorisierten Vorgänge")}
             </Text>
           </View>
           <Pressable

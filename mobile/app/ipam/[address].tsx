@@ -8,6 +8,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 const IP_ADDRESS = /^[0-9a-f.:]{2,45}$/i;
 
@@ -79,9 +80,7 @@ export default function IpamAddressScreen() {
         ) : null}
         {!address || count === 0 ? (
           <Text style={styles.hint}>
-            Zu dieser Adresse findest du keine Daten. Entweder ist sie nicht
-            dokumentiert oder dir fehlt das Recht für die IP-Adressverwaltung.
-            Details siehst du in der Web-App unter «IP-Adressen».
+            {tn("Zu dieser Adresse findest du keine Daten. Entweder ist sie nicht dokumentiert oder dir fehlt das Recht für die IP-Adressverwaltung. Details siehst du in der Web-App unter «IP-Adressen».", "Zu dieser Adresse finden Sie keine Daten. Entweder ist sie nicht dokumentiert oder Ihnen fehlt das Recht für die IP-Adressverwaltung. Details sehen Sie in der Web-App unter «IP-Adressen».")}
           </Text>
         ) : null}
       </ScrollView>

@@ -3,6 +3,7 @@
 // with many addresses, a guest VRF, an IPv6 block, findings and a change log.
 // Implements the read actions of the contract and the most common writes.
 
+import { tn } from "../../src/lib/formality";
 import {
   cidrContainsAddress,
   cidrLast,
@@ -1961,7 +1962,10 @@ export function handle(body: Record<string, unknown>): unknown {
       const existing = addresses.find((entry) => entry.address === ip);
       if (existing && existing.status !== "deprecated") {
         throw new Error(
-          `${ip} ist bereits vergeben. Bitte holen Sie einen neuen Vorschlag.`,
+          tn(
+`${ip} ist bereits vergeben. Bitte hol dir einen neuen Vorschlag.`,
+`${ip} ist bereits vergeben. Bitte holen Sie einen neuen Vorschlag.`,
+),
         );
       }
       if (existing) {

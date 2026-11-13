@@ -3,6 +3,7 @@
 
 import { FileText, Pencil, Plus, Printer, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { tn } from "./lib/formality";
 import { SiteDialog, type IpamLookups } from "./ipam-forms";
 import {
   Meter,
@@ -65,8 +66,10 @@ export function IpamSitesPage(props: Props) {
     <div className="ipam-page">
       <div className="ipam-page__intro">
         <p className="ipam-muted">
-          Verknüpfen Sie jeden Standort mit einem Asset-Standort – Geräte, Racks
-          und Tickets erscheinen dann automatisch.
+          {tn(
+            "Verknüpfe jeden Standort mit einem Asset-Standort – Geräte, Racks und Tickets erscheinen dann automatisch.",
+            "Verknüpfen Sie jeden Standort mit einem Asset-Standort – Geräte, Racks und Tickets erscheinen dann automatisch.",
+          )}
         </p>
         {canManage ? (
           <button
@@ -86,9 +89,10 @@ export function IpamSitesPage(props: Props) {
         <div className="ipam-placeholder">
           <h3>Noch keine Standorte</h3>
           <p>
-            Standorte gruppieren VLANs und Subnetze nach Gebäude oder Campus.
-            Mit einer Standort-Vorlage (Register «VLANs») legen Sie einen neuen
-            Standort samt VLANs und Subnetzen in einem Schritt an.
+            {tn(
+              "Standorte gruppieren VLANs und Subnetze nach Gebäude oder Campus. Mit einer Standort-Vorlage (Register «VLANs») legst du einen neuen Standort samt VLANs und Subnetzen in einem Schritt an.",
+              "Standorte gruppieren VLANs und Subnetze nach Gebäude oder Campus. Mit einer Standort-Vorlage (Register «VLANs») legen Sie einen neuen Standort samt VLANs und Subnetzen in einem Schritt an.",
+            )}
           </p>
         </div>
       ) : null}
@@ -525,8 +529,10 @@ function UplinkMap({ devices }: { devices: SiteDetail["devices"] }) {
     <div className="ipam-uplink-map">
       <ul>{tree.map(render)}</ul>
       <p className="ipam-muted">
-        Die vollständige Karte mit Ports finden Sie unter Infrastruktur →
-        Netzwerkkarte.
+        {tn(
+          "Die vollständige Karte mit Ports findest du unter Infrastruktur → Netzwerkkarte.",
+          "Die vollständige Karte mit Ports finden Sie unter Infrastruktur → Netzwerkkarte.",
+        )}
       </p>
     </div>
   );

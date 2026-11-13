@@ -102,11 +102,11 @@ begin
     {"subject": "WLAN im Sitzungszimmer instabil",
      "description": "Im grossen Sitzungszimmer bricht die WLAN-Verbindung während Videokonferenzen mehrfach ab.",
      "status": "waiting_customer", "priority": "normal", "assigned": true, "days": 4,
-     "external": "Bitte teilen Sie uns mit, an welchen Tagen und um welche Uhrzeit die Verbindung abbricht."},
+     "external": "Bitte teile uns mit, an welchen Tagen und um welche Uhrzeit die Verbindung abbricht."},
     {"subject": "Zugriff auf das gemeinsame Laufwerk fehlt",
      "description": "Nach dem Wechsel in die Buchhaltung kann ich nicht mehr auf das Laufwerk der Abteilung zugreifen.",
      "status": "resolved", "priority": "low", "assigned": true, "days": 6,
-     "external": "Der Zugriff wurde eingerichtet. Bitte melden Sie sich einmal ab und wieder an."},
+     "external": "Der Zugriff wurde eingerichtet. Bitte melde dich einmal ab und wieder an."},
     {"subject": "Bildschirm flackert am Arbeitsplatz 12",
      "description": "Der zweite Bildschirm flackert in unregelmässigen Abständen. Das Kabel wurde bereits getauscht.",
      "status": "new", "priority": "low", "assigned": false, "days": 0}
@@ -166,13 +166,13 @@ begin
 
   v_article_seed := '[
     {"slug": "vpn-einrichten", "title": "VPN einrichten",
-     "body": "So richten Sie das VPN auf Ihrem Notebook ein.\n\n1. Öffnen Sie die VPN-Anwendung.\n2. Wählen Sie Verbindung hinzufügen und tragen Sie den Servernamen ein, den Ihnen die IT mitgeteilt hat.\n3. Melden Sie sich mit Ihrem Geschäftskonto an.\n4. Bestätigen Sie die Anmeldung auf Ihrem Mobiltelefon.\n\nFunktioniert die Verbindung nicht, erfassen Sie ein Ticket.",
+     "body": "So richtest du das VPN auf deinem Notebook ein.\n\n1. Öffne die VPN-Anwendung.\n2. Wähle Verbindung hinzufügen und trage den Servernamen ein, den dir die IT mitgeteilt hat.\n3. Melde dich mit deinem Geschäftskonto an.\n4. Bestätige die Anmeldung auf deinem Mobiltelefon.\n\nFunktioniert die Verbindung nicht, erfasse ein Ticket.",
      "summary": "Schritt für Schritt zur VPN-Verbindung."},
     {"slug": "passwort-zuruecksetzen", "title": "Passwort zurücksetzen",
-     "body": "Wenn Sie Ihr Passwort vergessen haben:\n\n1. Öffnen Sie die Anmeldeseite und wählen Sie Passwort vergessen.\n2. Geben Sie Ihre E-Mail-Adresse ein.\n3. Folgen Sie dem Link in der E-Mail, die Sie erhalten.\n\nKommt keine E-Mail an, prüfen Sie den Spam-Ordner oder melden Sie sich beim Support.",
+     "body": "Wenn du dein Passwort vergessen hast:\n\n1. Öffne die Anmeldeseite und wähle Passwort vergessen.\n2. Gib deine E-Mail-Adresse ein.\n3. Folge dem Link in der E-Mail, die du erhältst.\n\nKommt keine E-Mail an, prüfe den Spam-Ordner oder melde dich beim Support.",
      "summary": "Eigenes Passwort selbst zurücksetzen."},
     {"slug": "drucker-verbinden", "title": "Drucker verbinden",
-     "body": "So verbinden Sie einen Netzwerkdrucker:\n\n1. Öffnen Sie die Einstellungen und wählen Sie Drucker und Scanner.\n2. Wählen Sie Drucker hinzufügen.\n3. Wählen Sie den Drucker aus der Liste und bestätigen Sie.\n\nDer Drucker steht danach in allen Anwendungen zur Verfügung.",
+     "body": "So verbindest du einen Netzwerkdrucker:\n\n1. Öffne die Einstellungen und wähle Drucker und Scanner.\n2. Wähle Drucker hinzufügen.\n3. Wähle den Drucker aus der Liste und bestätige.\n\nDer Drucker steht danach in allen Anwendungen zur Verfügung.",
      "summary": "Netzwerkdrucker hinzufügen."}
   ]'::jsonb;
 

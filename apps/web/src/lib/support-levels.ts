@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 import { functionErrorMessage } from "./function-error";
 import { supabase } from "./supabase";
 
@@ -46,7 +47,10 @@ export function supportLevelOfFilter(
 export function handoverNoteError(note: string): string | null {
   const length = Array.from(note.trim()).length;
   if (length < HANDOVER_NOTE_MIN)
-    return `Bitte beschreiben Sie in mindestens ${HANDOVER_NOTE_MIN} Zeichen, was bereits versucht wurde und welche Erkenntnisse vorliegen.`;
+    return tn(
+      `Bitte beschreibe in mindestens ${HANDOVER_NOTE_MIN} Zeichen, was bereits versucht wurde und welche Erkenntnisse vorliegen.`,
+      `Bitte beschreiben Sie in mindestens ${HANDOVER_NOTE_MIN} Zeichen, was bereits versucht wurde und welche Erkenntnisse vorliegen.`,
+    );
   if (length > HANDOVER_NOTE_MAX)
     return `Die Übergabenotiz darf höchstens ${HANDOVER_NOTE_MAX} Zeichen lang sein.`;
   return null;

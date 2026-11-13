@@ -42,6 +42,7 @@ import {
 } from "@/lib/push-notifications";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
+import { tn } from "@/lib/formality";
 
 const CATEGORY_DETAILS: readonly {
   key: PushCategory;
@@ -177,7 +178,7 @@ function testFeedback(
   results: Awaited<ReturnType<typeof sendPushTest>>["results"],
 ): string {
   if (results.some((result) => result.status === "sent")) {
-    return "Testmitteilung wurde an deine registrierten Geräte gesendet.";
+    return tn("Testmitteilung wurde an deine registrierten Geräte gesendet.", "Testmitteilung wurde an Ihre registrierten Geräte gesendet.");
   }
   if (results.some((result) => result.status === "disabled")) {
     return "Dieses iPhone ist für Push-Benachrichtigungen derzeit nicht aktiv.";
@@ -286,7 +287,7 @@ export default function NotificationsScreen() {
   const statusDescription = (() => {
     if (!status) return "Status wird geprüft";
     if (!status.featureEnabled) {
-      return "Für deinen Mandanten noch nicht aktiviert";
+      return tn("Für deinen Mandanten noch nicht aktiviert", "Für Ihren Mandanten noch nicht aktiviert");
     }
     if (!status.apnsConfigured) {
       return "Apple-Zugang wird noch eingerichtet";
@@ -363,7 +364,7 @@ export default function NotificationsScreen() {
       setStatus((current) =>
         current ? { ...current, preferences: response.preferences } : current,
       );
-      setMessage("Deine Benachrichtigungseinstellungen wurden gespeichert.");
+      setMessage(tn("Deine Benachrichtigungseinstellungen wurden gespeichert.", "Ihre Benachrichtigungseinstellungen wurden gespeichert."));
       hapticSuccess();
     } catch (nextError) {
       hapticError();
@@ -694,8 +695,7 @@ export default function NotificationsScreen() {
                 </View>
                 {applicableCategories.length === 0 ? (
                   <Text style={[styles.emptyCopy, { color: colors.muted }]}>
-                    Für deine Rolle sind derzeit keine Push-Kategorien
-                    verfügbar.
+                    {tn("Für deine Rolle sind derzeit keine Push-Kategorien verfügbar.", "Für Ihre Rolle sind derzeit keine Push-Kategorien verfügbar.")}
                   </Text>
                 ) : (
                   <View style={styles.categoryList}>
@@ -740,8 +740,7 @@ export default function NotificationsScreen() {
                                   { color: colors.muted },
                                 ]}
                               >
-                                Als Mitglied des Phishing-Teams bekommst du
-                                diese Mitteilungen immer.
+                                {tn("Als Mitglied des Phishing-Teams bekommst du diese Mitteilungen immer.", "Als Mitglied des Phishing-Teams bekommen Sie diese Mitteilungen immer.")}
                               </Text>
                             ) : null}
                           </View>
@@ -853,8 +852,8 @@ export default function NotificationsScreen() {
                 </View>
                 <Text style={[styles.quietNote, { color: colors.muted }]}>
                   {deliveryLimited
-                    ? "Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit. In nextDesk siehst du alles sofort."
-                    : "Schalte ein, um Push-Mitteilungen nur an bestimmten Tagen und Zeiten zu erhalten."}
+                    ? tn("Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit. In nextDesk siehst du alles sofort.", "Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit. In nextDesk sehen Sie alles sofort.")
+                    : tn("Schalte ein, um Push-Mitteilungen nur an bestimmten Tagen und Zeiten zu erhalten.", "Schalten Sie ein, um Push-Mitteilungen nur an bestimmten Tagen und Zeiten zu erhalten.")}
                 </Text>
                 {deliveryLimited ? (
                   <>

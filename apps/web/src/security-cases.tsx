@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -193,9 +194,10 @@ export function SecurityCases({
         <p className="eyebrow">SICHERHEIT</p>
         <h2 id="security-cases-title">Sicherheitsfälle</h2>
         <p>
-          Gemeldete Phishing-Mails, getrennt von den Support-Tickets. Meldungen
-          derselben Mail sind ein Fall. Beurteilen Sie den Fall, arbeiten Sie
-          die Massnahmen ab; alle Melder erhalten das Ergebnis automatisch.
+          {tn(
+            "Gemeldete Phishing-Mails, getrennt von den Support-Tickets. Meldungen derselben Mail sind ein Fall. Beurteile den Fall, arbeite die Massnahmen ab; alle Melder erhalten das Ergebnis automatisch.",
+            "Gemeldete Phishing-Mails, getrennt von den Support-Tickets. Meldungen derselben Mail sind ein Fall. Beurteilen Sie den Fall, arbeiten Sie die Massnahmen ab; alle Melder erhalten das Ergebnis automatisch.",
+          )}
         </p>
       </header>
 

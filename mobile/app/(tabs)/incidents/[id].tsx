@@ -38,6 +38,7 @@ import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { useAppColors } from "@/lib/themed-styles";
 import { useAppActiveInterval } from "@/lib/use-app-active-interval";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 const TIME = new Intl.DateTimeFormat("de-CH", {
   hour: "2-digit",
@@ -249,10 +250,7 @@ export default function IncidentDetailScreen() {
           {detail.source === "external" ? (
             <View style={{ gap: 4 }}>
               <Text style={styles.muted}>
-                Gemeldet von {detail.externalProvider ?? "einem Anbieter"}: Die
-                Ursache liegt beim Anbieter, nicht in Ihrem Netz. Die Störung
-                schliesst sich automatisch, sobald der Anbieter sie als behoben
-                meldet.
+                {tn(`Gemeldet von ${detail.externalProvider ?? "einem Anbieter"}: Die Ursache liegt beim Anbieter, nicht in deinem Netz. Die Störung schliesst sich automatisch, sobald der Anbieter sie als behoben meldet.`, `Gemeldet von ${detail.externalProvider ?? "einem Anbieter"}: Die Ursache liegt beim Anbieter, nicht in Ihrem Netz. Die Störung schliesst sich automatisch, sobald der Anbieter sie als behoben meldet.`)}
               </Text>
               {detail.externalUrl ? (
                 <Pressable

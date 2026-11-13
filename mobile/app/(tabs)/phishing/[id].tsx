@@ -35,6 +35,7 @@ import {
 } from "@/lib/security-cases";
 import { useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 const DATE_TIME = new Intl.DateTimeFormat("de-CH", {
   dateStyle: "short",
@@ -297,9 +298,7 @@ export default function PhishingCaseScreen() {
           <View style={styles.errorCard}>
             <Ionicons color={colors.error} name="warning-outline" size={19} />
             <Text style={styles.errorText}>
-              Jemand hat geklickt. Sitzungen widerrufen, Passwort-Reset
-              erzwingen und Gerät scannen kannst du im Web unter «Kontext und
-              Massnahmen».
+              {tn("Jemand hat geklickt. Sitzungen widerrufen, Passwort-Reset erzwingen und Gerät scannen kannst du im Web unter «Kontext und Massnahmen».", "Jemand hat geklickt. Sitzungen widerrufen, Passwort-Reset erzwingen und Gerät scannen können Sie im Web unter «Kontext und Massnahmen».")}
             </Text>
           </View>
         ) : null}

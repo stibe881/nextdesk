@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import { FormCard, FormField, FormGrid, FormSwitch } from "./form-kit";
 import {
@@ -480,9 +481,10 @@ export function TemplateFieldsEditor({
       </div>
       {drafts.length === 0 ? (
         <p className="ticket-templates__description">
-          Keine Formularfelder. Mit Feldern fragen Sie beim Erfassen
-          strukturierte Angaben ab, zum Beispiel Name der Person oder
-          Eintrittsdatum. Die Antworten werden an die Beschreibung angehängt.
+          {tn(
+            "Keine Formularfelder. Mit Feldern fragst du beim Erfassen strukturierte Angaben ab, zum Beispiel Name der Person oder Eintrittsdatum. Die Antworten werden an die Beschreibung angehängt.",
+            "Keine Formularfelder. Mit Feldern fragen Sie beim Erfassen strukturierte Angaben ab, zum Beispiel Name der Person oder Eintrittsdatum. Die Antworten werden an die Beschreibung angehängt.",
+          )}
         </p>
       ) : (
         <ol className="ticket-template-fields">

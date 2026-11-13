@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { FormChips } from "./form-kit";
 import {
   ChevronLeft,
@@ -1212,8 +1213,8 @@ function CartPanel({
                 ? ` (Kaderstufe ${otherPerson.cadreLevel})`
                 : " (kein Kader)"}{" "}
               freigegeben:{" "}
-              {notForPerson.map((line) => line.item.name).join(", ")}. Sie
-              können trotzdem bestellen.
+              {notForPerson.map((line) => line.item.name).join(", ")}.{" "}
+              {tn("Du kannst trotzdem bestellen.", "Sie können trotzdem bestellen.")}
             </p>
           ) : null}
           <ul className="shop__cart-lines">
@@ -1393,7 +1394,7 @@ function CartPanel({
             <p className="shop__hint">
               {forOther
                 ? "Mindestens ein Artikel braucht die Freigabe der vorgesetzten Person der bestellenden Person."
-                : "Mindestens ein Artikel braucht die Freigabe deiner vorgesetzten Person."}
+                : tn("Mindestens ein Artikel braucht die Freigabe deiner vorgesetzten Person.", "Mindestens ein Artikel braucht die Freigabe Ihrer vorgesetzten Person.")}
             </p>
           ) : null}
           {error ? (
@@ -1487,7 +1488,7 @@ function OrderList({
       ) : orders.length === 0 ? (
         <p className="empty-state">
           {scope === "approvals"
-            ? "Keine Bestellungen warten auf deine Freigabe."
+            ? tn("Keine Bestellungen warten auf deine Freigabe.", "Keine Bestellungen warten auf Ihre Freigabe.")
             : "Keine Bestellungen."}
         </p>
       ) : (
@@ -2185,6 +2186,7 @@ function OptionsEditor({
         {selected.length > 0 ? ` · ${selected.length} gewählt` : ""}
       </legend>
       <p className="shop__options-hint">
+        {/* formality-ok: «Sie» bezieht sich auf die Artikel */}
         Diese Artikel werden beim Bestellen dieses Artikels zur Auswahl
         angeboten, z. B. die Ladestation beim Headset. Sie bleiben zusätzlich
         einzeln bestellbar.
@@ -3018,7 +3020,10 @@ export function CatalogEditor({
     if (free <= 0) {
       setPhotoError(
         maxImages === 1
-          ? "Ohne Shop ist ein Bild möglich. Entfernen Sie zuerst das bisherige."
+          ? tn(
+              "Ohne Shop ist ein Bild möglich. Entferne zuerst das bisherige.",
+              "Ohne Shop ist ein Bild möglich. Entfernen Sie zuerst das bisherige.",
+            )
           : `Pro Artikel sind höchstens ${MAX_IMAGES} Fotos möglich.`,
       );
       return;
@@ -3570,7 +3575,7 @@ export function CatalogEditor({
                         Agenten dieser Abteilung.
                         {chooseDepartment
                           ? ""
-                          : " Zur Auswahl stehen Ihre eigenen Abteilungen."}
+                          : tn(" Zur Auswahl stehen deine eigenen Abteilungen.", " Zur Auswahl stehen Ihre eigenen Abteilungen.")}
                       </small>
                     </label>
                   ) : null}
@@ -3676,8 +3681,10 @@ export function CatalogEditor({
                     stock.item.physicalQuantity > 0 &&
                     !stock.item.locationId ? (
                       <p className="shop__muted">
-                        Der Bestand liegt an mehreren Lagerorten. Ändern Sie ihn
-                        unter «Bewegungen».
+                        {tn(
+                          "Der Bestand liegt an mehreren Lagerorten. Ändere ihn unter «Bewegungen».",
+                          "Der Bestand liegt an mehreren Lagerorten. Ändern Sie ihn unter «Bewegungen».",
+                        )}
                       </p>
                     ) : null}
                     {draft.kind === "loan" && stock.locations.length === 0 ? (
