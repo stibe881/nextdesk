@@ -36,6 +36,7 @@ import {
   TicketCreatedText,
   TicketPriorityText,
   TicketRequesterText,
+  TicketSlaPauseText,
   TicketStatusBadge,
 } from "@/components/ticket-status-badge";
 import { TicketSwipeActions } from "@/components/ticket-swipe-actions";
@@ -1162,6 +1163,7 @@ export default function HomeScreen() {
                       <TicketRequesterText name={ticket.requesterName} />
                       <TicketPriorityText priority={ticket.priority} />
                       <TicketCreatedText createdAt={ticket.createdAt} />
+                      <TicketSlaPauseText pausedAt={ticket.slaPausedAt} />
                     </View>
                     <View style={styles.ticketRight}>
                       <TicketStatusBadge ticket={ticket} />

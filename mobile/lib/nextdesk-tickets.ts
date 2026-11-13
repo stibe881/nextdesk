@@ -10,6 +10,7 @@ import {
   loadOfflineTicketListCache,
   saveOfflineTicketListCache,
 } from "@/lib/mobile-private-state";
+import { openSlaPause } from "@/lib/sla-pause";
 
 export type MobileTicket = {
   id: string;
@@ -27,6 +28,8 @@ export type MobileTicket = {
   createdAt?: string | null;
   /** Name of the requesting person; null for own tickets or when unknown. */
   requesterName?: string | null;
+  /** Start of a running SLA pause (waiting status); null while it runs. */
+  slaPausedAt?: string | null;
 };
 
 /**
@@ -128,6 +131,8 @@ export type MobileTicketDetail = {
   requesterContact: TicketRequester | null;
   assignedAgentId: string | null;
   resolvedAt: string | null;
+  /** Start of a running SLA pause (waiting status); null while it runs. */
+  slaPausedAt: string | null;
   subcategoryId: string | null;
   statusId: string;
   priorityId: string;
@@ -328,7 +333,7 @@ export async function loadMobileDashboard(input: {
         client
           .from("tickets")
           .select(
-            "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, created_at",
+            "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, created_at, sla_paused_at",
           )
           .eq("tenant_id", tenant.id)
           // Phishing reports are security cases, not tickets.
@@ -369,6 +374,10 @@ export async function loadMobileDashboard(input: {
       unassigned: !ticket.assigned_agent_id,
       requesterId: ticket.requester_id,
       createdAt: ticket.created_at,
+      slaPausedAt: openSlaPause(
+        ticket.sla_paused_at,
+        Boolean(statusById.get(ticket.status_id)?.is_closed),
+      ),
     }));
     const tickets = await withRequesterNames(
       client,
@@ -513,7 +522,7 @@ export async function loadMobileTicketsByIds(
     client
       .from("tickets")
       .select(
-        "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, created_at",
+        "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, created_at, sla_paused_at",
       )
       .eq("tenant_id", tenant.id)
       .in("id", uniqueIds)
@@ -550,6 +559,10 @@ export async function loadMobileTicketsByIds(
     unassigned: !ticket.assigned_agent_id,
     requesterId: ticket.requester_id,
     createdAt: ticket.created_at,
+    slaPausedAt: openSlaPause(
+      ticket.sla_paused_at,
+      Boolean(statusById.get(ticket.status_id)?.is_closed),
+    ),
   }));
   return withRequesterNames(client, tenant.id, userId, tickets);
 }
@@ -723,6 +736,10 @@ export async function loadMobileTicketDetail(
         : null,
     resolvedAt:
       typeof record.resolved_at === "string" ? record.resolved_at : null,
+    slaPausedAt: openSlaPause(
+      record.sla_paused_at,
+      typeof record.closed_at === "string",
+    ),
     subcategoryId:
       typeof record.subcategory_id === "string" ? record.subcategory_id : null,
     statusId: record.status_id,

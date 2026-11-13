@@ -283,7 +283,7 @@ async function ticket(
   const { data, error } = await admin
     .from("tickets")
     .select(
-      "id, tenant_id, department_id, requester_id, affected_user_id, assigned_agent_id, category_id, priority_id, status_id, subject, description, ticket_number, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
+      "id, tenant_id, department_id, requester_id, affected_user_id, assigned_agent_id, category_id, priority_id, status_id, subject, description, ticket_number, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at, sla_paused_at",
     )
     .is("deleted_at", null)
     .eq("tenant_id", tenantId)
@@ -1304,7 +1304,7 @@ async function myMetrics(
     admin
       .from("tickets")
       .select(
-        "id, assigned_agent_id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
+        "id, assigned_agent_id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at, sla_paused_at",
       )
       .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
@@ -1370,7 +1370,7 @@ async function myMetrics(
     const extra = await admin
       .from("tickets")
       .select(
-        "id, assigned_agent_id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
+        "id, assigned_agent_id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at, sla_paused_at",
       )
       .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
@@ -1455,7 +1455,8 @@ async function myMetrics(
       const dues = [responseDue, resolutionDue].filter(
         (value): value is number => value !== null,
       );
-      if (dues.length > 0)
+      // A paused SLA (waiting status) is not due.
+      if (dues.length > 0 && typeof entry.sla_paused_at !== "string")
         slaDueEntries.push({ id: entry.id, dueAt: Math.min(...dues) });
     }
     const resolvedByMe =

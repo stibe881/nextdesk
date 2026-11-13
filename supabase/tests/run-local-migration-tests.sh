@@ -15314,4 +15314,222 @@ $$;
 rollback;
 SQL
 
+# 0324: SLA pause for waiting statuses.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_department constant uuid := '11000000-0000-4000-8000-000000000001';
+  v_priority constant uuid := '14000000-0000-4000-8000-000000000001';
+  v_requester constant uuid := '00000000-0000-4000-8000-000000000001';
+  v_hours constant jsonb := '{"mode":"business","weekdays":[1,2,3,4,5],"start":"08:00","end":"17:00"}';
+  v_now timestamptz := timezone('utc', now());
+  v_profile uuid;
+  v_open uuid;
+  v_wait_a uuid;
+  v_wait_b uuid;
+  v_closed uuid;
+  v_t1 uuid;
+  v_t2 uuid;
+  v_t3 uuid;
+  v_t4 uuid;
+  v_t5 uuid;
+  v_minutes numeric;
+  v_row public.tickets;
+  v_priority_key text;
+begin
+  -- Defaults: waiting statuses pause, others do not; new tenants get it too.
+  if exists (select 1 from public.ticket_statuses
+              where key in ('waiting', 'waiting_customer', 'waiting_vendor')
+                and not is_closed and not pauses_sla)
+     or exists (select 1 from public.ticket_statuses
+                 where key not in ('waiting', 'waiting_customer', 'waiting_vendor') and pauses_sla) then
+    raise exception '0324 test: default pauses_sla flags wrong';
+  end if;
+  if position('pauses_sla' in pg_get_functiondef('public.initialize_tenant_ticket_reference_data()'::regprocedure)) = 0 then
+    raise exception '0324 test: tenant defaults do not seed pauses_sla';
+  end if;
+
+  -- Service-time arithmetic (Mon 2026-11-09 16:00 -> Tue 09:00 Zurich = 2 h;
+  -- Fri 16:00 -> Mon 09:00 = 2 h; weekend = 0; calendar mode = elapsed).
+  if public.sla_service_minutes_between('2026-11-09 16:00 Europe/Zurich', '2026-11-10 09:00 Europe/Zurich', v_hours, 'Europe/Zurich') <> 120
+     or public.sla_service_minutes_between('2026-11-13 16:00 Europe/Zurich', '2026-11-16 09:00 Europe/Zurich', v_hours, 'Europe/Zurich') <> 120
+     or public.sla_service_minutes_between('2026-11-14 10:00 Europe/Zurich', '2026-11-15 10:00 Europe/Zurich', v_hours, 'Europe/Zurich') <> 0
+     or public.sla_service_minutes_between('2026-11-14 10:00Z', '2026-11-14 12:30Z', '{"mode":"always"}', 'UTC') <> 150 then
+    raise exception '0324 test: sla_service_minutes_between wrong';
+  end if;
+  if public.sla_extend_due_by_pause('2026-11-10 16:00 Europe/Zurich', '2026-11-09 16:00 Europe/Zurich',
+       '2026-11-10 09:00 Europe/Zurich', 120, v_hours, 'Europe/Zurich') <> '2026-11-11 09:00 Europe/Zurich'::timestamptz
+     or public.sla_extend_due_by_pause('2026-11-10 17:00 Europe/Zurich', '2026-11-14 10:00 Europe/Zurich',
+       '2026-11-15 10:00 Europe/Zurich', 0, v_hours, 'Europe/Zurich') <> '2026-11-10 17:00 Europe/Zurich'::timestamptz then
+    raise exception '0324 test: sla_extend_due_by_pause wrong';
+  end if;
+
+  update public.tenant_feature_flags set enabled = true, pilot_ends_at = null
+   where tenant_id = v_tenant and feature_key = 'automation.sla';
+
+  insert into public.ticket_statuses (tenant_id, key, label, is_closed, sort_order, pauses_sla) values
+    (v_tenant, 'sla_t_open', 'SLA-Test offen', false, 901, false),
+    (v_tenant, 'sla_t_wait_a', 'SLA-Test wartet A', false, 902, true),
+    (v_tenant, 'sla_t_wait_b', 'SLA-Test wartet B', false, 903, true),
+    (v_tenant, 'sla_t_closed', 'SLA-Test zu', true, 904, true);
+  select id into v_open from public.ticket_statuses where tenant_id = v_tenant and key = 'sla_t_open';
+  select id into v_wait_a from public.ticket_statuses where tenant_id = v_tenant and key = 'sla_t_wait_a';
+  select id into v_wait_b from public.ticket_statuses where tenant_id = v_tenant and key = 'sla_t_wait_b';
+  select id into v_closed from public.ticket_statuses where tenant_id = v_tenant and key = 'sla_t_closed';
+
+  -- Tenant-wide business-hours profile with a rule for the fixture priority:
+  -- the newest tenant-wide profile is chosen on insert.
+  select key into v_priority_key from public.ticket_priorities where id = v_priority;
+  insert into public.ticket_sla_profiles (tenant_id, name, timezone, service_hours, active, updated_at)
+  values (v_tenant, 'SLA-Pause-Test', 'Europe/Zurich', v_hours, true, v_now + interval '1 day')
+  returning id into v_profile;
+  insert into public.ticket_sla_rules (sla_profile_id, priority_key, response_minutes, resolution_minutes)
+  values (v_profile, v_priority_key, 120, 2400);
+
+  -- Created directly in a pausing status: paused from creation.
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  values (v_tenant, v_department, 'SLA-PAUSE-0001', 'Pause', 'Direkt wartend', v_wait_a, v_priority, v_requester)
+  returning * into v_row;
+  if v_row.resolution_due_at is null or v_row.sla_paused_at is distinct from v_row.created_at
+     or not exists (select 1 from public.ticket_sla_events where ticket_id = v_row.id and event_type = 'paused')
+     or not exists (select 1 from public.ticket_events where ticket_id = v_row.id and event_type = 'ticket.sla.paused') then
+    raise exception '0324 test: insert into waiting status did not pause (%)', v_row;
+  end if;
+  if not exists (select 1 from public.ticket_sla_events where ticket_id = v_row.id and event_type = 'started'
+                   and metadata #>> '{profile,id}' = v_profile::text) then
+    raise exception '0324 test: test SLA profile not chosen';
+  end if;
+
+  -- T1: open -> wait A (pause started three days ago) -> wait B -> open.
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  values (v_tenant, v_department, 'SLA-PAUSE-0002', 'Pause', 'Lauf', v_open, v_priority, v_requester)
+  returning id into v_t1;
+  if (select sla_paused_at from public.tickets where id = v_t1) is not null then
+    raise exception '0324 test: open ticket paused';
+  end if;
+  update public.tickets set status_id = v_wait_a, sla_paused_at = v_now - interval '3 days' where id = v_t1;
+  -- Due dates that passed during the pause (not breached: after pause start).
+  update public.tickets set response_due_at = v_now - interval '2 days',
+                            resolution_due_at = v_now - interval '1 day'
+   where id = v_t1;
+  if (select sla_paused_at from public.tickets where id = v_t1) <> v_now - interval '3 days' then
+    raise exception '0324 test: pause start not kept';
+  end if;
+  if exists (select 1 from public.list_pending_sla_breaches('response', 100) where id = v_t1)
+     or exists (select 1 from public.list_pending_sla_breaches('resolution', 100) where id = v_t1)
+     or public.apply_sla_breach(v_t1, 'resolution_breached', gen_random_uuid()) then
+    raise exception '0324 test: paused ticket listed or breached';
+  end if;
+  select * into v_row from public.tickets where id = v_t1;
+  if public.ticket_time_condition_holds('{"kind":"sla_due","minutes":600000}', v_row, 'sla_t_wait_a') then
+    raise exception '0324 test: sla_due time rule holds while paused';
+  end if;
+  update public.tickets set resolution_due_at = v_now + interval '30 minutes' where id = v_t1;
+  perform public.supervisor_send_ticket_alerts();
+  if exists (select 1 from public.supervisor_ticket_alerts where ticket_id = v_t1) then
+    raise exception '0324 test: supervisor alert for paused ticket';
+  end if;
+  update public.tickets set resolution_due_at = v_now - interval '1 day' where id = v_t1;
+
+  update public.tickets set status_id = v_wait_b where id = v_t1;
+  if (select sla_paused_at from public.tickets where id = v_t1) <> v_now - interval '3 days'
+     or (select count(*) from public.ticket_sla_events where ticket_id = v_t1 and event_type = 'paused') <> 1 then
+    raise exception '0324 test: waiting -> waiting did not keep the pause';
+  end if;
+
+  v_minutes := public.sla_service_minutes_between(v_now - interval '3 days', v_now, v_hours, 'Europe/Zurich');
+  update public.tickets set status_id = v_open where id = v_t1;
+  select * into v_row from public.tickets where id = v_t1;
+  if v_row.sla_paused_at is not null
+     or v_minutes <= 0
+     or v_row.response_due_at <> public.sla_add_service_minutes(v_now - interval '2 days', round(v_minutes)::integer, v_hours, 'Europe/Zurich')
+     or v_row.resolution_due_at <> public.sla_add_service_minutes(v_now - interval '1 day', round(v_minutes)::integer, v_hours, 'Europe/Zurich')
+     or v_row.sla_paused_service_minutes <> round(v_minutes, 2) then
+    raise exception '0324 test: resume did not extend by service minutes (%, %)', v_minutes, v_row;
+  end if;
+  if not exists (select 1 from public.ticket_sla_events where ticket_id = v_t1 and event_type = 'resumed'
+                   and metadata ->> 'reason' = 'status' and (metadata ->> 'pause')::boolean)
+     or not exists (select 1 from public.ticket_events where ticket_id = v_t1 and event_type = 'ticket.sla.resumed') then
+    raise exception '0324 test: resume not logged';
+  end if;
+  -- Running again: the extended due date is in the breach list once due.
+  update public.tickets set resolution_due_at = v_now - interval '1 minute' where id = v_t1;
+  if not exists (select 1 from public.list_pending_sla_breaches('resolution', 100) where id = v_t1) then
+    raise exception '0324 test: resumed ticket missing from breach list';
+  end if;
+
+  -- T2: already breached targets stay as they are.
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  values (v_tenant, v_department, 'SLA-PAUSE-0003', 'Pause', 'Verletzt', v_open, v_priority, v_requester)
+  returning id into v_t2;
+  update public.tickets set response_due_at = v_now - interval '5 days',
+                            resolution_due_at = v_now - interval '1 day'
+   where id = v_t2;
+  insert into public.ticket_sla_events (ticket_id, event_type, occurred_at, metadata)
+  values (v_t2, 'resolution_breached', v_now - interval '1 day', '{}');
+  update public.tickets set status_id = v_wait_a, sla_paused_at = v_now - interval '3 days' where id = v_t2;
+  update public.tickets set status_id = v_open where id = v_t2;
+  select * into v_row from public.tickets where id = v_t2;
+  if v_row.response_due_at <> v_now - interval '5 days'
+     or v_row.resolution_due_at <> v_now - interval '1 day' or v_row.sla_paused_at is not null then
+    raise exception '0324 test: breached SLA was moved';
+  end if;
+
+  -- T3: answered response stays; closing while paused ends the pause.
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  values (v_tenant, v_department, 'SLA-PAUSE-0004', 'Pause', 'Beantwortet', v_open, v_priority, v_requester)
+  returning id into v_t3;
+  update public.tickets set first_responded_at = v_now - interval '4 days',
+                            response_due_at = v_now - interval '2 days',
+                            resolution_due_at = v_now + interval '1 day'
+   where id = v_t3;
+  update public.tickets set status_id = v_wait_a, sla_paused_at = v_now - interval '3 days' where id = v_t3;
+  update public.tickets set status_id = v_closed where id = v_t3;
+  select * into v_row from public.tickets where id = v_t3;
+  if v_row.sla_paused_at is not null
+     or v_row.response_due_at <> v_now - interval '2 days'
+     or v_row.resolution_due_at <= v_now + interval '1 day'
+     or not exists (select 1 from public.ticket_sla_events where ticket_id = v_t3 and event_type = 'resumed'
+                     and metadata ->> 'reason' = 'closed') then
+    raise exception '0324 test: closing while paused wrong (%)', v_row;
+  end if;
+  -- Reopening into a pausing status pauses again.
+  update public.tickets set status_id = v_wait_b where id = v_t3;
+  if (select sla_paused_at from public.tickets where id = v_t3) is null then
+    raise exception '0324 test: reopen into waiting did not pause';
+  end if;
+
+  -- Status flag switched off/on: open tickets in it resume/pause.
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  values (v_tenant, v_department, 'SLA-PAUSE-0005', 'Pause', 'Schalter', v_wait_a, v_priority, v_requester)
+  returning id into v_t4;
+  update public.ticket_statuses set pauses_sla = false where id = v_wait_a;
+  if (select sla_paused_at from public.tickets where id = v_t4) is not null
+     or not exists (select 1 from public.ticket_sla_events where ticket_id = v_t4 and event_type = 'resumed'
+                     and metadata ->> 'reason' = 'setting') then
+    raise exception '0324 test: switching the flag off did not resume';
+  end if;
+  update public.ticket_statuses set pauses_sla = true where id = v_wait_a;
+  if (select sla_paused_at from public.tickets where id = v_t4) is null then
+    raise exception '0324 test: switching the flag on did not pause';
+  end if;
+
+  -- A ticket without SLA due dates is never paused.
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  values (v_tenant, v_department, 'SLA-PAUSE-0006', 'Pause', 'Ohne SLA', v_open, v_priority, v_requester)
+  returning id into v_t5;
+  update public.tickets set response_due_at = null, resolution_due_at = null where id = v_t5;
+  update public.tickets set status_id = v_wait_a where id = v_t5;
+  if (select sla_paused_at from public.tickets where id = v_t5) is not null then
+    raise exception '0324 test: ticket without SLA paused';
+  end if;
+
+  raise notice 'sla pause checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -342,7 +342,7 @@ async function overview(request: Request, admin: Admin, action: Action, actorId:
     admin
       .from("tickets")
       .select(
-        "id, ticket_number, subject, department_id, assigned_agent_id, created_at, first_responded_at, resolution_due_at, status:ticket_statuses!inner(label, is_closed), priority:ticket_priorities(label, sort_order)",
+        "id, ticket_number, subject, department_id, assigned_agent_id, created_at, first_responded_at, resolution_due_at, sla_paused_at, status:ticket_statuses!inner(label, is_closed), priority:ticket_priorities(label, sort_order)",
       )
       .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
@@ -383,7 +383,9 @@ async function overview(request: Request, admin: Admin, action: Action, actorId:
     if (id) resolvedCounts.set(id, (resolvedCounts.get(id) ?? 0) + 1);
   }
   const rows = ((tickets.data ?? []) as Row[]).map((row) => {
-    const due = typeof row.resolution_due_at === "string"
+    // A paused SLA (waiting status) is neither overdue nor at risk.
+    const paused = typeof row.sla_paused_at === "string";
+    const due = typeof row.resolution_due_at === "string" && !paused
       ? Date.parse(row.resolution_due_at)
       : NaN;
     const created = Date.parse(row.created_at as string);
@@ -400,6 +402,7 @@ async function overview(request: Request, admin: Admin, action: Action, actorId:
       priorityWeight: priorityWeight(String(priority.label ?? "")),
       createdAt: row.created_at,
       resolutionDueAt: row.resolution_due_at ?? null,
+      slaPausedAt: paused ? row.sla_paused_at : null,
       overdue: Number.isFinite(due) && due < now,
       atRisk: Number.isFinite(due) && due >= now && due - now <= 4 * 3_600_000,
       noFirstResponse: row.first_responded_at === null &&
@@ -825,7 +828,7 @@ async function slaBreachCauses(
   const tickets = await admin
     .from("tickets")
     .select(
-      "id, department_id, assigned_team_id, response_due_at, first_responded_at, resolution_due_at, resolved_at, closed_at",
+      "id, department_id, assigned_team_id, response_due_at, first_responded_at, resolution_due_at, resolved_at, closed_at, sla_paused_at",
     )
     .is("deleted_at", null)
     .eq("tenant_id", action.tenantId)
@@ -873,6 +876,7 @@ async function slaBreachCauses(
         resolutionDueAt: (row.resolution_due_at as string | null) ?? null,
         resolvedAt: (row.resolved_at as string | null) ?? null,
         closedAt: (row.closed_at as string | null) ?? null,
+        slaPausedAt: (row.sla_paused_at as string | null) ?? null,
       },
       events.get(row.id as string) ?? [],
       now,
@@ -1288,7 +1292,7 @@ async function liveBoard(request: Request, admin: Admin, action: Action, actorId
     admin
       .from("tickets")
       .select(
-        "id, ticket_number, subject, department_id, assigned_agent_id, created_at, resolution_due_at, status:ticket_statuses!inner(is_closed)",
+        "id, ticket_number, subject, department_id, assigned_agent_id, created_at, resolution_due_at, sla_paused_at, status:ticket_statuses!inner(is_closed)",
       )
       .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
@@ -1367,10 +1371,12 @@ async function liveBoard(request: Request, admin: Admin, action: Action, actorId
     const id = row.assigned_agent_id as string;
     resolvedCount.set(id, (resolvedCount.get(id) ?? 0) + 1);
   }
+  // A paused SLA (waiting status) is neither overdue nor at risk.
   const isOverdue = (row: Row) =>
-    typeof row.resolution_due_at === "string" && Date.parse(row.resolution_due_at) < now;
+    typeof row.resolution_due_at === "string" && typeof row.sla_paused_at !== "string" &&
+    Date.parse(row.resolution_due_at) < now;
   const isAtRisk = (row: Row) => {
-    const due = typeof row.resolution_due_at === "string"
+    const due = typeof row.resolution_due_at === "string" && typeof row.sla_paused_at !== "string"
       ? Date.parse(row.resolution_due_at)
       : NaN;
     return Number.isFinite(due) && due >= now && due - now <= 4 * 3_600_000;

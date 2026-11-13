@@ -18,6 +18,7 @@ import {
 } from "./form-kit";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
+import { parseSlaStatuses, type SlaStatusSetting } from "./lib/sla-pause";
 
 export type SlaManagementProps = {
   tenantId: string;
@@ -110,6 +111,7 @@ type RuleDraft = {
 type SlaListResponse = {
   rules: SlaRule[];
   truncated: boolean;
+  statuses: SlaStatusSetting[];
 };
 
 type EscalationListResponse = {
@@ -155,12 +157,20 @@ type ArchiveRuleAction = {
   ruleId: string;
 };
 
+type SetStatusPauseAction = {
+  type: "setStatusPause";
+  tenantId: string;
+  statusId: string;
+  pausesSla: boolean;
+};
+
 type SlaAction =
   | ListRulesAction
   | ListEscalationsAction
   | CreateRuleAction
   | UpdateRuleAction
-  | ArchiveRuleAction;
+  | ArchiveRuleAction
+  | SetStatusPauseAction;
 
 type FormOptionsAction = {
   type: "getFormOptions";
@@ -389,6 +399,7 @@ function parseSlaListResponse(value: unknown): SlaListResponse {
   return {
     rules,
     truncated: typeof data.truncated === "boolean" ? data.truncated : false,
+    statuses: parseSlaStatuses(data.statuses),
   };
 }
 
@@ -794,6 +805,13 @@ const slaManagementStyles = `
     text-transform: none !important;
   }
   .sla-management__checkbox input { width: 16px !important; height: 16px; }
+  .sla-management__status-list {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+  }
   .sla-management__form-actions { grid-column: 1 / -1; justify-content: flex-end; }
   .sla-management__list {
     display: grid;
@@ -862,6 +880,8 @@ export function SlaManagement({
   const [success, setSuccess] = useState("");
   const [rulesTruncated, setRulesTruncated] = useState(false);
   const [escalationsTruncated, setEscalationsTruncated] = useState(false);
+  const [statuses, setStatuses] = useState<SlaStatusSetting[]>([]);
+  const [statusSaving, setStatusSaving] = useState<string | null>(null);
   const requestVersion = useRef(0);
 
   const departmentsById = useMemo(
@@ -909,6 +929,7 @@ export function SlaManagement({
 
       setRules(parsedRules.rules);
       setRulesTruncated(parsedRules.truncated);
+      setStatuses(parsedRules.statuses);
       setEscalations(parsedEscalations.escalations);
       setEscalationsTruncated(parsedEscalations.truncated);
       setOptions(parsedOptions);
@@ -1014,6 +1035,47 @@ export function SlaManagement({
       }
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function toggleStatusPause(status: SlaStatusSetting) {
+    const pausesSla = !status.pausesSla;
+    setStatusSaving(status.id);
+    setError("");
+    setSuccess("");
+    try {
+      const response = responseData(
+        await invokeSlaManagement({
+          type: "setStatusPause",
+          tenantId,
+          statusId: status.id,
+          pausesSla,
+        }),
+      );
+      const [updated] = parseSlaStatuses(
+        response && isRecord(response.status) ? [response.status] : [],
+      );
+      if (!updated) throw new Error("invalid_status_response");
+      setStatuses((current) =>
+        current.map((entry) => (entry.id === updated.id ? updated : entry)),
+      );
+      setSuccess(
+        updated.pausesSla
+          ? `Der Status „${updated.label}“ hält die SLA jetzt an. Offene Tickets in diesem Status wurden pausiert.`
+          : `Der Status „${updated.label}“ hält die SLA nicht mehr an. Offene Tickets in diesem Status laufen weiter.`,
+      );
+    } catch (requestError) {
+      if (isForbiddenError(requestError)) {
+        setError(
+          "Sie haben keine Berechtigung, diese Einstellung zu ändern. Dafür braucht es die mandantenweite Berechtigung „SLA-Profile verwalten“.",
+        );
+      } else {
+        setError(
+          "Die Einstellung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+        );
+      }
+    } finally {
+      setStatusSaving(null);
     }
   }
 
@@ -1536,6 +1598,55 @@ export function SlaManagement({
             <p className="sla-management__notice">
               Die Liste wurde aus Leistungsgründen gekürzt.
             </p>
+          )}
+        </section>
+      )}
+
+      {!readForbidden && (
+        <section
+          className="sla-management__panel"
+          aria-labelledby="sla-status-pause-heading"
+          aria-busy={loading}
+        >
+          <div className="sla-management__heading-row">
+            <h2 id="sla-status-pause-heading">SLA-Pause nach Status</h2>
+          </div>
+          <p className="sla-management__form-help">
+            Solange ein Ticket in einem dieser Status ist, steht die SLA still.
+            Beim Weiterbearbeiten werden die Fristen um die pausierte
+            Servicezeit verschoben. Bereits überschrittene Fristen bleiben
+            überschritten.
+          </p>
+          {loading ? (
+            <p className="sla-management__empty">Status werden geladen …</p>
+          ) : statuses.filter((status) => !status.isClosed).length === 0 ? (
+            <p className="sla-management__empty">
+              Für diesen Mandanten sind keine offenen Status hinterlegt.
+            </p>
+          ) : (
+            <ul className="sla-management__status-list">
+              {statuses
+                .filter((status) => !status.isClosed)
+                .map((status) => (
+                  <li key={status.id}>
+                    <label className="sla-management__checkbox">
+                      <input
+                        checked={status.pausesSla}
+                        disabled={
+                          manageForbidden ||
+                          statusSaving !== null ||
+                          saving !== null
+                        }
+                        onChange={() => void toggleStatusPause(status)}
+                        type="checkbox"
+                      />
+                      <span>
+                        <strong>{status.label}</strong> · Hält die SLA an
+                      </span>
+                    </label>
+                  </li>
+                ))}
+            </ul>
           )}
         </section>
       )}

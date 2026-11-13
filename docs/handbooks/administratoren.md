@@ -2,7 +2,7 @@
 title: Handbuch für Administratoren
 description: Mandant einrichten – Design, Funktionen, SLA, Abteilungen, Personen, Rollen, Datenschutz und Protokoll.
 audienceLabel: Administratoren
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # Handbuch für Administratoren
@@ -204,6 +204,29 @@ Servicezeit), «Team: SLA in Gefahr» eine Stunde vor Ablauf der Lösungszeit.
 Unter **Aktuelle Eskalationen** sehen Sie Tickets, deren SLA gefährdet oder
 verletzt ist. Nicht mehr benötigte Regeln **archivieren** Sie, statt sie zu
 löschen.
+
+### SLA-Pause nach Status
+
+Im Abschnitt **SLA-Pause nach Status** legen Sie pro offenem Status fest, ob
+er **die SLA anhält**. Voreingestellt (auch für neue Mandanten) halten
+**Wartend**, **Wartend auf Kunde** und **Wartend auf Drittanbieter** die SLA
+an; abgeschlossene Status erscheinen nicht, dort endet die SLA ohnehin.
+
+- Solange ein Ticket in einem solchen Status ist, wird keine SLA-Verletzung
+  ausgelöst, es gibt keine Warnung «Team: SLA in Gefahr» bzw. «Team: Ticket
+  ohne Antwort», und das Ticket zählt bei der Überlastungswarnung und den
+  Zeitregeln «SLA läuft bald ab» nicht als fällig.
+- Verlässt das Ticket den Status, werden Reaktionsfrist (falls noch keine
+  Erstantwort erfolgt ist) und Lösungsfrist um die pausierte **Servicezeit**
+  verschoben – nach der Servicezeit der SLA-Regel, die beim Erstellen des
+  Tickets galt. Das gilt auch, wenn ein pausiertes Ticket direkt gelöst oder
+  geschlossen wird, damit die Wartezeit in den SLA-Berichten nicht zählt.
+- Bereits überschrittene Fristen bleiben überschritten.
+- Ändern Sie die Einstellung, werden offene Tickets in diesem Status sofort
+  pausiert bzw. fortgesetzt.
+
+Die Einstellung braucht die mandantenweite Berechtigung **SLA-Profile
+verwalten**. Jede Änderung steht im Protokoll.
 
 ![SLA-Regeln und aktuelle Eskalationen](images/ad-sla.jpg)
 

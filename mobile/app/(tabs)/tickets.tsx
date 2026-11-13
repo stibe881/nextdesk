@@ -25,6 +25,7 @@ import {
   TicketCreatedText,
   TicketPriorityText,
   TicketRequesterText,
+  TicketSlaPauseText,
   TicketStatusBadge,
 } from "@/components/ticket-status-badge";
 import { TicketSwipeActions } from "@/components/ticket-swipe-actions";
@@ -56,7 +57,12 @@ import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 
 type TicketScope =
-  "all" | "mine" | "watched" | "open" | "resolved" | "unassigned";
+  | "all"
+  | "mine"
+  | "watched"
+  | "open"
+  | "resolved"
+  | "unassigned";
 
 const scopes: { key: TicketScope; label: string }[] = [
   { key: "all", label: "Alle" },
@@ -1290,6 +1296,7 @@ function TicketRow({
           <TicketRequesterText name={ticket.requesterName} />
           <TicketPriorityText priority={ticket.priority} />
           <TicketCreatedText createdAt={ticket.createdAt} />
+          <TicketSlaPauseText pausedAt={ticket.slaPausedAt} />
         </View>
         <View style={styles.ticketState}>
           {watched ? (
