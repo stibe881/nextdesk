@@ -3171,6 +3171,7 @@ time,
 
 .access-message.success,
 .ticket-compose-message.success,
+.ticket-detail-message.success,
 .tenant-admin-settings__notice--success {
   border-color: var(--border-tint-b6dfcf);
   border-left-color: var(--success);
@@ -4134,6 +4135,25 @@ body:has(.ticket-detail) {
   border-color: var(--border-tint-b9b6f5);
   background: var(--primary-soft);
   color: var(--primary);
+}
+
+.ticket-suspicion-button:hover:not(:disabled) {
+  border-color: var(--border-tint-edbbc4);
+  color: var(--danger);
+}
+
+.ticket-suspicion-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  border: 1px solid var(--border-tint-edbbc4);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .ticket-timeline-event {
@@ -9459,6 +9479,7 @@ body:has(.ticket-list-filter-panel) {
   }
 
   .ticket-detail-header-actions .ticket-watch-button,
+  .ticket-detail-header-actions .ticket-suspicion-button,
   .ticket-detail-header-actions .ticket-focus-button,
   .ticket-detail-header-actions .ticket-experience__header-action,
   .ticket-detail-header-actions .ticket-pdf-record .secondary-button {
