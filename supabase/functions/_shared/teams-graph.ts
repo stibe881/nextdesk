@@ -279,6 +279,7 @@ export async function finishTeam(
               "teamsApp@odata.bind": `${GRAPH}/appCatalogs/teamsApps('${WEBSITE_TAB_APP}')`,
               configuration: { contentUrl: tab.url, websiteUrl: tab.url },
             },
+            CHANNEL_TIMEOUT_MS,
           );
         } catch (error) {
           failed(`tab:${channel.name}:${tab.title}`, error);

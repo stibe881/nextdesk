@@ -37,6 +37,7 @@ export type TeamRequestSummary = {
   guestCount: number;
   channelCount: number;
   warningCount: number;
+  warningSteps?: string[];
   createdAt: string;
 };
 

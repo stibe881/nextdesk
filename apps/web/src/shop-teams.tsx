@@ -1007,8 +1007,11 @@ export function MyTeams({
             ) : null}
             {request.status === "ready" && request.warningCount > 0 ? (
               <p className="shop-teams-warning">
-                Einzelne Kanäle, Tabs oder Gäste konnten nicht ergänzt werden.
-                Bitte in Teams prüfen.
+                Das Team wurde angelegt. Nicht ergänzt werden konnten
+                {request.warningSteps?.length
+                  ? `: ${request.warningSteps.join(", ")}`
+                  : " einzelne Kanäle, Tabs oder Gäste"}
+                . Bitte in Teams selbst ergänzen.
               </p>
             ) : null}
             {request.status === "ready" ? (
