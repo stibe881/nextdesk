@@ -159,38 +159,45 @@ Deno.test("notification mail button opens the notification", () => {
   );
 });
 
-Deno.test("Teams-Bestellung: Texte für bereit, bald ablaufend und archiviert", () => {
-  const base = { ticketNumber: null, ticketSubject: null };
-  const expiring = notificationEmailText({
-    ...base,
-    kind: "shop.order.team_expiring",
-    payload: { teamName: "Projekt Neubau", endDate: "2027-11-30", daysLeft: 7 },
-  });
-  assertEquals(expiring.title, "Team läuft in 7 Tagen ab: Projekt Neubau");
-  assertStringIncludes(expiring.message, "30.11.2027");
-  assertStringIncludes(expiring.message, "1, 3, 6 oder 12 Monate");
+Deno.test(
+  "Teams-Bestellung: Texte für bereit, bald ablaufend und archiviert",
+  () => {
+    const base = { ticketNumber: null, ticketSubject: null };
+    const expiring = notificationEmailText({
+      ...base,
+      kind: "shop.order.team_expiring",
+      payload: {
+        teamName: "Projekt Neubau",
+        endDate: "2027-11-30",
+        daysLeft: 7,
+      },
+    });
+    assertEquals(expiring.title, "Team läuft in 7 Tagen ab: Projekt Neubau");
+    assertStringIncludes(expiring.message, "30.11.2027");
+    assertStringIncludes(expiring.message, "1, 3, 6 oder 12 Monate");
 
-  const tomorrow = notificationEmailText({
-    ...base,
-    kind: "shop.order.team_expiring",
-    payload: { teamName: "X", daysLeft: 1 },
-  });
-  assertStringIncludes(tomorrow.title, "morgen");
+    const tomorrow = notificationEmailText({
+      ...base,
+      kind: "shop.order.team_expiring",
+      payload: { teamName: "X", daysLeft: 1 },
+    });
+    assertStringIncludes(tomorrow.title, "morgen");
 
-  const ready = notificationEmailText({
-    ...base,
-    kind: "shop.order.team_ready",
-    payload: { teamName: "Projekt Neubau", warnings: 2 },
-  });
-  assertStringIncludes(ready.message, "nicht ergänzt");
+    const ready = notificationEmailText({
+      ...base,
+      kind: "shop.order.team_ready",
+      payload: { teamName: "Projekt Neubau", warnings: 2 },
+    });
+    assertStringIncludes(ready.message, "nicht ergänzt");
 
-  const archived = notificationEmailText({
-    ...base,
-    kind: "shop.order.team_archived",
-    payload: { teamName: "Projekt Neubau" },
-  });
-  assertStringIncludes(archived.message, "archiviert");
-});
+    const archived = notificationEmailText({
+      ...base,
+      kind: "shop.order.team_archived",
+      payload: { teamName: "Projekt Neubau" },
+    });
+    assertStringIncludes(archived.message, "archiviert");
+  },
+);
 
 Deno.test("Shop: Übergabe aus der Bestellung steht in der Mail", () => {
   const desk = notificationEmailText({
@@ -223,4 +230,38 @@ Deno.test("Shop: Übergabe aus der Bestellung steht in der Mail", () => {
     progress.body,
     "Übergabe: an den Arbeitsplatz (Empfang).",
   );
+});
+
+Deno.test("Externe Störung: Update und Behoben haben eigene Texte", () => {
+  const update = notificationEmailText({
+    kind: "monitoring.incident",
+    payload: {
+      source: "external",
+      provider: "Claude",
+      number: "STO-2026-0064",
+      title: "Elevated errors",
+      reason: "updated",
+      message: "A fix has been implemented.",
+    },
+    ticketNumber: null,
+    ticketSubject: null,
+  });
+  assertEquals(
+    update.subject,
+    "Update zur externen Störung: Claude (STO-2026-0064)",
+  );
+  assertStringIncludes(update.body, "A fix has been implemented.");
+  const resolved = notificationEmailText({
+    kind: "monitoring.incident",
+    payload: {
+      source: "external",
+      provider: "Claude",
+      title: "Elevated errors",
+      reason: "resolved",
+    },
+    ticketNumber: null,
+    ticketSubject: null,
+  });
+  assertEquals(resolved.subject, "Externe Störung behoben: Claude");
+  assertStringIncludes(resolved.body, "als behoben");
 });

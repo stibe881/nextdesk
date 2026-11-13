@@ -304,7 +304,7 @@ Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
   Apple App Store, Google Play Store und Init7. Haken Sie die gewünschten
   Quellen an und **speichern** Sie; **Jetzt prüfen** liest sie sofort. Eine
   gemeldete Störung erscheint unter **Störungen** als «Extern» und
-  benachrichtigt das Team für die Alarmierung einmal. Pro Quelle sehen Sie,
+  benachrichtigt das Team für die Alarmierung, ebenso jedes Update des Anbieters und die Behebung. Pro Quelle sehen Sie,
   wann zuletzt geprüft wurde und ob ein Fehler auftrat. WWZ und Swisscom
   bieten keine maschinenlesbare Quelle; überwachen Sie diese Anschlüsse mit
   einem Ping- oder HTTP-Sensor in PRTG.
