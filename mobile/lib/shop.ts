@@ -139,10 +139,13 @@ export function sortCatalogByName<T extends { name: string }>(items: T[]): T[] {
 export const shopApi = {
   context: (tenantId: string) =>
     call<ShopContext>({ type: "getContext", tenantId }),
-  catalog: (tenantId: string) =>
-    call<{ items: CatalogItem[] }>({ type: "listCatalog", tenantId }).then(
-      (data) => sortCatalogByName(data.items),
-    ),
+  /** `includeInactive` is honoured only for shop managers (server-side). */
+  catalog: (tenantId: string, includeInactive = false) =>
+    call<{ items: CatalogItem[] }>({
+      type: "listCatalog",
+      tenantId,
+      ...(includeInactive ? { includeInactive: true } : {}),
+    }).then((data) => sortCatalogByName(data.items)),
   people: (tenantId: string) =>
     call<{ people: ShopPerson[] }>({ type: "listRequesters", tenantId }).then(
       (data) => data.people,
