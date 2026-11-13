@@ -72,7 +72,7 @@ jobs:
             fi
             echo "::group::$name"
             if ! supabase functions deploy "$name" \
-                --project-ref "$SUPABASE_PROJECT_REF" --use-api; then
+                --project-ref "$SUPABASE_PROJECT_REF" --use-api --yes; then
               failed="$failed $name"
             fi
             echo "::endgroup::"
