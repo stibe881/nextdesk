@@ -85,6 +85,11 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
       const code = payload?.error?.code;
       const message = typeof code === "string" ? errors()[code] : undefined;
       if (message) throw new Error(message);
+      if (typeof code === "string") {
+        throw new Error(
+          `Die Teams-Verwaltung hat die Aktion abgelehnt (${code.slice(0, 60)}).`,
+        );
+      }
     }
     throw new Error("Die Teams-Verwaltung ist gerade nicht erreichbar.");
   }
