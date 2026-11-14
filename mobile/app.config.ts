@@ -114,7 +114,7 @@ const publicRuntime = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
-  version: "1.0.1",
+  version: "1.0.2",
   extra: publicRuntime,
   orientation: "portrait",
   icon: "./assets/images/icon.png",
