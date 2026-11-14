@@ -41,6 +41,7 @@ import type {
   VlanMatrix,
 } from "./lib/ipam-redesign-types";
 
+import { confirmDialog } from "./app-dialog";
 type Props = {
   canManage: boolean;
   onChanged: (message?: string) => void;
@@ -473,7 +474,7 @@ function VlanList({
     [overview, query],
   );
   const remove = async (id: string, label: string) => {
-    if (!window.confirm(`${label} entfernen?`)) return;
+    if (!(await confirmDialog(`${label} entfernen?`))) return;
     try {
       await ipamCall({ type: "delete", tenantId, entity: "vlan", id });
       onChanged(`${label} entfernt.`);
@@ -663,7 +664,10 @@ function TemplateEditor({
     }
   };
   const remove = async () => {
-    if (!initial.id || !window.confirm(`Vorlage «${initial.name}» entfernen?`))
+    if (
+      !initial.id ||
+      !(await confirmDialog(`Vorlage «${initial.name}» entfernen?`))
+    )
       return;
     setBusy(true);
     try {

@@ -12,6 +12,7 @@ import {
 import { formatDate } from "./lib/shop";
 import { supabase } from "./lib/supabase";
 
+import { confirmDialog } from "./app-dialog";
 type ProcurementAction =
   | {
       type: "manageBackorders";
@@ -289,9 +290,9 @@ function SupplierGroup({
   const cancel = async (backorderId: string) => {
     if (busy) return;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         "Diesen Bedarf wirklich stornieren? Die Shop-Bestellung bleibt bestehen, die Ware wird aber nicht mehr automatisch reserviert.",
-      )
+      ))
     ) {
       return;
     }

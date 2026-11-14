@@ -54,6 +54,7 @@ import {
   type ShopPerson,
 } from "./lib/shop";
 
+import { confirmDialog, promptDialog } from "./app-dialog";
 type Tab = "catalog" | "mine" | "teams" | "approvals" | "orders";
 type CatalogLayout = "grid" | "list";
 const LAYOUT_STORAGE_KEY = "nextdesk.shop.catalogLayout";
@@ -645,9 +646,9 @@ function CatalogView({
   };
   const removeItem = async (item: CatalogItem) => {
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Artikel «${item.name}» löschen? Bestehende Bestellungen behalten den Artikelnamen.`,
-      )
+      ))
     ) {
       return;
     }
@@ -1569,12 +1570,12 @@ function OrderDialog({
     if (!order) return;
     let reason: string | null = null;
     if (action === "reject" || action === "reject_approval") {
-      reason = window.prompt("Grund für die Ablehnung:");
+      reason = await promptDialog("Grund für die Ablehnung:");
       if (!reason?.trim()) return;
     }
     if (
       action === "cancel" &&
-      !window.confirm("Bestellung wirklich stornieren?")
+      !(await confirmDialog("Bestellung wirklich stornieren?"))
     )
       return;
     setPending(true);
@@ -2530,7 +2531,7 @@ export function CatalogEditor({
   };
 
   const removeCategory = async (category: ShopCategory) => {
-    if (!window.confirm(`Kategorie «${category.name}» löschen?`)) return;
+    if (!(await confirmDialog(`Kategorie «${category.name}» löschen?`))) return;
     setError("");
     try {
       await shopApi.deleteCategory(tenantId, category.id);
@@ -2636,9 +2637,9 @@ export function CatalogEditor({
   const removeDraftItem = async () => {
     if (!draft?.id) return;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Artikel «${draft.name}» löschen? Bestehende Bestellungen behalten den Artikelnamen.`,
-      )
+      ))
     ) {
       return;
     }
@@ -2663,9 +2664,9 @@ export function CatalogEditor({
     const info = stock?.item;
     if (!draft || !stock || !info) return;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Artikel «${info.name}» endgültig löschen? Er verschwindet auch aus dem Shop.`,
-      )
+      ))
     ) {
       return;
     }
@@ -2676,9 +2677,9 @@ export function CatalogEditor({
       let message = "Artikel gelöscht.";
       if (result === "in_use") {
         if (
-          !window.confirm(
+          !(await confirmDialog(
             "Der Artikel hat Bewegungen oder Reservationen und kann nicht gelöscht werden. Stattdessen archivieren? Er wird dann ausgeblendet und aus dem Shop genommen.",
-          )
+          ))
         ) {
           return;
         }

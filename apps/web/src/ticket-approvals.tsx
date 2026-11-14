@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
+import { confirmDialog, promptDialog } from "./app-dialog";
 type ApprovalStatus = "pending" | "approved" | "rejected" | "cancelled";
 type Decision = "approved" | "rejected";
 type ApprovalDecision = {
@@ -209,11 +210,11 @@ export function TicketApprovals({
   }
 
   async function decide(approvalId: string, decision: Decision) {
-    const comment = window.prompt(
+    const comment = await promptDialog(
       decision === "approved"
         ? "Optionaler Kommentar zur Freigabe"
         : "Optionaler Grund für die Ablehnung",
-      "",
+      { confirmLabel: decision === "approved" ? "Freigeben" : "Ablehnen" },
     );
     if (comment === null) return;
     setPendingId(`${decision}:${approvalId}`);
@@ -236,7 +237,8 @@ export function TicketApprovals({
   }
 
   async function cancel(approvalId: string) {
-    if (!window.confirm("Diese offene Freigabe wirklich abbrechen?")) return;
+    if (!(await confirmDialog("Diese offene Freigabe wirklich abbrechen?")))
+      return;
     setPendingId(`cancel:${approvalId}`);
     setError("");
     try {

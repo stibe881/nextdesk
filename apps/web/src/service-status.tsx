@@ -27,6 +27,7 @@ import {
   type PublicIncident,
 } from "./service-status-incidents";
 
+import { confirmDialog } from "./app-dialog";
 type ServiceStatus = ServiceAvailabilityStatus;
 
 /** Seconds between silent background refreshes of the status. */
@@ -1736,9 +1737,9 @@ export function ServiceStatus({
   async function rotatePublicId() {
     if (!overview?.canManagePublication) return;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         "Die bisherige öffentliche Adresse und der bisherige SharePoint-Badge funktionieren danach nicht mehr. Neue Adresse erstellen?",
-      )
+      ))
     ) {
       return;
     }

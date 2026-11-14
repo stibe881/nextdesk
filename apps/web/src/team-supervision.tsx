@@ -39,6 +39,7 @@ import { supabase } from "./lib/supabase";
 import "./team-supervision.css";
 import { slaPausedLabel } from "./lib/sla-pause";
 
+import { confirmDialog } from "./app-dialog";
 type Absence = {
   endsAt: string;
   delegateId: string;
@@ -1267,7 +1268,7 @@ function Coaching({
   }
 
   async function remove(noteId: string) {
-    if (!window.confirm("Notiz löschen?")) return;
+    if (!(await confirmDialog("Notiz löschen?"))) return;
     setBusy(true);
     try {
       await call({ type: "deleteCoachingNote", tenantId, noteId });

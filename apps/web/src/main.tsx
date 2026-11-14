@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { AppDialogHost } from "./app-dialog";
 import { FormalityBoundary } from "./formality-boundary";
 import { captureOAuthAuthorizationId } from "./oauth-consent";
 import { isReminderActionHash } from "./lib/requester-reminder-action";
@@ -50,6 +51,7 @@ createRoot(document.getElementById("root")!).render(
       ) : (
         <App />
       )}
+      <AppDialogHost />
     </FormalityBoundary>
   </StrictMode>,
 );
