@@ -309,9 +309,24 @@ erstellen** eine Rückfrage dazu. Die **Home**-Seite gestalten Sie selbst: Mit d
 Fokus, Zuletzt geöffnet, Übersicht, Ticketliste, Erwähnungen, Geräte) ein oder
 aus und verschieben sie mit den Pfeilen. **Standard wiederherstellen** setzt
 alles zurück. Die Einstellung gilt nur für Sie und wird zwischen Ihren
-Geräten (iPhone, Android) abgeglichen: Die letzte Änderung gilt überall. Auf jeder Ticketkarte steht, wann das Ticket erstellt wurde
+Geräten (iPhone, Android) abgeglichen: Die letzte Änderung gilt überall.
+Unter **Tickets** sehen Sie zuerst den Filter **Meine**: Tickets, die Sie
+angefragt haben oder die Ihnen zugewiesen sind. Mit **Alle**, **Beobachtet**,
+**Offen**, **Gelöst** oder **Nicht zugewiesen** wechseln Sie die Ansicht. Kehren
+Sie aus einem Ticket zurück, bleibt Ihr Filter erhalten; wechseln Sie über die
+Leiste unten wieder zu **Tickets**, beginnt die Liste erneut mit **Meine**. Auf jeder Ticketkarte steht, wann das Ticket erstellt wurde
 (z. B. «Erstellt heute, 14:32»). Über **Neues Ticket** erfassen Sie Anliegen
-unterwegs, auf Wunsch mit Foto. In den App-Einstellungen schalten Sie Benachrichtigungen, z. B.
+unterwegs. Unter **Fotos (optional)** nehmen Sie mit **Foto aufnehmen** direkt
+ein Bild mit der Kamera auf oder wählen mit **Aus Mediathek** bestehende Bilder
+aus, insgesamt bis zu fünf pro Ticket. Mit **Markieren** kennzeichnen Sie eine
+Stelle im Bild, mit dem **×** entfernen Sie es wieder. Die Kamera fragt beim
+ersten Mal nach Ihrer Erlaubnis; für die Mediathek braucht nextDesk keinen
+Zugriff auf alle Fotos, sondern erhält nur die Bilder, die Sie auswählen.
+Standortdaten werden vor dem Hochladen entfernt. Haben Sie den Kamerazugriff
+abgelehnt, können Sie ihn in den Einstellungen des Geräts erlauben oder
+stattdessen ein Bild aus der Mediathek wählen.
+
+In den App-Einstellungen schalten Sie Benachrichtigungen, z. B.
 für Antworten des Supports, pro Hinweis einzeln als **Push** und als **Mail**
 ein oder aus (gleich wie im Browser) und wählen unter **Benachrichtigungszeit**, an
 welchen Tagen und zu welchen Zeiten sie kommen. Ein Tipp auf eine

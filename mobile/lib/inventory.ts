@@ -16,6 +16,8 @@ export type MobileInventoryItem = {
   minQuantity: number;
   locationName: string | null;
   active: boolean;
+  /** A private article photo exists (loaded via a short-lived signed URL). */
+  hasPrimaryImage: boolean;
 };
 
 export type MobileInventoryLocation = {
@@ -66,6 +68,7 @@ function parseItem(value: unknown): MobileInventoryItem | null {
     locationName:
       typeof value.locationName === "string" ? value.locationName : null,
     active: value.active !== false,
+    hasPrimaryImage: value.hasPrimaryImage === true,
   };
 }
 

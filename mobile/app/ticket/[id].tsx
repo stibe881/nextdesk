@@ -56,6 +56,7 @@ import {
   type MessageAttachment,
 } from "@/lib/ticket-message-attachments-model";
 import { TicketPhotoAttachments } from "@/components/ticket-photo-attachments";
+import { TicketSuspicionButton } from "@/components/ticket-suspicion-button";
 import { TicketSupportLevelCard } from "@/components/ticket-support-level-card";
 import {
   confirmResolution,
@@ -3137,6 +3138,15 @@ export default function TicketDetailScreen() {
               }
             />
           </View>
+
+          {tenant && ticket.canUpdate ? (
+            <TicketSuspicionButton
+              onChanged={() => void load(false)}
+              refreshKey={`${ticket.statusId}|${ticket.assignedAgentId ?? ""}`}
+              tenantId={tenant.id}
+              ticketId={ticket.id}
+            />
+          ) : null}
 
           {tenant && ticket.canUpdate ? (
             <TicketSupportLevelCard

@@ -118,7 +118,22 @@ export type TicketSupportLevel = {
   };
   currentHandover: TicketSupportLevelEntry | null;
   history: TicketSupportLevelEntry[];
+  /** «Spam-/Phishing-Verdacht» (reply + handover to the 2nd level). */
+  suspicion: {
+    reported: boolean;
+    canReport: boolean;
+    targetTeam: LevelTeamOption | null;
+  };
 };
+
+export type SuspicionReply =
+  | "queued"
+  | "no_requester_email"
+  | "template_disabled"
+  | "no_mail_channel"
+  | "failed";
+
+export type SuspicionResult = { teamName: string; moved: boolean; reply: SuspicionReply };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -198,6 +213,11 @@ export function parseTicketSupportLevel(
         : [],
     },
     currentHandover: parseEntry(data.currentHandover),
+    suspicion: {
+      reported: isRecord(data.suspicion) && data.suspicion.reported === true,
+      canReport: isRecord(data.suspicion) && data.suspicion.canReport === true,
+      targetTeam: isRecord(data.suspicion) ? parseTeam(data.suspicion.targetTeam) : null,
+    },
     history: Array.isArray(data.history)
       ? data.history.flatMap((item) => {
           const entry = parseEntry(item);
@@ -388,5 +408,53 @@ export async function loadSupportLevelReport(
     throw new Error(
       "Der Stufenbericht hat keine verwertbare Antwort geliefert.",
     );
+  return parsed;
+}
+
+const SUSPICION_REPLIES: readonly SuspicionReply[] = [
+  "queued",
+  "no_requester_email",
+  "template_disabled",
+  "no_mail_channel",
+  "failed",
+];
+
+export function parseSuspicionResult(value: unknown): SuspicionResult | null {
+  const data = isRecord(value) ? value.data : null;
+  if (!isRecord(data) || typeof data.teamName !== "string") return null;
+  const reply = SUSPICION_REPLIES.find((entry) => entry === data.reply) ?? "failed";
+  return { teamName: data.teamName, moved: data.moved === true, reply };
+}
+
+/** Text after «Spam-/Phishing-Verdacht», incl. why no reply was sent. */
+export function suspicionResultText(result: SuspicionResult): string {
+  const handover = result.moved
+    ? `Das Ticket wurde an den 2nd Level (${result.teamName}) übergeben.`
+    : `Das Ticket liegt bereits beim 2nd Level (${result.teamName}).`;
+  const reply: Record<SuspicionReply, string> = {
+    queued: "Die Standardantwort an die anfragende Person ist unterwegs.",
+    no_requester_email:
+      "Die anfragende Person hat keine E-Mail-Adresse, darum wurde keine Antwort gesendet.",
+    template_disabled:
+      "Die Vorlage «Phishing-Meldung: Danke» oder «Phishing-Meldung: Gestaltung» ist ausgeschaltet, darum wurde keine Antwort gesendet.",
+    no_mail_channel:
+      "Es ist kein aktives Exchange-Postfach verbunden, darum wurde keine Antwort gesendet.",
+    failed: "Die Standardantwort konnte nicht vorbereitet werden.",
+  };
+  return `Als Spam-/Phishing-Verdacht markiert. ${handover} ${reply[result.reply]}`;
+}
+
+export async function reportPhishingSuspicion(
+  tenantId: string,
+  ticketId: string,
+): Promise<SuspicionResult> {
+  const parsed = parseSuspicionResult(
+    await invoke(
+      { type: "reportSuspicion", tenantId, ticketId },
+      "Das Ticket konnte nicht als Spam-/Phishing-Verdacht markiert werden.",
+    ),
+  );
+  if (!parsed)
+    throw new Error("Die Einstufung hat keine verwertbare Antwort geliefert.");
   return parsed;
 }
