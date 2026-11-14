@@ -57,7 +57,7 @@ const intuneActionsMigrationPath = new URL(
   import.meta.url,
 );
 const inventoryIssueMigrationPath = new URL(
-  "../supabase/migrations/0342_inventory_issue_role.sql",
+  "../supabase/migrations/0343_inventory_issue_role.sql",
   import.meta.url,
 );
 const catalog = await readFile(catalogPath, "utf8");

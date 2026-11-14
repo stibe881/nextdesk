@@ -7302,7 +7302,7 @@ function AuthenticatedApp() {
                         blockedSenders > 0
                           ? `, ${blockedSenders} Absender gesperrt`
                           : ""
-                      }. Sie sind über den Filter «Spam» auffindbar.`,
+                      }. Die Tickets sind über den Filter «Spam» auffindbar.`,
                     );
                   }}
                   onClearSelection={clearTicketSelection}

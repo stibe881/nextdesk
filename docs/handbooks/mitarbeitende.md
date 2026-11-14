@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-13
+updated: 2026-11-14
 ---
 
 # Handbuch für Mitarbeitende
@@ -265,10 +265,10 @@ die bestellende Person eine Benachrichtigung (E-Mail und Push, Kategorie
 1, 3, 6 Monate oder 1 Jahr. Ohne Verlängerung wird das Team nach dem Ende
 archiviert; es bleibt lesbar und kann in Teams wiederhergestellt werden.
 
-Unter **Meine Teams** bearbeiten Sie ein fertiges Team mit **Bearbeiten**
+Unter **Meine Teams** bearbeitest du ein fertiges Team mit **Bearbeiten**
 (als Besteller oder Owner): Personen hinzufügen oder entfernen, zum Owner
 machen oder die Owner-Rolle entziehen (ein Owner bleibt immer), die Laufzeit
-verlängern und das Team **archivieren**. Name, Kanäle und Tabs ändern Sie
+verlängern und das Team **archivieren**. Name, Kanäle und Tabs änderst du
 direkt in Microsoft Teams.
 
 Gäste erhalten eine Einladung von Microsoft und erscheinen erst nach Annahme
@@ -323,8 +323,9 @@ aus und verschieben sie mit den Pfeilen. **Standard wiederherstellen** setzt
 alles zurück. Die Einstellung gilt nur für dich und wird zwischen deinen
 Geräten (iPhone, Android) abgeglichen: Die letzte Änderung gilt überall.
 Unter **Tickets** siehst du zuerst den Filter **Meine**: Tickets, die du
-angefragt hast oder die dir zugewiesen sind. Mit **Alle**, **Beobachtet**,
-**Offen**, **Gelöst** oder **Nicht zugewiesen** wechselst du die Ansicht. Kehrst
+angefragt hast oder die dir zugewiesen sind. Mit dem Filtersymbol in
+der Suchleiste wechselst du auf **Alle**, **Beobachtet**, **Offen** oder
+**Gelöst**; **Nicht zugewiesen** steht in der Reihe mit den Status-Filtern. Kehrst
 du aus einem Ticket zurück, bleibt dein Filter erhalten; wechselst du über die
 Leiste unten wieder zu **Tickets**, beginnt die Liste erneut mit **Meine**. Auf jeder Ticketkarte steht, wann das Ticket erstellt wurde
 (z. B. «Erstellt heute, 14:32»). Über **Neues Ticket** erfasst du Anliegen
@@ -349,7 +350,7 @@ Benachrichtigungen; dorthin führt auch eine Sammelmitteilung mit mehreren
 Neuigkeiten.
 
 Auf dem **App-Symbol** zeigt eine rote Zahl, wie viele Mitteilungen du noch nicht
-gelesen hast (alle Arbeitsbereiche zusammen). Sie sinkt, sobald du Mitteilungen
+gelesen hast (alle Arbeitsbereiche zusammen). Die Zahl sinkt, sobald du Mitteilungen
 liest oder alle als gelesen markierst. Auf dem iPhone aktualisiert sie sich auch
 bei neuen Mitteilungen, wenn die App geschlossen ist. Auf Android erscheint sie,
 wenn dein Startbildschirm Zahlen auf Symbolen unterstützt, und wird beim Öffnen

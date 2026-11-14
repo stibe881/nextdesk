@@ -101,3 +101,25 @@ node scripts/verify-formality.mjs --list     # jede Fundstelle
 Ausnahmen (z. B. ein Wort, das keine Anrede ist) markierst du mit einem
 Kommentar `formality-ok` in derselben oder der vorherigen Zeile, Emoji-Ausnahmen
 in Tests mit `emoji-ok`.
+
+## Datenbank (`supabase/migrations`)
+
+Texte, die die Datenbank selbst erzeugt (Kommentare, Mitteilungen,
+automatische Erinnerungen), folgen der Anrede des Mandanten. Verwende
+`public.tenant_formality(<tenant_id>)` («du» oder «sie») und schreibe beide
+Fassungen:
+
+```sql
+case when public.tenant_formality(v_ticket.tenant_id) = 'sie'
+  then 'Bitte antworten Sie direkt auf diese Nachricht.'
+  else 'Bitte antworte direkt auf diese Nachricht.'
+end
+```
+
+`verify-formality.mjs` prüft Migrationen ab 0342 auf Sie-Formen. Enthält eine
+Migration bewusst beide Fassungen, steht oben der Kommentar
+`-- formality-ok-file: <Grund>`. Ältere Migrationen sind ausgenommen.
+
+Bereits gespeicherte Texte (z. B. ein früher erzeugter Kommentar) ändern sich
+nicht von selbst; sie lassen sich bei Bedarf per Migration anpassen (siehe
+0342).
