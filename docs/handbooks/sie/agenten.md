@@ -464,6 +464,28 @@ Gelöschte Tickets anzeigen**. Dort sehen Sie, wer ein Ticket wann gelöscht hat
 und wie lange es noch wiederherstellbar ist. Ein Klick zeigt das Ticket mit
 Beschreibung und Verlauf; **Wiederherstellen** holt es unverändert zurück.
 
+### Spam
+
+Mit der Berechtigung zum Löschen können Sie Tickets als **Spam** einstufen:
+
+- **iPhone und Android:** Wischen Sie ein Ticket nach links. Links neben **Löschen**
+  steht **Spam**. Eine Rückfrage warnt Sie: «Alle zukünftigen Tickets von
+  diesem Absender gehen automatisch in den Spam.»
+- **Web:** Tickets in der Liste markieren und **Als Spam markieren** wählen
+  (mit derselben Rückfrage).
+
+Das Ticket und alle **künftigen** Tickets dieses Absenders landen im Spam. Spam
+löst keine Regeln, SLA, KI-Triage, Bestätigungsmail oder Mitteilung aus und
+zählt in keiner Statistik. Absender, die selbst Personen Ihres Arbeitsbereichs
+sind, werden nie gesperrt; dann geht nur das einzelne Ticket in den Spam.
+
+Den Spam öffnen Sie in der Ticketliste über **Filter & Sortierung → Spam
+anzeigen**: Dort sehen Sie Absender und Zeitpunkt, **Kein Spam** holt ein Ticket
+zurück und gibt den Absender frei. Unter **Gesperrte Absender** geben Sie
+Absender auch einzeln frei. Spam bleibt 90 Tage erhalten. Eine Auswertung
+(Verlauf pro Tag, häufigste Absender, Abteilungen, automatisch abgefangen oder
+von Hand markiert) finden Sie unter **Berichte → Spam**.
+
 **Tastenkürzel:** `?` zeigt die Hilfe, `J`/`K` springen zum nächsten bzw.
 vorherigen Ticket, `Enter` öffnet, `Esc` schliesst.
 
@@ -507,6 +529,33 @@ Rechts unter der **Übersicht** liegt die Karte **Koordination**. Sie zeigt die
 **Supportstufe** mit dem zuständigen Team (**An nächste Stufe übergeben**,
 **Verlauf der Stufen**) sowie Teil-Tickets und Drittanbieter (**Aufteilen**,
 **An Drittanbieter übergeben**).
+
+### Spam-/Phishing-Verdacht der anfragenden Person
+
+Leitet eine Person eine Mail weiter, weil sie Spam oder Phishing vermutet,
+klicken Sie oben im Ticket auf **Spam-/Phishing-Verdacht** (in der iOS- und
+Android-App: **Spam-/Phishing-Verdacht** über der Karte zur Supportstufe). Nach
+der Rückfrage **Wirklich als Spam/Phishing markieren?** passiert Folgendes:
+
+- Die anfragende Person erhält per E-Mail dieselbe Standardantwort wie bei
+  einer Phishing-Meldung aus Outlook (Vorlagen **Phishing-Meldung: Danke** und
+  **Phishing-Meldung: Gestaltung**).
+- Das Ticket geht an das Team mit der Supportstufe **2nd Level** der
+  Abteilung (z. B. «System Engineer»), das die Mail prüft. Die Zuweisung an
+  eine Person wird aufgehoben, im Verlauf stehen eine interne Notiz und die
+  Übergabe. Das Ticket bleibt sichtbar.
+- Danach zeigt das Ticket den Hinweis **Spam-/Phishing-Verdacht**; ein zweites
+  Melden ist nicht möglich.
+
+Das ist etwas anderes als **Spam** (Abschnitt «Spam» weiter oben): Dort ist der Absender des
+Tickets selbst Spam, das Ticket verschwindet und der Absender wird gesperrt.
+Beim Verdacht ist die anfragende Person eine echte Person, die Hilfe braucht.
+
+Der Knopf erscheint nur mit den Rechten «Tickets bearbeiten» und «Tickets
+zuweisen», bei offenen Tickets und wenn die Abteilung genau ein aktives
+2nd-Level-Team hat. Fehlt die E-Mail-Adresse der anfragenden Person, ist die
+Vorlage ausgeschaltet oder kein Exchange-Postfach verbunden, wird das Ticket
+trotzdem übergeben; nextDesk zeigt dann, warum keine Antwort gesendet wurde.
 
 Tickets aus E-Mails enthalten die E-Mail-Signatur nicht mehr. Stammt die Mail
 von einer Adresse ausserhalb Ihrer Organisation, stehen unter **Anfragende
@@ -766,6 +815,13 @@ werden wie bisher alle benachrichtigt.
   der Artikel nur im Lager (nötig sind dann Bezeichnung, ein Bild, Kategorie,
   Artikelnummer und die Lagerangaben). Ausschalten nimmt die jeweilige Art beim
   Speichern aus dem Shop; der Lagerartikel bleibt bestehen.
+
+Über der Artikelliste steht ein **Suchfeld**: Es findet Artikel nach Name,
+Artikelnummer oder Lagerort, auch mit mehreren Wörtern (z. B. «logitech ergo»).
+**Alle sichtbaren** wählt dann nur die gefundenen Artikel für Etiketten aus. Hat
+ein Lagerartikel kein eigenes Bild, zeigt die Liste das Foto des verknüpften
+Shop-Artikels. Dasselbe gilt für die Bestandsliste unter **Lager** in der iOS- und
+Android-App.
 
 **Etiketten drucken** wie bei den Assets: In der Artikelliste wählen Sie Artikel
 mit **Für Etikett auswählen** (oder **Alle sichtbaren**) und drucken mit

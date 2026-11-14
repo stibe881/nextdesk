@@ -64,9 +64,12 @@ const TEXT_EXT = new Set([
   ".json",
   ".sql",
 ]);
-// Historical migrations contain old seed texts; new texts belong to code.
+// Historical migrations (before 0342) contain old seed texts. From 0342 on,
+// migrations are checked as well (texts the database creates must follow the
+// tenant's form of address, see public.tenant_formality()); a migration may opt
+// out as a whole with the comment `formality-ok-file: <reason>`.
+const FIRST_CHECKED_MIGRATION = 342;
 const SKIP_PATHS = [
-  "supabase/migrations/",
   "docs/handbooks/sie/",
   "docs/texte-anrede.md",
   "docs/handbooks/handbooks.bundle.json",
@@ -218,6 +221,14 @@ for (const full of walk(root)) {
   const path = relative(root, full).split(sep).join("/");
   if (only && !only.some((prefix) => path.startsWith(prefix))) continue;
   if (SKIP_PATHS.some((skip) => path.startsWith(skip) || path === skip)) {
+    continue;
+  }
+  const migration = /^supabase\/migrations\/(\d{4})_.*\.sql$/.exec(path);
+  if (path.startsWith("supabase/migrations/")) {
+    if (!migration || Number(migration[1]) < FIRST_CHECKED_MIGRATION) continue;
+    const source = readFileSync(full, "utf8");
+    if (source.includes("formality-ok-file")) continue;
+    checkText(path, source);
     continue;
   }
   const ext = path.slice(path.lastIndexOf("."));

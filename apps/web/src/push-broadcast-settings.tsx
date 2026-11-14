@@ -153,10 +153,13 @@ export function PushBroadcastSettings({ tenantId }: { tenantId: string }) {
         <div>
           <h3>Push-Mitteilung senden</h3>
           <p>
-            Schreibe eine eigene Mitteilung und sende sie an iPhone und Android.
-            Sie erscheint auf dem Sperrbildschirm der Geräte. Registriert sind
-            zurzeit {context.iosDevices} iPhone- und {context.androidDevices}{" "}
-            Android-Geräte.
+            {tn(
+              "Schreibe eine eigene Mitteilung und sende sie an iPhone und Android.",
+              "Schreiben Sie eine eigene Mitteilung und senden Sie sie an iPhone und Android.",
+            )}{" "}
+            Die Mitteilung erscheint auf dem Sperrbildschirm der Geräte.
+            Registriert sind zurzeit {context.iosDevices} iPhone- und{" "}
+            {context.androidDevices} Android-Geräte.
           </p>
         </div>
       </div>

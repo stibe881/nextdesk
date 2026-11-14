@@ -7,11 +7,13 @@ import { useAppColors } from "@/lib/themed-styles";
 
 /**
  * Wischaktionen für Ticketzeilen: nach rechts wischen für Zuweisen, Beobachten
- * und Wiedervorlage, nach links wischen zum Löschen (mit Rückgängig-Frist).
+ * und Wiedervorlage, nach links wischen für Spam (mit Rückfrage) und zum Löschen (mit
+ * Rückgängig-Frist).
  */
 export function TicketSwipeActions({
   canAssign = false,
   canDelete,
+  canSpam = false,
   canWatch,
   canFollowUp,
   children,
@@ -19,11 +21,13 @@ export function TicketSwipeActions({
   watched,
   onAssign,
   onDelete,
+  onSpam,
   onWatch,
   onFollowUp,
 }: {
   canAssign?: boolean;
   canDelete: boolean;
+  canSpam?: boolean;
   canWatch: boolean;
   canFollowUp: boolean;
   children: ReactNode;
@@ -31,6 +35,7 @@ export function TicketSwipeActions({
   watched: boolean;
   onAssign?: () => void;
   onDelete: () => void;
+  onSpam?: () => void;
   onWatch: () => void;
   onFollowUp: () => void;
 }) {
@@ -48,6 +53,7 @@ export function TicketSwipeActions({
   };
 
   const hasLeft = canAssign || canWatch || canFollowUp;
+  const showSpam = canDelete && canSpam && Boolean(onSpam);
 
   return (
     <Swipeable
@@ -120,15 +126,37 @@ export function TicketSwipeActions({
       }
       renderRightActions={() =>
         canDelete ? (
-          <Pressable
-            accessibilityLabel="Ticket löschen"
-            accessibilityRole="button"
-            onPress={deleteNow}
-            style={[styles.action, { backgroundColor: colors.error }]}
-          >
-            <Ionicons color="#ffffff" name="trash-outline" size={20} />
-            <Text style={[styles.text, { color: "#ffffff" }]}>Löschen</Text>
-          </Pressable>
+          <View style={styles.group}>
+            {showSpam && onSpam ? (
+              <Pressable
+                accessibilityLabel="Ticket als Spam markieren"
+                accessibilityRole="button"
+                onPress={() => closeAndRun(onSpam)}
+                style={[
+                  styles.action,
+                  { backgroundColor: colors.warningStrong },
+                ]}
+              >
+                <Ionicons
+                  color={colors.onWarningStrong}
+                  name="mail-unread-outline"
+                  size={20}
+                />
+                <Text style={[styles.text, { color: colors.onWarningStrong }]}>
+                  Spam
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              accessibilityLabel="Ticket löschen"
+              accessibilityRole="button"
+              onPress={deleteNow}
+              style={[styles.action, { backgroundColor: colors.error }]}
+            >
+              <Ionicons color="#ffffff" name="trash-outline" size={20} />
+              <Text style={[styles.text, { color: "#ffffff" }]}>Löschen</Text>
+            </Pressable>
+          </View>
         ) : null
       }
     >

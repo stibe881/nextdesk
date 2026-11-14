@@ -24,7 +24,24 @@ type Action =
   // Papierkorb: gelöschte Tickets auflisten, ansehen, wiederherstellen.
   | { type: "listDeleted"; tenantId: string }
   | { type: "getDeleted"; tenantId: string; ticketId: string }
-  | { type: "restoreTickets"; tenantId: string; ticketIds: string[] };
+  | { type: "restoreTickets"; tenantId: string; ticketIds: string[] }
+  // Spam: Tickets einstufen (Absender wird gesperrt), auflisten, freigeben, Bericht.
+  | {
+      type: "markSpam";
+      tenantId: string;
+      ticketIds: string[];
+      confirmSpam: boolean;
+    }
+  | {
+      type: "unmarkSpam";
+      tenantId: string;
+      ticketIds: string[];
+      releaseSenders: boolean;
+    }
+  | { type: "listSpam"; tenantId: string }
+  | { type: "listSpamSenders"; tenantId: string }
+  | { type: "removeSpamSender"; tenantId: string; senderId: string }
+  | { type: "spamReport"; tenantId: string; from: string; to: string };
 
 type AttachmentCleanupJob = {
   cleanupId: string;
@@ -154,7 +171,100 @@ function parseAction(value: unknown): Action | null {
       ticketIds: value.ticketIds,
     };
   }
+  const ticketIds =
+    Array.isArray(value.ticketIds) &&
+    value.ticketIds.length >= 1 &&
+    value.ticketIds.length <= 50 &&
+    value.ticketIds.every(isUuid) &&
+    new Set(value.ticketIds).size === value.ticketIds.length
+      ? (value.ticketIds as string[])
+      : null;
+  if (
+    value.type === "markSpam" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketIds", "confirmSpam"]) &&
+    ticketIds &&
+    typeof value.confirmSpam === "boolean"
+  ) {
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketIds,
+      confirmSpam: value.confirmSpam,
+    };
+  }
+  if (
+    value.type === "unmarkSpam" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketIds", "releaseSenders"]) &&
+    ticketIds
+  ) {
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketIds,
+      releaseSenders: value.releaseSenders !== false,
+    };
+  }
+  if (
+    (value.type === "listSpam" || value.type === "listSpamSenders") &&
+    hasOnlyKeys(value, ["type", "tenantId"])
+  ) {
+    return { type: value.type, tenantId: value.tenantId };
+  }
+  if (
+    value.type === "removeSpamSender" &&
+    hasOnlyKeys(value, ["type", "tenantId", "senderId"]) &&
+    isUuid(value.senderId)
+  ) {
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      senderId: value.senderId.toLowerCase(),
+    };
+  }
+  if (
+    value.type === "spamReport" &&
+    hasOnlyKeys(value, ["type", "tenantId", "from", "to"]) &&
+    typeof value.from === "string" &&
+    typeof value.to === "string" &&
+    !Number.isNaN(Date.parse(value.from)) &&
+    !Number.isNaN(Date.parse(value.to))
+  ) {
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      from: new Date(value.from).toISOString(),
+      to: new Date(value.to).toISOString(),
+    };
+  }
   return null;
+}
+
+/** Fehler der Spam-Funktionen als Antwort. */
+function spamError(request: Request, error: any): Response {
+  if (error?.message === "Ticket deletion blocked by legal hold") {
+    return response(request, { error: { code: "spam_legal_hold" } }, 409);
+  }
+  if (error?.message === "Spam confirmation required") {
+    return response(
+      request,
+      { error: { code: "spam_confirmation_required" } },
+      409,
+    );
+  }
+  if (error?.code === "42501") {
+    return response(
+      request,
+      { error: { code: "spam_permission_denied" } },
+      403,
+    );
+  }
+  if (error?.code === "P0002") {
+    return response(request, { error: { code: "spam_target_missing" } }, 404);
+  }
+  if (error?.code === "22023") {
+    return response(request, { error: { code: "spam_invalid" } }, 422);
+  }
+  return response(request, { error: { code: "spam_failed" } }, 500);
 }
 
 /** Anzeigenamen zu Personen (für den Papierkorb). */
@@ -495,6 +605,115 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         })),
       },
     });
+  }
+
+  if (action.type === "markSpam") {
+    const { data, error } = await context.supabaseAdmin.rpc(
+      "mark_tickets_spam",
+      {
+        p_actor_id: actorId,
+        p_tenant_id: action.tenantId,
+        p_ticket_ids: action.ticketIds,
+        p_confirm: action.confirmSpam,
+      },
+    );
+    if (error) return spamError(request, error);
+    return response(request, { data: isRecord(data) ? data : {} });
+  }
+
+  if (action.type === "unmarkSpam") {
+    const { data, error } = await context.supabaseAdmin.rpc(
+      "unmark_tickets_spam",
+      {
+        p_actor_id: actorId,
+        p_tenant_id: action.tenantId,
+        p_ticket_ids: action.ticketIds,
+        p_release_senders: action.releaseSenders,
+      },
+    );
+    if (error) return spamError(request, error);
+    return response(request, { data: isRecord(data) ? data : {} });
+  }
+
+  if (action.type === "listSpam") {
+    const { data, error } = await context.supabaseAdmin.rpc(
+      "list_spam_tickets",
+      {
+        p_actor_id: actorId,
+        p_tenant_id: action.tenantId,
+        p_limit: 200,
+      },
+    );
+    if (error) return spamError(request, error);
+    const rows = (Array.isArray(data) ? data : []) as any[];
+    const [names, departments] = await Promise.all([
+      displayNames(
+        context.supabaseAdmin,
+        rows.map((row) => row.spam_by),
+      ),
+      lookupLabels(context.supabaseAdmin, "departments", action.tenantId),
+    ]);
+    return response(request, {
+      data: {
+        tickets: rows.map((row) => ({
+          id: row.id,
+          ticketNumber: row.ticket_number,
+          subject: row.subject,
+          department: departments.get(String(row.department_id)) ?? null,
+          senderEmail: row.sender_email ?? null,
+          createdAt: row.created_at,
+          spamAt: row.spam_at,
+          markedByName: names.get(String(row.spam_by)) ?? null,
+          purgeAt: row.purge_at,
+        })),
+      },
+    });
+  }
+
+  if (action.type === "listSpamSenders") {
+    const { data, error } = await context.supabaseAdmin.rpc(
+      "list_spam_senders",
+      {
+        p_actor_id: actorId,
+        p_tenant_id: action.tenantId,
+      },
+    );
+    if (error) return spamError(request, error);
+    return response(request, {
+      data: {
+        senders: ((Array.isArray(data) ? data : []) as any[]).map((row) => ({
+          id: row.id,
+          email: row.sender_email,
+          createdAt: row.created_at,
+          hits: row.hit_count,
+          lastHitAt: row.last_hit_at,
+        })),
+      },
+    });
+  }
+
+  if (action.type === "removeSpamSender") {
+    const { data, error } = await context.supabaseAdmin.rpc(
+      "remove_spam_sender",
+      {
+        p_actor_id: actorId,
+        p_tenant_id: action.tenantId,
+        p_sender_id: action.senderId,
+      },
+    );
+    if (error) return spamError(request, error);
+    return response(request, { data: { removed: data === true } });
+  }
+
+  if (action.type === "spamReport") {
+    const { data, error } = await context.supabaseAdmin.rpc("spam_report", {
+      p_actor_id: actorId,
+      p_tenant_id: action.tenantId,
+      p_from: action.from,
+      p_to: action.to,
+    });
+    if (error) return spamError(request, error);
+    return response(request, { data: isRecord(data) ? data : {} });
   }
 
   if (action.type === "listDeleted") {

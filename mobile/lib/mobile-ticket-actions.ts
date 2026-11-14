@@ -153,6 +153,19 @@ export async function bulkDeleteTickets(
   });
 }
 
+/** Stuft Tickets als Spam ein; die Absender werden gesperrt (künftige Tickets gehen in den Spam). */
+export async function markTicketsSpam(
+  ticketIds: readonly string[],
+): Promise<void> {
+  const tenant = await loadCurrentTenant();
+  await invokeNextDesk("ticket-bulk-status", {
+    type: "markSpam",
+    tenantId: tenant.id,
+    ticketIds: [...ticketIds].slice(0, 50),
+    confirmSpam: true,
+  });
+}
+
 export type SavedTicketView = {
   filters: {
     agent: string;

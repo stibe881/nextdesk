@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   Image,
   Pressable,
@@ -77,6 +78,7 @@ import {
   listWatchedTicketIds,
   setTicketWatched,
   assignTicketToMe,
+  markTicketsSpam,
   dueToday,
   followUpTitle,
 } from "@/lib/mobile-ticket-actions";
@@ -666,6 +668,42 @@ export default function HomeScreen() {
     undoDelete.schedule(ticket);
   }
 
+  function spamTicket(ticket: MobileTicket) {
+    Alert.alert(
+      "Wirklich als Spam markieren?",
+      `«${ticket.ticketNumber}» wird als Spam eingestuft. Alle zukünftigen Tickets von diesem Absender gehen automatisch in den Spam.`,
+      [
+        { style: "cancel", text: "Abbrechen" },
+        {
+          onPress: () =>
+            void (async () => {
+              setActionMessage("");
+              try {
+                await markTicketsSpam([ticket.id]);
+                setTickets((current) =>
+                  current.filter((item) => item.id !== ticket.id),
+                );
+                setExtraTickets((current) =>
+                  current.filter((item) => item.id !== ticket.id),
+                );
+                setActionMessage(
+                  `«${ticket.ticketNumber}» ist jetzt Spam. Künftige Tickets dieses Absenders gehen automatisch in den Spam.`,
+                );
+              } catch (nextError) {
+                setActionMessage(
+                  nextError instanceof Error && nextError.message
+                    ? nextError.message
+                    : "Das Ticket konnte nicht als Spam markiert werden.",
+                );
+              }
+            })(),
+          style: "destructive",
+          text: "Als Spam markieren",
+        },
+      ],
+    );
+  }
+
   async function assignToMe(ticket: MobileTicket) {
     if (!watchState) return;
     setActionMessage("");
@@ -1158,6 +1196,8 @@ export default function HomeScreen() {
                     !ticket.assignedToCurrentUser
                   }
                   canDelete={!isOffline && !checkingFeatures}
+                  canSpam={!isOffline && !checkingFeatures}
+                  onSpam={() => spamTicket(ticket)}
                   onAssign={() => void assignToMe(ticket)}
                   canWatch={watchState?.tenantId === tenantId}
                   canFollowUp={

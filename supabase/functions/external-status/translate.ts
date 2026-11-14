@@ -15,6 +15,7 @@ export const TRANSLATION_SCHEMA = {
 } as const;
 
 export const TRANSLATION_SYSTEM =
+  // formality-ok: Anweisung an das KI-Modell, keine Anrede an Personen
   "Du übersetzt Störungsmeldungen von Anbietern (Statusseiten) für ein IT-Team in der Schweiz. " +
   "Schreibe auf Deutsch (Schweizer Rechtschreibung, ss statt ß), sachlich und kurz. " +
   "Titel: höchstens 90 Zeichen, beschreibt das Problem (betroffener Dienst und Auswirkung), ohne Anbieternamen am Anfang, wenn er nur wiederholt wird. " +

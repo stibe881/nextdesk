@@ -24,6 +24,25 @@ export type MobileTicketSupportLevel = {
   back: { level: MobileSupportLevel; teams: MobileLevelTeam[] }[];
   currentHandover: MobileLevelHandover | null;
   historyCount: number;
+  /** «Spam-/Phishing-Verdacht» (reply + handover to the 2nd level). */
+  suspicion: {
+    reported: boolean;
+    canReport: boolean;
+    targetTeamName: string | null;
+  };
+};
+
+export type MobileSuspicionReply =
+  | "queued"
+  | "no_requester_email"
+  | "template_disabled"
+  | "no_mail_channel"
+  | "failed";
+
+export type MobileSuspicionResult = {
+  teamName: string;
+  moved: boolean;
+  reply: MobileSuspicionReply;
 };
 
 export const MOBILE_NOTE_MIN = 10;
@@ -121,7 +140,53 @@ export function parseMobileTicketSupportLevel(
           }
         : null,
     historyCount: Array.isArray(data.history) ? data.history.length : 0,
+    suspicion: {
+      reported: isRecord(data.suspicion) && data.suspicion.reported === true,
+      canReport: isRecord(data.suspicion) && data.suspicion.canReport === true,
+      targetTeamName:
+        isRecord(data.suspicion) &&
+        isRecord(data.suspicion.targetTeam) &&
+        typeof data.suspicion.targetTeam.name === "string"
+          ? data.suspicion.targetTeam.name
+          : null,
+    },
   };
+}
+
+const SUSPICION_REPLIES: readonly MobileSuspicionReply[] = [
+  "queued",
+  "no_requester_email",
+  "template_disabled",
+  "no_mail_channel",
+  "failed",
+];
+
+export function parseMobileSuspicionResult(value: unknown): MobileSuspicionResult | null {
+  const data = isRecord(value) ? value.data : null;
+  if (!isRecord(data) || typeof data.teamName !== "string") return null;
+  return {
+    teamName: data.teamName,
+    moved: data.moved === true,
+    reply: SUSPICION_REPLIES.find((entry) => entry === data.reply) ?? "failed",
+  };
+}
+
+/** Text after «Spam-/Phishing-Verdacht», incl. why no reply was sent. */
+export function mobileSuspicionResultText(result: MobileSuspicionResult): string {
+  const handover = result.moved
+    ? `Das Ticket wurde an den 2nd Level (${result.teamName}) übergeben.`
+    : `Das Ticket liegt bereits beim 2nd Level (${result.teamName}).`;
+  const reply: Record<MobileSuspicionReply, string> = {
+    queued: "Die Standardantwort an die anfragende Person ist unterwegs.",
+    no_requester_email:
+      "Die anfragende Person hat keine E-Mail-Adresse, darum wurde keine Antwort gesendet.",
+    template_disabled:
+      "Die Vorlage für Phishing-Meldungen ist ausgeschaltet, darum wurde keine Antwort gesendet.",
+    no_mail_channel:
+      "Es ist kein aktives Exchange-Postfach verbunden, darum wurde keine Antwort gesendet.",
+    failed: "Die Standardantwort konnte nicht vorbereitet werden.",
+  };
+  return `${handover} ${reply[result.reply]}`;
 }
 
 /** The card is hidden for tenants that do not use support levels. */

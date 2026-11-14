@@ -41,6 +41,7 @@ import {
   assignTicketToMe,
   BULK_STATUS_OPTIONS,
   bulkDeleteTickets,
+  markTicketsSpam,
   bulkSetTicketStatus,
   dueToday,
   followUpTitle,
@@ -312,6 +313,40 @@ export default function TicketsScreen() {
     setError("");
     setMessage("");
     undoDelete.schedule(ticket);
+  }
+
+  function spamTicket(ticket: MobileTicket) {
+    Alert.alert(
+      "Wirklich als Spam markieren?",
+      `«${ticket.ticketNumber}» wird als Spam eingestuft. Alle zukünftigen Tickets von diesem Absender gehen automatisch in den Spam.`,
+      [
+        { style: "cancel", text: "Abbrechen" },
+        {
+          onPress: () =>
+            void (async () => {
+              setError("");
+              setMessage("");
+              try {
+                await markTicketsSpam([ticket.id]);
+                setTickets((current) =>
+                  current.filter((item) => item.id !== ticket.id),
+                );
+                setMessage(
+                  `«${ticket.ticketNumber}» ist jetzt Spam. Künftige Tickets dieses Absenders gehen automatisch in den Spam.`,
+                );
+              } catch (nextError) {
+                setError(
+                  nextError instanceof Error && nextError.message
+                    ? nextError.message
+                    : "Das Ticket konnte nicht als Spam markiert werden.",
+                );
+              }
+            })(),
+          style: "destructive",
+          text: "Als Spam markieren",
+        },
+      ],
+    );
   }
 
   async function assignToMe(ticket: MobileTicket) {
@@ -1009,6 +1044,7 @@ export default function TicketsScreen() {
                     !ticket.assignedToCurrentUser
                   }
                   canDelete={!isOffline && !offlineCacheAt && !checkingFeatures}
+                  onSpam={() => spamTicket(ticket)}
                   onAssign={() => void assignToMe(ticket)}
                   onCreateFollowUp={() => void createFollowUp(ticket)}
                   onDelete={() => deleteTicket(ticket)}
@@ -1181,6 +1217,7 @@ function SwipeableTicketRow({
   onAssign,
   onCreateFollowUp,
   onDelete,
+  onSpam,
   onWatch,
   onLongPress,
   onPress,
@@ -1200,6 +1237,7 @@ function SwipeableTicketRow({
   onAssign: () => void;
   onCreateFollowUp: () => void;
   onDelete: () => void;
+  onSpam: () => void;
   onWatch: () => void;
   onLongPress: () => void;
   onPress: () => void;
@@ -1218,12 +1256,14 @@ function SwipeableTicketRow({
     <TicketSwipeActions
       canAssign={actionsAvailable && canAssign}
       canDelete={actionsAvailable && canDelete}
+      canSpam={actionsAvailable && canDelete}
       canWatch={actionsAvailable}
       canFollowUp={actionsAvailable && canCreateFollowUp}
       enabled={swipeEnabled}
       watched={watched}
       onAssign={onAssign}
       onDelete={onDelete}
+      onSpam={onSpam}
       onWatch={onWatch}
       onFollowUp={onCreateFollowUp}
     >
