@@ -1,5 +1,6 @@
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
+import { markTicketNotificationsRead } from "@/lib/notification-inbox";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -486,6 +487,8 @@ export default function TicketDetailScreen() {
           }).catch(() => undefined);
           // «Zuletzt angesehen» geräteübergreifend (mit dem Web geteilt).
           recordRecentItem(currentTenant.id, "ticket", detail.id);
+          // Mitteilungen zu diesem Ticket gelten als gelesen (Glocke, Zahl auf dem App-Symbol).
+          void markTicketNotificationsRead(currentTenant.id, detail.id);
           const initialVisibility = detail.canWriteInternalNotes
             ? "internal"
             : "external";

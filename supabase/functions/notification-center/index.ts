@@ -19,6 +19,7 @@ type Action =
   | { type: "get"; notificationId: string }
   | { type: "markRead"; notificationId: string }
   | { type: "markAllRead"; tenantId: string }
+  | { type: "markTicketRead"; tenantId: string; ticketId: string }
   | { type: "unreadCount" };
 
 type NotificationRow = {
@@ -113,6 +114,19 @@ export function parseAction(value: unknown): Action | null {
     isUuid(value.tenantId)
   ) {
     return { type: "markAllRead", tenantId: value.tenantId };
+  }
+
+  if (
+    value.type === "markTicketRead" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketId"]) &&
+    isUuid(value.tenantId) &&
+    isUuid(value.ticketId)
+  ) {
+    return {
+      type: "markTicketRead",
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+    };
   }
 
   return null;
@@ -440,6 +454,48 @@ async function markRead(
   });
 }
 
+/**
+ * Wer ein Ticket öffnet, hat die Mitteilungen dazu gesehen: alle ungelesenen
+ * Mitteilungen dieser Person zu diesem Ticket gelten als gelesen (Glocke und
+ * Zahl auf dem App-Symbol).
+ */
+async function markTicketRead(
+  request: Request,
+  admin: any,
+  actorId: string,
+  tenantId: string,
+  ticketId: string,
+): Promise<Response> {
+  const membership = await hasActiveTenantMembership(admin, actorId, tenantId);
+  if (membership === null)
+    return json(
+      request,
+      { error: { code: "authorization_check_failed" } },
+      500,
+    );
+  if (!membership)
+    return json(
+      request,
+      { error: { code: "tenant_membership_required" } },
+      403,
+    );
+
+  const { data: updated, error: updateError } = await admin
+    .from("ticket_notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("tenant_id", tenantId)
+    .eq("user_id", actorId)
+    .eq("ticket_id", ticketId)
+    .is("read_at", null)
+    .select("id");
+  if (updateError)
+    return json(request, { error: { code: "notification_read_failed" } }, 500);
+
+  return json(request, {
+    data: { ticketId, markedReadCount: (updated ?? []).length },
+  });
+}
+
 async function markAllRead(
   request: Request,
   admin: any,
@@ -542,6 +598,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
   if (action.type === "markRead")
     return await markRead(request, admin, actorId, action.notificationId);
+  if (action.type === "markTicketRead")
+    return await markTicketRead(
+      request,
+      admin,
+      actorId,
+      action.tenantId,
+      action.ticketId,
+    );
   return await markAllRead(request, admin, actorId, action.tenantId);
 });
 

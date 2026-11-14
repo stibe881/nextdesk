@@ -29,6 +29,15 @@ Deno.test("existing actions keep their shape", () => {
     type: "markRead",
     notificationId: ID,
   });
+  assertEquals(
+    parseAction({ type: "markTicketRead", tenantId: ID, ticketId: ID }),
+    { type: "markTicketRead", tenantId: ID, ticketId: ID },
+  );
+  assertEquals(parseAction({ type: "markTicketRead", tenantId: ID }), null);
+  assertEquals(
+    parseAction({ type: "markTicketRead", tenantId: ID, ticketId: "x" }),
+    null,
+  );
   assertEquals(parseAction({ type: "markAllRead", tenantId: ID }), {
     type: "markAllRead",
     tenantId: ID,
