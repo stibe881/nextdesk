@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-13
+updated: 2026-11-14
 ---
 
 # Handbuch für Mitarbeitende
