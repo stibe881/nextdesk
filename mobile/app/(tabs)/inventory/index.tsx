@@ -4,6 +4,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -26,6 +27,7 @@ import {
   loadMobileInventory,
   newInventoryRequestId,
   parseReceiptQuantity,
+  postMobileInventoryIssue,
   postMobileInventoryReceipt,
   type MobileInventoryItem,
   type MobileInventoryOverview,
@@ -87,6 +89,9 @@ export default function InventoryScreen() {
     null,
   );
   const [receiptRequestId, setReceiptRequestId] = useState("");
+  // Separate id: a receipt and an issue of the same sheet are two bookings.
+  const [issueRequestId, setIssueRequestId] = useState("");
+  const [issueSaving, setIssueSaving] = useState(false);
   const [receiptSaving, setReceiptSaving] = useState(false);
   const [receiptError, setReceiptError] = useState("");
   const [notice, setNotice] = useState("");
@@ -161,6 +166,10 @@ export default function InventoryScreen() {
   const images = useInventoryItemImages(tenantId, overview?.items ?? []);
 
   const canReceive = overview?.canMove === true;
+  // «Ausbuchen» only for the role «Lagerverwaltung» (permission inventory.issue).
+  const canIssue = overview?.canIssue === true;
+  const canBook = canReceive || canIssue;
+  const bookingBusy = receiptSaving || issueSaving;
   const locations = overview?.locations ?? [];
 
   const openReceipt = (item: MobileInventoryItem) => {
@@ -175,16 +184,84 @@ export default function InventoryScreen() {
       matching?.id ?? (locations.length === 1 ? locations[0].id : null),
     );
     setReceiptRequestId(newInventoryRequestId());
+    setIssueRequestId(newInventoryRequestId());
     setReceiptItem(item);
   };
 
   const closeReceipt = () => {
-    if (receiptSaving) return;
+    if (bookingBusy) return;
     setReceiptItem(null);
   };
 
+  const postIssue = async (item: MobileInventoryItem, quantity: number) => {
+    if (!tenantId || !receiptLocationId) return;
+    setIssueSaving(true);
+    setReceiptError("");
+    try {
+      await postMobileInventoryIssue({
+        tenantId,
+        itemId: item.id,
+        locationId: receiptLocationId,
+        quantity,
+        clientRequestId: issueRequestId,
+      });
+      setNotice(
+        `${quantityFormat.format(quantity)} ${item.unit} «${item.name}» ausgebucht.`,
+      );
+      setReceiptItem(null);
+      void load(true);
+    } catch (nextError) {
+      setReceiptError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Menge konnte nicht ausgebucht werden.",
+      );
+    } finally {
+      setIssueSaving(false);
+    }
+  };
+
+  const submitIssue = () => {
+    if (!receiptItem || !tenantId || bookingBusy) return;
+    const item = receiptItem;
+    const quantity = parseReceiptQuantity(receiptQuantity);
+    if (quantity === null) {
+      setReceiptError(
+        tn(
+          "Bitte gib eine gültige Menge grösser als 0 ein.",
+          "Bitte geben Sie eine gültige Menge grösser als 0 ein.",
+        ),
+      );
+      return;
+    }
+    if (quantity > item.availableQuantity) {
+      setReceiptError(
+        `Es sind nur ${quantityFormat.format(item.availableQuantity)} ${item.unit} verfügbar.`,
+      );
+      return;
+    }
+    if (!receiptLocationId) {
+      setReceiptError(
+        tn("Bitte wähle einen Lagerort.", "Bitte wählen Sie einen Lagerort."),
+      );
+      return;
+    }
+    Alert.alert(
+      "Wirklich ausbuchen?",
+      `${quantityFormat.format(quantity)} ${item.unit} «${item.name}» werden aus dem Lager ausgebucht.`,
+      [
+        { text: "Abbrechen", style: "cancel" },
+        {
+          text: "Ausbuchen",
+          style: "destructive",
+          onPress: () => void postIssue(item, quantity),
+        },
+      ],
+    );
+  };
+
   const submitReceipt = async () => {
-    if (!receiptItem || !tenantId || receiptSaving) return;
+    if (!receiptItem || !tenantId || bookingBusy) return;
     const quantity = parseReceiptQuantity(receiptQuantity);
     if (quantity === null) {
       setReceiptError(tn("Bitte gib eine gültige Menge grösser als 0 ein.", "Bitte geben Sie eine gültige Menge grösser als 0 ein."));
@@ -352,12 +429,22 @@ export default function InventoryScreen() {
           </Text>
         ) : null}
 
-        {canReceive ? (
+        {canBook ? (
           <Text style={styles.hint}>
-            {tn(
-              "Tippe auf einen Artikel, um einen Wareneingang einzubuchen.",
-              "Tippen Sie auf einen Artikel, um einen Wareneingang einzubuchen.",
-            )}
+            {canIssue && canReceive
+              ? tn(
+                  "Tippe auf einen Artikel, um Bestand ein- oder auszubuchen.",
+                  "Tippen Sie auf einen Artikel, um Bestand ein- oder auszubuchen.",
+                )
+              : canIssue
+                ? tn(
+                    "Tippe auf einen Artikel, um Bestand auszubuchen.",
+                    "Tippen Sie auf einen Artikel, um Bestand auszubuchen.",
+                  )
+                : tn(
+                    "Tippe auf einen Artikel, um einen Wareneingang einzubuchen.",
+                    "Tippen Sie auf einen Artikel, um einen Wareneingang einzubuchen.",
+                  )}
           </Text>
         ) : null}
 
@@ -387,12 +474,12 @@ export default function InventoryScreen() {
           {items.map((item) => (
             <Pressable
               accessibilityHint={
-                canReceive
-                  ? "Öffnet den Wareneingang für diesen Artikel"
+                canBook
+                  ? "Öffnet die Buchung für diesen Artikel"
                   : undefined
               }
-              accessibilityRole={canReceive ? "button" : undefined}
-              disabled={!canReceive}
+              accessibilityRole={canBook ? "button" : undefined}
+              disabled={!canBook}
               key={item.id}
               onPress={() => openReceipt(item)}
               style={({ pressed }) => [
@@ -472,9 +559,15 @@ export default function InventoryScreen() {
             style={styles.sheet}
           >
             <View style={styles.sheetHeader}>
-              <Text style={styles.eyebrow}>WARENEINGANG</Text>
+              <Text style={styles.eyebrow}>
+                {canIssue && !canReceive
+                  ? "AUSBUCHEN"
+                  : canIssue
+                    ? "BESTAND BUCHEN"
+                    : "WARENEINGANG"}
+              </Text>
               <Pressable
-                accessibilityLabel="Wareneingang schliessen"
+                accessibilityLabel="Buchung schliessen"
                 accessibilityRole="button"
                 hitSlop={12}
                 onPress={closeReceipt}
@@ -492,6 +585,9 @@ export default function InventoryScreen() {
                   {[
                     receiptItem.articleNumber,
                     `${quantityFormat.format(receiptItem.physicalQuantity)} ${receiptItem.unit} an Lager`,
+                    canIssue
+                      ? `${quantityFormat.format(receiptItem.availableQuantity)} verfügbar`
+                      : null,
                   ]
                     .filter(Boolean)
                     .join(" · ")}
@@ -603,23 +699,73 @@ export default function InventoryScreen() {
                     </View>
                   ) : null}
 
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={receiptSaving || locations.length === 0}
-                    onPress={() => void submitReceipt()}
-                    style={({ pressed }) => [
-                      styles.primaryButton,
-                      (receiptSaving || locations.length === 0) &&
-                        styles.disabled,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    {receiptSaving ? (
-                      <ActivityIndicator color={colors.onPrimary} />
-                    ) : (
-                      <Text style={styles.primaryButtonText}>Einbuchen</Text>
-                    )}
-                  </Pressable>
+                  <View style={styles.bookingActions}>
+                    {canReceive ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          busy: receiptSaving,
+                          disabled: bookingBusy || locations.length === 0,
+                        }}
+                        disabled={bookingBusy || locations.length === 0}
+                        onPress={() => void submitReceipt()}
+                        style={({ pressed }) => [
+                          styles.primaryButton,
+                          styles.bookingButton,
+                          (bookingBusy || locations.length === 0) &&
+                            styles.disabled,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        {receiptSaving ? (
+                          <ActivityIndicator color={colors.onPrimary} />
+                        ) : (
+                          <Text style={styles.primaryButtonText}>
+                            Einbuchen
+                          </Text>
+                        )}
+                      </Pressable>
+                    ) : null}
+                    {canIssue ? (
+                      <Pressable
+                        accessibilityHint="Fragt vor dem Ausbuchen nach."
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          busy: issueSaving,
+                          disabled:
+                            bookingBusy ||
+                            locations.length === 0 ||
+                            receiptItem.availableQuantity <= 0,
+                        }}
+                        disabled={
+                          bookingBusy ||
+                          locations.length === 0 ||
+                          receiptItem.availableQuantity <= 0
+                        }
+                        onPress={submitIssue}
+                        style={({ pressed }) => [
+                          styles.issueButton,
+                          styles.bookingButton,
+                          (bookingBusy ||
+                            locations.length === 0 ||
+                            receiptItem.availableQuantity <= 0) &&
+                            styles.disabled,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        {issueSaving ? (
+                          <ActivityIndicator color={colors.error} />
+                        ) : (
+                          <Text style={styles.issueButtonText}>Ausbuchen</Text>
+                        )}
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {canIssue && receiptItem.availableQuantity <= 0 ? (
+                    <Text style={styles.itemMeta}>
+                      Kein verfügbarer Bestand zum Ausbuchen.
+                    </Text>
+                  ) : null}
                 </>
               )}
             </ScrollView>
@@ -698,6 +844,18 @@ const useStyles = makeThemedStyles((c) => ({
     marginTop: 4,
   },
   primaryButtonText: { color: c.onPrimary, fontSize: 16, fontWeight: "800" },
+  bookingActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+  bookingButton: { flex: 1, marginTop: 0 },
+  issueButton: {
+    alignItems: "center",
+    backgroundColor: c.errorSoft,
+    borderColor: c.error,
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 52,
+  },
+  issueButtonText: { color: c.error, fontSize: 16, fontWeight: "800" },
   quantityInput: {
     backgroundColor: c.surface,
     borderColor: c.borderStrong,

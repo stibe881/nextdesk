@@ -56,6 +56,10 @@ const intuneActionsMigrationPath = new URL(
   "../supabase/migrations/0226_intune_device_actions.sql",
   import.meta.url,
 );
+const inventoryIssueMigrationPath = new URL(
+  "../supabase/migrations/0342_inventory_issue_role.sql",
+  import.meta.url,
+);
 const catalog = await readFile(catalogPath, "utf8");
 const migrations = await Promise.all([
   readFile(baseMigrationPath, "utf8"),
@@ -71,6 +75,7 @@ const migrations = await Promise.all([
   readFile(shopMigrationPath, "utf8"),
   readFile(serviceTasksMigrationPath, "utf8"),
   readFile(intuneActionsMigrationPath, "utf8"),
+  readFile(inventoryIssueMigrationPath, "utf8"),
 ]);
 const migration = migrations.join("\n");
 
