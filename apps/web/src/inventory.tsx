@@ -346,6 +346,7 @@ type InventoryAction =
       countId: string;
       clientRequestId: string;
     }
+  | { type: "cancelCount"; tenantId: string; countId: string }
   | {
       type: "manageSourceReservationRule";
       tenantId: string;
@@ -365,15 +366,17 @@ type InventoryChangedHandler = (
   successMessage: string,
 ) => Promise<InventoryMutationReceipt | null>;
 
-const sections: readonly InventorySection[] = [
-  "Übersicht",
-  "Artikel",
-  "Lagerorte",
-  "Bewegungen",
-  "Reservationen",
-  "Inventur",
-  "Beschaffung",
-  "Automatik",
+/** Tab groups, shown like the settings tabs («section-tabs»). */
+const sectionGroups: readonly {
+  label: string;
+  sections: readonly InventorySection[];
+}[] = [
+  { label: "Bestand", sections: ["Übersicht", "Artikel", "Lagerorte"] },
+  {
+    label: "Buchungen",
+    sections: ["Bewegungen", "Reservationen", "Inventur"],
+  },
+  { label: "Planung", sections: ["Beschaffung", "Automatik"] },
 ];
 
 function isRecord(value: unknown): value is RecordValue {
@@ -1404,30 +1407,56 @@ export function Inventory({
         </div>
       </header>
 
-      <div
-        className="inventory__tabs"
-        role="tablist"
+      <nav
         aria-label="Lagerbereiche"
+        className="section-tabs inventory__section-tabs"
+        role="tablist"
       >
-        {sections
-          // Beschaffung und Automatik nur für die Lagerverwaltung.
-          .filter(
-            (section) =>
-              (section !== "Beschaffung" && section !== "Automatik") ||
-              workspace?.permissions.canManage === true,
-          )
-          .map((section) => (
-            <button
-              aria-selected={activeSection === section}
-              key={section}
-              onClick={() => setActiveSection(section)}
-              role="tab"
-              type="button"
+        {sectionGroups
+          .map((group) => ({
+            ...group,
+            // Beschaffung und Automatik nur für die Lagerverwaltung.
+            sections: group.sections.filter(
+              (section) =>
+                (section !== "Beschaffung" && section !== "Automatik") ||
+                workspace?.permissions.canManage === true,
+            ),
+          }))
+          .filter((group) => group.sections.length > 0)
+          .map((group) => (
+            <div
+              className="section-tabs__group"
+              key={group.label}
+              role="presentation"
             >
-              {section}
-            </button>
+              <span aria-hidden="true" className="section-tabs__label">
+                {group.label}
+              </span>
+              <div className="section-tabs__row" role="presentation">
+                {group.sections.map((section) => (
+                  <button
+                    aria-selected={activeSection === section}
+                    className={
+                      activeSection === section
+                        ? "section-tabs__tab is-active"
+                        : "section-tabs__tab"
+                    }
+                    key={section}
+                    onClick={() => {
+                      // A notice belongs to the area where it happened.
+                      if (section !== activeSection) setMessage("");
+                      setActiveSection(section);
+                    }}
+                    role="tab"
+                    type="button"
+                  >
+                    {section}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
-      </div>
+      </nav>
 
       {loading ? (
         <p className="inventory__state">Lager wird geladen …</p>
@@ -3650,9 +3679,12 @@ function InventoryCounts({
       </p>
       {canManage || canClose ? (
         <InventoryActiveCountList
+          canDelete={canManage}
           counts={activeCounts}
+          onChanged={onChanged}
           onSelectCount={selectCount}
           selectedCountId={selectedCountId}
+          tenantId={tenantId}
         />
       ) : null}
       {canManage || canClose ? (
@@ -3691,14 +3723,42 @@ function InventoryCounts({
 }
 
 function InventoryActiveCountList({
+  canDelete,
   counts,
+  onChanged,
   onSelectCount,
   selectedCountId,
+  tenantId,
 }: {
+  /** «Inventur löschen» needs the same right as starting one. */
+  canDelete: boolean;
   counts: readonly ActiveInventoryCount[];
+  onChanged: InventoryChangedHandler;
   onSelectCount: (countId: string) => void;
   selectedCountId: string;
+  tenantId: string;
 }) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const deleteCount = async (count: ActiveInventoryCount) => {
+    if (deletingId) return;
+    if (
+      !(await confirmDialog(
+        `Inventur «${count.locationName}» wirklich löschen?\n\nDie bisher gezählten Mengen werden verworfen, der Bestand bleibt unverändert. Das lässt sich nicht rückgängig machen.`,
+        { confirmLabel: "Inventur löschen", tone: "danger" },
+      ))
+    ) {
+      return;
+    }
+    setDeletingId(count.id);
+    const deleted = await onChanged(
+      { type: "cancelCount", tenantId, countId: count.id },
+      `Die Inventur «${count.locationName}» wurde gelöscht.`,
+    );
+    setDeletingId(null);
+    if (deleted && selectedCountId === count.id) onSelectCount("");
+  };
+
   return counts.length ? (
     <ul className="inventory__list">
       {counts.map((count) => (
@@ -3710,13 +3770,28 @@ function InventoryActiveCountList({
               gestartet {dateTime(count.startedAt)}
             </small>
           </div>
-          <button
-            aria-pressed={selectedCountId === count.id}
-            onClick={() => onSelectCount(count.id)}
-            type="button"
-          >
-            {selectedCountId === count.id ? "Ausgewählt" : "Auswählen"}
-          </button>
+          <span className="inventory__count-actions">
+            <button
+              aria-pressed={selectedCountId === count.id}
+              onClick={() => onSelectCount(count.id)}
+              type="button"
+            >
+              {selectedCountId === count.id ? "Ausgewählt" : "Auswählen"}
+            </button>
+            {canDelete ? (
+              <button
+                aria-label={`Inventur ${count.locationName} löschen`}
+                className="inventory__count-delete"
+                disabled={deletingId !== null}
+                onClick={() => void deleteCount(count)}
+                title="Inventur löschen"
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={15} />
+                {deletingId === count.id ? "Wird gelöscht …" : "Löschen"}
+              </button>
+            ) : null}
+          </span>
         </li>
       ))}
     </ul>

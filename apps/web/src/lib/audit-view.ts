@@ -326,6 +326,7 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   "inventory.reservation.released": "Reservation freigegeben",
   "inventory.count.started": "Inventur gestartet",
   "inventory.count.closed": "Inventur abgeschlossen",
+  "inventory.count.cancelled": "Inventur gelöscht",
   "contract.insert": "Vertrag erstellt",
   "contract.update": "Vertrag geändert",
   "contract.delete": "Vertrag gelöscht",

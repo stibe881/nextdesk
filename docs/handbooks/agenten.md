@@ -805,6 +805,12 @@ Einleitung, Abschnitte, Schritte, Hinweise). KI-Entwürfe aus Tickets erscheinen
 
 ## Lager: Artikel erfassen und ausleihen
 
+Die Bereiche des Lagers sind wie in den Einstellungen in Gruppen geordnet:
+**Bestand** (Übersicht, Artikel, Lagerorte), **Buchungen** (Bewegungen,
+Reservationen, Inventur) und **Planung** (Beschaffung, Automatik; nur für die
+Lagerverwaltung). Eine Meldung oben gilt für den Bereich, in dem sie entstanden
+ist, und verschwindet beim Wechsel in einen anderen Bereich.
+
 **Lager → Artikel → Artikel erfassen** (und **Bearbeiten** in der Liste) öffnet
 dasselbe Formular wie ein Artikel im Shop: Bezeichnung, Fotos (per Drag and
 Drop oder Auswahl), Kategorien, Artikelnummer, Beschreibung, technische Angaben
@@ -881,6 +887,14 @@ Unter **Lagerorte** änderst du Ortscode und Bezeichnung mit dem Stift
 mehr zur Auswahl; bisherige Buchungen bleiben erhalten. Buche einen
 vorhandenen Bestand vorher an einen anderen Ort um. Gelöschte Lagerorte
 erscheinen blass und lassen sich mit **Wieder aktivieren** zurückholen.
+
+Unter **Inventur** startest du pro Lagerort eine Inventur, erfasst die gezählten
+Mengen und schliesst sie ab; erst der Abschluss bucht die Differenzen. Eine
+laufende Inventur, die nicht mehr gebraucht wird, entfernst du in der Liste mit
+**Löschen** (nach einer Rückfrage). Die gezählten Mengen werden verworfen, der
+Bestand bleibt unverändert, und im Audit-Protokoll steht «Inventur gelöscht».
+Abgeschlossene Inventuren lassen sich nicht löschen. Löschen dürfen alle, die
+Inventuren starten dürfen (Recht «Lagerorte und Artikelstammdaten verwalten»).
 
 ## Lager-Automatik, Rücknahmen und Austritt
 

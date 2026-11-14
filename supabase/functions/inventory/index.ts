@@ -109,6 +109,7 @@ export const INVENTORY_RPC_NAMES = {
   startCount: "start_inventory_count",
   recordCountLine: "record_inventory_count_line",
   closeCount: "close_inventory_count",
+  cancelCount: "cancel_inventory_count",
 } as const;
 
 type TrackingMode = "quantity" | "serial";
@@ -380,7 +381,8 @@ type Action =
       tenantId: string;
       countId: string;
       clientRequestId: string;
-    };
+    }
+  | { type: "cancelCount"; tenantId: string; countId: string };
 
 class HttpError extends Error {
   constructor(
@@ -1086,6 +1088,12 @@ export function parseAction(value: unknown): Action | null {
         }
       : null;
   }
+  if (value.type === "cancelCount") {
+    return hasOnlyKeys(value, ["type", "tenantId", "countId"]) &&
+      isUuid(value.countId)
+      ? { type: value.type, tenantId, countId: value.countId.toLowerCase() }
+      : null;
+  }
   if (value.type === "closeCount") {
     return hasOnlyKeys(value, [
       "type",
@@ -1165,6 +1173,14 @@ function databaseFailure(error: { code?: unknown } | null): never {
   }
   if (code === "P0002") {
     throw new HttpError(404, "not_found", "Der Eintrag wurde nicht gefunden.");
+  }
+  if (code === "ND410") {
+    // cancel_inventory_count (migration 0346): the count is already closed.
+    throw new HttpError(
+      409,
+      "inventory_count_not_running",
+      "Abgeschlossene Inventuren können nicht gelöscht werden.",
+    );
   }
   if (
     [
@@ -3713,10 +3729,40 @@ async function closeCount(
   actorId: string,
   action: Extract<Action, { type: "closeCount" }>,
 ): Promise<Response> {
+  // close_inventory_count refuses an empty count with a generic constraint
+  // error; check first so the person learns what is missing.
+  const lines = await admin
+    .from("inventory_count_lines")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", action.tenantId)
+    .eq("count_id", action.countId);
+  if (lines.error) databaseFailure(lines.error);
+  if ((lines.count ?? 0) === 0) {
+    throw new HttpError(
+      422,
+      "inventory_count_empty",
+      "Die Inventur hat noch keine Zähllinie und lässt sich noch nicht abschliessen.",
+    );
+  }
   const raw = await serviceRpc(admin, INVENTORY_RPC_NAMES.closeCount, {
     p_actor_id: actorId,
     p_tenant_id: action.tenantId,
     p_client_request_id: action.clientRequestId,
+    p_count_id: action.countId,
+  });
+  return json(request, { data: mutationReceipt(raw) });
+}
+
+/** «Inventur löschen»: discards a running count; stock stays unchanged. */
+async function cancelCount(
+  request: Request,
+  admin: AdminClient,
+  actorId: string,
+  action: Extract<Action, { type: "cancelCount" }>,
+): Promise<Response> {
+  const raw = await serviceRpc(admin, INVENTORY_RPC_NAMES.cancelCount, {
+    p_actor_id: actorId,
+    p_tenant_id: action.tenantId,
     p_count_id: action.countId,
   });
   return json(request, { data: mutationReceipt(raw) });
@@ -5110,6 +5156,19 @@ const securedHandler = withSupabase(
               actorId.toLowerCase(),
               action,
             );
+      }
+      if (action.type === "cancelCount") {
+        await requirePermission(
+          context.supabase,
+          action.tenantId,
+          "inventory.manage",
+        );
+        return await cancelCount(
+          request,
+          context.supabaseAdmin,
+          actorId.toLowerCase(),
+          action,
+        );
       }
       await requirePermission(
         context.supabase,

@@ -88,6 +88,13 @@ export async function functionErrorMessage(
         ? `Bevor das Ticket geschlossen werden kann, bitte zuerst ausfüllen: ${missing.join(", ")}.`
         : "Bevor das Ticket geschlossen werden kann, bitte Kategorie, Team und Zuweisung ausfüllen.";
     }
+    case "inventory_count_empty":
+      return tn(
+        "Die Inventur hat noch keine Zähllinie. Erfasse zuerst mindestens eine gezählte Menge (Schritt 2 «Zähllinie erfassen»), dann kannst du sie abschliessen.",
+        "Die Inventur hat noch keine Zähllinie. Erfassen Sie zuerst mindestens eine gezählte Menge (Schritt 2 «Zähllinie erfassen»), dann können Sie sie abschliessen.",
+      );
+    case "inventory_count_not_running":
+      return "Abgeschlossene Inventuren können nicht gelöscht werden.";
     case "invalid_request":
     case "validation_failed":
       return tn(

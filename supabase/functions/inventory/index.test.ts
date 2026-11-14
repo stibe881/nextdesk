@@ -102,6 +102,7 @@ Deno.test(
       startCount: "start_inventory_count",
       recordCountLine: "record_inventory_count_line",
       closeCount: "close_inventory_count",
+      cancelCount: "cancel_inventory_count",
     });
   },
 );
@@ -1682,4 +1683,19 @@ Deno.test("item RPC parameters keep optional fields as null when not sent", () =
     assertEquals(key in body, true, key);
     assertEquals(body[key], null, key);
   }
+});
+
+Deno.test("cancelCount is parsed strictly", () => {
+  const tenantId = "11111111-1111-4111-8111-111111111111";
+  const countId = "22222222-2222-4222-8222-222222222222";
+  assertEquals(parseAction({ type: "cancelCount", tenantId, countId }), {
+    type: "cancelCount",
+    tenantId,
+    countId,
+  });
+  assertEquals(
+    parseAction({ type: "cancelCount", tenantId, countId, extra: 1 }),
+    null,
+  );
+  assertEquals(parseAction({ type: "cancelCount", tenantId }), null);
 });

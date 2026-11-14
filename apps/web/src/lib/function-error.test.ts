@@ -55,3 +55,20 @@ describe("Teil-Tickets beim Abschluss", () => {
     }
   });
 });
+
+describe("Inventur", () => {
+  it("erklärt, warum eine leere Inventur nicht abgeschlossen werden kann", async () => {
+    await expect(
+      functionErrorMessage(functionFailure("inventory_count_empty"), "Fallback"),
+    ).resolves.toContain("Zähllinie");
+  });
+
+  it("erklärt, dass abgeschlossene Inventuren bleiben", async () => {
+    await expect(
+      functionErrorMessage(
+        functionFailure("inventory_count_not_running"),
+        "Fallback",
+      ),
+    ).resolves.toContain("nicht gelöscht");
+  });
+});
