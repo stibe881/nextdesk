@@ -17345,6 +17345,26 @@ body:has(.knowledge-base__editor-backdrop) {
   padding-top: 0;
 }
 
+.inventory__count-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.inventory__count-delete {
+  align-items: center;
+  color: var(--danger);
+  display: inline-flex;
+  gap: 6px;
+}
+
+.inventory__count-delete:hover:not(:disabled) {
+  border-color: var(--border-tint-edbbc4);
+  background: var(--danger-soft);
+}
+
 .inventory__list strong,
 .inventory__list small {
   display: block;

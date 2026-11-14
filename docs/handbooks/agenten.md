@@ -882,6 +882,14 @@ mehr zur Auswahl; bisherige Buchungen bleiben erhalten. Buche einen
 vorhandenen Bestand vorher an einen anderen Ort um. Gelöschte Lagerorte
 erscheinen blass und lassen sich mit **Wieder aktivieren** zurückholen.
 
+Unter **Inventur** startest du pro Lagerort eine Inventur, erfasst die gezählten
+Mengen und schliesst sie ab; erst der Abschluss bucht die Differenzen. Eine
+laufende Inventur, die nicht mehr gebraucht wird, entfernst du in der Liste mit
+**Löschen** (nach einer Rückfrage). Die gezählten Mengen werden verworfen, der
+Bestand bleibt unverändert, und im Audit-Protokoll steht «Inventur gelöscht».
+Abgeschlossene Inventuren lassen sich nicht löschen. Löschen dürfen alle, die
+Inventuren starten dürfen (Recht «Lagerorte und Artikelstammdaten verwalten»).
+
 ## Lager-Automatik, Rücknahmen und Austritt
 
 **Ausgabe und Rückgabe von Geräten.** Übergib im Shop eine Bestellung
