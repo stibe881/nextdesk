@@ -42,6 +42,7 @@ import { CatalogEditor, type EditorRequest, type StockEditor } from "./shop";
 import { shopApi } from "./lib/shop";
 import { supabase } from "./lib/supabase";
 
+import { confirmDialog } from "./app-dialog";
 type TrackingMode = "quantity" | "serial";
 type InventorySection =
   | "Übersicht"
@@ -2311,9 +2312,9 @@ function InventoryBookingDialog({
     }
     if (
       issuing &&
-      !window.confirm(
+      !(await confirmDialog(
         `${amount} ${item.unit} «${item.name}» wirklich ausbuchen? Der Bestand wird um diese Menge verringert.`,
-      )
+      ))
     ) {
       return;
     }
@@ -2846,9 +2847,9 @@ function InventoryLocationRow({
 
   const archive = async () => {
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Lagerort «${location.name}» löschen? Er steht danach nicht mehr zur Auswahl. Bisherige Buchungen bleiben erhalten; ein vorhandener Bestand sollte vorher umgebucht werden.`,
-      )
+      ))
     )
       return;
     await run({ operation: "archive" }, "Der Lagerort wurde gelöscht.");
@@ -3742,9 +3743,10 @@ function InventoryActiveCountList({
   const deleteCount = async (count: ActiveInventoryCount) => {
     if (deletingId) return;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Inventur «${count.locationName}» wirklich löschen?\n\nDie bisher gezählten Mengen werden verworfen, der Bestand bleibt unverändert. Das lässt sich nicht rückgängig machen.`,
-      )
+        { confirmLabel: "Inventur löschen", tone: "danger" },
+      ))
     ) {
       return;
     }

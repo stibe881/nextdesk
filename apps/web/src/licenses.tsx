@@ -34,6 +34,7 @@ import {
 import { COST_PERIOD_LABEL, formatMoney } from "./lib/license-reclaim";
 import { LicenseReclaimPanel, LicenseSeatsDialog } from "./license-reclaim";
 
+import { confirmDialog } from "./app-dialog";
 type LicenseStatus = "draft" | "active" | "terminated" | "archived";
 type LicenseType = string;
 type License = {
@@ -528,9 +529,9 @@ export function Licenses({
   const archive = async (contract: License) => {
     if (
       !supabase ||
-      !window.confirm(
+      !(await confirmDialog(
         `«${contract.title}» archivieren? Archivierte Lizenzen bleiben nachvollziehbar, können aber nicht mehr geändert werden.`,
-      )
+      ))
     )
       return;
     setPending(true);

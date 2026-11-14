@@ -31,6 +31,7 @@ import {
   type DepartmentOption,
 } from "./lib/contract-departments";
 
+import { confirmDialog } from "./app-dialog";
 type ContractStatus = "draft" | "active" | "terminated" | "archived";
 type ContractType = string;
 type Contract = {
@@ -572,9 +573,9 @@ export function Contracts({
   const archive = async (contract: Contract) => {
     if (
       !supabase ||
-      !window.confirm(
+      !(await confirmDialog(
         `«${contract.title}» archivieren? Archivierte Verträge bleiben nachvollziehbar, können aber nicht mehr geändert werden.`,
-      )
+      ))
     )
       return;
     setPending(true);

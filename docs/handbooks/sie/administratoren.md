@@ -2,7 +2,7 @@
 title: Handbuch für Administratoren
 description: Mandant einrichten – Design, Funktionen, SLA, Abteilungen, Personen, Rollen, Datenschutz und Protokoll.
 audienceLabel: Administratoren
-updated: 2026-11-13
+updated: 2026-11-14
 ---
 
 # Handbuch für Administratoren
@@ -195,12 +195,14 @@ mindestens 15 Sekunden.
 
 Das Register **Ticket-Lebenszyklus** (setzt die SLA-Automatisierung voraus)
 steuert, wie lange ein Ticket in einem Status bleibt, bevor nextDesk handelt.
-Die Regeln laufen stündlich und sind zunächst alle ausgeschaltet:
+Die Regeln laufen stündlich und sind zunächst alle ausgeschaltet. Gezählt
+werden **Werktage** (Montag bis Freitag, Zeit Zürich): Samstag und Sonntag
+zählen nicht mit.
 
-- **Erinnerung** bei «Wartend auf Kunde»: _Erinnern nach Tagen_ und
+- **Erinnerung** bei «Wartend auf Kunde»: _Erinnern nach Werktagen_ und
   _Höchstens so viele Erinnerungen_.
-- **Automatisch lösen**: _Lösen nach Tagen (ab Beginn der Wartezeit)_.
-- **Gelöste Tickets automatisch schliessen**: _Schliessen nach Tagen_. So lange
+- **Automatisch lösen**: _Lösen nach Werktagen (ab Beginn der Wartezeit)_.
+- **Gelöste Tickets automatisch schliessen**: _Schliessen nach Werktagen_. So lange
   bleibt ein Ticket auf «Gelöst», bevor es geschlossen wird. Antwortet die
   anfragende Person vorher, wird das Ticket wieder geöffnet.
 

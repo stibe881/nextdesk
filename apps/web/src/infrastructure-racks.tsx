@@ -8,6 +8,7 @@ import {
   type RackDevice,
 } from "./lib/rack-layout";
 
+import { confirmDialog } from "./app-dialog";
 export type RackInput = {
   id: string | null;
   /** Rack so far only known from its devices: these move with it. */
@@ -184,8 +185,9 @@ function RackForm({
           <button
             className="text-button rack-form__delete"
             disabled={busy || deviceCount > 0}
-            onClick={() => {
-              if (!window.confirm(`Rack «${initial.name}» löschen?`)) return;
+            onClick={async () => {
+              if (!(await confirmDialog(`Rack «${initial.name}» löschen?`)))
+                return;
               setBusy(true);
               void onDelete().then((deleted) => {
                 setBusy(false);

@@ -7,6 +7,7 @@ import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 import "./ticket-kanban.css";
 
+import { confirmDialog } from "./app-dialog";
 type Status = { key: string; label: string; isClosed: boolean };
 
 /**
@@ -75,9 +76,9 @@ export function TicketKanban({
     }
     if (
       status.isClosed &&
-      !window.confirm(
+      !(await confirmDialog(
         `Ticket ${ticket.id} wirklich auf «${status.label}» setzen? Die anfragende Person wird informiert.`,
-      )
+      ))
     ) {
       return;
     }

@@ -31,6 +31,7 @@ import {
   type PushStatus,
 } from "./lib/push-notifications";
 
+import { confirmDialog } from "./app-dialog";
 type PersonalSettingsProps = {
   /** Plain employees: no password or data-export cards. */
   employeeView?: boolean;
@@ -1135,12 +1136,12 @@ function DeleteAccountPanel() {
 
   async function removeAccount() {
     if (
-      !window.confirm(
+      !(await confirmDialog(
         tn(
           "Konto endgültig löschen?\n\nDein Konto und deine persönlichen Daten werden unwiderruflich gelöscht. Besitzt du einen eigenen Arbeitsbereich, wird er mit allen Tickets, Dateien und Einträgen ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; du verlierst nur deinen Zugriff.",
           "Konto endgültig löschen?\n\nIhr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht. Besitzen Sie einen eigenen Arbeitsbereich, wird er mit allen Tickets, Dateien und Einträgen ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; Sie verlieren nur Ihren Zugriff.",
         ),
-      )
+      ))
     )
       return;
     setState("deleting");

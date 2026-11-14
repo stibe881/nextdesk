@@ -32,6 +32,7 @@ import {
   ticketFieldDropInsertionIndex,
 } from "./lib/ticket-form-builder-dnd";
 
+import { confirmDialog } from "./app-dialog";
 type FieldType = TicketCustomFieldType;
 
 type FieldDefinition = {
@@ -540,9 +541,9 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
   async function retire(definition: FieldDefinition) {
     if (!layout) return;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `„${definition.label}“ aus neuen Formularen entfernen? Bereits gespeicherte Ticketwerte bleiben erhalten.`,
-      )
+      ))
     ) {
       return;
     }

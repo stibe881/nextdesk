@@ -1175,7 +1175,7 @@ function databaseFailure(error: { code?: unknown } | null): never {
     throw new HttpError(404, "not_found", "Der Eintrag wurde nicht gefunden.");
   }
   if (code === "ND410") {
-    // cancel_inventory_count (migration 0344): the count is already closed.
+    // cancel_inventory_count (migration 0346): the count is already closed.
     throw new HttpError(
       409,
       "inventory_count_not_running",

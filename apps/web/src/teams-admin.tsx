@@ -21,6 +21,7 @@ import {
 import { addMonthsIso, EXTENSIONS, formatTeamDate } from "./lib/teams";
 import "./teams-admin.css";
 
+import { confirmDialog } from "./app-dialog";
 /** Menü «Teams»: alle Teams ansehen und verwalten (Berechtigung shop.manage). */
 
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
@@ -504,9 +505,9 @@ function BulkBar({
         </button>
         <button
           disabled={busy}
-          onClick={() => {
+          onClick={async () => {
             if (
-              window.confirm(
+              await confirmDialog(
                 `${teams.length} Team(s) archivieren? Die Teams bleiben lesbar und lassen sich wiederherstellen.`,
               )
             ) {

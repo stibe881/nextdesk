@@ -83,6 +83,7 @@ import {
 } from "./knowledge-article";
 import { KnowledgeSuggestions } from "./knowledge-suggestions";
 
+import { confirmDialog } from "./app-dialog";
 export type KnowledgeBaseProps = {
   createArticleRequestId?: number | undefined;
   focusArticleId?: string | undefined;
@@ -2800,7 +2801,7 @@ export function KnowledgeBase({
 
   async function archiveArticle() {
     if (!selected) return;
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       tn(
         `Möchtest du den Artikel „${selected.article.title}“ wirklich archivieren?`,
         `Möchten Sie den Artikel „${selected.article.title}“ wirklich archivieren?`,
@@ -2837,7 +2838,7 @@ export function KnowledgeBase({
 
   async function deleteArticle() {
     if (!selected) return;
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       `Artikel «${selected.article.title}» endgültig löschen? Das kann nicht rückgängig gemacht werden.`,
     );
     if (!confirmed) return;
@@ -2969,7 +2970,7 @@ export function KnowledgeBase({
       activeCollections,
       articles.map(({ article }) => article),
     );
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       knowledgeCollectionDeletionQuestion(
         collection.name,
         collection.parentId !== null,

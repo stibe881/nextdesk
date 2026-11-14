@@ -24,6 +24,7 @@ import {
 import type { TicketDrilldown } from "./lib/ticket-drilldown";
 import "./team-leadership.css";
 
+import { confirmDialog } from "./app-dialog";
 type BoardAgent = {
   id: string;
   displayName: string;
@@ -515,9 +516,9 @@ export function SkillMatrix({ tenantId }: { tenantId: string }) {
                         aria-label={`${skill.name} löschen`}
                         className="icon-button"
                         disabled={busy === skill.id}
-                        onClick={() => {
+                        onClick={async () => {
                           if (
-                            window.confirm(
+                            await confirmDialog(
                               `Fähigkeit «${skill.name}» mit allen Einstufungen löschen?`,
                             )
                           ) {

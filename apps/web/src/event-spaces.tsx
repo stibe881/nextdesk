@@ -36,6 +36,7 @@ import {
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
+import { confirmDialog } from "./app-dialog";
 const EQUIPMENT = [
   ["ict_material", "ICT Material"],
   ["internet_access", "Zugang Internet"],
@@ -855,9 +856,9 @@ export function EventSpaces({
   async function deleteRequest(requestId: string, title: string) {
     if (!supabase) return;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Raumplanung «${title}» endgültig löschen? Zugehörige Aufgaben und Technikreservationen werden ebenfalls entfernt.`,
-      )
+      ))
     ) {
       return;
     }

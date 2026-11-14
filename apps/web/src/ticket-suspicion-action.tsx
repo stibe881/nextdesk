@@ -7,6 +7,7 @@ import {
   type TicketSupportLevel,
 } from "./lib/support-levels";
 
+import { confirmDialog } from "./app-dialog";
 /**
  * «Spam-/Phishing-Verdacht»: the requester suspects a spam or phishing
  * mail. After a confirmation The requester
@@ -27,7 +28,9 @@ export function TicketSuspicionAction({
   tenantId: string;
   ticketId: string;
 }) {
-  const [suspicion, setSuspicion] = useState<TicketSupportLevel["suspicion"] | null>(null);
+  const [suspicion, setSuspicion] = useState<
+    TicketSupportLevel["suspicion"] | null
+  >(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -52,7 +55,9 @@ export function TicketSuspicionAction({
         title="Für dieses Ticket wurde ein Spam-/Phishing-Verdacht gemeldet."
       >
         <ShieldAlert aria-hidden="true" size={15} />
-        <span className="ticket-detail-action-label">Spam-/Phishing-Verdacht</span>
+        <span className="ticket-detail-action-label">
+          Spam-/Phishing-Verdacht
+        </span>
       </span>
     );
   }
@@ -60,8 +65,9 @@ export function TicketSuspicionAction({
   const teamName = suspicion.targetTeam.name;
 
   async function mark() {
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       `Wirklich als Spam/Phishing markieren?\n\nDie anfragende Person vermutet eine Spam- oder Phishing-Mail und erhält die Standardantwort (wie bei einer Phishing-Meldung aus Outlook), und das Ticket wird an den 2nd Level (${teamName}) weitergeleitet. Der Absender wird nicht gesperrt; dafür gibt es «Spam» in der Ticketliste. Das lässt sich nicht rückgängig machen.`,
+      { confirmLabel: "Verdacht melden", tone: "danger" },
     );
     if (!confirmed) return;
     setBusy(true);
@@ -105,7 +111,9 @@ export function TicketSuspicionAction({
       ) : (
         <ShieldAlert aria-hidden="true" size={16} strokeWidth={1.8} />
       )}
-      <span className="ticket-detail-action-label">Spam-/Phishing-Verdacht</span>
+      <span className="ticket-detail-action-label">
+        Spam-/Phishing-Verdacht
+      </span>
     </button>
   );
 }

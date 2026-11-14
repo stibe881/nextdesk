@@ -10002,6 +10002,44 @@ $$;
 rollback;
 SQL
 
+# 0344: Wochenenden zählen beim Ticket-Ablauf nicht mit.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+declare
+  v_interval interval;
+begin
+  -- Freitag 15:00 bis Montag 15:00 sind 24 Stunden Werktagszeit (Fr 9 h + Mo 15 h).
+  v_interval := public.working_time_between(
+    timestamp '2026-11-13 15:00' at time zone 'Europe/Zurich',
+    timestamp '2026-11-16 15:00' at time zone 'Europe/Zurich');
+  if v_interval <> interval '24 hours' then
+    raise exception 'working_time_between Wochenende: % statt 24 Stunden', v_interval;
+  end if;
+  -- Mitte der Woche zählt voll.
+  v_interval := public.working_time_between(
+    timestamp '2026-11-10 08:00' at time zone 'Europe/Zurich',
+    timestamp '2026-11-12 08:00' at time zone 'Europe/Zurich');
+  if v_interval <> interval '48 hours' then
+    raise exception 'working_time_between Wochentage: % statt 48 Stunden', v_interval;
+  end if;
+  -- Nur Wochenende: null; umgekehrte Reihenfolge: null.
+  if public.working_time_between(
+       timestamp '2026-11-14 08:00' at time zone 'Europe/Zurich',
+       timestamp '2026-11-15 20:00' at time zone 'Europe/Zurich') <> interval '0'
+     or public.working_time_between(now(), now() - interval '1 day') <> interval '0' then
+    raise exception 'working_time_between: Wochenende oder umgekehrte Reihenfolge nicht null';
+  end if;
+  -- Der Erinnerungstext zählt in Werktagen und folgt der Anrede.
+  if position('Ist Ihr Problem' in pg_get_functiondef('public.ticket_lifecycle_run()'::regprocedure)) = 0
+     or position('Ist dein Problem' in pg_get_functiondef('public.ticket_lifecycle_run()'::regprocedure)) = 0
+     or position('weiteren Werktagen' in pg_get_functiondef('public.ticket_lifecycle_run()'::regprocedure)) = 0 then
+    raise exception 'ticket_lifecycle_run: Anrede oder Werktage im Erinnerungstext fehlen';
+  end if;
+  raise notice 'lifecycle working-day checks ran';
+end;
+$$;
+SQL
+
 # 0205: lifecycle run reminds, solves and closes according to the settings.
 psql -v ON_ERROR_STOP=1 <<'SQL'
 begin;
@@ -10028,7 +10066,7 @@ begin
   end if;
   update public.tickets set assigned_agent_id = v_agent where id = v_ticket.id;
   update public.tickets set status_id = v_waiting,
-    waiting_since = timezone('utc', now()) - interval '10 days', waiting_reminder_sent_at = null
+    waiting_since = timezone('utc', now()) - interval '30 days', waiting_reminder_sent_at = null
   where id = v_ticket.id;
   insert into public.ticket_lifecycle_settings (tenant_id, waiting_reminder_enabled,
     waiting_reminder_days, waiting_resolve_enabled, waiting_resolve_days,
@@ -10060,7 +10098,7 @@ begin
     raise exception 'lifecycle test: requester reply did not end waiting, status %', v_key;
   end if;
   update public.tickets set status_id = v_waiting,
-    waiting_since = timezone('utc', now()) - interval '10 days'
+    waiting_since = timezone('utc', now()) - interval '30 days'
   where id = v_ticket.id;
 
   update public.ticket_lifecycle_settings set waiting_resolve_enabled = true
@@ -10072,7 +10110,7 @@ begin
     raise exception 'lifecycle test: not solved, status %', v_key;
   end if;
 
-  update public.tickets set resolved_at = timezone('utc', now()) - interval '6 days'
+  update public.tickets set resolved_at = timezone('utc', now()) - interval '30 days'
   where id = v_ticket.id;
   perform public.ticket_lifecycle_run();
   select status.key into v_key from public.tickets ticket
@@ -12246,7 +12284,7 @@ begin
   where id = v_ticket.id;
   update public.tickets set assigned_agent_id = v_agent where id = v_ticket.id;
   update public.tickets set status_id = v_waiting,
-    waiting_since = timezone('utc', now()) - interval '10 days',
+    waiting_since = timezone('utc', now()) - interval '30 days',
     waiting_reminder_sent_at = null, waiting_reminder_count = 0
   where id = v_ticket.id;
   insert into public.ticket_lifecycle_settings (tenant_id, waiting_reminder_enabled,
@@ -12300,10 +12338,10 @@ begin
   if (select count(*) from public.ticket_requester_reminders where ticket_id = v_ticket.id) <> 1 then
     raise exception 'reminder action test: reminded again too early';
   end if;
-  update public.tickets set waiting_reminder_sent_at = timezone('utc', now()) - interval '4 days'
+  update public.tickets set waiting_reminder_sent_at = timezone('utc', now()) - interval '14 days'
   where id = v_ticket.id;
   perform public.ticket_lifecycle_run();
-  update public.tickets set waiting_reminder_sent_at = timezone('utc', now()) - interval '4 days'
+  update public.tickets set waiting_reminder_sent_at = timezone('utc', now()) - interval '14 days'
   where id = v_ticket.id;
   perform public.ticket_lifecycle_run();
   if (select count(*) from public.ticket_requester_reminders where ticket_id = v_ticket.id) <> 2
