@@ -51,9 +51,23 @@ import {
   listWatchedTicketIds,
   setTicketWatched,
 } from "@/lib/mobile-ticket-actions";
+import {
+  activeRefinementCount,
+  DEFAULT_REFINEMENT,
+  matchesRefinement,
+  SORT_OPTIONS,
+  sortTickets,
+  type TicketRefinement,
+  type TicketSortBy,
+} from "@/lib/ticket-list-refinement";
 import { useUndoableDelete } from "@/lib/use-undoable-delete";
 import { isNextDeskConfigured, nextDesk } from "@/lib/nextdesk-client";
-import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
+import {
+  loadMobileDashboard,
+  loadTicketFilterDirectory,
+  type MobileTicket,
+  type TicketFilterDirectory,
+} from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 import { tn } from "@/lib/formality";
@@ -85,6 +99,66 @@ function offlineCacheTimestamp(value: string): string {
     minute: "2-digit",
     month: "short",
   }).format(timestamp);
+}
+
+function FilterChipRow({
+  label,
+  onSelect,
+  options,
+  selected,
+}: {
+  label: string;
+  onSelect: (key: string) => void;
+  options: readonly { key: string; label: string }[];
+  selected: string;
+}) {
+  const styles = useStyles();
+  const colors = useAppColors();
+  const tokenStyles = {
+    control: {
+      backgroundColor: colors.surfaceSubtle,
+      borderColor: colors.border,
+    },
+    muted: { color: colors.muted },
+    onPrimary: { color: colors.onPrimary },
+    primary: { backgroundColor: colors.primary },
+  };
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={[styles.filterPanelLabel, tokenStyles.muted]}>
+        {label.toUpperCase()}
+      </Text>
+      <ScrollView
+        contentContainerStyle={styles.filters}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+      >
+        {options.map((option) => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: selected === option.key }}
+            key={option.key}
+            onPress={() => onSelect(option.key)}
+            style={[
+              styles.filter,
+              tokenStyles.control,
+              selected === option.key && tokenStyles.primary,
+            ]}
+          >
+            <Text
+              style={[
+                styles.filterText,
+                tokenStyles.muted,
+                selected === option.key && tokenStyles.onPrimary,
+              ]}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  );
 }
 
 export default function TicketsScreen() {
@@ -156,6 +230,12 @@ export default function TicketsScreen() {
   );
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [refinement, setRefinement] =
+    useState<TicketRefinement>(DEFAULT_REFINEMENT);
+  const [directory, setDirectory] = useState<TicketFilterDirectory>({
+    agents: [],
+    departments: [],
+  });
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [savedViews, setSavedViews] = useState<SavedTicketView[]>([]);
@@ -202,6 +282,11 @@ export default function TicketsScreen() {
       setWatchedIds(watchedList);
       setOfflineCacheAt(result.isOfflineCache ? result.cachedAt : null);
       if (!result.isOfflineCache) {
+        void loadTicketFilterDirectory(result.tenant.id)
+          .then((next) => {
+            if (loadId === latestLoad.current) setDirectory(next);
+          })
+          .catch(() => undefined);
         void listSavedTicketViews()
           .then((views) => {
             if (loadId === latestLoad.current) setSavedViews(views);
@@ -233,6 +318,7 @@ export default function TicketsScreen() {
       setScope(DEFAULT_SCOPE);
       setActiveViewId(null);
       setStatusFilter([]);
+      setRefinement(DEFAULT_REFINEMENT);
       setQuery("");
     });
   }, [navigation]);
@@ -496,9 +582,22 @@ export default function TicketsScreen() {
       setScope(DEFAULT_SCOPE);
       setQuery("");
       setStatusFilter([]);
+      setRefinement(DEFAULT_REFINEMENT);
       return;
     }
     setActiveViewId(view.id);
+    setRefinement({
+      agent:
+        view.filters.agent === "mine" || view.filters.agent === "unassigned"
+          ? "all"
+          : view.filters.agent,
+      department: view.filters.department,
+      priority: view.filters.priority,
+      sortBy: SORT_OPTIONS.some((o) => o.key === view.filters.sortBy)
+        ? (view.filters.sortBy as TicketSortBy)
+        : "updated",
+      sortDirection: view.filters.sortDirection === "asc" ? "asc" : "desc",
+    });
     setQuery(view.filters.query);
     setStatusFilter(splitStatusFilter(view.filters.status));
     if (view.filters.agent === "mine") setScope("mine");
@@ -539,9 +638,11 @@ export default function TicketsScreen() {
   }
 
   const normalizedQuery = query.trim().toLocaleLowerCase("de-CH");
-  const visibleTickets = tickets.filter((ticket) => {
+  const filteredTickets = tickets.filter((ticket) => {
     if (undoDelete.hiddenIds.has(ticket.id)) return false;
     if (!matchesStatusSelection(ticket.status, statusFilter)) return false;
+    if (!matchesRefinement(ticket, refinement, currentUserId || null))
+      return false;
     const matchesScope =
       scope === "mine"
         ? ticket.assignedToCurrentUser
@@ -565,6 +666,30 @@ export default function TicketsScreen() {
       value.toLocaleLowerCase("de-CH").includes(normalizedQuery),
     );
   });
+  const agentNames = new Map(
+    directory.agents.map((agent) => [agent.id, agent.displayName]),
+  );
+  const departmentNames = new Map(
+    directory.departments.map((department) => [department.id, department.label]),
+  );
+  const visibleTickets = sortTickets(filteredTickets, refinement, {
+    agentName: (id) => (id ? (agentNames.get(id) ?? "") : ""),
+    departmentName: (id) => (id ? (departmentNames.get(id) ?? "") : ""),
+  });
+  const refinementCount =
+    activeRefinementCount(refinement) + (scope !== DEFAULT_SCOPE ? 1 : 0);
+  const priorityOptions = [
+    ...new Map(
+      tickets
+        .slice()
+        .sort(
+          (a, b) =>
+            (a.priorityRank ?? Number.MAX_SAFE_INTEGER) -
+            (b.priorityRank ?? Number.MAX_SAFE_INTEGER),
+        )
+        .map((ticket) => [ticket.priority, ticket.priority] as const),
+    ).keys(),
+  ];
 
   if (loading && tickets.length === 0) {
     return (
@@ -793,7 +918,7 @@ export default function TicketsScreen() {
           >
             <Ionicons
               color={
-                filterOpen || scope !== DEFAULT_SCOPE
+                filterOpen || refinementCount > 0
                   ? colors.primary
                   : colors.muted
               }
@@ -814,38 +939,112 @@ export default function TicketsScreen() {
         </View>
 
         {filterOpen ? (
-          <ScrollView
-            contentContainerStyle={styles.filters}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-          >
-            {scopes.map((option) => (
+          <View style={[styles.filterPanel, tokenStyles.card]}>
+            <FilterChipRow
+              label="Bereich"
+              onSelect={(key) => {
+                setActiveViewId(null);
+                setScope(key as TicketScope);
+              }}
+              options={scopes.map((option) => ({
+                key: option.key,
+                label: option.label,
+              }))}
+              selected={scope}
+            />
+            <FilterChipRow
+              label="Agent"
+              onSelect={(key) => {
+                setActiveViewId(null);
+                setRefinement((current) => ({ ...current, agent: key }));
+              }}
+              options={[
+                { key: "all", label: "Alle Agenten" },
+                { key: "mine", label: "Mir zugewiesen" },
+                { key: "unassigned", label: "Nicht zugewiesen" },
+                ...directory.agents
+                  .filter((agent) => agent.id !== currentUserId)
+                  .map((agent) => ({
+                    key: agent.id,
+                    label: agent.displayName,
+                  })),
+              ]}
+              selected={refinement.agent}
+            />
+            {directory.departments.length > 0 ? (
+              <FilterChipRow
+                label="Abteilung"
+                onSelect={(key) => {
+                  setActiveViewId(null);
+                  setRefinement((current) => ({ ...current, department: key }));
+                }}
+                options={[
+                  { key: "all", label: "Alle Abteilungen" },
+                  ...directory.departments.map((department) => ({
+                    key: department.id,
+                    label: department.label,
+                  })),
+                ]}
+                selected={refinement.department}
+              />
+            ) : null}
+            <FilterChipRow
+              label="Priorität"
+              onSelect={(key) => {
+                setActiveViewId(null);
+                setRefinement((current) => ({ ...current, priority: key }));
+              }}
+              options={[
+                { key: "all", label: "Alle Prioritäten" },
+                ...priorityOptions.map((label) => ({ key: label, label })),
+              ]}
+              selected={refinement.priority}
+            />
+            <FilterChipRow
+              label="Sortieren nach"
+              onSelect={(key) => {
+                setActiveViewId(null);
+                setRefinement((current) => ({
+                  ...current,
+                  sortBy: key as TicketSortBy,
+                }));
+              }}
+              options={SORT_OPTIONS}
+              selected={refinement.sortBy}
+            />
+            <FilterChipRow
+              label="Reihenfolge"
+              onSelect={(key) => {
+                setActiveViewId(null);
+                setRefinement((current) => ({
+                  ...current,
+                  sortDirection: key === "asc" ? "asc" : "desc",
+                }));
+              }}
+              options={[
+                { key: "desc", label: "Absteigend" },
+                { key: "asc", label: "Aufsteigend" },
+              ]}
+              selected={refinement.sortDirection}
+            />
+            {refinementCount > 0 || statusFilter.length > 0 || query ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityState={{ selected: scope === option.key }}
-                key={option.key}
                 onPress={() => {
+                  setScope(DEFAULT_SCOPE);
+                  setRefinement(DEFAULT_REFINEMENT);
+                  setStatusFilter([]);
+                  setQuery("");
                   setActiveViewId(null);
-                  setScope(option.key);
                 }}
-                style={[
-                  styles.filter,
-                  tokenStyles.card,
-                  scope === option.key && tokenStyles.primary,
-                ]}
+                style={[styles.filter, tokenStyles.control, styles.filterReset]}
               >
-                <Text
-                  style={[
-                    styles.filterText,
-                    tokenStyles.muted,
-                    scope === option.key && tokenStyles.onPrimary,
-                  ]}
-                >
-                  {option.label}
+                <Text style={[styles.filterText, tokenStyles.foreground]}>
+                  Filter zurücksetzen
                 </Text>
               </Pressable>
-            ))}
-          </ScrollView>
+            ) : null}
+          </View>
         ) : null}
 
         {error ? (
@@ -989,13 +1188,14 @@ export default function TicketsScreen() {
                 : tn("Hier ist noch nichts. Erfasse das erste Ticket.", "Hier ist noch nichts. Erfassen Sie das erste Ticket.")}
             </Text>
             <View style={styles.emptyActions}>
-              {scope !== "all" || query ? (
+              {scope !== "all" || query || activeRefinementCount(refinement) > 0 ? (
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => {
                     setScope("all");
                     setQuery("");
                     setStatusFilter([]);
+                    setRefinement(DEFAULT_REFINEMENT);
                     setActiveViewId(null);
                   }}
                   style={[styles.emptyButton, tokenStyles.control]}
@@ -1535,6 +1735,14 @@ const useStyles = makeThemedStyles((c) => ({
   },
   filterText: { fontSize: 13, fontWeight: "800" },
   filters: { gap: 9, paddingRight: 16 },
+  filterPanel: {
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 12,
+    padding: 12,
+  },
+  filterPanelLabel: { fontSize: 12, fontWeight: "800", letterSpacing: 0.4 },
+  filterReset: { alignSelf: "flex-start" },
   gestureHint: { fontSize: 11, marginTop: 3 },
   header: {
     alignItems: "center",

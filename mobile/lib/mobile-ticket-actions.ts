@@ -169,7 +169,11 @@ export async function markTicketsSpam(
 export type SavedTicketView = {
   filters: {
     agent: string;
+    department: string;
+    priority: string;
     query: string;
+    sortBy: string;
+    sortDirection: string;
     status: string;
     ticketScope: string;
   };
@@ -208,6 +212,15 @@ export async function listSavedTicketViews(): Promise<SavedTicketView[]> {
       name: record.name,
       filters: {
         agent: typeof filters.agent === "string" ? filters.agent : "all",
+        department:
+          typeof filters.department === "string" ? filters.department : "all",
+        priority:
+          typeof filters.priority === "string" ? filters.priority : "all",
+        sortBy: typeof filters.sortBy === "string" ? filters.sortBy : "updated",
+        sortDirection:
+          typeof filters.sortDirection === "string"
+            ? filters.sortDirection
+            : "desc",
         query: typeof filters.query === "string" ? filters.query : "",
         status: typeof filters.status === "string" ? filters.status : "all",
         ticketScope:
