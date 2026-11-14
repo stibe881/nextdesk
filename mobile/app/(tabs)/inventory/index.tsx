@@ -16,6 +16,7 @@ import {
   View,
 } from "react-native";
 
+import { BoxesIcon } from "@/components/section-icons";
 import { ScreenContainer } from "@/components/screen-container";
 import {
   MobileFeatureLoadingScreen,
@@ -499,11 +500,7 @@ export default function InventoryScreen() {
                     transition={150}
                   />
                 ) : (
-                  <Ionicons
-                    color={colors.primaryText}
-                    name="cube-outline"
-                    size={22}
-                  />
+                  <BoxesIcon color={colors.primaryText} size={22} />
                 )}
               </View>
               <View style={styles.itemCopy}>

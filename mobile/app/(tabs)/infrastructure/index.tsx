@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 
+import { NetworkIcon } from "@/components/section-icons";
 import { ScreenContainer } from "@/components/screen-container";
 import {
   MobileFeatureLoadingScreen,
@@ -348,11 +349,7 @@ export default function InfrastructureScreen() {
           })}
           {!error && visible.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Ionicons
-                color={colors.primaryText}
-                name="server-outline"
-                size={28}
-              />
+              <NetworkIcon color={colors.primaryText} size={28} />
               <Text style={styles.emptyTitle}>Keine Geräte gefunden</Text>
               <Text style={styles.emptyText}>
                 {devices.length === 0

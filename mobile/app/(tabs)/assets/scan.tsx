@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 
+import { BoxesIcon, NetworkIcon } from "@/components/section-icons";
 import { lookupMobileAsset } from "@/lib/asset-registry";
 import { parseScannedCode } from "@/lib/asset-qr";
 import {
@@ -164,7 +165,7 @@ export default function AssetScanScreen() {
           onPress={() => router.replace("/inventory" as never)}
           style={styles.quickLink}
         >
-          <Ionicons color={colors.onPrimary} name="cube-outline" size={18} />
+          <BoxesIcon color={colors.onPrimary} size={18} />
           <Text style={styles.quickLinkText}>Lager</Text>
         </Pressable>
       ) : null}
@@ -174,7 +175,7 @@ export default function AssetScanScreen() {
         onPress={() => router.replace("/infrastructure" as never)}
         style={styles.quickLink}
       >
-        <Ionicons color={colors.onPrimary} name="server-outline" size={18} />
+        <NetworkIcon color={colors.onPrimary} size={18} />
         <Text style={styles.quickLinkText}>Infrastruktur</Text>
       </Pressable>
     </View>

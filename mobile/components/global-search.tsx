@@ -479,7 +479,7 @@ export function GlobalSearch({
                           <View style={[styles.resultIcon, styles.assetIcon]}>
                             <Ionicons
                               color={colors.info}
-                              name="cube-outline"
+                              name="laptop-outline"
                               size={18}
                             />
                           </View>

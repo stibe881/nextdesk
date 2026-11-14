@@ -10,6 +10,7 @@ import {
 } from "react-native";
 
 import { RequesterCollaboration } from "@/components/requester-collaboration";
+import { NetworkIcon } from "@/components/section-icons";
 import { ScreenContainer } from "@/components/screen-container";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
@@ -115,7 +116,7 @@ export default function ServicesScreen() {
                   <View style={styles.actionPrimaryIcon}>
                     <Ionicons
                       color={colors.primaryText}
-                      name="cube-outline"
+                      name="laptop-outline"
                       size={20}
                     />
                   </View>
@@ -140,11 +141,7 @@ export default function ServicesScreen() {
                   style={styles.action}
                 >
                   <View style={styles.actionPrimaryIcon}>
-                    <Ionicons
-                      color={colors.primaryText}
-                      name="server-outline"
-                      size={20}
-                    />
+                    <NetworkIcon color={colors.primaryText} size={20} />
                   </View>
                   <View style={styles.cardCopy}>
                     <Text style={styles.actionTitle}>Infrastruktur</Text>
