@@ -462,6 +462,9 @@ der Übersicht, im Kanban und in der App.
   Wunsch mit der Abteilung teilen («Teilen mit»).
 - In der **iOS- und Android-App** wählst du in der Ticketliste unter **Status**
   einen oder mehrere Status gleichzeitig; **Zurücksetzen** hebt die Auswahl auf.
+  Das Filtersymbol in der Suchleiste öffnet dieselben Filter wie im Web:
+  Bereich, Agent, Abteilung, Priorität, Sortierung und Reihenfolge. Ohne
+  Auswahl zeigt die Liste **Meine** Tickets.
 - **Ansicht**: Listendichte (_Kompakt / Standard / Komfortabel_) und
   Listen-Detail-Ansicht (Liste links, Ticket rechts).
 - **Mehrfachauswahl**: mehrere Tickets markieren → **Neuer Status** →

@@ -24,6 +24,11 @@ export type MobileTicket = {
   resolved: boolean;
   /** Ticket ohne zugewiesene Agentin bzw. zugewiesenen Agenten (wie im Web). */
   unassigned: boolean;
+  /** Zugewiesene Person und Abteilung für die Filter; fehlen in älteren Offline-Kopien. */
+  assignedAgentId?: string | null;
+  departmentId?: string | null;
+  /** Rang der Priorität (sort_order) für die Sortierung. */
+  priorityRank?: number | null;
   requesterId: string;
   /** When the ticket was created (ISO); missing in older offline copies. */
   createdAt?: string | null;
@@ -336,7 +341,7 @@ export async function loadMobileDashboard(input: {
         client
           .from("tickets")
           .select(
-            "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, created_at, sla_paused_at",
+            "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, department_id, created_at, sla_paused_at",
           )
           .eq("tenant_id", tenant.id)
           // Phishing reports are security cases, not tickets.
@@ -349,7 +354,7 @@ export async function loadMobileDashboard(input: {
           .eq("tenant_id", tenant.id),
         client
           .from("ticket_priorities")
-          .select("id, label")
+          .select("id, label, sort_order")
           .eq("tenant_id", tenant.id),
       ],
     );
@@ -375,6 +380,9 @@ export async function loadMobileDashboard(input: {
         ticket.requester_id === activeUser.id,
       resolved: Boolean(statusById.get(ticket.status_id)?.is_closed),
       unassigned: !ticket.assigned_agent_id,
+      assignedAgentId: ticket.assigned_agent_id ?? null,
+      departmentId: ticket.department_id ?? null,
+      priorityRank: priorityById.get(ticket.priority_id)?.sort_order ?? null,
       requesterId: ticket.requester_id,
       createdAt: ticket.created_at,
       slaPausedAt: openSlaPause(
@@ -525,7 +533,7 @@ export async function loadMobileTicketsByIds(
     client
       .from("tickets")
       .select(
-        "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, created_at, sla_paused_at",
+        "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, department_id, created_at, sla_paused_at",
       )
       .eq("tenant_id", tenant.id)
       .in("id", uniqueIds)
@@ -537,7 +545,7 @@ export async function loadMobileTicketsByIds(
       .eq("tenant_id", tenant.id),
     client
       .from("ticket_priorities")
-      .select("id, label")
+      .select("id, label, sort_order")
       .eq("tenant_id", tenant.id),
   ]);
   if (ticketsResult.error || statusesResult.error || prioritiesResult.error) {
@@ -560,6 +568,9 @@ export async function loadMobileTicketsByIds(
       ticket.assigned_agent_id === userId || ticket.requester_id === userId,
     resolved: Boolean(statusById.get(ticket.status_id)?.is_closed),
     unassigned: !ticket.assigned_agent_id,
+    assignedAgentId: ticket.assigned_agent_id ?? null,
+    departmentId: ticket.department_id ?? null,
+    priorityRank: priorityById.get(ticket.priority_id)?.sort_order ?? null,
     requesterId: ticket.requester_id,
     createdAt: ticket.created_at,
     slaPausedAt: openSlaPause(
@@ -836,4 +847,48 @@ export async function saveMobileTicketDraft(input: {
     body: input.body.slice(0, 50_000),
     visibility: input.visibility,
   });
+}
+
+export type TicketFilterDirectory = {
+  agents: { id: string; displayName: string }[];
+  departments: { id: string; key: string; label: string }[];
+};
+
+/**
+ * Agenten und Abteilungen für die Filter der Ticketliste (wie im Web, Funktion
+ * ticket-agent-assignment). Best effort: ohne Berechtigung bleiben die Listen leer.
+ */
+export async function loadTicketFilterDirectory(
+  tenantId: string,
+): Promise<TicketFilterDirectory> {
+  const { data, error } = await requireNextDesk().functions.invoke(
+    "ticket-agent-assignment",
+    {
+      body: {
+        type: "listForTenant",
+        tenantId,
+        includeAgents: true,
+        ticketIds: [],
+      },
+    },
+  );
+  const payload = (data as { data?: Record<string, unknown> } | null)?.data;
+  if (error || !payload) return { agents: [], departments: [] };
+  const agents = Array.isArray(payload.agents)
+    ? (payload.agents as Record<string, unknown>[]).flatMap((entry) =>
+        typeof entry.id === "string" && typeof entry.displayName === "string"
+          ? [{ id: entry.id, displayName: entry.displayName }]
+          : [],
+      )
+    : [];
+  const departments = Array.isArray(payload.departments)
+    ? (payload.departments as Record<string, unknown>[]).flatMap((entry) =>
+        typeof entry.id === "string" &&
+        typeof entry.key === "string" &&
+        typeof entry.label === "string"
+          ? [{ id: entry.id, key: entry.key, label: entry.label }]
+          : [],
+      )
+    : [];
+  return { agents, departments };
 }

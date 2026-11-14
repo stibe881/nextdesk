@@ -323,9 +323,11 @@ aus und verschieben sie mit den Pfeilen. **Standard wiederherstellen** setzt
 alles zurück. Die Einstellung gilt nur für dich und wird zwischen deinen
 Geräten (iPhone, Android) abgeglichen: Die letzte Änderung gilt überall.
 Unter **Tickets** siehst du zuerst den Filter **Meine**: Tickets, die du
-angefragt hast oder die dir zugewiesen sind. Mit dem Filtersymbol in
-der Suchleiste wechselst du auf **Alle**, **Beobachtet**, **Offen** oder
-**Gelöst**; **Nicht zugewiesen** steht in der Reihe mit den Status-Filtern. Kehrst
+angefragt hast oder die dir zugewiesen sind. Über das Filtersymbol in
+der Suchleiste öffnest du dieselben Filter wie im Web: **Bereich** (Alle,
+Beobachtet, Offen, Gelöst), **Agent**, **Abteilung**, **Priorität**,
+**Sortieren nach** und **Reihenfolge**. **Filter zurücksetzen** stellt
+**Meine** wieder her. **Nicht zugewiesen** und die Status-Filter stehen direkt unter dem Titel. Kehrst
 du aus einem Ticket zurück, bleibt dein Filter erhalten; wechselst du über die
 Leiste unten wieder zu **Tickets**, beginnt die Liste erneut mit **Meine**. Auf jeder Ticketkarte steht, wann das Ticket erstellt wurde
 (z. B. «Erstellt heute, 14:32»). Über **Neues Ticket** erfasst du Anliegen
