@@ -2005,22 +2005,24 @@ function InventoryItems({
           <table className="inventory__table">
             <thead>
               <tr>
+                <th className="inventory__col-check">
+                  <span className="sr-only">Für Etikett auswählen</span>
+                </th>
                 <th>Artikel</th>
-                <th>Bild</th>
                 {showDepartment ? <th>Abteilung</th> : null}
                 <th>Lagerort</th>
-                <th>Physisch</th>
-                <th>Reserviert</th>
-                <th>Verfügbar</th>
-                <th>Mindestbestand</th>
+                <th className="inventory__num">Physisch</th>
+                <th className="inventory__num">Reserviert</th>
+                <th className="inventory__num">Verfügbar</th>
+                <th className="inventory__num">Mindest&shy;bestand</th>
                 {shop ? <th>Shop</th> : null}
               </tr>
             </thead>
             <tbody>
               {visibleItems.map((item) => (
                 <tr key={item.id}>
-                  <td>
-                    <label className="asset-label-check">
+                  <td className="inventory__col-check">
+                    <label className="inventory__check">
                       <input
                         checked={labelSelection.has(item.id)}
                         onChange={(event) => {
@@ -2034,72 +2036,82 @@ function InventoryItems({
                         }}
                         type="checkbox"
                       />
-                      Für Etikett auswählen
-                    </label>
-                    <strong>{item.name}</strong>
-                    <small>
-                      {item.articleNumber ?? "Ohne Artikelnummer"} ·{" "}
-                      {item.trackingMode === "serial"
-                        ? "Serienführung"
-                        : item.loanItem
-                          ? "Ausleihartikel"
-                          : "Mengenartikel"}
-                    </small>
-                    {canManage ? (
-                      <button
-                        className="secondary-button inventory__item-edit"
-                        onClick={() => openEditor(item)}
-                        type="button"
-                      >
-                        Bearbeiten
-                      </button>
-                    ) : null}
-                    {(canMove || canIssue) &&
-                    item.active &&
-                    item.trackingMode !== "serial" ? (
-                      <span className="inventory__item-booking">
-                        {canMove ? (
-                          <button
-                            className="secondary-button"
-                            onClick={() =>
-                              setBooking({ item, mode: "receipt" })
-                            }
-                            type="button"
-                          >
-                            <PackagePlus aria-hidden="true" size={15} />
-                            Einbuchen
-                          </button>
-                        ) : null}
-                        {canIssue ? (
-                          <button
-                            className="secondary-button"
-                            disabled={item.availableQuantity <= 0}
-                            onClick={() => setBooking({ item, mode: "issue" })}
-                            title={
-                              item.availableQuantity <= 0
-                                ? "Kein verfügbarer Bestand zum Ausbuchen."
-                                : undefined
-                            }
-                            type="button"
-                          >
-                            <PackageMinus aria-hidden="true" size={15} />
-                            Ausbuchen
-                          </button>
-                        ) : null}
+                      <span className="sr-only">
+                        Für Etikett auswählen: {item.name}
                       </span>
-                    ) : null}
+                    </label>
                   </td>
                   <td>
-                    {/* Bilder werden nur im Artikelformular geändert. */}
-                    <InventoryItemImage
-                      canManage={false}
-                      fallbackImageUrl={
-                        shop?.linked.get(item.id)?.imageUrl ?? null
-                      }
-                      item={item}
-                      onImagesChanged={onImagesChanged}
-                      tenantId={tenantId}
-                    />
+                    <div className="inventory__article">
+                      {/* Bilder werden nur im Artikelformular geändert. */}
+                      <InventoryItemImage
+                        canManage={false}
+                        fallbackImageUrl={
+                          shop?.linked.get(item.id)?.imageUrl ?? null
+                        }
+                        item={item}
+                        onImagesChanged={onImagesChanged}
+                        tenantId={tenantId}
+                      />
+                      <div className="inventory__article-copy">
+                        <strong>{item.name}</strong>
+                        <small>
+                          {item.articleNumber ?? "Ohne Artikelnummer"} ·{" "}
+                          {item.trackingMode === "serial"
+                            ? "Serienführung"
+                            : item.loanItem
+                              ? "Ausleihartikel"
+                              : "Mengenartikel"}
+                        </small>
+                        <span className="inventory__item-actions">
+                          {canManage ? (
+                            <button
+                              className="secondary-button inventory__item-edit"
+                              onClick={() => openEditor(item)}
+                              type="button"
+                            >
+                              Bearbeiten
+                            </button>
+                          ) : null}
+                          {(canMove || canIssue) &&
+                          item.active &&
+                          item.trackingMode !== "serial" ? (
+                            <span className="inventory__item-booking">
+                              {canMove ? (
+                                <button
+                                  className="secondary-button"
+                                  onClick={() =>
+                                    setBooking({ item, mode: "receipt" })
+                                  }
+                                  type="button"
+                                >
+                                  <PackagePlus aria-hidden="true" size={15} />
+                                  Einbuchen
+                                </button>
+                              ) : null}
+                              {canIssue ? (
+                                <button
+                                  className="secondary-button"
+                                  disabled={item.availableQuantity <= 0}
+                                  onClick={() =>
+                                    setBooking({ item, mode: "issue" })
+                                  }
+                                  title={
+                                    item.availableQuantity <= 0
+                                      ? "Kein verfügbarer Bestand zum Ausbuchen."
+                                      : undefined
+                                  }
+                                  type="button"
+                                >
+                                  <PackageMinus aria-hidden="true" size={15} />
+                                  Ausbuchen
+                                </button>
+                              ) : null}
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
+                    </div>
                   </td>
                   {showDepartment ? (
                     <td>
@@ -2119,18 +2131,24 @@ function InventoryItems({
                     </td>
                   ) : null}
                   <td>{item.locationName ?? "Nicht zugeordnet"}</td>
-                  <td>{quantity(item.physicalQuantity, item.unit)}</td>
-                  <td>{quantity(item.reservedQuantity, item.unit)}</td>
-                  <td
-                    className={
-                      item.availableQuantity <= item.minQuantity
-                        ? "inventory__value--attention"
-                        : undefined
-                    }
-                  >
-                    {quantity(item.availableQuantity, item.unit)}
+                  <td className="inventory__num">
+                    {quantity(item.physicalQuantity, item.unit)}
                   </td>
-                  <td>
+                  <td className="inventory__num">
+                    {quantity(item.reservedQuantity, item.unit)}
+                  </td>
+                  <td className="inventory__num">
+                    <span
+                      className={`inventory__available${
+                        item.availableQuantity <= item.minQuantity
+                          ? " inventory__available--low"
+                          : ""
+                      }`}
+                    >
+                      {quantity(item.availableQuantity, item.unit)}
+                    </span>
+                  </td>
+                  <td className="inventory__num">
                     {item.loanItem ? (
                       <span className="inventory__muted">–</span>
                     ) : (
@@ -2985,11 +3003,28 @@ function InventoryEventList({
       {events.map((event) => {
         const unit = unitsByItemName.get(event.itemName) ?? "Stück";
         return (
-          <li key={event.id}>
-            <div>
-              <strong>
-                {eventLabel(event.type)} · {event.itemName}
-              </strong>
+          <li
+            className={`inventory__event ${
+              event.physicalDelta > 0
+                ? "inventory__event--in"
+                : event.physicalDelta < 0
+                  ? "inventory__event--out"
+                  : ""
+            }`}
+            key={event.id}
+          >
+            <span aria-hidden="true" className="inventory__event-icon">
+              {event.physicalDelta > 0 ? (
+                <PackagePlus size={17} />
+              ) : event.physicalDelta < 0 ? (
+                <PackageMinus size={17} />
+              ) : (
+                <Archive size={17} />
+              )}
+            </span>
+            <div className="inventory__event-copy">
+              <strong>{eventLabel(event.type)}</strong>
+              <span>{event.itemName}</span>
               <small>
                 {event.locationName ?? "Ohne Lagerort"} ·{" "}
                 {dateTime(event.occurredAt)}
@@ -3619,32 +3654,36 @@ function InventoryCounts({
           selectedCountId={selectedCountId}
         />
       ) : null}
-      {canManage ? (
-        <>
-          <InventoryCountStartForm
-            locations={locations}
-            onChanged={onChanged}
-            onStarted={selectCount}
-            tenantId={tenantId}
-          />
-          <InventoryCountLineForm
-            activeCounts={activeCounts}
-            items={items}
-            onChanged={onChanged}
-            onSelectCount={selectCount}
-            selectedCountId={selectedCountId}
-            tenantId={tenantId}
-          />
-        </>
-      ) : null}
-      {canClose ? (
-        <InventoryCountCloseForm
-          activeCounts={activeCounts}
-          onChanged={onChanged}
-          onSelectCount={selectCount}
-          selectedCountId={selectedCountId}
-          tenantId={tenantId}
-        />
+      {canManage || canClose ? (
+        <div className="inventory__steps">
+          {canManage ? (
+            <>
+              <InventoryCountStartForm
+                locations={locations}
+                onChanged={onChanged}
+                onStarted={selectCount}
+                tenantId={tenantId}
+              />
+              <InventoryCountLineForm
+                activeCounts={activeCounts}
+                items={items}
+                onChanged={onChanged}
+                onSelectCount={selectCount}
+                selectedCountId={selectedCountId}
+                tenantId={tenantId}
+              />
+            </>
+          ) : null}
+          {canClose ? (
+            <InventoryCountCloseForm
+              activeCounts={activeCounts}
+              onChanged={onChanged}
+              onSelectCount={selectCount}
+              selectedCountId={selectedCountId}
+              tenantId={tenantId}
+            />
+          ) : null}
+        </div>
       ) : null}
     </section>
   );
@@ -3721,7 +3760,7 @@ function InventoryLocationCreateForm({
   };
 
   return (
-    <details className="inventory__form">
+    <details className="inventory__form" open>
       <summary>Lagerort erfassen</summary>
       <form
         onChange={clientRequest.discard}
@@ -3908,7 +3947,7 @@ function InventoryMovementForm({
   };
 
   return (
-    <details className="inventory__form">
+    <details className="inventory__form" open>
       <summary>Bestandsbewegung buchen</summary>
       <form
         onChange={clientRequest.discard}
@@ -4136,7 +4175,7 @@ function InventoryCountStartForm({
   };
 
   return (
-    <details className="inventory__form">
+    <details className="inventory__form" open>
       <summary>Inventur starten</summary>
       <form
         onChange={clientRequest.discard}
@@ -4224,7 +4263,7 @@ function InventoryCountLineForm({
   };
 
   return (
-    <details className="inventory__form">
+    <details className="inventory__form" open>
       <summary>Zähllinie erfassen</summary>
       <form
         onChange={clientRequest.discard}
@@ -4328,7 +4367,7 @@ function InventoryCountCloseForm({
   };
 
   return (
-    <details className="inventory__form">
+    <details className="inventory__form" open>
       <summary>Inventur abschliessen</summary>
       <form onSubmit={(event) => void submit(event)}>
         <label>
