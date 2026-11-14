@@ -30,6 +30,8 @@ export type MobileInventoryOverview = {
   items: MobileInventoryItem[];
   locations: MobileInventoryLocation[];
   canMove: boolean;
+  /** «Ausbuchen» by hand (permission inventory.issue, role «Lagerverwaltung»). */
+  canIssue: boolean;
   lowStockIds: string[];
   criticalItemCount: number;
   openReservationCount: number;
@@ -124,6 +126,7 @@ export async function loadMobileInventory(
     items,
     locations,
     canMove: permissions.canMove === true,
+    canIssue: permissions.canIssue === true,
     lowStockIds,
     criticalItemCount: count(summary.criticalItemCount),
     openReservationCount: count(summary.openReservationCount),
@@ -152,6 +155,29 @@ export async function postMobileInventoryReceipt(input: {
     movementType: "receipt",
     itemId: input.itemId,
     toLocationId: input.locationId,
+    quantity: input.quantity,
+    clientRequestId: input.clientRequestId,
+  });
+}
+
+/**
+ * «Ausbuchen»: takes stock out of one location by hand. The server checks the
+ * permission inventory.issue and the available stock; the request id keeps a
+ * repeated tap from booking twice.
+ */
+export async function postMobileInventoryIssue(input: {
+  tenantId: string;
+  itemId: string;
+  locationId: string;
+  quantity: number;
+  clientRequestId: string;
+}): Promise<void> {
+  await invokeNextDesk<unknown>("inventory", {
+    type: "postMovement",
+    tenantId: input.tenantId,
+    movementType: "issue",
+    itemId: input.itemId,
+    fromLocationId: input.locationId,
     quantity: input.quantity,
     clientRequestId: input.clientRequestId,
   });

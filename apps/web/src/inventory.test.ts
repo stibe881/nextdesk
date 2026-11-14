@@ -63,6 +63,26 @@ const workspace = {
 };
 
 describe("parseInventoryWorkspace", () => {
+  it("liest das Recht zum Ausbuchen und bleibt mit älteren Servern verträglich", () => {
+    // Ältere Server senden canIssue nicht: dann darf niemand von Hand ausbuchen.
+    expect(parseInventoryWorkspace(workspace)?.permissions.canIssue).toBe(false);
+    expect(
+      parseInventoryWorkspace({
+        data: {
+          ...workspace.data,
+          permissions: { ...workspace.data.permissions, canIssue: true },
+        },
+      })?.permissions.canIssue,
+    ).toBe(true);
+    expect(
+      parseInventoryWorkspace({
+        data: {
+          ...workspace.data,
+          permissions: { ...workspace.data.permissions, canIssue: "ja" },
+        },
+      }),
+    ).toBeNull();
+  });
   it("akzeptiert nur den datenminimalen serverautorisierten Lagervertrag", () => {
     expect(parseInventoryWorkspace(workspace)).toMatchObject({
       permissions: { canRead: true, canMove: true },

@@ -407,6 +407,14 @@ oben umschalten:
   speichern**; mit **Rolle deaktivieren** bzw. **Rolle aktivieren** schalten
   Sie sie ab oder wieder ein.
 
+Die Systemrolle **Lagerverwaltung** enthält die Rechte «Lager ansehen»,
+«Wareneingänge, Umbuchungen und Reservierungen buchen» und «Bestände von Hand
+ausbuchen». Weisen Sie sie den Agenten zu,
+die Bestände im Lager von Hand ausbuchen dürfen; in Web und App erscheint
+dann neben **Einbuchen** der Knopf **Ausbuchen**. Administratoren haben das
+Recht automatisch. Eigene Rollen mit Lagerrechten erhalten «Bestände von
+Hand ausbuchen» nicht von selbst; ergänzen Sie es dort bei Bedarf.
+
 Für die IP-Adressverwaltung gibt es die Rechte «IP-Adressverwaltung
 ansehen» und «IP-Adressen, Subnetze und VLANs verwalten». Bestehende Rollen
 mit Asset-Verwaltung haben beide Rechte erhalten, Rollen mit Asset-Lesen das

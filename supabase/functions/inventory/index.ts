@@ -67,6 +67,7 @@ const INVENTORY_PERMISSIONS = [
   "inventory.move",
   "inventory.adjust",
   "inventory.count.close",
+  "inventory.issue",
 ] as const;
 type InventoryPermission = (typeof INVENTORY_PERMISSIONS)[number];
 type TenantPermission =
@@ -76,7 +77,10 @@ type TenantPermission =
   | "onboarding.manage";
 const MOVEMENT_PERMISSIONS = {
   receipt: "inventory.move",
-  issue: "inventory.move",
+  // «Ausbuchen» by hand needs its own permission (role «Lagerverwaltung»).
+  // Issuing a reservation (e.g. a shop hand-out) stays with inventory.move,
+  // see movementPermission().
+  issue: "inventory.issue",
   transfer: "inventory.move",
   defect: "inventory.adjust",
   loss: "inventory.adjust",
@@ -84,6 +88,16 @@ const MOVEMENT_PERMISSIONS = {
   adjustment_out: "inventory.adjust",
 } as const satisfies Record<string, InventoryPermission>;
 type MovementType = keyof typeof MOVEMENT_PERMISSIONS;
+
+/** Permission for a postMovement action. */
+export function movementPermission(action: {
+  movementType: MovementType;
+  reservationId?: string;
+}): InventoryPermission {
+  return action.movementType === "issue" && action.reservationId
+    ? "inventory.move"
+    : MOVEMENT_PERMISSIONS[action.movementType];
+}
 
 /** The only service-command RPCs supplied by migration 0068. */
 export const INVENTORY_RPC_NAMES = {
@@ -110,6 +124,8 @@ export type InventoryPermissions = {
   canMove: boolean;
   canAdjust: boolean;
   canCloseInventoryCount: boolean;
+  /** «Ausbuchen» by hand (permission inventory.issue). */
+  canIssue: boolean;
 };
 
 export type WorkspaceItem = {
@@ -1347,14 +1363,29 @@ async function workspacePermissions(
   canMove: boolean;
   canAdjust: boolean;
   canCloseInventoryCount: boolean;
+  canIssue: boolean;
 }> {
-  const [canRead, canManage, canMove, canAdjust, canCloseInventoryCount] =
-    await Promise.all(
-      INVENTORY_PERMISSIONS.map((permission) =>
-        permissionState(client, tenantId, permission),
-      ),
-    );
-  return { canRead, canManage, canMove, canAdjust, canCloseInventoryCount };
+  const [
+    canRead,
+    canManage,
+    canMove,
+    canAdjust,
+    canCloseInventoryCount,
+    canIssue,
+  ] = await Promise.all(
+    INVENTORY_PERMISSIONS.map((permission) =>
+      permissionState(client, tenantId, permission),
+    ),
+  );
+  return {
+    canRead,
+    canManage,
+    canMove,
+    canAdjust,
+    canCloseInventoryCount,
+    // post_inventory_movement also requires inventory.move for every issue.
+    canIssue: canIssue && canMove,
+  };
 }
 
 async function requireEnabledInventory(
@@ -1950,6 +1981,7 @@ export function toWorkspaceContract(
       canMove: permissions.canMove,
       canAdjust: permissions.canAdjust,
       canCloseInventoryCount: permissions.canCloseInventoryCount,
+      canIssue: permissions.canIssue,
     },
     summary: {
       criticalItemCount: lowStockItems.length,
@@ -5027,7 +5059,7 @@ const securedHandler = withSupabase(
         await requirePermission(
           context.supabase,
           action.tenantId,
-          MOVEMENT_PERMISSIONS[action.movementType],
+          movementPermission(action),
         );
         await requireActionInScope(context.supabaseAdmin, scope, action);
         return await postMovement(

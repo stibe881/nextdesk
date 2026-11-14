@@ -21968,6 +21968,65 @@ button.predefined-report__drill:hover:not(:disabled) strong {
 .inventory__item-edit {
   margin-top: 6px;
 }
+.inventory__item-booking {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.inventory__item-booking .secondary-button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.inventory-booking-backdrop {
+  align-items: flex-start;
+  background: rgb(15 23 42 / 0.45);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 64px 16px;
+  position: fixed;
+  z-index: 60;
+}
+.inventory-booking {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgb(15 23 42 / 0.25);
+  display: grid;
+  gap: 16px;
+  max-width: 520px;
+  padding: 20px 24px 24px;
+  width: 100%;
+}
+.inventory-booking__header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+.inventory-booking__header h2 {
+  margin: 2px 0 4px;
+}
+.inventory-booking__header p:not(.eyebrow) {
+  color: var(--ink-muted);
+  margin: 0;
+}
+.inventory-booking__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.inventory-booking .ticket-detail-message {
+  margin: 0;
+}
+.inventory-booking__issue {
+  background: var(--danger);
+  border-color: var(--danger);
+}
 .inventory__item-editor {
   display: grid;
   gap: 8px;

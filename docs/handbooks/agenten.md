@@ -863,6 +863,15 @@ iOS-App erkennt ihn ebenfalls und zeigt nur diesen Artikel im Lager; mit
 der Kamera noch nicht angemeldet ist, landet nach der Anmeldung direkt beim
 Artikel.
 
+**Einbuchen und ausbuchen:** In der Artikelliste stehen unter dem Namen die
+Knöpfe **Einbuchen** (Wareneingang) und **Ausbuchen**; in der iOS- und
+Android-App tippst du in der Bestandsliste auf einen Artikel. Du wählst die
+Menge und den Lagerort. Ausbuchen fragt vorher nach und ist höchstens bis zum
+verfügbaren Bestand möglich. **Ausbuchen** sehen nur Personen mit der Rolle
+**Lagerverwaltung** (oder dem Recht «Bestände von Hand ausbuchen»); Ausgaben über
+Reservationen und den Shop bleiben davon unberührt. Seriengeführte Artikel
+buchst du weiterhin unter **Bewegungen**.
+
 Mit **Löschen** im Formular entfernst du einen Artikel endgültig (auch aus dem
 Shop). Hat er schon Bewegungen oder Reservationen, lässt er sich nicht löschen;
 nextDesk bietet dann an, ihn zu **archivieren**.
