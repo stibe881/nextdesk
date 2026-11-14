@@ -23381,3 +23381,124 @@ html body form:has(> .fk-layout) {
     padding: 14px;
   }
 }
+
+/* ===== Eigene Bestätigungs- und Eingabedialoge ===== */
+.app-dialog__backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--overlay);
+  animation: app-dialog-fade 0.12s ease-out;
+}
+
+.app-dialog {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 460px);
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 24px 20px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  animation: app-dialog-rise 0.14s ease-out;
+}
+
+.app-dialog::before {
+  content: "";
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.app-dialog--danger::before {
+  background: var(--danger);
+}
+
+.app-dialog__title {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 1.1rem;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.app-dialog__body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.925rem;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+.app-dialog__input {
+  width: 100%;
+  resize: vertical;
+}
+
+.app-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.app-dialog__confirm {
+  min-width: 112px;
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.app-dialog__confirm:hover:not(:disabled) {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: var(--on-primary);
+}
+
+.app-dialog__confirm--danger {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+.app-dialog__confirm--danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 86%, #000);
+}
+
+body.app-dialog-open {
+  overflow: hidden;
+}
+
+@keyframes app-dialog-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes app-dialog-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-dialog__backdrop,
+  .app-dialog {
+    animation: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-dialog__actions > button {
+    flex: 1 1 100%;
+  }
+}

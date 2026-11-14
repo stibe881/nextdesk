@@ -249,6 +249,7 @@ import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 import { setFormality, tn } from "./lib/formality";
 import { loadServiceTaskAccess, ServiceTasks } from "./service-tasks";
 
+import { confirmDialog } from "./app-dialog";
 type Section =
   | "Übersicht"
   | "Tickets"
@@ -2273,12 +2274,12 @@ function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
 
   async function removeAccount() {
     if (
-      !window.confirm(
+      !(await confirmDialog(
         tn(
           "Konto endgültig löschen? Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht.",
           "Konto endgültig löschen? Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht.",
         ),
-      )
+      ))
     )
       return;
     setState("deleting");

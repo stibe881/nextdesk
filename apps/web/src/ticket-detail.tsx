@@ -127,6 +127,7 @@ import {
 } from "./ticket-workbench";
 import { slaPauseEventLabel } from "./lib/sla-pause";
 
+import { confirmDialog } from "./app-dialog";
 type CommentVisibility = "external" | "internal";
 type BillingKind = "internal" | "billable" | "goodwill";
 type RelationType =
@@ -7761,9 +7762,9 @@ export function TicketDetail({
                           aria-label={`${attachment.originalFilename} löschen`}
                           className="ticket-attachment-chip__remove"
                           disabled={attachmentBusy || busy}
-                          onClick={() => {
+                          onClick={async () => {
                             if (
-                              window.confirm(
+                              await confirmDialog(
                                 `«${attachment.originalFilename}» wirklich löschen?`,
                               )
                             ) {

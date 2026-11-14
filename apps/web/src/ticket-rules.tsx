@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabase";
 import "./ticket-rules.css";
 
+import { confirmDialog } from "./app-dialog";
 type Option = { id: string; name: string; departmentId?: string };
 type TimeCondition = {
   kind: "no_reply" | "in_status" | "sla_due" | "unassigned";
@@ -223,7 +224,7 @@ export function TicketRules({ tenantId }: { tenantId: string }) {
 
   async function remove(rule: Rule) {
     if (!supabase || !rule.id) return;
-    if (!window.confirm(`Regel «${rule.name}» löschen?`)) return;
+    if (!(await confirmDialog(`Regel «${rule.name}» löschen?`))) return;
     setPending(true);
     const { error: deleteError } = await supabase.rpc("delete_ticket_rule", {
       p_tenant_id: tenantId,

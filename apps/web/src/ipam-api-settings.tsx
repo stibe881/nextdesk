@@ -17,6 +17,7 @@ import {
 } from "./lib/ipam-api-settings-model";
 import "./ipam-integrations.css";
 
+import { confirmDialog } from "./app-dialog";
 /*
  * REST-API und Webhooks der IP-Adressverwaltung: API-Schlüssel erstellen
  * (wird nur einmal angezeigt) und widerrufen, Webhooks anlegen, testen,
@@ -140,9 +141,9 @@ export function IpamApiSettings({ tenantId, canManage }: Props) {
 
   const revokeKey = async (id: string, name: string) => {
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Schlüssel «${name}» widerrufen? Integrationen mit diesem Schlüssel funktionieren danach nicht mehr.`,
-      )
+      ))
     ) {
       return;
     }
@@ -219,9 +220,9 @@ export function IpamApiSettings({ tenantId, canManage }: Props) {
 
   const rotateSecret = async (hook: IpamWebhook) => {
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Neues Signatur-Geheimnis für «${hook.name}» erzeugen? Der Empfänger muss danach das neue Geheimnis verwenden.`,
-      )
+      ))
     ) {
       return;
     }

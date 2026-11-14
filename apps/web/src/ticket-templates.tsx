@@ -40,6 +40,7 @@ import {
   type FieldDraft,
 } from "./ticket-template-form-fields";
 
+import { confirmDialog } from "./app-dialog";
 type Department = {
   id: string;
   key: string;
@@ -857,7 +858,7 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
   }
 
   async function archiveTemplate(template: TicketTemplate) {
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       tn(
         `Möchtest du die Vorlage „${template.name}“ archivieren? Die Vorlage bleibt nachvollziehbar, ist aber nicht mehr auswählbar.`,
         `Möchten Sie die Vorlage „${template.name}“ archivieren? Sie bleibt nachvollziehbar, ist aber nicht mehr auswählbar.`,

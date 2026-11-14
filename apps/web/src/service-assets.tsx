@@ -36,6 +36,7 @@ import {
 } from "./asset-label-dialog";
 import { assetLabelItem } from "./lib/asset-labels";
 
+import { confirmDialog } from "./app-dialog";
 export type ServiceAssetsProps = {
   tenantId: string;
   initialTab?: CatalogTab;
@@ -3051,7 +3052,7 @@ export function ServiceAssets({
     if (!canArchiveServices(canManageServices, supportsArchivedServices)) {
       return;
     }
-    if (!window.confirm(`Dienst „${service.name}“ archivieren?`)) return;
+    if (!(await confirmDialog(`Dienst „${service.name}“ archivieren?`))) return;
     const closesCurrentServiceEditor =
       serviceForm.id === service.id || inlineServiceEditorId === service.id;
     beginAction(`service:archive:${service.id}`);
@@ -3103,7 +3104,8 @@ export function ServiceAssets({
   }
 
   async function restoreService(service: Service) {
-    if (!window.confirm(`Dienst „${service.name}“ wiederherstellen?`)) return;
+    if (!(await confirmDialog(`Dienst „${service.name}“ wiederherstellen?`)))
+      return;
     beginAction(`service:restore:${service.id}`);
     try {
       const restored = parseSavedService(
@@ -3223,7 +3225,7 @@ export function ServiceAssets({
   }
 
   async function archiveAsset(asset: Asset) {
-    if (!window.confirm(`Asset „${asset.name}“ archivieren?`)) return;
+    if (!(await confirmDialog(`Asset „${asset.name}“ archivieren?`))) return;
     beginAction(`asset:archive:${asset.id}`);
     try {
       parseSavedAsset(
@@ -3266,9 +3268,9 @@ export function ServiceAssets({
 
   async function deleteProblem(problem: Problem) {
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Den Fall „${problem.title}“ endgültig löschen? Die Verknüpfungen zu Tickets werden entfernt; die Tickets selbst bleiben bestehen.`,
-      )
+      ))
     ) {
       return;
     }

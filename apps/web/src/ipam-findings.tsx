@@ -34,6 +34,7 @@ import type {
   ObjectType,
 } from "./lib/ipam-redesign-types";
 
+import { confirmDialog } from "./app-dialog";
 export type FindingsMode = "findings" | "compare" | "changes";
 
 type Props = {
@@ -562,9 +563,9 @@ function ChangeLogView({ canManage, onChanged, revision, tenantId }: Props) {
 
   const undo = async (entry: ChangeLogEntry) => {
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Änderung an ${entry.objectLabel} rückgängig machen?\n${changeDiff(entry)}`,
-      )
+      ))
     )
       return;
     setBusyId(entry.id);
