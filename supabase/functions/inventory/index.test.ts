@@ -5,6 +5,7 @@ import {
   INVENTORY_RPC_NAMES,
   itemDepartmentChange,
   movementRpcParameters,
+  movementPermission,
   movementRpcPayload,
   parseAction,
   recordCountLineRpcParameters,
@@ -72,7 +73,22 @@ const permissions = {
   canMove: true,
   canAdjust: false,
   canCloseInventoryCount: false,
+  canIssue: false,
 };
+
+Deno.test("manual issue needs inventory.issue, reservation issue stays with inventory.move", () => {
+  assertEquals(movementPermission({ movementType: "issue" }), "inventory.issue");
+  assertEquals(
+    movementPermission({ movementType: "issue", reservationId: "r" }),
+    "inventory.move",
+  );
+  assertEquals(movementPermission({ movementType: "receipt" }), "inventory.move");
+  assertEquals(movementPermission({ movementType: "transfer" }), "inventory.move");
+  assertEquals(
+    movementPermission({ movementType: "adjustment_out" }),
+    "inventory.adjust",
+  );
+});
 
 Deno.test(
   "inventory uses only the real migration 0068 mutation RPC names",
@@ -1091,6 +1107,7 @@ Deno.test(
     assertEquals(sortedKeys(workspace.permissions), [
       "canAdjust",
       "canCloseInventoryCount",
+      "canIssue",
       "canManage",
       "canMove",
       "canRead",

@@ -18,10 +18,13 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  PackageMinus,
+  PackagePlus,
   RotateCcw,
   Search,
   ShieldCheck,
   Trash2,
+  X,
 } from "lucide-react";
 
 import {
@@ -53,6 +56,8 @@ type InventorySection =
 type InventoryPermissions = {
   canAdjust: boolean;
   canCloseInventoryCount: boolean;
+  /** «Ausbuchen» by hand (permission inventory.issue, role «Lagerverwaltung»). */
+  canIssue: boolean;
   canManage: boolean;
   canMove: boolean;
   canRead: true;
@@ -1019,6 +1024,7 @@ export function parseInventoryWorkspace(
       "canMove",
       "canAdjust",
       "canCloseInventoryCount",
+      "canIssue",
     ]) ||
     !hasOnlyKeys(summary, [
       "criticalItemCount",
@@ -1033,6 +1039,8 @@ export function parseInventoryWorkspace(
     typeof permissions.canMove !== "boolean" ||
     typeof permissions.canAdjust !== "boolean" ||
     typeof permissions.canCloseInventoryCount !== "boolean" ||
+    (permissions.canIssue !== undefined &&
+      typeof permissions.canIssue !== "boolean") ||
     nonnegativeNumber(summary.criticalItemCount) === null ||
     nonnegativeNumber(summary.openReservationCount) === null ||
     nonnegativeNumber(summary.activeCountSessionCount) === null ||
@@ -1059,6 +1067,8 @@ export function parseInventoryWorkspace(
     permissions: {
       canAdjust: permissions.canAdjust,
       canCloseInventoryCount: permissions.canCloseInventoryCount,
+      // Older servers do not send it; then nobody may book out by hand.
+      canIssue: permissions.canIssue === true,
       canManage: permissions.canManage,
       canMove: permissions.canMove,
       canRead: true,
@@ -1444,7 +1454,9 @@ export function Inventory({
           ) : null}
           {activeSection === "Artikel" ? (
             <InventoryItems
+              canIssue={workspace.permissions.canIssue}
               canManage={workspace.permissions.canManage}
+              canMove={workspace.permissions.canMove}
               createOpenRequestId={itemCreateRequestId}
               departments={workspace.departments}
               focused={Boolean(focusId)}
@@ -1468,6 +1480,7 @@ export function Inventory({
           {activeSection === "Bewegungen" ? (
             <InventoryEvents
               canAdjust={workspace.permissions.canAdjust}
+              canIssue={workspace.permissions.canIssue}
               canMove={workspace.permissions.canMove}
               events={workspace.recentEvents}
               hasMore={workspace.recentEventsHasMore}
@@ -1717,7 +1730,9 @@ function inventoryEditorApi(tenantId: string): StockEditor["api"] {
 }
 
 function InventoryItems({
+  canIssue,
   canManage,
+  canMove,
   createOpenRequestId,
   departments,
   focused,
@@ -1729,7 +1744,11 @@ function InventoryItems({
   onShowAll,
   tenantId,
 }: {
+  /** «Ausbuchen» by hand (role «Lagerverwaltung»). */
+  canIssue: boolean;
   canManage: boolean;
+  /** «Einbuchen» (goods receipt). */
+  canMove: boolean;
   /** Opens the create form (key) when set by the "+" menu. */
   createOpenRequestId?: number | undefined;
   departments: readonly InventoryDepartment[];
@@ -1757,6 +1776,10 @@ function InventoryItems({
     >;
   } | null>(null);
   const [shopNotice, setShopNotice] = useState("");
+  const [booking, setBooking] = useState<{
+    item: InventoryItemSummary;
+    mode: "receipt" | "issue";
+  } | null>(null);
   const [shopError, setShopError] = useState("");
   const [offering, setOffering] = useState<string | null>(null);
   // Artikelformular (gleiche Felder wie im Shop) für Erfassen und Bearbeiten.
@@ -2031,6 +2054,40 @@ function InventoryItems({
                         Bearbeiten
                       </button>
                     ) : null}
+                    {(canMove || canIssue) &&
+                    item.active &&
+                    item.trackingMode !== "serial" ? (
+                      <span className="inventory__item-booking">
+                        {canMove ? (
+                          <button
+                            className="secondary-button"
+                            onClick={() =>
+                              setBooking({ item, mode: "receipt" })
+                            }
+                            type="button"
+                          >
+                            <PackagePlus aria-hidden="true" size={15} />
+                            Einbuchen
+                          </button>
+                        ) : null}
+                        {canIssue ? (
+                          <button
+                            className="secondary-button"
+                            disabled={item.availableQuantity <= 0}
+                            onClick={() => setBooking({ item, mode: "issue" })}
+                            title={
+                              item.availableQuantity <= 0
+                                ? "Kein verfügbarer Bestand zum Ausbuchen."
+                                : undefined
+                            }
+                            type="button"
+                          >
+                            <PackageMinus aria-hidden="true" size={15} />
+                            Ausbuchen
+                          </button>
+                        ) : null}
+                      </span>
+                    ) : null}
                   </td>
                   <td>
                     {/* Bilder werden nur im Artikelformular geändert. */}
@@ -2127,7 +2184,215 @@ function InventoryItems({
           }
         />
       )}
+      {booking ? (
+        <InventoryBookingDialog
+          item={booking.item}
+          locations={locations}
+          mode={booking.mode}
+          onChanged={onChanged}
+          onClose={() => setBooking(null)}
+          tenantId={tenantId}
+        />
+      ) : null}
     </section>
+  );
+}
+
+/**
+ * «Einbuchen» / «Ausbuchen» for one article, like the stock sheet in the app.
+ * Ausbuchen needs inventory.issue (role «Lagerverwaltung»); the server checks
+ * the permission and the available stock again.
+ */
+function InventoryBookingDialog({
+  item,
+  locations,
+  mode,
+  onChanged,
+  onClose,
+  tenantId,
+}: {
+  item: InventoryItemSummary;
+  locations: readonly InventoryLocation[];
+  mode: "receipt" | "issue";
+  onChanged: InventoryChangedHandler;
+  onClose: () => void;
+  tenantId: string;
+}) {
+  const activeLocations = locations.filter((location) => location.active);
+  const [quantity, setQuantity] = useState("1");
+  const [locationId, setLocationId] = useState(
+    () =>
+      activeLocations.find((location) => location.name === item.locationName)
+        ?.id ?? (activeLocations.length === 1 ? activeLocations[0]!.id : ""),
+  );
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState("");
+  const clientRequest = useClientRequestId(
+    tenantId,
+    `booking-${mode}-${item.id}`,
+  );
+  const issuing = mode === "issue";
+  const amount = Number(quantity);
+  const validAmount =
+    Number.isFinite(amount) &&
+    amount > 0 &&
+    Number.isInteger(amount) &&
+    (!issuing || amount <= item.availableQuantity);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saving) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, saving]);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (saving) return;
+    if (!locationId) {
+      setProblem("Bitte einen Lagerort wählen.");
+      return;
+    }
+    if (!validAmount) {
+      setProblem(
+        issuing
+          ? `Bitte eine ganze Menge zwischen 1 und ${item.availableQuantity} angeben.`
+          : "Bitte eine ganze Menge ab 1 angeben.",
+      );
+      return;
+    }
+    if (
+      issuing &&
+      !window.confirm(
+        `${amount} ${item.unit} «${item.name}» wirklich ausbuchen? Der Bestand wird um diese Menge verringert.`,
+      )
+    ) {
+      return;
+    }
+    setProblem("");
+    setSaving(true);
+    const saved = await onChanged(
+      {
+        type: "postMovement",
+        tenantId,
+        itemId: item.id,
+        movementType: mode,
+        quantity: amount,
+        ...(issuing
+          ? { fromLocationId: locationId }
+          : { toLocationId: locationId }),
+        clientRequestId: clientRequest.requestId(),
+      },
+      issuing
+        ? `${amount} ${item.unit} «${item.name}» ausgebucht.`
+        : `${amount} ${item.unit} «${item.name}» eingebucht.`,
+    );
+    setSaving(false);
+    if (saved) {
+      clientRequest.discard();
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      className="inventory-booking-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose();
+      }}
+    >
+      <form
+        aria-labelledby="inventory-booking-title"
+        aria-modal="true"
+        className="inventory-booking"
+        onChange={clientRequest.discard}
+        onSubmit={(event) => void submit(event)}
+        role="dialog"
+      >
+        <header className="inventory-booking__header">
+          <div>
+            <p className="eyebrow">{issuing ? "AUSBUCHEN" : "WARENEINGANG"}</p>
+            <h2 id="inventory-booking-title">{item.name}</h2>
+            <p>
+              {[
+                item.articleNumber,
+                issuing
+                  ? `${item.availableQuantity} ${item.unit} verfügbar`
+                  : `${item.physicalQuantity} ${item.unit} an Lager`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          </div>
+          <button
+            aria-label="Schliessen"
+            className="more-button"
+            disabled={saving}
+            onClick={onClose}
+            type="button"
+          >
+            <X aria-hidden="true" size={18} />
+          </button>
+        </header>
+        <FormGrid cols={2}>
+          <FormField label={`Menge (${item.unit})`} required>
+            <input
+              autoFocus
+              inputMode="numeric"
+              max={issuing ? item.availableQuantity : undefined}
+              min={1}
+              onChange={(event) => setQuantity(event.target.value)}
+              step={1}
+              type="number"
+              value={quantity}
+            />
+          </FormField>
+          <FormField label="Lagerort" required>
+            <select
+              onChange={(event) => setLocationId(event.target.value)}
+              value={locationId}
+            >
+              <option value="">Lagerort wählen</option>
+              {activeLocations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.code
+                    ? `${location.name} (${location.code})`
+                    : location.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+        </FormGrid>
+        {problem ? (
+          <p className="ticket-detail-message error" role="alert">
+            <AlertTriangle aria-hidden="true" size={16} />
+            {problem}
+          </p>
+        ) : null}
+        <div className="inventory-booking__actions">
+          <button
+            className="secondary-button"
+            disabled={saving}
+            onClick={onClose}
+            type="button"
+          >
+            Abbrechen
+          </button>
+          <button
+            className={
+              issuing
+                ? "primary-button inventory-booking__issue"
+                : "primary-button"
+            }
+            disabled={saving}
+            type="submit"
+          >
+            {saving ? "Wird gebucht …" : issuing ? "Ausbuchen" : "Einbuchen"}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -2648,6 +2913,7 @@ function InventoryLocationRow({
 
 function InventoryEvents({
   canAdjust,
+  canIssue,
   canMove,
   events,
   hasMore,
@@ -2657,6 +2923,7 @@ function InventoryEvents({
   tenantId,
 }: {
   canAdjust: boolean;
+  canIssue: boolean;
   canMove: boolean;
   events: readonly InventoryEvent[];
   hasMore: boolean;
@@ -2678,7 +2945,7 @@ function InventoryEvents({
         </div>
         <Archive aria-hidden="true" size={21} />
       </div>
-      {canMove || canAdjust ? (
+      {canMove || canAdjust || canIssue ? (
         <>
           <p className="inventory__notice">
             <ShieldCheck aria-hidden="true" size={16} /> Buchungen werden erst
@@ -2687,6 +2954,7 @@ function InventoryEvents({
           </p>
           <InventoryMovementForm
             canAdjust={canAdjust}
+            canIssue={canIssue}
             canMove={canMove}
             items={items}
             locations={locations}
@@ -3547,6 +3815,7 @@ function InventoryItemDepartmentSelect({
 
 function InventoryMovementForm({
   canAdjust,
+  canIssue,
   canMove,
   items,
   locations,
@@ -3554,6 +3823,7 @@ function InventoryMovementForm({
   tenantId,
 }: {
   canAdjust: boolean;
+  canIssue: boolean;
   canMove: boolean;
   items: readonly InventoryItemSummary[];
   locations: readonly InventoryLocation[];
@@ -3564,9 +3834,11 @@ function InventoryMovementForm({
     ...(canMove
       ? [
           { value: "receipt" as const, label: "Wareneingang" },
-          { value: "issue" as const, label: "Ausgabe" },
           { value: "transfer" as const, label: "Umlagerung" },
         ]
+      : []),
+    ...(canIssue
+      ? [{ value: "issue" as const, label: "Ausbuchen (Ausgabe)" }]
       : []),
     ...(canAdjust
       ? [

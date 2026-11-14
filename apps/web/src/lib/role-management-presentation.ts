@@ -115,8 +115,10 @@ const PERMISSION_HINTS: Readonly<Record<string, string>> = {
   "inventory.count.close":
     "Schliesst Inventuren ab und übernimmt die gezählten Mengen.",
   "inventory.manage": "Pflegt Lagerorte und Artikel im Lager.",
+  "inventory.issue":
+    "Bucht Bestände von Hand aus (Entnahme aus dem Lager).",
   "inventory.move":
-    "Bucht Eingänge, Ausgaben, Umlagerungen und Reservierungen.",
+    "Bucht Eingänge, Umlagerungen, Reservierungen und deren Ausgabe.",
   "inventory.read": "Sieht Lagerbestände und Bewegungen, ohne zu buchen.",
   "knowledge.manage": "Schreibt, ändert und archiviert Wissensartikel.",
   "knowledge.publish": "Gibt Wissensartikel für alle frei.",
