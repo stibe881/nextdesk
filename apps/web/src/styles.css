@@ -22962,3 +22962,422 @@ html body form:has(> .fk-layout) {
   border-top: 1px solid var(--border);
   background: linear-gradient(to bottom, transparent, var(--surface) 30%);
 }
+
+/* ===== Lager: moderne Karten, Formulare, Tabellen und Verlauf ===== */
+.inventory__panel {
+  padding: 0 24px 26px;
+  border-radius: 16px;
+}
+
+.inventory__panel .panel-heading {
+  padding: 24px 0 4px;
+}
+
+.inventory__panel .panel-heading h2 {
+  margin: 2px 0 4px;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.inventory__panel .panel-heading > svg {
+  box-sizing: content-box;
+  padding: 9px;
+  border-radius: 12px;
+  background: var(--primary-soft);
+}
+
+/* Aufklappbare Formulare als Karten */
+.inventory__form {
+  margin-top: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-subtle);
+}
+
+.inventory__form > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  color: var(--ink);
+  font-size: 0.95rem;
+  list-style: none;
+}
+
+.inventory__form > summary::-webkit-details-marker {
+  display: none;
+}
+
+.inventory__form > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+}
+
+.inventory__form[open] > summary::after {
+  transform: rotate(-135deg);
+}
+
+.inventory__form[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.inventory__form > form {
+  margin: 0;
+  padding: 16px 18px 18px;
+}
+
+.inventory__form > form > button[type="submit"],
+.inventory__form > form > .inventory__form-actions > button[type="submit"] {
+  justify-self: end;
+  min-width: 160px;
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.inventory__form > form > button[type="submit"]:hover:not(:disabled) {
+  background: var(--primary-hover);
+  color: var(--on-primary);
+}
+
+.inventory__form > form > button[type="submit"]:disabled {
+  border-color: var(--disabled-border);
+  background: var(--disabled-surface);
+  color: var(--muted);
+}
+
+.inventory__form > form > label {
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* Inventur: drei Schritte nebeneinander */
+.inventory__statement {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 16px 0 4px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  font-size: 0.9rem;
+}
+
+.inventory__statement strong {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.inventory__steps {
+  display: grid;
+  gap: 14px;
+  margin-top: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  counter-reset: lager-step;
+  align-items: start;
+}
+
+.inventory__steps > .inventory__form {
+  margin-top: 12px;
+  counter-increment: lager-step;
+}
+
+.inventory__steps > .inventory__form > summary::before {
+  content: counter(lager-step);
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+/* Leere Zustände */
+.inventory__empty {
+  margin: 16px 0 0;
+  padding: 18px;
+  border: 1px dashed var(--control-border);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  text-align: center;
+}
+
+/* Hinweis-Pille */
+.inventory__notice {
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+
+/* Verlauf (Bestandsbuch) */
+.inventory__list--events {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.inventory__list--events > li,
+.inventory__list--events > li:first-child {
+  gap: 14px;
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+  background: var(--surface);
+}
+
+.inventory__list--events > li:first-child {
+  border-top: 0;
+}
+
+.inventory__list--events > li:hover {
+  background: var(--surface-subtle);
+}
+
+.inventory__event-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.inventory__event--in .inventory__event-icon {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.inventory__event--out .inventory__event-icon {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.inventory__event-copy {
+  display: grid;
+  flex: 1;
+  gap: 1px;
+  min-width: 0;
+}
+
+.inventory__event-copy > span {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.inventory__event-copy > strong {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.inventory__list--events .inventory__deltas span {
+  justify-self: end;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.85rem;
+}
+
+.inventory__event--in .inventory__deltas span {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.inventory__event--out .inventory__deltas span {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+/* Lagerorte als Kacheln */
+.inventory__location-grid {
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  margin-top: 16px;
+}
+
+.inventory__location-grid > li {
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--surface);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.inventory__location-grid > li:hover {
+  border-color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.inventory__location-grid > li > svg {
+  box-sizing: content-box;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+}
+
+.inventory__location-grid > li small {
+  font-family: var(--font-mono);
+}
+
+.inventory__location-grid > li.is-inactive {
+  opacity: 0.6;
+}
+
+.inventory__location-buttons {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.inventory__location-edit {
+  grid-column: 1 / -1;
+  display: block;
+}
+
+/* Artikel: kompakte Tabelle */
+.inventory__table-wrap {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.inventory__table {
+  min-width: 860px;
+}
+
+.inventory__table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+  padding: 11px 12px;
+}
+
+.inventory__table tbody td {
+  padding: 12px;
+}
+
+.inventory__table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.inventory__table tbody tr:hover {
+  background: var(--surface-subtle);
+}
+
+.inventory__num {
+  text-align: right !important;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.inventory__col-check {
+  width: 36px;
+  padding-right: 0 !important;
+}
+
+.inventory__check {
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.inventory__check input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+}
+
+.inventory__article {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.inventory__article .inventory__item-image {
+  min-width: 0;
+}
+
+.inventory__article .inventory__item-image img,
+.inventory__article .inventory__item-image-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+}
+
+.inventory__article-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.inventory__article-copy > strong {
+  overflow-wrap: anywhere;
+}
+
+.inventory__item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.inventory__item-actions > .inventory__item-booking {
+  display: contents;
+}
+
+.inventory__item-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+}
+
+.inventory__available {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-weight: 700;
+}
+
+.inventory__available--low {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.inventory__table td.inventory__value--attention {
+  color: inherit;
+}
+
+@media (max-width: 640px) {
+  .inventory__panel {
+    padding: 0 16px 20px;
+  }
+
+  .inventory__form > form {
+    padding: 14px;
+  }
+}
