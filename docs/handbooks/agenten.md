@@ -403,7 +403,7 @@ Ein Klick öffnet die Störung:
    veröffentlichte Meldung korrigierst du mit **Bearbeiten** (Zustand, Titel,
    Text, Dienste) und **Änderungen speichern**. Ist die Störung behoben (PRTG meldet
    OK, der Anbieter meldet sie als behoben oder sie wird abgeschlossen), setzt
-   nextDesk ihre Meldungen automatisch auf **Behoben**: Sie verschwinden aus
+   nextDesk ihre Meldungen automatisch auf **Behoben**: Die Meldungen verschwinden aus
    dem Störungsbanner in Web und App, Abonnenten erhalten das Update, und die
    Dienste der Meldung sind wieder betriebsbereit (ausser sie stehen noch in
    einer anderen offenen Meldung).

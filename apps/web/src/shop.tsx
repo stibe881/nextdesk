@@ -3126,7 +3126,10 @@ export function CatalogEditor({
       }
       if (files.length > 0) await addFiles(files);
       setImportNote(
-        `Übernommen${product.price ? ` (Preis bei Brack: ${product.price})` : ""}. ${(product.notes ?? []).join(" ")} Bitte prüfen und ergänzen: Genehmigung, Maximalmenge und Kategorie bleiben Deine Entscheidung.`,
+        `Übernommen${product.price ? ` (Preis bei Brack: ${product.price})` : ""}. ${(product.notes ?? []).join(" ")} ${tn(
+          "Bitte prüfen und ergänzen: Genehmigung, Maximalmenge und Kategorie bleiben deine Entscheidung.",
+          "Bitte prüfen und ergänzen: Genehmigung, Maximalmenge und Kategorie bleiben Ihre Entscheidung.",
+        )}`,
       );
     } catch (nextError) {
       setImportNote(

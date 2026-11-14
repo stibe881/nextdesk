@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { tn } from "./lib/formality";
 import {
   useCallback,
@@ -777,7 +777,7 @@ function TeamEditDialog({
         }
         type="button"
       >
-        ✕
+        <X aria-hidden="true" size={14} />
       </button>
     </li>
   );
@@ -870,8 +870,10 @@ function TeamEditDialog({
               )}
             </FormCard>
             <FormNote>
-              Name, Kanäle und Tabs ändern Sie direkt in Microsoft Teams. Hier
-              pflegen Sie Personen und Laufzeit.
+              {tn(
+                "Name, Kanäle und Tabs änderst du direkt in Microsoft Teams. Hier pflegst du Personen und Laufzeit.",
+                "Name, Kanäle und Tabs ändern Sie direkt in Microsoft Teams. Hier pflegen Sie Personen und Laufzeit.",
+              )}
             </FormNote>
           </div>
         </div>
