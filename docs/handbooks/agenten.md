@@ -893,7 +893,9 @@ Gerät geht an die anfragende Person). Kommt eine Shop-Ausleihe zurück, endet
 die Zuweisung, das Asset steht wieder auf «An Lager» und die Serieneinheit ist
 wieder an Lager.
 
-**Lager → Automatik** (nur mit dem Recht, das Lager zu verwalten):
+**Lager → Automatik** (nur mit dem Recht, das Lager zu verwalten). Die
+Regeln stehen in vier Karten: Rücknahmen, Mindestbestand, Reservationen und
+Inventur; die beiden Optionen beim Mindestbestand schaltest du mit Schiebern:
 
 - **Standard-Lagerort** für Rücknahmen, auf Wunsch pro **Abteilung** ein
   eigener Lagerort. Zurückgegebene Geräte aus einem Austritt werden dorthin

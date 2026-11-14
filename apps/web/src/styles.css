@@ -22833,3 +22833,132 @@ html body form:has(> .fk-layout) {
 .external-status__matches button:focus-visible {
   background: rgba(37, 99, 235, 0.08);
 }
+
+/* Lager-Automatik: Karten pro Regelbereich */
+.lager-auto {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+.lager-auto__card {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 18px 20px;
+  background: var(--surface-subtle);
+}
+.lager-auto__card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.lager-auto__card-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+}
+.lager-auto__card-head p {
+  max-width: 62ch;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.lager-auto__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.lager-auto__grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.lager-auto__stack {
+  display: grid;
+  gap: 10px;
+}
+.lager-auto__field {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.lager-auto__field--narrow {
+  max-width: 340px;
+}
+.lager-auto__field select,
+.lager-auto__field input {
+  width: 100%;
+}
+.lager-auto__unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.lager-auto__unit em {
+  font-style: normal;
+  font-size: 0.875rem;
+}
+.lager-auto__unit input {
+  width: 84px;
+  text-align: right;
+}
+.lager-auto__field .lager-auto__unit input {
+  width: 110px;
+}
+.lager-auto__rows {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lager-auto__rows li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  background: var(--surface);
+}
+.lager-auto__row-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.lager-auto__row-copy strong {
+  color: var(--ink);
+}
+.lager-auto__row-copy small {
+  color: var(--muted);
+}
+.lager-auto__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.lager-auto__footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 -4px;
+  padding: 12px 4px 4px;
+  border-top: 1px solid var(--border);
+  background: linear-gradient(to bottom, transparent, var(--surface) 30%);
+}
