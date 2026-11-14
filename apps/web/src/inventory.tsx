@@ -365,15 +365,17 @@ type InventoryChangedHandler = (
   successMessage: string,
 ) => Promise<InventoryMutationReceipt | null>;
 
-const sections: readonly InventorySection[] = [
-  "Übersicht",
-  "Artikel",
-  "Lagerorte",
-  "Bewegungen",
-  "Reservationen",
-  "Inventur",
-  "Beschaffung",
-  "Automatik",
+/** Tab groups, shown like the settings tabs («section-tabs»). */
+const sectionGroups: readonly {
+  label: string;
+  sections: readonly InventorySection[];
+}[] = [
+  { label: "Bestand", sections: ["Übersicht", "Artikel", "Lagerorte"] },
+  {
+    label: "Buchungen",
+    sections: ["Bewegungen", "Reservationen", "Inventur"],
+  },
+  { label: "Planung", sections: ["Beschaffung", "Automatik"] },
 ];
 
 function isRecord(value: unknown): value is RecordValue {
@@ -1404,30 +1406,56 @@ export function Inventory({
         </div>
       </header>
 
-      <div
-        className="inventory__tabs"
-        role="tablist"
+      <nav
         aria-label="Lagerbereiche"
+        className="section-tabs inventory__section-tabs"
+        role="tablist"
       >
-        {sections
-          // Beschaffung und Automatik nur für die Lagerverwaltung.
-          .filter(
-            (section) =>
-              (section !== "Beschaffung" && section !== "Automatik") ||
-              workspace?.permissions.canManage === true,
-          )
-          .map((section) => (
-            <button
-              aria-selected={activeSection === section}
-              key={section}
-              onClick={() => setActiveSection(section)}
-              role="tab"
-              type="button"
+        {sectionGroups
+          .map((group) => ({
+            ...group,
+            // Beschaffung und Automatik nur für die Lagerverwaltung.
+            sections: group.sections.filter(
+              (section) =>
+                (section !== "Beschaffung" && section !== "Automatik") ||
+                workspace?.permissions.canManage === true,
+            ),
+          }))
+          .filter((group) => group.sections.length > 0)
+          .map((group) => (
+            <div
+              className="section-tabs__group"
+              key={group.label}
+              role="presentation"
             >
-              {section}
-            </button>
+              <span aria-hidden="true" className="section-tabs__label">
+                {group.label}
+              </span>
+              <div className="section-tabs__row" role="presentation">
+                {group.sections.map((section) => (
+                  <button
+                    aria-selected={activeSection === section}
+                    className={
+                      activeSection === section
+                        ? "section-tabs__tab is-active"
+                        : "section-tabs__tab"
+                    }
+                    key={section}
+                    onClick={() => {
+                      // A notice belongs to the area where it happened.
+                      if (section !== activeSection) setMessage("");
+                      setActiveSection(section);
+                    }}
+                    role="tab"
+                    type="button"
+                  >
+                    {section}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
-      </div>
+      </nav>
 
       {loading ? (
         <p className="inventory__state">Lager wird geladen …</p>

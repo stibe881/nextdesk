@@ -777,6 +777,12 @@ Einleitung, Abschnitte, Schritte, Hinweise). KI-Entwürfe aus Tickets erscheinen
 
 ## Lager: Artikel erfassen und ausleihen
 
+Die Bereiche des Lagers sind wie in den Einstellungen in Gruppen geordnet:
+**Bestand** (Übersicht, Artikel, Lagerorte), **Buchungen** (Bewegungen,
+Reservationen, Inventur) und **Planung** (Beschaffung, Automatik; nur für die
+Lagerverwaltung). Eine Meldung oben gilt für den Bereich, in dem sie entstanden
+ist, und verschwindet beim Wechsel in einen anderen Bereich.
+
 **Lager → Artikel → Artikel erfassen** (und **Bearbeiten** in der Liste) öffnet
 dasselbe Formular wie ein Artikel im Shop: Bezeichnung, Fotos (per Drag and
 Drop oder Auswahl), Kategorien, Artikelnummer, Beschreibung, technische Angaben
