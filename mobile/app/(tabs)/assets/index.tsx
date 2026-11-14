@@ -255,7 +255,7 @@ export default function AssetsScreen() {
             <View style={styles.emptyCard}>
               <Ionicons
                 color={colors.primaryText}
-                name="cube-outline"
+                name="laptop-outline"
                 size={28}
               />
               <Text style={styles.emptyTitle}>Keine Assets gefunden</Text>
