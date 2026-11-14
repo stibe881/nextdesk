@@ -6052,6 +6052,53 @@ function AuthenticatedApp() {
         .length,
     [notifications],
   );
+  // Wer ein Ticket öffnet, hat die Mitteilungen dazu gesehen: sie gelten als
+  // gelesen (Glocke und Zahl auf dem App-Symbol). Kommt bei geöffnetem Ticket
+  // eine neue Mitteilung dazu, wird sie ebenfalls gleich gelesen.
+  const openTicketId = selectedTicketId ?? splitSelectedTicketId ?? null;
+  const hasUnreadForOpenTicket = openTicketId
+    ? notifications.some(
+        (notification) =>
+          notification.readAt === null &&
+          notification.ticket?.id === openTicketId,
+      )
+    : false;
+  const markedTicketRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openTicketId) {
+      markedTicketRef.current = null;
+      return;
+    }
+    if (!supabase || !activeTenant?.id) return;
+    if (markedTicketRef.current === openTicketId && !hasUnreadForOpenTicket) {
+      return;
+    }
+    markedTicketRef.current = openTicketId;
+    void supabase.functions
+      .invoke("notification-center", {
+        body: {
+          type: "markTicketRead",
+          tenantId: activeTenant.id,
+          ticketId: openTicketId,
+        },
+      })
+      .then(({ error }) => {
+        if (error) return;
+        const readAt = new Date().toISOString();
+        setNotifications((items) =>
+          items.some(
+            (item) => item.readAt === null && item.ticket?.id === openTicketId,
+          )
+            ? items.map((item) =>
+                item.readAt === null && item.ticket?.id === openTicketId
+                  ? { ...item, readAt }
+                  : item,
+              )
+            : items,
+        );
+      })
+      .catch(() => undefined);
+  }, [openTicketId, activeTenant?.id, hasUnreadForOpenTicket]);
 
   if (isSupabaseConfigured && session === undefined) {
     return <LoadingScreen message="Sichere Sitzung wird geprüft." />;

@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-13
+updated: 2026-11-14
 ---
 
 # Handbuch für Mitarbeitende
@@ -52,7 +52,8 @@ Oben rechts finden Sie:
 - die **globale Suche** («Global suchen …») über Ihre Tickets
 - die **Glocke** für Benachrichtigungen; ein Klick auf einen Eintrag öffnet
   das betroffene Ticket bzw. die Bestellung, mit «Alle als gelesen markieren»
-  leeren Sie die Liste. Der Knopf in einer E-Mail-Benachrichtigung öffnet
+  leeren Sie die Liste. Öffnen Sie ein Ticket, gelten seine Benachrichtigungen
+  automatisch als gelesen. Der Knopf in einer E-Mail-Benachrichtigung öffnet
   ebenfalls direkt das Ticket bzw. die Bestellung, bei Bedarf nach der
   Anmeldung
 
@@ -338,7 +339,7 @@ Neuigkeiten.
 
 Auf dem **App-Symbol** zeigt eine rote Zahl, wie viele Mitteilungen Sie noch nicht
 gelesen haben (alle Arbeitsbereiche zusammen). Sie sinkt, sobald Sie Mitteilungen
-lesen oder alle als gelesen markieren. Auf dem iPhone aktualisiert sie sich auch
+lesen, das Ticket dazu öffnen oder alle als gelesen markieren. Auf dem iPhone aktualisiert sie sich auch
 bei neuen Mitteilungen, wenn die App geschlossen ist. Auf Android erscheint sie,
 wenn Ihr Startbildschirm Zahlen auf Symbolen unterstützt, und wird beim Öffnen
 der App aktualisiert. Auf Android erhalten Sie ausserdem die Push-Mitteilungen der

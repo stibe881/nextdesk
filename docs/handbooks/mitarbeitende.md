@@ -53,7 +53,8 @@ Oben rechts findest du:
   einem Teil der Ticketnummer (z. B. «82» für ICT-2026-000082)
 - die **Glocke** für Benachrichtigungen; ein Klick auf einen Eintrag öffnet
   das betroffene Ticket bzw. die Bestellung, mit «Alle als gelesen markieren»
-  leerst du die Liste. Der Knopf in einer E-Mail-Benachrichtigung öffnet
+  leerst du die Liste. Öffnest du ein Ticket, gelten seine Benachrichtigungen
+  automatisch als gelesen. Der Knopf in einer E-Mail-Benachrichtigung öffnet
   ebenfalls direkt das Ticket bzw. die Bestellung, bei Bedarf nach der
   Anmeldung
 
@@ -353,7 +354,7 @@ Neuigkeiten.
 
 Auf dem **App-Symbol** zeigt eine rote Zahl, wie viele Mitteilungen du noch nicht
 gelesen hast (alle Arbeitsbereiche zusammen). Die Zahl sinkt, sobald du Mitteilungen
-liest oder alle als gelesen markierst. Auf dem iPhone aktualisiert sie sich auch
+liest, das Ticket dazu öffnest oder alle als gelesen markierst. Auf dem iPhone aktualisiert sie sich auch
 bei neuen Mitteilungen, wenn die App geschlossen ist. Auf Android erscheint sie,
 wenn dein Startbildschirm Zahlen auf Symbolen unterstützt, und wird beim Öffnen
 der App aktualisiert. Auf Android erhältst du ausserdem die Push-Mitteilungen der

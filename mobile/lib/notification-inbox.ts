@@ -43,3 +43,24 @@ export async function markAllInboxNotificationsRead(
   });
   void syncAppBadge();
 }
+
+/**
+ * Wer ein Ticket öffnet, hat die Mitteilungen dazu gesehen: alle ungelesenen
+ * Mitteilungen zu diesem Ticket gelten als gelesen, die Zahl auf dem
+ * App-Symbol wird neu gesetzt. Ein Fehler ist unkritisch.
+ */
+export async function markTicketNotificationsRead(
+  tenantId: string,
+  ticketId: string,
+): Promise<void> {
+  try {
+    await invokeNextDesk("notification-center", {
+      type: "markTicketRead",
+      tenantId,
+      ticketId,
+    });
+    void syncAppBadge();
+  } catch {
+    // Die Mitteilungen bleiben ungelesen und lassen sich in der Liste lesen.
+  }
+}
