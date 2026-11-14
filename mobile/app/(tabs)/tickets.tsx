@@ -73,7 +73,6 @@ const scopes: { key: TicketScope; label: string }[] = [
   { key: "watched", label: "Beobachtet" },
   { key: "open", label: "Offen" },
   { key: "resolved", label: "Gelöst" },
-  { key: "unassigned", label: "Nicht zugewiesen" },
 ];
 
 function offlineCacheTimestamp(value: string): string {
@@ -155,6 +154,7 @@ export default function TicketsScreen() {
     () => new Set(),
   );
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [savedViews, setSavedViews] = useState<SavedTicketView[]>([]);
@@ -633,40 +633,30 @@ export default function TicketsScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
         >
-          {scopes.map((option) => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: scope === option.key }}
-              key={option.key}
-              onPress={() => {
-                setActiveViewId(null);
-                setScope(option.key);
-              }}
+          <Text style={[styles.viewsLabel, tokenStyles.muted]}>Status</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: scope === "unassigned" }}
+            onPress={() => {
+              setActiveViewId(null);
+              setScope(scope === "unassigned" ? DEFAULT_SCOPE : "unassigned");
+            }}
+            style={[
+              styles.filter,
+              tokenStyles.card,
+              scope === "unassigned" && tokenStyles.primary,
+            ]}
+          >
+            <Text
               style={[
-                styles.filter,
-                tokenStyles.card,
-                scope === option.key && tokenStyles.primary,
+                styles.filterText,
+                tokenStyles.muted,
+                scope === "unassigned" && tokenStyles.onPrimary,
               ]}
             >
-              <Text
-                style={[
-                  styles.filterText,
-                  tokenStyles.muted,
-                  scope === option.key && tokenStyles.onPrimary,
-                ]}
-              >
-                {option.label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-
-        <ScrollView
-          contentContainerStyle={styles.filters}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-        >
-          <Text style={[styles.viewsLabel, tokenStyles.muted]}>Status</Text>
+              Nicht zugewiesen
+            </Text>
+          </Pressable>
           {statusFilterOptions(
             tickets.map((ticket) => ticket.status),
             statusFilter,
@@ -759,6 +749,23 @@ export default function TicketsScreen() {
             style={[styles.searchInput, tokenStyles.foreground]}
             value={query}
           />
+          <Pressable
+            accessibilityLabel="Tickets filtern"
+            accessibilityRole="button"
+            accessibilityState={{ expanded: filterOpen }}
+            hitSlop={10}
+            onPress={() => setFilterOpen((open) => !open)}
+          >
+            <Ionicons
+              color={
+                filterOpen || scope !== DEFAULT_SCOPE
+                  ? colors.primary
+                  : colors.muted
+              }
+              name={filterOpen ? "funnel" : "funnel-outline"}
+              size={20}
+            />
+          </Pressable>
           {query ? (
             <Pressable
               accessibilityLabel="Ticketsuche löschen"
@@ -770,6 +777,41 @@ export default function TicketsScreen() {
             </Pressable>
           ) : null}
         </View>
+
+        {filterOpen ? (
+          <ScrollView
+            contentContainerStyle={styles.filters}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+          >
+            {scopes.map((option) => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: scope === option.key }}
+                key={option.key}
+                onPress={() => {
+                  setActiveViewId(null);
+                  setScope(option.key);
+                }}
+                style={[
+                  styles.filter,
+                  tokenStyles.card,
+                  scope === option.key && tokenStyles.primary,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    tokenStyles.muted,
+                    scope === option.key && tokenStyles.onPrimary,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
 
         {error ? (
           <View
