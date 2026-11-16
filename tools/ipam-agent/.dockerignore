@@ -3,3 +3,6 @@ dist
 config.json
 *.log
 windows
+package
+linux
+scripts

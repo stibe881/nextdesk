@@ -64,7 +64,22 @@ snmpv3 only
 Die Schlüssel trägst du **nur** in die lokale `config.json` des Agenten ein –
 in nextDesk stehen lediglich Gerätename, SNMP-Version und Benutzername.
 
-## Installation
+## Installation aus dem Paket (empfohlen)
+
+nextDesk bietet unter **Einstellungen → Monitoring → Überwachung** und in der
+Überwachung (Karte «Sonden») das fertig gebaute Paket und die für den
+Mandanten ausgefüllte `config.json` zum Herunterladen an.
+
+1. Paket entpacken, `config.json` in den Ordner `nextdesk-sonde` legen.
+2. Windows (Node.js 22 LTS x64 installiert), PowerShell als Administrator:
+   `.\windows\install-service.ps1` – Linux mit Docker: `sudo linux/install.sh`.
+3. Aktualisieren: neues Paket entpacken, dasselbe Skript erneut ausführen.
+
+Das Paket entsteht mit `scripts/package.sh` (Workflow «Publish probe
+package»). Bei einer Änderung, die auf installierte Sonden soll, die Version
+in `package.json`, `package-lock.json` und `src/version.ts` erhöhen.
+
+## Installation aus dem Repository
 
 ### 1. Agent in nextDesk anlegen
 

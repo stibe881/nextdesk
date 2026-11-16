@@ -7,6 +7,8 @@ import {
   deviceState,
   displayState,
   parseAction,
+  isOlderVersion,
+  parseProbePackage,
   parseSensor,
   probeConfig,
   rangePlan,
@@ -111,4 +113,28 @@ Deno.test("probe: name is required, config.json is complete", () => {
     agentToken: "ndip_x",
     logLevel: "info",
   });
+});
+
+Deno.test("probe package: latest.json is validated, versions are compared", () => {
+  const latest = {
+    version: "1.1.0",
+    build: "abc1234",
+    file: "nextdesk-sonde-1.1.0-abc1234.zip",
+    size: 8237661,
+    sha256: "e".repeat(64),
+    builtAt: "2026-11-16T10:00:00.000Z",
+  };
+  assertEquals(parseProbePackage({ ...latest, extra: 1 }), latest);
+  assertEquals(parseProbePackage({ ...latest, file: "../secrets.zip" }), null);
+  assertEquals(parseProbePackage({ ...latest, file: "other/nextdesk-sonde-1.zip" }), null);
+  assertEquals(parseProbePackage({ ...latest, version: "neu" }), null);
+  assertEquals(parseProbePackage({ ...latest, sha256: "kurz" }), null);
+  assertEquals(parseProbePackage(null), null);
+  assertEquals(isOlderVersion("1.0.0", "1.1.0"), true);
+  assertEquals(isOlderVersion("1.9.0", "1.10.0"), true);
+  assertEquals(isOlderVersion("1.1.0", "1.1.0"), false);
+  assertEquals(isOlderVersion("2.0.0", "1.9.9"), false);
+  assertEquals(isOlderVersion(null, "1.1.0"), false);
+  assertEquals(isOlderVersion("dev", "1.1.0"), false);
+  assertEquals(parseAction({ type: "probePackage", tenantId: TENANT }), { type: "probePackage", tenantId: TENANT });
 });

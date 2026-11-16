@@ -369,30 +369,45 @@ Die Sonde ist derselbe Netzwerkagent wie für die IP-Adressverwaltung
 Agent auf Version 1.1.0 oder neuer aktualisiert wurde.
 
 1. Unter **Funktionen** das Modul _Überwachung_ einschalten.
-2. Unter **Dienste und Überwachung → Überwachung → Sonden → Sonde
-   hinzufügen** die Sonde anlegen und die `config.json` herunterladen.
+2. Unter **Einstellungen → Monitoring → Überwachung** (oder **Dienste und
+   Überwachung → Überwachung → Sonden**) mit **Sonde hinzufügen** die Sonde
+   anlegen und die `config.json` herunterladen. Danach mit **Sonde
+   herunterladen** das Installationspaket (`nextdesk-sonde-<Version>.zip`)
+   laden.
 3. Einen Server im Netz bereitstellen (2 vCPU, 2 GB RAM; Linux mit Docker
    oder Windows Server 2016+ mit Node.js 22 LTS). Er braucht:
    - ausgehend HTTPS (443) zu `<projekt>.supabase.co`, keine eingehende
      Firewall-Regel;
    - ICMP (Ping) und die geprüften TCP-Ports zu den überwachten Geräten.
-4. `tools/ipam-agent` aus dem Repository auf den Server kopieren.
-   - **Linux**: die heruntergeladene Datei als
-     `/etc/nextdesk-ipam-agent/config.json` ablegen (Rechte 600, Besitzer
-     1000), das Image mit `docker build -t nextdesk-ipam-agent
-tools/ipam-agent` erstellen und mit `docker run -d --network host
---restart unless-stopped -v
-/etc/nextdesk-ipam-agent:/etc/nextdesk-ipam-agent:ro
-nextdesk-ipam-agent` starten.
-   - **Windows**: `npm ci` und `npm run build` ausführen, danach
-     `windows\install-service.ps1` (als Administrator). Die heruntergeladene
-     Datei als `C:\ProgramData\nextDesk\ipam-agent\config.json` ablegen und
-     den Dienst «nextDesk IPAM-Agent» starten.
-5. Mit `node dist/main.js --check` die Verbindung prüfen. Die Ausgabe nennt
-   die Anzahl Sensoren. In der Überwachung erscheint die Sonde nach etwa
-   einer Minute als «online».
+4. Das Paket auf dem Server entpacken und die `config.json` in den Ordner
+   `nextdesk-sonde` legen.
+   - **Windows**: in einer PowerShell als Administrator
+     `.\windows\install-service.ps1` ausführen. Das Skript kopiert die Sonde
+     nach `C:\Program Files\nextDesk\ipam-agent`, legt die Konfiguration
+     unter `C:\ProgramData\nextDesk\ipam-agent` ab (lesbar nur für SYSTEM,
+     Administratoren und das Dienstkonto), prüft die Verbindung und startet
+     den Dienst «nextDesk IPAM-Agent». Der Dienst-Wrapper WinSW liegt dem
+     Paket bei.
+   - **Linux**: `sudo linux/install.sh` ausführen. Das Skript legt die
+     Konfiguration unter `/etc/nextdesk-ipam-agent` ab, baut das
+     Docker-Image, prüft die Verbindung und startet den Container
+     `nextdesk-ipam-agent`.
+5. In der Überwachung erscheint die Sonde nach etwa einer Minute als
+   «online».
 6. Die `config.json` enthält den Zugangsschlüssel: nach der Installation aus
-   dem Download-Ordner löschen.
+   dem Download- und dem Paketordner löschen.
+
+**Aktualisieren:** Zeigt nextDesk bei einer Sonde «Aktualisierung verfügbar»,
+das neue Paket herunterladen, entpacken und dasselbe Skript erneut ausführen.
+Ohne `config.json` im Paketordner bleibt die installierte Konfiguration
+erhalten.
+
+**Betreiber:** Das Paket baut der GitHub-Workflow «Publish probe package» bei
+jeder Änderung unter `tools/ipam-agent` auf `main` und legt es im privaten
+Storage-Bucket `probe-packages` ab. Er braucht das Secret
+`SUPABASE_ACCESS_TOKEN`. Die Version steht in `tools/ipam-agent/package.json`
+und `src/version.ts`; nur eine höhere Version löst den Hinweis
+«Aktualisierung verfügbar» aus.
 
 Die Sonde holt ihre Prüfaufträge etwa jede Minute neu und meldet Resultate
 alle 30 Sekunden. Ist nextDesk nicht erreichbar, puffert sie die Resultate

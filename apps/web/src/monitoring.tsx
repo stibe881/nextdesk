@@ -273,49 +273,13 @@ function OverviewView({
               )}
             </article>
 
-            <article className="monitoring-card">
-              <div className="monitoring-card__head">
-                <h3>Sonden</h3>
-                {data.canManage ? (
-                  <button
-                    className="secondary-button"
-                    onClick={() => setAddingProbe(true)}
-                    type="button"
-                  >
-                    <Plus aria-hidden="true" size={16} />
-                    Sonde hinzufügen
-                  </button>
-                ) : null}
-              </div>
-              {data.agents.length === 0 ? (
-                <p className="monitoring__empty">Keine Sonde vorhanden.</p>
-              ) : (
-                <ul className="monitoring-agents">
-                  {data.agents.map((agent) => (
-                    <li key={agent.id}>
-                      <span
-                        aria-hidden="true"
-                        className={`monitoring-dot monitoring-dot--${agent.online ? "up" : "down"}`}
-                      />
-                      <span className="monitoring-agents__main">
-                        <strong>{agent.name}</strong>
-                        <span>
-                          {agent.online
-                            ? "online"
-                            : agent.active
-                              ? "meldet sich nicht"
-                              : "deaktiviert"}
-                          {` · ${agent.sensorCount ?? 0} Sensoren`}
-                        </span>
-                      </span>
-                      <span className="monitoring-muted">
-                        {formatAgo(agent.lastSeenAt, now)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </article>
+            <ProbeCard
+              data={data}
+              now={now}
+              onAdd={() => setAddingProbe(true)}
+              onError={setError}
+              tenantId={tenantId}
+            />
           </div>
 
           <article className="monitoring-card monitoring-card--flush">
@@ -423,6 +387,181 @@ function OverviewView({
         <ProbeDialog
           onClose={() => {
             setAddingProbe(false);
+            load();
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sonden
+
+function formatSize(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toLocaleString("de-CH", { maximumFractionDigits: 1 })} MB`;
+}
+
+/** Starts the download of the newest probe package (short-lived link). */
+async function downloadProbePackage(tenantId: string): Promise<void> {
+  const result = await monitoringCall<{ url: string }>({
+    type: "probePackage",
+    tenantId,
+  });
+  window.location.assign(result.url);
+}
+
+function ProbeCard({
+  tenantId,
+  data,
+  now,
+  onAdd,
+  onError,
+}: {
+  tenantId: string;
+  data: MonitoringOverview;
+  now: number;
+  onAdd: () => void;
+  onError: (message: string | null) => void;
+}) {
+  const [downloading, setDownloading] = useState(false);
+  const download = async () => {
+    setDownloading(true);
+    onError(null);
+    try {
+      await downloadProbePackage(tenantId);
+    } catch (failure) {
+      onError(message(failure));
+    } finally {
+      setDownloading(false);
+    }
+  };
+  const outdated = data.agents.some((agent) => agent.updateAvailable);
+  return (
+    <article className="monitoring-card">
+      <div className="monitoring-card__head">
+        <h3>Sonden</h3>
+        {data.canManage ? (
+          <button className="secondary-button" onClick={onAdd} type="button">
+            <Plus aria-hidden="true" size={16} />
+            Sonde hinzufügen
+          </button>
+        ) : null}
+      </div>
+      {data.agents.length === 0 ? (
+        <p className="monitoring__empty">Keine Sonde vorhanden.</p>
+      ) : (
+        <ul className="monitoring-agents">
+          {data.agents.map((agent) => (
+            <li key={agent.id}>
+              <span
+                aria-hidden="true"
+                className={`monitoring-dot monitoring-dot--${agent.online ? "up" : "down"}`}
+              />
+              <span className="monitoring-agents__main">
+                <strong>{agent.name}</strong>
+                <span>
+                  {agent.online
+                    ? "online"
+                    : agent.active
+                      ? "meldet sich nicht"
+                      : "deaktiviert"}
+                  {` · ${agent.sensorCount ?? 0} Sensoren`}
+                  {agent.version ? ` · Version ${agent.version}` : ""}
+                </span>
+              </span>
+              {agent.updateAvailable ? (
+                <span className="monitoring-chip monitoring-chip--warning">
+                  Aktualisierung verfügbar
+                </span>
+              ) : null}
+              <span className="monitoring-muted">
+                {formatAgo(agent.lastSeenAt, now)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {data.canManage ? (
+        <div className="monitoring-package">
+          <div>
+            <strong>Installationspaket</strong>
+            <span className="monitoring-muted">
+              {data.probePackage
+                ? `Version ${data.probePackage.version} · ${formatSize(data.probePackage.size)} · gebaut ${formatAgo(data.probePackage.builtAt, now)}`
+                : "Noch nicht veröffentlicht."}
+            </span>
+            {outdated ? (
+              <span className="monitoring-muted">
+                Zum Aktualisieren das Paket auf dem Server entpacken und das
+                Installationsskript erneut ausführen. Die Konfiguration bleibt
+                erhalten.
+              </span>
+            ) : null}
+          </div>
+          <button
+            className="secondary-button"
+            disabled={!data.probePackage || downloading}
+            onClick={() => void download()}
+            type="button"
+          >
+            <Download aria-hidden="true" size={16} />
+            Sonde herunterladen
+          </button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+/** Einstellungen → Monitoring: Sonden und Installationspaket. */
+export function MonitoringProbeSettings({ tenantId }: { tenantId: string }) {
+  const [data, setData] = useState<MonitoringOverview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const load = useCallback(() => {
+    monitoringCall<MonitoringOverview>({ type: "overview", tenantId })
+      .then((result) => {
+        setData(result);
+        setError(null);
+      })
+      .catch((failure) => setError(message(failure)));
+  }, [tenantId]);
+  useEffect(load, [load]);
+  const now = useNow(load);
+  return (
+    <section className="monitoring" aria-labelledby="monitoring-probes-title">
+      <header className="monitoring__hero">
+        <div>
+          <h2 id="monitoring-probes-title">Überwachung</h2>
+          <p>
+            Sonden messen die überwachten Geräte vor Ort. Hier lassen sich
+            Sonden anlegen und das Installationspaket herunterladen. Geräte und
+            Sensoren werden unter «Dienste und Überwachung → Überwachung»
+            verwaltet.
+          </p>
+        </div>
+      </header>
+      {error ? (
+        <p className="ticket-detail-message error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {!data && !error ? <Spinner label="Sonden werden geladen …" /> : null}
+      {data ? (
+        <ProbeCard
+          data={data}
+          now={now}
+          onAdd={() => setAdding(true)}
+          onError={setError}
+          tenantId={tenantId}
+        />
+      ) : null}
+      {adding ? (
+        <ProbeDialog
+          onClose={() => {
+            setAdding(false);
             load();
           }}
           tenantId={tenantId}
@@ -1408,18 +1547,37 @@ function ProbeDialog({
             <Download aria-hidden="true" size={16} />
             config.json herunterladen
           </button>
+          <button
+            className="secondary-button"
+            onClick={() =>
+              void downloadProbePackage(tenantId).catch((failure) =>
+                setError(message(failure)),
+              )
+            }
+            type="button"
+          >
+            <Download aria-hidden="true" size={16} />
+            Sonde herunterladen (Installationspaket)
+          </button>
+          {error ? (
+            <p className="ticket-detail-message error" role="alert">
+              {error}
+            </p>
+          ) : null}
           <ol className="monitoring-steps">
             <li>
-              Sonde auf einem Server im Netz installieren (Windows-Dienst oder
-              Docker), wie im Installationshandbuch beschrieben.
+              Das Paket auf einem Server im Netz entpacken und die{" "}
+              <code>config.json</code> in den Ordner <code>nextdesk-sonde</code>{" "}
+              legen.
             </li>
             <li>
-              Die heruntergeladene <code>config.json</code> in den
-              Konfigurationsordner der Sonde legen.
+              Windows (Node.js 22 LTS nötig): als Administrator{" "}
+              <code>windows\install-service.ps1</code> ausführen. Linux mit
+              Docker: <code>sudo linux/install.sh</code>.
             </li>
             <li>
-              Sonde starten. Nach etwa einer Minute erscheint die Sonde hier als
-              «online».
+              Das Skript prüft die Verbindung und startet die Sonde. Nach etwa
+              einer Minute erscheint die Sonde hier als «online».
             </li>
           </ol>
           <p className="monitoring-muted">

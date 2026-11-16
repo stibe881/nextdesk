@@ -12,7 +12,10 @@ import {
   deviceState,
   type DisplayState,
   displayState,
+  isOlderVersion,
   parseAction,
+  parseProbePackage,
+  type ProbePackage,
   probeConfig,
   rangePlan,
 } from "./logic.ts";
@@ -132,6 +135,42 @@ async function loadSensors(admin: Client, tenantId: string, assetId?: string) {
   return rows.map((row) => sensorView(row, statuses.get(String(row.id)), now));
 }
 
+const PACKAGE_BUCKET = "probe-packages";
+const PACKAGE_CACHE_MS = 5 * 60 * 1000;
+let packageCache: { at: number; info: ProbePackage | null } | null = null;
+
+/** The newest published probe package (cached per isolate for five minutes). */
+async function latestPackage(admin: Client, fresh = false): Promise<ProbePackage | null> {
+  if (!fresh && packageCache && Date.now() - packageCache.at < PACKAGE_CACHE_MS) return packageCache.info;
+  let info: ProbePackage | null = null;
+  try {
+    const { data, error } = await admin.storage.from(PACKAGE_BUCKET).download("latest.json");
+    if (!error && data) info = parseProbePackage(JSON.parse(await data.text()));
+  } catch {
+    info = null;
+  }
+  packageCache = { at: Date.now(), info };
+  return info;
+}
+
+async function probePackage(admin: Client) {
+  const info = await latestPackage(admin, true);
+  if (!info) {
+    throw new HttpError(404, "package_missing", "Das Installationspaket der Sonde ist noch nicht veröffentlicht.");
+  }
+  const signed = await admin.storage.from(PACKAGE_BUCKET).createSignedUrl(info.file, 600, { download: info.file });
+  if (signed.error || !signed.data?.signedUrl) throw unavailable();
+  return {
+    version: info.version,
+    build: info.build,
+    fileName: info.file,
+    size: info.size,
+    sha256: info.sha256,
+    builtAt: info.builtAt,
+    url: signed.data.signedUrl,
+  };
+}
+
 async function loadAgents(admin: Client, tenantId: string) {
   const { data, error } = await admin.from("ipam_agents")
     .select("id, name, status, hostname, platform, version, last_seen_at")
@@ -174,7 +213,11 @@ async function activeIncidents(admin: Client, tenantId: string, assetIds: string
 }
 
 async function overview(admin: Client, tenantId: string, canManage: boolean) {
-  const [sensors, agents] = await Promise.all([loadSensors(admin, tenantId), loadAgents(admin, tenantId)]);
+  const [sensors, agents, latest] = await Promise.all([
+    loadSensors(admin, tenantId),
+    loadAgents(admin, tenantId),
+    latestPackage(admin),
+  ]);
   const assetIds = [...new Set(sensors.map((sensor) => sensor.assetId))];
   const [assets, infrastructure, incidents] = await Promise.all([
     selectIn(admin, "assets", "id, name", tenantId, "id", assetIds),
@@ -227,7 +270,12 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
     deviceCount: devices.length,
     sensorCount: sensors.length,
     devices,
-    agents: agents.map((agent) => ({ ...agent, sensorCount: sensorCounts.get(agent.id) ?? 0 })),
+    agents: agents.map((agent) => ({
+      ...agent,
+      sensorCount: sensorCounts.get(agent.id) ?? 0,
+      updateAvailable: isOlderVersion(agent.version, latest?.version ?? null),
+    })),
+    probePackage: latest ? { version: latest.version, builtAt: latest.builtAt, size: latest.size } : null,
     checkedAt: new Date().toISOString(),
   };
 }
@@ -513,6 +561,9 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
       if (removed.error) throw unavailable();
       return { ok: true };
     }
+    case "probePackage":
+      manage();
+      return await probePackage(admin);
     case "createAgent":
       manage();
       return await createAgent(admin, action.tenantId, actorId, action.name);

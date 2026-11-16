@@ -27,6 +27,8 @@ export type MonitoringAgent = {
   lastSeenAt: string | null;
   online: boolean;
   sensorCount?: number;
+  /** An installed version older than the published package. */
+  updateAvailable?: boolean;
 };
 
 export type MonitoringDeviceRow = {
@@ -57,6 +59,8 @@ export type MonitoringOverview = {
   sensorCount: number;
   devices: MonitoringDeviceRow[];
   agents: MonitoringAgent[];
+  /** Newest published installation package of the probe. */
+  probePackage?: { version: string; builtAt: string; size: number } | null;
   checkedAt: string;
 };
 

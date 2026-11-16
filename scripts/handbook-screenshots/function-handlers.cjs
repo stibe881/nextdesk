@@ -1041,7 +1041,8 @@ const HANDLERS = {
         active: true,
         hostname: "probe-buero",
         platform: "linux",
-        version: "1.1.0",
+        version: "1.0.0",
+        updateAvailable: true,
         lastSeenAt: ago(21),
         online: true,
         sensorCount: 4,
@@ -1149,6 +1150,7 @@ const HANDLERS = {
         sensorCount: 18,
         devices,
         agents,
+        probePackage: { version: "1.1.0", builtAt: ago(7200), size: 8237661 },
         checkedAt: ago(12),
       });
     }

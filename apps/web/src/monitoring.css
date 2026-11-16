@@ -488,6 +488,24 @@ button.monitoring-tile[aria-pressed="true"] {
   min-width: 0;
 }
 
+.monitoring-package {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.monitoring-package > div {
+  display: grid;
+  flex: 1 1 220px;
+  gap: 2px;
+  min-width: 0;
+  color: var(--ink);
+}
+
 .monitoring-steps {
   display: grid;
   gap: 6px;

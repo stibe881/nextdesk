@@ -47,7 +47,8 @@ export type Action =
   | { type: "saveSensor"; tenantId: string; sensor: SensorInput }
   | { type: "deleteSensor"; tenantId: string; sensorId: string }
   | { type: "pauseDevice"; tenantId: string; assetId: string; paused: boolean }
-  | { type: "createAgent"; tenantId: string; name: string };
+  | { type: "createAgent"; tenantId: string; name: string }
+  | { type: "probePackage"; tenantId: string };
 
 export function defaultName(kind: SensorKind, port: number | null, url: string | null): string {
   if (kind === "ping") return "Ping";
@@ -172,6 +173,8 @@ export function parseAction(value: unknown): Action | string | null {
         ? { type: "pauseDevice", tenantId, assetId, paused: value.paused }
         : null;
     }
+    case "probePackage":
+      return { type: "probePackage", tenantId };
     case "createAgent": {
       const name = typeof value.name === "string" ? value.name.replace(/\s+/g, " ").trim() : "";
       if (!name) return "Bitte einen Namen für die Sonde angeben.";
@@ -292,4 +295,43 @@ export function availability(points: readonly Point[]): number | null {
   if (!points.length) return null;
   const sum = points.reduce((total, point) => total + point.ok, 0);
   return Math.round((sum / points.length) * 10000) / 100;
+}
+
+export type ProbePackage = {
+  version: string;
+  build: string;
+  file: string;
+  size: number;
+  sha256: string;
+  builtAt: string;
+};
+
+/** latest.json of the bucket «probe-packages» (written by the publish workflow). */
+export function parseProbePackage(value: unknown): ProbePackage | null {
+  if (!isObject(value)) return null;
+  const { version, build, file, size, sha256, builtAt } = value;
+  if (
+    typeof version !== "string" || !/^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(version) ||
+    typeof build !== "string" || !/^[0-9A-Za-z._-]{1,40}$/.test(build) ||
+    typeof file !== "string" || !/^nextdesk-sonde-[0-9A-Za-z._-]{1,80}\.zip$/.test(file) ||
+    typeof size !== "number" || !(size > 0) ||
+    typeof sha256 !== "string" || !/^[0-9a-f]{64}$/.test(sha256) ||
+    typeof builtAt !== "string" || !Number.isFinite(Date.parse(builtAt))
+  ) {
+    return null;
+  }
+  return { version, build, file, size, sha256, builtAt };
+}
+
+/** True when `installed` (e.g. «1.0.0») is older than `latest`. */
+export function isOlderVersion(installed: string | null, latest: string | null): boolean {
+  if (!installed || !latest) return false;
+  const parts = (text: string) => /^(\d+)\.(\d+)\.(\d+)/.exec(text)?.slice(1).map(Number) ?? null;
+  const a = parts(installed);
+  const b = parts(latest);
+  if (!a || !b) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (a[index]! !== b[index]!) return a[index]! < b[index]!;
+  }
+  return false;
 }
