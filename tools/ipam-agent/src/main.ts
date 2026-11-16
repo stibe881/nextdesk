@@ -29,6 +29,7 @@ import {
 } from "./reports.ts";
 import { runScan } from "./scan.ts";
 import { listInterfaces } from "./snmp.ts";
+import { connectionHint, trustSystemCertificates } from "./trust.ts";
 import { VERSION } from "./version.ts";
 
 type Hello = {
@@ -220,13 +221,29 @@ async function main(): Promise<void> {
     return;
   }
   setLogLevel(local.logLevel);
+  const trusted = trustSystemCertificates();
+  if (trusted)
+    log.debug(`${trusted} Zertifikate aus dem Speicher des Systems übernommen`);
   const client = new NextdeskClient(local.nextdeskUrl, local.agentToken);
   log.info(
     `nextDesk-IPAM-Agent ${VERSION} (${platform}) startet, Konfiguration ${configPath}`,
   );
 
   if (process.argv.includes("--check")) {
-    const state = await hello(client, local);
+    let state: Hello;
+    try {
+      state = await hello(client, local);
+    } catch (error) {
+      log.error(
+        connectionHint(error) ??
+          (error instanceof ApiError
+            ? `nextDesk lehnt die Sonde ab (${error.code}). Token prüfen.`
+            : "Die Verbindung zu nextDesk ist fehlgeschlagen."),
+        connectionHint(error) ? undefined : error,
+      );
+      process.exitCode = 1;
+      return;
+    }
     log.info(
       `Verbindung OK: Agent «${state.agent?.name ?? "?"}», ${state.subnets.length} Subnetze, ${state.config.snmpTargets.length} SNMP-Ziele, ${state.jobs.length} Aufträge, ${parseChecks(state.checks).length} Sensoren`,
     );
@@ -275,7 +292,8 @@ async function main(): Promise<void> {
         );
         pollSeconds = 300;
       } else {
-        log.error("Durchlauf fehlgeschlagen", error);
+        const hint = connectionHint(error);
+        log.error(hint ?? "Durchlauf fehlgeschlagen", hint ? undefined : error);
       }
       if (process.argv.includes("--once")) {
         process.exitCode = 1;

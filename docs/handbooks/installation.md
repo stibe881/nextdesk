@@ -426,6 +426,16 @@ einrichten.
 nextDesk eine Störung. Das prüft ein Datenbank-Job jede Minute; er nutzt
 dieselbe Weck-Einrichtung wie die Ablauf- und Backup-Überwachung.
 
+**HTTPS-Prüfung der Firewall:** Entschlüsselt eine Firewall den
+HTTPS-Verkehr (z. B. Sophos mit eigener Zertifizierungsstelle), bricht die
+Installation mit «self-signed certificate in certificate chain» ab. Ab
+Sonde 1.2.1 vertraut die Sonde den Zertifizierungsstellen aus dem
+Zertifikatsspeicher des Betriebssystems. Liegt das CA-Zertifikat der Firewall
+dort (Windows: «Vertrauenswürdige Stammzertifizierungsstellen» des
+Computers), genügt das neue Paket. Sonst das CA-Zertifikat dort installieren
+oder `<projekt>.supabase.co` in der Firewall von der HTTPS-Entschlüsselung
+ausnehmen. Die Prüfung der Zertifikate wird nie abgeschaltet.
+
 **Aktualisieren:** Zeigt nextDesk bei einer Sonde «Aktualisierung verfügbar»,
 das neue Paket herunterladen, entpacken und dasselbe Skript erneut ausführen.
 Ohne `config.json` im Paketordner bleibt die installierte Konfiguration

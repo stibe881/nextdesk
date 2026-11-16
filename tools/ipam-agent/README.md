@@ -79,6 +79,11 @@ Das Paket entsteht mit `scripts/package.sh` (Workflow «Publish probe
 package»). Bei einer Änderung, die auf installierte Sonden soll, die Version
 in `package.json`, `package-lock.json` und `src/version.ts` erhöhen.
 
+Hinter einer Firewall mit HTTPS-Entschlüsselung vertraut der Agent (ab 1.2.1,
+Node.js 22.19 oder neuer) zusätzlich den Zertifizierungsstellen aus dem
+Zertifikatsspeicher des Betriebssystems. Ältere Node.js-Versionen brauchen
+`NODE_EXTRA_CA_CERTS` mit dem CA-Zertifikat der Firewall.
+
 ## Installation aus dem Repository
 
 ### 1. Agent in nextDesk anlegen
