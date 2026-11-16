@@ -1,4 +1,4 @@
-<#
+﻿<#
   Installiert oder aktualisiert den nextDesk IPAM-Agenten (Sonde der
   Überwachung) als Windows-Dienst (WinSW).
 

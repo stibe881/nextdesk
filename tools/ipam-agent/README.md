@@ -156,6 +156,10 @@ allein genügt nicht, weil Node.js kein Windows-Dienstprogramm ist.
 Zeitplan, Subnetze, SNMP-Ziele und DHCP/DNS-Server stellst du in nextDesk
 ein; der Agent holt sie bei jedem Kontakt (etwa jede Minute) neu.
 
+Ein Scan kann viele Minuten dauern. Er läuft neben der Hauptschleife (ab
+1.2.2), der Agent meldet sich währenddessen weiter bei nextDesk. Ein Agent
+ohne Subnetze, SNMP-Ziele und DHCP/DNS-Server scannt gar nicht.
+
 Ablauf: Anmeldung (`hello`) → Aufträge ausführen → Scan nach Zeitplan →
 Ergebnisse in Teilen melden (`report`) → Ergebnis von Aufträgen melden
 (`jobResult`). «Jetzt scannen» in nextDesk startet einen Scan beim nächsten

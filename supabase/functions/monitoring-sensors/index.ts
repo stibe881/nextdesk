@@ -596,6 +596,10 @@ async function createAgent(admin: Client, tenantId: string, actorId: string, nam
     name,
     token_hash: await sha256Hex(token),
     token_hint: tokenHint(token),
+    // A probe created for monitoring measures sensors only. Without this the
+    // defaults of the IP address management apply: a ping sweep of every
+    // active subnet each hour. Discovery is switched on under IP-Adressen.
+    config: { scanAllActive: false, prefixIds: [] },
     created_by: actorId,
   });
   if (error) {
