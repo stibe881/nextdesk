@@ -551,6 +551,25 @@ button.monitoring-tile[aria-pressed="true"] {
   padding: 0;
 }
 
+.monitoring__inset {
+  margin: 0 20px 12px;
+}
+
+.monitoring-attached {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding: 12px 20px;
+  list-style: none;
+  color: var(--ink);
+}
+
+.monitoring-attached .text-button {
+  padding: 0;
+  font-weight: 650;
+}
+
 .monitoring-steps {
   display: grid;
   gap: 6px;

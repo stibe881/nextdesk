@@ -40,6 +40,13 @@ braucht keine eingehende Firewall-Regel.
 | LLDP                | Auf den Switches aktiv (Aruba AOS-CX/AOS-S: Standard). Ohne LLDP ermittelt nextDesk den Port aus der MAC-Tabelle.                                                                   |
 | DHCP/DNS (optional) | Windows-Agent im Domänennetz, RSAT-Module `DhcpServer` und `DnsServer` (`Install-WindowsFeature RSAT-DHCP, RSAT-DNS-Server`), Dienstkonto siehe unten.                              |
 
+### Verbindungen überwachter Geräte (ab 1.3.0)
+
+Für die Überwachung liest der Agent auf Anfrage von nextDesk (Auftrag
+`snmp_topology`, nur lesend) die Ports, die LLDP-Nachbarn und die MAC-Tabelle
+eines Geräts aus. Es gelten die SNMP-Zugangsdaten aus `config.json`; je Port
+werden höchstens acht MAC-Adressen gemeldet, bei mehr nur die Anzahl.
+
 ### SNMPv3 auf Aruba einrichten (Beispiel)
 
 Die genaue Syntax hängt von der Firmware ab; im Zweifel das Aruba-Handbuch

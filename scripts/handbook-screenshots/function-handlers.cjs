@@ -1183,6 +1183,86 @@ const HANDLERS = {
       lastMessage: null,
       ...extra,
     });
+    if (body.type === "connections") {
+      const link = (name, port, assetId, monitored, address) => ({
+        source: port ? "lldp" : "mac",
+        name,
+        port,
+        address,
+        mac: null,
+        assetId,
+        monitored,
+      });
+      return ok({
+        canManage: true,
+        scannedAt: D.iso(-42 * D.MIN),
+        pending: false,
+        error: null,
+        attachedTo: [
+          {
+            assetId: D.uid("49494949", 1),
+            name: "SW-CORE-01",
+            port: "1/1/7",
+            source: "mac",
+            monitored: true,
+          },
+        ],
+        ports: [
+          {
+            port: "Ethernet 1",
+            alias: "Uplink",
+            up: true,
+            speedMbps: 10000,
+            link: link(
+              "SW-CORE-01",
+              "1/1/7",
+              D.uid("49494949", 1),
+              true,
+              "10.10.0.2",
+            ),
+            deviceCount: 0,
+          },
+          {
+            port: "Ethernet 2",
+            alias: "Backup",
+            up: true,
+            speedMbps: 10000,
+            link: link(
+              "SRV-BACKUP-01",
+              null,
+              D.uid("49494949", 5),
+              true,
+              "10.10.20.40",
+            ),
+            deviceCount: 1,
+          },
+          {
+            port: "iLO",
+            alias: null,
+            up: true,
+            speedMbps: 1000,
+            link: link("asw-srv-raum", "1/1/22", null, false, "10.10.0.14"),
+            deviceCount: 0,
+          },
+          {
+            port: "Ethernet 3",
+            alias: null,
+            up: false,
+            speedMbps: null,
+            link: null,
+            deviceCount: 0,
+          },
+          {
+            port: "Ethernet 4",
+            alias: null,
+            up: false,
+            speedMbps: null,
+            link: null,
+            deviceCount: 0,
+          },
+        ],
+      });
+    }
     if (body.type === "device") {
       return ok({
         canManage: true,

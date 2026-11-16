@@ -8,6 +8,7 @@ import {
   Play,
   Plus,
   Radar,
+  RefreshCw,
   Search,
   Trash2,
   Network,
@@ -32,8 +33,12 @@ import {
   formatAgo,
   formatMs,
   formatSince,
+  connectedPorts,
   formatValue,
   guessCategory,
+  LINK_SOURCE_LABELS,
+  type MonitoringConnections,
+  portLinkText,
   INTERVAL_OPTIONS,
   intervalLabel,
   kindLabel,
@@ -920,6 +925,14 @@ function DeviceView({
                   </div>
                 )}
               </article>
+
+              <ConnectionsCard
+                assetId={assetId}
+                now={now}
+                onOpenDevice={onOpenDevice}
+                onOpenInfrastructure={onOpenInfrastructure}
+                tenantId={tenantId}
+              />
             </div>
 
             <article className="monitoring-card">
@@ -2454,6 +2467,225 @@ function AddDeviceDialog({
         </div>
       </form>
     </Dialog>
+  );
+}
+
+/**
+ * Connections of the device: its ports with what hangs on them, and the
+ * switch ports it hangs on. The probe reads them via SNMP.
+ */
+function ConnectionsCard({
+  tenantId,
+  assetId,
+  now,
+  onOpenDevice,
+  onOpenInfrastructure,
+}: {
+  tenantId: string;
+  assetId: string;
+  now: number;
+  onOpenDevice: (assetId: string) => void;
+  onOpenInfrastructure?: ((assetId: string) => void) | undefined;
+}) {
+  const [data, setData] = useState<MonitoringConnections | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [all, setAll] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    monitoringCall<MonitoringConnections>({
+      type: "connections",
+      tenantId,
+      assetId,
+    })
+      .then((result) => {
+        setData(result);
+        setError(null);
+      })
+      .catch((failure) => setError(message(failure)));
+  }, [tenantId, assetId]);
+  useEffect(load, [load]);
+  // While the probe is asked, look again every few seconds.
+  const pending = data?.pending ?? false;
+  useEffect(() => {
+    if (!pending) return;
+    const timer = window.setInterval(load, 5000);
+    return () => window.clearInterval(timer);
+  }, [pending, load]);
+
+  const refresh = () => {
+    setBusy(true);
+    monitoringCall({ type: "refreshConnections", tenantId, assetId })
+      .then(load)
+      .catch((failure) => setError(message(failure)))
+      .finally(() => setBusy(false));
+  };
+  // A monitored neighbour opens here, any other device in the infrastructure.
+  const open = (target: { assetId: string | null; monitored: boolean }) =>
+    target.assetId === null
+      ? undefined
+      : target.monitored
+        ? () => onOpenDevice(target.assetId!)
+        : onOpenInfrastructure
+          ? () => onOpenInfrastructure(target.assetId!)
+          : undefined;
+
+  const ports = data ? (all ? data.ports : connectedPorts(data.ports)) : [];
+  return (
+    <article className="monitoring-card monitoring-card--flush">
+      <div className="monitoring-card__head monitoring-card__head--padded">
+        <div>
+          <h3>Verbindungen</h3>
+          <span className="monitoring-muted">
+            {data === null
+              ? "wird geladen …"
+              : data.pending
+                ? "Die Sonde liest die Verbindungen aus …"
+                : data.scannedAt
+                  ? `Stand ${formatAgo(data.scannedAt, now)}`
+                  : "noch nicht ausgelesen"}
+          </span>
+        </div>
+        {data?.canManage ? (
+          <button
+            className="secondary-button"
+            disabled={busy || data.pending}
+            onClick={refresh}
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" size={16} />
+            Jetzt auslesen
+          </button>
+        ) : null}
+      </div>
+      {(error ?? data?.error) ? (
+        <p
+          className="ticket-detail-message error monitoring__inset"
+          role="alert"
+        >
+          {error ?? data?.error}
+        </p>
+      ) : null}
+      {data?.attachedTo.length ? (
+        <ul className="monitoring-attached">
+          {data.attachedTo.map((entry) => {
+            const action = open(entry);
+            return (
+              <li key={`${entry.assetId}|${entry.port}`}>
+                Hängt an{" "}
+                {action ? (
+                  <button
+                    className="text-button"
+                    onClick={action}
+                    type="button"
+                  >
+                    {entry.name}
+                  </button>
+                ) : (
+                  <strong>{entry.name}</strong>
+                )}
+                , Port {entry.port}{" "}
+                <span className="monitoring-muted">
+                  ({LINK_SOURCE_LABELS[entry.source]})
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {data && data.ports.length > 0 ? (
+        <>
+          <div className="monitoring__scroll">
+            <table className="monitoring-table">
+              <thead>
+                <tr>
+                  <th scope="col">Port</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Verbunden mit</th>
+                  <th scope="col">Quelle</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ports.map((port) => {
+                  const action = port.link ? open(port.link) : undefined;
+                  return (
+                    <tr key={port.port}>
+                      <td>
+                        <strong>{port.port}</strong>
+                        {port.alias ? (
+                          <span className="monitoring-muted">{port.alias}</span>
+                        ) : null}
+                      </td>
+                      <td>
+                        {port.up === null
+                          ? "–"
+                          : port.up
+                            ? [
+                                "aktiv",
+                                port.speedMbps
+                                  ? formatValue(port.speedMbps * 1e6, "bit/s")
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")
+                            : "kein Link"}
+                      </td>
+                      <td>
+                        {action ? (
+                          <button
+                            className="text-button monitoring-table__name"
+                            onClick={action}
+                            type="button"
+                          >
+                            {portLinkText(port)}
+                          </button>
+                        ) : (
+                          portLinkText(port)
+                        )}
+                        {port.link ? (
+                          <span className="monitoring-muted">
+                            {[port.link.address, port.link.mac]
+                              .filter(
+                                (value) => value && value !== port.link!.name,
+                              )
+                              .join(" · ")}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td>
+                        {port.link ? LINK_SOURCE_LABELS[port.link.source] : "–"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {ports.length === 0 ? (
+            <p className="monitoring__empty">
+              An keinem Port wurde eine Gegenstelle erkannt.
+            </p>
+          ) : null}
+          <p className="monitoring__empty">
+            <button
+              className="text-button"
+              onClick={() => setAll((value) => !value)}
+              type="button"
+            >
+              {all
+                ? "Nur Ports mit Gegenstelle zeigen"
+                : `Alle ${data.ports.length} Ports zeigen`}
+            </button>
+          </p>
+        </>
+      ) : data && !data.pending && !data.error && !data.attachedTo.length ? (
+        <p className="monitoring__empty">
+          {data.scannedAt
+            ? "Das Gerät meldet keine Ports."
+            : "Für Switches, Firewalls und Router liest die Sonde die Verbindungen per SNMP aus (alle sechs Stunden). Voraussetzung sind SNMP-Zugangsdaten auf der Sonde."}
+        </p>
+      ) : null}
+    </article>
   );
 }
 
