@@ -5,7 +5,10 @@ import {
   formatAgo,
   formatMs,
   formatSince,
+  categoryText,
   connectedPorts,
+  kindFields,
+  kindValue,
   formatValue,
   portLinkText,
   sortDevices,
@@ -328,5 +331,31 @@ describe("Überwachung: Geräteliste sortieren", () => {
     expect(
       names(sortDevices(rows, { key: "response", descending: true })),
     ).toEqual(["b", "c", "a"]);
+  });
+});
+
+describe("Überwachung: eigene Gerätearten", () => {
+  it("zeigt die eigene Art nur für «other»", () => {
+    expect(categoryText("other", "iLO")).toBe("iLO");
+    expect(categoryText("other", null)).toBe("Gerät");
+    expect(categoryText("switch", "iLO")).toBe("Switch");
+    expect(categoryText(null)).toBe("Gerät");
+  });
+
+  it("wandelt zwischen Auswahlwert und Feldern", () => {
+    expect(kindValue("other", "iLO")).toBe("custom:iLO");
+    expect(kindValue("switch", null)).toBe("switch");
+    expect(kindFields("custom:  iLO  Karte ")).toEqual({
+      category: "other",
+      categoryLabel: "iLO Karte",
+    });
+    expect(kindFields("server")).toEqual({
+      category: "server",
+      categoryLabel: null,
+    });
+    expect(kindFields("custom: ")).toEqual({
+      category: "other",
+      categoryLabel: null,
+    });
   });
 });

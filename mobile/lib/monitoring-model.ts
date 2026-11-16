@@ -64,6 +64,8 @@ export type MonitoringDeviceRow = {
   assetId: string;
   name: string;
   category: string | null;
+  /** Own name of the kind (category «other»). */
+  categoryLabel?: string | null;
   hostname: string | null;
   ipAddress: string | null;
   state: MonitoringState;
@@ -121,6 +123,7 @@ export type MonitoringDeviceDetail = {
     assetId: string;
     name: string;
     category: string | null;
+    categoryLabel?: string | null;
     hostname: string | null;
     ipAddress: string | null;
     state: MonitoringState;
@@ -128,6 +131,8 @@ export type MonitoringDeviceDetail = {
     uplink: { assetId: string; name: string } | null;
     incident: MonitoringIncident | null;
   };
+  /** Own device kinds of the tenant (for editing). */
+  kinds?: string[];
   sensors: MonitoringSensor[];
   agents: MonitoringAgent[];
   checkedAt: string;
@@ -230,6 +235,8 @@ export type MonitoringAssetChoice = {
   assetId: string;
   name: string;
   category: string | null;
+  /** Own name of the kind (category «other»). */
+  categoryLabel?: string | null;
   hostname: string | null;
   ipAddress: string | null;
   monitored: boolean;
@@ -409,6 +416,39 @@ export const CATEGORY_LABELS: Record<string, string> = {
   virtual_host: "Virtualisierungshost",
   other: "Gerät",
 };
+
+/** Kind of a device as shown: the own name for «other», else the fixed label. */
+export function categoryText(
+  category: string | null | undefined,
+  label?: string | null,
+): string {
+  if (category === "other" && label) return label;
+  return CATEGORY_LABELS[category ?? ""] ?? "Gerät";
+}
+
+const CUSTOM_KIND = "custom:";
+
+/** One value for a select: a fixed kind, or an own kind as «custom:<name>». */
+export function kindValue(
+  category: string | null | undefined,
+  label?: string | null,
+): string {
+  return category === "other" && label
+    ? `${CUSTOM_KIND}${label}`
+    : (category ?? "other");
+}
+
+/** Fields of a device for a value of `kindValue`. */
+export function kindFields(value: string): {
+  category: string;
+  categoryLabel: string | null;
+} {
+  if (!value.startsWith(CUSTOM_KIND)) {
+    return { category: value, categoryLabel: null };
+  }
+  const label = value.slice(CUSTOM_KIND.length).replace(/\s+/g, " ").trim();
+  return { category: "other", categoryLabel: label || null };
+}
 
 export const INTERVAL_OPTIONS: readonly { seconds: number; label: string }[] = [
   { seconds: 30, label: "30 Sekunden" },

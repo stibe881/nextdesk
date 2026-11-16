@@ -500,6 +500,10 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    auswählen** kreuzt alle Treffer der aktuellen Suche an. Für Einträge der
    IP-Adressverwaltung bestimmt nextDesk die Art aus Name und Beschreibung;
    sie lässt sich im Dialog für alle festlegen und später je Gerät ändern.
+   Fehlt die passende Art (z. B. «iLO», «Drucker», «Kamera»), legt **Neue Art
+   erstellen …** zuunterst in der Auswahl sie mit einem eigenen Namen an;
+   danach steht sie auch für weitere Geräte und unter **Bearbeiten** zur
+   Wahl. Eigene Arten erscheinen auch in der Infrastruktur.
    Ein Gerät ohne IP-Adresse und Hostname lässt sich nur einzeln hinzufügen,
    der Dialog fragt dann nach der Adresse.
 

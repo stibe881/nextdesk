@@ -82,10 +82,22 @@ export const DEVICE_CATEGORIES = [
   "other",
 ] as const;
 
+/**
+ * Own name of a device kind («iLO», «Drucker»). Only kept for the category
+ * «other»; the fixed kinds have their own labels.
+ */
+export function parseCategoryLabel(category: unknown, value: unknown): string | null {
+  if (category !== "other" || typeof value !== "string") return null;
+  // deno-lint-ignore no-control-regex
+  const label = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  return label ? label.slice(0, 60) : null;
+}
+
 /** A device that is not in the infrastructure yet. */
 export type NewDevice = {
   name: string;
   category: (typeof DEVICE_CATEGORIES)[number];
+  categoryLabel: string | null;
   ipAddress: string | null;
   hostname: string | null;
   agentId: string | null;
@@ -117,6 +129,7 @@ export function parseNewDevice(value: unknown): NewDevice | string {
   return {
     name,
     category: value.category as NewDevice["category"],
+    categoryLabel: parseCategoryLabel(value.category, value.categoryLabel),
     ipAddress: isIp ? address : null,
     hostname: isIp ? null : address,
     agentId,
@@ -128,6 +141,7 @@ export function parseNewDevice(value: unknown): NewDevice | string {
 export type DeviceEdit = {
   name: string;
   category: (typeof DEVICE_CATEGORIES)[number];
+  categoryLabel: string | null;
   ipAddress: string | null;
   hostname: string | null;
 };
@@ -151,6 +165,7 @@ export function parseDeviceEdit(value: unknown): DeviceEdit | string {
   return {
     name,
     category: value.category as DeviceEdit["category"],
+    categoryLabel: parseCategoryLabel(value.category, value.categoryLabel),
     ipAddress: ipAddress || null,
     hostname: hostname || null,
   };

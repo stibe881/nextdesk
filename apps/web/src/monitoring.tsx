@@ -26,6 +26,9 @@ import {
 
 import {
   CATEGORY_LABELS,
+  categoryText,
+  kindFields,
+  kindValue,
   chartGeometry,
   CLOUD_KINDS,
   draftFromSensor,
@@ -411,7 +414,10 @@ function OverviewView({
                           </button>
                           <span className="monitoring-muted">
                             {[
-                              CATEGORY_LABELS[device.category ?? ""] ?? "Gerät",
+                              categoryText(
+                                device.category,
+                                device.categoryLabel,
+                              ),
                               device.ipAddress ?? device.hostname,
                             ]
                               .filter(Boolean)
@@ -749,7 +755,7 @@ function DeviceView({
               </div>
               <p>
                 {[
-                  CATEGORY_LABELS[data.device.category ?? ""] ?? "Gerät",
+                  categoryText(data.device.category, data.device.categoryLabel),
                   data.device.ipAddress,
                   data.device.hostname,
                 ]
@@ -1055,6 +1061,7 @@ function DeviceView({
       {editing && data ? (
         <DeviceDialog
           device={data.device}
+          kinds={data.kinds ?? []}
           onClose={() => setEditing(false)}
           onSaved={() => {
             setEditing(false);
@@ -2046,16 +2053,20 @@ function PortsDialog({
 function DeviceDialog({
   tenantId,
   device,
+  kinds,
   onClose,
   onSaved,
 }: {
   tenantId: string;
   device: MonitoringDeviceDetail["device"];
+  kinds: string[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [name, setName] = useState(device.name);
-  const [category, setCategory] = useState(device.category ?? "other");
+  const [kind, setKind] = useState(
+    kindValue(device.category, device.categoryLabel),
+  );
   const [ipAddress, setIpAddress] = useState(device.ipAddress ?? "");
   const [hostname, setHostname] = useState(device.hostname ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -2070,7 +2081,7 @@ function DeviceDialog({
         type: "updateDevice",
         tenantId,
         assetId: device.assetId,
-        device: { name, category, ipAddress, hostname },
+        device: { name, ...kindFields(kind), ipAddress, hostname },
       });
       onSaved();
     } catch (failure) {
@@ -2096,19 +2107,7 @@ function DeviceDialog({
             value={name}
           />
         </label>
-        <label className="monitoring-field">
-          <span>Art</span>
-          <select
-            onChange={(event) => setCategory(event.target.value)}
-            value={category}
-          >
-            {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <KindSelect kinds={kinds} label="Art" onChange={setKind} value={kind} />
         <div className="monitoring-field-row">
           <label className="monitoring-field">
             <span>IP-Adresse</span>
@@ -2153,6 +2152,91 @@ function DeviceDialog({
 }
 
 const AUTO_CATEGORY = "auto";
+const NEW_KIND = "new";
+
+/**
+ * Kind of a device: the fixed kinds, the own kinds of the tenant, and «Neue
+ * Art erstellen …» for a kind that does not exist yet.
+ */
+function KindSelect({
+  label,
+  value,
+  kinds,
+  onChange,
+  auto = false,
+  hint,
+}: {
+  label: string;
+  /** A value of `kindValue`, or AUTO_CATEGORY. */
+  value: string;
+  kinds: string[];
+  onChange: (value: string) => void;
+  /** Offers «Automatisch aus Name und Beschreibung». */
+  auto?: boolean;
+  hint?: string;
+}) {
+  const current = value === AUTO_CATEGORY ? null : kindFields(value);
+  const known =
+    current === null ||
+    current.categoryLabel === null ||
+    kinds.includes(current.categoryLabel);
+  // An own kind that is not in the list yet is being typed in.
+  const [creating, setCreating] = useState(!known);
+  // As typed (spaces included); a single blank stands for «nothing yet».
+  const typed =
+    value.startsWith("custom:") && value !== "custom: "
+      ? value.slice("custom:".length)
+      : "";
+  return (
+    <div className="monitoring-field">
+      <label className="monitoring-field">
+        <span>{label}</span>
+        <select
+          onChange={(event) => {
+            const next = event.target.value;
+            setCreating(next === NEW_KIND);
+            onChange(next === NEW_KIND ? kindValue("other", " ") : next);
+          }}
+          value={creating ? NEW_KIND : value}
+        >
+          {auto ? (
+            <option value={AUTO_CATEGORY}>
+              Automatisch aus Name und Beschreibung
+            </option>
+          ) : null}
+          {Object.entries(CATEGORY_LABELS).map(([key, text]) => (
+            <option key={key} value={key}>
+              {text}
+            </option>
+          ))}
+          {kinds.map((kind) => (
+            <option key={kind} value={kindValue("other", kind)}>
+              {kind}
+            </option>
+          ))}
+          <option value={NEW_KIND}>Neue Art erstellen …</option>
+        </select>
+      </label>
+      {creating ? (
+        <label className="monitoring-field">
+          <span>Name der neuen Art</span>
+          <input
+            autoFocus
+            maxLength={60}
+            onChange={(event) =>
+              onChange(kindValue("other", event.target.value || " "))
+            }
+            placeholder="z. B. iLO, Drucker, Kamera"
+            required
+            type="text"
+            value={typed}
+          />
+        </label>
+      ) : null}
+      {hint ? <span className="monitoring-muted">{hint}</span> : null}
+    </div>
+  );
+}
 
 /**
  * Adds devices to the monitoring. Sources: devices of the infrastructure and
@@ -2189,7 +2273,8 @@ function AddDeviceDialog({
   const [saving, setSaving] = useState<string | null>(null);
   const [target, setTarget] = useState("");
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("server");
+  const [kind, setKind] = useState("server");
+  const [kinds, setKinds] = useState<string[]>([]);
   const [addressKind, setAddressKind] = useState(AUTO_CATEGORY);
   const [address, setAddress] = useState("");
 
@@ -2207,11 +2292,13 @@ function AddDeviceDialog({
       monitoringCall<{
         assets: MonitoringAssetChoice[];
         addresses?: MonitoringAddressChoice[];
+        kinds?: string[];
       }>({ type: "assets", tenantId, query })
         .then((result) => {
           if (cancelled) return;
           setChoices(result.assets);
           setAddresses(result.addresses ?? []);
+          setKinds(result.kinds ?? []);
         })
         .catch((failure) => {
           if (!cancelled) setError(message(failure));
@@ -2278,7 +2365,13 @@ function AddDeviceDialog({
         const result = await monitoringCall<{ assetId: string }>({
           type: "addDevice",
           tenantId,
-          device: { name, category, address, agentId, ipamAddressId: null },
+          device: {
+            name,
+            ...kindFields(kind),
+            address,
+            agentId,
+            ipamAddressId: null,
+          },
         });
         onSaved(result.assetId);
         return;
@@ -2303,10 +2396,11 @@ function AddDeviceDialog({
           tenantId,
           device: {
             name: entry.hostname ?? entry.address,
-            category:
+            ...kindFields(
               addressKind === AUTO_CATEGORY
                 ? guessCategory(entry.hostname, entry.description)
                 : addressKind,
+            ),
             address: entry.address,
             agentId,
             ipamAddressId: entry.addressId,
@@ -2384,7 +2478,7 @@ function AddDeviceDialog({
                     <strong>{choice.name}</strong>
                     <span className="monitoring-muted">
                       {[
-                        CATEGORY_LABELS[choice.category ?? ""] ?? "Gerät",
+                        categoryText(choice.category, choice.categoryLabel),
                         choice.ipAddress ?? choice.hostname ?? "ohne Adresse",
                         choice.monitored ? "wird bereits überwacht" : null,
                       ]
@@ -2455,19 +2549,12 @@ function AddDeviceDialog({
               />
             </label>
             <div className="monitoring-field-row">
-              <label className="monitoring-field">
-                <span>Art</span>
-                <select
-                  onChange={(event) => setCategory(event.target.value)}
-                  value={category}
-                >
-                  {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <KindSelect
+                kinds={kinds}
+                label="Art"
+                onChange={setKind}
+                value={kind}
+              />
               <label className="monitoring-field">
                 <span>IP-Adresse oder Hostname</span>
                 <input
@@ -2482,30 +2569,18 @@ function AddDeviceDialog({
           </>
         ) : null}
         {entries.size > 0 ? (
-          <label className="monitoring-field">
-            <span>
-              {entries.size === 1
+          <KindSelect
+            auto
+            hint="Einträge der IP-Adressverwaltung werden als Gerät in der Infrastruktur angelegt. Die Art lässt sich später ändern."
+            kinds={kinds}
+            label={
+              entries.size === 1
                 ? "Art des neuen Geräts"
-                : `Art der ${entries.size} neuen Geräte`}
-            </span>
-            <select
-              onChange={(event) => setAddressKind(event.target.value)}
-              value={addressKind}
-            >
-              <option value={AUTO_CATEGORY}>
-                Automatisch aus Name und Beschreibung
-              </option>
-              {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            <span className="monitoring-muted">
-              Einträge der IP-Adressverwaltung werden als Gerät in der
-              Infrastruktur angelegt. Die Art lässt sich später ändern.
-            </span>
-          </label>
+                : `Art der ${entries.size} neuen Geräte`
+            }
+            onChange={setAddressKind}
+            value={addressKind}
+          />
         ) : null}
         {needsTarget ? (
           <label className="monitoring-field">

@@ -16326,4 +16326,35 @@ $$;
 rollback;
 SQL
 
+# 0353: eigene Gerätearten in der Infrastruktur.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_asset uuid;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'ILO-0353', 'other', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, category_label, ip_address)
+  values (v_asset, v_tenant, 'other', 'iLO', '10.53.0.2');
+  if (select category_label from public.asset_infrastructure where asset_id = v_asset) <> 'iLO' then
+    raise exception '0353 test: own kind not stored';
+  end if;
+  begin
+    update public.asset_infrastructure set category_label = '   ' where asset_id = v_asset;
+    raise exception '0353 test: empty own kind accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    update public.asset_infrastructure set category_label = repeat('x', 61) where asset_id = v_asset;
+    raise exception '0353 test: overlong own kind accepted';
+  exception when check_violation then null;
+  end;
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

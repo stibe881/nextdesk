@@ -15,7 +15,7 @@ import { stateBadge, stateBar } from "@/components/monitoring-styles";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { ScreenContainer } from "@/components/screen-container";
 import {
-  CATEGORY_LABELS,
+  categoryText,
   formatAgo,
   formatMs,
   formatSince,
@@ -246,7 +246,7 @@ export default function MonitoringScreen() {
                     </Text>
                     <Text numberOfLines={1} style={styles.rowMeta}>
                       {[
-                        CATEGORY_LABELS[device.category ?? ""] ?? "Gerät",
+                        categoryText(device.category, device.categoryLabel),
                         device.ipAddress ?? device.hostname,
                         sensorCountsText(device.counts),
                       ]
