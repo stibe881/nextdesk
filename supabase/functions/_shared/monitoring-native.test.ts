@@ -5,6 +5,8 @@ import {
   formatValue,
   parseResults,
   parseTransitions,
+  probeEvent,
+  probeKey,
   sensorKey,
   type SensorTransition,
   transitionEvent,
@@ -24,8 +26,8 @@ Deno.test("results: unusable entries are dropped, values are bounded", () => {
   ]);
   assertEquals(parsed?.skipped, 4);
   assertEquals(parsed?.results, [
-    { id: SENSOR, at: "2026-11-16T10:00:00.000Z", ok: true, value: 1.23, message: "ok fine" },
-    { id: SENSOR, at: "2026-11-16T10:01:00.000Z", ok: false, value: null, message: null },
+    { id: SENSOR, at: "2026-11-16T10:00:00.000Z", ok: true, value: 1.23, value2: null, message: "ok fine" },
+    { id: SENSOR, at: "2026-11-16T10:01:00.000Z", ok: false, value: -1, value2: null, message: null },
   ]);
   assertEquals(parseResults({}), null);
   assertEquals(parseResults(new Array(5001).fill({})), null);
@@ -41,6 +43,7 @@ function transition(overrides: Partial<SensorTransition>): SensorTransition {
     to: "down",
     at: "2026-11-16T10:02:00Z",
     value: null,
+    unit: null,
     message: null,
     ...overrides,
   };
@@ -87,4 +90,41 @@ Deno.test("transitions from the database and the sensor key", () => {
   assertEquals(parseTransitions(null), []);
   assertEquals(sensorKey(SENSOR.toUpperCase()), `nd:sensor:${SENSOR}`);
   assertEquals(formatValue(null), null);
+});
+
+Deno.test("values are formatted by unit, threshold messages get the value", () => {
+  assertEquals(formatValue(412.4), "412 ms");
+  assertEquals(formatValue(91.26, "%"), "91 %");
+  assertEquals(formatValue(1_240_000_000, "bit/s"), "1.2 Gbit/s");
+  assertEquals(formatValue(38_400_000, "bit/s"), "38 Mbit/s");
+  assertEquals(formatValue(120, "bit/s"), "120 bit/s");
+  assertEquals(formatValue(12 * 86400 + 3 * 3600, "s"), "12 Tg. 3 Std.");
+  assertEquals(formatValue(2 * 3600 + 300, "s"), "2 Std. 5 Min.");
+  const event = transitionEvent(
+    transition({ kind: "snmp", to: "down", value: 96, unit: "%", message: "Wert über der Ausfall-Schwelle" }),
+    null,
+    "Sonde",
+  );
+  assertEquals(event?.message, "Wert über der Ausfall-Schwelle (96 %)");
+  assertEquals(event?.lastValue, "96 %");
+  assertEquals(
+    transitionEvent(transition({ kind: "snmp", from: "down", to: "up", value: 40, unit: "%" }), null, "Sonde")?.message,
+    "Wieder in Ordnung (40 %)",
+  );
+  assertEquals(parseResults([{ id: SENSOR, at: "2026-11-16T10:00:00Z", ok: true, value: 5e6, value2: 1.5e6 }])?.results[0]?.value2, 1500000);
+});
+
+Deno.test("probe watchdog: events for a silent and a returning probe", () => {
+  const now = Date.parse("2026-11-16T10:10:00Z");
+  const down = probeEvent("down", { name: "Baar", lastSeenAt: "2026-11-16T10:03:00Z", sensors: 14 }, now);
+  assertEquals(down.kind, "down");
+  assertEquals(down.device, "Sonde «Baar»");
+  assertEquals(down.message, "Seit 7 Minuten keine Meldung. 14 Sensoren werden nicht gemessen.");
+  assertEquals(classifyStatus(down.status), "down");
+  assertEquals(
+    probeEvent("down", { name: "Neu", lastSeenAt: null, sensors: 1 }, now).message,
+    "Noch nie gemeldet. 1 Sensor wird nicht gemessen.",
+  );
+  assertEquals(probeEvent("up", { name: "Baar", lastSeenAt: null, sensors: 0 }, now).kind, "up");
+  assertEquals(probeKey("ABCDEF00-0000-4000-8000-000000000001"), "nd:probe:abcdef00-0000-4000-8000-000000000001");
 });

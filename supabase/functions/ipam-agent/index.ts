@@ -22,9 +22,12 @@ import {
   MONITORING_FEATURE,
   parseResults,
   parseTransitions,
+  probeEvent,
+  probeKey,
   sensorKey,
   transitionEvent,
 } from "../_shared/monitoring-native.ts";
+import { verifyDispatchSecret } from "../_shared/monitoring-admin.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import {
   INTEGRATION_COLUMNS,
@@ -208,6 +211,11 @@ async function hello(
   }
   const jobs: Row[] = [];
   for (const job of (claimed ?? []) as Row[]) {
+    if (job.kind === "snmp_interfaces") {
+      // Read-only; belongs to the monitoring module.
+      if (modules.monitoring) jobs.push({ id: job.id, kind: job.kind, payload: job.payload ?? {} });
+      continue;
+    }
     if (job.kind !== "scan_now" && !config.allowWrites) {
       await admin.from("ipam_agent_jobs").update({
         status: "failed",
@@ -591,6 +599,47 @@ async function monitorReport(admin: Admin, agent: Agent, body: Record<string, un
 }
 
 // ---------------------------------------------------------------------------
+// Probe watchdog (cron): a probe with sensors that stopped reporting opens an
+// incident; it resolves when the probe reports again.
+
+async function probeWatchdog(admin: Admin): Promise<Record<string, number>> {
+  const { data, error } = await admin.rpc("monitoring_probe_watchdog_due");
+  if (error) throw new Error("watchdog_due_failed");
+  const due = (Array.isArray(data) ? data : []).filter(isObject);
+  const features = new Map<string, boolean>();
+  let opened = 0;
+  let resolved = 0;
+  let failed = 0;
+  for (const entry of due) {
+    const tenantId = String(entry.tenantId);
+    const agentId = String(entry.agentId);
+    const action = entry.action === "up" ? "up" : "down";
+    try {
+      if (!features.has(tenantId)) {
+        const states = await resolveTenantFeatureStates(admin, tenantId, [MONITORING_FEATURE]);
+        features.set(tenantId, states?.[MONITORING_FEATURE] === true);
+      }
+      // A disabled module raises no new alarm, but an open one still ends.
+      if (action === "down" && !features.get(tenantId)) continue;
+      const integration = await monitoringIntegration(admin, tenantId);
+      if (!integration) throw new Error("integration_unavailable");
+      const event = probeEvent(action, {
+        name: String(entry.name ?? "Sonde"),
+        lastSeenAt: typeof entry.lastSeenAt === "string" ? entry.lastSeenAt : null,
+        sensors: typeof entry.sensors === "number" ? entry.sensors : 0,
+      }, Date.now());
+      await processEvent(admin, integration, event, new Date(), { key: probeKey(agentId), device: null });
+      if (action === "down") opened += 1;
+      else resolved += 1;
+    } catch (failure) {
+      failed += 1;
+      console.error("monitoring_probe_watchdog_failed", failure instanceof Error ? failure.message : typeof failure);
+    }
+  }
+  return { due: due.length, opened, resolved, failed };
+}
+
+// ---------------------------------------------------------------------------
 // jobResult
 
 async function jobResult(admin: Admin, agent: Agent, body: Record<string, unknown>): Promise<Response> {
@@ -600,7 +649,7 @@ async function jobResult(admin: Admin, agent: Agent, body: Record<string, unknow
     : null;
   if (!jobId || typeof body.ok !== "boolean") return reply({ ok: false, error: "invalid_job_result" }, 422);
   const result = isObject(body.result) ? body.result : null;
-  if (result && encoder.encode(JSON.stringify(result)).length > 16 * 1024) {
+  if (result && encoder.encode(JSON.stringify(result)).length > 128 * 1024) {
     return reply({ ok: false, error: "result_too_large" }, 413);
   }
   const error = body.ok ? null : shortText(body.error, 1000) ?? "Unbekannter Fehler.";
@@ -639,6 +688,17 @@ const handler = withSupabase(
   async (request, context) => {
     if (request.method !== "POST") {
       return new Response(null, { status: 405, headers: { Allow: "POST" } });
+    }
+    if (request.headers.has("x-nextdesk-dispatch-secret")) {
+      if (!(await verifyDispatchSecret(context.supabaseAdmin, request))) {
+        return new Response(null, { status: 401 });
+      }
+      try {
+        return reply({ ok: true, ...(await probeWatchdog(context.supabaseAdmin)) });
+      } catch (failure) {
+        console.error("monitoring_probe_watchdog_failed", failure instanceof Error ? failure.message : "");
+        return reply({ ok: false, error: "processing_failed" }, 500);
+      }
     }
     const client = clientKey(request);
     if (authThrottled(client)) {

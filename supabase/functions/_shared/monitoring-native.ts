@@ -11,7 +11,7 @@ export const MAX_RESULTS = 5000;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type SensorKind = "ping" | "tcp" | "http";
+export type SensorKind = "ping" | "tcp" | "http" | "snmp";
 export type SensorState = "unknown" | "up" | "warning" | "down";
 
 export type SensorResult = {
@@ -19,6 +19,7 @@ export type SensorResult = {
   at: string;
   ok: boolean;
   value: number | null;
+  value2: number | null;
   message: string | null;
 };
 
@@ -31,6 +32,8 @@ export type SensorTransition = {
   to: SensorState;
   at: string;
   value: number | null;
+  /** Unit of the value; null means response time in ms. */
+  unit: string | null;
   message: string | null;
 };
 
@@ -63,18 +66,17 @@ export function parseResults(
       skipped += 1;
       continue;
     }
-    const number =
-      typeof entry.value === "number" &&
-      Number.isFinite(entry.value) &&
-      entry.value >= 0 &&
-      entry.value < 1e9
-        ? Math.round(entry.value * 100) / 100
+    const bounded = (raw: unknown) =>
+      typeof raw === "number" && Number.isFinite(raw) && Math.abs(raw) < 1e15
+        ? Math.round(raw * 100) / 100
         : null;
+    const number = bounded(entry.value);
     results.push({
       id: entry.id.toLowerCase(),
       at: new Date(at).toISOString(),
       ok: entry.ok,
       value: number,
+      value2: bounded(entry.value2),
       message:
         typeof entry.message === "string" && entry.message.trim()
           ? entry.message.replace(/\s+/g, " ").trim().slice(0, 500)
@@ -104,13 +106,14 @@ export function parseTransitions(value: unknown): SensorTransition[] {
       sensorId: entry.sensorId,
       sensorName: typeof entry.sensorName === "string" ? entry.sensorName : "Sensor",
       assetId: entry.assetId,
-      kind: (["ping", "tcp", "http"].includes(String(entry.kind))
+      kind: (["ping", "tcp", "http", "snmp"].includes(String(entry.kind))
         ? entry.kind
         : "ping") as SensorKind,
       from: (states.includes(String(entry.from)) ? entry.from : "unknown") as SensorState,
       to: entry.to as SensorState,
       at: entry.at,
       value: typeof entry.value === "number" ? entry.value : null,
+      unit: typeof entry.unit === "string" && entry.unit ? entry.unit : null,
       message: typeof entry.message === "string" ? entry.message : null,
     }];
   });
@@ -121,9 +124,21 @@ export function sensorKey(sensorId: string): string {
   return `nd:sensor:${sensorId.toLowerCase()}`;
 }
 
-export function formatValue(value: number | null): string | null {
+/** «412 ms», «91 %», «1.2 Gbit/s», «12 Tg. 3 Std.» (unit null = ms). */
+export function formatValue(value: number | null, unit: string | null = null): string | null {
   if (value === null) return null;
-  return `${value < 10 ? Math.round(value * 10) / 10 : Math.round(value)} ms`;
+  const short = (number: number) => `${Math.abs(number) < 10 ? Math.round(number * 10) / 10 : Math.round(number)}`;
+  if (unit === "bit/s") {
+    const steps: [number, string][] = [[1e9, "Gbit/s"], [1e6, "Mbit/s"], [1e3, "kbit/s"]];
+    for (const [size, label] of steps) if (Math.abs(value) >= size) return `${short(value / size)} ${label}`;
+    return `${short(value)} bit/s`;
+  }
+  if (unit === "s") {
+    const days = Math.floor(value / 86400);
+    const hours = Math.floor((value % 86400) / 3600);
+    return days > 0 ? `${days} Tg. ${hours} Std.` : `${hours} Std. ${Math.floor((value % 3600) / 60)} Min.`;
+  }
+  return `${short(value)} ${unit ?? "ms"}`;
 }
 
 const STATUS: Record<Exclude<SensorState, "unknown">, { status: string; kind: StatusKind }> = {
@@ -144,19 +159,26 @@ export function transitionEvent(
   if (transition.to === "unknown") return null;
   if (transition.to === "up" && transition.from === "unknown") return null;
   const { status, kind } = STATUS[transition.to];
-  const value = formatValue(transition.value);
+  const value = formatValue(transition.value, transition.unit);
+  const suffix = value ? ` (${value})` : "";
   const fallback = transition.to === "down"
     ? "Keine Antwort"
     : transition.to === "warning"
-    ? `Antwortzeit über dem Schwellenwert${value ? ` (${value})` : ""}`
-    : `Wieder erreichbar${value ? ` (${value})` : ""}`;
+    ? `Antwortzeit über dem Schwellenwert${suffix}`
+    : transition.kind === "snmp"
+    ? `Wieder in Ordnung${suffix}`
+    : `Wieder erreichbar${suffix}`;
+  // Threshold messages from the database carry no value yet.
+  const message = transition.message && /Schwelle$/.test(transition.message)
+    ? `${transition.message}${suffix}`
+    : transition.message;
   return {
     device: device?.name ?? null,
     host: device?.ipAddress ?? device?.hostname ?? null,
     sensor: transition.sensorName,
     status,
     kind,
-    message: transition.message ?? fallback,
+    message: message ?? fallback,
     objectId: null,
     sensorId: null,
     deviceId: null,
@@ -169,4 +191,39 @@ export function transitionEvent(
     link: null,
     origin: "sensor",
   };
+}
+
+/** Event for a probe that stopped (or resumed) reporting. */
+export function probeEvent(
+  action: "down" | "up",
+  probe: { name: string; lastSeenAt: string | null; sensors: number },
+  now: number,
+): PrtgEvent {
+  const seen = probe.lastSeenAt ? Date.parse(probe.lastSeenAt) : NaN;
+  const minutes = Number.isFinite(seen) ? Math.max(1, Math.round((now - seen) / 60000)) : null;
+  return {
+    device: `Sonde «${probe.name}»`,
+    host: null,
+    sensor: "Verbindung zu nextDesk",
+    status: action === "down" ? "Fehler" : "OK",
+    kind: action,
+    message: action === "down"
+      ? `${minutes === null ? "Noch nie gemeldet" : `Seit ${minutes} Minuten keine Meldung`}. ${probe.sensors} ${probe.sensors === 1 ? "Sensor wird" : "Sensoren werden"} nicht gemessen.`
+      : "Die Sonde meldet sich wieder.",
+    objectId: null,
+    sensorId: null,
+    deviceId: null,
+    lastValue: null,
+    dateTime: new Date(now).toISOString(),
+    group: null,
+    probe: probe.name,
+    down: null,
+    priority: null,
+    link: null,
+    origin: "sensor",
+  };
+}
+
+export function probeKey(agentId: string): string {
+  return `nd:probe:${agentId.toLowerCase()}`;
 }
