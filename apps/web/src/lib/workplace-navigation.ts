@@ -52,12 +52,16 @@ export function requestedWorkplaceViewForFollowUps(
 export function migrateWorkplaceStartSection(
   value: unknown,
 ): MigratedWorkplaceStartSection {
-  if (value === "Wiedervorlagen") {
+  // Stored start sections still use the former name «Wiedervorlagen».
+  if (value === "Wiedervorlagen" || value === "Erinnerungen") {
     return { requestedView: "followUps", section: "Arbeitsplatz" };
   }
   // "Mein Portal" is now the "Mein Bereich" view of the workplace.
   if (value === "Mein Portal") {
     return { requestedView: "portal", section: "Arbeitsplatz" };
+  }
+  if (value === "Sicherheitsfälle") {
+    return { requestedView: null, section: "Phishing / Junk" };
   }
   if (value === "Erwähnungen") {
     return { requestedView: null, section: "Arbeitsplatz" };

@@ -22772,7 +22772,7 @@ html body form:has(> .fk-layout) {
   justify-self: start;
 }
 
-/* Navigation badges of «Sicherheitsfälle»/«Störungen»: red while something
+/* Navigation badges of «Phishing / Junk»/«Störungen»: red while something
    needs action (unassigned / unacknowledged), grey when merely open. */
 .nav-item__badge--urgent,
 .navigation-cluster__badge--urgent {

@@ -45,7 +45,7 @@ export default function TabLayout() {
     shopVisible,
   );
 
-  // Links vom Home: Tickets, Störungen, Phishing (Arbeit);
+  // Links vom Home: Tickets, Störungen, Phishing / Junk (Arbeit);
   // rechts: Shop, Wissen, Scan.
   const tabItems: NextDeskTabItem[] = [
     {
@@ -70,7 +70,7 @@ export default function TabLayout() {
   if (phishingVisible) {
     tabItems.push({
       name: "phishing",
-      label: "Phishing",
+      label: "Phishing / Junk",
       icon: "shield-outline",
       activeIcon: "shield",
       side: "left",
@@ -134,7 +134,7 @@ export default function TabLayout() {
           name="phishing"
           options={{
             href: phishingVisible ? undefined : null,
-            title: "Phishing",
+            title: "Phishing / Junk",
           }}
         />
         <Tabs.Screen name="services" options={{ href: null }} />

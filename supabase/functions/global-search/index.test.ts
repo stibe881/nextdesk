@@ -46,7 +46,7 @@ Deno.test("global search adds incidents and security cases for the responsible t
   assert(source.includes('"incident"'));
   assert(source.includes('"security_case"'));
   assert(source.includes('"Störungen"'));
-  assert(source.includes('"Sicherheitsfälle"'));
+  assert(source.includes('"Phishing / Junk"'));
   const operations = Deno.readTextFileSync(
     new URL("../../migrations/0313_security_context_campaigns.sql", import.meta.url),
   );

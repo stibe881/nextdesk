@@ -19,12 +19,12 @@ type SearchResult = {
   detail: string;
   section:
     | "Tickets"
-    | "Wiedervorlagen"
+    | "Erinnerungen"
     | "Wissen"
     | "Veranstaltungsräume"
     | "Eintritte"
     | "Störungen"
-    | "Sicherheitsfälle";
+    | "Phishing / Junk";
   ticketId: string | null;
 };
 
@@ -154,6 +154,11 @@ function json(request: Request, body: Record<string, unknown>, status = 200) {
   });
 }
 
+const LEGACY_SECTIONS: Record<string, string> = {
+  Wiedervorlagen: "Erinnerungen",
+  Sicherheitsfälle: "Phishing / Junk",
+};
+
 function parseResults(value: unknown): SearchResult[] | null {
   if (!Array.isArray(value)) return null;
   const allowed = new Set<SearchResult["resultType"]>([
@@ -167,15 +172,22 @@ function parseResults(value: unknown): SearchResult[] | null {
   ]);
   const sections = new Set<SearchResult["section"]>([
     "Tickets",
-    "Wiedervorlagen",
+    "Erinnerungen",
     "Wissen",
     "Veranstaltungsräume",
     "Eintritte",
     "Störungen",
-    "Sicherheitsfälle",
+    "Phishing / Junk",
   ]);
   const result: SearchResult[] = [];
-  for (const row of value) {
+  for (const rawRow of value) {
+    // Sections the database may still label with their former names.
+    const row =
+      isRecord(rawRow) &&
+      typeof rawRow.section === "string" &&
+      rawRow.section in LEGACY_SECTIONS
+        ? { ...rawRow, section: LEGACY_SECTIONS[rawRow.section] }
+        : rawRow;
     if (
       !isRecord(row) ||
       !allowed.has(row.result_type as SearchResult["resultType"]) ||

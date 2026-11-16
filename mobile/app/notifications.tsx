@@ -116,13 +116,13 @@ const CATEGORY_DETAILS: readonly {
   },
   {
     key: "security_report",
-    label: "Phishing",
+    label: "Phishing-Meldungen",
     description: "Neue Phishing-Meldungen.",
   },
   {
     key: "security_case",
-    label: "Sicherheitsfälle",
-    description: "Überfällige Sicherheitsfälle, «geklickt» und Kampagnen.",
+    label: "Phishing / Junk",
+    description: "Überfällige Phishing-/Junk-Fälle, «geklickt» und Kampagnen.",
   },
   {
     key: "incident",
@@ -132,9 +132,9 @@ const CATEGORY_DETAILS: readonly {
   },
   {
     key: "follow_up",
-    label: "Wiedervorlagen",
+    label: "Erinnerungen",
     description:
-      "Erinnerungen zu Wiedervorlagen und aus zeitgesteuerten Regeln.",
+      "Fällige Erinnerungen und Hinweise aus zeitgesteuerten Regeln.",
   },
   {
     key: "sla",

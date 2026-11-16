@@ -421,7 +421,7 @@ const RPCS = {
         : [];
     }),
   list_active_delegations: () => [],
-  // Menu counters and team modules («Störungen», «Sicherheitsfälle»).
+  // Menu counters and team modules («Störungen», «Phishing / Junk»).
   navigation_ticket_attention: (args, ctx) => ({
     unassignedTickets: 3,
     securityTriage: 1,

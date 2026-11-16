@@ -339,7 +339,7 @@ Deno.test("security cases, shop and inventory reminders have own texts", () => {
   };
   assertEquals(
     alert({ ...base, kind: "security_report", securityEvent: "overdue", ticketNumber: "SEC-4" }).title,
-    "Sicherheitsfall überfällig",
+    "Phishing-/Junk-Fall überfällig",
   );
   assertStringIncludes(
     alert({ ...base, kind: "security_report", securityEvent: "campaign", securityCount: 3 }).body,

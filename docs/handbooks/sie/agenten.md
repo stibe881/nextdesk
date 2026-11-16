@@ -1,6 +1,6 @@
 ---
 title: Handbuch für Agenten
-description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Sicherheitsfälle, Störungen, Wissensdatenbank und Stellvertretung.
+description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Phishing-/Junk-Fälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
 updated: 2026-11-16
 ---
@@ -24,11 +24,11 @@ anpassen → Einführung erneut starten_ wiederholen.
 Die linke Navigation ist gegliedert in:
 
 - **Übersicht** – Ihre Startseite mit Kennzahlen
-- **Arbeitsplatz** – Team-Queues, Erwähnungen, Stellvertretung, Wiedervorlagen
+- **Arbeitsplatz** – Team-Queues, Erwähnungen, Stellvertretung, Erinnerungen
 - **Teamführung** – nur für Leitungen von Abteilungen
 - **Arbeitsbereich**: Tickets, Shop, Teams (nur mit Recht zur Shop-Verwaltung),
   Fälle
-- **Sicherheit und Störungen**: Sicherheitsfälle, Störungen
+- **Sicherheit und Störungen**: Phishing-/Junk-Fälle, Störungen
   (nur für das zuständige Team, siehe unten)
 - **Planung und Betrieb**: Raumplanung, Eintritte, Serviceaufgaben
 - **Ressourcen**: Assets, Lager, Verträge, Lizenzen
@@ -44,14 +44,13 @@ Zahlen neben den Einträgen zeigen, was auf Sie wartet: bei **Tickets** die
 offenen Tickets, die noch keinem Agenten zugewiesen sind (auch wenn schon ein
 Team gesetzt ist) – dieselbe Zahl wie in der Kachel «Nicht zugewiesene
 Tickets» –, bei
-**Sicherheitsfällen** die offenen Fälle, die noch niemandem zugewiesen
+**Phishing / Junk** die offenen Fälle, die noch niemandem zugewiesen
 sind, bei **Störungen** die aktiven Störungen, die noch niemand bestätigt
 hat, bei **Raumplanung**, **Shop** und
 **Eintritte** die offenen Anfragen. Die Zahlen aktualisieren sich jede Minute.
 
 In der **iOS- und Android-App** zeigt die untere Leiste dieselben Zahlen als
-kleines Abzeichen am Symbol: bei **Tickets**, **Störungen** und **Phishing**
-(den Sicherheitsfällen) sowie beim **Shop** die neuen Bestellungen, falls Sie
+kleines Abzeichen am Symbol: bei **Tickets**, **Störungen** und **Phishing / Junk** sowie beim **Shop** die neuen Bestellungen, falls Sie
 Bestellungen bearbeiten. Raumplanung und Eintritte gibt es in der App nicht.
 Die Zahlen aktualisieren sich jede Minute, beim Zurückkehren in die App und
 beim Wechsel des Tabs.
@@ -60,7 +59,10 @@ Das **Systemstatus-Badge** oben in der Navigation und die Seite
 **Systemstatus** aktualisieren sich selbst (alle 30 Sekunden und beim
 Zurückkehren in den Tab). In der **Infrastruktur** hat ein Gerät einen oder
 mehrere **Dienste (für Systemstatus)**, die bei einer Überwachungsstörung
-(PRTG) ihren Status ändern, die **Höheneinheit** als «von … bis» und
+(PRTG) ihren Status ändern, **Standort** und **Rack** zum Auswählen aus den
+vorhandenen Einträgen (fehlt einer, legen Sie ihn direkt unter der Liste mit
+**Hinzufügen** an; ein neues Rack entsteht am gewählten Standort mit 42 HE),
+die **Höheneinheit** als «von … bis» und
 Wartungseinträge mit Datum und optionaler **Uhrzeit**. In der
 **Wartungscheckliste** erfassen Sie jeden Punkt in einer eigenen Zeile mit
 einem eigenen **Datum** (z. B. wann er erledigt wurde oder wann er dran ist);
@@ -85,7 +87,7 @@ dem Namen sehen Sie die Anzahl offener Tickets; gesperrte Konten sind als
 **Deaktiviert** markiert. Mitarbeitende ohne Agentenrolle sehen keine Personen.
 
 Die Suche findet ausserdem **Störungen** (Nummer, Titel, Gerät) und
-**Sicherheitsfälle** (Fallnummer, Betreff, Absender, meldende Person) – aber
+**Phishing / Junk** (Fallnummer, Betreff, Absender, meldende Person) – aber
 nur für das jeweils zuständige Team (siehe unten). Ein Klick öffnet die
 Störung bzw. den Fall direkt.
 
@@ -107,7 +109,7 @@ auch im Ticket über den Namen unter **Anfragende Person** (in der App:
   **Bestellungen** aus dem Shop und der **Verlauf** als Zeitleiste. Geräte,
   Lizenzen und Bestellungen erscheinen nur, wenn das Modul aktiv ist und Sie
   die Berechtigung dafür haben. Für das Sicherheitsteam kommt der Reiter
-  **Sicherheitsfälle** dazu (von der Person gemeldete Phishing-Mails, mit
+  **Phishing / Junk** dazu (von der Person gemeldete Phishing-Mails, mit
   Kennzeichen _Geklickt_), für das Störungsteam der Reiter **Störungen**
   (Störungen ihrer Geräte in den letzten 12 Monaten).
 - **Häufige Themen**: die Kategorien, zu denen die Person am häufigsten
@@ -133,9 +135,9 @@ Weitere Blöcke:
 - **Priorisierte Tickets** und **Meine Prioritäten** – von der KI
   vorgeschlagene Reihenfolge; per Ziehen anpassen, **Neu priorisieren** oder
   **Eigene Reihenfolge verwerfen**. Über den Tickets stehen Ihnen zugewiesene
-  offene **Störungen** und **Sicherheitsfälle** (dringende rot markiert, z. B.
+  offene **Störungen** und **Phishing / Junk** (dringende rot markiert, z. B.
   Ausfall unbestätigt, Urteil überfällig oder «Melder hat geklickt»);
-  Sicherheitsfälle erscheinen nicht mehr als Ticket.
+  Phishing-/Junk-Fälle erscheinen nicht mehr als Ticket.
 - **Freigaben** – Entscheidungen, die auf Sie warten
 - **Meine Kennzahlen** – z. B. heute gelöst, Median der ersten Antwort
 - **Gerade passiert** – die neuesten Ereignisse
@@ -156,7 +158,7 @@ Der **Arbeitsplatz** bündelt Ihre persönliche Arbeit in Registern:
 - **Erwähnungen** – wo Sie mit @ erwähnt wurden
 - **Stellvertretung** – Tickets abwesender Kolleginnen und Kollegen
 - **Störungen** – aktive Störungen
-- **Wiedervorlagen** – Tickets, die Sie sich zu einem Datum vorgemerkt haben
+- **Erinnerungen** – Tickets, die Sie sich zu einem Datum vorgemerkt haben
 - **Mein Bereich** – eigene Tickets, Geräte, Freigaben und **Phishing melden**
 
 ![Arbeitsplatz mit Registern und Team-Warteschlangen](images/ag-arbeitsplatz.jpg)
@@ -173,16 +175,16 @@ Stellvertretung.
 Unter **Mein Bereich → Phishing melden** laden Sie eine verdächtige E-Mail
 (.eml oder .msg) hoch oder fügen die Kopfzeilen ein und klicken auf
 **Melden**. In Outlook geht es auch mit **Melden → Phishing melden**. Daraus
-entsteht ein Sicherheitsfall (siehe unten).
+entsteht ein Phishing-/Junk-Fall (siehe unten).
 
-## Sicherheitsfälle
+## Phishing / Junk
 
-**Sicherheitsfälle** (in der App **Phishing**) sehen nur die Mitglieder des
+**Phishing / Junk** (im Web und in der App) sehen nur die Mitglieder des
 Sicherheitsteams, das in den Phishing-Einstellungen gewählt ist. Ohne gewähltes
 Team sehen sie alle Agenten.
 
 Gemeldete Phishing-Mails erscheinen nicht in der Ticketliste (weder im Web
-noch in der App), sondern unter **Sicherheitsfälle**. Meldet mehr als eine Person dieselbe E-Mail, entsteht
+noch in der App), sondern unter **Phishing / Junk**. Meldet mehr als eine Person dieselbe E-Mail, entsteht
 nur ein Fall; alle Melder hängen daran (Kennzeichen **Kampagne**). Ähnliche
 Mails (gleiche Absenderdomain mit ähnlichem Betreff oder gleichen
 Link-Domains) fasst nextDesk zusätzlich zu einer **Kampagne** über mehrere
@@ -197,7 +199,7 @@ heute_ die heute gemeldeten, _Zeit bis Urteil_ die in den letzten 30 Tagen
 beurteilten, _Geklickt_ die Fälle, bei denen jemand angegeben hat, geklickt zu
 haben. **Filter aufheben** führt zurück zu den Fällen, die zu beurteilen sind.
 
-![Liste der Sicherheitsfälle](images/ag-sicherheitsfaelle.jpg)
+![Liste der Phishing-/Junk-Fälle](images/ag-sicherheitsfaelle.jpg)
 
 Ein Klick öffnet den Fall. Die gemeldete E-Mail steht in einer **sicheren
 Ansicht**: Links sind entschärft (`hxxps`, `[.]`) und nicht anklickbar, Bilder
@@ -207,7 +209,7 @@ Links, Anhänge) und die Risikoeinschätzung. Bei hohem Risiko soll das Urteil
 innerhalb von 30 Minuten fallen, bei mittlerem innerhalb von 4 Stunden,
 sonst innerhalb eines Tages.
 
-![Sicherheitsfall mit sicherer Ansicht und Urteil](images/ag-sicherheitsfall.jpg)
+![Phishing-/Junk-Fall mit sicherer Ansicht und Urteil](images/ag-sicherheitsfall.jpg)
 
 Unter **Zuständig** weisen Sie den Fall einer Person zu (oder mit **Mir
 zuweisen** sich selbst). Zur Auswahl stehen die Agenten, die den Fall
@@ -252,7 +254,7 @@ die Priorität _hoch_. Bei der Person stehen dann diese Massnahmen bereit
   Meldung; die Checkliste bleibt, und Sie erledigen den Schritt im Entra Admin
   Center.
 - **Ersatzgerät bestellen**: bestellt einen Shop-Artikel im Namen der Person
-  mit dem Hinweis «Ersatzgerät aus Sicherheitsfall …». Verlangt der Artikel
+  mit dem Hinweis «Ersatzgerät aus Phishing-/Junk-Fall …». Verlangt der Artikel
   eine Genehmigung, wird diese wie üblich angefordert.
 
 Jede Massnahme steht mit Ergebnis unter **Ausgeführte Massnahmen** und im
@@ -280,7 +282,7 @@ haben.
 Melder bekommen für Phishing-Meldungen keine Eingangsbestätigung, nur eine
 Dankesnachricht und später das Ergebnis.
 
-In der **iOS- und Android-App** heisst der Bereich **Phishing** (untere
+In der **iOS- und Android-App** heisst der Bereich ebenfalls **Phishing / Junk** (untere
 Leiste, links vom Home-Knopf). Dort fällen Sie das Urteil, weisen den Fall zu,
 haken Massnahmen ab, fragen die Melder nach einem Klick und schliessen den
 Fall ab. Ein Tipp auf eine Phishing-Mitteilung öffnet den Fall direkt. Die
@@ -412,7 +414,7 @@ Die Benachrichtigungen dazu schalten Sie unter _Persönliche Einstellungen →
 Benachrichtigungen → Störungen_ (Push und E-Mail) ein oder aus.
 
 In der **iOS- und Android-App** finden Sie **Störungen** in der unteren Leiste
-links vom Home-Knopf (Tickets, Störungen, Phishing). Dort sehen Sie die aktiven,
+links vom Home-Knopf (Tickets, Störungen, Phishing / Junk). Dort sehen Sie die aktiven,
 unbestätigten, behobenen und abgeschlossenen Störungen samt Folgestörungen,
 bestätigen sie, weisen sie zu, ergänzen Notizen und schliessen sie mit Ursache
 ab – auf Wunsch mit Antwort an die zugeordneten Tickets. Die Störung zeigt auch
@@ -799,7 +801,7 @@ direkt auf die Zeile ziehen (max. 25 MiB pro Datei).
 | An Drittanbieter übergeben                  | Lieferanten einbeziehen, mit Erinnerung                 |
 | Vorgesetzte Person fragen                   | Interne Rückfrage an die Abteilungsleitung              |
 | Freigabe anfordern                          | Genehmigung einholen (z. B. Kosten, Berechtigungen)     |
-| Wiedervorlage setzen                        | Ticket zu einem Datum wieder vorlegen                   |
+| Erinnerung setzen                           | Ticket zu einem Datum wieder vorlegen                   |
 | Arbeitszeit erfassen, Checkliste            | Aufwand und Arbeitsschritte dokumentieren               |
 | Zusammenfassen (KI)                         | Kurzfassung langer Verläufe                             |
 | Ticketakte als PDF                          | Ticket drucken oder ablegen                             |
@@ -878,8 +880,21 @@ die **anfragende Person** (Suche, «Mich auswählen» oder neue Person), füllen
 Betreff, Einordnung, Priorität und Beschreibung aus (Zusammenfassung links, Abschnitte rechts, Pflichtfelder mit **\***) und können direkt einen
 **zugewiesenen Agenten** setzen. Abschliessen mit **Ticket erstellen**.
 
-Im selben Menü erfassen Sie – je nach Freischaltung – auch Wiedervorlagen,
+Im selben Menü erfassen Sie – je nach Freischaltung – auch Erinnerungen,
 Fälle, Serviceaufgaben, Wissensartikel, Lagerartikel, Verträge und Lizenzen.
+
+In der **iOS- und Android-App** öffnet ein **langer Druck auf den Home-Knopf**
+ein Menü in zwei Gruppen. Oben unter **Öffnen** springen Sie direkt zu
+**Erinnerungen**, **Überwachung**, **Infrastruktur** und **IP-Adressen**,
+darunter im Halbkreis unter **Erfassen** zu **Erinnerung**, **Ticket**,
+**Serviceaufgabe** und **Lagerartikel**. Es erscheinen nur die Einträge, deren
+Modul für Sie freigeschaltet ist. Die Seite **Erinnerungen** zeigt Ihre
+offenen Erinnerungen nach **Überfällig**, **Heute**, **Demnächst** und **Ohne
+Fälligkeit**; mit **Erledigt** haken Sie eine ab, ein Tipp öffnet das
+verknüpfte Ticket, und **Erinnerung erfassen** legt eine neue an. Die Seite
+**IP-Adressen** zeigt die Subnetze nach Standort mit ihrer Auslastung und eine
+Suche nach IP-Adresse, Hostname oder MAC; ein Subnetz öffnet seine Adressen,
+eine Adresse ihre Details.
 
 ![Neues Ticket als Agent erfassen](images/ag-neues-ticket.jpg)
 
@@ -1078,9 +1093,9 @@ zurückgenommen und als Serieneinheit an den Lagerort gebucht, die Ausleihe
 zurückgebucht bzw. die Lizenz freigegeben (Grund «Austritt»). Die Lizenz in
 Microsoft 365 entfernen Sie bei Bedarf weiterhin unter **Lizenzen**.
 
-**Ersatzgerät ohne Genehmigung:** Aus einem Sicherheitsfall kann der Support
+**Ersatzgerät ohne Genehmigung:** Aus einem Phishing-/Junk-Fall kann der Support
 ein Ersatzgerät im Namen der Person bestellen. Die Bestellung braucht keine
-Freigabe; in der Bestellung steht die Herkunft «Sicherheitsfall …
+Freigabe; in der Bestellung steht die Herkunft «Phishing-/Junk-Fall …
 (ohne Genehmigung)».
 
 ## Shop: Artikel nur für Kaderstufen
@@ -1508,7 +1523,7 @@ gelten dieselben Rechte und Abteilungsgrenzen wie in der Weboberfläche.
 
 - Die **Glocke** zeigt Zuweisungen, Erwähnungen, Antworten und Eskalationen.
   Ein Klick auf einen Eintrag öffnet genau das auslösende Objekt: das Ticket,
-  den Sicherheitsfall, die Störung, die Bestellung, den Lagerartikel, die
+  den Phishing-/Junk-Fall, die Störung, die Bestellung, den Lagerartikel, die
   Serviceaufgabe, das Infrastruktur-Gerät oder in der IP-Adressverwaltung die
   Adresse, das Netz bzw. die Funde und die Agenten.
 - Ein **Tipp auf eine Push-Mitteilung** öffnet in der iPhone-App ebenfalls
@@ -1537,13 +1552,13 @@ gelten dieselben Rechte und Abteilungsgrenzen wie in der Weboberfläche.
   ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten
   Benachrichtigungszeit.
 - In der Tabelle **Benachrichtigungen** schalten Sie pro Benachrichtigung
-  (z. B. Zuweisungen, Eskalationen, Erwähnungen, Phishing, Sicherheitsfälle,
+  (z. B. Zuweisungen, Eskalationen, Erwähnungen, Phishing-Meldungen, Phishing / Junk,
   Störungen, IP-Adressverwaltung) einzeln **Push** und **E-Mail** ein oder
   aus. Für Agenten sind zu Beginn alle Benachrichtigungen per Push und
-  E-Mail eingeschaltet – ausser **Phishing** und **Sicherheitsfälle**: Diese
+  E-Mail eingeschaltet – ausser **Phishing-Meldungen** und **Phishing / Junk**: Diese
   sind ausgeschaltet. Wer sie erhalten möchte, schaltet sie dort selbst ein.
   Mitglieder des in den Phishing-Einstellungen hinterlegten Teams erhalten
-  Phishing-Meldungen, überfällige Sicherheitsfälle, «geklickt» und Kampagnen
+  Phishing-Meldungen, überfällige Phishing-/Junk-Fälle, «geklickt» und Kampagnen
   immer; die Tabelle weist darauf hin. **IP-Adressverwaltung** (Funde,
   Netzwerkagent offline, ablaufende Reservierungen) sehen Personen mit Zugriff
   auf die IP-Adressverwaltung; **Lager** umfasst Mindestbestand,

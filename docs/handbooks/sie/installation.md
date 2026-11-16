@@ -157,8 +157,8 @@ der Anmeldung den Zugriff und öffnet das Objekt. Optional aktivieren Sie im sel
 und Unterkategorie des Sicherheitstickets wählen Sie dort aus oder erfassen sie
 über **+ Neue Kategorie …** bzw. **+ Neue Unterkategorie …** direkt neu. Das
 **Sicherheitsteam** bekommt die Fälle zugewiesen und wird benachrichtigt; nur
-seine Mitglieder sehen die Sicherheitsfälle (Web) bzw. Phishing (App).
-Meldungen werden als **Sicherheitsfälle** bearbeitet (eigener Menüpunkt,
+seine Mitglieder sehen den Bereich **Phishing / Junk** (Web und App).
+Meldungen werden als **Phishing / Junk** bearbeitet (eigener Menüpunkt,
 nicht in der Ticketliste). Unter **Massnahmen je Urteil** legen Sie fest,
 welche Checkliste nach dem Urteil _Harmlos_, _Spam_, _Phishing_ oder
 _Gezielter Angriff_ erscheint; ohne eigene Liste gelten Standard-Checklisten.
@@ -176,7 +176,7 @@ das Support-Postfach bleiben normale Tickets. Mit einer eigenen Meldeadresse
 (Alias) wird jede Mail dorthin als Meldung behandelt.
 
 Die Datei **winmail.dat**, die Outlook einer Meldung beilegt, wird am
-Sicherheitsfall als Anhang abgelegt (nur zum Herunterladen, nie geöffnet oder
+Phishing-/Junk-Fall als Anhang abgelegt (nur zum Herunterladen, nie geöffnet oder
 dargestellt).
 
 ![E-Mail-Kanäle mit Support-Postfächern](images/in-exchange.jpg)
@@ -223,7 +223,7 @@ PRTG/IP-Adressverwaltung).
 
 ![Microsoft-Intune-Abgleich](images/in-intune.jpg)
 
-**Massnahmen in Sicherheitsfällen (optional).** Hat jemand in einer
+**Massnahmen in Phishing-/Junk-Fällen (optional).** Hat jemand in einer
 Phishing-Mail geklickt, kann das Sicherheitsteam direkt aus dem Fall handeln.
 Dafür braucht dieselbe Intune-/Entra-App zusätzliche
 Anwendungsberechtigungen mit Administratorzustimmung:

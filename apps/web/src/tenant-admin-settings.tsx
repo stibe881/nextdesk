@@ -1109,7 +1109,7 @@ const FEATURE_PRESENTATION: Readonly<
   "experience.workspace": {
     name: "Arbeitsbereich",
     description:
-      "Persönliche Arbeitsbereichseinstellungen, Wiedervorlagen und Mein Tag.",
+      "Persönliche Arbeitsbereichseinstellungen, Erinnerungen und Mein Tag.",
     Icon: LayoutPanelTop,
   },
   "agent.workbench": {

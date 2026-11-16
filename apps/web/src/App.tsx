@@ -269,7 +269,7 @@ type Section =
   | "Überwachung"
   | "Lager"
   | "Fälle"
-  | "Sicherheitsfälle"
+  | "Phishing / Junk"
   | "Störungen"
   | "Verträge"
   | "Lizenzen"
@@ -306,7 +306,7 @@ const quickCreateActionPresentation: Record<
   QuickCreateAction,
   { Icon: LucideIcon; label: string }
 > = {
-  followUp: { Icon: CalendarClock, label: "Wiedervorlage erfassen" },
+  followUp: { Icon: CalendarClock, label: "Erinnerung erfassen" },
   ticket: { Icon: Ticket, label: "Ticket erfassen" },
   problem: { Icon: FileWarning, label: "Fall erfassen" },
   serviceTask: { Icon: ListChecks, label: "Serviceaufgabe erfassen" },
@@ -403,7 +403,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Shop", Icon: ShoppingBag },
     { label: "Teams", Icon: UsersRound },
     { label: "Fälle", Icon: FileWarning },
-    { label: "Sicherheitsfälle", Icon: ShieldAlert },
+    { label: "Phishing / Junk", Icon: ShieldAlert },
     { label: "Störungen", Icon: Activity },
     { label: "Wissen", Icon: BookOpen },
     { label: "Services", Icon: MonitorCog },
@@ -434,7 +434,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "SICHERHEIT & STÖRUNGEN",
     id: "navigation-category-security",
     navigationLabel: "Sicherheit und Störungen",
-    sectionLabels: ["Sicherheitsfälle", "Störungen"],
+    sectionLabels: ["Phishing / Junk", "Störungen"],
   },
   {
     heading: "PLANUNG & BETRIEB",
@@ -843,7 +843,7 @@ function sectionPageTitle(section: Section): string {
 function sectionFromGlobalSearchResult(result: GlobalSearchResult): Section {
   if (
     result.resultType === "follow_up" ||
-    result.section === "Wiedervorlagen"
+    result.section === "Erinnerungen"
   ) {
     return "Arbeitsplatz";
   }
@@ -1311,14 +1311,14 @@ function baseNotificationPresentation(
       };
     case "ticket.follow_up_due": {
       const followUpTitle =
-        notificationPayloadText(notification, "title", 240) ?? "Wiedervorlage";
+        notificationPayloadText(notification, "title", 240) ?? "Erinnerung";
       const dueAt = notificationPayloadDateTime(notification, "dueAt");
       return {
         description: dueAt
           ? `${followUpTitle} · Fällig am ${notificationTime(dueAt)}`
           : followUpTitle,
         Icon: CalendarClock,
-        title: "Wiedervorlage fällig",
+        title: "Erinnerung fällig",
       };
     }
     case "ticket.supervisor_request": {
@@ -1528,8 +1528,8 @@ function baseNotificationPresentation(
           : `Das Urteil zu ${ticketLabel} ist überfällig.`,
         Icon: AlertTriangle,
         title: supervisor
-          ? "Sicherheitsfall eskaliert"
-          : "Sicherheitsfall überfällig",
+          ? "Phishing-/Junk-Fall eskaliert"
+          : "Phishing-/Junk-Fall überfällig",
       };
     }
     case "security.campaign": {
@@ -1645,8 +1645,8 @@ function baseNotificationPresentation(
       const note = notificationPayloadText(notification, "note", 2000);
       return {
         description: tn(
-          `Du vertrittst ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Wiedervorlagen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
-          `Sie vertreten ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Wiedervorlagen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
+          `Du vertrittst ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Erinnerungen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
+          `Sie vertreten ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Erinnerungen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
         ),
         Icon: UserRound,
         title: "Stellvertretung beginnt",
@@ -3386,7 +3386,7 @@ function AuthenticatedApp() {
   const [incidentAttentionCount, setIncidentAttentionCount] = useState<
     number | null
   >(null);
-  // Badges of «Sicherheitsfälle»/«Störungen» count all open cases / active
+  // Badges of «Phishing / Junk»/«Störungen» count all open cases / active
   // incidents; red while some are unassigned / unacknowledged.
   const [teamModuleUrgent, setTeamModuleUrgent] = useState({
     securityCases: false,
@@ -5420,7 +5420,7 @@ function AuthenticatedApp() {
     if (item.label === "Überwachung") {
       return isFeatureEnabled("monitoring.native");
     }
-    if (item.label === "Sicherheitsfälle") {
+    if (item.label === "Phishing / Junk") {
       return canWorkTickets && teamModuleAccess.securityCases;
     }
     if (item.label === "Störungen") {
@@ -5924,7 +5924,7 @@ function AuthenticatedApp() {
               ? {
                   id: `experience:${experienceNotice.tone}:${experienceNotice.message}`,
                   message: experienceNotice.message,
-                  title: "Wiedervorlagen",
+                  title: "Erinnerungen",
                   tone: experienceNotice.tone,
                 }
               : null;
@@ -6008,7 +6008,7 @@ function AuthenticatedApp() {
             ? onboardingAttentionCount
             : label === "Tickets"
               ? ticketAttentionCount
-              : label === "Sicherheitsfälle"
+              : label === "Phishing / Junk"
                 ? securityAttentionCount
                 : label === "Störungen"
                   ? incidentAttentionCount
@@ -6016,7 +6016,7 @@ function AuthenticatedApp() {
     );
   /** Red badge (needs action) or grey (open, but taken over). */
   const navigationBadgeTone = (label: Section): "urgent" | "muted" | null =>
-    label === "Sicherheitsfälle"
+    label === "Phishing / Junk"
       ? teamModuleUrgent.securityCases
         ? "urgent"
         : "muted"
@@ -6036,10 +6036,10 @@ function AuthenticatedApp() {
         ? "neue Bestellungen warten auf Bearbeitung"
         : label === "Tickets"
           ? "Tickets sind noch keinem Agenten zugewiesen"
-          : label === "Sicherheitsfälle"
+          : label === "Phishing / Junk"
             ? teamModuleUrgent.securityCases
-              ? "offene Sicherheitsfälle, davon nicht alle zugewiesen"
-              : "offene Sicherheitsfälle"
+              ? "offene Phishing-/Junk-Fälle, davon nicht alle zugewiesen"
+              : "offene Phishing-/Junk-Fälle"
             : label === "Störungen"
               ? teamModuleUrgent.incidents
                 ? "aktive Störungen, davon nicht alle bestätigt"
@@ -6958,7 +6958,7 @@ function AuthenticatedApp() {
             }}
             tenantId={activeTenant.id}
           />
-        ) : section === "Sicherheitsfälle" &&
+        ) : section === "Phishing / Junk" &&
           activeTenant &&
           canWorkTickets &&
           teamModuleAccess.securityCases ? (
@@ -7758,7 +7758,7 @@ function AuthenticatedApp() {
                               }}
                               onOpenSecurityCase={(id) => {
                                 setSecurityFocusId(id);
-                                setSection("Sicherheitsfälle");
+                                setSection("Phishing / Junk");
                               }}
                               onOpenTicket={(ticketId) => {
                                 setSection("Tickets");
@@ -8332,7 +8332,7 @@ function AuthenticatedApp() {
           onOpenSecurityCase={(id) => {
             setPersonOverview(null);
             setSecurityFocusId(id);
-            setSection("Sicherheitsfälle");
+            setSection("Phishing / Junk");
           }}
           onOpenTicket={(ticketId) => {
             setPersonOverview(null);

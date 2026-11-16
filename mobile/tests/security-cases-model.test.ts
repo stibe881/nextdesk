@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseOperations } from "../lib/my-priorities-model";
 import { parseSecurityDetail } from "../lib/security-cases-model";
 
-describe("Sicherheitsfall in der App", () => {
+describe("Phishing-/Junk-Fall in der App", () => {
   it("liest Kampagne, IOC-Treffer und Massnahmen", () => {
     const detail = parseSecurityDetail({
       data: {
@@ -25,7 +25,7 @@ describe("Sicherheitsfall in der App", () => {
 });
 
 describe("Meine Prioritäten in der App", () => {
-  it("liest Störungen und Sicherheitsfälle", () => {
+  it("liest Störungen und Phishing-/Junk-Fälle", () => {
     expect(
       parseOperations([
         { kind: "incident", id: "i", number: "STO-1", title: "Switch", urgent: true, reason: "Ausfall" },

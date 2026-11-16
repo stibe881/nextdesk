@@ -1672,7 +1672,7 @@ function OrderDialog({
                 <div>
                   <dt>Herkunft</dt>
                   <dd>
-                    Sicherheitsfall
+                    Phishing-/Junk-Fall
                     {order.source.reference
                       ? ` ${order.source.reference}`
                       : ""}{" "}

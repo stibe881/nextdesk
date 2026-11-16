@@ -109,7 +109,7 @@ export function MyPrioritiesCard({
 }: {
   tenantId: string;
   onOpenTicket: (ticketId: string) => void;
-  /** Mir zugewiesene Störungen und Sicherheitsfälle öffnen. */
+  /** Mir zugewiesene Störungen und Phishing-/Junk-Fälle öffnen. */
   onOpenIncident?: (incidentId: string) => void;
   onOpenSecurityCase?: (ticketId: string) => void;
   refreshKey?: number;
@@ -247,7 +247,7 @@ export function MyPrioritiesCard({
       ) : null}
       {operations.length > 0 ? (
         <ul
-          aria-label="Störungen und Sicherheitsfälle"
+          aria-label="Störungen und Phishing-/Junk-Fälle"
           className="my-priorities__operations"
         >
           {operations.map((item) => (
@@ -269,8 +269,8 @@ export function MyPrioritiesCard({
                 <span className="my-priorities__number">{item.number}</span>
                 <strong>{item.title}</strong>
                 <small>
-                  {item.kind === "incident" ? "Störung" : "Sicherheitsfall"} ·{" "}
-                  {item.reason}
+                  {item.kind === "incident" ? "Störung" : "Phishing-/Junk-Fall"}{" "}
+                  · {item.reason}
                 </small>
               </button>
             </li>

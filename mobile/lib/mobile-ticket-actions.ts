@@ -10,7 +10,7 @@ export function followUpTitle(ticket: MobileTicket): string {
   return (
     Array.from(`${ticket.ticketNumber}: ${ticket.subject}`.trim())
       .slice(0, 240)
-      .join("") || "Ticket-Wiedervorlage"
+      .join("") || "Ticket-Erinnerung"
   );
 }
 

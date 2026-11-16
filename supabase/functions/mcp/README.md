@@ -14,12 +14,12 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `wissen_suchen`, `wissensartikel_lesen` | lesen | Wissensdatenbank. Sucht bei ganzen Fragen einzeln nach Stichwörtern; gibt es zu einem Programm keinen eigenen Artikel, liefert sie den allgemeinen Weg (z. B. «Unternehmensportal») |
 | `shop_katalog_anzeigen`, `shop_bestellungen_anzeigen` | lesen | Self-Service-Shop: Katalog und eigene Bestellungen |
 | `geraet_suchen` | lesen | Geräte nach Name, Nummer, Tag oder Seriennummer |
-| `ueberall_suchen` | lesen | Gleichzeitig in Tickets, Wiedervorlagen, Wissen, Veranstaltungsräumen, Eintritten sowie (für Berechtigte) Störungen und Sicherheitsfällen suchen |
+| `ueberall_suchen` | lesen | Gleichzeitig in Tickets, Erinnerungen, Wissen, Veranstaltungsräumen, Eintritten sowie (für Berechtigte) Störungen und Phishing-/Junk-Fällen suchen |
 | `benachrichtigungen_anzeigen` | lesen | Eigene Benachrichtigungen (standardmässig nur ungelesene) |
 | `offene_freigaben_anzeigen` | lesen | Ticketfreigaben, die auf den eigenen Entscheid warten |
 | `serviceaufgaben_anzeigen` | lesen | Serviceaufgaben: überfällig, heute, kommend (mine, team, all) |
 | `anfragende_suchen` | lesen | Anfragende Personen nach Name suchen |
-| `wiedervorlagen_anzeigen` | lesen | Eigene Wiedervorlagen (optional nur zu einem Ticket) |
+| `erinnerungen_anzeigen` | lesen | Eigene Erinnerungen (optional nur zu einem Ticket) |
 | `erwaehnungen_anzeigen` | lesen | @-Erwähnungen in Ticketnotizen |
 | `meine_kennzahlen` | lesen | Persönliche Kennzahlen (offen, heute gelöst, Reaktions- und Lösungszeit, SLA) |
 | `warteschlangen_anzeigen` | lesen | Offene Tickets je Abteilung und Team |
@@ -36,7 +36,7 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `ticketfreigaben_anzeigen` | lesen | Freigaben eines Tickets |
 | `stellvertretungen_anzeigen`, `stoerungsmeldungen_anzeigen` | lesen | Stellvertretungen, Störungsmeldungen |
 | `stoerungen_anzeigen` | lesen | Monitoring-Störungen (nur zuständiges Team) |
-| `sicherheitsfaelle_anzeigen`, `sicherheitsfall_anzeigen` | lesen | Sicherheitsfälle mit Analyse, Kampagne, IOC-Treffern und Massnahmen (nur Phishing-Team) |
+| `phishing_junk_faelle_anzeigen`, `phishing_junk_fall_anzeigen` | lesen | Phishing-/Junk-Fälle mit Analyse, Kampagne, IOC-Treffern und Massnahmen (nur Phishing-Team) |
 | `zuweisung_vorschlagen`, `ticketumfeld_anzeigen`, `geraete_zum_ticket` | lesen | Zuweisungsvorschläge, Ticketumfeld, Geräte der anfragenden Person |
 | `servicebericht`, `sla_eskalationen_anzeigen`, `sla_regeln_anzeigen` | lesen | Kennzahlen, SLA-Eskalationen und -Regeln (braucht Berichtsrecht) |
 | `teamuebersicht`, `pruefliste_anzeigen`, `monatsbericht` | lesen | Teamführung (nur für Vorgesetzte) |
@@ -56,7 +56,7 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `benachrichtigungen_gelesen` | schreiben | Eine oder alle Benachrichtigungen als gelesen markieren |
 | `freigabe_entscheiden` | schreiben | Freigabe genehmigen oder ablehnen; nur mit `bestaetigt=true` |
 | `serviceaufgabe_erledigen` | schreiben | Serviceaufgabe erledigen (optional mit Notiz) |
-| `wiedervorlage_erstellen`, `wiedervorlage_erledigen` | schreiben | Wiedervorlage erstellen bzw. erledigen |
+| `erinnerung_erstellen`, `erinnerung_erledigen` | schreiben | Erinnerung erstellen bzw. erledigen |
 | `erwaehnung_gelesen` | schreiben | Erwähnung als gelesen markieren |
 | `uebergabe_erstellen`, `uebergabe_bestaetigen` | schreiben | Übergabe erstellen, bestätigen oder abschliessen |
 | `ticket_eskalieren` | schreiben | Ticket eskalieren; nur mit `bestaetigt=true` |
@@ -89,7 +89,7 @@ die Wissensdatenbank zu befragen und keine allgemeinen Anleitungen aus dem Web
 zu erfinden.
 
 Geschriebene Texte (Ticket, interne Notiz, Zeitnotiz, Notiz zur Serviceaufgabe,
-Wiedervorlage)
+Erinnerung)
 enden mit dem Hinweis «Erfasst über den nextDesk-Connector.». Antworten an
 Anfragende werden ohne diesen Hinweis versendet.
 

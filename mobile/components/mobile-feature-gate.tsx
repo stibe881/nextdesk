@@ -381,7 +381,15 @@ export function MobileFeatureUnavailableScreen({
         ? "Wissensdatenbank"
         : feature === "self_service.shop"
           ? "Shop"
-          : "Ticketdetail";
+          : feature === "experience.workspace"
+            ? "Erinnerungen"
+            : feature === "inventory.management"
+              ? "Lager"
+              : feature === "monitoring.native"
+                ? "Überwachung"
+                : feature === "ipam.management"
+                  ? "IP-Adressen"
+                  : "Ticketdetail";
   return (
     <ScreenContainer className="px-5">
       <View style={styles.centered}>

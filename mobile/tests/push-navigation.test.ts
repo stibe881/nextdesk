@@ -51,7 +51,7 @@ describe("pushRoute", () => {
     });
   });
 
-  it("öffnet Sicherheitsfälle, Störungen, Bestellungen und Geräte", () => {
+  it("öffnet Phishing-/Junk-Fälle, Störungen, Bestellungen und Geräte", () => {
     expect(
       pushRoute({ tenantId, ticketId: id, kind: "security_report" }),
     ).toEqual({ kind: "path", path: `/phishing/${id}` });

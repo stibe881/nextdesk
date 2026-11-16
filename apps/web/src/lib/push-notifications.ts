@@ -24,8 +24,8 @@ export const pushCategoryMeta = {
   },
   follow_up: {
     description:
-      "Erinnerungen zu Wiedervorlagen und aus zeitgesteuerten Regeln",
-    label: "Wiedervorlagen",
+      "Fällige Erinnerungen und Hinweise aus zeitgesteuerten Regeln",
+    label: "Erinnerungen",
   },
   infrastructure: {
     description:
@@ -65,11 +65,11 @@ export const pushCategoryMeta = {
   },
   security_report: {
     description: "Neue Phishing-Meldungen",
-    label: "Phishing",
+    label: "Phishing-Meldungen",
   },
   security_case: {
-    description: "Überfällige Sicherheitsfälle, «geklickt» und Kampagnen",
-    label: "Sicherheitsfälle",
+    description: "Überfällige Phishing-/Junk-Fälle, «geklickt» und Kampagnen",
+    label: "Phishing / Junk",
   },
   shop: {
     get description() {

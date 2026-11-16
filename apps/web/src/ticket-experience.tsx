@@ -310,28 +310,28 @@ function followUpErrorMessage(
   if (status === 404) {
     return action === "save"
       ? "Das Ticket ist nicht mehr verfügbar."
-      : "Die Wiedervorlage ist nicht mehr verfügbar.";
+      : "Die Erinnerung ist nicht mehr verfügbar.";
   }
   if (status === 409) {
     return tn(
-      "Die Wiedervorlage wurde zwischenzeitlich geändert. Bitte aktualisiere die Liste.",
-      "Die Wiedervorlage wurde zwischenzeitlich geändert. Bitte aktualisieren Sie die Liste.",
+      "Die Erinnerung wurde zwischenzeitlich geändert. Bitte aktualisiere die Liste.",
+      "Die Erinnerung wurde zwischenzeitlich geändert. Bitte aktualisieren Sie die Liste.",
     );
   }
   if (status === 422 || status === 400) {
     return tn(
-      "Bitte prüfe Titel, Notiz und Termin der Wiedervorlage.",
-      "Bitte prüfen Sie Titel, Notiz und Termin der Wiedervorlage.",
+      "Bitte prüfe Titel, Notiz und Termin der Erinnerung.",
+      "Bitte prüfen Sie Titel, Notiz und Termin der Erinnerung.",
     );
   }
   return action === "save"
     ? tn(
-        "Die Wiedervorlage konnte nicht gespeichert werden. Bitte versuche es erneut.",
-        "Die Wiedervorlage konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+        "Die Erinnerung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+        "Die Erinnerung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
       )
     : tn(
-        "Die Wiedervorlage konnte nicht als erledigt markiert werden. Bitte versuche es erneut.",
-        "Die Wiedervorlage konnte nicht als erledigt markiert werden. Bitte versuchen Sie es erneut.",
+        "Die Erinnerung konnte nicht als erledigt markiert werden. Bitte versuche es erneut.",
+        "Die Erinnerung konnte nicht als erledigt markiert werden. Bitte versuchen Sie es erneut.",
       );
 }
 
@@ -496,10 +496,10 @@ export function TicketFollowUps({
       resetFollowUpForm();
       setNotice(
         editingFollowUpId
-          ? "Wiedervorlage wurde aktualisiert."
+          ? "Erinnerung wurde aktualisiert."
           : tn(
-              "Wiedervorlage wurde für dich gespeichert.",
-              "Wiedervorlage wurde für Sie gespeichert.",
+              "Erinnerung wurde für dich gespeichert.",
+              "Erinnerung wurde für Sie gespeichert.",
             ),
       );
       await loadFollowUps();
@@ -527,7 +527,7 @@ export function TicketFollowUps({
         tenantId,
         followUpId: followUp.id,
       });
-      setNotice("Wiedervorlage als erledigt markiert.");
+      setNotice("Erinnerung als erledigt markiert.");
       await loadFollowUps();
     } catch (nextError) {
       const status = functionErrorStatus(nextError);
@@ -551,7 +551,7 @@ export function TicketFollowUps({
         aria-controls={formId}
         aria-expanded={expanded}
         aria-label={
-          expanded ? "Wiedervorlage-Fenster schliessen" : "Wiedervorlage setzen"
+          expanded ? "Erinnerung-Fenster schliessen" : "Erinnerung setzen"
         }
         className="secondary-button ticket-experience__header-action"
         disabled={pending !== null}
@@ -566,12 +566,12 @@ export function TicketFollowUps({
         }}
         ref={triggerRef}
         title={
-          expanded ? "Wiedervorlage-Fenster schliessen" : "Wiedervorlage setzen"
+          expanded ? "Erinnerung-Fenster schliessen" : "Erinnerung setzen"
         }
         type="button"
       >
         <CalendarClock aria-hidden="true" size={16} strokeWidth={1.8} />
-        <span className="ticket-detail-action-label">Wiedervorlage setzen</span>
+        <span className="ticket-detail-action-label">Erinnerung setzen</span>
       </button>
       {expanded &&
         createPortal(
@@ -633,12 +633,12 @@ export function TicketFollowUps({
                   <p className="eyebrow">MEINE ARBEIT</p>
                   <h3 id={`${formId}-heading`}>
                     {editingFollowUp
-                      ? "Wiedervorlage ändern"
-                      : "Wiedervorlage setzen"}
+                      ? "Erinnerung ändern"
+                      : "Erinnerung setzen"}
                   </h3>
                 </div>
                 <button
-                  aria-label="Wiedervorlage schliessen"
+                  aria-label="Erinnerung schliessen"
                   className="more-button ticket-experience__close"
                   disabled={pending !== null}
                   onClick={closeDialog}
@@ -649,8 +649,8 @@ export function TicketFollowUps({
               </div>
               <p className="data-caption">
                 {tn(
-                  "Die Wiedervorlage gehört nur dir und ändert dieses Ticket nicht.",
-                  "Die Wiedervorlage gehört nur Ihnen und ändert dieses Ticket nicht.",
+                  "Die Erinnerung gehört nur dir und ändert dieses Ticket nicht.",
+                  "Die Erinnerung gehört nur Ihnen und ändert dieses Ticket nicht.",
                 )}
               </p>
               {error && (
@@ -737,17 +737,17 @@ export function TicketFollowUps({
                   ) : (
                     <CalendarClock aria-hidden="true" size={16} />
                   )}
-                  Wiedervorlage speichern
+                  Erinnerung speichern
                 </button>
               </form>
               <div className="ticket-experience__follow-up-list">
                 <div className="ticket-experience__list-heading">
-                  <strong>Eigene offene Wiedervorlagen</strong>
+                  <strong>Eigene offene Erinnerungen</strong>
                   <span className="data-caption">{followUps.length}</span>
                 </div>
                 {followUps.length === 0 ? (
                   <p className="data-caption">
-                    Für dieses Ticket ist keine Wiedervorlage offen.
+                    Für dieses Ticket ist keine Erinnerung offen.
                   </p>
                 ) : (
                   <ol>
