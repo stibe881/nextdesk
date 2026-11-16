@@ -841,10 +841,7 @@ function sectionPageTitle(section: Section): string {
 }
 
 function sectionFromGlobalSearchResult(result: GlobalSearchResult): Section {
-  if (
-    result.resultType === "follow_up" ||
-    result.section === "Erinnerungen"
-  ) {
+  if (result.resultType === "follow_up" || result.section === "Erinnerungen") {
     return "Arbeitsplatz";
   }
   return result.section;
@@ -3386,6 +3383,11 @@ function AuthenticatedApp() {
   const [incidentAttentionCount, setIncidentAttentionCount] = useState<
     number | null
   >(null);
+  // «Überwachung»: devices in «Ausfall» or «Warnung»; red while one is down.
+  const [monitoringAttention, setMonitoringAttention] = useState<{
+    count: number;
+    urgent: boolean;
+  } | null>(null);
   // Badges of «Phishing / Junk»/«Störungen» count all open cases / active
   // incidents; red while some are unassigned / unacknowledged.
   const [teamModuleUrgent, setTeamModuleUrgent] = useState({
@@ -4404,6 +4406,23 @@ function AuthenticatedApp() {
       setIncidentAttentionCount(null);
       setTeamModuleAccess({ securityCases: false, incidents: false });
     }
+    if (tenantFeatures["monitoring.native"] === true) {
+      void supabase.functions
+        .invoke("monitoring-sensors", { body: { type: "summary", tenantId } })
+        .then(({ data, error }) => {
+          if (!mounted) return;
+          const down = error ? null : readCount(data, "down");
+          const warning = error ? null : readCount(data, "warning");
+          setMonitoringAttention(
+            down === null || warning === null
+              ? null
+              : { count: down + warning, urgent: down > 0 },
+          );
+        })
+        .catch(() => mounted && setMonitoringAttention(null));
+    } else {
+      setMonitoringAttention(null);
+    }
     void supabase.functions
       .invoke("onboarding", { body: { type: "navigationSummary", tenantId } })
       .then(({ data, error }) => {
@@ -4423,6 +4442,7 @@ function AuthenticatedApp() {
     navigationAttentionTick,
     section,
     session?.user.id,
+    tenantFeatures["monitoring.native"],
   ]);
 
   useEffect(() => {
@@ -6012,7 +6032,9 @@ function AuthenticatedApp() {
                 ? securityAttentionCount
                 : label === "Störungen"
                   ? incidentAttentionCount
-                  : null,
+                  : label === "Überwachung"
+                    ? (monitoringAttention?.count ?? null)
+                    : null,
     );
   /** Red badge (needs action) or grey (open, but taken over). */
   const navigationBadgeTone = (label: Section): "urgent" | "muted" | null =>
@@ -6024,7 +6046,11 @@ function AuthenticatedApp() {
         ? teamModuleUrgent.incidents
           ? "urgent"
           : "muted"
-        : null;
+        : label === "Überwachung"
+          ? monitoringAttention?.urgent
+            ? "urgent"
+            : "muted"
+          : null;
   const navigationBadgeClass = (
     base: string,
     tone: "urgent" | "muted" | null,
@@ -6044,7 +6070,11 @@ function AuthenticatedApp() {
               ? teamModuleUrgent.incidents
                 ? "aktive Störungen, davon nicht alle bestätigt"
                 : "aktive Störungen"
-              : "Eintritte sind noch nicht in Bearbeitung";
+              : label === "Überwachung"
+                ? monitoringAttention?.urgent
+                  ? "Geräte mit Ausfall oder Warnung, davon mindestens eines mit Ausfall"
+                  : "Geräte mit Warnung"
+                : "Eintritte sind noch nicht in Bearbeitung";
   // Berichte und darunter die Wissensdatenbank stehen für sich unter den
   // Kategorien.
   const standaloneNavigationItems = (["Berichte", "Wissen"] as const).flatMap(
@@ -7030,6 +7060,11 @@ function AuthenticatedApp() {
                     setInfrastructureFocusId(id);
                     setSection("Infrastruktur");
                   }
+                : undefined
+            }
+            onOpenTicket={
+              canWorkTickets
+                ? (ticketId) => setSelectedTicketId(ticketId)
                 : undefined
             }
             tenantId={activeTenant.id}
