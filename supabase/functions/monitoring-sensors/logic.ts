@@ -60,6 +60,8 @@ export type Action =
   | { type: "saveSensor"; tenantId: string; sensor: SensorInput }
   | { type: "deleteSensor"; tenantId: string; sensorId: string }
   | { type: "pauseDevice"; tenantId: string; assetId: string; paused: boolean }
+  | { type: "removeDevice"; tenantId: string; assetId: string }
+  | { type: "updateDevice"; tenantId: string; assetId: string; device: DeviceEdit }
   | { type: "createAgent"; tenantId: string; name: string }
   | { type: "probePackage"; tenantId: string }
   | { type: "listInterfaces"; tenantId: string; assetId: string; agentId: string }
@@ -117,6 +119,38 @@ export function parseNewDevice(value: unknown): NewDevice | string {
     hostname: isIp ? null : address,
     agentId,
     ipamAddressId,
+  };
+}
+
+/** Fields of a device that can be changed from the monitoring. */
+export type DeviceEdit = {
+  name: string;
+  category: (typeof DEVICE_CATEGORIES)[number];
+  ipAddress: string | null;
+  hostname: string | null;
+};
+
+/** Validated changes of a device or the German message why they are not valid. */
+export function parseDeviceEdit(value: unknown): DeviceEdit | string {
+  if (!isObject(value)) return "Die Angaben zum Gerät fehlen.";
+  const name = typeof value.name === "string" ? value.name.replace(/\s+/g, " ").trim() : "";
+  if (!name) return "Bitte einen Namen für das Gerät angeben.";
+  if (name.length > 160) return "Der Name ist zu lang (höchstens 160 Zeichen).";
+  if (!(DEVICE_CATEGORIES as readonly string[]).includes(String(value.category))) {
+    return "Die Geräteart ist ungültig.";
+  }
+  const clean = (raw: unknown) => typeof raw === "string" ? raw.trim().replace(/\.$/, "").toLowerCase() : "";
+  const ipAddress = clean(value.ipAddress);
+  if (ipAddress && !IPV4.test(ipAddress) && !(ipAddress.includes(":") && IPV6.test(ipAddress))) {
+    return "Die IP-Adresse ist ungültig.";
+  }
+  const hostname = clean(value.hostname);
+  if (hostname && !HOST.test(hostname)) return "Der Hostname ist ungültig.";
+  return {
+    name,
+    category: value.category as DeviceEdit["category"],
+    ipAddress: ipAddress || null,
+    hostname: hostname || null,
   };
 }
 
@@ -346,6 +380,16 @@ export function parseAction(value: unknown): Action | string | null {
     case "deleteSensor": {
       const sensorId = uuid(value.sensorId);
       return sensorId ? { type: "deleteSensor", tenantId, sensorId } : null;
+    }
+    case "updateDevice": {
+      const assetId = uuid(value.assetId);
+      if (!assetId) return null;
+      const device = parseDeviceEdit(value.device);
+      return typeof device === "string" ? device : { type: "updateDevice", tenantId, assetId, device };
+    }
+    case "removeDevice": {
+      const assetId = uuid(value.assetId);
+      return assetId ? { type: "removeDevice", tenantId, assetId } : null;
     }
     case "pauseDevice": {
       const assetId = uuid(value.assetId);

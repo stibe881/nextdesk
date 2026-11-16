@@ -601,6 +601,7 @@ function DeviceView({
   const [series, setSeries] = useState<MonitoringSeries | null>(null);
   const [draft, setDraft] = useState<SensorDraft | null>(null);
   const [addingPorts, setAddingPorts] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -685,7 +686,7 @@ function DeviceView({
       {!data && !error ? <Spinner label="Gerät wird geladen …" /> : null}
       {data ? (
         <>
-          <header className="monitoring__hero">
+          <header className="monitoring__hero monitoring__hero--stack">
             <div>
               <div className="monitoring__title">
                 <h2 id="monitoring-device-title">{data.device.name}</h2>
@@ -724,6 +725,41 @@ function DeviceView({
                     {allPaused ? "Fortsetzen" : "Pausieren"}
                   </button>
                 ) : null}
+                <button
+                  className="secondary-button"
+                  onClick={() => setEditing(true)}
+                  type="button"
+                >
+                  <Pencil aria-hidden="true" size={16} />
+                  Bearbeiten
+                </button>
+                <button
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `«${data.device.name}» aus der Überwachung entfernen? Alle Sensoren und ihr Verlauf werden gelöscht. Das Gerät bleibt in der Infrastruktur.`,
+                      )
+                    ) {
+                      setBusy(true);
+                      monitoringCall({
+                        type: "removeDevice",
+                        tenantId,
+                        assetId,
+                      })
+                        .then(onBack)
+                        .catch((failure) => {
+                          setError(message(failure));
+                          setBusy(false);
+                        });
+                    }
+                  }}
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" size={16} />
+                  Entfernen
+                </button>
                 <button
                   className="secondary-button"
                   onClick={() => setAddingPorts(true)}
@@ -922,6 +958,17 @@ function DeviceView({
         </>
       ) : null}
 
+      {editing && data ? (
+        <DeviceDialog
+          device={data.device}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            load();
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
       {addingPorts && data ? (
         <PortsDialog
           agents={data.agents}
@@ -1848,6 +1895,116 @@ function PortsDialog({
             {saving
               ? `Sensor ${saving} wird angelegt …`
               : `${selected.size} ${selected.size === 1 ? "Sensor" : "Sensoren"} anlegen`}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Name, kind and address of a monitored device. */
+function DeviceDialog({
+  tenantId,
+  device,
+  onClose,
+  onSaved,
+}: {
+  tenantId: string;
+  device: MonitoringDeviceDetail["device"];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(device.name);
+  const [category, setCategory] = useState(device.category ?? "other");
+  const [ipAddress, setIpAddress] = useState(device.ipAddress ?? "");
+  const [hostname, setHostname] = useState(device.hostname ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await monitoringCall({
+        type: "updateDevice",
+        tenantId,
+        assetId: device.assetId,
+        device: { name, category, ipAddress, hostname },
+      });
+      onSaved();
+    } catch (failure) {
+      setError(message(failure));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog onClose={onClose} title="Gerät bearbeiten">
+      <form
+        className="monitoring-form"
+        onSubmit={(event) => void submit(event)}
+      >
+        <label className="monitoring-field">
+          <span>Name des Geräts</span>
+          <input
+            autoFocus
+            maxLength={160}
+            onChange={(event) => setName(event.target.value)}
+            required
+            type="text"
+            value={name}
+          />
+        </label>
+        <label className="monitoring-field">
+          <span>Art</span>
+          <select
+            onChange={(event) => setCategory(event.target.value)}
+            value={category}
+          >
+            {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="monitoring-field-row">
+          <label className="monitoring-field">
+            <span>IP-Adresse</span>
+            <input
+              onChange={(event) => setIpAddress(event.target.value)}
+              placeholder="z. B. 10.0.0.11"
+              type="text"
+              value={ipAddress}
+            />
+          </label>
+          <label className="monitoring-field">
+            <span>Hostname</span>
+            <input
+              onChange={(event) => setHostname(event.target.value)}
+              type="text"
+              value={hostname}
+            />
+          </label>
+        </div>
+        <p className="monitoring-muted">
+          Die Änderung gilt auch in der Infrastruktur. Sensoren ohne eigenes
+          Ziel messen danach die neue Adresse (zuerst die IP-Adresse, sonst den
+          Hostnamen). Standort, Uplink und Services werden unter Infrastruktur
+          gepflegt.
+        </p>
+        {error ? (
+          <p className="ticket-detail-message error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="monitoring-form__actions">
+          <button className="secondary-button" onClick={onClose} type="button">
+            Abbrechen
+          </button>
+          <button className="primary-button" disabled={saving} type="submit">
+            {saving ? "Wird gespeichert …" : "Speichern"}
           </button>
         </div>
       </form>

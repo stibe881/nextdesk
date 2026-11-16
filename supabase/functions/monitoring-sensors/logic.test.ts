@@ -7,6 +7,7 @@ import {
   deviceState,
   displayState,
   parseAction,
+  parseDeviceEdit,
   parseInterfaces,
   isOlderVersion,
   matchesAddress,
@@ -71,6 +72,12 @@ Deno.test("actions: tenant is required, validation message is passed on", () => 
   assertEquals(parseAction({ type: "series", tenantId: TENANT, sensorId: ASSET, range: "2y" }), null);
   assertEquals(parseAction({ type: "saveSensor", tenantId: TENANT, sensor: { assetId: ASSET, kind: "tcp" } }), "Der Port muss zwischen 1 und 65535 liegen.");
   assertEquals(parseAction({ type: "pauseDevice", tenantId: TENANT, assetId: ASSET, paused: "ja" }), null);
+  assertEquals(parseAction({ type: "removeDevice", tenantId: TENANT, assetId: ASSET }), {
+    type: "removeDevice",
+    tenantId: TENANT,
+    assetId: ASSET,
+  });
+  assertEquals(parseAction({ type: "removeDevice", tenantId: TENANT }), null);
   assertEquals(parseAction({ type: "löschen", tenantId: TENANT }), null);
 });
 
@@ -280,4 +287,23 @@ Deno.test("new device: name, kind and address; search in the address management"
   assertEquals(matchesAddress(entry, "prtg"), true);
   assertEquals(matchesAddress(entry, "s"), false);
   assertEquals(matchesAddress(entry, "exchange"), false);
+});
+
+Deno.test("device edit: name and kind required, addresses optional but valid", () => {
+  assertEquals(parseDeviceEdit({ name: " SW 001 ", category: "switch", ipAddress: "10.0.0.11", hostname: "SW001.dom1.inst." }), {
+    name: "SW 001",
+    category: "switch",
+    ipAddress: "10.0.0.11",
+    hostname: "sw001.dom1.inst",
+  });
+  assertEquals(parseDeviceEdit({ name: "SW001", category: "switch", ipAddress: "", hostname: "" }), {
+    name: "SW001",
+    category: "switch",
+    ipAddress: null,
+    hostname: null,
+  });
+  assertEquals(parseDeviceEdit({ name: "SW001", category: "switch", ipAddress: "10.0.0" }), "Die IP-Adresse ist ungültig.");
+  assertEquals(parseDeviceEdit({ name: "SW001", category: "switch", hostname: "a b" }), "Der Hostname ist ungültig.");
+  assertEquals(parseDeviceEdit({ name: "", category: "switch" }), "Bitte einen Namen für das Gerät angeben.");
+  assertEquals(parseAction({ type: "updateDevice", tenantId: TENANT, assetId: ASSET, device: { name: "x", category: "y" } }), "Die Geräteart ist ungültig.");
 });

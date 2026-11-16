@@ -22,6 +22,11 @@
   align-items: start;
 }
 
+/* Device page: several actions, so they sit below the title. */
+.monitoring__hero--stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .monitoring__hero h2,
 .monitoring-card h3,
 .monitoring-dialog h3 {
