@@ -162,6 +162,15 @@ export type MonitoringAssetChoice = {
   monitored: boolean;
 };
 
+/** An address of the IP address management that is no device yet. */
+export type MonitoringAddressChoice = {
+  addressId: string;
+  address: string;
+  hostname: string | null;
+  description: string | null;
+  deviceType: string | null;
+};
+
 export type SensorDraft = {
   id: string | null;
   assetId: string;

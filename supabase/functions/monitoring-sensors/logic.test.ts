@@ -9,6 +9,8 @@ import {
   parseAction,
   parseInterfaces,
   isOlderVersion,
+  matchesAddress,
+  parseNewDevice,
   parseProbePackage,
   parseSensor,
   probeConfig,
@@ -250,4 +252,32 @@ Deno.test("certificate and dns sensors, cloud only for http, cert and dns", () =
   assertEquals(displayState(cloud, { state: "up", lastCheckAt: at(250) }, now), "up");
   assertEquals(displayState(cloud, { state: "up", lastCheckAt: at(310) }, now), "unknown");
   assertEquals(displayState({ ...cloud, cloud: false }, { state: "up", lastCheckAt: at(10) }, now), "unknown");
+});
+
+Deno.test("new device: name, kind and address; search in the address management", () => {
+  assertEquals(parseNewDevice({ name: "  AP  015 ", category: "access_point", address: "172.16.128.20", agentId: AGENT }), {
+    name: "AP 015",
+    category: "access_point",
+    ipAddress: "172.16.128.20",
+    hostname: null,
+    agentId: AGENT,
+    ipamAddressId: null,
+  });
+  const byName = parseNewDevice({ name: "S108", category: "server", address: "S108.dom1.inst.", ipamAddressId: ASSET });
+  assertEquals(typeof byName === "string" ? byName : [byName.ipAddress, byName.hostname, byName.ipamAddressId], [
+    null,
+    "s108.dom1.inst",
+    ASSET,
+  ]);
+  assertEquals(parseNewDevice({ name: "", category: "server", address: "10.0.0.1" }), "Bitte einen Namen für das Gerät angeben.");
+  assertEquals(parseNewDevice({ name: "x", category: "drucker", address: "10.0.0.1" }), "Die Geräteart ist ungültig.");
+  assertEquals(parseNewDevice({ name: "x", category: "server", address: "" }), "Bitte IP-Adresse oder Hostname angeben.");
+  assertEquals(parseNewDevice({ name: "x", category: "server", address: "-c 5 10.0.0.1" }), "Die Adresse muss eine IP-Adresse oder ein Hostname sein.");
+  assertEquals(parseAction({ type: "addDevice", tenantId: TENANT, device: { name: "x", category: "server" } }), "Bitte IP-Adresse oder Hostname angeben.");
+  const entry = { address: "10.0.1.108", hostname: "S108", description: "PRTG-Server" };
+  assertEquals(matchesAddress(entry, "s10"), true);
+  assertEquals(matchesAddress(entry, "0.1.108"), true);
+  assertEquals(matchesAddress(entry, "prtg"), true);
+  assertEquals(matchesAddress(entry, "s"), false);
+  assertEquals(matchesAddress(entry, "exchange"), false);
 });

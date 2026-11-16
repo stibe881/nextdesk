@@ -211,6 +211,20 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-ueberwachung-hinzufuegen",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.click("Gerät hinzufügen");
+      await h.page.getByLabel("Gerät suchen").fill("srv");
+      await h.waitText("IP-Adressverwaltung");
+      await h.page.getByText("srv-print-01").click();
+      await h.waitText("Name des Geräts");
+      await h.settle(300);
+    },
+  },
+  {
     name: "ag-ueberwachung-geraet",
     persona: "agent",
     async run(h) {

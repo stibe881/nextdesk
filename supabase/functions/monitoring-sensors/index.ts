@@ -14,6 +14,8 @@ import {
   type DisplayState,
   displayState,
   isOlderVersion,
+  matchesAddress,
+  type NewDevice,
   parseAction,
   parseInterfaces,
   parseProbePackage,
@@ -399,6 +401,87 @@ async function series(admin: Client, tenantId: string, sensorId: string, range: 
   };
 }
 
+/**
+ * Entries of the IP address management that are not linked to a device yet:
+ * hosts nextDesk knows by address but not as infrastructure device.
+ */
+async function addressChoices(admin: Client, tenantId: string, query: string) {
+  if (query.trim().length < 2) return [];
+  const { data, error } = await admin.from("ipam_addresses")
+    .select("id, address, hostname, description, device_type")
+    .eq("tenant_id", tenantId).is("asset_id", null).limit(5000);
+  // The module may be off or empty: then there is simply nothing to offer.
+  if (error) return [];
+  return ((data ?? []) as Row[]).flatMap((row) => {
+    const address = String(row.address ?? "").split("/")[0] ?? "";
+    const entry = { address, hostname: text(row.hostname), description: text(row.description) };
+    if (!address || !matchesAddress(entry, query)) return [];
+    return [{ addressId: String(row.id), ...entry, deviceType: text(row.device_type) }];
+  }).sort((x, y) => (x.hostname ?? x.address).localeCompare(y.hostname ?? y.address, "de")).slice(0, 30);
+}
+
+/**
+ * Creates a device in the infrastructure (like «Infrastruktur → Gerät
+ * erfassen», with the fields monitoring needs) and its ping sensor.
+ */
+async function addDevice(admin: Client, tenantId: string, actorId: string, device: NewDevice) {
+  if (device.agentId) {
+    const agent = await admin.from("ipam_agents").select("id").eq("tenant_id", tenantId).eq("id", device.agentId).neq("status", "revoked").maybeSingle();
+    if (agent.error) throw unavailable();
+    if (!agent.data) throw new HttpError(422, "agent_not_found", "Die Sonde wurde nicht gefunden.");
+  }
+  const inserted = await admin.from("assets").insert({
+    tenant_id: tenantId,
+    name: device.name,
+    kind: device.category,
+    lifecycle_state: "active",
+    lifecycle_changed_at: new Date().toISOString(),
+  }).select("id").single();
+  if (inserted.error || !inserted.data) {
+    throw new HttpError(422, "device_save_failed", "Das Gerät konnte nicht gespeichert werden.");
+  }
+  const assetId = String(inserted.data.id);
+  await admin.from("asset_lifecycle_events")
+    .update({ actor_id: actorId, reason: "Erfasst in der Überwachung" })
+    .eq("tenant_id", tenantId).eq("asset_id", assetId).is("actor_id", null);
+  const infra = await admin.from("asset_infrastructure").insert({
+    asset_id: assetId,
+    tenant_id: tenantId,
+    category: device.category,
+    hostname: device.hostname,
+    ip_address: device.ipAddress,
+  });
+  if (infra.error) {
+    // Do not leave a device behind that is no infrastructure device.
+    await admin.from("assets").delete().eq("tenant_id", tenantId).eq("id", assetId);
+    throw unavailable();
+  }
+  if (device.ipamAddressId) {
+    // Link the address to the new device; a failure here is not fatal.
+    await admin.from("ipam_addresses").update({ asset_id: assetId, change_actor: actorId, change_source: "user" })
+      .eq("tenant_id", tenantId).eq("id", device.ipamAddressId).is("asset_id", null);
+  }
+  await admin.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_id: actorId,
+    action: "infrastructure.device.created",
+    entity_type: "asset",
+    entity_id: assetId,
+    severity: "info",
+    metadata: { category: device.category, source: "monitoring" },
+  });
+  const sensor = await admin.from("monitoring_sensors").insert({
+    tenant_id: tenantId,
+    asset_id: assetId,
+    agent_id: device.agentId,
+    kind: "ping",
+    name: "Ping",
+    created_by: actorId,
+  }).select("id").single();
+  if (sensor.error) throw unavailable();
+  return { assetId, sensorId: String(sensor.data.id) };
+}
+
 async function assetChoices(admin: Client, tenantId: string, query: string) {
   const columns = "asset_id, category, hostname, ip_address";
   let request = admin.from("asset_infrastructure").select(columns).eq("tenant_id", tenantId).limit(400);
@@ -423,6 +506,7 @@ async function assetChoices(admin: Client, tenantId: string, query: string) {
   if (monitored.error) throw unavailable();
   const known = new Set(((monitored.data ?? []) as Row[]).map((row) => String(row.asset_id)));
   return {
+    addresses: await addressChoices(admin, tenantId, query),
     assets: assets.flatMap((asset) => {
       if (asset.lifecycle_state === "retired" || asset.lifecycle_state === "disposed") return [];
       const row = rows.get(String(asset.id));
@@ -660,6 +744,9 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
     case "interfaces":
       manage();
       return await interfaces(admin, action.tenantId, action.jobId);
+    case "addDevice":
+      manage();
+      return await addDevice(admin, action.tenantId, actorId, action.device);
     case "createAgent":
       manage();
       return await createAgent(admin, action.tenantId, actorId, action.name);

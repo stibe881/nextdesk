@@ -465,9 +465,19 @@ Ein Klick auf ein Gerät öffnet das **Gerätedetail**:
 
 Mit dem Recht «Assets verwalten» können Sie zusätzlich:
 
-1. **Gerät hinzufügen** – ein Gerät aus der Infrastruktur wählen und die
-   Sonde bestimmen. Das Gerät erhält einen Ping-Sensor. Geräte mit Adresse stehen in der Liste zuoberst; fehlt in der Infrastruktur die IP-Adresse und der Hostname, fragt der Dialog danach. Geräte, die noch
-   nicht in der Infrastruktur stehen, erfassen Sie zuerst dort.
+1. **Gerät hinzufügen** – die Suche findet:
+   - **Geräte der Infrastruktur.** Geräte mit Adresse stehen zuoberst; fehlt
+     IP-Adresse und Hostname, fragt der Dialog danach.
+   - **Einträge der IP-Adressverwaltung**, die noch kein Gerät sind (ab zwei
+     Zeichen). Name und Adresse werden übernommen, nur die Art ist zu
+     wählen.
+   - **Neues Gerät erfassen**, wenn es nirgends steht: Name, Art und
+     IP-Adresse oder Hostname genügen.
+
+   In den letzten beiden Fällen legt nextDesk das Gerät in der Infrastruktur
+   an; Standort, Uplink und Services ergänzen Sie dort. Danach die Sonde wählen.
+   Das Gerät erhält einen Ping-Sensor.
+
 2. **Sensor hinzufügen** (im Gerätedetail) – Art wählen:
    - **Ping**: Ist das Gerät erreichbar?
    - **TCP-Port**: Antwortet ein Dienst, z. B. 3389 (RDP) oder 1433 (SQL)?
@@ -515,6 +525,8 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    Beim Pausieren und Löschen endet ein offener Alarm des Sensors; die
    Störung gilt als behoben, sobald kein Sensor des Geräts mehr gestört ist.
 4. **Sonde hinzufügen** – siehe Handbuch für Administratoren.
+
+![Gerät hinzufügen mit Treffer aus der IP-Adressverwaltung](images/ag-ueberwachung-hinzufuegen.jpg)
 
 **In der App** finden Sie die Überwachung unter **Dienste → Überwachung** (wenn
 das Modul aktiv ist). Die App zeigt die Kacheln je Zustand, die aktiven
