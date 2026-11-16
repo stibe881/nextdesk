@@ -446,6 +446,8 @@ Resultate laufend an nextDesk.
   Sonde sich wieder meldet.
 - **Geräteliste**: Zustand, Sensoren, Antwortzeit und letzte Prüfung. Die
   Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
+  Ein Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter kehrt die
+  Reihenfolge um. Standard ist der Zustand, das Dringende zuoberst.
 
 ![Überwachung mit Kacheln, aktiven Alarmen, Sonden und Geräteliste](images/ag-ueberwachung.jpg)
 

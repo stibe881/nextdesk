@@ -523,6 +523,56 @@ export function matchesSearch(
   ].some((value) => value?.toLowerCase().includes(term));
 }
 
+export type DeviceSortKey =
+  "state" | "name" | "sensors" | "response" | "lastCheck";
+export type DeviceSort = { key: DeviceSortKey; descending: boolean };
+
+/** Worst first: what needs attention is at the top. */
+const STATE_RANK: Record<MonitoringState, number> = {
+  down: 0,
+  warning: 1,
+  unknown: 2,
+  paused: 3,
+  up: 4,
+};
+
+/**
+ * Devices sorted by a column. Devices without a value (no response time,
+ * never checked) stay at the end in both directions; ties go by name.
+ */
+export function sortDevices(
+  devices: readonly MonitoringDeviceRow[],
+  sort: DeviceSort,
+): MonitoringDeviceRow[] {
+  const byName = (a: MonitoringDeviceRow, b: MonitoringDeviceRow) =>
+    a.name.localeCompare(b.name, "de", { numeric: true, sensitivity: "base" });
+  const value = (device: MonitoringDeviceRow): number | null => {
+    switch (sort.key) {
+      case "state":
+        return STATE_RANK[device.state];
+      case "sensors":
+        return device.sensorCount;
+      case "response":
+        return device.responseMs;
+      case "lastCheck":
+        return device.lastCheckAt ? Date.parse(device.lastCheckAt) : null;
+      case "name":
+        return 0;
+    }
+  };
+  const direction = sort.descending ? -1 : 1;
+  return [...devices].sort((a, b) => {
+    if (sort.key === "name") return direction * byName(a, b);
+    const left = value(a);
+    const right = value(b);
+    if (left === null || right === null) {
+      if (left === right) return byName(a, b);
+      return left === null ? 1 : -1;
+    }
+    return direction * (left - right) || byName(a, b);
+  });
+}
+
 export type ChartGeometry = {
   width: number;
   height: number;

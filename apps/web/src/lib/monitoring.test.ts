@@ -8,6 +8,7 @@ import {
   connectedPorts,
   formatValue,
   portLinkText,
+  sortDevices,
   type MonitoringPort,
   guessCategory,
   sensorValueText,
@@ -277,5 +278,55 @@ describe("Überwachung: Verbindungen", () => {
     );
     expect(portLinkText(port({ deviceCount: 2 }))).toBe("2 unbekannte Geräte");
     expect(portLinkText(port({}))).toBe("–");
+  });
+});
+
+describe("Überwachung: Geräteliste sortieren", () => {
+  const row = (
+    name: string,
+    overrides: Partial<MonitoringDeviceRow> = {},
+  ): MonitoringDeviceRow => ({
+    assetId: name,
+    name,
+    category: null,
+    hostname: null,
+    ipAddress: null,
+    state: "up",
+    counts: { down: 0, warning: 0, up: 1, unknown: 0, paused: 0 },
+    sensorCount: 1,
+    responseMs: null,
+    lastCheckAt: null,
+    problem: null,
+    incident: null,
+    ...overrides,
+  });
+  const names = (rows: MonitoringDeviceRow[]) => rows.map((r) => r.name);
+
+  it("sortiert Namen natürlich und nach Zustand das Dringende zuerst", () => {
+    const rows = [
+      row("ASW10"),
+      row("ASW2", { state: "down" }),
+      row("ASW1", { state: "unknown" }),
+    ];
+    expect(
+      names(sortDevices(rows, { key: "name", descending: false })),
+    ).toEqual(["ASW1", "ASW2", "ASW10"]);
+    expect(
+      names(sortDevices(rows, { key: "state", descending: false })),
+    ).toEqual(["ASW2", "ASW1", "ASW10"]);
+  });
+
+  it("lässt Geräte ohne Messwert in beiden Richtungen am Ende", () => {
+    const rows = [
+      row("a"),
+      row("b", { responseMs: 12 }),
+      row("c", { responseMs: 3 }),
+    ];
+    expect(
+      names(sortDevices(rows, { key: "response", descending: false })),
+    ).toEqual(["c", "b", "a"]);
+    expect(
+      names(sortDevices(rows, { key: "response", descending: true })),
+    ).toEqual(["b", "c", "a"]);
   });
 });

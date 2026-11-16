@@ -303,6 +303,33 @@ button.monitoring-tile[aria-pressed="true"] {
   font-weight: 600;
 }
 
+.monitoring-table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.monitoring-table__sort span {
+  font-size: 10px;
+  opacity: 0.55;
+}
+
+.monitoring-table th[aria-sort="ascending"] .monitoring-table__sort,
+.monitoring-table th[aria-sort="descending"] .monitoring-table__sort {
+  color: var(--ink);
+}
+
+.monitoring-table th[aria-sort="ascending"] .monitoring-table__sort span,
+.monitoring-table th[aria-sort="descending"] .monitoring-table__sort span {
+  opacity: 1;
+}
+
 .monitoring-table td {
   border-top: 1px solid var(--border);
   padding: 11px 12px;

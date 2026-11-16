@@ -42,7 +42,10 @@ import {
   INTERVAL_OPTIONS,
   intervalLabel,
   kindLabel,
+  type DeviceSort,
+  type DeviceSortKey,
   matchesSearch,
+  sortDevices,
   monitoringCall,
   RANGE_LABELS,
   sensorCountsText,
@@ -170,14 +173,49 @@ function OverviewView({
   useEffect(load, [load]);
   const now = useNow(load);
 
+  const [sort, setSort] = useState<DeviceSort>({
+    key: "state",
+    descending: false,
+  });
   const devices = useMemo(
     () =>
-      (data?.devices ?? []).filter(
-        (device) =>
-          (filter === "all" || device.state === filter) &&
-          matchesSearch(device, search),
+      sortDevices(
+        (data?.devices ?? []).filter(
+          (device) =>
+            (filter === "all" || device.state === filter) &&
+            matchesSearch(device, search),
+        ),
+        sort,
       ),
-    [data, filter, search],
+    [data, filter, search, sort],
+  );
+  const sortHeader = (key: DeviceSortKey, label: string) => (
+    <th
+      aria-sort={
+        sort.key === key
+          ? sort.descending
+            ? "descending"
+            : "ascending"
+          : "none"
+      }
+      scope="col"
+    >
+      <button
+        className="monitoring-table__sort"
+        onClick={() =>
+          setSort((current) => ({
+            key,
+            descending: current.key === key ? !current.descending : false,
+          }))
+        }
+        type="button"
+      >
+        {label}
+        <span aria-hidden="true">
+          {sort.key === key ? (sort.descending ? "▼" : "▲") : "↕"}
+        </span>
+      </button>
+    </th>
   );
   const alarms = (data?.devices ?? []).filter((device) => device.problem);
   const onlineAgents = (data?.agents ?? []).filter((agent) => agent.online);
@@ -350,11 +388,11 @@ function OverviewView({
                 <table className="monitoring-table">
                   <thead>
                     <tr>
-                      <th scope="col">Status</th>
-                      <th scope="col">Gerät</th>
-                      <th scope="col">Sensoren</th>
-                      <th scope="col">Antwortzeit</th>
-                      <th scope="col">Letzte Prüfung</th>
+                      {sortHeader("state", "Status")}
+                      {sortHeader("name", "Gerät")}
+                      {sortHeader("sensors", "Sensoren")}
+                      {sortHeader("response", "Antwortzeit")}
+                      {sortHeader("lastCheck", "Letzte Prüfung")}
                     </tr>
                   </thead>
                   <tbody>
