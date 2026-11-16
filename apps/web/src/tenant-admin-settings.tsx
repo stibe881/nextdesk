@@ -3201,7 +3201,7 @@ export function TenantAdminSettings({
                   </div>
                 </div>
                 {assetsManagementEnabled ? (
-                  <>
+                  <div className="tenant-admin-settings__monitoring-stack">
                     {monitoringEnabled ? (
                       <MonitoringProbeSettings tenantId={tenantId} />
                     ) : (
@@ -3216,7 +3216,7 @@ export function TenantAdminSettings({
                     <ExternalStatusSettings tenantId={tenantId} />
                     <ExpiryMonitoringSettings tenantId={tenantId} />
                     <BackupMonitoringSettings tenantId={tenantId} />
-                  </>
+                  </div>
                 ) : (
                   <p className="tenant-admin-settings__feature-detail-note">
                     {tn(

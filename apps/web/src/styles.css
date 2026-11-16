@@ -23522,3 +23522,16 @@ body.app-dialog-open {
     flex: 1 1 100%;
   }
 }
+
+/* Monitoring-Einstellungen: gleichmässiger Abstand zwischen den Karten
+   (Sonden, PRTG, externe Status, Ablaufdaten, Backups). */
+.tenant-admin-settings__monitoring-stack {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.tenant-admin-settings__monitoring-stack > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
