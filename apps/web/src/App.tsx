@@ -7024,6 +7024,14 @@ function AuthenticatedApp() {
                   }
                 : undefined
             }
+            onOpenInfrastructure={
+              isFeatureEnabled("assets.management")
+                ? (id) => {
+                    setInfrastructureFocusId(id);
+                    setSection("Infrastruktur");
+                  }
+                : undefined
+            }
             tenantId={activeTenant.id}
           />
         ) : section === "Lager" &&

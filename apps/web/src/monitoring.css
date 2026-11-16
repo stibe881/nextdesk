@@ -546,6 +546,11 @@ button.monitoring-tile[aria-pressed="true"] {
   color: var(--ink);
 }
 
+.monitoring-form__all {
+  justify-self: start;
+  padding: 0;
+}
+
 .monitoring-steps {
   display: grid;
   gap: 6px;

@@ -1266,16 +1266,38 @@ const HANDLERS = {
                   description: "Druckserver",
                   deviceType: null,
                 },
+                {
+                  addressId: D.uid("52525252", 2),
+                  address: "10.10.20.56",
+                  hostname: "srv-backup-02",
+                  description: "Backup",
+                  deviceType: null,
+                },
+                {
+                  addressId: D.uid("52525252", 3),
+                  address: "10.10.0.14",
+                  hostname: "asw-srv-raum",
+                  description: "Switch Serverraum",
+                  deviceType: null,
+                },
               ]
             : [],
-        assets: devices.map((device) => ({
-          assetId: device.assetId,
-          name: device.name,
-          category: device.category,
-          hostname: null,
-          ipAddress: device.ipAddress,
-          monitored: true,
-        })),
+        assets: devices
+          .filter((device) =>
+            device.name.toLowerCase().includes(
+              String(body.query ?? "")
+                .trim()
+                .toLowerCase(),
+            ),
+          )
+          .map((device) => ({
+            assetId: device.assetId,
+            name: device.name,
+            category: device.category,
+            hostname: null,
+            ipAddress: device.ipAddress,
+            monitored: true,
+          })),
       });
     }
     return ok({ ok: true });

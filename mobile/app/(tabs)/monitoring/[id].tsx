@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
+import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useIncidentStyles } from "@/components/incident-styles";
 import { stateBadge, stateBar } from "@/components/monitoring-styles";
 import { useMobileNetworkStatus } from "@/components/offline-status";
@@ -44,6 +45,8 @@ const RANGES = Object.keys(RANGE_LABELS) as MonitoringRange[];
 /** A monitored device: sensors, history of one sensor, linked incident. */
 export default function MonitoringDeviceScreen() {
   const router = useRouter();
+  const { isEnabled } = useMobileFeatures();
+  const assetsEnabled = isEnabled("assets.management");
   const { id } = useLocalSearchParams<{ id: string }>();
   const styles = useIncidentStyles();
   const colors = useAppColors();
@@ -224,6 +227,26 @@ export default function MonitoringDeviceScreen() {
                   .join(" · ")}
               </Text>
             </View>
+
+            {assetsEnabled ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push(`/infrastructure/${id}` as never)}
+                style={styles.row}
+              >
+                <View style={styles.rowCopy}>
+                  <Text style={styles.rowTitle}>In Infrastruktur öffnen</Text>
+                  <Text numberOfLines={1} style={styles.rowMeta}>
+                    Standort, Rack, Uplink und Services des Geräts
+                  </Text>
+                </View>
+                <Ionicons
+                  color={colors.muted}
+                  name="chevron-forward"
+                  size={18}
+                />
+              </Pressable>
+            ) : null}
 
             {data.device.incident ? (
               <Pressable

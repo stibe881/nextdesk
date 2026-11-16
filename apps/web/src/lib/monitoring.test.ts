@@ -6,6 +6,7 @@ import {
   formatMs,
   formatSince,
   formatValue,
+  guessCategory,
   sensorValueText,
   thresholdText,
   trafficDraft,
@@ -218,5 +219,17 @@ describe("Überwachung: SNMP-Werte", () => {
     expect(chart.lines).toHaveLength(1);
     expect(chart.lines2).toHaveLength(1);
     expect(chart.yTicks.at(-1)?.label).toBe("10 Mbit/s");
+  });
+});
+
+describe("Überwachung: Art aus dem Namen", () => {
+  it("erkennt gängige Namensmuster und fällt sonst auf «other» zurück", () => {
+    expect(guessCategory("SOBE-BAAR-ASW01", null)).toBe("switch");
+    expect(guessCategory("sw-01")).toBe("switch");
+    expect(guessCategory("ap-12", "Access Point 2. OG")).toBe("access_point");
+    expect(guessCategory("fw01")).toBe("firewall");
+    expect(guessCategory("srv-print-01")).toBe("server");
+    expect(guessCategory(null, "Drucker Empfang")).toBe("other");
+    expect(guessCategory(null, undefined)).toBe("other");
   });
 });
