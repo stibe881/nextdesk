@@ -318,7 +318,7 @@ Lösung) gelten zusätzlich: Eine E-Mail wird nur gesendet, wenn beide aktiv sin
 Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
 
 - **Monitoring (PRTG)** – Störungen aus PRTG-Alarmen (ohne Tickets, im
-  Bereich **Sicherheit und Störungen**, Eintrag **Störungen**). Sie wählen das **Team für die Alarmierung**
+  Bereich **Sicherheit und Störungen**, Eintrag **Störungen**). In der Karte **Alarmierung** (gilt auch für die eigene Überwachung) wählen Sie das **Team für die Alarmierung**
   (nur dieses Team sieht Störungen),
   ob auch Warnungen eine Störung öffnen, wie oft unbestätigte Störungen erneut
   alarmieren, ob Folgestörungen gebündelt werden und ob während einer Wartung
@@ -368,10 +368,11 @@ parallel zu PRTG laufen; beide öffnen Störungen im selben Bereich.
 Die Karte **Überwachung** unter **Funktionen** führt mit «Zum Tab
 Monitoring» direkt hierher.
 
-Die Einstellungen unter **Monitoring (PRTG)** gelten auch für die eigene
-Überwachung: Team für die Alarmierung, ob Warnungen eine Störung öffnen,
-Wiederalarmierung, Folgestörungen und Ruhe während einer Wartung. Der Schalter
-«aktiv» und der Token dort betreffen nur den Empfang von PRTG-Meldungen.
+Die Karte **Alarmierung** direkt darunter gilt für die eigene Überwachung
+und für PRTG: Team für die Alarmierung, ob Warnungen eine Störung öffnen,
+Wiederalarmierung, Folgestörungen, Ruhe während einer Wartung und die
+Anpassung des Systemstatus. Unter **Monitoring (PRTG)** stehen nur noch der
+Schalter für den Empfang von PRTG-Meldungen und der Token.
 
 Eine hier angelegte Sonde misst nur Sensoren. Die Netzwerk-Erkennung der
 IP-Adressverwaltung (Ping-Sweep der Subnetze) ist für sie ausgeschaltet und
