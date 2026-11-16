@@ -157,7 +157,9 @@ export function IpamNetworksPage(props: Props) {
   const [showFilters, setShowFilters] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Standard: alle Netze eingeklappt; aufgeklappt wird nur, was man öffnet
+  // (und automatisch der Pfad zum gewählten Netz).
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [navOpen, setNavOpen] = useState(false);
   const detailRef = useRef<HTMLElement>(null);
   const cleanup = useIpamQuery<{ suggestions: CleanupSuggestion[] }>(
@@ -194,6 +196,23 @@ export function IpamNetworksPage(props: Props) {
   const selected = selectedPrefixId
     ? (byId.get(selectedPrefixId) ?? null)
     : null;
+
+  useEffect(() => {
+    if (!selectedPrefixId) return;
+    const ancestors: string[] = [];
+    let parentId = byId.get(selectedPrefixId)?.parentId ?? null;
+    while (parentId && !ancestors.includes(parentId)) {
+      ancestors.push(parentId);
+      parentId = byId.get(parentId)?.parentId ?? null;
+    }
+    if (!ancestors.length) return;
+    setExpanded((current) => {
+      if (ancestors.every((id) => current.has(id))) return current;
+      const next = new Set(current);
+      ancestors.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [selectedPrefixId, byId]);
 
   useEffect(() => {
     if (
@@ -247,7 +266,7 @@ export function IpamNetworksPage(props: Props) {
     if (grouping !== "tree" || textActive) return false;
     let parentId = prefix.parentId ?? null;
     while (parentId) {
-      if (collapsed.has(parentId)) return true;
+      if (!expanded.has(parentId)) return true;
       parentId = byId.get(parentId)?.parentId ?? null;
     }
     return false;
@@ -484,14 +503,17 @@ export function IpamNetworksPage(props: Props) {
                   grouping === "tree" &&
                   !textActive &&
                   parents.has(row.prefix.id);
-                const isOpen = !collapsed.has(row.prefix.id);
+                const isOpen = expanded.has(row.prefix.id);
                 const active = row.prefix.id === selectedPrefixId;
-                const sub = [
-                  row.vlan ? `VLAN ${row.vlan.vlanNumber}` : null,
-                  row.prefix.description ?? row.vlan?.name ?? null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ");
+                // Drei Zeilen: IP, Beschreibung, VLAN.
+                const description =
+                  row.prefix.description?.trim() ||
+                  prefixStatusLabel(row.prefix.status);
+                const vlanLine = row.vlan
+                  ? [`VLAN ${row.vlan.vlanNumber}`, row.vlan.name]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : null;
                 return (
                   <div
                     className={`ipam-tree3__row${active ? " is-active" : ""}${row.context ? " is-context" : ""}`}
@@ -511,7 +533,7 @@ export function IpamNetworksPage(props: Props) {
                         aria-label={`${row.prefix.prefix} ${isOpen ? "zuklappen" : "aufklappen"}`}
                         className="ipam-tree3__twisty"
                         onClick={() =>
-                          setCollapsed((current) => {
+                          setExpanded((current) => {
                             const next = new Set(current);
                             if (next.has(row.prefix.id))
                               next.delete(row.prefix.id);
@@ -550,9 +572,12 @@ export function IpamNetworksPage(props: Props) {
                             </span>
                           ) : null}
                         </span>
-                        <small>
-                          {sub || prefixStatusLabel(row.prefix.status)}
-                        </small>
+                        <small title={description}>{description}</small>
+                        {vlanLine ? (
+                          <small className="ipam-tree3__vlan" title={vlanLine}>
+                            {vlanLine}
+                          </small>
+                        ) : null}
                       </span>
                       {row.prefix.usage && row.prefix.status !== "container" ? (
                         <Meter
