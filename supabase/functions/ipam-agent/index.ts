@@ -18,7 +18,19 @@ import {
   sha256Hex,
   timingSafeEqualHex,
 } from "../_shared/ipam-discovery.ts";
+import {
+  MONITORING_FEATURE,
+  parseResults,
+  parseTransitions,
+  sensorKey,
+  transitionEvent,
+} from "../_shared/monitoring-native.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  INTEGRATION_COLUMNS,
+  parseResolvedDevice,
+  processEvent,
+} from "../monitoring-webhook/index.ts";
 
 /**
  * Endpoint for the on-prem nextDesk network agent (`tools/ipam-agent`).
@@ -31,7 +43,11 @@ import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
  *   per-isolate throttle for failed logins per client address.
  * - Actions: `hello` (version/hostname, returns config, subnets and pending
  *   jobs), `report` (observations, MAC tables, LLDP, DHCP, DNS in chunks),
- *   `jobResult` (outcome of a job).
+ *   `jobResult` (outcome of a job), `monitorReport` (results of the
+ *   monitoring checks the agent got with `hello`).
+ * - The agent serves two modules: IP address management (`ipam.management`)
+ *   and monitoring (`monitoring.native`). One of them is enough; each part
+ *   of `hello` is only filled for an enabled module.
  */
 
 // deno-lint-ignore no-explicit-any
@@ -117,7 +133,14 @@ function agentConfig(agent: Agent): AgentConfig {
 // ---------------------------------------------------------------------------
 // hello
 
-async function hello(admin: Admin, agent: Agent, body: Record<string, unknown>): Promise<Response> {
+type Modules = { ipam: boolean; monitoring: boolean };
+
+async function hello(
+  admin: Admin,
+  agent: Agent,
+  body: Record<string, unknown>,
+  modules: Modules,
+): Promise<Response> {
   const info = isObject(body.agent) ? body.agent : {};
   const capabilities: Record<string, boolean> = {};
   if (isObject(info.capabilities)) {
@@ -142,7 +165,9 @@ async function hello(admin: Admin, agent: Agent, body: Record<string, unknown>):
     .eq("tenant_id", agent.tenant_id)
     .order("prefix")
     .limit(1000);
-  if (config.scanAllActive) {
+  if (!modules.ipam) {
+    prefixQuery = prefixQuery.in("id", ["00000000-0000-0000-0000-000000000000"]);
+  } else if (config.scanAllActive) {
     prefixQuery = prefixQuery.eq("status", "active");
     prefixQuery = config.vrfId ? prefixQuery.eq("vrf_id", config.vrfId) : prefixQuery.is("vrf_id", null);
   } else {
@@ -169,6 +194,18 @@ async function hello(admin: Admin, agent: Agent, body: Record<string, unknown>):
     p_limit: 20,
   });
   if (claimError) return reply({ ok: false, error: "unavailable" }, 503);
+
+  let checks: unknown[] = [];
+  if (modules.monitoring) {
+    const { data, error } = await admin.rpc("monitoring_agent_checks", {
+      p_tenant_id: agent.tenant_id,
+      p_agent_id: agent.id,
+    });
+    if (error) return reply({ ok: false, error: "unavailable" }, 503);
+    // Sensors without a target (device without address) cannot be measured.
+    checks = (Array.isArray(data) ? data : []).filter((check) => isObject(check) &&
+      (check.kind === "http" || typeof check.host === "string"));
+  }
   const jobs: Row[] = [];
   for (const job of (claimed ?? []) as Row[]) {
     if (job.kind !== "scan_now" && !config.allowWrites) {
@@ -197,6 +234,8 @@ async function hello(admin: Admin, agent: Agent, body: Record<string, unknown>):
     },
     subnets,
     jobs,
+    scanEnabled: modules.ipam,
+    checks,
     pollSeconds: 60,
     serverTime: new Date().toISOString(),
     limits: {
@@ -488,6 +527,70 @@ async function handleReport(admin: Admin, agent: Agent, body: Record<string, unk
 }
 
 // ---------------------------------------------------------------------------
+// monitorReport
+
+/** Settings of the tenant's monitoring (alert team, re-alerting, …). */
+type Integration = Parameters<typeof processEvent>[1];
+
+async function monitoringIntegration(admin: Admin, tenantId: string): Promise<Integration | null> {
+  const read = () =>
+    admin.from("monitoring_integrations").select(INTEGRATION_COLUMNS).eq("tenant_id", tenantId).maybeSingle();
+  const existing = await read();
+  if (existing.error) return null;
+  if (existing.data) return existing.data as Integration;
+  // No PRTG connection configured: the defaults apply (webhook stays off).
+  await admin.from("monitoring_integrations").insert({ tenant_id: tenantId });
+  const created = await read();
+  return created.error ? null : (created.data as Integration | null);
+}
+
+async function monitorReport(admin: Admin, agent: Agent, body: Record<string, unknown>): Promise<Response> {
+  const parsed = parseResults(body.results);
+  if (!parsed) return reply({ ok: false, error: "invalid_results" }, 422);
+  if (!parsed.results.length) return reply({ ok: true, accepted: 0, skipped: parsed.skipped });
+  const { data, error } = await admin.rpc("monitoring_ingest_results", {
+    p_tenant_id: agent.tenant_id,
+    p_agent_id: agent.id,
+    p_results: parsed.results,
+  });
+  if (error) return reply({ ok: false, error: "unavailable" }, 503);
+  const transitions = parseTransitions(data);
+  let failed = 0;
+  if (transitions.length) {
+    const integration = await monitoringIntegration(admin, agent.tenant_id);
+    if (!integration) return reply({ ok: false, error: "unavailable" }, 503);
+    const devices = new Map<string, ReturnType<typeof parseResolvedDevice>>();
+    for (const transition of transitions) {
+      try {
+        if (!devices.has(transition.assetId)) {
+          const resolved = await admin.rpc("monitoring_resolve_asset", {
+            p_tenant_id: agent.tenant_id,
+            p_asset_id: transition.assetId,
+          });
+          if (resolved.error) throw new Error("device_lookup_failed");
+          devices.set(transition.assetId, parseResolvedDevice(resolved.data));
+        }
+        const device = devices.get(transition.assetId) ?? null;
+        const event = transitionEvent(transition, device, agent.name);
+        if (!event) continue;
+        await processEvent(admin, integration, event, new Date(transition.at), {
+          key: sensorKey(transition.sensorId),
+          device,
+        });
+      } catch (failure) {
+        failed += 1;
+        console.error(
+          "monitoring_transition_failed",
+          failure instanceof Error ? failure.message : typeof failure,
+        );
+      }
+    }
+  }
+  const accepted = isObject(data) && typeof data.accepted === "number" ? data.accepted : 0;
+  return reply({ ok: true, accepted, skipped: parsed.skipped, transitions: transitions.length, failed });
+}
+
+// ---------------------------------------------------------------------------
 // jobResult
 
 async function jobResult(admin: Admin, agent: Agent, body: Record<string, unknown>): Promise<Response> {
@@ -577,9 +680,16 @@ const handler = withSupabase(
     if (touchError) return reply({ ok: false, error: "unavailable" }, 503);
     if (allowed !== true) return reply({ ok: false, error: "rate_limited" }, 429, { "Retry-After": "60" });
 
-    const features = await resolveTenantFeatureStates(admin, agent.tenant_id, ["ipam.management"]);
+    const features = await resolveTenantFeatureStates(admin, agent.tenant_id, [
+      "ipam.management",
+      MONITORING_FEATURE,
+    ]);
     if (!features) return reply({ ok: false, error: "unavailable" }, 503);
-    if (features["ipam.management"] !== true) {
+    const modules: Modules = {
+      ipam: features["ipam.management"] === true,
+      monitoring: features[MONITORING_FEATURE] === true,
+    };
+    if (!modules.ipam && !modules.monitoring) {
       return reply({ ok: false, error: "feature_disabled" }, 403);
     }
 
@@ -596,11 +706,15 @@ const handler = withSupabase(
     if (!isObject(body)) return reply({ ok: false, error: "invalid_request" }, 422);
     switch (body.action) {
       case "hello":
-        return await hello(admin, agent as Agent, body);
+        return await hello(admin, agent as Agent, body, modules);
       case "report":
+        if (!modules.ipam) return reply({ ok: false, error: "feature_disabled" }, 403);
         return await handleReport(admin, agent as Agent, body);
       case "jobResult":
         return await jobResult(admin, agent as Agent, body);
+      case "monitorReport":
+        if (!modules.monitoring) return reply({ ok: false, error: "feature_disabled" }, 403);
+        return await monitorReport(admin, agent as Agent, body);
       default:
         return reply({ ok: false, error: "unknown_action" }, 422);
     }
