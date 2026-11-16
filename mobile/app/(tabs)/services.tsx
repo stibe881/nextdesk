@@ -25,6 +25,7 @@ export default function ServicesScreen() {
   const checkingSession = useMobileSessionGuard();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
   const assetsEnabled = isEnabled("assets.management");
+  const monitoringEnabled = isEnabled("monitoring.native");
   const departmentViewEnabled = isEnabled("requester.department-view");
   const requesterPortalEnabled = isEnabled("requester.portal");
   const wideLayout = width >= 768;
@@ -148,6 +149,33 @@ export default function ServicesScreen() {
                     <Text style={styles.actionText}>
                       Server, Switches und Access Points mit Lebenszyklus,
                       Wartung und Fristen.
+                    </Text>
+                  </View>
+                  <Ionicons
+                    color={colors.subtle}
+                    name="chevron-forward"
+                    size={19}
+                  />
+                </Pressable>
+              ) : null}
+              {assetsEnabled && monitoringEnabled ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/monitoring" as never)}
+                  style={styles.action}
+                >
+                  <View style={styles.actionPrimaryIcon}>
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="radio-outline"
+                      size={20}
+                    />
+                  </View>
+                  <View style={styles.cardCopy}>
+                    <Text style={styles.actionTitle}>Überwachung</Text>
+                    <Text style={styles.actionText}>
+                      Zustand der überwachten Geräte, Alarme und Verlauf der
+                      Sensoren.
                     </Text>
                   </View>
                   <Ionicons

@@ -516,8 +516,15 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    Störung gilt als behoben, sobald kein Sensor des Geräts mehr gestört ist.
 4. **Sonde hinzufügen** – siehe Handbuch für Administratoren.
 
-> Die Überwachung in der App und Sensoren für Windows-Server (Dienste,
-> Datenträger, CPU) folgen.
+**In der App** finden Sie die Überwachung unter **Dienste → Überwachung** (wenn
+das Modul aktiv ist). Die App zeigt die Kacheln je Zustand, die aktiven
+Alarme, die Geräteliste und die Sonden. Ein Tipp auf ein Gerät öffnet dessen
+Sensoren mit Verlaufsgrafik (24 Stunden bis 1 Jahr); von dort führt ein Tipp
+zur offenen Störung. Mit dem Recht «Assets verwalten» lässt sich die
+Überwachung eines Geräts pausieren und fortsetzen. Geräte, Sensoren und
+Sonden werden im Web erfasst.
+
+> Sensoren für Windows-Server (Dienste, Datenträger, CPU) folgen.
 
 ## Ticketliste
 
