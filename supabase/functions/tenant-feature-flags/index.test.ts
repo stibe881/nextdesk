@@ -10,3 +10,12 @@ Deno.test(
     }
   },
 );
+
+Deno.test("module keys the apps gate their navigation on are exposed", async () => {
+  // A key missing here stays «disabled» in web and app although the tenant
+  // switched the module on (happened with monitoring.native).
+  const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  for (const key of ["assets.management", "ipam.management", "monitoring.native", "self_service.shop"]) {
+    if (!source.includes(`"${key}"`)) throw new Error(`tenant-feature-flags does not expose ${key}`);
+  }
+});

@@ -29,6 +29,7 @@ export const KNOWN_FEATURE_KEYS: ReadonlySet<string> = new Set([
   "requester.department-view",
   "notifications.push",
   "ipam.management",
+  "monitoring.native",
 ]);
 
 type RequestBody = {
