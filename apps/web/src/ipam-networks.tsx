@@ -46,7 +46,7 @@ import {
   type StackPart,
 } from "./ipam-viz";
 import { ipamCall } from "./lib/ipam-api";
-import { spaceGrid, type SpaceGrid } from "./lib/ipam-charts";
+import { spaceGrid, trendKpis, type SpaceGrid } from "./lib/ipam-charts";
 import {
   cidrLength,
   formatCountText,
@@ -1907,27 +1907,24 @@ function allPagesPending(detail: IpamPrefixDetail): boolean {
 }
 
 function TrendSection({ history }: { history: UtilizationHistory }) {
-  const first = history.points[0];
-  const last = history.points[history.points.length - 1];
-  const change = first && last ? last.percent - first.percent : null;
+  // KPIs based on «Belegt gesamt» (same series as the main line).
+  const kpis = trendKpis(history);
   return (
     <div className="ipam-trendsec">
-      {last ? (
+      {kpis ? (
         <dl className="ipam-facts">
           <div>
-            <dt>Heute</dt>
-            <dd>{percentText(last.percent)}</dd>
+            <dt>Heute (gesamt)</dt>
+            <dd>{percentText(kpis.today)}</dd>
           </div>
           <div>
-            <dt>Vor {history.points.length} Tagen</dt>
-            <dd>{first ? percentText(first.percent) : "–"}</dd>
+            <dt>Vor {kpis.days} Tagen</dt>
+            <dd>{percentText(kpis.first)}</dd>
           </div>
           <div>
             <dt>Veränderung</dt>
             <dd>
-              {change === null
-                ? "–"
-                : `${change >= 0 ? "+" : "−"}${Math.abs(Math.round(change))} Punkte`}
+              {`${kpis.change >= 0 ? "+" : "−"}${Math.abs(Math.round(kpis.change))} Punkte`}
             </dd>
           </div>
           <div>

@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  gappedPath,
   nearestPoint,
   ringDash,
   sparklinePath,
   spaceGrid,
+  totalPercentOf,
   trendChart,
+  trendKpis,
 } from "./ipam-charts";
 import type { UtilizationHistory } from "./ipam-redesign-types";
 
@@ -117,5 +120,104 @@ describe("spaceGrid", () => {
     expect(v6.unitLength).toBe(56);
     expect(v6.cells[1]).toMatchObject({ kind: "child" });
     expect(spaceGrid("kein Netz", [])).toBeNull();
+  });
+});
+
+describe("trendChart with DHCP pool breakdown", () => {
+  const breakdown: UtilizationHistory = {
+    points: [
+      // Day before the breakdown: only the old measurement.
+      { day: "2026-11-13", used: 90, total: 100, percent: 90 },
+      {
+        day: "2026-11-14",
+        used: 90,
+        total: 100,
+        percent: 90,
+        staticPercent: 40,
+        poolPercent: 20,
+        totalPercent: 30,
+      },
+      {
+        day: "2026-11-15",
+        used: 92,
+        total: 100,
+        percent: 92,
+        staticPercent: 42,
+        poolPercent: null,
+        totalPercent: 33,
+      },
+      {
+        day: "2026-11-16",
+        used: 94,
+        total: 100,
+        percent: 94,
+        staticPercent: 45,
+        poolPercent: 30,
+        totalPercent: 38,
+      },
+    ],
+    forecast: { trend: "rising", daysToWarning: 60, daysToFull: null },
+    warningPercent: 85,
+  };
+
+  it("draws total, static and pool series and zooms to the lowest value", () => {
+    const chart = trendChart(breakdown, 90);
+    expect(chart.series).toEqual({ static: true, pool: true });
+    expect(chart.domain.min).toBe(10);
+    expect(chart.points.map((point) => point.percent)).toEqual([
+      90, 30, 33, 38,
+    ]);
+    expect(chart.points.map((point) => point.legacy)).toEqual([
+      true,
+      false,
+      false,
+      false,
+    ]);
+    // Static line starts on day 2; pool line has a gap on day 3.
+    expect(chart.staticLine.match(/M/g)).toHaveLength(1);
+    expect(chart.poolLine.match(/M/g)).toHaveLength(2);
+    expect(chart.points[1]!.poolY).toBeGreaterThan(chart.points[1]!.y);
+    expect(chart.points[1]!.staticY).toBeLessThan(chart.points[1]!.y);
+    expect(chart.description).toContain("ohne DHCP-Pool 45 Prozent");
+    expect(chart.description).toContain("im DHCP-Pool 30 Prozent");
+  });
+
+  it("KPIs use «Belegt gesamt» with the old value as fallback", () => {
+    expect(trendKpis(breakdown)).toEqual({
+      today: 38,
+      first: 90,
+      days: 4,
+      change: -52,
+    });
+    expect(totalPercentOf(breakdown.points[0]!)).toBe(90);
+    expect(totalPercentOf(breakdown.points[3]!)).toBe(38);
+    expect(trendKpis({ ...breakdown, points: [] })).toBeNull();
+  });
+
+  it("hides the pool series for a prefix without pool", () => {
+    const chart = trendChart(
+      {
+        ...breakdown,
+        points: breakdown.points.map((point) => ({
+          ...point,
+          poolPercent: null,
+        })),
+      },
+      90,
+    );
+    expect(chart.series).toEqual({ static: true, pool: false });
+    expect(chart.poolLine).toBe("");
+  });
+
+  it("gappedPath breaks at missing values", () => {
+    expect(
+      gappedPath([
+        { x: 1, y: 2 },
+        { x: 2, y: null },
+        { x: 3, y: 4 },
+        { x: 4, y: 5 },
+      ]),
+    ).toBe("M1 2 M3 4 L4 5");
+    expect(gappedPath([{ x: 1, y: null }])).toBe("");
   });
 });

@@ -3,7 +3,11 @@
 
 import { addressBits, cidrSize, formatCidr, parseCidrInput } from "./ipam-cidr";
 import { durationText, forecastSentence } from "./ipam-format";
-import type { AddressSegment, UtilizationHistory } from "./ipam-redesign-types";
+import type {
+  AddressSegment,
+  UtilizationHistory,
+  UtilizationHistoryPoint,
+} from "./ipam-redesign-types";
 
 const round = (value: number) => Math.round(value * 10) / 10;
 
@@ -14,16 +18,73 @@ export type TrendPoint = {
   x: number;
   y: number;
   day: string;
+  /** «Belegt gesamt» (y of the main line). */
   percent: number;
+  /** True when the day has no breakdown yet: `percent` is the old
+   * measurement that counted the whole DHCP pool as used. */
+  legacy: boolean;
+  staticPercent: number | null;
+  staticY: number | null;
+  poolPercent: number | null;
+  poolY: number | null;
 };
+
+/**
+ * «Belegt gesamt» of a history point: the new value without double
+ * counting, or the old measurement for days before the breakdown.
+ */
+export function totalPercentOf(point: UtilizationHistoryPoint): number {
+  return point.totalPercent ?? point.percent;
+}
+
+/** KPI values above the chart, based on «Belegt gesamt». */
+export function trendKpis(history: UtilizationHistory): {
+  today: number;
+  first: number;
+  days: number;
+  change: number;
+} | null {
+  const first = history.points[0];
+  const last = history.points[history.points.length - 1];
+  if (!first || !last) return null;
+  const today = totalPercentOf(last);
+  const start = totalPercentOf(first);
+  return {
+    today,
+    first: start,
+    days: history.points.length,
+    change: round(today - start),
+  };
+}
+
+/** Path through the defined values; gaps (null) start a new segment. */
+export function gappedPath(coords: { x: number; y: number | null }[]): string {
+  let pen = false;
+  const parts: string[] = [];
+  for (const point of coords) {
+    if (point.y === null) {
+      pen = false;
+      continue;
+    }
+    parts.push(`${pen ? "L" : "M"}${point.x} ${point.y}`);
+    pen = true;
+  }
+  return parts.join(" ");
+}
 
 export type TrendChart = {
   width: number;
   height: number;
   plot: { left: number; right: number; top: number; bottom: number };
   points: TrendPoint[];
-  /** Polyline path of the measured values. */
+  /** Polyline path of «Belegt gesamt». */
   line: string;
+  /** «Belegt ohne DHCP-Pool» (empty without data). */
+  staticLine: string;
+  /** «Belegt im DHCP-Pool» (empty without pool or data). */
+  poolLine: string;
+  /** Which breakdown series have at least one value. */
+  series: { static: boolean; pool: boolean };
   /** Closed area below the measured line. */
   area: string;
   /** Dashed forecast line and its uncertainty band, or null. */
@@ -57,7 +118,11 @@ export function trendChart(
 ): TrendChart {
   const plot = { left: 44, right: width - 12, top: 16, bottom: height - 28 };
   const { forecast, points: raw, warningPercent } = history;
-  const values = raw.map((point) => point.percent);
+  const values = raw.flatMap((point) =>
+    [totalPercentOf(point), point.staticPercent, point.poolPercent].filter(
+      (value): value is number => typeof value === "number",
+    ),
+  );
   const lowest = Math.min(warningPercent, ...(values.length ? values : [0]));
   const min = Math.min(niceFloor(lowest - 8), 60);
   const domain = { min, max: 100 };
@@ -77,15 +142,31 @@ export function trendChart(
     ? round(plot.left + (plot.right - plot.left) * 0.7)
     : plot.right;
   const step = raw.length > 1 ? (todayX - plot.left) / (raw.length - 1) : 0;
-  const points = raw.map((point, index) => ({
-    x: round(plot.left + index * step),
-    y: y(point.percent),
-    day: point.day,
-    percent: point.percent,
-  }));
+  const points: TrendPoint[] = raw.map((point, index) => {
+    const percent = totalPercentOf(point);
+    const staticPercent = point.staticPercent ?? null;
+    const poolPercent = point.poolPercent ?? null;
+    return {
+      x: round(plot.left + index * step),
+      y: y(percent),
+      day: point.day,
+      percent,
+      legacy: point.totalPercent === null || point.totalPercent === undefined,
+      staticPercent,
+      staticY: staticPercent === null ? null : y(staticPercent),
+      poolPercent,
+      poolY: poolPercent === null ? null : y(poolPercent),
+    };
+  });
   const line = points
     .map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`)
     .join(" ");
+  const staticLine = gappedPath(
+    points.map((point) => ({ x: point.x, y: point.staticY })),
+  );
+  const poolLine = gappedPath(
+    points.map((point) => ({ x: point.x, y: point.poolY })),
+  );
   const first = points[0];
   const last = points[points.length - 1];
   const area =
@@ -124,8 +205,18 @@ export function trendChart(
       anchor: "end",
     });
   }
+  const breakdown = last
+    ? [
+        last.staticPercent !== null
+          ? `ohne DHCP-Pool ${Math.round(last.staticPercent)} Prozent`
+          : null,
+        last.poolPercent !== null
+          ? `im DHCP-Pool ${Math.round(last.poolPercent)} Prozent`
+          : null,
+      ].filter(Boolean)
+    : [];
   const description = last
-    ? `Auslastung der letzten ${days} Tage${first ? ` von ${Math.round(first.percent)} auf ${Math.round(last.percent)} Prozent` : ""}. ${forecastSentence(forecast, warningPercent)}`
+    ? `Belegung gesamt der letzten ${days} Tage${first ? ` von ${Math.round(first.percent)} auf ${Math.round(last.percent)} Prozent` : ""}.${breakdown.length ? ` Heute belegt ${breakdown.join(", ")}.` : ""} ${forecastSentence(forecast, warningPercent)}`
     : "Noch kein Verlauf vorhanden.";
   return {
     width,
@@ -133,6 +224,12 @@ export function trendChart(
     plot,
     points,
     line,
+    staticLine,
+    poolLine,
+    series: {
+      static: points.some((point) => point.staticPercent !== null),
+      pool: points.some((point) => point.poolPercent !== null),
+    },
     area,
     forecast: forecastShape,
     warningY: y(warningPercent),

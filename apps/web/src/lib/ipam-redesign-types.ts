@@ -150,8 +150,27 @@ export type AddressSpace = {
 };
 
 // 7. utilizationHistory
+export type UtilizationHistoryPoint = {
+  day: string;
+  /** Bisherige Messung: alle Adressen + ganzer DHCP-Pool. */
+  used: number;
+  total: number;
+  percent: number;
+  /** Belegt ohne DHCP-Pool: Adressen ausserhalb ÷ Kapazität ohne Pool. */
+  staticPercent?: number | null;
+  /** Belegt im DHCP-Pool: belegte Pool-Adressen ÷ Poolgrösse (null ohne Pool). */
+  poolPercent?: number | null;
+  /** Belegt gesamt: (statisch + Pool belegt) ÷ Kapazität, ohne Doppelzählung. */
+  totalPercent?: number | null;
+  staticUsed?: number | null;
+  staticTotal?: number | null;
+  poolUsed?: number | null;
+  poolSize?: number | null;
+  occupied?: number | null;
+};
+
 export type UtilizationHistory = {
-  points: { day: string; used: number; total: number; percent: number }[];
+  points: UtilizationHistoryPoint[];
   forecast: Forecast;
   warningPercent: number;
 };

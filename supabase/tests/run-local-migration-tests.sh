@@ -15740,4 +15740,90 @@ $$;
 rollback;
 SQL
 
+# 0347: IPAM Verlauf – Aufschlüsselung statisch / DHCP-Pool / gesamt.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_net uuid;
+  v_vrf uuid;
+  v_vrf_net uuid;
+  v_v6 uuid;
+  v_scope uuid;
+  v_row record;
+begin
+  insert into public.ipam_prefixes (tenant_id, prefix, dhcp_start, dhcp_end)
+  values (v_tenant, '10.247.0.0/24', '10.247.0.100', '10.247.0.149') returning id into v_net;
+  insert into public.ipam_addresses (tenant_id, address, status) values
+    (v_tenant, '10.247.0.10', 'active'),
+    (v_tenant, '10.247.0.11', 'reserved'),
+    (v_tenant, '10.247.0.12', 'deprecated'),
+    (v_tenant, '10.247.0.120', 'dhcp');
+  insert into public.ipam_dhcp_scopes (tenant_id, server, scope_id, start_range, end_range)
+  values (v_tenant, 'dhcp-0347', '10.247.0.0', '10.247.0.100', '10.247.0.149') returning id into v_scope;
+  insert into public.ipam_dhcp_leases (tenant_id, scope_ref, server, address, expires_at, reservation) values
+    (v_tenant, v_scope, 'dhcp-0347', '10.247.0.120', now() + interval '1 day', false),
+    (v_tenant, v_scope, 'dhcp-0347', '10.247.0.121', now() + interval '1 day', false),
+    (v_tenant, v_scope, 'dhcp-0347', '10.247.0.122', now() - interval '1 day', false),
+    (v_tenant, v_scope, 'dhcp-0347', '10.247.0.123', now() - interval '1 day', true),
+    (v_tenant, v_scope, 'dhcp-0347', '10.247.0.200', now() + interval '1 day', false);
+
+  select * into v_row from public.ipam_prefix_utilization_breakdown(v_tenant, v_net);
+  if v_row.used <> 3 or v_row.dhcp_size <> 50 or v_row.capacity <> 254
+     or v_row.static_used <> 2 or v_row.static_total <> 204
+     or v_row.pool_used <> 3 or v_row.pool_size <> 50 or v_row.occupied_total <> 5 then
+    raise exception '0347 test: breakdown wrong: %', row_to_json(v_row);
+  end if;
+  -- Legacy usage stays unchanged.
+  if (select used from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 3
+     or (select dhcp_size from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 50 then
+    raise exception '0347 test: legacy usage changed';
+  end if;
+
+  -- Leases do not count in another VRF.
+  insert into public.ipam_vrfs (tenant_id, name) values (v_tenant, 'VRF-0347') returning id into v_vrf;
+  insert into public.ipam_prefixes (tenant_id, vrf_id, prefix, dhcp_start, dhcp_end)
+  values (v_tenant, v_vrf, '10.247.0.0/24', '10.247.0.100', '10.247.0.109') returning id into v_vrf_net;
+  if (select pool_used from public.ipam_prefix_utilization_breakdown(v_tenant, v_vrf_net)) <> 0
+     or (select pool_size from public.ipam_prefix_utilization_breakdown(v_tenant, v_vrf_net)) <> 10 then
+    raise exception '0347 test: VRF prefix counted global leases';
+  end if;
+
+  -- IPv6: no pool, everything static.
+  insert into public.ipam_prefixes (tenant_id, prefix, dhcp_start, dhcp_end)
+  values (v_tenant, '2001:db8:347::/120', '2001:db8:347::10', '2001:db8:347::1f') returning id into v_v6;
+  insert into public.ipam_addresses (tenant_id, address) values (v_tenant, '2001:db8:347::11');
+  select * into v_row from public.ipam_prefix_utilization_breakdown(v_tenant, v_v6);
+  if v_row.pool_size <> 0 or v_row.pool_used <> 0 or v_row.static_used <> 1
+     or v_row.static_total <> 256 or v_row.occupied_total <> 1 then
+    raise exception '0347 test: IPv6 breakdown wrong: %', row_to_json(v_row);
+  end if;
+
+  if public.ipam_record_utilization() < 1 then
+    raise exception '0347 test: nothing recorded';
+  end if;
+  select * into v_row from public.ipam_utilization_daily
+   where prefix_id = v_net and day = (timezone('Europe/Zurich', now()))::date;
+  if v_row.used <> 3 or v_row.dhcp_used <> 50 or v_row.total <> 254
+     or v_row.static_used <> 2 or v_row.static_total <> 204 or v_row.pool_used <> 3
+     or v_row.pool_size <> 50 or v_row.occupied_total <> 5 then
+    raise exception '0347 test: daily row wrong: %', row_to_json(v_row);
+  end if;
+  -- Second run updates the same row.
+  insert into public.ipam_addresses (tenant_id, address) values (v_tenant, '10.247.0.130');
+  perform public.ipam_record_utilization();
+  if (select pool_used from public.ipam_utilization_daily
+       where prefix_id = v_net and day = (timezone('Europe/Zurich', now()))::date) <> 4 then
+    raise exception '0347 test: daily row not updated';
+  end if;
+  if has_function_privilege('authenticated', 'public.ipam_prefix_utilization_breakdown(uuid, uuid)', 'execute') then
+    raise exception '0347 test: breakdown executable by authenticated';
+  end if;
+  raise notice 'ipam utilization breakdown checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

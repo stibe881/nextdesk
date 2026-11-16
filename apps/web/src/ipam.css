@@ -3745,6 +3745,15 @@ button.ipam-mx {
   stroke-linejoin: round;
   stroke-width: 2.25;
 }
+.ipam-trend__line--static {
+  stroke: var(--chart-7);
+  stroke-width: 1.75;
+}
+.ipam-trend__line--pool {
+  stroke: var(--chart-8);
+  stroke-dasharray: 1.5 3.5;
+  stroke-width: 2.25;
+}
 .ipam-trend__future {
   fill: color-mix(in srgb, var(--surface-subtle) 70%, transparent);
 }
@@ -3789,6 +3798,23 @@ button.ipam-mx {
   stroke: var(--surface);
   stroke-width: 2;
 }
+.ipam-trend__hover .ipam-trend__hover-static {
+  fill: var(--chart-7);
+}
+.ipam-trend__hover .ipam-trend__hover-pool {
+  fill: var(--chart-8);
+}
+.ipam-trend__hover .ipam-trend__tip-key {
+  stroke: var(--chart-1);
+  stroke-linecap: round;
+  stroke-width: 2.5;
+}
+.ipam-trend__hover .ipam-trend__tip-key--static {
+  stroke: var(--chart-7);
+}
+.ipam-trend__hover .ipam-trend__tip-key--pool {
+  stroke: var(--chart-8);
+}
 .ipam-trend__hover rect {
   fill: var(--ink, #17233f);
 }
@@ -3823,6 +3849,16 @@ button.ipam-mx {
 }
 .ipam-trend__key--warn {
   border-top: 2px dashed var(--tone-warning);
+}
+.ipam-trend__key--static {
+  border-top-color: var(--chart-7);
+}
+.ipam-trend__key--pool {
+  border-top: 2.5px dotted var(--chart-8);
+}
+.ipam-trend__note {
+  margin: 0;
+  font-size: 12px;
 }
 
 /* Address space map */

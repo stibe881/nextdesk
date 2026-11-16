@@ -1130,10 +1130,23 @@ Hilfen in allen Ansichten:
   **Erste reservieren** reserviert die erste davon. Ein Klick auf die Zeile
   öffnet die Adresse. IPv6-Subnetze erscheinen nur in dieser Liste (mit
   Seiten).
-- Register **Verlauf & Prognose**: Flächendiagramm der täglich gemessenen
-  Auslastung mit Warnschwelle, Linie «heute» und gestrichelter Prognose samt
-  Unsicherheitsbereich. Zeige auf das Diagramm (oder wähle es an und
-  nutze die Pfeiltasten), erscheint der Wert des jeweiligen Tages.
+- Register **Verlauf & Prognose**: täglich gemessene Belegung mit Linie
+  «heute» und gestrichelter Prognose samt Unsicherheitsbereich. Das Diagramm
+  zeigt vier Linien: **Warnschwelle** (gestrichelt, Einstellung am Netz),
+  **Belegt ohne DHCP-Pool** (erfasste Adressen ausserhalb des Pools geteilt
+  durch die Adressen des Netzes ohne Pool), **Belegt im DHCP-Pool**
+  (gepunktet; Adressen im Pool, die erfasst sind oder eine aktive DHCP-Lease
+  haben, geteilt durch die Grösse des Pools – nur bei Netzen mit DHCP-Pool)
+  und **Belegt gesamt** (Fläche; belegte Adressen ausserhalb und innerhalb
+  des Pools geteilt durch alle Adressen des Netzes, jede Adresse einmal
+  gezählt). Aktive Leases zählen nur im globalen VRF, IPv6-Netze haben keinen
+  Pool. Die Kennzahlen darüber (**Heute**, **Vor … Tagen**, **Veränderung**)
+  und die **Prognose** beziehen sich auf «Belegt gesamt»; der Wert von heute
+  wird beim Öffnen frisch berechnet. Für Tage vor Einführung der
+  Aufschlüsselung gibt es nur «Belegt gesamt», und zwar als bisherige
+  Messung, bei der der ganze Pool als belegt zählte (im Tooltip «(bisher)»).
+  Zeige auf das Diagramm (oder wähle es an und nutze die Pfeiltasten), so
+  erscheinen alle Werte des jeweiligen Tages.
 - Register **Funde**: offene Funde in diesem Subnetz.
 - **Bearbeiten** öffnet alle Felder des Netzes, inklusive einer **Notiz** für
   interne Hinweise. Das Scheren-Symbol (**Aufteilen**) zerlegt ein Subnetz in

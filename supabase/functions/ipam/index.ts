@@ -73,6 +73,9 @@ import {
   type Template,
   templateFromRow,
   templateLayout,
+  totalSeries,
+  utilizationHistoryPoints,
+  utilizationRow,
   vlanMatrix,
 } from "./redesign.ts";
 
@@ -2235,21 +2238,27 @@ async function addressSpace(ctx: Ctx, prefixId: string) {
 async function utilizationHistory(ctx: Ctx, prefixId: string, days: number) {
   const prefix = await loadPrefix(ctx, prefixId);
   const warningPercent = num(prefix.utilization_warning_percent) || 85;
-  const [history, forecasts] = await Promise.all([
-    ctx.admin.from("ipam_utilization_daily").select("day, used, dhcp_used, total")
+  const today = zurichToday();
+  const [history, live] = await Promise.all([
+    ctx.admin.from("ipam_utilization_daily")
+      .select("day, used, dhcp_used, total, static_used, static_total, pool_used, pool_size, occupied_total")
       .eq("tenant_id", ctx.tenantId).eq("prefix_id", prefixId).gte("day", zurichToday(-days))
       .order("day").limit(400),
-    prefixForecast(ctx, [prefixId], new Map([[prefixId, warningPercent]])),
+    ctx.admin.rpc("ipam_prefix_utilization_breakdown", { p_tenant_id: ctx.tenantId, p_prefix_id: prefixId }),
   ]);
-  if (history.error) throw dbFailure();
+  if (history.error || live.error) throw dbFailure();
+  // Live values of today, so the chart has a current point before the nightly run.
+  const liveRow = ((live.data ?? []) as Row[])[0];
+  const points = utilizationHistoryPoints(
+    ((history.data ?? []) as Row[]).map((row) => utilizationRow(row)),
+    liveRow ? utilizationRow(liveRow, today) : null,
+  );
+  // Forecast on «gesamt» (static + occupied pool); legacy values before the breakdown.
+  const forecast = forecastUtilization(totalSeries(points), warningPercent);
   return json(ctx.request, {
     data: {
-      points: ((history.data ?? []) as Row[]).map((row) => {
-        const used = num(row.used) + num(row.dhcp_used);
-        const total = num(row.total);
-        return { day: String(row.day), used, total, percent: total > 0 ? round1(Math.min(100, (used / total) * 100)) : 0 };
-      }),
-      forecast: forecastSummary(forecasts[prefixId] ?? null, zurichToday()),
+      points,
+      forecast: forecastSummary(forecast, today),
       warningPercent,
     },
   });

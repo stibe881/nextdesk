@@ -1101,9 +1101,17 @@ function history(prefix: IpamPrefix, days: number) {
   const current = usage(prefix)?.percent ?? 0;
   const forecast = forecastOf(prefix);
   const slope = forecast.trend === "rising" ? 0.09 : 0.005;
-  const total = Number(usage(prefix)?.capacity ?? "0");
+  const info = usage(prefix);
+  const total = Number(info?.capacity ?? "0");
+  // Breakdown like ipam_prefix_utilization_breakdown: static part, pool
+  // occupancy (documented + active leases, demo curve), total without
+  // double counting.
+  const poolSize = cidrOf(prefix).version === 4 ? (info?.dhcpSize ?? 0) : 0;
+  const staticTotal = Math.max(0, total - poolSize);
+  const staticNow = info?.used ?? 0;
   const points = [];
   let localSeed = prefix.id.length * 31;
+  const one = (value: number) => Math.round(value * 10) / 10;
   for (let index = days - 1; index >= 0; index--) {
     localSeed = (localSeed * 16807) % 2147483647;
     const noise = ((localSeed % 1000) / 1000 - 0.5) * 1.6;
@@ -1111,11 +1119,38 @@ function history(prefix: IpamPrefix, days: number) {
       0,
       Math.min(100, current - index * slope + (index ? noise : 0)),
     );
+    const staticUsed = Math.max(
+      0,
+      Math.round(staticNow * (1 - index * 0.0025) + (index ? noise : 0)),
+    );
+    const poolUsed = poolSize
+      ? Math.min(
+          poolSize,
+          Math.max(
+            0,
+            Math.round(
+              poolSize * (0.8 - index * 0.0016 + Math.sin(index / 6) * 0.03) +
+                noise * 2,
+            ),
+          ),
+        )
+      : 0;
+    const occupied = staticUsed + poolUsed;
     points.push({
       day: day(-index),
       used: Math.round((percent / 100) * total),
       total,
       percent: Math.round(percent * 10) / 10,
+      staticPercent: staticTotal
+        ? one(Math.min(100, (staticUsed / staticTotal) * 100))
+        : null,
+      poolPercent: poolSize ? one((poolUsed / poolSize) * 100) : null,
+      totalPercent: total ? one(Math.min(100, (occupied / total) * 100)) : null,
+      staticUsed,
+      staticTotal,
+      poolUsed: poolSize ? poolUsed : null,
+      poolSize: poolSize || null,
+      occupied,
     });
   }
   return { points, forecast, warningPercent: prefix.utilizationWarningPercent };
