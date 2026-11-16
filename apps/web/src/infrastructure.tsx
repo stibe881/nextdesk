@@ -83,6 +83,8 @@ type Device = {
   locationId: string | null;
   locationName: string | null;
   category: Category;
+  /** Own name of the kind (category «other»), set in the monitoring. */
+  categoryLabel?: string | null;
   hostname: string | null;
   ipAddress: string | null;
   macAddress: string | null;
@@ -167,6 +169,13 @@ const CATEGORY: Record<Category, { label: string; Icon: LucideIcon }> = {
   virtual_host: { label: "Virtualisierung", Icon: Cpu },
   other: { label: "Sonstiges", Icon: HardDrive },
 };
+
+/** Kind as shown: the own name for «other», else the fixed label. */
+function deviceKindLabel(device: Device): string {
+  return device.category === "other" && device.categoryLabel
+    ? device.categoryLabel
+    : CATEGORY[device.category].label;
+}
 const LIFECYCLE: { key: Lifecycle; label: string }[] = [
   { key: "ordered", label: "Bestellt" },
   { key: "stock", label: "Lager" },
@@ -934,7 +943,8 @@ export function Infrastructure({
       ) : (
         <ul className="infrastructure__list">
           {visible.map((device) => {
-            const { Icon, label } = CATEGORY[device.category];
+            const { Icon } = CATEGORY[device.category];
+            const label = deviceKindLabel(device);
             const flags = dueFlags(device);
             return (
               <li className="infrastructure__list-row" key={device.id}>
@@ -1160,7 +1170,8 @@ function DeviceDetail({
     if (done) setMaintenance({ ...maintenance, note: "" });
   }
 
-  const { Icon, label } = CATEGORY[device.category];
+  const { Icon } = CATEGORY[device.category];
+  const label = deviceKindLabel(device);
   const currentIndex = LIFECYCLE.findIndex(
     (entry) => entry.key === device.lifecycleState,
   );

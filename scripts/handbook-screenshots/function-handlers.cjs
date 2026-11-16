@@ -1336,6 +1336,7 @@ const HANDLERS = {
     }
     if (body.type === "assets") {
       return ok({
+        kinds: ["Drucker", "iLO"],
         addresses:
           String(body.query ?? "").trim().length >= 2
             ? [

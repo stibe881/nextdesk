@@ -247,7 +247,7 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
   const assetIds = [...new Set(sensors.map((sensor) => sensor.assetId))];
   const [assets, infrastructure, incidents] = await Promise.all([
     selectIn(admin, "assets", "id, name", tenantId, "id", assetIds),
-    selectIn(admin, "asset_infrastructure", "asset_id, category, hostname, ip_address", tenantId, "asset_id", assetIds),
+    selectIn(admin, "asset_infrastructure", "asset_id, category, category_label, hostname, ip_address", tenantId, "asset_id", assetIds),
     activeIncidents(admin, tenantId, assetIds),
   ]);
   const infraByAsset = new Map(infrastructure.map((row) => [String(row.asset_id), row]));
@@ -271,6 +271,7 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
       assetId: id,
       name: String(asset.name),
       category: text(infra?.category),
+      categoryLabel: kindLabel(infra),
       hostname: text(infra?.hostname),
       ipAddress: text(infra?.ip_address),
       state: deviceState(own.map((sensor) => sensor.state)),
@@ -318,7 +319,7 @@ async function device(admin: Client, tenantId: string, assetId: string, canManag
   const [sensors, agents, infra, incidents, resolved] = await Promise.all([
     loadSensors(admin, tenantId, assetId),
     loadAgents(admin, tenantId),
-    admin.from("asset_infrastructure").select("category, hostname, ip_address, uplink_asset_id").eq("tenant_id", tenantId).eq("asset_id", assetId).maybeSingle(),
+    admin.from("asset_infrastructure").select("category, category_label, hostname, ip_address, uplink_asset_id").eq("tenant_id", tenantId).eq("asset_id", assetId).maybeSingle(),
     activeIncidents(admin, tenantId, [assetId]),
     admin.rpc("monitoring_resolve_asset", { p_tenant_id: tenantId, p_asset_id: assetId }),
   ]);
@@ -337,6 +338,7 @@ async function device(admin: Client, tenantId: string, assetId: string, canManag
       assetId,
       name: String(asset.name),
       category: text(infra.data?.category),
+      categoryLabel: kindLabel(infra.data),
       hostname: text(infra.data?.hostname),
       ipAddress: text(infra.data?.ip_address),
       state: deviceState(sensors.map((sensor) => sensor.state)),
@@ -346,8 +348,27 @@ async function device(admin: Client, tenantId: string, assetId: string, canManag
     },
     sensors,
     agents,
+    kinds: canManage ? await customKinds(admin, tenantId) : [],
     checkedAt: new Date().toISOString(),
   };
+}
+
+/** Own name of the device kind; only counts for the category «other». */
+function kindLabel(row: Row | null | undefined): string | null {
+  return row?.category === "other" ? text(row.category_label) : null;
+}
+
+/** Own device kinds of the tenant, as they are used on its devices. */
+async function customKinds(admin: Client, tenantId: string): Promise<string[]> {
+  const { data, error } = await admin.from("asset_infrastructure").select("category_label")
+    .eq("tenant_id", tenantId).eq("category", "other").not("category_label", "is", null).limit(2000);
+  if (error) throw unavailable();
+  const labels = new Map<string, string>();
+  for (const row of (data ?? []) as Row[]) {
+    const label = text(row.category_label);
+    if (label && !labels.has(label.toLowerCase())) labels.set(label.toLowerCase(), label);
+  }
+  return [...labels.values()].sort((a, b) => a.localeCompare(b, "de"));
 }
 
 async function series(admin: Client, tenantId: string, sensorId: string, range: "24h" | "7d" | "30d" | "1y") {
@@ -459,6 +480,7 @@ async function addDevice(admin: Client, tenantId: string, actorId: string, devic
     asset_id: assetId,
     tenant_id: tenantId,
     category: device.category,
+    category_label: device.categoryLabel,
     hostname: device.hostname,
     ip_address: device.ipAddress,
   });
@@ -503,6 +525,7 @@ async function updateDevice(admin: Client, tenantId: string, actorId: string, as
   }
   const infra = await admin.from("asset_infrastructure").update({
     category: device.category,
+    category_label: device.categoryLabel,
     ip_address: device.ipAddress,
     hostname: device.hostname,
     updated_at: new Date().toISOString(),
@@ -524,7 +547,7 @@ async function updateDevice(admin: Client, tenantId: string, actorId: string, as
 }
 
 async function assetChoices(admin: Client, tenantId: string, query: string) {
-  const columns = "asset_id, category, hostname, ip_address";
+  const columns = "asset_id, category, category_label, hostname, ip_address";
   let request = admin.from("asset_infrastructure").select(columns).eq("tenant_id", tenantId).limit(400);
   const safe = query.replace(/[^\p{L}\p{N} ._:-]/gu, "");
   if (safe) request = request.or(`hostname.ilike.%${safe}%,ip_address.ilike.%${safe}%`);
@@ -548,6 +571,7 @@ async function assetChoices(admin: Client, tenantId: string, query: string) {
   const known = new Set(((monitored.data ?? []) as Row[]).map((row) => String(row.asset_id)));
   return {
     addresses: await addressChoices(admin, tenantId, query),
+    kinds: await customKinds(admin, tenantId),
     assets: assets.flatMap((asset) => {
       if (asset.lifecycle_state === "retired" || asset.lifecycle_state === "disposed") return [];
       const row = rows.get(String(asset.id));
@@ -555,6 +579,7 @@ async function assetChoices(admin: Client, tenantId: string, query: string) {
         assetId: String(asset.id),
         name: String(asset.name),
         category: text(row?.category),
+        categoryLabel: kindLabel(row),
         hostname: text(row?.hostname),
         ipAddress: text(row?.ip_address),
         monitored: known.has(String(asset.id)),

@@ -590,6 +590,7 @@ function deviceFromRows(
       ? (locations.get(asset.location_id) ?? null)
       : null,
     category: infra.category,
+    categoryLabel: infra.category === "other" ? (infra.category_label ?? null) : null,
     hostname: infra.hostname ?? null,
     ipAddress: infra.ip_address ?? null,
     macAddress: infra.mac_address ?? null,
