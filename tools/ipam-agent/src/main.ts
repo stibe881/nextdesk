@@ -203,7 +203,11 @@ async function runJob(
       result: { output: result ?? null },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const raw = error instanceof Error ? error.message : String(error);
+    // OpenSSL 3 without the legacy provider: SNMPv3 privacy with DES.
+    const message = /0308010C|digital envelope routines::unsupported/.test(raw)
+      ? "Das Gerät verlangt DES-Verschlüsselung (SNMPv3). Sonde ab 1.3.2 neu installieren oder auf dem Gerät AES einstellen."
+      : raw;
     log.warn(`Auftrag ${job.id} fehlgeschlagen: ${message}`);
     await client
       .post({

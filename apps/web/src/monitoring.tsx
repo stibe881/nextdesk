@@ -40,6 +40,12 @@ import {
   formatValue,
   guessCategory,
   LINK_SOURCE_LABELS,
+  linkDiagram,
+  type MonitoringPort,
+  PORT_STATE_LABELS,
+  portGroups,
+  portNumber,
+  portState,
   type MonitoringConnections,
   portLinkText,
   INTERVAL_OPTIONS,
@@ -2658,6 +2664,7 @@ function ConnectionsCard({
   const [error, setError] = useState<string | null>(null);
   const [all, setAll] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<"list" | "matrix">("list");
 
   const load = useCallback(() => {
     monitoringCall<MonitoringConnections>({
@@ -2713,17 +2720,42 @@ function ConnectionsCard({
                   : "noch nicht ausgelesen"}
           </span>
         </div>
-        {data?.canManage ? (
-          <button
-            className="secondary-button"
-            disabled={busy || data.pending}
-            onClick={refresh}
-            type="button"
-          >
-            <RefreshCw aria-hidden="true" size={16} />
-            Jetzt auslesen
-          </button>
-        ) : null}
+        <div className="monitoring__actions">
+          {data && data.ports.length > 0 ? (
+            <div
+              aria-label="Darstellung der Verbindungen"
+              className="monitoring-toggle"
+              role="group"
+            >
+              {(
+                [
+                  ["list", "Liste"],
+                  ["matrix", "Matrix"],
+                ] as const
+              ).map(([key, text]) => (
+                <button
+                  aria-pressed={view === key}
+                  key={key}
+                  onClick={() => setView(key)}
+                  type="button"
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {data?.canManage ? (
+            <button
+              className="secondary-button"
+              disabled={busy || data.pending}
+              onClick={refresh}
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+              Jetzt auslesen
+            </button>
+          ) : null}
+        </div>
       </div>
       {(error ?? data?.error) ? (
         <p
@@ -2760,7 +2792,9 @@ function ConnectionsCard({
           })}
         </ul>
       ) : null}
-      {data && data.ports.length > 0 ? (
+      {data && data.ports.length > 0 && view === "matrix" ? (
+        <PortMatrix open={open} ports={data.ports} />
+      ) : data && data.ports.length > 0 ? (
         <>
           <div className="monitoring__scroll">
             <table className="monitoring-table">
@@ -2853,6 +2887,196 @@ function ConnectionsCard({
         </p>
       ) : null}
     </article>
+  );
+}
+
+type OpenTarget = (target: {
+  assetId: string | null;
+  monitored: boolean;
+}) => (() => void) | undefined;
+
+/**
+ * Connections as a picture: the ports of each unit as a front panel
+ * (coloured by state), and below a diagram with a line from every port to
+ * the device it leads to.
+ */
+function PortMatrix({
+  ports,
+  open,
+}: {
+  ports: MonitoringPort[];
+  open: OpenTarget;
+}) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const groups = useMemo(() => portGroups(ports), [ports]);
+  const diagram = useMemo(() => linkDiagram(ports), [ports]);
+  const current = ports.find((port) => port.port === selected) ?? null;
+  const currentAction = current?.link ? open(current.link) : undefined;
+  return (
+    <div className="monitoring-matrix">
+      <ul className="monitoring-matrix__legend">
+        {(["linked", "trunk", "up", "down"] as const).map((state) => (
+          <li key={state}>
+            <span
+              aria-hidden="true"
+              className={`monitoring-port monitoring-port--${state}`}
+            />
+            {PORT_STATE_LABELS[state]}
+          </li>
+        ))}
+      </ul>
+      {groups.map((group) => {
+        // Without a link nothing is to see on VLANs, LAGs and the like.
+        const shown = group.panel
+          ? group.ports
+          : group.ports.filter((port) => portState(port) !== "down");
+        if (!shown.length) return null;
+        return (
+          <section className="monitoring-matrix__group" key={group.key}>
+            <h4>{group.label}</h4>
+            <div
+              className={
+                group.panel
+                  ? "monitoring-matrix__panel"
+                  : "monitoring-matrix__panel monitoring-matrix__panel--free"
+              }
+            >
+              {shown.map((port) => {
+                const state = portState(port);
+                return (
+                  <button
+                    aria-label={`Port ${port.port}: ${PORT_STATE_LABELS[state]}${port.link ? `, ${portLinkText(port)}` : ""}`}
+                    aria-pressed={selected === port.port}
+                    className={`monitoring-port monitoring-port--${state}`}
+                    key={port.port}
+                    onClick={() =>
+                      setSelected(selected === port.port ? null : port.port)
+                    }
+                    title={`${port.port}${port.alias ? ` · ${port.alias}` : ""} → ${portLinkText(port)}`}
+                    type="button"
+                  >
+                    {group.panel
+                      ? (portNumber(port.port) ?? port.port)
+                      : port.port}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+      <p className="monitoring-matrix__detail" role="status">
+        {current ? (
+          <>
+            <strong>Port {current.port}</strong>
+            {current.alias ? ` · ${current.alias}` : ""} ·{" "}
+            {current.up === false
+              ? "kein Link"
+              : [
+                  "aktiv",
+                  current.speedMbps
+                    ? formatValue(current.speedMbps * 1e6, "bit/s")
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}{" "}
+            →{" "}
+            {currentAction ? (
+              <button
+                className="text-button"
+                onClick={currentAction}
+                type="button"
+              >
+                {portLinkText(current)}
+              </button>
+            ) : (
+              portLinkText(current)
+            )}
+            {current.link ? (
+              <span className="monitoring-muted">
+                {" "}
+                ({LINK_SOURCE_LABELS[current.link.source]}
+                {current.link.address ? ` · ${current.link.address}` : ""})
+              </span>
+            ) : null}
+          </>
+        ) : (
+          <span className="monitoring-muted">
+            Einen Port anklicken, um die Gegenstelle zu sehen.
+          </span>
+        )}
+      </p>
+      {diagram.links.length > 0 ? (
+        <section className="monitoring-matrix__group">
+          <h4>Verbindungen zu bekannten Geräten</h4>
+          <div className="monitoring__scroll">
+            <svg
+              aria-label="Diagramm der Verbindungen"
+              className="monitoring-links"
+              role="img"
+              style={{ minWidth: 560 }}
+              viewBox={`0 0 ${diagram.width} ${diagram.height}`}
+            >
+              {diagram.links.map((link) => (
+                <path
+                  className={`monitoring-links__line monitoring-links__line--${link.source}${selected === link.key ? " is-selected" : ""}`}
+                  d={link.path}
+                  key={link.key}
+                />
+              ))}
+              {diagram.ports.map((port) => (
+                <g
+                  className={`monitoring-links__port${selected === port.port ? " is-selected" : ""}`}
+                  key={port.port}
+                  onClick={() => setSelected(port.port)}
+                >
+                  <rect height={22} rx={6} width={166} x={2} y={port.y - 11} />
+                  <text x={12} y={port.y + 4}>
+                    {port.port}
+                    {port.alias ? ` · ${port.alias.slice(0, 16)}` : ""}
+                  </text>
+                </g>
+              ))}
+              {diagram.neighbours.map((entry) => {
+                const action = open(entry);
+                return (
+                  <g
+                    className={`monitoring-links__device${action ? " is-link" : ""}`}
+                    key={entry.key}
+                    onClick={action}
+                    onKeyDown={(event) => {
+                      if (
+                        action &&
+                        (event.key === "Enter" || event.key === " ")
+                      )
+                        action();
+                    }}
+                    role={action ? "link" : undefined}
+                    tabIndex={action ? 0 : undefined}
+                  >
+                    <rect
+                      height={24}
+                      rx={6}
+                      width={diagram.width - 502}
+                      x={500}
+                      y={entry.y - 12}
+                    />
+                    <text x={510} y={entry.y + 4}>
+                      {entry.name.slice(0, 30)}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+          {diagram.hidden > 0 ? (
+            <p className="monitoring-muted">
+              {diagram.hidden} weitere Verbindungen stehen in der Liste.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
   );
 }
 

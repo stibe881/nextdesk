@@ -9,6 +9,9 @@ import {
   connectedPorts,
   kindFields,
   kindValue,
+  linkDiagram,
+  portGroups,
+  portState,
   formatValue,
   portLinkText,
   sortDevices,
@@ -357,5 +360,74 @@ describe("Überwachung: eigene Gerätearten", () => {
       category: "other",
       categoryLabel: null,
     });
+  });
+});
+
+describe("Überwachung: Matrix der Ports", () => {
+  const port = (name: string, overrides: Partial<MonitoringPort> = {}) => ({
+    port: name,
+    alias: null,
+    up: true,
+    speedMbps: 1000,
+    link: null,
+    deviceCount: 0,
+    ...overrides,
+  });
+  const link = (name: string, assetId: string | null = null) => ({
+    source: "lldp" as const,
+    name,
+    port: "1/1/1",
+    address: null,
+    mac: null,
+    assetId,
+    monitored: false,
+  });
+
+  it("gruppiert nach Einheit und Modul und sortiert numerisch", () => {
+    const groups = portGroups([
+      port("1/1/10"),
+      port("1/1/2"),
+      port("2/1/1"),
+      port("1/2/1"),
+      port("vlan20"),
+    ]);
+    expect(groups.map((group) => group.label)).toEqual([
+      "Einheit 1",
+      "Einheit 1 · Modul 2",
+      "Einheit 2",
+      "Weitere Schnittstellen",
+    ]);
+    expect(groups[0]?.ports.map((entry) => entry.port)).toEqual([
+      "1/1/2",
+      "1/1/10",
+    ]);
+    expect(groups[3]?.panel).toBe(false);
+  });
+
+  it("leitet den Zustand eines Ports ab", () => {
+    expect(portState(port("a", { up: false, link: link("x") }))).toBe("down");
+    expect(portState(port("a", { link: link("x") }))).toBe("linked");
+    expect(portState(port("a", { deviceCount: 30 }))).toBe("trunk");
+    expect(portState(port("a"))).toBe("up");
+    expect(portState(port("a", { up: null }))).toBe("unknown");
+  });
+
+  it("zeichnet benannte Gegenstellen einmal, mit einer Linie je Port", () => {
+    const diagram = linkDiagram([
+      port("1/1/1", { link: link("CSW01", "a1") }),
+      port("1/1/2", { link: link("CSW01", "a1") }),
+      port("1/1/3", { link: link("AP-12") }),
+      port("1/1/4", {
+        link: { ...link("aa:bb:cc:00:00:01"), source: "mac" },
+      }),
+    ]);
+    expect(diagram.ports).toHaveLength(3);
+    expect(diagram.neighbours.map((entry) => entry.name)).toEqual([
+      "CSW01",
+      "AP-12",
+    ]);
+    expect(diagram.links).toHaveLength(3);
+    expect(diagram.hidden).toBe(0);
+    expect(linkDiagram([]).height).toBeGreaterThan(0);
   });
 });
