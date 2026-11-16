@@ -1100,9 +1100,10 @@ Hilfen in allen Ansichten:
   Planer aufteilen** öffnet den Subnetz-Planer für dieses Supernetz.
 - Ein **Subnetz** zeigt oben die Auslastung als Ring, Gateway, VLAN, Zone,
   DHCP-Pool, Grösse mit Netzmaske, Standort (bei Bedarf VRF und Abteilung).
-  Darunter stehen die **Zusammensetzung** (farbiger Balken: aktiv,
-  reserviert, DHCP-Pool, frei …) und die **Prognose** («Warnschwelle 85 % in
-  ca. 14 Monaten») aus dem Verlauf der letzten 90 Tage. **Nächste freie IP**
+  Darunter stehen die **Zusammensetzung** («59 von 254 belegt · DHCP-Pool:
+  0 von 139 belegt»; farbiger Balken: belegt ausserhalb des Pools, belegt im
+  DHCP-Pool, DHCP-Pool frei, frei) und die **Prognose** («Warnschwelle 85 %
+  in ca. 14 Monaten») aus dem Verlauf (bis 90 Tage). **Nächste freie IP**
   schlägt die erste freie Adresse ausserhalb von Gateway und DHCP-Pool vor und
   öffnet den Dialog **Adresse reservieren** (Hostname, Zweck, verantwortliche
   Person oder Team, auf Wunsch «Befristet bis»).
@@ -1130,6 +1131,13 @@ Hilfen in allen Ansichten:
   **Erste reservieren** reserviert die erste davon. Ein Klick auf die Zeile
   öffnet die Adresse. IPv6-Subnetze erscheinen nur in dieser Liste (mit
   Seiten).
+- **So wird die Auslastung gezählt** (überall gleich: Baum, Listen,
+  Übersicht, Standorte, Funde, Prognose und Verlauf): Belegt sind die
+  erfassten Adressen ausserhalb des DHCP-Pools plus die Adressen im Pool, die
+  erfasst sind oder eine aktive DHCP-Lease haben – jede Adresse einmal. Die
+  Auslastung ist «belegt geteilt durch alle Adressen des Netzes». Freie
+  Adressen im DHCP-Pool zählen nicht als belegt; die Grösse des Pools steht
+  nur zur Information daneben.
 - Register **Verlauf & Prognose**: täglich gemessene Belegung mit Linie
   «heute» und gestrichelter Prognose samt Unsicherheitsbereich. Das Diagramm
   zeigt vier Linien: **Warnschwelle** (gestrichelt, Einstellung am Netz),
@@ -1140,13 +1148,16 @@ Hilfen in allen Ansichten:
   und **Belegt gesamt** (Fläche; belegte Adressen ausserhalb und innerhalb
   des Pools geteilt durch alle Adressen des Netzes, jede Adresse einmal
   gezählt). Aktive Leases zählen nur im globalen VRF, IPv6-Netze haben keinen
-  Pool. Die Kennzahlen darüber (**Heute**, **Vor … Tagen**, **Veränderung**)
-  und die **Prognose** beziehen sich auf «Belegt gesamt»; der Wert von heute
-  wird beim Öffnen frisch berechnet. Für Tage vor Einführung der
-  Aufschlüsselung gibt es nur «Belegt gesamt», und zwar als bisherige
-  Messung, bei der der ganze Pool als belegt zählte (im Tooltip «(bisher)»).
-  Zeige auf das Diagramm (oder wähle es an und nutze die Pfeiltasten), so
-  erscheinen alle Werte des jeweiligen Tages.
+  Pool. Die Zeitachse beginnt am ersten Messtag: Gibt es weniger als 90 Tage
+  Daten, steht links «seit 12.11.» statt «vor 90 Tagen»; davor wird nichts
+  verlängert. Gibt es für eine Linie nur einen Tag, erscheint sie als Punkt.
+  Die Kennzahlen darüber (**Heute**, **Vor … Tagen** = ältester Tag im
+  Zeitraum, **Veränderung**) und die **Prognose** beziehen sich auf «Belegt
+  gesamt»; der Wert von heute wird beim Öffnen frisch berechnet. Für Tage
+  vor Einführung der Aufschlüsselung fehlen die Lease-Daten: «Belegt gesamt»
+  zählt dort die erfassten Adressen (Näherung, im Tooltip «(ohne Leases)»),
+  die beiden anderen Linien fehlen. Zeige auf das Diagramm (oder wähle es an
+  und nutze die Pfeiltasten), so erscheinen alle Werte des jeweiligen Tages.
 - Register **Funde**: offene Funde in diesem Subnetz.
 - **Bearbeiten** öffnet alle Felder des Netzes, inklusive einer **Notiz** für
   interne Hinweise. Das Scheren-Symbol (**Aufteilen**) zerlegt ein Subnetz in

@@ -204,8 +204,10 @@ async function usageMap(
   admin: Admin,
   tenantId: string,
 ): Promise<Map<string, Row>> {
-  const { data, error } = await admin.rpc("ipam_prefix_usage", {
+  // One counting (0348): occupied_total / capacity, pool size separately.
+  const { data, error } = await admin.rpc("ipam_prefix_utilization_breakdown", {
     p_tenant_id: tenantId,
+    p_prefix_id: null,
   });
   if (error) throw dbFailure();
   return new Map(

@@ -692,30 +692,34 @@ export function forecastSummary(
 /** One row of ipam_utilization_daily or of ipam_prefix_utilization_breakdown. */
 export type UtilizationRow = {
   day: string;
-  /** Legacy: all non-deprecated addresses in the prefix (incl. pool). */
+  /** All non-deprecated documented addresses in the prefix (incl. pool). */
   used: number;
-  /** Legacy: DHCP pool size (the pool counted as fully used). */
+  /** Legacy column (pool size of old rows); no longer counted as used. */
   dhcpUsed: number;
   total: number;
   staticUsed: number | null;
   staticTotal: number | null;
   poolUsed: number | null;
   poolSize: number | null;
+  /** static + pool occupied; for days before 0347 backfilled from `used` (0348). */
   occupiedTotal: number | null;
 };
 
 export type UtilizationHistoryPoint = {
   day: string;
-  /** Legacy measure (used + pool size), unchanged for compatibility. */
+  /** Occupied addresses (each once): occupied_total, fallback documented addresses. */
   used: number;
   total: number;
+  /** «Belegt gesamt»: used / total. */
   percent: number;
   /** Occupied outside the pool / capacity without pool; null without data. */
   staticPercent: number | null;
   /** Occupied inside the pool / pool size; null without pool or data. */
   poolPercent: number | null;
-  /** (static + pool occupied) / capacity; null for days before the breakdown. */
+  /** Same as percent (kept for older clients). */
   totalPercent: number | null;
+  /** True for days without breakdown/lease data: «gesamt» counts the documented addresses only. */
+  approx: boolean;
   staticUsed: number | null;
   staticTotal: number | null;
   poolUsed: number | null;
@@ -746,26 +750,33 @@ export function utilizationRow(row: Record<string, unknown>, day?: string): Util
   };
 }
 
+/**
+ * One counting for every day: occupied / capacity. The DHCP pool size is
+ * never counted as used. Days without breakdown (before 0347) are
+ * approximations from the documented addresses (no lease data).
+ */
 export function utilizationHistoryPoint(row: UtilizationRow): UtilizationHistoryPoint {
-  const used = row.used + row.dhcpUsed;
-  const total = row.total;
   const breakdown = row.staticUsed !== null && row.occupiedTotal !== null;
+  const occupied = row.occupiedTotal ?? row.used;
+  const total = row.total;
   const hasPool = breakdown && row.poolUsed !== null && row.poolSize !== null && row.poolSize > 0;
+  const percent = total > 0 ? share(occupied, total) : 0;
   return {
     day: row.day,
-    used,
+    used: occupied,
     total,
-    percent: total > 0 ? share(used, total) : 0,
+    percent,
     staticPercent: breakdown && row.staticTotal !== null && row.staticTotal > 0
       ? share(row.staticUsed!, row.staticTotal)
       : null,
     poolPercent: hasPool ? share(row.poolUsed!, row.poolSize!) : null,
-    totalPercent: breakdown && total > 0 ? share(row.occupiedTotal!, total) : null,
+    totalPercent: total > 0 ? percent : null,
+    approx: !breakdown,
     staticUsed: breakdown ? row.staticUsed : null,
     staticTotal: breakdown ? row.staticTotal : null,
     poolUsed: hasPool ? row.poolUsed : null,
     poolSize: hasPool ? row.poolSize : null,
-    occupied: breakdown ? row.occupiedTotal : null,
+    occupied,
   };
 }
 
@@ -785,12 +796,23 @@ export function utilizationHistoryPoints(
     .map(utilizationHistoryPoint);
 }
 
-/**
- * Series for the forecast: «gesamt» (occupied without double counting);
- * days before the breakdown fall back to the legacy measure.
- */
+/** Series for the forecast: «gesamt» (occupied, each address once). */
 export function totalSeries(points: UtilizationHistoryPoint[]): { day: string; used: number; total: number }[] {
-  return points.map((point) => ({ day: point.day, used: point.occupied ?? point.used, total: point.total }));
+  return points.map((point) => ({ day: point.day, used: point.used, total: point.total }));
+}
+
+/**
+ * First day with data: the oldest stored row of the prefix, or the first
+ * point (live value of today) when nothing is stored yet.
+ */
+export function historyFirstDay(stored: string | null, points: UtilizationHistoryPoint[]): string | null {
+  const candidates = [stored, points[0]?.day ?? null].filter((day): day is string => !!day);
+  return candidates.length ? candidates.sort()[0]! : null;
+}
+
+/** Occupied count of a daily row for the forecast (new counting; old rows: documented addresses). */
+export function occupiedOfDaily(row: Record<string, unknown>): number {
+  return finiteOrNull(row.occupied_total) ?? finiteOrNull(row.used) ?? 0;
 }
 
 // ---------------------------------------------------------------------------

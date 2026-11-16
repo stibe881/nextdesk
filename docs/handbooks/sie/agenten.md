@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Sicherheitsfälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-13
+updated: 2026-11-16
 ---
 
 # Handbuch für Agenten
@@ -1067,9 +1067,10 @@ Hilfen in allen Ansichten:
   Planer aufteilen** öffnet den Subnetz-Planer für dieses Supernetz.
 - Ein **Subnetz** zeigt oben die Auslastung als Ring, Gateway, VLAN, Zone,
   DHCP-Pool, Grösse mit Netzmaske, Standort (bei Bedarf VRF und Abteilung).
-  Darunter stehen die **Zusammensetzung** (farbiger Balken: aktiv,
-  reserviert, DHCP-Pool, frei …) und die **Prognose** («Warnschwelle 85 % in
-  ca. 14 Monaten») aus dem Verlauf der letzten 90 Tage. **Nächste freie IP**
+  Darunter stehen die **Zusammensetzung** («59 von 254 belegt · DHCP-Pool:
+  0 von 139 belegt»; farbiger Balken: belegt ausserhalb des Pools, belegt im
+  DHCP-Pool, DHCP-Pool frei, frei) und die **Prognose** («Warnschwelle 85 %
+  in ca. 14 Monaten») aus dem Verlauf (bis 90 Tage). **Nächste freie IP**
   schlägt die erste freie Adresse ausserhalb von Gateway und DHCP-Pool vor und
   öffnet den Dialog **Adresse reservieren** (Hostname, Zweck, verantwortliche
   Person oder Team, auf Wunsch «Befristet bis»).
@@ -1097,10 +1098,20 @@ Hilfen in allen Ansichten:
   **Erste reservieren** reserviert die erste davon. Ein Klick auf die Zeile
   öffnet die Adresse. IPv6-Subnetze erscheinen nur in dieser Liste (mit
   Seiten).
+- **So wird die Auslastung gezählt** (überall gleich: Baum, Listen,
+  Übersicht, Standorte, Funde, Prognose und Verlauf): Belegt sind die
+  erfassten Adressen ausserhalb des DHCP-Pools plus die Adressen im Pool, die
+  erfasst sind oder eine aktive DHCP-Lease haben – jede Adresse einmal. Die
+  Auslastung ist «belegt geteilt durch alle Adressen des Netzes». Freie
+  Adressen im DHCP-Pool zählen nicht als belegt; die Grösse des Pools steht
+  nur zur Information daneben.
 - Register **Verlauf & Prognose**: Flächendiagramm der täglich gemessenen
   Auslastung mit Warnschwelle, Linie «heute» und gestrichelter Prognose samt
-  Unsicherheitsbereich. Zeigen Sie auf das Diagramm (oder wählen Sie es an und
-  nutzen Sie die Pfeiltasten), erscheint der Wert des jeweiligen Tages.
+  Unsicherheitsbereich. Die Zeitachse beginnt am ersten Messtag («seit
+  12.11.» statt «vor 90 Tagen»). Tage ohne Lease-Daten sind eine Näherung
+  aus den erfassten Adressen (im Tooltip «(ohne Leases)»). Zeigen Sie auf das
+  Diagramm (oder wählen Sie es an und nutzen Sie die Pfeiltasten), erscheint
+  der Wert des jeweiligen Tages.
 - Register **Funde**: offene Funde in diesem Subnetz.
 - **Bearbeiten** öffnet alle Felder des Netzes, inklusive einer **Notiz** für
   interne Hinweise. Das Scheren-Symbol (**Aufteilen**) zerlegt ein Subnetz in

@@ -46,7 +46,12 @@ import {
   type StackPart,
 } from "./ipam-viz";
 import { ipamCall } from "./lib/ipam-api";
-import { spaceGrid, trendKpis, type SpaceGrid } from "./lib/ipam-charts";
+import {
+  changeText,
+  spaceGrid,
+  trendKpis,
+  type SpaceGrid,
+} from "./lib/ipam-charts";
 import {
   cidrLength,
   formatCountText,
@@ -75,6 +80,7 @@ import {
   type IpamPrefix,
   type IpamPrefixDetail,
   type PrefixStatus,
+  usageComposition,
 } from "./lib/ipam-model";
 import {
   addressListRows,
@@ -1546,32 +1552,18 @@ function SubnetDetail(props: DetailProps) {
       ...(addresses && addresses.length > 1 ? { addresses } : {}),
     });
   const cidr = parseCidrInput(current.prefix)?.cidr;
-  const composition: StackPart[] = grid
-    ? stateSegments(grid.counts).map((segment) => ({
-        key: segment.state,
-        label: segment.label,
-        count: segment.count,
-        tone: STATE_TONE[segment.state],
-      }))
-    : usage
-      ? [
-          { key: "used", label: "Belegt", count: usage.used, tone: "active" },
-          {
-            key: "dhcp",
-            label: "DHCP-Pool",
-            count: usage.dhcpSize,
-            tone: "dhcp",
-          },
-          {
-            key: "free",
-            label: "Frei",
-            count: Math.max(
-              0,
-              Number(usage.capacity || "0") - usage.used - usage.dhcpSize,
-            ),
-            tone: "free",
-          },
-        ]
+  // Same counting as the percentages: the DHCP pool is not counted as
+  // occupied; its size is shown separately.
+  const usageParts = usage ? usageComposition(usage) : null;
+  const composition: StackPart[] = usageParts
+    ? usageParts.parts
+    : grid
+      ? stateSegments(grid.counts).map((segment) => ({
+          key: segment.state,
+          label: segment.label,
+          count: segment.count,
+          tone: STATE_TONE[segment.state],
+        }))
       : [];
 
   return (
@@ -1737,14 +1729,8 @@ function SubnetDetail(props: DetailProps) {
         <div className="ipam-usage2__bar">
           <div className="ipam-usage2__label">
             <span>Zusammensetzung</span>
-            {usage ? (
-              <small className="ipam-muted">
-                {usage.used + usage.dhcpSize} von{" "}
-                {formatCount(BigInt(usage.capacity || "0"))} belegt
-                {usage.dhcpSize
-                  ? ` · davon ${usage.dhcpSize} im DHCP-Pool`
-                  : ""}
-              </small>
+            {usageParts ? (
+              <small className="ipam-muted">{usageParts.summary}</small>
             ) : null}
           </div>
           {composition.length ? (
@@ -1754,7 +1740,7 @@ function SubnetDetail(props: DetailProps) {
         <div className={`ipam-usage2__forecast ipam-tone-${forecastTone}`}>
           <span>Prognose</span>
           <strong>{forecast}</strong>
-          <small className="ipam-muted">aus 90 Tagen Verlauf</small>
+          <small className="ipam-muted">aus dem Verlauf (bis 90 Tage)</small>
         </div>
       </div>
       {current.notes ? <p className="ipam-note">{current.notes}</p> : null}
@@ -1917,16 +1903,25 @@ function TrendSection({ history }: { history: UtilizationHistory }) {
             <dt>Heute (gesamt)</dt>
             <dd>{percentText(kpis.today)}</dd>
           </div>
-          <div>
-            <dt>Vor {kpis.days} Tagen</dt>
-            <dd>{percentText(kpis.first)}</dd>
-          </div>
-          <div>
-            <dt>Veränderung</dt>
-            <dd>
-              {`${kpis.change >= 0 ? "+" : "−"}${Math.abs(Math.round(kpis.change))} Punkte`}
-            </dd>
-          </div>
+          {kpis.days > 0 ? (
+            <>
+              <div>
+                <dt>
+                  {kpis.days === 1 ? "Vor 1 Tag" : `Vor ${kpis.days} Tagen`}
+                </dt>
+                <dd>{percentText(kpis.first)}</dd>
+              </div>
+              <div>
+                <dt>Veränderung</dt>
+                <dd>{changeText(kpis.change)}</dd>
+              </div>
+            </>
+          ) : (
+            <div>
+              <dt>Verlauf</dt>
+              <dd>erster Messtag</dd>
+            </div>
+          )}
           <div>
             <dt>Prognose</dt>
             <dd>
