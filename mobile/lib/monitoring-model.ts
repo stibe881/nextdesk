@@ -171,6 +171,28 @@ export type MonitoringAddressChoice = {
   deviceType: string | null;
 };
 
+/**
+ * Kind of a device guessed from its name and description (entries of the IP
+ * address management carry no kind). Falls back to «other».
+ */
+export function guessCategory(...texts: (string | null | undefined)[]): string {
+  const text = texts.filter(Boolean).join(" ").toLowerCase();
+  const rules: [RegExp, string][] = [
+    [/access.?point|\bap[-_ ]?\d|\bwlan|wifi/, "access_point"],
+    [/firewall|\bfw[-_ ]?\d|\bfir\d|sophos|fortigate/, "firewall"],
+    [/\busv\b|\bups\b|\bats\d|apc smart/, "ups"],
+    [/switch|[acd]sw\d|\bsw[-_ ]?\d|aruba cx|procurve|catalyst/, "switch"],
+    [/\bnas\b|storage|\bmsa\b|qnap|synology/, "storage"],
+    [/\besx|vcenter|hyper-?v host|virtualisierungs/, "virtual_host"],
+    [/router|gateway/, "router"],
+    [/server|\bsrv|\bdc\d|\bs\d{2,4}\b|\bilo/, "server"],
+  ];
+  for (const [pattern, category] of rules) {
+    if (pattern.test(text)) return category;
+  }
+  return "other";
+}
+
 export type SensorDraft = {
   id: string | null;
   assetId: string;

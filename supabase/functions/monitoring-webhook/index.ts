@@ -522,7 +522,7 @@ async function resolveIncidentIfClear(
       state: "closed",
       resolved_at: now.toISOString(),
       closed_at: now.toISOString(),
-      closing_note: "Automatisch abgeschlossen: PRTG meldet wieder OK.",
+      closing_note: "Automatisch abgeschlossen: Alle Sensoren melden wieder OK.",
       last_event_at: now.toISOString(),
     })
     .eq("id", incidentId)
@@ -530,7 +530,7 @@ async function resolveIncidentIfClear(
     .select("id");
   if (((updated.data ?? []) as Row[]).length) {
     await addIncidentEvent(admin, tenantId, incidentId, "resolved", null,
-      "PRTG meldet alle Sensoren wieder OK. Störung automatisch abgeschlossen.");
+      "Alle Sensoren melden wieder OK. Störung automatisch abgeschlossen.");
     return true;
   }
   return false;
@@ -635,7 +635,7 @@ async function settleAfterDown(
         state: "closed",
         resolved_at: now.toISOString(),
         closed_at: now.toISOString(),
-        closing_note: "Automatisch abgeschlossen: PRTG meldet wieder OK.",
+        closing_note: "Automatisch abgeschlossen: Alle Sensoren melden wieder OK.",
       })
       .eq("id", incidentId)
       .eq("state", "active");

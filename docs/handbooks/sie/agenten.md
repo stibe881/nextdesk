@@ -465,18 +465,25 @@ Ein Klick auf ein Gerät öffnet das **Gerätedetail**:
 
 Mit dem Recht «Assets verwalten» können Sie zusätzlich:
 
-1. **Gerät hinzufügen** – die Suche findet:
-   - **Geräte der Infrastruktur.** Geräte mit Adresse stehen zuoberst; fehlt
-     IP-Adresse und Hostname, fragt der Dialog danach.
+1. **Geräte hinzufügen** – die Suche findet:
+   - **Geräte der Infrastruktur.** Geräte mit Adresse stehen zuoberst.
    - **Einträge der IP-Adressverwaltung**, die noch kein Gerät sind (ab zwei
-     Zeichen). Name und Adresse werden übernommen, nur die Art ist zu
-     wählen.
+     Zeichen). Name und Adresse werden übernommen.
    - **Neues Gerät erfassen**, wenn es nirgends steht: Name, Art und
      IP-Adresse oder Hostname genügen.
 
-   In den letzten beiden Fällen legt nextDesk das Gerät in der Infrastruktur
-   an; Standort, Uplink und Services ergänzen Sie dort. Danach die Sonde wählen.
-   Das Gerät erhält einen Ping-Sensor.
+   Mehrere Treffer lassen sich ankreuzen und zusammen hinzufügen; die Auswahl
+   bleibt erhalten, wenn der Suchtext ändert. **Alle … angezeigten
+   auswählen** kreuzt alle Treffer der aktuellen Suche an. Für Einträge der
+   IP-Adressverwaltung bestimmt nextDesk die Art aus Name und Beschreibung;
+   sie lässt sich im Dialog für alle festlegen und später je Gerät ändern.
+   Ein Gerät ohne IP-Adresse und Hostname lässt sich nur einzeln hinzufügen,
+   der Dialog fragt dann nach der Adresse.
+
+   Aus Einträgen der IP-Adressverwaltung und neu erfassten Geräten legt
+   nextDesk Geräte in der Infrastruktur an; Standort, Uplink und Services
+   ergänzen Sie dort. Danach die Sonde wählen. Jedes Gerät erhält einen
+   Ping-Sensor.
 
 2. **Sensor hinzufügen** (im Gerätedetail) – Art wählen:
    - **Ping**: Ist das Gerät erreichbar?
@@ -535,7 +542,7 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
 
 4. **Sonde hinzufügen** – siehe Handbuch für Administratoren.
 
-![Gerät hinzufügen mit Treffer aus der IP-Adressverwaltung](images/ag-ueberwachung-hinzufuegen.jpg)
+![Mehrere Geräte aus der IP-Adressverwaltung hinzufügen](images/ag-ueberwachung-hinzufuegen.jpg)
 
 **In der App** finden Sie die Überwachung unter **Dienste → Überwachung** (wenn
 das Modul aktiv ist). Die App zeigt die Kacheln je Zustand, die aktiven

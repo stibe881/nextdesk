@@ -32,6 +32,7 @@ import {
   formatMs,
   formatSince,
   formatValue,
+  guessCategory,
   INTERVAL_OPTIONS,
   intervalLabel,
   kindLabel,
@@ -187,7 +188,7 @@ function OverviewView({
             type="button"
           >
             <Plus aria-hidden="true" size={16} />
-            Gerät hinzufügen
+            Geräte hinzufügen
           </button>
         ) : null}
       </header>
@@ -387,7 +388,8 @@ function OverviewView({
           onClose={() => setAdding(false)}
           onSaved={(savedAssetId) => {
             setAdding(false);
-            onOpenDevice(savedAssetId);
+            if (savedAssetId) onOpenDevice(savedAssetId);
+            else load();
           }}
           tenantId={tenantId}
         />
@@ -2012,12 +2014,12 @@ function DeviceDialog({
   );
 }
 
-const NEW_DEVICE = "new";
+const AUTO_CATEGORY = "auto";
 
 /**
- * Adds a device to the monitoring. Three sources: a device of the
- * infrastructure, an address of the IP address management that is no device
- * yet, or a device entered right here.
+ * Adds devices to the monitoring. Sources: devices of the infrastructure and
+ * addresses of the IP address management that are no device yet (several at
+ * once), or one device entered right here.
  */
 function AddDeviceDialog({
   tenantId,
@@ -2028,30 +2030,38 @@ function AddDeviceDialog({
   tenantId: string;
   agents: MonitoringAgent[];
   onClose: () => void;
-  onSaved: (assetId: string) => void;
+  /** The device to open, or null when several were added. */
+  onSaved: (assetId: string | null) => void;
 }) {
   const [query, setQuery] = useState("");
   const [choices, setChoices] = useState<MonitoringAssetChoice[] | null>(null);
   const [addresses, setAddresses] = useState<MonitoringAddressChoice[]>([]);
-  // «asset:<id>», «address:<id>» or NEW_DEVICE.
-  const [picked, setPicked] = useState<string | null>(null);
+  // Picked entries stay picked while the search text changes.
+  const [assets, setAssets] = useState<Map<string, MonitoringAssetChoice>>(
+    new Map(),
+  );
+  const [entries, setEntries] = useState<Map<string, MonitoringAddressChoice>>(
+    new Map(),
+  );
+  const [creating, setCreating] = useState(false);
   const [agentId, setAgentId] = useState<string | null>(
     agents.find((agent) => agent.online)?.id ?? agents[0]?.id ?? null,
   );
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
   const [target, setTarget] = useState("");
   const [name, setName] = useState("");
   const [category, setCategory] = useState("server");
+  const [addressKind, setAddressKind] = useState(AUTO_CATEGORY);
   const [address, setAddress] = useState("");
 
-  const chosen =
-    choices?.find((choice) => `asset:${choice.assetId}` === picked) ?? null;
-  const chosenAddress =
-    addresses.find((entry) => `address:${entry.addressId}` === picked) ?? null;
-  const creating = picked === NEW_DEVICE || !!chosenAddress;
-  // A device without address in the infrastructure needs a target here.
-  const needsTarget = !!chosen && !chosen.ipAddress && !chosen.hostname;
+  const count = assets.size + entries.size;
+  const withoutAddress = [...assets.values()].filter(
+    (choice) => !choice.ipAddress && !choice.hostname,
+  );
+  // One device without address can get its target here; several cannot.
+  const needsTarget = !creating && count === 1 && withoutAddress.length === 1;
+  const blocked = !creating && count > 1 && withoutAddress.length > 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -2075,64 +2085,124 @@ function AddDeviceDialog({
     };
   }, [tenantId, query]);
 
-  const pickAddress = (entry: MonitoringAddressChoice) => {
-    setPicked(`address:${entry.addressId}`);
-    setName(entry.hostname ?? entry.address);
-    setAddress(entry.address);
+  const toggleAsset = (choice: MonitoringAssetChoice) => {
+    setCreating(false);
+    setAssets((current) => {
+      const next = new Map(current);
+      if (!next.delete(choice.assetId)) next.set(choice.assetId, choice);
+      return next;
+    });
   };
-  const pickNew = () => {
-    setPicked(NEW_DEVICE);
-    setName(query.trim());
-    setAddress("");
+  const toggleEntry = (entry: MonitoringAddressChoice) => {
+    setCreating(false);
+    setEntries((current) => {
+      const next = new Map(current);
+      if (!next.delete(entry.addressId)) next.set(entry.addressId, entry);
+      return next;
+    });
+  };
+  const selectable = (choices ?? []).filter(
+    (choice) =>
+      !choice.monitored &&
+      (choice.ipAddress !== null || choice.hostname !== null),
+  );
+  const allShown =
+    selectable.length + addresses.length > 0 &&
+    selectable.every((choice) => assets.has(choice.assetId)) &&
+    addresses.every((entry) => entries.has(entry.addressId));
+  const toggleAll = () => {
+    setCreating(false);
+    setAssets((current) => {
+      const next = new Map(current);
+      for (const choice of selectable) {
+        if (allShown) next.delete(choice.assetId);
+        else next.set(choice.assetId, choice);
+      }
+      return next;
+    });
+    setEntries((current) => {
+      const next = new Map(current);
+      for (const entry of addresses) {
+        if (allShown) next.delete(entry.addressId);
+        else next.set(entry.addressId, entry);
+      }
+      return next;
+    });
   };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!picked) return;
-    setSaving(true);
     setError(null);
+    const added: string[] = [];
     try {
       if (creating) {
+        setSaving("1 von 1");
         const result = await monitoringCall<{ assetId: string }>({
           type: "addDevice",
           tenantId,
-          device: {
-            name,
-            category,
-            address,
-            agentId,
-            ipamAddressId: chosenAddress?.addressId ?? null,
-          },
+          device: { name, category, address, agentId, ipamAddressId: null },
         });
         onSaved(result.assetId);
         return;
       }
-      if (!chosen) return;
-      await monitoringCall({
-        type: "saveSensor",
-        tenantId,
-        sensor: {
-          ...emptyDraft(chosen.assetId, agentId),
-          target: needsTarget ? target.trim() : null,
-        },
-      });
-      onSaved(chosen.assetId);
+      const total = count;
+      for (const choice of assets.values()) {
+        setSaving(`${added.length + 1} von ${total}`);
+        await monitoringCall({
+          type: "saveSensor",
+          tenantId,
+          sensor: {
+            ...emptyDraft(choice.assetId, agentId),
+            target: needsTarget ? target.trim() : null,
+          },
+        });
+        added.push(choice.assetId);
+      }
+      for (const entry of entries.values()) {
+        setSaving(`${added.length + 1} von ${total}`);
+        const result = await monitoringCall<{ assetId: string }>({
+          type: "addDevice",
+          tenantId,
+          device: {
+            name: entry.hostname ?? entry.address,
+            category:
+              addressKind === AUTO_CATEGORY
+                ? guessCategory(entry.hostname, entry.description)
+                : addressKind,
+            address: entry.address,
+            agentId,
+            ipamAddressId: entry.addressId,
+          },
+        });
+        added.push(result.assetId);
+      }
+      onSaved(added.length === 1 ? (added[0] ?? null) : null);
     } catch (failure) {
-      setError(message(failure));
-      setSaving(false);
+      setError(
+        added.length
+          ? `${added.length} von ${count} hinzugefügt, dann: ${message(failure)}`
+          : message(failure),
+      );
+      // What was added is no longer offered again.
+      setAssets((current) => {
+        const next = new Map(current);
+        for (const id of added) next.delete(id);
+        return next;
+      });
+      setSaving(null);
     }
   };
 
   return (
-    <Dialog onClose={onClose} title="Gerät hinzufügen">
+    <Dialog onClose={onClose} title="Geräte hinzufügen">
       <form
         className="monitoring-form"
         onSubmit={(event) => void submit(event)}
       >
         <p className="monitoring-muted">
-          Gesucht wird in der Infrastruktur und in der IP-Adressverwaltung. Ein
-          Gerät, das es noch nicht gibt, lässt sich hier erfassen. Es erhält
-          einen Ping-Sensor; weitere Sensoren folgen danach.
+          Gesucht wird in der Infrastruktur und in der IP-Adressverwaltung.
+          Mehrere Geräte lassen sich zusammen hinzufügen. Jedes erhält einen
+          Ping-Sensor; weitere Sensoren folgen danach.
         </p>
         <label className="monitoring-field">
           <span>Gerät suchen</span>
@@ -2144,10 +2214,21 @@ function AddDeviceDialog({
             value={query}
           />
         </label>
+        {choices !== null && selectable.length + addresses.length > 1 ? (
+          <button
+            className="text-button monitoring-form__all"
+            onClick={toggleAll}
+            type="button"
+          >
+            {allShown
+              ? "Auswahl der angezeigten aufheben"
+              : `Alle ${selectable.length + addresses.length} angezeigten auswählen`}
+          </button>
+        ) : null}
         <div
-          aria-label="Gerät wählen"
+          aria-label="Geräte wählen"
           className="monitoring-choices"
-          role="radiogroup"
+          role="group"
         >
           {choices === null ? (
             <Spinner label="Geräte werden geladen …" />
@@ -2156,10 +2237,10 @@ function AddDeviceDialog({
               {choices.map((choice) => (
                 <label className="monitoring-choice" key={choice.assetId}>
                   <input
-                    checked={picked === `asset:${choice.assetId}`}
-                    name="monitoring-asset"
-                    onChange={() => setPicked(`asset:${choice.assetId}`)}
-                    type="radio"
+                    checked={assets.has(choice.assetId)}
+                    disabled={choice.monitored}
+                    onChange={() => toggleAsset(choice)}
+                    type="checkbox"
                   />
                   <span>
                     <strong>{choice.name}</strong>
@@ -2178,10 +2259,9 @@ function AddDeviceDialog({
               {addresses.map((entry) => (
                 <label className="monitoring-choice" key={entry.addressId}>
                   <input
-                    checked={picked === `address:${entry.addressId}`}
-                    name="monitoring-asset"
-                    onChange={() => pickAddress(entry)}
-                    type="radio"
+                    checked={entries.has(entry.addressId)}
+                    onChange={() => toggleEntry(entry)}
+                    type="checkbox"
                   />
                   <span>
                     <strong>{entry.hostname ?? entry.address}</strong>
@@ -2200,10 +2280,17 @@ function AddDeviceDialog({
               ))}
               <label className="monitoring-choice">
                 <input
-                  checked={picked === NEW_DEVICE}
-                  name="monitoring-asset"
-                  onChange={pickNew}
-                  type="radio"
+                  checked={creating}
+                  onChange={(event) => {
+                    setCreating(event.target.checked);
+                    if (event.target.checked) {
+                      setAssets(new Map());
+                      setEntries(new Map());
+                      setName(query.trim());
+                      setAddress("");
+                    }
+                  }}
+                  type="checkbox"
                 />
                 <span>
                   <strong>Neues Gerät erfassen</strong>
@@ -2254,11 +2341,33 @@ function AddDeviceDialog({
                 />
               </label>
             </div>
-            <p className="monitoring-muted">
-              Das Gerät wird in der Infrastruktur angelegt. Weitere Angaben
-              (Standort, Uplink, Services) lassen sich dort ergänzen.
-            </p>
           </>
+        ) : null}
+        {entries.size > 0 ? (
+          <label className="monitoring-field">
+            <span>
+              {entries.size === 1
+                ? "Art des neuen Geräts"
+                : `Art der ${entries.size} neuen Geräte`}
+            </span>
+            <select
+              onChange={(event) => setAddressKind(event.target.value)}
+              value={addressKind}
+            >
+              <option value={AUTO_CATEGORY}>
+                Automatisch aus Name und Beschreibung
+              </option>
+              {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <span className="monitoring-muted">
+              Einträge der IP-Adressverwaltung werden als Gerät in der
+              Infrastruktur angelegt. Die Art lässt sich später ändern.
+            </span>
+          </label>
         ) : null}
         {needsTarget ? (
           <label className="monitoring-field">
@@ -2276,6 +2385,13 @@ function AddDeviceDialog({
             </span>
           </label>
         ) : null}
+        {blocked ? (
+          <p className="ticket-detail-message error" role="alert">
+            {withoutAddress.length === 1
+              ? `«${withoutAddress[0]?.name}» hat keine Adresse und lässt sich nur einzeln hinzufügen.`
+              : `${withoutAddress.length} gewählte Geräte haben keine Adresse und lassen sich nur einzeln hinzufügen.`}
+          </p>
+        ) : null}
         <AgentSelect agents={agents} onChange={setAgentId} value={agentId} />
         {error ? (
           <p className="ticket-detail-message error" role="alert">
@@ -2284,19 +2400,23 @@ function AddDeviceDialog({
         ) : null}
         <div className="monitoring-form__actions">
           <button className="secondary-button" onClick={onClose} type="button">
-            Abbrechen
+            {saving === null && error && count === 0
+              ? "Schliessen"
+              : "Abbrechen"}
           </button>
           <button
             className="primary-button"
-            disabled={!picked || saving}
+            disabled={(!creating && count === 0) || blocked || saving !== null}
             type="submit"
           >
             <Radar aria-hidden="true" size={16} />
-            {saving
-              ? "Wird hinzugefügt …"
+            {saving !== null
+              ? `Gerät ${saving} wird hinzugefügt …`
               : creating
                 ? "Anlegen und überwachen"
-                : "Überwachen"}
+                : count > 1
+                  ? `${count} Geräte überwachen`
+                  : "Überwachen"}
           </button>
         </div>
       </form>

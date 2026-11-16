@@ -216,11 +216,11 @@ export const SHOTS = [
     async run(h) {
       await h.open();
       await h.nav("Überwachung");
-      await h.click("Gerät hinzufügen");
+      await h.click("Geräte hinzufügen");
       await h.page.getByLabel("Gerät suchen").fill("srv");
-      await h.waitText("IP-Adressverwaltung");
-      await h.page.getByText("srv-print-01").click();
-      await h.waitText("Name des Geräts");
+      await h.waitText("noch kein Gerät");
+      await h.click("angezeigten auswählen");
+      await h.waitText("Geräte überwachen");
       await h.settle(300);
     },
   },
