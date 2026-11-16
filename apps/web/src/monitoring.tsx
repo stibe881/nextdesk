@@ -657,6 +657,7 @@ function DeviceView({
   const [addingPorts, setAddingPorts] = useState(false);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState<Confirmation | null>(null);
 
   const load = useCallback(() => {
     monitoringCall<MonitoringDeviceDetail>({
@@ -800,25 +801,26 @@ function DeviceView({
                 <button
                   className="secondary-button"
                   disabled={busy}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        `«${data.device.name}» aus der Überwachung entfernen? Alle Sensoren und ihr Verlauf werden gelöscht. Das Gerät bleibt in der Infrastruktur.`,
-                      )
-                    ) {
-                      setBusy(true);
-                      monitoringCall({
-                        type: "removeDevice",
-                        tenantId,
-                        assetId,
-                      })
-                        .then(onBack)
-                        .catch((failure) => {
-                          setError(message(failure));
-                          setBusy(false);
-                        });
-                    }
-                  }}
+                  onClick={() =>
+                    setConfirming({
+                      title: "Gerät aus der Überwachung entfernen",
+                      text: `«${data.device.name}» aus der Überwachung entfernen? Alle Sensoren und ihr Verlauf werden gelöscht. Das Gerät bleibt in der Infrastruktur.`,
+                      label: "Entfernen",
+                      run: () => {
+                        setBusy(true);
+                        monitoringCall({
+                          type: "removeDevice",
+                          tenantId,
+                          assetId,
+                        })
+                          .then(onBack)
+                          .catch((failure) => {
+                            setError(message(failure));
+                            setBusy(false);
+                          });
+                      },
+                    })
+                  }
                   type="button"
                 >
                   <Trash2 aria-hidden="true" size={16} />
@@ -940,18 +942,18 @@ function DeviceView({
                             device={data.device}
                             key={entry.id}
                             now={now}
-                            onDelete={() => {
-                              if (
-                                window.confirm(
-                                  `Sensor «${entry.name}» mit seinem Verlauf löschen?`,
-                                )
-                              ) {
-                                void act({
-                                  type: "deleteSensor",
-                                  sensorId: entry.id,
-                                });
-                              }
-                            }}
+                            onDelete={() =>
+                              setConfirming({
+                                title: "Sensor löschen",
+                                text: `Sensor «${entry.name}» mit seinem Verlauf löschen?`,
+                                label: "Löschen",
+                                run: () =>
+                                  void act({
+                                    type: "deleteSensor",
+                                    sensorId: entry.id,
+                                  }),
+                              })
+                            }
                             onEdit={() => setDraft(draftFromSensor(entry))}
                             onSelect={() => setSelected(entry.id)}
                             selected={entry.id === selected}
@@ -1044,6 +1046,12 @@ function DeviceView({
         </>
       ) : null}
 
+      {confirming ? (
+        <ConfirmDialog
+          confirmation={confirming}
+          onClose={() => setConfirming(null)}
+        />
+      ) : null}
       {editing && data ? (
         <DeviceDialog
           device={data.device}
@@ -1276,6 +1284,52 @@ function Chart({
 
 // ---------------------------------------------------------------------------
 // Dialoge
+
+type Confirmation = {
+  title: string;
+  text: string;
+  /** Label of the confirming button, e.g. «Entfernen». */
+  label: string;
+  run: () => void;
+};
+
+/** Question before something is deleted, in the look of nextDesk. */
+function ConfirmDialog({
+  confirmation,
+  onClose,
+}: {
+  confirmation: Confirmation;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog onClose={onClose} title={confirmation.title}>
+      <div className="monitoring-form">
+        <p>{confirmation.text}</p>
+        <div className="monitoring-form__actions">
+          <button
+            autoFocus
+            className="secondary-button"
+            onClick={onClose}
+            type="button"
+          >
+            Abbrechen
+          </button>
+          <button
+            className="primary-button monitoring-danger"
+            onClick={() => {
+              onClose();
+              confirmation.run();
+            }}
+            type="button"
+          >
+            <Trash2 aria-hidden="true" size={16} />
+            {confirmation.label}
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
 
 function Dialog({
   title,
@@ -2740,6 +2794,7 @@ function ProbeDialog({
     config: string;
   } | null>(null);
   const [downloaded, setDownloaded] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -2825,22 +2880,22 @@ function ProbeDialog({
             Die Datei ist wie ein Passwort zu behandeln und nach der
             Installation aus dem Download-Ordner zu löschen.
           </p>
+          {leaving && !downloaded ? (
+            <p className="ticket-detail-message error" role="alert">
+              Die Konfiguration wurde noch nicht heruntergeladen und lässt sich
+              später nicht mehr anzeigen.
+            </p>
+          ) : null}
           <div className="monitoring-form__actions">
             <button
               className="secondary-button"
               onClick={() => {
-                if (
-                  downloaded ||
-                  window.confirm(
-                    "Die Konfiguration wurde noch nicht heruntergeladen und lässt sich später nicht mehr anzeigen. Trotzdem schliessen?",
-                  )
-                ) {
-                  onClose();
-                }
+                if (downloaded || leaving) onClose();
+                else setLeaving(true);
               }}
               type="button"
             >
-              Schliessen
+              {leaving && !downloaded ? "Trotzdem schliessen" : "Schliessen"}
             </button>
           </div>
         </div>

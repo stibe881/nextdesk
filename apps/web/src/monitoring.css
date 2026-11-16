@@ -597,6 +597,11 @@ button.monitoring-tile[aria-pressed="true"] {
   font-weight: 650;
 }
 
+.primary-button.monitoring-danger {
+  border-color: var(--tone-danger);
+  background: var(--tone-danger);
+}
+
 .monitoring-steps {
   display: grid;
   gap: 6px;
