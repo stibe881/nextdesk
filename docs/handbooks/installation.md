@@ -449,8 +449,11 @@ ausnehmen. Die Prüfung der Zertifikate wird nie abgeschaltet.
 
 **Aktualisieren:** Zeigt nextDesk bei einer Sonde «Aktualisierung verfügbar»,
 das neue Paket herunterladen, entpacken und dasselbe Skript erneut ausführen.
-Ohne `config.json` im Paketordner bleibt die installierte Konfiguration
-erhalten.
+Die installierte Konfiguration mit ihren Ergänzungen (z. B. SNMP) bleibt
+erhalten. Unter Windows gilt das ab Paket 1.3.1 auch, wenn im Paketordner noch
+die `config.json` derselben Sonde liegt; ältere Pakete und das Linux-Skript
+überschreiben die installierte Datei mit ihr. Eine `config.json` einer
+anderen Sonde (anderer Token) ersetzt die installierte immer.
 
 **Betreiber:** Das Paket baut der GitHub-Workflow «Publish probe package» bei
 jeder Änderung unter `tools/ipam-agent` auf `main` und legt es im privaten
