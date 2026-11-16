@@ -5,7 +5,18 @@ import {
   formatAgo,
   formatMs,
   formatSince,
+  categoryText,
+  connectedPorts,
+  kindFields,
+  kindValue,
+  linkDiagram,
+  portGroups,
+  portState,
   formatValue,
+  portLinkText,
+  sortDevices,
+  type MonitoringPort,
+  guessCategory,
   sensorValueText,
   thresholdText,
   trafficDraft,
@@ -218,5 +229,205 @@ describe("Überwachung: SNMP-Werte", () => {
     expect(chart.lines).toHaveLength(1);
     expect(chart.lines2).toHaveLength(1);
     expect(chart.yTicks.at(-1)?.label).toBe("10 Mbit/s");
+  });
+});
+
+describe("Überwachung: Art aus dem Namen", () => {
+  it("erkennt gängige Namensmuster und fällt sonst auf «other» zurück", () => {
+    expect(guessCategory("SOBE-BAAR-ASW01", null)).toBe("switch");
+    expect(guessCategory("sw-01")).toBe("switch");
+    expect(guessCategory("ap-12", "Access Point 2. OG")).toBe("access_point");
+    expect(guessCategory("fw01")).toBe("firewall");
+    expect(guessCategory("srv-print-01")).toBe("server");
+    expect(guessCategory(null, "Drucker Empfang")).toBe("other");
+    expect(guessCategory(null, undefined)).toBe("other");
+  });
+});
+
+describe("Überwachung: Verbindungen", () => {
+  const port = (overrides: Partial<MonitoringPort>): MonitoringPort => ({
+    port: "1/1/1",
+    alias: null,
+    up: true,
+    speedMbps: 1000,
+    link: null,
+    deviceCount: 0,
+    ...overrides,
+  });
+  const link = {
+    source: "lldp" as const,
+    name: "DSW01",
+    port: "1/1/24",
+    address: null,
+    mac: null,
+    assetId: null,
+    monitored: false,
+  };
+
+  it("zeigt standardmässig nur Ports mit Gegenstelle", () => {
+    const ports = [
+      port({ port: "a", link }),
+      port({ port: "b", deviceCount: 40 }),
+      port({ port: "c" }),
+      port({ port: "d", up: false, deviceCount: 2 }),
+    ];
+    expect(connectedPorts(ports).map((entry) => entry.port)).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
+  it("beschreibt die Gegenstelle", () => {
+    expect(portLinkText(port({ link }))).toBe("DSW01 · Port 1/1/24");
+    expect(portLinkText(port({ deviceCount: 40 }))).toBe(
+      "40 Geräte (Uplink oder Trunk)",
+    );
+    expect(portLinkText(port({ deviceCount: 2 }))).toBe("2 unbekannte Geräte");
+    expect(portLinkText(port({}))).toBe("–");
+  });
+});
+
+describe("Überwachung: Geräteliste sortieren", () => {
+  const row = (
+    name: string,
+    overrides: Partial<MonitoringDeviceRow> = {},
+  ): MonitoringDeviceRow => ({
+    assetId: name,
+    name,
+    category: null,
+    hostname: null,
+    ipAddress: null,
+    state: "up",
+    counts: { down: 0, warning: 0, up: 1, unknown: 0, paused: 0 },
+    sensorCount: 1,
+    responseMs: null,
+    lastCheckAt: null,
+    problem: null,
+    incident: null,
+    ...overrides,
+  });
+  const names = (rows: MonitoringDeviceRow[]) => rows.map((r) => r.name);
+
+  it("sortiert Namen natürlich und nach Zustand das Dringende zuerst", () => {
+    const rows = [
+      row("ASW10"),
+      row("ASW2", { state: "down" }),
+      row("ASW1", { state: "unknown" }),
+    ];
+    expect(
+      names(sortDevices(rows, { key: "name", descending: false })),
+    ).toEqual(["ASW1", "ASW2", "ASW10"]);
+    expect(
+      names(sortDevices(rows, { key: "state", descending: false })),
+    ).toEqual(["ASW2", "ASW1", "ASW10"]);
+  });
+
+  it("lässt Geräte ohne Messwert in beiden Richtungen am Ende", () => {
+    const rows = [
+      row("a"),
+      row("b", { responseMs: 12 }),
+      row("c", { responseMs: 3 }),
+    ];
+    expect(
+      names(sortDevices(rows, { key: "response", descending: false })),
+    ).toEqual(["c", "b", "a"]);
+    expect(
+      names(sortDevices(rows, { key: "response", descending: true })),
+    ).toEqual(["b", "c", "a"]);
+  });
+});
+
+describe("Überwachung: eigene Gerätearten", () => {
+  it("zeigt die eigene Art nur für «other»", () => {
+    expect(categoryText("other", "iLO")).toBe("iLO");
+    expect(categoryText("other", null)).toBe("Gerät");
+    expect(categoryText("switch", "iLO")).toBe("Switch");
+    expect(categoryText(null)).toBe("Gerät");
+  });
+
+  it("wandelt zwischen Auswahlwert und Feldern", () => {
+    expect(kindValue("other", "iLO")).toBe("custom:iLO");
+    expect(kindValue("switch", null)).toBe("switch");
+    expect(kindFields("custom:  iLO  Karte ")).toEqual({
+      category: "other",
+      categoryLabel: "iLO Karte",
+    });
+    expect(kindFields("server")).toEqual({
+      category: "server",
+      categoryLabel: null,
+    });
+    expect(kindFields("custom: ")).toEqual({
+      category: "other",
+      categoryLabel: null,
+    });
+  });
+});
+
+describe("Überwachung: Matrix der Ports", () => {
+  const port = (name: string, overrides: Partial<MonitoringPort> = {}) => ({
+    port: name,
+    alias: null,
+    up: true,
+    speedMbps: 1000,
+    link: null,
+    deviceCount: 0,
+    ...overrides,
+  });
+  const link = (name: string, assetId: string | null = null) => ({
+    source: "lldp" as const,
+    name,
+    port: "1/1/1",
+    address: null,
+    mac: null,
+    assetId,
+    monitored: false,
+  });
+
+  it("gruppiert nach Einheit und Modul und sortiert numerisch", () => {
+    const groups = portGroups([
+      port("1/1/10"),
+      port("1/1/2"),
+      port("2/1/1"),
+      port("1/2/1"),
+      port("vlan20"),
+    ]);
+    expect(groups.map((group) => group.label)).toEqual([
+      "Einheit 1",
+      "Einheit 1 · Modul 2",
+      "Einheit 2",
+      "Weitere Schnittstellen",
+    ]);
+    expect(groups[0]?.ports.map((entry) => entry.port)).toEqual([
+      "1/1/2",
+      "1/1/10",
+    ]);
+    expect(groups[3]?.panel).toBe(false);
+  });
+
+  it("leitet den Zustand eines Ports ab", () => {
+    expect(portState(port("a", { up: false, link: link("x") }))).toBe("down");
+    expect(portState(port("a", { link: link("x") }))).toBe("linked");
+    expect(portState(port("a", { deviceCount: 30 }))).toBe("trunk");
+    expect(portState(port("a"))).toBe("up");
+    expect(portState(port("a", { up: null }))).toBe("unknown");
+  });
+
+  it("zeichnet benannte Gegenstellen einmal, mit einer Linie je Port", () => {
+    const diagram = linkDiagram([
+      port("1/1/1", { link: link("CSW01", "a1") }),
+      port("1/1/2", { link: link("CSW01", "a1") }),
+      port("1/1/3", { link: link("AP-12") }),
+      port("1/1/4", {
+        link: { ...link("aa:bb:cc:00:00:01"), source: "mac" },
+      }),
+    ]);
+    expect(diagram.ports).toHaveLength(3);
+    expect(diagram.neighbours.map((entry) => entry.name)).toEqual([
+      "CSW01",
+      "AP-12",
+    ]);
+    expect(diagram.links).toHaveLength(3);
+    expect(diagram.hidden).toBe(0);
+    expect(linkDiagram([]).height).toBeGreaterThan(0);
   });
 });

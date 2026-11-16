@@ -60,10 +60,126 @@ export type Action =
   | { type: "saveSensor"; tenantId: string; sensor: SensorInput }
   | { type: "deleteSensor"; tenantId: string; sensorId: string }
   | { type: "pauseDevice"; tenantId: string; assetId: string; paused: boolean }
+  | { type: "removeDevice"; tenantId: string; assetId: string }
+  | { type: "updateDevice"; tenantId: string; assetId: string; device: DeviceEdit }
   | { type: "createAgent"; tenantId: string; name: string }
   | { type: "probePackage"; tenantId: string }
   | { type: "listInterfaces"; tenantId: string; assetId: string; agentId: string }
-  | { type: "interfaces"; tenantId: string; jobId: string };
+  | { type: "interfaces"; tenantId: string; jobId: string }
+  | { type: "connections"; tenantId: string; assetId: string }
+  | { type: "refreshConnections"; tenantId: string; assetId: string }
+  | { type: "addDevice"; tenantId: string; device: NewDevice };
+
+export const DEVICE_CATEGORIES = [
+  "server",
+  "switch",
+  "access_point",
+  "firewall",
+  "router",
+  "storage",
+  "ups",
+  "virtual_host",
+  "other",
+] as const;
+
+/**
+ * Own name of a device kind («iLO», «Drucker»). Only kept for the category
+ * «other»; the fixed kinds have their own labels.
+ */
+export function parseCategoryLabel(category: unknown, value: unknown): string | null {
+  if (category !== "other" || typeof value !== "string") return null;
+  // deno-lint-ignore no-control-regex
+  const label = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  return label ? label.slice(0, 60) : null;
+}
+
+/** A device that is not in the infrastructure yet. */
+export type NewDevice = {
+  name: string;
+  category: (typeof DEVICE_CATEGORIES)[number];
+  categoryLabel: string | null;
+  ipAddress: string | null;
+  hostname: string | null;
+  agentId: string | null;
+  /** Entry of the IP address management the device was picked from. */
+  ipamAddressId: string | null;
+};
+
+/** Validated new device or the German message why it is not valid. */
+export function parseNewDevice(value: unknown): NewDevice | string {
+  if (!isObject(value)) return "Die Angaben zum Gerät fehlen.";
+  const name = typeof value.name === "string" ? value.name.replace(/\s+/g, " ").trim() : "";
+  if (!name) return "Bitte einen Namen für das Gerät angeben.";
+  if (name.length > 160) return "Der Name ist zu lang (höchstens 160 Zeichen).";
+  if (!(DEVICE_CATEGORIES as readonly string[]).includes(String(value.category))) {
+    return "Die Geräteart ist ungültig.";
+  }
+  const address = typeof value.address === "string" ? value.address.trim().replace(/\.$/, "").toLowerCase() : "";
+  if (!address) return "Bitte IP-Adresse oder Hostname angeben.";
+  const isIp = IPV4.test(address) || (address.includes(":") && IPV6.test(address));
+  if (!isIp && !HOST.test(address)) return "Die Adresse muss eine IP-Adresse oder ein Hostname sein.";
+  const agentId = value.agentId === null || value.agentId === undefined || value.agentId === ""
+    ? null
+    : uuid(value.agentId);
+  if (value.agentId && !agentId) return "Die Sonde ist ungültig.";
+  const ipamAddressId = value.ipamAddressId === null || value.ipamAddressId === undefined
+    ? null
+    : uuid(value.ipamAddressId);
+  if (value.ipamAddressId && !ipamAddressId) return "Der Eintrag der IP-Adressverwaltung ist ungültig.";
+  return {
+    name,
+    category: value.category as NewDevice["category"],
+    categoryLabel: parseCategoryLabel(value.category, value.categoryLabel),
+    ipAddress: isIp ? address : null,
+    hostname: isIp ? null : address,
+    agentId,
+    ipamAddressId,
+  };
+}
+
+/** Fields of a device that can be changed from the monitoring. */
+export type DeviceEdit = {
+  name: string;
+  category: (typeof DEVICE_CATEGORIES)[number];
+  categoryLabel: string | null;
+  ipAddress: string | null;
+  hostname: string | null;
+};
+
+/** Validated changes of a device or the German message why they are not valid. */
+export function parseDeviceEdit(value: unknown): DeviceEdit | string {
+  if (!isObject(value)) return "Die Angaben zum Gerät fehlen.";
+  const name = typeof value.name === "string" ? value.name.replace(/\s+/g, " ").trim() : "";
+  if (!name) return "Bitte einen Namen für das Gerät angeben.";
+  if (name.length > 160) return "Der Name ist zu lang (höchstens 160 Zeichen).";
+  if (!(DEVICE_CATEGORIES as readonly string[]).includes(String(value.category))) {
+    return "Die Geräteart ist ungültig.";
+  }
+  const clean = (raw: unknown) => typeof raw === "string" ? raw.trim().replace(/\.$/, "").toLowerCase() : "";
+  const ipAddress = clean(value.ipAddress);
+  if (ipAddress && !IPV4.test(ipAddress) && !(ipAddress.includes(":") && IPV6.test(ipAddress))) {
+    return "Die IP-Adresse ist ungültig.";
+  }
+  const hostname = clean(value.hostname);
+  if (hostname && !HOST.test(hostname)) return "Der Hostname ist ungültig.";
+  return {
+    name,
+    category: value.category as DeviceEdit["category"],
+    categoryLabel: parseCategoryLabel(value.category, value.categoryLabel),
+    ipAddress: ipAddress || null,
+    hostname: hostname || null,
+  };
+}
+
+/** Whether an entry of the IP address management matches the search text. */
+export function matchesAddress(
+  entry: { address: string; hostname: string | null; description: string | null },
+  query: string,
+): boolean {
+  const term = query.trim().toLowerCase();
+  if (term.length < 2) return false;
+  return [entry.address, entry.hostname, entry.description].some((text) => text?.toLowerCase().includes(term));
+}
 
 export function defaultName(
   kind: SensorKind,
@@ -282,6 +398,16 @@ export function parseAction(value: unknown): Action | string | null {
       const sensorId = uuid(value.sensorId);
       return sensorId ? { type: "deleteSensor", tenantId, sensorId } : null;
     }
+    case "updateDevice": {
+      const assetId = uuid(value.assetId);
+      if (!assetId) return null;
+      const device = parseDeviceEdit(value.device);
+      return typeof device === "string" ? device : { type: "updateDevice", tenantId, assetId, device };
+    }
+    case "removeDevice": {
+      const assetId = uuid(value.assetId);
+      return assetId ? { type: "removeDevice", tenantId, assetId } : null;
+    }
     case "pauseDevice": {
       const assetId = uuid(value.assetId);
       return assetId && typeof value.paused === "boolean"
@@ -298,6 +424,15 @@ export function parseAction(value: unknown): Action | string | null {
     case "interfaces": {
       const jobId = uuid(value.jobId);
       return jobId ? { type: "interfaces", tenantId, jobId } : null;
+    }
+    case "connections":
+    case "refreshConnections": {
+      const assetId = uuid(value.assetId);
+      return assetId ? { type: value.type, tenantId, assetId } : null;
+    }
+    case "addDevice": {
+      const device = parseNewDevice(value.device);
+      return typeof device === "string" ? device : { type: "addDevice", tenantId, device };
     }
     case "createAgent": {
       const name = typeof value.name === "string" ? value.name.replace(/\s+/g, " ").trim() : "";

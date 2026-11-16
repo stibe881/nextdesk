@@ -5,7 +5,14 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { Activity, Copy, KeyRound, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  Activity,
+  BellRing,
+  Copy,
+  KeyRound,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
 
 import { tn } from "./lib/formality";
 import { functionErrorMessage } from "./lib/function-error";
@@ -140,14 +147,283 @@ async function copyText(value: string): Promise<void> {
   textarea.remove();
 }
 
+function parseTeams(payload: Record<string, unknown>): {
+  departments: Option[];
+  teams: TeamOption[];
+} {
+  const list = (value: unknown) =>
+    (Array.isArray(value) ? value : []).filter(
+      (entry): entry is Record<string, unknown> =>
+        isRecord(entry) &&
+        typeof entry.id === "string" &&
+        typeof entry.name === "string",
+    );
+  return {
+    departments: list(payload.departments).map((entry) => ({
+      id: entry.id as string,
+      name: entry.name as string,
+    })),
+    teams: list(payload.teams).map((entry) => ({
+      id: entry.id as string,
+      name: entry.name as string,
+      departmentId:
+        typeof entry.departmentId === "string" ? entry.departmentId : null,
+    })),
+  };
+}
+
+async function loadMonitoringSettings(tenantId: string) {
+  const { data, error } = await invokeMonitoring({
+    body: { type: "get", tenantId },
+  });
+  if (error) throw error;
+  const payload = responseData(data);
+  const config = parseMonitoringConfig(payload.config);
+  if (!config) throw new Error("Die Konfiguration ist unvollständig.");
+  return { config, payload };
+}
+
+async function saveMonitoringConfig(
+  tenantId: string,
+  config: MonitoringConfig,
+): Promise<MonitoringConfig | null> {
+  const { data, error } = await invokeMonitoring({
+    body: {
+      type: "save",
+      tenantId,
+      config: {
+        enabled: config.enabled,
+        teamId: config.teamId,
+        createOn: config.createOn,
+        setServiceStatus: config.setServiceStatus,
+        realertMinutes: config.realertMinutes,
+        groupDependencies: config.groupDependencies,
+        suppressInMaintenance: config.suppressInMaintenance,
+      },
+    },
+  });
+  if (error) throw error;
+  return parseMonitoringConfig(responseData(data).config);
+}
+
+/**
+ * Alerting for incidents from monitoring: who is alerted, when an incident
+ * opens and how it affects the system status. One setting for the own
+ * monitoring (probes) and for PRTG.
+ */
+export function MonitoringAlertingSettings({ tenantId }: { tenantId: string }) {
+  const [loaded, setLoaded] = useState<MonitoringConfig | null>(null);
+  const [departments, setDepartments] = useState<Option[]>([]);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [teamId, setTeamId] = useState("");
+  const [createOn, setCreateOn] = useState<CreateOn>("down");
+  const [setServiceStatus, setSetServiceStatus] = useState(false);
+  const [realertMinutes, setRealertMinutes] = useState(15);
+  const [groupDependencies, setGroupDependencies] = useState(true);
+  const [suppressInMaintenance, setSuppressInMaintenance] = useState(true);
+
+  const apply = useCallback((next: MonitoringConfig) => {
+    setLoaded(next);
+    setTeamId(next.teamId ?? "");
+    setCreateOn(next.createOn);
+    setSetServiceStatus(next.setServiceStatus);
+    setRealertMinutes(next.realertMinutes);
+    setGroupDependencies(next.groupDependencies);
+    setSuppressInMaintenance(next.suppressInMaintenance);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadMonitoringSettings(tenantId)
+      .then(({ config, payload }) => {
+        if (cancelled) return;
+        apply(config);
+        const options = parseTeams(payload);
+        setDepartments(options.departments);
+        setTeams(options.teams);
+      })
+      .catch(async (error) => {
+        const text = await functionErrorMessage(
+          error,
+          "Die Alarmierung konnte nicht geladen werden.",
+        );
+        if (!cancelled) setMessage(text);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apply, tenantId]);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setMessage("");
+    try {
+      // «PRTG-Meldungen verarbeiten» belongs to the PRTG form; keep it.
+      const current = await loadMonitoringSettings(tenantId);
+      const next = await saveMonitoringConfig(tenantId, {
+        ...current.config,
+        teamId: teamId || null,
+        createOn,
+        setServiceStatus,
+        realertMinutes,
+        groupDependencies,
+        suppressInMaintenance,
+      });
+      if (next) apply(next);
+      setMessage("Die Alarmierung wurde gespeichert.");
+    } catch (error) {
+      setMessage(
+        await functionErrorMessage(
+          error,
+          "Die Alarmierung konnte nicht gespeichert werden.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const departmentNames = new Map(
+    departments.map((department) => [department.id, department.name]),
+  );
+  return (
+    <section
+      aria-busy={loaded === null || saving}
+      aria-labelledby="monitoring-alerting-heading"
+      className="asset-intune-settings monitoring-settings panel"
+    >
+      <div className="panel-heading asset-intune-settings__heading">
+        <div>
+          <span className="eyebrow">MONITORING</span>
+          <h2 id="monitoring-alerting-heading">Alarmierung</h2>
+          <p>
+            Gilt für Störungen aus der eigenen Überwachung (Sonden) und aus
+            PRTG: wer alarmiert wird, wann eine Störung geöffnet wird und wie
+            sie den Systemstatus verändert.
+          </p>
+        </div>
+        <BellRing aria-hidden="true" size={25} />
+      </div>
+      {loaded === null && !message ? <p>Konfiguration wird geladen …</p> : null}
+      {loaded ? (
+        <form className="asset-intune-settings__form" onSubmit={save}>
+          <div className="monitoring-settings__grid">
+            <label>
+              Team für die Alarmierung
+              <select
+                disabled={saving}
+                onChange={(event) => setTeamId(event.target.value)}
+                value={teamId}
+              >
+                <option value="">Kein Team (alle Agenten)</option>
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                    {team.departmentId && departmentNames.get(team.departmentId)
+                      ? ` (${departmentNames.get(team.departmentId)})`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Störung öffnen bei
+              <select
+                disabled={saving}
+                onChange={(event) =>
+                  setCreateOn(event.target.value as CreateOn)
+                }
+                value={createOn}
+              >
+                <option value="down">Down</option>
+                <option value="down_and_warning">Down und Warning</option>
+              </select>
+            </label>
+            <label>
+              Erneut alarmieren, solange unbestätigt
+              <select
+                disabled={saving}
+                onChange={(event) =>
+                  setRealertMinutes(Number(event.target.value))
+                }
+                value={realertMinutes}
+              >
+                {[5, 10, 15, 30, 60].map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    alle {minutes} Minuten
+                  </option>
+                ))}
+                {[0, 5, 10, 15, 30, 60].includes(realertMinutes) ? null : (
+                  <option value={realertMinutes}>
+                    alle {realertMinutes} Minuten
+                  </option>
+                )}
+                <option value={0}>Nie</option>
+              </select>
+            </label>
+          </div>
+          <label className="asset-intune-settings__check">
+            <input
+              checked={groupDependencies}
+              disabled={saving}
+              onChange={(event) => setGroupDependencies(event.target.checked)}
+              type="checkbox"
+            />
+            Folgestörungen bündeln: Fällt ein Gerät hinter einem bereits
+            gestörten Gerät aus (Uplink in der Infrastruktur), wird es als
+            Folgestörung angehängt und nicht separat alarmiert
+          </label>
+          <label className="asset-intune-settings__check">
+            <input
+              checked={suppressInMaintenance}
+              disabled={saving}
+              onChange={(event) =>
+                setSuppressInMaintenance(event.target.checked)
+              }
+              type="checkbox"
+            />
+            Während einer Wartung im Systemstatus nicht alarmieren (die Störung
+            wird trotzdem erfasst)
+          </label>
+          <label className="asset-intune-settings__check">
+            <input
+              checked={setServiceStatus}
+              disabled={saving}
+              onChange={(event) => setSetServiceStatus(event.target.checked)}
+              type="checkbox"
+            />
+            Systemstatus des verknüpften Dienstes anpassen (Down: teilweiser
+            Ausfall, Warning: eingeschränkt)
+          </label>
+          <div className="asset-intune-settings__actions">
+            <button disabled={saving} type="submit">
+              {saving ? "Wird gespeichert …" : "Alarmierung speichern"}
+            </button>
+          </div>
+        </form>
+      ) : null}
+      {message ? (
+        <p
+          aria-live="polite"
+          className="asset-intune-settings__message"
+          role="status"
+        >
+          {message}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 /**
  * Monitoring (PRTG): webhook configuration for tickets and system status
  * from PRTG notifications, token rotation and recent alerts.
  */
 export function MonitoringSettings({ tenantId }: { tenantId: string }) {
   const [config, setConfig] = useState<MonitoringConfig | null>(null);
-  const [departments, setDepartments] = useState<Option[]>([]);
-  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [alerts, setAlerts] = useState<MonitoringAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -161,22 +437,10 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
   const requestVersion = useRef(0);
 
   const [enabled, setEnabled] = useState(false);
-  const [teamId, setTeamId] = useState("");
-  const [createOn, setCreateOn] = useState<CreateOn>("down");
-  const [setServiceStatus, setSetServiceStatus] = useState(false);
-  const [realertMinutes, setRealertMinutes] = useState(15);
-  const [groupDependencies, setGroupDependencies] = useState(true);
-  const [suppressInMaintenance, setSuppressInMaintenance] = useState(true);
 
   const applyConfig = useCallback((next: MonitoringConfig) => {
     setConfig(next);
     setEnabled(next.enabled);
-    setTeamId(next.teamId ?? "");
-    setCreateOn(next.createOn);
-    setSetServiceStatus(next.setServiceStatus);
-    setRealertMinutes(next.realertMinutes);
-    setGroupDependencies(next.groupDependencies);
-    setSuppressInMaintenance(next.suppressInMaintenance);
   }, []);
 
   const load = useCallback(async () => {
@@ -192,37 +456,6 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
       if (!nextConfig) throw new Error("Die Konfiguration ist unvollständig.");
       if (requestVersion.current !== version) return;
       applyConfig(nextConfig);
-      setDepartments(
-        Array.isArray(payload.departments)
-          ? payload.departments.flatMap((entry) =>
-              isRecord(entry) &&
-              typeof entry.id === "string" &&
-              typeof entry.name === "string"
-                ? [{ id: entry.id, name: entry.name }]
-                : [],
-            )
-          : [],
-      );
-      setTeams(
-        Array.isArray(payload.teams)
-          ? payload.teams.flatMap((entry) =>
-              isRecord(entry) &&
-              typeof entry.id === "string" &&
-              typeof entry.name === "string"
-                ? [
-                    {
-                      id: entry.id,
-                      name: entry.name,
-                      departmentId:
-                        typeof entry.departmentId === "string"
-                          ? entry.departmentId
-                          : null,
-                    },
-                  ]
-                : [],
-            )
-          : [],
-      );
       setAlerts(parseAlerts(payload.alerts));
     } catch (error) {
       if (requestVersion.current !== version) return;
@@ -246,25 +479,14 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
     setSaving(true);
     setMessage("");
     try {
-      const { data, error } = await invokeMonitoring({
-        body: {
-          type: "save",
-          tenantId,
-          config: {
-            enabled,
-            teamId: teamId || null,
-            createOn,
-            setServiceStatus,
-            realertMinutes,
-            groupDependencies,
-            suppressInMaintenance,
-          },
-        },
+      // The alerting settings have their own form; keep what is stored.
+      const current = await loadMonitoringSettings(tenantId);
+      const next = await saveMonitoringConfig(tenantId, {
+        ...current.config,
+        enabled,
       });
-      if (error) throw error;
-      const next = parseMonitoringConfig(responseData(data).config);
       if (next) applyConfig(next);
-      setMessage("Die Monitoring-Einstellungen wurden gespeichert.");
+      setMessage("Die PRTG-Einstellungen wurden gespeichert.");
     } catch (error) {
       setMessage(
         await functionErrorMessage(
@@ -348,10 +570,6 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
   }
 
   const busy = loading || saving || rotating;
-  const departmentNames = new Map(
-    departments.map((department) => [department.id, department.name]),
-  );
-
   return (
     <section
       aria-busy={busy}
@@ -385,95 +603,6 @@ export function MonitoringSettings({ tenantId }: { tenantId: string }) {
                 type="checkbox"
               />
               PRTG-Meldungen für diesen Mandanten verarbeiten
-            </label>
-            <div className="monitoring-settings__grid">
-              <label>
-                Team für die Alarmierung
-                <select
-                  disabled={saving}
-                  onChange={(event) => setTeamId(event.target.value)}
-                  value={teamId}
-                >
-                  <option value="">Kein Team (alle Agenten)</option>
-                  {teams.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name}
-                      {team.departmentId &&
-                      departmentNames.get(team.departmentId)
-                        ? ` (${departmentNames.get(team.departmentId)})`
-                        : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Störung öffnen bei
-                <select
-                  disabled={saving}
-                  onChange={(event) =>
-                    setCreateOn(event.target.value as CreateOn)
-                  }
-                  value={createOn}
-                >
-                  <option value="down">Down</option>
-                  <option value="down_and_warning">Down und Warning</option>
-                </select>
-              </label>
-              <label>
-                Erneut alarmieren, solange unbestätigt
-                <select
-                  disabled={saving}
-                  onChange={(event) =>
-                    setRealertMinutes(Number(event.target.value))
-                  }
-                  value={realertMinutes}
-                >
-                  {[5, 10, 15, 30, 60].map((minutes) => (
-                    <option key={minutes} value={minutes}>
-                      alle {minutes} Minuten
-                    </option>
-                  ))}
-                  {[0, 5, 10, 15, 30, 60].includes(realertMinutes) ? null : (
-                    <option value={realertMinutes}>
-                      alle {realertMinutes} Minuten
-                    </option>
-                  )}
-                  <option value={0}>Nie</option>
-                </select>
-              </label>
-            </div>
-            <label className="asset-intune-settings__check">
-              <input
-                checked={groupDependencies}
-                disabled={saving}
-                onChange={(event) => setGroupDependencies(event.target.checked)}
-                type="checkbox"
-              />
-              Folgestörungen bündeln: Fällt ein Gerät hinter einem bereits
-              gestörten Gerät aus (Uplink in der Infrastruktur), wird es als
-              Folgestörung angehängt und nicht separat alarmiert
-            </label>
-            <label className="asset-intune-settings__check">
-              <input
-                checked={suppressInMaintenance}
-                disabled={saving}
-                onChange={(event) =>
-                  setSuppressInMaintenance(event.target.checked)
-                }
-                type="checkbox"
-              />
-              Während einer Wartung im Systemstatus nicht alarmieren (die
-              Störung wird trotzdem erfasst)
-            </label>
-            <label className="asset-intune-settings__check">
-              <input
-                checked={setServiceStatus}
-                disabled={saving}
-                onChange={(event) => setSetServiceStatus(event.target.checked)}
-                type="checkbox"
-              />
-              Systemstatus des verknüpften Dienstes anpassen (Down: teilweiser
-              Ausfall, Warning: eingeschränkt)
             </label>
             <p className="asset-intune-settings__help">
               Geräte werden über die PRTG-Objekt-ID in der Infrastruktur, sonst

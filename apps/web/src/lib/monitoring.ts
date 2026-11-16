@@ -64,6 +64,8 @@ export type MonitoringDeviceRow = {
   assetId: string;
   name: string;
   category: string | null;
+  /** Own name of the kind (category «other»). */
+  categoryLabel?: string | null;
   hostname: string | null;
   ipAddress: string | null;
   state: MonitoringState;
@@ -121,6 +123,7 @@ export type MonitoringDeviceDetail = {
     assetId: string;
     name: string;
     category: string | null;
+    categoryLabel?: string | null;
     hostname: string | null;
     ipAddress: string | null;
     state: MonitoringState;
@@ -128,6 +131,8 @@ export type MonitoringDeviceDetail = {
     uplink: { assetId: string; name: string } | null;
     incident: MonitoringIncident | null;
   };
+  /** Own device kinds of the tenant (for editing). */
+  kinds?: string[];
   sensors: MonitoringSensor[];
   agents: MonitoringAgent[];
   checkedAt: string;
@@ -141,6 +146,253 @@ export type MonitoringPoint = {
   ok: number;
   avg2?: number | null;
   max2?: number | null;
+};
+
+/** What hangs on a port: named by the device itself (LLDP) or seen in the MAC table. */
+export type MonitoringLink = {
+  source: "lldp" | "mac";
+  name: string;
+  port: string | null;
+  address: string | null;
+  mac: string | null;
+  /** Device of the infrastructure, if the neighbour is one. */
+  assetId: string | null;
+  monitored: boolean;
+};
+
+export type MonitoringPort = {
+  port: string;
+  alias: string | null;
+  up: boolean | null;
+  speedMbps: number | null;
+  link: MonitoringLink | null;
+  /** MAC addresses seen behind the port; many mean an uplink or trunk. */
+  deviceCount: number;
+};
+
+export type MonitoringConnections = {
+  canManage: boolean;
+  /** Last attempt of the probe to read the connections. */
+  scannedAt: string | null;
+  pending: boolean;
+  error: string | null;
+  ports: MonitoringPort[];
+  /** Ports of other devices this device hangs on. */
+  attachedTo: {
+    assetId: string;
+    name: string;
+    port: string;
+    source: "lldp" | "mac";
+    monitored: boolean;
+  }[];
+};
+
+/** Ports worth showing by default: something is connected or the link is up. */
+export function connectedPorts(
+  ports: readonly MonitoringPort[],
+): MonitoringPort[] {
+  return ports.filter(
+    (port) => port.link !== null || (port.up === true && port.deviceCount > 0),
+  );
+}
+
+/** «SOBE-DSW01 · Port 1/1/24» / «3 Geräte» / «42 Geräte (Uplink oder Trunk)» / «–». */
+export function portLinkText(port: MonitoringPort): string {
+  if (port.link) {
+    const others =
+      port.link.source === "mac" && port.deviceCount > 1
+        ? `+${port.deviceCount - 1} weitere`
+        : null;
+    return [
+      port.link.name,
+      port.link.port ? `Port ${port.link.port}` : null,
+      others,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  if (port.deviceCount > 8)
+    return `${port.deviceCount} Geräte (Uplink oder Trunk)`;
+  return port.deviceCount > 0 ? `${port.deviceCount} unbekannte Geräte` : "–";
+}
+
+export type PortState = "linked" | "trunk" | "up" | "down" | "unknown";
+
+/** State of a port for the matrix: what its colour says. */
+export function portState(port: MonitoringPort): PortState {
+  if (port.up === false) return "down";
+  if (port.link) return "linked";
+  if (port.deviceCount > 8) return "trunk";
+  if (port.up === null) return "unknown";
+  return "up";
+}
+
+export const PORT_STATE_LABELS: Record<PortState, string> = {
+  linked: "Gegenstelle bekannt",
+  trunk: "Uplink oder Trunk",
+  up: "aktiv",
+  down: "kein Link",
+  unknown: "unbekannt",
+};
+
+export type PortGroup = {
+  key: string;
+  label: string;
+  /** Physical ports of a unit, drawn as a front panel. */
+  panel: boolean;
+  ports: MonitoringPort[];
+};
+
+/** Last number of a port name: «1/1/24» → 24, «Trk1» → 1. */
+export function portNumber(name: string): number | null {
+  const match = /(\d+)\D*$/.exec(name);
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * Ports grouped like the device is built: per unit of a stack and module
+ * («1/1/24» = unit 1, module 1, port 24; «2/12» = unit 2; «17» = port 17).
+ * Everything else (VLANs, LAGs, management) is one group that is only worth
+ * showing where something is connected.
+ */
+export function portGroups(ports: readonly MonitoringPort[]): PortGroup[] {
+  const groups = new Map<string, PortGroup>();
+  const add = (
+    key: string,
+    label: string,
+    panel: boolean,
+    port: MonitoringPort,
+  ) => {
+    const group = groups.get(key) ?? { key, label, panel, ports: [] };
+    group.ports.push(port);
+    groups.set(key, group);
+  };
+  for (const port of ports) {
+    const name = port.port.trim();
+    const three = /^(\d+)\/(\d+)\/(\d+)$/.exec(name);
+    const two = /^(\d+)\/(\d+)$/.exec(name);
+    if (three) {
+      add(
+        `${three[1]}/${three[2]}`,
+        three[2] === "1"
+          ? `Einheit ${three[1]}`
+          : `Einheit ${three[1]} · Modul ${three[2]}`,
+        true,
+        port,
+      );
+    } else if (two) {
+      add(`${two[1]}`, `Einheit ${two[1]}`, true, port);
+    } else if (/^\d+$/.test(name)) {
+      add("", "Ports", true, port);
+    } else {
+      add("~", "Weitere Schnittstellen", false, port);
+    }
+  }
+  const order = (a: string, b: string) =>
+    a.localeCompare(b, "de", { numeric: true });
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      ports: [...group.ports].sort(
+        (a, b) =>
+          (portNumber(a.port) ?? 0) - (portNumber(b.port) ?? 0) ||
+          order(a.port, b.port),
+      ),
+    }))
+    .sort((a, b) => Number(!a.panel) - Number(!b.panel) || order(a.key, b.key));
+}
+
+export type LinkDiagram = {
+  width: number;
+  height: number;
+  ports: { port: string; alias: string | null; y: number }[];
+  neighbours: {
+    key: string;
+    name: string;
+    detail: string | null;
+    assetId: string | null;
+    monitored: boolean;
+    y: number;
+  }[];
+  links: { key: string; path: string; source: MonitoringLink["source"] }[];
+  /** Connections left out because the diagram is full. */
+  hidden: number;
+};
+
+const DIAGRAM = { width: 720, row: 30, left: 170, right: 500 };
+
+/**
+ * Diagram of the connections: the ports of the device on the left, the
+ * devices they lead to on the right, a line for every connection. Only
+ * neighbours with a name count (LLDP, known device or address); bare MAC
+ * addresses stay in the list.
+ */
+export function linkDiagram(
+  ports: readonly MonitoringPort[],
+  max = 36,
+): LinkDiagram {
+  const named = ports.filter(
+    (port) =>
+      port.link !== null &&
+      (port.link.source === "lldp" ||
+        port.link.assetId !== null ||
+        port.link.address !== null),
+  );
+  const shown = named.slice(0, max);
+  const keyOf = (link: MonitoringLink) =>
+    link.assetId ?? link.name.trim().toLowerCase();
+  const neighbours = new Map<
+    string,
+    Omit<LinkDiagram["neighbours"][number], "y">
+  >();
+  for (const port of shown) {
+    const link = port.link!;
+    if (!neighbours.has(keyOf(link))) {
+      neighbours.set(keyOf(link), {
+        key: keyOf(link),
+        name: link.name,
+        detail: link.address,
+        assetId: link.assetId,
+        monitored: link.monitored,
+      });
+    }
+  }
+  const rows = Math.max(shown.length, neighbours.size, 1);
+  const height = rows * DIAGRAM.row;
+  const spread = (count: number, index: number) =>
+    ((index + 0.5) * height) / Math.max(count, 1);
+  const left = shown.map((port, index) => ({
+    port: port.port,
+    alias: port.alias,
+    y: spread(shown.length, index),
+  }));
+  const right = [...neighbours.values()].map((entry, index) => ({
+    ...entry,
+    y: spread(neighbours.size, index),
+  }));
+  const rightY = new Map(right.map((entry) => [entry.key, entry.y]));
+  const middle = (DIAGRAM.left + DIAGRAM.right) / 2;
+  return {
+    width: DIAGRAM.width,
+    height,
+    ports: left,
+    neighbours: right,
+    links: shown.map((port, index) => {
+      const y1 = left[index]!.y;
+      const y2 = rightY.get(keyOf(port.link!)) ?? y1;
+      return {
+        key: port.port,
+        path: `M${DIAGRAM.left},${y1} C${middle},${y1} ${middle},${y2} ${DIAGRAM.right},${y2}`,
+        source: port.link!.source,
+      };
+    }),
+    hidden: named.length - shown.length,
+  };
+}
+
+export const LINK_SOURCE_LABELS: Record<MonitoringLink["source"], string> = {
+  lldp: "LLDP",
+  mac: "MAC-Tabelle",
 };
 
 export type MonitoringSeries = {
@@ -157,10 +409,43 @@ export type MonitoringAssetChoice = {
   assetId: string;
   name: string;
   category: string | null;
+  /** Own name of the kind (category «other»). */
+  categoryLabel?: string | null;
   hostname: string | null;
   ipAddress: string | null;
   monitored: boolean;
 };
+
+/** An address of the IP address management that is no device yet. */
+export type MonitoringAddressChoice = {
+  addressId: string;
+  address: string;
+  hostname: string | null;
+  description: string | null;
+  deviceType: string | null;
+};
+
+/**
+ * Kind of a device guessed from its name and description (entries of the IP
+ * address management carry no kind). Falls back to «other».
+ */
+export function guessCategory(...texts: (string | null | undefined)[]): string {
+  const text = texts.filter(Boolean).join(" ").toLowerCase();
+  const rules: [RegExp, string][] = [
+    [/access.?point|\bap[-_ ]?\d|\bwlan|wifi/, "access_point"],
+    [/firewall|\bfw[-_ ]?\d|\bfir\d|sophos|fortigate/, "firewall"],
+    [/\busv\b|\bups\b|\bats\d|apc smart/, "ups"],
+    [/switch|[acd]sw\d|\bsw[-_ ]?\d|aruba cx|procurve|catalyst/, "switch"],
+    [/\bnas\b|storage|\bmsa\b|qnap|synology/, "storage"],
+    [/\besx|vcenter|hyper-?v host|virtualisierungs/, "virtual_host"],
+    [/router|gateway/, "router"],
+    [/server|\bsrv|\bdc\d|\bs\d{2,4}\b|\bilo/, "server"],
+  ];
+  for (const [pattern, category] of rules) {
+    if (pattern.test(text)) return category;
+  }
+  return "other";
+}
 
 export type SensorDraft = {
   id: string | null;
@@ -328,6 +613,39 @@ export const CATEGORY_LABELS: Record<string, string> = {
   other: "Gerät",
 };
 
+/** Kind of a device as shown: the own name for «other», else the fixed label. */
+export function categoryText(
+  category: string | null | undefined,
+  label?: string | null,
+): string {
+  if (category === "other" && label) return label;
+  return CATEGORY_LABELS[category ?? ""] ?? "Gerät";
+}
+
+const CUSTOM_KIND = "custom:";
+
+/** One value for a select: a fixed kind, or an own kind as «custom:<name>». */
+export function kindValue(
+  category: string | null | undefined,
+  label?: string | null,
+): string {
+  return category === "other" && label
+    ? `${CUSTOM_KIND}${label}`
+    : (category ?? "other");
+}
+
+/** Fields of a device for a value of `kindValue`. */
+export function kindFields(value: string): {
+  category: string;
+  categoryLabel: string | null;
+} {
+  if (!value.startsWith(CUSTOM_KIND)) {
+    return { category: value, categoryLabel: null };
+  }
+  const label = value.slice(CUSTOM_KIND.length).replace(/\s+/g, " ").trim();
+  return { category: "other", categoryLabel: label || null };
+}
+
 export const INTERVAL_OPTIONS: readonly { seconds: number; label: string }[] = [
   { seconds: 30, label: "30 Sekunden" },
   { seconds: 60, label: "1 Minute" },
@@ -417,6 +735,56 @@ export function matchesSearch(
     device.ipAddress,
     device.problem?.sensorName,
   ].some((value) => value?.toLowerCase().includes(term));
+}
+
+export type DeviceSortKey =
+  "state" | "name" | "sensors" | "response" | "lastCheck";
+export type DeviceSort = { key: DeviceSortKey; descending: boolean };
+
+/** Worst first: what needs attention is at the top. */
+const STATE_RANK: Record<MonitoringState, number> = {
+  down: 0,
+  warning: 1,
+  unknown: 2,
+  paused: 3,
+  up: 4,
+};
+
+/**
+ * Devices sorted by a column. Devices without a value (no response time,
+ * never checked) stay at the end in both directions; ties go by name.
+ */
+export function sortDevices(
+  devices: readonly MonitoringDeviceRow[],
+  sort: DeviceSort,
+): MonitoringDeviceRow[] {
+  const byName = (a: MonitoringDeviceRow, b: MonitoringDeviceRow) =>
+    a.name.localeCompare(b.name, "de", { numeric: true, sensitivity: "base" });
+  const value = (device: MonitoringDeviceRow): number | null => {
+    switch (sort.key) {
+      case "state":
+        return STATE_RANK[device.state];
+      case "sensors":
+        return device.sensorCount;
+      case "response":
+        return device.responseMs;
+      case "lastCheck":
+        return device.lastCheckAt ? Date.parse(device.lastCheckAt) : null;
+      case "name":
+        return 0;
+    }
+  };
+  const direction = sort.descending ? -1 : 1;
+  return [...devices].sort((a, b) => {
+    if (sort.key === "name") return direction * byName(a, b);
+    const left = value(a);
+    const right = value(b);
+    if (left === null || right === null) {
+      if (left === right) return byName(a, b);
+      return left === null ? 1 : -1;
+    }
+    return direction * (left - right) || byName(a, b);
+  });
 }
 
 export type ChartGeometry = {

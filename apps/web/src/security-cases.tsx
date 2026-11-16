@@ -1,3 +1,4 @@
+import { SecurityOriginalMail } from "./security-original-mail";
 import { tn } from "./lib/formality";
 import {
   AlertTriangle,
@@ -678,8 +679,18 @@ function SecurityCaseView({
                     ))}
                   </dd>
                 </dl>
-                {detail.description ? (
-                  <pre className="security-mail-body">{detail.description}</pre>
+                {detail.originalMail ? (
+                  <SecurityOriginalMail mail={detail.originalMail} />
+                ) : detail.description ? (
+                  <>
+                    <p className="security-muted">
+                      Für diese Meldung ist nur der Text gespeichert; die
+                      Originaldarstellung gibt es für neue Meldungen.
+                    </p>
+                    <pre className="security-mail-body">
+                      {detail.description}
+                    </pre>
+                  </>
                 ) : null}
                 {analysis.links.length ? (
                   <div className="security-card__block">
@@ -722,8 +733,9 @@ function SecurityCaseView({
                 ) : null}
                 <p className="security-safe-note">
                   <ShieldCheck aria-hidden="true" size={15} />
-                  Links sind entschärft und nicht anklickbar, Bilder werden
-                  nicht geladen und Anhänge nicht geöffnet.
+                  Links sind entschärft und nicht anklickbar (Ziel beim
+                  Darüberfahren), externe Bilder und Skripte werden nicht
+                  geladen und Anhänge nicht geöffnet.
                 </p>
               </article>
 

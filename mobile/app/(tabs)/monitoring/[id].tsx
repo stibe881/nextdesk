@@ -11,25 +11,31 @@ import {
 } from "react-native";
 import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
+import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useIncidentStyles } from "@/components/incident-styles";
 import { stateBadge, stateBar } from "@/components/monitoring-styles";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { ScreenContainer } from "@/components/screen-container";
 import {
-  CATEGORY_LABELS,
+  categoryText,
   chartGeometry,
+  connectedPorts,
   formatAgo,
   intervalLabel,
   kindLabel,
+  LINK_SOURCE_LABELS,
+  loadMonitoringConnections,
   loadMonitoringDevice,
   loadMonitoringSeries,
   pauseMonitoringDevice,
+  portLinkText,
   RANGE_LABELS,
   sensorTarget,
   sensorValueText,
   STATE_LABELS,
   thresholdText,
   valueLabel,
+  type MonitoringConnections,
   type MonitoringDeviceDetail,
   type MonitoringRange,
   type MonitoringSeries,
@@ -44,6 +50,8 @@ const RANGES = Object.keys(RANGE_LABELS) as MonitoringRange[];
 /** A monitored device: sensors, history of one sensor, linked incident. */
 export default function MonitoringDeviceScreen() {
   const router = useRouter();
+  const { isEnabled } = useMobileFeatures();
+  const assetsEnabled = isEnabled("assets.management");
   const { id } = useLocalSearchParams<{ id: string }>();
   const styles = useIncidentStyles();
   const colors = useAppColors();
@@ -54,6 +62,8 @@ export default function MonitoringDeviceScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   const [range, setRange] = useState<MonitoringRange>("24h");
   const [series, setSeries] = useState<MonitoringSeries | null>(null);
+  const [connections, setConnections] =
+    useState<MonitoringConnections | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -72,6 +82,10 @@ export default function MonitoringDeviceScreen() {
         const result = await loadMonitoringDevice(tenant.id, id);
         setData(result);
         setNow(Date.now());
+        // The connections are an extra; the screen works without them.
+        loadMonitoringConnections(tenant.id, id)
+          .then(setConnections)
+          .catch(() => setConnections(null));
         setSelected((current) =>
           current && result.sensors.some((sensor) => sensor.id === current)
             ? current
@@ -216,7 +230,7 @@ export default function MonitoringDeviceScreen() {
               <Text style={styles.title}>{data.device.name}</Text>
               <Text style={styles.subtitle}>
                 {[
-                  CATEGORY_LABELS[data.device.category ?? ""] ?? "Gerät",
+                  categoryText(data.device.category, data.device.categoryLabel),
                   data.device.ipAddress,
                   data.device.hostname,
                 ]
@@ -224,6 +238,26 @@ export default function MonitoringDeviceScreen() {
                   .join(" · ")}
               </Text>
             </View>
+
+            {assetsEnabled ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push(`/infrastructure/${id}` as never)}
+                style={styles.row}
+              >
+                <View style={styles.rowCopy}>
+                  <Text style={styles.rowTitle}>In Infrastruktur öffnen</Text>
+                  <Text numberOfLines={1} style={styles.rowMeta}>
+                    Standort, Rack, Uplink und Services des Geräts
+                  </Text>
+                </View>
+                <Ionicons
+                  color={colors.muted}
+                  name="chevron-forward"
+                  size={18}
+                />
+              </Pressable>
+            ) : null}
 
             {data.device.incident ? (
               <Pressable
@@ -450,6 +484,74 @@ export default function MonitoringDeviceScreen() {
                 </Text>
               ) : null}
             </View>
+
+            {connections &&
+            (connections.attachedTo.length || connections.ports.length) ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Verbindungen</Text>
+                {connections.scannedAt ? (
+                  <Text style={styles.rowMeta}>
+                    Stand {formatAgo(connections.scannedAt, now)}
+                  </Text>
+                ) : null}
+                {connections.attachedTo.map((entry) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={`${entry.assetId}|${entry.port}`}
+                    onPress={() =>
+                      router.push(
+                        (entry.monitored
+                          ? `/monitoring/${entry.assetId}`
+                          : `/infrastructure/${entry.assetId}`) as never,
+                      )
+                    }
+                  >
+                    <Text style={styles.rowTitle}>
+                      Hängt an {entry.name}, Port {entry.port}
+                    </Text>
+                    <Text style={styles.rowMeta}>
+                      {LINK_SOURCE_LABELS[entry.source]}
+                    </Text>
+                  </Pressable>
+                ))}
+                {connectedPorts(connections.ports)
+                  .slice(0, 60)
+                  .map((port) => {
+                    const target = port.link?.assetId
+                      ? port.link.monitored
+                        ? `/monitoring/${port.link.assetId}`
+                        : assetsEnabled
+                          ? `/infrastructure/${port.link.assetId}`
+                          : null
+                      : null;
+                    return (
+                      <Pressable
+                        accessibilityRole={target ? "button" : "text"}
+                        disabled={!target}
+                        key={port.port}
+                        onPress={() =>
+                          target ? router.push(target as never) : undefined
+                        }
+                      >
+                        <Text style={styles.rowTitle}>
+                          {port.port} → {portLinkText(port)}
+                        </Text>
+                        <Text style={styles.rowMeta}>
+                          {[
+                            port.alias,
+                            port.link?.address,
+                            port.link
+                              ? LINK_SOURCE_LABELS[port.link.source]
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+              </View>
+            ) : null}
 
             {data.device.services.length || data.device.uplink ? (
               <View style={styles.card}>

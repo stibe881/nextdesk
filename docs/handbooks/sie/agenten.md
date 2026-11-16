@@ -448,6 +448,8 @@ Resultate laufend an nextDesk.
   Sonde sich wieder meldet.
 - **Geräteliste**: Zustand, Sensoren, Antwortzeit und letzte Prüfung. Die
   Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
+  Ein Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter kehrt die
+  Reihenfolge um. Standard ist der Zustand, das Dringende zuoberst.
 
 ![Überwachung mit Kacheln, aktiven Alarmen, Sonden und Geräteliste](images/ag-ueberwachung.jpg)
 
@@ -460,16 +462,68 @@ Ein Klick auf ein Gerät öffnet das **Gerätedetail**:
   Werte im 5-Minuten-Raster, für längere Zeiträume Stunden- bzw. Tageswerte.
 - **Sensoren**: Zustand, Messwert, Intervall und letzte Prüfung. Ein Klick auf
   den Namen zeigt den Verlauf dieses Sensors in der Grafik.
-- **Verknüpft in nextDesk**: offene Störung, betroffene Services und der
-  Uplink. Services und Uplink werden unter **Infrastruktur** gepflegt.
+- **Verbindungen**: welcher Port zu welchem Gerät führt. Die Sonde liest das
+  bei Switches, Firewalls und Routern alle sechs Stunden per SNMP aus.
+  - **Verbunden mit** nennt die Gegenstelle. Quelle **LLDP**: Das
+    Nachbargerät hat sich selbst gemeldet, samt seinem Port. Quelle
+    **MAC-Tabelle**: Am Port wurde die MAC-Adresse eines Geräts gesehen, das
+    in der Infrastruktur oder der IP-Adressverwaltung steht.
+  - Ein Klick auf die Gegenstelle öffnet sie – in der Überwachung, wenn sie
+    überwacht wird, sonst in der Infrastruktur.
+  - Ports mit vielen Geräten dahinter sind Uplinks oder Trunks und werden
+    nur gezählt.
+  - Bei Servern, Access Points und anderen Endgeräten steht **Hängt an …,
+    Port …**, sobald ein überwachter Switch das Gerät an einem Port sieht.
+  - Angezeigt werden zuerst nur Ports mit Gegenstelle; **Alle … Ports
+    zeigen** blendet die übrigen ein. Mit dem Recht «Assets verwalten»
+    können Sie die Verbindungen über **Jetzt auslesen** sofort neu lesen
+    lassen (Antwort innert etwa einer Minute).
+- **Verknüpft in nextDesk**: das Gerät in der Infrastruktur, offene Störung,
+  betroffene Services und der Uplink. Jedes überwachte Gerät ist ein Gerät
+  der Infrastruktur; über **In Infrastruktur öffnen** gelangen Sie direkt
+  dorthin (in der App über die gleichnamige Zeile). Services und Uplink
+  werden unter **Infrastruktur** gepflegt.
 
 ![Gerätedetail mit Verlaufsgrafik und Sensoren](images/ag-ueberwachung-geraet.jpg)
 
+![Verbindungen eines Geräts: Ports und Gegenstellen](images/ag-ueberwachung-verbindungen.jpg)
+
+Mit **Liste** und **Matrix** oben in der Karte wechselt die Darstellung. Die
+Matrix zeigt die Ports jeder Einheit wie auf der Gerätefront, eingefärbt nach
+Zustand (Gegenstelle bekannt, Uplink oder Trunk, aktiv, kein Link). Ein Klick
+auf einen Port nennt darunter die Gegenstelle. Das Diagramm «Verbindungen zu
+bekannten Geräten» zieht von jedem Port eine Linie zum Gerät, zu dem er führt
+(durchgezogen: LLDP, gestrichelt: MAC-Tabelle); Geräte der Infrastruktur sind
+anklickbar.
+
+![Verbindungen als Matrix mit Diagramm](images/ag-ueberwachung-matrix.jpg)
+
 Mit dem Recht «Assets verwalten» können Sie zusätzlich:
 
-1. **Gerät hinzufügen** – ein Gerät aus der Infrastruktur wählen und die
-   Sonde bestimmen. Das Gerät erhält einen Ping-Sensor. Geräte, die noch
-   nicht in der Infrastruktur stehen, erfassen Sie zuerst dort.
+1. **Geräte hinzufügen** – die Suche findet:
+   - **Geräte der Infrastruktur.** Geräte mit Adresse stehen zuoberst.
+   - **Einträge der IP-Adressverwaltung**, die noch kein Gerät sind (ab zwei
+     Zeichen). Name und Adresse werden übernommen.
+   - **Neues Gerät erfassen**, wenn es nirgends steht: Name, Art und
+     IP-Adresse oder Hostname genügen.
+
+   Mehrere Treffer lassen sich ankreuzen und zusammen hinzufügen; die Auswahl
+   bleibt erhalten, wenn der Suchtext ändert. **Alle … angezeigten
+   auswählen** kreuzt alle Treffer der aktuellen Suche an. Für Einträge der
+   IP-Adressverwaltung bestimmt nextDesk die Art aus Name und Beschreibung;
+   sie lässt sich im Dialog für alle festlegen und später je Gerät ändern.
+   Fehlt die passende Art (z. B. «iLO», «Drucker», «Kamera»), legt **Neue Art
+   erstellen …** zuunterst in der Auswahl sie mit einem eigenen Namen an;
+   danach steht sie auch für weitere Geräte und unter **Bearbeiten** zur
+   Wahl. Eigene Arten erscheinen auch in der Infrastruktur.
+   Ein Gerät ohne IP-Adresse und Hostname lässt sich nur einzeln hinzufügen,
+   der Dialog fragt dann nach der Adresse.
+
+   Aus Einträgen der IP-Adressverwaltung und neu erfassten Geräten legt
+   nextDesk Geräte in der Infrastruktur an; Standort, Uplink und Services
+   ergänzen Sie dort. Danach die Sonde wählen. Jedes Gerät erhält einen
+   Ping-Sensor.
+
 2. **Sensor hinzufügen** (im Gerätedetail) – Art wählen:
    - **Ping**: Ist das Gerät erreichbar?
    - **TCP-Port**: Antwortet ein Dienst, z. B. 3389 (RDP) oder 1433 (SQL)?
@@ -513,10 +567,21 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    Zielen gilt ein nicht vertrauenswürdiges Zertifikat als Ausfall; eine
    Sonde wertet bei internen Zertifikaten nur Ablauf und Erreichbarkeit.
 
-3. Sensoren **bearbeiten**, **löschen** oder das ganze Gerät **pausieren**.
-   Beim Pausieren und Löschen endet ein offener Alarm des Sensors; die
+3. Sensoren **bearbeiten** oder **löschen** (Symbole in der Sensorzeile).
+   Im Kopf des Gerätedetails:
+   - **Pausieren** hält die Überwachung des ganzen Geräts an.
+   - **Bearbeiten** ändert Name, Art, IP-Adresse und Hostname des Geräts. Die
+     Änderung gilt auch in der Infrastruktur; Sensoren ohne eigenes Ziel
+     messen danach die neue Adresse.
+   - **Entfernen** nimmt das Gerät aus der Überwachung: Alle Sensoren und ihr
+     Verlauf werden gelöscht. Das Gerät selbst bleibt in der Infrastruktur.
+
+   Beim Pausieren, Löschen und Entfernen endet ein offener Alarm; die
    Störung gilt als behoben, sobald kein Sensor des Geräts mehr gestört ist.
+
 4. **Sonde hinzufügen** – siehe Handbuch für Administratoren.
+
+![Mehrere Geräte aus der IP-Adressverwaltung hinzufügen](images/ag-ueberwachung-hinzufuegen.jpg)
 
 **In der App** finden Sie die Überwachung unter **Dienste → Überwachung** (wenn
 das Modul aktiv ist). Die App zeigt die Kacheln je Zustand, die aktiven

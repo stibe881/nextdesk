@@ -128,7 +128,7 @@ const CATEGORY_DETAILS: readonly {
     key: "incident",
     label: "Störungen",
     description:
-      "Wenn PRTG eine Störung meldet und solange sie niemand bestätigt.",
+      "Wenn die Überwachung oder PRTG eine Störung meldet und solange sie niemand bestätigt.",
   },
   {
     key: "follow_up",

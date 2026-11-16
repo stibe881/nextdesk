@@ -211,6 +211,20 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-ueberwachung-hinzufuegen",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.click("Geräte hinzufügen");
+      await h.page.getByLabel("Gerät suchen").fill("srv");
+      await h.waitText("noch kein Gerät");
+      await h.click("angezeigten auswählen");
+      await h.waitText("Geräte überwachen");
+      await h.settle(300);
+    },
+  },
+  {
     name: "ag-ueberwachung-geraet",
     persona: "agent",
     async run(h) {
@@ -218,6 +232,36 @@ export const SHOTS = [
       await h.nav("Überwachung");
       await h.clickText("SRV-SQL-01");
       await h.waitText("Verknüpft in nextDesk");
+      await h.settle(500);
+    },
+  },
+  {
+    name: "ag-ueberwachung-verbindungen",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.clickText("SRV-SQL-01");
+      await h.waitText("Verbunden mit");
+      await h.page
+        .getByRole("heading", { name: "Verbindungen" })
+        .scrollIntoViewIfNeeded();
+      await h.settle(500);
+    },
+  },
+  {
+    name: "ag-ueberwachung-matrix",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.clickText("SRV-SQL-01");
+      await h.waitText("Verbunden mit");
+      await h.click("Matrix");
+      await h.page.getByRole("button", { name: /^Port 1\/1\/25:/ }).click();
+      await h.page
+        .getByRole("heading", { name: "Verbindungen", exact: true })
+        .scrollIntoViewIfNeeded();
       await h.settle(500);
     },
   },

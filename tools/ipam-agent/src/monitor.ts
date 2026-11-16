@@ -577,11 +577,14 @@ export async function runCheck(
   return { id: check.id, at, ...outcome };
 }
 
+/** After a start the first run of each check falls into this window. */
+export const START_SPREAD_SECONDS = 60;
+
 type Scheduled = { check: Check; nextAt: number; running: boolean };
 
 /**
  * Keeps the schedule. New checks start spread over their first interval (at
- * most 30 s) so that not all of them hit the network in the same second.
+ * most a minute) so that not all of them hit the network in the same second.
  */
 export class Schedule {
   readonly #entries = new Map<string, Scheduled>();
@@ -610,7 +613,8 @@ export class Schedule {
             now + check.intervalSeconds * 1000,
           );
       } else {
-        const spread = Math.min(check.intervalSeconds, 30) * 1000;
+        const spread =
+          Math.min(check.intervalSeconds, START_SPREAD_SECONDS) * 1000;
         this.#entries.set(check.id, {
           check,
           nextAt: now + Math.floor(this.#random() * spread),

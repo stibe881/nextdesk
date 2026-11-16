@@ -308,8 +308,9 @@ PRTG-Meldungen erzeugen keine Tickets, sondern **Störungen** im
 Arbeitsbereich (siehe _Handbuch für Agenten_). Das gewählte Team wird sofort
 per Push und E-Mail alarmiert.
 
-1. **[Admin]** **Einstellungen → Monitoring → Monitoring (PRTG)**: Verarbeitung
-   aktivieren, **Team für die Alarmierung** (ohne Team alle Agenten; nur dieses
+1. **[Admin]** **Einstellungen → Monitoring**: unter **Monitoring (PRTG)** die
+   Verarbeitung aktivieren; in der Karte **Alarmierung** (gilt auch für die
+   eigene Überwachung) **Team für die Alarmierung** (ohne Team alle Agenten; nur dieses
    Team sieht den Bereich Störungen in Web und App),
    «Störung öffnen bei» (Down bzw. Down und Warning) und **Erneut alarmieren,
    solange unbestätigt** (Standard alle 15 Minuten, oder _Nie_) wählen,
@@ -366,7 +367,8 @@ per Push und E-Mail alarmiert.
 Die Sonde ist derselbe Netzwerkagent wie für die IP-Adressverwaltung
 (`tools/ipam-agent`). Läuft er bereits, ist nichts zu installieren: Er
 übernimmt die Sensoren, sobald das Modul _Überwachung_ aktiv ist und der
-Agent auf Version 1.1.0 oder neuer aktualisiert wurde (SNMP-Sensoren: 1.2.0).
+Agent auf Version 1.1.0 oder neuer aktualisiert wurde (SNMP-Sensoren: 1.2.0,
+Verbindungen: 1.3.0).
 
 1. Unter **Funktionen** das Modul _Überwachung_ einschalten.
 2. Unter **Einstellungen → Monitoring → Überwachung** (oder **Dienste und
@@ -422,6 +424,21 @@ Zugangsdaten (Schlüssel = IP-Adresse bzw. Hostname wie in der Infrastruktur).
 Die Sonde braucht UDP 161 zu den Geräten; auf den Geräten SNMP nur lesend
 einrichten.
 
+Geräte mit unterschiedlichen Zugangsdaten (USV, Storage, iLO) erhalten je
+einen Eintrag unter `hosts`, mit der IP-Adresse wie in nextDesk. Ein `"` oder
+`\` in einem Schlüssel wird als `\"` bzw. `\\` geschrieben. SNMPv3 mit
+DES-Verschlüsselung (ältere APC-USV) funktioniert ab Sonde 1.3.2; sicherer ist
+AES auf dem Gerät.
+
+**Verbindungen** (welcher Port führt zu welchem Gerät, ab Sonde 1.3.0):
+Mit denselben SNMP-Zugangsdaten liest die Sonde bei Switches, Firewalls und
+Routern sowie bei allen Geräten mit SNMP-Sensor alle sechs Stunden die Ports,
+die LLDP-Nachbarn und die MAC-Tabelle aus. Dafür ist nichts weiter
+einzurichten. Damit Verbindungen zwischen Switches erkannt werden, muss auf
+den Switches LLDP aktiv sein (bei Aruba und HP Standard). Endgeräte werden
+über ihre MAC-Adresse zugeordnet; sie muss dazu in der IP-Adressverwaltung
+oder beim Gerät in der Infrastruktur stehen.
+
 **Wächter:** Meldet sich eine Sonde mit Sensoren fünf Minuten nicht, öffnet
 nextDesk eine Störung. Das prüft ein Datenbank-Job jede Minute; er nutzt
 dieselbe Weck-Einrichtung wie die Ablauf- und Backup-Überwachung.
@@ -438,8 +455,11 @@ ausnehmen. Die Prüfung der Zertifikate wird nie abgeschaltet.
 
 **Aktualisieren:** Zeigt nextDesk bei einer Sonde «Aktualisierung verfügbar»,
 das neue Paket herunterladen, entpacken und dasselbe Skript erneut ausführen.
-Ohne `config.json` im Paketordner bleibt die installierte Konfiguration
-erhalten.
+Die installierte Konfiguration mit ihren Ergänzungen (z. B. SNMP) bleibt
+erhalten. Unter Windows gilt das ab Paket 1.3.1 auch, wenn im Paketordner noch
+die `config.json` derselben Sonde liegt; ältere Pakete und das Linux-Skript
+überschreiben die installierte Datei mit ihr. Eine `config.json` einer
+anderen Sonde (anderer Token) ersetzt die installierte immer.
 
 **Betreiber:** Das Paket baut der GitHub-Workflow «Publish probe package» bei
 jeder Änderung unter `tools/ipam-agent` auf `main` und legt es im privaten

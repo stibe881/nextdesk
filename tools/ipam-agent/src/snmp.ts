@@ -97,6 +97,29 @@ export function openSession(config: LocalConfig, host: string): Session {
   });
 }
 
+/**
+ * LLDP neighbours and MAC table of a host with the credential config.json
+ * holds for it (connections of a monitored device).
+ */
+export function collectLinks(
+  config: LocalConfig,
+  host: string,
+): Promise<SnmpResult> {
+  const credential =
+    config.snmp.hosts[host.toLowerCase()] ?? config.snmp.default;
+  if (!credential) {
+    throw new Error(`Keine SNMP-Zugangsdaten für ${host} in config.json`);
+  }
+  return collectSnmp(config, {
+    host,
+    version: credential.version,
+    user: null,
+    authProtocol: null,
+    privProtocol: null,
+    collect: ["fdb", "lldp"],
+  });
+}
+
 export type SnmpValue = { oid: string; value: unknown; type: number } | null;
 
 /** GET of a few OIDs; an entry is null when the device has no such object. */

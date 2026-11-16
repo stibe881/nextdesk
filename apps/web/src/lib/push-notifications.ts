@@ -38,7 +38,7 @@ export const pushCategoryMeta = {
   },
   incident: {
     description:
-      "Wenn PRTG eine Störung meldet und solange sie niemand bestätigt",
+      "Wenn die Überwachung oder PRTG eine Störung meldet und solange sie niemand bestätigt",
     label: "Störungen",
   },
   ipam: {

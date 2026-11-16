@@ -1183,6 +1183,74 @@ const HANDLERS = {
       lastMessage: null,
       ...extra,
     });
+    if (body.type === "connections") {
+      const link = (name, port, assetId, monitored, address) => ({
+        source: port ? "lldp" : "mac",
+        name,
+        port,
+        address,
+        mac: null,
+        assetId,
+        monitored,
+      });
+      return ok({
+        canManage: true,
+        scannedAt: D.iso(-42 * D.MIN),
+        pending: false,
+        error: null,
+        attachedTo: [
+          {
+            assetId: D.uid("49494949", 1),
+            name: "SW-CORE-01",
+            port: "1/1/7",
+            source: "mac",
+            monitored: true,
+          },
+        ],
+        ports: Array.from({ length: 28 }, (_, index) => {
+          const number = index + 1;
+          const named = {
+            3: link(
+              "SRV-SQL-01",
+              null,
+              D.uid("49494949", 2),
+              true,
+              "10.10.20.21",
+            ),
+            4: link(
+              "SRV-BACKUP-01",
+              null,
+              D.uid("49494949", 5),
+              true,
+              "10.10.20.40",
+            ),
+            9: link("ap-empfang", "eth0", null, false, "10.10.30.11"),
+            10: link("ap-sitzung", "eth0", null, false, "10.10.30.12"),
+            14: link("drucker-og2", null, null, false, "10.10.40.7"),
+            25: link(
+              "FW-BAAR-01",
+              "port3",
+              D.uid("49494949", 3),
+              true,
+              "10.10.0.1",
+            ),
+            27: link("asw-srv-raum", "1/1/52", null, false, "10.10.0.14"),
+            28: link("asw-og2", "1/1/52", null, false, "10.10.0.15"),
+          }[number];
+          const up =
+            named !== undefined ||
+            [1, 2, 5, 6, 11, 17, 18, 26].includes(number);
+          return {
+            port: `1/1/${number}`,
+            alias: number >= 25 ? "Uplink" : number <= 4 ? "Server" : "Client",
+            up,
+            speedMbps: up ? (number >= 25 ? 10000 : 1000) : null,
+            link: named ?? null,
+            deviceCount: named ? 1 : number === 26 ? 42 : up ? 1 : 0,
+          };
+        }),
+      });
+    }
     if (body.type === "device") {
       return ok({
         canManage: true,
@@ -1256,14 +1324,49 @@ const HANDLERS = {
     }
     if (body.type === "assets") {
       return ok({
-        assets: devices.map((device) => ({
-          assetId: device.assetId,
-          name: device.name,
-          category: device.category,
-          hostname: null,
-          ipAddress: device.ipAddress,
-          monitored: true,
-        })),
+        kinds: ["Drucker", "iLO"],
+        addresses:
+          String(body.query ?? "").trim().length >= 2
+            ? [
+                {
+                  addressId: D.uid("52525252", 1),
+                  address: "10.10.20.55",
+                  hostname: "srv-print-01",
+                  description: "Druckserver",
+                  deviceType: null,
+                },
+                {
+                  addressId: D.uid("52525252", 2),
+                  address: "10.10.20.56",
+                  hostname: "srv-backup-02",
+                  description: "Backup",
+                  deviceType: null,
+                },
+                {
+                  addressId: D.uid("52525252", 3),
+                  address: "10.10.0.14",
+                  hostname: "asw-srv-raum",
+                  description: "Switch Serverraum",
+                  deviceType: null,
+                },
+              ]
+            : [],
+        assets: devices
+          .filter((device) =>
+            device.name.toLowerCase().includes(
+              String(body.query ?? "")
+                .trim()
+                .toLowerCase(),
+            ),
+          )
+          .map((device) => ({
+            assetId: device.assetId,
+            name: device.name,
+            category: device.category,
+            hostname: null,
+            ipAddress: device.ipAddress,
+            monitored: true,
+          })),
       });
     }
     return ok({ ok: true });

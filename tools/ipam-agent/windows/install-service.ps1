@@ -60,8 +60,26 @@ $config = Join-Path $data 'config.json'
 $provided = Join-Path $source 'config.json'
 $example = Join-Path $source 'config.example.json'
 $configReady = $true
+# Fertig ausgefüllte Konfiguration aus nextDesk (Sonde hinzufügen) im Paketordner.
+# Sie ersetzt eine vorhandene nur, wenn sie zu einer anderen Sonde gehört (anderer
+# Token). Sonst bleibt die vorhandene mit ihren Ergänzungen (z. B. SNMP) erhalten.
+$useProvided = $false
 if (Test-Path $provided) {
-  # Fertig ausgefüllte Konfiguration aus nextDesk (Sonde hinzufügen).
+  $useProvided = $true
+  if (Test-Path $config) {
+    try {
+      $currentToken = (Get-Content $config -Raw | ConvertFrom-Json).agentToken
+      $providedToken = (Get-Content $provided -Raw | ConvertFrom-Json).agentToken
+      if ($currentToken -and $currentToken -eq $providedToken) {
+        $useProvided = $false
+        Write-Host "Vorhandene Konfiguration bleibt erhalten: $config"
+      }
+    } catch {
+      # Vorhandene Datei nicht lesbar: durch die mitgelieferte ersetzen.
+    }
+  }
+}
+if ($useProvided) {
   Copy-Item -Force $provided $config
 } elseif (-not (Test-Path $config)) {
   $configReady = $false

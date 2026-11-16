@@ -810,3 +810,52 @@ button.security-tile:focus-visible {
 .security-ioc-table tr.is-harmless td {
   color: var(--muted);
 }
+
+/* Gemeldete E-Mail im Original: Darstellung, Text, Kopfzeilen. */
+.security-original {
+  display: grid;
+  gap: 10px;
+}
+
+.security-original__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.security-original__tabs button {
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.security-original__tabs button.is-active {
+  border-bottom-color: var(--primary);
+  color: var(--ink);
+}
+
+.security-original__frame {
+  width: 100%;
+  height: min(70vh, 720px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.security-original .security-mail-body {
+  max-height: min(70vh, 720px);
+}
+
+.security-original__headers {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}

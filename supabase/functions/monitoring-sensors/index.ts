@@ -3,17 +3,30 @@ import { isUuid, json, noContent } from "../_shared/http.ts";
 import { createAgentToken, sha256Hex, tokenHint } from "../_shared/ipam-discovery.ts";
 import { publicTarget } from "../_shared/monitoring-cloud.ts";
 import { sensorKey } from "../_shared/monitoring-native.ts";
+import {
+  attachments,
+  comparePorts,
+  directory,
+  type KnownAddress,
+  type KnownDevice,
+  normalizeMac,
+  portFromRow,
+  resolvePort,
+} from "../_shared/monitoring-topology.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import { INTEGRATION_COLUMNS, processEvent } from "../monitoring-webhook/index.ts";
 import {
   type Action,
   agentOnline,
   availability,
+  type DeviceEdit,
   bucketize,
   deviceState,
   type DisplayState,
   displayState,
   isOlderVersion,
+  matchesAddress,
+  type NewDevice,
   parseAction,
   parseInterfaces,
   parseProbePackage,
@@ -234,7 +247,7 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
   const assetIds = [...new Set(sensors.map((sensor) => sensor.assetId))];
   const [assets, infrastructure, incidents] = await Promise.all([
     selectIn(admin, "assets", "id, name", tenantId, "id", assetIds),
-    selectIn(admin, "asset_infrastructure", "asset_id, category, hostname, ip_address", tenantId, "asset_id", assetIds),
+    selectIn(admin, "asset_infrastructure", "asset_id, category, category_label, hostname, ip_address", tenantId, "asset_id", assetIds),
     activeIncidents(admin, tenantId, assetIds),
   ]);
   const infraByAsset = new Map(infrastructure.map((row) => [String(row.asset_id), row]));
@@ -258,6 +271,7 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
       assetId: id,
       name: String(asset.name),
       category: text(infra?.category),
+      categoryLabel: kindLabel(infra),
       hostname: text(infra?.hostname),
       ipAddress: text(infra?.ip_address),
       state: deviceState(own.map((sensor) => sensor.state)),
@@ -305,7 +319,7 @@ async function device(admin: Client, tenantId: string, assetId: string, canManag
   const [sensors, agents, infra, incidents, resolved] = await Promise.all([
     loadSensors(admin, tenantId, assetId),
     loadAgents(admin, tenantId),
-    admin.from("asset_infrastructure").select("category, hostname, ip_address, uplink_asset_id").eq("tenant_id", tenantId).eq("asset_id", assetId).maybeSingle(),
+    admin.from("asset_infrastructure").select("category, category_label, hostname, ip_address, uplink_asset_id").eq("tenant_id", tenantId).eq("asset_id", assetId).maybeSingle(),
     activeIncidents(admin, tenantId, [assetId]),
     admin.rpc("monitoring_resolve_asset", { p_tenant_id: tenantId, p_asset_id: assetId }),
   ]);
@@ -324,6 +338,7 @@ async function device(admin: Client, tenantId: string, assetId: string, canManag
       assetId,
       name: String(asset.name),
       category: text(infra.data?.category),
+      categoryLabel: kindLabel(infra.data),
       hostname: text(infra.data?.hostname),
       ipAddress: text(infra.data?.ip_address),
       state: deviceState(sensors.map((sensor) => sensor.state)),
@@ -333,8 +348,27 @@ async function device(admin: Client, tenantId: string, assetId: string, canManag
     },
     sensors,
     agents,
+    kinds: canManage ? await customKinds(admin, tenantId) : [],
     checkedAt: new Date().toISOString(),
   };
+}
+
+/** Own name of the device kind; only counts for the category «other». */
+function kindLabel(row: Row | null | undefined): string | null {
+  return row?.category === "other" ? text(row.category_label) : null;
+}
+
+/** Own device kinds of the tenant, as they are used on its devices. */
+async function customKinds(admin: Client, tenantId: string): Promise<string[]> {
+  const { data, error } = await admin.from("asset_infrastructure").select("category_label")
+    .eq("tenant_id", tenantId).eq("category", "other").not("category_label", "is", null).limit(2000);
+  if (error) throw unavailable();
+  const labels = new Map<string, string>();
+  for (const row of (data ?? []) as Row[]) {
+    const label = text(row.category_label);
+    if (label && !labels.has(label.toLowerCase())) labels.set(label.toLowerCase(), label);
+  }
+  return [...labels.values()].sort((a, b) => a.localeCompare(b, "de"));
 }
 
 async function series(admin: Client, tenantId: string, sensorId: string, range: "24h" | "7d" | "30d" | "1y") {
@@ -399,8 +433,121 @@ async function series(admin: Client, tenantId: string, sensorId: string, range: 
   };
 }
 
+/**
+ * Entries of the IP address management that are not linked to a device yet:
+ * hosts nextDesk knows by address but not as infrastructure device.
+ */
+async function addressChoices(admin: Client, tenantId: string, query: string) {
+  if (query.trim().length < 2) return [];
+  const { data, error } = await admin.from("ipam_addresses")
+    .select("id, address, hostname, description, device_type")
+    .eq("tenant_id", tenantId).is("asset_id", null).limit(5000);
+  // The module may be off or empty: then there is simply nothing to offer.
+  if (error) return [];
+  return ((data ?? []) as Row[]).flatMap((row) => {
+    const address = String(row.address ?? "").split("/")[0] ?? "";
+    const entry = { address, hostname: text(row.hostname), description: text(row.description) };
+    if (!address || !matchesAddress(entry, query)) return [];
+    return [{ addressId: String(row.id), ...entry, deviceType: text(row.device_type) }];
+  }).sort((x, y) => (x.hostname ?? x.address).localeCompare(y.hostname ?? y.address, "de")).slice(0, 30);
+}
+
+/**
+ * Creates a device in the infrastructure (like «Infrastruktur → Gerät
+ * erfassen», with the fields monitoring needs) and its ping sensor.
+ */
+async function addDevice(admin: Client, tenantId: string, actorId: string, device: NewDevice) {
+  if (device.agentId) {
+    const agent = await admin.from("ipam_agents").select("id").eq("tenant_id", tenantId).eq("id", device.agentId).neq("status", "revoked").maybeSingle();
+    if (agent.error) throw unavailable();
+    if (!agent.data) throw new HttpError(422, "agent_not_found", "Die Sonde wurde nicht gefunden.");
+  }
+  const inserted = await admin.from("assets").insert({
+    tenant_id: tenantId,
+    name: device.name,
+    kind: device.category,
+    lifecycle_state: "active",
+    lifecycle_changed_at: new Date().toISOString(),
+  }).select("id").single();
+  if (inserted.error || !inserted.data) {
+    throw new HttpError(422, "device_save_failed", "Das Gerät konnte nicht gespeichert werden.");
+  }
+  const assetId = String(inserted.data.id);
+  await admin.from("asset_lifecycle_events")
+    .update({ actor_id: actorId, reason: "Erfasst in der Überwachung" })
+    .eq("tenant_id", tenantId).eq("asset_id", assetId).is("actor_id", null);
+  const infra = await admin.from("asset_infrastructure").insert({
+    asset_id: assetId,
+    tenant_id: tenantId,
+    category: device.category,
+    category_label: device.categoryLabel,
+    hostname: device.hostname,
+    ip_address: device.ipAddress,
+  });
+  if (infra.error) {
+    // Do not leave a device behind that is no infrastructure device.
+    await admin.from("assets").delete().eq("tenant_id", tenantId).eq("id", assetId);
+    throw unavailable();
+  }
+  if (device.ipamAddressId) {
+    // Link the address to the new device; a failure here is not fatal.
+    await admin.from("ipam_addresses").update({ asset_id: assetId, change_actor: actorId, change_source: "user" })
+      .eq("tenant_id", tenantId).eq("id", device.ipamAddressId).is("asset_id", null);
+  }
+  await admin.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_id: actorId,
+    action: "infrastructure.device.created",
+    entity_type: "asset",
+    entity_id: assetId,
+    severity: "info",
+    metadata: { category: device.category, source: "monitoring" },
+  });
+  const sensor = await admin.from("monitoring_sensors").insert({
+    tenant_id: tenantId,
+    asset_id: assetId,
+    agent_id: device.agentId,
+    kind: "ping",
+    name: "Ping",
+    created_by: actorId,
+  }).select("id").single();
+  if (sensor.error) throw unavailable();
+  return { assetId, sensorId: String(sensor.data.id) };
+}
+
+/** Changes name, kind and address of a monitored device (also in the infrastructure). */
+async function updateDevice(admin: Client, tenantId: string, actorId: string, assetId: string, device: DeviceEdit) {
+  await requireAsset(admin, tenantId, assetId);
+  const asset = await admin.from("assets").update({ name: device.name, kind: device.category })
+    .eq("tenant_id", tenantId).eq("id", assetId);
+  if (asset.error) {
+    throw new HttpError(422, "device_save_failed", "Das Gerät konnte nicht gespeichert werden.");
+  }
+  const infra = await admin.from("asset_infrastructure").update({
+    category: device.category,
+    category_label: device.categoryLabel,
+    ip_address: device.ipAddress,
+    hostname: device.hostname,
+    updated_at: new Date().toISOString(),
+  }).eq("tenant_id", tenantId).eq("asset_id", assetId).select("asset_id").maybeSingle();
+  if (infra.error) throw unavailable();
+  if (!infra.data) {
+    throw new HttpError(422, "not_infrastructure", "Das Gerät ist kein Infrastruktur-Gerät.");
+  }
+  await admin.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_id: actorId,
+    action: "infrastructure.device.updated",
+    entity_type: "asset",
+    entity_id: assetId,
+    severity: "info",
+    metadata: { category: device.category, source: "monitoring" },
+  });
+  return { assetId };
+}
+
 async function assetChoices(admin: Client, tenantId: string, query: string) {
-  const columns = "asset_id, category, hostname, ip_address";
+  const columns = "asset_id, category, category_label, hostname, ip_address";
   let request = admin.from("asset_infrastructure").select(columns).eq("tenant_id", tenantId).limit(400);
   const safe = query.replace(/[^\p{L}\p{N} ._:-]/gu, "");
   if (safe) request = request.or(`hostname.ilike.%${safe}%,ip_address.ilike.%${safe}%`);
@@ -423,6 +570,8 @@ async function assetChoices(admin: Client, tenantId: string, query: string) {
   if (monitored.error) throw unavailable();
   const known = new Set(((monitored.data ?? []) as Row[]).map((row) => String(row.asset_id)));
   return {
+    addresses: await addressChoices(admin, tenantId, query),
+    kinds: await customKinds(admin, tenantId),
     assets: assets.flatMap((asset) => {
       if (asset.lifecycle_state === "retired" || asset.lifecycle_state === "disposed") return [];
       const row = rows.get(String(asset.id));
@@ -430,11 +579,16 @@ async function assetChoices(admin: Client, tenantId: string, query: string) {
         assetId: String(asset.id),
         name: String(asset.name),
         category: text(row?.category),
+        categoryLabel: kindLabel(row),
         hostname: text(row?.hostname),
         ipAddress: text(row?.ip_address),
         monitored: known.has(String(asset.id)),
       }];
-    }).sort((x, y) => x.name.localeCompare(y.name, "de")).slice(0, 100),
+      // Devices with an address first: they can be monitored right away.
+    }).sort((x, y) =>
+      Number(!(x.ipAddress || x.hostname)) - Number(!(y.ipAddress || y.hostname)) ||
+      x.name.localeCompare(y.name, "de")
+    ).slice(0, 100),
   };
 }
 
@@ -581,6 +735,139 @@ async function interfaces(admin: Client, tenantId: string, jobId: string) {
   };
 }
 
+/** A request for connections counts as running for this long. */
+const TOPOLOGY_PENDING_MS = 10 * 60 * 1000;
+
+/**
+ * Connections of a device: its ports with what hangs on them, and the ports
+ * of other devices it hangs on. Read by the probe via SNMP (LLDP, MAC table).
+ */
+async function connections(admin: Client, tenantId: string, assetId: string, canManage: boolean) {
+  const asset = await requireAsset(admin, tenantId, assetId);
+  const [status, ports, infra, monitored, ownAddresses] = await Promise.all([
+    admin.from("monitoring_topology_status").select("requested_at, scanned_at, error, sys_name")
+      .eq("tenant_id", tenantId).eq("asset_id", assetId).maybeSingle(),
+    admin.from("monitoring_device_ports")
+      .select("port, if_index, alias, up, speed_mbps, neighbor_name, neighbor_port, neighbor_address, neighbor_mac, macs, mac_count")
+      .eq("tenant_id", tenantId).eq("asset_id", assetId).order("position").limit(600),
+    admin.from("asset_infrastructure").select("asset_id, hostname, ip_address, mac_address")
+      .eq("tenant_id", tenantId).limit(5000),
+    admin.from("monitoring_sensors").select("asset_id").eq("tenant_id", tenantId).limit(MAX_SENSORS),
+    admin.from("ipam_addresses").select("mac_address").eq("tenant_id", tenantId).eq("asset_id", assetId)
+      .not("mac_address", "is", null).limit(50),
+  ]);
+  if (status.error || ports.error || infra.error || monitored.error || ownAddresses.error) throw unavailable();
+  const stored = ((ports.data ?? []) as Row[]).map(portFromRow);
+  const infraRows = (infra.data ?? []) as Row[];
+  const names = new Map(
+    (await selectIn(admin, "assets", "id, name", tenantId, "id", infraRows.map((row) => String(row.asset_id))))
+      .map((row) => [String(row.id), String(row.name)]),
+  );
+  const monitoredIds = new Set(((monitored.data ?? []) as Row[]).map((row) => String(row.asset_id)));
+  const devices: KnownDevice[] = infraRows.filter((row) => names.has(String(row.asset_id))).map((row) => ({
+    assetId: String(row.asset_id),
+    name: names.get(String(row.asset_id))!,
+    hostname: text(row.hostname),
+    ipAddress: text(row.ip_address),
+    mac: normalizeMac(row.mac_address),
+    monitored: monitoredIds.has(String(row.asset_id)),
+  }));
+  const self = devices.find((device) => device.assetId === assetId);
+  const ownMacs = [
+    ...new Set([
+      self?.mac ?? null,
+      ...((ownAddresses.data ?? []) as Row[]).map((row) => normalizeMac(row.mac_address)),
+    ].filter((mac): mac is string => mac !== null)),
+  ];
+
+  // Ports of other devices that may lead to this one.
+  const select = "asset_id, port, if_index, alias, up, speed_mbps, neighbor_name, neighbor_port, neighbor_address, neighbor_mac, macs, mac_count";
+  const others = () => admin.from("monitoring_device_ports").select(select).eq("tenant_id", tenantId).neq("asset_id", assetId).limit(50);
+  const lookups = [];
+  if (self?.ipAddress) lookups.push(others().eq("neighbor_address", self.ipAddress.trim().toLowerCase()));
+  if (ownMacs.length) {
+    lookups.push(others().in("neighbor_mac", ownMacs));
+    lookups.push(others().overlaps("macs", ownMacs));
+  }
+  for (const name of new Set([String(asset.name), self?.hostname ?? null])) {
+    // Exact name or name with domain; the pure matching decides.
+    const short = name?.trim().split(".")[0]?.replace(/[%_\\,()]/g, "");
+    if (short && short.length >= 2) lookups.push(others().ilike("neighbor_name", `${short}%`));
+  }
+  const reverse = new Map<string, Row>();
+  for (const result of await Promise.all(lookups)) {
+    if (result.error) throw unavailable();
+    for (const row of (result.data ?? []) as Row[]) reverse.set(`${row.asset_id}|${row.port}`, row);
+  }
+
+  const macs = [...new Set(stored.flatMap((port) => [...port.macs, ...(port.lldpMac ? [port.lldpMac] : [])]))].slice(0, 2000);
+  const addresses: KnownAddress[] = (macs.length
+    ? await selectIn(admin, "ipam_addresses", "mac_address, address, hostname, asset_id", tenantId, "mac_address", macs)
+    : []).flatMap((row) => {
+      const mac = normalizeMac(row.mac_address);
+      const address = text(row.address)?.split("/")[0] ?? null;
+      return mac && address ? [{ mac, address, hostname: text(row.hostname), assetId: text(row.asset_id) }] : [];
+    });
+  const known = directory(devices, addresses);
+
+  const requestedAt = text(status.data?.requested_at);
+  const scannedAt = text(status.data?.scanned_at);
+  const pending = requestedAt !== null && (scannedAt === null || Date.parse(scannedAt) < Date.parse(requestedAt)) &&
+    Date.now() - Date.parse(requestedAt) < TOPOLOGY_PENDING_MS;
+  return {
+    canManage,
+    scannedAt,
+    pending,
+    error: pending ? null : text(status.data?.error),
+    ports: stored.map((port) => resolvePort(port, known, assetId)).sort((a, b) => comparePorts(a.port, b.port)),
+    attachedTo: attachments(
+      [...reverse.values()].map((row) => ({ ...portFromRow(row), assetId: String(row.asset_id) })),
+      { assetId, name: String(asset.name), hostname: self?.hostname ?? null, ipAddress: self?.ipAddress ?? null, macs: ownMacs },
+      known,
+    ),
+  };
+}
+
+/** Asks the probe that monitors the device to read its connections now. */
+async function refreshConnections(admin: Client, tenantId: string, actorId: string, assetId: string) {
+  await requireAsset(admin, tenantId, assetId);
+  const [infra, sensors, running] = await Promise.all([
+    admin.from("asset_infrastructure").select("hostname, ip_address").eq("tenant_id", tenantId).eq("asset_id", assetId).maybeSingle(),
+    admin.from("monitoring_sensors").select("agent_id, kind").eq("tenant_id", tenantId).eq("asset_id", assetId)
+      .not("agent_id", "is", null).limit(200),
+    admin.from("ipam_agent_jobs").select("id").eq("tenant_id", tenantId).eq("kind", "snmp_topology")
+      .in("status", ["queued", "running"]).contains("payload", { assetId }).limit(1),
+  ]);
+  if (infra.error || sensors.error || running.error) throw unavailable();
+  const host = text(infra.data?.ip_address) ?? text(infra.data?.hostname);
+  if (!host) throw new HttpError(422, "target_missing", "Das Gerät hat weder IP-Adresse noch Hostname.");
+  const rows = (sensors.data ?? []) as Row[];
+  const agentIds = [...new Set(rows.sort((a, b) => Number(b.kind === "snmp") - Number(a.kind === "snmp")).map((row) => String(row.agent_id)))];
+  const agents = agentIds.length ? await selectIn(admin, "ipam_agents", "id, status", tenantId, "id", agentIds) : [];
+  const agentId = agentIds.find((id) => agents.some((agent) => agent.id === id && agent.status === "active"));
+  if (!agentId) {
+    throw new HttpError(422, "agent_not_found", "Kein Sensor dieses Geräts wird von einer aktiven Sonde gemessen.");
+  }
+  const now = new Date().toISOString();
+  if (!(running.data ?? []).length) {
+    const inserted = await admin.from("ipam_agent_jobs").insert({
+      tenant_id: tenantId,
+      agent_id: agentId,
+      kind: "snmp_topology",
+      payload: { host: host.trim().toLowerCase(), assetId },
+      status: "queued",
+      created_by: actorId,
+    });
+    if (inserted.error) throw unavailable();
+  }
+  const status = await admin.from("monitoring_topology_status").upsert(
+    { asset_id: assetId, tenant_id: tenantId, agent_id: agentId, requested_at: now },
+    { onConflict: "asset_id" },
+  );
+  if (status.error) throw unavailable();
+  return { ok: true };
+}
+
 /**
  * Creates a probe and returns its token once, together with the ready-made
  * config.json. Only the SHA-256 of the token is stored.
@@ -656,9 +943,35 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
     case "interfaces":
       manage();
       return await interfaces(admin, action.tenantId, action.jobId);
+    case "connections":
+      return await connections(admin, action.tenantId, action.assetId, canManage);
+    case "refreshConnections":
+      manage();
+      return await refreshConnections(admin, action.tenantId, actorId, action.assetId);
+    case "addDevice":
+      manage();
+      return await addDevice(admin, action.tenantId, actorId, action.device);
     case "createAgent":
       manage();
       return await createAgent(admin, action.tenantId, actorId, action.name);
+    case "updateDevice":
+      manage();
+      return await updateDevice(admin, action.tenantId, actorId, action.assetId, action.device);
+    case "removeDevice": {
+      // Ends the monitoring of a device: its sensors and their history are
+      // deleted, open alerts end. The device stays in the infrastructure.
+      manage();
+      const sensors = await admin.from("monitoring_sensors").select("id")
+        .eq("tenant_id", action.tenantId).eq("asset_id", action.assetId);
+      if (sensors.error) throw unavailable();
+      for (const row of (sensors.data ?? []) as Row[]) {
+        await closeSensorAlert(admin, action.tenantId, String(row.id), "Gerät aus der Überwachung entfernt");
+      }
+      const removed = await admin.from("monitoring_sensors").delete()
+        .eq("tenant_id", action.tenantId).eq("asset_id", action.assetId);
+      if (removed.error) throw unavailable();
+      return { ok: true, sensors: (sensors.data ?? []).length };
+    }
     case "pauseDevice": {
       manage();
       const updated = await admin.from("monitoring_sensors")

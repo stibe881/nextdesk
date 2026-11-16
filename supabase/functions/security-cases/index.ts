@@ -467,9 +467,38 @@ function safeAnalysis(value: unknown) {
   };
 }
 
+/** Stored original mail → response shape (strings only, sizes capped). */
+function safeOriginalMail(value: unknown) {
+  if (!isRecord(value)) return null;
+  const headers = (Array.isArray(value.headers) ? value.headers : [])
+    .filter(isRecord)
+    .slice(0, 400)
+    .map((entry) => ({ name: String(entry.name ?? ""), value: String(entry.value ?? "") }))
+    .filter((entry) => entry.name);
+  const attachments = (Array.isArray(value.attachments) ? value.attachments : [])
+    .filter(isRecord)
+    .slice(0, 50)
+    .map((entry) => ({
+      filename: String(entry.filename ?? "Anhang"),
+      contentType: String(entry.contentType ?? ""),
+      size: typeof entry.size === "number" ? entry.size : null,
+    }));
+  return {
+    subject: text(value.subject),
+    from: text(value.from),
+    to: text(value.to),
+    cc: text(value.cc),
+    date: text(value.date),
+    headers,
+    html: typeof value.html === "string" ? value.html : "",
+    text: typeof value.text === "string" ? value.text : "",
+    attachments,
+  };
+}
+
 async function detail(admin: Client, client: Client, tenantId: string, ticketId: string) {
   await requireCase(client, tenantId, ticketId);
-  const [caseResult, ticketResult, reportResult, actionsResult, clicksResult] = await Promise.all([
+  const [caseResult, ticketResult, reportResult, actionsResult, clicksResult, originalResult] = await Promise.all([
     admin.from("security_cases").select("*").eq("ticket_id", ticketId).eq("tenant_id", tenantId).maybeSingle(),
     admin.from("tickets").select("ticket_number, subject, description, assigned_team_id, assigned_agent_id, created_at")
       .eq("id", ticketId).eq("tenant_id", tenantId).maybeSingle(),
@@ -479,6 +508,10 @@ async function detail(admin: Client, client: Client, tenantId: string, ticketId:
       .eq("ticket_id", ticketId).order("sort_order"),
     admin.from("security_click_questions").select("email, answer, answered_at, created_at")
       .eq("ticket_id", ticketId),
+    // The reported mail as received (only stored for newer reports).
+    admin.from("phishing_reports").select("original_mail")
+      .eq("tenant_id", tenantId).eq("ticket_id", ticketId).not("original_mail", "is", null)
+      .order("created_at").limit(1).maybeSingle(),
   ]);
   const securityCase = caseResult.data as Row | null;
   const ticket = ticketResult.data as Row | null;
@@ -541,6 +574,7 @@ async function detail(admin: Client, client: Client, tenantId: string, ticketId:
     reportersNotifiedAt: text(securityCase.reporters_notified_at),
     closedAt: text(securityCase.closed_at),
     analysis: safeAnalysis(top?.analysis),
+    originalMail: safeOriginalMail((originalResult.data as Row | null)?.original_mail),
     reporters,
     actions: ((actionsResult.data ?? []) as Row[]).map((row) => ({
       id: String(row.id),

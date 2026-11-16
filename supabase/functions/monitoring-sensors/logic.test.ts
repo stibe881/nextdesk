@@ -7,12 +7,16 @@ import {
   deviceState,
   displayState,
   parseAction,
+  parseDeviceEdit,
   parseInterfaces,
   isOlderVersion,
+  matchesAddress,
+  parseNewDevice,
   parseProbePackage,
   parseSensor,
   probeConfig,
   rangePlan,
+  parseCategoryLabel,
 } from "./logic.ts";
 
 const TENANT = "00000000-0000-4000-8000-000000000001";
@@ -69,6 +73,12 @@ Deno.test("actions: tenant is required, validation message is passed on", () => 
   assertEquals(parseAction({ type: "series", tenantId: TENANT, sensorId: ASSET, range: "2y" }), null);
   assertEquals(parseAction({ type: "saveSensor", tenantId: TENANT, sensor: { assetId: ASSET, kind: "tcp" } }), "Der Port muss zwischen 1 und 65535 liegen.");
   assertEquals(parseAction({ type: "pauseDevice", tenantId: TENANT, assetId: ASSET, paused: "ja" }), null);
+  assertEquals(parseAction({ type: "removeDevice", tenantId: TENANT, assetId: ASSET }), {
+    type: "removeDevice",
+    tenantId: TENANT,
+    assetId: ASSET,
+  });
+  assertEquals(parseAction({ type: "removeDevice", tenantId: TENANT }), null);
   assertEquals(parseAction({ type: "löschen", tenantId: TENANT }), null);
 });
 
@@ -250,4 +260,61 @@ Deno.test("certificate and dns sensors, cloud only for http, cert and dns", () =
   assertEquals(displayState(cloud, { state: "up", lastCheckAt: at(250) }, now), "up");
   assertEquals(displayState(cloud, { state: "up", lastCheckAt: at(310) }, now), "unknown");
   assertEquals(displayState({ ...cloud, cloud: false }, { state: "up", lastCheckAt: at(10) }, now), "unknown");
+});
+
+Deno.test("new device: name, kind and address; search in the address management", () => {
+  assertEquals(parseNewDevice({ name: "  AP  015 ", category: "access_point", address: "172.16.128.20", agentId: AGENT }), {
+    name: "AP 015",
+    category: "access_point",
+    categoryLabel: null,
+    ipAddress: "172.16.128.20",
+    hostname: null,
+    agentId: AGENT,
+    ipamAddressId: null,
+  });
+  const byName = parseNewDevice({ name: "S108", category: "server", address: "S108.dom1.inst.", ipamAddressId: ASSET });
+  assertEquals(typeof byName === "string" ? byName : [byName.ipAddress, byName.hostname, byName.ipamAddressId], [
+    null,
+    "s108.dom1.inst",
+    ASSET,
+  ]);
+  assertEquals(parseNewDevice({ name: "", category: "server", address: "10.0.0.1" }), "Bitte einen Namen für das Gerät angeben.");
+  assertEquals(parseNewDevice({ name: "x", category: "drucker", address: "10.0.0.1" }), "Die Geräteart ist ungültig.");
+  assertEquals(parseNewDevice({ name: "x", category: "server", address: "" }), "Bitte IP-Adresse oder Hostname angeben.");
+  assertEquals(parseNewDevice({ name: "x", category: "server", address: "-c 5 10.0.0.1" }), "Die Adresse muss eine IP-Adresse oder ein Hostname sein.");
+  assertEquals(parseAction({ type: "addDevice", tenantId: TENANT, device: { name: "x", category: "server" } }), "Bitte IP-Adresse oder Hostname angeben.");
+  const entry = { address: "10.0.1.108", hostname: "S108", description: "PRTG-Server" };
+  assertEquals(matchesAddress(entry, "s10"), true);
+  assertEquals(matchesAddress(entry, "0.1.108"), true);
+  assertEquals(matchesAddress(entry, "prtg"), true);
+  assertEquals(matchesAddress(entry, "s"), false);
+  assertEquals(matchesAddress(entry, "exchange"), false);
+});
+
+Deno.test("device edit: name and kind required, addresses optional but valid", () => {
+  assertEquals(parseDeviceEdit({ name: " SW 001 ", category: "switch", ipAddress: "10.0.0.11", hostname: "SW001.dom1.inst." }), {
+    name: "SW 001",
+    category: "switch",
+    categoryLabel: null,
+    ipAddress: "10.0.0.11",
+    hostname: "sw001.dom1.inst",
+  });
+  assertEquals(parseDeviceEdit({ name: "SW001", category: "switch", ipAddress: "", hostname: "" }), {
+    name: "SW001",
+    category: "switch",
+    categoryLabel: null,
+    ipAddress: null,
+    hostname: null,
+  });
+  assertEquals(parseDeviceEdit({ name: "SW001", category: "switch", ipAddress: "10.0.0" }), "Die IP-Adresse ist ungültig.");
+  assertEquals(parseDeviceEdit({ name: "SW001", category: "switch", hostname: "a b" }), "Der Hostname ist ungültig.");
+  assertEquals(parseDeviceEdit({ name: "", category: "switch" }), "Bitte einen Namen für das Gerät angeben.");
+  assertEquals(parseAction({ type: "updateDevice", tenantId: TENANT, assetId: ASSET, device: { name: "x", category: "y" } }), "Die Geräteart ist ungültig.");
+});
+
+Deno.test("own device kind only counts for the category other", () => {
+  assertEquals(parseCategoryLabel("other", "  iLO   Karte "), "iLO Karte");
+  assertEquals(parseCategoryLabel("other", ""), null);
+  assertEquals(parseCategoryLabel("switch", "iLO"), null);
+  assertEquals(parseCategoryLabel("other", 5), null);
 });

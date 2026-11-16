@@ -62,10 +62,14 @@ Das **Systemstatus-Badge** oben in der Navigation und die Seite
 **Systemstatus** aktualisieren sich selbst (alle 30 Sekunden und beim
 Zurückkehren in den Tab). In der **Infrastruktur** hat ein Gerät einen oder
 mehrere **Dienste (für Systemstatus)**, die bei einer Überwachungsstörung
-(PRTG) ihren Status ändern, **Standort** und **Rack** zum Auswählen aus den
+(PRTG) ihren Status ändern; du legst sie unter **Bearbeiten** fest, und die
+**Übersicht** des Geräts zeigt sie unter **Betroffene Dienste**. Beim Planen
+eines **Wartungsfensters** (Register **Wartung**) werden diese Dienste
+automatisch übernommen; mit **Andere Dienste wählen** passt du sie für ein
+einzelnes Fenster an. **Standort** und **Rack** wählst du aus den
 vorhandenen Einträgen (fehlt einer, legst du ihn direkt unter der Liste mit
-**Hinzufügen** an; ein neues Rack entsteht am gewählten Standort mit 42 HE),
-die **Höheneinheit** als «von … bis» und
+**Hinzufügen** an; ein neues Rack entsteht am gewählten Standort mit 42 HE).
+Ferner gibt es die **Höheneinheit** als «von … bis» und
 Wartungseinträge mit Datum und optionaler **Uhrzeit**. In der
 **Wartungscheckliste** erfasst du jeden Punkt in einer eigenen Zeile mit
 einem eigenen **Datum** (z. B. wann er erledigt wurde oder wann er dran ist);
@@ -204,9 +208,15 @@ haben. **Filter aufheben** führt zurück zu den Fällen, die zu beurteilen sind
 
 ![Liste der Phishing-/Junk-Fälle](images/ag-sicherheitsfaelle.jpg)
 
-Ein Klick öffnet den Fall. Die gemeldete E-Mail steht in einer **sicheren
-Ansicht**: Links sind entschärft (`hxxps`, `[.]`) und nicht anklickbar, Bilder
-werden nicht geladen und Anhänge erscheinen nur mit Name und Grösse. Daneben
+Ein Klick öffnet den Fall. Die gemeldete E-Mail steht so, wie sie beim
+Empfänger ankam, in einer **sicheren Ansicht** (Betreff, An, Cc):
+**Darstellung** zeigt die Mail mit Layout in einem abgeschotteten Rahmen,
+**Text** die Textfassung und **Kopfzeilen** alle Header (Received, Return-Path,
+Authentication-Results usw.) für die technische Beurteilung. Skripte laufen
+nicht, externe Bilder und Inhalte werden nicht geladen, Links sind ohne Ziel
+(beim Darüberfahren erscheint die entschärfte Adresse, z. B. `hxxps`, `[.]`),
+und Anhänge erscheinen nur mit Name und Grösse. Bei älteren Meldungen ist nur
+der Text gespeichert. Daneben
 stehen die Befunde der automatischen Analyse (SPF, DKIM, DMARC, Absender,
 Links, Anhänge) und die Risikoeinschätzung. Bei hohem Risiko soll das Urteil
 innerhalb von 30 Minuten fallen, bei mittlerem innerhalb von 4 Stunden,
@@ -473,6 +483,8 @@ Resultate laufend an nextDesk.
   Sonde sich wieder meldet.
 - **Geräteliste**: Zustand, Sensoren, Antwortzeit und letzte Prüfung. Die
   Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
+  Ein Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter kehrt die
+  Reihenfolge um. Standard ist der Zustand, das Dringende zuoberst.
 
 ![Überwachung mit Kacheln, aktiven Alarmen, Sonden und Geräteliste](images/ag-ueberwachung.jpg)
 
@@ -485,16 +497,68 @@ Ein Klick auf ein Gerät öffnet das **Gerätedetail**:
   Werte im 5-Minuten-Raster, für längere Zeiträume Stunden- bzw. Tageswerte.
 - **Sensoren**: Zustand, Messwert, Intervall und letzte Prüfung. Ein Klick auf
   den Namen zeigt den Verlauf dieses Sensors in der Grafik.
-- **Verknüpft in nextDesk**: offene Störung, betroffene Services und der
-  Uplink. Services und Uplink werden unter **Infrastruktur** gepflegt.
+- **Verbindungen**: welcher Port zu welchem Gerät führt. Die Sonde liest das
+  bei Switches, Firewalls und Routern alle sechs Stunden per SNMP aus.
+  - **Verbunden mit** nennt die Gegenstelle. Quelle **LLDP**: Das
+    Nachbargerät hat sich selbst gemeldet, samt seinem Port. Quelle
+    **MAC-Tabelle**: Am Port wurde die MAC-Adresse eines Geräts gesehen, das
+    in der Infrastruktur oder der IP-Adressverwaltung steht.
+  - Ein Klick auf die Gegenstelle öffnet sie – in der Überwachung, wenn sie
+    überwacht wird, sonst in der Infrastruktur.
+  - Ports mit vielen Geräten dahinter sind Uplinks oder Trunks und werden
+    nur gezählt.
+  - Bei Servern, Access Points und anderen Endgeräten steht **Hängt an …,
+    Port …**, sobald ein überwachter Switch das Gerät an einem Port sieht.
+  - Angezeigt werden zuerst nur Ports mit Gegenstelle; **Alle … Ports
+    zeigen** blendet die übrigen ein. Mit dem Recht «Assets verwalten»
+    kannst du die Verbindungen über **Jetzt auslesen** sofort neu lesen
+    lassen (Antwort innert etwa einer Minute).
+- **Verknüpft in nextDesk**: das Gerät in der Infrastruktur, offene Störung,
+  betroffene Services und der Uplink. Jedes überwachte Gerät ist ein Gerät
+  der Infrastruktur; über **In Infrastruktur öffnen** gelangst du direkt
+  dorthin (in der App über die gleichnamige Zeile). Services und Uplink
+  werden unter **Infrastruktur** gepflegt.
 
 ![Gerätedetail mit Verlaufsgrafik und Sensoren](images/ag-ueberwachung-geraet.jpg)
 
+![Verbindungen eines Geräts: Ports und Gegenstellen](images/ag-ueberwachung-verbindungen.jpg)
+
+Mit **Liste** und **Matrix** oben in der Karte wechselt die Darstellung. Die
+Matrix zeigt die Ports jeder Einheit wie auf der Gerätefront, eingefärbt nach
+Zustand (Gegenstelle bekannt, Uplink oder Trunk, aktiv, kein Link). Ein Klick
+auf einen Port nennt darunter die Gegenstelle. Das Diagramm «Verbindungen zu
+bekannten Geräten» zieht von jedem Port eine Linie zum Gerät, zu dem er führt
+(durchgezogen: LLDP, gestrichelt: MAC-Tabelle); Geräte der Infrastruktur sind
+anklickbar.
+
+![Verbindungen als Matrix mit Diagramm](images/ag-ueberwachung-matrix.jpg)
+
 Mit dem Recht «Assets verwalten» kannst du zusätzlich:
 
-1. **Gerät hinzufügen** – ein Gerät aus der Infrastruktur wählen und die
-   Sonde bestimmen. Das Gerät erhält einen Ping-Sensor. Geräte, die noch
-   nicht in der Infrastruktur stehen, erfasst du zuerst dort.
+1. **Geräte hinzufügen** – die Suche findet:
+   - **Geräte der Infrastruktur.** Geräte mit Adresse stehen zuoberst.
+   - **Einträge der IP-Adressverwaltung**, die noch kein Gerät sind (ab zwei
+     Zeichen). Name und Adresse werden übernommen.
+   - **Neues Gerät erfassen**, wenn es nirgends steht: Name, Art und
+     IP-Adresse oder Hostname genügen.
+
+   Mehrere Treffer lassen sich ankreuzen und zusammen hinzufügen; die Auswahl
+   bleibt erhalten, wenn der Suchtext ändert. **Alle … angezeigten
+   auswählen** kreuzt alle Treffer der aktuellen Suche an. Für Einträge der
+   IP-Adressverwaltung bestimmt nextDesk die Art aus Name und Beschreibung;
+   sie lässt sich im Dialog für alle festlegen und später je Gerät ändern.
+   Fehlt die passende Art (z. B. «iLO», «Drucker», «Kamera»), legt **Neue Art
+   erstellen …** zuunterst in der Auswahl sie mit einem eigenen Namen an;
+   danach steht sie auch für weitere Geräte und unter **Bearbeiten** zur
+   Wahl. Eigene Arten erscheinen auch in der Infrastruktur.
+   Ein Gerät ohne IP-Adresse und Hostname lässt sich nur einzeln hinzufügen,
+   der Dialog fragt dann nach der Adresse.
+
+   Aus Einträgen der IP-Adressverwaltung und neu erfassten Geräten legt
+   nextDesk Geräte in der Infrastruktur an; Standort, Uplink und Services
+   ergänzt du dort. Danach die Sonde wählen. Jedes Gerät erhält einen
+   Ping-Sensor.
+
 2. **Sensor hinzufügen** (im Gerätedetail) – Art wählen:
    - **Ping**: Ist das Gerät erreichbar?
    - **TCP-Port**: Antwortet ein Dienst, z. B. 3389 (RDP) oder 1433 (SQL)?
@@ -538,10 +602,21 @@ Mit dem Recht «Assets verwalten» kannst du zusätzlich:
    Zielen gilt ein nicht vertrauenswürdiges Zertifikat als Ausfall; eine
    Sonde wertet bei internen Zertifikaten nur Ablauf und Erreichbarkeit.
 
-3. Sensoren **bearbeiten**, **löschen** oder das ganze Gerät **pausieren**.
-   Beim Pausieren und Löschen endet ein offener Alarm des Sensors; die
+3. Sensoren **bearbeiten** oder **löschen** (Symbole in der Sensorzeile).
+   Im Kopf des Gerätedetails:
+   - **Pausieren** hält die Überwachung des ganzen Geräts an.
+   - **Bearbeiten** ändert Name, Art, IP-Adresse und Hostname des Geräts. Die
+     Änderung gilt auch in der Infrastruktur; Sensoren ohne eigenes Ziel
+     messen danach die neue Adresse.
+   - **Entfernen** nimmt das Gerät aus der Überwachung: Alle Sensoren und ihr
+     Verlauf werden gelöscht. Das Gerät selbst bleibt in der Infrastruktur.
+
+   Beim Pausieren, Löschen und Entfernen endet ein offener Alarm; die
    Störung gilt als behoben, sobald kein Sensor des Geräts mehr gestört ist.
+
 4. **Sonde hinzufügen** – siehe Handbuch für Administratoren.
+
+![Mehrere Geräte aus der IP-Adressverwaltung hinzufügen](images/ag-ueberwachung-hinzufuegen.jpg)
 
 **In der App** findest du die Überwachung unter **Dienste → Überwachung** (wenn
 das Modul aktiv ist). Die App zeigt die Kacheln je Zustand, die aktiven

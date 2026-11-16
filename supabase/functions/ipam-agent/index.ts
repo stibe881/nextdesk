@@ -29,6 +29,7 @@ import {
 } from "../_shared/monitoring-native.ts";
 import { verifyDispatchSecret } from "../_shared/monitoring-admin.ts";
 import { mapLimit, parseCloudChecks, runCloudCheck } from "../_shared/monitoring-cloud.ts";
+import { parseTopology } from "../_shared/monitoring-topology.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import {
   INTEGRATION_COLUMNS,
@@ -212,7 +213,7 @@ async function hello(
   }
   const jobs: Row[] = [];
   for (const job of (claimed ?? []) as Row[]) {
-    if (job.kind === "snmp_interfaces") {
+    if (job.kind === "snmp_interfaces" || job.kind === "snmp_topology") {
       // Read-only; belongs to the monitoring module.
       if (modules.monitoring) jobs.push({ id: job.id, kind: job.kind, payload: job.payload ?? {} });
       continue;
@@ -695,6 +696,38 @@ async function cloudChecks(admin: Admin): Promise<Record<string, number>> {
 // ---------------------------------------------------------------------------
 // jobResult
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Connections of a device (ports, LLDP neighbours, MAC table) or the error of reading them. */
+async function storeTopology(admin: Admin, agent: Agent, job: Row, result: Row | null, error: string | null) {
+  const payload = isObject(job.payload) ? job.payload : {};
+  const assetId = typeof payload.assetId === "string" && UUID.test(payload.assetId) ? payload.assetId.toLowerCase() : null;
+  if (!assetId) return;
+  if (result) {
+    const topology = parseTopology(result);
+    const stored = await admin.rpc("monitoring_store_topology", {
+      p_tenant_id: agent.tenant_id,
+      p_asset_id: assetId,
+      p_agent_id: agent.id,
+      p_sys_name: topology.sysName,
+      p_ports: topology.ports,
+    });
+    if (!stored.error) return;
+    error = "Das Ergebnis konnte nicht gespeichert werden.";
+  }
+  // Probes before 1.3.0 do not know the job.
+  const message = /Unbekannter Auftrag|nur mit dem Agenten auf Windows|allowWrites/.test(error ?? "")
+    ? "Die Sonde ist zu alt. Verbindungen liest sie ab Version 1.3.0 aus."
+    : error ?? "Unbekannter Fehler.";
+  await admin.from("monitoring_topology_status").upsert({
+    asset_id: assetId,
+    tenant_id: agent.tenant_id,
+    agent_id: agent.id,
+    error: message.slice(0, 1000),
+    scanned_at: new Date().toISOString(),
+  }, { onConflict: "asset_id" });
+}
+
 async function jobResult(admin: Admin, agent: Agent, body: Record<string, unknown>): Promise<Response> {
   const jobId = typeof body.jobId === "string" &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.jobId)
@@ -702,7 +735,7 @@ async function jobResult(admin: Admin, agent: Agent, body: Record<string, unknow
     : null;
   if (!jobId || typeof body.ok !== "boolean") return reply({ ok: false, error: "invalid_job_result" }, 422);
   const result = isObject(body.result) ? body.result : null;
-  if (result && encoder.encode(JSON.stringify(result)).length > 128 * 1024) {
+  if (result && encoder.encode(JSON.stringify(result)).length > 512 * 1024) {
     return reply({ ok: false, error: "result_too_large" }, 413);
   }
   const error = body.ok ? null : shortText(body.error, 1000) ?? "Unbekannter Fehler.";
@@ -721,6 +754,7 @@ async function jobResult(admin: Admin, agent: Agent, body: Record<string, unknow
     .maybeSingle();
   if (updateError) return reply({ ok: false, error: "unavailable" }, 503);
   if (!job) return reply({ ok: false, error: "job_not_running" }, 409);
+  if (job.kind === "snmp_topology") await storeTopology(admin, agent, job, body.ok ? result : null, error);
   if (body.ok && job.address_id && (JOB_KINDS as readonly string[]).includes(String(job.kind)) &&
     job.kind !== "scan_now") {
     await admin.from("ipam_address_events").insert({

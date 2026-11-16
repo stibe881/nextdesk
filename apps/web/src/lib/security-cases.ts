@@ -104,6 +104,22 @@ export type SecurityCaseDetail = {
       size: number | null;
     }[];
   };
+  /** The reported mail as received (newer reports only). */
+  originalMail: {
+    subject: string | null;
+    from: string | null;
+    to: string | null;
+    cc: string | null;
+    date: string | null;
+    headers: { name: string; value: string }[];
+    html: string;
+    text: string;
+    attachments: {
+      filename: string;
+      contentType: string | null;
+      size: number | null;
+    }[];
+  } | null;
   reporters: {
     name: string;
     email: string | null;
@@ -395,6 +411,39 @@ export function parseSecurityDetail(value: unknown): SecurityCaseDetail | null {
         size: typeof row.size === "number" ? row.size : null,
       })),
     },
+    originalMail: isRecord(body.originalMail)
+      ? {
+          subject: str(body.originalMail.subject),
+          from: str(body.originalMail.from),
+          to: str(body.originalMail.to),
+          cc: str(body.originalMail.cc),
+          date: str(body.originalMail.date),
+          headers: list(body.originalMail.headers).flatMap((row) => {
+            const name = str(row.name);
+            return name
+              ? [
+                  {
+                    name,
+                    value: typeof row.value === "string" ? row.value : "",
+                  },
+                ]
+              : [];
+          }),
+          html:
+            typeof body.originalMail.html === "string"
+              ? body.originalMail.html
+              : "",
+          text:
+            typeof body.originalMail.text === "string"
+              ? body.originalMail.text
+              : "",
+          attachments: list(body.originalMail.attachments).map((row) => ({
+            filename: str(row.filename) ?? "Anhang",
+            contentType: str(row.contentType),
+            size: typeof row.size === "number" ? row.size : null,
+          })),
+        }
+      : null,
     reporters: list(body.reporters).map((row) => ({
       name: str(row.name) ?? "Unbekannt",
       email: str(row.email),

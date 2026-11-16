@@ -8,8 +8,10 @@ import {
   Play,
   Plus,
   Radar,
+  RefreshCw,
   Search,
   Trash2,
+  Network,
 } from "lucide-react";
 import {
   useCallback,
@@ -24,6 +26,9 @@ import {
 
 import {
   CATEGORY_LABELS,
+  categoryText,
+  kindFields,
+  kindValue,
   chartGeometry,
   CLOUD_KINDS,
   draftFromSensor,
@@ -31,11 +36,25 @@ import {
   formatAgo,
   formatMs,
   formatSince,
+  connectedPorts,
   formatValue,
+  guessCategory,
+  LINK_SOURCE_LABELS,
+  linkDiagram,
+  type MonitoringPort,
+  PORT_STATE_LABELS,
+  portGroups,
+  portNumber,
+  portState,
+  type MonitoringConnections,
+  portLinkText,
   INTERVAL_OPTIONS,
   intervalLabel,
   kindLabel,
+  type DeviceSort,
+  type DeviceSortKey,
   matchesSearch,
+  sortDevices,
   monitoringCall,
   RANGE_LABELS,
   sensorCountsText,
@@ -47,6 +66,7 @@ import {
   STATE_LABELS,
   STATE_ORDER,
   type InterfaceRow,
+  type MonitoringAddressChoice,
   type MonitoringAgent,
   type MonitoringAssetChoice,
   type MonitoringDeviceDetail,
@@ -67,6 +87,8 @@ const REFRESH_MS = 30_000;
 type Props = {
   tenantId: string;
   onOpenIncident?: ((incidentId: string) => void) | undefined;
+  /** Opens the device in the infrastructure view (same asset). */
+  onOpenInfrastructure?: ((assetId: string) => void) | undefined;
 };
 
 function message(error: unknown): string {
@@ -109,7 +131,11 @@ function useNow(reload: () => void): number {
   return now;
 }
 
-export function Monitoring({ tenantId, onOpenIncident }: Props) {
+export function Monitoring({
+  tenantId,
+  onOpenIncident,
+  onOpenInfrastructure,
+}: Props) {
   const [assetId, setAssetId] = useState<string | null>(null);
   return assetId ? (
     <DeviceView
@@ -118,6 +144,7 @@ export function Monitoring({ tenantId, onOpenIncident }: Props) {
       onBack={() => setAssetId(null)}
       onOpenDevice={setAssetId}
       onOpenIncident={onOpenIncident}
+      onOpenInfrastructure={onOpenInfrastructure}
       tenantId={tenantId}
     />
   ) : (
@@ -155,14 +182,49 @@ function OverviewView({
   useEffect(load, [load]);
   const now = useNow(load);
 
+  const [sort, setSort] = useState<DeviceSort>({
+    key: "state",
+    descending: false,
+  });
   const devices = useMemo(
     () =>
-      (data?.devices ?? []).filter(
-        (device) =>
-          (filter === "all" || device.state === filter) &&
-          matchesSearch(device, search),
+      sortDevices(
+        (data?.devices ?? []).filter(
+          (device) =>
+            (filter === "all" || device.state === filter) &&
+            matchesSearch(device, search),
+        ),
+        sort,
       ),
-    [data, filter, search],
+    [data, filter, search, sort],
+  );
+  const sortHeader = (key: DeviceSortKey, label: string) => (
+    <th
+      aria-sort={
+        sort.key === key
+          ? sort.descending
+            ? "descending"
+            : "ascending"
+          : "none"
+      }
+      scope="col"
+    >
+      <button
+        className="monitoring-table__sort"
+        onClick={() =>
+          setSort((current) => ({
+            key,
+            descending: current.key === key ? !current.descending : false,
+          }))
+        }
+        type="button"
+      >
+        {label}
+        <span aria-hidden="true">
+          {sort.key === key ? (sort.descending ? "▼" : "▲") : "↕"}
+        </span>
+      </button>
+    </th>
   );
   const alarms = (data?.devices ?? []).filter((device) => device.problem);
   const onlineAgents = (data?.agents ?? []).filter((agent) => agent.online);
@@ -186,7 +248,7 @@ function OverviewView({
             type="button"
           >
             <Plus aria-hidden="true" size={16} />
-            Gerät hinzufügen
+            Geräte hinzufügen
           </button>
         ) : null}
       </header>
@@ -335,11 +397,11 @@ function OverviewView({
                 <table className="monitoring-table">
                   <thead>
                     <tr>
-                      <th scope="col">Status</th>
-                      <th scope="col">Gerät</th>
-                      <th scope="col">Sensoren</th>
-                      <th scope="col">Antwortzeit</th>
-                      <th scope="col">Letzte Prüfung</th>
+                      {sortHeader("state", "Status")}
+                      {sortHeader("name", "Gerät")}
+                      {sortHeader("sensors", "Sensoren")}
+                      {sortHeader("response", "Antwortzeit")}
+                      {sortHeader("lastCheck", "Letzte Prüfung")}
                     </tr>
                   </thead>
                   <tbody>
@@ -358,7 +420,10 @@ function OverviewView({
                           </button>
                           <span className="monitoring-muted">
                             {[
-                              CATEGORY_LABELS[device.category ?? ""] ?? "Gerät",
+                              categoryText(
+                                device.category,
+                                device.categoryLabel,
+                              ),
                               device.ipAddress ?? device.hostname,
                             ]
                               .filter(Boolean)
@@ -386,7 +451,8 @@ function OverviewView({
           onClose={() => setAdding(false)}
           onSaved={(savedAssetId) => {
             setAdding(false);
-            onOpenDevice(savedAssetId);
+            if (savedAssetId) onOpenDevice(savedAssetId);
+            else load();
           }}
           tenantId={tenantId}
         />
@@ -588,6 +654,7 @@ function DeviceView({
   onBack,
   onOpenDevice,
   onOpenIncident,
+  onOpenInfrastructure,
 }: Props & {
   assetId: string;
   onBack: () => void;
@@ -600,7 +667,9 @@ function DeviceView({
   const [series, setSeries] = useState<MonitoringSeries | null>(null);
   const [draft, setDraft] = useState<SensorDraft | null>(null);
   const [addingPorts, setAddingPorts] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState<Confirmation | null>(null);
 
   const load = useCallback(() => {
     monitoringCall<MonitoringDeviceDetail>({
@@ -684,7 +753,7 @@ function DeviceView({
       {!data && !error ? <Spinner label="Gerät wird geladen …" /> : null}
       {data ? (
         <>
-          <header className="monitoring__hero">
+          <header className="monitoring__hero monitoring__hero--stack">
             <div>
               <div className="monitoring__title">
                 <h2 id="monitoring-device-title">{data.device.name}</h2>
@@ -692,7 +761,7 @@ function DeviceView({
               </div>
               <p>
                 {[
-                  CATEGORY_LABELS[data.device.category ?? ""] ?? "Gerät",
+                  categoryText(data.device.category, data.device.categoryLabel),
                   data.device.ipAddress,
                   data.device.hostname,
                 ]
@@ -723,6 +792,52 @@ function DeviceView({
                     {allPaused ? "Fortsetzen" : "Pausieren"}
                   </button>
                 ) : null}
+                {onOpenInfrastructure ? (
+                  <button
+                    className="secondary-button"
+                    onClick={() => onOpenInfrastructure(assetId)}
+                    type="button"
+                  >
+                    <Network aria-hidden="true" size={16} />
+                    In Infrastruktur öffnen
+                  </button>
+                ) : null}
+                <button
+                  className="secondary-button"
+                  onClick={() => setEditing(true)}
+                  type="button"
+                >
+                  <Pencil aria-hidden="true" size={16} />
+                  Bearbeiten
+                </button>
+                <button
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={() =>
+                    setConfirming({
+                      title: "Gerät aus der Überwachung entfernen",
+                      text: `«${data.device.name}» aus der Überwachung entfernen? Alle Sensoren und ihr Verlauf werden gelöscht. Das Gerät bleibt in der Infrastruktur.`,
+                      label: "Entfernen",
+                      run: () => {
+                        setBusy(true);
+                        monitoringCall({
+                          type: "removeDevice",
+                          tenantId,
+                          assetId,
+                        })
+                          .then(onBack)
+                          .catch((failure) => {
+                            setError(message(failure));
+                            setBusy(false);
+                          });
+                      },
+                    })
+                  }
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" size={16} />
+                  Entfernen
+                </button>
                 <button
                   className="secondary-button"
                   onClick={() => setAddingPorts(true)}
@@ -839,18 +954,18 @@ function DeviceView({
                             device={data.device}
                             key={entry.id}
                             now={now}
-                            onDelete={() => {
-                              if (
-                                window.confirm(
-                                  `Sensor «${entry.name}» mit seinem Verlauf löschen?`,
-                                )
-                              ) {
-                                void act({
-                                  type: "deleteSensor",
-                                  sensorId: entry.id,
-                                });
-                              }
-                            }}
+                            onDelete={() =>
+                              setConfirming({
+                                title: "Sensor löschen",
+                                text: `Sensor «${entry.name}» mit seinem Verlauf löschen?`,
+                                label: "Löschen",
+                                run: () =>
+                                  void act({
+                                    type: "deleteSensor",
+                                    sensorId: entry.id,
+                                  }),
+                              })
+                            }
                             onEdit={() => setDraft(draftFromSensor(entry))}
                             onSelect={() => setSelected(entry.id)}
                             selected={entry.id === selected}
@@ -862,6 +977,14 @@ function DeviceView({
                   </div>
                 )}
               </article>
+
+              <ConnectionsCard
+                assetId={assetId}
+                now={now}
+                onOpenDevice={onOpenDevice}
+                onOpenInfrastructure={onOpenInfrastructure}
+                tenantId={tenantId}
+              />
             </div>
 
             <article className="monitoring-card">
@@ -869,6 +992,20 @@ function DeviceView({
                 <h3>Verknüpft in nextDesk</h3>
               </div>
               <dl className="monitoring-facts">
+                <dt>Infrastruktur</dt>
+                <dd>
+                  {onOpenInfrastructure ? (
+                    <button
+                      className="text-button"
+                      onClick={() => onOpenInfrastructure(assetId)}
+                      type="button"
+                    >
+                      {data.device.name} öffnen
+                    </button>
+                  ) : (
+                    data.device.name
+                  )}
+                </dd>
                 <dt>Störung</dt>
                 <dd>
                   {data.device.incident ? (
@@ -921,6 +1058,24 @@ function DeviceView({
         </>
       ) : null}
 
+      {confirming ? (
+        <ConfirmDialog
+          confirmation={confirming}
+          onClose={() => setConfirming(null)}
+        />
+      ) : null}
+      {editing && data ? (
+        <DeviceDialog
+          device={data.device}
+          kinds={data.kinds ?? []}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            load();
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
       {addingPorts && data ? (
         <PortsDialog
           agents={data.agents}
@@ -1142,6 +1297,52 @@ function Chart({
 
 // ---------------------------------------------------------------------------
 // Dialoge
+
+type Confirmation = {
+  title: string;
+  text: string;
+  /** Label of the confirming button, e.g. «Entfernen». */
+  label: string;
+  run: () => void;
+};
+
+/** Question before something is deleted, in the look of nextDesk. */
+function ConfirmDialog({
+  confirmation,
+  onClose,
+}: {
+  confirmation: Confirmation;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog onClose={onClose} title={confirmation.title}>
+      <div className="monitoring-form">
+        <p>{confirmation.text}</p>
+        <div className="monitoring-form__actions">
+          <button
+            autoFocus
+            className="secondary-button"
+            onClick={onClose}
+            type="button"
+          >
+            Abbrechen
+          </button>
+          <button
+            className="primary-button monitoring-danger"
+            onClick={() => {
+              onClose();
+              confirmation.run();
+            }}
+            type="button"
+          >
+            <Trash2 aria-hidden="true" size={16} />
+            {confirmation.label}
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
 
 function Dialog({
   title,
@@ -1854,6 +2055,200 @@ function PortsDialog({
   );
 }
 
+/** Name, kind and address of a monitored device. */
+function DeviceDialog({
+  tenantId,
+  device,
+  kinds,
+  onClose,
+  onSaved,
+}: {
+  tenantId: string;
+  device: MonitoringDeviceDetail["device"];
+  kinds: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(device.name);
+  const [kind, setKind] = useState(
+    kindValue(device.category, device.categoryLabel),
+  );
+  const [ipAddress, setIpAddress] = useState(device.ipAddress ?? "");
+  const [hostname, setHostname] = useState(device.hostname ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await monitoringCall({
+        type: "updateDevice",
+        tenantId,
+        assetId: device.assetId,
+        device: { name, ...kindFields(kind), ipAddress, hostname },
+      });
+      onSaved();
+    } catch (failure) {
+      setError(message(failure));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog onClose={onClose} title="Gerät bearbeiten">
+      <form
+        className="monitoring-form"
+        onSubmit={(event) => void submit(event)}
+      >
+        <label className="monitoring-field">
+          <span>Name des Geräts</span>
+          <input
+            autoFocus
+            maxLength={160}
+            onChange={(event) => setName(event.target.value)}
+            required
+            type="text"
+            value={name}
+          />
+        </label>
+        <KindSelect kinds={kinds} label="Art" onChange={setKind} value={kind} />
+        <div className="monitoring-field-row">
+          <label className="monitoring-field">
+            <span>IP-Adresse</span>
+            <input
+              onChange={(event) => setIpAddress(event.target.value)}
+              placeholder="z. B. 10.0.0.11"
+              type="text"
+              value={ipAddress}
+            />
+          </label>
+          <label className="monitoring-field">
+            <span>Hostname</span>
+            <input
+              onChange={(event) => setHostname(event.target.value)}
+              type="text"
+              value={hostname}
+            />
+          </label>
+        </div>
+        <p className="monitoring-muted">
+          Die Änderung gilt auch in der Infrastruktur. Sensoren ohne eigenes
+          Ziel messen danach die neue Adresse (zuerst die IP-Adresse, sonst den
+          Hostnamen). Standort, Uplink und Services werden unter Infrastruktur
+          gepflegt.
+        </p>
+        {error ? (
+          <p className="ticket-detail-message error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="monitoring-form__actions">
+          <button className="secondary-button" onClick={onClose} type="button">
+            Abbrechen
+          </button>
+          <button className="primary-button" disabled={saving} type="submit">
+            {saving ? "Wird gespeichert …" : "Speichern"}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+const AUTO_CATEGORY = "auto";
+const NEW_KIND = "new";
+
+/**
+ * Kind of a device: the fixed kinds, the own kinds of the tenant, and «Neue
+ * Art erstellen …» for a kind that does not exist yet.
+ */
+function KindSelect({
+  label,
+  value,
+  kinds,
+  onChange,
+  auto = false,
+  hint,
+}: {
+  label: string;
+  /** A value of `kindValue`, or AUTO_CATEGORY. */
+  value: string;
+  kinds: string[];
+  onChange: (value: string) => void;
+  /** Offers «Automatisch aus Name und Beschreibung». */
+  auto?: boolean;
+  hint?: string;
+}) {
+  const current = value === AUTO_CATEGORY ? null : kindFields(value);
+  const known =
+    current === null ||
+    current.categoryLabel === null ||
+    kinds.includes(current.categoryLabel);
+  // An own kind that is not in the list yet is being typed in.
+  const [creating, setCreating] = useState(!known);
+  // As typed (spaces included); a single blank stands for «nothing yet».
+  const typed =
+    value.startsWith("custom:") && value !== "custom: "
+      ? value.slice("custom:".length)
+      : "";
+  return (
+    <div className="monitoring-field">
+      <label className="monitoring-field">
+        <span>{label}</span>
+        <select
+          onChange={(event) => {
+            const next = event.target.value;
+            setCreating(next === NEW_KIND);
+            onChange(next === NEW_KIND ? kindValue("other", " ") : next);
+          }}
+          value={creating ? NEW_KIND : value}
+        >
+          {auto ? (
+            <option value={AUTO_CATEGORY}>
+              Automatisch aus Name und Beschreibung
+            </option>
+          ) : null}
+          {Object.entries(CATEGORY_LABELS).map(([key, text]) => (
+            <option key={key} value={key}>
+              {text}
+            </option>
+          ))}
+          {kinds.map((kind) => (
+            <option key={kind} value={kindValue("other", kind)}>
+              {kind}
+            </option>
+          ))}
+          <option value={NEW_KIND}>Neue Art erstellen …</option>
+        </select>
+      </label>
+      {creating ? (
+        <label className="monitoring-field">
+          <span>Name der neuen Art</span>
+          <input
+            autoFocus
+            maxLength={60}
+            onChange={(event) =>
+              onChange(kindValue("other", event.target.value || " "))
+            }
+            placeholder="z. B. iLO, Drucker, Kamera"
+            required
+            type="text"
+            value={typed}
+          />
+        </label>
+      ) : null}
+      {hint ? <span className="monitoring-muted">{hint}</span> : null}
+    </div>
+  );
+}
+
+/**
+ * Adds devices to the monitoring. Sources: devices of the infrastructure and
+ * addresses of the IP address management that are no device yet (several at
+ * once), or one device entered right here.
+ */
 function AddDeviceDialog({
   tenantId,
   agents,
@@ -1863,27 +2258,53 @@ function AddDeviceDialog({
   tenantId: string;
   agents: MonitoringAgent[];
   onClose: () => void;
-  onSaved: (assetId: string) => void;
+  /** The device to open, or null when several were added. */
+  onSaved: (assetId: string | null) => void;
 }) {
   const [query, setQuery] = useState("");
   const [choices, setChoices] = useState<MonitoringAssetChoice[] | null>(null);
-  const [assetId, setAssetId] = useState<string | null>(null);
+  const [addresses, setAddresses] = useState<MonitoringAddressChoice[]>([]);
+  // Picked entries stay picked while the search text changes.
+  const [assets, setAssets] = useState<Map<string, MonitoringAssetChoice>>(
+    new Map(),
+  );
+  const [entries, setEntries] = useState<Map<string, MonitoringAddressChoice>>(
+    new Map(),
+  );
+  const [creating, setCreating] = useState(false);
   const [agentId, setAgentId] = useState<string | null>(
     agents.find((agent) => agent.online)?.id ?? agents[0]?.id ?? null,
   );
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [target, setTarget] = useState("");
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState("server");
+  const [kinds, setKinds] = useState<string[]>([]);
+  const [addressKind, setAddressKind] = useState(AUTO_CATEGORY);
+  const [address, setAddress] = useState("");
+
+  const count = assets.size + entries.size;
+  const withoutAddress = [...assets.values()].filter(
+    (choice) => !choice.ipAddress && !choice.hostname,
+  );
+  // One device without address can get its target here; several cannot.
+  const needsTarget = !creating && count === 1 && withoutAddress.length === 1;
+  const blocked = !creating && count > 1 && withoutAddress.length > 0;
 
   useEffect(() => {
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      monitoringCall<{ assets: MonitoringAssetChoice[] }>({
-        type: "assets",
-        tenantId,
-        query,
-      })
+      monitoringCall<{
+        assets: MonitoringAssetChoice[];
+        addresses?: MonitoringAddressChoice[];
+        kinds?: string[];
+      }>({ type: "assets", tenantId, query })
         .then((result) => {
-          if (!cancelled) setChoices(result.assets);
+          if (cancelled) return;
+          setChoices(result.assets);
+          setAddresses(result.addresses ?? []);
+          setKinds(result.kinds ?? []);
         })
         .catch((failure) => {
           if (!cancelled) setError(message(failure));
@@ -1895,33 +2316,131 @@ function AddDeviceDialog({
     };
   }, [tenantId, query]);
 
+  const toggleAsset = (choice: MonitoringAssetChoice) => {
+    setCreating(false);
+    setAssets((current) => {
+      const next = new Map(current);
+      if (!next.delete(choice.assetId)) next.set(choice.assetId, choice);
+      return next;
+    });
+  };
+  const toggleEntry = (entry: MonitoringAddressChoice) => {
+    setCreating(false);
+    setEntries((current) => {
+      const next = new Map(current);
+      if (!next.delete(entry.addressId)) next.set(entry.addressId, entry);
+      return next;
+    });
+  };
+  const selectable = (choices ?? []).filter(
+    (choice) =>
+      !choice.monitored &&
+      (choice.ipAddress !== null || choice.hostname !== null),
+  );
+  const allShown =
+    selectable.length + addresses.length > 0 &&
+    selectable.every((choice) => assets.has(choice.assetId)) &&
+    addresses.every((entry) => entries.has(entry.addressId));
+  const toggleAll = () => {
+    setCreating(false);
+    setAssets((current) => {
+      const next = new Map(current);
+      for (const choice of selectable) {
+        if (allShown) next.delete(choice.assetId);
+        else next.set(choice.assetId, choice);
+      }
+      return next;
+    });
+    setEntries((current) => {
+      const next = new Map(current);
+      for (const entry of addresses) {
+        if (allShown) next.delete(entry.addressId);
+        else next.set(entry.addressId, entry);
+      }
+      return next;
+    });
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!assetId) return;
-    setSaving(true);
     setError(null);
+    const added: string[] = [];
     try {
-      await monitoringCall({
-        type: "saveSensor",
-        tenantId,
-        sensor: emptyDraft(assetId, agentId),
-      });
-      onSaved(assetId);
+      if (creating) {
+        setSaving("1 von 1");
+        const result = await monitoringCall<{ assetId: string }>({
+          type: "addDevice",
+          tenantId,
+          device: {
+            name,
+            ...kindFields(kind),
+            address,
+            agentId,
+            ipamAddressId: null,
+          },
+        });
+        onSaved(result.assetId);
+        return;
+      }
+      const total = count;
+      for (const choice of assets.values()) {
+        setSaving(`${added.length + 1} von ${total}`);
+        await monitoringCall({
+          type: "saveSensor",
+          tenantId,
+          sensor: {
+            ...emptyDraft(choice.assetId, agentId),
+            target: needsTarget ? target.trim() : null,
+          },
+        });
+        added.push(choice.assetId);
+      }
+      for (const entry of entries.values()) {
+        setSaving(`${added.length + 1} von ${total}`);
+        const result = await monitoringCall<{ assetId: string }>({
+          type: "addDevice",
+          tenantId,
+          device: {
+            name: entry.hostname ?? entry.address,
+            ...kindFields(
+              addressKind === AUTO_CATEGORY
+                ? guessCategory(entry.hostname, entry.description)
+                : addressKind,
+            ),
+            address: entry.address,
+            agentId,
+            ipamAddressId: entry.addressId,
+          },
+        });
+        added.push(result.assetId);
+      }
+      onSaved(added.length === 1 ? (added[0] ?? null) : null);
     } catch (failure) {
-      setError(message(failure));
-      setSaving(false);
+      setError(
+        added.length
+          ? `${added.length} von ${count} hinzugefügt, dann: ${message(failure)}`
+          : message(failure),
+      );
+      // What was added is no longer offered again.
+      setAssets((current) => {
+        const next = new Map(current);
+        for (const id of added) next.delete(id);
+        return next;
+      });
+      setSaving(null);
     }
   };
 
   return (
-    <Dialog onClose={onClose} title="Gerät hinzufügen">
+    <Dialog onClose={onClose} title="Geräte hinzufügen">
       <form
         className="monitoring-form"
         onSubmit={(event) => void submit(event)}
       >
         <p className="monitoring-muted">
-          Überwacht werden Geräte aus der Infrastruktur. Das Gerät erhält einen
-          Ping-Sensor; weitere Sensoren lassen sich danach hinzufügen.
+          Gesucht wird in der Infrastruktur und in der IP-Adressverwaltung.
+          Mehrere Geräte lassen sich zusammen hinzufügen. Jedes erhält einen
+          Ping-Sensor; weitere Sensoren folgen danach.
         </p>
         <label className="monitoring-field">
           <span>Gerät suchen</span>
@@ -1933,42 +2452,165 @@ function AddDeviceDialog({
             value={query}
           />
         </label>
+        {choices !== null && selectable.length + addresses.length > 1 ? (
+          <button
+            className="text-button monitoring-form__all"
+            onClick={toggleAll}
+            type="button"
+          >
+            {allShown
+              ? "Auswahl der angezeigten aufheben"
+              : `Alle ${selectable.length + addresses.length} angezeigten auswählen`}
+          </button>
+        ) : null}
         <div
-          aria-label="Gerät wählen"
+          aria-label="Geräte wählen"
           className="monitoring-choices"
-          role="radiogroup"
+          role="group"
         >
           {choices === null ? (
             <Spinner label="Geräte werden geladen …" />
-          ) : choices.length === 0 ? (
-            <p className="monitoring__empty">
-              Kein Gerät gefunden. Erfasse es zuerst unter Infrastruktur.
-            </p>
           ) : (
-            choices.map((choice) => (
-              <label className="monitoring-choice" key={choice.assetId}>
+            <>
+              {choices.map((choice) => (
+                <label className="monitoring-choice" key={choice.assetId}>
+                  <input
+                    checked={assets.has(choice.assetId)}
+                    disabled={choice.monitored}
+                    onChange={() => toggleAsset(choice)}
+                    type="checkbox"
+                  />
+                  <span>
+                    <strong>{choice.name}</strong>
+                    <span className="monitoring-muted">
+                      {[
+                        categoryText(choice.category, choice.categoryLabel),
+                        choice.ipAddress ?? choice.hostname ?? "ohne Adresse",
+                        choice.monitored ? "wird bereits überwacht" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </span>
+                </label>
+              ))}
+              {addresses.map((entry) => (
+                <label className="monitoring-choice" key={entry.addressId}>
+                  <input
+                    checked={entries.has(entry.addressId)}
+                    onChange={() => toggleEntry(entry)}
+                    type="checkbox"
+                  />
+                  <span>
+                    <strong>{entry.hostname ?? entry.address}</strong>
+                    <span className="monitoring-muted">
+                      {[
+                        "IP-Adressverwaltung",
+                        entry.address,
+                        entry.description,
+                        "noch kein Gerät",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </span>
+                </label>
+              ))}
+              <label className="monitoring-choice">
                 <input
-                  checked={assetId === choice.assetId}
-                  name="monitoring-asset"
-                  onChange={() => setAssetId(choice.assetId)}
-                  type="radio"
+                  checked={creating}
+                  onChange={(event) => {
+                    setCreating(event.target.checked);
+                    if (event.target.checked) {
+                      setAssets(new Map());
+                      setEntries(new Map());
+                      setName(query.trim());
+                      setAddress("");
+                    }
+                  }}
+                  type="checkbox"
                 />
                 <span>
-                  <strong>{choice.name}</strong>
+                  <strong>Neues Gerät erfassen</strong>
                   <span className="monitoring-muted">
-                    {[
-                      CATEGORY_LABELS[choice.category ?? ""] ?? "Gerät",
-                      choice.ipAddress ?? choice.hostname ?? "ohne Adresse",
-                      choice.monitored ? "wird bereits überwacht" : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                    {choices.length + addresses.length === 0
+                      ? "Nichts gefunden. Das Gerät mit Name und Adresse anlegen."
+                      : "Das Gerät ist nicht in der Liste."}
                   </span>
                 </span>
               </label>
-            ))
+            </>
           )}
         </div>
+        {creating ? (
+          <>
+            <label className="monitoring-field">
+              <span>Name des Geräts</span>
+              <input
+                maxLength={160}
+                onChange={(event) => setName(event.target.value)}
+                required
+                type="text"
+                value={name}
+              />
+            </label>
+            <div className="monitoring-field-row">
+              <KindSelect
+                kinds={kinds}
+                label="Art"
+                onChange={setKind}
+                value={kind}
+              />
+              <label className="monitoring-field">
+                <span>IP-Adresse oder Hostname</span>
+                <input
+                  onChange={(event) => setAddress(event.target.value)}
+                  placeholder="z. B. 10.0.1.108"
+                  required
+                  type="text"
+                  value={address}
+                />
+              </label>
+            </div>
+          </>
+        ) : null}
+        {entries.size > 0 ? (
+          <KindSelect
+            auto
+            hint="Einträge der IP-Adressverwaltung werden als Gerät in der Infrastruktur angelegt. Die Art lässt sich später ändern."
+            kinds={kinds}
+            label={
+              entries.size === 1
+                ? "Art des neuen Geräts"
+                : `Art der ${entries.size} neuen Geräte`
+            }
+            onChange={setAddressKind}
+            value={addressKind}
+          />
+        ) : null}
+        {needsTarget ? (
+          <label className="monitoring-field">
+            <span>IP-Adresse oder Hostname des Geräts</span>
+            <input
+              onChange={(event) => setTarget(event.target.value)}
+              placeholder="z. B. 172.16.128.20"
+              required
+              type="text"
+              value={target}
+            />
+            <span className="monitoring-muted">
+              In der Infrastruktur ist für dieses Gerät keine Adresse erfasst.
+              Die Angabe gilt für diesen Sensor.
+            </span>
+          </label>
+        ) : null}
+        {blocked ? (
+          <p className="ticket-detail-message error" role="alert">
+            {withoutAddress.length === 1
+              ? `«${withoutAddress[0]?.name}» hat keine Adresse und lässt sich nur einzeln hinzufügen.`
+              : `${withoutAddress.length} gewählte Geräte haben keine Adresse und lassen sich nur einzeln hinzufügen.`}
+          </p>
+        ) : null}
         <AgentSelect agents={agents} onChange={setAgentId} value={agentId} />
         {error ? (
           <p className="ticket-detail-message error" role="alert">
@@ -1977,19 +2619,464 @@ function AddDeviceDialog({
         ) : null}
         <div className="monitoring-form__actions">
           <button className="secondary-button" onClick={onClose} type="button">
-            Abbrechen
+            {saving === null && error && count === 0
+              ? "Schliessen"
+              : "Abbrechen"}
           </button>
           <button
             className="primary-button"
-            disabled={!assetId || saving}
+            disabled={(!creating && count === 0) || blocked || saving !== null}
             type="submit"
           >
             <Radar aria-hidden="true" size={16} />
-            {saving ? "Wird hinzugefügt …" : "Überwachen"}
+            {saving !== null
+              ? `Gerät ${saving} wird hinzugefügt …`
+              : creating
+                ? "Anlegen und überwachen"
+                : count > 1
+                  ? `${count} Geräte überwachen`
+                  : "Überwachen"}
           </button>
         </div>
       </form>
     </Dialog>
+  );
+}
+
+/**
+ * Connections of the device: its ports with what hangs on them, and the
+ * switch ports it hangs on. The probe reads them via SNMP.
+ */
+function ConnectionsCard({
+  tenantId,
+  assetId,
+  now,
+  onOpenDevice,
+  onOpenInfrastructure,
+}: {
+  tenantId: string;
+  assetId: string;
+  now: number;
+  onOpenDevice: (assetId: string) => void;
+  onOpenInfrastructure?: ((assetId: string) => void) | undefined;
+}) {
+  const [data, setData] = useState<MonitoringConnections | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [all, setAll] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<"list" | "matrix">("list");
+
+  const load = useCallback(() => {
+    monitoringCall<MonitoringConnections>({
+      type: "connections",
+      tenantId,
+      assetId,
+    })
+      .then((result) => {
+        setData(result);
+        setError(null);
+      })
+      .catch((failure) => setError(message(failure)));
+  }, [tenantId, assetId]);
+  useEffect(load, [load]);
+  // While the probe is asked, look again every few seconds.
+  const pending = data?.pending ?? false;
+  useEffect(() => {
+    if (!pending) return;
+    const timer = window.setInterval(load, 5000);
+    return () => window.clearInterval(timer);
+  }, [pending, load]);
+
+  const refresh = () => {
+    setBusy(true);
+    monitoringCall({ type: "refreshConnections", tenantId, assetId })
+      .then(load)
+      .catch((failure) => setError(message(failure)))
+      .finally(() => setBusy(false));
+  };
+  // A monitored neighbour opens here, any other device in the infrastructure.
+  const open = (target: { assetId: string | null; monitored: boolean }) =>
+    target.assetId === null
+      ? undefined
+      : target.monitored
+        ? () => onOpenDevice(target.assetId!)
+        : onOpenInfrastructure
+          ? () => onOpenInfrastructure(target.assetId!)
+          : undefined;
+
+  const ports = data ? (all ? data.ports : connectedPorts(data.ports)) : [];
+  return (
+    <article className="monitoring-card monitoring-card--flush">
+      <div className="monitoring-card__head monitoring-card__head--padded">
+        <div>
+          <h3>Verbindungen</h3>
+          <span className="monitoring-muted">
+            {data === null
+              ? "wird geladen …"
+              : data.pending
+                ? "Die Sonde liest die Verbindungen aus …"
+                : data.scannedAt
+                  ? `Stand ${formatAgo(data.scannedAt, now)}`
+                  : "noch nicht ausgelesen"}
+          </span>
+        </div>
+        <div className="monitoring__actions">
+          {data && data.ports.length > 0 ? (
+            <div
+              aria-label="Darstellung der Verbindungen"
+              className="monitoring-toggle"
+              role="group"
+            >
+              {(
+                [
+                  ["list", "Liste"],
+                  ["matrix", "Matrix"],
+                ] as const
+              ).map(([key, text]) => (
+                <button
+                  aria-pressed={view === key}
+                  key={key}
+                  onClick={() => setView(key)}
+                  type="button"
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {data?.canManage ? (
+            <button
+              className="secondary-button"
+              disabled={busy || data.pending}
+              onClick={refresh}
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+              Jetzt auslesen
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {(error ?? data?.error) ? (
+        <p
+          className="ticket-detail-message error monitoring__inset"
+          role="alert"
+        >
+          {error ?? data?.error}
+        </p>
+      ) : null}
+      {data?.attachedTo.length ? (
+        <ul className="monitoring-attached">
+          {data.attachedTo.map((entry) => {
+            const action = open(entry);
+            return (
+              <li key={`${entry.assetId}|${entry.port}`}>
+                Hängt an{" "}
+                {action ? (
+                  <button
+                    className="text-button"
+                    onClick={action}
+                    type="button"
+                  >
+                    {entry.name}
+                  </button>
+                ) : (
+                  <strong>{entry.name}</strong>
+                )}
+                , Port {entry.port}{" "}
+                <span className="monitoring-muted">
+                  ({LINK_SOURCE_LABELS[entry.source]})
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {data && data.ports.length > 0 && view === "matrix" ? (
+        <PortMatrix open={open} ports={data.ports} />
+      ) : data && data.ports.length > 0 ? (
+        <>
+          <div className="monitoring__scroll">
+            <table className="monitoring-table">
+              <thead>
+                <tr>
+                  <th scope="col">Port</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Verbunden mit</th>
+                  <th scope="col">Quelle</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ports.map((port) => {
+                  const action = port.link ? open(port.link) : undefined;
+                  return (
+                    <tr key={port.port}>
+                      <td>
+                        <strong>{port.port}</strong>
+                        {port.alias ? (
+                          <span className="monitoring-muted">{port.alias}</span>
+                        ) : null}
+                      </td>
+                      <td>
+                        {port.up === null
+                          ? "–"
+                          : port.up
+                            ? [
+                                "aktiv",
+                                port.speedMbps
+                                  ? formatValue(port.speedMbps * 1e6, "bit/s")
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")
+                            : "kein Link"}
+                      </td>
+                      <td>
+                        {action ? (
+                          <button
+                            className="text-button monitoring-table__name"
+                            onClick={action}
+                            type="button"
+                          >
+                            {portLinkText(port)}
+                          </button>
+                        ) : (
+                          portLinkText(port)
+                        )}
+                        {port.link ? (
+                          <span className="monitoring-muted">
+                            {[port.link.address, port.link.mac]
+                              .filter(
+                                (value) => value && value !== port.link!.name,
+                              )
+                              .join(" · ")}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td>
+                        {port.link ? LINK_SOURCE_LABELS[port.link.source] : "–"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {ports.length === 0 ? (
+            <p className="monitoring__empty">
+              An keinem Port wurde eine Gegenstelle erkannt.
+            </p>
+          ) : null}
+          <p className="monitoring__empty">
+            <button
+              className="text-button"
+              onClick={() => setAll((value) => !value)}
+              type="button"
+            >
+              {all
+                ? "Nur Ports mit Gegenstelle zeigen"
+                : `Alle ${data.ports.length} Ports zeigen`}
+            </button>
+          </p>
+        </>
+      ) : data && !data.pending && !data.error && !data.attachedTo.length ? (
+        <p className="monitoring__empty">
+          {data.scannedAt
+            ? "Das Gerät meldet keine Ports."
+            : "Für Switches, Firewalls und Router liest die Sonde die Verbindungen per SNMP aus (alle sechs Stunden). Voraussetzung sind SNMP-Zugangsdaten auf der Sonde."}
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
+type OpenTarget = (target: {
+  assetId: string | null;
+  monitored: boolean;
+}) => (() => void) | undefined;
+
+/**
+ * Connections as a picture: the ports of each unit as a front panel
+ * (coloured by state), and below a diagram with a line from every port to
+ * the device it leads to.
+ */
+function PortMatrix({
+  ports,
+  open,
+}: {
+  ports: MonitoringPort[];
+  open: OpenTarget;
+}) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const groups = useMemo(() => portGroups(ports), [ports]);
+  const diagram = useMemo(() => linkDiagram(ports), [ports]);
+  const current = ports.find((port) => port.port === selected) ?? null;
+  const currentAction = current?.link ? open(current.link) : undefined;
+  return (
+    <div className="monitoring-matrix">
+      <ul className="monitoring-matrix__legend">
+        {(["linked", "trunk", "up", "down"] as const).map((state) => (
+          <li key={state}>
+            <span
+              aria-hidden="true"
+              className={`monitoring-port monitoring-port--${state}`}
+            />
+            {PORT_STATE_LABELS[state]}
+          </li>
+        ))}
+      </ul>
+      {groups.map((group) => {
+        // Without a link nothing is to see on VLANs, LAGs and the like.
+        const shown = group.panel
+          ? group.ports
+          : group.ports.filter((port) => portState(port) !== "down");
+        if (!shown.length) return null;
+        return (
+          <section className="monitoring-matrix__group" key={group.key}>
+            <h4>{group.label}</h4>
+            <div
+              className={
+                group.panel
+                  ? "monitoring-matrix__panel"
+                  : "monitoring-matrix__panel monitoring-matrix__panel--free"
+              }
+            >
+              {shown.map((port) => {
+                const state = portState(port);
+                return (
+                  <button
+                    aria-label={`Port ${port.port}: ${PORT_STATE_LABELS[state]}${port.link ? `, ${portLinkText(port)}` : ""}`}
+                    aria-pressed={selected === port.port}
+                    className={`monitoring-port monitoring-port--${state}`}
+                    key={port.port}
+                    onClick={() =>
+                      setSelected(selected === port.port ? null : port.port)
+                    }
+                    title={`${port.port}${port.alias ? ` · ${port.alias}` : ""} → ${portLinkText(port)}`}
+                    type="button"
+                  >
+                    {group.panel
+                      ? (portNumber(port.port) ?? port.port)
+                      : port.port}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+      <p className="monitoring-matrix__detail" role="status">
+        {current ? (
+          <>
+            <strong>Port {current.port}</strong>
+            {current.alias ? ` · ${current.alias}` : ""} ·{" "}
+            {current.up === false
+              ? "kein Link"
+              : [
+                  "aktiv",
+                  current.speedMbps
+                    ? formatValue(current.speedMbps * 1e6, "bit/s")
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}{" "}
+            →{" "}
+            {currentAction ? (
+              <button
+                className="text-button"
+                onClick={currentAction}
+                type="button"
+              >
+                {portLinkText(current)}
+              </button>
+            ) : (
+              portLinkText(current)
+            )}
+            {current.link ? (
+              <span className="monitoring-muted">
+                {" "}
+                ({LINK_SOURCE_LABELS[current.link.source]}
+                {current.link.address ? ` · ${current.link.address}` : ""})
+              </span>
+            ) : null}
+          </>
+        ) : (
+          <span className="monitoring-muted">
+            Einen Port anklicken, um die Gegenstelle zu sehen.
+          </span>
+        )}
+      </p>
+      {diagram.links.length > 0 ? (
+        <section className="monitoring-matrix__group">
+          <h4>Verbindungen zu bekannten Geräten</h4>
+          <div className="monitoring__scroll">
+            <svg
+              aria-label="Diagramm der Verbindungen"
+              className="monitoring-links"
+              role="img"
+              style={{ minWidth: 560 }}
+              viewBox={`0 0 ${diagram.width} ${diagram.height}`}
+            >
+              {diagram.links.map((link) => (
+                <path
+                  className={`monitoring-links__line monitoring-links__line--${link.source}${selected === link.key ? " is-selected" : ""}`}
+                  d={link.path}
+                  key={link.key}
+                />
+              ))}
+              {diagram.ports.map((port) => (
+                <g
+                  className={`monitoring-links__port${selected === port.port ? " is-selected" : ""}`}
+                  key={port.port}
+                  onClick={() => setSelected(port.port)}
+                >
+                  <rect height={22} rx={6} width={166} x={2} y={port.y - 11} />
+                  <text x={12} y={port.y + 4}>
+                    {port.port}
+                    {port.alias ? ` · ${port.alias.slice(0, 16)}` : ""}
+                  </text>
+                </g>
+              ))}
+              {diagram.neighbours.map((entry) => {
+                const action = open(entry);
+                return (
+                  <g
+                    className={`monitoring-links__device${action ? " is-link" : ""}`}
+                    key={entry.key}
+                    onClick={action}
+                    onKeyDown={(event) => {
+                      if (
+                        action &&
+                        (event.key === "Enter" || event.key === " ")
+                      )
+                        action();
+                    }}
+                    role={action ? "link" : undefined}
+                    tabIndex={action ? 0 : undefined}
+                  >
+                    <rect
+                      height={24}
+                      rx={6}
+                      width={diagram.width - 502}
+                      x={500}
+                      y={entry.y - 12}
+                    />
+                    <text x={510} y={entry.y + 4}>
+                      {entry.name.slice(0, 30)}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+          {diagram.hidden > 0 ? (
+            <p className="monitoring-muted">
+              {diagram.hidden} weitere Verbindungen stehen in der Liste.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
   );
 }
 
@@ -2006,6 +3093,7 @@ function ProbeDialog({
     config: string;
   } | null>(null);
   const [downloaded, setDownloaded] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -2091,22 +3179,22 @@ function ProbeDialog({
             Die Datei ist wie ein Passwort zu behandeln und nach der
             Installation aus dem Download-Ordner zu löschen.
           </p>
+          {leaving && !downloaded ? (
+            <p className="ticket-detail-message error" role="alert">
+              Die Konfiguration wurde noch nicht heruntergeladen und lässt sich
+              später nicht mehr anzeigen.
+            </p>
+          ) : null}
           <div className="monitoring-form__actions">
             <button
               className="secondary-button"
               onClick={() => {
-                if (
-                  downloaded ||
-                  window.confirm(
-                    "Die Konfiguration wurde noch nicht heruntergeladen und lässt sich später nicht mehr anzeigen. Trotzdem schliessen?",
-                  )
-                ) {
-                  onClose();
-                }
+                if (downloaded || leaving) onClose();
+                else setLeaving(true);
               }}
               type="button"
             >
-              Schliessen
+              {leaving && !downloaded ? "Trotzdem schliessen" : "Schliessen"}
             </button>
           </div>
         </div>

@@ -55,7 +55,10 @@ import { AssetIntuneSettings } from "./asset-intune-settings";
 import { PushBroadcastSettings } from "./push-broadcast-settings";
 import { RequesterNoticesSettings } from "./requester-notices-settings";
 import { TeamsSettings } from "./teams-settings";
-import { MonitoringSettings } from "./monitoring-settings";
+import {
+  MonitoringAlertingSettings,
+  MonitoringSettings,
+} from "./monitoring-settings";
 import { MonitoringProbeSettings } from "./monitoring";
 import { ExpiryMonitoringSettings } from "./expiry-monitoring-settings";
 import { BackupMonitoringSettings } from "./backup-monitoring-settings";
@@ -3212,6 +3215,7 @@ export function TenantAdminSettings({
                         )}
                       </p>
                     )}
+                    <MonitoringAlertingSettings tenantId={tenantId} />
                     <MonitoringSettings tenantId={tenantId} />
                     <ExternalStatusSettings tenantId={tenantId} />
                     <ExpiryMonitoringSettings tenantId={tenantId} />

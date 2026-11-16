@@ -16237,4 +16237,124 @@ $$;
 rollback;
 SQL
 
+# 0352: Verbindungen eines Geräts (Ports, LLDP-Nachbarn, MAC-Tabelle).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_switch uuid;
+  v_server uuid;
+  v_agent uuid;
+  v_count integer;
+  v_row record;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+  values (v_tenant, 'monitoring.native', true)
+  on conflict (tenant_id, feature_key) do update set enabled = true;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'SW-0352', 'switch', 'active') returning id into v_switch;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address)
+  values (v_switch, v_tenant, 'switch', '10.52.0.2');
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'SRV-0352', 'server', 'active') returning id into v_server;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address)
+  values (v_server, v_tenant, 'server', '10.52.0.9');
+  insert into public.ipam_agents (tenant_id, name, token_hash, last_seen_at)
+  values (v_tenant, 'Sonde 0352', repeat('e', 64), timezone('utc', now())) returning id into v_agent;
+  insert into public.monitoring_sensors (tenant_id, asset_id, agent_id, kind, name)
+  values (v_tenant, v_switch, v_agent, 'ping', 'Ping'), (v_tenant, v_server, v_agent, 'ping', 'Ping');
+
+  -- Nur der Switch ist fällig (der Server hat keinen SNMP-Sensor).
+  v_count := public.monitoring_topology_enqueue();
+  if v_count <> 1 or not exists (
+    select 1 from public.ipam_agent_jobs
+     where kind = 'snmp_topology' and status = 'queued' and agent_id = v_agent
+       and payload = jsonb_build_object('host', '10.52.0.2', 'assetId', v_switch)
+  ) then
+    raise exception '0352 test: enqueue wrong: % jobs', v_count;
+  end if;
+  if public.monitoring_topology_enqueue() <> 0 then
+    raise exception '0352 test: device requested twice within six hours';
+  end if;
+
+  v_count := public.monitoring_store_topology(v_tenant, v_switch, v_agent, 'sw-0352', jsonb_build_array(
+    jsonb_build_object('port', '1/1/1', 'index', 1, 'up', true, 'speedMbps', 10000,
+      'lldpName', 'core', 'lldpPort', '1/1/24', 'lldpAddress', '10.52.0.1', 'lldpMac', 'aa:bb:cc:00:00:01',
+      'macs', jsonb_build_array(), 'macCount', 0),
+    jsonb_build_object('port', '1/1/2', 'index', 2, 'up', true, 'speedMbps', 1000,
+      'macs', jsonb_build_array('aa:bb:cc:00:00:09'), 'macCount', 1),
+    jsonb_build_object('port', '1/1/2', 'index', 99),
+    jsonb_build_object('port', '  ')
+  ));
+  if v_count <> 2 then
+    raise exception '0352 test: stored % ports', v_count;
+  end if;
+  select * into v_row from public.monitoring_device_ports where asset_id = v_switch and port = '1/1/2';
+  if v_row.if_index <> 2 or v_row.macs <> array['aa:bb:cc:00:00:09'] or v_row.mac_count <> 1 then
+    raise exception '0352 test: port wrong: %', row_to_json(v_row);
+  end if;
+  select * into v_row from public.monitoring_topology_status where asset_id = v_switch;
+  if v_row.scanned_at is null or v_row.sys_name <> 'sw-0352' or v_row.error is not null then
+    raise exception '0352 test: status wrong: %', row_to_json(v_row);
+  end if;
+  -- Ein neuer Stand ersetzt den alten.
+  perform public.monitoring_store_topology(v_tenant, v_switch, v_agent, 'sw-0352',
+    jsonb_build_array(jsonb_build_object('port', '1/1/3')));
+  if (select count(*) from public.monitoring_device_ports where asset_id = v_switch) <> 1 then
+    raise exception '0352 test: old ports kept';
+  end if;
+  -- Fremder Mandant: nichts gespeichert.
+  if public.monitoring_store_topology(gen_random_uuid(), v_switch, v_agent, 'x',
+       jsonb_build_array(jsonb_build_object('port', 'x'))) <> 0 then
+    raise exception '0352 test: stored for a foreign tenant';
+  end if;
+  if has_function_privilege('authenticated', 'public.monitoring_topology_enqueue(integer)', 'execute')
+     or has_table_privilege('authenticated', 'public.monitoring_device_ports', 'select') then
+    raise exception '0352 test: reachable for authenticated';
+  end if;
+  -- Schreibende Aufträge brauchen weiterhin eine Freigabe.
+  begin
+    insert into public.ipam_agent_jobs (tenant_id, agent_id, kind, payload, status)
+    values (v_tenant, v_agent, 'dns_delete', '{}'::jsonb, 'queued');
+    raise exception '0352 test: write job without approval accepted';
+  exception when insufficient_privilege or check_violation then null;
+  end;
+end;
+$$;
+rollback;
+SQL
+
+# 0353: eigene Gerätearten in der Infrastruktur.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_asset uuid;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'ILO-0353', 'other', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, category_label, ip_address)
+  values (v_asset, v_tenant, 'other', 'iLO', '10.53.0.2');
+  if (select category_label from public.asset_infrastructure where asset_id = v_asset) <> 'iLO' then
+    raise exception '0353 test: own kind not stored';
+  end if;
+  begin
+    update public.asset_infrastructure set category_label = '   ' where asset_id = v_asset;
+    raise exception '0353 test: empty own kind accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    update public.asset_infrastructure set category_label = repeat('x', 61) where asset_id = v_asset;
+    raise exception '0353 test: overlong own kind accepted';
+  exception when check_violation then null;
+  end;
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

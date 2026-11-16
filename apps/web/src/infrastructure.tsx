@@ -84,6 +84,8 @@ type Device = {
   locationId: string | null;
   locationName: string | null;
   category: Category;
+  /** Own name of the kind (category «other»), set in the monitoring. */
+  categoryLabel?: string | null;
   hostname: string | null;
   ipAddress: string | null;
   macAddress: string | null;
@@ -111,6 +113,18 @@ type Device = {
   prtgObjectId: string | null;
 };
 type Location = { id: string; name: string };
+
+/** Services of a device (older answers only carry serviceId). */
+function deviceServiceIds(device: {
+  serviceId: string | null;
+  serviceIds?: string[] | null;
+}): string[] {
+  return device.serviceIds?.length
+    ? device.serviceIds
+    : device.serviceId
+      ? [device.serviceId]
+      : [];
+}
 type Service = { id: string; name: string };
 type Detail = {
   windows?: MaintenanceWindow[];
@@ -156,6 +170,13 @@ const CATEGORY: Record<Category, { label: string; Icon: LucideIcon }> = {
   virtual_host: { label: "Virtualisierung", Icon: Cpu },
   other: { label: "Sonstiges", Icon: HardDrive },
 };
+
+/** Kind as shown: the own name for «other», else the fixed label. */
+function deviceKindLabel(device: Device): string {
+  return device.category === "other" && device.categoryLabel
+    ? device.categoryLabel
+    : CATEGORY[device.category].label;
+}
 const LIFECYCLE: { key: Lifecycle; label: string }[] = [
   { key: "ordered", label: "Bestellt" },
   { key: "stock", label: "Lager" },
@@ -923,7 +944,8 @@ export function Infrastructure({
       ) : (
         <ul className="infrastructure__list">
           {visible.map((device) => {
-            const { Icon, label } = CATEGORY[device.category];
+            const { Icon } = CATEGORY[device.category];
+            const label = deviceKindLabel(device);
             const flags = dueFlags(device);
             return (
               <li className="infrastructure__list-row" key={device.id}>
@@ -1159,7 +1181,8 @@ function DeviceDetail({
     if (done) setMaintenance({ ...maintenance, note: "" });
   }
 
-  const { Icon, label } = CATEGORY[device.category];
+  const { Icon } = CATEGORY[device.category];
+  const label = deviceKindLabel(device);
   const currentIndex = LIFECYCLE.findIndex(
     (entry) => entry.key === device.lifecycleState,
   );
@@ -1296,6 +1319,28 @@ function DeviceDetail({
                     : null,
                 )}
               </dl>
+            </section>
+            <section>
+              <h4>Betroffene Dienste</h4>
+              {/* Used by the system status, maintenance windows and incidents. */}
+              {deviceServiceIds(device).length ? (
+                <ul className="infrastructure__service-chips">
+                  {deviceServiceIds(device).map((id) => (
+                    <li key={id}>
+                      {services.find((service) => service.id === id)?.name ??
+                        "Dienst"}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="infrastructure__hint">
+                  Noch keine Dienste. Unter <strong>Bearbeiten</strong>{" "}
+                  {tn(
+                    "legst du fest, welche Dienste bei einem Ausfall oder einer Wartung dieses Geräts betroffen sind.",
+                    "legen Sie fest, welche Dienste bei einem Ausfall oder einer Wartung dieses Geräts betroffen sind.",
+                  )}
+                </p>
+              )}
             </section>
             <section>
               <h4>Standort</h4>
@@ -1533,7 +1578,7 @@ function DeviceDetail({
               intervalMonths={device.maintenanceIntervalMonths}
               key={device.id}
               onRun={run}
-              serviceId={device.serviceId}
+              serviceIds={deviceServiceIds(device)}
               services={services}
               windows={detail?.windows ?? []}
             />
