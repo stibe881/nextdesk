@@ -503,9 +503,15 @@ components:
         tags: { type: array, items: { type: string } }
         utilization:
           type: [object, "null"]
+          description: >-
+            Belegung, jede Adresse einmal gezählt. used = belegte Adressen
+            ausserhalb des DHCP-Pools plus belegte Adressen im Pool (erfasst
+            oder aktive Lease); percent = used / capacity. dhcp_size ist die
+            Grösse des Pools und zählt nicht als belegt.
           properties:
             used: { type: integer }
-            dhcp_size: { type: number }
+            dhcp_size: { type: number, description: Grösse des DHCP-Pools (nur Information) }
+            dhcp_used: { type: [integer, "null"], description: Belegte Adressen im DHCP-Pool }
             capacity: { type: number }
             percent: { type: number }
         created_at: { type: string, format: date-time }

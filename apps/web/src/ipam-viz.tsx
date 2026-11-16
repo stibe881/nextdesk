@@ -18,6 +18,7 @@ import {
   nearestPoint,
   ringDash,
   sparklinePath,
+  shortDay,
   trendChart,
 } from "./lib/ipam-charts";
 import { formatDay } from "./lib/ipam-model";
@@ -185,13 +186,13 @@ export const TREND_SERIES = {
 } as const;
 
 export function TrendChartView({
-  days = 90,
+  days,
   history,
 }: {
   days?: number;
   history: UtilizationHistory;
 }) {
-  const chart = trendChart(history, days);
+  const chart = trendChart(history, days ?? history.days ?? 90);
   const gradientId = useId();
   const [active, setActive] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -224,7 +225,7 @@ export function TrendChartView({
       );
     } else if (event.key === "Escape") setActive(null);
   };
-  const tipWidth = 216;
+  const tipWidth = 252;
   const tipX = point
     ? Math.min(
         Math.max(point.x, tipWidth / 2 + 4),
@@ -253,8 +254,8 @@ export function TrendChartView({
           : []),
         {
           key: "total",
-          label: point.legacy
-            ? `${TREND_SERIES.total.label} (bisher)`
+          label: point.approx
+            ? `${TREND_SERIES.total.label} (ohne Leases)`
             : TREND_SERIES.total.label,
           value: point.percent,
         },
@@ -341,6 +342,17 @@ export function TrendChartView({
           />
         ) : null}
         <path className="ipam-trend__line" d={chart.line} />
+        {chart.dots
+          .filter((dot) => dot.series !== "total")
+          .map((dot) => (
+            <circle
+              className={`ipam-trend__point ipam-trend__point--${dot.series}`}
+              cx={dot.x}
+              cy={dot.y}
+              key={`${dot.series}-${dot.x}`}
+              r={4}
+            />
+          ))}
         {chart.forecast ? (
           <>
             <path className="ipam-trend__band" d={chart.forecast.band} />
@@ -478,13 +490,15 @@ export function TrendChartView({
           Pfeiltasten oder Maus zeigen Tageswerte
         </span>
       </figcaption>
-      {chart.series.static || chart.series.pool ? (
+      {chart.series.static || chart.series.pool || chart.approx ? (
         <p className="ipam-trend__note ipam-muted">
           {chart.series.pool
-            ? "Ohne DHCP-Pool: erfasste Adressen ausserhalb des Pools. Im DHCP-Pool: erfasste Adressen und aktive Leases im Pool. Gesamt zählt jede Adresse einmal."
-            : "Ohne DHCP-Pool: erfasste Adressen des Netzes. Dieses Netz hat keinen DHCP-Pool."}
-          {chart.points.some((entry) => entry.legacy)
-            ? " Tage vor der Aufschlüsselung zeigen bei «gesamt» die bisherige Messung (Pool voll gezählt)."
+            ? "Ohne DHCP-Pool: erfasste Adressen ausserhalb des Pools. Im DHCP-Pool: erfasste Adressen und aktive Leases im Pool. Gesamt zählt jede Adresse einmal; freie Pool-Adressen gelten nicht als belegt."
+            : chart.series.static
+              ? "Ohne DHCP-Pool: erfasste Adressen des Netzes. Dieses Netz hat keinen DHCP-Pool."
+              : "Gesamt zählt jede erfasste Adresse einmal; freie Pool-Adressen gelten nicht als belegt."}
+          {chart.approx
+            ? ` Bis ${shortDay(chart.approx.to)} fehlen Lease-Daten: «gesamt» zählt dort die erfassten Adressen (Näherung, im Tooltip «ohne Leases»).`
             : ""}
         </p>
       ) : null}

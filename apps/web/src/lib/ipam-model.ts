@@ -6,6 +6,7 @@ import {
   cidrContainsAddress,
   cidrLast,
   formatAddress,
+  formatCount,
   listAddresses,
   parseAddress,
   parseCidrInput,
@@ -49,9 +50,21 @@ export type IpamVlan = {
   status?: "active" | "deprecated";
 };
 
+/**
+ * Belegung eines Netzes, eine Zählung überall: used = belegte Adressen
+ * ausserhalb des DHCP-Pools + belegte Adressen im Pool (erfasst oder aktive
+ * Lease, jede einmal); percent = used ÷ capacity. dhcpSize ist die Grösse
+ * des Pools und zählt nicht als belegt.
+ */
 export type IpamUsage = {
   used: number;
   dhcpSize: number;
+  /** Belegte Adressen im DHCP-Pool. */
+  poolUsed?: number;
+  /** Belegte Adressen ausserhalb des DHCP-Pools. */
+  staticUsed?: number;
+  /** Erfasste, nicht veraltete Adressen (ohne Leases). */
+  addresses?: number;
   /** Capacity as decimal string (IPv6 exceeds Number precision). */
   capacity: string;
   percent: number;
@@ -369,6 +382,71 @@ export function usageTone(
   if (percent >= Math.max(95, warningPercent)) return "danger";
   if (percent >= warningPercent) return "warning";
   return "ok";
+}
+
+export type UsagePart = {
+  key: "static" | "pool" | "poolFree" | "free";
+  label: string;
+  count: number;
+  /** CSS class suffix (ipam-swatch--<tone>). */
+  tone: string;
+};
+
+/**
+ * Header and bar of «Zusammensetzung», same counting as the percentages:
+ * «59 von 254 belegt · DHCP-Pool: 0 von 139 belegt». The bar shows belegt
+ * ausserhalb des Pools, belegt im Pool, Pool frei und frei; together they
+ * add up to the capacity, the pool is never counted as occupied.
+ */
+export function usageComposition(usage: IpamUsage): {
+  summary: string;
+  parts: UsagePart[];
+} {
+  let capacity = 0n;
+  try {
+    capacity = BigInt((usage.capacity || "0").split(".")[0] || "0");
+  } catch {
+    capacity = 0n;
+  }
+  const poolSize = Math.max(0, usage.dhcpSize);
+  const poolUsed = Math.min(poolSize, Math.max(0, usage.poolUsed ?? 0));
+  const staticUsed = Math.max(0, usage.staticUsed ?? usage.used - poolUsed);
+  const free = capacity - BigInt(usage.used) - BigInt(poolSize - poolUsed);
+  const summary = `${formatCount(BigInt(usage.used))} von ${formatCount(capacity)} belegt${
+    poolSize
+      ? ` · DHCP-Pool: ${formatCount(BigInt(poolUsed))} von ${formatCount(BigInt(poolSize))} belegt`
+      : ""
+  }`;
+  const parts: UsagePart[] = poolSize
+    ? [
+        {
+          key: "static",
+          label: "Belegt ausserhalb des Pools",
+          count: staticUsed,
+          tone: "active",
+        },
+        {
+          key: "pool",
+          label: "Belegt im DHCP-Pool",
+          count: poolUsed,
+          tone: "dhcp",
+        },
+        {
+          key: "poolFree",
+          label: "DHCP-Pool frei",
+          count: poolSize - poolUsed,
+          tone: "dhcp-free",
+        },
+      ]
+    : [{ key: "static", label: "Belegt", count: usage.used, tone: "active" }];
+  // Bar widths only (Number is fine up to 2^53; IPv6 shows the occupied share).
+  parts.push({
+    key: "free",
+    label: "Frei",
+    count: free > 0n ? Number(free > 2n ** 52n ? 2n ** 52n : free) : 0,
+    tone: "free",
+  });
+  return { summary, parts };
 }
 
 export function formatPercent(value: number): string {

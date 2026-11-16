@@ -15775,10 +15775,10 @@ begin
      or v_row.pool_used <> 3 or v_row.pool_size <> 50 or v_row.occupied_total <> 5 then
     raise exception '0347 test: breakdown wrong: %', row_to_json(v_row);
   end if;
-  -- Legacy usage stays unchanged.
-  if (select used from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 3
-     or (select dhcp_size from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 50 then
-    raise exception '0347 test: legacy usage changed';
+  -- Since 0348 ipam_prefix_usage uses the same counting (occupied, pool not added).
+  if (select used from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 5
+     or (select dhcp_size from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 0 then
+    raise exception '0347 test: usage not on the single counting';
   end if;
 
   -- Leases do not count in another VRF.
@@ -15821,6 +15821,88 @@ begin
     raise exception '0347 test: breakdown executable by authenticated';
   end if;
   raise notice 'ipam utilization breakdown checks ran';
+end;
+$$;
+rollback;
+SQL
+
+
+# 0348: IPAM – eine Zählung (belegt = statisch + Pool belegt, Pool nie voll).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_net uuid;
+  v_plain uuid;
+  v_row record;
+  v_result jsonb;
+  v_lookup jsonb;
+begin
+  -- Customer case: /24, pool .101–.239 (139), 59 addresses outside the pool.
+  insert into public.ipam_prefixes (tenant_id, prefix, dhcp_start, dhcp_end, utilization_warning_percent)
+  values (v_tenant, '10.248.66.0/24', '10.248.66.101', '10.248.66.239', 70) returning id into v_net;
+  insert into public.ipam_addresses (tenant_id, address, status)
+  select v_tenant, ('10.248.66.' || n)::inet, 'active' from generate_series(1, 59) n;
+
+  select * into v_row from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net;
+  if v_row.used <> 59 or v_row.dhcp_size <> 0 or v_row.capacity <> 254 then
+    raise exception '0348 test: usage wrong (pool counted?): %', row_to_json(v_row);
+  end if;
+  select * into v_row from public.ipam_prefix_utilization_breakdown(v_tenant, v_net);
+  if v_row.occupied_total <> 59 or v_row.pool_used <> 0 or v_row.pool_size <> 139 then
+    raise exception '0348 test: breakdown wrong: %', row_to_json(v_row);
+  end if;
+
+  -- An address inside the pool is counted once (not address + pool).
+  insert into public.ipam_addresses (tenant_id, address, status) values (v_tenant, '10.248.66.150', 'dhcp');
+  if (select used from public.ipam_prefix_usage(v_tenant) where prefix_id = v_net) <> 60 then
+    raise exception '0348 test: pool address double counted';
+  end if;
+
+  -- Utilization findings (0315) follow: 60/254 = 23 % stays below 70 %.
+  v_result := public.ipam_utilization_findings(v_tenant);
+  if exists (select 1 from public.ipam_findings where tenant_id = v_tenant and kind = 'utilization'
+              and prefix_id = v_net and status = 'open') then
+    raise exception '0348 test: utilization finding from pool size: %', v_result;
+  end if;
+  -- A small prefix over its threshold still opens a finding with the new percent.
+  insert into public.ipam_prefixes (tenant_id, prefix, utilization_warning_percent)
+  values (v_tenant, '10.248.67.0/29', 50) returning id into v_plain;
+  insert into public.ipam_addresses (tenant_id, address, status)
+  select v_tenant, ('10.248.67.' || n)::inet, 'active' from generate_series(1, 4) n;
+  v_result := public.ipam_utilization_findings(v_tenant);
+  if not exists (select 1 from public.ipam_findings where tenant_id = v_tenant and kind = 'utilization'
+                  and prefix_id = v_plain and status = 'open' and (details ->> 'percent')::integer = 66) then
+    raise exception '0348 test: utilization finding missing: %', v_result;
+  end if;
+
+  -- Network lookup (0303) passes the same counting (dhcp_size 0).
+  v_lookup := public.ipam_network_lookup(v_tenant, array['10.248.66.10']::text[]);
+  if not exists (select 1 from jsonb_array_elements(v_lookup -> 'prefixes') item
+                  where item ->> 'id' = v_net::text and (item ->> 'used')::integer = 60
+                    and (item ->> 'dhcp_size')::numeric = 0) then
+    raise exception '0348 test: lookup usage wrong: %', v_lookup -> 'prefixes';
+  end if;
+
+  -- Backfill of old daily rows: occupied_total = used (approximation), split stays null.
+  insert into public.ipam_utilization_daily (tenant_id, prefix_id, day, used, dhcp_used, total)
+  values (v_tenant, v_net, date '2026-11-12', 59, 139, 254);
+  update public.ipam_utilization_daily set occupied_total = used
+   where occupied_total is null and used is not null and prefix_id = v_net;
+  select * into v_row from public.ipam_utilization_daily where prefix_id = v_net and day = date '2026-11-12';
+  if v_row.occupied_total <> 59 or v_row.static_used is not null or v_row.pool_used is not null then
+    raise exception '0348 test: backfill wrong: %', row_to_json(v_row);
+  end if;
+  if exists (select 1 from public.ipam_utilization_daily where occupied_total is null and used is not null
+              and prefix_id <> v_net) then
+    raise exception '0348 test: old rows not backfilled by the migration';
+  end if;
+
+  if has_function_privilege('authenticated', 'public.ipam_prefix_usage(uuid)', 'execute') then
+    raise exception '0348 test: usage executable by authenticated';
+  end if;
+  raise notice 'ipam single counting checks ran';
 end;
 $$;
 rollback;

@@ -438,9 +438,15 @@ export function addressOut(row: Row): Row {
   };
 }
 
+/**
+ * Prefix for the REST API. `usage` is a row of
+ * ipam_prefix_utilization_breakdown: used = occupied addresses (outside the
+ * pool + occupied in the pool, each once), percent = used / capacity,
+ * dhcp_size = pool size (information, not counted as used).
+ */
 export function prefixOut(row: Row, usage: Row | undefined): Row {
   const capacity = Number(usage?.capacity ?? 0);
-  const used = Number(usage?.used ?? 0) + Number(usage?.dhcp_size ?? 0);
+  const used = Number(usage?.occupied_total ?? usage?.used ?? 0);
   return {
     id: row.id,
     prefix: row.prefix,
@@ -456,8 +462,12 @@ export function prefixOut(row: Row, usage: Row | undefined): Row {
     tags: Array.isArray(row.tags) ? row.tags : [],
     utilization: usage
       ? {
-          used: Number(usage.used ?? 0),
-          dhcp_size: Number(usage.dhcp_size ?? 0),
+          used,
+          dhcp_size: Number(usage.pool_size ?? usage.dhcp_size ?? 0),
+          dhcp_used:
+            usage.pool_used === null || usage.pool_used === undefined
+              ? null
+              : Number(usage.pool_used),
           capacity,
           percent:
             capacity > 0

@@ -23,6 +23,8 @@ import {
   suggestTemplate,
   type Template,
   templateLayout,
+  historyFirstDay,
+  occupiedOfDaily,
   totalSeries,
   utilizationHistoryPoints,
   utilizationRow,
@@ -485,8 +487,11 @@ Deno.test("save actions accept the new fields and keep them when not sent", () =
   assertEquals(parsePrefix({ prefix: "10.0.0.0/24", notes: "" }).notes, null);
 });
 
-Deno.test("utilization history: breakdown, legacy rows, live point replaces today", () => {
-  const legacy = utilizationRow({ day: "2026-11-14", used: 30, dhcp_used: 50, total: "254" });
+Deno.test("utilization history: one counting, approximations, live point replaces today", () => {
+  // Row before 0347, backfilled by 0348 (occupied_total = used).
+  const legacy = utilizationRow({ day: "2026-11-14", used: 30, dhcp_used: 50, total: "254", occupied_total: 30 });
+  // Row before 0347 without backfill (fallback to the documented addresses).
+  const raw = utilizationRow({ day: "2026-11-13", used: 29, dhcp_used: 50, total: "254" });
   const stored = utilizationRow({
     day: "2026-11-15", used: 31, dhcp_used: 50, total: "254",
     static_used: 28, static_total: "204", pool_used: 20, pool_size: "50", occupied_total: 48,
@@ -500,23 +505,44 @@ Deno.test("utilization history: breakdown, legacy rows, live point replaces toda
     used: 33, dhcp_size: "50", capacity: "254",
     static_used: 30, static_total: "204", pool_used: 25, pool_size: "50", occupied_total: 55,
   }, "2026-11-16");
-  const points = utilizationHistoryPoints([stored, staleToday, legacy], live);
-  assertEquals(points.map((point) => point.day), ["2026-11-14", "2026-11-15", "2026-11-16"]);
-  // Legacy row: old percent kept, new series null.
-  assertEquals(points[0], {
-    day: "2026-11-14", used: 80, total: 254, percent: 31.5,
-    staticPercent: null, poolPercent: null, totalPercent: null,
-    staticUsed: null, staticTotal: null, poolUsed: null, poolSize: null, occupied: null,
+  const points = utilizationHistoryPoints([stored, staleToday, legacy, raw], live);
+  assertEquals(points.map((point) => point.day), ["2026-11-13", "2026-11-14", "2026-11-15", "2026-11-16"]);
+  // Old rows: occupied / total (pool size never counted), flagged as approximation.
+  assertEquals(points[1], {
+    day: "2026-11-14", used: 30, total: 254, percent: 11.8,
+    staticPercent: null, poolPercent: null, totalPercent: 11.8, approx: true,
+    staticUsed: null, staticTotal: null, poolUsed: null, poolSize: null, occupied: 30,
   });
-  assertEquals(points[1]!.staticPercent, 13.7);
-  assertEquals(points[1]!.poolPercent, 40);
-  assertEquals(points[1]!.totalPercent, 18.9);
+  assertEquals([points[0]!.used, points[0]!.percent, points[0]!.approx], [29, 11.4, true]);
+  assertEquals(points[2]!.staticPercent, 13.7);
+  assertEquals(points[2]!.poolPercent, 40);
+  assertEquals([points[2]!.percent, points[2]!.totalPercent, points[2]!.approx], [18.9, 18.9, false]);
   // Live values win over the stored row of today.
-  assertEquals(points[2]!.occupied, 55);
-  assertEquals(points[2]!.poolPercent, 50);
-  assertEquals(points[2]!.percent, 32.7);
-  // Forecast series: occupied where available, legacy before.
-  assertEquals(totalSeries(points).map((point) => point.used), [80, 48, 55]);
+  assertEquals(points[3]!.occupied, 55);
+  assertEquals(points[3]!.poolPercent, 50);
+  assertEquals(points[3]!.percent, 21.7);
+  // Forecast series: the same counting for every day.
+  assertEquals(totalSeries(points).map((point) => point.used), [29, 30, 48, 55]);
+  assertEquals(occupiedOfDaily({ used: 59, dhcp_used: 139, occupied_total: null }), 59);
+  assertEquals(occupiedOfDaily({ used: 70, dhcp_used: 139, occupied_total: "61" }), 61);
+});
+
+Deno.test("utilization history: customer case (pool 139, 59 addresses, old rows)", () => {
+  const old = ["2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15"].map((day) =>
+    utilizationRow({ day, used: 59, dhcp_used: 139, total: "254", occupied_total: 59 })
+  );
+  const live = utilizationRow({
+    used: 59, dhcp_size: "139", capacity: "254",
+    static_used: 59, static_total: "115", pool_used: 0, pool_size: "139", occupied_total: 59,
+  }, "2026-11-16");
+  const points = utilizationHistoryPoints(old, live);
+  // Flat 23 %, no drop from 78 %.
+  assertEquals(points.map((point) => point.percent), [23.2, 23.2, 23.2, 23.2, 23.2]);
+  assertEquals(points.map((point) => point.approx), [true, true, true, true, false]);
+  assertEquals([points[4]!.staticPercent, points[4]!.poolPercent], [51.3, 0]);
+  assertEquals(historyFirstDay("2026-11-12", points), "2026-11-12");
+  assertEquals(historyFirstDay(null, points.slice(4)), "2026-11-16");
+  assertEquals(historyFirstDay(null, []), null);
 });
 
 Deno.test("utilization history: no pool and IPv6", () => {

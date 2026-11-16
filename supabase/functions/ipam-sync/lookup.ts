@@ -289,7 +289,8 @@ export async function fullPrefixes(
     const entry = usageById.get(String(prefix.id));
     const capacity = Number(entry?.capacity ?? 0);
     if (!entry || capacity <= 0) continue;
-    const used = Number(entry.used ?? 0) + Number(entry.dhcp_size ?? 0);
+    // ipam_prefix_usage (0348): used = occupied addresses, pool not counted.
+    const used = Number(entry.used ?? 0);
     const percent = Math.min(100, Math.round((used / capacity) * 1000) / 10);
     const limit = threshold ?? Number(prefix.utilization_warning_percent ?? 85);
     if (percent < limit) continue;
