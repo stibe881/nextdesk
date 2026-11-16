@@ -478,8 +478,6 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    an; Standort, Uplink und Services ergänzen Sie dort. Danach die Sonde wählen.
    Das Gerät erhält einen Ping-Sensor.
 
-   ![Gerät hinzufügen mit Treffer aus der IP-Adressverwaltung](images/ag-ueberwachung-hinzufuegen.jpg)
-
 2. **Sensor hinzufügen** (im Gerätedetail) – Art wählen:
    - **Ping**: Ist das Gerät erreichbar?
    - **TCP-Port**: Antwortet ein Dienst, z. B. 3389 (RDP) oder 1433 (SQL)?
@@ -527,6 +525,8 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    Beim Pausieren und Löschen endet ein offener Alarm des Sensors; die
    Störung gilt als behoben, sobald kein Sensor des Geräts mehr gestört ist.
 4. **Sonde hinzufügen** – siehe Handbuch für Administratoren.
+
+![Gerät hinzufügen mit Treffer aus der IP-Adressverwaltung](images/ag-ueberwachung-hinzufuegen.jpg)
 
 **In der App** finden Sie die Überwachung unter **Dienste → Überwachung** (wenn
 das Modul aktiv ist). Die App zeigt die Kacheln je Zustand, die aktiven
