@@ -716,7 +716,7 @@ async function storeTopology(admin: Admin, agent: Agent, job: Row, result: Row |
     error = "Das Ergebnis konnte nicht gespeichert werden.";
   }
   // Probes before 1.3.0 do not know the job.
-  const message = /Unbekannter Auftrag|nur mit dem Agenten auf Windows/.test(error ?? "")
+  const message = /Unbekannter Auftrag|nur mit dem Agenten auf Windows|allowWrites/.test(error ?? "")
     ? "Die Sonde ist zu alt. Verbindungen liest sie ab Version 1.3.0 aus."
     : error ?? "Unbekannter Fehler.";
   await admin.from("monitoring_topology_status").upsert({
