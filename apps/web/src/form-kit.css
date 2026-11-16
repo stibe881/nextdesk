@@ -359,3 +359,123 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Auswahl vorhandener Einträge mit «Neu hinzufügen» unter der Liste
+   (pick-or-create.tsx), z. B. Standort und Rack. */
+.pick-or-create {
+  position: relative;
+  min-width: 0;
+}
+.pick-or-create__trigger.pick-or-create__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+}
+.pick-or-create__trigger.pick-or-create__trigger:hover:not(:disabled) {
+  border-color: var(--border-tint-687891);
+  background: var(--surface);
+}
+.pick-or-create__trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pick-or-create__placeholder {
+  color: var(--muted);
+}
+.pick-or-create__popover {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  display: grid;
+  gap: 8px;
+  width: max(100%, 340px);
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 16px 40px rgb(15 23 42 / 0.18);
+}
+.pick-or-create__list {
+  display: grid;
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.pick-or-create__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 14px;
+  cursor: pointer;
+}
+.pick-or-create__option small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.pick-or-create__option:hover,
+.pick-or-create__option:focus-visible {
+  background: var(--primary-soft);
+  outline: none;
+}
+.pick-or-create__option[aria-selected="true"] {
+  color: var(--primary);
+  font-weight: 600;
+}
+.pick-or-create__option--empty {
+  color: var(--muted);
+}
+.pick-or-create__none {
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.pick-or-create__create {
+  display: grid;
+  gap: 6px;
+  padding: 10px 2px 2px;
+  border-top: 1px solid var(--border);
+}
+.pick-or-create__create label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.pick-or-create__create > span {
+  display: flex;
+  gap: 6px;
+}
+.pick-or-create__create > span > input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+.pick-or-create__create button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.pick-or-create__create small {
+  color: var(--muted);
+  font-size: 12px;
+}

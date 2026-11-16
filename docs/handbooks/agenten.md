@@ -63,7 +63,10 @@ Das **Systemstatus-Badge** oben in der Navigation und die Seite
 **Systemstatus** aktualisieren sich selbst (alle 30 Sekunden und beim
 Zurückkehren in den Tab). In der **Infrastruktur** hat ein Gerät einen oder
 mehrere **Dienste (für Systemstatus)**, die bei einer Überwachungsstörung
-(PRTG) ihren Status ändern, die **Höheneinheit** als «von … bis» und
+(PRTG) ihren Status ändern, **Standort** und **Rack** zum Auswählen aus den
+vorhandenen Einträgen (fehlt einer, legst du ihn direkt unter der Liste mit
+**Hinzufügen** an; ein neues Rack entsteht am gewählten Standort mit 42 HE),
+die **Höheneinheit** als «von … bis» und
 Wartungseinträge mit Datum und optionaler **Uhrzeit**. In der
 **Wartungscheckliste** erfasst du jeden Punkt in einer eigenen Zeile mit
 einem eigenen **Datum** (z. B. wann er erledigt wurde oder wann er dran ist);
