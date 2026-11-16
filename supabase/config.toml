@@ -442,3 +442,53 @@ verify_jwt = false
 [functions.external-status]
 import_map = "./functions/deno.json"
 verify_jwt = false
+
+# verify_jwt as currently deployed (checked 2026-11-16).
+
+[functions.agent-workbench]
+import_map = "./functions/deno.json"
+verify_jwt = false
+
+[functions.contracts]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
+[functions.department-questions]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
+[functions.department-teams]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
+[functions.experience-hub]
+import_map = "./functions/deno.json"
+verify_jwt = false
+
+[functions.licenses]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
+[functions.record-attachments]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
+[functions.requester-portal]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
+[functions.tenant-data-retention]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
+[functions.ticket-approvals]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
+[functions.ticket-csv-export]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
+[functions.ticket-csv-import]
+import_map = "./functions/deno.json"
+verify_jwt = true
