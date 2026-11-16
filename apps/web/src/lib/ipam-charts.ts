@@ -20,27 +20,57 @@ export type TrendPoint = {
   day: string;
   /** «Belegt gesamt» (y of the main line). */
   percent: number;
-  /** True when the day has no breakdown yet: `percent` is the old
-   * measurement that counted the whole DHCP pool as used. */
-  legacy: boolean;
+  /** True for days without breakdown and lease data: «gesamt» counts the
+   * documented addresses only (approximation, shown as «ohne Leases»). */
+  approx: boolean;
   staticPercent: number | null;
   staticY: number | null;
   poolPercent: number | null;
   poolY: number | null;
 };
 
-/**
- * «Belegt gesamt» of a history point: the new value without double
- * counting, or the old measurement for days before the breakdown.
- */
+export type TrendSeriesKey = "total" | "static" | "pool";
+
+/** «Belegt gesamt» of a history point (occupied ÷ capacity, one counting). */
 export function totalPercentOf(point: UtilizationHistoryPoint): number {
   return point.totalPercent ?? point.percent;
 }
 
-/** KPI values above the chart, based on «Belegt gesamt». */
+/** True when the point is an approximation without lease data. */
+export function isApprox(point: UtilizationHistoryPoint): boolean {
+  return (
+    point.approx ??
+    (point.totalPercent === null || point.totalPercent === undefined)
+  );
+}
+
+const DAY_MS = 86_400_000;
+
+/** Day number of «YYYY-MM-DD» (UTC, no time zone shift). */
+export function dayNumber(day: string): number {
+  const [year, month, date] = day.split("-").map(Number);
+  return Math.round(
+    Date.UTC(year ?? 1970, (month ?? 1) - 1, date ?? 1) / DAY_MS,
+  );
+}
+
+/** Day number → «YYYY-MM-DD». */
+export function dayString(day: number): string {
+  return new Date(day * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** «YYYY-MM-DD» → «16.11.» */
+export function shortDay(day: string): string {
+  const [, month, date] = day.split("-");
+  return `${date}.${month}.`;
+}
+
+/** KPI values above the chart, based on «Belegt gesamt». `days` is the
+ * distance from the oldest available day in the window to the newest. */
 export function trendKpis(history: UtilizationHistory): {
   today: number;
   first: number;
+  firstDay: string;
   days: number;
   change: number;
 } | null {
@@ -52,9 +82,17 @@ export function trendKpis(history: UtilizationHistory): {
   return {
     today,
     first: start,
-    days: history.points.length,
+    firstDay: first.day,
+    days: Math.max(0, dayNumber(last.day) - dayNumber(first.day)),
     change: round(today - start),
   };
+}
+
+/** «+3 Punkte», «−2 Punkte», «±0 Punkte» (rounded like the KPI values). */
+export function changeText(change: number): string {
+  const rounded = Math.round(change);
+  if (rounded === 0) return "±0 Punkte";
+  return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded)} Punkte`;
 }
 
 /** Path through the defined values; gaps (null) start a new segment. */
@@ -72,6 +110,20 @@ export function gappedPath(coords: { x: number; y: number | null }[]): string {
   return parts.join(" ");
 }
 
+/** Values without a neighbour in their series (a path would be invisible). */
+export function isolatedPoints(
+  coords: { x: number; y: number | null }[],
+): { x: number; y: number }[] {
+  return coords.flatMap((point, index) => {
+    if (point.y === null) return [];
+    const before = coords[index - 1]?.y ?? null;
+    const after = coords[index + 1]?.y ?? null;
+    return before === null && after === null
+      ? [{ x: point.x, y: point.y }]
+      : [];
+  });
+}
+
 export type TrendChart = {
   width: number;
   height: number;
@@ -83,8 +135,12 @@ export type TrendChart = {
   staticLine: string;
   /** «Belegt im DHCP-Pool» (empty without pool or data). */
   poolLine: string;
+  /** Single values (no neighbour) drawn as dots so they stay visible. */
+  dots: { series: TrendSeriesKey; x: number; y: number }[];
   /** Which breakdown series have at least one value. */
   series: { static: boolean; pool: boolean };
+  /** First day of an approximation without lease data … last such day. */
+  approx: { from: string; to: string } | null;
   /** Closed area below the measured line. */
   area: string;
   /** Dashed forecast line and its uncertainty band, or null. */
@@ -105,10 +161,12 @@ function niceFloor(value: number): number {
 }
 
 /**
- * Area chart model of the utilization history. The y axis zooms to the
- * relevant range (at least 40 points, always up to 100 %) so small changes
- * stay visible. With a forecast target, the right 30 % show the projected
- * line to the threshold/full date with a widening band.
+ * Area chart model of the utilization history. The x axis is time: it
+ * starts at the first day with data (at most `days` back) and ends with the
+ * newest day (today), so no value is extended to the left edge. The y axis
+ * zooms to the relevant range (at least 40 points, always up to 100 %) so
+ * small changes stay visible. With a forecast target, the right 30 % show
+ * the projected line to the threshold/full date with a widening band.
  */
 export function trendChart(
   history: UtilizationHistory,
@@ -141,17 +199,39 @@ export function trendChart(
   const todayX = target
     ? round(plot.left + (plot.right - plot.left) * 0.7)
     : plot.right;
-  const step = raw.length > 1 ? (todayX - plot.left) / (raw.length - 1) : 0;
-  const points: TrendPoint[] = raw.map((point, index) => {
+  const firstRaw = raw[0];
+  const lastRaw = raw[raw.length - 1];
+  // Time axis: the window start, or the first day with data when it is later.
+  const endDay = lastRaw ? dayNumber(lastRaw.day) : 0;
+  const windowStart = endDay - days;
+  const dataStart = Math.min(
+    ...[history.firstDay, firstRaw?.day]
+      .filter((day): day is string => !!day)
+      .map(dayNumber),
+    endDay,
+  );
+  const fromWindow = dataStart <= windowStart;
+  const start = Math.min(
+    Math.max(windowStart, dataStart),
+    firstRaw ? dayNumber(firstRaw.day) : endDay,
+  );
+  const span = endDay - start;
+  const xOf = (day: string) =>
+    span > 0
+      ? round(
+          plot.left + ((dayNumber(day) - start) / span) * (todayX - plot.left),
+        )
+      : todayX;
+  const points: TrendPoint[] = raw.map((point) => {
     const percent = totalPercentOf(point);
     const staticPercent = point.staticPercent ?? null;
     const poolPercent = point.poolPercent ?? null;
     return {
-      x: round(plot.left + index * step),
+      x: xOf(point.day),
       y: y(percent),
       day: point.day,
       percent,
-      legacy: point.totalPercent === null || point.totalPercent === undefined,
+      approx: isApprox(point),
       staticPercent,
       staticY: staticPercent === null ? null : y(staticPercent),
       poolPercent,
@@ -161,16 +241,30 @@ export function trendChart(
   const line = points
     .map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`)
     .join(" ");
-  const staticLine = gappedPath(
-    points.map((point) => ({ x: point.x, y: point.staticY })),
-  );
-  const poolLine = gappedPath(
-    points.map((point) => ({ x: point.x, y: point.poolY })),
-  );
+  const staticCoords = points.map((point) => ({
+    x: point.x,
+    y: point.staticY,
+  }));
+  const poolCoords = points.map((point) => ({ x: point.x, y: point.poolY }));
+  const staticLine = gappedPath(staticCoords);
+  const poolLine = gappedPath(poolCoords);
+  const dots: TrendChart["dots"] = [
+    ...isolatedPoints(staticCoords).map((dot) => ({
+      series: "static" as const,
+      ...dot,
+    })),
+    ...isolatedPoints(poolCoords).map((dot) => ({
+      series: "pool" as const,
+      ...dot,
+    })),
+    ...(points.length === 1
+      ? [{ series: "total" as const, x: points[0]!.x, y: points[0]!.y }]
+      : []),
+  ];
   const first = points[0];
   const last = points[points.length - 1];
   const area =
-    first && last
+    first && last && points.length > 1
       ? `${line} L${last.x} ${plot.bottom} L${first.x} ${plot.bottom} Z`
       : "";
   let forecastShape: TrendChart["forecast"] = null;
@@ -184,14 +278,20 @@ export function trendChart(
       endY,
     };
   }
-  const span = 100 - min;
-  const tickStep = span > 60 ? 25 : span > 30 ? 10 : 5;
+  const tickSpan = 100 - min;
+  const tickStep = tickSpan > 60 ? 25 : tickSpan > 30 ? 10 : 5;
   const yTicks: TrendChart["yTicks"] = [];
   for (let value = 100; value >= min; value -= tickStep) {
     yTicks.push({ y: y(value), label: `${value} %` });
   }
+  const startLabel =
+    fromWindow || !first
+      ? `vor ${days} Tagen`
+      : `seit ${shortDay(dayString(start))}`;
   const xTicks: TrendChart["xTicks"] = [
-    { x: plot.left, label: `vor ${days} Tagen`, anchor: "start" },
+    ...(span > 0 || !first
+      ? [{ x: plot.left, label: startLabel, anchor: "start" as const }]
+      : []),
     {
       x: todayX,
       label: "heute",
@@ -215,9 +315,16 @@ export function trendChart(
           : null,
       ].filter(Boolean)
     : [];
-  const description = last
-    ? `Belegung gesamt der letzten ${days} Tage${first ? ` von ${Math.round(first.percent)} auf ${Math.round(last.percent)} Prozent` : ""}.${breakdown.length ? ` Heute belegt ${breakdown.join(", ")}.` : ""} ${forecastSentence(forecast, warningPercent)}`
-    : "Noch kein Verlauf vorhanden.";
+  const period = fromWindow
+    ? `der letzten ${days} Tage`
+    : `seit ${shortDay(dayString(start))}`;
+  const description =
+    first && last
+      ? `Belegung gesamt ${period}${points.length > 1 ? ` von ${Math.round(first.percent)} auf ${Math.round(last.percent)} Prozent` : ` ${Math.round(last.percent)} Prozent`}.${breakdown.length ? ` Heute belegt ${breakdown.join(", ")}.` : ""} ${forecastSentence(forecast, warningPercent)}`
+      : "Noch kein Verlauf vorhanden.";
+  const approxDays = points
+    .filter((point) => point.approx)
+    .map((point) => point.day);
   return {
     width,
     height,
@@ -226,10 +333,14 @@ export function trendChart(
     line,
     staticLine,
     poolLine,
+    dots,
     series: {
       static: points.some((point) => point.staticPercent !== null),
       pool: points.some((point) => point.poolPercent !== null),
     },
+    approx: approxDays.length
+      ? { from: approxDays[0]!, to: approxDays[approxDays.length - 1]! }
+      : null,
     area,
     forecast: forecastShape,
     warningY: y(warningPercent),

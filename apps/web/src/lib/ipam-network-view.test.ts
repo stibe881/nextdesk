@@ -92,7 +92,8 @@ describe("parseNetworkLookup", () => {
     ]);
     expect(result?.prefixes[0]).toMatchObject({
       matched: "10.20.40.9",
-      percent: 79,
+      // Pool size (dhcp_size) is not counted as occupied: 100 / 254.
+      percent: 39,
     });
     expect(parseNetworkLookup({ foo: 1 })).toBeNull();
   });

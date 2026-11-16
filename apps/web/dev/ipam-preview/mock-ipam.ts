@@ -335,6 +335,19 @@ addPrefix({
   dhcp: ["10.30.10.20", "10.30.10.240"],
 });
 
+// Case from a customer report: 172.16.66.0/24, VLAN 66 LOCKSYSTEM, DHCP pool
+// .101–.239 (139 addresses), 59 documented addresses, no leases. History:
+// four old days without breakdown plus today (see history()).
+addPrefix({
+  id: "p-cham-lock",
+  prefix: "172.16.66.0/24",
+  siteId: "s-cham",
+  vlanId: vlan("s-cham", 66, "LOCKSYSTEM", "IOT"),
+  description: "Schliesssystem",
+  zone: "IOT",
+  dhcp: ["172.16.66.101", "172.16.66.239"],
+});
+
 const rz = {
   dmz: vlan("s-rz", 10, "DMZ", "DMZ"),
   server: vlan("s-rz", 20, "SERVER", "LAN"),
@@ -604,6 +617,13 @@ range("10.10.20.0", 10, 33, (ip, n) =>
   addAddress(ip, `CAM-BAAR-${String(n - 9).padStart(2, "0")}`, {
     deviceType: "camera",
     vendor: "Axis",
+  }),
+);
+
+// Cham LOCKSYSTEM: 59 door controllers outside the pool, no leases.
+range("172.16.66.0", 10, 68, (ip, n) =>
+  addAddress(ip, `LOCK-CHAM-${String(n - 9).padStart(2, "0")}`, {
+    deviceType: "other",
   }),
 );
 
@@ -1036,28 +1056,39 @@ function usage(prefix: IpamPrefix): IpamPrefix["usage"] {
     };
   }
   let dhcpSize = 0;
-  if (prefix.dhcpStart && prefix.dhcpEnd) {
+  if (prefix.dhcpStart && prefix.dhcpEnd && cidr.version === 4) {
     dhcpSize = Number(
       parseAddress(prefix.dhcpEnd)!.value -
         parseAddress(prefix.dhcpStart)!.value +
         1n,
     );
   }
-  const used = addresses.filter(
-    (entry) =>
-      entry.prefixId === prefix.id &&
-      entry.status !== "deprecated" &&
-      !inDhcp(prefix, parseAddress(entry.address)!.value),
-  ).length;
+  // Same counting as ipam_prefix_utilization_breakdown (0348): occupied =
+  // addresses outside the pool + occupied pool addresses (documented
+  // records stand in for leases here); the pool size is never counted.
+  const documented = addresses.filter(
+    (entry) => entry.prefixId === prefix.id && entry.status !== "deprecated",
+  );
+  const poolUsed = dhcpSize
+    ? documented.filter((entry) =>
+        inDhcp(prefix, parseAddress(entry.address)!.value),
+      ).length
+    : 0;
+  const staticUsed = documented.length - poolUsed;
+  const used = staticUsed + poolUsed;
   const percent =
     capacity > 0n
-      ? Math.min(
-          100,
-          Math.round(((used + dhcpSize) * 1000) / Number(capacity)) / 10,
-        )
+      ? Math.min(100, Math.round((used * 1000) / Number(capacity)) / 10)
       : 0;
-  // The VoIP pool is nearly exhausted in the demo, the DHCP leases count.
-  return { used, dhcpSize, capacity: capacity.toString(), percent };
+  return {
+    used,
+    dhcpSize,
+    poolUsed,
+    staticUsed,
+    addresses: documented.length,
+    capacity: capacity.toString(),
+    percent,
+  };
 }
 
 function withUsage(prefix: IpamPrefix): IpamPrefix {
@@ -1098,30 +1129,68 @@ function forecastOf(prefix: IpamPrefix): Forecast {
 }
 
 function history(prefix: IpamPrefix, days: number) {
-  const current = usage(prefix)?.percent ?? 0;
   const forecast = forecastOf(prefix);
-  const slope = forecast.trend === "rising" ? 0.09 : 0.005;
   const info = usage(prefix);
   const total = Number(info?.capacity ?? "0");
-  // Breakdown like ipam_prefix_utilization_breakdown: static part, pool
-  // occupancy (documented + active leases, demo curve), total without
-  // double counting.
-  const poolSize = cidrOf(prefix).version === 4 ? (info?.dhcpSize ?? 0) : 0;
+  const one = (value: number) => Math.round(value * 10) / 10;
+  const share = (value: number, of: number) =>
+    of > 0 ? one(Math.min(100, (value / of) * 100)) : 0;
+  const poolSize = info?.dhcpSize ?? 0;
   const staticTotal = Math.max(0, total - poolSize);
-  const staticNow = info?.used ?? 0;
+  if (prefix.id === "p-cham-lock") {
+    // Customer case: imported five days ago; four old rows (backfilled by
+    // 0348: occupied = documented addresses, no split) and today's values.
+    const used = info?.used ?? 0;
+    const old = [4, 3, 2, 1].map((offset) => ({
+      day: day(-offset),
+      used,
+      total,
+      percent: share(used, total),
+      totalPercent: share(used, total),
+      approx: true,
+      staticPercent: null,
+      poolPercent: null,
+      staticUsed: null,
+      staticTotal: null,
+      poolUsed: null,
+      poolSize: null,
+      occupied: used,
+    }));
+    const today = {
+      day: day(0),
+      used,
+      total,
+      percent: share(used, total),
+      totalPercent: share(used, total),
+      approx: false,
+      staticPercent: share(info?.staticUsed ?? 0, staticTotal),
+      poolPercent: share(info?.poolUsed ?? 0, poolSize),
+      staticUsed: info?.staticUsed ?? 0,
+      staticTotal,
+      poolUsed: info?.poolUsed ?? 0,
+      poolSize,
+      occupied: used,
+    };
+    return {
+      points: [...old, today],
+      forecast: { trend: "stable", daysToWarning: null, daysToFull: null },
+      warningPercent: prefix.utilizationWarningPercent,
+      days,
+      firstDay: day(-4),
+    };
+  }
+  const slope = forecast.trend === "rising" ? 0.09 : 0.005;
+  const staticNow = info?.staticUsed ?? 0;
+  const poolNow = info?.poolUsed ?? 0;
   const points = [];
   let localSeed = prefix.id.length * 31;
-  const one = (value: number) => Math.round(value * 10) / 10;
   for (let index = days - 1; index >= 0; index--) {
     localSeed = (localSeed * 16807) % 2147483647;
     const noise = ((localSeed % 1000) / 1000 - 0.5) * 1.6;
-    const percent = Math.max(
-      0,
-      Math.min(100, current - index * slope + (index ? noise : 0)),
-    );
+    const drift = 1 - (index * slope) / 40;
     const staticUsed = Math.max(
       0,
-      Math.round(staticNow * (1 - index * 0.0025) + (index ? noise : 0)),
+      Math.round(staticNow * drift + (index ? noise : 0)),
     );
     const poolUsed = poolSize
       ? Math.min(
@@ -1129,8 +1198,7 @@ function history(prefix: IpamPrefix, days: number) {
           Math.max(
             0,
             Math.round(
-              poolSize * (0.8 - index * 0.0016 + Math.sin(index / 6) * 0.03) +
-                noise * 2,
+              poolNow * (drift + Math.sin(index / 6) * 0.03) + noise * 2,
             ),
           ),
         )
@@ -1138,14 +1206,13 @@ function history(prefix: IpamPrefix, days: number) {
     const occupied = staticUsed + poolUsed;
     points.push({
       day: day(-index),
-      used: Math.round((percent / 100) * total),
+      used: occupied,
       total,
-      percent: Math.round(percent * 10) / 10,
-      staticPercent: staticTotal
-        ? one(Math.min(100, (staticUsed / staticTotal) * 100))
-        : null,
-      poolPercent: poolSize ? one((poolUsed / poolSize) * 100) : null,
-      totalPercent: total ? one(Math.min(100, (occupied / total) * 100)) : null,
+      percent: share(occupied, total),
+      totalPercent: share(occupied, total),
+      approx: false,
+      staticPercent: staticTotal ? share(staticUsed, staticTotal) : null,
+      poolPercent: poolSize ? share(poolUsed, poolSize) : null,
       staticUsed,
       staticTotal,
       poolUsed: poolSize ? poolUsed : null,
@@ -1153,7 +1220,14 @@ function history(prefix: IpamPrefix, days: number) {
       occupied,
     });
   }
-  return { points, forecast, warningPercent: prefix.utilizationWarningPercent };
+  return {
+    points,
+    forecast,
+    warningPercent: prefix.utilizationWarningPercent,
+    days,
+    // Measured for longer than the window.
+    firstDay: day(-400),
+  };
 }
 
 /** Aligned free blocks between start and end (inclusive). */
@@ -1377,11 +1451,7 @@ function overview() {
   const ordered = orderedPrefixes();
   const leaves = ordered.filter((entry) => entry.status === "active");
   const v4 = leaves.filter((entry) => !entry.prefix.includes(":"));
-  const used = v4.reduce(
-    (sum, entry) =>
-      sum + (entry.usage?.used ?? 0) + (entry.usage?.dhcpSize ?? 0),
-    0,
-  );
+  const used = v4.reduce((sum, entry) => sum + (entry.usage?.used ?? 0), 0);
   const capacity = v4.reduce(
     (sum, entry) => sum + Number(entry.usage?.capacity ?? 0),
     0,
@@ -1427,10 +1497,7 @@ function dashboard() {
   );
   const free = leaves.reduce(
     (sum, entry) =>
-      sum +
-      Number(entry.usage?.capacity ?? 0) -
-      (entry.usage?.used ?? 0) -
-      (entry.usage?.dhcpSize ?? 0),
+      sum + Number(entry.usage?.capacity ?? 0) - (entry.usage?.used ?? 0),
     0,
   );
   const top = [...leaves]
@@ -1635,11 +1702,7 @@ function siteCard(siteEntry: IpamSite) {
     (sum, entry) => sum + Number(usage(entry)?.capacity ?? 0),
     0,
   );
-  const used = own.reduce(
-    (sum, entry) =>
-      sum + (usage(entry)?.used ?? 0) + (usage(entry)?.dhcpSize ?? 0),
-    0,
-  );
+  const used = own.reduce((sum, entry) => sum + (usage(entry)?.used ?? 0), 0);
   const supernet = prefixes.find(
     (entry) =>
       entry.siteId === siteEntry.id &&

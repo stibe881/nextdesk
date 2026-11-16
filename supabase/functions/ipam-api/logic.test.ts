@@ -163,17 +163,22 @@ Deno.test("output formats and error mapping", () => {
   const prefix = prefixOut(
     { id: "p", prefix: "10.0.0.0/24", status: "active", gateway: "10.0.0.1" },
     {
-      used: 50,
-      dhcp_size: 77,
+      used: 59,
+      dhcp_size: 139,
       capacity: 254,
+      pool_used: 0,
+      pool_size: 139,
+      occupied_total: 59,
     },
   );
   assertEquals(prefix.gateway, "10.0.0.1");
+  // One counting: the pool size is not counted as used (59/254, not 198/254).
   assertEquals(prefix.utilization, {
-    used: 50,
-    dhcp_size: 77,
+    used: 59,
+    dhcp_size: 139,
+    dhcp_used: 0,
     capacity: 254,
-    percent: 50,
+    percent: 23.2,
   });
   assertEquals(reserveError("53400").status, 409);
   assertEquals(reserveError("P0002").code, "prefix_not_found");

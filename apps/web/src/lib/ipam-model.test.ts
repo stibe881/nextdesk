@@ -9,6 +9,7 @@ import {
   forecastText,
   formatRelative,
   parseTagInput,
+  usageComposition,
   usageTone,
   vrfLabel,
   type IpamAddress,
@@ -204,5 +205,51 @@ describe("ipam helpers", () => {
     expect(formatRelative("2026-11-11T11:56:00Z", now)).toBe("vor 4 Min.");
     expect(formatRelative("2026-11-08T12:00:00Z", now)).toBe("vor 3 Tagen");
     expect(formatRelative(null, now)).toBe("nie");
+  });
+
+  it("composition uses the same counting as the percentages", () => {
+    // Customer case: 59 addresses outside the pool, pool 139 without leases.
+    const customer = usageComposition({
+      used: 59,
+      dhcpSize: 139,
+      poolUsed: 0,
+      staticUsed: 59,
+      capacity: "254",
+      percent: 23,
+    });
+    expect(customer.summary).toBe(
+      "59 von 254 belegt · DHCP-Pool: 0 von 139 belegt",
+    );
+    expect(
+      customer.parts.map((part) => [part.key, part.count, part.tone]),
+    ).toEqual([
+      ["static", 59, "active"],
+      ["pool", 0, "dhcp"],
+      ["poolFree", 139, "dhcp-free"],
+      ["free", 56, "free"],
+    ]);
+    expect(customer.parts.reduce((sum, part) => sum + part.count, 0)).toBe(254);
+    // Without pool: occupied and free only.
+    const plain = usageComposition({
+      used: 10,
+      dhcpSize: 0,
+      capacity: "254",
+      percent: 4,
+    });
+    expect(plain.summary).toBe("10 von 254 belegt");
+    expect(plain.parts.map((part) => part.count)).toEqual([10, 244]);
+    // Leases in the pool count once.
+    const leases = usageComposition({
+      used: 64,
+      dhcpSize: 139,
+      poolUsed: 5,
+      staticUsed: 59,
+      capacity: "254",
+      percent: 25,
+    });
+    expect(leases.summary).toBe(
+      "64 von 254 belegt · DHCP-Pool: 5 von 139 belegt",
+    );
+    expect(leases.parts.map((part) => part.count)).toEqual([59, 5, 134, 56]);
   });
 });

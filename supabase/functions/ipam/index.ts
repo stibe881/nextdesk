@@ -74,6 +74,8 @@ import {
   templateFromRow,
   templateLayout,
   totalSeries,
+  historyFirstDay,
+  occupiedOfDaily,
   utilizationHistoryPoints,
   utilizationRow,
   vlanMatrix,
@@ -231,7 +233,22 @@ function vlanDto(row: Row) {
   };
 }
 
-type Usage = { used: number; dhcpSize: number; capacity: string; percent: number };
+/**
+ * Utilization of a prefix, one counting everywhere (0348):
+ * used = occupied addresses (outside the pool + occupied in the pool, each
+ * once), percent = used / capacity. dhcpSize is the pool size (information
+ * only, never counted as used).
+ */
+type Usage = {
+  used: number;
+  dhcpSize: number;
+  poolUsed: number;
+  staticUsed: number;
+  /** Documented, non-deprecated addresses (without leases). */
+  addresses: number;
+  capacity: string;
+  percent: number;
+};
 
 function prefixDto(row: Row, usage: Usage | null) {
   return {
@@ -391,12 +408,14 @@ async function loadAddress(ctx: Ctx, addressId: string): Promise<Row> {
 }
 
 async function usageMap(ctx: Ctx): Promise<Map<string, Usage>> {
-  const { data, error } = await ctx.admin.rpc("ipam_prefix_usage", { p_tenant_id: ctx.tenantId });
+  const { data, error } = await ctx.admin.rpc("ipam_prefix_utilization_breakdown", {
+    p_tenant_id: ctx.tenantId,
+    p_prefix_id: null,
+  });
   if (error) throw dbFailure();
   const result = new Map<string, Usage>();
   for (const row of (data ?? []) as Row[]) {
-    const used = num(row.used);
-    const dhcpSize = num(row.dhcp_size);
+    const used = num(row.occupied_total);
     const capacityText = String(row.capacity ?? "0").split(".")[0] || "0";
     let capacity = 0n;
     try {
@@ -406,9 +425,12 @@ async function usageMap(ctx: Ctx): Promise<Map<string, Usage>> {
     }
     result.set(String(row.prefix_id), {
       used,
-      dhcpSize,
+      dhcpSize: num(row.pool_size),
+      poolUsed: num(row.pool_used),
+      staticUsed: num(row.static_used),
+      addresses: num(row.used),
       capacity: capacity.toString(),
-      percent: Math.min(100, utilizationPercent(BigInt(used + dhcpSize), capacity)),
+      percent: Math.min(100, utilizationPercent(BigInt(used), capacity)),
     });
   }
   return result;
@@ -461,7 +483,7 @@ async function overview(ctx: Ctx) {
     const cidr = parseCidrInput(prefix.prefix)?.cidr;
     if (prefix.usage && prefix.usage.percent >= prefix.utilizationWarningPercent) overWarning++;
     if (!cidr || cidr.version !== 4 || hasChild.has(prefix.id)) continue;
-    used += (prefix.usage?.used ?? 0) + (prefix.usage?.dhcpSize ?? 0);
+    used += prefix.usage?.used ?? 0;
     capacity += cidrCapacity(cidr);
   }
   return json(ctx.request, {
@@ -480,7 +502,7 @@ async function overview(ctx: Ctx) {
         vrfCount: space.vrfs.length,
         // Addresses inside the visible top-level prefixes (usage counts nested ones).
         addressCount: nested.filter((entry) => entry.parentId === null)
-          .reduce((sum, entry) => sum + (entry.item.usage?.used ?? 0), 0),
+          .reduce((sum, entry) => sum + (entry.item.usage?.addresses ?? 0), 0),
         usedV4: used,
         capacityV4: capacity.toString(),
         overWarning,
@@ -495,7 +517,7 @@ async function prefixForecast(ctx: Ctx, prefixIds: string[], warnings: Map<strin
   if (!prefixIds.length) return {};
   const since = new Date(Date.now() - 180 * 86_400_000).toISOString().slice(0, 10);
   const { data, error } = await ctx.admin.from("ipam_utilization_daily")
-    .select("prefix_id, day, used, dhcp_used, total")
+    .select("prefix_id, day, used, total, occupied_total")
     .eq("tenant_id", ctx.tenantId).in("prefix_id", prefixIds.slice(0, 2000)).gte("day", since)
     .order("day").limit(50000);
   if (error) throw dbFailure();
@@ -503,7 +525,7 @@ async function prefixForecast(ctx: Ctx, prefixIds: string[], warnings: Map<strin
   for (const row of (data ?? []) as Row[]) {
     const key = String(row.prefix_id);
     const list = series.get(key) ?? [];
-    list.push({ day: String(row.day), used: num(row.used) + num(row.dhcp_used), total: num(row.total) });
+    list.push({ day: String(row.day), used: occupiedOfDaily(row), total: num(row.total) });
     series.set(key, list);
   }
   const result: Record<string, ReturnType<typeof forecastUtilization>> = {};
@@ -2031,7 +2053,7 @@ async function dashboard(ctx: Ctx) {
     const id = String(row.id);
     const item = usage.get(id);
     const cidr = cidrOf(row)!;
-    const taken = BigInt((item?.used ?? 0) + (item?.dhcpSize ?? 0));
+    const taken = BigInt(item?.used ?? 0);
     const capacity = cidrCapacity(cidr);
     if (capacity > taken) free += capacity - taken;
     if (item && item.percent >= (warnings.get(id) ?? 85)) overThreshold++;
@@ -2135,7 +2157,7 @@ async function loadCleanupPlans(ctx: Ctx) {
       gateway: inetText(row.gateway),
       dhcpStart: inetText(row.dhcp_start),
       dhcpEnd: inetText(row.dhcp_end),
-      used: usage.get(String(row.id))?.used ?? 0,
+      used: usage.get(String(row.id))?.addresses ?? 0,
     })),
     space.vlans.map((row) => {
       const site = row.site_id ? sites.get(String(row.site_id)) : undefined;
@@ -2239,25 +2261,29 @@ async function utilizationHistory(ctx: Ctx, prefixId: string, days: number) {
   const prefix = await loadPrefix(ctx, prefixId);
   const warningPercent = num(prefix.utilization_warning_percent) || 85;
   const today = zurichToday();
-  const [history, live] = await Promise.all([
+  const [history, live, first] = await Promise.all([
     ctx.admin.from("ipam_utilization_daily")
       .select("day, used, dhcp_used, total, static_used, static_total, pool_used, pool_size, occupied_total")
       .eq("tenant_id", ctx.tenantId).eq("prefix_id", prefixId).gte("day", zurichToday(-days))
       .order("day").limit(400),
     ctx.admin.rpc("ipam_prefix_utilization_breakdown", { p_tenant_id: ctx.tenantId, p_prefix_id: prefixId }),
+    ctx.admin.from("ipam_utilization_daily").select("day")
+      .eq("tenant_id", ctx.tenantId).eq("prefix_id", prefixId).order("day").limit(1),
   ]);
-  if (history.error || live.error) throw dbFailure();
+  if (history.error || live.error || first.error) throw dbFailure();
   // Live values of today, so the chart has a current point before the nightly run.
   const liveRow = ((live.data ?? []) as Row[])[0];
   const points = utilizationHistoryPoints(
     ((history.data ?? []) as Row[]).map((row) => utilizationRow(row)),
     liveRow ? utilizationRow(liveRow, today) : null,
   );
-  // Forecast on «gesamt» (static + occupied pool); legacy values before the breakdown.
+  // Forecast on «gesamt» (occupied, each address once).
   const forecast = forecastUtilization(totalSeries(points), warningPercent);
   return json(ctx.request, {
     data: {
       points,
+      days,
+      firstDay: historyFirstDay(str(((first.data ?? []) as Row[])[0]?.day), points),
       forecast: forecastSummary(forecast, today),
       warningPercent,
     },
@@ -2694,7 +2720,7 @@ function siteSummary(context: SiteContext, site: Row, withActiveChild: Set<strin
   for (const { row, cidr } of cidrs) {
     if (row.status !== "active" || cidr.version !== 4 || withActiveChild.has(String(row.id))) continue;
     const item = usage.get(String(row.id));
-    used += BigInt((item?.used ?? 0) + (item?.dhcpSize ?? 0));
+    used += BigInt(item?.used ?? 0);
     capacity += cidrCapacity(cidr);
   }
   // Agents whose configured subnets overlap a subnet of the site.

@@ -170,7 +170,8 @@ export function parseNetworkLookup(value: unknown): NetworkLookup | null {
       const prefix = str(row.prefix);
       if (!id || !prefix) return [];
       const capacity = Number(row.capacity ?? 0);
-      const used = Number(row.used ?? 0) + Number(row.dhcp_size ?? 0);
+      // used = occupied addresses (0348); the DHCP pool size is not counted.
+      const used = Number(row.used ?? 0);
       return [
         {
           id,
