@@ -29,6 +29,7 @@ import {
 } from "../_shared/monitoring-native.ts";
 import { verifyDispatchSecret } from "../_shared/monitoring-admin.ts";
 import { mapLimit, parseCloudChecks, runCloudCheck } from "../_shared/monitoring-cloud.ts";
+import { type SimulatedSensor, simulateResults } from "../_shared/monitoring-simulation.ts";
 import { parseTopology } from "../_shared/monitoring-topology.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import {
@@ -610,6 +611,33 @@ async function applyTransitions(
   return failed;
 }
 
+/**
+ * Results with simulated outages applied: sensors whose simulation is running
+ * count as failed. A lookup that fails leaves the results as measured.
+ */
+async function withSimulation<T extends { id: string; at: string; ok: boolean; value: number | null; message: string | null }>(
+  admin: Admin,
+  tenantId: string,
+  results: T[],
+): Promise<T[]> {
+  if (!results.length) return results;
+  const ids = [...new Set(results.map((result) => result.id))];
+  const sensors = await admin.from("monitoring_sensors").select("id, failures_to_down")
+    .eq("tenant_id", tenantId).in("id", ids).gt("simulate_until", new Date().toISOString());
+  const rows = (sensors.data ?? []) as Row[];
+  if (sensors.error || !rows.length) return results;
+  const states = await admin.from("monitoring_sensor_status").select("sensor_id, state")
+    .eq("tenant_id", tenantId).in("sensor_id", rows.map((row) => String(row.id)));
+  const down = new Set(
+    ((states.data ?? []) as Row[]).filter((row) => row.state === "down").map((row) => String(row.sensor_id)),
+  );
+  const simulated = new Map<string, SimulatedSensor>(rows.map((row) => [
+    String(row.id),
+    { failuresToDown: typeof row.failures_to_down === "number" ? row.failures_to_down : 2, down: down.has(String(row.id)) },
+  ]));
+  return simulateResults(results, simulated);
+}
+
 async function monitorReport(admin: Admin, agent: Agent, body: Record<string, unknown>): Promise<Response> {
   const parsed = parseResults(body.results);
   if (!parsed) return reply({ ok: false, error: "invalid_results" }, 422);
@@ -617,7 +645,7 @@ async function monitorReport(admin: Admin, agent: Agent, body: Record<string, un
   const { data, error } = await admin.rpc("monitoring_ingest_results", {
     p_tenant_id: agent.tenant_id,
     p_agent_id: agent.id,
-    p_results: parsed.results,
+    p_results: await withSimulation(admin, agent.tenant_id, parsed.results),
   });
   if (error) return reply({ ok: false, error: "unavailable" }, 503);
   const transitions = parseTransitions(data);
@@ -693,7 +721,7 @@ async function cloudChecks(admin: Admin): Promise<Record<string, number>> {
       const ingested = await admin.rpc("monitoring_ingest_results", {
         p_tenant_id: tenantId,
         p_agent_id: null,
-        p_results: results,
+        p_results: await withSimulation(admin, tenantId, results),
       });
       if (ingested.error) throw new Error("ingest_failed");
       measured += results.length;

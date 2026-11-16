@@ -74,6 +74,7 @@ export type Action =
   | { type: "probePackage"; tenantId: string }
   | { type: "listInterfaces"; tenantId: string; assetId: string; agentId: string }
   | { type: "interfaces"; tenantId: string; jobId: string }
+  | { type: "simulate"; tenantId: string; assetId: string; sensorId: string | null; minutes: number }
   | { type: "connections"; tenantId: string; assetId: string }
   | { type: "refreshConnections"; tenantId: string; assetId: string }
   | { type: "addDevice"; tenantId: string; device: NewDevice };
@@ -440,6 +441,17 @@ export function parseAction(value: unknown): Action | string | null {
     case "interfaces": {
       const jobId = uuid(value.jobId);
       return jobId ? { type: "interfaces", tenantId, jobId } : null;
+    }
+    case "simulate": {
+      // minutes 0 ends the simulation; sensorId null means the whole device.
+      const assetId = uuid(value.assetId);
+      const sensorId = value.sensorId === null || value.sensorId === undefined ? null : uuid(value.sensorId);
+      const minutes = value.minutes;
+      if (!assetId || (value.sensorId && !sensorId)) return null;
+      if (typeof minutes !== "number" || !Number.isInteger(minutes) || minutes < 0 || minutes > 60) {
+        return "Die Dauer der Simulation muss zwischen 0 und 60 Minuten liegen.";
+      }
+      return { type: "simulate", tenantId, assetId, sensorId, minutes };
     }
     case "connections":
     case "refreshConnections": {

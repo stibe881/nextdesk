@@ -16442,4 +16442,30 @@ $$;
 rollback;
 SQL
 
+# 0358: Ausfall simulieren.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_asset uuid;
+  v_sensor uuid;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'S-0358', 'server', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address)
+  values (v_asset, v_tenant, 'server', '10.58.0.2');
+  insert into public.monitoring_sensors (tenant_id, asset_id, kind, name)
+  values (v_tenant, v_asset, 'ping', 'Ping') returning id into v_sensor;
+  if (select simulate_until from public.monitoring_sensors where id = v_sensor) is not null then
+    raise exception '0358 test: new sensor starts simulated';
+  end if;
+  update public.monitoring_sensors set simulate_until = timezone('utc', now()) + interval '10 minutes'
+   where id = v_sensor;
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
