@@ -1873,6 +1873,10 @@ function AddDeviceDialog({
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [target, setTarget] = useState("");
+  const chosen = choices?.find((choice) => choice.assetId === assetId) ?? null;
+  // A device without address in the infrastructure needs a target here.
+  const needsTarget = !!chosen && !chosen.ipAddress && !chosen.hostname;
 
   useEffect(() => {
     let cancelled = false;
@@ -1904,7 +1908,10 @@ function AddDeviceDialog({
       await monitoringCall({
         type: "saveSensor",
         tenantId,
-        sensor: emptyDraft(assetId, agentId),
+        sensor: {
+          ...emptyDraft(assetId, agentId),
+          target: needsTarget ? target.trim() : null,
+        },
       });
       onSaved(assetId);
     } catch (failure) {
@@ -1969,6 +1976,22 @@ function AddDeviceDialog({
             ))
           )}
         </div>
+        {needsTarget ? (
+          <label className="monitoring-field">
+            <span>IP-Adresse oder Hostname des Geräts</span>
+            <input
+              onChange={(event) => setTarget(event.target.value)}
+              placeholder="z. B. 172.16.128.20"
+              required
+              type="text"
+              value={target}
+            />
+            <span className="monitoring-muted">
+              In der Infrastruktur ist für dieses Gerät keine Adresse erfasst.
+              Die Angabe gilt für diesen Sensor.
+            </span>
+          </label>
+        ) : null}
         <AgentSelect agents={agents} onChange={setAgentId} value={agentId} />
         {error ? (
           <p className="ticket-detail-message error" role="alert">
