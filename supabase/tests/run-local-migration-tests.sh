@@ -16173,6 +16173,48 @@ begin
     raise exception '0351 test: returning probe not due';
   end if;
 
+  -- Cloud: nur HTTP, Zertifikat und DNS, nie zusammen mit einer Sonde; Resultate
+  -- ohne Sonde gelten nur für Cloud-Sensoren.
+  begin
+    insert into public.monitoring_sensors (tenant_id, asset_id, kind, name, cloud)
+    values (v_tenant, v_asset, 'ping', 'Ping aus der Cloud', true);
+    raise exception '0351 test: cloud ping accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.monitoring_sensors (tenant_id, asset_id, agent_id, kind, name, target, cloud)
+    values (v_tenant, v_asset, v_agent, 'cert', 'Zertifikat', 'www.example.ch', true);
+    raise exception '0351 test: cloud sensor with probe accepted';
+  exception when check_violation then null;
+  end;
+  insert into public.monitoring_sensors (
+    tenant_id, asset_id, kind, name, target, port, unit, warning_below, down_below, cloud, failures_to_down
+  )
+  values (v_tenant, v_asset, 'cert', 'Zertifikat', 'www.example.ch', 443, 'Tg.', 30, 7, true, 1)
+  returning id into v_port;
+  if not exists (select 1 from jsonb_array_elements(public.monitoring_cloud_checks_due(10)) item
+                  where item->>'id' = v_port::text and item->>'host' = 'www.example.ch'
+                    and item->>'tenantId' = v_tenant::text) then
+    raise exception '0351 test: cloud sensor not due: %', public.monitoring_cloud_checks_due(10);
+  end if;
+  v_result := public.monitoring_ingest_results(v_tenant, null, jsonb_build_array(
+    jsonb_build_object('id', v_port, 'at', timezone('utc', now()), 'ok', true, 'value', 12),
+    jsonb_build_object('id', v_battery, 'at', timezone('utc', now()), 'ok', false)
+  ));
+  if (v_result->>'accepted')::integer <> 1
+     or v_result->'transitions'->0->>'to' <> 'warning' then
+    raise exception '0351 test: cloud result wrong: %', v_result;
+  end if;
+  if exists (select 1 from jsonb_array_elements(public.monitoring_cloud_checks_due(10)) item
+              where item->>'id' = v_port::text) then
+    raise exception '0351 test: measured cloud sensor is due again at once';
+  end if;
+  if (public.monitoring_ingest_results(v_tenant, v_agent, jsonb_build_array(
+        jsonb_build_object('id', v_port, 'at', timezone('utc', now()) + interval '1 second', 'ok', false)
+      ))->>'accepted')::integer <> 0 then
+    raise exception '0351 test: probe reported for a cloud sensor';
+  end if;
+
   insert into public.ipam_agent_jobs (tenant_id, agent_id, kind, payload)
   values (v_tenant, v_agent, 'snmp_interfaces', '{"host":"10.51.0.2"}'::jsonb);
   -- Schreibende Aufträge brauchen weiterhin eine Freigabe.

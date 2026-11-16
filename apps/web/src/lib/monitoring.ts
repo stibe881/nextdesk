@@ -4,7 +4,7 @@
 import { supabase } from "./supabase";
 
 export type MonitoringState = "down" | "warning" | "up" | "unknown" | "paused";
-export type SensorKind = "ping" | "tcp" | "http" | "snmp";
+export type SensorKind = "ping" | "tcp" | "http" | "snmp" | "cert" | "dns";
 export type SnmpMetric = "uptime" | "traffic" | "value";
 
 /** Further settings of a sensor (same fields in the draft). */
@@ -18,7 +18,14 @@ export type SensorExtras = {
   scale: number;
   /** Unit of the value; null means response time in ms. */
   unit: string | null;
+  /** DNS: address the name must resolve to. */
+  expect: string | null;
+  /** Measured by nextDesk itself instead of a probe. */
+  cloud: boolean;
 };
+
+/** Kinds nextDesk can measure without a probe. */
+export const CLOUD_KINDS: readonly SensorKind[] = ["http", "cert", "dns"];
 
 export type InterfaceRow = {
   index: number;
@@ -214,6 +221,8 @@ export const KIND_LABELS: Record<SensorKind, string> = {
   tcp: "TCP-Port",
   http: "HTTP",
   snmp: "SNMP",
+  cert: "Zertifikat",
+  dns: "DNS",
 };
 
 export const SNMP_LABELS: Record<SnmpMetric, string> = {
@@ -236,6 +245,7 @@ export function valueLabel(unit: string | null | undefined): string {
   if (!unit) return "Antwortzeit";
   if (unit === "bit/s") return "Datenverkehr";
   if (unit === "s") return "Laufzeit";
+  if (unit === "Tg.") return "Restlaufzeit";
   return "Messwert";
 }
 
@@ -375,6 +385,8 @@ export function sensorTarget(
 ): string {
   if (sensor.kind === "http") return sensor.url ?? "";
   const host = sensor.target ?? device.ipAddress ?? device.hostname ?? "";
+  if (sensor.kind === "cert") return `${host}:${sensor.port ?? 443}`;
+  if (sensor.kind === "dns") return host;
   if (sensor.kind === "snmp") {
     if (sensor.snmpMetric === "traffic")
       return `${host} · Port ${sensor.snmpIndex}`;
@@ -595,6 +607,8 @@ export function emptyDraft(
     snmpIndex: null,
     scale: 1,
     unit: null,
+    expect: null,
+    cloud: false,
     failuresToDown: 2,
     paused: false,
   };
@@ -640,6 +654,8 @@ export function draftFromSensor(sensor: MonitoringSensor): SensorDraft {
     snmpIndex: sensor.snmpIndex,
     scale: sensor.scale,
     unit: sensor.unit,
+    expect: sensor.expect,
+    cloud: sensor.cloud,
     failuresToDown: sensor.failuresToDown,
     paused: sensor.paused,
   };

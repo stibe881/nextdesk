@@ -3194,18 +3194,25 @@ export function TenantAdminSettings({
                       Monitoring
                     </h2>
                     <p>
-                      Überwachung per PRTG, Ablaufdaten und Backups.
-                      PRTG-Meldungen erscheinen als Störungen im Arbeitsbereich
-                      und passen den Systemstatus an.
+                      Eigene Überwachung mit Sonden, PRTG, Ablaufdaten und
+                      Backups. Ausfälle erscheinen als Störungen im
+                      Arbeitsbereich und passen den Systemstatus an.
                     </p>
                   </div>
                 </div>
                 {assetsManagementEnabled ? (
                   <>
-                    <MonitoringSettings tenantId={tenantId} />
                     {monitoringEnabled ? (
                       <MonitoringProbeSettings tenantId={tenantId} />
-                    ) : null}
+                    ) : (
+                      <p className="tenant-admin-settings__feature-detail-note">
+                        {tn(
+                          "Eigene Überwachung mit Sonden: Aktiviere dafür die Funktion «Überwachung» unter «Funktionen».",
+                          "Eigene Überwachung mit Sonden: Aktivieren Sie dafür die Funktion «Überwachung» unter «Funktionen».",
+                        )}
+                      </p>
+                    )}
+                    <MonitoringSettings tenantId={tenantId} />
                     <ExternalStatusSettings tenantId={tenantId} />
                     <ExpiryMonitoringSettings tenantId={tenantId} />
                     <BackupMonitoringSettings tenantId={tenantId} />
@@ -3595,6 +3602,7 @@ export function TenantAdminSettings({
                                   "ticketing.templates",
                                   "assets.management",
                                   "automation.sla",
+                                  "monitoring.native",
                                 ].includes(feature.feature_key);
                                 return (
                                   <li
@@ -3927,6 +3935,27 @@ export function TenantAdminSettings({
                                                 <TicketVendors
                                                   tenantId={tenantId}
                                                 />
+                                              </>
+                                            ) : null}
+                                            {feature.feature_key ===
+                                            "monitoring.native" ? (
+                                              <>
+                                                <p className="tenant-admin-settings__feature-detail-note">
+                                                  Sonden anlegen und das
+                                                  Installationspaket
+                                                  herunterladen: im Tab
+                                                  «Monitoring», Abschnitt
+                                                  «Überwachung».
+                                                </p>
+                                                <button
+                                                  className="secondary-button"
+                                                  onClick={() =>
+                                                    setActiveArea("monitoring")
+                                                  }
+                                                  type="button"
+                                                >
+                                                  Zum Tab «Monitoring»
+                                                </button>
                                               </>
                                             ) : null}
                                             {!hasDedicatedConfiguration ? (

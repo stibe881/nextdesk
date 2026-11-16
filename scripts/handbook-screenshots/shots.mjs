@@ -437,6 +437,15 @@ SHOTS.push(
     run: (h) => openSettingsTab(h, "Funktionen"),
   },
   {
+    name: "ad-ueberwachung",
+    persona: "admin",
+    async run(h) {
+      await openSettingsTab(h, "Monitoring");
+      await h.waitText("Installationspaket");
+      await h.settle(300);
+    },
+  },
+  {
     name: "ad-branding",
     persona: "admin",
     run: (h) => openSettingsTab(h, "Design"),

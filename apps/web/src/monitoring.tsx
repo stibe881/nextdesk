@@ -25,6 +25,7 @@ import {
 import {
   CATEGORY_LABELS,
   chartGeometry,
+  CLOUD_KINDS,
   draftFromSensor,
   emptyDraft,
   formatAgo,
@@ -989,7 +990,11 @@ function SensorRow({
         </button>
         <span className="monitoring-muted">
           {kindLabel(sensor)} · {sensorTarget(sensor, device)} ·{" "}
-          {agent ? agent.name : "keine Sonde zugewiesen"}
+          {sensor.cloud
+            ? "nextDesk Cloud"
+            : agent
+              ? agent.name
+              : "keine Sonde zugewiesen"}
         </span>
       </td>
       <td>
@@ -1169,23 +1174,42 @@ function Dialog({
   );
 }
 
+const CLOUD = "cloud";
+
+/**
+ * Who measures: a probe, or (for kinds nextDesk can reach itself) the cloud.
+ * Without `onCloud` the cloud option is hidden.
+ */
 function AgentSelect({
   agents,
   value,
   onChange,
+  cloud,
+  onCloud,
 }: {
   agents: MonitoringAgent[];
   value: string | null;
   onChange: (value: string | null) => void;
+  cloud?: boolean;
+  onCloud?: (cloud: boolean) => void;
 }) {
   return (
     <label className="monitoring-field">
-      <span>Sonde</span>
+      <span>{onCloud ? "Gemessen von" : "Sonde"}</span>
       <select
-        onChange={(event) => onChange(event.target.value || null)}
-        value={value ?? ""}
+        onChange={(event) => {
+          const next = event.target.value;
+          if (onCloud) onCloud(next === CLOUD);
+          onChange(next && next !== CLOUD ? next : null);
+        }}
+        value={cloud ? CLOUD : (value ?? "")}
       >
         <option value="">Keine (Sensor wird nicht gemessen)</option>
+        {onCloud ? (
+          <option value={CLOUD}>
+            nextDesk Cloud (ohne Sonde, nur öffentliche Ziele)
+          </option>
+        ) : null}
         {agents.map((agent) => (
           <option key={agent.id} value={agent.id}>
             {agent.name}
@@ -1321,6 +1345,46 @@ function SensorFields({
             value={draft.url ?? ""}
           />
         </label>
+      ) : draft.kind === "cert" || draft.kind === "dns" ? (
+        <>
+          <label className="monitoring-field">
+            <span>
+              {draft.kind === "cert"
+                ? "Hostname des Zertifikats"
+                : "Name, der aufgelöst wird"}
+            </span>
+            <input
+              onChange={(event) =>
+                onChange({ target: event.target.value || null })
+              }
+              placeholder="intranet.example.ch"
+              required
+              type="text"
+              value={draft.target ?? ""}
+            />
+          </label>
+          {draft.kind === "cert" ? (
+            <NumberField
+              label="Port"
+              min={1}
+              onChange={(port) => onChange({ port })}
+              step="1"
+              value={draft.port ?? 443}
+            />
+          ) : (
+            <label className="monitoring-field">
+              <span>Erwartete IP-Adresse (optional)</span>
+              <input
+                onChange={(event) =>
+                  onChange({ expect: event.target.value || null })
+                }
+                placeholder="z. B. 203.0.113.10"
+                type="text"
+                value={draft.expect ?? ""}
+              />
+            </label>
+          )}
+        </>
       ) : (
         <label className="monitoring-field">
           <span>Abweichendes Ziel (optional)</span>
@@ -1376,6 +1440,19 @@ function SensorFields({
             />
           </div>
         </>
+      ) : draft.kind === "cert" ? (
+        <div className="monitoring-field-row">
+          <NumberField
+            label="Warnung unter (Tage)"
+            onChange={(warningBelow) => onChange({ warningBelow })}
+            value={draft.warningBelow}
+          />
+          <NumberField
+            label="Ausfall unter (Tage)"
+            onChange={(downBelow) => onChange({ downBelow })}
+            value={draft.downBelow}
+          />
+        </div>
       ) : draft.kind === "snmp" ? null : (
         <NumberField
           label="Warnung ab Antwortzeit in ms (optional)"
@@ -1455,24 +1532,31 @@ function SensorDialog({
             disabled={!!draft.id}
             onChange={(event) => {
               const [kind, metric] = event.target.value.split(":");
+              const next = kind as SensorDraft["kind"];
               change({
-                kind: kind as SensorDraft["kind"],
+                kind: next,
                 snmpMetric: (metric as SnmpMetric | undefined) ?? null,
                 port: null,
                 url: null,
                 snmpIndex: null,
                 snmpOid: null,
                 scale: 1,
+                expect: null,
+                target: null,
+                // Only some kinds can be measured from the cloud.
+                cloud: draft.cloud && CLOUD_KINDS.includes(next),
                 unit:
-                  metric === "traffic"
-                    ? "bit/s"
-                    : metric === "uptime"
-                      ? "s"
-                      : null,
+                  next === "cert"
+                    ? "Tg."
+                    : metric === "traffic"
+                      ? "bit/s"
+                      : metric === "uptime"
+                        ? "s"
+                        : null,
                 warningAbove: null,
-                warningBelow: null,
+                warningBelow: next === "cert" ? 30 : null,
                 downAbove: null,
-                downBelow: null,
+                downBelow: next === "cert" ? 7 : null,
               });
             }}
             value={
@@ -1484,6 +1568,8 @@ function SensorDialog({
             <option value="ping">Ping (Gerät erreichbar)</option>
             <option value="tcp">TCP-Port (Dienst erreichbar)</option>
             <option value="http">HTTP (Webseite antwortet)</option>
+            <option value="cert">Zertifikat (Ablaufdatum)</option>
+            <option value="dns">DNS (Name wird aufgelöst)</option>
             <option value="snmp:traffic">
               SNMP Port-Traffic (ein Port von Hand)
             </option>
@@ -1501,11 +1587,21 @@ function SensorDialog({
             value={draft.name}
           />
         </label>
-        <AgentSelect
-          agents={agents}
-          onChange={(agentId) => change({ agentId })}
-          value={draft.agentId}
-        />
+        {CLOUD_KINDS.includes(draft.kind) ? (
+          <AgentSelect
+            agents={agents}
+            cloud={draft.cloud}
+            onChange={(agentId) => change({ agentId })}
+            onCloud={(cloud) => change({ cloud })}
+            value={draft.agentId}
+          />
+        ) : (
+          <AgentSelect
+            agents={agents}
+            onChange={(agentId) => change({ agentId })}
+            value={draft.agentId}
+          />
+        )}
         <SensorFields draft={draft} onChange={change} />
         <label className="monitoring-check">
           <input

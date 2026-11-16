@@ -377,6 +377,11 @@ parallel zu PRTG laufen; beide öffnen Störungen im selben Bereich.
    es wird bei jeder Änderung an der Sonde automatisch neu gebaut.
 5. Geräte und Sensoren erfassen (siehe Handbuch für Agenten, «Überwachung»).
 
+![Einstellungen → Monitoring mit Sonden und Installationspaket](images/ad-ueberwachung.jpg)
+
+Die Karte **Überwachung** unter **Funktionen** führt mit «Zum Tab
+Monitoring» direkt hierher.
+
 Die Einstellungen unter **Monitoring (PRTG)** gelten auch für die eigene
 Überwachung: Team für die Alarmierung, ob Warnungen eine Störung öffnen,
 Wiederalarmierung, Folgestörungen und Ruhe während einer Wartung. Der Schalter

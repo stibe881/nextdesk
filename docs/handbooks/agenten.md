@@ -498,6 +498,11 @@ Mit dem Recht «Assets verwalten» kannst du zusätzlich:
    - **TCP-Port**: Antwortet ein Dienst, z. B. 3389 (RDP) oder 1433 (SQL)?
    - **HTTP**: Antwortet eine Webseite ohne Fehler? Fehlercodes ab 400 und
      ungültige Zertifikate gelten als Ausfall.
+   - **Zertifikat**: Wie viele Tage ist das TLS-Zertifikat eines Hosts noch
+     gültig? Vorgabe: Warnung unter 30 Tagen, Ausfall unter 7 Tagen. Ein
+     abgelaufenes Zertifikat gilt sofort als Ausfall.
+   - **DNS**: Lässt sich ein Name auflösen, auf Wunsch auf eine bestimmte
+     IP-Adresse?
    - **SNMP Laufzeit**: Wie lange läuft das Gerät seit dem letzten Neustart?
    - **SNMP Wert (eigene OID)**: ein beliebiger Zahlenwert des Geräts, z. B.
      Akkuladung einer USV oder Temperatur. Mit **Faktor** und **Einheit**
@@ -522,6 +527,14 @@ Mit dem Recht «Assets verwalten» kannst du zusätzlich:
 
    Die SNMP-Zugangsdaten stehen in der `config.json` der Sonde, nicht in
    nextDesk.
+
+   **Gemessen von**: HTTP, Zertifikat und DNS kann statt einer Sonde auch
+   die **nextDesk Cloud** messen. Das passt für Ziele, die aus dem Internet
+   erreichbar sind (Website, Webmail, öffentliche Zertifikate). Interne
+   Adressen lehnt die Cloud ab; dafür braucht es eine Sonde. Die Cloud prüft
+   einmal pro Minute und folgt keinen Weiterleitungen. Bei öffentlichen
+   Zielen gilt ein nicht vertrauenswürdiges Zertifikat als Ausfall; eine
+   Sonde wertet bei internen Zertifikaten nur Ablauf und Erreichbarkeit.
 
 3. Sensoren **bearbeiten**, **löschen** oder das ganze Gerät **pausieren**.
    Beim Pausieren und Löschen endet ein offener Alarm des Sensors; die
