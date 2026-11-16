@@ -381,7 +381,7 @@ Statusseite – ohne Wartezeit und ohne Bestätigung durch das Team. Das gilt
 nur für Ausfälle (nicht für Warnungen) und nur, wenn Dienste betroffen sind:
 die Dienste des Sensors, sonst die Dienste des Geräts. Während einer Wartung
 mit unterdrückter Alarmierung wird nichts veröffentlicht. Die Meldung
-schliesst sich mit der Störung. Sie erscheint im Namen der Person, die den
+schliesst sich mit der Störung und erscheint im Namen der Person, die den
 Schalter zuletzt gespeichert hat. Ein Fehlalarm steht damit sofort öffentlich
 da; ein Ausfall zählt erst nach der eingestellten Anzahl Fehlversuche in
 Folge.
