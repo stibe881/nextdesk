@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-14
+updated: 2026-11-16
 ---
 
 # Handbuch für Mitarbeitende
@@ -348,6 +348,8 @@ App erlaubt haben.
 
 Die Handbücher finden Sie auch in der App: **Profil → Hilfe und
 Rechtliches**. Bildschirmfotos lassen sich dort antippen und vergrössern.
+Ganz unten im Profil steht die installierte **Version** mit der **Build**-Nummer
+der App; nennen Sie sie dem Support, wenn Sie ein Problem melden.
 
 ## Häufige Fragen
 

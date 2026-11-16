@@ -14,6 +14,7 @@ import {
   UserRound,
 } from "lucide-react";
 import {
+  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -27,6 +28,7 @@ import {
   IncidentPublicMessageCard,
   IncidentTicketsCard,
 } from "./incidents-extras";
+import { dayHeadings } from "./lib/day-heading";
 import { tn } from "./lib/formality";
 import {
   INCIDENT_MESSAGE_STATE_LABELS,
@@ -901,28 +903,38 @@ function IncidentView({
                   <span className="incident-muted">PRTG und nextDesk</span>
                 </div>
                 <ol className="incident-timeline">
-                  {detail.events.map((event) => (
-                    <li
-                      className={`incident-timeline__${event.kind === "prtg" ? (/(ok|up|beendet|ended)/i.test(event.status ?? "") ? "ok" : /(warn|ungew)/i.test(event.status ?? "") ? "warn" : "bad") : event.kind === "resolved" || event.kind === "closed" ? "ok" : event.kind === "realert" ? "warn" : "info"}`}
-                      key={event.id}
-                    >
-                      <time dateTime={event.at}>
-                        {TIME.format(new Date(event.at))}
-                        {Date.now() - Date.parse(event.at) > day
-                          ? ` · ${new Date(event.at).toLocaleDateString("de-CH")}`
-                          : ""}
-                      </time>
-                      <span>
-                        <strong>
-                          {event.kind === "prtg"
-                            ? `${event.sensor ?? "PRTG"}: ${event.status ?? ""}`
-                            : (EVENT_LABELS[event.kind] ?? event.kind)}
-                        </strong>
-                        {event.message ? ` · ${event.message}` : ""}
-                        {event.actor ? <small> · {event.actor}</small> : null}
-                      </span>
-                    </li>
-                  ))}
+                  {(() => {
+                    const headings = dayHeadings(
+                      detail.events.map((entry) => entry.at),
+                    );
+                    return detail.events.map((event, index) => (
+                      <Fragment key={event.id}>
+                        {headings[index] ? (
+                          <li className="incident-timeline__day">
+                            {headings[index]}
+                          </li>
+                        ) : null}
+                        <li
+                          className={`incident-timeline__${event.kind === "prtg" ? (/(ok|up|beendet|ended)/i.test(event.status ?? "") ? "ok" : /(warn|ungew)/i.test(event.status ?? "") ? "warn" : "bad") : event.kind === "resolved" || event.kind === "closed" ? "ok" : event.kind === "realert" ? "warn" : "info"}`}
+                        >
+                          <time dateTime={event.at}>
+                            {TIME.format(new Date(event.at))}
+                          </time>
+                          <span>
+                            <strong>
+                              {event.kind === "prtg"
+                                ? `${event.sensor ?? "PRTG"}: ${event.status ?? ""}`
+                                : (EVENT_LABELS[event.kind] ?? event.kind)}
+                            </strong>
+                            {event.message ? ` · ${event.message}` : ""}
+                            {event.actor ? (
+                              <small> · {event.actor}</small>
+                            ) : null}
+                          </span>
+                        </li>
+                      </Fragment>
+                    ));
+                  })()}
                 </ol>
                 {detail.state !== "closed" ? (
                   <form

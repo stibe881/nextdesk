@@ -14,6 +14,7 @@ import {
 } from "react-native";
 
 import { severityStyle, useIncidentStyles } from "@/components/incident-styles";
+import { dayHeadings } from "@/lib/day-heading";
 import { SensorStatusBadge } from "@/components/sensor-status-badge";
 import { ScreenContainer } from "@/components/screen-container";
 import {
@@ -388,10 +389,17 @@ export default function IncidentDetailScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Verlauf</Text>
-          {detail.events.map((event) => {
+          {(() => {
+            const headings = dayHeadings(detail.events.map((entry) => entry.at));
+            return detail.events.map((event, index) => {
             const tone = eventTone(event.kind, event.status);
+            const heading = headings[index];
             return (
-              <View key={event.id} style={styles.event}>
+              <View key={event.id}>
+                {heading ? (
+                  <Text style={styles.eventDay}>{heading}</Text>
+                ) : null}
+              <View style={styles.event}>
                 <Text style={styles.eventTime}>
                   {TIME.format(new Date(event.at))}
                 </Text>
@@ -417,8 +425,10 @@ export default function IncidentDetailScreen() {
                   {event.actor ? ` · ${event.actor}` : ""}
                 </Text>
               </View>
+              </View>
             );
-          })}
+            });
+          })()}
           {canChange ? (
             <View style={{ gap: 8 }}>
               <TextInput

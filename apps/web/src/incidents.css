@@ -338,6 +338,19 @@ button.incident-tile:focus-visible {
   font-size: 14px;
 }
 
+.incident-timeline li.incident-timeline__day {
+  display: block;
+  padding: 12px 0 4px 16px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.incident-timeline li.incident-timeline__day::before {
+  display: none;
+}
+
 .incident-timeline li::before {
   content: "";
   position: absolute;
