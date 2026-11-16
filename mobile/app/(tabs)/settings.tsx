@@ -18,6 +18,7 @@ import {
 
 import { getMyAvailability, setMyAvailability } from "@/lib/nextdesk-portal";
 import { listMobileHandbooks, type HandbookSummary } from "@/lib/handbooks";
+import { appVersionLabel } from "@/lib/app-version";
 import { DeleteAccountButton } from "@/components/delete-account-button";
 import { ScreenContainer } from "@/components/screen-container";
 import { TeamMembersCard } from "@/components/team-members-card";
@@ -108,6 +109,7 @@ function profileFromUser(
 
 export default function SettingsScreen() {
   const styles = useStyles();
+  const appVersionText = appVersionLabel();
   const router = useRouter();
   const {
     isEnabled,
@@ -1140,6 +1142,15 @@ export default function SettingsScreen() {
           ) : profile ? (
             <DeleteAccountButton />
           ) : null}
+          {appVersionText ? (
+            <Text
+              accessibilityLabel={appVersionText}
+              selectable
+              style={styles.versionText}
+            >
+              {appVersionText}
+            </Text>
+          ) : null}
         </ScrollView>
 
         <Modal
@@ -1360,6 +1371,12 @@ const useStyles = makeThemedStyles((c) => ({
   noteCopy: { flex: 1 },
   cacheNoteTitle: { color: c.info, fontSize: 13, fontWeight: "900" },
   cacheNoteText: { color: c.info, fontSize: 12, lineHeight: 18, marginTop: 3 },
+  versionText: {
+    color: c.muted,
+    fontSize: 12,
+    marginTop: 4,
+    textAlign: "center",
+  },
   ssoNoteTitle: { color: c.primaryText, fontSize: 13, fontWeight: "900" },
   ssoNoteText: {
     color: c.primaryText,
