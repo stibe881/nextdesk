@@ -31,7 +31,7 @@ import {
   setIocStatus,
 } from "./intel.ts";
 
-// «Sicherheitsfälle»: phishing reports handled as their own kind of case
+// «Phishing / Junk»: phishing reports handled as their own kind of case
 // (migration 0261). Signed-in agents only; every case is checked with
 // security_case_ticket_ids (can_read_ticket) under the caller's identity,
 // writes then go through the service role.
@@ -109,7 +109,7 @@ class HttpError extends Error {
 const forbidden = () =>
   new HttpError(403, "forbidden", msg("Dafür fehlt dir die Berechtigung.", "Dafür fehlt Ihnen die Berechtigung."));
 const notFound = () =>
-  new HttpError(404, "case_not_found", "Der Sicherheitsfall wurde nicht gefunden.");
+  new HttpError(404, "case_not_found", "Der Phishing-/Junk-Fall wurde nicht gefunden.");
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -825,7 +825,7 @@ const handler = withSupabase(
         return json(request, { error: { code: error.code, message: error.message } }, error.status);
       }
       console.error("security_cases_failed", error instanceof Error ? error.message : "");
-      return json(request, { error: { code: "internal_error", message: "Die Sicherheitsfälle sind gerade nicht verfügbar." } }, 500);
+      return json(request, { error: { code: "internal_error", message: "Die Phishing-/Junk-Fälle sind gerade nicht verfügbar." } }, 500);
     }
   },
 );

@@ -192,7 +192,7 @@ export default function PhishingCaseScreen() {
       style={styles.back}
     >
       <Ionicons color={colors.primaryText} name="arrow-back" size={18} />
-      <Text style={styles.backText}>Phishing</Text>
+      <Text style={styles.backText}>Phishing / Junk</Text>
     </Pressable>
   );
 

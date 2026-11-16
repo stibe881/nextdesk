@@ -62,6 +62,13 @@ describe("Erinnerungen im Arbeitsplatz", () => {
     });
   });
 
+  it("überführt einen gespeicherten Startbereich «Sicherheitsfälle»", () => {
+    expect(migrateWorkplaceStartSection("Sicherheitsfälle")).toEqual({
+      requestedView: null,
+      section: "Phishing / Junk",
+    });
+  });
+
   it("überführt die frühere Erwähnungsansicht und lässt aktuelle Ziele unverändert", () => {
     expect(migrateWorkplaceStartSection("Erwähnungen")).toEqual({
       requestedView: null,

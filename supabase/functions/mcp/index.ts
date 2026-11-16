@@ -773,6 +773,8 @@ const LEGACY_TOOL_NAMES: Record<string, string> = {
   wiedervorlagen_anzeigen: "erinnerungen_anzeigen",
   wiedervorlage_erstellen: "erinnerung_erstellen",
   wiedervorlage_erledigen: "erinnerung_erledigen",
+  sicherheitsfaelle_anzeigen: "phishing_junk_faelle_anzeigen",
+  sicherheitsfall_anzeigen: "phishing_junk_fall_anzeigen",
 };
 
 const TOOLS: Tool[] = [
@@ -1743,7 +1745,7 @@ const TOOLS: Tool[] = [
   {
     name: "ueberall_suchen",
     description:
-      "Durchsucht den Arbeitsbereich gleichzeitig nach Tickets, Erinnerungen, Wissensartikeln, Veranstaltungsräumen und Eintritten; für das zuständige Team auch nach Störungen und Sicherheitsfällen.",
+      "Durchsucht den Arbeitsbereich gleichzeitig nach Tickets, Erinnerungen, Wissensartikeln, Veranstaltungsräumen und Eintritten; für das zuständige Team auch nach Störungen und Phishing-/Junk-Fällen.",
     annotations: { readOnlyHint: true, title: "Überall suchen" },
     inputSchema: {
       type: "object",
@@ -5250,7 +5252,7 @@ const TOOLS: Tool[] = [
     },
   },
 
-  // ------------------------------------------------ Störungen und Sicherheitsfälle
+  // ------------------------------------------------ Störungen und Phishing-/Junk-Fälle
   {
     name: "stoerungen_anzeigen",
     description:
@@ -5283,10 +5285,10 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "sicherheitsfaelle_anzeigen",
+    name: "phishing_junk_faelle_anzeigen",
     description:
-      "Listet die Sicherheitsfälle (gemeldete Phishing-Mails). Nur für das Phishing-Team aus den Phishing-Einstellungen.",
-    annotations: { readOnlyHint: true, title: "Sicherheitsfälle" },
+      "Listet die Phishing-/Junk-Fälle (gemeldete Phishing-Mails). Nur für das Phishing-Team aus den Phishing-Einstellungen.",
+    annotations: { readOnlyHint: true, title: "Phishing / Junk" },
     inputSchema: {
       type: "object",
       properties: {
@@ -5337,10 +5339,10 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "sicherheitsfall_anzeigen",
+    name: "phishing_junk_fall_anzeigen",
     description:
-      "Zeigt einen Sicherheitsfall mit Analyse (Links entschärft), Urteil, Massnahmen, Kampagne und IOC-Treffern. Nur für das Phishing-Team.",
-    annotations: { readOnlyHint: true, title: "Sicherheitsfall" },
+      "Zeigt einen Phishing-/Junk-Fall mit Analyse (Links entschärft), Urteil, Massnahmen, Kampagne und IOC-Treffern. Nur für das Phishing-Team.",
+    annotations: { readOnlyHint: true, title: "Phishing-/Junk-Fall" },
     inputSchema: {
       type: "object",
       properties: {
@@ -5374,7 +5376,7 @@ const TOOLS: Tool[] = [
             reference.toLowerCase(),
         );
         if (!match || !isUuid(match.ticketId)) {
-          throw new ToolError(`Sicherheitsfall «${reference}» nicht gefunden.`);
+          throw new ToolError(`Phishing-/Junk-Fall «${reference}» nicht gefunden.`);
         }
         ticketId = match.ticketId;
       }

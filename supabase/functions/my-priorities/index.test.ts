@@ -84,7 +84,7 @@ Deno.test("reorder needs unique ticket ids", () => {
   assertEquals(parseAction({ type: "reorder", tenantId, ticketIds: [id] })?.type, "reorder");
 });
 
-Deno.test("Meine Prioritäten: Störungen und Sicherheitsfälle, dringende zuerst", () => {
+Deno.test("Meine Prioritäten: Störungen und Phishing-/Junk-Fälle, dringende zuerst", () => {
   const items = operationItems({
     incidents: [
       { id: "i1", number: "STO-1", title: "Switch", state: "resolved", severity: "down", acknowledged: true },

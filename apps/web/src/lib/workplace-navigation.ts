@@ -60,6 +60,9 @@ export function migrateWorkplaceStartSection(
   if (value === "Mein Portal") {
     return { requestedView: "portal", section: "Arbeitsplatz" };
   }
+  if (value === "Sicherheitsfälle") {
+    return { requestedView: null, section: "Phishing / Junk" };
+  }
   if (value === "Erwähnungen") {
     return { requestedView: null, section: "Arbeitsplatz" };
   }

@@ -502,7 +502,7 @@ export async function orderReplacement(
   if (!requesterId) {
     throw new IntelError(422, "person_unknown", "Für diese Person ist kein Konto bekannt; die Bestellung ist nicht möglich.");
   }
-  const note = `Ersatzgerät aus Sicherheitsfall ${input.ticketNumber}`;
+  const note = `Ersatzgerät aus Phishing-/Junk-Fall ${input.ticketNumber}`;
   const result = await call("shop", {
     // Ersatzgerät ohne Genehmigung (Shop-Action, verlangt shop.fulfill).
     type: "placeOrderWithoutApproval",

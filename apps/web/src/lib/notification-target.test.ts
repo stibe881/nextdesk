@@ -66,7 +66,7 @@ describe("notificationTarget", () => {
       }),
     ).toEqual({
       type: "section",
-      section: "Sicherheitsfälle",
+      section: "Phishing / Junk",
       focus: { kind: "security", id },
     });
     expect(

@@ -551,12 +551,12 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
             Mitarbeitende melden verdächtige E-Mails mit «Phishing melden» im
             Portal und in der App oder per Weiterleitung an die Meldeadresse
             (die Adresse muss beim verbundenen Exchange-Postfach ankommen, z. B.
-            als Alias). Daraus entsteht ein Sicherheitsfall unter
-            «Sicherheitsfälle» mit automatischer Risikoeinschätzung; Links und
-            Anhänge werden dabei nicht geöffnet. Meldungen derselben E-Mail
-            werden zu einem Fall gebündelt. Der Fall wird dem Sicherheitsteam
-            zugewiesen, das Team erhält eine Benachrichtigung, und nach dem
-            Urteil bekommen alle Melder automatisch das Ergebnis.
+            als Alias). Daraus entsteht ein Phishing-/Junk-Fall unter «Phishing
+            / Junk» mit automatischer Risikoeinschätzung; Links und Anhänge
+            werden dabei nicht geöffnet. Meldungen derselben E-Mail werden zu
+            einem Fall gebündelt. Der Fall wird dem Sicherheitsteam zugewiesen,
+            das Team erhält eine Benachrichtigung, und nach dem Urteil bekommen
+            alle Melder automatisch das Ergebnis.
           </p>
         </div>
       </div>

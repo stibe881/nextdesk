@@ -227,7 +227,7 @@ const titles = (): Record<string, [string, InboxIcon]> => ({
   department_question_asked: [tn("Rückfrage an dein Team", "Rückfrage an Ihr Team"), "ticket-outline"],
   department_question_answered: ["Rückfrage beantwortet", "ticket-outline"],
   escalation: ["Ticket eskaliert", "alarm-outline"],
-  security_report: ["Phishing und Sicherheitsfälle", "shield-outline"],
+  security_report: ["Phishing / Junk", "shield-outline"],
   follow_up: ["Erinnerung fällig", "alarm-outline"],
   rule_reminder: ["Erinnerung", "alarm-outline"],
   vendor_reminder: ["Drittanbieter nachfassen", "alarm-outline"],
@@ -244,7 +244,7 @@ const titles = (): Record<string, [string, InboxIcon]> => ({
 
 const SPECIFIC_TITLES: Record<string, string> = {
   "ticket.security_report": "Phishing-Meldung",
-  "security.case_overdue": "Sicherheitsfall überfällig",
+  "security.case_overdue": "Phishing-/Junk-Fall überfällig",
   "security.case_clicked": "Melder hat geklickt",
   "security.campaign": "Phishing-Kampagne",
   "inventory.low_stock": "Mindestbestand erreicht",

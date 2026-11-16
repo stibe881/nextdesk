@@ -43,7 +43,7 @@ export type GlobalSearchResult = {
     | "Raumplanung"
     | "Eintritte"
     | "Störungen"
-    | "Sicherheitsfälle";
+    | "Phishing / Junk";
   ticketId: string | null;
 };
 
@@ -73,6 +73,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Former section names the search may still return. */
+const LEGACY_SEARCH_SECTIONS: Record<string, string> = {
+  Veranstaltungsräume: "Raumplanung",
+  Wiedervorlagen: "Erinnerungen",
+  Sicherheitsfälle: "Phishing / Junk",
+};
+
 export function parseResults(value: unknown): GlobalSearchResult[] | null {
   if (
     !isRecord(value) ||
@@ -97,14 +104,15 @@ export function parseResults(value: unknown): GlobalSearchResult[] | null {
     "Raumplanung",
     "Eintritte",
     "Störungen",
-    "Sicherheitsfälle",
+    "Phishing / Junk",
   ]);
   const results: GlobalSearchResult[] = [];
   for (const rawItem of value.data.results) {
-    // The search function still labels this section with its former name.
     const item =
-      isRecord(rawItem) && rawItem.section === "Veranstaltungsräume"
-        ? { ...rawItem, section: "Raumplanung" }
+      isRecord(rawItem) &&
+      typeof rawItem.section === "string" &&
+      rawItem.section in LEGACY_SEARCH_SECTIONS
+        ? { ...rawItem, section: LEGACY_SEARCH_SECTIONS[rawItem.section] }
         : rawItem;
     if (
       !isRecord(item) ||
@@ -145,7 +153,7 @@ const typeLabel: Record<GlobalSearchResult["resultType"], string> = {
   event_space: "Raumauftrag",
   onboarding: "Eintritt",
   incident: "Störung",
-  security_case: "Sicherheitsfall",
+  security_case: "Phishing-/Junk-Fall",
 };
 
 export function GlobalSearch({

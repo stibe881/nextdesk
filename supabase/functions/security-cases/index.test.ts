@@ -5,7 +5,7 @@ import { decisionDueAt, isSecurityVerdict } from "../_shared/security-cases.ts";
 const tenantId = "d119bcc1-89e6-4c73-b1c1-c14ea71a88c3";
 const ticketId = "fbc3ecd4-a48c-4990-8011-b296a4e6f107";
 
-Deno.test("Sicherheitsfälle: Aktionen werden streng geprüft", () => {
+Deno.test("Phishing-/Junk-Fälle: Aktionen werden streng geprüft", () => {
   if (parseAction({ type: "list", tenantId })?.type !== "list") throw new Error("list");
   if (parseAction({ type: "list", tenantId, state: "x" }) !== null) throw new Error("state");
   if (parseAction({ type: "setVerdict", tenantId, ticketId, verdict: "phishing" })?.type !== "setVerdict") {
@@ -27,7 +27,7 @@ Deno.test("Sicherheitsfälle: Aktionen werden streng geprüft", () => {
   }
 });
 
-Deno.test("Sicherheitsfälle: Frist bis zum Urteil nach Risiko", () => {
+Deno.test("Phishing-/Junk-Fälle: Frist bis zum Urteil nach Risiko", () => {
   const from = new Date("2026-11-09T10:00:00Z");
   if (decisionDueAt("high", from) !== "2026-11-09T10:30:00.000Z") throw new Error("high");
   if (decisionDueAt("medium", from) !== "2026-11-09T14:00:00.000Z") throw new Error("medium");
@@ -35,7 +35,7 @@ Deno.test("Sicherheitsfälle: Frist bis zum Urteil nach Risiko", () => {
   if (!isSecurityVerdict("targeted") || isSecurityVerdict("other")) throw new Error("verdicts");
 });
 
-Deno.test("Sicherheitsfälle: Massnahmen, Ersatzgerät und IOC-Aktionen", () => {
+Deno.test("Phishing-/Junk-Fälle: Massnahmen, Ersatzgerät und IOC-Aktionen", () => {
   const assetId = "4b1e3f0a-8f0e-4c55-9a52-2b8f6a0d1c11";
   const measure = parseAction({
     type: "runMeasure",
@@ -119,7 +119,7 @@ Deno.test("Sicherheitsfälle: Massnahmen, Ersatzgerät und IOC-Aktionen", () => 
   }
 });
 
-Deno.test("Sicherheitsfälle: jede meldende Person einmal", () => {
+Deno.test("Phishing-/Junk-Fälle: jede meldende Person einmal", () => {
   const people = uniquePeople([
     { reporter_id: null, reporter_email: "Anna@Example.ch" },
     { reporter_id: null, reporter_email: "anna@example.ch" },

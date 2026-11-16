@@ -222,7 +222,7 @@ export function emailTemplateDefinitions(
         "Geht an die Person, die eine verdächtige E-Mail gemeldet hat, sobald die Meldung eingegangen ist, und an die anfragende Person, wenn ein Agent ein Ticket als Spam-/Phishing-Verdacht markiert.",
       audience: "customer",
       placeholders: [
-        { name: "ticketNumber", description: "Nummer des Sicherheitsfalls" },
+        { name: "ticketNumber", description: "Nummer des Phishing-/Junk-Falls" },
       ],
       fields: [
         {

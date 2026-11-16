@@ -484,11 +484,11 @@ function alertFor(
         const about = ticketNumber ? ` ${ticketNumber}` : "";
         return {
           title: input.securityEscalated
-            ? "Sicherheitsfall: Eskalation"
-            : "Sicherheitsfall überfällig",
+            ? "Phishing-/Junk-Fall: Eskalation"
+            : "Phishing-/Junk-Fall überfällig",
           body: input.securityEscalated
-            ? `Der Sicherheitsfall${about} wartet seit über 24 Stunden nach Fristablauf auf ein Urteil.`
-            : `Die Frist für das Urteil zum Sicherheitsfall${about} ist abgelaufen.`,
+            ? `Der Phishing-/Junk-Fall${about} wartet seit über 24 Stunden nach Fristablauf auf ein Urteil.`
+            : `Die Frist für das Urteil zum Phishing-/Junk-Fall${about} ist abgelaufen.`,
         };
       }
       if (input.securityEvent === "campaign") {

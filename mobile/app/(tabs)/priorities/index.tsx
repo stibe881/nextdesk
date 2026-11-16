@@ -222,7 +222,7 @@ export default function PrioritiesScreen() {
                   </Text>
                   <Text numberOfLines={2} style={styles.cardMeta}>
                     {item.number} ·{" "}
-                    {item.kind === "incident" ? "Störung" : "Sicherheitsfall"}{" "}
+                    {item.kind === "incident" ? "Störung" : "Phishing-/Junk-Fall"}{" "}
                     · {item.reason}
                   </Text>
                 </View>

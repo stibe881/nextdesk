@@ -269,7 +269,7 @@ type Section =
   | "Überwachung"
   | "Lager"
   | "Fälle"
-  | "Sicherheitsfälle"
+  | "Phishing / Junk"
   | "Störungen"
   | "Verträge"
   | "Lizenzen"
@@ -403,7 +403,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Shop", Icon: ShoppingBag },
     { label: "Teams", Icon: UsersRound },
     { label: "Fälle", Icon: FileWarning },
-    { label: "Sicherheitsfälle", Icon: ShieldAlert },
+    { label: "Phishing / Junk", Icon: ShieldAlert },
     { label: "Störungen", Icon: Activity },
     { label: "Wissen", Icon: BookOpen },
     { label: "Services", Icon: MonitorCog },
@@ -434,7 +434,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "SICHERHEIT & STÖRUNGEN",
     id: "navigation-category-security",
     navigationLabel: "Sicherheit und Störungen",
-    sectionLabels: ["Sicherheitsfälle", "Störungen"],
+    sectionLabels: ["Phishing / Junk", "Störungen"],
   },
   {
     heading: "PLANUNG & BETRIEB",
@@ -1528,8 +1528,8 @@ function baseNotificationPresentation(
           : `Das Urteil zu ${ticketLabel} ist überfällig.`,
         Icon: AlertTriangle,
         title: supervisor
-          ? "Sicherheitsfall eskaliert"
-          : "Sicherheitsfall überfällig",
+          ? "Phishing-/Junk-Fall eskaliert"
+          : "Phishing-/Junk-Fall überfällig",
       };
     }
     case "security.campaign": {
@@ -3386,7 +3386,7 @@ function AuthenticatedApp() {
   const [incidentAttentionCount, setIncidentAttentionCount] = useState<
     number | null
   >(null);
-  // Badges of «Sicherheitsfälle»/«Störungen» count all open cases / active
+  // Badges of «Phishing / Junk»/«Störungen» count all open cases / active
   // incidents; red while some are unassigned / unacknowledged.
   const [teamModuleUrgent, setTeamModuleUrgent] = useState({
     securityCases: false,
@@ -5420,7 +5420,7 @@ function AuthenticatedApp() {
     if (item.label === "Überwachung") {
       return isFeatureEnabled("monitoring.native");
     }
-    if (item.label === "Sicherheitsfälle") {
+    if (item.label === "Phishing / Junk") {
       return canWorkTickets && teamModuleAccess.securityCases;
     }
     if (item.label === "Störungen") {
@@ -6008,7 +6008,7 @@ function AuthenticatedApp() {
             ? onboardingAttentionCount
             : label === "Tickets"
               ? ticketAttentionCount
-              : label === "Sicherheitsfälle"
+              : label === "Phishing / Junk"
                 ? securityAttentionCount
                 : label === "Störungen"
                   ? incidentAttentionCount
@@ -6016,7 +6016,7 @@ function AuthenticatedApp() {
     );
   /** Red badge (needs action) or grey (open, but taken over). */
   const navigationBadgeTone = (label: Section): "urgent" | "muted" | null =>
-    label === "Sicherheitsfälle"
+    label === "Phishing / Junk"
       ? teamModuleUrgent.securityCases
         ? "urgent"
         : "muted"
@@ -6036,10 +6036,10 @@ function AuthenticatedApp() {
         ? "neue Bestellungen warten auf Bearbeitung"
         : label === "Tickets"
           ? "Tickets sind noch keinem Agenten zugewiesen"
-          : label === "Sicherheitsfälle"
+          : label === "Phishing / Junk"
             ? teamModuleUrgent.securityCases
-              ? "offene Sicherheitsfälle, davon nicht alle zugewiesen"
-              : "offene Sicherheitsfälle"
+              ? "offene Phishing-/Junk-Fälle, davon nicht alle zugewiesen"
+              : "offene Phishing-/Junk-Fälle"
             : label === "Störungen"
               ? teamModuleUrgent.incidents
                 ? "aktive Störungen, davon nicht alle bestätigt"
@@ -6958,7 +6958,7 @@ function AuthenticatedApp() {
             }}
             tenantId={activeTenant.id}
           />
-        ) : section === "Sicherheitsfälle" &&
+        ) : section === "Phishing / Junk" &&
           activeTenant &&
           canWorkTickets &&
           teamModuleAccess.securityCases ? (
@@ -7750,7 +7750,7 @@ function AuthenticatedApp() {
                               }}
                               onOpenSecurityCase={(id) => {
                                 setSecurityFocusId(id);
-                                setSection("Sicherheitsfälle");
+                                setSection("Phishing / Junk");
                               }}
                               onOpenTicket={(ticketId) => {
                                 setSection("Tickets");
@@ -8324,7 +8324,7 @@ function AuthenticatedApp() {
           onOpenSecurityCase={(id) => {
             setPersonOverview(null);
             setSecurityFocusId(id);
-            setSection("Sicherheitsfälle");
+            setSection("Phishing / Junk");
           }}
           onOpenTicket={(ticketId) => {
             setPersonOverview(null);

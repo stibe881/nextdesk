@@ -65,11 +65,11 @@ export const pushCategoryMeta = {
   },
   security_report: {
     description: "Neue Phishing-Meldungen",
-    label: "Phishing",
+    label: "Phishing-Meldungen",
   },
   security_case: {
-    description: "Überfällige Sicherheitsfälle, «geklickt» und Kampagnen",
-    label: "Sicherheitsfälle",
+    description: "Überfällige Phishing-/Junk-Fälle, «geklickt» und Kampagnen",
+    label: "Phishing / Junk",
   },
   shop: {
     get description() {

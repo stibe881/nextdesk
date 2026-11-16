@@ -163,7 +163,7 @@ export const SHOTS = [
     persona: "agent",
     async run(h) {
       await h.open();
-      await h.nav("Sicherheitsfälle");
+      await h.nav("Phishing / Junk");
       await h.waitText("Voicemail (24 Sekunden)");
       await h.settle(300);
     },
@@ -173,7 +173,7 @@ export const SHOTS = [
     persona: "agent",
     async run(h) {
       await h.open();
-      await h.nav("Sicherheitsfälle");
+      await h.nav("Phishing / Junk");
       await h.clickText("Voicemail (24 Sekunden)");
       await h.waitText("Befunde der Analyse");
       await h.settle(300);

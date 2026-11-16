@@ -1217,7 +1217,7 @@ function orderSummary(
     decisionReason: row.decision_reason,
     reason: typeof row.reason === "string" ? row.reason : null,
     // Herkunft einer Bestellung ohne Genehmigung (z. B. Ersatzgerät aus einem
-    // Sicherheitsfall).
+    // Phishing-/Junk-Fall).
     source:
       row.source_type === "security_case" && typeof row.source_id === "string"
         ? {
@@ -2626,7 +2626,7 @@ const securedHandler = withSupabase(
         }
         case "submitOrder": {
           // Optional: ohne Genehmigung bestellen (z. B. Ersatzgerät aus einem
-          // Sicherheitsfall). Nur für Agenten mit Shop-Rechten.
+          // Phishing-/Junk-Fall). Nur für Agenten mit Shop-Rechten.
           const skip = parseSkipApproval(body);
           if (skip === "invalid") {
             throw new HttpError(
@@ -2918,7 +2918,7 @@ const securedHandler = withSupabase(
         }
         case "placeOrderWithoutApproval": {
           // Agenten bestellen im Namen einer Person ohne Genehmigung, z. B.
-          // ein Ersatzgerät aus einem Sicherheitsfall (Teil Sicherheit).
+          // ein Ersatzgerät aus einem Phishing-/Junk-Fall (Teil Sicherheit).
           if (!access.canFulfill && !access.canManage) {
             throw new HttpError(
               403,
