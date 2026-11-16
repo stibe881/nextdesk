@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Sicherheitsfälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-14
+updated: 2026-11-16
 ---
 
 # Handbuch für Agenten
@@ -1071,8 +1071,10 @@ Hilfen in allen Ansichten:
 - Links steht der **Baum** mit einem Feld **Netz, Name oder VLAN filtern**
   (z. B. «10.10.4», «Drucker» oder «120»). Mit **Hierarchie** siehst du
   Supernetze mit ihren Teilnetzen (bei mehreren VRFs je VRF), mit **Nach
-  Standort** die Subnetze je Standort. Mit dem Pfeil vor einem Supernetz
-  klappst du dessen Teilnetze zu oder auf. **Filter** blendet die Auswahl
+  Standort** die Subnetze je Standort. Jedes Netz steht auf drei Zeilen:
+  IP-Bereich, Beschreibung und VLAN. Alle Supernetze sind zu Beginn
+  zugeklappt; mit dem Pfeil davor klappst du die Teilnetze auf oder zu. Der
+  Pfad zum gewählten Netz wird automatisch aufgeklappt. **Filter** blendet die Auswahl
   nach Standort, Zone und Status sowie **Veraltete zeigen** ein; die Zahl am
   Knopf nennt die aktiven Filter, **Filter zurücksetzen** hebt sie auf. Beim
   Filtern bleiben die übergeordneten Netze blass sichtbar, damit der

@@ -251,7 +251,9 @@ describe("Netze", () => {
     expect(html).toContain('aria-label="Pfad"');
     expect(html).toContain("Mehrere auswählen");
     expect(html).toContain("10.20.67.0/24");
-    expect(html).toContain("VLAN 67");
+    // Netze sind standardmässig eingeklappt.
+    expect(html).toContain("10.20.0.0/16 aufklappen");
+    expect(html).not.toContain("VLAN 67 · PRINTER");
     expect(html).not.toContain("10.99.0.0/16");
     expect(html).toContain("1 veraltetes Netz ausgeblendet");
     // Supernet detail is shown for the container.
