@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { hasScanWork } from "./config.ts";
 import { connectionHint, trustSystemCertificates } from "./trust.ts";
 
 test("trustSystemCertificates: ergänzt nur neue Zertifikate, schaltet nichts ab", () => {
@@ -59,4 +60,36 @@ test("connectionHint: erklärt TLS-Fehler hinter einer Firewall", () => {
   );
   assert.equal(connectionHint(new Error("anderes")), null);
   assert.equal(connectionHint(null), null);
+});
+
+test("hasScanWork: eine reine Überwachungs-Sonde scannt nie", () => {
+  const local = {
+    scan: { subnets: [], reverseDns: true, maxHostsPerRun: 65536 },
+    dhcpServers: null,
+    dnsServers: null,
+  };
+  const server = { snmpTargets: [], dhcpServers: [], dnsServers: [] };
+  assert.equal(hasScanWork(local, server, []), false);
+  assert.equal(hasScanWork(local, server, [{ prefix: "10.0.0.0/24" }]), true);
+  assert.equal(
+    hasScanWork(
+      { ...local, scan: { ...local.scan, subnets: ["10.0.0.0/24"] } },
+      server,
+      [],
+    ),
+    true,
+  );
+  assert.equal(
+    hasScanWork(local, { ...server, dnsServers: ["dc1"] }, []),
+    true,
+  );
+  // Eine lokale leere Liste übersteuert die Server aus nextDesk.
+  assert.equal(
+    hasScanWork(
+      { ...local, dnsServers: [] },
+      { ...server, dnsServers: ["dc1"] },
+      [],
+    ),
+    false,
+  );
 });
