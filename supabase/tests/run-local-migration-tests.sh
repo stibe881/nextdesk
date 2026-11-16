@@ -16357,4 +16357,89 @@ $$;
 rollback;
 SQL
 
+# 0357: Dienste je Sensor und automatische öffentliche Meldung.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_user uuid := gen_random_uuid();
+  v_service uuid;
+  v_service2 uuid;
+  v_incident uuid;
+  v_notice uuid;
+  v_second uuid;
+  v_asset uuid;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  insert into auth.users (id) values (v_user);
+  insert into public.user_profiles (id, display_name) values (v_user, 'Admin 0357')
+  on conflict (id) do nothing;
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_tenant, v_user, 'active', timezone('utc', now()))
+  on conflict do nothing;
+  insert into public.services (tenant_id, name, active, status_public, status)
+  values (v_tenant, 'Abacus 0357', true, true, 'operational') returning id into v_service;
+  insert into public.services (tenant_id, name, active, status_public, status)
+  values (v_tenant, 'Lohn 0357', true, true, 'operational') returning id into v_service2;
+  insert into public.monitoring_incidents (tenant_id, number, incident_key, title)
+  values (v_tenant, 'STO-0357-1', 'k-0357', 'S181 – Port 443') returning id into v_incident;
+
+  insert into public.monitoring_integrations (tenant_id) values (v_tenant)
+  on conflict (tenant_id) do nothing;
+  update public.monitoring_integrations
+     set publish_incidents = false, publish_actor_id = null where tenant_id = v_tenant;
+
+  -- Ausgeschaltet: keine Meldung.
+  if public.monitoring_incident_publish(v_incident, array[v_service], 'Ausfall') is not null then
+    raise exception '0357 test: published although switched off';
+  end if;
+  update public.monitoring_integrations
+     set publish_incidents = true, publish_actor_id = v_user where tenant_id = v_tenant;
+  -- Ohne Dienste: keine Meldung.
+  if public.monitoring_incident_publish(v_incident, '{}'::uuid[], 'Ausfall') is not null then
+    raise exception '0357 test: published without services';
+  end if;
+
+  v_notice := public.monitoring_incident_publish(v_incident, array[v_service], 'Die Überwachung meldet einen Ausfall.');
+  if v_notice is null or not exists (
+    select 1 from public.service_incident_notices notice
+     where notice.id = v_notice and notice.monitoring_incident_id = v_incident
+       and notice.public_enabled and notice.status = 'investigating' and notice.created_by = v_user
+  ) then
+    raise exception '0357 test: notice missing or wrong';
+  end if;
+  -- Zweiter Sensor mit weiterem Dienst: dieselbe Meldung, Dienst kommt dazu.
+  v_second := public.monitoring_incident_publish(v_incident, array[v_service2], 'x');
+  if v_second is distinct from v_notice
+     or (select count(*) from public.service_incident_notice_services where notice_id = v_notice) <> 2
+     or (select count(*) from public.service_incident_notices where monitoring_incident_id = v_incident) <> 1 then
+    raise exception '0357 test: second publish did not extend the notice';
+  end if;
+  -- Behobene Störung: nichts mehr.
+  update public.monitoring_incidents
+     set state = 'closed', resolved_at = timezone('utc', now()), closed_at = timezone('utc', now())
+   where id = v_incident;
+  if public.monitoring_incident_publish(v_incident, array[v_service], 'x') is not null then
+    raise exception '0357 test: published for a closed incident';
+  end if;
+  if (select status from public.service_incident_notices where id = v_notice) <> 'resolved' then
+    raise exception '0357 test: notice not resolved with the incident';
+  end if;
+
+  -- Dienste je Sensor.
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'S-0357', 'server', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address)
+  values (v_asset, v_tenant, 'server', '10.57.0.2');
+  insert into public.monitoring_sensors (tenant_id, asset_id, kind, name, port, service_ids)
+  values (v_tenant, v_asset, 'tcp', 'Port 443', 443, array[v_service]);
+  if has_function_privilege('authenticated', 'public.monitoring_incident_publish(uuid, uuid[], text)', 'execute') then
+    raise exception '0357 test: publish executable by authenticated';
+  end if;
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

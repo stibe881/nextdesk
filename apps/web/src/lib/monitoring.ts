@@ -108,6 +108,8 @@ export type MonitoringSensor = {
   timeoutMs: number;
   warningAbove: number | null;
   failuresToDown: number;
+  /** Services this sensor affects instead of all services of its device. */
+  serviceIds?: string[];
   paused: boolean;
   state: MonitoringState;
   since: string | null;
@@ -131,6 +133,8 @@ export type MonitoringDeviceDetail = {
     uplink: { assetId: string; name: string } | null;
     incident: MonitoringIncident | null;
   };
+  /** Services of the status page a sensor can be linked to. */
+  serviceOptions?: { id: string; name: string }[];
   /** Own device kinds of the tenant (for editing). */
   kinds?: string[];
   sensors: MonitoringSensor[];
@@ -460,6 +464,7 @@ export type SensorDraft = {
   timeoutMs: number;
   warningAbove: number | null;
   failuresToDown: number;
+  serviceIds?: string[];
   paused: boolean;
 } & SensorExtras;
 
@@ -979,6 +984,7 @@ export function emptyDraft(
     cloud: false,
     failuresToDown: 2,
     paused: false,
+    serviceIds: [],
   };
 }
 
@@ -1026,5 +1032,6 @@ export function draftFromSensor(sensor: MonitoringSensor): SensorDraft {
     cloud: sensor.cloud,
     failuresToDown: sensor.failuresToDown,
     paused: sensor.paused,
+    serviceIds: sensor.serviceIds ?? [],
   };
 }

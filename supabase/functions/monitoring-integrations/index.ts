@@ -41,6 +41,8 @@ export type ConfigInput = {
   realertMinutes: number;
   groupDependencies: boolean;
   suppressInMaintenance: boolean;
+  /** Undefined = not sent (older clients): the stored value stays. */
+  publishIncidents?: boolean;
 };
 
 type Action =
@@ -94,6 +96,7 @@ export function parseConfig(value: unknown): ConfigInput | null {
     realertMinutes,
     groupDependencies,
     suppressInMaintenance,
+    ...(typeof value.publishIncidents === "boolean" ? { publishIncidents: value.publishIncidents } : {}),
   };
 }
 
@@ -207,6 +210,7 @@ function configFromRow(row: Row | null) {
       typeof row?.realert_minutes === "number" ? row.realert_minutes : 15,
     groupDependencies: row?.group_dependencies !== false,
     suppressInMaintenance: row?.suppress_in_maintenance !== false,
+    publishIncidents: row?.publish_incidents === true,
     hasToken: typeof row?.token_hash === "string",
     tokenRotatedAt: (row?.token_rotated_at as string | null) ?? null,
     lastReceivedAt: (row?.last_received_at as string | null) ?? null,
@@ -429,6 +433,10 @@ async function save(
         realert_minutes: config.realertMinutes,
         group_dependencies: config.groupDependencies,
         suppress_in_maintenance: config.suppressInMaintenance,
+        // Notices are published in the name of whoever switched this on.
+        ...(config.publishIncidents === undefined
+          ? {}
+          : { publish_incidents: config.publishIncidents, publish_actor_id: config.publishIncidents ? actorId : null }),
       },
       { onConflict: "tenant_id" },
     )

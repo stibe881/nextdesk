@@ -388,6 +388,18 @@ Wiederalarmierung, Folgestörungen, Ruhe während einer Wartung und die
 Anpassung des Systemstatus. Unter **Monitoring (PRTG)** stehen nur noch der
 Schalter für den Empfang von PRTG-Meldungen und der Token.
 
+Der Schalter **Ausfälle mit betroffenen Diensten automatisch
+veröffentlichen** in der Karte «Alarmierung» zeigt einen Ausfall aus der
+Überwachung oder aus PRTG sofort allen als Banner und als Meldung auf der
+Statusseite – ohne Wartezeit und ohne Bestätigung durch das Team. Das gilt
+nur für Ausfälle (nicht für Warnungen) und nur, wenn Dienste betroffen sind:
+die Dienste des Sensors, sonst die Dienste des Geräts. Während einer Wartung
+mit unterdrückter Alarmierung wird nichts veröffentlicht. Die Meldung
+schliesst sich mit der Störung. Sie erscheint im Namen der Person, die den
+Schalter zuletzt gespeichert hat. Ein Fehlalarm steht damit sofort öffentlich
+da; ein Ausfall zählt erst nach der eingestellten Anzahl Fehlversuche in
+Folge.
+
 Jede Sonde lässt sich über den Stift **bearbeiten** (Name, aktiv oder
 deaktiviert) und über den Papierkorb **löschen**. Beim Löschen wird ihr Token
 widerrufen; ihre Sensoren übernimmt eine andere aktive Sonde, oder sie

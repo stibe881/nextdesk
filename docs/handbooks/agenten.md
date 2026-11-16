@@ -602,6 +602,14 @@ Mit dem Recht «Assets verwalten» kannst du zusätzlich:
    Zielen gilt ein nicht vertrauenswürdiges Zertifikat als Ausfall; eine
    Sonde wertet bei internen Zertifikaten nur Ablauf und Erreichbarkeit.
 
+   **Betroffene Dienste** (im Sensor-Dialog): Ohne Auswahl gelten bei einem
+   Ausfall die Dienste, die am Gerät in der Infrastruktur hinterlegt sind.
+   Soll ein Sensor nur bestimmte Dienste betreffen (z. B. «Port 443» nur
+   den Dienst «Abacus»), wählst du sie hier; dann wirkt dieser Sensor nur
+   auf diese Dienste. Die Störung nennt sie, der Systemstatus der Dienste
+   wechselt, und – wenn in den Einstellungen eingeschaltet – erscheint der
+   Ausfall sofort als Banner und auf der Statusseite.
+
 3. Sensoren **bearbeiten** oder **löschen** (Symbole in der Sensorzeile).
    Im Kopf des Gerätedetails:
    - **Pausieren** hält die Überwachung des ganzen Geräts an.

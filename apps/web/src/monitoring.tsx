@@ -1144,7 +1144,9 @@ function DeviceView({
       {draft && data ? (
         <SensorDialog
           agents={data.agents}
+          deviceServices={data.device.services.map((entry) => entry.name)}
           draft={draft}
+          services={data.serviceOptions ?? []}
           onClose={() => setDraft(null)}
           onSaved={() => {
             setDraft(null);
@@ -1742,12 +1744,18 @@ function SensorDialog({
   tenantId,
   draft: initial,
   agents,
+  services,
+  deviceServices,
   onClose,
   onSaved,
 }: {
   tenantId: string;
   draft: SensorDraft;
   agents: MonitoringAgent[];
+  /** Services of the status page that can be linked. */
+  services: { id: string; name: string }[];
+  /** Names of the services linked to the device (apply without own choice). */
+  deviceServices: string[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -1856,6 +1864,41 @@ function SensorDialog({
           />
         )}
         <SensorFields draft={draft} onChange={change} />
+        {services.length > 0 ? (
+          <fieldset className="monitoring-services">
+            <legend>Betroffene Dienste</legend>
+            <p className="monitoring-muted">
+              {draft.serviceIds?.length
+                ? "Bei einem Ausfall dieses Sensors gelten nur die gewählten Dienste als gestört."
+                : deviceServices.length
+                  ? `Ohne Auswahl gelten die Dienste des Geräts: ${deviceServices.join(", ")}.`
+                  : "Ohne Auswahl ist bei einem Ausfall kein Dienst betroffen (am Gerät ist keiner hinterlegt)."}
+            </p>
+            <div className="monitoring-services__list">
+              {services.map((service) => {
+                const chosen = draft.serviceIds?.includes(service.id) ?? false;
+                return (
+                  <label className="monitoring-check" key={service.id}>
+                    <input
+                      checked={chosen}
+                      onChange={() =>
+                        change({
+                          serviceIds: chosen
+                            ? (draft.serviceIds ?? []).filter(
+                                (id) => id !== service.id,
+                              )
+                            : [...(draft.serviceIds ?? []), service.id],
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    <span>{service.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+        ) : null}
         <label className="monitoring-check">
           <input
             checked={draft.paused}
