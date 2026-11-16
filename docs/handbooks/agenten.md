@@ -477,6 +477,8 @@ Resultate laufend an nextDesk.
   Sonde sich wieder meldet.
 - **Geräteliste**: Zustand, Sensoren, Antwortzeit und letzte Prüfung. Die
   Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
+  Ein Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter kehrt die
+  Reihenfolge um. Standard ist der Zustand, das Dringende zuoberst.
 
 ![Überwachung mit Kacheln, aktiven Alarmen, Sonden und Geräteliste](images/ag-ueberwachung.jpg)
 
@@ -489,12 +491,31 @@ Ein Klick auf ein Gerät öffnet das **Gerätedetail**:
   Werte im 5-Minuten-Raster, für längere Zeiträume Stunden- bzw. Tageswerte.
 - **Sensoren**: Zustand, Messwert, Intervall und letzte Prüfung. Ein Klick auf
   den Namen zeigt den Verlauf dieses Sensors in der Grafik.
+- **Verbindungen**: welcher Port zu welchem Gerät führt. Die Sonde liest das
+  bei Switches, Firewalls und Routern alle sechs Stunden per SNMP aus.
+  - **Verbunden mit** nennt die Gegenstelle. Quelle **LLDP**: Das
+    Nachbargerät hat sich selbst gemeldet, samt seinem Port. Quelle
+    **MAC-Tabelle**: Am Port wurde die MAC-Adresse eines Geräts gesehen, das
+    in der Infrastruktur oder der IP-Adressverwaltung steht.
+  - Ein Klick auf die Gegenstelle öffnet sie – in der Überwachung, wenn sie
+    überwacht wird, sonst in der Infrastruktur.
+  - Ports mit vielen Geräten dahinter sind Uplinks oder Trunks und werden
+    nur gezählt.
+  - Bei Servern, Access Points und anderen Endgeräten steht **Hängt an …,
+    Port …**, sobald ein überwachter Switch das Gerät an einem Port sieht.
+  - Angezeigt werden zuerst nur Ports mit Gegenstelle; **Alle … Ports
+    zeigen** blendet die übrigen ein. Mit dem Recht «Assets verwalten»
+    kannst du die Verbindungen über **Jetzt auslesen** sofort neu lesen
+    lassen (Antwort innert etwa einer Minute).
 - **Verknüpft in nextDesk**: das Gerät in der Infrastruktur, offene Störung,
   betroffene Services und der Uplink. Jedes überwachte Gerät ist ein Gerät
   der Infrastruktur; über **In Infrastruktur öffnen** gelangst du direkt
-  dorthin (in der App über die gleichnamige Zeile). Services und Uplink werden unter **Infrastruktur** gepflegt.
+  dorthin (in der App über die gleichnamige Zeile). Services und Uplink
+  werden unter **Infrastruktur** gepflegt.
 
 ![Gerätedetail mit Verlaufsgrafik und Sensoren](images/ag-ueberwachung-geraet.jpg)
+
+![Verbindungen eines Geräts: Ports und Gegenstellen](images/ag-ueberwachung-verbindungen.jpg)
 
 Mit dem Recht «Assets verwalten» kannst du zusätzlich:
 

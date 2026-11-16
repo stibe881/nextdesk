@@ -236,6 +236,20 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-ueberwachung-verbindungen",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.clickText("SRV-SQL-01");
+      await h.waitText("Verbunden mit");
+      await h.page
+        .getByRole("heading", { name: "Verbindungen" })
+        .scrollIntoViewIfNeeded();
+      await h.settle(500);
+    },
+  },
+  {
     name: "ag-teams",
     persona: "agent",
     async run(h) {
