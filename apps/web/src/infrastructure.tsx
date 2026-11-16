@@ -110,6 +110,18 @@ type Device = {
   prtgObjectId: string | null;
 };
 type Location = { id: string; name: string };
+
+/** Services of a device (older answers only carry serviceId). */
+function deviceServiceIds(device: {
+  serviceId: string | null;
+  serviceIds?: string[] | null;
+}): string[] {
+  return device.serviceIds?.length
+    ? device.serviceIds
+    : device.serviceId
+      ? [device.serviceId]
+      : [];
+}
 type Service = { id: string; name: string };
 type Detail = {
   windows?: MaintenanceWindow[];
@@ -1287,6 +1299,26 @@ function DeviceDetail({
               </dl>
             </section>
             <section>
+              <h4>Betroffene Dienste</h4>
+              {/* Used by the system status, maintenance windows and incidents. */}
+              {deviceServiceIds(device).length ? (
+                <ul className="infrastructure__service-chips">
+                  {deviceServiceIds(device).map((id) => (
+                    <li key={id}>
+                      {services.find((service) => service.id === id)?.name ??
+                        "Dienst"}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="infrastructure__hint">
+                  Noch keine Dienste. Unter <strong>Bearbeiten</strong> legst du
+                  fest, welche Dienste bei einem Ausfall oder einer Wartung
+                  dieses Geräts betroffen sind.
+                </p>
+              )}
+            </section>
+            <section>
               <h4>Standort</h4>
               <dl>
                 {field("Standort", device.locationName)}
@@ -1522,7 +1554,7 @@ function DeviceDetail({
               intervalMonths={device.maintenanceIntervalMonths}
               key={device.id}
               onRun={run}
-              serviceId={device.serviceId}
+              serviceIds={deviceServiceIds(device)}
               services={services}
               windows={detail?.windows ?? []}
             />
