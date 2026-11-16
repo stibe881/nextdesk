@@ -238,6 +238,16 @@ button.monitoring-tile[aria-pressed="true"] {
   min-width: 0;
 }
 
+.monitoring-alarms__actions {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.monitoring-alarms__actions:empty {
+  display: none;
+}
+
 .monitoring-alarms__main {
   border: 0;
   padding: 0;

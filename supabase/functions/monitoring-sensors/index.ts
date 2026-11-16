@@ -312,6 +312,157 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
   };
 }
 
+/** Devices in «Ausfall» and «Warnung» for the menu badge (same rules as the overview). */
+async function summary(admin: Client, tenantId: string) {
+  const sensors = await loadSensors(admin, tenantId);
+  const byAsset = new Map<string, DisplayState[]>();
+  for (const sensor of sensors) {
+    byAsset.set(sensor.assetId, [...(byAsset.get(sensor.assetId) ?? []), sensor.state]);
+  }
+  let down = 0;
+  let warning = 0;
+  for (const states of byAsset.values()) {
+    const state = deviceState(states);
+    if (state === "down") down += 1;
+    else if (state === "warning") warning += 1;
+  }
+  return { down, warning };
+}
+
+/**
+ * Ticket for a device, e.g. from an outage: subject and description name the
+ * failing sensors, the device is linked, the ticket goes to the alarm team of
+ * the monitoring settings and is attached to the device's active incident.
+ */
+async function deviceTicket(admin: Client, client: Client, tenantId: string, actorId: string, assetId: string) {
+  const agent = await client.rpc("is_tenant_ticket_agent", { p_tenant_id: tenantId });
+  if (agent.error || agent.data !== true) {
+    throw new HttpError(403, "forbidden", "Nur Agenten können Tickets erstellen.");
+  }
+  const asset = await requireAsset(admin, tenantId, assetId);
+  const [sensors, infraRows, integration, incident, assetRow] = await Promise.all([
+    loadSensors(admin, tenantId, assetId),
+    selectIn(admin, "asset_infrastructure", "asset_id, category, category_label, hostname, ip_address", tenantId, "asset_id", [assetId]),
+    admin.from("monitoring_integrations").select("team_id").eq("tenant_id", tenantId).maybeSingle(),
+    admin.from("monitoring_incidents").select("id, number").eq("tenant_id", tenantId).eq("asset_id", assetId)
+      .eq("state", "active").is("parent_incident_id", null).order("opened_at", { ascending: false }).limit(1).maybeSingle(),
+    admin.from("assets").select("department_id").eq("tenant_id", tenantId).eq("id", assetId).maybeSingle(),
+  ]);
+  const infra = infraRows[0] ?? null;
+  const problems = sensors.filter((sensor) => sensor.state === "down" || sensor.state === "warning")
+    .sort((a, b) => (a.state === b.state ? 0 : a.state === "down" ? -1 : 1));
+  const state = deviceState(sensors.map((sensor) => sensor.state));
+  const name = String(asset.name);
+  const address = text(infra?.ip_address) ?? text(infra?.hostname);
+
+  // Team of the monitoring settings (only while active); its department wins.
+  let teamId: string | null = null;
+  let teamDepartment: string | null = null;
+  const configuredTeam = text(integration.data?.team_id);
+  if (configuredTeam) {
+    const { data } = await admin.from("teams").select("id, department_id, active").eq("tenant_id", tenantId)
+      .eq("id", configuredTeam).maybeSingle();
+    if (data?.active) {
+      teamId = String(data.id);
+      teamDepartment = text(data.department_id);
+    }
+  }
+  let department: Row | null = null;
+  for (const id of [teamDepartment, text(assetRow.data?.department_id)]) {
+    if (!id) continue;
+    const { data } = await admin.from("departments").select("id, key").eq("tenant_id", tenantId)
+      .eq("id", id).eq("active", true).maybeSingle();
+    if (data) {
+      department = data as Row;
+      break;
+    }
+  }
+  if (!department) {
+    const { data } = await admin.from("departments").select("id, key").eq("tenant_id", tenantId)
+      .eq("active", true).order("key").limit(1).maybeSingle();
+    department = (data as Row | null) ?? null;
+  }
+  const [status, priorities] = await Promise.all([
+    admin.from("ticket_statuses").select("id").eq("tenant_id", tenantId).eq("key", "new").maybeSingle(),
+    admin.from("ticket_priorities").select("id, key").eq("tenant_id", tenantId),
+  ]);
+  const priorityRows = (priorities.data ?? []) as Row[];
+  const preferred = state === "down" ? ["high", "urgent", "normal"] : ["normal", "low"];
+  const priority = preferred.map((key) => priorityRows.find((row) => row.key === key)).find(Boolean) ??
+    priorityRows[0];
+  if (!department || !status.data || !priority) {
+    throw new HttpError(422, "ticket_defaults_unavailable", "Für Tickets fehlen Abteilung, Status oder Priorität.");
+  }
+  const number = await admin.rpc("reserve_ticket_number", {
+    p_tenant_id: tenantId,
+    p_department_id: department.id,
+    p_prefix: String(department.key).slice(0, 8),
+  });
+  if (number.error || typeof number.data !== "string") throw unavailable();
+
+  const lead = problems[0] ?? null;
+  const subject = lead
+    ? `${lead.state === "down" ? "Ausfall" : "Warnung"}: ${name} · ${lead.name}`
+    : `Überwachung: ${name}`;
+  const description = [
+    `Gerät: ${name}${address ? ` (${address})` : ""}`,
+    ...problems.map((sensor) =>
+      `- ${sensor.state === "down" ? "Ausfall" : "Warnung"} ${sensor.name}` +
+      `${sensor.lastMessage ? `: ${sensor.lastMessage}` : ""}` +
+      `${sensor.since ? ` (seit ${new Date(sensor.since).toLocaleString("de-CH", { timeZone: "Europe/Zurich" })})` : ""}`
+    ),
+    incident.data ? `Störung: ${String(incident.data.number)}` : null,
+    "",
+    "Erstellt aus der Überwachung.",
+  ].filter((line) => line !== null).join("\n");
+
+  await admin.from("user_profiles").upsert({ id: actorId });
+  const ticket = await admin.from("tickets").insert({
+    tenant_id: tenantId,
+    department_id: department.id,
+    ticket_number: number.data,
+    subject: subject.slice(0, 240),
+    description: description.slice(0, 50_000),
+    status_id: status.data.id,
+    priority_id: priority.id,
+    requester_id: actorId,
+    assigned_team_id: teamId,
+  }).select("id, ticket_number").single().setHeader("x-nextdesk-actor-id", actorId);
+  if (ticket.error || !ticket.data) {
+    console.error("monitoring ticket failed", ticket.error?.code, ticket.error?.message);
+    throw new HttpError(422, "ticket_create_failed", "Das Ticket konnte nicht erstellt werden.");
+  }
+  const ticketId = String(ticket.data.id);
+  await admin.from("ticket_events").insert({
+    ticket_id: ticketId,
+    actor_id: actorId,
+    event_type: "ticket.created",
+    payload: { source: "monitoring", assetId },
+  });
+  await admin.from("ticket_assets").insert({ tenant_id: tenantId, ticket_id: ticketId, asset_id: assetId, linked_by: actorId });
+  if (incident.data) {
+    await admin.from("monitoring_incident_tickets").upsert({
+      incident_id: incident.data.id,
+      ticket_id: ticketId,
+      tenant_id: tenantId,
+      source: "manual",
+      linked_by: actorId,
+      removed_at: null,
+      removed_by: null,
+    }, { onConflict: "incident_id,ticket_id" });
+  }
+  await admin.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_id: actorId,
+    action: "monitoring.ticket.created",
+    entity_type: "ticket",
+    entity_id: ticketId,
+    severity: "info",
+    metadata: { assetId, ticketNumber: ticket.data.ticket_number },
+  });
+  return { ticketId, ticketNumber: String(ticket.data.ticket_number) };
+}
+
 async function requireAsset(admin: Client, tenantId: string, assetId: string): Promise<Row> {
   const { data, error } = await admin.from("assets").select("id, name").eq("tenant_id", tenantId).eq("id", assetId).maybeSingle();
   if (error) throw unavailable();
@@ -1026,6 +1177,10 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
   switch (action.type) {
     case "overview":
       return await overview(admin, action.tenantId, canManage);
+    case "summary":
+      return await summary(admin, action.tenantId);
+    case "deviceTicket":
+      return await deviceTicket(admin, client, action.tenantId, actorId, action.assetId);
     case "device":
       return await device(admin, action.tenantId, action.assetId, canManage);
     case "series":

@@ -71,6 +71,8 @@ Deno.test("sensor: defaults, names and validation per kind", () => {
 Deno.test("actions: tenant is required, validation message is passed on", () => {
   assertEquals(parseAction({ type: "overview", tenantId: TENANT }), { type: "overview", tenantId: TENANT });
   assertEquals(parseAction({ type: "overview" }), null);
+  assertEquals(parseAction({ type: "summary", tenantId: TENANT }), { type: "summary", tenantId: TENANT });
+  assertEquals(parseAction({ type: "deviceTicket", tenantId: TENANT, assetId: "nope" }), null);
   assertEquals(parseAction({ type: "series", tenantId: TENANT, sensorId: ASSET, range: "2y" }), null);
   assertEquals(parseAction({ type: "saveSensor", tenantId: TENANT, sensor: { assetId: ASSET, kind: "tcp" } }), "Der Port muss zwischen 1 und 65535 liegen.");
   assertEquals(parseAction({ type: "pauseDevice", tenantId: TENANT, assetId: ASSET, paused: "ja" }), null);

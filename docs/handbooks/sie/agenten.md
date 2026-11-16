@@ -429,6 +429,11 @@ das Modul _Überwachung_ eingeschaltet ist und Sie das Recht «Assets ansehen»
 haben. Gemessen wird von einer **Sonde** in Ihrem Netz; sie meldet die
 Resultate laufend an nextDesk.
 
+Wie bei **Störungen** zeigt der Menüeintrag **Überwachung** (und bei
+zugeklappter Gruppe **Dienste und Überwachung**) die Anzahl Geräte mit
+Ausfall oder Warnung: rot, solange mindestens ein Gerät ausgefallen ist,
+sonst grau.
+
 - **Kacheln**: Anzahl Geräte je Zustand. Ein Klick filtert die Liste.
   - **Ausfall** – ein Sensor antwortet nicht mehr (nach zwei Fehlversuchen in
     Folge, einstellbar je Sensor).
@@ -441,6 +446,11 @@ Resultate laufend an nextDesk.
   Dauer. Bei einem Ausfall öffnet nextDesk automatisch eine **Störung**; der
   Link führt direkt dorthin. Alarmteam, Wiederalarmierung, Folgestörungen und
   die Ruhe während Wartungsfenstern gelten wie bei allen Störungen.
+  Mit **Ticket erstellen** legen Sie direkt ein Ticket zum Gerät an: Betreff
+  und Beschreibung nennen die gestörten Sensoren, das Gerät ist verknüpft,
+  das Ticket geht an das Team aus den Überwachungseinstellungen und wird der
+  offenen Störung zugeordnet. Danach öffnet sich das Ticket. Dasselbe gibt
+  es im Gerätedetail unter **Verknüpft in nextDesk**.
 - **Sonden**: jede Sonde mit Zustand und letzter Meldung. Meldet sich eine
   Sonde länger als drei Minuten nicht, gelten ihre Sensoren als «Unbekannt».
   Nach fünf Minuten öffnet nextDesk eine Störung «Sonde … – Verbindung zu

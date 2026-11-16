@@ -77,7 +77,9 @@ export type Action =
   | { type: "simulate"; tenantId: string; assetId: string; sensorId: string | null; minutes: number }
   | { type: "connections"; tenantId: string; assetId: string }
   | { type: "refreshConnections"; tenantId: string; assetId: string }
-  | { type: "addDevice"; tenantId: string; device: NewDevice };
+  | { type: "addDevice"; tenantId: string; device: NewDevice }
+  | { type: "summary"; tenantId: string }
+  | { type: "deviceTicket"; tenantId: string; assetId: string };
 
 export const DEVICE_CATEGORIES = [
   "server",
@@ -392,6 +394,12 @@ export function parseAction(value: unknown): Action | string | null {
   switch (value.type) {
     case "overview":
       return { type: "overview", tenantId };
+    case "summary":
+      return { type: "summary", tenantId };
+    case "deviceTicket": {
+      const assetId = uuid(value.assetId);
+      return assetId ? { type: "deviceTicket", tenantId, assetId } : null;
+    }
     case "device": {
       const assetId = uuid(value.assetId);
       return assetId ? { type: "device", tenantId, assetId } : null;

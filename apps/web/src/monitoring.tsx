@@ -80,6 +80,7 @@ import {
   type SnmpMetric,
 } from "./lib/monitoring";
 import { tn } from "./lib/formality";
+import { confirmDialog } from "./app-dialog";
 
 import "./monitoring.css";
 
@@ -90,7 +91,43 @@ type Props = {
   onOpenIncident?: ((incidentId: string) => void) | undefined;
   /** Opens the device in the infrastructure view (same asset). */
   onOpenInfrastructure?: ((assetId: string) => void) | undefined;
+  /** Opens a ticket; set for agents, who may create tickets from an outage. */
+  onOpenTicket?: ((ticketId: string) => void) | undefined;
 };
+
+/**
+ * Creates a ticket for a device after a confirmation and opens it. Returns
+ * the busy device and the action; failures go to `onError`.
+ */
+function useDeviceTicket(
+  tenantId: string,
+  onOpenTicket: Props["onOpenTicket"],
+  onError: (text: string) => void,
+) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const create = async (assetId: string, deviceName: string) => {
+    if (!onOpenTicket || busy) return;
+    const confirmed = await confirmDialog(
+      `Für «${deviceName}» ein Ticket mit den Angaben zum Ausfall erstellen? Es geht an das Team aus den Überwachungseinstellungen.`,
+      { confirmLabel: "Ticket erstellen" },
+    );
+    if (!confirmed) return;
+    setBusy(assetId);
+    try {
+      const result = await monitoringCall<{ ticketId: string }>({
+        type: "deviceTicket",
+        tenantId,
+        assetId,
+      });
+      onOpenTicket(result.ticketId);
+    } catch (failure) {
+      onError(message(failure));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return { busy, create };
+}
 
 function message(error: unknown): string {
   return error instanceof Error
@@ -136,6 +173,7 @@ export function Monitoring({
   tenantId,
   onOpenIncident,
   onOpenInfrastructure,
+  onOpenTicket,
 }: Props) {
   const [assetId, setAssetId] = useState<string | null>(null);
   return assetId ? (
@@ -146,12 +184,14 @@ export function Monitoring({
       onOpenDevice={setAssetId}
       onOpenIncident={onOpenIncident}
       onOpenInfrastructure={onOpenInfrastructure}
+      onOpenTicket={onOpenTicket}
       tenantId={tenantId}
     />
   ) : (
     <OverviewView
       onOpenDevice={setAssetId}
       onOpenIncident={onOpenIncident}
+      onOpenTicket={onOpenTicket}
       tenantId={tenantId}
     />
   );
@@ -164,9 +204,11 @@ function OverviewView({
   tenantId,
   onOpenDevice,
   onOpenIncident,
+  onOpenTicket,
 }: Props & { onOpenDevice: (assetId: string) => void }) {
   const [data, setData] = useState<MonitoringOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const ticket = useDeviceTicket(tenantId, onOpenTicket, setError);
   const [filter, setFilter] = useState<MonitoringState | "all">("all");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
@@ -328,16 +370,32 @@ function OverviewView({
                             : ""}
                         </span>
                       </button>
-                      {device.incident && onOpenIncident ? (
-                        <button
-                          className="text-button"
-                          onClick={() => onOpenIncident(device.incident!.id)}
-                          type="button"
-                        >
-                          Störung {device.incident.number}
-                          {device.incident.acknowledged ? " (bestätigt)" : ""}
-                        </button>
-                      ) : null}
+                      <div className="monitoring-alarms__actions">
+                        {device.incident && onOpenIncident ? (
+                          <button
+                            className="text-button"
+                            onClick={() => onOpenIncident(device.incident!.id)}
+                            type="button"
+                          >
+                            Störung {device.incident.number}
+                            {device.incident.acknowledged ? " (bestätigt)" : ""}
+                          </button>
+                        ) : null}
+                        {onOpenTicket ? (
+                          <button
+                            className="text-button"
+                            disabled={ticket.busy !== null}
+                            onClick={() =>
+                              void ticket.create(device.assetId, device.name)
+                            }
+                            type="button"
+                          >
+                            {ticket.busy === device.assetId
+                              ? "Ticket wird erstellt …"
+                              : "Ticket erstellen"}
+                          </button>
+                        ) : null}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -708,6 +766,7 @@ function DeviceView({
   onOpenDevice,
   onOpenIncident,
   onOpenInfrastructure,
+  onOpenTicket,
 }: Props & {
   assetId: string;
   onBack: () => void;
@@ -715,6 +774,7 @@ function DeviceView({
 }) {
   const [data, setData] = useState<MonitoringDeviceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const ticket = useDeviceTicket(tenantId, onOpenTicket, setError);
   const [selected, setSelected] = useState<string | null>(null);
   const [range, setRange] = useState<MonitoringRange>("24h");
   const [series, setSeries] = useState<MonitoringSeries | null>(null);
@@ -1138,6 +1198,27 @@ function DeviceView({
                     "keine offene Störung"
                   )}
                 </dd>
+                {onOpenTicket &&
+                (data.device.state === "down" ||
+                  data.device.state === "warning") ? (
+                  <>
+                    <dt>Ticket</dt>
+                    <dd>
+                      <button
+                        className="text-button"
+                        disabled={ticket.busy !== null}
+                        onClick={() =>
+                          void ticket.create(assetId, data.device.name)
+                        }
+                        type="button"
+                      >
+                        {ticket.busy
+                          ? "Ticket wird erstellt …"
+                          : "Ticket zum Ausfall erstellen"}
+                      </button>
+                    </dd>
+                  </>
+                ) : null}
                 <dt>Services</dt>
                 <dd>
                   {data.device.services.length
