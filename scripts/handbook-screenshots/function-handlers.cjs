@@ -1256,6 +1256,18 @@ const HANDLERS = {
     }
     if (body.type === "assets") {
       return ok({
+        addresses:
+          String(body.query ?? "").trim().length >= 2
+            ? [
+                {
+                  addressId: D.uid("52525252", 1),
+                  address: "10.10.20.55",
+                  hostname: "srv-print-01",
+                  description: "Druckserver",
+                  deviceType: null,
+                },
+              ]
+            : [],
         assets: devices.map((device) => ({
           assetId: device.assetId,
           name: device.name,
