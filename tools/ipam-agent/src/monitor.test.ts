@@ -93,18 +93,20 @@ test("Schedule: verteilt den Start, hält das Intervall, entfernt Gelöschtes", 
     0,
   );
   assert.deepEqual(schedule.due(0, 10), []);
-  // 60 s Intervall → Start nach 15 s, 300 s Intervall → Start nach 15 s (max. 30 s Streuung).
+  // Der Start streut über höchstens 60 s: mit Zufallswert 0.5 beginnen beide
+  // (60 s und 300 s Intervall) nach 30 s.
+  assert.deepEqual(schedule.due(29_999, 10), []);
   assert.deepEqual(
-    schedule.due(15_000, 10).map((entry) => entry.id),
+    schedule.due(30_000, 10).map((entry) => entry.id),
     [ID, ID2],
   );
   // Läuft noch: nicht doppelt starten.
   assert.deepEqual(schedule.due(80_000, 10), []);
   schedule.done(ID);
   schedule.done(ID2);
-  assert.deepEqual(schedule.due(74_999, 10), []);
+  assert.deepEqual(schedule.due(89_999, 10), []);
   assert.deepEqual(
-    schedule.due(75_000, 10).map((entry) => entry.id),
+    schedule.due(90_000, 10).map((entry) => entry.id),
     [ID],
   );
   schedule.done(ID);
@@ -120,6 +122,15 @@ test("Schedule: verteilt den Start, hält das Intervall, entfernt Gelöschtes", 
   );
   schedule.update([check({ id: ID2, intervalSeconds: 300 })], 1_000_001);
   assert.equal(schedule.size, 1);
+});
+
+test("Schedule: ein 30-Sekunden-Sensor streut nur über sein Intervall", () => {
+  const schedule = new Schedule(() => 0.999);
+  schedule.update([check({ id: ID, intervalSeconds: 30 })], 0);
+  assert.deepEqual(
+    schedule.due(30_000, 10).map((entry) => entry.id),
+    [ID],
+  );
 });
 
 test("runCheck: TCP offen und geschlossen", async () => {
