@@ -76,6 +76,8 @@ export function graphMessageToMail(item: Row): ParsedMail {
   add("from", personHeader(item.from) ?? personHeader(item.sender));
   add("reply-to", rows(item.replyTo).map(personHeader).filter(Boolean).join(", ") || null);
   add("subject", str(item.subject));
+  add("to", rows(item.toRecipients).map(personHeader).filter(Boolean).join(", ") || null);
+  add("cc", rows(item.ccRecipients).map(personHeader).filter(Boolean).join(", ") || null);
   add("date", str(item.sentDateTime) ?? str(item.receivedDateTime));
   add("message-id", str(item.internetMessageId));
   const body = record(item.body) ? item.body : {};
@@ -132,7 +134,7 @@ async function readAttachedOriginals(
         let item: Row | null = null;
         try {
           const expanded = await graph(
-            `${base}/${encodeURIComponent(id)}?$expand=microsoft.graph.itemattachment/item($select=internetMessageHeaders,subject,from,sender,replyTo,body,sentDateTime,receivedDateTime,internetMessageId)`,
+            `${base}/${encodeURIComponent(id)}?$expand=microsoft.graph.itemattachment/item($select=internetMessageHeaders,subject,from,sender,replyTo,toRecipients,ccRecipients,body,sentDateTime,receivedDateTime,internetMessageId)`,
           );
           item = record(expanded.item) ? expanded.item : null;
         } catch {
@@ -254,6 +256,7 @@ export async function processPhishingEmailReport(
       channel: "email",
       analysis,
       fingerprint,
+      mail: selected.mail,
       bundled: caseTicketId !== input.ticketId,
     });
     const formality = input.thankYou

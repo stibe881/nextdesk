@@ -438,6 +438,33 @@ async function reportIntelNotes(
  * Stores the report, writes the internal summary and notifies the security
  * team. Errors in the notification never undo the report.
  */
+/**
+ * The reported mail as received: all headers, HTML and text (size-limited).
+ * It is only ever rendered sandboxed, with links and images disabled.
+ */
+export function storedOriginalMail(mail: ParsedMail) {
+  const header = (name: string) =>
+    mail.headers.find((entry) => entry.name.toLowerCase() === name)?.value ?? null;
+  return {
+    subject: header("subject")?.slice(0, 500) ?? null,
+    from: header("from")?.slice(0, 500) ?? null,
+    to: header("to")?.slice(0, 2000) ?? null,
+    cc: header("cc")?.slice(0, 2000) ?? null,
+    date: header("date")?.slice(0, 200) ?? null,
+    headers: mail.headers.slice(0, 400).map((entry) => ({
+      name: entry.name.slice(0, 200),
+      value: entry.value.slice(0, 4000),
+    })),
+    html: mail.html.length <= 1_500_000 ? mail.html : "",
+    text: mail.text.slice(0, 300_000),
+    attachments: mail.attachments.slice(0, 50).map((entry) => ({
+      filename: entry.filename.slice(0, 255),
+      contentType: entry.contentType.slice(0, 120),
+      size: entry.size,
+    })),
+  };
+}
+
 export async function finalizePhishingReport(
   admin: Admin,
   input: {
@@ -450,6 +477,8 @@ export async function finalizePhishingReport(
     channel: PhishingChannel;
     analysis: PhishingAnalysis;
     fingerprint: string;
+    /** The reported mail itself, shown to the security team as received. */
+    mail?: ParsedMail;
     /** Another report of a mail that already is an open case: no new alert. */
     bundled?: boolean;
   },
@@ -472,6 +501,7 @@ export async function finalizePhishingReport(
     sending_ip: h.sendingIp?.slice(0, 64) ?? null,
     fingerprint: input.fingerprint,
     analysis: storedAnalysis(input.analysis),
+    original_mail: input.mail ? storedOriginalMail(input.mail) : null,
   }).select("id").single();
   if (stored.error || !stored.data?.id) throw new Error("phishing_report_store_failed");
   await admin.from("ticket_comments").insert({
