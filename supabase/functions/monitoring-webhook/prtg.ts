@@ -31,10 +31,12 @@ export type PrtgEvent = {
   down: string | null;
   priority: string | null;
   link: string | null;
+  /** Set for results of nextDesk's own sensors (timeline kind «sensor»). */
+  origin?: "sensor";
 };
 
 /** Field aliases (normalised: lower case, no "%", "_", "-" or spaces). */
-const ALIASES: Record<keyof Omit<PrtgEvent, "kind">, string[]> = {
+const ALIASES: Record<keyof Omit<PrtgEvent, "kind" | "origin">, string[]> = {
   device: ["device", "devicename", "name"],
   host: ["host", "hostname", "ip", "ipaddress", "address"],
   sensor: ["sensor", "sensorname"],

@@ -42,6 +42,7 @@ import {
   CircleCheck,
   CircleEllipsis,
   EthernetPort,
+  Radar,
   Filter,
   FileWarning,
   FileText,
@@ -154,6 +155,7 @@ import { IpamImportWizard } from "./ipam-import";
 import { IpamApiSettings } from "./ipam-api-settings";
 import { IpamDiscoveryPanel } from "./ipam-discovery";
 import { Incidents } from "./incidents";
+import { Monitoring } from "./monitoring";
 import { SecurityCases } from "./security-cases";
 import {
   HomeLayoutEditor,
@@ -264,6 +266,7 @@ type Section =
   | "Assets"
   | "Infrastruktur"
   | "IP-Adressen"
+  | "Überwachung"
   | "Lager"
   | "Fälle"
   | "Sicherheitsfälle"
@@ -408,6 +411,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Assets", Icon: Laptop },
     { label: "Infrastruktur", Icon: Network },
     { label: "IP-Adressen", Icon: EthernetPort },
+    { label: "Überwachung", Icon: Radar },
     { label: "Lager", Icon: Boxes },
     { label: "Systemstatus", Icon: CircleCheck },
     { label: "Raumplanung", Icon: CalendarDays },
@@ -448,7 +452,13 @@ const NAVIGATION_CATEGORIES = [
     heading: "DIENSTE & ÜBERWACHUNG",
     id: "navigation-category-services",
     navigationLabel: "Dienste und Überwachung",
-    sectionLabels: ["Services", "Infrastruktur", "IP-Adressen", "Systemstatus"],
+    sectionLabels: [
+      "Services",
+      "Infrastruktur",
+      "IP-Adressen",
+      "Überwachung",
+      "Systemstatus",
+    ],
   },
 ] as const satisfies readonly {
   heading: string;
@@ -5407,6 +5417,9 @@ function AuthenticatedApp() {
     if (item.label === "IP-Adressen") {
       return isFeatureEnabled("ipam.management");
     }
+    if (item.label === "Überwachung") {
+      return isFeatureEnabled("monitoring.native");
+    }
     if (item.label === "Sicherheitsfälle") {
       return canWorkTickets && teamModuleAccess.securityCases;
     }
@@ -5453,6 +5466,7 @@ function AuthenticatedApp() {
     "Raumplanung",
     "Infrastruktur",
     "IP-Adressen",
+    "Überwachung",
     "Lager",
     "Arbeitsplatz",
     "Systemstatus",
@@ -6995,6 +7009,21 @@ function AuthenticatedApp() {
             key={activeTenant.id}
             onFocusConsumed={clearIpamFocus}
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
+            tenantId={activeTenant.id}
+          />
+        ) : section === "Überwachung" &&
+          activeTenant &&
+          isFeatureEnabled("monitoring.native") ? (
+          <Monitoring
+            key={activeTenant.id}
+            onOpenIncident={
+              canWorkTickets && teamModuleAccess.incidents
+                ? (id) => {
+                    setIncidentFocusId(id);
+                    setSection("Störungen");
+                  }
+                : undefined
+            }
             tenantId={activeTenant.id}
           />
         ) : section === "Lager" &&

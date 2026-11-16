@@ -56,6 +56,7 @@ import { PushBroadcastSettings } from "./push-broadcast-settings";
 import { RequesterNoticesSettings } from "./requester-notices-settings";
 import { TeamsSettings } from "./teams-settings";
 import { MonitoringSettings } from "./monitoring-settings";
+import { MonitoringProbeSettings } from "./monitoring";
 import { ExpiryMonitoringSettings } from "./expiry-monitoring-settings";
 import { BackupMonitoringSettings } from "./backup-monitoring-settings";
 import { ExternalStatusSettings } from "./external-status-settings";
@@ -2855,6 +2856,12 @@ export function TenantAdminSettings({
         feature.feature_key === "assets.management" &&
         isTenantFeatureActive(feature),
     ) ?? false;
+  const monitoringEnabled =
+    settings?.tenant_feature_flags.some(
+      (feature) =>
+        feature.feature_key === "monitoring.native" &&
+        isTenantFeatureActive(feature),
+    ) ?? false;
 
   useEffect(() => {
     if (
@@ -3196,6 +3203,9 @@ export function TenantAdminSettings({
                 {assetsManagementEnabled ? (
                   <>
                     <MonitoringSettings tenantId={tenantId} />
+                    {monitoringEnabled ? (
+                      <MonitoringProbeSettings tenantId={tenantId} />
+                    ) : null}
                     <ExternalStatusSettings tenantId={tenantId} />
                     <ExpiryMonitoringSettings tenantId={tenantId} />
                     <BackupMonitoringSettings tenantId={tenantId} />

@@ -278,7 +278,7 @@ async function addIncidentEvent(
   await admin.from("monitoring_incident_events").insert({
     tenant_id: tenantId,
     incident_id: incidentId,
-    kind,
+    kind: kind === "prtg" && event?.origin === "sensor" ? "sensor" : kind,
     status: event?.status?.slice(0, 120) ?? null,
     sensor_name: event?.sensor?.slice(0, 300) ?? null,
     message: (message ?? event?.message ?? null)?.slice(0, 4000) ?? null,
@@ -647,10 +647,15 @@ export async function processEvent(
   integration: Integration,
   event: PrtgEvent,
   receivedAt: Date = new Date(),
+  // nextDesk's own sensors know their key and device; PRTG messages are
+  // resolved from the message.
+  known: { key?: string; device?: ResolvedDevice | null } = {},
 ): Promise<string> {
   if (event.kind === "ignore") return "ignored";
   const tenantId = integration.tenant_id;
-  const key = externalKey(event);
+  const key = known.key ?? externalKey(event);
+  const deviceOf = async () =>
+    known.device !== undefined ? known.device : await resolveDevice(admin, tenantId, event);
   const now = new Date();
   if (!(await recordSensorState(admin, tenantId, key, event, receivedAt))) {
     return "stale";
@@ -659,7 +664,7 @@ export async function processEvent(
 
   if (!alert) {
     if (!opensAlert(event.kind, integration.create_on)) return "ignored";
-    const device = await resolveDevice(admin, tenantId, event);
+    const device = await deviceOf();
     // The alert is claimed first: the partial unique index makes a second,
     // concurrent Down for the same object fall through to the update path.
     const inserted = await admin
@@ -722,7 +727,7 @@ export async function processEvent(
 
   // Older open alerts without an incident get one now.
   if (!alert.incident_id) {
-    const device = await resolveDevice(admin, tenantId, event);
+    const device = await deviceOf();
     const incident = await incidentForAlert(admin, integration, event, device, key, now);
     alert.incident_id = incident.incident.id;
     await admin.from("monitoring_alerts").update({ incident_id: alert.incident_id }).eq("id", alert.id);

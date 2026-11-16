@@ -56,7 +56,7 @@ function eventTone(
   kind: string,
   status: string | null,
 ): "bad" | "warn" | "ok" | "info" {
-  if (kind === "prtg") {
+  if (kind === "prtg" || kind === "sensor") {
     const value = (status ?? "").toLowerCase();
     if (/(jetzt|now):\s*(ok|up)|^(ok|up)/.test(value)) return "ok";
     if (/(jetzt|now):\s*(warn)|^warn/.test(value)) return "warn";
@@ -417,8 +417,8 @@ export default function IncidentDetailScreen() {
                 />
                 <Text style={styles.eventBody}>
                   <Text style={{ fontWeight: "800" }}>
-                    {event.kind === "prtg"
-                      ? `${event.sensor ?? "PRTG"}: ${event.status ?? ""}`
+                    {event.kind === "prtg" || event.kind === "sensor"
+                      ? `${event.sensor ?? (event.kind === "sensor" ? "Sensor" : "PRTG")}: ${event.status ?? ""}`
                       : (EVENT_LABELS[event.kind] ?? event.kind)}
                   </Text>
                   {event.message ? ` · ${event.message}` : ""}

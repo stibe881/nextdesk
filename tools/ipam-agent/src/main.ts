@@ -1,6 +1,7 @@
 /**
- * nextDesk network agent. Loop: hello (heartbeat, config, jobs) → run jobs →
- * scan on schedule → send reports in chunks → wait.
+ * nextDesk network agent. Loop: hello (heartbeat, config, jobs, monitoring
+ * checks) → run jobs → scan on schedule → send reports in chunks → wait.
+ * The monitoring checks run beside this loop on their own intervals.
  *
  * Usage: node dist/main.js [--once] [--check] [--config <path>]
  */
@@ -17,6 +18,7 @@ import {
 } from "./config.ts";
 import { type Job, JobRejected, planWriteJob } from "./jobs.ts";
 import { log, setLogLevel } from "./log.ts";
+import { Monitor, parseChecks } from "./monitor.ts";
 import { currentPlatform } from "./parsers.ts";
 import { runPowerShell } from "./powershell.ts";
 import {
@@ -34,6 +36,9 @@ type Hello = {
   config: ServerConfig;
   subnets: Subnet[];
   jobs: Job[];
+  /** False when the tenant only uses monitoring (no IP address management). */
+  scanEnabled?: boolean;
+  checks?: unknown;
   pollSeconds?: number;
   limits?: Partial<ReportLimits>;
 };
@@ -79,6 +84,7 @@ async function hello(
         snmp: true,
         powershell: platform === "win32",
         dhcpDns: platform === "win32",
+        monitoring: true,
         writes: local.allowWrites,
       },
     },
@@ -215,12 +221,13 @@ async function main(): Promise<void> {
   if (process.argv.includes("--check")) {
     const state = await hello(client, local);
     log.info(
-      `Verbindung OK: Agent «${state.agent?.name ?? "?"}», ${state.subnets.length} Subnetze, ${state.config.snmpTargets.length} SNMP-Ziele, ${state.jobs.length} Aufträge`,
+      `Verbindung OK: Agent «${state.agent?.name ?? "?"}», ${state.subnets.length} Subnetze, ${state.config.snmpTargets.length} SNMP-Ziele, ${state.jobs.length} Aufträge, ${parseChecks(state.checks).length} Sensoren`,
     );
     for (const job of state.jobs) await runJob(client, local, state, job);
     return;
   }
 
+  const monitor = new Monitor(client, platform);
   let nextScanAt = 0;
   let firstScan = true;
   while (!stopping) {
@@ -228,13 +235,18 @@ async function main(): Promise<void> {
     try {
       const state = await hello(client, local);
       pollSeconds = Math.min(Math.max(state.pollSeconds ?? 60, 15), 600);
+      monitor.setChecks(parseChecks(state.checks));
       for (const job of state.jobs) {
         if (stopping) break;
         await runJob(client, local, state, job);
         if (job.kind === "scan_now")
           nextScanAt = Date.now() + state.config.scheduleMinutes * 60_000;
       }
-      if (!stopping && Date.now() >= nextScanAt) {
+      if (
+        !stopping &&
+        state.scanEnabled !== false &&
+        Date.now() >= nextScanAt
+      ) {
         await scanAndReport(
           client,
           local,
@@ -265,6 +277,7 @@ async function main(): Promise<void> {
     }
     if (!stopping) await sleep(pollSeconds * 1000);
   }
+  await monitor.stop();
   log.info("Agent beendet");
 }
 

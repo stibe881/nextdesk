@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-13
+updated: 2026-11-16
 ---
 
 # Installationsanleitung
@@ -360,6 +360,62 @@ per Push und E-Mail alarmiert.
    **Uplink** (vorgelagertes Gerät) eintragen.
 
 ![Monitoring (PRTG) mit Token und Alarmierung](images/in-monitoring.jpg)
+
+### Eigene Überwachung (Sonde)
+
+Die Sonde ist derselbe Netzwerkagent wie für die IP-Adressverwaltung
+(`tools/ipam-agent`). Läuft er bereits, ist nichts zu installieren: Er
+übernimmt die Sensoren, sobald das Modul _Überwachung_ aktiv ist und der
+Agent auf Version 1.1.0 oder neuer aktualisiert wurde.
+
+1. Unter **Funktionen** das Modul _Überwachung_ einschalten.
+2. Unter **Einstellungen → Monitoring → Überwachung** (oder **Dienste und
+   Überwachung → Überwachung → Sonden**) mit **Sonde hinzufügen** die Sonde
+   anlegen und die `config.json` herunterladen. Danach mit **Sonde
+   herunterladen** das Installationspaket (`nextdesk-sonde-<Version>.zip`)
+   laden.
+3. Einen Server im Netz bereitstellen (2 vCPU, 2 GB RAM; Linux mit Docker
+   oder Windows Server 2016+ mit Node.js 22 LTS). Er braucht:
+   - ausgehend HTTPS (443) zu `<projekt>.supabase.co`, keine eingehende
+     Firewall-Regel;
+   - ICMP (Ping) und die geprüften TCP-Ports zu den überwachten Geräten.
+4. Das Paket auf dem Server entpacken und die `config.json` in den Ordner
+   `nextdesk-sonde` legen.
+   - **Windows**: in einer PowerShell als Administrator
+     `.\windows\install-service.ps1` ausführen. Das Skript kopiert die Sonde
+     nach `C:\Program Files\nextDesk\ipam-agent`, legt die Konfiguration
+     unter `C:\ProgramData\nextDesk\ipam-agent` ab (lesbar nur für SYSTEM,
+     Administratoren und das Dienstkonto), prüft die Verbindung und startet
+     den Dienst «nextDesk IPAM-Agent». Der Dienst-Wrapper WinSW liegt dem
+     Paket bei.
+   - **Linux**: `sudo linux/install.sh` ausführen. Das Skript legt die
+     Konfiguration unter `/etc/nextdesk-ipam-agent` ab, baut das
+     Docker-Image, prüft die Verbindung und startet den Container
+     `nextdesk-ipam-agent`.
+5. In der Überwachung erscheint die Sonde nach etwa einer Minute als
+   «online».
+6. Die `config.json` enthält den Zugangsschlüssel: nach der Installation aus
+   dem Download- und dem Paketordner löschen.
+
+**Aktualisieren:** Zeigt nextDesk bei einer Sonde «Aktualisierung verfügbar»,
+das neue Paket herunterladen, entpacken und dasselbe Skript erneut ausführen.
+Ohne `config.json` im Paketordner bleibt die installierte Konfiguration
+erhalten.
+
+**Betreiber:** Das Paket baut der GitHub-Workflow «Publish probe package» bei
+jeder Änderung unter `tools/ipam-agent` auf `main` und legt es im privaten
+Storage-Bucket `probe-packages` ab. Er braucht das Secret
+`SUPABASE_ACCESS_TOKEN`. Die Version steht in `tools/ipam-agent/package.json`
+und `src/version.ts`; nur eine höhere Version löst den Hinweis
+«Aktualisierung verfügbar» aus.
+
+Die Sonde holt ihre Prüfaufträge etwa jede Minute neu und meldet Resultate
+alle 30 Sekunden. Ist nextDesk nicht erreichbar, puffert sie die Resultate
+und liefert sie nach.
+
+> Parallelbetrieb mit PRTG: Beide Systeme dürfen dasselbe Gerät überwachen.
+> Jedes führt seine eigenen Alarme; die Störung wird je Gerät gemeinsam
+> geführt und erst behoben, wenn beide wieder OK melden.
 
 ### Externe Statusquellen (Microsoft 365, GitHub, Claude …)
 

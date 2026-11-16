@@ -10,6 +10,15 @@ nextDesk, was nextDesk aus der Cloud nicht sehen kann:
 - **Microsoft DHCP** (Bereiche, Auslastung, Leases, Reservierungen) und
   **Microsoft DNS** (A, AAAA, PTR, CNAME) per PowerShell – nur auf Windows
 
+Zusätzlich ist der Agent die **Sonde der Überwachung** (Modul «Überwachung»):
+Er führt die in nextDesk erfassten Sensoren aus – **Ping**, **TCP-Port** und
+**HTTP** – je Sensor im eigenen Intervall und meldet die Resultate alle
+30 Sekunden (`monitorReport`). Ob daraus eine Warnung, ein Ausfall und eine
+Störung wird, entscheidet nextDesk. Ist nextDesk nicht erreichbar, puffert der
+Agent die Resultate. Für die Überwachung allein genügt eine `config.json` mit
+`nextdeskUrl` und `agentToken`; nextDesk bietet sie beim Anlegen der Sonde
+fertig ausgefüllt zum Herunterladen an.
+
 nextDesk vergleicht die Beobachtungen mit der Dokumentation und meldet Funde:
 Ghost-IPs, IP-Konflikte, fremde MAC auf reservierten Adressen, DNS-Abweichungen,
 Adressen ausserhalb aller Subnetze und lange nicht gesehene Adressen.
@@ -55,7 +64,22 @@ snmpv3 only
 Die Schlüssel trägst du **nur** in die lokale `config.json` des Agenten ein –
 in nextDesk stehen lediglich Gerätename, SNMP-Version und Benutzername.
 
-## Installation
+## Installation aus dem Paket (empfohlen)
+
+nextDesk bietet unter **Einstellungen → Monitoring → Überwachung** und in der
+Überwachung (Karte «Sonden») das fertig gebaute Paket und die für den
+Mandanten ausgefüllte `config.json` zum Herunterladen an.
+
+1. Paket entpacken, `config.json` in den Ordner `nextdesk-sonde` legen.
+2. Windows (Node.js 22 LTS x64 installiert), PowerShell als Administrator:
+   `.\windows\install-service.ps1` – Linux mit Docker: `sudo linux/install.sh`.
+3. Aktualisieren: neues Paket entpacken, dasselbe Skript erneut ausführen.
+
+Das Paket entsteht mit `scripts/package.sh` (Workflow «Publish probe
+package»). Bei einer Änderung, die auf installierte Sonden soll, die Version
+in `package.json`, `package-lock.json` und `src/version.ts` erhöhen.
+
+## Installation aus dem Repository
 
 ### 1. Agent in nextDesk anlegen
 

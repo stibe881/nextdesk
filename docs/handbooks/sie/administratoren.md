@@ -2,7 +2,7 @@
 title: Handbuch für Administratoren
 description: Mandant einrichten – Design, Funktionen, SLA, Abteilungen, Personen, Rollen, Datenschutz und Protokoll.
 audienceLabel: Administratoren
-updated: 2026-11-14
+updated: 2026-11-16
 ---
 
 # Handbuch für Administratoren
@@ -341,6 +341,43 @@ Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
 - **Backup-Überwachung** – z. B. Veeam-Jobs per E-Mail oder Webhook
 
 Die Einrichtung ist in der _Installationsanleitung_ beschrieben.
+
+### Eigene Überwachung
+
+Mit dem Modul **Überwachung** misst nextDesk selbst, ohne PRTG. Es kann
+parallel zu PRTG laufen; beide öffnen Störungen im selben Bereich.
+
+1. Unter **Funktionen** das Modul _Überwachung_ aktivieren. Danach erscheint
+   **Dienste und Überwachung → Überwachung**.
+2. Rechte vergeben: «Assets ansehen» zeigt die Überwachung, «Assets
+   verwalten» erlaubt Geräte, Sensoren und Sonden zu ändern.
+3. Unter **Einstellungen → Monitoring → Überwachung** (oder in der
+   Überwachung in der Karte **Sonden**) mit **Sonde hinzufügen** eine Sonde
+   anlegen und die **config.json herunterladen**. Die Datei ist für diesen
+   Mandanten fertig ausgefüllt (Adresse und Zugangsschlüssel). nextDesk
+   speichert vom Schlüssel nur eine Prüfsumme und zeigt ihn nur dieses eine
+   Mal; geht die Datei verloren, legen Sie eine neue Sonde an.
+4. Am selben Ort mit **Sonde herunterladen** das Installationspaket laden und
+   auf einem Server im Netz installieren (siehe Installationshandbuch,
+   «Eigene Überwachung»). nextDesk bietet immer das zuletzt gebaute Paket an;
+   es wird bei jeder Änderung an der Sonde automatisch neu gebaut.
+5. Geräte und Sensoren erfassen (siehe Handbuch für Agenten, «Überwachung»).
+
+Die Einstellungen unter **Monitoring (PRTG)** gelten auch für die eigene
+Überwachung: Team für die Alarmierung, ob Warnungen eine Störung öffnen,
+Wiederalarmierung, Folgestörungen und Ruhe während einer Wartung. Der Schalter
+«aktiv» und der Token dort betreffen nur den Empfang von PRTG-Meldungen.
+
+Jede Sonde gehört zu genau einem Mandanten: Der Zugangsschlüssel gilt nur
+für diesen Mandanten, und die Sonde erhält und meldet nur dessen Sensoren. Die Karte
+**Sonden** zeigt je Sonde die installierte Version. Ist das Paket neuer,
+erscheint «Aktualisierung verfügbar»: Paket herunterladen, auf dem Server
+entpacken und das Installationsskript erneut ausführen. Die Konfiguration
+bleibt erhalten.
+
+Messwerte bewahrt nextDesk gestaffelt auf, damit die Datenbank nicht
+unbegrenzt wächst: jeden einzelnen Messwert 7 Tage, Stundenwerte 90 Tage,
+Tageswerte unbegrenzt.
 
 ## Personen und Agenten
 
