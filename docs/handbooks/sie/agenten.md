@@ -466,7 +466,7 @@ Ein Klick auf ein Gerät öffnet das **Gerätedetail**:
 Mit dem Recht «Assets verwalten» können Sie zusätzlich:
 
 1. **Gerät hinzufügen** – ein Gerät aus der Infrastruktur wählen und die
-   Sonde bestimmen. Das Gerät erhält einen Ping-Sensor. Geräte, die noch
+   Sonde bestimmen. Das Gerät erhält einen Ping-Sensor. Geräte mit Adresse stehen in der Liste zuoberst; fehlt in der Infrastruktur die IP-Adresse und der Hostname, fragt der Dialog danach. Geräte, die noch
    nicht in der Infrastruktur stehen, erfassen Sie zuerst dort.
 2. **Sensor hinzufügen** (im Gerätedetail) – Art wählen:
    - **Ping**: Ist das Gerät erreichbar?

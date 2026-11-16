@@ -434,7 +434,11 @@ async function assetChoices(admin: Client, tenantId: string, query: string) {
         ipAddress: text(row?.ip_address),
         monitored: known.has(String(asset.id)),
       }];
-    }).sort((x, y) => x.name.localeCompare(y.name, "de")).slice(0, 100),
+      // Devices with an address first: they can be monitored right away.
+    }).sort((x, y) =>
+      Number(!(x.ipAddress || x.hostname)) - Number(!(y.ipAddress || y.hostname)) ||
+      x.name.localeCompare(y.name, "de")
+    ).slice(0, 100),
   };
 }
 
