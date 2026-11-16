@@ -63,7 +63,11 @@ Das **Systemstatus-Badge** oben in der Navigation und die Seite
 **Systemstatus** aktualisieren sich selbst (alle 30 Sekunden und beim
 Zurückkehren in den Tab). In der **Infrastruktur** hat ein Gerät einen oder
 mehrere **Dienste (für Systemstatus)**, die bei einer Überwachungsstörung
-(PRTG) ihren Status ändern, die **Höheneinheit** als «von … bis» und
+(PRTG) ihren Status ändern; du legst sie unter **Bearbeiten** fest, und die
+**Übersicht** des Geräts zeigt sie unter **Betroffene Dienste**. Beim Planen
+eines **Wartungsfensters** (Register **Wartung**) werden diese Dienste
+automatisch übernommen; mit **Andere Dienste wählen** passt du sie für ein
+einzelnes Fenster an. Ferner gibt es die **Höheneinheit** als «von … bis» und
 Wartungseinträge mit Datum und optionaler **Uhrzeit**. In der
 **Wartungscheckliste** erfasst du jeden Punkt in einer eigenen Zeile mit
 einem eigenen **Datum** (z. B. wann er erledigt wurde oder wann er dran ist);

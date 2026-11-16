@@ -68,7 +68,7 @@ function localInput(date: Date): string {
 export function MaintenancePlanning({
   deviceId,
   deviceName,
-  serviceId,
+  serviceIds: deviceServiceIds,
   checklist,
   intervalMonths,
   hasServiceTask,
@@ -80,7 +80,8 @@ export function MaintenancePlanning({
 }: {
   deviceId: string;
   deviceName: string;
-  serviceId: string | null;
+  /** Services of the device: used for the window unless changed. */
+  serviceIds: string[];
   checklist: ChecklistItem[];
   intervalMonths: number | null;
   hasServiceTask: boolean;
@@ -99,8 +100,15 @@ export function MaintenancePlanning({
     startsAt: localInput(tomorrow),
     endsAt: localInput(new Date(tomorrow.getTime() + 2 * 3_600_000)),
     publicEnabled: true,
-    serviceIds: serviceId ? [serviceId] : ([] as string[]),
+    serviceIds: [...deviceServiceIds],
   }));
+  // With services on the device the window uses them; «Andere Dienste»
+  // opens the selection.
+  const [customServices, setCustomServices] = useState(
+    deviceServiceIds.length === 0,
+  );
+  const serviceName = (id: string) =>
+    services.find((service) => service.id === id)?.name ?? "Dienst";
   const [schedule, setSchedule] = useState(() => ({
     intervalMonths: intervalMonths ?? 6,
     startsOn: new Date().toISOString().slice(0, 10),
@@ -188,31 +196,53 @@ export function MaintenancePlanning({
                 </FormField>
               </FormGrid>
               <FormGrid cols={1}>
-                <FormField
-                  hint="Mehrfachauswahl mit Ctrl bzw. Cmd. Ohne Dienst kann kein Wartungsfenster im Systemstatus erscheinen."
-                  label="Betroffene Dienste"
-                  required
-                >
-                  <select
-                    multiple
-                    onChange={(event) =>
-                      setPlan({
-                        ...plan,
-                        serviceIds: [...event.target.selectedOptions].map(
-                          (option) => option.value,
-                        ),
-                      })
-                    }
-                    size={Math.min(6, Math.max(3, services.length))}
-                    value={plan.serviceIds}
+                {!customServices ? (
+                  <FormField
+                    hint="Die Dienste dieses Geräts (unter Bearbeiten festgelegt)."
+                    label="Betroffene Dienste"
                   >
-                    {services.map((service) => (
-                      <option key={service.id} value={service.id}>
-                        {service.name}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
+                    <div className="infrastructure__service-line">
+                      <span>{plan.serviceIds.map(serviceName).join(", ")}</span>
+                      <button
+                        className="text-button"
+                        onClick={() => setCustomServices(true)}
+                        type="button"
+                      >
+                        Andere Dienste wählen
+                      </button>
+                    </div>
+                  </FormField>
+                ) : (
+                  <FormField
+                    hint={
+                      deviceServiceIds.length
+                        ? "Mehrfachauswahl mit Ctrl bzw. Cmd. Vorausgewählt sind die Dienste des Geräts."
+                        : "Mehrfachauswahl mit Ctrl bzw. Cmd. Tipp: Unter Bearbeiten die Dienste des Geräts festlegen, dann sind sie hier vorausgewählt."
+                    }
+                    label="Betroffene Dienste"
+                    required
+                  >
+                    <select
+                      multiple
+                      onChange={(event) =>
+                        setPlan({
+                          ...plan,
+                          serviceIds: [...event.target.selectedOptions].map(
+                            (option) => option.value,
+                          ),
+                        })
+                      }
+                      size={Math.min(6, Math.max(3, services.length))}
+                      value={plan.serviceIds}
+                    >
+                      {services.map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {service.name}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                )}
                 <FormField label="Hinweis für Betroffene">
                   <textarea
                     maxLength={2000}

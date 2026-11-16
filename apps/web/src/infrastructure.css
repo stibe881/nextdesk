@@ -1308,3 +1308,34 @@
 .rack-form__new-location input {
   flex: 1 1 180px;
 }
+
+/* Geräte: betroffene Dienste (Übersicht und Wartungsfenster). */
+.infrastructure__service-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.infrastructure__service-chips li {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.infrastructure__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.infrastructure__service-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+}
