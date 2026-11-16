@@ -92,7 +92,7 @@ const handler = withSupabase(
             author_id: author,
             visibility: "internal",
             body: clicked
-              ? `Achtung: ${question.email} hat angegeben, einen Link oder Anhang geöffnet oder Daten eingegeben zu haben. Massnahmen im Sicherheitsfall: Sitzungen widerrufen, Passwort-Reset erzwingen, Gerät synchronisieren und scannen; Anmeldungen prüfen.`
+              ? `Achtung: ${question.email} hat angegeben, einen Link oder Anhang geöffnet oder Daten eingegeben zu haben. Massnahmen im Phishing-/Junk-Fall: Sitzungen widerrufen, Passwort-Reset erzwingen, Gerät synchronisieren und scannen; Anmeldungen prüfen.`
               : `${question.email} hat angegeben, nichts geöffnet oder eingegeben zu haben.`,
           });
         }

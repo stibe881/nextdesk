@@ -228,7 +228,7 @@ struct NextDeskAPI {
     return data["ticketNumber"] as? String ?? ""
   }
 
-  // MARK: Wiedervorlagen und Serviceaufgaben
+  // MARK: Erinnerungen und Serviceaufgaben
 
   func followUps() async throws -> [FollowUp] {
     let creds = try await session.validCredentials()

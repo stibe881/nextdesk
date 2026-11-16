@@ -154,7 +154,7 @@ struct FollowUpsView: View {
       case .failed(let message):
         ErrorView(message: message) { await load() }
       case .loaded(let items) where items.isEmpty:
-        Text("Keine offenen Wiedervorlagen.").foregroundStyle(.secondary)
+        Text("Keine offenen Erinnerungen.").foregroundStyle(.secondary)
       case .loaded(let items):
         List(items) { item in
           Button {
@@ -172,7 +172,7 @@ struct FollowUpsView: View {
         }
       }
     }
-    .navigationTitle("Wiedervorlagen")
+    .navigationTitle("Erinnerungen")
     .task { await load() }
     .feedbackBanner($feedback)
     .confirmationDialog(

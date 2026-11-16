@@ -69,7 +69,7 @@ Deno.test(
       ticketSubject: "Phishing-Meldung: Test",
     });
     if (
-      !reported.message.includes("Sicherheitsfälle") ||
+      !reported.message.includes("Phishing / Junk") ||
       !reported.message.includes("hoch (82)")
     ) {
       throw new Error(`Meldungstext falsch: ${reported.message}`);
@@ -139,7 +139,7 @@ Deno.test("security, shop and inventory reminders", () => {
     });
   assertEquals(
     text("security.case_overdue").title,
-    "Sicherheitsfall überfällig",
+    "Phishing-/Junk-Fall überfällig",
   );
   assertStringIncludes(
     text("security.campaign", { reporterCount: 5 }).message,

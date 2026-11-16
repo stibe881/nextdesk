@@ -8,7 +8,7 @@ import {
   parseSecurityDetail,
 } from "./security-cases";
 
-describe("Sicherheitsfälle: Kontext, Kampagne und IOC", () => {
+describe("Phishing-/Junk-Fälle: Kontext, Kampagne und IOC", () => {
   it("liest Kampagne, IOC-Treffer und Massnahmen am Fall", () => {
     const detail = parseSecurityDetail({
       data: {

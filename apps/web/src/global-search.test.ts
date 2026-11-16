@@ -15,10 +15,10 @@ const results: readonly GlobalSearchResult[] = [
     title: "Drucker prüfen",
   },
   {
-    detail: "Persönliche Wiedervorlage",
+    detail: "Persönliche Erinnerung",
     entityId: "follow-up-1",
     resultType: "follow_up",
-    section: "Wiedervorlagen",
+    section: "Erinnerungen",
     ticketId: null,
     title: "Rückmeldung einholen",
   },
@@ -45,7 +45,7 @@ describe("globale Suche", () => {
     expect(filterGlobalSearchResults(results, "all")).toEqual(results);
   });
 
-  it("liest Störungen und Sicherheitsfälle", () => {
+  it("liest Störungen und Phishing-/Junk-Fälle", () => {
     const parsed = parseResults({
       data: {
         results: [
@@ -62,7 +62,7 @@ describe("globale Suche", () => {
             entityId: "case-1",
             title: "SEC-3 · Rechnung",
             detail: "Zu beurteilen",
-            section: "Sicherheitsfälle",
+            section: "Phishing / Junk",
             ticketId: null,
           },
         ],
@@ -73,6 +73,30 @@ describe("globale Suche", () => {
       "security_case",
     ]);
     expect(filterGlobalSearchResults(parsed ?? [], "tickets-only")).toEqual([]);
+    expect(
+      parseResults({
+        data: {
+          results: [
+            {
+              resultType: "security_case",
+              entityId: "case-2",
+              title: "SEC-4 · Mahnung",
+              detail: "Zu beurteilen",
+              section: "Sicherheitsfälle",
+              ticketId: null,
+            },
+            {
+              resultType: "follow_up",
+              entityId: "follow-up-1",
+              title: "Rückruf",
+              detail: "Heute",
+              section: "Wiedervorlagen",
+              ticketId: null,
+            },
+          ],
+        },
+      })?.map((result) => result.section),
+    ).toEqual(["Phishing / Junk", "Erinnerungen"]);
     expect(
       parseResults({
         data: {

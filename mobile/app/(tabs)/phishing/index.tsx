@@ -80,7 +80,7 @@ export default function PhishingScreen() {
         setError(
           nextError instanceof Error
             ? nextError.message
-            : "Die Phishing-Fälle konnten nicht geladen werden.",
+            : "Die Phishing-/Junk-Fälle konnten nicht geladen werden.",
         );
       } finally {
         setLoading(false);
@@ -123,9 +123,9 @@ export default function PhishingScreen() {
               name="shield-outline"
               size={28}
             />
-            <Text style={styles.cardTitle}>Phishing</Text>
+            <Text style={styles.cardTitle}>Phishing / Junk</Text>
             <Text style={styles.emptyText}>
-              Phishing-Fälle sieht nur das zuständige Sicherheitsteam.
+              Phishing-/Junk-Fälle sieht nur das zuständige Sicherheitsteam.
             </Text>
           </View>
         </View>
@@ -148,7 +148,7 @@ export default function PhishingScreen() {
       >
         <View>
           <Text style={styles.eyebrow}>SICHERHEIT</Text>
-          <Text style={styles.title}>Phishing</Text>
+          <Text style={styles.title}>Phishing / Junk</Text>
           <Text style={styles.subtitle}>
             {tn("Gemeldete Phishing-Mails. Meldungen derselben Mail sind ein Fall. Beurteile den Fall und arbeite die Massnahmen ab; alle Melder erhalten das Ergebnis automatisch.", "Gemeldete Phishing-Mails. Meldungen derselben Mail sind ein Fall. Beurteilen Sie den Fall und arbeiten Sie die Massnahmen ab; alle Melder erhalten das Ergebnis automatisch.")}
           </Text>

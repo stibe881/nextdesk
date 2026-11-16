@@ -124,7 +124,7 @@ describe("pushKindForNotification", () => {
 });
 
 describe("inboxRoute (dieselbe Tabelle wie Push)", () => {
-  it("öffnet Tickets und Sicherheitsfälle", () => {
+  it("öffnet Tickets und Phishing-/Junk-Fälle", () => {
     expect(inboxRoute(item("ticket.assigned", {}, ticket))).toEqual({
       kind: "ticket",
       ticketId: id,

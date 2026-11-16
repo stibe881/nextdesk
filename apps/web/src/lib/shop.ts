@@ -113,7 +113,7 @@ export type OrderSummary = {
   decisionReason: string | null;
   /** Grund der Bestellung (ältere Bestellungen: leer). */
   reason?: string | null;
-  /** Herkunft einer Bestellung ohne Genehmigung (z. B. Sicherheitsfall). */
+  /** Herkunft einer Bestellung ohne Genehmigung (z. B. Phishing-/Junk-Fall). */
   source?: {
     type: "security_case";
     id: string;

@@ -4,7 +4,7 @@
 
 export type NotificationTargetSection =
   | "Tickets"
-  | "Sicherheitsfälle"
+  | "Phishing / Junk"
   | "Störungen"
   | "Shop"
   | "IP-Adressen"
@@ -111,8 +111,8 @@ export function notificationTarget(
 
   if (kind === "ticket.security_report" || kind.startsWith("security.")) {
     return ticketId
-      ? section("Sicherheitsfälle", { kind: "security", id: ticketId })
-      : section("Sicherheitsfälle");
+      ? section("Phishing / Junk", { kind: "security", id: ticketId })
+      : section("Phishing / Junk");
   }
   if (kind === "monitoring.ipam_finding" || kind.startsWith("ipam.")) {
     return ipamTarget(kind, payload);

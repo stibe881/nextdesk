@@ -151,7 +151,7 @@ export function pushRoute(data: PushNavigationData): PushRoute | null {
   const kind = data.kind ?? "";
   const ticketId = uuid(data.ticketId);
 
-  // Phishing-Meldungen und Sicherheitsfälle (Fall = Ticket) öffnen den Fall.
+  // Phishing-Meldungen und Phishing-/Junk-Fälle (Fall = Ticket) öffnen den Fall.
   if (kind === "security_report") {
     return ticketId ? path(`/phishing/${ticketId}`) : path("/phishing");
   }

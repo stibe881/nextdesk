@@ -224,8 +224,8 @@ function ticketEvents(
       ),
     ],
     "ticket.follow_up_due": [
-      "Wiedervorlage fällig",
-      "Eine Wiedervorlage ist fällig.",
+      "Erinnerung fällig",
+      "Eine Erinnerung ist fällig.",
     ],
     "ticket.rule_reminder": [
       "Erinnerung",
@@ -269,8 +269,8 @@ function ticketEvents(
     ],
     "inventory.count_due": ["Inventur fällig", "Eine Inventur ist fällig."],
     "security.case_overdue": [
-      "Sicherheitsfall überfällig",
-      "Die Frist für das Urteil zu einem Sicherheitsfall ist abgelaufen. Bitte unter «Sicherheitsfälle» entscheiden.",
+      "Phishing-/Junk-Fall überfällig",
+      "Die Frist für das Urteil zu einem Phishing-/Junk-Fall ist abgelaufen. Bitte unter «Phishing / Junk» entscheiden.",
     ],
     "security.case_clicked": [
       "Melder hat geklickt",
@@ -555,9 +555,9 @@ export function notificationEmailText(
       kind === "security.case_overdue" &&
       (payload.stage === "supervisor" || payload.escalated === true)
     ) {
-      title = "Sicherheitsfall: Eskalation";
+      title = "Phishing-/Junk-Fall: Eskalation";
       lines = [
-        "Ein Sicherheitsfall wartet seit über 24 Stunden nach Fristablauf auf ein Urteil.",
+        "Ein Phishing-/Junk-Fall wartet seit über 24 Stunden nach Fristablauf auf ein Urteil.",
       ];
     }
     if (kind === "ticket.security_report") {
@@ -578,8 +578,8 @@ export function notificationEmailText(
           tone(
             formality,
             // formality-ok: «Sie» ist hier das Pronomen für die E-Mail, keine Anrede.
-            "Eine verdächtige E-Mail wurde gemeldet. Sie wartet unter «Sicherheitsfälle» auf dein Urteil.",
-            "Eine verdächtige E-Mail wurde gemeldet. Sie wartet unter «Sicherheitsfälle» auf Ihr Urteil.",
+            "Eine verdächtige E-Mail wurde gemeldet. Sie wartet unter «Phishing / Junk» auf dein Urteil.",
+            "Eine verdächtige E-Mail wurde gemeldet. Sie wartet unter «Phishing / Junk» auf Ihr Urteil.",
           ),
           ...(risk ? [`Automatische Risikoeinschätzung: ${risk}${score}`] : []),
         ];

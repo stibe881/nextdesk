@@ -44,7 +44,7 @@ async function call(body: Record<string, unknown>): Promise<unknown> {
     throw new Error(
       await functionErrorMessage(
         error,
-        "Die Sicherheitsfälle sind gerade nicht verfügbar.",
+        "Die Phishing-/Junk-Fälle sind gerade nicht verfügbar.",
       ),
     );
   }
@@ -539,7 +539,7 @@ function ReplacementOrder({
       </p>
       <p className="security-muted">
         Die Bestellung läuft über den Shop im Namen der Person, mit dem Hinweis
-        «Ersatzgerät aus Sicherheitsfall». Verlangt der Artikel eine
+        «Ersatzgerät aus Phishing-/Junk-Fall». Verlangt der Artikel eine
         Genehmigung, wird diese wie üblich angefordert.
       </p>
       {error ? (

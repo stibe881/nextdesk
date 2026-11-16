@@ -979,13 +979,13 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
             <>
               Während der Stellvertretung erhält die stellvertretende Person
               deine Ticketbenachrichtigungen, sieht deine Tickets,
-              Wiedervorlagen und Serviceaufgaben, und neue Zuweisungen an dich
+              Erinnerungen und Serviceaufgaben, und neue Zuweisungen an dich
               gehen an sie. Zu Beginn und am Ende gibt es eine
               Übergabe-Zusammenfassung.
             </>,
             <>
               Während der Stellvertretung erhält die stellvertretende Person
-              Ihre Ticketbenachrichtigungen, sieht Ihre Tickets, Wiedervorlagen
+              Ihre Ticketbenachrichtigungen, sieht Ihre Tickets, Erinnerungen
               und Serviceaufgaben, und neue Zuweisungen an Sie gehen an sie. Zu
               Beginn und am Ende gibt es eine Übergabe-Zusammenfassung.
             </>,
@@ -1866,7 +1866,7 @@ export function AgentWorkbenchPanel({
       ? [
           {
             Icon: ListTodo,
-            label: "Wiedervorlagen",
+            label: "Erinnerungen",
             value: "followUps" as const,
           },
         ]

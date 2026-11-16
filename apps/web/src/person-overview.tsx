@@ -295,7 +295,7 @@ export function PersonOverview({
   if (data?.securityCases) {
     tabs.push({
       key: "security",
-      label: "Sicherheitsfälle",
+      label: "Phishing / Junk",
       count: data.securityCases.length,
     });
   }

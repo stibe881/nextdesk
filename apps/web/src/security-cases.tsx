@@ -49,7 +49,7 @@ async function call(body: Record<string, unknown>): Promise<unknown> {
     throw new Error(
       await functionErrorMessage(
         error,
-        "Die Sicherheitsfälle sind gerade nicht verfügbar.",
+        "Die Phishing-/Junk-Fälle sind gerade nicht verfügbar.",
       ),
     );
   }
@@ -82,7 +82,7 @@ const EMPTY_TEXT: Record<SecurityStateFilter, string> = {
   triage: "Keine Meldungen zu beurteilen.",
   actions: "Keine Fälle mit offenen Massnahmen.",
   closed: "Keine abgeschlossenen Fälle.",
-  all: "Noch keine Sicherheitsfälle.",
+  all: "Noch keine Phishing-/Junk-Fälle.",
   today: "Heute wurde noch nichts gemeldet.",
   decided: "In den letzten 30 Tagen wurde kein Fall beurteilt.",
   clicked: "Niemand hat angegeben, geklickt zu haben.",
@@ -124,7 +124,7 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 
 /**
- * «Sicherheitsfälle»: reported phishing mails, separate from the support
+ * «Phishing / Junk»: reported phishing mails, separate from the support
  * tickets. Reports of the same mail are one case; the security team gives a
  * verdict, works through the checklist and every reporter gets the result.
  */
@@ -160,7 +160,7 @@ export function SecurityCases({
         if (!active) return;
         const parsed = parseSecurityList(value);
         if (!parsed) {
-          setError("Die Sicherheitsfälle konnten nicht gelesen werden.");
+          setError("Die Phishing-/Junk-Fälle konnten nicht gelesen werden.");
           return;
         }
         setCases(parsed.cases);
@@ -193,7 +193,7 @@ export function SecurityCases({
     <section className="security-cases" aria-labelledby="security-cases-title">
       <header className="security-cases__hero">
         <p className="eyebrow">SICHERHEIT</p>
-        <h2 id="security-cases-title">Sicherheitsfälle</h2>
+        <h2 id="security-cases-title">Phishing / Junk</h2>
         <p>
           {tn(
             "Gemeldete Phishing-Mails, getrennt von den Support-Tickets. Meldungen derselben Mail sind ein Fall. Beurteile den Fall, arbeite die Massnahmen ab; alle Melder erhalten das Ergebnis automatisch.",
@@ -258,7 +258,7 @@ export function SecurityCases({
       ) : null}
 
       <div
-        aria-label="Sicherheitsfälle filtern"
+        aria-label="Phishing-/Junk-Fälle filtern"
         className="queue-tabs security-cases__filter"
         role="group"
       >
@@ -318,7 +318,7 @@ export function SecurityCases({
             className="ticket-detail-spinner"
             size={16}
           />{" "}
-          Sicherheitsfälle werden geladen …
+          Phishing-/Junk-Fälle werden geladen …
         </p>
       ) : null}
       {view === "cases" && cases && cases.length === 0 ? (
@@ -560,7 +560,7 @@ function SecurityCaseView({
         type="button"
       >
         <ArrowLeft aria-hidden="true" size={16} /> Zurück zu den
-        Sicherheitsfällen
+        Phishing-/Junk-Fällen
       </button>
       {!detail && !error ? (
         <p className="security-cases__empty" role="status">

@@ -38,8 +38,8 @@ export const agentTour = (): TourStep[] => [
   {
     title: "Im Ticket",
     body: tn(
-      "Im Ticket antwortest du oder schreibst interne Notizen, siehst wer gerade mitliest, lässt den Verlauf von der KI zusammenfassen und setzt Wiedervorlagen. Beobachte ein Ticket, um über jede Änderung informiert zu werden.",
-      "Im Ticket antworten Sie oder schreiben interne Notizen, sehen wer gerade mitliest, lassen den Verlauf von der KI zusammenfassen und setzen Wiedervorlagen. Beobachten Sie ein Ticket, um über jede Änderung informiert zu werden.",
+      "Im Ticket antwortest du oder schreibst interne Notizen, siehst wer gerade mitliest, lässt den Verlauf von der KI zusammenfassen und setzt Erinnerungen. Beobachte ein Ticket, um über jede Änderung informiert zu werden.",
+      "Im Ticket antworten Sie oder schreiben interne Notizen, sehen wer gerade mitliest, lassen den Verlauf von der KI zusammenfassen und setzen Erinnerungen. Beobachten Sie ein Ticket, um über jede Änderung informiert zu werden.",
     ),
     section: "Tickets",
   },
