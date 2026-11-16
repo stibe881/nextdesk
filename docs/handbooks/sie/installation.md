@@ -308,8 +308,9 @@ PRTG-Meldungen erzeugen keine Tickets, sondern **Störungen** im
 Arbeitsbereich (siehe _Handbuch für Agenten_). Das gewählte Team wird sofort
 per Push und E-Mail alarmiert.
 
-1. **[Admin]** **Einstellungen → Monitoring → Monitoring (PRTG)**: Verarbeitung
-   aktivieren, **Team für die Alarmierung** (ohne Team alle Agenten; nur dieses
+1. **[Admin]** **Einstellungen → Monitoring**: unter **Monitoring (PRTG)** die
+   Verarbeitung aktivieren; in der Karte **Alarmierung** (gilt auch für die
+   eigene Überwachung) **Team für die Alarmierung** (ohne Team alle Agenten; nur dieses
    Team sieht den Bereich Störungen in Web und App),
    «Störung öffnen bei» (Down bzw. Down und Warning) und **Erneut alarmieren,
    solange unbestätigt** (Standard alle 15 Minuten, oder _Nie_) wählen,
