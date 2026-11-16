@@ -76,6 +76,134 @@ function session(config: LocalConfig, target: Target): Session {
   });
 }
 
+/**
+ * Session for a host with whatever credential config.json holds for it
+ * (own entry, else the default). Used by the monitoring sensors, where
+ * nextDesk does not prescribe the SNMP version.
+ */
+export function openSession(config: LocalConfig, host: string): Session {
+  const credential =
+    config.snmp.hosts[host.toLowerCase()] ?? config.snmp.default;
+  if (!credential) {
+    throw new Error(`Keine SNMP-Zugangsdaten für ${host} in config.json`);
+  }
+  return session(config, {
+    host,
+    version: credential.version,
+    user: null,
+    authProtocol: null,
+    privProtocol: null,
+    collect: [],
+  });
+}
+
+export type SnmpValue = { oid: string; value: unknown; type: number } | null;
+
+/** GET of a few OIDs; an entry is null when the device has no such object. */
+export function snmpGet(
+  current: Session,
+  oids: readonly string[],
+): Promise<SnmpValue[]> {
+  return new Promise((resolve, reject) => {
+    current.get([...oids], (error, varbinds) => {
+      if (error) return reject(error);
+      resolve(
+        oids.map((_oid, index) => {
+          const varbind = varbinds[index];
+          if (!varbind || snmp.isVarbindError(varbind)) return null;
+          return {
+            oid: varbind.oid,
+            value: varbind.value,
+            type: varbind.type as number,
+          };
+        }),
+      );
+    });
+  });
+}
+
+export type InterfaceInfo = {
+  index: number;
+  name: string;
+  alias: string | null;
+  up: boolean;
+  speedMbps: number | null;
+};
+
+const IF_OID = {
+  descr: "1.3.6.1.2.1.2.2.1.2",
+  operStatus: "1.3.6.1.2.1.2.2.1.8",
+  name: "1.3.6.1.2.1.31.1.1.1.1",
+  highSpeed: "1.3.6.1.2.1.31.1.1.1.15",
+  alias: "1.3.6.1.2.1.31.1.1.1.18",
+};
+
+function lastIndex(oid: string): number {
+  return Number(oid.slice(oid.lastIndexOf(".") + 1));
+}
+
+/** Rows of the interface table from the walked columns (pure). */
+export function mapInterfaces(columns: {
+  descr: Varbind[];
+  name: Varbind[];
+  alias: Varbind[];
+  operStatus: Varbind[];
+  highSpeed: Varbind[];
+}): InterfaceInfo[] {
+  const text = (rows: Varbind[]) =>
+    new Map(
+      rows.map((row) => [
+        lastIndex(row.oid),
+        octetText(row.value)?.trim() ?? "",
+      ]),
+    );
+  const number = (rows: Varbind[]) =>
+    new Map(rows.map((row) => [lastIndex(row.oid), Number(row.value)]));
+  const names = text(columns.name);
+  const descriptions = text(columns.descr);
+  const aliases = text(columns.alias);
+  const status = number(columns.operStatus);
+  const speed = number(columns.highSpeed);
+  const indexes = new Set([...names.keys(), ...descriptions.keys()]);
+  return [...indexes]
+    .filter((index) => Number.isInteger(index) && index > 0)
+    .sort((a, b) => a - b)
+    .map((index) => ({
+      index,
+      name: (
+        names.get(index) ||
+        descriptions.get(index) ||
+        `Port ${index}`
+      ).slice(0, 80),
+      alias: aliases.get(index)?.slice(0, 80) || null,
+      up: status.get(index) === 1,
+      speedMbps:
+        Number.isFinite(speed.get(index)) && (speed.get(index) ?? 0) > 0
+          ? (speed.get(index) as number)
+          : null,
+    }));
+}
+
+/** Interfaces of a device (for choosing ports of traffic sensors). */
+export async function listInterfaces(
+  config: LocalConfig,
+  host: string,
+): Promise<InterfaceInfo[]> {
+  const current = openSession(config, host);
+  try {
+    const descr = await walk(current, IF_OID.descr, 5000);
+    const [name, alias, operStatus, highSpeed] = await Promise.all([
+      optionalWalk(current, IF_OID.name),
+      optionalWalk(current, IF_OID.alias),
+      optionalWalk(current, IF_OID.operStatus),
+      optionalWalk(current, IF_OID.highSpeed),
+    ]);
+    return mapInterfaces({ descr, name, alias, operStatus, highSpeed });
+  } finally {
+    current.close();
+  }
+}
+
 function walk(
   current: Session,
   oid: string,

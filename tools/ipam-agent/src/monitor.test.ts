@@ -9,7 +9,10 @@ import {
   runCheck,
   safeHost,
   Schedule,
+  snmpNumber,
+  trafficRate,
 } from "./monitor.ts";
+import { mapInterfaces } from "./snmp.ts";
 
 const ID = "00000000-0000-4000-8000-0000000000a1";
 const ID2 = "00000000-0000-4000-8000-0000000000a2";
@@ -21,6 +24,10 @@ function check(overrides: Partial<Check>): Check {
     host: "127.0.0.1",
     port: 1,
     url: null,
+    snmpMetric: null,
+    snmpOid: null,
+    snmpIndex: null,
+    scale: 1,
     intervalSeconds: 60,
     timeoutMs: 2000,
     ...overrides,
@@ -160,4 +167,157 @@ test("runCheck: HTTP 200 ist OK, 503 ist ein Fehler", async () => {
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test("parseChecks: SNMP-Sensoren je Messart", () => {
+  const checks = parseChecks([
+    {
+      id: ID,
+      kind: "snmp",
+      host: "10.0.0.2",
+      snmpMetric: "traffic",
+      snmpIndex: 49,
+    },
+    {
+      id: ID2,
+      kind: "snmp",
+      host: "10.0.0.2",
+      snmpMetric: "value",
+      snmpOid: "1.3.6.1.4.1.318.1.1.1.2.2.1.0",
+      scale: 0.1,
+    },
+    {
+      id: "00000000-0000-4000-8000-0000000000a3",
+      kind: "snmp",
+      host: "10.0.0.2",
+      snmpMetric: "uptime",
+    },
+    {
+      id: "00000000-0000-4000-8000-0000000000a4",
+      kind: "snmp",
+      host: "10.0.0.2",
+      snmpMetric: "traffic",
+    },
+    {
+      id: "00000000-0000-4000-8000-0000000000a5",
+      kind: "snmp",
+      host: "10.0.0.2",
+      snmpMetric: "value",
+      snmpOid: "1.3;rm",
+    },
+    {
+      id: "00000000-0000-4000-8000-0000000000a6",
+      kind: "snmp",
+      host: "10.0.0.2",
+      snmpMetric: "walk",
+    },
+  ]);
+  assert.deepEqual(
+    checks.map((entry) => [
+      entry.snmpMetric,
+      entry.snmpIndex,
+      entry.snmpOid,
+      entry.scale,
+    ]),
+    [
+      ["traffic", 49, null, 1],
+      ["value", null, "1.3.6.1.4.1.318.1.1.1.2.2.1.0", 0.1],
+      ["uptime", null, null, 1],
+    ],
+  );
+});
+
+test("snmpNumber: Zahl, Counter64, Zahlentext", () => {
+  assert.equal(snmpNumber({ oid: "1", value: 42, type: 2 }), 42);
+  assert.equal(
+    snmpNumber({
+      oid: "1",
+      value: Buffer.from([0x01, 0x00, 0x00, 0x00, 0x00]),
+      type: 70,
+    }),
+    2 ** 32,
+  );
+  assert.equal(
+    snmpNumber({ oid: "1", value: Buffer.from("23.5"), type: 4 }),
+    23.5,
+  );
+  assert.equal(
+    snmpNumber({ oid: "1", value: Buffer.from("Aruba 6300"), type: 4 }),
+    null,
+  );
+  assert.equal(snmpNumber(null), null);
+});
+
+test("trafficRate: Bit pro Sekunde, Überlauf, Neustart", () => {
+  const first = { at: 0, input: 1_000_000, output: 500_000, bits: 64 as const };
+  assert.equal(trafficRate(undefined, first), null);
+  // 60 s später 7.5 MB bzw. 750 kB mehr → 1 Mbit/s bzw. 100 kbit/s.
+  assert.deepEqual(
+    trafficRate(first, {
+      at: 60_000,
+      input: 8_500_000,
+      output: 1_250_000,
+      bits: 64,
+    }),
+    { input: 1_000_000, output: 100_000 },
+  );
+  // 64-Bit-Zähler fällt: Gerät neu gestartet, kein Wert.
+  assert.equal(
+    trafficRate(first, { at: 60_000, input: 10, output: 10, bits: 64 }),
+    null,
+  );
+  // 32-Bit-Zähler läuft über.
+  assert.deepEqual(
+    trafficRate(
+      { at: 0, input: 2 ** 32 - 1000, output: 0, bits: 32 },
+      { at: 8000, input: 1000, output: 0, bits: 32 },
+    ),
+    { input: 2000, output: 0 },
+  );
+  // Wechsel der Zählerart oder zu grosser Abstand: kein Wert.
+  assert.equal(
+    trafficRate(first, {
+      at: 60_000,
+      input: 2_000_000,
+      output: 600_000,
+      bits: 32,
+    }),
+    null,
+  );
+  assert.equal(
+    trafficRate(first, {
+      at: 7 * 3600_000,
+      input: 2_000_000,
+      output: 600_000,
+      bits: 64,
+    }),
+    null,
+  );
+});
+
+test("mapInterfaces: Name, Beschreibung, Status und Tempo je Port", () => {
+  const text = (value: string) => Buffer.from(value);
+  const interfaces = mapInterfaces({
+    descr: [
+      { oid: "1.3.6.1.2.1.2.2.1.2.1", value: text("GigabitEthernet1/0/1") },
+      { oid: "1.3.6.1.2.1.2.2.1.2.49", value: text("TenGigabitEthernet1/1/1") },
+    ],
+    name: [{ oid: "1.3.6.1.2.1.31.1.1.1.1.1", value: text("1/1/1") }],
+    alias: [{ oid: "1.3.6.1.2.1.31.1.1.1.18.49", value: text("to_SW-CORE") }],
+    operStatus: [
+      { oid: "1.3.6.1.2.1.2.2.1.8.1", value: 2 },
+      { oid: "1.3.6.1.2.1.2.2.1.8.49", value: 1 },
+    ],
+    highSpeed: [{ oid: "1.3.6.1.2.1.31.1.1.1.15.49", value: 10000 }],
+  });
+  assert.deepEqual(interfaces, [
+    { index: 1, name: "1/1/1", alias: null, up: false, speedMbps: null },
+    {
+      index: 49,
+      name: "TenGigabitEthernet1/1/1",
+      alias: "to_SW-CORE",
+      up: true,
+      speedMbps: 10000,
+    },
+  ]);
 });

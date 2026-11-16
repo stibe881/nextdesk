@@ -9,16 +9,22 @@ import { execFile } from "node:child_process";
 import { Socket } from "node:net";
 
 import type { NextdeskClient } from "./client.ts";
+import type { LocalConfig } from "./config.ts";
 import { log } from "./log.ts";
 import { canonicalIp } from "./net.ts";
 import { parsePingOutput, pingArgs, type Platform } from "./parsers.ts";
+import { openSession, snmpGet, type SnmpValue } from "./snmp.ts";
 
 export type Check = {
   id: string;
-  kind: "ping" | "tcp" | "http";
+  kind: "ping" | "tcp" | "http" | "snmp";
   host: string | null;
   port: number | null;
   url: string | null;
+  snmpMetric: "uptime" | "traffic" | "value" | null;
+  snmpOid: string | null;
+  snmpIndex: number | null;
+  scale: number;
   intervalSeconds: number;
   timeoutMs: number;
 };
@@ -28,6 +34,7 @@ export type CheckResult = {
   at: string;
   ok: boolean;
   value: number | null;
+  value2?: number | null;
   message: string | null;
 };
 
@@ -70,7 +77,15 @@ export function parseChecks(value: unknown): Check[] {
       continue;
     const intervalSeconds = integer(entry.intervalSeconds, 30, 86400) ?? 60;
     const timeoutMs = integer(entry.timeoutMs, 500, 30000) ?? 5000;
-    const base = { id: entry.id.toLowerCase(), intervalSeconds, timeoutMs };
+    const base = {
+      id: entry.id.toLowerCase(),
+      intervalSeconds,
+      timeoutMs,
+      snmpMetric: null,
+      snmpOid: null,
+      snmpIndex: null,
+      scale: 1,
+    };
     if (entry.kind === "http") {
       let url: URL;
       try {
@@ -102,6 +117,42 @@ export function parseChecks(value: unknown): Check[] {
       const port = integer(entry.port, 1, 65535);
       if (port)
         checks.set(base.id, { ...base, kind: "tcp", host, port, url: null });
+    } else if (entry.kind === "snmp") {
+      const scale =
+        typeof entry.scale === "number" &&
+        entry.scale > 0 &&
+        entry.scale <= 1e12
+          ? entry.scale
+          : 1;
+      const snmpBase = {
+        ...base,
+        kind: "snmp" as const,
+        host,
+        port: null,
+        url: null,
+        scale,
+      };
+      if (entry.snmpMetric === "uptime") {
+        checks.set(base.id, { ...snmpBase, snmpMetric: "uptime" });
+      } else if (entry.snmpMetric === "traffic") {
+        const snmpIndex = integer(entry.snmpIndex, 1, 2147483647);
+        if (snmpIndex)
+          checks.set(base.id, {
+            ...snmpBase,
+            snmpMetric: "traffic",
+            snmpIndex,
+          });
+      } else if (
+        entry.snmpMetric === "value" &&
+        typeof entry.snmpOid === "string" &&
+        /^1(\.\d{1,10}){2,60}$/.test(entry.snmpOid)
+      ) {
+        checks.set(base.id, {
+          ...snmpBase,
+          snmpMetric: "value",
+          snmpOid: entry.snmpOid,
+        });
+      }
     }
   }
   return [...checks.values()];
@@ -215,11 +266,170 @@ async function checkHttp(check: Check): Promise<Outcome> {
   }
 }
 
-type Outcome = { ok: boolean; value: number | null; message: string | null };
+type Outcome = {
+  ok: boolean;
+  value: number | null;
+  value2?: number | null;
+  message: string | null;
+};
+
+const SNMP_OID = {
+  sysUpTime: "1.3.6.1.2.1.1.3.0",
+  ifOperStatus: "1.3.6.1.2.1.2.2.1.8",
+  ifInOctets: "1.3.6.1.2.1.2.2.1.10",
+  ifOutOctets: "1.3.6.1.2.1.2.2.1.16",
+  ifHCInOctets: "1.3.6.1.2.1.31.1.1.1.6",
+  ifHCOutOctets: "1.3.6.1.2.1.31.1.1.1.10",
+};
+
+/** Number from an SNMP value (Integer, Gauge, Counter, TimeTicks, Counter64, numeric text). */
+export function snmpNumber(entry: SnmpValue): number | null {
+  if (!entry) return null;
+  const value = entry.value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "bigint") return Number(value);
+  if (value instanceof Uint8Array) {
+    // Counter64 (type 70) arrives as up to 8 raw bytes.
+    if (entry.type === 70) {
+      if (value.length === 0 || value.length > 8) return null;
+      let number = 0n;
+      for (const byte of value) number = (number << 8n) | BigInt(byte);
+      return Number(number);
+    }
+    const text = Buffer.from(value).toString("latin1").trim();
+    return /^-?\d+(\.\d+)?$/.test(text) ? Number(text) : null;
+  }
+  if (typeof value === "string" && /^-?\d+(\.\d+)?$/.test(value.trim()))
+    return Number(value.trim());
+  return null;
+}
+
+export type CounterSample = {
+  at: number;
+  input: number;
+  output: number;
+  bits: 32 | 64;
+};
+
+/**
+ * Bits per second between two readings of the octet counters. Null when no
+ * rate can be derived: first reading, device restart (counter went down on a
+ * 64-bit counter) or an implausible gap.
+ */
+export function trafficRate(
+  previous: CounterSample | undefined,
+  current: CounterSample,
+): { input: number; output: number } | null {
+  if (!previous || previous.bits !== current.bits) return null;
+  const seconds = (current.at - previous.at) / 1000;
+  if (seconds < 1 || seconds > 6 * 3600) return null;
+  const delta = (now: number, before: number): number | null => {
+    if (now >= before) return now - before;
+    // A 32-bit counter wraps at 2^32; a 64-bit counter only falls on restart.
+    return current.bits === 32 ? now + 2 ** 32 - before : null;
+  };
+  const input = delta(current.input, previous.input);
+  const output = delta(current.output, previous.output);
+  if (input === null || output === null) return null;
+  return {
+    input: round((input * 8) / seconds),
+    output: round((output * 8) / seconds),
+  };
+}
+
+async function checkSnmp(
+  local: LocalConfig,
+  check: Check,
+  counters: Map<string, CounterSample>,
+): Promise<Outcome> {
+  const session = openSession(local, check.host!);
+  try {
+    if (check.snmpMetric === "uptime") {
+      const [ticks] = await snmpGet(session, [SNMP_OID.sysUpTime]);
+      const value = snmpNumber(ticks ?? null);
+      return value === null
+        ? { ok: false, value: null, message: "Keine Laufzeit erhalten" }
+        : { ok: true, value: Math.round(value / 100), message: null };
+    }
+    if (check.snmpMetric === "value") {
+      const [entry] = await snmpGet(session, [check.snmpOid!]);
+      const value = snmpNumber(entry ?? null);
+      return value === null
+        ? {
+            ok: false,
+            value: null,
+            message: entry
+              ? "Der Wert ist keine Zahl"
+              : "Die OID gibt es auf dem Gerät nicht",
+          }
+        : { ok: true, value: round(value * check.scale), message: null };
+    }
+    const index = check.snmpIndex!;
+    const [status, hcIn, hcOut, in32, out32] = await snmpGet(session, [
+      `${SNMP_OID.ifOperStatus}.${index}`,
+      `${SNMP_OID.ifHCInOctets}.${index}`,
+      `${SNMP_OID.ifHCOutOctets}.${index}`,
+      `${SNMP_OID.ifInOctets}.${index}`,
+      `${SNMP_OID.ifOutOctets}.${index}`,
+    ]);
+    const at = Date.now();
+    const highIn = snmpNumber(hcIn ?? null);
+    const highOut = snmpNumber(hcOut ?? null);
+    const lowIn = snmpNumber(in32 ?? null);
+    const lowOut = snmpNumber(out32 ?? null);
+    const reading: CounterSample | null =
+      highIn !== null && highOut !== null
+        ? { at, input: highIn, output: highOut, bits: 64 }
+        : lowIn !== null && lowOut !== null
+          ? { at, input: lowIn, output: lowOut, bits: 32 }
+          : null;
+    if (!reading) {
+      counters.delete(check.id);
+      return {
+        ok: false,
+        value: null,
+        message: "Den Port gibt es auf dem Gerät nicht",
+      };
+    }
+    const rate = trafficRate(counters.get(check.id), reading);
+    counters.set(check.id, reading);
+    const operStatus = snmpNumber(status ?? null);
+    if (operStatus !== null && operStatus !== 1) {
+      return {
+        ok: false,
+        value: null,
+        message: "Port ist nicht verbunden (down)",
+      };
+    }
+    return {
+      ok: true,
+      value: rate?.input ?? null,
+      value2: rate?.output ?? null,
+      message: null,
+    };
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      value: null,
+      message: /timed? ?out/i.test(text)
+        ? "Keine SNMP-Antwort (Zeitüberschreitung)"
+        : `SNMP: ${text.slice(0, 160)}`,
+    };
+  } finally {
+    session.close();
+  }
+}
+
+export type CheckContext = {
+  local: LocalConfig;
+  counters: Map<string, CounterSample>;
+};
 
 export async function runCheck(
   platform: Platform,
   check: Check,
+  context?: CheckContext,
 ): Promise<CheckResult> {
   const at = new Date().toISOString();
   let outcome: Outcome;
@@ -229,7 +439,15 @@ export async function runCheck(
         ? await checkPing(platform, check)
         : check.kind === "tcp"
           ? await checkTcp(check)
-          : await checkHttp(check);
+          : check.kind === "http"
+            ? await checkHttp(check)
+            : context
+              ? await checkSnmp(context.local, check, context.counters)
+              : {
+                  ok: false,
+                  value: null,
+                  message: "SNMP ist nicht eingerichtet",
+                };
   } catch (error) {
     outcome = {
       ok: false,
@@ -316,6 +534,7 @@ const FLUSH_MS = 30_000;
 export class Monitor {
   readonly #client: NextdeskClient;
   readonly #platform: Platform;
+  readonly #context: CheckContext;
   readonly #schedule = new Schedule();
   #buffer: CheckResult[] = [];
   #active = 0;
@@ -323,9 +542,10 @@ export class Monitor {
   #lastFlush = Date.now();
   #flushing = false;
 
-  constructor(client: NextdeskClient, platform: Platform) {
+  constructor(client: NextdeskClient, platform: Platform, local: LocalConfig) {
     this.#client = client;
     this.#platform = platform;
+    this.#context = { local, counters: new Map() };
   }
 
   setChecks(checks: readonly Check[]): void {
@@ -345,7 +565,7 @@ export class Monitor {
     const now = Date.now();
     for (const check of this.#schedule.due(now, MAX_PARALLEL - this.#active)) {
       this.#active += 1;
-      void runCheck(this.#platform, check)
+      void runCheck(this.#platform, check, this.#context)
         .then((result) => {
           this.#buffer.push(result);
           if (this.#buffer.length > MAX_BUFFER)
