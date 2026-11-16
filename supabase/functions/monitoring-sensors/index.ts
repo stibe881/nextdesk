@@ -123,6 +123,10 @@ function sensorView(sensor: Row, status: Row | undefined, now: number) {
     failuresToDown: number(sensor.failures_to_down) ?? 2,
     paused: sensor.paused === true,
     serviceIds: Array.isArray(sensor.service_ids) ? (sensor.service_ids as unknown[]).filter(isUuid) : [],
+    // Only while it runs.
+    simulateUntil: text(sensor.simulate_until) && Date.parse(String(sensor.simulate_until)) > now
+      ? String(sensor.simulate_until)
+      : null,
   };
   const state: DisplayState = displayState(
     view,
@@ -142,7 +146,7 @@ function sensorView(sensor: Row, status: Row | undefined, now: number) {
 
 async function loadSensors(admin: Client, tenantId: string, assetId?: string) {
   let sensorQuery = admin.from("monitoring_sensors")
-    .select("id, asset_id, agent_id, kind, name, target, port, url, interval_seconds, timeout_ms, warning_above, warning_below, down_above, down_below, snmp_metric, snmp_oid, snmp_index, scale, unit, expect, cloud, failures_to_down, paused, service_ids")
+    .select("id, asset_id, agent_id, kind, name, target, port, url, interval_seconds, timeout_ms, warning_above, warning_below, down_above, down_below, snmp_metric, snmp_oid, snmp_index, scale, unit, expect, cloud, failures_to_down, paused, service_ids, simulate_until")
     .eq("tenant_id", tenantId).order("name").limit(MAX_SENSORS);
   if (assetId) sensorQuery = sensorQuery.eq("asset_id", assetId);
   const sensors = await sensorQuery;
@@ -904,6 +908,29 @@ async function interfaces(admin: Client, tenantId: string, jobId: string) {
   };
 }
 
+/**
+ * Starts (minutes > 0) or ends (0) a simulated outage of one sensor or of all
+ * sensors of a device. While it runs, the measured results count as failed;
+ * everything that follows is real: incident, alerting, service status, notice.
+ */
+async function simulate(admin: Client, tenantId: string, assetId: string, sensorId: string | null, minutes: number) {
+  await requireAsset(admin, tenantId, assetId);
+  const until = minutes > 0 ? new Date(Date.now() + minutes * 60_000).toISOString() : null;
+  let update = admin.from("monitoring_sensors")
+    .update({ simulate_until: until, updated_at: new Date().toISOString() })
+    .eq("tenant_id", tenantId).eq("asset_id", assetId);
+  if (sensorId) update = update.eq("id", sensorId);
+  // Starting skips paused sensors (they are not measured); ending clears all.
+  if (until) update = update.eq("paused", false);
+  const updated = await update.select("id");
+  if (updated.error) throw unavailable();
+  const count = (updated.data ?? []).length;
+  if (until && !count) {
+    throw new HttpError(422, "nothing_to_simulate", "Kein aktiver Sensor gefunden. Pausierte Sensoren lassen sich nicht simulieren.");
+  }
+  return { ok: true, sensors: count, until };
+}
+
 /** A request for connections counts as running for this long. */
 const TOPOLOGY_PENDING_MS = 10 * 60 * 1000;
 
@@ -1180,6 +1207,9 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
     case "interfaces":
       manage();
       return await interfaces(admin, action.tenantId, action.jobId);
+    case "simulate":
+      manage();
+      return await simulate(admin, action.tenantId, action.assetId, action.sensorId, action.minutes);
     case "connections":
       return await connections(admin, action.tenantId, action.assetId, canManage);
     case "refreshConnections":

@@ -108,6 +108,8 @@ export type MonitoringSensor = {
   timeoutMs: number;
   warningAbove: number | null;
   failuresToDown: number;
+  /** A simulated outage runs until then (test of the alerting chain). */
+  simulateUntil?: string | null;
   /** Services this sensor affects instead of all services of its device. */
   serviceIds?: string[];
   paused: boolean;

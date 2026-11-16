@@ -346,3 +346,16 @@ Deno.test("sensor services: optional, validated, without duplicates", () => {
   assertEquals(typeof some === "string" ? some : some.serviceIds, [TENANT]);
   assertEquals(parseSensor({ ...base, serviceIds: ["nope"] }), "Die betroffenen Dienste sind ungültig.");
 });
+
+Deno.test("simulation: device or sensor, at most an hour, 0 ends it", () => {
+  assertEquals(parseAction({ type: "simulate", tenantId: TENANT, assetId: ASSET, minutes: 10 }), {
+    type: "simulate", tenantId: TENANT, assetId: ASSET, sensorId: null, minutes: 10,
+  });
+  assertEquals(parseAction({ type: "simulate", tenantId: TENANT, assetId: ASSET, sensorId: AGENT, minutes: 0 }), {
+    type: "simulate", tenantId: TENANT, assetId: ASSET, sensorId: AGENT, minutes: 0,
+  });
+  assertEquals(
+    parseAction({ type: "simulate", tenantId: TENANT, assetId: ASSET, minutes: 600 }),
+    "Die Dauer der Simulation muss zwischen 0 und 60 Minuten liegen.",
+  );
+});

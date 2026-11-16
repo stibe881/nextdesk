@@ -834,6 +834,20 @@ button.monitoring-tile[aria-pressed="true"] {
   overflow-y: auto;
 }
 
+.monitoring__notice--test {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background: var(--tone-warning-soft);
+  color: var(--tone-warning);
+}
+
+.monitoring__notice--test > span {
+  flex: 1 1 320px;
+  color: var(--ink);
+}
+
 .monitoring-steps {
   display: grid;
   gap: 6px;

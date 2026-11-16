@@ -543,6 +543,20 @@ anklickbar.
 
 ![Verbindungen als Matrix mit Diagramm](images/ag-ueberwachung-matrix.jpg)
 
+**Ausfall simulieren** (im Gerätedetail, mit dem Recht «Assets verwalten»):
+Damit prüfst du die ganze Kette, ohne das Gerät anzufassen. Du wählst das
+ganze Gerät oder einen Sensor und die Dauer (5 bis 60 Minuten). Solange die
+Simulation läuft, gelten die Messwerte als fehlgeschlagen («Simulierter
+Ausfall (Test)»). Alles Weitere ist echt: nextDesk öffnet eine Störung,
+alarmiert das Team, ändert den Systemstatus der betroffenen Dienste und
+zeigt – falls eingeschaltet – den Banner. Der Ausfall erscheint mit der
+nächsten Messung des Sensors (je nach Intervall nach einigen Sekunden bis
+Minuten). Die Simulation endet von selbst oder über **Simulation beenden**;
+danach meldet der Sensor mit der nächsten Messung wieder den echten Zustand
+und die Störung schliesst sich. Pausierte Sensoren und Sensoren ohne
+erreichbare Sonde lassen sich nicht simulieren. Das Team am besten vorher
+informieren.
+
 Mit dem Recht «Assets verwalten» kannst du zusätzlich:
 
 1. **Geräte hinzufügen** – die Suche findet:

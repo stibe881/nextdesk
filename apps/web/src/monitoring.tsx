@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   Download,
+  FlaskConical,
   LoaderCircle,
   ListPlus,
   Pause,
@@ -782,6 +783,7 @@ function DeviceView({
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState<Confirmation | null>(null);
+  const [simulating, setSimulating] = useState(false);
 
   const load = useCallback(() => {
     monitoringCall<MonitoringDeviceDetail>({
@@ -865,6 +867,55 @@ function DeviceView({
       {!data && !error ? <Spinner label="Gerät wird geladen …" /> : null}
       {data ? (
         <>
+          {(() => {
+            const running = data.sensors.filter(
+              (sensor) => sensor.simulateUntil,
+            );
+            if (!running.length) return null;
+            const until = running
+              .map((sensor) => Date.parse(sensor.simulateUntil!))
+              .sort((a, b) => b - a)[0]!;
+            return (
+              <p className="monitoring__notice monitoring__notice--test">
+                <FlaskConical aria-hidden="true" size={16} />
+                <span>
+                  <strong>Simulation läuft</strong> für{" "}
+                  {running.length === 1
+                    ? `Sensor «${running[0]!.name}»`
+                    : `${running.length} Sensoren`}{" "}
+                  bis{" "}
+                  {new Date(until).toLocaleTimeString("de-CH", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}{" "}
+                  Uhr. Die Messwerte gelten solange als Ausfall; Störung und
+                  Alarmierung sind echt.
+                </span>
+                {data.canManage ? (
+                  <button
+                    className="secondary-button"
+                    disabled={busy}
+                    onClick={() => {
+                      setBusy(true);
+                      monitoringCall({
+                        type: "simulate",
+                        tenantId,
+                        assetId,
+                        sensorId: null,
+                        minutes: 0,
+                      })
+                        .then(load)
+                        .catch((failure) => setError(message(failure)))
+                        .finally(() => setBusy(false));
+                    }}
+                    type="button"
+                  >
+                    Simulation beenden
+                  </button>
+                ) : null}
+              </p>
+            );
+          })()}
           <header className="monitoring__hero monitoring__hero--stack">
             <div>
               <div className="monitoring__title">
@@ -949,6 +1000,14 @@ function DeviceView({
                 >
                   <Trash2 aria-hidden="true" size={16} />
                   Entfernen
+                </button>
+                <button
+                  className="secondary-button"
+                  onClick={() => setSimulating(true)}
+                  type="button"
+                >
+                  <FlaskConical aria-hidden="true" size={16} />
+                  Ausfall simulieren
                 </button>
                 <button
                   className="secondary-button"
@@ -1191,6 +1250,19 @@ function DeviceView({
         </>
       ) : null}
 
+      {simulating && data ? (
+        <SimulateDialog
+          assetId={assetId}
+          deviceName={data.device.name}
+          onClose={() => setSimulating(false)}
+          onStarted={() => {
+            setSimulating(false);
+            load();
+          }}
+          sensors={data.sensors}
+          tenantId={tenantId}
+        />
+      ) : null}
       {confirming ? (
         <ConfirmDialog
           confirmation={confirming}
@@ -1268,6 +1340,11 @@ function SensorRow({
     <tr className={selected ? "monitoring-table__row--selected" : undefined}>
       <td>
         <StateChip state={sensor.state} />
+        {sensor.simulateUntil ? (
+          <span className="monitoring-chip monitoring-chip--warning">
+            Simulation
+          </span>
+        ) : null}
       </td>
       <td>
         <button
@@ -1432,6 +1509,128 @@ function Chart({
 
 // ---------------------------------------------------------------------------
 // Dialoge
+
+const SIMULATION_MINUTES = [5, 10, 15, 30, 60];
+
+/**
+ * Starts a simulated outage of the device or of one sensor, to test the
+ * chain from the sensor to incident, alerting and banner.
+ */
+function SimulateDialog({
+  tenantId,
+  assetId,
+  deviceName,
+  sensors,
+  onClose,
+  onStarted,
+}: {
+  tenantId: string;
+  assetId: string;
+  deviceName: string;
+  sensors: MonitoringSensor[];
+  onClose: () => void;
+  onStarted: () => void;
+}) {
+  const active = sensors.filter((sensor) => !sensor.paused);
+  const [sensorId, setSensorId] = useState("");
+  const [minutes, setMinutes] = useState(10);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await monitoringCall({
+        type: "simulate",
+        tenantId,
+        assetId,
+        sensorId: sensorId || null,
+        minutes,
+      });
+      onStarted();
+    } catch (failure) {
+      setError(message(failure));
+      setSaving(false);
+    }
+  };
+  return (
+    <Dialog onClose={onClose} title="Ausfall simulieren">
+      <form
+        className="monitoring-form"
+        onSubmit={(event) => void submit(event)}
+      >
+        <p className="monitoring-muted">
+          Die Messwerte gelten für die gewählte Dauer als fehlgeschlagen. Das
+          Gerät selbst wird nicht berührt.
+        </p>
+        <label className="monitoring-field">
+          <span>Was soll ausfallen?</span>
+          <select
+            onChange={(event) => setSensorId(event.target.value)}
+            value={sensorId}
+          >
+            <option value="">
+              Ganzes Gerät «{deviceName}» ({active.length}{" "}
+              {active.length === 1 ? "Sensor" : "Sensoren"})
+            </option>
+            {active.map((sensor) => (
+              <option key={sensor.id} value={sensor.id}>
+                Nur Sensor «{sensor.name}»
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="monitoring-field">
+          <span>Dauer</span>
+          <select
+            onChange={(event) => setMinutes(Number(event.target.value))}
+            value={minutes}
+          >
+            {SIMULATION_MINUTES.map((value) => (
+              <option key={value} value={value}>
+                {value} Minuten
+              </option>
+            ))}
+          </select>
+          <span className="monitoring-muted">
+            Die Simulation endet danach von selbst und lässt sich vorher
+            beenden.
+          </span>
+        </label>
+        <p className="ticket-detail-message error" role="note">
+          Alles Weitere ist echt: nextDesk öffnet eine Störung, alarmiert das
+          Team, ändert den Systemstatus der betroffenen Dienste und zeigt –
+          falls eingeschaltet – den Banner für alle. Der Ausfall erscheint mit
+          der nächsten Messung des Sensors.
+        </p>
+        {active.length === 0 ? (
+          <p className="ticket-detail-message error" role="alert">
+            Das Gerät hat keinen aktiven Sensor.
+          </p>
+        ) : null}
+        {error ? (
+          <p className="ticket-detail-message error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="monitoring-form__actions">
+          <button className="secondary-button" onClick={onClose} type="button">
+            Abbrechen
+          </button>
+          <button
+            className="primary-button monitoring-danger"
+            disabled={saving || active.length === 0}
+            type="submit"
+          >
+            <FlaskConical aria-hidden="true" size={16} />
+            Simulation starten
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
 
 type Confirmation = {
   title: string;
