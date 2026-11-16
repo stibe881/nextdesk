@@ -46,7 +46,8 @@ export type Action =
   | { type: "assets"; tenantId: string; query: string }
   | { type: "saveSensor"; tenantId: string; sensor: SensorInput }
   | { type: "deleteSensor"; tenantId: string; sensorId: string }
-  | { type: "pauseDevice"; tenantId: string; assetId: string; paused: boolean };
+  | { type: "pauseDevice"; tenantId: string; assetId: string; paused: boolean }
+  | { type: "createAgent"; tenantId: string; name: string };
 
 export function defaultName(kind: SensorKind, port: number | null, url: string | null): string {
   if (kind === "ping") return "Ping";
@@ -171,9 +172,27 @@ export function parseAction(value: unknown): Action | string | null {
         ? { type: "pauseDevice", tenantId, assetId, paused: value.paused }
         : null;
     }
+    case "createAgent": {
+      const name = typeof value.name === "string" ? value.name.replace(/\s+/g, " ").trim() : "";
+      if (!name) return "Bitte einen Namen für die Sonde angeben.";
+      if (name.length > 120) return "Der Name ist zu lang (höchstens 120 Zeichen).";
+      return { type: "createAgent", tenantId, name };
+    }
     default:
       return null;
   }
+}
+
+/**
+ * The config.json of a new probe: everything it needs to connect. Secrets
+ * for later sensor types (SNMP) are added locally on the server.
+ */
+export function probeConfig(functionsUrl: string, token: string): string {
+  return `${JSON.stringify({
+    nextdeskUrl: `${functionsUrl.replace(/\/+$/, "")}/ipam-agent`,
+    agentToken: token,
+    logLevel: "info",
+  }, null, 2)}\n`;
 }
 
 /** A probe counts as online while it reported within the last three minutes. */

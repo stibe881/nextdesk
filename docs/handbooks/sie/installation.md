@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-13
+updated: 2026-11-16
 ---
 
 # Installationsanleitung
@@ -360,6 +360,47 @@ per Push und E-Mail alarmiert.
    **Uplink** (vorgelagertes Gerät) eintragen.
 
 ![Monitoring (PRTG) mit Token und Alarmierung](images/in-monitoring.jpg)
+
+### Eigene Überwachung (Sonde)
+
+Die Sonde ist derselbe Netzwerkagent wie für die IP-Adressverwaltung
+(`tools/ipam-agent`). Läuft er bereits, ist nichts zu installieren: Er
+übernimmt die Sensoren, sobald das Modul _Überwachung_ aktiv ist und der
+Agent auf Version 1.1.0 oder neuer aktualisiert wurde.
+
+1. Unter **Funktionen** das Modul _Überwachung_ einschalten.
+2. Unter **Dienste und Überwachung → Überwachung → Sonden → Sonde
+   hinzufügen** die Sonde anlegen und die `config.json` herunterladen.
+3. Einen Server im Netz bereitstellen (2 vCPU, 2 GB RAM; Linux mit Docker
+   oder Windows Server 2016+ mit Node.js 22 LTS). Er braucht:
+   - ausgehend HTTPS (443) zu `<projekt>.supabase.co`, keine eingehende
+     Firewall-Regel;
+   - ICMP (Ping) und die geprüften TCP-Ports zu den überwachten Geräten.
+4. `tools/ipam-agent` aus dem Repository auf den Server kopieren.
+   - **Linux**: die heruntergeladene Datei als
+     `/etc/nextdesk-ipam-agent/config.json` ablegen (Rechte 600, Besitzer
+     1000), das Image mit `docker build -t nextdesk-ipam-agent
+tools/ipam-agent` erstellen und mit `docker run -d --network host
+--restart unless-stopped -v
+/etc/nextdesk-ipam-agent:/etc/nextdesk-ipam-agent:ro
+nextdesk-ipam-agent` starten.
+   - **Windows**: `npm ci` und `npm run build` ausführen, danach
+     `windows\install-service.ps1` (als Administrator). Die heruntergeladene
+     Datei als `C:\ProgramData\nextDesk\ipam-agent\config.json` ablegen und
+     den Dienst «nextDesk IPAM-Agent» starten.
+5. Mit `node dist/main.js --check` die Verbindung prüfen. Die Ausgabe nennt
+   die Anzahl Sensoren. In der Überwachung erscheint die Sonde nach etwa
+   einer Minute als «online».
+6. Die `config.json` enthält den Zugangsschlüssel: nach der Installation aus
+   dem Download-Ordner löschen.
+
+Die Sonde holt ihre Prüfaufträge etwa jede Minute neu und meldet Resultate
+alle 30 Sekunden. Ist nextDesk nicht erreichbar, puffert sie die Resultate
+und liefert sie nach.
+
+> Parallelbetrieb mit PRTG: Beide Systeme dürfen dasselbe Gerät überwachen.
+> Jedes führt seine eigenen Alarme; die Störung wird je Gerät gemeinsam
+> geführt und erst behoben, wenn beide wieder OK melden.
 
 ### Externe Statusquellen (Microsoft 365, GitHub, Claude …)
 

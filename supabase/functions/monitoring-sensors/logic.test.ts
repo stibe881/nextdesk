@@ -8,6 +8,7 @@ import {
   displayState,
   parseAction,
   parseSensor,
+  probeConfig,
   rangePlan,
 } from "./logic.ts";
 
@@ -96,4 +97,18 @@ Deno.test("series: buckets weight averages and keep extremes", () => {
   assertEquals(rangePlan("24h", base).source, "raw");
   assertEquals(rangePlan("7d", base).source, "hourly");
   assertEquals(rangePlan("1y", base), { source: "daily", from: "2025-11-16T10:00:00.000Z", bucketMs: 86_400_000 });
+});
+
+Deno.test("probe: name is required, config.json is complete", () => {
+  assertEquals(parseAction({ type: "createAgent", tenantId: TENANT, name: "  Sonde   Baar " }), {
+    type: "createAgent",
+    tenantId: TENANT,
+    name: "Sonde Baar",
+  });
+  assertEquals(parseAction({ type: "createAgent", tenantId: TENANT, name: " " }), "Bitte einen Namen für die Sonde angeben.");
+  assertEquals(JSON.parse(probeConfig("https://abc.supabase.co/functions/v1/", "ndip_x")), {
+    nextdeskUrl: "https://abc.supabase.co/functions/v1/ipam-agent",
+    agentToken: "ndip_x",
+    logLevel: "info",
+  });
 });

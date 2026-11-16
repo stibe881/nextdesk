@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Sicherheitsfälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-13
+updated: 2026-11-16
 ---
 
 # Handbuch für Agenten
@@ -33,7 +33,7 @@ Die linke Navigation ist gegliedert in:
 - **Planung und Betrieb**: Raumplanung, Eintritte, Serviceaufgaben
 - **Ressourcen**: Assets, Lager, Verträge, Lizenzen
 - **Dienste und Überwachung**: Dienste, Infrastruktur, IP-Adressen,
-  Systemstatus
+  Überwachung, Systemstatus
 - **Berichte**
 - **Wissensdatenbank**
 
@@ -418,6 +418,69 @@ bestätigen sie, weisen sie zu, ergänzen Notizen und schliessen sie mit Ursache
 ab – auf Wunsch mit Antwort an die zugeordneten Tickets. Die Störung zeigt auch
 die Tickets und den Netzwerk-Kontext. Ein Tipp auf eine Störungs-Mitteilung
 öffnet die Störung direkt.
+
+## Überwachung
+
+Unter **Dienste und Überwachung → Überwachung** sehen Sie, welche Geräte
+nextDesk selbst überwacht und wie es ihnen geht. Der Eintrag erscheint, wenn
+das Modul _Überwachung_ eingeschaltet ist und Sie das Recht «Assets ansehen»
+haben. Gemessen wird von einer **Sonde** in Ihrem Netz; sie meldet die
+Resultate laufend an nextDesk.
+
+- **Kacheln**: Anzahl Geräte je Zustand. Ein Klick filtert die Liste.
+  - **Ausfall** – ein Sensor antwortet nicht mehr (nach zwei Fehlversuchen in
+    Folge, einstellbar je Sensor).
+  - **Warnung** – der Sensor antwortet, aber langsamer als seine Warnschwelle.
+  - **OK** – alle Sensoren des Geräts sind in Ordnung.
+  - **Unbekannt** – es kommen keine Messwerte: keine Sonde zugewiesen, oder
+    die Sonde meldet sich nicht.
+  - **Pausiert** – die Überwachung des Geräts ist angehalten.
+- **Aktive Alarme**: Geräte mit Ausfall oder Warnung, mit Sensor, Meldung und
+  Dauer. Bei einem Ausfall öffnet nextDesk automatisch eine **Störung**; der
+  Link führt direkt dorthin. Alarmteam, Wiederalarmierung, Folgestörungen und
+  die Ruhe während Wartungsfenstern gelten wie bei allen Störungen.
+- **Sonden**: jede Sonde mit Zustand und letzter Meldung. Meldet sich eine
+  Sonde länger als drei Minuten nicht, gelten ihre Sensoren als «Unbekannt».
+- **Geräteliste**: Zustand, Sensoren, Antwortzeit und letzte Prüfung. Die
+  Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
+
+![Überwachung mit Kacheln, aktiven Alarmen, Sonden und Geräteliste](images/ag-ueberwachung.jpg)
+
+Ein Klick auf ein Gerät öffnet das **Gerätedetail**:
+
+- Die **Grafik** zeigt die Antwortzeit des gewählten Sensors über 24 Stunden,
+  7 Tage, 30 Tage oder 1 Jahr. Die helle Fläche ist die Spanne zwischen
+  kleinstem und grösstem Wert, die gestrichelte Linie die Warnschwelle, rote
+  Balken sind Zeiten mit fehlgeschlagenen Prüfungen. Für 24 Stunden sehen Sie
+  Werte im 5-Minuten-Raster, für längere Zeiträume Stunden- bzw. Tageswerte.
+- **Sensoren**: Zustand, Messwert, Intervall und letzte Prüfung. Ein Klick auf
+  den Namen zeigt den Verlauf dieses Sensors in der Grafik.
+- **Verknüpft in nextDesk**: offene Störung, betroffene Services und der
+  Uplink. Services und Uplink werden unter **Infrastruktur** gepflegt.
+
+![Gerätedetail mit Verlaufsgrafik und Sensoren](images/ag-ueberwachung-geraet.jpg)
+
+Mit dem Recht «Assets verwalten» können Sie zusätzlich:
+
+1. **Gerät hinzufügen** – ein Gerät aus der Infrastruktur wählen und die
+   Sonde bestimmen. Das Gerät erhält einen Ping-Sensor. Geräte, die noch
+   nicht in der Infrastruktur stehen, erfassen Sie zuerst dort.
+2. **Sensor hinzufügen** (im Gerätedetail) – Art wählen:
+   - **Ping**: Ist das Gerät erreichbar?
+   - **TCP-Port**: Antwortet ein Dienst, z. B. 3389 (RDP) oder 1433 (SQL)?
+   - **HTTP**: Antwortet eine Webseite ohne Fehler? Fehlercodes ab 400 und
+     ungültige Zertifikate gelten als Ausfall.
+
+   Dazu Intervall (30 Sekunden bis 1 Stunde), optional eine Warnschwelle für
+   die Antwortzeit und die Anzahl Fehlversuche bis zum Ausfall.
+
+3. Sensoren **bearbeiten**, **löschen** oder das ganze Gerät **pausieren**.
+   Beim Pausieren und Löschen endet ein offener Alarm des Sensors; die
+   Störung gilt als behoben, sobald kein Sensor des Geräts mehr gestört ist.
+4. **Sonde hinzufügen** – siehe Handbuch für Administratoren.
+
+> In dieser ersten Ausbaustufe gibt es Ping-, Port- und HTTP-Sensoren. Die
+> Überwachung in der App und weitere Sensorarten (SNMP, Windows) folgen.
 
 ## Ticketliste
 

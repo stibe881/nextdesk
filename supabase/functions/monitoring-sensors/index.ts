@@ -1,5 +1,6 @@
 import { withSupabase } from "@supabase/server";
 import { isUuid, json, noContent } from "../_shared/http.ts";
+import { createAgentToken, sha256Hex, tokenHint } from "../_shared/ipam-discovery.ts";
 import { sensorKey } from "../_shared/monitoring-native.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import { INTEGRATION_COLUMNS, processEvent } from "../monitoring-webhook/index.ts";
@@ -12,6 +13,7 @@ import {
   type DisplayState,
   displayState,
   parseAction,
+  probeConfig,
   rangePlan,
 } from "./logic.ts";
 
@@ -449,6 +451,35 @@ async function closeSensorAlert(admin: Client, tenantId: string, sensorId: strin
     .eq("tenant_id", tenantId).eq("sensor_id", sensorId);
 }
 
+/**
+ * Creates a probe and returns its token once, together with the ready-made
+ * config.json. Only the SHA-256 of the token is stored.
+ */
+async function createAgent(admin: Client, tenantId: string, actorId: string, name: string) {
+  const base = Deno.env.get("SUPABASE_URL");
+  if (!base) throw unavailable();
+  const id = crypto.randomUUID();
+  const token = createAgentToken(id);
+  const { error } = await admin.from("ipam_agents").insert({
+    id,
+    tenant_id: tenantId,
+    name,
+    token_hash: await sha256Hex(token),
+    token_hint: tokenHint(token),
+    created_by: actorId,
+  });
+  if (error) {
+    if (error.code === "23505") {
+      throw new HttpError(409, "agent_exists", "Eine Sonde mit diesem Namen existiert bereits.");
+    }
+    throw unavailable();
+  }
+  return {
+    agent: { id, name },
+    config: probeConfig(`${base}/functions/v1`, token),
+  };
+}
+
 async function handle(admin: Client, client: Client, actorId: string, action: Action) {
   const features = await resolveTenantFeatureStates(admin, action.tenantId, [FEATURE]);
   if (!features) throw unavailable();
@@ -482,6 +513,9 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
       if (removed.error) throw unavailable();
       return { ok: true };
     }
+    case "createAgent":
+      manage();
+      return await createAgent(admin, action.tenantId, actorId, action.name);
     case "pauseDevice": {
       manage();
       const updated = await admin.from("monitoring_sensors")

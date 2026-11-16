@@ -242,7 +242,11 @@ async function main(): Promise<void> {
         if (job.kind === "scan_now")
           nextScanAt = Date.now() + state.config.scheduleMinutes * 60_000;
       }
-      if (!stopping && state.scanEnabled !== false && Date.now() >= nextScanAt) {
+      if (
+        !stopping &&
+        state.scanEnabled !== false &&
+        Date.now() >= nextScanAt
+      ) {
         await scanAndReport(
           client,
           local,

@@ -201,6 +201,27 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-ueberwachung",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.waitText("Aktive Alarme");
+      await h.settle(300);
+    },
+  },
+  {
+    name: "ag-ueberwachung-geraet",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.clickText("SRV-SQL-01");
+      await h.waitText("Verknüpft in nextDesk");
+      await h.settle(500);
+    },
+  },
+  {
     name: "ag-teams",
     persona: "agent",
     async run(h) {

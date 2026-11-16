@@ -915,15 +915,15 @@ function IncidentView({
                           </li>
                         ) : null}
                         <li
-                          className={`incident-timeline__${event.kind === "prtg" ? (/(ok|up|beendet|ended)/i.test(event.status ?? "") ? "ok" : /(warn|ungew)/i.test(event.status ?? "") ? "warn" : "bad") : event.kind === "resolved" || event.kind === "closed" ? "ok" : event.kind === "realert" ? "warn" : "info"}`}
+                          className={`incident-timeline__${event.kind === "prtg" || event.kind === "sensor" ? (/(ok|up|beendet|ended)/i.test(event.status ?? "") ? "ok" : /(warn|ungew)/i.test(event.status ?? "") ? "warn" : "bad") : event.kind === "resolved" || event.kind === "closed" ? "ok" : event.kind === "realert" ? "warn" : "info"}`}
                         >
                           <time dateTime={event.at}>
                             {TIME.format(new Date(event.at))}
                           </time>
                           <span>
                             <strong>
-                              {event.kind === "prtg"
-                                ? `${event.sensor ?? "PRTG"}: ${event.status ?? ""}`
+                              {event.kind === "prtg" || event.kind === "sensor"
+                                ? `${event.sensor ?? (event.kind === "sensor" ? "Sensor" : "PRTG")}: ${event.status ?? ""}`
                                 : (EVENT_LABELS[event.kind] ?? event.kind)}
                             </strong>
                             {event.message ? ` · ${event.message}` : ""}

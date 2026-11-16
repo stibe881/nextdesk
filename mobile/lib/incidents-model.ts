@@ -650,6 +650,7 @@ export function formatAvailability(value: number | null): string {
 
 export const EVENT_LABELS: Record<string, string> = {
   prtg: "PRTG",
+  sensor: "Überwachung",
   opened: "Störung geöffnet",
   reopened: "Erneut gestört",
   resolved: "Behoben",

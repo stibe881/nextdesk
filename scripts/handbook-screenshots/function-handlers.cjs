@@ -50,8 +50,10 @@ const ENABLED_FEATURES = new Set([
   "notifications.push",
   "self_service.shop",
   "teams.provisioning",
+  "monitoring.native",
 ]);
 const ALL_FEATURES = [
+  "monitoring.native",
   "ticketing.detail",
   "ticketing.checklists",
   "ticketing.time-tracking",
@@ -1017,6 +1019,233 @@ const HANDLERS = {
       departments: D.DEPARTMENTS.map((d) => ({ id: d.id, name: d.name })),
       stats: { inbound24h: 23, outbound24h: 41, failed24h: 0 },
     });
+  },
+  "monitoring-sensors": (body) => {
+    const now = Date.now();
+    const ago = (seconds) => new Date(now - seconds * 1000).toISOString();
+    const agents = [
+      {
+        id: D.uid("48484848", 1),
+        name: "Sonde Rechenzentrum",
+        active: true,
+        hostname: "srv-probe-01",
+        platform: "win32",
+        version: "1.1.0",
+        lastSeenAt: ago(8),
+        online: true,
+        sensorCount: 14,
+      },
+      {
+        id: D.uid("48484848", 2),
+        name: "Sonde Büro",
+        active: true,
+        hostname: "probe-buero",
+        platform: "linux",
+        version: "1.1.0",
+        lastSeenAt: ago(21),
+        online: true,
+        sensorCount: 4,
+      },
+    ];
+    const counts = (up, extra = {}) => ({
+      down: 0,
+      warning: 0,
+      up,
+      unknown: 0,
+      paused: 0,
+      ...extra,
+    });
+    const row = (
+      n,
+      name,
+      category,
+      ipAddress,
+      state,
+      sensorCounts,
+      responseMs,
+      extra = {},
+    ) => ({
+      assetId: D.uid("49494949", n),
+      name,
+      category,
+      hostname: null,
+      ipAddress,
+      state,
+      counts: sensorCounts,
+      sensorCount: Object.values(sensorCounts).reduce((a, b) => a + b, 0),
+      responseMs,
+      lastCheckAt: ago(10 + n * 3),
+      problem: null,
+      incident: null,
+      ...extra,
+    });
+    const devices = [
+      row(
+        1,
+        "SW-CORE-01",
+        "switch",
+        "10.10.0.2",
+        "down",
+        counts(0, { down: 1 }),
+        null,
+        {
+          problem: {
+            sensorId: D.uid("50505050", 1),
+            sensorName: "Ping",
+            state: "down",
+            since: ago(840),
+            message: "Keine Antwort auf Ping",
+          },
+          incident: {
+            id: D.uid("51515151", 1),
+            number: "STO-2026-0042",
+            title: "SW-CORE-01 – Ping",
+            severity: "down",
+            openedAt: ago(800),
+            acknowledged: false,
+            maintenance: false,
+          },
+        },
+      ),
+      row(
+        2,
+        "SRV-SQL-01",
+        "server",
+        "10.10.20.21",
+        "warning",
+        counts(2, { warning: 1 }),
+        1.2,
+        {
+          problem: {
+            sensorId: D.uid("50505050", 2),
+            sensorName: "Port 1433",
+            state: "warning",
+            since: ago(7200),
+            message: "Antwortzeit über dem Schwellenwert (412 ms)",
+          },
+        },
+      ),
+      row(3, "FW-BAAR-01", "firewall", "10.10.0.1", "up", counts(3), 0.8),
+      row(4, "Intranet", "server", "10.10.20.30", "up", counts(2), 182),
+      row(5, "AP-OG2-03", "access_point", "10.30.4.13", "up", counts(1), 4.1),
+      row(6, "NAS-01", "storage", "10.10.3.12", "up", counts(2), 0.6),
+      row(
+        7,
+        "SRV-BACKUP-01",
+        "server",
+        "10.10.20.40",
+        "paused",
+        counts(0, { paused: 3 }),
+        null,
+      ),
+    ];
+    const totals = counts(0);
+    for (const device of devices) totals[device.state] += 1;
+    if (body.type === "overview") {
+      return ok({
+        canManage: true,
+        totals,
+        deviceCount: devices.length,
+        sensorCount: 18,
+        devices,
+        agents,
+        checkedAt: ago(12),
+      });
+    }
+    const sensor = (n, kind, name, state, lastValue, extra = {}) => ({
+      id: D.uid("50505050", n),
+      assetId: D.uid("49494949", 2),
+      agentId: agents[0].id,
+      kind,
+      name,
+      target: null,
+      port: null,
+      url: null,
+      intervalSeconds: 60,
+      timeoutMs: 5000,
+      warningAbove: null,
+      failuresToDown: 2,
+      paused: false,
+      state,
+      since: ago(86400),
+      lastCheckAt: ago(18),
+      lastValue,
+      lastMessage: null,
+      ...extra,
+    });
+    if (body.type === "device") {
+      return ok({
+        canManage: true,
+        device: {
+          assetId: D.uid("49494949", 2),
+          name: "SRV-SQL-01",
+          category: "server",
+          hostname: "srv-sql-01.muster.local",
+          ipAddress: "10.10.20.21",
+          state: "warning",
+          services: [
+            { id: D.uid("29292929", 91), name: "ERP" },
+            { id: D.uid("29292929", 92), name: "Zeiterfassung" },
+          ],
+          uplink: { assetId: D.uid("49494949", 1), name: "SW-CORE-01" },
+          incident: null,
+        },
+        sensors: [
+          sensor(2, "tcp", "Port 1433", "warning", 412, {
+            port: 1433,
+            warningAbove: 250,
+            since: ago(7200),
+            lastMessage: null,
+          }),
+          sensor(3, "ping", "Ping", "up", 1.2),
+          sensor(4, "tcp", "Port 3389", "up", 2.4, {
+            port: 3389,
+            intervalSeconds: 300,
+          }),
+        ],
+        agents,
+        checkedAt: ago(12),
+      });
+    }
+    if (body.type === "series") {
+      const bucket = 300;
+      const start =
+        Math.floor((now - 24 * 3600 * 1000) / (bucket * 1000)) * bucket * 1000;
+      const points = [];
+      for (let index = 0; index < 288; index += 1) {
+        const rising = index > 262 ? (index - 262) * 14 : 0;
+        const base =
+          38 + Math.sin(index / 9) * 9 + ((index * 37) % 11) + rising;
+        points.push({
+          t: new Date(start + index * bucket * 1000).toISOString(),
+          avg: Math.round(base * 10) / 10,
+          min: Math.round(base * 7) / 10,
+          max: Math.round(base * 14) / 10,
+          ok: index === 120 || index === 121 ? 0.4 : 1,
+        });
+      }
+      return ok({
+        sensorId: body.sensorId,
+        range: body.range ?? "24h",
+        from: new Date(now - 24 * 3600 * 1000).toISOString(),
+        bucketSeconds: bucket,
+        points,
+        availability: 99.58,
+      });
+    }
+    if (body.type === "assets") {
+      return ok({
+        assets: devices.map((device) => ({
+          assetId: device.assetId,
+          name: device.name,
+          category: device.category,
+          hostname: null,
+          ipAddress: device.ipAddress,
+          monitored: true,
+        })),
+      });
+    }
+    return ok({ ok: true });
   },
   incidents: (body) => {
     const agent = D.AGENTS[1] ?? D.AGENTS[0];
