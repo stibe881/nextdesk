@@ -2,6 +2,7 @@ import { tn } from "./lib/formality";
 import { CsvImportDialog } from "./csv-import-dialog";
 import { INFRASTRUCTURE_IMPORT_FIELDS } from "./lib/import-fields";
 import { RackView, type RackInput } from "./infrastructure-racks";
+import { PickOrCreate, type PickOption } from "./pick-or-create";
 import {
   AssetLabelDialog,
   LabelSelectionBar,
@@ -1026,6 +1027,16 @@ export function Infrastructure({
           devices={devices}
           form={form}
           locations={locations}
+          onCreateRack={(name, locationId) =>
+            saveRack({
+              id: null,
+              name,
+              locationId,
+              heightUnits: 42,
+              notes: null,
+            })
+          }
+          racks={allRacks}
           services={services}
           onCancel={() => setForm(null)}
           onLocationAdded={(location) =>
@@ -1605,25 +1616,34 @@ function DeviceEditor({
   form: initial,
   devices,
   locations,
+  racks,
   services,
   tenantId,
   onCancel,
+  onCreateRack,
   onSaved,
   onLocationAdded,
 }: {
   form: Form;
   devices: Device[];
   locations: Location[];
+  /** Recorded racks and racks only known from device data. */
+  racks: readonly {
+    name: string;
+    locationName: string | null;
+    units: number;
+  }[];
   services: Service[];
   tenantId: string;
   onCancel: () => void;
+  /** Records a new rack (42 HE) at the location; true when saved. */
+  onCreateRack: (name: string, locationId: string | null) => Promise<boolean>;
   onSaved: (assetId: string, created: boolean) => void;
   onLocationAdded: (location: Location) => void;
 }) {
   const [form, setForm] = useState<Form>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [newLocation, setNewLocation] = useState("");
   // The rack unit is stored as «12» or «12-14» (see lib/rack-layout.ts).
   const initialUnits = (initial.rackUnit ?? "").match(/\d{1,3}/g) ?? [];
   const [rackFrom, setRackFrom] = useState(initialUnits[0] ?? "");
@@ -1684,24 +1704,68 @@ function DeviceEditor({
     </FormField>
   );
 
-  async function addLocation() {
-    if (!newLocation.trim()) return;
+  async function createLocation(name: string): Promise<string | null> {
+    setError("");
     try {
       const data = await call<{ location: Location }>({
         type: "addLocation",
         tenantId,
-        name: newLocation.trim(),
+        name,
       });
       onLocationAdded(data.location);
-      set("locationId", data.location.id);
-      setNewLocation("");
+      return data.location.id;
     } catch (nextError) {
       setError(
         nextError instanceof Error
           ? nextError.message
           : "Der Standort konnte nicht angelegt werden.",
       );
+      return null;
     }
+  }
+
+  const locationOptions: PickOption[] = locations.map((location) => ({
+    value: location.id,
+    label: location.name,
+  }));
+  const selectedLocationName =
+    locations.find((location) => location.id === form.locationId)?.name ?? null;
+  // Racks at the chosen location (and racks without a location); without a
+  // location all racks, each with its location as hint.
+  const rackOptions: PickOption[] = (() => {
+    const seen = new Set<string>();
+    const result: PickOption[] = [];
+    for (const rack of racks) {
+      if (
+        selectedLocationName &&
+        rack.locationName &&
+        rack.locationName !== selectedLocationName
+      ) {
+        continue;
+      }
+      const key = rack.name.trim().toLocaleLowerCase("de-CH");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push({
+        value: rack.name,
+        label: rack.name,
+        hint: [rack.locationName ?? "ohne Standort", `${rack.units} HE`].join(
+          " · ",
+        ),
+      });
+    }
+    // Keep a rack name that is saved on the device but no longer listed.
+    if (form.rack && !seen.has(form.rack.trim().toLocaleLowerCase("de-CH"))) {
+      result.push({ value: form.rack, label: form.rack });
+    }
+    return result.sort((left, right) =>
+      left.label.localeCompare(right.label, "de-CH", { numeric: true }),
+    );
+  })();
+
+  async function createRack(name: string): Promise<string | null> {
+    const saved = await onCreateRack(name, form.locationId ?? null);
+    return saved ? name : null;
   }
 
   async function submit(event: FormEvent) {
@@ -1874,40 +1938,44 @@ function DeviceEditor({
       </FormCard>
       <FormCard title="Standort">
         <FormGrid cols={3}>
-          <FormField label="Standort">
-            <select
-              onChange={(event) =>
-                set("locationId", event.target.value || null)
-              }
-              value={form.locationId ?? ""}
-            >
-              <option value="">– kein Standort –</option>
-              {locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
-                </option>
-              ))}
-            </select>
-          </FormField>
-          <FormField label="Neuer Standort">
-            <span className="infrastructure__inline">
-              <input
-                maxLength={160}
-                onChange={(event) => setNewLocation(event.target.value)}
-                placeholder="z. B. Serverraum Haus A"
-                value={newLocation}
-              />
-              <button
-                className="secondary-button"
-                disabled={!newLocation.trim()}
-                onClick={() => void addLocation()}
-                type="button"
-              >
-                Anlegen
-              </button>
+          {/* Not a <label>: a click inside the open list must not re-trigger
+              the toggle button. */}
+          <div className="fk-field">
+            <span className="fk-label" id="device-location-label">
+              Standort
             </span>
-          </FormField>
-          {text("rack", "Rack")}
+            <PickOrCreate
+              createLabel="Neuer Standort"
+              createPlaceholder="z. B. Serverraum Haus A"
+              emptyLabel="– kein Standort –"
+              id="device-location"
+              labelledBy="device-location-label"
+              onChange={(value) => set("locationId", value)}
+              onCreate={createLocation}
+              options={locationOptions}
+              value={form.locationId ?? null}
+            />
+          </div>
+          <div className="fk-field">
+            <span className="fk-label" id="device-rack-label">
+              Rack
+            </span>
+            <PickOrCreate
+              createLabel={
+                selectedLocationName
+                  ? `Neues Rack in «${selectedLocationName}»`
+                  : "Neues Rack (ohne Standort)"
+              }
+              createPlaceholder="z. B. Rack A1"
+              emptyLabel="– kein Rack –"
+              id="device-rack"
+              labelledBy="device-rack-label"
+              onChange={(value) => set("rack", value)}
+              onCreate={createRack}
+              options={rackOptions}
+              value={form.rack ?? null}
+            />
+          </div>
           <FormField label="Höheneinheit von">
             <input
               inputMode="numeric"
