@@ -143,6 +143,79 @@ export type MonitoringPoint = {
   max2?: number | null;
 };
 
+/** What hangs on a port: named by the device itself (LLDP) or seen in the MAC table. */
+export type MonitoringLink = {
+  source: "lldp" | "mac";
+  name: string;
+  port: string | null;
+  address: string | null;
+  mac: string | null;
+  /** Device of the infrastructure, if the neighbour is one. */
+  assetId: string | null;
+  monitored: boolean;
+};
+
+export type MonitoringPort = {
+  port: string;
+  alias: string | null;
+  up: boolean | null;
+  speedMbps: number | null;
+  link: MonitoringLink | null;
+  /** MAC addresses seen behind the port; many mean an uplink or trunk. */
+  deviceCount: number;
+};
+
+export type MonitoringConnections = {
+  canManage: boolean;
+  /** Last attempt of the probe to read the connections. */
+  scannedAt: string | null;
+  pending: boolean;
+  error: string | null;
+  ports: MonitoringPort[];
+  /** Ports of other devices this device hangs on. */
+  attachedTo: {
+    assetId: string;
+    name: string;
+    port: string;
+    source: "lldp" | "mac";
+    monitored: boolean;
+  }[];
+};
+
+/** Ports worth showing by default: something is connected or the link is up. */
+export function connectedPorts(
+  ports: readonly MonitoringPort[],
+): MonitoringPort[] {
+  return ports.filter(
+    (port) => port.link !== null || (port.up === true && port.deviceCount > 0),
+  );
+}
+
+/** «SOBE-DSW01 · Port 1/1/24» / «3 Geräte» / «42 Geräte (Uplink oder Trunk)» / «–». */
+export function portLinkText(port: MonitoringPort): string {
+  if (port.link) {
+    const others =
+      port.link.source === "mac" && port.deviceCount > 1
+        ? `+${port.deviceCount - 1} weitere`
+        : null;
+    return [
+      port.link.name,
+      port.link.port ? `Port ${port.link.port}` : null,
+      others,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  if (port.deviceCount > 8)
+    return `${port.deviceCount} Geräte (Uplink oder Trunk)`;
+  return port.deviceCount > 0 ? `${port.deviceCount} unbekannte Geräte` : "–";
+}
+
+export const LINK_SOURCE_LABELS: Record<MonitoringLink["source"], string> = {
+  lldp: "LLDP",
+  mac: "MAC-Tabelle",
+};
+
 export type MonitoringSeries = {
   sensorId: string;
   range: MonitoringRange;
@@ -448,6 +521,56 @@ export function matchesSearch(
     device.ipAddress,
     device.problem?.sensorName,
   ].some((value) => value?.toLowerCase().includes(term));
+}
+
+export type DeviceSortKey =
+  "state" | "name" | "sensors" | "response" | "lastCheck";
+export type DeviceSort = { key: DeviceSortKey; descending: boolean };
+
+/** Worst first: what needs attention is at the top. */
+const STATE_RANK: Record<MonitoringState, number> = {
+  down: 0,
+  warning: 1,
+  unknown: 2,
+  paused: 3,
+  up: 4,
+};
+
+/**
+ * Devices sorted by a column. Devices without a value (no response time,
+ * never checked) stay at the end in both directions; ties go by name.
+ */
+export function sortDevices(
+  devices: readonly MonitoringDeviceRow[],
+  sort: DeviceSort,
+): MonitoringDeviceRow[] {
+  const byName = (a: MonitoringDeviceRow, b: MonitoringDeviceRow) =>
+    a.name.localeCompare(b.name, "de", { numeric: true, sensitivity: "base" });
+  const value = (device: MonitoringDeviceRow): number | null => {
+    switch (sort.key) {
+      case "state":
+        return STATE_RANK[device.state];
+      case "sensors":
+        return device.sensorCount;
+      case "response":
+        return device.responseMs;
+      case "lastCheck":
+        return device.lastCheckAt ? Date.parse(device.lastCheckAt) : null;
+      case "name":
+        return 0;
+    }
+  };
+  const direction = sort.descending ? -1 : 1;
+  return [...devices].sort((a, b) => {
+    if (sort.key === "name") return direction * byName(a, b);
+    const left = value(a);
+    const right = value(b);
+    if (left === null || right === null) {
+      if (left === right) return byName(a, b);
+      return left === null ? 1 : -1;
+    }
+    return direction * (left - right) || byName(a, b);
+  });
 }
 
 export type ChartGeometry = {

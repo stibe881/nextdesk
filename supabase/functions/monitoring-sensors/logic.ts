@@ -66,6 +66,8 @@ export type Action =
   | { type: "probePackage"; tenantId: string }
   | { type: "listInterfaces"; tenantId: string; assetId: string; agentId: string }
   | { type: "interfaces"; tenantId: string; jobId: string }
+  | { type: "connections"; tenantId: string; assetId: string }
+  | { type: "refreshConnections"; tenantId: string; assetId: string }
   | { type: "addDevice"; tenantId: string; device: NewDevice };
 
 export const DEVICE_CATEGORIES = [
@@ -407,6 +409,11 @@ export function parseAction(value: unknown): Action | string | null {
     case "interfaces": {
       const jobId = uuid(value.jobId);
       return jobId ? { type: "interfaces", tenantId, jobId } : null;
+    }
+    case "connections":
+    case "refreshConnections": {
+      const assetId = uuid(value.assetId);
+      return assetId ? { type: value.type, tenantId, assetId } : null;
     }
     case "addDevice": {
       const device = parseNewDevice(value.device);

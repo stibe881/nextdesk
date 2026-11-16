@@ -366,7 +366,8 @@ per Push und E-Mail alarmiert.
 Die Sonde ist derselbe Netzwerkagent wie für die IP-Adressverwaltung
 (`tools/ipam-agent`). Läuft er bereits, ist nichts zu installieren: Er
 übernimmt die Sensoren, sobald das Modul _Überwachung_ aktiv ist und der
-Agent auf Version 1.1.0 oder neuer aktualisiert wurde (SNMP-Sensoren: 1.2.0).
+Agent auf Version 1.1.0 oder neuer aktualisiert wurde (SNMP-Sensoren: 1.2.0,
+Verbindungen: 1.3.0).
 
 1. Unter **Funktionen** das Modul _Überwachung_ einschalten.
 2. Unter **Einstellungen → Monitoring → Überwachung** (oder **Dienste und
@@ -421,6 +422,15 @@ nie. Den Block `snmp` ergänzen und die Sonde neu starten:
 Zugangsdaten (Schlüssel = IP-Adresse bzw. Hostname wie in der Infrastruktur).
 Die Sonde braucht UDP 161 zu den Geräten; auf den Geräten SNMP nur lesend
 einrichten.
+
+**Verbindungen** (welcher Port führt zu welchem Gerät, ab Sonde 1.3.0):
+Mit denselben SNMP-Zugangsdaten liest die Sonde bei Switches, Firewalls und
+Routern sowie bei allen Geräten mit SNMP-Sensor alle sechs Stunden die Ports,
+die LLDP-Nachbarn und die MAC-Tabelle aus. Dafür ist nichts weiter
+einzurichten. Damit Verbindungen zwischen Switches erkannt werden, muss auf
+den Switches LLDP aktiv sein (bei Aruba und HP Standard). Endgeräte werden
+über ihre MAC-Adresse zugeordnet; sie muss dazu in der IP-Adressverwaltung
+oder beim Gerät in der Infrastruktur stehen.
 
 **Wächter:** Meldet sich eine Sonde mit Sensoren fünf Minuten nicht, öffnet
 nextDesk eine Störung. Das prüft ein Datenbank-Job jede Minute; er nutzt

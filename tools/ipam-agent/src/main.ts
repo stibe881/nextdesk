@@ -29,7 +29,8 @@ import {
   type ReportLimits,
 } from "./reports.ts";
 import { runScan } from "./scan.ts";
-import { listInterfaces } from "./snmp.ts";
+import { collectLinks, listInterfaces } from "./snmp.ts";
+import { buildTopology } from "./topology.ts";
 import { connectionHint, trustSystemCertificates } from "./trust.ts";
 import { VERSION } from "./version.ts";
 
@@ -163,6 +164,17 @@ async function runJob(
       result = {
         interfaces: (await listInterfaces(local, target)).slice(0, 600),
       };
+    } else if (job.kind === "snmp_topology") {
+      const target = safeHost(job.payload?.host);
+      if (!target) throw new JobRejected("Das Ziel ist ungültig.");
+      const interfaces = await listInterfaces(local, target);
+      const links = await collectLinks(local, target);
+      result = buildTopology({
+        sysName: links.switchName,
+        interfaces,
+        lldp: links.lldp,
+        macTable: links.macTable,
+      });
     } else {
       if (platform !== "win32")
         throw new JobRejected(
