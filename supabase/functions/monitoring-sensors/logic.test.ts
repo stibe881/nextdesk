@@ -7,6 +7,7 @@ import {
   deviceState,
   displayState,
   parseAction,
+  parseInterfaces,
   isOlderVersion,
   parseProbePackage,
   parseSensor,
@@ -31,6 +32,14 @@ Deno.test("sensor: defaults, names and validation per kind", () => {
     intervalSeconds: 60,
     timeoutMs: 5000,
     warningAbove: null,
+    warningBelow: null,
+    downAbove: null,
+    downBelow: null,
+    snmpMetric: null,
+    snmpOid: null,
+    snmpIndex: null,
+    scale: 1,
+    unit: null,
     failuresToDown: 2,
     paused: false,
   });
@@ -48,7 +57,7 @@ Deno.test("sensor: defaults, names and validation per kind", () => {
   assertEquals(parseSensor({ assetId: ASSET, kind: "http", url: "https://user:pw@x.ch" }), "Die Adresse darf keine Zugangsdaten enthalten.");
   assertEquals(parseSensor({ assetId: ASSET, kind: "ping", target: "-c 5 10.0.0.1" }), "Das Ziel muss eine IP-Adresse oder ein Hostname sein.");
   assertEquals(parseSensor({ assetId: ASSET, kind: "ping", intervalSeconds: 5 }), "Das Intervall ist ungültig.");
-  assertEquals(parseSensor({ assetId: ASSET, kind: "snmp" }), "Die Art des Sensors ist ungültig.");
+  assertEquals(parseSensor({ assetId: ASSET, kind: "wmi" }), "Die Art des Sensors ist ungültig.");
   assertEquals(parseSensor({ kind: "ping" }), "Das Gerät fehlt.");
 });
 
@@ -137,4 +146,80 @@ Deno.test("probe package: latest.json is validated, versions are compared", () =
   assertEquals(isOlderVersion(null, "1.1.0"), false);
   assertEquals(isOlderVersion("dev", "1.1.0"), false);
   assertEquals(parseAction({ type: "probePackage", tenantId: TENANT }), { type: "probePackage", tenantId: TENANT });
+});
+
+Deno.test("snmp sensors: metric decides fields, unit and thresholds", () => {
+  const pick = (value: unknown) => {
+    const sensor = parseSensor(value);
+    return typeof sensor === "string"
+      ? sensor
+      : [sensor.name, sensor.snmpMetric, sensor.snmpIndex, sensor.snmpOid, sensor.scale, sensor.unit];
+  };
+  assertEquals(pick({ assetId: ASSET, kind: "snmp", snmpMetric: "uptime" }), ["Laufzeit", "uptime", null, null, 1, "s"]);
+  assertEquals(pick({ assetId: ASSET, kind: "snmp", snmpMetric: "traffic", snmpIndex: 49, name: "1/1/49 to_SW-CORE" }), [
+    "1/1/49 to_SW-CORE",
+    "traffic",
+    49,
+    null,
+    1,
+    "bit/s",
+  ]);
+  assertEquals(
+    pick({ assetId: ASSET, kind: "snmp", snmpMetric: "value", snmpOid: ".1.3.6.1.4.1.318.1.1.1.2.2.1.0", scale: 0.1, unit: " % " }),
+    ["SNMP 2.1.0", "value", null, "1.3.6.1.4.1.318.1.1.1.2.2.1.0", 0.1, "%"],
+  );
+  assertEquals(pick({ assetId: ASSET, kind: "snmp", snmpMetric: "traffic" }), "Der Port (ifIndex) fehlt.");
+  assertEquals(
+    pick({ assetId: ASSET, kind: "snmp", snmpMetric: "value", snmpOid: "sysUpTime.0" }),
+    "Die OID muss aus Zahlen mit Punkten bestehen, z. B. 1.3.6.1.2.1.1.3.0.",
+  );
+  assertEquals(pick({ assetId: ASSET, kind: "snmp", snmpMetric: "walk" }), "Die Messart des SNMP-Sensors ist ungültig.");
+  const battery = parseSensor({
+    assetId: ASSET,
+    kind: "snmp",
+    snmpMetric: "value",
+    snmpOid: "1.3.6.1.4.1.318.1.1.1.2.2.1.0",
+    warningBelow: 50,
+    downBelow: 20,
+    warningAbove: 0,
+  });
+  assertEquals(
+    typeof battery === "string" ? battery : [battery.warningBelow, battery.downBelow, battery.warningAbove, battery.downAbove],
+    [50, 20, 0, null],
+  );
+  // Thresholds below zero or for values above a minute only exist for SNMP.
+  assertEquals(parseSensor({ assetId: ASSET, kind: "ping", warningAbove: 0 }), "Die Warnschwelle muss zwischen 1 und 60000 ms liegen.");
+  const ping = parseSensor({ assetId: ASSET, kind: "ping", downAbove: 5, warningBelow: 1 });
+  assertEquals(typeof ping === "string" ? ping : [ping.downAbove, ping.warningBelow], [null, null]);
+});
+
+Deno.test("interfaces: job result of the probe is cleaned", () => {
+  assertEquals(
+    parseInterfaces({
+      output: {
+        interfaces: [
+          { index: 49, name: " 1/1/49 ", alias: "to_SW\u0000-CORE", up: true, speedMbps: 10000 },
+          { index: 1, name: "", alias: "", up: "ja", speedMbps: 0 },
+          { index: 0, name: "ungültig" },
+          "text",
+        ],
+      },
+    }),
+    [
+      { index: 49, name: "1/1/49", alias: "to_SW-CORE", up: true, speedMbps: 10000 },
+      { index: 1, name: "Port 1", alias: null, up: false, speedMbps: null },
+    ],
+  );
+  assertEquals(parseInterfaces(null), []);
+  assertEquals(parseAction({ type: "listInterfaces", tenantId: TENANT, assetId: ASSET, agentId: AGENT })?.constructor, Object);
+  assertEquals(parseAction({ type: "interfaces", tenantId: TENANT, jobId: "x" }), null);
+});
+
+Deno.test("series: second value (outgoing traffic) is averaged too", () => {
+  const base = Date.parse("2026-11-16T10:00:00Z");
+  const points = bucketize([
+    { at: base, checks: 1, checksOk: 1, avg: 100, min: 100, max: 100, avg2: 10, max2: 10 },
+    { at: base + 60_000, checks: 1, checksOk: 1, avg: 300, min: 300, max: 300, avg2: 30, max2: 30 },
+  ], 300_000);
+  assertEquals(points, [{ t: "2026-11-16T10:00:00.000Z", avg: 200, min: 100, max: 300, ok: 1, avg2: 20, max2: 30 }]);
 });

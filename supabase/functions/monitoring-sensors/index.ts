@@ -14,6 +14,7 @@ import {
   displayState,
   isOlderVersion,
   parseAction,
+  parseInterfaces,
   parseProbePackage,
   type ProbePackage,
   probeConfig,
@@ -95,6 +96,14 @@ function sensorView(sensor: Row, status: Row | undefined, now: number) {
     intervalSeconds: number(sensor.interval_seconds) ?? 60,
     timeoutMs: number(sensor.timeout_ms) ?? 5000,
     warningAbove: number(sensor.warning_above),
+    warningBelow: number(sensor.warning_below),
+    downAbove: number(sensor.down_above),
+    downBelow: number(sensor.down_below),
+    snmpMetric: text(sensor.snmp_metric),
+    snmpOid: text(sensor.snmp_oid),
+    snmpIndex: number(sensor.snmp_index),
+    scale: number(sensor.scale) ?? 1,
+    unit: text(sensor.unit),
     failuresToDown: number(sensor.failures_to_down) ?? 2,
     paused: sensor.paused === true,
   };
@@ -109,23 +118,24 @@ function sensorView(sensor: Row, status: Row | undefined, now: number) {
     since: text(status?.since),
     lastCheckAt: text(status?.last_check_at),
     lastValue: number(status?.last_value),
+    lastValue2: number(status?.last_value2),
     lastMessage: text(status?.last_message),
   };
 }
 
 async function loadSensors(admin: Client, tenantId: string, assetId?: string) {
   let sensorQuery = admin.from("monitoring_sensors")
-    .select("id, asset_id, agent_id, kind, name, target, port, url, interval_seconds, timeout_ms, warning_above, failures_to_down, paused")
+    .select("id, asset_id, agent_id, kind, name, target, port, url, interval_seconds, timeout_ms, warning_above, warning_below, down_above, down_below, snmp_metric, snmp_oid, snmp_index, scale, unit, failures_to_down, paused")
     .eq("tenant_id", tenantId).order("name").limit(MAX_SENSORS);
   if (assetId) sensorQuery = sensorQuery.eq("asset_id", assetId);
   const sensors = await sensorQuery;
   if (sensors.error) throw unavailable();
   const rows = (sensors.data ?? []) as Row[];
   const statusRows = assetId
-    ? await selectIn(admin, "monitoring_sensor_status", "sensor_id, state, since, last_check_at, last_value, last_message", tenantId, "sensor_id", rows.map((row) => String(row.id)))
+    ? await selectIn(admin, "monitoring_sensor_status", "sensor_id, state, since, last_check_at, last_value, last_value2, last_message", tenantId, "sensor_id", rows.map((row) => String(row.id)))
     : await (async () => {
       const { data, error } = await admin.from("monitoring_sensor_status")
-        .select("sensor_id, state, since, last_check_at, last_value, last_message")
+        .select("sensor_id, state, since, last_check_at, last_value, last_value2, last_message")
         .eq("tenant_id", tenantId).limit(MAX_SENSORS);
       if (error) throw unavailable();
       return (data ?? []) as Row[];
@@ -238,7 +248,7 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
     for (const sensor of own) counts[sensor.state] += 1;
     // Response time of the device: its ping sensor, else the first with a value.
     const primary = own.find((sensor) => sensor.kind === "ping" && sensor.state !== "paused") ??
-      own.find((sensor) => sensor.lastValue !== null && sensor.state !== "paused") ?? null;
+      own.find((sensor) => sensor.kind !== "snmp" && sensor.lastValue !== null && sensor.state !== "paused") ?? null;
     const problem = own.filter((sensor) => sensor.state === "down" || sensor.state === "warning")
       .sort((a, b) => rank[a.state] - rank[b.state])[0] ?? null;
     return {
@@ -325,7 +335,7 @@ async function device(admin: Client, tenantId: string, assetId: string, canManag
 }
 
 async function series(admin: Client, tenantId: string, sensorId: string, range: "24h" | "7d" | "30d" | "1y") {
-  const sensor = await admin.from("monitoring_sensors").select("id").eq("tenant_id", tenantId).eq("id", sensorId).maybeSingle();
+  const sensor = await admin.from("monitoring_sensors").select("id, unit").eq("tenant_id", tenantId).eq("id", sensorId).maybeSingle();
   if (sensor.error) throw unavailable();
   if (!sensor.data) throw new HttpError(404, "sensor_not_found", "Der Sensor wurde nicht gefunden.");
   const plan = rangePlan(range, Date.now());
@@ -334,19 +344,29 @@ async function series(admin: Client, tenantId: string, sensorId: string, range: 
   if (plan.source === "raw") {
     // 24 h at the shortest interval (30 s) are 2880 rows.
     for (let offset = 0; offset < 4000; offset += 1000) {
-      const { data, error } = await admin.from("monitoring_samples").select("at, ok, value")
+      const { data, error } = await admin.from("monitoring_samples").select("at, ok, value, value2")
         .eq("sensor_id", sensorId).gte("at", plan.from).order("at").range(offset, offset + 999);
       if (error) throw unavailable();
       for (const row of (data ?? []) as Row[]) {
         const value = number(row.value);
-        entries.push({ at: Date.parse(String(row.at)), checks: 1, checksOk: row.ok === true ? 1 : 0, avg: value, min: value, max: value });
+        const second = number(row.value2);
+        entries.push({
+          at: Date.parse(String(row.at)),
+          checks: 1,
+          checksOk: row.ok === true ? 1 : 0,
+          avg: value,
+          min: value,
+          max: value,
+          avg2: second,
+          max2: second,
+        });
       }
       if ((data ?? []).length < 1000) break;
     }
   } else {
     const table = plan.source === "hourly" ? "monitoring_samples_hourly" : "monitoring_samples_daily";
     const from = plan.source === "daily" ? plan.from.slice(0, 10) : plan.from;
-    const { data, error } = await admin.from(table).select("bucket, checks, checks_ok, value_avg, value_min, value_max")
+    const { data, error } = await admin.from(table).select("bucket, checks, checks_ok, value_avg, value_min, value_max, value2_avg, value2_max")
       .eq("sensor_id", sensorId).gte("bucket", from).order("bucket").limit(1000);
     if (error) throw unavailable();
     for (const row of (data ?? []) as Row[]) {
@@ -357,6 +377,8 @@ async function series(admin: Client, tenantId: string, sensorId: string, range: 
         avg: number(row.value_avg),
         min: number(row.value_min),
         max: number(row.value_max),
+        avg2: number(row.value2_avg),
+        max2: number(row.value2_max),
       });
     }
   }
@@ -366,6 +388,7 @@ async function series(admin: Client, tenantId: string, sensorId: string, range: 
   return {
     sensorId,
     range,
+    unit: text(sensor.data.unit),
     from: plan.from,
     bucketSeconds: plan.bucketMs / 1000,
     points,
@@ -438,6 +461,14 @@ async function saveSensor(admin: Client, tenantId: string, actorId: string, acti
     interval_seconds: sensor.intervalSeconds,
     timeout_ms: sensor.timeoutMs,
     warning_above: sensor.warningAbove,
+    warning_below: sensor.warningBelow,
+    down_above: sensor.downAbove,
+    down_below: sensor.downBelow,
+    snmp_metric: sensor.snmpMetric,
+    snmp_oid: sensor.snmpOid,
+    snmp_index: sensor.snmpIndex,
+    scale: sensor.scale,
+    unit: sensor.unit,
     failures_to_down: sensor.failuresToDown,
     paused: sensor.paused,
     updated_at: new Date().toISOString(),
@@ -497,6 +528,46 @@ async function closeSensorAlert(admin: Client, tenantId: string, sensorId: strin
   await admin.from("monitoring_sensor_status")
     .update({ state: "unknown", consecutive_failures: 0, since: new Date().toISOString() })
     .eq("tenant_id", tenantId).eq("sensor_id", sensorId);
+}
+
+/** Asks the probe for the interfaces of a device (answer within about a minute). */
+async function listInterfaces(admin: Client, tenantId: string, actorId: string, assetId: string, agentId: string) {
+  await requireAsset(admin, tenantId, assetId);
+  const [infra, agent] = await Promise.all([
+    admin.from("asset_infrastructure").select("hostname, ip_address").eq("tenant_id", tenantId).eq("asset_id", assetId).maybeSingle(),
+    admin.from("ipam_agents").select("id, status").eq("tenant_id", tenantId).eq("id", agentId).maybeSingle(),
+  ]);
+  if (infra.error || agent.error) throw unavailable();
+  const host = text(infra.data?.ip_address) ?? text(infra.data?.hostname);
+  if (!host) {
+    throw new HttpError(422, "target_missing", "Das Gerät hat weder IP-Adresse noch Hostname.");
+  }
+  if (!agent.data || agent.data.status !== "active") {
+    throw new HttpError(422, "agent_not_found", "Die Sonde ist nicht aktiv.");
+  }
+  const inserted = await admin.from("ipam_agent_jobs").insert({
+    tenant_id: tenantId,
+    agent_id: agentId,
+    kind: "snmp_interfaces",
+    payload: { host: host.trim().toLowerCase(), assetId },
+    status: "queued",
+    created_by: actorId,
+  }).select("id").single();
+  if (inserted.error) throw unavailable();
+  return { jobId: String(inserted.data.id) };
+}
+
+async function interfaces(admin: Client, tenantId: string, jobId: string) {
+  const { data, error } = await admin.from("ipam_agent_jobs").select("status, result, error")
+    .eq("tenant_id", tenantId).eq("id", jobId).eq("kind", "snmp_interfaces").maybeSingle();
+  if (error) throw unavailable();
+  if (!data) throw new HttpError(404, "job_not_found", "Die Abfrage wurde nicht gefunden.");
+  const done = data.status === "done";
+  return {
+    status: done ? "done" : data.status === "failed" || data.status === "cancelled" ? "failed" : "pending",
+    error: done ? null : text(data.error),
+    interfaces: done ? parseInterfaces(data.result) : [],
+  };
 }
 
 /**
@@ -564,6 +635,12 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
     case "probePackage":
       manage();
       return await probePackage(admin);
+    case "listInterfaces":
+      manage();
+      return await listInterfaces(admin, action.tenantId, actorId, action.assetId, action.agentId);
+    case "interfaces":
+      manage();
+      return await interfaces(admin, action.tenantId, action.jobId);
     case "createAgent":
       manage();
       return await createAgent(admin, action.tenantId, actorId, action.name);
