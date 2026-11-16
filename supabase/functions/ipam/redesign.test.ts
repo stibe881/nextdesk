@@ -23,6 +23,9 @@ import {
   suggestTemplate,
   type Template,
   templateLayout,
+  totalSeries,
+  utilizationHistoryPoints,
+  utilizationRow,
   vlanMatrix,
 } from "./redesign.ts";
 
@@ -480,4 +483,58 @@ Deno.test("save actions accept the new fields and keep them when not sent", () =
   assertThrows(() => parseVlan({ vlanNumber: 10, name: "Clients", status: "old" }), InputError);
   assertEquals(parsePrefix({ prefix: "10.0.0.0/24" }).notes, undefined);
   assertEquals(parsePrefix({ prefix: "10.0.0.0/24", notes: "" }).notes, null);
+});
+
+Deno.test("utilization history: breakdown, legacy rows, live point replaces today", () => {
+  const legacy = utilizationRow({ day: "2026-11-14", used: 30, dhcp_used: 50, total: "254" });
+  const stored = utilizationRow({
+    day: "2026-11-15", used: 31, dhcp_used: 50, total: "254",
+    static_used: 28, static_total: "204", pool_used: 20, pool_size: "50", occupied_total: 48,
+  });
+  const staleToday = utilizationRow({
+    day: "2026-11-16", used: 1, dhcp_used: 50, total: 254,
+    static_used: 1, static_total: 204, pool_used: 1, pool_size: 50, occupied_total: 2,
+  });
+  // RPC row (dhcp_size/capacity) with the day given explicitly.
+  const live = utilizationRow({
+    used: 33, dhcp_size: "50", capacity: "254",
+    static_used: 30, static_total: "204", pool_used: 25, pool_size: "50", occupied_total: 55,
+  }, "2026-11-16");
+  const points = utilizationHistoryPoints([stored, staleToday, legacy], live);
+  assertEquals(points.map((point) => point.day), ["2026-11-14", "2026-11-15", "2026-11-16"]);
+  // Legacy row: old percent kept, new series null.
+  assertEquals(points[0], {
+    day: "2026-11-14", used: 80, total: 254, percent: 31.5,
+    staticPercent: null, poolPercent: null, totalPercent: null,
+    staticUsed: null, staticTotal: null, poolUsed: null, poolSize: null, occupied: null,
+  });
+  assertEquals(points[1]!.staticPercent, 13.7);
+  assertEquals(points[1]!.poolPercent, 40);
+  assertEquals(points[1]!.totalPercent, 18.9);
+  // Live values win over the stored row of today.
+  assertEquals(points[2]!.occupied, 55);
+  assertEquals(points[2]!.poolPercent, 50);
+  assertEquals(points[2]!.percent, 32.7);
+  // Forecast series: occupied where available, legacy before.
+  assertEquals(totalSeries(points).map((point) => point.used), [80, 48, 55]);
+});
+
+Deno.test("utilization history: no pool and IPv6", () => {
+  const [point] = utilizationHistoryPoints([], utilizationRow({
+    used: 3, dhcp_size: 0, capacity: "18446744073709551616",
+    static_used: 3, static_total: "18446744073709551616", pool_used: 0, pool_size: 0, occupied_total: 3,
+  }, "2026-11-16"));
+  assertEquals(point!.poolPercent, null);
+  assertEquals(point!.poolSize, null);
+  assertEquals(point!.staticPercent, 0);
+  assertEquals(point!.totalPercent, 0);
+  // Pool covers the whole prefix: no static capacity.
+  const full = utilizationHistoryPoints([utilizationRow({
+    day: "2026-11-16", used: 2, dhcp_used: 254, total: 254,
+    static_used: 0, static_total: 0, pool_used: 254, pool_size: 254, occupied_total: 254,
+  })], null)[0]!;
+  assertEquals(full.staticPercent, null);
+  assertEquals(full.poolPercent, 100);
+  assertEquals(full.totalPercent, 100);
+  assertEquals(full.percent, 100);
 });

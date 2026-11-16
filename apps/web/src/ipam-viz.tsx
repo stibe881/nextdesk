@@ -164,6 +164,26 @@ export function Sparkline({
 // ---------------------------------------------------------------------------
 // Trend chart (area + forecast band + threshold, hover/keyboard tooltip)
 
+/** Legend and tooltip texts of the four series (also in the handbook). */
+export const TREND_SERIES = {
+  warn: {
+    label: "Warnschwelle",
+    hint: "Ab diesem Wert gilt das Netz als knapp (Einstellung am Netz).",
+  },
+  static: {
+    label: "Belegt ohne DHCP-Pool",
+    hint: "Erfasste Adressen ausserhalb des DHCP-Pools ÷ Adressen des Netzes ohne Pool.",
+  },
+  pool: {
+    label: "Belegt im DHCP-Pool",
+    hint: "Adressen im Pool, die erfasst sind oder eine aktive DHCP-Lease haben ÷ Grösse des Pools.",
+  },
+  total: {
+    label: "Belegt gesamt",
+    hint: "Belegte Adressen ausserhalb und innerhalb des Pools ÷ alle Adressen des Netzes (jede Adresse einmal gezählt).",
+  },
+} as const;
+
 export function TrendChartView({
   days = 90,
   history,
@@ -204,7 +224,42 @@ export function TrendChartView({
       );
     } else if (event.key === "Escape") setActive(null);
   };
-  const tipX = point ? Math.min(Math.max(point.x, 70), chart.width - 70) : 0;
+  const tipWidth = 216;
+  const tipX = point
+    ? Math.min(
+        Math.max(point.x, tipWidth / 2 + 4),
+        chart.width - tipWidth / 2 - 4,
+      )
+    : 0;
+  const tipRows = point
+    ? [
+        ...(chart.series.static
+          ? [
+              {
+                key: "static",
+                label: TREND_SERIES.static.label,
+                value: point.staticPercent,
+              },
+            ]
+          : []),
+        ...(chart.series.pool
+          ? [
+              {
+                key: "pool",
+                label: TREND_SERIES.pool.label,
+                value: point.poolPercent,
+              },
+            ]
+          : []),
+        {
+          key: "total",
+          label: point.legacy
+            ? `${TREND_SERIES.total.label} (bisher)`
+            : TREND_SERIES.total.label,
+          value: point.percent,
+        },
+      ]
+    : [];
   return (
     <figure className="ipam-trend">
       <svg
@@ -273,6 +328,18 @@ export function TrendChartView({
         >
           Warnschwelle {chart.warningPercent} %
         </text>
+        {chart.staticLine ? (
+          <path
+            className="ipam-trend__line ipam-trend__line--static"
+            d={chart.staticLine}
+          />
+        ) : null}
+        {chart.poolLine ? (
+          <path
+            className="ipam-trend__line ipam-trend__line--pool"
+            d={chart.poolLine}
+          />
+        ) : null}
         <path className="ipam-trend__line" d={chart.line} />
         {chart.forecast ? (
           <>
@@ -320,32 +387,86 @@ export function TrendChartView({
               y1={chart.plot.top}
               y2={chart.plot.bottom}
             />
+            {point.staticY !== null ? (
+              <circle
+                className="ipam-trend__hover-static"
+                cx={point.x}
+                cy={point.staticY}
+                r={3.5}
+              />
+            ) : null}
+            {point.poolY !== null ? (
+              <circle
+                className="ipam-trend__hover-pool"
+                cx={point.x}
+                cy={point.poolY}
+                r={3.5}
+              />
+            ) : null}
             <circle cx={point.x} cy={point.y} r={4} />
             <rect
-              height={40}
+              height={24 + tipRows.length * 16}
               rx={6}
-              width={124}
-              x={tipX - 62}
+              width={tipWidth}
+              x={tipX - tipWidth / 2}
               y={chart.plot.top}
             />
-            <text textAnchor="middle" x={tipX} y={chart.plot.top + 16}>
+            <text
+              textAnchor="start"
+              x={tipX - tipWidth / 2 + 10}
+              y={chart.plot.top + 16}
+            >
               {formatDay(point.day)}
             </text>
-            <text
-              className="ipam-trend__hover-value"
-              textAnchor="middle"
-              x={tipX}
-              y={chart.plot.top + 32}
-            >
-              {percentText(point.percent)} belegt
-            </text>
+            {tipRows.map((row, index) => (
+              <g key={row.key}>
+                <line
+                  className={`ipam-trend__tip-key ipam-trend__tip-key--${row.key}`}
+                  x1={tipX - tipWidth / 2 + 10}
+                  x2={tipX - tipWidth / 2 + 22}
+                  y1={chart.plot.top + 28 + index * 16}
+                  y2={chart.plot.top + 28 + index * 16}
+                />
+                <text
+                  textAnchor="start"
+                  x={tipX - tipWidth / 2 + 28}
+                  y={chart.plot.top + 32 + index * 16}
+                >
+                  {row.label}
+                </text>
+                <text
+                  className="ipam-trend__hover-value"
+                  textAnchor="end"
+                  x={tipX + tipWidth / 2 - 10}
+                  y={chart.plot.top + 32 + index * 16}
+                >
+                  {percentText(row.value)}
+                </text>
+              </g>
+            ))}
           </g>
         ) : null}
       </svg>
       <figcaption className="ipam-trend__legend">
-        <span>
-          <i className="ipam-trend__key ipam-trend__key--line" /> gemessen
-          (täglich)
+        <span title={TREND_SERIES.warn.hint}>
+          <i className="ipam-trend__key ipam-trend__key--warn" />{" "}
+          {TREND_SERIES.warn.label}
+        </span>
+        {chart.series.static ? (
+          <span title={TREND_SERIES.static.hint}>
+            <i className="ipam-trend__key ipam-trend__key--static" />{" "}
+            {TREND_SERIES.static.label}
+          </span>
+        ) : null}
+        {chart.series.pool ? (
+          <span title={TREND_SERIES.pool.hint}>
+            <i className="ipam-trend__key ipam-trend__key--pool" />{" "}
+            {TREND_SERIES.pool.label}
+          </span>
+        ) : null}
+        <span title={TREND_SERIES.total.hint}>
+          <i className="ipam-trend__key ipam-trend__key--line" />{" "}
+          {TREND_SERIES.total.label}
         </span>
         {chart.forecast ? (
           <span>
@@ -353,13 +474,20 @@ export function TrendChartView({
             mit Unsicherheit
           </span>
         ) : null}
-        <span>
-          <i className="ipam-trend__key ipam-trend__key--warn" /> Warnschwelle
-        </span>
         <span className="ipam-muted">
           Pfeiltasten oder Maus zeigen Tageswerte
         </span>
       </figcaption>
+      {chart.series.static || chart.series.pool ? (
+        <p className="ipam-trend__note ipam-muted">
+          {chart.series.pool
+            ? "Ohne DHCP-Pool: erfasste Adressen ausserhalb des Pools. Im DHCP-Pool: erfasste Adressen und aktive Leases im Pool. Gesamt zählt jede Adresse einmal."
+            : "Ohne DHCP-Pool: erfasste Adressen des Netzes. Dieses Netz hat keinen DHCP-Pool."}
+          {chart.points.some((entry) => entry.legacy)
+            ? " Tage vor der Aufschlüsselung zeigen bei «gesamt» die bisherige Messung (Pool voll gezählt)."
+            : ""}
+        </p>
+      ) : null}
     </figure>
   );
 }

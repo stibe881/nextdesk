@@ -687,6 +687,113 @@ export function forecastSummary(
 }
 
 // ---------------------------------------------------------------------------
+// Utilization history (static part / DHCP pool / total)
+
+/** One row of ipam_utilization_daily or of ipam_prefix_utilization_breakdown. */
+export type UtilizationRow = {
+  day: string;
+  /** Legacy: all non-deprecated addresses in the prefix (incl. pool). */
+  used: number;
+  /** Legacy: DHCP pool size (the pool counted as fully used). */
+  dhcpUsed: number;
+  total: number;
+  staticUsed: number | null;
+  staticTotal: number | null;
+  poolUsed: number | null;
+  poolSize: number | null;
+  occupiedTotal: number | null;
+};
+
+export type UtilizationHistoryPoint = {
+  day: string;
+  /** Legacy measure (used + pool size), unchanged for compatibility. */
+  used: number;
+  total: number;
+  percent: number;
+  /** Occupied outside the pool / capacity without pool; null without data. */
+  staticPercent: number | null;
+  /** Occupied inside the pool / pool size; null without pool or data. */
+  poolPercent: number | null;
+  /** (static + pool occupied) / capacity; null for days before the breakdown. */
+  totalPercent: number | null;
+  staticUsed: number | null;
+  staticTotal: number | null;
+  poolUsed: number | null;
+  poolSize: number | null;
+  occupied: number | null;
+};
+
+const share = (value: number, of: number) => Math.round(Math.min(100, Math.max(0, (value / of) * 100)) * 10) / 10;
+
+function finiteOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** DB row (snake_case, numerics as text) to UtilizationRow. */
+export function utilizationRow(row: Record<string, unknown>, day?: string): UtilizationRow {
+  return {
+    day: day ?? String(row.day ?? ""),
+    used: finiteOrNull(row.used) ?? 0,
+    dhcpUsed: finiteOrNull(row.dhcp_used ?? row.dhcp_size) ?? 0,
+    total: finiteOrNull(row.total ?? row.capacity) ?? 0,
+    staticUsed: finiteOrNull(row.static_used),
+    staticTotal: finiteOrNull(row.static_total),
+    poolUsed: finiteOrNull(row.pool_used),
+    poolSize: finiteOrNull(row.pool_size),
+    occupiedTotal: finiteOrNull(row.occupied_total),
+  };
+}
+
+export function utilizationHistoryPoint(row: UtilizationRow): UtilizationHistoryPoint {
+  const used = row.used + row.dhcpUsed;
+  const total = row.total;
+  const breakdown = row.staticUsed !== null && row.occupiedTotal !== null;
+  const hasPool = breakdown && row.poolUsed !== null && row.poolSize !== null && row.poolSize > 0;
+  return {
+    day: row.day,
+    used,
+    total,
+    percent: total > 0 ? share(used, total) : 0,
+    staticPercent: breakdown && row.staticTotal !== null && row.staticTotal > 0
+      ? share(row.staticUsed!, row.staticTotal)
+      : null,
+    poolPercent: hasPool ? share(row.poolUsed!, row.poolSize!) : null,
+    totalPercent: breakdown && total > 0 ? share(row.occupiedTotal!, total) : null,
+    staticUsed: breakdown ? row.staticUsed : null,
+    staticTotal: breakdown ? row.staticTotal : null,
+    poolUsed: hasPool ? row.poolUsed : null,
+    poolSize: hasPool ? row.poolSize : null,
+    occupied: breakdown ? row.occupiedTotal : null,
+  };
+}
+
+/**
+ * Stored daily rows plus today's live values (they replace a stored row of
+ * the same day), sorted by day.
+ */
+export function utilizationHistoryPoints(
+  rows: UtilizationRow[],
+  live: UtilizationRow | null,
+): UtilizationHistoryPoint[] {
+  const byDay = new Map<string, UtilizationRow>();
+  for (const row of rows) if (row.day) byDay.set(row.day, row);
+  if (live?.day) byDay.set(live.day, live);
+  return [...byDay.values()]
+    .sort((a, b) => a.day.localeCompare(b.day))
+    .map(utilizationHistoryPoint);
+}
+
+/**
+ * Series for the forecast: «gesamt» (occupied without double counting);
+ * days before the breakdown fall back to the legacy measure.
+ */
+export function totalSeries(points: UtilizationHistoryPoint[]): { day: string; used: number; total: number }[] {
+  return points.map((point) => ({ day: point.day, used: point.occupied ?? point.used, total: point.total }));
+}
+
+// ---------------------------------------------------------------------------
 // Agents
 
 export type AgentState = "online" | "late" | "offline" | "disabled";
