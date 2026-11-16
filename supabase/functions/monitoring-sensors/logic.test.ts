@@ -48,6 +48,7 @@ Deno.test("sensor: defaults, names and validation per kind", () => {
     cloud: false,
     failuresToDown: 2,
     paused: false,
+    serviceIds: null,
   });
   const tcp = parseSensor({ assetId: ASSET, kind: "tcp", port: 3389, target: " SRV01.dom.local. ", intervalSeconds: 300 });
   assertEquals(typeof tcp === "string" ? tcp : [tcp.name, tcp.target, tcp.intervalSeconds], ["Port 3389", "srv01.dom.local", 300]);
@@ -335,4 +336,13 @@ Deno.test("probe actions: rename, new token, remove with target", () => {
   });
   // Sensors cannot move to the probe that is removed.
   assertEquals(parseAction({ type: "removeAgent", tenantId: TENANT, agentId: AGENT, moveSensorsTo: AGENT }), null);
+});
+
+Deno.test("sensor services: optional, validated, without duplicates", () => {
+  const base = { assetId: ASSET, agentId: AGENT, kind: "ping", name: "Ping" };
+  const none = parseSensor(base);
+  assertEquals(typeof none === "string" ? none : none.serviceIds, null);
+  const some = parseSensor({ ...base, serviceIds: [TENANT, TENANT] });
+  assertEquals(typeof some === "string" ? some : some.serviceIds, [TENANT]);
+  assertEquals(parseSensor({ ...base, serviceIds: ["nope"] }), "Die betroffenen Dienste sind ungültig.");
 });

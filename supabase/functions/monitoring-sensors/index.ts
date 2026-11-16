@@ -122,6 +122,7 @@ function sensorView(sensor: Row, status: Row | undefined, now: number) {
     cloud: sensor.cloud === true,
     failuresToDown: number(sensor.failures_to_down) ?? 2,
     paused: sensor.paused === true,
+    serviceIds: Array.isArray(sensor.service_ids) ? (sensor.service_ids as unknown[]).filter(isUuid) : [],
   };
   const state: DisplayState = displayState(
     view,
@@ -141,7 +142,7 @@ function sensorView(sensor: Row, status: Row | undefined, now: number) {
 
 async function loadSensors(admin: Client, tenantId: string, assetId?: string) {
   let sensorQuery = admin.from("monitoring_sensors")
-    .select("id, asset_id, agent_id, kind, name, target, port, url, interval_seconds, timeout_ms, warning_above, warning_below, down_above, down_below, snmp_metric, snmp_oid, snmp_index, scale, unit, expect, cloud, failures_to_down, paused")
+    .select("id, asset_id, agent_id, kind, name, target, port, url, interval_seconds, timeout_ms, warning_above, warning_below, down_above, down_below, snmp_metric, snmp_oid, snmp_index, scale, unit, expect, cloud, failures_to_down, paused, service_ids")
     .eq("tenant_id", tenantId).order("name").limit(MAX_SENSORS);
   if (assetId) sensorQuery = sensorQuery.eq("asset_id", assetId);
   const sensors = await sensorQuery;
@@ -500,6 +501,7 @@ async function device(admin: Client, tenantId: string, assetId: string, canManag
     sensors,
     agents,
     kinds: canManage ? await customKinds(admin, tenantId) : [],
+    serviceOptions: await serviceOptions(admin, tenantId),
     checkedAt: new Date().toISOString(),
   };
 }
@@ -507,6 +509,14 @@ async function device(admin: Client, tenantId: string, assetId: string, canManag
 /** Own name of the device kind; only counts for the category «other». */
 function kindLabel(row: Row | null | undefined): string | null {
   return row?.category === "other" ? text(row.category_label) : null;
+}
+
+/** Services of the status page a sensor can be linked to. */
+async function serviceOptions(admin: Client, tenantId: string): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await admin.from("services").select("id, name")
+    .eq("tenant_id", tenantId).eq("active", true).order("name").limit(500);
+  if (error) throw unavailable();
+  return ((data ?? []) as Row[]).map((row) => ({ id: String(row.id), name: String(row.name) }));
 }
 
 /** Own device kinds of the tenant, as they are used on its devices. */
@@ -760,6 +770,12 @@ async function saveSensor(admin: Client, tenantId: string, actorId: string, acti
     const reachable = await publicTarget(host).catch(() => "Der Name lässt sich nicht auflösen.");
     if (typeof reachable === "string") throw new HttpError(422, "cloud_target", reachable);
   }
+  if (sensor.serviceIds?.length) {
+    const known = await selectIn(admin, "services", "id", tenantId, "id", sensor.serviceIds);
+    if (known.length !== sensor.serviceIds.length) {
+      throw new HttpError(422, "service_not_found", "Ein gewählter Dienst wurde nicht gefunden.");
+    }
+  }
   if (sensor.agentId) {
     const agent = await admin.from("ipam_agents").select("id").eq("tenant_id", tenantId).eq("id", sensor.agentId).neq("status", "revoked").maybeSingle();
     if (agent.error) throw unavailable();
@@ -788,6 +804,8 @@ async function saveSensor(admin: Client, tenantId: string, actorId: string, acti
     failures_to_down: sensor.failuresToDown,
     paused: sensor.paused,
     updated_at: new Date().toISOString(),
+    // Only when the client sent them (older apps do not know the field).
+    ...(sensor.serviceIds === null ? {} : { service_ids: sensor.serviceIds }),
   };
   if (sensor.id) {
     const updated = await admin.from("monitoring_sensors").update(values)

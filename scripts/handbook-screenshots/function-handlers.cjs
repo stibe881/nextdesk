@@ -1337,6 +1337,12 @@ const HANDLERS = {
     if (body.type === "device") {
       return ok({
         canManage: true,
+        serviceOptions: [
+          { id: D.uid("31313131", 1), name: "ERP" },
+          { id: D.uid("31313131", 2), name: "E-Mail" },
+          { id: D.uid("31313131", 3), name: "Intranet" },
+          { id: D.uid("31313131", 4), name: "Zeiterfassung" },
+        ],
         device: {
           assetId: D.uid("49494949", 2),
           name: "SRV-SQL-01",
