@@ -458,8 +458,10 @@ Ein Klick auf ein Gerät öffnet das **Gerätedetail**:
   Werte im 5-Minuten-Raster, für längere Zeiträume Stunden- bzw. Tageswerte.
 - **Sensoren**: Zustand, Messwert, Intervall und letzte Prüfung. Ein Klick auf
   den Namen zeigt den Verlauf dieses Sensors in der Grafik.
-- **Verknüpft in nextDesk**: offene Störung, betroffene Services und der
-  Uplink. Services und Uplink werden unter **Infrastruktur** gepflegt.
+- **Verknüpft in nextDesk**: das Gerät in der Infrastruktur, offene Störung,
+  betroffene Services und der Uplink. Jedes überwachte Gerät ist ein Gerät
+  der Infrastruktur; über **In Infrastruktur öffnen** gelangen Sie direkt
+  dorthin (in der App über die gleichnamige Zeile). Services und Uplink werden unter **Infrastruktur** gepflegt.
 
 ![Gerätedetail mit Verlaufsgrafik und Sensoren](images/ag-ueberwachung-geraet.jpg)
 

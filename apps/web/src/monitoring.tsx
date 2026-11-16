@@ -10,6 +10,7 @@ import {
   Radar,
   Search,
   Trash2,
+  Network,
 } from "lucide-react";
 import {
   useCallback,
@@ -69,6 +70,8 @@ const REFRESH_MS = 30_000;
 type Props = {
   tenantId: string;
   onOpenIncident?: ((incidentId: string) => void) | undefined;
+  /** Opens the device in the infrastructure view (same asset). */
+  onOpenInfrastructure?: ((assetId: string) => void) | undefined;
 };
 
 function message(error: unknown): string {
@@ -111,7 +114,11 @@ function useNow(reload: () => void): number {
   return now;
 }
 
-export function Monitoring({ tenantId, onOpenIncident }: Props) {
+export function Monitoring({
+  tenantId,
+  onOpenIncident,
+  onOpenInfrastructure,
+}: Props) {
   const [assetId, setAssetId] = useState<string | null>(null);
   return assetId ? (
     <DeviceView
@@ -120,6 +127,7 @@ export function Monitoring({ tenantId, onOpenIncident }: Props) {
       onBack={() => setAssetId(null)}
       onOpenDevice={setAssetId}
       onOpenIncident={onOpenIncident}
+      onOpenInfrastructure={onOpenInfrastructure}
       tenantId={tenantId}
     />
   ) : (
@@ -591,6 +599,7 @@ function DeviceView({
   onBack,
   onOpenDevice,
   onOpenIncident,
+  onOpenInfrastructure,
 }: Props & {
   assetId: string;
   onBack: () => void;
@@ -725,6 +734,16 @@ function DeviceView({
                       <Pause aria-hidden="true" size={16} />
                     )}
                     {allPaused ? "Fortsetzen" : "Pausieren"}
+                  </button>
+                ) : null}
+                {onOpenInfrastructure ? (
+                  <button
+                    className="secondary-button"
+                    onClick={() => onOpenInfrastructure(assetId)}
+                    type="button"
+                  >
+                    <Network aria-hidden="true" size={16} />
+                    In Infrastruktur öffnen
                   </button>
                 ) : null}
                 <button
@@ -908,6 +927,20 @@ function DeviceView({
                 <h3>Verknüpft in nextDesk</h3>
               </div>
               <dl className="monitoring-facts">
+                <dt>Infrastruktur</dt>
+                <dd>
+                  {onOpenInfrastructure ? (
+                    <button
+                      className="text-button"
+                      onClick={() => onOpenInfrastructure(assetId)}
+                      type="button"
+                    >
+                      {data.device.name} öffnen
+                    </button>
+                  ) : (
+                    data.device.name
+                  )}
+                </dd>
                 <dt>Störung</dt>
                 <dd>
                   {data.device.incident ? (
