@@ -7,18 +7,22 @@ import type {
   MonitoringRange,
   MonitoringSeries,
 } from "@/lib/monitoring-model";
+import { monitoringData } from "@/lib/monitoring-response";
 import { invokeNextDesk } from "@/lib/nextdesk-client";
+
+const call = async <T>(body: Record<string, unknown>): Promise<T> =>
+  monitoringData<T>(await invokeNextDesk<unknown>("monitoring-sensors", body));
 
 export * from "@/lib/monitoring-model";
 
 export const loadMonitoringOverview = (tenantId: string) =>
-  invokeNextDesk<MonitoringOverview>("monitoring-sensors", {
+  call<MonitoringOverview>({
     type: "overview",
     tenantId,
   });
 
 export const loadMonitoringDevice = (tenantId: string, assetId: string) =>
-  invokeNextDesk<MonitoringDeviceDetail>("monitoring-sensors", {
+  call<MonitoringDeviceDetail>({
     type: "device",
     tenantId,
     assetId,
@@ -26,7 +30,7 @@ export const loadMonitoringDevice = (tenantId: string, assetId: string) =>
 
 /** Ports and neighbours of a device; older servers do not know the call. */
 export const loadMonitoringConnections = (tenantId: string, assetId: string) =>
-  invokeNextDesk<MonitoringConnections>("monitoring-sensors", {
+  call<MonitoringConnections>({
     type: "connections",
     tenantId,
     assetId,
@@ -37,7 +41,7 @@ export const loadMonitoringSeries = (
   sensorId: string,
   range: MonitoringRange,
 ) =>
-  invokeNextDesk<MonitoringSeries>("monitoring-sensors", {
+  call<MonitoringSeries>({
     type: "series",
     tenantId,
     sensorId,
@@ -49,7 +53,7 @@ export const pauseMonitoringDevice = (
   assetId: string,
   paused: boolean,
 ) =>
-  invokeNextDesk<{ ok: boolean }>("monitoring-sensors", {
+  call<{ ok: boolean }>({
     type: "pauseDevice",
     tenantId,
     assetId,

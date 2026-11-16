@@ -922,17 +922,14 @@ Im selben Menü erfasst du – je nach Freischaltung – auch Erinnerungen,
 Fälle, Serviceaufgaben, Wissensartikel, Lagerartikel, Verträge und Lizenzen.
 
 In der **iOS- und Android-App** öffnet ein **langer Druck auf den Home-Knopf**
-ein Menü in zwei Gruppen. Oben unter **Öffnen** springst du direkt zu
-**Erinnerungen**, **Überwachung**, **Infrastruktur** und **IP-Adressen**,
-darunter im Halbkreis unter **Erfassen** zu **Erinnerung**, **Ticket**,
-**Serviceaufgabe** und **Lagerartikel**. Es erscheinen nur die Einträge, deren
-Modul für dich freigeschaltet ist. Die Seite **Erinnerungen** zeigt deine
-offenen Erinnerungen nach **Überfällig**, **Heute**, **Demnächst** und **Ohne
-Fälligkeit**; mit **Erledigt** hakst du eine ab, ein Tipp öffnet das
-verknüpfte Ticket, und **Erinnerung erfassen** legt eine neue an. Die Seite
-**IP-Adressen** zeigt die Subnetze nach Standort mit ihrer Auslastung und eine
-Suche nach IP-Adresse, Hostname oder MAC; ein Subnetz öffnet seine Adressen,
-eine Adresse ihre Details.
+ein Menü. Im Halbkreis unter **Erfassen** legst du direkt eine **Erinnerung**,
+ein **Ticket**, eine **Serviceaufgabe** oder einen **Lagerartikel** an.
+Mitglieder des Teams **System Engineer** sehen darüber zusätzlich die Gruppe
+**Öffnen** mit **Überwachung**, **Infrastruktur** und **IP-Adressen**. Es
+erscheinen nur die Einträge, deren Modul für dich freigeschaltet ist. Die
+Seite **IP-Adressen** zeigt die Subnetze nach Standort mit ihrer Auslastung
+und eine Suche nach IP-Adresse, Hostname oder MAC; ein Subnetz öffnet seine
+Adressen, eine Adresse ihre Details.
 
 ![Neues Ticket als Agent erfassen](images/ag-neues-ticket.jpg)
 

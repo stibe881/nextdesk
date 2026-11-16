@@ -97,6 +97,18 @@ export async function canWorkSecurityCases(tenantId: string): Promise<boolean> {
   return !error && data === true;
 }
 
+/** Whether the signed-in person is in the active team with this name. */
+export async function isInTeamNamed(
+  tenantId: string,
+  teamName: string,
+): Promise<boolean> {
+  const { data, error } = await requireNextDesk().rpc(
+    "is_current_user_in_team_named",
+    { p_tenant_id: tenantId, p_team_name: teamName },
+  );
+  return !error && data === true;
+}
+
 export async function currentUserId(): Promise<string | null> {
   const {
     data: { session },

@@ -30,6 +30,10 @@ import { useAppColors } from "@/lib/themed-styles";
 import { useAppActiveInterval } from "@/lib/use-app-active-interval";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
+// A rendering error shows expo-router's error screen with «Retry» instead of
+// closing the app.
+export { ErrorBoundary } from "expo-router";
+
 const TILES: MonitoringState[] = ["down", "warning", "up", "unknown"];
 
 /** «Überwachung»: devices nextDesk monitors itself, with their state. */

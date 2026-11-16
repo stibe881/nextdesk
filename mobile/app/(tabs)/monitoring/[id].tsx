@@ -45,6 +45,10 @@ import { useAppColors } from "@/lib/themed-styles";
 import { useAppActiveInterval } from "@/lib/use-app-active-interval";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
+// A rendering error shows expo-router's error screen with «Retry» instead of
+// closing the app.
+export { ErrorBoundary } from "expo-router";
+
 const RANGES = Object.keys(RANGE_LABELS) as MonitoringRange[];
 
 /** A monitored device: sensors, history of one sensor, linked incident. */
@@ -62,8 +66,9 @@ export default function MonitoringDeviceScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   const [range, setRange] = useState<MonitoringRange>("24h");
   const [series, setSeries] = useState<MonitoringSeries | null>(null);
-  const [connections, setConnections] =
-    useState<MonitoringConnections | null>(null);
+  const [connections, setConnections] = useState<MonitoringConnections | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -263,9 +268,7 @@ export default function MonitoringDeviceScreen() {
               <Pressable
                 accessibilityRole="button"
                 onPress={() =>
-                  router.push(
-                    `/incidents/${data.device.incident!.id}` as never,
-                  )
+                  router.push(`/incidents/${data.device.incident!.id}` as never)
                 }
                 style={styles.row}
               >
@@ -452,7 +455,10 @@ export default function MonitoringDeviceScreen() {
                     <View style={styles.rowCopy}>
                       <View style={styles.badgeRow}>
                         <Text
-                          style={[styles.badge, stateBadge(styles, entry.state)]}
+                          style={[
+                            styles.badge,
+                            stateBadge(styles, entry.state),
+                          ]}
                         >
                           {STATE_LABELS[entry.state]}
                         </Text>
