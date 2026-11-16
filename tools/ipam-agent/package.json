@@ -1,6 +1,6 @@
 {
   "name": "@nextdesk/ipam-agent",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "nextDesk-Netzwerkagent: Discovery (Ping, ARP, SNMP, LLDP) und Microsoft DHCP/DNS für die IP-Adressverwaltung.",
   "type": "module",
