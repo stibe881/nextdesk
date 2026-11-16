@@ -6,7 +6,9 @@
  */
 
 import { execFile } from "node:child_process";
+import { resolve4, resolve6 } from "node:dns/promises";
 import { Socket } from "node:net";
+import { connect as tlsConnect } from "node:tls";
 
 import type { NextdeskClient } from "./client.ts";
 import type { LocalConfig } from "./config.ts";
@@ -17,7 +19,7 @@ import { openSession, snmpGet, type SnmpValue } from "./snmp.ts";
 
 export type Check = {
   id: string;
-  kind: "ping" | "tcp" | "http" | "snmp";
+  kind: "ping" | "tcp" | "http" | "snmp" | "cert" | "dns";
   host: string | null;
   port: number | null;
   url: string | null;
@@ -25,6 +27,8 @@ export type Check = {
   snmpOid: string | null;
   snmpIndex: number | null;
   scale: number;
+  /** DNS: address the name must resolve to (optional). */
+  expect: string | null;
   intervalSeconds: number;
   timeoutMs: number;
 };
@@ -85,6 +89,7 @@ export function parseChecks(value: unknown): Check[] {
       snmpOid: null,
       snmpIndex: null,
       scale: 1,
+      expect: null,
     };
     if (entry.kind === "http") {
       let url: URL;
@@ -117,6 +122,26 @@ export function parseChecks(value: unknown): Check[] {
       const port = integer(entry.port, 1, 65535);
       if (port)
         checks.set(base.id, { ...base, kind: "tcp", host, port, url: null });
+    } else if (entry.kind === "cert") {
+      checks.set(base.id, {
+        ...base,
+        kind: "cert",
+        host,
+        port: integer(entry.port, 1, 65535) ?? 443,
+        url: null,
+      });
+    } else if (entry.kind === "dns") {
+      checks.set(base.id, {
+        ...base,
+        kind: "dns",
+        host,
+        port: null,
+        url: null,
+        expect:
+          typeof entry.expect === "string"
+            ? canonicalIp(entry.expect.trim())
+            : null,
+      });
     } else if (entry.kind === "snmp") {
       const scale =
         typeof entry.scale === "number" &&
@@ -421,6 +446,96 @@ async function checkSnmp(
   }
 }
 
+/** Whole days until `validTo` (negative when expired). */
+export function daysUntil(validTo: string, now: number): number | null {
+  const at = Date.parse(validTo);
+  return Number.isFinite(at) ? Math.floor((at - now) / 86_400_000) : null;
+}
+
+/**
+ * Certificate served by host:port. A certificate of an internal CA is read
+ * too (the probe does not judge trust), only expiry and reachability count.
+ */
+function checkCert(check: Check): Promise<Outcome> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (outcome: Outcome) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(outcome);
+    };
+    const host = check.host!;
+    const socket = tlsConnect(
+      {
+        host,
+        port: check.port ?? 443,
+        rejectUnauthorized: false,
+        // SNI only for names, not for IP addresses.
+        ...(canonicalIp(host) ? {} : { servername: host }),
+      },
+      () => {
+        const certificate = socket.getPeerCertificate();
+        const days = certificate?.valid_to
+          ? daysUntil(certificate.valid_to, Date.now())
+          : null;
+        if (days === null)
+          return finish({
+            ok: false,
+            value: null,
+            message: "Kein Zertifikat erhalten",
+          });
+        finish(
+          days < 0
+            ? {
+                ok: false,
+                value: days,
+                message: "Das Zertifikat ist abgelaufen.",
+              }
+            : {
+                ok: true,
+                value: days,
+                message: `Gültig bis ${new Date(certificate.valid_to).toISOString().slice(0, 10)}`,
+              },
+        );
+      },
+    );
+    socket.setTimeout(check.timeoutMs, () =>
+      finish({ ok: false, value: null, message: "Zeitüberschreitung" }),
+    );
+    socket.once("error", (error: NodeJS.ErrnoException) =>
+      finish({
+        ok: false,
+        value: null,
+        message: `TLS-Verbindung fehlgeschlagen (${error.code ?? "Fehler"})`,
+      }),
+    );
+  });
+}
+
+async function checkDns(check: Check): Promise<Outcome> {
+  const started = performance.now();
+  const lookup = (resolver: (name: string) => Promise<string[]>) =>
+    resolver(check.host!).catch(() => [] as string[]);
+  const addresses = (await Promise.all([lookup(resolve4), lookup(resolve6)]))
+    .flat()
+    .map((address) => canonicalIp(address) ?? address);
+  const value = round(performance.now() - started);
+  if (!addresses.length)
+    return {
+      ok: false,
+      value: null,
+      message: "Der Name lässt sich nicht auflösen.",
+    };
+  if (check.expect && !addresses.includes(check.expect))
+    return {
+      ok: false,
+      value,
+      message: `Erwartet ${check.expect}, erhalten ${addresses.slice(0, 3).join(", ")}`,
+    };
+  return { ok: true, value, message: addresses.slice(0, 3).join(", ") };
+}
+
 export type CheckContext = {
   local: LocalConfig;
   counters: Map<string, CounterSample>;
@@ -441,13 +556,17 @@ export async function runCheck(
           ? await checkTcp(check)
           : check.kind === "http"
             ? await checkHttp(check)
-            : context
-              ? await checkSnmp(context.local, check, context.counters)
-              : {
-                  ok: false,
-                  value: null,
-                  message: "SNMP ist nicht eingerichtet",
-                };
+            : check.kind === "cert"
+              ? await checkCert(check)
+              : check.kind === "dns"
+                ? await checkDns(check)
+                : context
+                  ? await checkSnmp(context.local, check, context.counters)
+                  : {
+                      ok: false,
+                      value: null,
+                      message: "SNMP ist nicht eingerichtet",
+                    };
   } catch (error) {
     outcome = {
       ok: false,

@@ -5,7 +5,10 @@
 --   2. Zweiter Messwert je Messung (ausgehender Traffic).
 --   3. Auftrag «snmp_interfaces»: Die Sonde liest die Ports eines Geräts aus,
 --      damit Traffic-Sensoren ohne Abtippen der Port-Nummern angelegt werden.
---   4. Wächter: Meldet sich eine Sonde mit Sensoren fünf Minuten nicht, öffnet
+--   4. Zertifikats- und DNS-Sensoren sowie Prüfungen aus der Cloud: HTTP,
+--      Zertifikat und DNS lassen sich ohne Sonde direkt von nextDesk messen
+--      (für öffentlich erreichbare Ziele).
+--   5. Wächter: Meldet sich eine Sonde mit Sensoren fünf Minuten nicht, öffnet
 --      nextDesk eine Störung (über die Edge Function ipam-agent, damit die
 --      gleiche Störungslogik gilt).
 
@@ -19,6 +22,7 @@ on conflict (tenant_id, feature_key) do nothing;
 
 alter table public.monitoring_sensors
   drop constraint if exists monitoring_sensors_kind_check,
+  drop constraint if exists monitoring_sensors_cloud_check,
   drop constraint if exists monitoring_sensors_kind_fields;
 
 alter table public.monitoring_sensors
@@ -34,15 +38,25 @@ alter table public.monitoring_sensors
     check (unit is null or char_length(unit) between 1 and 12),
   add column if not exists warning_below double precision,
   add column if not exists down_above double precision,
-  add column if not exists down_below double precision;
+  add column if not exists down_below double precision,
+  -- DNS: erwartete Adresse (optional).
+  add column if not exists expect text
+    check (expect is null or char_length(expect) between 1 and 253),
+  -- Gemessen von nextDesk selbst statt von einer Sonde.
+  add column if not exists cloud boolean not null default false;
 
 alter table public.monitoring_sensors
   add constraint monitoring_sensors_kind_check
-    check (kind in ('ping', 'tcp', 'http', 'snmp')),
+    check (kind in ('ping', 'tcp', 'http', 'snmp', 'cert', 'dns')),
+  add constraint monitoring_sensors_cloud_check check (
+    not cloud or (agent_id is null and kind in ('http', 'cert', 'dns'))
+  ),
   add constraint monitoring_sensors_kind_fields check (
     (kind = 'ping' and port is null and url is null and snmp_metric is null)
     or (kind = 'tcp' and port is not null and url is null and snmp_metric is null)
     or (kind = 'http' and url is not null and port is null and snmp_metric is null)
+    or (kind = 'cert' and target is not null and url is null and snmp_metric is null)
+    or (kind = 'dns' and target is not null and port is null and url is null and snmp_metric is null)
     or (kind = 'snmp' and port is null and url is null and (
       (snmp_metric = 'uptime' and snmp_oid is null and snmp_index is null)
       or (snmp_metric = 'traffic' and snmp_oid is null and snmp_index is not null)
@@ -87,6 +101,7 @@ as $$
     'snmpOid', sensor.snmp_oid,
     'snmpIndex', sensor.snmp_index,
     'scale', sensor.scale,
+    'expect', sensor.expect,
     'intervalSeconds', sensor.interval_seconds,
     'timeoutMs', sensor.timeout_ms
   ) order by sensor.id), '[]'::jsonb)
@@ -101,6 +116,8 @@ $$;
 -- ---------------------------------------------------------------------------
 -- Resultate übernehmen: zweiter Messwert, Schwellen nach oben und unten.
 -- Ein Wert jenseits der Ausfall-Schwelle zählt wie ein Fehlversuch.
+-- p_agent_id null steht für die Prüfungen aus der Cloud: Dann werden nur
+-- Sensoren mit cloud = true angenommen.
 
 create or replace function public.monitoring_ingest_results(
   p_tenant_id uuid,
@@ -137,7 +154,8 @@ begin
     join public.monitoring_sensors sensor
       on sensor.id = item.id
      and sensor.tenant_id = p_tenant_id
-     and sensor.agent_id = p_agent_id
+     and ((p_agent_id is not null and sensor.agent_id = p_agent_id)
+          or (p_agent_id is null and sensor.cloud))
      and not sensor.paused
     where item.at is not null
       and item.ok is not null
@@ -419,6 +437,32 @@ $$;
 revoke all on function public.monitoring_probe_watchdog_due() from public, anon, authenticated;
 grant execute on function public.monitoring_probe_watchdog_due() to service_role;
 
+-- Fällige Prüfungen aus der Cloud (älteste zuerst).
+create or replace function public.monitoring_cloud_checks_due(p_limit integer)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select coalesce(jsonb_agg(to_jsonb(due)), '[]'::jsonb)
+  from (
+    select sensor.id, sensor.tenant_id as "tenantId", sensor.kind, sensor.target as host,
+           sensor.port, sensor.url, sensor.expect, sensor.timeout_ms as "timeoutMs"
+      from public.monitoring_sensors sensor
+      left join public.monitoring_sensor_status status on status.sensor_id = sensor.id
+     where sensor.cloud
+       and not sensor.paused
+       and (status.last_check_at is null
+            or status.last_check_at
+               <= timezone('utc', now()) - make_interval(secs => sensor.interval_seconds - 5))
+     order by status.last_check_at nulls first
+     limit greatest(least(p_limit, 500), 1)
+  ) due;
+$$;
+revoke all on function public.monitoring_cloud_checks_due(integer) from public, anon, authenticated;
+grant execute on function public.monitoring_cloud_checks_due(integer) to service_role;
+
 -- Weckt die Edge Function nur, wenn es etwas zu tun gibt.
 create or replace function public.monitoring_probe_watchdog_wake()
 returns void
@@ -430,7 +474,8 @@ declare
   v_base text;
   v_secret text;
 begin
-  if jsonb_array_length(public.monitoring_probe_watchdog_due()) = 0 then
+  if jsonb_array_length(public.monitoring_probe_watchdog_due()) = 0
+     and jsonb_array_length(public.monitoring_cloud_checks_due(1)) = 0 then
     return;
   end if;
   select config.functions_base_url, config.dispatch_secret into v_base, v_secret
@@ -441,10 +486,10 @@ begin
   end if;
   execute 'select net.http_post($1, $2, $3, $4, $5)'
     using rtrim(v_base, '/') || '/ipam-agent',
-          jsonb_build_object('type', 'cron', 'task', 'probeWatchdog'),
+          jsonb_build_object('type', 'cron'),
           '{}'::jsonb,
           jsonb_build_object('Content-Type', 'application/json', 'x-nextdesk-dispatch-secret', v_secret),
-          30000;
+          120000;
 exception when others then
   return;
 end;

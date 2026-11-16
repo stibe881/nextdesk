@@ -40,6 +40,8 @@ Deno.test("sensor: defaults, names and validation per kind", () => {
     snmpIndex: null,
     scale: 1,
     unit: null,
+    expect: null,
+    cloud: false,
     failuresToDown: 2,
     paused: false,
   });
@@ -222,4 +224,30 @@ Deno.test("series: second value (outgoing traffic) is averaged too", () => {
     { at: base + 60_000, checks: 1, checksOk: 1, avg: 300, min: 300, max: 300, avg2: 30, max2: 30 },
   ], 300_000);
   assertEquals(points, [{ t: "2026-11-16T10:00:00.000Z", avg: 200, min: 100, max: 300, ok: 1, avg2: 20, max2: 30 }]);
+});
+
+Deno.test("certificate and dns sensors, cloud only for http, cert and dns", () => {
+  const cert = parseSensor({ assetId: ASSET, kind: "cert", target: "Intranet.Example.ch", cloud: true });
+  assertEquals(
+    typeof cert === "string" ? cert : [cert.name, cert.target, cert.port, cert.unit, cert.warningBelow, cert.downBelow, cert.cloud, cert.agentId],
+    ["Zertifikat intranet.example.ch", "intranet.example.ch", 443, "Tg.", 30, 7, true, null],
+  );
+  // Explicitly emptied thresholds stay empty; own values are kept.
+  const own = parseSensor({ assetId: ASSET, kind: "cert", target: "x.example.ch", port: 8443, warningBelow: 14, downBelow: null, agentId: AGENT });
+  assertEquals(typeof own === "string" ? own : [own.port, own.warningBelow, own.downBelow, own.cloud], [8443, 14, null, false]);
+  const dns = parseSensor({ assetId: ASSET, kind: "dns", target: "srv01.example.ch", expect: "10.0.1.141", agentId: AGENT });
+  assertEquals(typeof dns === "string" ? dns : [dns.name, dns.expect, dns.unit], ["DNS srv01.example.ch", "10.0.1.141", null]);
+  assertEquals(parseSensor({ assetId: ASSET, kind: "cert" }), "Bitte den Hostnamen angeben.");
+  assertEquals(parseSensor({ assetId: ASSET, kind: "dns", target: "x.ch", expect: "srv" }), "Die erwartete Adresse muss eine IP-Adresse sein.");
+  assertEquals(parseSensor({ assetId: ASSET, kind: "ping", cloud: true }), "Aus der Cloud lassen sich nur HTTP, Zertifikat und DNS messen.");
+  assertEquals(
+    parseSensor({ assetId: ASSET, kind: "http", url: "https://x.ch", cloud: true, agentId: AGENT }),
+    "Ein Sensor wird entweder von einer Sonde oder aus der Cloud gemessen.",
+  );
+  const now = Date.parse("2026-11-16T10:00:00Z");
+  const at = (seconds: number) => new Date(now - seconds * 1000).toISOString();
+  const cloud = { paused: false, agentId: null, intervalSeconds: 60, cloud: true };
+  assertEquals(displayState(cloud, { state: "up", lastCheckAt: at(250) }, now), "up");
+  assertEquals(displayState(cloud, { state: "up", lastCheckAt: at(310) }, now), "unknown");
+  assertEquals(displayState({ ...cloud, cloud: false }, { state: "up", lastCheckAt: at(10) }, now), "unknown");
 });

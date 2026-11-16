@@ -8,6 +8,7 @@ import {
   parseChecks,
   runCheck,
   safeHost,
+  daysUntil,
   Schedule,
   snmpNumber,
   trafficRate,
@@ -28,6 +29,7 @@ function check(overrides: Partial<Check>): Check {
     snmpOid: null,
     snmpIndex: null,
     scale: 1,
+    expect: null,
     intervalSeconds: 60,
     timeoutMs: 2000,
     ...overrides,
@@ -320,4 +322,40 @@ test("mapInterfaces: Name, Beschreibung, Status und Tempo je Port", () => {
       speedMbps: 10000,
     },
   ]);
+});
+
+test("parseChecks und daysUntil: Zertifikat und DNS", () => {
+  const checks = parseChecks([
+    { id: ID, kind: "cert", host: "intranet.example.ch" },
+    { id: ID2, kind: "dns", host: "srv01.example.ch", expect: "10.0.1.141" },
+    {
+      id: "00000000-0000-4000-8000-0000000000a3",
+      kind: "dns",
+      host: "x.example.ch",
+      expect: "kein-ip",
+    },
+  ]);
+  assert.deepEqual(
+    checks.map((entry) => [entry.kind, entry.host, entry.port, entry.expect]),
+    [
+      ["cert", "intranet.example.ch", 443, null],
+      ["dns", "srv01.example.ch", null, "10.0.1.141"],
+      ["dns", "x.example.ch", null, null],
+    ],
+  );
+  const now = Date.parse("2026-11-16T10:00:00Z");
+  assert.equal(daysUntil("Nov 28 09:00:00 2026 GMT", now), 11);
+  assert.equal(daysUntil("Nov 15 10:00:00 2026 GMT", now), -1);
+  assert.equal(daysUntil("kaputt", now), null);
+});
+
+test("runCheck: DNS ohne Antwort ist ein Fehler", async () => {
+  const result = await runCheck(
+    "linux",
+    check({ kind: "dns", host: "gibt-es-nicht.invalid", port: null }),
+  );
+  assert.deepEqual(
+    [result.ok, result.message],
+    [false, "Der Name lässt sich nicht auflösen."],
+  );
 });

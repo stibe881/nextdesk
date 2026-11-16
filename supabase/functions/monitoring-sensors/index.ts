@@ -1,6 +1,7 @@
 import { withSupabase } from "@supabase/server";
 import { isUuid, json, noContent } from "../_shared/http.ts";
 import { createAgentToken, sha256Hex, tokenHint } from "../_shared/ipam-discovery.ts";
+import { publicTarget } from "../_shared/monitoring-cloud.ts";
 import { sensorKey } from "../_shared/monitoring-native.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import { INTEGRATION_COLUMNS, processEvent } from "../monitoring-webhook/index.ts";
@@ -104,6 +105,8 @@ function sensorView(sensor: Row, status: Row | undefined, now: number) {
     snmpIndex: number(sensor.snmp_index),
     scale: number(sensor.scale) ?? 1,
     unit: text(sensor.unit),
+    expect: text(sensor.expect),
+    cloud: sensor.cloud === true,
     failuresToDown: number(sensor.failures_to_down) ?? 2,
     paused: sensor.paused === true,
   };
@@ -125,7 +128,7 @@ function sensorView(sensor: Row, status: Row | undefined, now: number) {
 
 async function loadSensors(admin: Client, tenantId: string, assetId?: string) {
   let sensorQuery = admin.from("monitoring_sensors")
-    .select("id, asset_id, agent_id, kind, name, target, port, url, interval_seconds, timeout_ms, warning_above, warning_below, down_above, down_below, snmp_metric, snmp_oid, snmp_index, scale, unit, failures_to_down, paused")
+    .select("id, asset_id, agent_id, kind, name, target, port, url, interval_seconds, timeout_ms, warning_above, warning_below, down_above, down_below, snmp_metric, snmp_oid, snmp_index, scale, unit, expect, cloud, failures_to_down, paused")
     .eq("tenant_id", tenantId).order("name").limit(MAX_SENSORS);
   if (assetId) sensorQuery = sensorQuery.eq("asset_id", assetId);
   const sensors = await sensorQuery;
@@ -248,7 +251,7 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
     for (const sensor of own) counts[sensor.state] += 1;
     // Response time of the device: its ping sensor, else the first with a value.
     const primary = own.find((sensor) => sensor.kind === "ping" && sensor.state !== "paused") ??
-      own.find((sensor) => sensor.kind !== "snmp" && sensor.lastValue !== null && sensor.state !== "paused") ?? null;
+      own.find((sensor) => !sensor.unit && sensor.kind !== "dns" && sensor.lastValue !== null && sensor.state !== "paused") ?? null;
     const problem = own.filter((sensor) => sensor.state === "down" || sensor.state === "warning")
       .sort((a, b) => rank[a.state] - rank[b.state])[0] ?? null;
     return {
@@ -446,6 +449,12 @@ async function saveSensor(admin: Client, tenantId: string, actorId: string, acti
   if (sensor.kind !== "http" && !sensor.target && !text(infra.data.ip_address) && !text(infra.data.hostname)) {
     throw new HttpError(422, "target_missing", "Das Gerät hat weder IP-Adresse noch Hostname. Bitte ein Ziel angeben oder das Gerät ergänzen.");
   }
+  if (sensor.cloud && sensor.kind !== "dns") {
+    // Refuse internal targets when saving, not only when measuring.
+    const host = sensor.kind === "http" ? new URL(sensor.url ?? "").hostname : sensor.target ?? "";
+    const reachable = await publicTarget(host).catch(() => "Der Name lässt sich nicht auflösen.");
+    if (typeof reachable === "string") throw new HttpError(422, "cloud_target", reachable);
+  }
   if (sensor.agentId) {
     const agent = await admin.from("ipam_agents").select("id").eq("tenant_id", tenantId).eq("id", sensor.agentId).neq("status", "revoked").maybeSingle();
     if (agent.error) throw unavailable();
@@ -469,6 +478,8 @@ async function saveSensor(admin: Client, tenantId: string, actorId: string, acti
     snmp_index: sensor.snmpIndex,
     scale: sensor.scale,
     unit: sensor.unit,
+    expect: sensor.expect,
+    cloud: sensor.cloud,
     failures_to_down: sensor.failuresToDown,
     paused: sensor.paused,
     updated_at: new Date().toISOString(),

@@ -28,6 +28,7 @@ import {
   transitionEvent,
 } from "../_shared/monitoring-native.ts";
 import { verifyDispatchSecret } from "../_shared/monitoring-admin.ts";
+import { mapLimit, parseCloudChecks, runCloudCheck } from "../_shared/monitoring-cloud.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import {
   INTEGRATION_COLUMNS,
@@ -552,6 +553,49 @@ async function monitoringIntegration(admin: Admin, tenantId: string): Promise<In
   return created.error ? null : (created.data as Integration | null);
 }
 
+/**
+ * Runs the state changes of sensors through the incident logic. Returns the
+ * number of failed changes, or null when the settings cannot be read.
+ */
+async function applyTransitions(
+  admin: Admin,
+  tenantId: string,
+  transitions: ReturnType<typeof parseTransitions>,
+  probeName: string,
+): Promise<number | null> {
+  if (!transitions.length) return 0;
+  const integration = await monitoringIntegration(admin, tenantId);
+  if (!integration) return null;
+  let failed = 0;
+  const devices = new Map<string, ReturnType<typeof parseResolvedDevice>>();
+  for (const transition of transitions) {
+    try {
+      if (!devices.has(transition.assetId)) {
+        const resolved = await admin.rpc("monitoring_resolve_asset", {
+          p_tenant_id: tenantId,
+          p_asset_id: transition.assetId,
+        });
+        if (resolved.error) throw new Error("device_lookup_failed");
+        devices.set(transition.assetId, parseResolvedDevice(resolved.data));
+      }
+      const device = devices.get(transition.assetId) ?? null;
+      const event = transitionEvent(transition, device, probeName);
+      if (!event) continue;
+      await processEvent(admin, integration, event, new Date(transition.at), {
+        key: sensorKey(transition.sensorId),
+        device,
+      });
+    } catch (failure) {
+      failed += 1;
+      console.error(
+        "monitoring_transition_failed",
+        failure instanceof Error ? failure.message : typeof failure,
+      );
+    }
+  }
+  return failed;
+}
+
 async function monitorReport(admin: Admin, agent: Agent, body: Record<string, unknown>): Promise<Response> {
   const parsed = parseResults(body.results);
   if (!parsed) return reply({ ok: false, error: "invalid_results" }, 422);
@@ -563,37 +607,8 @@ async function monitorReport(admin: Admin, agent: Agent, body: Record<string, un
   });
   if (error) return reply({ ok: false, error: "unavailable" }, 503);
   const transitions = parseTransitions(data);
-  let failed = 0;
-  if (transitions.length) {
-    const integration = await monitoringIntegration(admin, agent.tenant_id);
-    if (!integration) return reply({ ok: false, error: "unavailable" }, 503);
-    const devices = new Map<string, ReturnType<typeof parseResolvedDevice>>();
-    for (const transition of transitions) {
-      try {
-        if (!devices.has(transition.assetId)) {
-          const resolved = await admin.rpc("monitoring_resolve_asset", {
-            p_tenant_id: agent.tenant_id,
-            p_asset_id: transition.assetId,
-          });
-          if (resolved.error) throw new Error("device_lookup_failed");
-          devices.set(transition.assetId, parseResolvedDevice(resolved.data));
-        }
-        const device = devices.get(transition.assetId) ?? null;
-        const event = transitionEvent(transition, device, agent.name);
-        if (!event) continue;
-        await processEvent(admin, integration, event, new Date(transition.at), {
-          key: sensorKey(transition.sensorId),
-          device,
-        });
-      } catch (failure) {
-        failed += 1;
-        console.error(
-          "monitoring_transition_failed",
-          failure instanceof Error ? failure.message : typeof failure,
-        );
-      }
-    }
-  }
+  const failed = await applyTransitions(admin, agent.tenant_id, transitions, agent.name);
+  if (failed === null) return reply({ ok: false, error: "unavailable" }, 503);
   const accepted = isObject(data) && typeof data.accepted === "number" ? data.accepted : 0;
   return reply({ ok: true, accepted, skipped: parsed.skipped, transitions: transitions.length, failed });
 }
@@ -637,6 +652,44 @@ async function probeWatchdog(admin: Admin): Promise<Record<string, number>> {
     }
   }
   return { due: due.length, opened, resolved, failed };
+}
+
+// ---------------------------------------------------------------------------
+// Cloud checks (cron): HTTP, certificate and DNS sensors without a probe.
+
+const CLOUD_BATCH = 100;
+const CLOUD_PARALLEL = 10;
+
+async function cloudChecks(admin: Admin): Promise<Record<string, number>> {
+  const { data, error } = await admin.rpc("monitoring_cloud_checks_due", { p_limit: CLOUD_BATCH });
+  if (error) throw new Error("cloud_checks_due_failed");
+  const due = parseCloudChecks(data);
+  const byTenant = new Map<string, typeof due>();
+  for (const check of due) byTenant.set(check.tenantId, [...(byTenant.get(check.tenantId) ?? []), check]);
+  let measured = 0;
+  let failed = 0;
+  for (const [tenantId, checks] of byTenant) {
+    try {
+      const states = await resolveTenantFeatureStates(admin, tenantId, [MONITORING_FEATURE]);
+      if (states?.[MONITORING_FEATURE] !== true) continue;
+      const results = await mapLimit(checks, CLOUD_PARALLEL, async (check) => {
+        const at = new Date().toISOString();
+        return { id: check.id, at, ...(await runCloudCheck(check)) };
+      });
+      const ingested = await admin.rpc("monitoring_ingest_results", {
+        p_tenant_id: tenantId,
+        p_agent_id: null,
+        p_results: results,
+      });
+      if (ingested.error) throw new Error("ingest_failed");
+      measured += results.length;
+      failed += (await applyTransitions(admin, tenantId, parseTransitions(ingested.data), "nextDesk Cloud")) ?? 1;
+    } catch (failure) {
+      failed += 1;
+      console.error("monitoring_cloud_checks_failed", failure instanceof Error ? failure.message : typeof failure);
+    }
+  }
+  return { cloudDue: due.length, cloudMeasured: measured, cloudFailed: failed };
 }
 
 // ---------------------------------------------------------------------------
@@ -694,7 +747,9 @@ const handler = withSupabase(
         return new Response(null, { status: 401 });
       }
       try {
-        return reply({ ok: true, ...(await probeWatchdog(context.supabaseAdmin)) });
+        const watchdog = await probeWatchdog(context.supabaseAdmin);
+        const cloud = await cloudChecks(context.supabaseAdmin);
+        return reply({ ok: true, ...watchdog, ...cloud });
       } catch (failure) {
         console.error("monitoring_probe_watchdog_failed", failure instanceof Error ? failure.message : "");
         return reply({ ok: false, error: "processing_failed" }, 500);
