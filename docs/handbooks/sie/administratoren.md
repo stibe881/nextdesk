@@ -373,6 +373,10 @@ Die Einstellungen unter **Monitoring (PRTG)** gelten auch für die eigene
 Wiederalarmierung, Folgestörungen und Ruhe während einer Wartung. Der Schalter
 «aktiv» und der Token dort betreffen nur den Empfang von PRTG-Meldungen.
 
+Eine hier angelegte Sonde misst nur Sensoren. Die Netzwerk-Erkennung der
+IP-Adressverwaltung (Ping-Sweep der Subnetze) ist für sie ausgeschaltet und
+lässt sich unter **IP-Adressen → Discovery → Agenten** je Sonde einschalten.
+
 Jede Sonde gehört zu genau einem Mandanten: Der Zugangsschlüssel gilt nur
 für diesen Mandanten, und die Sonde erhält und meldet nur dessen Sensoren. Die Karte
 **Sonden** zeigt je Sonde die installierte Version. Ist das Paket neuer,
