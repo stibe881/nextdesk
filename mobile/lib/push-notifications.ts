@@ -40,7 +40,7 @@ export type PushEnvironment = "development" | "production";
 export type PushContentLevel = "minimal" | "subject";
 
 export function pushNotificationKindLabel(kind: string): string | null {
-  if (kind === "ticket.follow_up_due") return "Wiedervorlage fällig";
+  if (kind === "ticket.follow_up_due") return "Erinnerung fällig";
   if (kind === "ticket.kudos") return "Lob von Kund:innen";
   return null;
 }

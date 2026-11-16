@@ -19,7 +19,7 @@ type SearchResult = {
   detail: string;
   section:
     | "Tickets"
-    | "Wiedervorlagen"
+    | "Erinnerungen"
     | "Wissen"
     | "Veranstaltungsräume"
     | "Eintritte"
@@ -167,7 +167,7 @@ function parseResults(value: unknown): SearchResult[] | null {
   ]);
   const sections = new Set<SearchResult["section"]>([
     "Tickets",
-    "Wiedervorlagen",
+    "Erinnerungen",
     "Wissen",
     "Veranstaltungsräume",
     "Eintritte",

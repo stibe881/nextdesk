@@ -15,10 +15,10 @@ const results: readonly GlobalSearchResult[] = [
     title: "Drucker prüfen",
   },
   {
-    detail: "Persönliche Wiedervorlage",
+    detail: "Persönliche Erinnerung",
     entityId: "follow-up-1",
     resultType: "follow_up",
-    section: "Wiedervorlagen",
+    section: "Erinnerungen",
     ticketId: null,
     title: "Rückmeldung einholen",
   },

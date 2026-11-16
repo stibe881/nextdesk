@@ -306,7 +306,7 @@ const quickCreateActionPresentation: Record<
   QuickCreateAction,
   { Icon: LucideIcon; label: string }
 > = {
-  followUp: { Icon: CalendarClock, label: "Wiedervorlage erfassen" },
+  followUp: { Icon: CalendarClock, label: "Erinnerung erfassen" },
   ticket: { Icon: Ticket, label: "Ticket erfassen" },
   problem: { Icon: FileWarning, label: "Fall erfassen" },
   serviceTask: { Icon: ListChecks, label: "Serviceaufgabe erfassen" },
@@ -843,7 +843,7 @@ function sectionPageTitle(section: Section): string {
 function sectionFromGlobalSearchResult(result: GlobalSearchResult): Section {
   if (
     result.resultType === "follow_up" ||
-    result.section === "Wiedervorlagen"
+    result.section === "Erinnerungen"
   ) {
     return "Arbeitsplatz";
   }
@@ -1311,14 +1311,14 @@ function baseNotificationPresentation(
       };
     case "ticket.follow_up_due": {
       const followUpTitle =
-        notificationPayloadText(notification, "title", 240) ?? "Wiedervorlage";
+        notificationPayloadText(notification, "title", 240) ?? "Erinnerung";
       const dueAt = notificationPayloadDateTime(notification, "dueAt");
       return {
         description: dueAt
           ? `${followUpTitle} · Fällig am ${notificationTime(dueAt)}`
           : followUpTitle,
         Icon: CalendarClock,
-        title: "Wiedervorlage fällig",
+        title: "Erinnerung fällig",
       };
     }
     case "ticket.supervisor_request": {
@@ -1645,8 +1645,8 @@ function baseNotificationPresentation(
       const note = notificationPayloadText(notification, "note", 2000);
       return {
         description: tn(
-          `Du vertrittst ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Wiedervorlagen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
-          `Sie vertreten ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Wiedervorlagen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
+          `Du vertrittst ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Erinnerungen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
+          `Sie vertreten ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Erinnerungen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
         ),
         Icon: UserRound,
         title: "Stellvertretung beginnt",
@@ -5924,7 +5924,7 @@ function AuthenticatedApp() {
               ? {
                   id: `experience:${experienceNotice.tone}:${experienceNotice.message}`,
                   message: experienceNotice.message,
-                  title: "Wiedervorlagen",
+                  title: "Erinnerungen",
                   tone: experienceNotice.tone,
                 }
               : null;

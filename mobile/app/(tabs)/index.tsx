@@ -642,13 +642,13 @@ export default function HomeScreen() {
         title: followUpTitle(ticket),
       });
       setActionMessage(
-        `Wiedervorlage für «${ticket.ticketNumber}» für heute gesetzt.`,
+        `Erinnerung für «${ticket.ticketNumber}» für heute gesetzt.`,
       );
     } catch (nextError) {
       setActionMessage(
         nextError instanceof Error
           ? nextError.message
-          : "Die Wiedervorlage konnte nicht gesetzt werden.",
+          : "Die Erinnerung konnte nicht gesetzt werden.",
       );
     }
   }

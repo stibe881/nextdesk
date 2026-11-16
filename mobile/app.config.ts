@@ -245,7 +245,7 @@ const config: ExpoConfig = {
         iosActions: [
           {
             id: "follow-up",
-            title: "Wiedervorlage erfassen",
+            title: "Erinnerung erfassen",
             icon: "symbol:calendar.badge.clock",
           },
           {

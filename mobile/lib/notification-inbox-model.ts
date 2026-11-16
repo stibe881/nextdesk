@@ -228,7 +228,7 @@ const titles = (): Record<string, [string, InboxIcon]> => ({
   department_question_answered: ["Rückfrage beantwortet", "ticket-outline"],
   escalation: ["Ticket eskaliert", "alarm-outline"],
   security_report: ["Phishing und Sicherheitsfälle", "shield-outline"],
-  follow_up: ["Wiedervorlage fällig", "alarm-outline"],
+  follow_up: ["Erinnerung fällig", "alarm-outline"],
   rule_reminder: ["Erinnerung", "alarm-outline"],
   vendor_reminder: ["Drittanbieter nachfassen", "alarm-outline"],
   children_done: ["Teil-Tickets erledigt", "checkmark-circle-outline"],

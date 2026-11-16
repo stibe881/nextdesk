@@ -79,13 +79,15 @@ export default function NewFollowUpScreen() {
         priority,
       });
       hapticSuccess();
-      router.replace("/");
+      // Back to where the form was opened (e.g. the «Erinnerungen» page).
+      if (router.canGoBack()) router.back();
+      else router.replace("/");
     } catch (nextError) {
       hapticError();
       setError(
         nextError instanceof Error
           ? nextError.message
-          : "Die Wiedervorlage konnte nicht gespeichert werden.",
+          : "Die Erinnerung konnte nicht gespeichert werden.",
       );
     } finally {
       setSaving(false);
@@ -95,8 +97,8 @@ export default function NewFollowUpScreen() {
   return (
     <CreateScreen
       heading={tn("Woran sollen wir dich erinnern?", "Woran sollen wir Sie erinnern?")}
-      intro={tn("Die Wiedervorlage erscheint im Arbeitsplatz und erinnert dich zum gewählten Termin.", "Die Wiedervorlage erscheint im Arbeitsplatz und erinnert Sie zum gewählten Termin.")}
-      title="Wiedervorlage erfassen"
+      intro={tn("Die Erinnerung erscheint im Arbeitsplatz und erinnert dich zum gewählten Termin.", "Die Erinnerung erscheint im Arbeitsplatz und erinnert Sie zum gewählten Termin.")}
+      title="Erinnerung erfassen"
     >
       <FormCard>
         <Field
@@ -136,7 +138,7 @@ export default function NewFollowUpScreen() {
           busy={saving}
           busyLabel="Wird gespeichert …"
           disabled={!tenantId}
-          label="Wiedervorlage speichern"
+          label="Erinnerung speichern"
           onPress={() => void save()}
         />
       </FormCard>

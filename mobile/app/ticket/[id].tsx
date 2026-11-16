@@ -224,7 +224,7 @@ function sortedOpenFollowUps(
 
 function followUpTitle(ticket: MobileTicketDetail): string {
   const title = `${ticket.ticketNumber}: ${ticket.subject}`.trim();
-  return Array.from(title).slice(0, 240).join("") || "Ticket-Wiedervorlage";
+  return Array.from(title).slice(0, 240).join("") || "Ticket-Erinnerung";
 }
 
 function formatWorkbenchDate(value: string): string {
@@ -2209,7 +2209,7 @@ export default function TicketDetailScreen() {
                       name="alarm-outline"
                       size={19}
                     />
-                    <Text style={styles.detailsActionLabel}>Wiedervorlage</Text>
+                    <Text style={styles.detailsActionLabel}>Erinnerung</Text>
                   </View>
                   <View style={styles.detailsActionLead}>
                     <Text style={styles.detailsActionLink}>Setzen</Text>
@@ -3229,7 +3229,7 @@ export default function TicketDetailScreen() {
               <View style={styles.experienceSheetHeader}>
                 <View>
                   <Text style={[styles.selectionEyebrow, tokenStyles.muted]}>
-                    WIEDERVORLAGE
+                    ERINNERUNG
                   </Text>
                   <Text
                     style={[

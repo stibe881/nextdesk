@@ -516,10 +516,10 @@ function alertFor(
       };
     case "follow_up":
       return {
-        title: "Wiedervorlage fällig",
+        title: "Erinnerung fällig",
         body: subject
-          ? `Eine Wiedervorlage zu ${ticketNumber} ist fällig: ${subject}`
-          : "Eine Wiedervorlage ist fällig.",
+          ? `Eine Erinnerung zu ${ticketNumber} ist fällig: ${subject}`
+          : "Eine Erinnerung ist fällig.",
       };
     case "contract_deadline":
       return {

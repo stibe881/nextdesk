@@ -117,7 +117,7 @@ struct HomeView: View {
       NavigationLink {
         FollowUpsView()
       } label: {
-        Label("Wiedervorlagen", systemImage: "calendar.badge.clock")
+        Label("Erinnerungen", systemImage: "calendar.badge.clock")
       }
       NavigationLink {
         ServiceTasksView()

@@ -224,8 +224,8 @@ function ticketEvents(
       ),
     ],
     "ticket.follow_up_due": [
-      "Wiedervorlage fällig",
-      "Eine Wiedervorlage ist fällig.",
+      "Erinnerung fällig",
+      "Eine Erinnerung ist fällig.",
     ],
     "ticket.rule_reminder": [
       "Erinnerung",

@@ -1532,7 +1532,7 @@ async function myMetrics(
         solvedToday,
         medianFirstResponseMinutes: median,
         medianResolutionMinutes: medianResolution,
-        // Bleibt für ältere App-Versionen erhalten (fällige Wiedervorlagen).
+        // Bleibt für ältere App-Versionen erhalten (fällige Erinnerungen).
         dueFollowUps: dueTicketIds.length,
         slaDue: slaDueEntries.length,
         ticketIds: {

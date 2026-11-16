@@ -6,7 +6,7 @@ import {
   requestedWorkplaceViewForFollowUps,
 } from "./workplace-navigation";
 
-describe("Wiedervorlagen im Arbeitsplatz", () => {
+describe("Erinnerungen im Arbeitsplatz", () => {
   it("stellt den Arbeitsplatz bereit, wenn mindestens eine Arbeitsfunktion aktiv ist", () => {
     expect(isWorkplaceAvailable(true, false)).toBe(true);
     expect(isWorkplaceAvailable(false, true)).toBe(true);
@@ -14,7 +14,7 @@ describe("Wiedervorlagen im Arbeitsplatz", () => {
     expect(isWorkplaceAvailable(false, false)).toBe(false);
   });
 
-  it("öffnet Wiedervorlagen nur bei aktiver Wiedervorlagenfunktion gezielt als Arbeitsplatzregister", () => {
+  it("öffnet Erinnerungen nur bei aktiver Erinnerungsfunktion gezielt als Arbeitsplatzregister", () => {
     expect(requestedWorkplaceViewForFollowUps(true, true)).toBe("followUps");
     expect(requestedWorkplaceViewForFollowUps(true, false)).toBeUndefined();
     expect(requestedWorkplaceViewForFollowUps(false, true)).toBeUndefined();
@@ -51,7 +51,12 @@ describe("Wiedervorlagen im Arbeitsplatz", () => {
   });
 
   it("überführt eine alte Wiedervorlagen-Startansicht mitsamt Zielregister", () => {
+    // Gespeicherte Startbereiche tragen noch den früheren Namen.
     expect(migrateWorkplaceStartSection("Wiedervorlagen")).toEqual({
+      requestedView: "followUps",
+      section: "Arbeitsplatz",
+    });
+    expect(migrateWorkplaceStartSection("Erinnerungen")).toEqual({
       requestedView: "followUps",
       section: "Arbeitsplatz",
     });

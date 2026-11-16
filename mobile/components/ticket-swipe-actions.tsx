@@ -7,7 +7,7 @@ import { useAppColors } from "@/lib/themed-styles";
 
 /**
  * Wischaktionen für Ticketzeilen: nach rechts wischen für Zuweisen, Beobachten
- * und Wiedervorlage, nach links wischen für Spam (mit Rückfrage) und zum Löschen (mit
+ * und Erinnerung, nach links wischen für Spam (mit Rückfrage) und zum Löschen (mit
  * Rückgängig-Frist).
  */
 export function TicketSwipeActions({
@@ -106,7 +106,7 @@ export function TicketSwipeActions({
             ) : null}
             {canFollowUp ? (
               <Pressable
-                accessibilityLabel="Wiedervorlage für heute setzen"
+                accessibilityLabel="Erinnerung für heute setzen"
                 accessibilityRole="button"
                 onPress={() => closeAndRun(onFollowUp)}
                 style={[styles.action, { backgroundColor: colors.primary }]}
@@ -117,7 +117,7 @@ export function TicketSwipeActions({
                   size={20}
                 />
                 <Text style={[styles.text, { color: colors.onPrimary }]}>
-                  Wiedervorlage
+                  Erinnerung
                 </Text>
               </Pressable>
             ) : null}

@@ -377,7 +377,7 @@ export default function TicketsScreen() {
         ticketId: ticket.id,
       });
       setMessage(
-        `Wiedervorlage für «${ticket.ticketNumber}» für heute gesetzt.`,
+        `Erinnerung für «${ticket.ticketNumber}» für heute gesetzt.`,
       );
     } catch (nextError) {
       if (isExperienceUnavailableError(nextError)) {
@@ -388,7 +388,7 @@ export default function TicketsScreen() {
       setError(
         nextError instanceof Error
           ? nextError.message
-          : "Die Wiedervorlage konnte nicht gesetzt werden.",
+          : "Die Erinnerung konnte nicht gesetzt werden.",
       );
     } finally {
       setCreatingFollowUpFor(null);
@@ -626,7 +626,7 @@ export default function TicketsScreen() {
         options: [
           "Abbrechen",
           isWatched ? "Nicht mehr beobachten" : "Beobachten",
-          ...(canCreateFollowUp ? ["Wiedervorlage für heute setzen"] : []),
+          ...(canCreateFollowUp ? ["Erinnerung für heute setzen"] : []),
         ],
         title: ticket.ticketNumber,
       },
@@ -1144,7 +1144,7 @@ export default function TicketsScreen() {
             workspaceEnabled &&
             workspaceAvailable ? (
               <Text style={[styles.gestureHint, tokenStyles.muted]}>
-                Nach rechts wischen: zuweisen, beobachten oder Wiedervorlage.
+                Nach rechts wischen: zuweisen, beobachten oder Erinnerung.
                 Nach links: löschen.
               </Text>
             ) : null}
@@ -1545,7 +1545,7 @@ function TicketRow({
     ...(canCreateFollowUp
       ? [
           {
-            label: "Wiedervorlage für heute setzen",
+            label: "Erinnerung für heute setzen",
             name: "followUp",
           },
         ]

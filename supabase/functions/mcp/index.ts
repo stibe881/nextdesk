@@ -765,6 +765,16 @@ const TICKET_PROPERTY = {
   description: "Ticketnummer (z. B. ICT-2026-000011) oder ID.",
 };
 
+/**
+ * Tools renamed with «Wiedervorlage» → «Erinnerung». Clients that still call
+ * the old names keep working; the tool list shows only the new names.
+ */
+const LEGACY_TOOL_NAMES: Record<string, string> = {
+  wiedervorlagen_anzeigen: "erinnerungen_anzeigen",
+  wiedervorlage_erstellen: "erinnerung_erstellen",
+  wiedervorlage_erledigen: "erinnerung_erledigen",
+};
+
 const TOOLS: Tool[] = [
   {
     name: "arbeitsbereiche_anzeigen",
@@ -1733,7 +1743,7 @@ const TOOLS: Tool[] = [
   {
     name: "ueberall_suchen",
     description:
-      "Durchsucht den Arbeitsbereich gleichzeitig nach Tickets, Wiedervorlagen, Wissensartikeln, Veranstaltungsräumen und Eintritten; für das zuständige Team auch nach Störungen und Sicherheitsfällen.",
+      "Durchsucht den Arbeitsbereich gleichzeitig nach Tickets, Erinnerungen, Wissensartikeln, Veranstaltungsräumen und Eintritten; für das zuständige Team auch nach Störungen und Sicherheitsfällen.",
     annotations: { readOnlyHint: true, title: "Überall suchen" },
     inputSchema: {
       type: "object",
@@ -2093,19 +2103,19 @@ const TOOLS: Tool[] = [
     },
   },
 
-  // ------------------------------------------------ Wiedervorlagen
+  // ------------------------------------------------ Erinnerungen
   {
-    name: "wiedervorlagen_anzeigen",
+    name: "erinnerungen_anzeigen",
     description:
-      "Listet deine Wiedervorlagen (Erinnerungen), standardmässig nur offene. Optional nur die eines Tickets.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
-    annotations: { readOnlyHint: true, title: "Wiedervorlagen" },
+      "Listet deine Erinnerungen, standardmässig nur offene. Optional nur die eines Tickets.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
+    annotations: { readOnlyHint: true, title: "Erinnerungen" },
     inputSchema: {
       type: "object",
       properties: {
         arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: {
           ...TICKET_PROPERTY,
-          description: "Nur Wiedervorlagen dieses Tickets.",
+          description: "Nur Erinnerungen dieses Tickets.",
         },
         mit_erledigten: { type: "boolean" },
         max_anzahl: { type: "integer", minimum: 1, maximum: 100 },
@@ -2163,13 +2173,13 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "wiedervorlage_erstellen",
+    name: "erinnerung_erstellen",
     description:
-      "Erstellt eine Wiedervorlage (Erinnerung) für dich, optional zu einem Ticket. faellig als Datum/Zeit mit Zeitzone, z. B. 2026-11-10T08:00:00+01:00.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
+      "Erstellt eine Erinnerung für dich, optional zu einem Ticket. faellig als Datum/Zeit mit Zeitzone, z. B. 2026-11-10T08:00:00+01:00.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
-      title: "Wiedervorlage erstellen",
+      title: "Erinnerung erstellen",
     },
     inputSchema: {
       type: "object",
@@ -2238,20 +2248,20 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "wiedervorlage_erledigen",
+    name: "erinnerung_erledigen",
     description:
-      "Erledigt eine Wiedervorlage (id aus wiedervorlagen_anzeigen).",
+      "Erledigt eine Erinnerung (id aus erinnerungen_anzeigen).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
-      title: "Wiedervorlage erledigen",
+      title: "Erinnerung erledigen",
     },
     inputSchema: {
       type: "object",
       properties: {
         arbeitsbereich: WORKSPACE_PROPERTY,
-        id: { type: "string", description: "ID der Wiedervorlage." },
+        id: { type: "string", description: "ID der Erinnerung." },
       },
       required: ["id"],
       additionalProperties: false,
@@ -7586,7 +7596,7 @@ const OUTPUT_KEYS: Record<string, string> = {
   done: "erledigt",
   draft: "entwurf",
   dueAt: "faellig",
-  dueFollowUps: "faellige_wiedervorlagen",
+  dueFollowUps: "faellige_erinnerungen",
   dueOn: "faellig_am",
   dueToday: "heute_faellig",
   employee: "mitarbeitende_person",
@@ -7605,7 +7615,7 @@ const OUTPUT_KEYS: Record<string, string> = {
   first: "erster_termin",
   firstContactResolutionRate: "erstloesungsquote",
   firstResponseSlaCompliance: "sla_einhaltung_erstreaktion",
-  followUps: "wiedervorlagen",
+  followUps: "erinnerungen",
   from: "von",
   fulfillment: "erfuellung",
   handovers: "uebergaben",
@@ -8020,7 +8030,11 @@ export async function handleMessage(
   }
   if (method === "tools/call") {
     const params = isRecord(message.params) ? message.params : {};
-    const tool = TOOLS.find((entry) => entry.name === params.name);
+    const requested =
+      typeof params.name === "string"
+        ? (LEGACY_TOOL_NAMES[params.name] ?? params.name)
+        : params.name;
+    const tool = TOOLS.find((entry) => entry.name === requested);
     if (!tool) return rpcError(id, -32602, "Unbekanntes Werkzeug.");
     const raw = isRecord(params.arguments) ? params.arguments : {};
     try {

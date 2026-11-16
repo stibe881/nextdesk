@@ -24,8 +24,8 @@ export const pushCategoryMeta = {
   },
   follow_up: {
     description:
-      "Erinnerungen zu Wiedervorlagen und aus zeitgesteuerten Regeln",
-    label: "Wiedervorlagen",
+      "Fällige Erinnerungen und Hinweise aus zeitgesteuerten Regeln",
+    label: "Erinnerungen",
   },
   infrastructure: {
     description:

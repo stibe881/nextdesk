@@ -132,9 +132,9 @@ const CATEGORY_DETAILS: readonly {
   },
   {
     key: "follow_up",
-    label: "Wiedervorlagen",
+    label: "Erinnerungen",
     description:
-      "Erinnerungen zu Wiedervorlagen und aus zeitgesteuerten Regeln.",
+      "Fällige Erinnerungen und Hinweise aus zeitgesteuerten Regeln.",
   },
   {
     key: "sla",

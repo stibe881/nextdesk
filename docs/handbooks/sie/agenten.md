@@ -24,7 +24,7 @@ anpassen → Einführung erneut starten_ wiederholen.
 Die linke Navigation ist gegliedert in:
 
 - **Übersicht** – Ihre Startseite mit Kennzahlen
-- **Arbeitsplatz** – Team-Queues, Erwähnungen, Stellvertretung, Wiedervorlagen
+- **Arbeitsplatz** – Team-Queues, Erwähnungen, Stellvertretung, Erinnerungen
 - **Teamführung** – nur für Leitungen von Abteilungen
 - **Arbeitsbereich**: Tickets, Shop, Teams (nur mit Recht zur Shop-Verwaltung),
   Fälle
@@ -156,7 +156,7 @@ Der **Arbeitsplatz** bündelt Ihre persönliche Arbeit in Registern:
 - **Erwähnungen** – wo Sie mit @ erwähnt wurden
 - **Stellvertretung** – Tickets abwesender Kolleginnen und Kollegen
 - **Störungen** – aktive Störungen
-- **Wiedervorlagen** – Tickets, die Sie sich zu einem Datum vorgemerkt haben
+- **Erinnerungen** – Tickets, die Sie sich zu einem Datum vorgemerkt haben
 - **Mein Bereich** – eigene Tickets, Geräte, Freigaben und **Phishing melden**
 
 ![Arbeitsplatz mit Registern und Team-Warteschlangen](images/ag-arbeitsplatz.jpg)
@@ -734,7 +734,7 @@ direkt auf die Zeile ziehen (max. 25 MiB pro Datei).
 | An Drittanbieter übergeben                  | Lieferanten einbeziehen, mit Erinnerung                 |
 | Vorgesetzte Person fragen                   | Interne Rückfrage an die Abteilungsleitung              |
 | Freigabe anfordern                          | Genehmigung einholen (z. B. Kosten, Berechtigungen)     |
-| Wiedervorlage setzen                        | Ticket zu einem Datum wieder vorlegen                   |
+| Erinnerung setzen                           | Ticket zu einem Datum wieder vorlegen                   |
 | Arbeitszeit erfassen, Checkliste            | Aufwand und Arbeitsschritte dokumentieren               |
 | Zusammenfassen (KI)                         | Kurzfassung langer Verläufe                             |
 | Ticketakte als PDF                          | Ticket drucken oder ablegen                             |
@@ -813,8 +813,21 @@ die **anfragende Person** (Suche, «Mich auswählen» oder neue Person), füllen
 Betreff, Einordnung, Priorität und Beschreibung aus (Zusammenfassung links, Abschnitte rechts, Pflichtfelder mit **\***) und können direkt einen
 **zugewiesenen Agenten** setzen. Abschliessen mit **Ticket erstellen**.
 
-Im selben Menü erfassen Sie – je nach Freischaltung – auch Wiedervorlagen,
+Im selben Menü erfassen Sie – je nach Freischaltung – auch Erinnerungen,
 Fälle, Serviceaufgaben, Wissensartikel, Lagerartikel, Verträge und Lizenzen.
+
+In der **iOS- und Android-App** öffnet ein **langer Druck auf den Home-Knopf**
+ein Menü in zwei Gruppen. Oben unter **Öffnen** springen Sie direkt zu
+**Erinnerungen**, **Überwachung**, **Infrastruktur** und **IP-Adressen**,
+darunter im Halbkreis unter **Erfassen** zu **Erinnerung**, **Ticket**,
+**Serviceaufgabe** und **Lagerartikel**. Es erscheinen nur die Einträge, deren
+Modul für Sie freigeschaltet ist. Die Seite **Erinnerungen** zeigt Ihre
+offenen Erinnerungen nach **Überfällig**, **Heute**, **Demnächst** und **Ohne
+Fälligkeit**; mit **Erledigt** haken Sie eine ab, ein Tipp öffnet das
+verknüpfte Ticket, und **Erinnerung erfassen** legt eine neue an. Die Seite
+**IP-Adressen** zeigt die Subnetze nach Standort mit ihrer Auslastung und eine
+Suche nach IP-Adresse, Hostname oder MAC; ein Subnetz öffnet seine Adressen,
+eine Adresse ihre Details.
 
 ![Neues Ticket als Agent erfassen](images/ag-neues-ticket.jpg)
 

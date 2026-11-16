@@ -38,7 +38,7 @@ export type GlobalSearchResult = {
   detail: string;
   section:
     | "Tickets"
-    | "Wiedervorlagen"
+    | "Erinnerungen"
     | "Wissen"
     | "Raumplanung"
     | "Eintritte"
@@ -92,7 +92,7 @@ export function parseResults(value: unknown): GlobalSearchResult[] | null {
   ]);
   const allowedSections = new Set<GlobalSearchResult["section"]>([
     "Tickets",
-    "Wiedervorlagen",
+    "Erinnerungen",
     "Wissen",
     "Raumplanung",
     "Eintritte",
@@ -140,7 +140,7 @@ export function filterGlobalSearchResults(
 
 const typeLabel: Record<GlobalSearchResult["resultType"], string> = {
   ticket: "Ticket",
-  follow_up: "Wiedervorlage",
+  follow_up: "Erinnerung",
   knowledge: "Wissensartikel",
   event_space: "Raumauftrag",
   onboarding: "Eintritt",

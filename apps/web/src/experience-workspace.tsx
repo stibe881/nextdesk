@@ -322,7 +322,7 @@ function FollowUpItem({
       <div className="experience-follow-up__actions">
         {!isResolved && (
           <button
-            aria-label={`Wiedervorlage ${followUp.title} erledigen`}
+            aria-label={`Erinnerung ${followUp.title} erledigen`}
             className="experience-complete-button"
             disabled={resolving}
             onClick={onResolve}
@@ -334,7 +334,7 @@ function FollowUpItem({
         )}
         {!isResolved && (
           <button
-            aria-label={`Wiedervorlage ${followUp.title} bearbeiten`}
+            aria-label={`Erinnerung ${followUp.title} bearbeiten`}
             className="experience-icon-button"
             onClick={onEdit}
             type="button"
@@ -500,7 +500,7 @@ function FollowUpFormDialog({
       return;
     }
     if (!supabase) {
-      setFormError("Wiedervorlagen sind in dieser Umgebung nicht verfügbar.");
+      setFormError("Erinnerungen sind in dieser Umgebung nicht verfügbar.");
       return;
     }
 
@@ -528,21 +528,21 @@ function FollowUpFormDialog({
       onSaved(saved);
       onNotice(
         followUp
-          ? "Wiedervorlage wurde aktualisiert."
-          : "Wiedervorlage wurde angelegt.",
+          ? "Erinnerung wurde aktualisiert."
+          : "Erinnerung wurde angelegt.",
         "success",
       );
       onClose();
     } catch (error) {
       if (await isUnavailableExperienceHub(error)) {
         setFormError(
-          "Wiedervorlagen sind für diesen Mandanten derzeit nicht verfügbar.",
+          "Erinnerungen sind für diesen Mandanten derzeit nicht verfügbar.",
         );
       } else {
         setFormError(
           tn(
-            "Die Wiedervorlage konnte nicht gespeichert werden. Bitte versuche es erneut.",
-            "Die Wiedervorlage konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+            "Die Erinnerung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+            "Die Erinnerung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
           ),
         );
       }
@@ -554,7 +554,7 @@ function FollowUpFormDialog({
   return (
     <div
       aria-label={
-        followUp ? "Wiedervorlage bearbeiten" : "Wiedervorlage anlegen"
+        followUp ? "Erinnerung bearbeiten" : "Erinnerung anlegen"
       }
       aria-modal="true"
       className="experience-dialog-backdrop"
@@ -569,9 +569,9 @@ function FollowUpFormDialog({
       >
         <header>
           <div>
-            <p className="eyebrow">WIEDERVORLAGE</p>
+            <p className="eyebrow">ERINNERUNG</p>
             <h2>
-              {followUp ? "Wiedervorlage bearbeiten" : "Wiedervorlage anlegen"}
+              {followUp ? "Erinnerung bearbeiten" : "Erinnerung anlegen"}
             </h2>
           </div>
           <button
@@ -745,7 +745,7 @@ function FollowUpFormDialog({
                 ? "Wird gespeichert …"
                 : followUp
                   ? "Änderungen speichern"
-                  : "Wiedervorlage anlegen"}
+                  : "Erinnerung anlegen"}
             </button>
           </footer>
         </form>
@@ -779,7 +779,7 @@ export function ExperienceWorkspace({
     if (!supabase) {
       setFollowUps([]);
       setAvailabilityNote(
-        "Wiedervorlagen sind in dieser Umgebung noch nicht verfügbar.",
+        "Erinnerungen sind in dieser Umgebung noch nicht verfügbar.",
       );
       setLoading(false);
       return;
@@ -809,14 +809,14 @@ export function ExperienceWorkspace({
         setFollowUps([]);
         if (await isUnavailableExperienceHub(error)) {
           setAvailabilityNote(
-            "Wiedervorlagen sind für diesen Mandanten derzeit nicht verfügbar.",
+            "Erinnerungen sind für diesen Mandanten derzeit nicht verfügbar.",
           );
           return;
         }
         setAvailabilityNote(
           tn(
-            "Wiedervorlagen konnten nicht geladen werden. Bitte versuche es erneut.",
-            "Wiedervorlagen konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+            "Erinnerungen konnten nicht geladen werden. Bitte versuche es erneut.",
+            "Erinnerungen konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
           ),
         );
       })
@@ -870,17 +870,17 @@ export function ExperienceWorkspace({
           : current.filter((item) => item.id !== resolved.id),
       );
       onChanged();
-      onNotice("Wiedervorlage erledigt.", "success");
+      onNotice("Erinnerung erledigt.", "success");
     } catch (error) {
       if (await isUnavailableExperienceHub(error)) {
         setAvailabilityNote(
-          "Wiedervorlagen sind für diesen Mandanten derzeit nicht verfügbar.",
+          "Erinnerungen sind für diesen Mandanten derzeit nicht verfügbar.",
         );
       } else {
         onNotice(
           tn(
-            "Die Wiedervorlage konnte nicht erledigt werden. Bitte versuche es erneut.",
-            "Die Wiedervorlage konnte nicht erledigt werden. Bitte versuchen Sie es erneut.",
+            "Die Erinnerung konnte nicht erledigt werden. Bitte versuche es erneut.",
+            "Die Erinnerung konnte nicht erledigt werden. Bitte versuchen Sie es erneut.",
           ),
           "error",
         );
@@ -932,7 +932,7 @@ export function ExperienceWorkspace({
       <header className="experience-workspace__header">
         <div>
           <p className="eyebrow">PERSÖNLICHE ARBEIT</p>
-          <h2 id="follow-ups-heading">Wiedervorlagen</h2>
+          <h2 id="follow-ups-heading">Erinnerungen</h2>
           <p>
             {tn(
               "Behalte deine nächsten Schritte und verknüpfte Tickets im Blick.",
@@ -946,13 +946,13 @@ export function ExperienceWorkspace({
           type="button"
         >
           <Plus aria-hidden="true" size={17} strokeWidth={2} />
-          Wiedervorlage anlegen
+          Erinnerung anlegen
         </button>
       </header>
       <div className="experience-toolbar">
         <div
           className="experience-segmented"
-          aria-label="Status der Wiedervorlagen"
+          aria-label="Status der Erinnerungen"
         >
           <button
             aria-pressed={!showResolved}
@@ -979,7 +979,7 @@ export function ExperienceWorkspace({
       </div>
       {loading ? (
         <div aria-busy="true" className="experience-empty-state" role="status">
-          Wiedervorlagen werden geladen …
+          Erinnerungen werden geladen …
         </div>
       ) : availabilityNote ? (
         <div
@@ -1005,15 +1005,15 @@ export function ExperienceWorkspace({
           <div>
             <strong>
               {showResolved
-                ? "Noch keine erledigten Wiedervorlagen."
-                : "Keine offenen Wiedervorlagen."}
+                ? "Noch keine erledigten Erinnerungen."
+                : "Keine offenen Erinnerungen."}
             </strong>
             <span>
               {showResolved
-                ? "Erledigte Wiedervorlagen bleiben hier als persönlicher Verlauf sichtbar."
+                ? "Erledigte Erinnerungen bleiben hier als persönlicher Verlauf sichtbar."
                 : tn(
-                    "Lege eine Wiedervorlage an, um einen nächsten Schritt verbindlich festzuhalten.",
-                    "Legen Sie eine Wiedervorlage an, um einen nächsten Schritt verbindlich festzuhalten.",
+                    "Lege eine Erinnerung an, um einen nächsten Schritt verbindlich festzuhalten.",
+                    "Legen Sie eine Erinnerung an, um einen nächsten Schritt verbindlich festzuhalten.",
                   )}
             </span>
           </div>
@@ -1135,7 +1135,7 @@ export function MyDayCard({
           <h2 id="my-day-heading">Mein Tag</h2>
         </div>
         <button className="text-button" onClick={onOpenFollowUps} type="button">
-          Alle Wiedervorlagen
+          Alle Erinnerungen
           <ListTodo aria-hidden="true" size={16} strokeWidth={1.8} />
         </button>
       </div>
@@ -1155,13 +1155,13 @@ export function MyDayCard({
             </div>
             {unavailable ? (
               <p className="my-day-card__empty">
-                Wiedervorlagen sind momentan nicht verfügbar.
+                Erinnerungen sind momentan nicht verfügbar.
               </p>
             ) : relevantFollowUps.length === 0 ? (
               <p className="my-day-card__empty">
                 {tn(
-                  "Keine Wiedervorlage ist heute fällig. Plane den nächsten Schritt in Ruhe.",
-                  "Keine Wiedervorlage ist heute fällig. Planen Sie den nächsten Schritt in Ruhe.",
+                  "Keine Erinnerung ist heute fällig. Plane den nächsten Schritt in Ruhe.",
+                  "Keine Erinnerung ist heute fällig. Planen Sie den nächsten Schritt in Ruhe.",
                 )}
               </p>
             ) : (
@@ -1234,8 +1234,8 @@ export function MyDayCard({
         (relevantFollowUps.length > 4 || assignedTickets.length > 4) && (
           <p className="my-day-card__more">
             {tn(
-              "Weitere Aufgaben findest du in Wiedervorlagen beziehungsweise Tickets.",
-              "Weitere Aufgaben finden Sie in Wiedervorlagen beziehungsweise Tickets.",
+              "Weitere Aufgaben findest du in Erinnerungen beziehungsweise Tickets.",
+              "Weitere Aufgaben finden Sie in Erinnerungen beziehungsweise Tickets.",
             )}
           </p>
         )}

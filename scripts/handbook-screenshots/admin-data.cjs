@@ -97,7 +97,7 @@ const FEATURE_CATALOG = {
   ],
   "experience.workspace": [
     "Arbeitsbereich",
-    "Persönliche Arbeitsbereichseinstellungen und Wiedervorlagen.",
+    "Persönliche Arbeitsbereichseinstellungen und Erinnerungen.",
     "ticketing",
   ],
   "portal.self-service": [
