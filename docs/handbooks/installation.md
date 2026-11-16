@@ -424,6 +424,12 @@ Zugangsdaten (Schlüssel = IP-Adresse bzw. Hostname wie in der Infrastruktur).
 Die Sonde braucht UDP 161 zu den Geräten; auf den Geräten SNMP nur lesend
 einrichten.
 
+Geräte mit unterschiedlichen Zugangsdaten (USV, Storage, iLO) erhalten je
+einen Eintrag unter `hosts`, mit der IP-Adresse wie in nextDesk. Ein `"` oder
+`\` in einem Schlüssel wird als `\"` bzw. `\\` geschrieben. SNMPv3 mit
+DES-Verschlüsselung (ältere APC-USV) funktioniert ab Sonde 1.3.2; sicherer ist
+AES auf dem Gerät.
+
 **Verbindungen** (welcher Port führt zu welchem Gerät, ab Sonde 1.3.0):
 Mit denselben SNMP-Zugangsdaten liest die Sonde bei Switches, Firewalls und
 Routern sowie bei allen Geräten mit SNMP-Sensor alle sechs Stunden die Ports,

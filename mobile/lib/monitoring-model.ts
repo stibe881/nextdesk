@@ -216,6 +216,180 @@ export function portLinkText(port: MonitoringPort): string {
   return port.deviceCount > 0 ? `${port.deviceCount} unbekannte Geräte` : "–";
 }
 
+export type PortState = "linked" | "trunk" | "up" | "down" | "unknown";
+
+/** State of a port for the matrix: what its colour says. */
+export function portState(port: MonitoringPort): PortState {
+  if (port.up === false) return "down";
+  if (port.link) return "linked";
+  if (port.deviceCount > 8) return "trunk";
+  if (port.up === null) return "unknown";
+  return "up";
+}
+
+export const PORT_STATE_LABELS: Record<PortState, string> = {
+  linked: "Gegenstelle bekannt",
+  trunk: "Uplink oder Trunk",
+  up: "aktiv",
+  down: "kein Link",
+  unknown: "unbekannt",
+};
+
+export type PortGroup = {
+  key: string;
+  label: string;
+  /** Physical ports of a unit, drawn as a front panel. */
+  panel: boolean;
+  ports: MonitoringPort[];
+};
+
+/** Last number of a port name: «1/1/24» → 24, «Trk1» → 1. */
+export function portNumber(name: string): number | null {
+  const match = /(\d+)\D*$/.exec(name);
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * Ports grouped like the device is built: per unit of a stack and module
+ * («1/1/24» = unit 1, module 1, port 24; «2/12» = unit 2; «17» = port 17).
+ * Everything else (VLANs, LAGs, management) is one group that is only worth
+ * showing where something is connected.
+ */
+export function portGroups(ports: readonly MonitoringPort[]): PortGroup[] {
+  const groups = new Map<string, PortGroup>();
+  const add = (
+    key: string,
+    label: string,
+    panel: boolean,
+    port: MonitoringPort,
+  ) => {
+    const group = groups.get(key) ?? { key, label, panel, ports: [] };
+    group.ports.push(port);
+    groups.set(key, group);
+  };
+  for (const port of ports) {
+    const name = port.port.trim();
+    const three = /^(\d+)\/(\d+)\/(\d+)$/.exec(name);
+    const two = /^(\d+)\/(\d+)$/.exec(name);
+    if (three) {
+      add(
+        `${three[1]}/${three[2]}`,
+        three[2] === "1"
+          ? `Einheit ${three[1]}`
+          : `Einheit ${three[1]} · Modul ${three[2]}`,
+        true,
+        port,
+      );
+    } else if (two) {
+      add(`${two[1]}`, `Einheit ${two[1]}`, true, port);
+    } else if (/^\d+$/.test(name)) {
+      add("", "Ports", true, port);
+    } else {
+      add("~", "Weitere Schnittstellen", false, port);
+    }
+  }
+  const order = (a: string, b: string) =>
+    a.localeCompare(b, "de", { numeric: true });
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      ports: [...group.ports].sort(
+        (a, b) =>
+          (portNumber(a.port) ?? 0) - (portNumber(b.port) ?? 0) ||
+          order(a.port, b.port),
+      ),
+    }))
+    .sort((a, b) => Number(!a.panel) - Number(!b.panel) || order(a.key, b.key));
+}
+
+export type LinkDiagram = {
+  width: number;
+  height: number;
+  ports: { port: string; alias: string | null; y: number }[];
+  neighbours: {
+    key: string;
+    name: string;
+    detail: string | null;
+    assetId: string | null;
+    monitored: boolean;
+    y: number;
+  }[];
+  links: { key: string; path: string; source: MonitoringLink["source"] }[];
+  /** Connections left out because the diagram is full. */
+  hidden: number;
+};
+
+const DIAGRAM = { width: 720, row: 30, left: 170, right: 500 };
+
+/**
+ * Diagram of the connections: the ports of the device on the left, the
+ * devices they lead to on the right, a line for every connection. Only
+ * neighbours with a name count (LLDP, known device or address); bare MAC
+ * addresses stay in the list.
+ */
+export function linkDiagram(
+  ports: readonly MonitoringPort[],
+  max = 36,
+): LinkDiagram {
+  const named = ports.filter(
+    (port) =>
+      port.link !== null &&
+      (port.link.source === "lldp" ||
+        port.link.assetId !== null ||
+        port.link.address !== null),
+  );
+  const shown = named.slice(0, max);
+  const keyOf = (link: MonitoringLink) =>
+    link.assetId ?? link.name.trim().toLowerCase();
+  const neighbours = new Map<
+    string,
+    Omit<LinkDiagram["neighbours"][number], "y">
+  >();
+  for (const port of shown) {
+    const link = port.link!;
+    if (!neighbours.has(keyOf(link))) {
+      neighbours.set(keyOf(link), {
+        key: keyOf(link),
+        name: link.name,
+        detail: link.address,
+        assetId: link.assetId,
+        monitored: link.monitored,
+      });
+    }
+  }
+  const rows = Math.max(shown.length, neighbours.size, 1);
+  const height = rows * DIAGRAM.row;
+  const spread = (count: number, index: number) =>
+    ((index + 0.5) * height) / Math.max(count, 1);
+  const left = shown.map((port, index) => ({
+    port: port.port,
+    alias: port.alias,
+    y: spread(shown.length, index),
+  }));
+  const right = [...neighbours.values()].map((entry, index) => ({
+    ...entry,
+    y: spread(neighbours.size, index),
+  }));
+  const rightY = new Map(right.map((entry) => [entry.key, entry.y]));
+  const middle = (DIAGRAM.left + DIAGRAM.right) / 2;
+  return {
+    width: DIAGRAM.width,
+    height,
+    ports: left,
+    neighbours: right,
+    links: shown.map((port, index) => {
+      const y1 = left[index]!.y;
+      const y2 = rightY.get(keyOf(port.link!)) ?? y1;
+      return {
+        key: port.port,
+        path: `M${DIAGRAM.left},${y1} C${middle},${y1} ${middle},${y2} ${DIAGRAM.right},${y2}`,
+        source: port.link!.source,
+      };
+    }),
+    hidden: named.length - shown.length,
+  };
+}
+
 export const LINK_SOURCE_LABELS: Record<MonitoringLink["source"], string> = {
   lldp: "LLDP",
   mac: "MAC-Tabelle",

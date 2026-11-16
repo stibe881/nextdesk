@@ -1207,60 +1207,48 @@ const HANDLERS = {
             monitored: true,
           },
         ],
-        ports: [
-          {
-            port: "Ethernet 1",
-            alias: "Uplink",
-            up: true,
-            speedMbps: 10000,
-            link: link(
-              "SW-CORE-01",
-              "1/1/7",
-              D.uid("49494949", 1),
+        ports: Array.from({ length: 28 }, (_, index) => {
+          const number = index + 1;
+          const named = {
+            3: link(
+              "SRV-SQL-01",
+              null,
+              D.uid("49494949", 2),
               true,
-              "10.10.0.2",
+              "10.10.20.21",
             ),
-            deviceCount: 0,
-          },
-          {
-            port: "Ethernet 2",
-            alias: "Backup",
-            up: true,
-            speedMbps: 10000,
-            link: link(
+            4: link(
               "SRV-BACKUP-01",
               null,
               D.uid("49494949", 5),
               true,
               "10.10.20.40",
             ),
-            deviceCount: 1,
-          },
-          {
-            port: "iLO",
-            alias: null,
-            up: true,
-            speedMbps: 1000,
-            link: link("asw-srv-raum", "1/1/22", null, false, "10.10.0.14"),
-            deviceCount: 0,
-          },
-          {
-            port: "Ethernet 3",
-            alias: null,
-            up: false,
-            speedMbps: null,
-            link: null,
-            deviceCount: 0,
-          },
-          {
-            port: "Ethernet 4",
-            alias: null,
-            up: false,
-            speedMbps: null,
-            link: null,
-            deviceCount: 0,
-          },
-        ],
+            9: link("ap-empfang", "eth0", null, false, "10.10.30.11"),
+            10: link("ap-sitzung", "eth0", null, false, "10.10.30.12"),
+            14: link("drucker-og2", null, null, false, "10.10.40.7"),
+            25: link(
+              "FW-BAAR-01",
+              "port3",
+              D.uid("49494949", 3),
+              true,
+              "10.10.0.1",
+            ),
+            27: link("asw-srv-raum", "1/1/52", null, false, "10.10.0.14"),
+            28: link("asw-og2", "1/1/52", null, false, "10.10.0.15"),
+          }[number];
+          const up =
+            named !== undefined ||
+            [1, 2, 5, 6, 11, 17, 18, 26].includes(number);
+          return {
+            port: `1/1/${number}`,
+            alias: number >= 25 ? "Uplink" : number <= 4 ? "Server" : "Client",
+            up,
+            speedMbps: up ? (number >= 25 ? 10000 : 1000) : null,
+            link: named ?? null,
+            deviceCount: named ? 1 : number === 26 ? 42 : up ? 1 : 0,
+          };
+        }),
       });
     }
     if (body.type === "device") {

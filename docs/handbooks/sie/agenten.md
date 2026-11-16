@@ -486,6 +486,16 @@ Ein Klick auf ein Gerät öffnet das **Gerätedetail**:
 
 ![Verbindungen eines Geräts: Ports und Gegenstellen](images/ag-ueberwachung-verbindungen.jpg)
 
+Mit **Liste** und **Matrix** oben in der Karte wechselt die Darstellung. Die
+Matrix zeigt die Ports jeder Einheit wie auf der Gerätefront, eingefärbt nach
+Zustand (Gegenstelle bekannt, Uplink oder Trunk, aktiv, kein Link). Ein Klick
+auf einen Port nennt darunter die Gegenstelle. Das Diagramm «Verbindungen zu
+bekannten Geräten» zieht von jedem Port eine Linie zum Gerät, zu dem er führt
+(durchgezogen: LLDP, gestrichelt: MAC-Tabelle); Geräte der Infrastruktur sind
+anklickbar.
+
+![Verbindungen als Matrix mit Diagramm](images/ag-ueberwachung-matrix.jpg)
+
 Mit dem Recht «Assets verwalten» können Sie zusätzlich:
 
 1. **Geräte hinzufügen** – die Suche findet:

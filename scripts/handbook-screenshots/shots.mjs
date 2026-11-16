@@ -250,6 +250,22 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-ueberwachung-matrix",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.clickText("SRV-SQL-01");
+      await h.waitText("Verbunden mit");
+      await h.click("Matrix");
+      await h.page.getByRole("button", { name: /^Port 1\/1\/25:/ }).click();
+      await h.page
+        .getByRole("heading", { name: "Verbindungen", exact: true })
+        .scrollIntoViewIfNeeded();
+      await h.settle(500);
+    },
+  },
+  {
     name: "ag-teams",
     persona: "agent",
     async run(h) {

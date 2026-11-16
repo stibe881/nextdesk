@@ -9,7 +9,8 @@
   <name>nextDesk IPAM-Agent</name>
   <description>Netzwerk-Discovery (Ping, ARP, SNMP, LLDP) und Microsoft DHCP/DNS für nextDesk. Verbindet sich nur ausgehend per HTTPS.</description>
   <executable>%ProgramFiles%\nodejs\node.exe</executable>
-  <arguments>"%ProgramFiles%\nextDesk\ipam-agent\dist\main.js"</arguments>
+  <!-- openssl-legacy-provider: SNMPv3 mit DES (z. B. ältere APC-USV) braucht die alten OpenSSL-Verfahren. -->
+  <arguments>--openssl-legacy-provider "%ProgramFiles%\nextDesk\ipam-agent\dist\main.js"</arguments>
   <workingdirectory>%ProgramFiles%\nextDesk\ipam-agent</workingdirectory>
   <env name="IPAM_AGENT_CONFIG" value="%ProgramData%\nextDesk\ipam-agent\config.json" />
   <env name="NODE_ENV" value="production" />

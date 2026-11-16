@@ -602,6 +602,204 @@ button.monitoring-tile[aria-pressed="true"] {
   background: var(--tone-danger);
 }
 
+.monitoring-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.monitoring-toggle button {
+  border: 0;
+  padding: 7px 14px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.monitoring-toggle button[aria-pressed="true"] {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.monitoring-matrix {
+  display: grid;
+  gap: 16px;
+  border-top: 1px solid var(--border);
+  padding: 16px 20px 20px;
+}
+
+.monitoring-matrix h4 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.monitoring-matrix__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.monitoring-matrix__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.monitoring-matrix__legend .monitoring-port {
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0;
+}
+
+/* Front panel: two rows, odd ports on top, like on the device. */
+.monitoring-matrix__panel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, 30px);
+  grid-auto-columns: 34px;
+  gap: 4px;
+  justify-content: start;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--surface-subtle);
+  overflow-x: auto;
+}
+
+.monitoring-matrix__panel--free {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.monitoring-port {
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  height: 30px;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 6px;
+  line-height: 1;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.monitoring-port--linked {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.monitoring-port--trunk {
+  border-color: var(--tone-warning);
+  background: var(--tone-warning-soft);
+  color: var(--tone-warning);
+}
+
+.monitoring-port--up {
+  border-color: var(--tone-success);
+  background: var(--tone-success-soft);
+  color: var(--tone-success);
+}
+
+.monitoring-port--down,
+.monitoring-port--unknown {
+  color: var(--muted);
+}
+
+.monitoring-port[aria-pressed="true"] {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.monitoring-matrix__detail {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--ink);
+}
+
+.monitoring-matrix__detail .text-button {
+  padding: 0;
+  font-weight: 650;
+}
+
+.monitoring-links {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.monitoring-links text {
+  fill: var(--ink);
+  font-size: 12px;
+}
+
+.monitoring-links__line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 1.5;
+  opacity: 0.55;
+}
+
+.monitoring-links__line--mac {
+  stroke: var(--tone-success);
+  stroke-dasharray: 4 3;
+}
+
+.monitoring-links__line.is-selected {
+  stroke-width: 3;
+  opacity: 1;
+}
+
+.monitoring-links__port rect,
+.monitoring-links__device rect {
+  fill: var(--surface);
+  stroke: var(--border);
+}
+
+.monitoring-links__port {
+  cursor: pointer;
+}
+
+.monitoring-links__port.is-selected rect {
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.monitoring-links__device.is-link {
+  cursor: pointer;
+}
+
+.monitoring-links__device.is-link rect {
+  stroke: var(--primary);
+}
+
+.monitoring-links__device.is-link text {
+  fill: var(--primary);
+  font-weight: 650;
+}
+
 .monitoring-steps {
   display: grid;
   gap: 6px;

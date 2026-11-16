@@ -12,4 +12,5 @@ ENV NODE_ENV=production \
     IPAM_AGENT_CONFIG=/etc/nextdesk-ipam-agent/config.json
 # Kein root: ping nutzt die Datei-Capability cap_net_raw (Docker-Standard).
 USER node
-CMD ["node", "dist/main.js"]
+# openssl-legacy-provider: SNMPv3 mit DES (z. B. ältere APC-USV).
+CMD ["node", "--openssl-legacy-provider", "dist/main.js"]
