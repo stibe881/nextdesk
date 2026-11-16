@@ -60,3 +60,22 @@ Deno.test(
     }
   },
 );
+
+Deno.test("contracts: linked licenses stay in the tenant and the caller's departments", async () => {
+  const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  for (const required of [
+    'type: "listLicenses"',
+    "await syncLicenseLinks(",
+    '"license_invalid"',
+    '.update({ contract_id: null, updated_by: actorId })',
+    '.update({ contract_id: contractId, updated_by: actorId })',
+  ]) {
+    if (!source.includes(required)) {
+      throw new Error(`The contract endpoint lost a license link fence: ${required}`);
+    }
+  }
+  const sync = source.slice(source.indexOf("async function syncLicenseLinks"));
+  if (!sync.slice(0, 1500).includes("applyDepartmentScope(")) {
+    throw new Error("License links must be limited to the caller's departments.");
+  }
+});

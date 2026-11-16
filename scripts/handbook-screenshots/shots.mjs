@@ -476,6 +476,25 @@ SHOTS.push(
     run: (h) => openSettingsTab(h, "SLA"),
   },
   {
+    name: "ag-vertrag-lizenzen",
+    // Contracts need the «Verträge» role; the demo admin has it.
+    persona: "admin",
+    async run(h) {
+      await h.open();
+      await h.nav("Verträge");
+      await h.waitText("Microsoft Enterprise Agreement");
+      const card = h.page
+        .locator("article")
+        .filter({ hasText: "Microsoft Enterprise Agreement" })
+        .first();
+      await card.getByRole("button", { name: "Bearbeiten" }).click();
+      await h.settle(500);
+      await h.scrollToText("Verknüpfte Lizenzen", 24);
+      await h.page.locator("#contract-licenses").click();
+      await h.settle(400);
+    },
+  },
+  {
     name: "ad-module",
     persona: "admin",
     run: (h) => openSettingsTab(h, "Funktionen"),

@@ -884,17 +884,14 @@ Im selben Menü erfassen Sie – je nach Freischaltung – auch Erinnerungen,
 Fälle, Serviceaufgaben, Wissensartikel, Lagerartikel, Verträge und Lizenzen.
 
 In der **iOS- und Android-App** öffnet ein **langer Druck auf den Home-Knopf**
-ein Menü in zwei Gruppen. Oben unter **Öffnen** springen Sie direkt zu
-**Erinnerungen**, **Überwachung**, **Infrastruktur** und **IP-Adressen**,
-darunter im Halbkreis unter **Erfassen** zu **Erinnerung**, **Ticket**,
-**Serviceaufgabe** und **Lagerartikel**. Es erscheinen nur die Einträge, deren
-Modul für Sie freigeschaltet ist. Die Seite **Erinnerungen** zeigt Ihre
-offenen Erinnerungen nach **Überfällig**, **Heute**, **Demnächst** und **Ohne
-Fälligkeit**; mit **Erledigt** haken Sie eine ab, ein Tipp öffnet das
-verknüpfte Ticket, und **Erinnerung erfassen** legt eine neue an. Die Seite
-**IP-Adressen** zeigt die Subnetze nach Standort mit ihrer Auslastung und eine
-Suche nach IP-Adresse, Hostname oder MAC; ein Subnetz öffnet seine Adressen,
-eine Adresse ihre Details.
+ein Menü. Im Halbkreis unter **Erfassen** legen Sie direkt eine **Erinnerung**,
+ein **Ticket**, eine **Serviceaufgabe** oder einen **Lagerartikel** an.
+Mitglieder des Teams **System Engineer** sehen darüber zusätzlich die Gruppe
+**Öffnen** mit **Überwachung**, **Infrastruktur** und **IP-Adressen**. Es
+erscheinen nur die Einträge, deren Modul für Sie freigeschaltet ist. Die
+Seite **IP-Adressen** zeigt die Subnetze nach Standort mit ihrer Auslastung
+und eine Suche nach IP-Adresse, Hostname oder MAC; ein Subnetz öffnet seine
+Adressen, eine Adresse ihre Details.
 
 ![Neues Ticket als Agent erfassen](images/ag-neues-ticket.jpg)
 
@@ -1097,6 +1094,33 @@ Microsoft 365 entfernen Sie bei Bedarf weiterhin unter **Lizenzen**.
 ein Ersatzgerät im Namen der Person bestellen. Die Bestellung braucht keine
 Freigabe; in der Bestellung steht die Herkunft «Phishing-/Junk-Fall …
 (ohne Genehmigung)».
+
+## Verträge und Lizenzen
+
+Unter **Ressourcen → Verträge** und **Ressourcen → Lizenzen** verwalten Sie
+Verträge (z. B. ein Microsoft Enterprise Agreement) und die Software-Lizenzen
+dazu. Ein Vertrag kann mehrere Lizenzen umfassen, eine Lizenz gehört zu
+höchstens einem Vertrag.
+
+- **Im Vertrag** wählen Sie unter **Dokumente und Verknüpfungen → Verknüpfte
+  Lizenzen** mit **Lizenz hinzufügen …** die Lizenzen aus der Liste; × entfernt
+  eine Verknüpfung. Gehört eine Lizenz schon zu einem anderen Vertrag, steht
+  das in der Liste («gehört zu …»); beim Speichern wechselt sie zu diesem
+  Vertrag.
+- **In der Lizenz** wählen Sie unter **Dokumente und Verknüpfungen → Vertrag**
+  den Vertrag, zu dem sie gehört.
+- **Fehlt das Gegenstück**, legen Sie es direkt unter der Liste an: Name bei
+  **Neue Lizenz** bzw. **Neuer Vertrag** eingeben und **Hinzufügen** klicken.
+  Der Vertragspartner wird als Hersteller/Anbieter übernommen (und
+  umgekehrt), ebenso Abteilung, verantwortliche Person und Status (aktiv oder
+  Entwurf). Weitere Angaben wie Laufzeit, Anzahl oder Kosten ergänzen Sie danach
+  im neuen Eintrag. Eine im Vertrag neu erstellte Lizenz wird beim Speichern
+  des Vertrags verknüpft.
+
+Die Karten zeigen die Verknüpfung ebenfalls: beim Vertrag die **Lizenzen**, bei
+der Lizenz den **Vertrag**.
+
+![Vertrag mit verknüpften Lizenzen](images/ag-vertrag-lizenzen.jpg)
 
 ## Shop: Artikel nur für Kaderstufen
 

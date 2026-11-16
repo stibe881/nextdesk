@@ -13,9 +13,11 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
+import { isInTeamNamed } from "@/lib/incidents";
 import {
   QUICK_CREATE,
   QUICK_OPEN,
+  QUICK_OPEN_TEAM,
   type QuickCreate,
 } from "@/lib/quick-create-actions";
 import { useAppColors } from "@/lib/themed-styles";
@@ -59,13 +61,29 @@ export function QuickCreateMenu({
 }: QuickCreateMenuProps) {
   const colors = useAppColors();
   const router = useRouter();
-  const { isEnabled } = useMobileFeatures();
+  const { isEnabled, tenantId } = useMobileFeatures();
+  // «Öffnen» only for the team QUICK_OPEN_TEAM (checked per tenant).
+  const [openTeam, setOpenTeam] = useState<{
+    tenantId: string;
+    member: boolean;
+  } | null>(null);
+  useEffect(() => {
+    if (!tenantId) return;
+    let active = true;
+    void isInTeamNamed(tenantId, QUICK_OPEN_TEAM).then((member) => {
+      if (active) setOpenTeam({ tenantId, member });
+    });
+    return () => {
+      active = false;
+    };
+  }, [tenantId]);
+  const openAllowed = openTeam?.tenantId === tenantId && openTeam.member;
   const items = QUICK_CREATE.filter(
     (item) => !item.feature || isEnabled(item.feature),
   );
-  const openItems = QUICK_OPEN.filter(
-    (item) => !item.feature || isEnabled(item.feature),
-  );
+  const openItems = openAllowed
+    ? QUICK_OPEN.filter((item) => !item.feature || isEnabled(item.feature))
+    : [];
   const angles = arcAngles(items.length);
 
   const [mounted, setMounted] = useState(visible);
@@ -114,7 +132,8 @@ export function QuickCreateMenu({
 
   function choose(item: QuickCreate) {
     onClose();
-    router.push(item.href as Href);
+    // Navigate once the menu has closed, not while its modal is still shown.
+    setTimeout(() => router.push(item.href as Href), CLOSE_MS);
   }
 
   return (

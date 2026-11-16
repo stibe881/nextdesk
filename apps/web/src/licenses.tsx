@@ -35,6 +35,15 @@ import { COST_PERIOD_LABEL, formatMoney } from "./lib/license-reclaim";
 import { LicenseReclaimPanel, LicenseSeatsDialog } from "./license-reclaim";
 
 import { confirmDialog } from "./app-dialog";
+import { PickOrCreate } from "./pick-or-create";
+import {
+  contractOptions,
+  invokeErrorMessage,
+  newContractValues,
+  newRecordProblem,
+  parseLinkableContracts,
+  type LinkableContract,
+} from "./lib/contract-license-link";
 type LicenseStatus = "draft" | "active" | "terminated" | "archived";
 type LicenseType = string;
 type License = {
@@ -59,6 +68,8 @@ type License = {
   seatCostPeriod?: "monthly" | "quarterly" | "yearly" | "one_time" | null;
   /** Microsoft-365-SKU (optional, für das Entfernen in Entra). */
   m365SkuId?: string | null;
+  /** Contract this license belongs to (missing from older servers). */
+  contractId?: string | null;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -83,6 +94,7 @@ type Form = {
   seatCostCurrency: "CHF" | "EUR" | "USD";
   seatCostPeriod: "" | "monthly" | "quarterly" | "yearly" | "one_time";
   m365SkuId: string;
+  contractId: string;
 };
 const EMPTY: Form = {
   id: null,
@@ -103,6 +115,7 @@ const EMPTY: Form = {
   seatCostCurrency: "CHF",
   seatCostPeriod: "",
   m365SkuId: "",
+  contractId: "",
 };
 const statusLabel: Record<LicenseStatus, string> = {
   draft: "Entwurf",
@@ -183,6 +196,7 @@ function formFor(contract: License): Form {
     seatCostCurrency: contract.seatCostCurrency ?? "CHF",
     seatCostPeriod: contract.seatCostPeriod ?? "",
     m365SkuId: contract.m365SkuId ?? "",
+    contractId: contract.contractId ?? "",
   };
 }
 function responseData(value: unknown): Record<string, unknown> | null {
@@ -216,6 +230,7 @@ export function Licenses({
 }) {
   const [licenses, setLicenses] = useState<License[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
+  const [contracts, setContracts] = useState<LinkableContract[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -236,11 +251,65 @@ export function Licenses({
   const [reclaimOpen, setReclaimOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
+  const contractTitle = (id: string) =>
+    contracts.find((contract) => contract.id === id)?.title ?? "Vertrag";
+  // Creates a contract from the license form and selects it.
+  const createContract = async (name: string): Promise<string | null> => {
+    if (!supabase) return null;
+    const problem = newRecordProblem(
+      name,
+      form.vendorName,
+      "Hersteller / Anbieter",
+    );
+    if (problem) {
+      setError(problem);
+      return null;
+    }
+    setError("");
+    const result = await supabase.functions.invoke("contracts", {
+      body: {
+        type: "create",
+        tenantId,
+        values: newContractValues(name, form),
+      },
+    });
+    const created = result.error
+      ? null
+      : parseLinkableContracts([responseData(result.data)?.contract])[0];
+    if (!created) {
+      setError(
+        (await invokeErrorMessage(result.error)) ||
+          "Der Vertrag konnte nicht erstellt werden.",
+      );
+      return null;
+    }
+    setContracts((current) =>
+      [...current, created].sort((a, b) =>
+        a.title.localeCompare(b.title, "de-CH"),
+      ),
+    );
+    setNotice(
+      tn(
+        `Der Vertrag «${created.title}» wurde erstellt. Ergänze Laufzeit und Kosten später unter «Verträge».`,
+        `Der Vertrag «${created.title}» wurde erstellt. Ergänzen Sie Laufzeit und Kosten später unter «Verträge».`,
+      ),
+    );
+    return created.id;
+  };
   const load = async () => {
     if (!supabase) return;
     setLoading(true);
     setError("");
     try {
+      // A failed contract list must not block the licenses themselves.
+      const contractsPromise = supabase.functions
+        .invoke("licenses", { body: { type: "listContracts", tenantId } })
+        .then((result) =>
+          result.error
+            ? []
+            : parseLinkableContracts(responseData(result.data)?.contracts),
+        )
+        .catch(() => [] as LinkableContract[]);
       const [licensesResult, peopleResult] = await Promise.all([
         supabase.functions.invoke("licenses", {
           body: { type: "list", tenantId, includeArchived },
@@ -255,6 +324,7 @@ export function Licenses({
       const nextPeople = parsePeople(peopleResult.data);
       if (!nextLicenses || !nextPeople) throw new Error("invalid_response");
       setLicenses(nextLicenses);
+      setContracts(await contractsPromise);
       setDepartments(parseDepartmentOptions(responseData(licensesResult.data)));
       setPeople(
         nextPeople.sort((a, b) =>
@@ -448,6 +518,7 @@ export function Licenses({
         seatCostCurrency: form.seatCostCurrency,
         seatCostPeriod: seatCostAmount === null ? null : form.seatCostPeriod,
         m365SkuId: form.m365SkuId.trim() || null,
+        contractId: form.contractId || null,
       };
       if (values.startsOn && values.endsOn && values.endsOn < values.startsOn)
         throw new Error("invalid_dates");
@@ -714,6 +785,12 @@ export function Licenses({
                           : contract.quantity.toLocaleString("de-CH")}
                       </dd>
                     </div>
+                    {contract.contractId ? (
+                      <div>
+                        <dt>Vertrag</dt>
+                        <dd>{contractTitle(contract.contractId)}</dd>
+                      </div>
+                    ) : null}
                     {departmentLabel(contract.departmentId, departments) ? (
                       <div>
                         <dt>Abteilung</dt>
@@ -1143,7 +1220,28 @@ export function Licenses({
                 </FormField>
               </FormGrid>
             </FormCard>
-            <FormCard title="Dokumente">
+            <FormCard title="Dokumente und Verknüpfungen">
+              <div className="fk-field">
+                <span className="fk-label" id="license-contract-label">
+                  Vertrag
+                </span>
+                <PickOrCreate
+                  createLabel="Neuer Vertrag"
+                  createPlaceholder="z. B. Microsoft Enterprise Agreement"
+                  emptyLabel="– kein Vertrag –"
+                  id="license-contract"
+                  labelledBy="license-contract-label"
+                  onChange={(value) =>
+                    setForm((current) => ({
+                      ...current,
+                      contractId: value ?? "",
+                    }))
+                  }
+                  onCreate={createContract}
+                  options={contractOptions(contracts)}
+                  value={form.contractId || null}
+                />
+              </div>
               <RecordAttachments
                 entityId={form.id}
                 entityType="license"

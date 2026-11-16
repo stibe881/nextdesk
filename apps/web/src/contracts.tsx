@@ -32,6 +32,15 @@ import {
 } from "./lib/contract-departments";
 
 import { confirmDialog } from "./app-dialog";
+import { PickOrCreate } from "./pick-or-create";
+import {
+  invokeErrorMessage,
+  licenseOptions,
+  newLicenseValues,
+  newRecordProblem,
+  parseLinkableLicenses,
+  type LinkableLicense,
+} from "./lib/contract-license-link";
 type ContractStatus = "draft" | "active" | "terminated" | "archived";
 type ContractType = string;
 type Contract = {
@@ -54,6 +63,8 @@ type Contract = {
   autoRenew: boolean;
   renewalMonths: number | null;
   assetIds: string[];
+  /** Licenses covered by this contract (missing from older servers). */
+  licenseIds?: string[];
   departmentId: string | null;
   responsibleUserId: string | null;
   notes: string | null;
@@ -88,6 +99,7 @@ type Form = {
   autoRenew: boolean;
   renewalMonths: string;
   assetIds: string[];
+  licenseIds: string[];
   departmentId: string;
   responsibleUserId: string;
   notes: string;
@@ -111,6 +123,7 @@ const EMPTY: Form = {
   autoRenew: false,
   renewalMonths: "",
   assetIds: [],
+  licenseIds: [],
   departmentId: "",
   responsibleUserId: "",
   notes: "",
@@ -216,6 +229,7 @@ function formFor(contract: Contract): Form {
     renewalMonths:
       contract.renewalMonths === null ? "" : String(contract.renewalMonths),
     assetIds: contract.assetIds,
+    licenseIds: contract.licenseIds ?? [],
     departmentId: contract.departmentId ?? "",
     responsibleUserId: contract.responsibleUserId ?? "",
     notes: contract.notes ?? "",
@@ -255,6 +269,7 @@ export function Contracts({
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [assets, setAssets] = useState<AssetOption[]>([]);
   const [assetSearch, setAssetSearch] = useState("");
+  const [licenses, setLicenses] = useState<LinkableLicense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -272,6 +287,51 @@ export function Contracts({
   const [documentsFor, setDocumentsFor] = useState<Contract | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
+  const licenseTitle = (id: string) =>
+    licenses.find((license) => license.id === id)?.title ?? "Lizenz";
+  const contractTitle = (id: string) =>
+    contracts.find((contract) => contract.id === id)?.title ?? null;
+  // Creates a license from the contract form; it is linked when the contract
+  // is saved.
+  const createLicense = async (name: string): Promise<string | null> => {
+    if (!supabase) return null;
+    const problem = newRecordProblem(
+      name,
+      form.counterpartyName,
+      "Vertragspartner",
+    );
+    if (problem) {
+      setError(problem);
+      return null;
+    }
+    setError("");
+    const result = await supabase.functions.invoke("licenses", {
+      body: {
+        type: "create",
+        tenantId,
+        values: newLicenseValues(name, form),
+      },
+    });
+    const created = result.error
+      ? null
+      : parseLinkableLicenses([responseData(result.data)?.license])[0];
+    if (!created) {
+      setError(
+        (await invokeErrorMessage(result.error)) ||
+          "Die Lizenz konnte nicht erstellt werden.",
+      );
+      return null;
+    }
+    setLicenses((current) =>
+      [...current, created].sort((a, b) =>
+        a.title.localeCompare(b.title, "de-CH"),
+      ),
+    );
+    setNotice(
+      `Die Lizenz «${created.title}» wurde erstellt und wird beim Speichern verknüpft.`,
+    );
+    return created.id;
+  };
   const load = async () => {
     if (!supabase) return;
     setLoading(true);
@@ -287,6 +347,15 @@ export function Contracts({
             : [];
         })
         .catch(() => [] as AssetOption[]);
+      // Likewise the licenses offered for linking.
+      const licensesPromise = supabase.functions
+        .invoke("contracts", { body: { type: "listLicenses", tenantId } })
+        .then((result) =>
+          result.error
+            ? []
+            : parseLinkableLicenses(responseData(result.data)?.licenses),
+        )
+        .catch(() => [] as LinkableLicense[]);
       const [contractsResult, peopleResult] = await Promise.all([
         supabase.functions.invoke("contracts", {
           body: { type: "list", tenantId, includeArchived },
@@ -305,6 +374,7 @@ export function Contracts({
         parseDepartmentOptions(responseData(contractsResult.data)),
       );
       setAssets(await assetsPromise);
+      setLicenses(await licensesPromise);
       setPeople(
         nextPeople.sort((a, b) =>
           a.displayName.localeCompare(b.displayName, "de-CH"),
@@ -477,6 +547,7 @@ export function Contracts({
             ? Number(form.renewalMonths)
             : null,
         assetIds: form.assetIds,
+        licenseIds: form.licenseIds,
         departmentId: form.departmentId || null,
         responsibleUserId: form.responsibleUserId || null,
         notes: form.notes || null,
@@ -522,6 +593,31 @@ export function Contracts({
           (a, b) => a.title.localeCompare(b.title, "de-CH"),
         ),
       );
+      if (saved.licenseIds) {
+        const linked = saved.licenseIds;
+        // A license has one contract: it leaves the contract it belonged to.
+        setLicenses((current) =>
+          current.map((license) =>
+            linked.includes(license.id)
+              ? { ...license, contractId: saved.id }
+              : license.contractId === saved.id
+                ? { ...license, contractId: null }
+                : license,
+          ),
+        );
+        setContracts((current) =>
+          current.map((item) =>
+            item.id === saved.id
+              ? item
+              : {
+                  ...item,
+                  licenseIds: (item.licenseIds ?? []).filter(
+                    (id) => !linked.includes(id),
+                  ),
+                },
+          ),
+        );
+      }
       setNotice(
         form.id
           ? "Der Vertrag wurde aktualisiert."
@@ -765,6 +861,16 @@ export function Contracts({
                                 assets.find((asset) => asset.id === id)?.name ??
                                 "Unbekanntes Asset",
                             )
+                            .join(", ")}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {(contract.licenseIds ?? []).length > 0 ? (
+                      <div>
+                        <dt>Lizenzen</dt>
+                        <dd>
+                          {(contract.licenseIds ?? [])
+                            .map(licenseTitle)
                             .join(", ")}
                         </dd>
                       </div>
@@ -1299,6 +1405,63 @@ export function Contracts({
                       ))}
                   </ul>
                 ) : null}
+              </div>
+              <div className="contracts__assets">
+                <span
+                  className="contracts__assets-label"
+                  id="contract-licenses-label"
+                >
+                  Verknüpfte Lizenzen
+                </span>
+                {form.licenseIds.length > 0 ? (
+                  <ul className="contracts__asset-chips">
+                    {form.licenseIds.map((id) => (
+                      <li key={id}>
+                        {licenseTitle(id)}
+                        <button
+                          aria-label={`Verknüpfung mit «${licenseTitle(id)}» entfernen`}
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              licenseIds: form.licenseIds.filter(
+                                (licenseId) => licenseId !== id,
+                              ),
+                            })
+                          }
+                          type="button"
+                        >
+                          <X size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <PickOrCreate
+                  createLabel="Neue Lizenz"
+                  createPlaceholder="z. B. Microsoft 365 E3"
+                  emptyLabel="Lizenz hinzufügen …"
+                  id="contract-licenses"
+                  labelledBy="contract-licenses-label"
+                  onChange={(value) => {
+                    if (!value) return;
+                    setForm((current) =>
+                      current.licenseIds.includes(value)
+                        ? current
+                        : {
+                            ...current,
+                            licenseIds: [...current.licenseIds, value],
+                          },
+                    );
+                  }}
+                  onCreate={createLicense}
+                  options={licenseOptions(
+                    licenses,
+                    form.licenseIds,
+                    form.id,
+                    contractTitle,
+                  )}
+                  value={null}
+                />
               </div>
               <RecordAttachments
                 entityId={form.id}

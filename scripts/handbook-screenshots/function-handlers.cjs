@@ -13,6 +13,85 @@ const HANDBOOK_DIR = path.join(REPO_ROOT, "docs/handbooks");
 
 const ok = (data) => ({ json: { data } });
 
+// Contracts and licenses (Ressourcen → Verträge / Lizenzen).
+const DEMO_CONTRACT_PEOPLE = () =>
+  D.AGENTS.map((user) => ({ id: user.id, displayName: user.name }));
+const demoRecord = (fields) => ({
+  referenceNumber: null,
+  status: "active",
+  startsOn: null,
+  endsOn: null,
+  noticePeriodDays: null,
+  reminderDaysBefore: null,
+  reminderSentFor: null,
+  departmentId: null,
+  responsibleUserId: null,
+  notes: null,
+  archivedAt: null,
+  createdAt: D.ago(200 * D.DAY),
+  updatedAt: D.ago(20 * D.DAY),
+  ...fields,
+});
+const DEMO_CONTRACTS = [
+  demoRecord({
+    id: D.uid("15151515", 1),
+    title: "Microsoft Enterprise Agreement",
+    counterpartyName: "Microsoft",
+    referenceNumber: "EA-2025-0412",
+    contractType: "license",
+    startsOn: "2025-07-01",
+    endsOn: "2028-06-30",
+    noticePeriodDays: 90,
+    cancelled: false,
+    cancelledOn: null,
+    costAmount: 48600,
+    costCurrency: "CHF",
+    costPeriod: "yearly",
+    autoRenew: false,
+    renewalMonths: null,
+    assetIds: [],
+    licenseIds: [D.uid("16161616", 1), D.uid("16161616", 2)],
+  }),
+  demoRecord({
+    id: D.uid("15151515", 2),
+    title: "Abacus Wartungsvertrag",
+    counterpartyName: "Abacus Research",
+    contractType: "maintenance",
+    startsOn: "2024-01-01",
+    endsOn: "2026-12-31",
+    noticePeriodDays: 60,
+    cancelled: false,
+    cancelledOn: null,
+    costAmount: 7200,
+    costCurrency: "CHF",
+    costPeriod: "yearly",
+    autoRenew: true,
+    renewalMonths: 12,
+    assetIds: [],
+    licenseIds: [D.uid("16161616", 3)],
+  }),
+];
+const DEMO_LICENSES = [
+  ["Microsoft 365 E3", "Microsoft", 180, D.uid("15151515", 1)],
+  ["Visio Plan 2", "Microsoft", 12, D.uid("15151515", 1)],
+  ["Abacus Finanzbuchhaltung", "Abacus Research", 8, D.uid("15151515", 2)],
+  ["Adobe Acrobat Pro", "Adobe", 25, null],
+  ["Power BI Pro", "Microsoft", 10, null],
+].map(([title, vendorName, quantity, contractId], index) =>
+  demoRecord({
+    id: D.uid("16161616", index + 1),
+    title,
+    vendorName,
+    licenseType: "subscription",
+    quantity,
+    contractId,
+    seatCostAmount: null,
+    seatCostCurrency: "CHF",
+    seatCostPeriod: null,
+    m365SkuId: null,
+  }),
+);
+
 // People that exist only in the Entra directory (people search).
 const PERSON_DIRECTORY_EXTRA = [
   {
@@ -51,6 +130,7 @@ const ENABLED_FEATURES = new Set([
   "self_service.shop",
   "teams.provisioning",
   "monitoring.native",
+  "contracts.management",
 ]);
 const ALL_FEATURES = [
   "monitoring.native",
@@ -2886,6 +2966,42 @@ const HANDLERS = {
     body.type === "navigationSummary" ? ok({ attentionCount: 0 }) : null,
   "event-spaces": (body) =>
     body.type === "navigationSummary" ? fail("feature_disabled", 403) : null,
+  contracts: (body) => {
+    if (body.type === "list")
+      return ok({ contracts: DEMO_CONTRACTS, departments: [] });
+    if (body.type === "listPeople")
+      return ok({ people: DEMO_CONTRACT_PEOPLE() });
+    if (body.type === "listAssets") return ok({ assets: [] });
+    if (body.type === "listLicenses")
+      return ok({
+        licenses: DEMO_LICENSES.map((license) => ({
+          id: license.id,
+          title: license.title,
+          vendorName: license.vendorName,
+          status: license.status,
+          contractId: license.contractId,
+        })),
+      });
+    return null;
+  },
+  licenses: (body) => {
+    if (body.type === "list")
+      return ok({ licenses: DEMO_LICENSES, departments: [] });
+    if (body.type === "listPeople")
+      return ok({ people: DEMO_CONTRACT_PEOPLE() });
+    if (body.type === "listContracts")
+      return ok({
+        contracts: DEMO_CONTRACTS.map((contract) => ({
+          id: contract.id,
+          title: contract.title,
+          counterpartyName: contract.counterpartyName,
+          status: contract.status,
+        })),
+      });
+    return null;
+  },
+  "record-attachments": (body) =>
+    body.type === "list" ? ok({ attachments: [] }) : null,
   "service-assets": (body) => {
     if (body.type === "ownPhoto") return ok({ photoUrl: null });
     if (body.type === "listCatalog") {
