@@ -1098,6 +1098,33 @@ ein Ersatzgerät im Namen der Person bestellen. Die Bestellung braucht keine
 Freigabe; in der Bestellung steht die Herkunft «Phishing-/Junk-Fall …
 (ohne Genehmigung)».
 
+## Verträge und Lizenzen
+
+Unter **Ressourcen → Verträge** und **Ressourcen → Lizenzen** verwalten Sie
+Verträge (z. B. ein Microsoft Enterprise Agreement) und die Software-Lizenzen
+dazu. Ein Vertrag kann mehrere Lizenzen umfassen, eine Lizenz gehört zu
+höchstens einem Vertrag.
+
+- **Im Vertrag** wählen Sie unter **Dokumente und Verknüpfungen → Verknüpfte
+  Lizenzen** mit **Lizenz hinzufügen …** die Lizenzen aus der Liste; × entfernt
+  eine Verknüpfung. Gehört eine Lizenz schon zu einem anderen Vertrag, steht
+  das in der Liste («gehört zu …»); beim Speichern wechselt sie zu diesem
+  Vertrag.
+- **In der Lizenz** wählen Sie unter **Dokumente und Verknüpfungen → Vertrag**
+  den Vertrag, zu dem sie gehört.
+- **Fehlt das Gegenstück**, legen Sie es direkt unter der Liste an: Name bei
+  **Neue Lizenz** bzw. **Neuer Vertrag** eingeben und **Hinzufügen** klicken.
+  Der Vertragspartner wird als Hersteller/Anbieter übernommen (und
+  umgekehrt), ebenso Abteilung, verantwortliche Person und Status (aktiv oder
+  Entwurf). Weitere Angaben wie Laufzeit, Anzahl oder Kosten ergänzen Sie danach
+  im neuen Eintrag. Eine im Vertrag neu erstellte Lizenz wird beim Speichern
+  des Vertrags verknüpft.
+
+Die Karten zeigen die Verknüpfung ebenfalls: beim Vertrag die **Lizenzen**, bei
+der Lizenz den **Vertrag**.
+
+![Vertrag mit verknüpften Lizenzen](images/ag-vertrag-lizenzen.jpg)
+
 ## Shop: Artikel nur für Kaderstufen
 
 Beim Erfassen im Lager (**Zum Bestellen anbieten**) bzw. beim **Bearbeiten**

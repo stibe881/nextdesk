@@ -57,3 +57,18 @@ Deno.test(
     }
   },
 );
+
+Deno.test("licenses: the contract link is checked against tenant and departments", async () => {
+  const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  for (const required of [
+    'type: "listContracts"',
+    "await assertContract(",
+    '.from("contracts")',
+    "departmentVisible(scope, (data as Row).department_id)",
+    "contract_id: action.values.contractId",
+  ]) {
+    if (!source.includes(required)) {
+      throw new Error(`The license endpoint lost the contract link check: ${required}`);
+    }
+  }
+});
