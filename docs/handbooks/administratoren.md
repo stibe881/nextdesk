@@ -388,6 +388,15 @@ Wiederalarmierung, Folgestörungen, Ruhe während einer Wartung und die
 Anpassung des Systemstatus. Unter **Monitoring (PRTG)** stehen nur noch der
 Schalter für den Empfang von PRTG-Meldungen und der Token.
 
+Jede Sonde lässt sich über den Stift **bearbeiten** (Name, aktiv oder
+deaktiviert) und über den Papierkorb **löschen**. Beim Löschen wird ihr Token
+widerrufen; ihre Sensoren übernimmt eine andere aktive Sonde, oder sie
+bleiben ohne Sonde und werden nicht mehr gemessen. Unter «Bearbeiten»
+kannst du mit **Neuen Token erzeugen** den Token ersetzen, etwa wenn er
+in falsche Hände geraten ist: Der alte gilt sofort nicht mehr, der neue wird
+einmal angezeigt und gehört auf dem Server in die `config.json` der Sonde
+(Feld `agentToken`), danach den Dienst neu starten.
+
 Eine hier angelegte Sonde misst nur Sensoren. Die Netzwerk-Erkennung der
 IP-Adressverwaltung (Ping-Sweep der Subnetze) ist für sie ausgeschaltet und
 lässt sich unter **IP-Adressen → Discovery → Agenten** je Sonde einschalten.

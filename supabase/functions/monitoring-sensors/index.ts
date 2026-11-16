@@ -901,6 +901,70 @@ async function createAgent(admin: Client, tenantId: string, actorId: string, nam
   };
 }
 
+async function requireAgent(admin: Client, tenantId: string, agentId: string): Promise<Row> {
+  const { data, error } = await admin.from("ipam_agents").select("id, name, status")
+    .eq("tenant_id", tenantId).eq("id", agentId).neq("status", "revoked").maybeSingle();
+  if (error) throw unavailable();
+  if (!data) throw new HttpError(404, "agent_not_found", "Die Sonde wurde nicht gefunden.");
+  return data as Row;
+}
+
+/** Name of a probe and whether it is active (a deactivated probe is not served). */
+async function updateAgent(admin: Client, tenantId: string, agentId: string, name: string, active: boolean) {
+  await requireAgent(admin, tenantId, agentId);
+  const { error } = await admin.from("ipam_agents")
+    .update({ name, status: active ? "active" : "disabled", updated_at: new Date().toISOString() })
+    .eq("tenant_id", tenantId).eq("id", agentId);
+  if (error) {
+    if (error.code === "23505") {
+      throw new HttpError(409, "agent_exists", "Eine Sonde mit diesem Namen existiert bereits.");
+    }
+    throw unavailable();
+  }
+  return { ok: true };
+}
+
+/** New token for a probe; the old one stops working at once. Shown only here. */
+async function rotateAgentToken(admin: Client, tenantId: string, agentId: string) {
+  const agent = await requireAgent(admin, tenantId, agentId);
+  const token = createAgentToken(agentId);
+  const now = new Date().toISOString();
+  const { error } = await admin.from("ipam_agents")
+    .update({ token_hash: await sha256Hex(token), token_hint: tokenHint(token), token_rotated_at: now, updated_at: now })
+    .eq("tenant_id", tenantId).eq("id", agentId);
+  if (error) throw unavailable();
+  return { agent: { id: agentId, name: String(agent.name) }, token };
+}
+
+/**
+ * Removes a probe: its token is revoked. Its sensors move to another probe
+ * or stay without one (then they are not measured until one is chosen).
+ */
+async function removeAgent(admin: Client, tenantId: string, agentId: string, moveSensorsTo: string | null) {
+  await requireAgent(admin, tenantId, agentId);
+  if (moveSensorsTo) {
+    const target = await requireAgent(admin, tenantId, moveSensorsTo);
+    if (target.status !== "active") {
+      throw new HttpError(422, "agent_not_found", "Die Sonde für die Sensoren ist nicht aktiv.");
+    }
+  }
+  const moved = await admin.from("monitoring_sensors")
+    .update({ agent_id: moveSensorsTo, updated_at: new Date().toISOString() })
+    .eq("tenant_id", tenantId).eq("agent_id", agentId).select("id");
+  if (moved.error) throw unavailable();
+  if (!moveSensorsTo) {
+    // Nobody measures them any more: open alerts end, the state is unknown.
+    for (const row of (moved.data ?? []) as Row[]) {
+      await closeSensorAlert(admin, tenantId, String(row.id), "Sonde entfernt");
+    }
+  }
+  const revoked = await admin.from("ipam_agents")
+    .update({ status: "revoked", updated_at: new Date().toISOString() })
+    .eq("tenant_id", tenantId).eq("id", agentId);
+  if (revoked.error) throw unavailable();
+  return { ok: true, sensors: (moved.data ?? []).length };
+}
+
 async function handle(admin: Client, client: Client, actorId: string, action: Action) {
   const features = await resolveTenantFeatureStates(admin, action.tenantId, [FEATURE]);
   if (!features) throw unavailable();
@@ -954,6 +1018,15 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
     case "createAgent":
       manage();
       return await createAgent(admin, action.tenantId, actorId, action.name);
+    case "updateAgent":
+      manage();
+      return await updateAgent(admin, action.tenantId, action.agentId, action.name, action.active);
+    case "rotateAgentToken":
+      manage();
+      return await rotateAgentToken(admin, action.tenantId, action.agentId);
+    case "removeAgent":
+      manage();
+      return await removeAgent(admin, action.tenantId, action.agentId, action.moveSensorsTo);
     case "updateDevice":
       manage();
       return await updateDevice(admin, action.tenantId, actorId, action.assetId, action.device);

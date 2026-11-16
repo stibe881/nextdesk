@@ -347,6 +347,7 @@ function OverviewView({
               data={data}
               now={now}
               onAdd={() => setAddingProbe(true)}
+              onChanged={load}
               onError={setError}
               tenantId={tenantId}
             />
@@ -491,15 +492,20 @@ function ProbeCard({
   data,
   now,
   onAdd,
+  onChanged,
   onError,
 }: {
   tenantId: string;
   data: MonitoringOverview;
   now: number;
   onAdd: () => void;
+  /** A probe was renamed, deactivated or removed. */
+  onChanged: () => void;
   onError: (message: string | null) => void;
 }) {
   const [downloading, setDownloading] = useState(false);
+  const [editing, setEditing] = useState<MonitoringAgent | null>(null);
+  const [removing, setRemoving] = useState<MonitoringAgent | null>(null);
   const download = async () => {
     setDownloading(true);
     onError(null);
@@ -553,6 +559,28 @@ function ProbeCard({
               <span className="monitoring-muted">
                 {formatAgo(agent.lastSeenAt, now)}
               </span>
+              {data.canManage ? (
+                <span className="monitoring-table__actions">
+                  <button
+                    aria-label={`Sonde ${agent.name} bearbeiten`}
+                    className="icon-button"
+                    onClick={() => setEditing(agent)}
+                    title="Bearbeiten"
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" size={16} />
+                  </button>
+                  <button
+                    aria-label={`Sonde ${agent.name} löschen`}
+                    className="icon-button"
+                    onClick={() => setRemoving(agent)}
+                    title="Löschen"
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" size={16} />
+                  </button>
+                </span>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -584,6 +612,29 @@ function ProbeCard({
             Sonde herunterladen
           </button>
         </div>
+      ) : null}
+      {editing ? (
+        <AgentDialog
+          agent={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            onChanged();
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
+      {removing ? (
+        <RemoveAgentDialog
+          agent={removing}
+          agents={data.agents}
+          onClose={() => setRemoving(null)}
+          onRemoved={() => {
+            setRemoving(null);
+            onChanged();
+          }}
+          tenantId={tenantId}
+        />
       ) : null}
     </article>
   );
@@ -628,6 +679,7 @@ export function MonitoringProbeSettings({ tenantId }: { tenantId: string }) {
           data={data}
           now={now}
           onAdd={() => setAdding(true)}
+          onChanged={load}
           onError={setError}
           tenantId={tenantId}
         />
@@ -2887,6 +2939,278 @@ function ConnectionsCard({
         </p>
       ) : null}
     </article>
+  );
+}
+
+/** Name and state of a probe, and a new token for it. */
+function AgentDialog({
+  tenantId,
+  agent,
+  onClose,
+  onSaved,
+}: {
+  tenantId: string;
+  agent: MonitoringAgent;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(agent.name);
+  const [active, setActive] = useState(agent.active);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmToken, setConfirmToken] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await monitoringCall({
+        type: "updateAgent",
+        tenantId,
+        agentId: agent.id,
+        name,
+        active,
+      });
+      onSaved();
+    } catch (failure) {
+      setError(message(failure));
+      setSaving(false);
+    }
+  };
+  const rotate = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await monitoringCall<{ token: string }>({
+        type: "rotateAgentToken",
+        tenantId,
+        agentId: agent.id,
+      });
+      setToken(result.token);
+      setConfirmToken(false);
+    } catch (failure) {
+      setError(message(failure));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog
+      onClose={token ? onSaved : onClose}
+      title={`Sonde «${agent.name}» bearbeiten`}
+    >
+      <form
+        className="monitoring-form"
+        onSubmit={(event) => void submit(event)}
+      >
+        <label className="monitoring-field">
+          <span>Name der Sonde</span>
+          <input
+            autoFocus
+            maxLength={120}
+            onChange={(event) => setName(event.target.value)}
+            required
+            type="text"
+            value={name}
+          />
+        </label>
+        <label className="monitoring-check">
+          <input
+            checked={active}
+            onChange={(event) => setActive(event.target.checked)}
+            type="checkbox"
+          />
+          <span>
+            Aktiv
+            <span className="monitoring-muted">
+              {" "}
+              – eine deaktivierte Sonde wird abgewiesen, ihre Sensoren gelten
+              als «Unbekannt».
+            </span>
+          </span>
+        </label>
+        <div className="monitoring-package">
+          <div>
+            <strong>Token</strong>
+            <span className="monitoring-muted">
+              Ein neuer Token ersetzt den bisherigen sofort. Die Sonde meldet
+              sich erst wieder, wenn er in ihrer config.json steht.
+            </span>
+          </div>
+          {token ? null : confirmToken ? (
+            <button
+              className="primary-button monitoring-danger"
+              disabled={saving}
+              onClick={() => void rotate()}
+              type="button"
+            >
+              Jetzt ersetzen
+            </button>
+          ) : (
+            <button
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => setConfirmToken(true)}
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+              Neuen Token erzeugen
+            </button>
+          )}
+        </div>
+        {token ? (
+          <div className="monitoring-field">
+            <span>Neuer Token (wird nur jetzt angezeigt)</span>
+            <input
+              aria-label="Neuer Token"
+              onFocus={(event) => event.target.select()}
+              readOnly
+              type="text"
+              value={token}
+            />
+            <button
+              className="secondary-button monitoring-form__all"
+              onClick={() => {
+                void navigator.clipboard
+                  ?.writeText(token)
+                  .then(() => setCopied(true));
+              }}
+              type="button"
+            >
+              {copied ? "Kopiert" : "Token kopieren"}
+            </button>
+            <span className="monitoring-muted">
+              Auf dem Server der Sonde in der config.json den Wert von
+              «agentToken» durch diesen Token ersetzen und den Dienst neu
+              starten. Die übrigen Einträge (z. B. SNMP) bleiben stehen.
+            </span>
+          </div>
+        ) : null}
+        {error ? (
+          <p className="ticket-detail-message error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="monitoring-form__actions">
+          <button
+            className="secondary-button"
+            onClick={token ? onSaved : onClose}
+            type="button"
+          >
+            {token ? "Schliessen" : "Abbrechen"}
+          </button>
+          <button className="primary-button" disabled={saving} type="submit">
+            Speichern
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Removes a probe; its sensors move to another probe or stay without one. */
+function RemoveAgentDialog({
+  tenantId,
+  agent,
+  agents,
+  onClose,
+  onRemoved,
+}: {
+  tenantId: string;
+  agent: MonitoringAgent;
+  agents: MonitoringAgent[];
+  onClose: () => void;
+  onRemoved: () => void;
+}) {
+  const others = agents.filter(
+    (entry) => entry.id !== agent.id && entry.active,
+  );
+  const sensors = agent.sensorCount ?? 0;
+  const [target, setTarget] = useState(others[0]?.id ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const remove = () => {
+    setSaving(true);
+    setError(null);
+    monitoringCall({
+      type: "removeAgent",
+      tenantId,
+      agentId: agent.id,
+      moveSensorsTo: sensors > 0 && target ? target : null,
+    })
+      .then(onRemoved)
+      .catch((failure) => {
+        setError(message(failure));
+        setSaving(false);
+      });
+  };
+  return (
+    <Dialog onClose={onClose} title={`Sonde «${agent.name}» löschen`}>
+      <div className="monitoring-form">
+        <p>
+          Der Token der Sonde wird widerrufen; sie kann sich danach nicht mehr
+          anmelden, auch nicht für die IP-Adressverwaltung. Das Programm auf dem
+          Server bleibt installiert und lässt sich dort deinstallieren.
+        </p>
+        {sensors > 0 ? (
+          others.length > 0 ? (
+            <label className="monitoring-field">
+              <span>
+                {sensors === 1
+                  ? "Den Sensor dieser Sonde übernimmt"
+                  : `Die ${sensors} Sensoren dieser Sonde übernimmt`}
+              </span>
+              <select
+                onChange={(event) => setTarget(event.target.value)}
+                value={target}
+              >
+                {others.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name}
+                  </option>
+                ))}
+                <option value="">Keine Sonde (wird nicht mehr gemessen)</option>
+              </select>
+            </label>
+          ) : (
+            <p className="ticket-detail-message error" role="alert">
+              {sensors === 1
+                ? "Der Sensor dieser Sonde wird danach nicht mehr gemessen."
+                : `Die ${sensors} Sensoren dieser Sonde werden danach nicht mehr gemessen.`}{" "}
+              Es gibt keine andere aktive Sonde, die sie übernehmen könnte.
+            </p>
+          )
+        ) : null}
+        {error ? (
+          <p className="ticket-detail-message error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="monitoring-form__actions">
+          <button
+            autoFocus
+            className="secondary-button"
+            onClick={onClose}
+            type="button"
+          >
+            Abbrechen
+          </button>
+          <button
+            className="primary-button monitoring-danger"
+            disabled={saving}
+            onClick={remove}
+            type="button"
+          >
+            <Trash2 aria-hidden="true" size={16} />
+            Sonde löschen
+          </button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 

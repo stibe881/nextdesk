@@ -63,6 +63,9 @@ export type Action =
   | { type: "removeDevice"; tenantId: string; assetId: string }
   | { type: "updateDevice"; tenantId: string; assetId: string; device: DeviceEdit }
   | { type: "createAgent"; tenantId: string; name: string }
+  | { type: "updateAgent"; tenantId: string; agentId: string; name: string; active: boolean }
+  | { type: "rotateAgentToken"; tenantId: string; agentId: string }
+  | { type: "removeAgent"; tenantId: string; agentId: string; moveSensorsTo: string | null }
   | { type: "probePackage"; tenantId: string }
   | { type: "listInterfaces"; tenantId: string; assetId: string; agentId: string }
   | { type: "interfaces"; tenantId: string; jobId: string }
@@ -434,11 +437,28 @@ export function parseAction(value: unknown): Action | string | null {
       const device = parseNewDevice(value.device);
       return typeof device === "string" ? device : { type: "addDevice", tenantId, device };
     }
-    case "createAgent": {
+    case "createAgent":
+    case "updateAgent": {
       const name = typeof value.name === "string" ? value.name.replace(/\s+/g, " ").trim() : "";
       if (!name) return "Bitte einen Namen für die Sonde angeben.";
       if (name.length > 120) return "Der Name ist zu lang (höchstens 120 Zeichen).";
-      return { type: "createAgent", tenantId, name };
+      if (value.type === "createAgent") return { type: "createAgent", tenantId, name };
+      const agentId = uuid(value.agentId);
+      return agentId && typeof value.active === "boolean"
+        ? { type: "updateAgent", tenantId, agentId, name, active: value.active }
+        : null;
+    }
+    case "rotateAgentToken": {
+      const agentId = uuid(value.agentId);
+      return agentId ? { type: "rotateAgentToken", tenantId, agentId } : null;
+    }
+    case "removeAgent": {
+      const agentId = uuid(value.agentId);
+      const target = value.moveSensorsTo === null || value.moveSensorsTo === undefined || value.moveSensorsTo === ""
+        ? null
+        : uuid(value.moveSensorsTo);
+      if (!agentId || (value.moveSensorsTo && !target) || target === agentId) return null;
+      return { type: "removeAgent", tenantId, agentId, moveSensorsTo: target };
     }
     default:
       return null;

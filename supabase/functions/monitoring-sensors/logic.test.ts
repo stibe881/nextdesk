@@ -318,3 +318,19 @@ Deno.test("own device kind only counts for the category other", () => {
   assertEquals(parseCategoryLabel("switch", "iLO"), null);
   assertEquals(parseCategoryLabel("other", 5), null);
 });
+
+Deno.test("probe actions: rename, new token, remove with target", () => {
+  assertEquals(parseAction({ type: "updateAgent", tenantId: TENANT, agentId: AGENT, name: "  RZ  Baar ", active: false }), {
+    type: "updateAgent", tenantId: TENANT, agentId: AGENT, name: "RZ Baar", active: false,
+  });
+  assertEquals(parseAction({ type: "updateAgent", tenantId: TENANT, agentId: AGENT, name: "" }), "Bitte einen Namen für die Sonde angeben.");
+  assertEquals(parseAction({ type: "updateAgent", tenantId: TENANT, agentId: AGENT, name: "x" }), null);
+  assertEquals(parseAction({ type: "rotateAgentToken", tenantId: TENANT, agentId: AGENT }), {
+    type: "rotateAgentToken", tenantId: TENANT, agentId: AGENT,
+  });
+  assertEquals(parseAction({ type: "removeAgent", tenantId: TENANT, agentId: AGENT }), {
+    type: "removeAgent", tenantId: TENANT, agentId: AGENT, moveSensorsTo: null,
+  });
+  // Sensors cannot move to the probe that is removed.
+  assertEquals(parseAction({ type: "removeAgent", tenantId: TENANT, agentId: AGENT, moveSensorsTo: AGENT }), null);
+});
