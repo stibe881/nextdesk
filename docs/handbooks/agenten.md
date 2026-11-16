@@ -202,9 +202,15 @@ haben. **Filter aufheben** führt zurück zu den Fällen, die zu beurteilen sind
 
 ![Liste der Sicherheitsfälle](images/ag-sicherheitsfaelle.jpg)
 
-Ein Klick öffnet den Fall. Die gemeldete E-Mail steht in einer **sicheren
-Ansicht**: Links sind entschärft (`hxxps`, `[.]`) und nicht anklickbar, Bilder
-werden nicht geladen und Anhänge erscheinen nur mit Name und Grösse. Daneben
+Ein Klick öffnet den Fall. Die gemeldete E-Mail steht so, wie sie beim
+Empfänger ankam, in einer **sicheren Ansicht** (Betreff, An, Cc):
+**Darstellung** zeigt die Mail mit Layout in einem abgeschotteten Rahmen,
+**Text** die Textfassung und **Kopfzeilen** alle Header (Received, Return-Path,
+Authentication-Results usw.) für die technische Beurteilung. Skripte laufen
+nicht, externe Bilder und Inhalte werden nicht geladen, Links sind ohne Ziel
+(beim Darüberfahren erscheint die entschärfte Adresse, z. B. `hxxps`, `[.]`),
+und Anhänge erscheinen nur mit Name und Grösse. Bei älteren Meldungen ist nur
+der Text gespeichert. Daneben
 stehen die Befunde der automatischen Analyse (SPF, DKIM, DMARC, Absender,
 Links, Anhänge) und die Risikoeinschätzung. Bei hohem Risiko soll das Urteil
 innerhalb von 30 Minuten fallen, bei mittlerem innerhalb von 4 Stunden,

@@ -453,6 +453,7 @@ async function handle(
       channel: action.channel,
       analysis,
       fingerprint,
+      mail: submission.mail,
       bundled: openCase !== null,
     });
   } catch (error) {
