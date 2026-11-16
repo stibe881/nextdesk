@@ -11,6 +11,7 @@ import { hostname } from "node:os";
 import { ApiError, NextdeskClient } from "./client.ts";
 import {
   ConfigError,
+  hasScanWork,
   type LocalConfig,
   loadLocalConfig,
   type ServerConfig,
@@ -254,6 +255,19 @@ async function main(): Promise<void> {
   const monitor = new Monitor(client, platform, local);
   let nextScanAt = 0;
   let firstScan = true;
+  // Scans can take many minutes. They run beside the loop, one after the
+  // other, so the agent keeps reporting to nextDesk (heartbeat, sensors, jobs).
+  let scans: Promise<void> = Promise.resolve();
+  let scansPending = 0;
+  const enqueueScan = (work: () => Promise<unknown>): void => {
+    scansPending += 1;
+    scans = scans
+      .then(work)
+      .catch((error) => log.error("Scan fehlgeschlagen", error))
+      .then(() => {
+        scansPending -= 1;
+      });
+  };
   while (!stopping) {
     let pollSeconds = 60;
     try {
@@ -262,26 +276,29 @@ async function main(): Promise<void> {
       monitor.setChecks(parseChecks(state.checks));
       for (const job of state.jobs) {
         if (stopping) break;
-        await runJob(client, local, state, job);
-        if (job.kind === "scan_now")
+        if (job.kind === "scan_now") {
+          enqueueScan(() => runJob(client, local, state, job));
           nextScanAt = Date.now() + state.config.scheduleMinutes * 60_000;
+        } else {
+          await runJob(client, local, state, job);
+        }
       }
       if (
         !stopping &&
         state.scanEnabled !== false &&
+        hasScanWork(local, state.config, state.subnets) &&
+        scansPending === 0 &&
         Date.now() >= nextScanAt
       ) {
-        await scanAndReport(
-          client,
-          local,
-          state,
-          firstScan ? "startup" : "schedule",
-          null,
-        );
+        const trigger = firstScan ? "startup" : "schedule";
+        enqueueScan(() => scanAndReport(client, local, state, trigger, null));
         firstScan = false;
         nextScanAt = Date.now() + state.config.scheduleMinutes * 60_000;
       }
-      if (process.argv.includes("--once")) break;
+      if (process.argv.includes("--once")) {
+        await scans;
+        break;
+      }
     } catch (error) {
       if (
         error instanceof ApiError &&

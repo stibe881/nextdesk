@@ -258,3 +258,22 @@ export type Subnet = {
   family: 4 | 6;
   sweep: boolean;
 };
+
+/**
+ * Whether there is anything to discover: subnets, SNMP targets or DHCP/DNS
+ * servers, from nextDesk or from the local overrides. An agent that only
+ * runs monitoring sensors has none and never scans.
+ */
+export function hasScanWork(
+  local: Pick<LocalConfig, "scan" | "dhcpServers" | "dnsServers">,
+  server: Pick<ServerConfig, "snmpTargets" | "dhcpServers" | "dnsServers">,
+  subnets: readonly unknown[],
+): boolean {
+  return (
+    subnets.length > 0 ||
+    local.scan.subnets.length > 0 ||
+    server.snmpTargets.length > 0 ||
+    (local.dhcpServers ?? server.dhcpServers).length > 0 ||
+    (local.dnsServers ?? server.dnsServers).length > 0
+  );
+}
