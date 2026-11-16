@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   Download,
   LoaderCircle,
+  ListPlus,
   Pause,
   Pencil,
   Play,
@@ -29,16 +30,22 @@ import {
   formatAgo,
   formatMs,
   formatSince,
+  formatValue,
   INTERVAL_OPTIONS,
   intervalLabel,
-  KIND_LABELS,
+  kindLabel,
   matchesSearch,
   monitoringCall,
   RANGE_LABELS,
   sensorCountsText,
   sensorTarget,
+  sensorValueText,
+  thresholdText,
+  trafficDraft,
+  valueLabel,
   STATE_LABELS,
   STATE_ORDER,
+  type InterfaceRow,
   type MonitoringAgent,
   type MonitoringAssetChoice,
   type MonitoringDeviceDetail,
@@ -48,7 +55,7 @@ import {
   type MonitoringSeries,
   type MonitoringState,
   type SensorDraft,
-  type SensorKind,
+  type SnmpMetric,
 } from "./lib/monitoring";
 import { tn } from "./lib/formality";
 
@@ -591,6 +598,7 @@ function DeviceView({
   const [range, setRange] = useState<MonitoringRange>("24h");
   const [series, setSeries] = useState<MonitoringSeries | null>(null);
   const [draft, setDraft] = useState<SensorDraft | null>(null);
+  const [addingPorts, setAddingPorts] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -715,6 +723,14 @@ function DeviceView({
                   </button>
                 ) : null}
                 <button
+                  className="secondary-button"
+                  onClick={() => setAddingPorts(true)}
+                  type="button"
+                >
+                  <ListPlus aria-hidden="true" size={16} />
+                  Ports hinzufügen
+                </button>
+                <button
                   className="primary-button"
                   onClick={() => setDraft(emptyDraft(assetId, defaultAgent))}
                   type="button"
@@ -732,9 +748,11 @@ function DeviceView({
                 <article className="monitoring-card">
                   <div className="monitoring-card__head">
                     <div>
-                      <h3>{sensor.name} · Antwortzeit</h3>
+                      <h3>
+                        {sensor.name} · {valueLabel(sensor.unit)}
+                      </h3>
                       <span className="monitoring-muted">
-                        Aktuell {formatMs(sensor.lastValue)}
+                        Aktuell {sensorValueText(sensor)}
                         {series?.availability !== null &&
                         series?.availability !== undefined
                           ? ` · Verfügbarkeit ${series.availability.toLocaleString("de-CH")} %`
@@ -771,6 +789,8 @@ function DeviceView({
                     <Chart
                       now={now}
                       series={series}
+                      traffic={sensor.snmpMetric === "traffic"}
+                      unit={sensor.unit}
                       warningAbove={sensor.warningAbove}
                     />
                   ) : (
@@ -900,6 +920,19 @@ function DeviceView({
         </>
       ) : null}
 
+      {addingPorts && data ? (
+        <PortsDialog
+          agents={data.agents}
+          assetId={assetId}
+          defaultAgent={defaultAgent}
+          existing={data.sensors}
+          onClose={() => {
+            setAddingPorts(false);
+            load();
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
       {draft && data ? (
         <SensorDialog
           agents={data.agents}
@@ -955,18 +988,16 @@ function SensorRow({
           {sensor.name}
         </button>
         <span className="monitoring-muted">
-          {KIND_LABELS[sensor.kind]} · {sensorTarget(sensor, device)} ·{" "}
+          {kindLabel(sensor)} · {sensorTarget(sensor, device)} ·{" "}
           {agent ? agent.name : "keine Sonde zugewiesen"}
         </span>
       </td>
       <td>
         {sensor.state === "down"
           ? (sensor.lastMessage ?? "Keine Antwort")
-          : formatMs(sensor.lastValue)}
-        {sensor.warningAbove !== null ? (
-          <span className="monitoring-muted">
-            Warnung ab {formatMs(sensor.warningAbove)}
-          </span>
+          : sensorValueText(sensor)}
+        {thresholdText(sensor) ? (
+          <span className="monitoring-muted">{thresholdText(sensor)}</span>
         ) : null}
       </td>
       <td>{intervalLabel(sensor.intervalSeconds)}</td>
@@ -1001,86 +1032,106 @@ function Chart({
   series,
   now,
   warningAbove,
+  unit,
+  traffic,
 }: {
   series: MonitoringSeries;
   now: number;
   warningAbove: number | null;
+  unit: string | null;
+  traffic: boolean;
 }) {
   const chart = useMemo(
-    () => chartGeometry(series, Math.max(now, Date.now()), warningAbove),
-    [series, now, warningAbove],
+    () =>
+      chartGeometry(
+        { ...series, unit },
+        Math.max(now, Date.now()),
+        warningAbove,
+      ),
+    [series, now, warningAbove, unit],
   );
   const failed = chart.failures.length;
   return (
-    <svg
-      aria-label={`Antwortzeit über ${RANGE_LABELS[series.range]} in Millisekunden${failed ? `, ${failed} Abschnitte mit fehlgeschlagenen Prüfungen` : ""}`}
-      className="monitoring-chart"
-      role="img"
-      viewBox={`0 0 ${chart.width} ${chart.height}`}
-    >
-      {chart.yTicks.map((tick) => (
-        <g key={tick.y}>
-          <line
-            className="monitoring-chart__grid"
-            x1={46}
-            x2={chart.width - 10}
-            y1={tick.y}
-            y2={tick.y}
-          />
+    <>
+      {traffic ? (
+        <p className="monitoring-legend">
+          <span className="monitoring-legend__in">eingehend</span>
+          <span className="monitoring-legend__out">ausgehend</span>
+        </p>
+      ) : null}
+      <svg
+        aria-label={`${valueLabel(unit)} über ${RANGE_LABELS[series.range]}${traffic ? ", eingehend und ausgehend" : ""}${failed ? `, ${failed} Abschnitte mit fehlgeschlagenen Prüfungen` : ""}`}
+        className="monitoring-chart"
+        role="img"
+        viewBox={`0 0 ${chart.width} ${chart.height}`}
+      >
+        {chart.yTicks.map((tick) => (
+          <g key={tick.y}>
+            <line
+              className="monitoring-chart__grid"
+              x1={46}
+              x2={chart.width - 10}
+              y1={tick.y}
+              y2={tick.y}
+            />
+            <text
+              className="monitoring-chart__label"
+              textAnchor="end"
+              x={40}
+              y={tick.y + 4}
+            >
+              {tick.label}
+            </text>
+          </g>
+        ))}
+        {chart.xTicks.map((tick, index) => (
           <text
             className="monitoring-chart__label"
-            textAnchor="end"
-            x={40}
-            y={tick.y + 4}
+            key={tick.x}
+            textAnchor={
+              index === 0
+                ? "start"
+                : index === chart.xTicks.length - 1
+                  ? "end"
+                  : "middle"
+            }
+            x={tick.x}
+            y={chart.height - 6}
           >
             {tick.label}
           </text>
-        </g>
-      ))}
-      {chart.xTicks.map((tick, index) => (
-        <text
-          className="monitoring-chart__label"
-          key={tick.x}
-          textAnchor={
-            index === 0
-              ? "start"
-              : index === chart.xTicks.length - 1
-                ? "end"
-                : "middle"
-          }
-          x={tick.x}
-          y={chart.height - 6}
-        >
-          {tick.label}
-        </text>
-      ))}
-      {chart.failures.map((failure) => (
-        <rect
-          className="monitoring-chart__failure"
-          height={chart.height - 32}
-          key={failure.x}
-          opacity={0.25 + failure.share * 0.5}
-          width={failure.width}
-          x={failure.x}
-          y={10}
-        />
-      ))}
-      {chart.bands.map((path) => (
-        <path className="monitoring-chart__band" d={path} key={path} />
-      ))}
-      {chart.threshold !== null ? (
-        <line
-          className="monitoring-chart__threshold"
-          x1={46}
-          x2={chart.width - 10}
-          y1={chart.threshold}
-          y2={chart.threshold}
-        />
-      ) : null}
-      {chart.lines.map((path) => (
-        <path className="monitoring-chart__line" d={path} key={path} />
-      ))}
-    </svg>
+        ))}
+        {chart.failures.map((failure) => (
+          <rect
+            className="monitoring-chart__failure"
+            height={chart.height - 32}
+            key={failure.x}
+            opacity={0.25 + failure.share * 0.5}
+            width={failure.width}
+            x={failure.x}
+            y={10}
+          />
+        ))}
+        {chart.bands.map((path) => (
+          <path className="monitoring-chart__band" d={path} key={path} />
+        ))}
+        {chart.threshold !== null ? (
+          <line
+            className="monitoring-chart__threshold"
+            x1={46}
+            x2={chart.width - 10}
+            y1={chart.threshold}
+            y2={chart.threshold}
+          />
+        ) : null}
+        {chart.lines2.map((path) => (
+          <path className="monitoring-chart__line2" d={path} key={path} />
+        ))}
+        {chart.lines.map((path) => (
+          <path className="monitoring-chart__line" d={path} key={path} />
+        ))}
+      </svg>
+    </>
   );
 }
 
@@ -1146,6 +1197,38 @@ function AgentSelect({
   );
 }
 
+function NumberField({
+  label,
+  value,
+  onChange,
+  min,
+  step,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+  min?: number;
+  step?: string;
+}) {
+  return (
+    <label className="monitoring-field">
+      <span>{label}</span>
+      <input
+        inputMode="decimal"
+        min={min}
+        onChange={(event) =>
+          onChange(
+            event.target.value === "" ? null : Number(event.target.value),
+          )
+        }
+        step={step ?? "any"}
+        type="number"
+        value={value ?? ""}
+      />
+    </label>
+  );
+}
+
 function SensorFields({
   draft,
   onChange,
@@ -1153,6 +1236,8 @@ function SensorFields({
   draft: SensorDraft;
   onChange: (patch: Partial<SensorDraft>) => void;
 }) {
+  const snmpValue = draft.kind === "snmp" && draft.snmpMetric === "value";
+  const unit = draft.unit ? ` in ${draft.unit}` : "";
   return (
     <>
       {draft.kind === "tcp" ? (
@@ -1172,6 +1257,58 @@ function SensorFields({
             value={draft.port ?? ""}
           />
         </label>
+      ) : null}
+      {draft.kind === "snmp" && draft.snmpMetric === "traffic" ? (
+        <label className="monitoring-field">
+          <span>Port-Nummer auf dem Gerät (ifIndex)</span>
+          <input
+            inputMode="numeric"
+            min={1}
+            onChange={(event) =>
+              onChange({
+                snmpIndex: event.target.value
+                  ? Number(event.target.value)
+                  : null,
+              })
+            }
+            required
+            type="number"
+            value={draft.snmpIndex ?? ""}
+          />
+        </label>
+      ) : null}
+      {snmpValue ? (
+        <>
+          <label className="monitoring-field">
+            <span>OID</span>
+            <input
+              onChange={(event) => onChange({ snmpOid: event.target.value })}
+              placeholder="1.3.6.1.4.1.318.1.1.1.2.2.1.0"
+              required
+              type="text"
+              value={draft.snmpOid ?? ""}
+            />
+          </label>
+          <div className="monitoring-field-row">
+            <NumberField
+              label="Faktor"
+              onChange={(scale) => onChange({ scale: scale ?? 1 })}
+              value={draft.scale}
+            />
+            <label className="monitoring-field">
+              <span>Einheit (optional)</span>
+              <input
+                maxLength={12}
+                onChange={(event) =>
+                  onChange({ unit: event.target.value || null })
+                }
+                placeholder="%, °C, V …"
+                type="text"
+                value={draft.unit ?? ""}
+              />
+            </label>
+          </div>
+        </>
       ) : null}
       {draft.kind === "http" ? (
         <label className="monitoring-field">
@@ -1212,22 +1349,41 @@ function SensorFields({
           ))}
         </select>
       </label>
-      <label className="monitoring-field">
-        <span>Warnung ab Antwortzeit in ms (optional)</span>
-        <input
-          inputMode="numeric"
+      {snmpValue ? (
+        <>
+          <div className="monitoring-field-row">
+            <NumberField
+              label={`Warnung über${unit}`}
+              onChange={(warningAbove) => onChange({ warningAbove })}
+              value={draft.warningAbove}
+            />
+            <NumberField
+              label={`Warnung unter${unit}`}
+              onChange={(warningBelow) => onChange({ warningBelow })}
+              value={draft.warningBelow}
+            />
+          </div>
+          <div className="monitoring-field-row">
+            <NumberField
+              label={`Ausfall über${unit}`}
+              onChange={(downAbove) => onChange({ downAbove })}
+              value={draft.downAbove}
+            />
+            <NumberField
+              label={`Ausfall unter${unit}`}
+              onChange={(downBelow) => onChange({ downBelow })}
+              value={draft.downBelow}
+            />
+          </div>
+        </>
+      ) : draft.kind === "snmp" ? null : (
+        <NumberField
+          label="Warnung ab Antwortzeit in ms (optional)"
           min={1}
-          onChange={(event) =>
-            onChange({
-              warningAbove: event.target.value
-                ? Number(event.target.value)
-                : null,
-            })
-          }
-          type="number"
-          value={draft.warningAbove ?? ""}
+          onChange={(warningAbove) => onChange({ warningAbove })}
+          value={draft.warningAbove}
         />
-      </label>
+      )}
       <label className="monitoring-field">
         <span>Ausfall nach Fehlversuchen in Folge</span>
         <input
@@ -1242,6 +1398,12 @@ function SensorFields({
           value={draft.failuresToDown}
         />
       </label>
+      {draft.kind === "snmp" ? (
+        <p className="monitoring-muted">
+          Die SNMP-Zugangsdaten stehen in der config.json der Sonde, nicht in
+          nextDesk.
+        </p>
+      ) : null}
     </>
   );
 }
@@ -1291,18 +1453,42 @@ function SensorDialog({
           <span>Art</span>
           <select
             disabled={!!draft.id}
-            onChange={(event) =>
+            onChange={(event) => {
+              const [kind, metric] = event.target.value.split(":");
               change({
-                kind: event.target.value as SensorKind,
+                kind: kind as SensorDraft["kind"],
+                snmpMetric: (metric as SnmpMetric | undefined) ?? null,
                 port: null,
                 url: null,
-              })
+                snmpIndex: null,
+                snmpOid: null,
+                scale: 1,
+                unit:
+                  metric === "traffic"
+                    ? "bit/s"
+                    : metric === "uptime"
+                      ? "s"
+                      : null,
+                warningAbove: null,
+                warningBelow: null,
+                downAbove: null,
+                downBelow: null,
+              });
+            }}
+            value={
+              draft.kind === "snmp"
+                ? `snmp:${draft.snmpMetric ?? "value"}`
+                : draft.kind
             }
-            value={draft.kind}
           >
             <option value="ping">Ping (Gerät erreichbar)</option>
             <option value="tcp">TCP-Port (Dienst erreichbar)</option>
             <option value="http">HTTP (Webseite antwortet)</option>
+            <option value="snmp:traffic">
+              SNMP Port-Traffic (ein Port von Hand)
+            </option>
+            <option value="snmp:uptime">SNMP Laufzeit</option>
+            <option value="snmp:value">SNMP Wert (eigene OID)</option>
           </select>
         </label>
         <label className="monitoring-field">
@@ -1340,6 +1526,231 @@ function SensorDialog({
           </button>
           <button className="primary-button" disabled={saving} type="submit">
             {saving ? "Wird gespeichert …" : "Speichern"}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Reads the ports of the device through the probe and adds traffic sensors. */
+function PortsDialog({
+  tenantId,
+  assetId,
+  agents,
+  defaultAgent,
+  existing,
+  onClose,
+}: {
+  tenantId: string;
+  assetId: string;
+  agents: MonitoringAgent[];
+  defaultAgent: string | null;
+  existing: MonitoringSensor[];
+  onClose: () => void;
+}) {
+  const [agentId, setAgentId] = useState<string | null>(defaultAgent);
+  const [ports, setPorts] = useState<InterfaceRow[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [onlyUp, setOnlyUp] = useState(true);
+  const [interval, setIntervalSeconds] = useState(60);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+  const cancelled = useRef(false);
+  useEffect(
+    () => () => {
+      cancelled.current = true;
+    },
+    [],
+  );
+  const monitored = useMemo(
+    () =>
+      new Set(
+        existing
+          .filter((sensor) => sensor.snmpMetric === "traffic")
+          .map((sensor) => sensor.snmpIndex),
+      ),
+    [existing],
+  );
+
+  const read = async () => {
+    if (!agentId) return;
+    setLoading(true);
+    setError(null);
+    setPorts(null);
+    try {
+      const { jobId } = await monitoringCall<{ jobId: string }>({
+        type: "listInterfaces",
+        tenantId,
+        assetId,
+        agentId,
+      });
+      // The probe fetches jobs about once a minute.
+      for (let attempt = 0; attempt < 50 && !cancelled.current; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        const result = await monitoringCall<{
+          status: "pending" | "done" | "failed";
+          error: string | null;
+          interfaces: InterfaceRow[];
+        }>({ type: "interfaces", tenantId, jobId });
+        if (result.status === "done") {
+          setPorts(result.interfaces);
+          return;
+        }
+        if (result.status === "failed") {
+          throw new Error(
+            result.error ?? "Die Sonde konnte die Ports nicht auslesen.",
+          );
+        }
+      }
+      if (!cancelled.current) {
+        throw new Error(
+          "Die Sonde hat nicht geantwortet. Ist sie online und auf Version 1.2.0 oder neuer?",
+        );
+      }
+    } catch (failure) {
+      if (!cancelled.current) setError(message(failure));
+    } finally {
+      if (!cancelled.current) setLoading(false);
+    }
+  };
+
+  const visible = (ports ?? []).filter((port) => !onlyUp || port.up);
+  const toggle = (index: number) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!agentId || !ports) return;
+    const chosen = ports.filter(
+      (port) => selected.has(port.index) && !monitored.has(port.index),
+    );
+    setError(null);
+    try {
+      for (const [position, port] of chosen.entries()) {
+        setSaving(`${position + 1} von ${chosen.length}`);
+        await monitoringCall({
+          type: "saveSensor",
+          tenantId,
+          sensor: trafficDraft(assetId, agentId, port, interval),
+        });
+      }
+      onClose();
+    } catch (failure) {
+      setError(message(failure));
+      setSaving(null);
+    }
+  };
+
+  return (
+    <Dialog onClose={onClose} title="Ports hinzufügen">
+      <form
+        className="monitoring-form"
+        onSubmit={(event) => void submit(event)}
+      >
+        <p className="monitoring-muted">
+          Die Sonde liest die Ports des Geräts per SNMP aus. Für jeden gewählten
+          Port entsteht ein Sensor, der den Datenverkehr und den
+          Verbindungszustand misst.
+        </p>
+        <AgentSelect agents={agents} onChange={setAgentId} value={agentId} />
+        <button
+          className="secondary-button"
+          disabled={!agentId || loading}
+          onClick={() => void read()}
+          type="button"
+        >
+          {loading ? "Ports werden ausgelesen …" : "Ports auslesen"}
+        </button>
+        {loading ? <Spinner label="Das dauert bis zu einer Minute." /> : null}
+        {ports ? (
+          <>
+            <label className="monitoring-check">
+              <input
+                checked={onlyUp}
+                onChange={(event) => setOnlyUp(event.target.checked)}
+                type="checkbox"
+              />
+              <span>Nur verbundene Ports zeigen</span>
+            </label>
+            <div className="monitoring-choices">
+              {visible.length === 0 ? (
+                <p className="monitoring__empty">Keine Ports gefunden.</p>
+              ) : (
+                visible.map((port) => (
+                  <label className="monitoring-choice" key={port.index}>
+                    <input
+                      checked={
+                        monitored.has(port.index) || selected.has(port.index)
+                      }
+                      disabled={monitored.has(port.index)}
+                      onChange={() => toggle(port.index)}
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>
+                        {port.name}
+                        {port.alias ? ` · ${port.alias}` : ""}
+                      </strong>
+                      <span className="monitoring-muted">
+                        {[
+                          `Port ${port.index}`,
+                          port.up ? "verbunden" : "nicht verbunden",
+                          port.speedMbps
+                            ? formatValue(port.speedMbps * 1e6, "bit/s")
+                            : null,
+                          monitored.has(port.index)
+                            ? "wird bereits überwacht"
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+            <label className="monitoring-field">
+              <span>Intervall</span>
+              <select
+                onChange={(event) =>
+                  setIntervalSeconds(Number(event.target.value))
+                }
+                value={interval}
+              >
+                {INTERVAL_OPTIONS.map((option) => (
+                  <option key={option.seconds} value={option.seconds}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : null}
+        {error ? (
+          <p className="ticket-detail-message error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="monitoring-form__actions">
+          <button className="secondary-button" onClick={onClose} type="button">
+            Abbrechen
+          </button>
+          <button
+            className="primary-button"
+            disabled={selected.size === 0 || saving !== null}
+            type="submit"
+          >
+            {saving
+              ? `Sensor ${saving} wird angelegt …`
+              : `${selected.size} ${selected.size === 1 ? "Sensor" : "Sensoren"} anlegen`}
           </button>
         </div>
       </form>

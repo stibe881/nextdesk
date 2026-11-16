@@ -366,7 +366,7 @@ per Push und E-Mail alarmiert.
 Die Sonde ist derselbe Netzwerkagent wie für die IP-Adressverwaltung
 (`tools/ipam-agent`). Läuft er bereits, ist nichts zu installieren: Er
 übernimmt die Sensoren, sobald das Modul _Überwachung_ aktiv ist und der
-Agent auf Version 1.1.0 oder neuer aktualisiert wurde.
+Agent auf Version 1.1.0 oder neuer aktualisiert wurde (SNMP-Sensoren: 1.2.0).
 
 1. Unter **Funktionen** das Modul _Überwachung_ einschalten.
 2. Unter **Einstellungen → Monitoring → Überwachung** (oder **Dienste und
@@ -396,6 +396,35 @@ Agent auf Version 1.1.0 oder neuer aktualisiert wurde.
    «online».
 6. Die `config.json` enthält den Zugangsschlüssel: nach der Installation aus
    dem Download- und dem Paketordner löschen.
+
+**SNMP-Sensoren** (Laufzeit, Port-Traffic, eigene OID, ab Sonde 1.2.0)
+brauchen Zugangsdaten in der `config.json` der Sonde. nextDesk speichert sie
+nie. Den Block `snmp` ergänzen und die Sonde neu starten:
+
+```json
+"snmp": {
+  "default": {
+    "version": "v3",
+    "user": "nextdesk-ro",
+    "authProtocol": "sha256",
+    "authKey": "<Authentifizierungsschlüssel>",
+    "privProtocol": "aes",
+    "privKey": "<Verschlüsselungsschlüssel>"
+  },
+  "hosts": {
+    "192.0.2.201": { "version": "v2c", "community": "<nur lesend>" }
+  }
+}
+```
+
+`default` gilt für alle Geräte, `hosts` für einzelne Geräte mit anderen
+Zugangsdaten (Schlüssel = IP-Adresse bzw. Hostname wie in der Infrastruktur).
+Die Sonde braucht UDP 161 zu den Geräten; auf den Geräten SNMP nur lesend
+einrichten.
+
+**Wächter:** Meldet sich eine Sonde mit Sensoren fünf Minuten nicht, öffnet
+nextDesk eine Störung. Das prüft ein Datenbank-Job jede Minute; er nutzt
+dieselbe Weck-Einrichtung wie die Ablauf- und Backup-Überwachung.
 
 **Aktualisieren:** Zeigt nextDesk bei einer Sonde «Aktualisierung verfügbar»,
 das neue Paket herunterladen, entpacken und dasselbe Skript erneut ausführen.

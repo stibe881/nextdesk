@@ -9,6 +9,14 @@
 --      nextDesk eine Störung (über die Edge Function ipam-agent, damit die
 --      gleiche Störungslogik gilt).
 
+-- Der Schalter «Überwachung» unter Einstellungen → Funktionen braucht je
+-- Mandant eine Zeile (0349 hatte nur den Katalog ergänzt; neue Mandanten
+-- erhalten die Zeile über den Trigger tenant_feature_flags_defaults).
+insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+select tenant.id, 'monitoring.native', false
+  from public.tenants tenant
+on conflict (tenant_id, feature_key) do nothing;
+
 alter table public.monitoring_sensors
   drop constraint if exists monitoring_sensors_kind_check,
   drop constraint if exists monitoring_sensors_kind_fields;
@@ -339,6 +347,30 @@ alter table public.ipam_agent_jobs
     or status in ('pending_approval', 'cancelled')
     or approved_at is not null
   );
+
+-- Die Freigabe-Prüfung gilt weiterhin für alle schreibenden Aufträge; nur die
+-- beiden lesenden (scan_now, snmp_interfaces) brauchen keine.
+create or replace function public.ipam_agent_jobs_check_approval()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+begin
+  if new.kind not in ('scan_now', 'snmp_interfaces')
+     and new.status in ('queued', 'running', 'done', 'failed')
+     and (tg_op = 'INSERT' or new.approved_by is distinct from old.approved_by
+          or old.status in ('pending_approval', 'cancelled')) then
+    if new.approved_by is null
+       or not public.user_has_tenant_permission(new.approved_by, new.tenant_id, 'ipam.manage') then
+      raise exception 'IPAM agent job requires approval by an ipam.manage user'
+        using errcode = '42501';
+    end if;
+    new.approved_at := coalesce(new.approved_at, timezone('utc', now()));
+  end if;
+  return new;
+end;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Wächter für Sonden.

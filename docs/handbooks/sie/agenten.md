@@ -441,6 +441,9 @@ Resultate laufend an nextDesk.
   die Ruhe während Wartungsfenstern gelten wie bei allen Störungen.
 - **Sonden**: jede Sonde mit Zustand und letzter Meldung. Meldet sich eine
   Sonde länger als drei Minuten nicht, gelten ihre Sensoren als «Unbekannt».
+  Nach fünf Minuten öffnet nextDesk eine Störung «Sonde … – Verbindung zu
+  nextDesk» und alarmiert das Alarmteam; sie gilt als behoben, sobald die
+  Sonde sich wieder meldet.
 - **Geräteliste**: Zustand, Sensoren, Antwortzeit und letzte Prüfung. Die
   Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
 
@@ -470,17 +473,38 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    - **TCP-Port**: Antwortet ein Dienst, z. B. 3389 (RDP) oder 1433 (SQL)?
    - **HTTP**: Antwortet eine Webseite ohne Fehler? Fehlercodes ab 400 und
      ungültige Zertifikate gelten als Ausfall.
+   - **SNMP Laufzeit**: Wie lange läuft das Gerät seit dem letzten Neustart?
+   - **SNMP Wert (eigene OID)**: ein beliebiger Zahlenwert des Geräts, z. B.
+     Akkuladung einer USV oder Temperatur. Mit **Faktor** und **Einheit**
+     wird der Rohwert lesbar (Rohwert 235, Faktor 0.1, Einheit °C ergibt
+     23.5 °C). Schwellen gibt es in beide Richtungen: Warnung und Ausfall
+     jeweils über oder unter einem Wert.
+   - **SNMP Port-Traffic** für einen einzelnen Port von Hand; bequemer geht
+     es über **Ports hinzufügen**.
 
-   Dazu Intervall (30 Sekunden bis 1 Stunde), optional eine Warnschwelle für
-   die Antwortzeit und die Anzahl Fehlversuche bis zum Ausfall.
+   Dazu Intervall (30 Sekunden bis 1 Stunde), bei Ping, Port und HTTP
+   optional eine Warnschwelle für die Antwortzeit, und die Anzahl
+   Fehlversuche bis zum Ausfall.
+
+   **Ports hinzufügen** (im Gerätedetail, für Switches und Firewalls): Sonde
+   wählen und **Ports auslesen**. Die Sonde fragt das Gerät per SNMP ab; das
+   dauert bis zu einer Minute. Danach die gewünschten Ports ankreuzen, das
+   Intervall wählen und die Sensoren anlegen. Jeder Port-Sensor misst den
+   ein- und ausgehenden Datenverkehr und meldet einen Ausfall, wenn der Port
+   die Verbindung verliert. Die Grafik zeigt beide Richtungen. Der erste
+   Messwert erscheint nach der zweiten Messung, weil der Datenverkehr aus
+   der Differenz zweier Zählerstände berechnet wird.
+
+   Die SNMP-Zugangsdaten stehen in der `config.json` der Sonde, nicht in
+   nextDesk.
 
 3. Sensoren **bearbeiten**, **löschen** oder das ganze Gerät **pausieren**.
    Beim Pausieren und Löschen endet ein offener Alarm des Sensors; die
    Störung gilt als behoben, sobald kein Sensor des Geräts mehr gestört ist.
 4. **Sonde hinzufügen** – siehe Handbuch für Administratoren.
 
-> In dieser ersten Ausbaustufe gibt es Ping-, Port- und HTTP-Sensoren. Die
-> Überwachung in der App und weitere Sensorarten (SNMP, Windows) folgen.
+> Die Überwachung in der App und Sensoren für Windows-Server (Dienste,
+> Datenträger, CPU) folgen.
 
 ## Ticketliste
 

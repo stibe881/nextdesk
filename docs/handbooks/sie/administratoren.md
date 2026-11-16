@@ -375,6 +375,10 @@ erscheint «Aktualisierung verfügbar»: Paket herunterladen, auf dem Server
 entpacken und das Installationsskript erneut ausführen. Die Konfiguration
 bleibt erhalten.
 
+Meldet sich eine Sonde mit Sensoren fünf Minuten nicht, öffnet nextDesk eine
+Störung für die Sonde selbst und alarmiert das Alarmteam. So fällt auf, wenn
+die Überwachung eines Standorts ausfällt.
+
 Messwerte bewahrt nextDesk gestaffelt auf, damit die Datenbank nicht
 unbegrenzt wächst: jeden einzelnen Messwert 7 Tage, Stundenwerte 90 Tage,
 Tageswerte unbegrenzt.
