@@ -50,7 +50,9 @@ export type StoredPort = {
 
 /** Result of a «snmp_topology» job (untrusted input from the probe). */
 export function parseTopology(result: unknown): { sysName: string | null; ports: StoredPort[] } {
-  const body = isObject(result) ? result : {};
+  // The probe wraps what a job returns in «output».
+  const outer = isObject(result) ? result : {};
+  const body = isObject(outer.output) ? outer.output : outer;
   const ports: StoredPort[] = [];
   const seen = new Set<string>();
   for (const entry of Array.isArray(body.ports) ? body.ports.slice(0, MAX_PORTS) : []) {

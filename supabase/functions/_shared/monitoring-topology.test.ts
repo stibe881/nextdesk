@@ -106,3 +106,10 @@ Deno.test("attachments: where a device hangs", () => {
 Deno.test("comparePorts sorts naturally", () => {
   assertEquals(["1/1/10", "1/1/2", "1/1/1"].sort(comparePorts), ["1/1/1", "1/1/2", "1/1/10"]);
 });
+
+Deno.test("parseTopology reads the result as the probe sends it (wrapped in output)", () => {
+  const parsed = parseTopology({ output: { sysName: "asw01", ports: [{ port: "1/1/3", up: true, macs: ["28:29:86:aa:2f:40"], macCount: 1 }] } });
+  assertEquals(parsed.sysName, "asw01");
+  assertEquals(parsed.ports.length, 1);
+  assertEquals(parsed.ports[0]!.macs, ["28:29:86:aa:2f:40"]);
+});
