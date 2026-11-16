@@ -546,9 +546,18 @@ Mit dem Recht «Assets verwalten» kannst du zusätzlich:
    Zielen gilt ein nicht vertrauenswürdiges Zertifikat als Ausfall; eine
    Sonde wertet bei internen Zertifikaten nur Ablauf und Erreichbarkeit.
 
-3. Sensoren **bearbeiten**, **löschen** oder das ganze Gerät **pausieren**.
-   Beim Pausieren und Löschen endet ein offener Alarm des Sensors; die
+3. Sensoren **bearbeiten** oder **löschen** (Symbole in der Sensorzeile).
+   Im Kopf des Gerätedetails:
+   - **Pausieren** hält die Überwachung des ganzen Geräts an.
+   - **Bearbeiten** ändert Name, Art, IP-Adresse und Hostname des Geräts. Die
+     Änderung gilt auch in der Infrastruktur; Sensoren ohne eigenes Ziel
+     messen danach die neue Adresse.
+   - **Entfernen** nimmt das Gerät aus der Überwachung: Alle Sensoren und ihr
+     Verlauf werden gelöscht. Das Gerät selbst bleibt in der Infrastruktur.
+
+   Beim Pausieren, Löschen und Entfernen endet ein offener Alarm; die
    Störung gilt als behoben, sobald kein Sensor des Geräts mehr gestört ist.
+
 4. **Sonde hinzufügen** – siehe Handbuch für Administratoren.
 
 ![Gerät hinzufügen mit Treffer aus der IP-Adressverwaltung](images/ag-ueberwachung-hinzufuegen.jpg)

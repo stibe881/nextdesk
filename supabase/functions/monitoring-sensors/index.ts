@@ -9,6 +9,7 @@ import {
   type Action,
   agentOnline,
   availability,
+  type DeviceEdit,
   bucketize,
   deviceState,
   type DisplayState,
@@ -482,6 +483,36 @@ async function addDevice(admin: Client, tenantId: string, actorId: string, devic
   return { assetId, sensorId: String(sensor.data.id) };
 }
 
+/** Changes name, kind and address of a monitored device (also in the infrastructure). */
+async function updateDevice(admin: Client, tenantId: string, actorId: string, assetId: string, device: DeviceEdit) {
+  await requireAsset(admin, tenantId, assetId);
+  const asset = await admin.from("assets").update({ name: device.name, kind: device.category })
+    .eq("tenant_id", tenantId).eq("id", assetId);
+  if (asset.error) {
+    throw new HttpError(422, "device_save_failed", "Das Gerät konnte nicht gespeichert werden.");
+  }
+  const infra = await admin.from("asset_infrastructure").update({
+    category: device.category,
+    ip_address: device.ipAddress,
+    hostname: device.hostname,
+    updated_at: new Date().toISOString(),
+  }).eq("tenant_id", tenantId).eq("asset_id", assetId).select("asset_id").maybeSingle();
+  if (infra.error) throw unavailable();
+  if (!infra.data) {
+    throw new HttpError(422, "not_infrastructure", "Das Gerät ist kein Infrastruktur-Gerät.");
+  }
+  await admin.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_id: actorId,
+    action: "infrastructure.device.updated",
+    entity_type: "asset",
+    entity_id: assetId,
+    severity: "info",
+    metadata: { category: device.category, source: "monitoring" },
+  });
+  return { assetId };
+}
+
 async function assetChoices(admin: Client, tenantId: string, query: string) {
   const columns = "asset_id, category, hostname, ip_address";
   let request = admin.from("asset_infrastructure").select(columns).eq("tenant_id", tenantId).limit(400);
@@ -750,6 +781,24 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
     case "createAgent":
       manage();
       return await createAgent(admin, action.tenantId, actorId, action.name);
+    case "updateDevice":
+      manage();
+      return await updateDevice(admin, action.tenantId, actorId, action.assetId, action.device);
+    case "removeDevice": {
+      // Ends the monitoring of a device: its sensors and their history are
+      // deleted, open alerts end. The device stays in the infrastructure.
+      manage();
+      const sensors = await admin.from("monitoring_sensors").select("id")
+        .eq("tenant_id", action.tenantId).eq("asset_id", action.assetId);
+      if (sensors.error) throw unavailable();
+      for (const row of (sensors.data ?? []) as Row[]) {
+        await closeSensorAlert(admin, action.tenantId, String(row.id), "Gerät aus der Überwachung entfernt");
+      }
+      const removed = await admin.from("monitoring_sensors").delete()
+        .eq("tenant_id", action.tenantId).eq("asset_id", action.assetId);
+      if (removed.error) throw unavailable();
+      return { ok: true, sensors: (sensors.data ?? []).length };
+    }
     case "pauseDevice": {
       manage();
       const updated = await admin.from("monitoring_sensors")
