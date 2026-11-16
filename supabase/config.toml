@@ -369,6 +369,10 @@ verify_jwt = false
 import_map = "./functions/deno.json"
 verify_jwt = true
 
+[functions.tenant-feature-flags]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
 [functions.monitoring-sensors]
 import_map = "./functions/deno.json"
 verify_jwt = true
