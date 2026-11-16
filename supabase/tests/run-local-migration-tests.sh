@@ -15826,7 +15826,7 @@ $$;
 rollback;
 SQL
 
-# 0348: eigene Überwachung – Resultate einer Sonde, Zustandswechsel, Verdichtung.
+# 0349: eigene Überwachung – Resultate einer Sonde, Zustandswechsel, Verdichtung.
 psql -v ON_ERROR_STOP=1 <<'SQL'
 begin;
 do $$
@@ -15845,22 +15845,22 @@ begin
   select id into v_tenant from public.tenants order by created_at limit 1;
   select id into v_other from public.tenants where id <> v_tenant order by created_at limit 1;
   insert into public.assets (tenant_id, name, kind, lifecycle_state)
-  values (v_tenant, 'SW-0348', 'switch', 'active') returning id into v_asset;
+  values (v_tenant, 'SW-0349', 'switch', 'active') returning id into v_asset;
   insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address, hostname)
-  values (v_asset, v_tenant, 'switch', '10.48.0.2', 'sw-0348.local');
+  values (v_asset, v_tenant, 'switch', '10.48.0.2', 'sw-0349.local');
   insert into public.ipam_agents (tenant_id, name, token_hash)
-  values (v_tenant, 'Sonde 0348', repeat('c', 64)) returning id into v_agent;
+  values (v_tenant, 'Sonde 0349', repeat('c', 64)) returning id into v_agent;
 
   begin
     insert into public.monitoring_sensors (tenant_id, asset_id, agent_id, kind, name)
     values (v_tenant, v_asset, v_agent, 'tcp', 'Port ohne Nummer');
-    raise exception '0348 test: tcp sensor without port accepted';
+    raise exception '0349 test: tcp sensor without port accepted';
   exception when check_violation then null;
   end;
   begin
     insert into public.monitoring_sensors (tenant_id, asset_id, agent_id, kind, name, url)
     values (v_tenant, v_asset, v_agent, 'http', 'Datei', 'file:///etc/passwd');
-    raise exception '0348 test: non-http url accepted';
+    raise exception '0349 test: non-http url accepted';
   exception when check_violation then null;
   end;
 
@@ -15872,7 +15872,7 @@ begin
   v_result := public.monitoring_agent_checks(v_tenant, v_agent);
   if jsonb_array_length(v_result) <> 1 or v_result->0->>'host' <> '10.48.0.2'
      or v_result->0->>'kind' <> 'ping' then
-    raise exception '0348 test: checks wrong: %', v_result;
+    raise exception '0349 test: checks wrong: %', v_result;
   end if;
 
   -- Erste Messung OK: unknown → up.
@@ -15883,7 +15883,7 @@ begin
   ));
   if (v_result->>'accepted')::integer <> 1 or jsonb_array_length(v_result->'transitions') <> 1
      or v_result->'transitions'->0->>'to' <> 'up' then
-    raise exception '0348 test: first result wrong: %', v_result;
+    raise exception '0349 test: first result wrong: %', v_result;
   end if;
 
   -- Ein Fehlversuch ist noch kein Ausfall, der zweite schon (failures_to_down = 2).
@@ -15891,7 +15891,7 @@ begin
     jsonb_build_object('id', v_sensor, 'at', v_base + interval '1 minute', 'ok', false, 'message', 'Keine Antwort')
   ));
   if jsonb_array_length(v_result->'transitions') <> 0 then
-    raise exception '0348 test: one failure changed the state: %', v_result;
+    raise exception '0349 test: one failure changed the state: %', v_result;
   end if;
   v_result := public.monitoring_ingest_results(v_tenant, v_agent, jsonb_build_array(
     jsonb_build_object('id', v_sensor, 'at', v_base + interval '2 minutes', 'ok', false, 'message', 'Keine Antwort'),
@@ -15902,12 +15902,12 @@ begin
      or v_result->'transitions'->0->>'from' <> 'up'
      or v_result->'transitions'->0->>'to' <> 'down'
      or v_result->'transitions'->0->>'message' <> 'Keine Antwort' then
-    raise exception '0348 test: outage not detected: %', v_result;
+    raise exception '0349 test: outage not detected: %', v_result;
   end if;
   select * into v_status from public.monitoring_sensor_status where sensor_id = v_sensor;
   if v_status.state <> 'down' or v_status.consecutive_failures <> 2
      or v_status.since <> v_base + interval '2 minutes' then
-    raise exception '0348 test: status wrong: %', row_to_json(v_status);
+    raise exception '0349 test: status wrong: %', row_to_json(v_status);
   end if;
 
   -- Wieder da, aber langsam: down → warning; danach schnell: warning → up.
@@ -15918,7 +15918,7 @@ begin
   if jsonb_array_length(v_result->'transitions') <> 2
      or v_result->'transitions'->0->>'to' <> 'warning'
      or v_result->'transitions'->1->>'to' <> 'up' then
-    raise exception '0348 test: recovery wrong: %', v_result;
+    raise exception '0349 test: recovery wrong: %', v_result;
   end if;
 
   -- Eine fremde Sonde oder ein fremder Mandant kann nichts melden.
@@ -15927,23 +15927,23 @@ begin
       jsonb_build_object('id', v_sensor, 'at', v_base + interval '5 minutes', 'ok', false)
     ));
     if (v_result->>'accepted')::integer <> 0 then
-      raise exception '0348 test: foreign tenant accepted';
+      raise exception '0349 test: foreign tenant accepted';
     end if;
   end if;
   v_result := public.monitoring_ingest_results(v_tenant, gen_random_uuid(), jsonb_build_array(
     jsonb_build_object('id', v_sensor, 'at', v_base + interval '5 minutes', 'ok', false)
   ));
   if (v_result->>'accepted')::integer <> 0 then
-    raise exception '0348 test: foreign agent accepted';
+    raise exception '0349 test: foreign agent accepted';
   end if;
   if (public.monitoring_ingest_results(v_tenant, v_agent, '{}'::jsonb)->>'accepted')::integer <> 0 then
-    raise exception '0348 test: non-array accepted';
+    raise exception '0349 test: non-array accepted';
   end if;
 
   -- Verdichtung: fünf gewertete Messungen in der Stunde, drei davon OK mit Wert.
   select count(*) into v_count from public.monitoring_samples where sensor_id = v_sensor;
   if v_count <> 5 then
-    raise exception '0348 test: % samples', v_count;
+    raise exception '0349 test: % samples', v_count;
   end if;
   perform public.monitoring_rollup_samples();
   perform public.monitoring_rollup_samples();
@@ -15951,7 +15951,7 @@ begin
     from public.monitoring_samples_hourly where sensor_id = v_sensor and bucket = v_base;
   if v_status.checks <> 5 or v_status.checks_ok <> 3
      or v_status.value_min <> 2.5 or v_status.value_max <> 250 then
-    raise exception '0348 test: hourly wrong: %', row_to_json(v_status);
+    raise exception '0349 test: hourly wrong: %', row_to_json(v_status);
   end if;
 
   -- Aufbewahrung: alte Rohwerte verschwinden, der Sensor nimmt seine Werte mit.
@@ -15960,20 +15960,20 @@ begin
   perform public.monitoring_rollup_samples();
   if exists (select 1 from public.monitoring_samples
               where sensor_id = v_sensor and at < timezone('utc', now()) - interval '7 days 2 hours') then
-    raise exception '0348 test: old samples kept';
+    raise exception '0349 test: old samples kept';
   end if;
   delete from public.monitoring_sensors where id = v_sensor;
   if exists (select 1 from public.monitoring_samples_hourly where sensor_id = v_sensor) then
-    raise exception '0348 test: samples survived their sensor';
+    raise exception '0349 test: samples survived their sensor';
   end if;
 
   if has_function_privilege('authenticated', 'public.monitoring_ingest_results(uuid, uuid, jsonb)', 'execute')
      or has_table_privilege('authenticated', 'public.monitoring_samples', 'select')
      or has_table_privilege('authenticated', 'public.monitoring_sensors', 'select') then
-    raise exception '0348 test: monitoring reachable for authenticated';
+    raise exception '0349 test: monitoring reachable for authenticated';
   end if;
   if not exists (select 1 from public.feature_catalog where key = 'monitoring.native') then
-    raise exception '0348 test: feature missing';
+    raise exception '0349 test: feature missing';
   end if;
   raise notice 'native monitoring checks ran';
 end;
