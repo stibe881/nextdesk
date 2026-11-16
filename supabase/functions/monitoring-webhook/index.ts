@@ -642,6 +642,28 @@ async function settleAfterDown(
   }
 }
 
+/**
+ * Public notice (banner, status page) for an outage that affects services,
+ * when the tenant switched that on. Warnings are not published. Never fails:
+ * the notice must not get in the way of recording the incident.
+ */
+async function publishIncident(admin: Admin, incidentId: string, serviceIds: string[], event: PrtgEvent) {
+  if (event.kind !== "down" || !serviceIds.length) return;
+  const subject = [event.device ?? event.host, event.sensor].filter(Boolean).join(" – ");
+  const message = `Die Überwachung meldet einen Ausfall${subject ? `: ${subject}` : ""}.${
+    event.message ? ` ${event.message}` : ""
+  }`;
+  try {
+    await admin.rpc("monitoring_incident_publish", {
+      p_incident_id: incidentId,
+      p_service_ids: serviceIds,
+      p_message: message.slice(0, 2000),
+    });
+  } catch (failure) {
+    console.error("monitoring_publish_failed", failure instanceof Error ? failure.message : typeof failure);
+  }
+}
+
 export async function processEvent(
   admin: Admin,
   integration: Integration,
@@ -715,6 +737,7 @@ export async function processEvent(
           service_status_applied: Object.values(statuses)[0] ?? null,
         })
         .eq("id", alertId);
+      await publishIncident(admin, incident.incident.id, device?.serviceIds ?? [], event);
       await settleAfterDown(admin, tenantId, key, incident.incident.id, event, now);
       return incident.created ? "incident_opened" : "incident_updated";
     }
@@ -754,6 +777,8 @@ export async function processEvent(
       .select(INCIDENT_COLUMNS)
       .maybeSingle();
     if (data) await notifyIncident(admin, data as Incident, "escalated");
+    // A warning that became an outage is published now.
+    await publishIncident(admin, alert.incident_id, alertServiceIds(alert), event);
   }
   await admin
     .from("monitoring_incidents")

@@ -29,6 +29,8 @@ export type MonitoringConfig = {
   realertMinutes: number;
   groupDependencies: boolean;
   suppressInMaintenance: boolean;
+  /** Publish outages that affect services (banner, status page). */
+  publishIncidents: boolean;
   hasToken: boolean;
   tokenRotatedAt: string | null;
   lastReceivedAt: string | null;
@@ -85,6 +87,7 @@ export function parseMonitoringConfig(value: unknown): MonitoringConfig | null {
       typeof value.realertMinutes === "number" ? value.realertMinutes : 15,
     groupDependencies: value.groupDependencies !== false,
     suppressInMaintenance: value.suppressInMaintenance !== false,
+    publishIncidents: value.publishIncidents === true,
     hasToken: value.hasToken,
     tokenRotatedAt: text(value.tokenRotatedAt),
     lastReceivedAt: text(value.lastReceivedAt),
@@ -186,6 +189,9 @@ async function loadMonitoringSettings(tenantId: string) {
 async function saveMonitoringConfig(
   tenantId: string,
   config: MonitoringConfig,
+  // Only the alerting form sets this; the notices are published in the name
+  // of whoever switches it on, so the PRTG form must not resend it.
+  publishIncidents?: boolean,
 ): Promise<MonitoringConfig | null> {
   const { data, error } = await invokeMonitoring({
     body: {
@@ -199,6 +205,7 @@ async function saveMonitoringConfig(
         realertMinutes: config.realertMinutes,
         groupDependencies: config.groupDependencies,
         suppressInMaintenance: config.suppressInMaintenance,
+        ...(publishIncidents === undefined ? {} : { publishIncidents }),
       },
     },
   });
@@ -223,6 +230,7 @@ export function MonitoringAlertingSettings({ tenantId }: { tenantId: string }) {
   const [realertMinutes, setRealertMinutes] = useState(15);
   const [groupDependencies, setGroupDependencies] = useState(true);
   const [suppressInMaintenance, setSuppressInMaintenance] = useState(true);
+  const [publishIncidents, setPublishIncidents] = useState(false);
 
   const apply = useCallback((next: MonitoringConfig) => {
     setLoaded(next);
@@ -232,6 +240,7 @@ export function MonitoringAlertingSettings({ tenantId }: { tenantId: string }) {
     setRealertMinutes(next.realertMinutes);
     setGroupDependencies(next.groupDependencies);
     setSuppressInMaintenance(next.suppressInMaintenance);
+    setPublishIncidents(next.publishIncidents);
   }, []);
 
   useEffect(() => {
@@ -263,15 +272,20 @@ export function MonitoringAlertingSettings({ tenantId }: { tenantId: string }) {
     try {
       // «PRTG-Meldungen verarbeiten» belongs to the PRTG form; keep it.
       const current = await loadMonitoringSettings(tenantId);
-      const next = await saveMonitoringConfig(tenantId, {
-        ...current.config,
-        teamId: teamId || null,
-        createOn,
-        setServiceStatus,
-        realertMinutes,
-        groupDependencies,
-        suppressInMaintenance,
-      });
+      const next = await saveMonitoringConfig(
+        tenantId,
+        {
+          ...current.config,
+          teamId: teamId || null,
+          createOn,
+          setServiceStatus,
+          realertMinutes,
+          groupDependencies,
+          suppressInMaintenance,
+          publishIncidents,
+        },
+        publishIncidents,
+      );
       if (next) apply(next);
       setMessage("Die Alarmierung wurde gespeichert.");
     } catch (error) {
@@ -397,6 +411,18 @@ export function MonitoringAlertingSettings({ tenantId }: { tenantId: string }) {
             />
             Systemstatus des verknüpften Dienstes anpassen (Down: teilweiser
             Ausfall, Warning: eingeschränkt)
+          </label>
+          <label className="asset-intune-settings__check">
+            <input
+              checked={publishIncidents}
+              disabled={saving}
+              onChange={(event) => setPublishIncidents(event.target.checked)}
+              type="checkbox"
+            />
+            Ausfälle mit betroffenen Diensten automatisch veröffentlichen:
+            Banner für alle und Meldung auf der Statusseite, sofort beim Ausfall
+            und ohne Bestätigung durch das Team (Warnungen werden nicht
+            veröffentlicht; die Meldung schliesst sich mit der Störung)
           </label>
           <div className="asset-intune-settings__actions">
             <button disabled={saving} type="submit">

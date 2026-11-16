@@ -50,6 +50,11 @@ export type SensorInput = {
   cloud: boolean;
   failuresToDown: number;
   paused: boolean;
+  /**
+   * Services this sensor affects instead of all services of its device.
+   * Null = not sent (older clients): what is stored stays.
+   */
+  serviceIds: string[] | null;
 };
 
 export type Action =
@@ -342,6 +347,13 @@ export function parseSensor(value: unknown): SensorInput | string {
     ? value.failuresToDown
     : 2;
   if (failuresToDown < 1 || failuresToDown > 10) return "Die Anzahl Fehlversuche muss zwischen 1 und 10 liegen.";
+  let serviceIds: string[] | null = null;
+  if (value.serviceIds !== undefined && value.serviceIds !== null) {
+    if (!Array.isArray(value.serviceIds) || value.serviceIds.length > 20) return "Die betroffenen Dienste sind ungültig.";
+    const ids = value.serviceIds.map(uuid);
+    if (ids.some((id) => id === null)) return "Die betroffenen Dienste sind ungültig.";
+    serviceIds = [...new Set(ids as string[])];
+  }
   const rawName = typeof value.name === "string" ? value.name.replace(/\s+/g, " ").trim() : "";
   if (rawName.length > 120) return "Der Name ist zu lang (höchstens 120 Zeichen).";
   return {
@@ -368,6 +380,7 @@ export function parseSensor(value: unknown): SensorInput | string {
     cloud,
     failuresToDown,
     paused: value.paused === true,
+    serviceIds,
   };
 }
 

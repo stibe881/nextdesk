@@ -569,6 +569,15 @@ async function applyTransitions(
   if (!integration) return null;
   let failed = 0;
   const devices = new Map<string, ReturnType<typeof parseResolvedDevice>>();
+  // Sensors with own services affect those instead of all services of the device.
+  const own = await admin.from("monitoring_sensors").select("id, service_ids")
+    .eq("tenant_id", tenantId).in("id", [...new Set(transitions.map((transition) => transition.sensorId))]);
+  const sensorServices = new Map<string, string[]>(
+    ((own.data ?? []) as Row[]).map((row) => [
+      String(row.id),
+      Array.isArray(row.service_ids) ? (row.service_ids as unknown[]).filter((id): id is string => typeof id === "string") : [],
+    ]),
+  );
   for (const transition of transitions) {
     try {
       if (!devices.has(transition.assetId)) {
@@ -579,7 +588,11 @@ async function applyTransitions(
         if (resolved.error) throw new Error("device_lookup_failed");
         devices.set(transition.assetId, parseResolvedDevice(resolved.data));
       }
-      const device = devices.get(transition.assetId) ?? null;
+      const resolvedDevice = devices.get(transition.assetId) ?? null;
+      const services = sensorServices.get(transition.sensorId) ?? [];
+      const device = resolvedDevice && services.length
+        ? { ...resolvedDevice, serviceIds: services }
+        : resolvedDevice;
       const event = transitionEvent(transition, device, probeName);
       if (!event) continue;
       await processEvent(admin, integration, event, new Date(transition.at), {
