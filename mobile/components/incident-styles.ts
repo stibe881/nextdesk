@@ -100,6 +100,14 @@ export const useIncidentStyles = makeThemedStyles((c) => ({
   event: { flexDirection: "row", gap: 10 },
   eventBody: { color: c.text, flex: 1, fontSize: 13, lineHeight: 19 },
   eventDot: { borderRadius: 5, height: 10, marginTop: 5, width: 10 },
+  eventDay: {
+    color: c.muted,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+    marginBottom: 6,
+    marginTop: 10,
+  },
   eventTime: { color: c.muted, fontSize: 11, fontWeight: "700", width: 44 },
   eyebrow: {
     color: c.muted,
