@@ -1,6 +1,7 @@
 /** Pure logic of the «Überwachung» endpoint: requests, states and series. */
 
-export type SensorKind = "ping" | "tcp" | "http";
+export type SensorKind = "ping" | "tcp" | "http" | "snmp" | "cert" | "dns";
+export type SnmpMetric = "uptime" | "traffic" | "value";
 export type DisplayState = "down" | "warning" | "up" | "unknown" | "paused";
 export type Range = "24h" | "7d" | "30d" | "1y";
 
@@ -35,6 +36,18 @@ export type SensorInput = {
   intervalSeconds: number;
   timeoutMs: number;
   warningAbove: number | null;
+  warningBelow: number | null;
+  downAbove: number | null;
+  downBelow: number | null;
+  snmpMetric: SnmpMetric | null;
+  snmpOid: string | null;
+  snmpIndex: number | null;
+  scale: number;
+  unit: string | null;
+  /** DNS: address the name must resolve to. */
+  expect: string | null;
+  /** Measured by nextDesk itself instead of a probe (http, cert, dns). */
+  cloud: boolean;
   failuresToDown: number;
   paused: boolean;
 };
@@ -48,10 +61,28 @@ export type Action =
   | { type: "deleteSensor"; tenantId: string; sensorId: string }
   | { type: "pauseDevice"; tenantId: string; assetId: string; paused: boolean }
   | { type: "createAgent"; tenantId: string; name: string }
-  | { type: "probePackage"; tenantId: string };
+  | { type: "probePackage"; tenantId: string }
+  | { type: "listInterfaces"; tenantId: string; assetId: string; agentId: string }
+  | { type: "interfaces"; tenantId: string; jobId: string };
 
-export function defaultName(kind: SensorKind, port: number | null, url: string | null): string {
+export function defaultName(
+  kind: SensorKind,
+  port: number | null,
+  url: string | null,
+  snmp: { metric: SnmpMetric | null; index: number | null; oid: string | null; host?: string | null } = {
+    metric: null,
+    index: null,
+    oid: null,
+  },
+): string {
   if (kind === "ping") return "Ping";
+  if (kind === "cert") return `Zertifikat ${snmp.host ?? ""}`.trim().slice(0, 120);
+  if (kind === "dns") return `DNS ${snmp.host ?? ""}`.trim().slice(0, 120);
+  if (kind === "snmp") {
+    if (snmp.metric === "uptime") return "Laufzeit";
+    if (snmp.metric === "traffic") return `Port ${snmp.index} Traffic`;
+    return `SNMP ${(snmp.oid ?? "").split(".").slice(-3).join(".")}`;
+  }
   if (kind === "tcp") return `Port ${port}`;
   try {
     return `HTTP ${new URL(url ?? "").host}`.slice(0, 120);
@@ -65,8 +96,10 @@ export function parseSensor(value: unknown): SensorInput | string {
   if (!isObject(value)) return "Die Angaben zum Sensor fehlen.";
   const assetId = uuid(value.assetId);
   if (!assetId) return "Das Gerät fehlt.";
-  const kind = value.kind;
-  if (kind !== "ping" && kind !== "tcp" && kind !== "http") return "Die Art des Sensors ist ungültig.";
+  const kind = value.kind as SensorKind;
+  if (!["ping", "tcp", "http", "snmp", "cert", "dns"].includes(String(kind))) {
+    return "Die Art des Sensors ist ungültig.";
+  }
   const id = value.id === null || value.id === undefined ? null : uuid(value.id);
   if (value.id && !id) return "Der Sensor ist ungültig.";
   const agentId = value.agentId === null || value.agentId === undefined || value.agentId === ""
@@ -83,6 +116,30 @@ export function parseSensor(value: unknown): SensorInput | string {
   }
   let port: number | null = null;
   let url: string | null = null;
+  let expect: string | null = null;
+  const cloud = value.cloud === true;
+  if (cloud) {
+    if (kind !== "http" && kind !== "cert" && kind !== "dns") {
+      return "Aus der Cloud lassen sich nur HTTP, Zertifikat und DNS messen.";
+    }
+    if (agentId) return "Ein Sensor wird entweder von einer Sonde oder aus der Cloud gemessen.";
+  }
+  if (kind === "cert" || kind === "dns") {
+    if (!target) return "Bitte den Hostnamen angeben.";
+    if (kind === "cert") {
+      port = value.port === null || value.port === undefined || value.port === ""
+        ? 443
+        : typeof value.port === "number" && Number.isInteger(value.port)
+        ? value.port
+        : NaN;
+      if (!(port >= 1 && port <= 65535)) return "Der Port muss zwischen 1 und 65535 liegen.";
+    } else if (typeof value.expect === "string" && value.expect.trim()) {
+      expect = value.expect.trim().toLowerCase();
+      if (!IPV4.test(expect) && !(expect.includes(":") && IPV6.test(expect))) {
+        return "Die erwartete Adresse muss eine IP-Adresse sein.";
+      }
+    }
+  }
   if (kind === "tcp") {
     port = typeof value.port === "number" && Number.isInteger(value.port) ? value.port : NaN;
     if (!(port >= 1 && port <= 65535)) return "Der Port muss zwischen 1 und 65535 liegen.";
@@ -107,13 +164,61 @@ export function parseSensor(value: unknown): SensorInput | string {
     ? value.timeoutMs
     : 5000;
   if (timeoutMs < 500 || timeoutMs > 30000) return "Das Zeitlimit muss zwischen 0,5 und 30 Sekunden liegen.";
-  let warningAbove: number | null = null;
-  if (value.warningAbove !== null && value.warningAbove !== undefined && value.warningAbove !== "") {
-    if (typeof value.warningAbove !== "number" || !(value.warningAbove > 0) || value.warningAbove > 60000) {
-      return "Die Warnschwelle muss zwischen 1 und 60000 ms liegen.";
+  let snmpMetric: SnmpMetric | null = null;
+  let snmpOid: string | null = null;
+  let snmpIndex: number | null = null;
+  let scale = 1;
+  let unit: string | null = null;
+  if (kind === "snmp") {
+    if (value.snmpMetric !== "uptime" && value.snmpMetric !== "traffic" && value.snmpMetric !== "value") {
+      return "Die Messart des SNMP-Sensors ist ungültig.";
     }
-    warningAbove = value.warningAbove;
+    snmpMetric = value.snmpMetric;
+    if (snmpMetric === "traffic") {
+      snmpIndex = typeof value.snmpIndex === "number" && Number.isInteger(value.snmpIndex) ? value.snmpIndex : NaN;
+      if (!(snmpIndex >= 1 && snmpIndex <= 2147483647)) return "Der Port (ifIndex) fehlt.";
+      unit = "bit/s";
+    } else if (snmpMetric === "uptime") {
+      unit = "s";
+    } else {
+      snmpOid = typeof value.snmpOid === "string" ? value.snmpOid.trim().replace(/^\./, "") : "";
+      if (!/^1(\.[0-9]{1,10}){2,60}$/.test(snmpOid)) {
+        return "Die OID muss aus Zahlen mit Punkten bestehen, z. B. 1.3.6.1.2.1.1.3.0.";
+      }
+      if (value.scale !== null && value.scale !== undefined && value.scale !== "") {
+        if (typeof value.scale !== "number" || !(value.scale > 0) || value.scale > 1e12) {
+          return "Der Faktor muss grösser als 0 sein.";
+        }
+        scale = value.scale;
+      }
+      const rawUnit = typeof value.unit === "string" ? value.unit.trim() : "";
+      if (rawUnit.length > 12) return "Die Einheit ist zu lang (höchstens 12 Zeichen).";
+      unit = rawUnit || null;
+    }
   }
+  // Response times are limited to a minute; SNMP values and days are free.
+  const free = kind === "snmp" || kind === "cert";
+  if (kind === "cert") unit = "Tg.";
+  const limit = free ? 1e15 : 60000;
+  const threshold = (raw: unknown, label: string): number | null | string => {
+    if (raw === null || raw === undefined || raw === "") return null;
+    if (typeof raw !== "number" || !Number.isFinite(raw) || Math.abs(raw) > limit || (!free && raw <= 0)) {
+      return free
+        ? `${label} muss eine Zahl sein.`
+        : `${label} muss zwischen 1 und 60000 ms liegen.`;
+    }
+    return raw;
+  };
+  const warningAbove = threshold(value.warningAbove, "Die Warnschwelle");
+  if (typeof warningAbove === "string") return warningAbove;
+  // A new certificate sensor warns 30 days and fails 7 days before expiry.
+  const certDefault = (raw: unknown, days: number) => kind === "cert" && raw === undefined ? days : raw;
+  const warningBelow = free ? threshold(certDefault(value.warningBelow, 30), "Die untere Warnschwelle") : null;
+  if (typeof warningBelow === "string") return warningBelow;
+  const downAbove = free ? threshold(value.downAbove, "Die Ausfall-Schwelle") : null;
+  if (typeof downAbove === "string") return downAbove;
+  const downBelow = free ? threshold(certDefault(value.downBelow, 7), "Die untere Ausfall-Schwelle") : null;
+  if (typeof downBelow === "string") return downBelow;
   const failuresToDown = typeof value.failuresToDown === "number" && Number.isInteger(value.failuresToDown)
     ? value.failuresToDown
     : 2;
@@ -125,13 +230,23 @@ export function parseSensor(value: unknown): SensorInput | string {
     assetId,
     agentId,
     kind,
-    name: rawName || defaultName(kind, port, url),
+    name: rawName || defaultName(kind, port, url, { metric: snmpMetric, index: snmpIndex, oid: snmpOid, host: target }),
     target,
     port,
     url,
     intervalSeconds,
     timeoutMs,
     warningAbove,
+    warningBelow,
+    downAbove,
+    downBelow,
+    snmpMetric,
+    snmpOid,
+    snmpIndex,
+    scale,
+    unit,
+    expect,
+    cloud,
     failuresToDown,
     paused: value.paused === true,
   };
@@ -175,6 +290,15 @@ export function parseAction(value: unknown): Action | string | null {
     }
     case "probePackage":
       return { type: "probePackage", tenantId };
+    case "listInterfaces": {
+      const assetId = uuid(value.assetId);
+      const agentId = uuid(value.agentId);
+      return assetId && agentId ? { type: "listInterfaces", tenantId, assetId, agentId } : null;
+    }
+    case "interfaces": {
+      const jobId = uuid(value.jobId);
+      return jobId ? { type: "interfaces", tenantId, jobId } : null;
+    }
     case "createAgent": {
       const name = typeof value.name === "string" ? value.name.replace(/\s+/g, " ").trim() : "";
       if (!name) return "Bitte einen Namen für die Sonde angeben.";
@@ -210,14 +334,15 @@ export function agentOnline(lastSeenAt: string | null, now: number): boolean {
  * (at least three minutes), the sensor is «unbekannt».
  */
 export function displayState(
-  sensor: { paused: boolean; agentId: string | null; intervalSeconds: number },
+  sensor: { paused: boolean; agentId: string | null; intervalSeconds: number; cloud?: boolean },
   status: { state: string | null; lastCheckAt: string | null } | null,
   now: number,
 ): DisplayState {
   if (sensor.paused) return "paused";
-  if (!sensor.agentId || !status?.lastCheckAt) return "unknown";
+  if ((!sensor.agentId && !sensor.cloud) || !status?.lastCheckAt) return "unknown";
   const last = Date.parse(status.lastCheckAt);
-  const limit = Math.max(sensor.intervalSeconds * 3, 180) * 1000;
+  // Cloud checks run from a job once a minute, so they get more slack.
+  const limit = Math.max(sensor.intervalSeconds * 3, sensor.cloud ? 300 : 180) * 1000;
   if (!Number.isFinite(last) || now - last > limit) return "unknown";
   return status.state === "down" || status.state === "warning" || status.state === "up"
     ? status.state
@@ -239,6 +364,9 @@ export type Point = {
   max: number | null;
   /** Share of successful checks (0–1). */
   ok: number;
+  /** Second value (outgoing traffic), when the sensor has one. */
+  avg2?: number | null;
+  max2?: number | null;
 };
 
 export function rangePlan(range: Range, now: number): { source: "raw" | "hourly" | "daily"; from: string; bucketMs: number } {
@@ -260,14 +388,34 @@ export function rangePlan(range: Range, now: number): { source: "raw" | "hourly"
  * aggregate (`checks` measurements); raw samples have checks = 1.
  */
 export function bucketize(
-  entries: readonly { at: number; checks: number; checksOk: number; avg: number | null; min: number | null; max: number | null }[],
+  entries: readonly {
+    at: number;
+    checks: number;
+    checksOk: number;
+    avg: number | null;
+    min: number | null;
+    max: number | null;
+    avg2?: number | null;
+    max2?: number | null;
+  }[],
   bucketMs: number,
 ): Point[] {
-  const buckets = new Map<number, { checks: number; ok: number; sum: number; weight: number; min: number | null; max: number | null }>();
+  const buckets = new Map<number, {
+    checks: number;
+    ok: number;
+    sum: number;
+    weight: number;
+    min: number | null;
+    max: number | null;
+    sum2: number;
+    weight2: number;
+    max2: number | null;
+  }>();
   for (const entry of entries) {
     if (!Number.isFinite(entry.at) || entry.checks <= 0) continue;
     const key = Math.floor(entry.at / bucketMs) * bucketMs;
-    const bucket = buckets.get(key) ?? { checks: 0, ok: 0, sum: 0, weight: 0, min: null, max: null };
+    const bucket = buckets.get(key) ??
+      { checks: 0, ok: 0, sum: 0, weight: 0, min: null, max: null, sum2: 0, weight2: 0, max2: null };
     bucket.checks += entry.checks;
     bucket.ok += entry.checksOk;
     if (entry.avg !== null) {
@@ -275,6 +423,13 @@ export function bucketize(
       const weight = Math.max(entry.checksOk, 1);
       bucket.sum += entry.avg * weight;
       bucket.weight += weight;
+    }
+    if (entry.avg2 !== null && entry.avg2 !== undefined) {
+      const weight = Math.max(entry.checksOk, 1);
+      bucket.sum2 += entry.avg2 * weight;
+      bucket.weight2 += weight;
+      const top = entry.max2 ?? entry.avg2;
+      bucket.max2 = bucket.max2 === null ? top : Math.max(bucket.max2, top);
     }
     if (entry.min !== null) bucket.min = bucket.min === null ? entry.min : Math.min(bucket.min, entry.min);
     if (entry.max !== null) bucket.max = bucket.max === null ? entry.max : Math.max(bucket.max, entry.max);
@@ -287,6 +442,7 @@ export function bucketize(
     min: round(bucket.min),
     max: round(bucket.max),
     ok: Math.round((bucket.ok / bucket.checks) * 10000) / 10000,
+    ...(bucket.weight2 ? { avg2: round(bucket.sum2 / bucket.weight2), max2: round(bucket.max2) } : {}),
   }));
 }
 
@@ -334,4 +490,26 @@ export function isOlderVersion(installed: string | null, latest: string | null):
     if (a[index]! !== b[index]!) return a[index]! < b[index]!;
   }
   return false;
+}
+
+export type InterfaceRow = { index: number; name: string; alias: string | null; up: boolean; speedMbps: number | null };
+
+/** Interfaces from the result of a «snmp_interfaces» job (untrusted input from the probe). */
+export function parseInterfaces(result: unknown): InterfaceRow[] {
+  const output = isObject(result) && isObject(result.output) ? result.output : result;
+  const list = isObject(output) && Array.isArray(output.interfaces) ? output.interfaces : [];
+  const clean = (text: unknown) =>
+    typeof text === "string" ? text.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 80) : "";
+  return list.flatMap((entry) => {
+    if (!isObject(entry) || typeof entry.index !== "number" || !Number.isInteger(entry.index) || entry.index < 1) {
+      return [];
+    }
+    return [{
+      index: entry.index,
+      name: clean(entry.name) || `Port ${entry.index}`,
+      alias: clean(entry.alias) || null,
+      up: entry.up === true,
+      speedMbps: typeof entry.speedMbps === "number" && entry.speedMbps > 0 ? entry.speedMbps : null,
+    }];
+  }).slice(0, 600);
 }

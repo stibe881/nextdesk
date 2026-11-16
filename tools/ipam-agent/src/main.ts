@@ -18,7 +18,7 @@ import {
 } from "./config.ts";
 import { type Job, JobRejected, planWriteJob } from "./jobs.ts";
 import { log, setLogLevel } from "./log.ts";
-import { Monitor, parseChecks } from "./monitor.ts";
+import { Monitor, parseChecks, safeHost } from "./monitor.ts";
 import { currentPlatform } from "./parsers.ts";
 import { runPowerShell } from "./powershell.ts";
 import {
@@ -28,6 +28,7 @@ import {
   type ReportLimits,
 } from "./reports.ts";
 import { runScan } from "./scan.ts";
+import { listInterfaces } from "./snmp.ts";
 import { VERSION } from "./version.ts";
 
 type Hello = {
@@ -154,6 +155,12 @@ async function runJob(
           prefixIds,
         ),
       };
+    } else if (job.kind === "snmp_interfaces") {
+      const target = safeHost(job.payload?.host);
+      if (!target) throw new JobRejected("Das Ziel ist ungültig.");
+      result = {
+        interfaces: (await listInterfaces(local, target)).slice(0, 600),
+      };
     } else {
       if (platform !== "win32")
         throw new JobRejected(
@@ -227,7 +234,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const monitor = new Monitor(client, platform);
+  const monitor = new Monitor(client, platform, local);
   let nextScanAt = 0;
   let firstScan = true;
   while (!stopping) {

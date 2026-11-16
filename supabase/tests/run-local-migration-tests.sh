@@ -16063,4 +16063,178 @@ $$;
 rollback;
 SQL
 
+# 0351: SNMP-Sensoren (Schwellen, zweiter Messwert) und Wächter für Sonden.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_asset uuid;
+  v_agent uuid;
+  v_battery uuid;
+  v_port uuid;
+  v_result jsonb;
+  v_row record;
+  v_base timestamptz := date_trunc('hour', timezone('utc', now())) - interval '2 hours';
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'USV-0351', 'ups', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address)
+  values (v_asset, v_tenant, 'ups', '10.51.0.2');
+  insert into public.ipam_agents (tenant_id, name, token_hash, last_seen_at)
+  values (v_tenant, 'Sonde 0351', repeat('d', 64), timezone('utc', now())) returning id into v_agent;
+
+  begin
+    insert into public.monitoring_sensors (tenant_id, asset_id, agent_id, kind, name, snmp_metric)
+    values (v_tenant, v_asset, v_agent, 'snmp', 'Port ohne Index', 'traffic');
+    raise exception '0351 test: traffic sensor without port accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.monitoring_sensors (tenant_id, asset_id, agent_id, kind, name, snmp_metric, snmp_oid)
+    values (v_tenant, v_asset, v_agent, 'snmp', 'OID', 'value', 'sysUpTime.0');
+    raise exception '0351 test: textual oid accepted';
+  exception when check_violation then null;
+  end;
+
+  insert into public.monitoring_sensors (
+    tenant_id, asset_id, agent_id, kind, name, snmp_metric, snmp_oid, scale, unit,
+    warning_below, down_below, failures_to_down
+  )
+  values (v_tenant, v_asset, v_agent, 'snmp', 'Akku', 'value', '1.3.6.1.4.1.318.1.1.1.2.2.1.0',
+          1, '%', 50, 20, 1)
+  returning id into v_battery;
+  insert into public.monitoring_sensors (tenant_id, asset_id, agent_id, kind, name, snmp_metric, snmp_index, unit)
+  values (v_tenant, v_asset, v_agent, 'snmp', 'Port 3 Traffic', 'traffic', 3, 'bit/s')
+  returning id into v_port;
+
+  v_result := public.monitoring_agent_checks(v_tenant, v_agent);
+  if jsonb_array_length(v_result) <> 2
+     or not exists (select 1 from jsonb_array_elements(v_result) item
+                     where item->>'snmpMetric' = 'traffic' and (item->>'snmpIndex')::integer = 3)
+     or not exists (select 1 from jsonb_array_elements(v_result) item
+                     where item->>'snmpOid' = '1.3.6.1.4.1.318.1.1.1.2.2.1.0') then
+    raise exception '0351 test: checks wrong: %', v_result;
+  end if;
+
+  -- Akku 100 % → up, 40 % → Warnung, 15 % → Ausfall (Schwelle), 80 % → up.
+  v_result := public.monitoring_ingest_results(v_tenant, v_agent, jsonb_build_array(
+    jsonb_build_object('id', v_battery, 'at', v_base, 'ok', true, 'value', 100),
+    jsonb_build_object('id', v_battery, 'at', v_base + interval '1 minute', 'ok', true, 'value', 40),
+    jsonb_build_object('id', v_battery, 'at', v_base + interval '2 minutes', 'ok', true, 'value', 15),
+    jsonb_build_object('id', v_battery, 'at', v_base + interval '3 minutes', 'ok', true, 'value', 80),
+    jsonb_build_object('id', v_port, 'at', v_base, 'ok', true, 'value', 4000000, 'value2', 1000000)
+  ));
+  if (select array_agg(item->>'to' order by item->>'at')
+        from jsonb_array_elements(v_result->'transitions') item
+       where item->>'sensorId' = v_battery::text)
+     is distinct from array['up', 'warning', 'down', 'up'] then
+    raise exception '0351 test: threshold transitions wrong: %', v_result;
+  end if;
+  if not exists (select 1 from jsonb_array_elements(v_result->'transitions') item
+                  where item->>'to' = 'down' and item->>'unit' = '%'
+                    and item->>'message' = 'Wert unter der Ausfall-Schwelle') then
+    raise exception '0351 test: threshold message missing: %', v_result;
+  end if;
+  select last_value, last_value2 into v_row from public.monitoring_sensor_status where sensor_id = v_port;
+  if v_row.last_value <> 4000000 or v_row.last_value2 <> 1000000 then
+    raise exception '0351 test: second value not stored: %', row_to_json(v_row);
+  end if;
+  perform public.monitoring_rollup_samples();
+  select value_avg, value2_avg into v_row
+    from public.monitoring_samples_hourly where sensor_id = v_port and bucket = v_base;
+  if v_row.value2_avg <> 1000000 then
+    raise exception '0351 test: second value not rolled up: %', row_to_json(v_row);
+  end if;
+
+  -- Wächter: Sonde meldet sich → nichts; schweigt → down; mit offenem Alarm und wieder da → up.
+  if exists (select 1 from jsonb_array_elements(public.monitoring_probe_watchdog_due()) item
+              where item->>'agentId' = v_agent::text) then
+    raise exception '0351 test: reporting probe is due';
+  end if;
+  update public.ipam_agents set last_seen_at = timezone('utc', now()) - interval '6 minutes' where id = v_agent;
+  if not exists (select 1 from jsonb_array_elements(public.monitoring_probe_watchdog_due()) item
+                  where item->>'agentId' = v_agent::text and item->>'action' = 'down'
+                    and (item->>'sensors')::integer = 2) then
+    raise exception '0351 test: silent probe not due: %', public.monitoring_probe_watchdog_due();
+  end if;
+  insert into public.monitoring_integrations (tenant_id) values (v_tenant) on conflict (tenant_id) do nothing;
+  insert into public.monitoring_alerts (tenant_id, integration_id, external_key, state)
+  select v_tenant, integration.id, 'nd:probe:' || v_agent::text, 'open'
+    from public.monitoring_integrations integration where integration.tenant_id = v_tenant;
+  if exists (select 1 from jsonb_array_elements(public.monitoring_probe_watchdog_due()) item
+              where item->>'agentId' = v_agent::text) then
+    raise exception '0351 test: alarmed silent probe is due again';
+  end if;
+  update public.ipam_agents set last_seen_at = timezone('utc', now()) where id = v_agent;
+  if not exists (select 1 from jsonb_array_elements(public.monitoring_probe_watchdog_due()) item
+                  where item->>'agentId' = v_agent::text and item->>'action' = 'up') then
+    raise exception '0351 test: returning probe not due';
+  end if;
+
+  -- Cloud: nur HTTP, Zertifikat und DNS, nie zusammen mit einer Sonde; Resultate
+  -- ohne Sonde gelten nur für Cloud-Sensoren.
+  begin
+    insert into public.monitoring_sensors (tenant_id, asset_id, kind, name, cloud)
+    values (v_tenant, v_asset, 'ping', 'Ping aus der Cloud', true);
+    raise exception '0351 test: cloud ping accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.monitoring_sensors (tenant_id, asset_id, agent_id, kind, name, target, cloud)
+    values (v_tenant, v_asset, v_agent, 'cert', 'Zertifikat', 'www.example.ch', true);
+    raise exception '0351 test: cloud sensor with probe accepted';
+  exception when check_violation then null;
+  end;
+  insert into public.monitoring_sensors (
+    tenant_id, asset_id, kind, name, target, port, unit, warning_below, down_below, cloud, failures_to_down
+  )
+  values (v_tenant, v_asset, 'cert', 'Zertifikat', 'www.example.ch', 443, 'Tg.', 30, 7, true, 1)
+  returning id into v_port;
+  if not exists (select 1 from jsonb_array_elements(public.monitoring_cloud_checks_due(10)) item
+                  where item->>'id' = v_port::text and item->>'host' = 'www.example.ch'
+                    and item->>'tenantId' = v_tenant::text) then
+    raise exception '0351 test: cloud sensor not due: %', public.monitoring_cloud_checks_due(10);
+  end if;
+  v_result := public.monitoring_ingest_results(v_tenant, null, jsonb_build_array(
+    jsonb_build_object('id', v_port, 'at', timezone('utc', now()), 'ok', true, 'value', 12),
+    jsonb_build_object('id', v_battery, 'at', timezone('utc', now()), 'ok', false)
+  ));
+  if (v_result->>'accepted')::integer <> 1
+     or v_result->'transitions'->0->>'to' <> 'warning' then
+    raise exception '0351 test: cloud result wrong: %', v_result;
+  end if;
+  if exists (select 1 from jsonb_array_elements(public.monitoring_cloud_checks_due(10)) item
+              where item->>'id' = v_port::text) then
+    raise exception '0351 test: measured cloud sensor is due again at once';
+  end if;
+  if (public.monitoring_ingest_results(v_tenant, v_agent, jsonb_build_array(
+        jsonb_build_object('id', v_port, 'at', timezone('utc', now()) + interval '1 second', 'ok', false)
+      ))->>'accepted')::integer <> 0 then
+    raise exception '0351 test: probe reported for a cloud sensor';
+  end if;
+
+  insert into public.ipam_agent_jobs (tenant_id, agent_id, kind, payload)
+  values (v_tenant, v_agent, 'snmp_interfaces', '{"host":"10.51.0.2"}'::jsonb);
+  -- Schreibende Aufträge brauchen weiterhin eine Freigabe.
+  begin
+    insert into public.ipam_agent_jobs (tenant_id, agent_id, kind, payload, status)
+    values (v_tenant, v_agent, 'dns_delete', '{}'::jsonb, 'queued');
+    raise exception '0351 test: write job without approval accepted';
+  exception when insufficient_privilege or check_violation then null;
+  end;
+  if not exists (select 1 from public.tenant_feature_flags
+                  where tenant_id = v_tenant and feature_key = 'monitoring.native') then
+    raise exception '0351 test: feature switch missing for tenant';
+  end if;
+  if has_function_privilege('authenticated', 'public.monitoring_probe_watchdog_due()', 'execute') then
+    raise exception '0351 test: watchdog executable by authenticated';
+  end if;
+  raise notice 'monitoring snmp and watchdog checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -396,6 +396,41 @@ button.monitoring-tile[aria-pressed="true"] {
   stroke-linecap: round;
 }
 
+.monitoring-chart__line2 {
+  fill: none;
+  stroke: var(--tone-warning);
+  stroke-width: 1.6;
+  stroke-dasharray: 5 3;
+  stroke-linejoin: round;
+}
+
+.monitoring-legend {
+  display: flex;
+  gap: 16px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.monitoring-legend span::before {
+  display: inline-block;
+  width: 18px;
+  margin-right: 6px;
+  border-top: 2px solid var(--primary);
+  vertical-align: middle;
+  content: "";
+}
+
+.monitoring-legend .monitoring-legend__out::before {
+  border-top: 2px dashed var(--tone-warning);
+}
+
+.monitoring-field-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .monitoring-chart__band {
   fill: var(--primary);
   fill-opacity: 0.12;

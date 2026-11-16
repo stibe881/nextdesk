@@ -5,6 +5,10 @@ import {
   formatAgo,
   formatMs,
   formatSince,
+  formatValue,
+  sensorValueText,
+  thresholdText,
+  trafficDraft,
   matchesSearch,
   sensorCountsText,
   sensorTarget,
@@ -100,5 +104,119 @@ describe("Überwachung: Verlaufsgrafik", () => {
     expect(empty.lines).toEqual([]);
     expect(empty.failures).toEqual([]);
     expect(empty.threshold).toBeNull();
+  });
+});
+
+describe("Überwachung: SNMP-Werte", () => {
+  it("formatiert nach Einheit", () => {
+    expect(formatValue(null, "%")).toBe("–");
+    expect(formatValue(412.4, null)).toBe("412 ms");
+    expect(formatValue(91.26, "%")).toBe("91 %");
+    expect(formatValue(1_240_000_000, "bit/s")).toBe("1.2 Gbit/s");
+    expect(formatValue(38_400_000, "bit/s")).toBe("38 Mbit/s");
+    expect(formatValue(12 * 86400 + 3 * 3600, "s")).toBe("12 Tg. 3 Std.");
+  });
+
+  it("zeigt Traffic in beide Richtungen und die Schwellen", () => {
+    expect(
+      sensorValueText({
+        lastValue: 38_400_000,
+        lastValue2: 4_100_000,
+        unit: "bit/s",
+        snmpMetric: "traffic",
+      }),
+    ).toBe("ein 38 Mbit/s · aus 4.1 Mbit/s");
+    expect(
+      sensorValueText({
+        lastValue: null,
+        lastValue2: null,
+        unit: "bit/s",
+        snmpMetric: "traffic",
+      }),
+    ).toBe("wird ermittelt");
+    expect(
+      thresholdText({
+        warningAbove: null,
+        warningBelow: 50,
+        downAbove: null,
+        downBelow: 20,
+        unit: "%",
+      }),
+    ).toBe("Warnung unter 50 % · Ausfall unter 20 %");
+    expect(
+      thresholdText({
+        warningAbove: 250,
+        warningBelow: null,
+        downAbove: null,
+        downBelow: null,
+        unit: null,
+      }),
+    ).toBe("Warnung über 250 ms");
+  });
+
+  it("baut den Traffic-Sensor aus einem ausgelesenen Port", () => {
+    const draft = trafficDraft(
+      "asset",
+      "agent",
+      {
+        index: 49,
+        name: "1/1/49",
+        alias: "to_SW-CORE",
+        up: true,
+        speedMbps: 10000,
+      },
+      300,
+    );
+    expect([
+      draft.kind,
+      draft.snmpMetric,
+      draft.snmpIndex,
+      draft.name,
+      draft.unit,
+      draft.intervalSeconds,
+    ]).toEqual([
+      "snmp",
+      "traffic",
+      49,
+      "1/1/49 to_SW-CORE Traffic",
+      "bit/s",
+      300,
+    ]);
+  });
+
+  it("zeichnet die zweite Linie für ausgehenden Traffic", () => {
+    const chart = chartGeometry(
+      {
+        from: "2026-11-16T09:00:00Z",
+        range: "24h",
+        bucketSeconds: 300,
+        unit: "bit/s",
+        points: [
+          {
+            t: "2026-11-16T09:00:00Z",
+            avg: 4e6,
+            min: 4e6,
+            max: 4e6,
+            ok: 1,
+            avg2: 1e6,
+            max2: 1e6,
+          },
+          {
+            t: "2026-11-16T09:05:00Z",
+            avg: 8e6,
+            min: 8e6,
+            max: 8e6,
+            ok: 1,
+            avg2: 2e6,
+            max2: 2e6,
+          },
+        ],
+      },
+      NOW,
+      null,
+    );
+    expect(chart.lines).toHaveLength(1);
+    expect(chart.lines2).toHaveLength(1);
+    expect(chart.yTicks.at(-1)?.label).toBe("10 Mbit/s");
   });
 });

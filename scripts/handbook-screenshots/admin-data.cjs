@@ -50,6 +50,11 @@ const FEATURE_CATALOG = {
     "Geräte, Dienste und Systemstatus verwalten, inklusive Intune-Abgleich.",
     "assets",
   ],
+  "monitoring.native": [
+    "Überwachung",
+    "Geräte mit eigenen Sensoren überwachen (Ping, Port, HTTP) und bei Ausfall eine Störung öffnen.",
+    "assets",
+  ],
   "inventory.management": [
     "Lager",
     "Lagerorte, Bestände und Inventuren führen.",

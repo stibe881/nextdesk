@@ -441,6 +441,9 @@ Resultate laufend an nextDesk.
   die Ruhe während Wartungsfenstern gelten wie bei allen Störungen.
 - **Sonden**: jede Sonde mit Zustand und letzter Meldung. Meldet sich eine
   Sonde länger als drei Minuten nicht, gelten ihre Sensoren als «Unbekannt».
+  Nach fünf Minuten öffnet nextDesk eine Störung «Sonde … – Verbindung zu
+  nextDesk» und alarmiert das Alarmteam; sie gilt als behoben, sobald die
+  Sonde sich wieder meldet.
 - **Geräteliste**: Zustand, Sensoren, Antwortzeit und letzte Prüfung. Die
   Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
 
@@ -470,17 +473,58 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    - **TCP-Port**: Antwortet ein Dienst, z. B. 3389 (RDP) oder 1433 (SQL)?
    - **HTTP**: Antwortet eine Webseite ohne Fehler? Fehlercodes ab 400 und
      ungültige Zertifikate gelten als Ausfall.
+   - **Zertifikat**: Wie viele Tage ist das TLS-Zertifikat eines Hosts noch
+     gültig? Vorgabe: Warnung unter 30 Tagen, Ausfall unter 7 Tagen. Ein
+     abgelaufenes Zertifikat gilt sofort als Ausfall.
+   - **DNS**: Lässt sich ein Name auflösen, auf Wunsch auf eine bestimmte
+     IP-Adresse?
+   - **SNMP Laufzeit**: Wie lange läuft das Gerät seit dem letzten Neustart?
+   - **SNMP Wert (eigene OID)**: ein beliebiger Zahlenwert des Geräts, z. B.
+     Akkuladung einer USV oder Temperatur. Mit **Faktor** und **Einheit**
+     wird der Rohwert lesbar (Rohwert 235, Faktor 0.1, Einheit °C ergibt
+     23.5 °C). Schwellen gibt es in beide Richtungen: Warnung und Ausfall
+     jeweils über oder unter einem Wert.
+   - **SNMP Port-Traffic** für einen einzelnen Port von Hand; bequemer geht
+     es über **Ports hinzufügen**.
 
-   Dazu Intervall (30 Sekunden bis 1 Stunde), optional eine Warnschwelle für
-   die Antwortzeit und die Anzahl Fehlversuche bis zum Ausfall.
+   Dazu Intervall (30 Sekunden bis 1 Stunde), bei Ping, Port und HTTP
+   optional eine Warnschwelle für die Antwortzeit, und die Anzahl
+   Fehlversuche bis zum Ausfall.
+
+   **Ports hinzufügen** (im Gerätedetail, für Switches und Firewalls): Sonde
+   wählen und **Ports auslesen**. Die Sonde fragt das Gerät per SNMP ab; das
+   dauert bis zu einer Minute. Danach die gewünschten Ports ankreuzen, das
+   Intervall wählen und die Sensoren anlegen. Jeder Port-Sensor misst den
+   ein- und ausgehenden Datenverkehr und meldet einen Ausfall, wenn der Port
+   die Verbindung verliert. Die Grafik zeigt beide Richtungen. Der erste
+   Messwert erscheint nach der zweiten Messung, weil der Datenverkehr aus
+   der Differenz zweier Zählerstände berechnet wird.
+
+   Die SNMP-Zugangsdaten stehen in der `config.json` der Sonde, nicht in
+   nextDesk.
+
+   **Gemessen von**: HTTP, Zertifikat und DNS kann statt einer Sonde auch
+   die **nextDesk Cloud** messen. Das passt für Ziele, die aus dem Internet
+   erreichbar sind (Website, Webmail, öffentliche Zertifikate). Interne
+   Adressen lehnt die Cloud ab; dafür braucht es eine Sonde. Die Cloud prüft
+   einmal pro Minute und folgt keinen Weiterleitungen. Bei öffentlichen
+   Zielen gilt ein nicht vertrauenswürdiges Zertifikat als Ausfall; eine
+   Sonde wertet bei internen Zertifikaten nur Ablauf und Erreichbarkeit.
 
 3. Sensoren **bearbeiten**, **löschen** oder das ganze Gerät **pausieren**.
    Beim Pausieren und Löschen endet ein offener Alarm des Sensors; die
    Störung gilt als behoben, sobald kein Sensor des Geräts mehr gestört ist.
 4. **Sonde hinzufügen** – siehe Handbuch für Administratoren.
 
-> In dieser ersten Ausbaustufe gibt es Ping-, Port- und HTTP-Sensoren. Die
-> Überwachung in der App und weitere Sensorarten (SNMP, Windows) folgen.
+**In der App** finden Sie die Überwachung unter **Dienste → Überwachung** (wenn
+das Modul aktiv ist). Die App zeigt die Kacheln je Zustand, die aktiven
+Alarme, die Geräteliste und die Sonden. Ein Tipp auf ein Gerät öffnet dessen
+Sensoren mit Verlaufsgrafik (24 Stunden bis 1 Jahr); von dort führt ein Tipp
+zur offenen Störung. Mit dem Recht «Assets verwalten» lässt sich die
+Überwachung eines Geräts pausieren und fortsetzen. Geräte, Sensoren und
+Sonden werden im Web erfasst.
+
+> Sensoren für Windows-Server (Dienste, Datenträger, CPU) folgen.
 
 ## Ticketliste
 

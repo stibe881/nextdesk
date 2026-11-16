@@ -363,6 +363,11 @@ parallel zu PRTG laufen; beide öffnen Störungen im selben Bereich.
    es wird bei jeder Änderung an der Sonde automatisch neu gebaut.
 5. Geräte und Sensoren erfassen (siehe Handbuch für Agenten, «Überwachung»).
 
+![Einstellungen → Monitoring mit Sonden und Installationspaket](images/ad-ueberwachung.jpg)
+
+Die Karte **Überwachung** unter **Funktionen** führt mit «Zum Tab
+Monitoring» direkt hierher.
+
 Die Einstellungen unter **Monitoring (PRTG)** gelten auch für die eigene
 Überwachung: Team für die Alarmierung, ob Warnungen eine Störung öffnen,
 Wiederalarmierung, Folgestörungen und Ruhe während einer Wartung. Der Schalter
@@ -374,6 +379,10 @@ für diesen Mandanten, und die Sonde erhält und meldet nur dessen Sensoren. Die
 erscheint «Aktualisierung verfügbar»: Paket herunterladen, auf dem Server
 entpacken und das Installationsskript erneut ausführen. Die Konfiguration
 bleibt erhalten.
+
+Meldet sich eine Sonde mit Sensoren fünf Minuten nicht, öffnet nextDesk eine
+Störung für die Sonde selbst und alarmiert das Alarmteam. So fällt auf, wenn
+die Überwachung eines Standorts ausfällt.
 
 Messwerte bewahrt nextDesk gestaffelt auf, damit die Datenbank nicht
 unbegrenzt wächst: jeden einzelnen Messwert 7 Tage, Stundenwerte 90 Tage,

@@ -4,7 +4,36 @@
 import { supabase } from "./supabase";
 
 export type MonitoringState = "down" | "warning" | "up" | "unknown" | "paused";
-export type SensorKind = "ping" | "tcp" | "http";
+export type SensorKind = "ping" | "tcp" | "http" | "snmp" | "cert" | "dns";
+export type SnmpMetric = "uptime" | "traffic" | "value";
+
+/** Further settings of a sensor (same fields in the draft). */
+export type SensorExtras = {
+  warningBelow: number | null;
+  downAbove: number | null;
+  downBelow: number | null;
+  snmpMetric: SnmpMetric | null;
+  snmpOid: string | null;
+  snmpIndex: number | null;
+  scale: number;
+  /** Unit of the value; null means response time in ms. */
+  unit: string | null;
+  /** DNS: address the name must resolve to. */
+  expect: string | null;
+  /** Measured by nextDesk itself instead of a probe. */
+  cloud: boolean;
+};
+
+/** Kinds nextDesk can measure without a probe. */
+export const CLOUD_KINDS: readonly SensorKind[] = ["http", "cert", "dns"];
+
+export type InterfaceRow = {
+  index: number;
+  name: string;
+  alias: string | null;
+  up: boolean;
+  speedMbps: number | null;
+};
 export type MonitoringRange = "24h" | "7d" | "30d" | "1y";
 
 export type MonitoringIncident = {
@@ -82,8 +111,9 @@ export type MonitoringSensor = {
   since: string | null;
   lastCheckAt: string | null;
   lastValue: number | null;
+  lastValue2?: number | null;
   lastMessage: string | null;
-};
+} & SensorExtras;
 
 export type MonitoringDeviceDetail = {
   canManage: boolean;
@@ -109,11 +139,14 @@ export type MonitoringPoint = {
   min: number | null;
   max: number | null;
   ok: number;
+  avg2?: number | null;
+  max2?: number | null;
 };
 
 export type MonitoringSeries = {
   sensorId: string;
   range: MonitoringRange;
+  unit?: string | null;
   from: string;
   bucketSeconds: number;
   points: MonitoringPoint[];
@@ -143,7 +176,7 @@ export type SensorDraft = {
   warningAbove: number | null;
   failuresToDown: number;
   paused: boolean;
-};
+} & SensorExtras;
 
 /** Calls `monitoring-sensors`; throws an Error with the German message. */
 export async function monitoringCall<T>(
@@ -187,7 +220,101 @@ export const KIND_LABELS: Record<SensorKind, string> = {
   ping: "Ping",
   tcp: "TCP-Port",
   http: "HTTP",
+  snmp: "SNMP",
+  cert: "Zertifikat",
+  dns: "DNS",
 };
+
+export const SNMP_LABELS: Record<SnmpMetric, string> = {
+  traffic: "SNMP Port-Traffic",
+  uptime: "SNMP Laufzeit",
+  value: "SNMP Wert",
+};
+
+export function kindLabel(sensor: {
+  kind: SensorKind;
+  snmpMetric: SnmpMetric | null;
+}): string {
+  return sensor.kind === "snmp" && sensor.snmpMetric
+    ? SNMP_LABELS[sensor.snmpMetric]
+    : KIND_LABELS[sensor.kind];
+}
+
+/** Heading of the history chart by unit. */
+export function valueLabel(unit: string | null | undefined): string {
+  if (!unit) return "Antwortzeit";
+  if (unit === "bit/s") return "Datenverkehr";
+  if (unit === "s") return "Laufzeit";
+  if (unit === "Tg.") return "Restlaufzeit";
+  return "Messwert";
+}
+
+/** «412 ms», «91 %», «1.2 Gbit/s», «12 Tg. 3 Std.» (unit null = ms). */
+export function formatValue(
+  value: number | null | undefined,
+  unit: string | null | undefined,
+): string {
+  if (value === null || value === undefined) return "–";
+  if (!unit) return formatMs(value);
+  const short = (number: number) =>
+    (Math.abs(number) < 10
+      ? Math.round(number * 10) / 10
+      : Math.round(number)
+    ).toLocaleString("de-CH");
+  if (unit === "bit/s") {
+    const steps: [number, string][] = [
+      [1e9, "Gbit/s"],
+      [1e6, "Mbit/s"],
+      [1e3, "kbit/s"],
+    ];
+    for (const [size, label] of steps) {
+      if (Math.abs(value) >= size) return `${short(value / size)} ${label}`;
+    }
+    return `${short(value)} bit/s`;
+  }
+  if (unit === "s") {
+    const days = Math.floor(value / 86400);
+    const hours = Math.floor((value % 86400) / 3600);
+    return days > 0
+      ? `${days} Tg. ${hours} Std.`
+      : `${hours} Std. ${Math.floor((value % 3600) / 60)} Min.`;
+  }
+  return `${short(value)} ${unit}`;
+}
+
+/** Current value of a sensor; traffic shows both directions. */
+export function sensorValueText(
+  sensor: Pick<
+    MonitoringSensor,
+    "lastValue" | "lastValue2" | "unit" | "snmpMetric"
+  >,
+): string {
+  if (sensor.snmpMetric === "traffic") {
+    if (sensor.lastValue === null) return "wird ermittelt";
+    return `ein ${formatValue(sensor.lastValue, sensor.unit)} · aus ${formatValue(sensor.lastValue2, sensor.unit)}`;
+  }
+  return formatValue(sensor.lastValue, sensor.unit);
+}
+
+/** Thresholds of a sensor as text, e.g. «Warnung über 250 ms». */
+export function thresholdText(
+  sensor: Pick<
+    MonitoringSensor,
+    "warningAbove" | "warningBelow" | "downAbove" | "downBelow" | "unit"
+  >,
+): string {
+  const parts: string[] = [];
+  const value = (number: number) => formatValue(number, sensor.unit);
+  if (sensor.warningAbove !== null)
+    parts.push(`Warnung über ${value(sensor.warningAbove)}`);
+  if (sensor.warningBelow !== null)
+    parts.push(`Warnung unter ${value(sensor.warningBelow)}`);
+  if (sensor.downAbove !== null)
+    parts.push(`Ausfall über ${value(sensor.downAbove)}`);
+  if (sensor.downBelow !== null)
+    parts.push(`Ausfall unter ${value(sensor.downBelow)}`);
+  return parts.join(" · ");
+}
 
 export const CATEGORY_LABELS: Record<string, string> = {
   server: "Server",
@@ -252,11 +379,20 @@ export function formatSince(iso: string | null, now: number): string {
 
 /** What a sensor measures, e.g. «10.0.0.2», «srv01:3389», the URL. */
 export function sensorTarget(
-  sensor: Pick<MonitoringSensor, "kind" | "target" | "port" | "url">,
+  sensor: Pick<MonitoringSensor, "kind" | "target" | "port" | "url"> &
+    Partial<Pick<MonitoringSensor, "snmpMetric" | "snmpIndex" | "snmpOid">>,
   device: { ipAddress: string | null; hostname: string | null },
 ): string {
   if (sensor.kind === "http") return sensor.url ?? "";
   const host = sensor.target ?? device.ipAddress ?? device.hostname ?? "";
+  if (sensor.kind === "cert") return `${host}:${sensor.port ?? 443}`;
+  if (sensor.kind === "dns") return host;
+  if (sensor.kind === "snmp") {
+    if (sensor.snmpMetric === "traffic")
+      return `${host} · Port ${sensor.snmpIndex}`;
+    if (sensor.snmpMetric === "value") return `${host} · ${sensor.snmpOid}`;
+    return host;
+  }
   return sensor.kind === "tcp" ? `${host}:${sensor.port}` : host;
 }
 
@@ -288,6 +424,8 @@ export type ChartGeometry = {
   height: number;
   /** Line segments (a gap where no value was measured). */
   lines: string[];
+  /** Second value (outgoing traffic), when present. */
+  lines2: string[];
   /** Min–max band per segment. */
   bands: string[];
   /** Buckets with failed checks: x position and width. */
@@ -321,7 +459,12 @@ function tickLabel(time: number, range: MonitoringRange): string {
 
 /** Geometry of the history chart (pure, so it can be tested without a DOM). */
 export function chartGeometry(
-  series: Pick<MonitoringSeries, "points" | "from" | "range" | "bucketSeconds">,
+  series: Pick<
+    MonitoringSeries,
+    "points" | "from" | "range" | "bucketSeconds"
+  > & {
+    unit?: string | null;
+  },
   now: number,
   warningAbove: number | null,
   width = 640,
@@ -331,9 +474,18 @@ export function chartGeometry(
   const span = Math.max(now - start, 1);
   const innerWidth = width - PAD.left - PAD.right;
   const innerHeight = height - PAD.top - PAD.bottom;
-  const values = series.points.flatMap((point) =>
-    point.max !== null ? [point.max] : point.avg !== null ? [point.avg] : [],
-  );
+  const values = series.points.flatMap((point) => [
+    ...(point.max !== null
+      ? [point.max]
+      : point.avg !== null
+        ? [point.avg]
+        : []),
+    ...(point.max2 !== null && point.max2 !== undefined
+      ? [point.max2]
+      : point.avg2 !== null && point.avg2 !== undefined
+        ? [point.avg2]
+        : []),
+  ]);
   const top = niceMax(Math.max(...values, warningAbove ?? 0, 1));
   const x = (time: number) =>
     PAD.left + Math.min(Math.max((time - start) / span, 0), 1) * innerWidth;
@@ -343,6 +495,7 @@ export function chartGeometry(
   const bucketMs = series.bucketSeconds * 1000;
 
   const lines: string[] = [];
+  const lines2: string[] = [];
   const bands: string[] = [];
   let segment: MonitoringPoint[] = [];
   const flush = () => {
@@ -357,6 +510,19 @@ export function chartGeometry(
         )
         .join(" "),
     );
+    const second = segment.filter(
+      (point) => point.avg2 !== null && point.avg2 !== undefined,
+    );
+    if (second.length) {
+      lines2.push(
+        second
+          .map(
+            (point, index) =>
+              `${index ? "L" : "M"}${at(point)},${round(y(point.avg2 ?? 0))}`,
+          )
+          .join(" "),
+      );
+    }
     if (segment.some((point) => point.max !== point.min)) {
       const upper = segment.map(
         (point, index) =>
@@ -393,7 +559,9 @@ export function chartGeometry(
     }));
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((share) => ({
     y: round(y(top * share)),
-    label: formatMs(top * share).replace(" ms", ""),
+    label: series.unit
+      ? formatValue(top * share, series.unit)
+      : formatMs(top * share).replace(" ms", ""),
   }));
   const xTicks = [0, 0.25, 0.5, 0.75, 1].map((share) => ({
     x: round(PAD.left + share * innerWidth),
@@ -403,6 +571,7 @@ export function chartGeometry(
     width,
     height,
     lines,
+    lines2,
     bands,
     failures,
     yTicks,
@@ -430,8 +599,37 @@ export function emptyDraft(
     intervalSeconds: 60,
     timeoutMs: 5000,
     warningAbove: null,
+    warningBelow: null,
+    downAbove: null,
+    downBelow: null,
+    snmpMetric: null,
+    snmpOid: null,
+    snmpIndex: null,
+    scale: 1,
+    unit: null,
+    expect: null,
+    cloud: false,
     failuresToDown: 2,
     paused: false,
+  };
+}
+
+/** Draft of a traffic sensor for a port read from the device. */
+export function trafficDraft(
+  assetId: string,
+  agentId: string,
+  port: InterfaceRow,
+  intervalSeconds: number,
+): SensorDraft {
+  const name = [port.name, port.alias].filter(Boolean).join(" ");
+  return {
+    ...emptyDraft(assetId, agentId),
+    kind: "snmp",
+    snmpMetric: "traffic",
+    snmpIndex: port.index,
+    unit: "bit/s",
+    name: `${name} Traffic`.slice(0, 120),
+    intervalSeconds,
   };
 }
 
@@ -448,6 +646,16 @@ export function draftFromSensor(sensor: MonitoringSensor): SensorDraft {
     intervalSeconds: sensor.intervalSeconds,
     timeoutMs: sensor.timeoutMs,
     warningAbove: sensor.warningAbove,
+    warningBelow: sensor.warningBelow,
+    downAbove: sensor.downAbove,
+    downBelow: sensor.downBelow,
+    snmpMetric: sensor.snmpMetric,
+    snmpOid: sensor.snmpOid,
+    snmpIndex: sensor.snmpIndex,
+    scale: sensor.scale,
+    unit: sensor.unit,
+    expect: sensor.expect,
+    cloud: sensor.cloud,
     failuresToDown: sensor.failuresToDown,
     paused: sensor.paused,
   };
