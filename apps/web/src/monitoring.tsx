@@ -3510,28 +3510,30 @@ function AddDeviceDialog({
             <Spinner label="Geräte werden geladen …" />
           ) : (
             <>
-              {choices.map((choice) => (
-                <label className="monitoring-choice" key={choice.assetId}>
-                  <input
-                    checked={assets.has(choice.assetId)}
-                    disabled={choice.monitored}
-                    onChange={() => toggleAsset(choice)}
-                    type="checkbox"
-                  />
-                  <span>
-                    <strong>{choice.name}</strong>
-                    <span className="monitoring-muted">
-                      {[
-                        categoryText(choice.category, choice.categoryLabel),
-                        choice.ipAddress ?? choice.hostname ?? "ohne Adresse",
-                        choice.monitored ? "wird bereits überwacht" : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
+              {choices
+                .filter((choice) => !choice.monitored)
+                .map((choice) => (
+                  <label className="monitoring-choice" key={choice.assetId}>
+                    <input
+                      checked={assets.has(choice.assetId)}
+                      disabled={choice.monitored}
+                      onChange={() => toggleAsset(choice)}
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>{choice.name}</strong>
+                      <span className="monitoring-muted">
+                        {[
+                          categoryText(choice.category, choice.categoryLabel),
+                          choice.ipAddress ?? choice.hostname ?? "ohne Adresse",
+                          choice.monitored ? "wird bereits überwacht" : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
                     </span>
-                  </span>
-                </label>
-              ))}
+                  </label>
+                ))}
               {addresses.map((entry) => (
                 <label className="monitoring-choice" key={entry.addressId}>
                   <input
@@ -3577,6 +3579,31 @@ function AddDeviceDialog({
                   </span>
                 </span>
               </label>
+              {/* Already monitored: at the very end, they cannot be picked. */}
+              {choices
+                .filter((choice) => choice.monitored)
+                .map((choice) => (
+                  <label className="monitoring-choice" key={choice.assetId}>
+                    <input
+                      checked={assets.has(choice.assetId)}
+                      disabled={choice.monitored}
+                      onChange={() => toggleAsset(choice)}
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>{choice.name}</strong>
+                      <span className="monitoring-muted">
+                        {[
+                          categoryText(choice.category, choice.categoryLabel),
+                          choice.ipAddress ?? choice.hostname ?? "ohne Adresse",
+                          choice.monitored ? "wird bereits überwacht" : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </span>
+                  </label>
+                ))}
             </>
           )}
         </div>
