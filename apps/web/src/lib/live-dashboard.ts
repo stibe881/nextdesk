@@ -551,22 +551,23 @@ export async function loadLiveDashboard(
           .eq("is_security_case", false)
           .in("status_id", closedStatusIds)
       : Promise.resolve({ count: 0, error: null }),
-    // «Meine Tickets» counts only open tickets (as the list since 0361).
+    // «Meine offenen Tickets»: the same count as the list behind the tile
+    // (assigned to or requested by me, not solved or closed, no security
+    // cases), taken from the list function itself so both always agree.
     user
-      ? closedStatusIds.length > 0
-        ? client
-            .from("tickets")
-            .select("id", { count: "exact", head: true })
-            .eq("tenant_id", tenant.id)
-            .eq("is_security_case", false)
-            .eq("assigned_agent_id", user.id)
-            .not("status_id", "in", `(${closedStatusIds.join(",")})`)
-        : client
-            .from("tickets")
-            .select("id", { count: "exact", head: true })
-            .eq("tenant_id", tenant.id)
-            .eq("is_security_case", false)
-            .eq("assigned_agent_id", user.id)
+      ? client
+          .rpc("list_authorized_ticket_list_page_v2", {
+            p_limit: 1,
+            p_scope: "mine",
+            p_tenant_id: tenant.id,
+          })
+          .then(({ data, error }) => ({
+            count: Number(
+              (Array.isArray(data) ? data[0] : null)?.matching_ticket_count ??
+                0,
+            ),
+            error,
+          }))
       : Promise.resolve({ count: 0, error: null }),
     client
       .from("tickets")
@@ -808,7 +809,7 @@ export async function loadLiveDashboard(
       closed: String(closedCount),
       closedDetail: "im aktuellen Bestand",
       mine: String(mineCount),
-      mineDetail: "mir zugewiesen",
+      mineDetail: "zugewiesen oder angefragt",
       open: String(openCount),
       openDetail: "aktuell offen",
       unassigned: String(unassignedCount),
