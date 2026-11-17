@@ -544,7 +544,8 @@ informieren.
 Mit dem Recht «Assets verwalten» können Sie zusätzlich:
 
 1. **Geräte hinzufügen** – die Suche findet:
-   - **Geräte der Infrastruktur.** Geräte mit Adresse stehen zuoberst.
+   - **Geräte der Infrastruktur.** Geräte mit Adresse stehen zuoberst,
+     bereits überwachte Geräte zuunterst in der Liste.
    - **Einträge der IP-Adressverwaltung**, die noch kein Gerät sind (ab zwei
      Zeichen). Name und Adresse werden übernommen.
    - **Neues Gerät erfassen**, wenn es nirgends steht: Name, Art und
