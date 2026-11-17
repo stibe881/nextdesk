@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  ChevronDown,
   Download,
   FlaskConical,
   LoaderCircle,
@@ -574,6 +575,8 @@ function AvailabilityCard({
 }) {
   const [range, setRange] = useState<AvailabilityRange>("30d");
   const [data, setData] = useState<MonitoringAvailability | null>(null);
+  // The list of devices is folded in until it is asked for.
+  const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -670,72 +673,87 @@ function AvailabilityCard({
             </span>
             <span>heute</span>
           </div>
-          <h4 className="monitoring-availability__title">
-            Am häufigsten ausgefallen
-          </h4>
-          {shown.worst.length === 0 ? (
-            <p className="monitoring__empty">
-              In diesem Zeitraum ist kein Gerät ausgefallen.
-            </p>
-          ) : (
-            <ul className="monitoring-availability__list">
-              {shown.worst.map((device) => (
-                <li key={device.assetId}>
-                  <div className="monitoring-availability__device">
-                    <span>
-                      <button
-                        className="text-button"
-                        onClick={() => onOpenDevice(device.assetId)}
-                        type="button"
-                      >
-                        {device.name}
-                      </button>
-                      {device.services.length ? (
-                        device.services.map((service) => (
-                          <span
-                            className="monitoring-service-chip"
-                            key={service}
+          <button
+            aria-expanded={expanded}
+            className="monitoring-availability__toggle"
+            onClick={() => setExpanded((value) => !value)}
+            type="button"
+          >
+            <span>
+              Am häufigsten ausgefallen
+              {shown.worst.length ? ` (${shown.worst.length})` : ""}
+            </span>
+            <ChevronDown aria-hidden="true" size={16} />
+          </button>
+          {expanded ? (
+            <>
+              {shown.worst.length === 0 ? (
+                <p className="monitoring__empty">
+                  In diesem Zeitraum ist kein Gerät ausgefallen.
+                </p>
+              ) : (
+                <ul className="monitoring-availability__list">
+                  {shown.worst.map((device) => (
+                    <li key={device.assetId}>
+                      <div className="monitoring-availability__device">
+                        <span>
+                          <button
+                            className="text-button"
+                            onClick={() => onOpenDevice(device.assetId)}
+                            type="button"
                           >
-                            {service}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="monitoring-muted">
-                          kein Dienst verknüpft
+                            {device.name}
+                          </button>
+                          {device.services.length ? (
+                            device.services.map((service) => (
+                              <span
+                                className="monitoring-service-chip"
+                                key={service}
+                              >
+                                {service}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="monitoring-muted">
+                              kein Dienst verknüpft
+                            </span>
+                          )}
                         </span>
-                      )}
-                    </span>
-                    <span className="monitoring-muted">
-                      {device.outages === 1
-                        ? "1 Ausfall"
-                        : `${device.outages} Ausfälle`}{" "}
-                      · {formatDowntime(device.downSeconds)} gesamt
-                    </span>
-                  </div>
-                  <span
-                    aria-hidden="true"
-                    className="monitoring-availability__meter"
-                  >
-                    <i
-                      className={
-                        device.availability >= 99.5
-                          ? "is-ok"
-                          : device.availability >= 98
-                            ? "is-warning"
-                            : "is-down"
-                      }
-                      style={{ width: `${Math.max(device.availability, 2)}%` }}
-                    />
-                  </span>
-                  <strong>{formatPercent(device.availability)}</strong>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="monitoring-muted">
-            Aus den Ausfällen der eigenen Sensoren, ab dem Tag der Überwachung.
-            Warnungen und simulierte Ausfälle zählen nicht.
-          </p>
+                        <span className="monitoring-muted">
+                          {device.outages === 1
+                            ? "1 Ausfall"
+                            : `${device.outages} Ausfälle`}{" "}
+                          · {formatDowntime(device.downSeconds)} gesamt
+                        </span>
+                      </div>
+                      <span
+                        aria-hidden="true"
+                        className="monitoring-availability__meter"
+                      >
+                        <i
+                          className={
+                            device.availability >= 99.5
+                              ? "is-ok"
+                              : device.availability >= 98
+                                ? "is-warning"
+                                : "is-down"
+                          }
+                          style={{
+                            width: `${Math.max(device.availability, 2)}%`,
+                          }}
+                        />
+                      </span>
+                      <strong>{formatPercent(device.availability)}</strong>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="monitoring-muted">
+                Aus den Ausfällen der eigenen Sensoren, ab dem Tag der
+                Überwachung. Warnungen und simulierte Ausfälle zählen nicht.
+              </p>
+            </>
+          ) : null}
         </>
       ) : null}
     </article>
