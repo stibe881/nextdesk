@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -18,6 +18,7 @@ import {
   isHandbookId,
   loadMobileHandbook,
   parseHandbookBlocks,
+  handbookToc,
   parseHandbookInline,
   type Handbook,
   type HandbookBlock,
@@ -65,6 +66,10 @@ export default function HandbookScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
+  const [guidesOpen, setGuidesOpen] = useState<Record<number, boolean>>({});
+  const scrollRef = useRef<ScrollView>(null);
+  const articleY = useRef(0);
+  const headingY = useRef<Record<number, number>>({});
   const styles = useStyles();
   const colors = useAppColors();
 
@@ -101,6 +106,16 @@ export default function HandbookScreen() {
     [handbook],
   );
 
+  const toc = useMemo(() => handbookToc(blocks), [blocks]);
+  const jumpTo = (blockIndex: number) => {
+    const y = headingY.current[blockIndex];
+    if (y === undefined) return;
+    scrollRef.current?.scrollTo({
+      y: Math.max(0, articleY.current + y - 8),
+      animated: true,
+    });
+  };
+
   const renderBlock = (block: HandbookBlock, index: number) => {
     switch (block.kind) {
       case "heading":
@@ -108,6 +123,9 @@ export default function HandbookScreen() {
           <Text
             accessibilityRole="header"
             key={index}
+            onLayout={(event) => {
+              headingY.current[index] = event.nativeEvent.layout.y;
+            }}
             style={block.level === 2 ? styles.h2 : styles.h3}
           >
             {block.text}
@@ -213,6 +231,7 @@ export default function HandbookScreen() {
     <ScreenContainer className="px-5">
       <ScrollView
         contentContainerStyle={styles.content}
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
       >
         <Pressable
@@ -247,7 +266,12 @@ export default function HandbookScreen() {
             </Pressable>
           </View>
         ) : handbook ? (
-          <View style={styles.article}>
+          <View
+            onLayout={(event) => {
+              articleY.current = event.nativeEvent.layout.y;
+            }}
+            style={styles.article}
+          >
             <View style={styles.metaRow}>
               <View style={styles.audience}>
                 <Ionicons color={colors.info} name="book-outline" size={14} />
@@ -264,6 +288,76 @@ export default function HandbookScreen() {
             </Text>
             <Text style={styles.summary}>{handbook.description}</Text>
             <View style={styles.rule} />
+            {toc.length > 0 ? (
+              <View accessibilityLabel="Inhalt" style={styles.toc}>
+                <Text accessibilityRole="header" style={styles.tocTitle}>
+                  Inhalt
+                </Text>
+                {toc.map((section) => (
+                  <View key={section.blockIndex}>
+                    <Pressable
+                      accessibilityHint="Springt zu diesem Abschnitt"
+                      accessibilityRole="link"
+                      onPress={() => jumpTo(section.blockIndex)}
+                      style={styles.tocRow}
+                    >
+                      <Text style={styles.tocText}>{section.text}</Text>
+                      <Ionicons
+                        color={colors.subtle}
+                        name="chevron-forward"
+                        size={15}
+                      />
+                    </Pressable>
+                    {section.guides.length > 0 ? (
+                      <>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityState={{
+                            expanded: guidesOpen[section.blockIndex] === true,
+                          }}
+                          onPress={() =>
+                            setGuidesOpen((current) => ({
+                              ...current,
+                              [section.blockIndex]: !current[section.blockIndex],
+                            }))
+                          }
+                          style={styles.tocToggle}
+                        >
+                          <Text style={styles.tocToggleText}>
+                            {guidesOpen[section.blockIndex]
+                              ? "Anleitungen ausblenden"
+                              : `Alle ${section.guides.length} Anleitungen anzeigen`}
+                          </Text>
+                          <Ionicons
+                            color={colors.primaryText}
+                            name={
+                              guidesOpen[section.blockIndex]
+                                ? "chevron-up"
+                                : "chevron-down"
+                            }
+                            size={15}
+                          />
+                        </Pressable>
+                        {guidesOpen[section.blockIndex]
+                          ? section.guides.map((guide) => (
+                              <Pressable
+                                accessibilityRole="link"
+                                key={guide.blockIndex}
+                                onPress={() => jumpTo(guide.blockIndex)}
+                                style={styles.tocSubRow}
+                              >
+                                <Text style={styles.tocSubText}>
+                                  {guide.text}
+                                </Text>
+                              </Pressable>
+                            ))
+                          : null}
+                      </>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
             {blocks.map(renderBlock)}
           </View>
         ) : null}
@@ -305,6 +399,40 @@ export default function HandbookScreen() {
 }
 
 const useStyles = makeThemedStyles((c) => ({
+  toc: {
+    backgroundColor: c.surface,
+    borderColor: c.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 2,
+    padding: 14,
+  },
+  tocTitle: {
+    color: c.muted,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.9,
+    marginBottom: 4,
+    textTransform: "uppercase",
+  },
+  tocRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "space-between",
+    minHeight: 40,
+  },
+  tocText: { color: c.foreground, flex: 1, fontSize: 14, fontWeight: "700" },
+  tocToggle: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 34,
+    paddingLeft: 12,
+  },
+  tocToggleText: { color: c.primaryText, fontSize: 13, fontWeight: "800" },
+  tocSubRow: { justifyContent: "center", minHeight: 36, paddingLeft: 12 },
+  tocSubText: { color: c.muted, fontSize: 13, lineHeight: 18 },
   content: { gap: 18, paddingBottom: 36, paddingTop: 18 },
   back: {
     alignItems: "center",

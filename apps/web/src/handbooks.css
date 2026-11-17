@@ -93,6 +93,8 @@
 .handbook-viewer__toc {
   position: sticky;
   top: 16px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   display: grid;
   gap: 8px;
   border: 1px solid var(--border);
@@ -115,6 +117,23 @@
   margin: 0;
   padding-left: 18px;
   font-size: 13px;
+}
+
+.handbook-viewer__toc-sub {
+  gap: 4px !important;
+  margin-top: 6px !important;
+  padding-left: 14px !important;
+  list-style: "– ";
+  font-size: 12px !important;
+}
+
+.handbook-viewer__toc-sub a {
+  color: var(--muted);
+}
+
+.handbook-viewer__body h2,
+.handbook-viewer__body h3 {
+  scroll-margin-top: 16px;
 }
 
 .handbook-viewer__toc a {
@@ -265,6 +284,7 @@
 
   .handbook-viewer__toc {
     position: static;
+    max-height: 320px;
   }
 }
 

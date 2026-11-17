@@ -33,6 +33,14 @@ oder Einrichtungsschritten:
    zurückgegebenen ID `select public.apply_handbook_sync(<id>, '<sha>');`.
    Die Edge Function `handbooks` muss nur bei Codeänderungen neu deployt werden.
 
+Jedes Handbuch hat direkt nach der Einleitung den Bereich `## Wie mache ich …?`
+mit einer Anleitung pro Aufgabe (`### Wie …?`, nummerierte Schritte, Überschriften
+in der du- und der Sie-Fassung wortgleich und eindeutig). Wer eine Funktion neu
+baut oder ändert, ergänzt bzw. passt die passende Anleitung dort an;
+`pnpm handbooks:build` prüft, dass der Bereich vorhanden ist. Das Verzeichnis
+(Web und App) entsteht automatisch aus den Überschriften `##` und den
+Anleitungen `### Wie …?`.
+
 Die App stellt nur einen Markdown-Ausschnitt dar
 (`mobile/lib/handbooks-model.ts`: Überschriften `##`/`###`, Absätze, Listen,
 Zitate, Tabellen, Codeblöcke, Bilder, **fett**, _kursiv_, `Code`). Neue
