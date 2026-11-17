@@ -70,6 +70,8 @@ export type IncidentSummary = {
   realertCount: number;
   /** «external»: status feed of a provider (Microsoft 365, GitHub, …). */
   source: "prtg" | "external";
+  /** Who reported it: nextDesk monitoring, PRTG or a provider. */
+  origin: "nextdesk" | "prtg" | "external";
   externalProvider: string | null;
   externalUrl: string | null;
   /** Latest public message on the status page (list only). */
@@ -263,6 +265,12 @@ function summaryOf(row: Row): IncidentSummary | null {
     location: str(row.location),
     realertCount: num(row.realertCount),
     source: row.source === "external" ? "external" : "prtg",
+    origin:
+      row.source === "external"
+        ? "external"
+        : row.origin === "nextdesk"
+          ? "nextdesk"
+          : "prtg",
     externalProvider: str(row.externalProvider),
     externalUrl: str(row.externalUrl),
     statusPage:

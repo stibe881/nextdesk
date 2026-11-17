@@ -350,7 +350,9 @@ beim Anbieter hängen bleibt.
   letzten 30 Tage) und _Verfügbarkeit_ der überwachten Geräte. Ein Klick auf
   eine Kachel zeigt darunter die passenden Störungen; **Filter aufheben** führt
   zurück zu den aktiven.
-- **Zeile einer Störung**: Neben Schwere und Quelle zeigt jede Störung, wer
+- **Zeile einer Störung**: Neben der Schwere zeigt jede Störung, wer sie
+  gemeldet hat – **nextDesk-Überwachung**, **PRTG** oder bei externen
+  Störungen **Extern · Anbieter** (im Detail «Gemeldet von …») –, wer
   zuständig ist (oder «Nicht zugewiesen») und, sobald eine öffentliche Meldung
   besteht, **Statusseite** mit deren Zustand (z. B. «Statusseite · Wird
   untersucht») und «Unbestätigt», solange niemand die Störung bestätigt hat.
