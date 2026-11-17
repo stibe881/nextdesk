@@ -126,7 +126,7 @@ Sie sehen nur Tickets, die Sie auch sonst öffnen dürfen.
 ## Übersicht
 
 Die **Übersicht** begrüsst Sie und zeigt für den gewählten Zeitraum
-(_Heute / 7 Tage / 30 Tage_) die Kennzahlen **Offene Tickets**, **Meine
+(_Heute / 7 Tage / 30 Tage_) die Kennzahlen **Offene Tickets**, **Meine offenen
 Tickets**, **Nicht zugewiesene Tickets** und **Gelöste Tickets**. Ein Klick
 auf eine Kachel öffnet die passende gefilterte Liste.
 
@@ -664,7 +664,7 @@ Unter **Tickets** arbeiten Sie die Warteschlangen ab. Jede Ticketkarte zeigt
 neben Nummer und Betreff auch die **anfragende Person** – in der Liste, auf
 der Übersicht, im Kanban und in der App.
 
-- **Meine Tickets** (Kachel und Liste) zeigt nur offene Tickets, die Ihnen
+- **Meine offenen Tickets** (Kachel und Liste) zeigt nur offene Tickets, die Ihnen
   zugewiesen sind oder die Sie angefragt haben. Gelöste und geschlossene
   Tickets finden Sie über die Kachel **Gelöste Tickets** oder den Filter
   _Status_.

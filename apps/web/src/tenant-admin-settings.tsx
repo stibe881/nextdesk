@@ -853,7 +853,7 @@ function CorporateDesignPreview({
             <div className="tenant-branding-preview__metrics">
               <span>
                 <b>3</b>
-                Meine Tickets
+                Meine offenen Tickets
               </span>
               <span>
                 <b>2</b>

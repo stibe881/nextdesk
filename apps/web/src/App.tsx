@@ -621,7 +621,7 @@ function TicketScopeMetricTiles({
         onClick={() => onOpenScope("mine")}
         type="button"
       >
-        <p>Meine Tickets</p>
+        <p>Meine offenen Tickets</p>
         {loading ? (
           <MetricLoadingState />
         ) : (
@@ -5395,7 +5395,7 @@ function AuthenticatedApp() {
   const ticketScopeLabel: Record<TicketScope, string> = {
     all: "Alle sichtbaren Tickets",
     closed: "Gelöste Tickets",
-    mine: "Meine Tickets",
+    mine: "Meine offenen Tickets",
     open: "Offene Tickets",
     unassigned: "Nicht zugewiesene Tickets",
     delegated: delegatedForNames.length
