@@ -331,12 +331,37 @@ function locationLabel(device: Row | undefined): string | null {
   return parts.length ? parts.join(" · ") : null;
 }
 
+/**
+ * Who reported an incident: the nextDesk monitoring (sensor alerts
+ * «nd:sensor:…») or PRTG; external incidents come from a provider.
+ */
+async function incidentOrigins(
+  admin: Client,
+  tenantId: string,
+  incidentIds: string[],
+): Promise<Map<string, "nextdesk" | "prtg">> {
+  const result = new Map<string, "nextdesk" | "prtg">();
+  if (!incidentIds.length) return result;
+  const { data } = await admin.from("monitoring_alerts")
+    .select("incident_id, external_key")
+    .eq("tenant_id", tenantId).in("incident_id", incidentIds).limit(5000);
+  for (const row of (data ?? []) as Row[]) {
+    const id = text(row.incident_id);
+    if (!id) continue;
+    const origin = String(row.external_key ?? "").startsWith("nd:") ? "nextdesk" : "prtg";
+    // Mixed incidents (both sources): PRTG is named as well.
+    if (result.get(id) !== "prtg") result.set(id, origin);
+  }
+  return result;
+}
+
 function summary(
   row: Row,
   people: Map<string, string>,
   services: Map<string, Row>,
   devices: Map<string, Row>,
   now: number,
+  origins: Map<string, "nextdesk" | "prtg"> = new Map(),
 ) {
   const serviceIds = Array.isArray(row.service_ids) ? (row.service_ids as string[]) : [];
   return {
@@ -366,6 +391,10 @@ function summary(
     realertCount: Number(row.realert_count ?? 0),
     // «external»: status feed of a provider (Microsoft 365, GitHub, …).
     source: row.source === "external" ? "external" : "prtg",
+    // «external» | «nextdesk» (own monitoring) | «prtg».
+    origin: row.source === "external"
+      ? "external"
+      : origins.get(String(row.id)) ?? "prtg",
     externalProvider: text(row.external_provider),
     externalUrl: text(row.external_url),
   };
@@ -421,6 +450,7 @@ async function list(admin: Client, client: Client, action: Extract<Action, { typ
   ));
   const devices = await deviceInfo(admin, action.tenantId, all.map((row) => text(row.asset_id))
     .filter((id): id is string => id !== null));
+  const origins = await incidentOrigins(admin, action.tenantId, all.map((row) => String(row.id)));
   // Latest public message on the status page per incident.
   const notices = listedIds.length
     ? await admin.from("service_incident_notices")
@@ -442,10 +472,10 @@ async function list(admin: Client, client: Client, action: Extract<Action, { typ
   const byParent = new Map<string, ReturnType<typeof summary>[]>();
   for (const row of childRows) {
     const parentId = String(row.parent_incident_id);
-    byParent.set(parentId, [...(byParent.get(parentId) ?? []), summary(row, people, services, devices, now)]);
+    byParent.set(parentId, [...(byParent.get(parentId) ?? []), summary(row, people, services, devices, now, origins)]);
   }
   const incidents = rows.map((row) => ({
-    ...summary(row, people, services, devices, now),
+    ...summary(row, people, services, devices, now, origins),
     statusPage: statusPage.get(String(row.id)) ?? null,
     children: byParent.get(String(row.id)) ?? [],
   }));
@@ -648,15 +678,20 @@ async function detail(admin: Client, client: Client, tenantId: string, incidentI
   const sameCause = num(recurrenceRow.sameCause30d);
   const networkRow = isRecord(network.data) ? network.data : null;
 
+  const origins = await incidentOrigins(
+    admin,
+    tenantId,
+    [incidentId, ...childRows.map((row) => String(row.id))],
+  );
   return {
-    ...summary(incident, people, services, devices, now),
+    ...summary(incident, people, services, devices, now, origins),
     teamId: text(incident.team_id),
     closedBy: people.get(text(incident.closed_by) ?? "") ?? null,
     closingNote: text(incident.closing_note),
     parent: parent.data
       ? { id: String(parent.data.id), number: String(parent.data.number), title: String(parent.data.title), state: String(parent.data.state) }
       : null,
-    children: childRows.map((row) => summary(row, people, services, devices, now)),
+    children: childRows.map((row) => summary(row, people, services, devices, now, origins)),
     sensors: ((alerts.data ?? []) as Row[]).map((row) => ({
       name: text(row.sensor_name) ?? "Sensor",
       status: text(row.last_status),

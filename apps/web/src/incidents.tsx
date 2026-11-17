@@ -81,6 +81,13 @@ async function call(body: Record<string, unknown>): Promise<unknown> {
   return data;
 }
 
+/** Who reported an incident (chip in list and detail). */
+const ORIGIN_LABELS: Record<"nextdesk" | "prtg" | "external", string> = {
+  nextdesk: "nextDesk-Überwachung",
+  prtg: "PRTG",
+  external: "Anbieter",
+};
+
 const DATE_TIME = new Intl.DateTimeFormat("de-CH", {
   dateStyle: "short",
   timeStyle: "short",
@@ -609,7 +616,12 @@ function IncidentRow({
               <Globe aria-hidden="true" size={12} /> Extern
               {entry.externalProvider ? ` · ${entry.externalProvider}` : ""}
             </span>
-          ) : null}
+          ) : (
+            <span className="incident-chip incident-chip--line">
+              <Activity aria-hidden="true" size={12} />{" "}
+              {ORIGIN_LABELS[entry.origin]}
+            </span>
+          )}
           {entry.location ? (
             <span className="incident-chip incident-chip--line">
               {entry.location}
@@ -837,7 +849,12 @@ function IncidentView({
                       ? ` · ${detail.externalProvider}`
                       : ""}
                   </span>
-                ) : null}
+                ) : (
+                  <span className="incident-chip incident-chip--line">
+                    <Activity aria-hidden="true" size={12} /> Gemeldet von{" "}
+                    {ORIGIN_LABELS[detail.origin]}
+                  </span>
+                )}
               </div>
               <h2 id="incident-title">{detail.title}</h2>
               {detail.source === "external" ? (

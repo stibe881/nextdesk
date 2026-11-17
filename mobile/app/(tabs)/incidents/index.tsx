@@ -317,7 +317,13 @@ export default function IncidentsScreen() {
                             ? ` · ${entry.externalProvider}`
                             : ""}
                         </Text>
-                      ) : null}
+                      ) : (
+                        <Text style={styles.badge}>
+                          {entry.origin === "nextdesk"
+                            ? "nextDesk-Überwachung"
+                            : "PRTG"}
+                        </Text>
+                      )}
                     </View>
                     <Text numberOfLines={2} style={styles.rowTitle}>
                       {entry.title}
