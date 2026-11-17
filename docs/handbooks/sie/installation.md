@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # Installationsanleitung
@@ -331,8 +331,8 @@ per Push und E-Mail alarmiert.
    bei Bedarf _Warnung_ und **zwingend** die Zeile «nicht mehr im Status …»
    (Up) mit derselben Vorlage. Ohne den Up-Trigger erfährt nextDesk nie, dass
    die Störung vorbei ist, und der Dienst bleibt im Systemstatus gestört. Bei
-   _Up_ wird die Störung automatisch abgeschlossen (die Ursache lässt sich
-   nachtragen). nextDesk versteht die
+   _Up_ steht die Störung auf «Wieder OK – offen»; abgeschlossen wird sie von
+   Hand mit der Ursache. nextDesk versteht die
    Statuswörter deutsch (Fehler, Warnung, OK, Pausiert) und englisch (Down,
    Warning, Up, Paused).
 4. **Geräte und Dienste verknüpfen** (nur damit ändert sich der Systemstatus):

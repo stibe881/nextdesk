@@ -1813,7 +1813,9 @@ export function ServiceStatus({
       startsAt: toDateTimeLocal(startsAt),
       endsAt: toDateTimeLocal(endsAt),
       state: "scheduled",
-      publicEnabled: false,
+      // Maintenance has its own status page entry (and banner): public by
+      // default for those who may publish.
+      publicEnabled: overview?.canManagePublication === true,
       serviceIds: [],
     });
   }

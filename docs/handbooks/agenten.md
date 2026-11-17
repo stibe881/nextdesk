@@ -356,16 +356,18 @@ beim Anbieter hängen bleibt.
   zuständig ist (oder «Nicht zugewiesen») und, sobald eine öffentliche Meldung
   besteht, **Statusseite** mit deren Zustand (z. B. «Statusseite · Wird
   untersucht») und «Unbestätigt», solange niemand die Störung bestätigt hat.
-- **Register**: _Aktiv_, _Behoben_ und _Alle_. Die Dauer läuft live mit, und neue
+- **Register**: _Aktiv_, _Abgeschlossen_ und _Alle_. Die Dauer läuft live mit, und neue
   Meldungen erscheinen ohne Neuladen. Im Suchfeld findest du Störungen nach
   Nummer, Gerät oder Titel; ältere Störungen lädst du mit **Weitere Störungen
   laden** nach.
-- **Automatisch abgeschlossen**: Meldet PRTG für alle Sensoren wieder OK,
-  wird die Störung automatisch abgeschlossen und erscheint unter _Behoben_.
-  Die Störung muss weder bestätigt noch von Hand abgeschlossen werden, und die
-  Alarmierung hört auf. Die **Ursache** trägst du bei Bedarf unter **Ursache
-  nachtragen (optional)** nach; dort lassen sich auch zugeordnete Tickets
-  informieren und ein Fall eröffnen (siehe unten).
+- **Nur von Hand abgeschlossen**: Meldet die Überwachung (nextDesk oder PRTG)
+  für alle Sensoren wieder OK, wird die Störung **nicht** automatisch
+  abgeschlossen. Die Störung steht dann auf **Wieder OK – offen**, bleibt unter
+  _Aktiv_ und in der Zahl im Menü, und die Alarmierung hört auf. Abgeschlossen
+  wird sie immer von dir unter **Abschliessen** mit der **Ursache**; dort
+  lassen sich auch zugeordnete Tickets informieren und ein Fall eröffnen
+  (siehe unten). Fällt das Gerät erneut aus, solange die Störung offen ist,
+  läuft dieselbe Störung weiter.
 - **Tickets zur Störung**: Gehen während einer aktiven Störung Tickets zum
   betroffenen Gerät oder Dienst ein (Gerät bzw. Dienst am Ticket verknüpft
   oder Gerätename, Hostname oder IP-Adresse im Text), ordnet nextDesk sie der

@@ -157,7 +157,7 @@ function useIncidentChanges(
 
 const TABS: { key: IncidentFilter; label: string }[] = [
   { key: "active", label: "Aktiv" },
-  { key: "closed", label: "Behoben" },
+  { key: "closed", label: "Abgeschlossen" },
   { key: "all", label: "Alle" },
 ];
 
@@ -173,7 +173,7 @@ const EMPTY_TEXT: Record<IncidentFilter, string> = {
   services: "Keine Dienste betroffen.",
   recent: "In den letzten 30 Tagen wurde keine Störung behoben.",
   resolved: "Keine behobenen Störungen, die noch abgeschlossen werden müssen.",
-  closed: "Noch keine behobenen Störungen.",
+  closed: "Noch keine abgeschlossenen Störungen.",
   all: "Noch keine Störungen.",
 };
 
@@ -1379,16 +1379,17 @@ function IncidentView({
                     </p>
                   ) : detail.state === "active" ? (
                     <p className="incident-muted">
-                      <Clock3 aria-hidden="true" size={13} /> PRTG meldet noch
-                      eine Störung. Meldet PRTG wieder OK, schliesst sie sich
-                      automatisch. Abschliessen beendet sie auch ohne
-                      OK-Meldung.
+                      <Clock3 aria-hidden="true" size={13} />{" "}
+                      {tn(
+                        "Die Überwachung meldet noch eine Störung. Auch wenn sie wieder OK meldet, bleibt die Störung offen, bis du sie mit der Ursache abschliesst.",
+                        "Die Überwachung meldet noch eine Störung. Auch wenn sie wieder OK meldet, bleibt die Störung offen, bis Sie sie mit der Ursache abschliessen.",
+                      )}
                     </p>
                   ) : detail.state === "resolved" ? (
                     <p className="incident-muted">
                       {tn(
-                        "PRTG meldet wieder OK. Schliesse die Störung mit der Ursache ab.",
-                        "PRTG meldet wieder OK. Schliessen Sie die Störung mit der Ursache ab.",
+                        "Die Überwachung meldet wieder OK. Schliesse die Störung mit der Ursache ab.",
+                        "Die Überwachung meldet wieder OK. Schliessen Sie die Störung mit der Ursache ab.",
                       )}
                     </p>
                   ) : null}

@@ -191,10 +191,13 @@ import {
 import { ExperienceWorkspace, MyDayCard } from "./experience-workspace";
 import {
   activeIncidentNoticesFromResponse,
+  bannerMaintenancesFromResponse,
+  MaintenanceBanner,
   AgentMetricsCard,
   AgentWorkbenchPanel,
   IncidentBanner,
   type ActiveIncidentNotice,
+  type BannerMaintenance,
   type TeamQueue,
 } from "./agent-workbench";
 import { RequesterNotices } from "./requester-notice-banner";
@@ -3471,6 +3474,9 @@ function AuthenticatedApp() {
   // Reloads the incident banner so resolved incidents disappear by themselves.
   const [incidentNoticeTick, setIncidentNoticeTick] = useState(0);
   useVisibleInterval(() => setIncidentNoticeTick((tick) => tick + 1), 30_000);
+  const [bannerMaintenances, setBannerMaintenances] = useState<
+    BannerMaintenance[]
+  >([]);
   const [activeIncidentNotices, setActiveIncidentNotices] = useState<
     ActiveIncidentNotice[]
   >([]);
@@ -4488,6 +4494,7 @@ function AuthenticatedApp() {
   useEffect(() => {
     if (!supabase || !session || !activeTenant || !requesterPortalEnabled) {
       setActiveIncidentNotices([]);
+      setBannerMaintenances([]);
       return;
     }
 
@@ -4500,11 +4507,17 @@ function AuthenticatedApp() {
         if (error) throw error;
         const notices = activeIncidentNoticesFromResponse(data);
         if (!notices) throw new Error("invalid_incident_notices_response");
-        if (mounted) setActiveIncidentNotices(notices);
+        if (mounted) {
+          setActiveIncidentNotices(notices);
+          setBannerMaintenances(bannerMaintenancesFromResponse(data));
+        }
       })
       .catch(() => {
         // Feature, membership and network failures are intentionally quiet.
-        if (mounted) setActiveIncidentNotices([]);
+        if (mounted) {
+          setActiveIncidentNotices([]);
+          setBannerMaintenances([]);
+        }
       });
 
     return () => {
@@ -6943,7 +6956,10 @@ function AuthenticatedApp() {
           </section>
         )}
         {activeTenant && requesterPortalEnabled && (
-          <IncidentBanner notices={activeIncidentNotices} />
+          <>
+            <IncidentBanner notices={activeIncidentNotices} />
+            <MaintenanceBanner maintenances={bannerMaintenances} />
+          </>
         )}
         {personalSettingsOpen && session ? (
           <PersonalSettings
