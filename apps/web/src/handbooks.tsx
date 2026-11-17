@@ -272,6 +272,26 @@ export function HandbookViewer({
             </p>
             <h2 id="handbook-title">{handbook.title}</h2>
             <p className="handbook-viewer__lead">{handbook.description}</p>
+            {contents.length > 0 ? (
+              <nav
+                aria-label="Inhaltsverzeichnis"
+                className="handbook-viewer__contents"
+              >
+                <h3>Inhaltsverzeichnis</h3>
+                <ol>
+                  {contents.map((entry) => (
+                    <li key={entry.id}>
+                      <a href={`#${entry.id}`} onClick={jumpToHeading}>
+                        {entry.title}
+                      </a>
+                      {entry.children.length > 0 ? (
+                        <small>{entry.children.length} Anleitungen</small>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              </nav>
+            ) : null}
             <div className="knowledge-markdown handbook-viewer__body">
               <ReactMarkdown
                 components={{

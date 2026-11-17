@@ -313,3 +313,65 @@
     break-inside: avoid;
   }
 }
+
+/* Inhaltsverzeichnis oben im Handbuch (auch im Ausdruck). */
+.handbook-viewer__contents {
+  margin: 8px 0 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 20px 18px;
+  background: var(--surface-subtle);
+}
+
+.handbook-viewer__contents h3 {
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.handbook-viewer__contents ol {
+  display: grid;
+  gap: 4px 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: handbook-contents;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.handbook-viewer__contents li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  counter-increment: handbook-contents;
+  font-size: 14px;
+}
+
+.handbook-viewer__contents li::before {
+  content: counter(handbook-contents) ".";
+  min-width: 1.8em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.handbook-viewer__contents a {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.handbook-viewer__contents a:hover {
+  text-decoration: underline;
+}
+
+.handbook-viewer__contents small {
+  margin-left: auto;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+  .handbook-viewer__toc {
+    display: none;
+  }
+}

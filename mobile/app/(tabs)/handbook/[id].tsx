@@ -289,9 +289,9 @@ export default function HandbookScreen() {
             <Text style={styles.summary}>{handbook.description}</Text>
             <View style={styles.rule} />
             {toc.length > 0 ? (
-              <View accessibilityLabel="Inhalt" style={styles.toc}>
+              <View accessibilityLabel="Inhaltsverzeichnis" style={styles.toc}>
                 <Text accessibilityRole="header" style={styles.tocTitle}>
-                  Inhalt
+                  Inhaltsverzeichnis
                 </Text>
                 {toc.map((section) => (
                   <View key={section.blockIndex}>
