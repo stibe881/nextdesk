@@ -190,7 +190,7 @@ Ausführlich: «Push-Mitteilungen auf Android».
 ### Wie richte ich das PRTG-Monitoring ein?
 
 1. Öffne **Einstellungen → Monitoring**, aktiviere unter **Monitoring (PRTG)** die Verarbeitung und wähle in der Karte **Alarmierung** das Team, «Störung öffnen bei» und **Erneut alarmieren, solange unbestätigt**.
-2. Wähle **Token erzeugen** und kopiere die Webhook-Adresse sofort. Sie wird nur einmal angezeigt.
+2. Wähle **Token erzeugen** und kopiere die Webhook-Adresse sofort. Die Adresse wird nur einmal angezeigt.
 3. Lege in PRTG unter _Setup → Kontoeinstellungen → Benachrichtigungsvorlagen_ eine Vorlage **HTTP-Aktion ausführen** mit Methode **POST** an. Die Postdaten stehen unter «PRTG-Monitoring».
 4. Setze Zustands-Trigger auf der Gruppe oder dem Gerät: _Fehler_ (Down), bei Bedarf _Warnung_ und zwingend die Zeile «nicht mehr im Status …» (Up) mit derselben Vorlage.
 5. Ohne den Up-Trigger erfährt nextDesk nie, dass die Störung vorbei ist.
@@ -301,7 +301,7 @@ Ausführlich: «IP-Adressverwaltung und Netzwerkagent».
 
 1. Die **nextDesk-App** für iOS steht im App Store.
 2. Weise Mitarbeitende darauf hin.
-3. Sie melden sich mit derselben Adresse bzw. per SSO an.
+3. Die Mitarbeitenden melden sich mit derselben Adresse bzw. per SSO an.
 
 Ausführlich: «Schritt 7: Mobile-App und Abschluss».
 

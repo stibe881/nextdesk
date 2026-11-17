@@ -872,7 +872,7 @@ Signatur; ein Klick startet Anruf oder E-Mail.
 
 War bei der E-Mail jemand im **Cc**, steht diese Person unter **In Kopie (CC)**.
 Beim Schreiben einer externen Antwort kannst du sie unter **Auch antworten an
-(im CC der Anfrage)** ankreuzen: Sie erhält die Nachricht dann ebenfalls per
+(im CC der Anfrage)** ankreuzen: Die Person erhält die Nachricht dann ebenfalls per
 E-Mail, als Kopie. Standardmässig ist niemand angekreuzt. Weitere Personen
 fügst du mit **Kopie per E-Mail senden** hinzu.
 

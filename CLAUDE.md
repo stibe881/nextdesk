@@ -35,7 +35,7 @@ oder Einrichtungsschritten:
 
 Jedes Handbuch hat direkt nach der Einleitung den Bereich `## Wie mache ich …?`
 mit einer Anleitung pro Aufgabe (`### Wie …?`, nummerierte Schritte, Überschriften
-in der du- und der Sie-Fassung wortgleich und eindeutig). Wer eine Funktion neu
+in beiden Fassungen wortgleich und eindeutig). Wer eine Funktion neu
 baut oder ändert, ergänzt bzw. passt die passende Anleitung dort an;
 `pnpm handbooks:build` prüft, dass der Bereich vorhanden ist. Das Verzeichnis
 (Web und App) entsteht automatisch aus den Überschriften `##` und den
