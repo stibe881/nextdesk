@@ -427,9 +427,12 @@ export function IncidentPublicMessageCard({
     const nextState: IncidentMessageState = edit
       ? edit.state
       : latest
-        ? detail.state === "active"
-          ? "monitoring"
-          : "resolved"
+        ? // Still down: cause known; OK again: watching; closed: resolved.
+          detail.state === "active"
+          ? "identified"
+          : detail.state === "resolved"
+            ? "monitoring"
+            : "resolved"
         : "investigating";
     setEditingId(edit?.id ?? null);
     setState(nextState);

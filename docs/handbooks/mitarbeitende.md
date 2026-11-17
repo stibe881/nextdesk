@@ -72,7 +72,8 @@ Hast du den Systemstatus per E-Mail abonniert, erhältst du zu jeder
 Ist eine **Wartung** geplant, erscheint oben zusätzlich ein blauer Hinweis
 «Laufende Wartung» bzw. «Geplante Wartung» (ab 24 Stunden vor Beginn) mit
 Zeitraum und den betroffenen Diensten und Geräten – im Portal und in der App.
-Er verschwindet nach dem Ende der Wartung von selbst.
+Er verschwindet nach dem Ende der Wartung von selbst. Mit einem E-Mail-Abo des Systemstatus erhältst du
+öffentliche Wartungen 24 Stunden vorher angekündigt.
 
 ![Startseite für Mitarbeitende](images/ma-start.jpg)
 

@@ -417,12 +417,17 @@ Ein Klick öffnet die Störung:
    **Behoben** werden die gewählten Dienste auf «Betriebsbereit» gesetzt; du
    kannst das vor dem Veröffentlichen noch ändern. Eine bereits
    veröffentlichte Meldung korrigierst du mit **Bearbeiten** (Zustand, Titel,
-   Text, Dienste) und **Änderungen speichern**. Ist die Störung behoben (PRTG meldet
-   OK, der Anbieter meldet sie als behoben oder sie wird abgeschlossen), setzt
-   nextDesk ihre Meldungen automatisch auf **Behoben**: Die Meldungen verschwinden aus
-   dem Störungsbanner in Web und App, Abonnenten erhalten das Update, und die
-   Dienste der Meldung sind wieder betriebsbereit (ausser sie stehen noch in
-   einer anderen offenen Meldung).
+   Text, Dienste) und **Änderungen speichern**. Die Meldung folgt der Störung:
+   Meldet die Überwachung wieder OK, steht sie auf **Wird beobachtet**; beim
+   Abschliessen der Störung wird sie **Behoben** (mit der Ursache), fällt das
+   Gerät erneut aus, wieder **Wird untersucht**. Meldet ein Anbieter eine
+   externe Störung als behoben, wird ihre Meldung direkt **Behoben**. Behobene
+   Meldungen verschwinden aus dem Störungsbanner in Web und App, Abonnenten
+   erhalten jedes Update, und die Dienste der Meldung sind wieder
+   betriebsbereit (ausser sie stehen noch in einer anderen offenen Meldung).
+   Beim nächsten **Update veröffentlichen** schlägt nextDesk den passenden
+   Zustand vor (gestört: Ursache bekannt, wieder OK: Wird beobachtet,
+   abgeschlossen: Behoben).
 7. **Abschliessen bzw. Ursache nachtragen**: Wähle die **Ursache** (Strom, Netzwerk, Hardware,
    Software, Wartung, Extern, Unbekannt) und halte die Lösung fest. Sind
    Tickets zugeordnet, ist **Tickets informieren und auf «Gelöst» setzen**
@@ -678,7 +683,8 @@ Mit dem Recht «Assets verwalten» kannst du zusätzlich:
    den Dienst «Abacus»), wählst du sie hier; dann wirkt dieser Sensor nur
    auf diese Dienste. Die Störung nennt sie, der Systemstatus der Dienste
    wechselt, und – wenn in den Einstellungen eingeschaltet – erscheint der
-   Ausfall sofort als Banner und auf der Statusseite.
+   Ausfall als Banner und auf der Statusseite, sobald jemand die Störung
+   bestätigt oder spätestens nach 10 Minuten. Warnungen bleiben intern.
 
 3. Sensoren **bearbeiten** oder **löschen** (Symbole in der Sensorzeile).
    Im Kopf des Gerätedetails:
