@@ -208,6 +208,10 @@ button.monitoring-tile[aria-pressed="true"] {
 .monitoring-dot--up {
   background: var(--tone-success);
 }
+.monitoring-dot--paused {
+  background: var(--muted);
+}
+
 .monitoring-dot--down {
   background: var(--tone-danger);
 }
@@ -414,7 +418,7 @@ button.monitoring-tile[aria-pressed="true"] {
   min-width: 0;
 }
 
-.monitoring-sensor-rows li > :first-child {
+.monitoring-sensor-rows li > :not(.monitoring-sensor-rows__name) {
   justify-self: start;
 }
 
@@ -1156,4 +1160,37 @@ button.monitoring-tile[aria-pressed="true"] {
   .monitoring__columns--detail {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Pausieren mit Grund, Mehrfachauswahl. */
+.monitoring-pause-note {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.monitoring-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 20px;
+  background: var(--surface-subtle);
+}
+
+.monitoring-bulk strong {
+  margin-right: auto;
+  font-size: 13px;
+}
+
+.monitoring-table .monitoring-table__check,
+.monitoring-table .monitoring-table__check:first-child {
+  width: 36px;
+  padding-right: 0;
+}
+
+.monitoring-sensor-rows li.monitoring-sensor-rows__item--check {
+  grid-template-columns: 20px 96px minmax(0, 1fr) auto;
 }

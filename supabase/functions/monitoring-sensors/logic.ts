@@ -64,8 +64,16 @@ export type Action =
   | { type: "assets"; tenantId: string; query: string }
   | { type: "saveSensor"; tenantId: string; sensor: SensorInput }
   | { type: "deleteSensor"; tenantId: string; sensorId: string }
-  | { type: "pauseDevice"; tenantId: string; assetId: string; paused: boolean }
-  | { type: "pauseSensor"; tenantId: string; sensorId: string; paused: boolean }
+  | { type: "pauseDevice"; tenantId: string; assetId: string; paused: boolean; reason: string | null }
+  | { type: "pauseSensor"; tenantId: string; sensorId: string; paused: boolean; reason: string | null }
+  | {
+    type: "pauseMany";
+    tenantId: string;
+    assetIds: string[];
+    sensorIds: string[];
+    paused: boolean;
+    reason: string | null;
+  }
   | { type: "removeDevice"; tenantId: string; assetId: string }
   | { type: "updateDevice"; tenantId: string; assetId: string; device: DeviceEdit }
   | { type: "createAgent"; tenantId: string; name: string }
@@ -390,6 +398,20 @@ export function parseSensor(value: unknown): SensorInput | string {
   };
 }
 
+export const PAUSE_REASON_REQUIRED = "Bitte einen Grund für das Pausieren angeben (3 bis 300 Zeichen).";
+
+/**
+ * Reason of a pause: required when pausing (3–300 characters, one line),
+ * ignored when resuming. false: missing or invalid.
+ */
+export function pauseReason(paused: boolean, value: unknown): string | null | false {
+  if (!paused) return null;
+  if (typeof value !== "string") return false;
+  // deno-lint-ignore no-control-regex
+  const text = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  return text.length >= 3 && text.length <= 300 ? text : false;
+}
+
 export function parseAction(value: unknown): Action | string | null {
   if (!isObject(value)) return null;
   const tenantId = uuid(value.tenantId);
@@ -438,15 +460,30 @@ export function parseAction(value: unknown): Action | string | null {
     }
     case "pauseSensor": {
       const sensorId = uuid(value.sensorId);
-      return sensorId && typeof value.paused === "boolean"
-        ? { type: "pauseSensor", tenantId, sensorId, paused: value.paused }
-        : null;
+      if (!sensorId || typeof value.paused !== "boolean") return null;
+      const reason = pauseReason(value.paused, value.reason);
+      if (reason === false) return PAUSE_REASON_REQUIRED;
+      return { type: "pauseSensor", tenantId, sensorId, paused: value.paused, reason };
+    }
+    case "pauseMany": {
+      if (typeof value.paused !== "boolean") return null;
+      const ids = (list: unknown) =>
+        Array.isArray(list) && list.length <= 500 && list.every((entry) => uuid(entry))
+          ? [...new Set(list.map((entry) => uuid(entry)!))]
+          : null;
+      const assetIds = ids(value.assetIds ?? []);
+      const sensorIds = ids(value.sensorIds ?? []);
+      if (!assetIds || !sensorIds || assetIds.length + sensorIds.length === 0) return null;
+      const reason = pauseReason(value.paused, value.reason);
+      if (reason === false) return PAUSE_REASON_REQUIRED;
+      return { type: "pauseMany", tenantId, assetIds, sensorIds, paused: value.paused, reason };
     }
     case "pauseDevice": {
       const assetId = uuid(value.assetId);
-      return assetId && typeof value.paused === "boolean"
-        ? { type: "pauseDevice", tenantId, assetId, paused: value.paused }
-        : null;
+      if (!assetId || typeof value.paused !== "boolean") return null;
+      const reason = pauseReason(value.paused, value.reason);
+      if (reason === false) return PAUSE_REASON_REQUIRED;
+      return { type: "pauseDevice", tenantId, assetId, paused: value.paused, reason };
     }
     case "probePackage":
       return { type: "probePackage", tenantId };

@@ -73,6 +73,12 @@ export type MonitoringDeviceRow = {
   sensorCount: number;
   responseMs: number | null;
   lastCheckAt: string | null;
+  /** Newest pause of the device's sensors (who, when, why). */
+  pause?: {
+    reason: string | null;
+    by: string | null;
+    at: string | null;
+  } | null;
   problem: {
     sensorId: string;
     sensorName: string;
@@ -115,6 +121,10 @@ export type MonitoringSensor = {
   /** Services this sensor affects instead of all services of its device. */
   serviceIds?: string[];
   paused: boolean;
+  /** Why, when and by whom the sensor was paused (only while paused). */
+  pausedReason?: string | null;
+  pausedAt?: string | null;
+  pausedByName?: string | null;
   state: MonitoringState;
   since: string | null;
   lastCheckAt: string | null;
@@ -234,9 +244,12 @@ export const EVENT_RANGE_LABELS: Record<EventRange, string> = {
 export type MonitoringEvent = {
   id: string;
   at: string;
-  kind: "down" | "warning" | "up";
+  kind: "down" | "warning" | "up" | "paused" | "resumed";
   assetId: string | null;
   deviceName: string;
+  /** Paused / resumed: who did it and why (pausing only). */
+  actor?: string | null;
+  reason?: string | null;
   sensorName: string | null;
   message: string | null;
   /** Up: how long the outage lasted. */
@@ -260,6 +273,13 @@ export type MonitoringEvents = {
 
 /** «Ausfall dauerte 4 Min.» / «Keine Antwort auf Ping · dauert an» / «Ausfall». */
 export function eventText(event: MonitoringEvent): string {
+  if (event.kind === "paused") {
+    const who = event.actor ? `Pausiert von ${event.actor}` : "Pausiert";
+    return event.reason ? `${who}: ${event.reason}` : who;
+  }
+  if (event.kind === "resumed") {
+    return event.actor ? `Fortgesetzt von ${event.actor}` : "Fortgesetzt";
+  }
   if (event.kind === "up") {
     const lasted =
       event.durationSeconds === null

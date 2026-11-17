@@ -1222,7 +1222,20 @@ const HANDLERS = {
     ];
     const totals = counts(0);
     for (const device of devices) totals[device.state] += 1;
-    if (body.type === "pauseDevice" || body.type === "pauseSensor") {
+    // Who paused the backup server and why.
+    const backup = devices.find((device) => device.name === "SRV-BACKUP-01");
+    if (backup) {
+      backup.pause = {
+        reason: "Wartung Backup-Server, Firmware-Update",
+        by: "Mara Keller",
+        at: ago(600),
+      };
+    }
+    if (
+      body.type === "pauseDevice" ||
+      body.type === "pauseSensor" ||
+      body.type === "pauseMany"
+    ) {
       return ok({ ok: true });
     }
     if (body.type === "summary") {
@@ -1310,6 +1323,18 @@ const HANDLERS = {
                   : "none",
         })),
         events: [
+          event(
+            "p1",
+            10,
+            "paused",
+            "SRV-BACKUP-01",
+            D.uid("49494949", 5),
+            null,
+            {
+              actor: "Mara Keller",
+              reason: "Wartung Backup-Server, Firmware-Update",
+            },
+          ),
           event("e1", 14, "down", "SW-CORE-01", D.uid("49494949", 1), "Ping", {
             message: "Keine Antwort auf Ping",
             ongoing: true,

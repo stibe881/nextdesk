@@ -518,8 +518,15 @@ sonst grau.
   Sensoren mit Zustand, Messwert und letzter Prüfung auf. Mit dem Recht
   «Assets verwalten» pausierst du rechts ein ganzes Gerät oder in der
   aufgeklappten Liste einen einzelnen Sensor (**Pausieren** / **Fortsetzen**).
-  Ein pausierter Sensor wird nicht gemessen, löst keinen Alarm aus und
-  schliesst einen offenen Alarm.
+  Über die Kästchen links wählst du mehrere Geräte und Sensoren aus und
+  pausierst oder setzt sie in der Leiste über der Liste gemeinsam fort.
+  Beim Pausieren gibst du immer einen **Grund** an (3 bis 300 Zeichen). Er
+  steht mit Person und Zeitpunkt beim Gerät und beim Sensor («Pausiert von
+  … : Grund»), auch im Gerätedetail und in der App. Ein pausierter Sensor
+  wird nicht gemessen, löst keinen Alarm aus und schliesst einen offenen
+  Alarm.
+- **Letzte Ereignisse** zeigen neben Ausfällen und Warnungen auch, wer ein
+  Gerät oder einen Sensor pausiert (mit Grund) oder fortgesetzt hat.
 
 ![Überwachung mit Kacheln, letzten Ereignissen, Verfügbarkeit und aktiven Alarmen](images/ag-ueberwachung.jpg)
 
