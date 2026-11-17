@@ -1436,6 +1436,18 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
       }
       return { ok: true, sensors: (updated.data ?? []).length };
     }
+    case "pauseSensor": {
+      manage();
+      const updated = await admin.from("monitoring_sensors")
+        .update({ paused: action.paused, updated_at: new Date().toISOString() })
+        .eq("tenant_id", action.tenantId).eq("id", action.sensorId).select("id").maybeSingle();
+      if (updated.error) throw unavailable();
+      if (!updated.data) throw new HttpError(404, "sensor_not_found", "Der Sensor wurde nicht gefunden.");
+      if (action.paused) {
+        await closeSensorAlert(admin, action.tenantId, action.sensorId, "Sensor pausiert");
+      }
+      return { ok: true };
+    }
   }
 }
 

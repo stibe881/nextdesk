@@ -479,6 +479,12 @@ sonst grau.
   Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
   Ein Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter kehrt die
   Reihenfolge um. Standard ist der Zustand, das Dringende zuoberst.
+- **Aufklappen und pausieren**: Der Pfeil vor einem Gerät klappt seine
+  Sensoren mit Zustand, Messwert und letzter Prüfung auf. Mit dem Recht
+  «Assets verwalten» pausieren Sie rechts ein ganzes Gerät oder in der
+  aufgeklappten Liste einen einzelnen Sensor (**Pausieren** / **Fortsetzen**).
+  Ein pausierter Sensor wird nicht gemessen, löst keinen Alarm aus und
+  schliesst einen offenen Alarm.
 
 ![Überwachung mit Kacheln, letzten Ereignissen, Verfügbarkeit und aktiven Alarmen](images/ag-ueberwachung.jpg)
 

@@ -65,6 +65,7 @@ export type Action =
   | { type: "saveSensor"; tenantId: string; sensor: SensorInput }
   | { type: "deleteSensor"; tenantId: string; sensorId: string }
   | { type: "pauseDevice"; tenantId: string; assetId: string; paused: boolean }
+  | { type: "pauseSensor"; tenantId: string; sensorId: string; paused: boolean }
   | { type: "removeDevice"; tenantId: string; assetId: string }
   | { type: "updateDevice"; tenantId: string; assetId: string; device: DeviceEdit }
   | { type: "createAgent"; tenantId: string; name: string }
@@ -434,6 +435,12 @@ export function parseAction(value: unknown): Action | string | null {
     case "removeDevice": {
       const assetId = uuid(value.assetId);
       return assetId ? { type: "removeDevice", tenantId, assetId } : null;
+    }
+    case "pauseSensor": {
+      const sensorId = uuid(value.sensorId);
+      return sensorId && typeof value.paused === "boolean"
+        ? { type: "pauseSensor", tenantId, sensorId, paused: value.paused }
+        : null;
     }
     case "pauseDevice": {
       const assetId = uuid(value.assetId);

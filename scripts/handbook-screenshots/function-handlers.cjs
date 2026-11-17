@@ -1222,6 +1222,9 @@ const HANDLERS = {
     ];
     const totals = counts(0);
     for (const device of devices) totals[device.state] += 1;
+    if (body.type === "pauseDevice" || body.type === "pauseSensor") {
+      return ok({ ok: true });
+    }
     if (body.type === "summary") {
       return ok({ down: totals.down, warning: totals.warning });
     }

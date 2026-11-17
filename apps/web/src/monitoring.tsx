@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ChevronDown,
+  ChevronRight,
   Download,
   FlaskConical,
   LoaderCircle,
@@ -22,6 +23,7 @@ import {
   useMemo,
   useRef,
   useState,
+  Fragment,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -222,6 +224,16 @@ function OverviewView({
   const [data, setData] = useState<MonitoringOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const ticket = useDeviceTicket(tenantId, onOpenTicket, setError);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [pausing, setPausing] = useState<string | null>(null);
+  const [sensorRevision, setSensorRevision] = useState(0);
+  const toggleExpanded = (assetId: string) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
   const [filter, setFilter] = useState<MonitoringState | "all">("all");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
@@ -235,6 +247,23 @@ function OverviewView({
       .catch((failure) => setError(message(failure)));
   }, [tenantId]);
   useEffect(load, [load]);
+  // Pauses or resumes a whole device or one sensor, then reloads the list
+  // and the open sensor rows.
+  const setPaused = async (
+    key: string,
+    body: Record<string, unknown>,
+  ): Promise<void> => {
+    setPausing(key);
+    try {
+      await monitoringCall({ ...body, tenantId });
+      setSensorRevision((current) => current + 1);
+      load();
+    } catch (failure) {
+      setError(message(failure));
+    } finally {
+      setPausing(null);
+    }
+  };
   const now = useNow(load);
 
   const [sort, setSort] = useState<DeviceSort>({
@@ -507,46 +536,132 @@ function OverviewView({
                 <table className="monitoring-table">
                   <thead>
                     <tr>
+                      <th>
+                        <span className="sr-only">Sensoren aufklappen</span>
+                      </th>
                       {sortHeader("state", "Status")}
                       {sortHeader("name", "Gerät")}
                       {sortHeader("sensors", "Sensoren")}
                       {sortHeader("response", "Antwortzeit")}
                       {sortHeader("lastCheck", "Letzte Prüfung")}
+                      {data.canManage ? (
+                        <th>
+                          <span className="sr-only">Überwachung pausieren</span>
+                        </th>
+                      ) : null}
                     </tr>
                   </thead>
                   <tbody>
-                    {devices.map((device) => (
-                      <tr key={device.assetId}>
-                        <td>
-                          <StateChip state={device.state} />
-                        </td>
-                        <td>
-                          <button
-                            className="text-button monitoring-table__name"
-                            onClick={() => onOpenDevice(device.assetId)}
-                            type="button"
-                          >
-                            {device.name}
-                          </button>
-                          <span className="monitoring-muted">
-                            {[
-                              categoryText(
-                                device.category,
-                                device.categoryLabel,
-                              ),
-                              device.ipAddress ?? device.hostname,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </span>
-                        </td>
-                        <td>{sensorCountsText(device.counts)}</td>
-                        <td>{formatMs(device.responseMs)}</td>
-                        <td className="monitoring-muted">
-                          {formatAgo(device.lastCheckAt, now)}
-                        </td>
-                      </tr>
-                    ))}
+                    {devices.map((device) => {
+                      const open = expanded.has(device.assetId);
+                      const devicePaused = device.state === "paused";
+                      return (
+                        <Fragment key={device.assetId}>
+                          <tr>
+                            <td className="monitoring-table__toggle">
+                              <button
+                                aria-expanded={open}
+                                aria-label={
+                                  open
+                                    ? `Sensoren von ${device.name} zuklappen`
+                                    : `Sensoren von ${device.name} aufklappen`
+                                }
+                                className="monitoring-table__expand"
+                                onClick={() => toggleExpanded(device.assetId)}
+                                type="button"
+                              >
+                                {open ? (
+                                  <ChevronDown aria-hidden="true" size={16} />
+                                ) : (
+                                  <ChevronRight aria-hidden="true" size={16} />
+                                )}
+                              </button>
+                            </td>
+                            <td>
+                              <StateChip state={device.state} />
+                            </td>
+                            <td>
+                              <button
+                                className="text-button monitoring-table__name"
+                                onClick={() => onOpenDevice(device.assetId)}
+                                type="button"
+                              >
+                                {device.name}
+                              </button>
+                              <span className="monitoring-muted">
+                                {[
+                                  categoryText(
+                                    device.category,
+                                    device.categoryLabel,
+                                  ),
+                                  device.ipAddress ?? device.hostname,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                            </td>
+                            <td>{sensorCountsText(device.counts)}</td>
+                            <td>{formatMs(device.responseMs)}</td>
+                            <td className="monitoring-muted">
+                              {formatAgo(device.lastCheckAt, now)}
+                            </td>
+                            {data.canManage ? (
+                              <td className="monitoring-table__action">
+                                {device.sensorCount > 0 ? (
+                                  <button
+                                    className="text-button"
+                                    disabled={pausing !== null}
+                                    onClick={() =>
+                                      void setPaused(
+                                        `device:${device.assetId}`,
+                                        {
+                                          type: "pauseDevice",
+                                          assetId: device.assetId,
+                                          paused: !devicePaused,
+                                        },
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    {devicePaused ? (
+                                      <Play aria-hidden="true" size={14} />
+                                    ) : (
+                                      <Pause aria-hidden="true" size={14} />
+                                    )}
+                                    {pausing === `device:${device.assetId}`
+                                      ? "…"
+                                      : devicePaused
+                                        ? "Fortsetzen"
+                                        : "Pausieren"}
+                                  </button>
+                                ) : null}
+                              </td>
+                            ) : null}
+                          </tr>
+                          {open ? (
+                            <tr className="monitoring-table__sensors">
+                              <td colSpan={data.canManage ? 7 : 6}>
+                                <DeviceSensorList
+                                  assetId={device.assetId}
+                                  canManage={data.canManage}
+                                  now={now}
+                                  onPause={(sensorId, paused) =>
+                                    void setPaused(`sensor:${sensorId}`, {
+                                      type: "pauseSensor",
+                                      sensorId,
+                                      paused,
+                                    })
+                                  }
+                                  pausing={pausing}
+                                  revision={sensorRevision}
+                                  tenantId={tenantId}
+                                />
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -568,6 +683,94 @@ function OverviewView({
         />
       ) : null}
     </section>
+  );
+}
+
+/** Sensors of one device, shown when its row in the list is expanded. */
+function DeviceSensorList({
+  assetId,
+  canManage,
+  now,
+  onPause,
+  pausing,
+  revision,
+  tenantId,
+}: {
+  assetId: string;
+  canManage: boolean;
+  now: number;
+  onPause: (sensorId: string, paused: boolean) => void;
+  pausing: string | null;
+  revision: number;
+  tenantId: string;
+}) {
+  const [sensors, setSensors] = useState<MonitoringSensor[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    monitoringCall<MonitoringDeviceDetail>({
+      type: "device",
+      tenantId,
+      assetId,
+    })
+      .then((result) => {
+        if (!active) return;
+        setSensors(result.sensors);
+        setError(null);
+      })
+      .catch((failure) => {
+        if (active) setError(message(failure));
+      });
+    return () => {
+      active = false;
+    };
+  }, [assetId, revision, tenantId]);
+
+  if (error) return <p className="monitoring__empty">{error}</p>;
+  if (!sensors)
+    return <p className="monitoring-muted">Sensoren werden geladen …</p>;
+  if (sensors.length === 0)
+    return <p className="monitoring-muted">Dieses Gerät hat keine Sensoren.</p>;
+  return (
+    <ul className="monitoring-sensor-rows">
+      {sensors.map((sensor) => (
+        <li key={sensor.id}>
+          <StateChip state={sensor.state} />
+          <span className="monitoring-sensor-rows__name">
+            <strong>{sensor.name}</strong>
+            <span className="monitoring-muted">
+              {[
+                kindLabel(sensor),
+                sensor.paused ? null : sensorValueText(sensor),
+                sensor.paused ? null : sensor.lastMessage,
+                sensor.lastCheckAt ? formatAgo(sensor.lastCheckAt, now) : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </span>
+          {canManage ? (
+            <button
+              className="text-button"
+              disabled={pausing !== null}
+              onClick={() => onPause(sensor.id, !sensor.paused)}
+              type="button"
+            >
+              {sensor.paused ? (
+                <Play aria-hidden="true" size={14} />
+              ) : (
+                <Pause aria-hidden="true" size={14} />
+              )}
+              {pausing === `sensor:${sensor.id}`
+                ? "…"
+                : sensor.paused
+                  ? "Fortsetzen"
+                  : "Pausieren"}
+            </button>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }
 
