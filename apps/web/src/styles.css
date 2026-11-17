@@ -8596,6 +8596,65 @@ body:has(.service-assets__dialog-backdrop) {
   background: var(--surface-tint-f8fafc);
 }
 
+/* Leiste über der Ticketliste: Stufen links, «Sortieren nach» rechts. */
+.ticket-panel .support-level-queue {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.support-level-queue__levels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.support-level-queue__sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-right: 4px;
+}
+
+.support-level-queue__sort label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.support-level-queue__sort select {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0 28px 0 10px;
+  background-color: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+}
+
+.support-level-queue__direction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.support-level-queue__direction:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
 .ticket-panel .queue-tab {
   min-height: 34px;
   border-radius: 9px;
