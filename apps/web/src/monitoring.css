@@ -853,6 +853,130 @@ button.monitoring-tile[aria-pressed="true"] {
   color: var(--ink);
 }
 
+.monitoring__notice--test > .monitoring-chip {
+  flex: 0 0 auto;
+  color: var(--tone-warning);
+}
+
+.monitoring-availability__value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+}
+
+.monitoring-availability__value strong {
+  font-size: 32px;
+  line-height: 1.1;
+}
+
+.monitoring-availability__bars {
+  display: flex;
+  gap: 2px;
+}
+
+.monitoring-availability__bar {
+  flex: 1 1 0;
+  height: 26px;
+  border-radius: 3px;
+  background: var(--surface-subtle);
+}
+
+.monitoring-availability__bar--ok {
+  background: var(--tone-success);
+}
+.monitoring-availability__bar--warning {
+  background: var(--tone-warning);
+}
+.monitoring-availability__bar--down {
+  background: var(--tone-danger);
+}
+.monitoring-availability__bar--none {
+  border: 1px dashed var(--border);
+}
+
+.monitoring-availability__axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.monitoring-availability__title {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.monitoring-availability__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.monitoring-availability__list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px auto;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding: 9px 0;
+}
+
+.monitoring-availability__device {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.monitoring-availability__device > span:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.monitoring-availability__device .text-button {
+  padding: 0;
+  font-weight: 650;
+}
+
+.monitoring-service-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 8px;
+  background: var(--surface-subtle);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.monitoring-availability__meter {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+
+.monitoring-availability__meter i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--tone-success);
+}
+
+.monitoring-availability__meter i.is-warning {
+  background: var(--tone-warning);
+}
+
+.monitoring-availability__meter i.is-down {
+  background: var(--tone-danger);
+}
+
 .monitoring-steps {
   display: grid;
   gap: 6px;

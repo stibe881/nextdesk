@@ -68,6 +68,11 @@ import {
   STATE_ORDER,
   type InterfaceRow,
   type MonitoringAddressChoice,
+  type AvailabilityRange,
+  AVAILABILITY_RANGE_LABELS,
+  formatDowntime,
+  formatPercent,
+  type MonitoringAvailability,
   type MonitoringAgent,
   type MonitoringAssetChoice,
   type MonitoringDeviceDetail,
@@ -212,7 +217,6 @@ function OverviewView({
   const [filter, setFilter] = useState<MonitoringState | "all">("all");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
-  const [addingProbe, setAddingProbe] = useState(false);
 
   const load = useCallback(() => {
     monitoringCall<MonitoringOverview>({ type: "overview", tenantId })
@@ -335,10 +339,37 @@ function OverviewView({
                 "Es ist noch keine Sonde eingerichtet. Eine Sonde läuft auf einem Server in Ihrem Netz, misst die Geräte und meldet die Resultate verschlüsselt an nextDesk.",
               )}
               {data.canManage
-                ? " Unter «Sonden» lässt sich eine Sonde anlegen und ihre Konfiguration herunterladen."
+                ? " Unter «Einstellungen → Monitoring» lässt sich eine Sonde anlegen und ihre Konfiguration herunterladen."
                 : ""}
             </p>
           ) : null}
+          {data.agents
+            .filter(
+              (agent) =>
+                agent.active &&
+                (agent.sensorCount ?? 0) > 0 &&
+                (!agent.online || agent.updateAvailable),
+            )
+            .map((agent) => (
+              <p
+                className="monitoring__notice monitoring__notice--test"
+                key={agent.id}
+                role="status"
+              >
+                <span className="monitoring-chip monitoring-chip--warning">
+                  Sonde
+                </span>
+                <span>
+                  <strong>{agent.name}</strong>{" "}
+                  {agent.online
+                    ? `läuft mit Version ${agent.version ?? "?"}; eine neuere steht bereit.`
+                    : `meldet sich nicht (zuletzt ${formatAgo(agent.lastSeenAt, now)}). Die ${agent.sensorCount} Sensoren dieser Sonde gelten als «Unbekannt».`}{" "}
+                  <span className="monitoring-muted">
+                    Sonden verwalten: Einstellungen → Monitoring.
+                  </span>
+                </span>
+              </p>
+            ))}
 
           <div className="monitoring__columns">
             <article className="monitoring-card">
@@ -402,14 +433,7 @@ function OverviewView({
               )}
             </article>
 
-            <ProbeCard
-              data={data}
-              now={now}
-              onAdd={() => setAddingProbe(true)}
-              onChanged={load}
-              onError={setError}
-              tenantId={tenantId}
-            />
+            <AvailabilityCard onOpenDevice={onOpenDevice} tenantId={tenantId} />
           </div>
 
           <article className="monitoring-card monitoring-card--flush">
@@ -517,15 +541,6 @@ function OverviewView({
           tenantId={tenantId}
         />
       ) : null}
-      {addingProbe ? (
-        <ProbeDialog
-          onClose={() => {
-            setAddingProbe(false);
-            load();
-          }}
-          tenantId={tenantId}
-        />
-      ) : null}
     </section>
   );
 }
@@ -544,6 +559,187 @@ async function downloadProbePackage(tenantId: string): Promise<void> {
     tenantId,
   });
   window.location.assign(result.url);
+}
+
+/**
+ * Availability of the monitored devices: overall value, a bar per day, and
+ * the devices that were down most with the services affected.
+ */
+function AvailabilityCard({
+  tenantId,
+  onOpenDevice,
+}: {
+  tenantId: string;
+  onOpenDevice: (assetId: string) => void;
+}) {
+  const [range, setRange] = useState<AvailabilityRange>("30d");
+  const [data, setData] = useState<MonitoringAvailability | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      monitoringCall<MonitoringAvailability>({
+        type: "availability",
+        tenantId,
+        range,
+      })
+        .then((result) => {
+          if (cancelled) return;
+          setData(result);
+          setError(null);
+        })
+        .catch((failure) => {
+          if (!cancelled) setError(message(failure));
+        });
+    void load();
+    // Outages end and begin; the value drifts slowly.
+    const timer = window.setInterval(load, 5 * 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [tenantId, range]);
+  const shown = data && data.range === range ? data : null;
+  const unit = range === "1y" ? "Woche" : "Tag";
+  return (
+    <article className="monitoring-card">
+      <div className="monitoring-card__head">
+        <h3>Verfügbarkeit</h3>
+        <div
+          aria-label="Zeitraum der Verfügbarkeit"
+          className="monitoring-toggle"
+          role="group"
+        >
+          {(Object.keys(AVAILABILITY_RANGE_LABELS) as AvailabilityRange[]).map(
+            (key) => (
+              <button
+                aria-pressed={range === key}
+                key={key}
+                onClick={() => setRange(key)}
+                type="button"
+              >
+                {AVAILABILITY_RANGE_LABELS[key]}
+              </button>
+            ),
+          )}
+        </div>
+      </div>
+      {error ? (
+        <p className="ticket-detail-message error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {!shown && !error ? <Spinner label="Wird berechnet …" /> : null}
+      {shown ? (
+        <>
+          <p className="monitoring-availability__value">
+            <strong>
+              {shown.overall === null ? "–" : formatPercent(shown.overall)}
+            </strong>
+            <span className="monitoring-muted">
+              {shown.devices === 0
+                ? "noch kein Gerät überwacht"
+                : shown.devices === 1
+                  ? "über 1 Gerät"
+                  : `über alle ${shown.devices} Geräte`}
+            </span>
+          </p>
+          <div
+            aria-label={`Verfügbarkeit je ${unit}`}
+            className="monitoring-availability__bars"
+            role="img"
+          >
+            {shown.buckets.map((bucket) => (
+              <span
+                className={`monitoring-availability__bar monitoring-availability__bar--${bucket.level}`}
+                key={bucket.from}
+                title={`${new Date(bucket.from).toLocaleDateString("de-CH")}: ${
+                  bucket.availability === null
+                    ? "noch nicht überwacht"
+                    : formatPercent(bucket.availability)
+                }`}
+              />
+            ))}
+          </div>
+          <div className="monitoring-availability__axis">
+            <span>
+              vor{" "}
+              {AVAILABILITY_RANGE_LABELS[range]
+                .replace("Tage", "Tagen")
+                .replace("1 Jahr", "einem Jahr")}
+            </span>
+            <span>heute</span>
+          </div>
+          <h4 className="monitoring-availability__title">
+            Am häufigsten ausgefallen
+          </h4>
+          {shown.worst.length === 0 ? (
+            <p className="monitoring__empty">
+              In diesem Zeitraum ist kein Gerät ausgefallen.
+            </p>
+          ) : (
+            <ul className="monitoring-availability__list">
+              {shown.worst.map((device) => (
+                <li key={device.assetId}>
+                  <div className="monitoring-availability__device">
+                    <span>
+                      <button
+                        className="text-button"
+                        onClick={() => onOpenDevice(device.assetId)}
+                        type="button"
+                      >
+                        {device.name}
+                      </button>
+                      {device.services.length ? (
+                        device.services.map((service) => (
+                          <span
+                            className="monitoring-service-chip"
+                            key={service}
+                          >
+                            {service}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="monitoring-muted">
+                          kein Dienst verknüpft
+                        </span>
+                      )}
+                    </span>
+                    <span className="monitoring-muted">
+                      {device.outages === 1
+                        ? "1 Ausfall"
+                        : `${device.outages} Ausfälle`}{" "}
+                      · {formatDowntime(device.downSeconds)} gesamt
+                    </span>
+                  </div>
+                  <span
+                    aria-hidden="true"
+                    className="monitoring-availability__meter"
+                  >
+                    <i
+                      className={
+                        device.availability >= 99.5
+                          ? "is-ok"
+                          : device.availability >= 98
+                            ? "is-warning"
+                            : "is-down"
+                      }
+                      style={{ width: `${Math.max(device.availability, 2)}%` }}
+                    />
+                  </span>
+                  <strong>{formatPercent(device.availability)}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="monitoring-muted">
+            Aus den Ausfällen der eigenen Sensoren, ab dem Tag der Überwachung.
+            Warnungen und simulierte Ausfälle zählen nicht.
+          </p>
+        </>
+      ) : null}
+    </article>
+  );
 }
 
 function ProbeCard({
