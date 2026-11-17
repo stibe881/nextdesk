@@ -738,6 +738,25 @@ export function useTicketReplyDraft({
 
 export type CopyRecipient = { email: string; displayName: string | null };
 
+/** Personen im CC der E-Mails, mit denen das Ticket eingegangen ist. */
+export async function loadTicketMailCc(
+  tenantId: string,
+  ticketId: string,
+): Promise<string[]> {
+  const value = await invokeWorkbench("agent-workbench", {
+    type: "listMailCc",
+    tenantId,
+    ticketId,
+  });
+  const rows = asRecord(asRecord(value)?.data)?.cc;
+  return Array.isArray(rows)
+    ? rows.filter(
+        (entry): entry is string =>
+          typeof entry === "string" && copyEmailPattern.test(entry),
+      )
+    : [];
+}
+
 const copyEmailPattern = /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/;
 
 /**
@@ -748,12 +767,15 @@ const copyEmailPattern = /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/;
 export function TicketCopyRecipients({
   disabled,
   onChange,
+  mailCc = [],
   selected,
   tenantId,
   ticketId,
 }: {
   disabled: boolean;
   onChange: (recipients: CopyRecipient[]) => void;
+  /** Personen im CC der eingegangenen E-Mail: als Auswahl «Auch antworten an». */
+  mailCc?: readonly string[];
   selected: readonly CopyRecipient[];
   tenantId: string;
   ticketId: string;
@@ -840,6 +862,28 @@ export function TicketCopyRecipients({
       aria-label="Kopie per E-Mail"
       className="ticket-workbench__mentions"
     >
+      {mailCc.length > 0 && (
+        <fieldset className="ticket-workbench__mail-cc">
+          <legend>Auch antworten an (im CC der Anfrage)</legend>
+          {mailCc.map((email) => (
+            <label key={email}>
+              <input
+                checked={selectedEmails.has(email)}
+                disabled={disabled}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    add({ email, displayName: null });
+                  } else {
+                    onChange(selected.filter((item) => item.email !== email));
+                  }
+                }}
+                type="checkbox"
+              />
+              {email}
+            </label>
+          ))}
+        </fieldset>
+      )}
       <button
         aria-expanded={expanded}
         className="text-button ticket-workbench__mention-toggle"

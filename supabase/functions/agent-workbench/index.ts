@@ -22,6 +22,7 @@ const ACTIONS = [
   "markMentionRead",
   "createMentions",
   "searchRecipients",
+  "listMailCc",
   "listDelegations",
   "listDelegationAgents",
   "listManagedDelegationAgents",
@@ -741,6 +742,61 @@ async function searchRecipients(
     recipients.push({ ...entry, email: key });
   }
   return reply(request, { data: { recipients: recipients.slice(0, 12) } });
+}
+/**
+ * Personen im CC der E-Mails, mit denen das Ticket eingegangen ist (neue
+ * Anfrage und Antworten). Der Absender selbst und die Postfächer des
+ * Mandanten zählen nicht. Dient der Anzeige am Ticket und als Vorschlag für
+ * «Kopie per E-Mail senden».
+ */
+async function listMailCc(
+  request: Request,
+  client: Client,
+  admin: Admin,
+  action: Action,
+): Promise<Response> {
+  const info = await ticket(admin, action.tenantId, action.ticketId);
+  await ticketPermission(client, info, "ticket.internal_notes.read");
+  const [messages, channels] = await Promise.all([
+    admin
+      .from("mail_messages")
+      .select("from_address, cc_addresses, occurred_at")
+      .eq("tenant_id", action.tenantId)
+      .eq("ticket_id", info.id as string)
+      .eq("direction", "inbound")
+      .in("kind", ["new_ticket", "reply"])
+      .order("occurred_at", { ascending: false })
+      .limit(50),
+    admin
+      .from("exchange_mail_channels")
+      .select("mailbox_address")
+      .eq("tenant_id", action.tenantId),
+  ]);
+  if (messages.error) db(messages.error);
+  if (channels.error) db(channels.error);
+  const excluded = new Set<string>();
+  for (const row of channels.data ?? []) {
+    if (typeof row.mailbox_address === "string")
+      excluded.add(row.mailbox_address.trim().toLowerCase());
+  }
+  for (const row of messages.data ?? []) {
+    if (typeof row.from_address === "string")
+      excluded.add(row.from_address.trim().toLowerCase());
+  }
+  const seen = new Set<string>();
+  const addresses: string[] = [];
+  for (const row of messages.data ?? []) {
+    for (const entry of Array.isArray(row.cc_addresses)
+      ? row.cc_addresses
+      : []) {
+      if (typeof entry !== "string") continue;
+      const email = entry.trim().toLowerCase();
+      if (!email || excluded.has(email) || seen.has(email)) continue;
+      seen.add(email);
+      addresses.push(email);
+    }
+  }
+  return reply(request, { data: { cc: addresses.slice(0, 20) } });
 }
 async function listDelegations(
   request: Request,
@@ -2082,6 +2138,8 @@ const handler = withSupabase(
         return await createMentions(request, client, admin, action, actorId);
       if (action.type === "searchRecipients")
         return await searchRecipients(request, client, admin, action);
+      if (action.type === "listMailCc")
+        return await listMailCc(request, client, admin, action);
       if (action.type === "listDelegations")
         return await listDelegations(request, client, admin, action, actorId);
       if (action.type === "listManagedDelegationAgents")

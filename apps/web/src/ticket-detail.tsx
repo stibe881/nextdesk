@@ -122,6 +122,7 @@ import {
 import {
   TicketCopyRecipients,
   TicketMentionPicker,
+  loadTicketMailCc,
   type CopyRecipient,
   useTicketReplyDraft,
 } from "./ticket-workbench";
@@ -4149,6 +4150,21 @@ export function TicketDetail({
     useState<CommentVisibility>("internal");
   const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([]);
   const [copyRecipients, setCopyRecipients] = useState<CopyRecipient[]>([]);
+  const [mailCc, setMailCc] = useState<string[]>([]);
+  const canReadMailCc = detail?.canUseInternalNotes === true;
+  useEffect(() => {
+    setMailCc([]);
+    if (!canReadMailCc || requesterView) return;
+    let active = true;
+    void loadTicketMailCc(tenantId, ticketId)
+      .then((addresses) => {
+        if (active) setMailCc(addresses);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [canReadMailCc, requesterView, tenantId, ticketId]);
   const [commentNotice, setCommentNotice] = useState("");
   const [undoChange, setUndoChange] = useState<UndoChange | null>(null);
   const [isClosureContextOpen, setIsClosureContextOpen] = useState(false);
@@ -8186,6 +8202,7 @@ export function TicketDetail({
               detail.canUseInternalNotes ? (
                 <TicketCopyRecipients
                   disabled={busy}
+                  mailCc={mailCc}
                   onChange={setCopyRecipients}
                   selected={copyRecipients}
                   tenantId={tenantId}
@@ -8553,6 +8570,24 @@ export function TicketDetail({
                     </dd>
                   </div>
                 )}
+                {!requesterView && mailCc.length > 0 ? (
+                  <div className="ticket-requester-fact">
+                    <dt>In Kopie (CC)</dt>
+                    <dd>
+                      <ul
+                        aria-label="Personen im CC der E-Mail"
+                        className="ticket-requester-contacts"
+                      >
+                        {mailCc.map((email) => (
+                          <li key={`cc:${email}`}>
+                            <Mail aria-hidden="true" size={13} />
+                            <a href={`mailto:${email}`}>{email}</a>
+                          </li>
+                        ))}
+                      </ul>
+                    </dd>
+                  </div>
+                ) : null}
                 {/* Externe Absender: Abteilung / Angebot ist nicht relevant. */}
                 {emailSenderContacts ? null : (
                   <div
