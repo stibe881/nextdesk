@@ -12,6 +12,1881 @@ Grundlagen wie Anmeldung, persönliche Einstellungen und die Mobile-App
 beschreibt das _Handbuch für Mitarbeitende_, das Ihnen ebenfalls zur
 Verfügung steht.
 
+## Wie mache ich …?
+
+Hier finden Sie zu jeder Aufgabe eine kurze Anleitung. Ausführliche Erklärungen stehen in den weiteren Abschnitten.
+
+### Wie finde ich meine offenen Tickets?
+
+1. Öffnen Sie die **Übersicht** oder **Tickets**.
+2. Klicken Sie auf die Kachel **Meine offenen Tickets**.
+3. Die Liste zeigt die offenen Tickets, die Ihnen zugewiesen sind oder die Sie angefragt haben.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie finde ich gelöste oder geschlossene Tickets?
+
+1. Öffnen Sie in der Navigation **Tickets**.
+2. Klicken Sie auf die Kachel **Gelöste Tickets** oder wählen Sie unter **Filter & Sortierung** den Filter _Status_.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie sehe ich die Tickets meines Teams?
+
+1. Öffnen Sie den **Arbeitsplatz** und das Register **Team**.
+2. Ihre eigenen Teams stehen zuoberst (markiert mit _Mein Team_); daneben steht, wie viele Tickets noch **ohne Bearbeiter** sind.
+3. Klicken Sie auf die Warteschlange des Teams.
+4. Die Ticketliste zeigt genau diese Tickets mit dem Filter «Warteschlange: …»; mit × entfernen Sie den Filter wieder.
+
+Mehr dazu unter «Arbeitsplatz».
+
+### Wie finde ich Tickets ohne Teamzuordnung?
+
+1. Öffnen Sie den **Arbeitsplatz** und das Register **Team**.
+2. Klicken Sie auf **Ohne Teamzuordnung**.
+3. Die Ticketliste zeigt die offenen Tickets, die noch keinem Team zugeteilt sind.
+
+Mehr dazu unter «Arbeitsplatz».
+
+### Wie zeige ich nur eine Supportstufe an?
+
+1. Öffnen Sie in der Navigation **Tickets**.
+2. Wählen Sie das Register _1st Level_, _2nd Level_ oder _3rd Level_ (_Alle Stufen_ zeigt alles). Die Register erscheinen, wenn Sie in Teams mehrerer Supportstufen arbeiten.
+3. Die Kacheln oben zeigen dann nur die Zahlen dieser Stufe.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie sortiere ich die Ticketliste?
+
+1. Öffnen Sie in der Navigation **Tickets**.
+2. Wählen Sie rechts in der Leiste über der Liste unter **Sortieren nach:** Letzte Änderung, Agent, Status, Abteilung oder Priorität.
+3. Der Pfeil daneben wechselt zwischen absteigend und aufsteigend.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie filtere ich die Ticketliste?
+
+1. Öffnen Sie in der Navigation **Tickets**.
+2. Öffnen Sie **Filter & Sortierung**.
+3. Geben Sie einen Suchbegriff ein oder wählen Sie Status (mehrere gleichzeitig möglich), Priorität, Agent (_Mir zugewiesen_, _Nicht zugewiesen_) oder Abteilung.
+4. Mit **Filter zurücksetzen** stellen Sie alles zurück.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie suche ich mit Suchfiltern im Suchfeld?
+
+1. Tippen Sie im Suchfeld der Ticketliste einen Suchfilter, zum Beispiel `status:offen`, `prio:hoch`, `queue:ict` oder `agent:mir`.
+2. Für die Lösungsfrist gibt es `sla:kritisch`, `sla:warnung`, `sla:ok` und `sla:pausiert`.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie finde ich Tickets mit knapper oder pausierter SLA?
+
+1. Tippen Sie im Suchfeld der Ticketliste `sla:kritisch` ein (Lösungsfrist in weniger als 1 Stunde oder überschritten) oder `sla:warnung` (1 bis 4 Stunden).
+2. Für Tickets in einem wartenden Status tippen Sie `sla:pausiert` ein. Pausierte Tickets erscheinen nur dort.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie speichere ich eine Ansicht?
+
+1. Stellen Sie in der Ticketliste die gewünschten Filter ein.
+2. Speichern Sie sie als **Neue Ansicht**.
+3. Wenn Sie die Ansicht mit der Abteilung teilen möchten, wählen Sie bei «Teilen mit» die Abteilung.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie wähle ich eine gespeicherte Ansicht?
+
+1. Öffnen Sie in der Navigation **Tickets**.
+2. Wählen Sie in der Leiste über der Liste unter **Ansicht:** die gewünschte Ansicht (auch geteilte).
+3. Mit **Filter zurücksetzen** im selben Feld heben Sie die Ansicht wieder auf.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie ändere ich die Darstellung der Ticketliste?
+
+1. Öffnen Sie in der Navigation **Tickets**.
+2. Wählen Sie unter **Ansicht** die Listendichte _Kompakt_, _Standard_ oder _Komfortabel_.
+3. Auf Wunsch schalten Sie die Listen-Detail-Ansicht ein (Liste links, Ticket rechts).
+
+Mehr dazu unter «Ticketliste».
+
+### Wie wechsle ich zwischen Liste und Kanban?
+
+1. Öffnen Sie in der Navigation **Tickets**.
+2. Klicken Sie auf den Umschalter **Liste / Kanban**.
+3. Im Kanban stehen die Tickets als Spalten nach Status.
+
+Mehr dazu unter «Kanban».
+
+### Wie ändere ich den Status im Kanban?
+
+1. Wechseln Sie mit dem Umschalter **Liste / Kanban** zum Kanban.
+2. Ziehen Sie die Karte in die Spalte des neuen Status.
+
+Mehr dazu unter «Kanban».
+
+### Wie ändere ich den Status mehrerer Tickets gleichzeitig?
+
+1. Markieren Sie in der Ticketliste die gewünschten Tickets.
+2. Wählen Sie den **Neuen Status**.
+3. Klicken Sie auf **Status für Auswahl setzen**.
+4. Bei dieser Sammelaktion werden Sie nicht automatisch als zugewiesene Person eingetragen.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie filtere ich die Ticketliste in der App?
+
+1. Öffnen Sie in der App die Ticketliste.
+2. Wählen Sie unter **Status** einen oder mehrere Status; **Zurücksetzen** hebt die Auswahl auf.
+3. Das Filtersymbol in der Suchleiste öffnet weitere Filter: Bereich, Agent, Abteilung, Priorität, Sortierung und Reihenfolge.
+4. Ohne Auswahl zeigt die Liste **Meine** Tickets.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie bediene ich die Ticketliste mit Tastenkürzeln?
+
+1. Drücken Sie `?`, um die Hilfe mit allen Kürzeln zu öffnen.
+2. Mit `J` und `K` springen Sie zum nächsten bzw. vorherigen Ticket.
+3. `Enter` öffnet das Ticket, `Esc` schliesst es.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie lösche ich Tickets?
+
+1. Markieren Sie die Tickets in der Ticketliste. Dafür braucht es die Berechtigung zum Löschen.
+2. Klicken Sie auf **Löschen**.
+3. Die Tickets kommen in den **Papierkorb** und lassen sich 90 Tage lang wiederherstellen.
+
+Mehr dazu unter «Gelöschte Tickets (Papierkorb)».
+
+### Wie stelle ich ein gelöschtes Ticket wieder her?
+
+1. Öffnen Sie in der Ticketliste **Filter & Sortierung → Gelöschte Tickets anzeigen**.
+2. Klicken Sie auf das Ticket.
+3. Klicken Sie auf **Wiederherstellen**. Das Ticket kommt unverändert zurück.
+
+Mehr dazu unter «Gelöschte Tickets (Papierkorb)».
+
+### Wie markiere ich ein Ticket als Spam?
+
+1. Im Web: Markieren Sie die Tickets in der Liste und wählen Sie **Als Spam markieren**. Auf dem iPhone und in der Android-App: Wischen Sie das Ticket nach links und tippen Sie auf **Spam**.
+2. Bestätigen Sie die Rückfrage: Alle künftigen Tickets dieses Absenders gehen automatisch in den Spam. Dafür braucht es die Berechtigung zum Löschen.
+
+Mehr dazu unter «Spam».
+
+### Wie hole ich ein Ticket aus dem Spam zurück?
+
+1. Öffnen Sie in der Ticketliste **Filter & Sortierung → Spam anzeigen**.
+2. Wählen Sie das Ticket und klicken Sie auf **Kein Spam**.
+3. Das Ticket kommt zurück und der Absender ist wieder freigegeben.
+
+Mehr dazu unter «Spam».
+
+### Wie gebe ich einen gesperrten Absender frei?
+
+1. Öffnen Sie in der Ticketliste **Filter & Sortierung → Spam anzeigen**.
+2. Öffnen Sie **Gesperrte Absender**.
+3. Geben Sie den gewünschten Absender einzeln frei.
+
+Mehr dazu unter «Spam».
+
+### Wie sehe ich die Spam-Auswertung?
+
+1. Öffnen Sie **Berichte → Spam**.
+2. Dort stehen der Verlauf pro Tag, die häufigsten Absender, die Abteilungen und ob der Spam automatisch abgefangen oder von Hand markiert wurde.
+
+Mehr dazu unter «Spam».
+
+### Wie nehme ich ein Ticket an?
+
+1. Öffnen Sie das Ticket mit einem Klick.
+2. Ändern Sie den **Status**, zum Beispiel auf **In Bearbeitung**. Auch bei einem neuen, noch nicht zugewiesenen Ticket geht das direkt.
+3. Sie werden damit automatisch als **zugewiesene Person** eingetragen, sofern Sie das Ticket bearbeiten dürfen.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie weise ich ein Ticket einer Person zu?
+
+1. Öffnen Sie das Ticket.
+2. Wählen Sie im Kopf- oder Infobereich die **zugewiesene Person**.
+3. Wenn Sie im selben Schritt den Status ändern, gilt die gewählte Person und nicht Sie selbst.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie ändere ich den Status eines Tickets?
+
+1. Öffnen Sie das Ticket.
+2. Wählen Sie im Kopf- oder Infobereich den neuen **Status**.
+3. Alternativ ändern Sie ihn auf der Kachel in Liste und Kanban oder in der App.
+4. Wer den Status ändert, wird automatisch zugewiesene Person (siehe «Wie nehme ich ein Ticket an?»).
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie ändere ich die Priorität eines Tickets?
+
+1. Öffnen Sie das Ticket.
+2. Wählen Sie im Kopf- oder Infobereich die neue **Priorität**.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie ändere ich Kategorie oder Team eines Tickets?
+
+1. Öffnen Sie das Ticket.
+2. Wählen Sie im Kopf- oder Infobereich die **Kategorie** bzw. das **Team**.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie ändere ich Betreff und Beschreibung eines Tickets?
+
+1. Öffnen Sie das Ticket.
+2. Klicken Sie in der Karte **Beschreibung** auf den **Stift**.
+3. Ändern Sie Betreff und Beschreibung direkt dort.
+4. Klicken Sie auf **Beschreibung speichern** (oder drücken Sie Strg/⌘ + Enter).
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie sehe ich, wer ein Ticket gerade ansieht?
+
+1. Öffnen Sie das Ticket.
+2. Oben rechts im Ticketkopf stehen runde Profilbilder (ohne Foto: Kürzel) aller, die das Ticket gerade geöffnet haben.
+3. Bewegen Sie die Maus über ein Bild, um den Namen zu sehen. Ein grüner Rand bedeutet, dass die Person gerade etwas ändert.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie sehe ich den Verlauf und die Fristen eines Tickets?
+
+1. Öffnen Sie das Ticket.
+2. Über der Beschreibung zeigt die **Ticket-Zeitachse** alle Ereignisse sowie Reaktions- und Lösungsfrist.
+3. Darunter folgt die **Unterhaltung** mit allen Nachrichten und Notizen.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie öffne ich die Personenübersicht der anfragenden Person?
+
+1. Öffnen Sie das Ticket.
+2. Klicken Sie unter **Anfragende Person** auf den Namen. In der App tippen Sie auf **Personenübersicht** unter der anfragenden Person.
+
+Mehr dazu unter «Personen suchen und Personenübersicht».
+
+### Wie erreiche ich eine externe anfragende Person?
+
+1. Öffnen Sie das Ticket einer Person, die von ausserhalb Ihrer Organisation geschrieben hat.
+2. Unter **Anfragende Person** stehen die E-Mail-Adresse und alle Telefonnummern aus der Signatur.
+3. Ein Klick startet Anruf oder E-Mail.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie antworte ich der anfragenden Person?
+
+1. Öffnen Sie das Ticket.
+2. Wählen Sie im Antwortbereich den Modus **Antwort an anfragende Person**.
+3. Schreiben Sie Ihren Text unter die vorgegebene Begrüssung. Sie können sie ändern oder löschen.
+4. Klicken Sie auf **Externe Antwort senden**.
+5. Die Person sieht die Antwort im Portal und per E-Mail. Ist das Ticket noch niemandem zugewiesen, werden Sie mit dem Senden zugewiesen, und ein neues Ticket wechselt auf **In Bearbeitung**.
+
+Mehr dazu unter «Antworten und interne Notizen».
+
+### Wie antworte ich und löse das Ticket in einem Schritt?
+
+1. Öffnen Sie das Ticket und schreiben Sie Ihre Antwort im Modus **Antwort an anfragende Person**.
+2. Klicken Sie auf **Antwort senden und als gelöst markieren**.
+3. Pflichtfelder wie die Kategorie gelten erst beim Lösen oder Schliessen.
+
+Mehr dazu unter «Antworten und interne Notizen».
+
+### Wie antworte ich auch Personen im CC der Anfrage?
+
+1. Öffnen Sie das Ticket. Personen, die bei der E-Mail im **Cc** waren, stehen unter **In Kopie (CC)**.
+2. Wählen Sie den Modus **Antwort an anfragende Person**.
+3. Kreuzen Sie unter **Auch antworten an (im CC der Anfrage)** die gewünschten Personen an. Standardmässig ist niemand angekreuzt.
+4. Klicken Sie auf **Externe Antwort senden**. Die angekreuzten Personen erhalten die Nachricht per E-Mail als Kopie.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie sende ich eine Kopie einer Antwort an weitere Personen?
+
+1. Öffnen Sie das Ticket und schreiben Sie Ihre Antwort im Modus **Antwort an anfragende Person**.
+2. Fügen Sie mit **Kopie per E-Mail senden** weitere Personen hinzu.
+3. Klicken Sie auf **Externe Antwort senden**.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie schreibe ich eine interne Notiz?
+
+1. Öffnen Sie das Ticket.
+2. Wählen Sie im Antwortbereich den Modus **Interne Notiz**.
+3. Schreiben Sie die Notiz.
+4. Klicken Sie auf **Interne Notiz speichern**. Die Notiz ist nur für berechtigte Mitarbeitende sichtbar.
+
+Mehr dazu unter «Antworten und interne Notizen».
+
+### Wie erwähne ich Kolleginnen und Kollegen in einer Nachricht?
+
+1. Öffnen Sie das Ticket und wählen Sie im Antwortbereich den gewünschten Modus.
+2. Tippen Sie im Text `@` und den Namen der Person.
+3. Senden Sie die Nachricht oder speichern Sie die Notiz. Die Erwähnung erscheint bei der Person im Arbeitsplatz unter **Erwähnungen**.
+
+Mehr dazu unter «Antworten und interne Notizen».
+
+### Wie lasse ich die KI meinen Text umformulieren?
+
+1. Schreiben Sie im Antwortbereich Ihren Text. Die Funktion ist da, wenn die KI-Assistenz aktiv ist.
+2. Klicken Sie unter dem Antwortfeld bei **Mit KI umformulieren** auf **Kurz** (knapp) oder **Ausführlich** (Schritte vollständig erklärt). In der iPhone- und Android-App heissen die Knöpfe **KI kurz** und **KI ausführlich**.
+3. Prüfen Sie das Ergebnis. Mit **Original wiederherstellen** (in der App **Original**) holen Sie Ihren Text zurück.
+
+Mehr dazu unter «Antworten und interne Notizen».
+
+### Wie erstelle ich einen KI-Entwurf für eine Antwort?
+
+1. Öffnen Sie das Ticket und den Antwortbereich.
+2. Klicken Sie auf **KI-Entwurf erstellen** (nur sichtbar, wenn die KI-Assistenz aktiv ist).
+3. Prüfen Sie den Entwurf und senden Sie ihn erst, wenn er stimmt.
+
+Mehr dazu unter «Antworten und interne Notizen».
+
+### Wie wende ich ein Makro an?
+
+1. Öffnen Sie das Ticket und den Antwortbereich.
+2. Klicken Sie auf **Makro anwenden**.
+3. Wählen Sie das gewünschte Makro.
+
+Mehr dazu unter «Antworten und interne Notizen».
+
+### Wie hänge ich Dateien an eine Nachricht an?
+
+1. Öffnen Sie das Ticket und den Antwortbereich.
+2. Klicken Sie auf **Dateien anhängen** und wählen Sie die Dateien (Bilder, PDF, Word, Excel, TXT, CSV; bis 5 Dateien pro Nachricht).
+3. Senden Sie die Nachricht.
+
+Mehr dazu unter «Antworten und interne Notizen».
+
+### Wie füge ich einem Ticket einen Anhang hinzu?
+
+1. Öffnen Sie das Ticket.
+2. Klicken Sie in der Zeile unter der **Beschreibung** auf **+ Anhang** und wählen Sie eine oder mehrere Dateien.
+3. Alternativ ziehen Sie die Dateien direkt auf die Zeile (maximal 25 MiB pro Datei).
+
+Mehr dazu unter «Anhänge».
+
+### Wie lade ich einen Anhang herunter oder lösche ihn?
+
+1. Öffnen Sie das Ticket. Die **Anhänge** stehen als Chips unter der **Beschreibung**; ab fünf Dateien zeigt **+n weitere** den Rest.
+2. Ein Klick auf den Chip lädt die Datei herunter.
+3. Das **×** löscht sie nach einer Rückfrage.
+
+Mehr dazu unter «Anhänge».
+
+### Wie melde ich einen Spam- oder Phishing-Verdacht der anfragenden Person?
+
+1. Öffnen Sie das offene Ticket, in dem die Person eine Mail weitergeleitet hat.
+2. Klicken Sie oben im Ticket auf **Spam-/Phishing-Verdacht** (in der App über der Karte zur Supportstufe).
+3. Bestätigen Sie die Rückfrage **Wirklich als Spam/Phishing markieren?**.
+4. Die Person erhält die Standardantwort, und das Ticket geht an das 2nd-Level-Team der Abteilung. Der Knopf erscheint nur mit den Rechten «Tickets bearbeiten» und «Tickets zuweisen».
+
+Mehr dazu unter «Spam-/Phishing-Verdacht der anfragenden Person».
+
+### Wie verknüpfe ich ein Gerät der anfragenden Person mit dem Ticket?
+
+1. Öffnen Sie das Ticket. Hat die Person genau ein Gerät, ist es schon automatisch verknüpft.
+2. Bei mehreren Geräten öffnen Sie **Asset / Katalogeintrag verknüpfen**.
+3. Klicken Sie unter **Geräte der anfragenden Person** auf das passende Gerät.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie hänge ich ein Gerät oder einen Dienst aus dem Netzwerk-Feld ans Ticket?
+
+1. Öffnen Sie ein Ticket, in dem eine IP-Adresse, ein Subnetz, eine MAC-Adresse oder ein dokumentierter Hostname vorkommt. Rechts erscheint die Box **Netzwerk**.
+2. Klicken Sie auf **Gerät … ans Ticket hängen** bzw. **Dienst … ans Ticket hängen**. Dafür müssen Sie das Ticket bearbeiten dürfen.
+3. Bereits verknüpfte Einträge erscheinen als «am Ticket».
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie springe ich vom Ticket zur IP-Adresse?
+
+1. Öffnen Sie ein Ticket, das eine bekannte IP-Adresse nennt. Rechts erscheint die Box **Netzwerk**.
+2. Klicken Sie auf **In der IP-Adressverwaltung öffnen**.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie reserviere ich eine im Ticket erkannte IP-Adresse?
+
+1. Öffnen Sie ein Ticket mit einer erkannten, noch nicht dokumentierten IP-Adresse in einem bekannten Subnetz.
+2. Klicken Sie in der Box **Netzwerk** auf **IP reservieren**.
+3. Bestätigen Sie die Rückfrage. Dafür braucht es das Recht, IP-Adressen zu verwalten.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie füge ich Beobachtende zu einem Ticket hinzu?
+
+1. Öffnen Sie das Ticket.
+2. Wählen Sie in den weiteren Aktionen **Beobachtende hinzufügen**.
+3. Wählen Sie die Personen, die informiert werden sollen.
+
+Mehr dazu unter «Weitere Aktionen im Ticket».
+
+### Wie führe ich doppelte Tickets zusammen?
+
+1. Öffnen Sie das Ticket, das ein Duplikat ist.
+2. Öffnen Sie **Ticket steuern** und wählen Sie **Tickets zusammenführen**.
+3. Suchen Sie unter **Hauptticket suchen** das Hauptticket.
+4. Klicken Sie beim richtigen Treffer auf **In dieses Ticket zusammenführen**.
+5. Bestätigen Sie mit **Zusammenführen bestätigen**. Das aktuelle Ticket wird als Duplikat geschlossen und im Hauptticket referenziert.
+
+Mehr dazu unter «Weitere Aktionen im Ticket».
+
+### Wie eröffne ich aus einem Ticket einen Fall?
+
+1. Öffnen Sie das Ticket.
+2. Öffnen Sie **Ticket steuern** und wählen Sie **Fall eröffnen**.
+3. Folgen Sie dem Formular, um aus dem Ticket einen Fall (Problem) anzulegen und zu verknüpfen.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie teile ich ein Ticket in mehrere Aufgaben auf?
+
+1. Öffnen Sie das Ticket.
+2. Klicken Sie in der Karte **Koordination** auf **Aufteilen**.
+3. Folgen Sie dem Formular, um Teil-Tickets anzulegen.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie übergebe ich ein Ticket an die nächste Supportstufe?
+
+1. Öffnen Sie das Ticket.
+2. Klicken Sie in der Karte **Koordination** auf **An nächste Stufe übergeben**.
+3. Schreiben Sie die Übergabenotiz. Die Notiz ist Pflicht.
+4. Bestätigen Sie die Übergabe. Unter **Verlauf der Stufen** sehen Sie die bisherigen Übergaben.
+
+Mehr dazu unter «Ein Ticket bearbeiten».
+
+### Wie übergebe ich ein Ticket an einen Drittanbieter?
+
+1. Öffnen Sie das Ticket und klicken Sie auf **An Drittanbieter übergeben**.
+2. Wählen Sie den **Drittanbieter**.
+3. Tragen Sie bei Bedarf die **externe Fallnummer** des Anbieters und eine **Notiz** ein.
+4. Bestätigen Sie die Übergabe. Das Ticket wechselt auf **Wartend auf Drittanbieter**; antwortet der Anbieter nicht rechtzeitig, werden Sie erinnert.
+
+Mehr dazu unter «An Drittanbieter übergeben».
+
+### Wie frage ich die vorgesetzte Person?
+
+1. Öffnen Sie das Ticket.
+2. Öffnen Sie **Ticket steuern** und wählen Sie **Vorgesetzte Person fragen**.
+3. Wählen Sie die **Person** und schreiben Sie die **Frage**.
+4. Klicken Sie auf **Anfrage senden**. Frage und Antwort stehen als interne Notizen im Ticket.
+
+Mehr dazu unter «Weitere Aktionen im Ticket».
+
+### Wie fordere ich eine Freigabe an?
+
+1. Öffnen Sie das Ticket.
+2. Wählen Sie in den weiteren Aktionen **Freigabe anfordern**, zum Beispiel für Kosten oder Berechtigungen.
+3. Füllen Sie das Formular aus und senden Sie die Anfrage ab.
+
+Mehr dazu unter «Weitere Aktionen im Ticket».
+
+### Wie setze ich eine Erinnerung (Wiedervorlage) auf ein Ticket?
+
+1. Öffnen Sie das Ticket.
+2. Klicken Sie auf **Erinnerung setzen**.
+3. Wählen Sie den **Termin** und schreiben Sie auf Wunsch eine **Notiz**.
+4. Klicken Sie auf **Erinnerung speichern**.
+5. Das Ticket erscheint am Datum im **Arbeitsplatz** unter **Erinnerungen**.
+
+Mehr dazu unter «Arbeitsplatz».
+
+### Wie erfasse ich Arbeitszeit auf einem Ticket?
+
+1. Öffnen Sie das Ticket.
+2. Klicken Sie auf **Arbeitszeit erfassen**.
+3. Tragen Sie den Aufwand ein und speichern Sie.
+
+Mehr dazu unter «Weitere Aktionen im Ticket».
+
+### Wie fasse ich ein langes Ticket mit KI zusammen?
+
+1. Öffnen Sie das Ticket mit dem langen Verlauf.
+2. Wählen Sie in den weiteren Aktionen **Zusammenfassen**.
+3. Die KI zeigt eine Kurzfassung (nur wenn die KI-Assistenz aktiv ist).
+
+Mehr dazu unter «Weitere Aktionen im Ticket».
+
+### Wie drucke ich die Ticketakte als PDF?
+
+1. Öffnen Sie das Ticket.
+2. Wählen Sie **Ticketakte als PDF**.
+3. Drucken Sie die Akte oder legen Sie sie ab.
+
+Mehr dazu unter «Weitere Aktionen im Ticket».
+
+### Wie erfasse ich die Ursache einer SLA-Verletzung?
+
+1. Öffnen Sie das Ticket, dessen SLA verletzt wurde.
+2. Tragen Sie die **Ursache der SLA-Verletzung** ein. Beim Abschluss geht das auch direkt im Bestätigungsfeld.
+3. Erst danach lässt sich das Ticket lösen oder schliessen (auch bei der Sammelaktion).
+
+Mehr dazu unter «An Drittanbieter übergeben».
+
+### Wie pausiere ich die SLA eines Tickets?
+
+1. Öffnen Sie das Ticket.
+2. Setzen Sie den Status auf **Wartend**, **Wartend auf Kunde** oder **Wartend auf Drittanbieter**.
+3. Die Liste zeigt dann «SLA pausiert seit …». Die Mandantenadministration kann das pro Status ändern.
+
+Mehr dazu unter «SLA-Pause in wartenden Status».
+
+### Wie lasse ich die SLA eines wartenden Tickets weiterlaufen?
+
+1. Öffnen Sie das Ticket.
+2. Setzen Sie den Status auf einen bearbeitenden Status, zum Beispiel **In Bearbeitung**.
+3. Die Fristen werden um die pausierte Servicezeit verschoben.
+
+Mehr dazu unter «SLA-Pause in wartenden Status».
+
+### Wie sehe ich die Bewertung der anfragenden Person?
+
+1. Öffnen Sie ein gelöstes Ticket.
+2. Eine abgegebene Bewertung steht unter «Bewertung der anfragenden Person».
+3. Die Auswertung über alle Tickets finden Sie unter **Berichte → Feedback-Themen**.
+
+Mehr dazu unter «Bewertung der anfragenden Person».
+
+### Wie erfasse ich ein Ticket für jemanden?
+
+1. Klicken Sie oben rechts auf **+** und wählen Sie **Ticket erfassen**.
+2. Wählen Sie die **anfragende Person** (Suche, «Mich auswählen» oder neue Person).
+3. Füllen Sie Betreff, Einordnung, Priorität und Beschreibung aus. Pflichtfelder sind mit **\*** markiert.
+4. Setzen Sie auf Wunsch direkt einen **zugewiesenen Agenten**.
+5. Klicken Sie auf **Ticket erstellen**.
+
+Mehr dazu unter «Ticket für jemanden erfassen».
+
+### Wie erfasse ich ein Ticket in der App?
+
+1. Halten Sie in der App den Home-Knopf lange gedrückt.
+2. Tippen Sie im Halbkreis unter **Erfassen** auf **Ticket**.
+3. Auf demselben Weg legen Sie auch eine **Erinnerung**, eine **Serviceaufgabe** oder einen **Lagerartikel** an.
+
+Mehr dazu unter «Ticket für jemanden erfassen».
+
+### Wie erfasse ich eine Erinnerung, einen Fall oder einen Wissensartikel?
+
+1. Klicken Sie oben rechts auf **+**.
+2. Wählen Sie im Menü, was Sie erfassen möchten: je nach Freischaltung Erinnerungen, Fälle, Serviceaufgaben, Wissensartikel, Lagerartikel, Verträge oder Lizenzen.
+
+Mehr dazu unter «Ticket für jemanden erfassen».
+
+### Wie beende ich die Einführungstour?
+
+1. Die Einführung startet beim ersten Login.
+2. Klicken Sie während der Tour auf **Einführung beenden**.
+
+Mehr dazu unter «Einführungstour».
+
+### Wie starte ich die Einführungstour erneut?
+
+1. Öffnen Sie _Persönliche Einstellungen → Darstellung anpassen_.
+2. Wählen Sie _Einführung erneut starten_.
+
+Mehr dazu unter «Einführungstour».
+
+### Wie erfasse ich ein Rack?
+
+1. Öffnen Sie in der Infrastruktur die Ansicht **Racks**.
+2. Klicken Sie auf **Rack erfassen**.
+3. Tragen Sie Name, Standort, Höhe in HE und Notizen ein. Einen fehlenden Standort legen Sie mit **+ Neuer Standort …** an.
+4. Speichern Sie. Später ändern Sie das Rack über den **Stift** am Rack.
+
+Mehr dazu unter «Navigation».
+
+### Wie wähle ich Standort und Rack für ein Gerät?
+
+1. Öffnen Sie das Gerät in der Infrastruktur und klicken Sie auf **Bearbeiten**.
+2. Wählen Sie **Standort** und **Rack** aus den vorhandenen Einträgen.
+3. Fehlt einer, legen Sie ihn direkt unter der Liste mit **Hinzufügen** an (ein neues Rack entsteht mit 42 HE).
+
+Mehr dazu unter «Navigation».
+
+### Wie lege ich die Dienste eines Geräts für den Systemstatus fest?
+
+1. Öffnen Sie das Gerät in der Infrastruktur und klicken Sie auf **Bearbeiten**.
+2. Wählen Sie die **Dienste (für Systemstatus)**. Diese Dienste ändern ihren Status bei einer Überwachungsstörung.
+3. Die **Übersicht** des Geräts zeigt sie danach unter **Betroffene Dienste**.
+
+Mehr dazu unter «Navigation».
+
+### Wie plane ich ein Wartungsfenster im Gerät?
+
+1. Öffnen Sie das Gerät in der Infrastruktur und das Register **Wartung**.
+2. Planen Sie das Wartungsfenster. Die Dienste des Geräts werden automatisch übernommen.
+3. Mit **Andere Dienste wählen** passen Sie sie für ein einzelnes Fenster an.
+
+Mehr dazu unter «Navigation».
+
+### Wie erfasse ich eine Wartungscheckliste?
+
+1. Öffnen Sie das Gerät in der Infrastruktur, klicken Sie auf **Bearbeiten** und öffnen Sie die Karte **Wartungscheckliste und Notizen**.
+2. Erfassen Sie jeden Punkt in einer eigenen Zeile mit einem eigenen **Datum**.
+3. **Punkt hinzufügen** ergänzt eine Zeile, × entfernt sie.
+
+Mehr dazu unter «Navigation».
+
+### Wie suche ich eine Person?
+
+1. Öffnen Sie oben rechts die **globale Suche**.
+2. Suchen Sie nach Name, E-Mail-Adresse, Funktion oder Abteilung.
+3. Mit den Reitern _Alle / Personen / Tickets …_ filtern Sie die Treffer.
+4. Klicken Sie auf die Person, um die Personenübersicht zu öffnen.
+
+Mehr dazu unter «Personen suchen und Personenübersicht».
+
+### Wie suche ich eine Störung oder einen Phishing-/Junk-Fall?
+
+1. Öffnen Sie oben rechts die **globale Suche**.
+2. Suchen Sie bei Störungen nach Nummer, Titel oder Gerät, bei Fällen nach Fallnummer, Betreff, Absender oder meldender Person.
+3. Ein Klick auf den Treffer öffnet die Störung bzw. den Fall. Sie finden sie nur, wenn Sie zum zuständigen Team gehören.
+
+Mehr dazu unter «Personen suchen und Personenübersicht».
+
+### Wie sehe ich die Tickets einer Person?
+
+1. Öffnen Sie die Personenübersicht der Person.
+2. Wählen Sie das Register **Tickets**.
+3. Filtern Sie nach _Alle_, _Offen_ oder _Geschlossen_.
+
+Mehr dazu unter «Personen suchen und Personenübersicht».
+
+### Wie sehe ich Geräte, Lizenzen und Bestellungen einer Person?
+
+1. Öffnen Sie die Personenübersicht der Person.
+2. Wählen Sie das Register **Geräte**, **Lizenzen** oder **Bestellungen**. Die Register erscheinen nur, wenn das Modul aktiv ist und Sie die Berechtigung haben.
+3. Ein Klick auf ein Gerät öffnet es.
+
+Mehr dazu unter «Personen suchen und Personenübersicht».
+
+### Wie erfasse ich ein Ticket aus der Personenübersicht?
+
+1. Öffnen Sie die Personenübersicht der Person.
+2. Klicken Sie im Kopf auf **Ticket für … erfassen**.
+3. Das Ticketformular öffnet sich mit der Person als anfragender Person.
+
+Mehr dazu unter «Personen suchen und Personenübersicht».
+
+### Wie wechsle ich den Zeitraum der Übersicht?
+
+1. Öffnen Sie die **Übersicht**.
+2. Wählen Sie _Heute_, _7 Tage_ oder _30 Tage_.
+3. Ein Klick auf eine Kachel öffnet die passende gefilterte Liste.
+
+Mehr dazu unter «Übersicht».
+
+### Wie passe ich meine Prioritäten an?
+
+1. Öffnen Sie die **Übersicht** und suchen Sie **Priorisierte Tickets** bzw. **Meine Prioritäten**.
+2. Ziehen Sie die Tickets in die gewünschte Reihenfolge.
+3. **Neu priorisieren** holt einen neuen Vorschlag der KI, **Eigene Reihenfolge verwerfen** setzt auf den Vorschlag zurück.
+
+Mehr dazu unter «Übersicht».
+
+### Wie blende ich Blöcke der Startseite ein oder aus?
+
+1. Öffnen Sie die **Übersicht**.
+2. Klicken Sie auf **Startseite anpassen**.
+3. Blenden Sie die gewünschten Blöcke ein oder aus.
+
+Mehr dazu unter «Übersicht».
+
+### Wie sehe ich, wo ich erwähnt wurde?
+
+1. Öffnen Sie den **Arbeitsplatz**.
+2. Wählen Sie das Register **Erwähnungen**.
+
+Mehr dazu unter «Arbeitsplatz».
+
+### Wie sehe ich die Tickets abwesender Kolleginnen und Kollegen?
+
+1. Öffnen Sie den **Arbeitsplatz**.
+2. Wählen Sie das Register **Stellvertretung**.
+
+Mehr dazu unter «Arbeitsplatz».
+
+### Wie sehe ich meine Erinnerungen?
+
+1. Öffnen Sie den **Arbeitsplatz**.
+2. Wählen Sie das Register **Erinnerungen**. Dort stehen Tickets, die Sie sich zu einem Datum vorgemerkt haben.
+
+Mehr dazu unter «Arbeitsplatz».
+
+### Wie sehe ich meine eigenen Tickets, Geräte und Freigaben?
+
+1. Öffnen Sie den **Arbeitsplatz**.
+2. Wählen Sie das Register **Mein Bereich**.
+
+Mehr dazu unter «Arbeitsplatz».
+
+### Wie lege ich eine Stellvertretung an?
+
+1. Öffnen Sie **Arbeitsplatz → Stellvertretung**.
+2. Klicken Sie auf **Stellvertretung anlegen**.
+3. Wählen Sie die stellvertretende Person, Beginn und Ende und schreiben Sie eine Notiz.
+4. Klicken Sie auf **Stellvertretung speichern**. Ihre Tickets erscheinen in dieser Zeit bei der Stellvertretung.
+
+Mehr dazu unter «Abwesenheit und Stellvertretung».
+
+### Wie melde ich eine verdächtige E-Mail?
+
+1. Öffnen Sie den **Arbeitsplatz** und das Register **Mein Bereich**.
+2. Klicken Sie auf **Phishing melden**.
+3. Laden Sie die E-Mail als .eml oder .msg hoch oder fügen Sie die Kopfzeilen ein.
+4. Klicken Sie auf **Melden**. In Outlook geht es auch mit **Melden → Phishing melden**.
+
+Mehr dazu unter «Phishing melden».
+
+### Wie sehe ich, welche Phishing-/Junk-Fälle zu beurteilen sind?
+
+1. Öffnen Sie in der Navigation **Phishing / Junk**. Der Bereich ist nur für das Sicherheitsteam sichtbar.
+2. Die Liste zeigt die zu beurteilenden Fälle.
+3. Mit **Filter aufheben** kehren Sie nach einem Kachelklick dorthin zurück.
+
+Mehr dazu unter «Phishing / Junk».
+
+### Wie filtere ich Phishing-/Junk-Fälle über die Kacheln?
+
+1. Öffnen Sie **Phishing / Junk**.
+2. Klicken Sie auf eine Kachel: _Meldungen heute_, _Zeit bis Urteil_ (in den letzten 30 Tagen beurteilt) oder _Geklickt_.
+3. Darunter erscheinen die passenden Fälle. **Filter aufheben** führt zurück zu den Fällen, die zu beurteilen sind.
+
+Mehr dazu unter «Phishing / Junk».
+
+### Wie sehe ich eine gemeldete E-Mail sicher an?
+
+1. Öffnen Sie den Fall in **Phishing / Junk**.
+2. Wählen Sie **Darstellung** (Mail mit Layout im abgeschotteten Rahmen), **Text** (Textfassung) oder **Kopfzeilen** (alle Header für die technische Beurteilung).
+3. Skripte laufen nicht, externe Inhalte werden nicht geladen und Links haben kein Ziel.
+
+Mehr dazu unter «Phishing / Junk».
+
+### Wie weise ich einen Phishing-/Junk-Fall zu?
+
+1. Öffnen Sie den Fall.
+2. Wählen Sie unter **Zuständig** eine Person oder klicken Sie auf **Mir zuweisen**.
+3. Zur Auswahl stehen die Agenten, die den Fall bearbeiten dürfen, bei einem Team die Mitglieder dieses Teams.
+
+Mehr dazu unter «Phishing / Junk».
+
+### Wie fälle ich ein Urteil zu einem Phishing-/Junk-Fall?
+
+1. Öffnen Sie den Fall.
+2. Wählen Sie das Urteil _Harmlos_, _Spam_, _Phishing_ oder _Gezielter Angriff_ und bestätigen Sie es.
+3. Alle Melder erhalten automatisch eine E-Mail mit dem Ergebnis.
+4. Bei hohem Risiko soll das Urteil innerhalb von 30 Minuten fallen, bei mittlerem innerhalb von 4 Stunden, sonst innerhalb eines Tages.
+
+Mehr dazu unter «Phishing / Junk».
+
+### Wie arbeite ich die Massnahmen eines Falls ab?
+
+1. Öffnen Sie den Fall nach dem Urteil.
+2. Gehen Sie die Checkliste durch, zum Beispiel Absender sperren oder Mail aus allen Postfächern entfernen.
+3. Haken Sie erledigte Schritte ab.
+
+Mehr dazu unter «Phishing / Junk».
+
+### Wie frage ich die Melder, ob sie geklickt haben?
+
+1. Öffnen Sie den Fall.
+2. Klicken Sie auf **Melder fragen: geklickt?**.
+3. Die Antwort (_Geklickt_ / _Nicht geklickt_) erscheint bei der Person. Wer geklickt hat, löst eine Benachrichtigung an das Sicherheitsteam aus.
+
+Mehr dazu unter «Phishing / Junk».
+
+### Wie schliesse ich einen Phishing-/Junk-Fall ab?
+
+1. Prüfen Sie im Fall, ob alle Massnahmen erledigt sind.
+2. Klicken Sie auf **Fall abschliessen**.
+3. Bei _Harmlos_ ohne Massnahmen schliesst sich der Fall direkt nach dem Urteil.
+
+Mehr dazu unter «Phishing / Junk».
+
+### Wie sehe ich Kontext und Geräte der meldenden Person?
+
+1. Öffnen Sie den Fall.
+2. Lesen Sie die Karte **Kontext und Massnahmen**: Funktion, Abteilung, vorgesetzte Person, letzte Anmeldung, Geräte mit Intune-Status und IP-Adressen.
+3. Der Hinweis **Interne Adresse!** warnt vor einem möglicherweise kompromittierten internen Gerät oder Konto.
+
+Mehr dazu unter «Kontext und Massnahmen».
+
+### Wie reagiere ich, wenn jemand auf einen Phishing-Link geklickt hat?
+
+1. Öffnen Sie den Fall. Hat die Person mit **«Ja, ich habe geklickt»** geantwortet, stehen bei ihr Massnahmen bereit.
+2. Wählen Sie je nach Bedarf **Gerät synchronisieren**, **Defender-Schnellscan** (Windows), **Sitzungen widerrufen** oder **Passwort-Reset erzwingen**.
+3. Bestätigen Sie den Dialog. Jede Massnahme steht danach mit Ergebnis unter **Ausgeführte Massnahmen**.
+
+Mehr dazu unter «Kontext und Massnahmen».
+
+### Wie bestelle ich ein Ersatzgerät für eine betroffene Person?
+
+1. Öffnen Sie den Fall und die Massnahmen bei der Person.
+2. Klicken Sie auf **Ersatzgerät bestellen** und wählen Sie den Shop-Artikel.
+3. Bestätigen Sie den Dialog. Die Bestellung braucht keine Freigabe.
+
+Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
+
+### Wie sehe ich Kampagnen und die IOC-Liste?
+
+1. Öffnen Sie in **Phishing / Junk** den Bereich **Kampagnen & IOC**.
+2. Sie sehen die erkannten Kampagnen mit allen Fällen und die **IOC-Liste** (Domains, URLs, sendende IPs und Absender).
+
+Mehr dazu unter «Kampagnen und IOC-Liste».
+
+### Wie markiere ich einen IOC-Eintrag als harmlos?
+
+1. Öffnen Sie **Kampagnen & IOC**.
+2. Suchen Sie den Eintrag in der IOC-Liste.
+3. Markieren Sie ihn **als harmlos**. Er löst dann keine Treffer mehr aus.
+
+Mehr dazu unter «Kampagnen und IOC-Liste».
+
+### Wie bearbeite ich Phishing-/Junk-Fälle in der App?
+
+1. Öffnen Sie in der unteren Leiste **Phishing / Junk**.
+2. Fällen Sie das Urteil, weisen Sie den Fall zu, haken Sie Massnahmen ab, fragen Sie die Melder nach einem Klick und schliessen Sie den Fall ab.
+3. Die Massnahmen selbst (zum Beispiel Sitzungen widerrufen) lösen Sie im Web aus.
+
+Mehr dazu unter «Eskalation».
+
+### Wie finde ich eine Störung?
+
+1. Öffnen Sie in der Navigation **Störungen**.
+2. Wählen Sie das Register _Aktiv_, _Abgeschlossen_ oder _Alle_.
+3. Im Suchfeld finden Sie Störungen nach Nummer, Gerät oder Titel. Ältere lädt **Weitere Störungen laden** nach.
+
+Mehr dazu unter «Störungen».
+
+### Wie filtere ich Störungen über die Kacheln?
+
+1. Öffnen Sie **Störungen**.
+2. Klicken Sie auf eine Kachel: _Aktiv_, _Unbestätigt_, _Betroffene Dienste_, _Behebungszeit_ oder _Verfügbarkeit_.
+3. **Filter aufheben** führt zurück zu den aktiven Störungen.
+
+Mehr dazu unter «Störungen».
+
+### Wie bestätige ich eine Störung?
+
+1. Öffnen Sie die Störung mit einem Klick.
+2. Klicken Sie auf **Bestätigen: ich kümmere mich**.
+3. Die erneute Alarmierung stoppt und Sie werden die zuständige Person.
+
+Mehr dazu unter «Störungen».
+
+### Wie weise ich eine Störung zu?
+
+1. Öffnen Sie die Störung.
+2. Wählen Sie unter **Zuständig** eine Person oder klicken Sie auf **Mir zuweisen**.
+3. Wer einer noch unbestätigten Störung zugewiesen wird, bestätigt sie damit automatisch.
+
+Mehr dazu unter «Störungen».
+
+### Wie halte ich in einer Störung fest, was ich geprüft habe?
+
+1. Öffnen Sie die Störung.
+2. Klicken Sie beim **Verlauf** auf **Notiz zum Verlauf hinzufügen**.
+3. Schreiben Sie auf, was Sie geprüft oder veranlasst haben, und speichern Sie.
+
+Mehr dazu unter «Störungen».
+
+### Wie ordne ich einer Störung ein Ticket zu?
+
+1. Öffnen Sie die Störung und suchen Sie den Abschnitt **Tickets**.
+2. Geben Sie die Nummer unter **Ticketnummer zuordnen** ein.
+3. Mit **×** lösen Sie ein Ticket wieder; ein gelöstes Ticket wird nicht erneut automatisch zugeordnet.
+
+Mehr dazu unter «Störungen».
+
+### Wie veröffentliche ich eine Meldung auf der Statusseite?
+
+1. Öffnen Sie die Störung und suchen Sie den Abschnitt **Statusseite**.
+2. Klicken Sie auf **Öffentliche Meldung**.
+3. Wählen Sie den Zustand und schreiben Sie Titel und Text.
+4. Veröffentlichen Sie die Meldung.
+
+Mehr dazu unter «Störungen».
+
+### Wie ergänze ich eine öffentliche Meldung mit einem Update?
+
+1. Öffnen Sie die Störung und den Abschnitt **Statusseite**.
+2. Klicken Sie auf **Update veröffentlichen**. nextDesk schlägt den passenden Zustand vor.
+3. Ergänzen Sie den Text und veröffentlichen Sie.
+
+Mehr dazu unter «Störungen».
+
+### Wie korrigiere ich eine veröffentlichte Meldung?
+
+1. Öffnen Sie die Störung und den Abschnitt **Statusseite**.
+2. Klicken Sie auf **Bearbeiten**.
+3. Ändern Sie Zustand, Titel, Text oder Dienste.
+4. Klicken Sie auf **Änderungen speichern**.
+
+Mehr dazu unter «Störungen».
+
+### Wie ändere ich den Betriebszustand eines Dienstes in einer Störung?
+
+1. Öffnen Sie die Störung und suchen Sie **Betroffene Dienste und Betriebszustand**.
+2. Weitere Dienste fügen Sie mit **Dienst hinzufügen** hinzu (Suche nach Name oder Kategorie).
+3. Stellen Sie pro Dienst den Betriebszustand ein: Betriebsbereit, Beeinträchtigte Leistung, Teilweiser Ausfall, Schwerwiegender Ausfall oder Wird gewartet.
+
+Mehr dazu unter «Störungen».
+
+### Wie schliesse ich eine Störung ab?
+
+1. Öffnen Sie die Störung und klicken Sie auf **Abschliessen**.
+2. Wählen Sie die **Ursache** (Strom, Netzwerk, Hardware, Software, Wartung, Extern, Unbekannt) und halten Sie die Lösung fest.
+3. Sind Tickets zugeordnet, informiert **Tickets informieren und auf «Gelöst» setzen** sie mit der Ursache und löst sie. Schalten Sie es bei Bedarf aus.
+4. Mit **Fall eröffnen** legen Sie gleichzeitig einen Fall (Problem-Management) an.
+5. Bestätigen Sie den Abschluss. Auch Störungen mit dem Stand **Wieder OK – offen** schliessen sich nur so.
+
+Mehr dazu unter «Störungen».
+
+### Wie trage ich die Ursache nachträglich nach?
+
+1. Öffnen Sie die abgeschlossene Störung.
+2. Wählen Sie die **Ursache** und halten Sie die Lösung fest.
+
+Mehr dazu unter «Störungen».
+
+### Wie schlage ich einen Fall zu einer Störung vor?
+
+1. Öffnen Sie eine Störung, deren Gerät in 30 Tagen mindestens dreimal gestört war.
+2. Klicken Sie in der Karte **Fall** auf **Fall vorschlagen**.
+3. Frühere Störungen des Geräts werden auf Wunsch verknüpft.
+
+Mehr dazu unter «Störungen».
+
+### Wie erstelle ich aus einer Störung einen Wissensartikel-Entwurf?
+
+1. Öffnen Sie eine abgeschlossene Störung mit Ursache.
+2. Wählen Sie **Wissen → Wissensartikel-Entwurf erstellen**.
+3. Prüfen Sie den internen Entwurf und veröffentlichen Sie ihn in der Wissensdatenbank.
+
+Mehr dazu unter «Störungen».
+
+### Wie bearbeite ich eine externe Störung eines Anbieters?
+
+1. Öffnen Sie die Störung mit der Kennzeichnung **Extern · Anbieter**.
+2. Bestätigen Sie sie mit **Bestätigen: ich kümmere mich** oder weisen Sie sie unter **Zuständig** einer Person zu.
+3. **Statusseite des Anbieters öffnen** führt zu den Details.
+4. Meldet der Anbieter die Störung als behoben, schliesst sie sich automatisch. Von Hand schliessen Sie sie nur, wenn die Meldung beim Anbieter hängen bleibt.
+
+Mehr dazu unter «Störungen».
+
+### Wie sehe ich die Auswertung der Störungen?
+
+1. Öffnen Sie **Störungen** und klicken Sie auf **Auswertung**.
+2. Wählen Sie 30 oder 90 Tage.
+3. Sie sehen Anzahl, mittlere Behebungszeit, Verfügbarkeit, häufigste Ursachen und die Geräte mit den meisten Störungen.
+
+Mehr dazu unter «Störungen».
+
+### Wie bearbeite ich Störungen in der App?
+
+1. Öffnen Sie in der unteren Leiste **Störungen**.
+2. Bestätigen Sie die Störung, weisen Sie sie zu oder ergänzen Sie Notizen.
+3. Schliessen Sie sie mit Ursache ab, auf Wunsch mit Antwort an die zugeordneten Tickets.
+
+Mehr dazu unter «Störungen».
+
+### Wie sehe ich den Zustand der überwachten Geräte?
+
+1. Öffnen Sie **Dienste und Überwachung → Überwachung**.
+2. Lesen Sie die Kacheln **Ausfall**, **Warnung**, **OK**, **Unbekannt** und **Pausiert**.
+3. Ein Klick auf eine Kachel filtert die Geräteliste.
+
+Mehr dazu unter «Überwachung».
+
+### Wie sehe ich die letzten Ereignisse der Überwachung?
+
+1. Öffnen Sie die **Überwachung** und suchen Sie **Letzte Ereignisse**.
+2. Wählen Sie 24 Stunden oder 7 Tage.
+3. Klicken Sie auf **Ereignisse anzeigen**, um die Liste aufzuklappen.
+
+Mehr dazu unter «Überwachung».
+
+### Wie prüfe ich die Verfügbarkeit der Geräte?
+
+1. Öffnen Sie die **Überwachung** und suchen Sie **Verfügbarkeit**.
+2. Wählen Sie 7 Tage, 30 Tage oder 1 Jahr.
+3. Ein Klick auf **Am häufigsten ausgefallen** klappt die Geräte mit der schlechtesten Verfügbarkeit auf; ein Klick auf ein Gerät öffnet es.
+
+Mehr dazu unter «Überwachung».
+
+### Wie sortiere und durchsuche ich die Geräteliste der Überwachung?
+
+1. Öffnen Sie die **Überwachung**.
+2. Geben Sie im Suchfeld Name, IP-Adresse, Hostname oder den gestörten Sensor ein.
+3. Ein Klick auf einen Spaltenkopf sortiert, ein zweiter kehrt die Reihenfolge um.
+
+Mehr dazu unter «Überwachung».
+
+### Wie erstelle ich ein Ticket zu einem Alarm?
+
+1. Öffnen Sie die **Überwachung** und suchen Sie unter **Aktive Alarme** das Gerät.
+2. Klicken Sie auf **Ticket erstellen**. Dasselbe gibt es im Gerätedetail unter **Verknüpft in nextDesk**.
+3. Das Ticket nennt die gestörten Sensoren, ist mit dem Gerät und der Störung verknüpft und öffnet sich danach.
+
+Mehr dazu unter «Überwachung».
+
+### Wie öffne ich das Gerätedetail?
+
+1. Öffnen Sie die **Überwachung**.
+2. Klicken Sie auf das Gerät.
+3. Das Detail zeigt die **Grafik**, die **Sensoren**, die **Verbindungen** und **Verknüpft in nextDesk**.
+
+Mehr dazu unter «Überwachung».
+
+### Wie sehe ich den Verlauf eines Sensors?
+
+1. Öffnen Sie das Gerätedetail.
+2. Klicken Sie in der Liste der **Sensoren** auf den Namen des Sensors.
+3. Wählen Sie über der Grafik 24 Stunden, 7 Tage, 30 Tage oder 1 Jahr.
+
+Mehr dazu unter «Überwachung».
+
+### Wie sehe ich, womit ein Switch-Port verbunden ist?
+
+1. Öffnen Sie das Gerätedetail eines Switches, einer Firewall oder eines Routers.
+2. Öffnen Sie **Verbindungen**. **Verbunden mit** nennt die Gegenstelle.
+3. Wechseln Sie mit **Liste** und **Matrix** die Darstellung; in der Matrix nennt ein Klick auf einen Port darunter die Gegenstelle.
+4. **Alle … Ports zeigen** blendet die übrigen Ports ein.
+
+Mehr dazu unter «Überwachung».
+
+### Wie lese ich die Verbindungen eines Geräts sofort neu aus?
+
+1. Öffnen Sie das Gerätedetail und **Verbindungen**.
+2. Klicken Sie auf **Jetzt auslesen**. Dafür braucht es das Recht «Assets verwalten».
+3. Die Antwort kommt innert etwa einer Minute.
+
+Mehr dazu unter «Überwachung».
+
+### Wie pausiere ich ein Gerät oder einen Sensor?
+
+1. Öffnen Sie die **Überwachung**. Dafür braucht es das Recht «Assets verwalten».
+2. Klicken Sie rechts beim Gerät oder in der aufgeklappten Liste beim Sensor auf **Pausieren**.
+3. Geben Sie einen **Grund** an (3 bis 300 Zeichen) und bestätigen Sie.
+4. Mehrere Geräte und Sensoren wählen Sie über die Kästchen links aus und pausieren sie gemeinsam in der Leiste über der Liste.
+
+Mehr dazu unter «Überwachung».
+
+### Wie setze ich ein pausiertes Gerät oder einen Sensor fort?
+
+1. Öffnen Sie die **Überwachung**.
+2. Klicken Sie beim pausierten Gerät oder Sensor auf **Fortsetzen**.
+
+Mehr dazu unter «Überwachung».
+
+### Wie simuliere ich einen Ausfall?
+
+1. Öffnen Sie das Gerätedetail. Dafür braucht es das Recht «Assets verwalten».
+2. Klicken Sie auf **Ausfall simulieren**.
+3. Wählen Sie das ganze Gerät oder einen Sensor und die Dauer (5 bis 60 Minuten).
+4. Informieren Sie vorher am besten das Team: nextDesk öffnet echt eine Störung und alarmiert.
+5. Mit **Simulation beenden** beenden Sie den Test früher.
+
+Mehr dazu unter «Überwachung».
+
+### Wie füge ich Geräte zur Überwachung hinzu?
+
+1. Öffnen Sie die **Überwachung** und klicken Sie auf **Geräte hinzufügen**. Dafür braucht es das Recht «Assets verwalten».
+2. Suchen Sie nach Geräten der Infrastruktur oder Einträgen der IP-Adressverwaltung. Mehrere Treffer kreuzen Sie an; **Alle … angezeigten auswählen** wählt alle Treffer.
+3. Wenn das Gerät nirgends steht, wählen Sie **Neues Gerät erfassen** und geben Sie Name, Art und IP-Adresse oder Hostname an.
+4. Wählen Sie die Sonde. Jedes Gerät erhält einen Ping-Sensor.
+
+Mehr dazu unter «Überwachung».
+
+### Wie lege ich eine neue Geräteart an?
+
+1. Öffnen Sie beim Hinzufügen oder unter **Bearbeiten** die Auswahl der Art.
+2. Wählen Sie zuunterst **Neue Art erstellen …** und vergeben Sie einen Namen, zum Beispiel «iLO», «Drucker» oder «Kamera».
+
+Mehr dazu unter «Überwachung».
+
+### Wie füge ich einem Gerät einen Sensor hinzu?
+
+1. Öffnen Sie das Gerätedetail. Dafür braucht es das Recht «Assets verwalten».
+2. Klicken Sie auf **Sensor hinzufügen** und wählen Sie die Art: Ping, TCP-Port, HTTP, Zertifikat, DNS, SNMP Laufzeit, SNMP Wert (eigene OID) oder SNMP Port-Traffic.
+3. Legen Sie Intervall (30 Sekunden bis 1 Stunde) und die Anzahl Fehlversuche bis zum Ausfall fest. Bei Ping, Port und HTTP geben Sie optional eine Warnschwelle an.
+4. Unter **Betroffene Dienste** wählen Sie bei Bedarf, welche Dienste der Sensor betrifft.
+5. Speichern Sie den Sensor.
+
+Mehr dazu unter «Überwachung».
+
+### Wie lasse ich HTTP-, Zertifikat- oder DNS-Sensoren von der Cloud messen?
+
+1. Öffnen Sie beim Anlegen des Sensors **Gemessen von**.
+2. Wählen Sie statt einer Sonde die **nextDesk Cloud**. Das passt nur für Ziele, die aus dem Internet erreichbar sind; interne Adressen lehnt die Cloud ab.
+
+Mehr dazu unter «Überwachung».
+
+### Wie füge ich Switch-Ports als Sensoren hinzu?
+
+1. Öffnen Sie das Gerätedetail eines Switches oder einer Firewall und klicken Sie auf **Ports hinzufügen**.
+2. Wählen Sie die Sonde und klicken Sie auf **Ports auslesen**. Das dauert bis zu einer Minute.
+3. Kreuzen Sie die gewünschten Ports an, wählen Sie das Intervall und legen Sie die Sensoren an.
+
+Mehr dazu unter «Überwachung».
+
+### Wie bearbeite oder lösche ich einen Sensor?
+
+1. Öffnen Sie das Gerätedetail.
+2. Klicken Sie in der Sensorzeile auf das Symbol zum Bearbeiten oder zum Löschen.
+3. Beim Löschen endet ein offener Alarm.
+
+Mehr dazu unter «Überwachung».
+
+### Wie bearbeite ich ein überwachtes Gerät?
+
+1. Öffnen Sie das Gerätedetail.
+2. Klicken Sie im Kopf auf **Bearbeiten**.
+3. Ändern Sie Name, Art, IP-Adresse oder Hostname. Die Änderung gilt auch in der Infrastruktur.
+
+Mehr dazu unter «Überwachung».
+
+### Wie entferne ich ein Gerät aus der Überwachung?
+
+1. Öffnen Sie das Gerätedetail.
+2. Klicken Sie im Kopf auf **Entfernen**. Alle Sensoren und ihr Verlauf werden gelöscht.
+3. Das Gerät selbst bleibt in der Infrastruktur.
+
+Mehr dazu unter «Überwachung».
+
+### Wie öffne ich das Gerät in der Infrastruktur?
+
+1. Öffnen Sie das Gerätedetail in der Überwachung.
+2. Klicken Sie unter **Verknüpft in nextDesk** auf **In Infrastruktur öffnen** (in der App auf die gleichnamige Zeile).
+
+Mehr dazu unter «Überwachung».
+
+### Wie nutze ich die Überwachung in der App?
+
+1. Öffnen Sie in der App **Dienste → Überwachung**.
+2. Tippen Sie auf ein Gerät, um die Sensoren mit Verlaufsgrafik zu sehen.
+3. Von dort führt ein Tipp zur offenen Störung. Mit dem Recht «Assets verwalten» pausieren Sie dort auch Geräte.
+
+Mehr dazu unter «Überwachung».
+
+### Wie sehe ich die Verfügbarkeit eines Dienstes?
+
+1. Öffnen Sie **Dienste**.
+2. Klicken Sie beim Dienst auf **Details**.
+3. Sie sehen die Verfügbarkeit der letzten 30 und 90 Tage, die Geräte des Dienstes und seine Subnetze.
+
+Mehr dazu unter «Dienste und Systemstatus».
+
+### Wie plane ich ein Wartungsfenster aus einer Serviceaufgabe?
+
+1. Öffnen Sie die Serviceaufgabe, deren Gerät Dienste hat.
+2. Klicken Sie auf **Wartungsfenster planen**.
+3. Legen Sie Beginn und Ende fest, auf Wunsch öffentlich.
+4. Während des Fensters stehen die Dienste auf Wartung und werden danach automatisch zurückgesetzt.
+
+Mehr dazu unter «Dienste und Systemstatus».
+
+### Wie lade ich weitere Assets nach?
+
+1. Öffnen Sie die **Assets**. Suche und Filter wirken auf alle Assets.
+2. Klicken Sie auf **Weitere Assets laden**.
+
+Mehr dazu unter «Dienste und Systemstatus».
+
+### Wie suche ich in der Wissensdatenbank?
+
+1. Öffnen Sie die **Wissensdatenbank**.
+2. Tippen Sie ein Stichwort ins Suchfeld (die Taste `/` springt hinein). Die Treffer erscheinen beim Tippen.
+3. Grenzen Sie die Liste mit der Themenreihe und dem Umschalter **Alle Artikel / Intern / Extern / Entwurf** ein.
+
+Mehr dazu unter «Wissensdatenbank pflegen».
+
+### Wie schreibe ich einen Wissensartikel?
+
+1. Öffnen Sie die **Wissensdatenbank** und klicken Sie auf **Neuer Artikel**.
+2. Geben Sie den Titel, optional eine **Kurzfassung** (ein bis zwei Sätze), den Inhalt, die Kategorie und die Sichtbarkeit (_Intern_ oder _Extern_) ein.
+3. Die **Live-Vorschau** zeigt den Artikel im späteren Design.
+4. Klicken Sie auf **Speichern**. Der Artikel ist sofort veröffentlicht; eine Freigabe braucht es nicht.
+
+Mehr dazu unter «Wissensdatenbank pflegen».
+
+### Wie lasse ich einen Artikel mit KI aufbereiten?
+
+1. Öffnen Sie den Artikel im Bearbeiten-Modus.
+2. Klicken Sie auf **Mit KI aufbereiten**.
+3. Prüfen Sie das Ergebnis und speichern Sie.
+
+Mehr dazu unter «Wissensdatenbank pflegen».
+
+### Wie erstelle ich aus einem gelösten Ticket einen Artikel?
+
+1. Öffnen Sie das gelöste Ticket.
+2. Klicken Sie im Bereich **Wissen** auf **Entwurf mit KI erstellen**.
+3. Der Entwurf erscheint zuerst als _Entwurf_. Mit **Speichern** oder **Veröffentlichen** geht er live.
+
+Mehr dazu unter «Wissensdatenbank pflegen».
+
+### Wie bearbeite ich einen Wissensartikel?
+
+1. Öffnen Sie den Artikel mit einem Klick.
+2. Klicken Sie auf **Bearbeiten**.
+3. Ändern Sie den Text und speichern Sie. Frühere Fassungen bleiben im Verlauf erhalten.
+
+Mehr dazu unter «Wissensdatenbank pflegen».
+
+### Wie veröffentliche ich einen Entwurf?
+
+1. Öffnen Sie den Artikel mit dem Status _Entwurf_.
+2. Klicken Sie auf **Veröffentlichen**.
+
+Mehr dazu unter «Wissensdatenbank pflegen».
+
+### Wie archiviere oder lösche ich einen Artikel?
+
+1. Öffnen Sie den Artikel.
+2. Klicken Sie auf **Archivieren** für veraltete Artikel oder auf **Löschen**.
+
+Mehr dazu unter «Wissensdatenbank pflegen».
+
+### Wie klappe ich alle Abschnitte eines Artikels auf?
+
+1. Öffnen Sie einen Artikel mit mindestens drei Abschnitten.
+2. Klicken Sie auf **Alle aufklappen**.
+
+Mehr dazu unter «Wissensdatenbank pflegen».
+
+### Wie erfasse ich einen Lagerartikel?
+
+1. Öffnen Sie **Lager → Artikel** und klicken Sie auf **Artikel erfassen**.
+2. Füllen Sie Bezeichnung, Fotos, Kategorien, Artikelnummer, Beschreibung und technische Angaben aus. Dazu kommen **Einheit** und **Mindest-/Zielbestand**.
+3. Unter **Zuständige Abteilung** wählen Sie die Abteilung, die den Artikel betreut.
+4. Speichern Sie den Artikel.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie übernehme ich Artikeldaten von Brack?
+
+1. Öffnen Sie das Artikelformular.
+2. Fügen Sie im Feld **Von Brack importieren** den Link der Brack-Produktseite ein.
+3. Wählen Sie **Daten übernehmen**. Bereits ausgefüllte Felder bleiben unverändert.
+4. Prüfen Sie die Angaben und ergänzen Sie Genehmigung, Maximalmenge und Kategorie selbst.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie biete ich einen Artikel zum Bestellen oder Ausleihen an?
+
+1. Öffnen Sie das Artikelformular.
+2. Schalten Sie **Zum Bestellen anbieten** und/oder **Zum Ausleihen anbieten** ein.
+3. Beim Ausleihen geben Sie **Bestand** und **Lagerort** an; beim Bestellen den **Mindest- und Zielbestand**.
+4. Speichern Sie.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie suche ich einen Lagerartikel?
+
+1. Öffnen Sie **Lager → Artikel**.
+2. Tippen Sie Name, Artikelnummer oder Lagerort ins **Suchfeld**, auch mit mehreren Wörtern (zum Beispiel «logitech ergo»).
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie drucke ich Etiketten für Lagerartikel?
+
+1. Wählen Sie in der Artikelliste die Artikel mit **Für Etikett auswählen**, oder klicken Sie auf **Alle sichtbaren**.
+2. Klicken Sie auf **Etiketten drucken**.
+3. Legen Sie im Druckdialog unter **Anzahl Etiketten** fest, wie viele pro Artikel gedruckt werden.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie buche ich Ware ein?
+
+1. Öffnen Sie **Lager → Artikel**.
+2. Klicken Sie beim Artikel auf **Einbuchen**. In der App tippen Sie in der Bestandsliste auf den Artikel.
+3. Wählen Sie Menge und Lagerort und bestätigen Sie.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie buche ich Ware aus?
+
+1. Öffnen Sie **Lager → Artikel**. **Ausbuchen** sehen nur Personen mit der Rolle **Lagerverwaltung** (oder dem Recht «Bestände von Hand ausbuchen»).
+2. Klicken Sie beim Artikel auf **Ausbuchen**.
+3. Wählen Sie Menge und Lagerort. Möglich ist höchstens der verfügbare Bestand.
+4. Bestätigen Sie die Rückfrage.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie lösche oder archiviere ich einen Lagerartikel?
+
+1. Öffnen Sie den Artikel im Formular.
+2. Klicken Sie auf **Löschen**. Der Artikel verschwindet endgültig, auch aus dem Shop.
+3. Hat er schon Bewegungen oder Reservationen, bietet nextDesk an, ihn zu **archivieren**.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie ändere ich einen Lagerort?
+
+1. Öffnen Sie **Lager → Lagerorte**.
+2. Klicken Sie auf den Stift (**Bearbeiten**).
+3. Ändern Sie Ortscode und Bezeichnung und speichern Sie.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie lösche ich einen Lagerort oder aktiviere ihn wieder?
+
+1. Buchen Sie vorhandenen Bestand zuerst an einen anderen Ort um.
+2. Klicken Sie unter **Lagerorte** auf den Papierkorb (**Löschen**). Bisherige Buchungen bleiben erhalten.
+3. Gelöschte Lagerorte erscheinen blass; **Wieder aktivieren** holt sie zurück.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie starte ich eine Inventur?
+
+1. Öffnen Sie **Lager → Inventur**.
+2. Starten Sie die Inventur für einen Lagerort.
+3. Erfassen Sie die gezählten Mengen.
+4. Schliessen Sie die Inventur ab. Erst der Abschluss bucht die Differenzen.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie lösche ich eine laufende Inventur?
+
+1. Öffnen Sie **Lager → Inventur**.
+2. Klicken Sie in der Liste bei der laufenden Inventur auf **Löschen** und bestätigen Sie die Rückfrage.
+3. Die gezählten Mengen werden verworfen, der Bestand bleibt unverändert. Abgeschlossene Inventuren lassen sich nicht löschen.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie stelle ich die Lager-Automatik ein?
+
+1. Öffnen Sie **Lager → Automatik** (nur mit dem Recht, das Lager zu verwalten).
+2. Stellen Sie in den vier Karten die Regeln für Rücknahmen, Mindestbestand, Reservationen und Inventur ein.
+
+Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
+
+### Wie lege ich den Lagerort für Rücknahmen fest?
+
+1. Öffnen Sie **Lager → Automatik** und die Karte für Rücknahmen.
+2. Wählen Sie den **Standard-Lagerort**, auf Wunsch pro **Abteilung** einen eigenen.
+
+Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
+
+### Wie stelle ich Mitteilungen zum Mindestbestand ein?
+
+1. Öffnen Sie **Lager → Automatik** und die Karte **Mindestbestand**.
+2. Schalten Sie **Lagerverwaltung benachrichtigen** und/oder **Nachbestell-Aufgabe anlegen** ein.
+
+Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
+
+### Wie bearbeite ich offene Nachbestellungen?
+
+1. Öffnen Sie **Lager → Automatik**. Offene Nachbestellungen stehen oben in diesem Register.
+2. Klicken Sie auf **Bestellt**, **Erledigt** oder **Verwerfen**.
+
+Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
+
+### Wie stelle ich die automatische Freigabe von Reservationen ein?
+
+1. Öffnen Sie **Lager → Automatik** und die Karte **Reservationen**.
+2. Legen Sie die Zahl Tage fest, nach denen offene Reservationen automatisch freigegeben werden.
+
+Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
+
+### Wie stelle ich das Intervall der Inventur ein?
+
+1. Öffnen Sie **Lager → Automatik** und die Karte **Inventur**.
+2. Legen Sie pro Lagerort ein Intervall in Tagen fest. Ist es abgelaufen, erhält die Lagerverwaltung «Inventur fällig».
+
+Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
+
+### Wie übergebe ich eine Shop-Bestellung mit Seriennummer?
+
+1. Öffnen Sie im Shop die Bestellung.
+2. Wählen Sie beim Übergeben Lagerort und Seriennummer.
+3. Ist die Serieneinheit mit einem Asset verknüpft, weist nextDesk das Gerät automatisch der bestellenden Person zu.
+
+Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
+
+### Wie erstelle ich Aufgaben für Rückgaben beim Austritt?
+
+1. Öffnen Sie den Austritt und klicken Sie auf **Rückgaben und Lizenzen**.
+2. Wählen Sie die Geräte, **Shop-Ausleihen** und **Lizenzen** und den Lagerort für die Rücknahme (vorausgewählt ist der Standard-Lagerort).
+3. Klicken Sie auf **Aufgaben erstellen**.
+4. Die Lizenz in Microsoft 365 entfernen Sie bei Bedarf weiterhin unter **Lizenzen**.
+
+Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
+
+### Wie verknüpfe ich eine Lizenz mit einem Vertrag?
+
+1. Öffnen Sie den Vertrag unter **Ressourcen → Verträge**.
+2. Wählen Sie unter **Dokumente und Verknüpfungen → Verknüpfte Lizenzen** mit **Lizenz hinzufügen …** die Lizenz.
+3. Speichern Sie. Gehörte die Lizenz zu einem anderen Vertrag, wechselt sie zu diesem.
+4. Mit × entfernen Sie eine Verknüpfung.
+
+Mehr dazu unter «Verträge und Lizenzen».
+
+### Wie ordne ich einer Lizenz einen Vertrag zu?
+
+1. Öffnen Sie die Lizenz unter **Ressourcen → Lizenzen**.
+2. Wählen Sie unter **Dokumente und Verknüpfungen → Vertrag** den Vertrag.
+3. Speichern Sie.
+
+Mehr dazu unter «Verträge und Lizenzen».
+
+### Wie lege ich einen fehlenden Vertrag oder eine fehlende Lizenz direkt an?
+
+1. Geben Sie unter der Liste im Vertrag bei **Neue Lizenz** bzw. in der Lizenz bei **Neuer Vertrag** den Namen ein.
+2. Klicken Sie auf **Hinzufügen**.
+3. Laufzeit, Anzahl oder Kosten ergänzen Sie danach im neuen Eintrag.
+
+Mehr dazu unter «Verträge und Lizenzen».
+
+### Wie schränke ich einen Shop-Artikel auf Kaderstufen ein?
+
+1. Öffnen Sie den Artikel beim Erfassen im Lager (**Zum Bestellen anbieten**) oder mit **Bearbeiten** im Shop.
+2. Wählen Sie unter **Sichtbar für** **Alle Mitarbeitenden** oder kreuzen Sie **Kaderstufe 1**, **2** und/oder **3** an.
+3. Speichern Sie. Eine höhere Stufe sieht die Artikel tieferer Stufen nicht automatisch.
+
+Mehr dazu unter «Shop: Artikel nur für Kaderstufen».
+
+### Wie ordne ich Personen einer Kaderstufe zu?
+
+1. Öffnen Sie im Shop **Kaderstufen**.
+2. Pflegen Sie die Zuordnung der Funktionen aus Entra zu den Stufen.
+3. Für einzelne Personen legen Sie eine Stufe von Hand fest oder setzen Sie «Kein Kader».
+
+Mehr dazu unter «Shop: Artikel nur für Kaderstufen».
+
+### Wie finde ich Teams mit Handlungsbedarf?
+
+1. Öffnen Sie **Teams** im Arbeitsbereich.
+2. Klicken Sie auf eine Kachel: _Brauchen einen Owner_, _Laufen in 30 Tagen ab_, _Teams mit Gästen_ oder _Teams gesamt_.
+3. Ein zweiter Klick hebt den Filter auf.
+
+Mehr dazu unter «Teams: alle Microsoft-Teams-Teams verwalten».
+
+### Wie filtere und sortiere ich die Teams-Liste?
+
+1. Öffnen Sie **Teams**.
+2. Wählen Sie einen Filter: _Über nextDesk bestellt_, _Bestehend_, _Läuft bald ab_, _Ohne Owner_, _Mit Gästen_, _Ohne Ende_ oder _Archiviert_.
+3. Sortieren Sie nach Name, Neueste, Ende oder Mitgliedern.
+
+Mehr dazu unter «Teams: alle Microsoft-Teams-Teams verwalten».
+
+### Wie gleiche ich die Teams mit Microsoft ab?
+
+1. Öffnen Sie **Teams**.
+2. Klicken Sie auf **Mit Microsoft abgleichen**. Beim Öffnen läuft der Abgleich automatisch, wenn der Stand älter als ein Tag ist.
+
+Mehr dazu unter «Teams: alle Microsoft-Teams-Teams verwalten».
+
+### Wie ändere ich mehrere Teams auf einmal?
+
+1. Öffnen Sie **Teams** und kreuzen Sie die Teams an.
+2. Wählen Sie in der blauen Leiste **Ende setzen**, **Owner hinzufügen**, **Archivieren** oder **Löschen**.
+3. Bestätigen Sie. Zum Löschen geben Sie das Wort _LÖSCHEN_ ein.
+
+Mehr dazu unter «Teams: alle Microsoft-Teams-Teams verwalten».
+
+### Wie verlängere ich die Laufzeit eines Teams oder setze ein Ende?
+
+1. Klicken Sie in **Teams** auf das Team und öffnen Sie den Reiter **Übersicht**.
+2. Wählen Sie +1, +3, +6 Monate, +1 Jahr oder setzen Sie ein Ende.
+3. Bei einem Team ohne Owner legen Sie zuerst einen Owner fest. Ab dem Ende erinnert nextDesk die Owner 14, 7 und 1 Tag vorher und archiviert das Team.
+
+Mehr dazu unter «Teams: alle Microsoft-Teams-Teams verwalten».
+
+### Wie öffne ich ein Team in Microsoft Teams?
+
+1. Klicken Sie in **Teams** auf das Team und öffnen Sie den Reiter **Übersicht**.
+2. Klicken Sie auf **In Teams öffnen**.
+
+Mehr dazu unter «Teams: alle Microsoft-Teams-Teams verwalten».
+
+### Wie verwalte ich Owner, Mitglieder und Gäste eines Teams?
+
+1. Klicken Sie in **Teams** auf das Team und öffnen Sie den Reiter **Personen**.
+2. Fügen Sie Personen hinzu oder entfernen Sie sie.
+3. Machen Sie Personen zum Owner oder entziehen Sie die Owner-Rolle. Der letzte Owner bleibt immer.
+
+Mehr dazu unter «Teams: alle Microsoft-Teams-Teams verwalten».
+
+### Wie archiviere ich ein Team oder stelle es wieder her?
+
+1. Klicken Sie in **Teams** auf das Team und öffnen Sie den Reiter **Übersicht**.
+2. Klicken Sie auf **Archivieren** bzw. **Wiederherstellen**.
+
+Mehr dazu unter «Teams: alle Microsoft-Teams-Teams verwalten».
+
+### Wie lösche ich ein Team?
+
+1. Klicken Sie in **Teams** auf das Team und öffnen Sie den Reiter **Übersicht**.
+2. Klicken Sie auf **Team löschen**.
+3. Geben Sie zur Bestätigung den Namen des Teams ein. Das Team wird bei Microsoft mit Dateien, Chats und Kanälen entfernt und liegt dort noch 30 Tage im Papierkorb von Entra.
+
+Mehr dazu unter «Teams: alle Microsoft-Teams-Teams verwalten».
+
+### Wie sehe ich den Verlauf eines Teams?
+
+1. Klicken Sie in **Teams** auf das Team.
+2. Öffnen Sie den Reiter **Verlauf**. Er zeigt bestellt, angelegt, verlängert, Erinnerungen und Änderungen.
+
+Mehr dazu unter «Teams: alle Microsoft-Teams-Teams verwalten».
+
+### Wie suche ich eine IP-Adresse, ein Netz oder ein VLAN?
+
+1. Öffnen Sie **Dienste und Überwachung → IP-Adressen** und das Register **Übersicht**.
+2. Tippen Sie IP-Adresse, MAC-Adresse, Hostname, Subnetz oder VLAN ins Suchfeld (zum Beispiel «10.20.30» oder «SW016»).
+3. Wählen Sie einen Treffer mit Klick oder mit ↑/↓ und Eingabetaste. Ausserhalb der Übersicht springt die Taste **/** ins Suchfeld oben rechts.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie finde ich ein Netz im Baum?
+
+1. Öffnen Sie das Register **Netze**.
+2. Geben Sie im Feld **Netz, Name oder VLAN filtern** einen Teil des Netzes ein.
+3. Mit **Hierarchie** oder **Nach Standort** wechseln Sie die Darstellung, mit **Filter** wählen Sie Standort, Zone und Status.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie lege ich ein Subnetz an?
+
+1. Öffnen Sie das Register **Netze** und klicken Sie auf **+ Subnetz**.
+2. Geben Sie das Netz in CIDR-Schreibweise ein (zum Beispiel 10.20.30.0/24).
+3. Ergänzen Sie Gateway und DHCP-Pool; sie müssen im Subnetz liegen.
+4. Speichern Sie. Dasselbe Subnetz darf im selben VRF nur einmal vorkommen.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie bearbeite ich ein Netz?
+
+1. Wählen Sie das Netz im Baum.
+2. Klicken Sie auf **Bearbeiten**. Dort gibt es auch eine **Notiz** für interne Hinweise.
+3. Speichern Sie.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie teile ich ein Subnetz auf?
+
+1. Wählen Sie das Subnetz im Baum.
+2. Klicken Sie auf das Scheren-Symbol (**Aufteilen**).
+3. Wählen Sie die Grösse der gleich grossen Teilnetze und bestätigen Sie.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie markiere ich ein Netz als veraltet?
+
+1. Wählen Sie das Netz im Baum.
+2. Klicken Sie auf das Archiv-Symbol. Adressen und Verlauf bleiben erhalten.
+3. **Rückgängig** in der Meldung stellt den vorherigen Status wieder her.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie ändere ich mehrere Netze gleichzeitig?
+
+1. Klicken Sie im Register **Netze** auf **Mehrere auswählen**.
+2. Kreuzen Sie die Netze an (bis 200).
+3. Setzen Sie in der Leiste Status, Abteilung, Zone oder Standort und bestätigen Sie mit **Übernehmen**.
+4. **Rückgängig** in der Meldung stellt die vorherigen Werte wieder her.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie finde ich die nächste freie IP-Adresse und reserviere sie?
+
+1. Wählen Sie das Subnetz im Baum.
+2. Klicken Sie auf **Nächste freie IP**. Der Dialog **Adresse reservieren** öffnet sich.
+3. Geben Sie Hostname, Zweck und verantwortliche Person oder Team an, auf Wunsch «Befristet bis».
+4. Bestätigen Sie. **Rückgängig** in der Meldung gibt die Adresse gleich wieder frei.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie reserviere ich mehrere Adressen auf einmal?
+
+1. Öffnen Sie im Subnetz das Register **Belegung**.
+2. Halten Sie die Umschalttaste und klicken Sie auf die erste und die letzte Adresse, oder wählen Sie **Bereich wählen** und tippen Sie die Felder an.
+3. Klicken Sie unten in der Leiste auf **… Adressen reservieren**. Belegte Adressen werden übersprungen, Hostnamen nummeriert.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie sehe ich die Belegung eines Subnetzes?
+
+1. Wählen Sie das Subnetz im Baum und das Register **Belegung**.
+2. Jedes Feld ist eine Adresse; die Legende erklärt die Farben, ein Klick auf einen Legendeneintrag hebt nur diese Adressen hervor.
+3. Zeigen Sie auf ein Feld für Details; ein Klick öffnet die Adresse rechts.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie filtere ich die Adressliste eines Subnetzes?
+
+1. Wählen Sie das Subnetz im Baum und das Register **Adressen**.
+2. Filtern Sie mit dem Suchfeld und den Knöpfen **Alle**, **Aktiv**, **Reserviert**, **DHCP**, **Veraltet** und **Mit Fund**.
+3. **Freie Bereiche zeigen** fasst freie Adressen zu einer Zeile zusammen; **Erste reservieren** reserviert die erste davon.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie sehe ich Verlauf und Prognose der Auslastung?
+
+1. Wählen Sie das Subnetz im Baum und das Register **Verlauf & Prognose**.
+2. Zeigen Sie auf das Diagramm, um alle Werte des jeweiligen Tages zu sehen.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie lege ich ein Subnetz im freien Adressraum eines Supernetzes an?
+
+1. Wählen Sie das Supernetz im Baum.
+2. Klicken Sie im **Adressraum** auf ein freies Feld.
+3. Klicken Sie auf **Subnetz anlegen …**. Das Formular öffnet sich mit Netz, VRF, Standort und Abteilung vorausgefüllt.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie bereinige ich Altlasten nach einem Import?
+
+1. Öffnen Sie **Bereinigen** im Register **Netze** oder **Verwaltung → Bereinigungs-Assistent**.
+2. Wählen Sie die gewünschten Vorschläge.
+3. Übernehmen Sie sie in einem Schritt. Jede Änderung steht danach im Änderungsprotokoll und lässt sich dort zurücknehmen.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie plane ich Teilnetze mit dem Subnetz-Planer?
+
+1. Öffnen Sie **Subnetz-Planer** und wählen Sie ein Supernetz.
+2. Erfassen Sie die gewünschten Teilnetze mit Name, Grösse, VLAN-ID und Zone.
+3. Prüfen Sie Balken und Tabelle; passt ein Teilnetz nicht, steht dort der Grund.
+4. Klicken Sie auf **Geplante Teilnetze anlegen**.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie rechne ich mit dem IP-Rechner?
+
+1. Öffnen Sie **Subnetz-Planer**.
+2. Geben Sie im IP-Rechner zum Beispiel «172.16.68.0/22» oder «10.0.0.5 255.255.255.0» ein.
+3. Sie sehen Netz, Maske, Wildcard, erste und letzte nutzbare Adresse, Broadcast und Anzahl Hosts. «In nextDesk» zeigt, ob das Netz erfasst ist.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie vergleiche ich die VLANs der Standorte mit der Vorlage?
+
+1. Öffnen Sie das Register **VLANs** und die **Matrix**.
+2. Grün heisst «wie Vorlage», gelb «Name oder Grösse weicht ab», gestrichelt «fehlt».
+3. Mit **+ anlegen** erstellen Sie ein fehlendes VLAN samt Subnetz.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie bearbeite oder entferne ich ein VLAN?
+
+1. Öffnen Sie das Register **VLANs** und die **Liste**.
+2. Bearbeiten Sie oder entfernen Sie das VLAN. Einträge, die noch von Subnetzen verwendet werden, lassen sich nicht entfernen.
+3. Das endgültige Entfernen bestätigen Sie in der Rückfrage.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie lege ich einen Standort aus der Vorlage an?
+
+1. Öffnen Sie das Register **VLANs** und klicken Sie auf **+ Standort aus Vorlage**.
+2. Geben Sie Name, Supernetz, VLAN-Basis und Asset-Standort an.
+3. Prüfen Sie die Vorschau mit VLAN, Subnetz und Gateway je Funktion; einzelne Funktionen wählen Sie ab.
+4. Bestätigen Sie.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie passe ich die Standort-Vorlage an?
+
+1. Öffnen Sie das Register **VLANs** und die **Standort-Vorlage**.
+2. Legen Sie je Funktion VLAN-Versatz, Versatz im Standort-Supernetz, Grösse, Zone und DHCP fest.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie sehe ich einen Standort mit seinen Geräten?
+
+1. Öffnen Sie das Register **Standorte** und klicken Sie auf die Kachel.
+2. Wählen Sie im Detail das Register **VLANs & Netze**, **Geräte** oder **Netzwerkkarte**.
+3. Den Asset-Standort wählen Sie direkt in der Auswahl oben; **Bearbeiten** öffnet auch Supernetz, VLAN-Basis und Vorlage.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie erstelle ich eine Standort-Dokumentation als PDF?
+
+1. Öffnen Sie den Standort und klicken Sie auf **Dokumentation (PDF)**.
+2. Klicken Sie in der Druckansicht auf **Drucken / als PDF speichern** und wählen Sie im Druckdialog «Als PDF speichern».
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie bearbeite ich einen Fund?
+
+1. Öffnen Sie das Register **Funde**.
+2. Ghost-IPs übernehmen Sie mit **Übernehmen** als dokumentierte Adresse; **Ticket** legt ein Ticket an.
+3. Mit **Erledigt** oder **Ignorieren** schliessen Sie den Fund. Ignorierte Funde kommen nicht wieder.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie vergleiche ich Soll und Ist?
+
+1. Öffnen Sie das Register **Funde** und schalten Sie auf **Soll / Ist**.
+2. Sie sehen je Subnetz die Übereinstimmung in Prozent sowie «Nur gesehen» und «Nur dokumentiert».
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie sehe ich das Änderungsprotokoll und nehme eine Änderung zurück?
+
+1. Öffnen Sie das Register **Funde** und schalten Sie auf das **Änderungsprotokoll** (auch über **Protokoll** in der Übersicht).
+2. Filtern Sie nach Objekt, Herkunft und Zeitraum.
+3. Klicken Sie beim Eintrag auf **Rückgängig**. Das geht, solange der Eintrag seither nicht erneut geändert wurde.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie öffne ich eine IP-Adresse und gebe sie frei?
+
+1. Klicken Sie auf die Adresse in einer Liste oder im Raster.
+2. Rechts stehen Status, Hostname, MAC, Switch-Port, VLAN, Verantwortung, Verknüpfungen und Verlauf.
+3. Klicken Sie auf **Freigeben**: Die Adresse wird «Veraltet» und wieder als frei vorgeschlagen. **Rückgängig** in der Meldung stellt sie wieder her. **Esc** schliesst die Ansicht.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie erstelle ich ein Ticket zu einer IP-Adresse?
+
+1. Öffnen Sie die Adresse.
+2. Klicken Sie auf **Ticket erstellen**. Das Ticket enthält die Angaben zur Adresse.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie bearbeite ich eine IP-Adresse?
+
+1. Öffnen Sie die Adresse.
+2. Klicken Sie auf **Bearbeiten**.
+3. Ändern Sie die Felder und speichern Sie.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie exportiere ich Subnetze, Adressen und VLANs?
+
+1. Öffnen Sie **Verwaltung → Export & Sophos-Objekte**.
+2. Laden Sie Subnetze, Adressen und VLANs als CSV oder JSON herunter.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie erzeuge ich Firewall-Objekte für Sophos?
+
+1. Öffnen Sie **Verwaltung → Export & Sophos-Objekte**.
+2. Wählen Sie unter **Firewall-Objekte (Sophos)** die Import-Datei (XML) oder die Objektliste (CSV).
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie starte ich einen Scan und sehe die Netzwerkagenten?
+
+1. Öffnen Sie **Verwaltung → Discovery & Agenten**.
+2. Sie sehen die Netzwerkagenten mit Status und letzter Meldung sowie die letzten **Scans**.
+3. Klicken Sie auf **Jetzt scannen**, um einen Scan anzustossen.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie beauftrage ich eine DHCP-Reservierung oder einen DNS-Eintrag?
+
+1. Öffnen Sie **Verwaltung → Discovery & Agenten** und **DHCP & DNS**.
+2. Beauftragen Sie die DHCP-Reservierung oder den fehlenden bzw. abweichenden DNS-Eintrag.
+3. Der Agent führt den Auftrag aus, sobald eine Person mit Verwaltungsrecht ihn freigegeben hat.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie importiere ich bestehende Listen in die IP-Adressverwaltung?
+
+1. Öffnen Sie **Verwaltung → Import**.
+2. Wählen Sie die Datei (Excel, CSV, phpIPAM oder NetBox).
+3. Prüfen Sie die Zuordnung der Spalten und die Vorschau.
+4. Klicken Sie auf **Übernehmen**. Bestehende Einträge werden nur ergänzt, nicht überschrieben.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie lege ich ein VRF an?
+
+1. Öffnen Sie das Menü **Verwaltung**.
+2. Wählen Sie **VRF anlegen** und folgen Sie dem Formular.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie hebe ich die Geräte eines VLAN in der Netzwerkkarte hervor?
+
+1. Öffnen Sie **Infrastruktur → Netzwerkkarte**.
+2. Wählen Sie über der Karte in der Legende das VLAN.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie nutze ich die IP-Adressverwaltung in der App?
+
+1. Halten Sie in der App den Home-Knopf lange gedrückt (Mitglieder des Teams **System Engineer**) und wählen Sie unter **Öffnen** **IP-Adressen**.
+2. Sie sehen die Subnetze nach Standort mit ihrer Auslastung und eine Suche nach IP-Adresse, Hostname oder MAC.
+3. Ein Subnetz öffnet seine Adressen, eine Adresse ihre Details.
+
+Mehr dazu unter «Ticket für jemanden erfassen».
+
+### Wie sehe ich die Netzwerkdaten eines Geräts vor Ort in der App?
+
+1. Scannen Sie mit der iPhone-App den QR-Code am Gerät.
+2. Die Karte **Netzwerk** zeigt IP, Subnetz, VLAN, Gateway und Switch-Port.
+
+Mehr dazu unter «IP-Adressen».
+
+### Wie öffne ich eine Benachrichtigung?
+
+1. Klicken Sie oben auf die **Glocke**.
+2. Klicken Sie auf den Eintrag. Er öffnet genau das auslösende Objekt, zum Beispiel das Ticket, die Störung oder den Phishing-/Junk-Fall.
+
+Mehr dazu unter «Benachrichtigungen und Erreichbarkeit».
+
+### Wie lese ich die Mitteilungen in der App?
+
+1. Tippen Sie auf der Startseite der App auf die **Glocke** (mit der Anzahl ungelesener Einträge).
+2. Tippen Sie auf einen Eintrag, um ihn zu öffnen und als gelesen zu markieren.
+3. **Alle gelesen** leert die Liste.
+
+Mehr dazu unter «Benachrichtigungen und Erreichbarkeit».
+
+### Wie lege ich meine Benachrichtigungszeit fest?
+
+1. Öffnen Sie _Persönliche Einstellungen → Benachrichtigungen → Benachrichtigungszeit_.
+2. Wählen Sie die **Tage** und **Zeiten** (zum Beispiel Mo–Fr, 06:00–17:00) oder **Jederzeit**.
+3. Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit.
+
+Mehr dazu unter «Benachrichtigungen und Erreichbarkeit».
+
+### Wie schalte ich Push und E-Mail für einzelne Benachrichtigungen ein oder aus?
+
+1. Öffnen Sie _Persönliche Einstellungen → Benachrichtigungen_.
+2. Schalten Sie in der Tabelle **Benachrichtigungen** pro Zeile **Push** und **E-Mail** ein oder aus.
+3. **Phishing-Meldungen** und **Phishing / Junk** sind zu Beginn ausgeschaltet; wer sie erhalten möchte, schaltet sie selbst ein.
+
+Mehr dazu unter «Benachrichtigungen und Erreichbarkeit».
+
+### Wie schalte ich Benachrichtigungen zu Störungen ein oder aus?
+
+1. Öffnen Sie _Persönliche Einstellungen → Benachrichtigungen → Störungen_.
+2. Schalten Sie Push und E-Mail ein oder aus.
+
+Mehr dazu unter «Störungen».
+
+### Wie halte ich das iPhone-Widget aktuell?
+
+1. Öffnen Sie die App einmal.
+2. Das Widget **Meine Prioritäten** zeigt danach Ihre wichtigsten Tickets.
+
+Mehr dazu unter «Benachrichtigungen und Erreichbarkeit».
+
+### Wie setze oder ändere ich das Passwort?
+
+1. Öffnen Sie die _Persönlichen Einstellungen_.
+2. Wählen Sie die Karte zum **Passwort setzen oder ändern**. Die Karte ist nur ohne SSO sichtbar.
+
+Mehr dazu unter «Persönliche Einstellungen».
+
+### Wie öffne ich die Handbücher?
+
+1. Öffnen Sie die _Persönlichen Einstellungen_.
+2. Wählen Sie **Handbücher** und das gewünschte Handbuch (für Mitarbeitende oder für Agenten). In der iOS-App steht es unter **Profil → Hilfe und Rechtliches**.
+
+Mehr dazu unter «Persönliche Einstellungen».
+
 ## Einführungstour
 
 Beim ersten Login startet eine kurze **Einführung** (Startseite, Tickets,
