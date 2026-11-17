@@ -2,7 +2,7 @@
 title: Handbuch für Administratoren
 description: Mandant einrichten – Design, Funktionen, SLA, Abteilungen, Personen, Rollen, Datenschutz und Protokoll.
 audienceLabel: Administratoren
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # Handbuch für Administratoren
@@ -393,10 +393,17 @@ veröffentlichen** in der Karte «Alarmierung» zeigt einen Ausfall aus der
 Überwachung oder aus PRTG sofort allen als Banner und als Meldung auf der
 Statusseite – ohne Wartezeit und ohne Bestätigung durch das Team. Das gilt
 nur für Ausfälle (nicht für Warnungen) und nur, wenn Dienste betroffen sind:
-die Dienste des Sensors, sonst die Dienste des Geräts. Während einer Wartung
-mit unterdrückter Alarmierung wird nichts veröffentlicht. Die Meldung
-schliesst sich mit der Störung und erscheint im Namen der Person, die den
-Schalter zuletzt gespeichert hat. Ein Fehlalarm steht damit sofort öffentlich
+die Dienste des Sensors, sonst die Dienste des Geräts. Jeder Ausfall in der
+Überwachung öffnet eine Störung; die Statusmeldung kommt immer aus dieser
+Störung. Setzt die Überwachung den Status eines Dienstes, geht deshalb keine
+eigene Statusmail an die Abonnenten – sie erhalten die Meldung der Störung
+und ihre Updates. Ohne diesen Schalter erscheint ein Ausfall aus der
+Überwachung nicht auf der Statusseite. Während einer Wartung (Dienst auf
+Wartung oder Gerät in einem laufenden Wartungsfenster) wird nichts
+veröffentlicht und der Dienststatus nicht verändert; die Störung wird still
+erfasst. Die Meldung wird «Behoben», sobald die Überwachung wieder OK meldet
+(die Störung selbst schliesst ein Agent ab), und erscheint im Namen der
+Person, die den Schalter zuletzt gespeichert hat. Ein Fehlalarm steht damit sofort öffentlich
 da; ein Ausfall zählt erst nach der eingestellten Anzahl Fehlversuche in
 Folge.
 
@@ -596,7 +603,14 @@ vorherigen Status. Am Ende oder wenn du das Fenster abschliesst oder absagst,
 wird der Status zurückgesetzt – aber nur, wenn der Dienst noch auf Wartung
 steht und kein anderes laufendes Fenster ihn betrifft. Während der Wartung
 unterdrückt die Monitoring-Anbindung Alarme für diese Dienste (sofern unter
-**Monitoring** eingeschaltet). Sind dem
+**Monitoring** eingeschaltet). Die Sensoren der Geräte des Fensters werden
+innerhalb einer Minute **pausiert** und am Ende wieder fortgesetzt; fällt ein
+Gerät in Wartung trotzdem aus (z. B. über PRTG), entsteht eine stille
+Störung ohne Statusmeldung. Die Wartung hat ihre **eigene** Meldung: Ein
+öffentliches Fenster (beim Planen voreingestellt) erscheint auf der
+Statusseite, Abonnenten erhalten bei Beginn und Ende eine Mail, und in Web und
+App zeigt ein blauer **Wartungsbanner** laufende Wartungen und solche, die in
+den nächsten 24 Stunden beginnen, mit Zeitraum, Diensten und Geräten. Sind dem
 Fenster Geräte zugeordnet (z. B. aus der Infrastruktur geplant), entsteht nach
 dem Ende ein Eintrag im **Wartungsprotokoll** der Geräte.
 
@@ -615,7 +629,9 @@ Auf der öffentlichen Statusseite können sich Besucherinnen und Besucher unter
 **Per E-Mail benachrichtigen** mit ihrer Adresse anmelden. Diese erhalten zuerst
 eine Mail mit dem Knopf **Anmeldung bestätigen** (Schutz davor, dass fremde
 Adressen eingetragen werden). Danach bekommen sie bei jeder Statusänderung
-eines öffentlich sichtbaren Dienstes eine E-Mail mit altem und neuem Status,
+eines öffentlich sichtbaren Dienstes, die von Hand erfolgt, eine E-Mail mit
+altem und neuem Status (Änderungen durch die Überwachung melden die
+Störungsmeldungen),
 bei jeder öffentlichen Störungsmeldung und jedem Update eine E-Mail sowie bei
 Beginn und Ende eines öffentlichen Wartungsfensters je eine E-Mail (statt
 einzelner Mails pro Dienst). Jede Mail enthält einen Link **Abmelden**.

@@ -630,6 +630,22 @@
   margin-top: 2px;
 }
 
+.workbench-incident-banner--maintenance {
+  border-color: color-mix(in srgb, var(--info) 42%, var(--border));
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.workbench-incident-banner--maintenance .workbench-incident-banner__count {
+  border-color: color-mix(in srgb, var(--info) 32%, var(--border));
+  color: var(--info);
+}
+
+/* Two banners in a row (incident, maintenance): one gap between them. */
+.workbench-incident-banner + .workbench-incident-banner {
+  margin-top: -6px;
+}
+
 .workbench-incident-banner__heading {
   display: flex;
   flex-wrap: wrap;

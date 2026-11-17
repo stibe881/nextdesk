@@ -27,6 +27,7 @@ import { HomeLayoutSheet } from "@/components/home-layout-sheet";
 import { ApprovalInboxCard } from "@/components/approval-inbox-card";
 import { OnboardingHomeCard } from "@/components/onboarding-home-card";
 import { IncidentBanner } from "@/components/incident-banner";
+import { MaintenanceBanner } from "@/components/maintenance-banner";
 import { NotificationBellButton } from "@/components/notification-bell-button";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
@@ -55,6 +56,7 @@ import {
   type PortalApproval,
   type PortalDevice,
   type PortalIncidentNotice,
+  type PortalMaintenance,
 } from "@/lib/nextdesk-portal";
 import {
   getMobileUserId,
@@ -250,6 +252,7 @@ export default function HomeScreen() {
   const [incidentNotices, setIncidentNotices] = useState<
     PortalIncidentNotice[]
   >([]);
+  const [maintenances, setMaintenances] = useState<PortalMaintenance[]>([]);
   const [agentMetrics, setAgentMetrics] = useState<AgentMetrics | null>(null);
   const [mentions, setMentions] = useState<AgentMention[]>([]);
   const [approvals, setApprovals] = useState<PortalApproval[]>([]);
@@ -424,6 +427,7 @@ export default function HomeScreen() {
 
     if (!requesterPortalEnabled) {
       setIncidentNotices([]);
+      setMaintenances([]);
       setApprovals([]);
       setDevices([]);
       setApprovalsAvailable(false);
@@ -442,10 +446,12 @@ export default function HomeScreen() {
 
     if (noticesResult.status === "fulfilled") {
       setIncidentNotices(noticesResult.value.notices);
+      setMaintenances(noticesResult.value.maintenances ?? []);
     } else {
       // Failure is deliberately indistinguishable from a disabled optional area:
       // no stale or cross-tenant portal data is displayed.
       setIncidentNotices([]);
+      setMaintenances([]);
     }
     if (approvalsResult.status === "fulfilled") {
       setApprovals(approvalsResult.value.approvals);
@@ -490,6 +496,7 @@ export default function HomeScreen() {
           .then((result) => {
             if (active && epoch === tenantEpoch.current) {
               setIncidentNotices(result.notices);
+              setMaintenances(result.maintenances ?? []);
             }
           })
           .catch(() => {
@@ -1601,6 +1608,9 @@ export default function HomeScreen() {
         </View>
 
         <IncidentBanner notices={visibleIncidentNotices} />
+        <MaintenanceBanner
+          maintenances={supplementaryIsCurrent ? maintenances : []}
+        />
 
         {error ? (
           <View

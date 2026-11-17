@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   UserRound,
   UsersRound,
+  Wrench,
 } from "lucide-react";
 import {
   useEffect,
@@ -115,7 +116,157 @@ type MetricTicketIds = {
   solvedToday: string[];
 };
 
-export type { ActiveIncidentNotice, TeamQueue };
+/** Maintenance window for the banner (running or starting within 24 h). */
+type BannerMaintenance = {
+  id: string;
+  title: string;
+  description: string | null;
+  startsAt: string;
+  endsAt: string;
+  running: boolean;
+  serviceNames: string[];
+  deviceNames: string[];
+};
+
+export type { ActiveIncidentNotice, BannerMaintenance, TeamQueue };
+
+const nameList = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+
+/** Maintenance windows of the banner response; missing on older servers. */
+export function bannerMaintenancesFromResponse(
+  value: unknown,
+): BannerMaintenance[] {
+  const data = responseData(value);
+  if (!data || !Array.isArray(data.maintenances)) return [];
+  return data.maintenances.flatMap((entry: unknown) => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.id !== "string" ||
+      typeof entry.title !== "string" ||
+      typeof entry.starts_at !== "string" ||
+      typeof entry.ends_at !== "string"
+    ) {
+      return [];
+    }
+    return [
+      {
+        id: entry.id,
+        title: entry.title,
+        description:
+          typeof entry.description === "string" && entry.description.trim()
+            ? entry.description
+            : null,
+        startsAt: entry.starts_at,
+        endsAt: entry.ends_at,
+        running: entry.running === true,
+        serviceNames: nameList(entry.service_names),
+        deviceNames: nameList(entry.device_names),
+      },
+    ];
+  });
+}
+
+/** «heute 18:00 – 20:00» or with dates when the window spans days. */
+export function maintenanceWindowText(
+  startsAt: string,
+  endsAt: string,
+): string {
+  const zone = "Europe/Zurich";
+  const day = (value: string) =>
+    new Intl.DateTimeFormat("de-CH", {
+      dateStyle: "medium",
+      timeZone: zone,
+    }).format(new Date(value));
+  const time = (value: string) =>
+    new Intl.DateTimeFormat("de-CH", {
+      timeStyle: "short",
+      timeZone: zone,
+    }).format(new Date(value));
+  return day(startsAt) === day(endsAt)
+    ? `${day(startsAt)}, ${time(startsAt)} – ${time(endsAt)}`
+    : `${day(startsAt)}, ${time(startsAt)} – ${day(endsAt)}, ${time(endsAt)}`;
+}
+
+/** Banner for maintenance windows, shown next to the incident banner. */
+export function MaintenanceBanner({
+  maintenances,
+}: {
+  maintenances: readonly BannerMaintenance[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (maintenances.length === 0) return null;
+  const several = maintenances.length > 1;
+  const shown = several && expanded ? maintenances : maintenances.slice(0, 1);
+  return (
+    <section
+      aria-label={several ? "Wartungen" : "Wartung"}
+      className="workbench-incident-banner workbench-incident-banner--maintenance"
+      role="status"
+    >
+      <Wrench aria-hidden="true" size={21} strokeWidth={1.9} />
+      <ul
+        className="workbench-incident-banner__list"
+        id="maintenance-banner-list"
+      >
+        {shown.map((maintenance) => {
+          const affected = [
+            ...maintenance.serviceNames,
+            ...maintenance.deviceNames.filter(
+              (name) => !maintenance.serviceNames.includes(name),
+            ),
+          ];
+          return (
+            <li key={maintenance.id}>
+              <div className="workbench-incident-banner__heading">
+                <strong>
+                  {maintenance.running ? "Laufende Wartung" : "Geplante Wartung"}
+                  : {maintenance.title}
+                </strong>
+                <span>
+                  {maintenanceWindowText(
+                    maintenance.startsAt,
+                    maintenance.endsAt,
+                  )}
+                </span>
+              </div>
+              {maintenance.description ? (
+                <p
+                  className={
+                    several ? "workbench-incident-banner__excerpt" : undefined
+                  }
+                  title={several ? maintenance.description : undefined}
+                >
+                  {maintenance.description}
+                </p>
+              ) : null}
+              {affected.length > 0 ? (
+                <p className="workbench-incident-banner__services">
+                  Betroffen: {affected.join(", ")}
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      {several ? (
+        <button
+          aria-controls="maintenance-banner-list"
+          aria-expanded={expanded}
+          className="workbench-incident-banner__count"
+          onClick={() => setExpanded((current) => !current)}
+          type="button"
+        >
+          {expanded
+            ? "Weniger anzeigen"
+            : `+${maintenances.length - 1} weitere`}
+        </button>
+      ) : null}
+    </section>
+  );
+}
 
 export function activeIncidentNoticesFromResponse(
   value: unknown,

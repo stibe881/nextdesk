@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # Handbuch für Mitarbeitende
@@ -68,6 +68,11 @@ lesen). Ist eine Störung behoben, verschwindet der Hinweis von selbst
 eigenes Ticket erfassen.
 Hast du den Systemstatus per E-Mail abonniert, erhältst du zu jeder
 öffentlichen Störungsmeldung und jedem Update eine E-Mail.
+
+Ist eine **Wartung** geplant, erscheint oben zusätzlich ein blauer Hinweis
+«Laufende Wartung» bzw. «Geplante Wartung» (ab 24 Stunden vor Beginn) mit
+Zeitraum und den betroffenen Diensten und Geräten – im Portal und in der App.
+Er verschwindet nach dem Ende der Wartung von selbst.
 
 ![Startseite für Mitarbeitende](images/ma-start.jpg)
 

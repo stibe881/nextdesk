@@ -668,8 +668,85 @@ async function activeIncidentNotices(
           a.localeCompare(b, "de-CH")
         ),
       })),
+      maintenances: await bannerMaintenances(admin, item.tenantId),
     },
   });
+}
+
+/** Banner lead time for an upcoming maintenance window. */
+const MAINTENANCE_BANNER_LEAD_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Maintenance windows for the banner: running ones and those starting within
+ * the next 24 hours, with their services and devices. Never fails: without
+ * them the banner shows the incidents only.
+ */
+async function bannerMaintenances(
+  admin: Admin,
+  tenantId: string,
+): Promise<Record<string, unknown>[]> {
+  const now = new Date();
+  const result = await admin
+    .from("service_status_maintenances")
+    .select("id, title, description, starts_at, ends_at, state")
+    .eq("tenant_id", tenantId)
+    .in("state", ["scheduled", "active"])
+    .gt("ends_at", now.toISOString())
+    .lte(
+      "starts_at",
+      new Date(now.getTime() + MAINTENANCE_BANNER_LEAD_MS).toISOString(),
+    )
+    .order("starts_at", { ascending: true })
+    .limit(20);
+  if (result.error) return [];
+  const rows = (result.data ?? []) as Record<string, unknown>[];
+  const ids = rows.flatMap((row) => isUuid(row.id) ? [row.id as string] : []);
+  const services = new Map<string, string[]>();
+  const devices = new Map<string, string[]>();
+  if (ids.length) {
+    const [serviceLinks, assetLinks] = await Promise.all([
+      admin.from("service_status_maintenance_services")
+        .select("maintenance_id, services!inner(name, active)")
+        .eq("tenant_id", tenantId)
+        .eq("services.active", true)
+        .in("maintenance_id", ids)
+        .limit(500),
+      admin.from("service_status_maintenance_assets")
+        .select("maintenance_id, assets!inner(name)")
+        .eq("tenant_id", tenantId)
+        .in("maintenance_id", ids)
+        .limit(500),
+    ]);
+    const collect = (
+      target: Map<string, string[]>,
+      links: Record<string, unknown>[],
+      key: "services" | "assets",
+    ) => {
+      for (const link of links) {
+        const related = link[key] as Record<string, unknown> | null;
+        const name = typeof related?.name === "string" ? related.name : null;
+        if (!name || typeof link.maintenance_id !== "string") continue;
+        target.set(link.maintenance_id, [
+          ...(target.get(link.maintenance_id) ?? []),
+          name,
+        ]);
+      }
+    };
+    collect(services, (serviceLinks.data ?? []) as Record<string, unknown>[], "services");
+    collect(devices, (assetLinks.data ?? []) as Record<string, unknown>[], "assets");
+  }
+  const sorted = (values: string[] | undefined) =>
+    [...new Set(values ?? [])].sort((a, b) => a.localeCompare(b, "de-CH"));
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    description: row.description ?? null,
+    starts_at: row.starts_at,
+    ends_at: row.ends_at,
+    running: Date.parse(String(row.starts_at)) <= now.getTime(),
+    service_names: sorted(services.get(String(row.id))),
+    device_names: sorted(devices.get(String(row.id))),
+  }));
 }
 async function myTicketTimeline(
   request: Request,

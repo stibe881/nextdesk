@@ -160,14 +160,15 @@ async function applyServiceStatus(
   if (error || !data) return null;
   const target = targetServiceStatus(kind, data.status as ServiceStatus);
   if (!target) return null;
-  // The services_status_history trigger records the status event.
-  const updated = await admin
-    .from("services")
-    .update({ status: target })
-    .eq("tenant_id", tenantId)
-    .eq("id", serviceId)
-    .eq("status", data.status);
-  return updated.error ? null : target;
+  // The services_status_history trigger records the status event. No status
+  // mail to subscribers: the public message comes from the incident.
+  const updated = await admin.rpc("monitoring_set_service_status", {
+    p_tenant_id: tenantId,
+    p_service_id: serviceId,
+    p_status: target,
+    p_from: [data.status],
+  });
+  return updated.error || updated.data !== true ? null : target;
 }
 
 /** Services of an alert: the stored list, else the legacy single service. */
@@ -216,12 +217,12 @@ async function restoreServiceStatus(
     .limit(1);
   if (others.error || (others.data ?? []).length > 0) return;
   // Only undo what monitoring set; manual outages and maintenance stay.
-  await admin
-    .from("services")
-    .update({ status: "operational" })
-    .eq("tenant_id", tenantId)
-    .eq("id", serviceId)
-    .in("status", ["degraded", "partial_outage"]);
+  await admin.rpc("monitoring_set_service_status", {
+    p_tenant_id: tenantId,
+    p_service_id: serviceId,
+    p_status: "operational",
+    p_from: ["degraded", "partial_outage"],
+  });
 }
 
 async function findOpenAlert(
@@ -315,7 +316,22 @@ async function inMaintenance(
   admin: Admin,
   tenantId: string,
   serviceIds: string[],
+  assetId: string | null,
 ): Promise<boolean> {
+  if (assetId) {
+    // The device is part of a running maintenance window.
+    const nowIso = new Date().toISOString();
+    const { data: windows } = await admin
+      .from("service_status_maintenance_assets")
+      .select("maintenance_id, service_status_maintenances!inner(state, starts_at, ends_at)")
+      .eq("tenant_id", tenantId)
+      .eq("asset_id", assetId)
+      .in("service_status_maintenances.state", ["scheduled", "active"])
+      .lte("service_status_maintenances.starts_at", nowIso)
+      .gt("service_status_maintenances.ends_at", nowIso)
+      .limit(1);
+    if (((windows ?? []) as Row[]).length > 0) return true;
+  }
   if (!serviceIds.length) return false;
   const { data } = await admin
     .from("services")
@@ -429,7 +445,7 @@ async function incidentForAlert(
     }
   }
   const maintenance = integration.suppress_in_maintenance &&
-    await inMaintenance(admin, tenantId, device?.serviceIds ?? []);
+    await inMaintenance(admin, tenantId, device?.serviceIds ?? [], device?.assetId ?? null);
   const number = await admin.rpc("monitoring_next_incident_number", { p_tenant_id: tenantId });
   if (number.error || typeof number.data !== "string") throw new Error("incident_number_failed");
   const inserted = await admin
@@ -723,7 +739,9 @@ export async function processEvent(
           .eq("id", alertId);
         throw failure;
       }
-      const statuses = integration.set_service_status
+      // During maintenance the incident is recorded quietly: no service
+      // status change and no public message (the maintenance has its own).
+      const statuses = integration.set_service_status && !incident.incident.maintenance
         ? await applyServiceStatuses(admin, tenantId, device?.serviceIds ?? [], event.kind, {})
         : {};
       await admin
@@ -783,7 +801,9 @@ export async function processEvent(
     .update({ last_event_at: now.toISOString() })
     .eq("id", alert.incident_id);
   let statuses = alertServiceStatuses(alert);
-  if (integration.set_service_status) {
+  const quiet = await admin.from("monitoring_incidents").select("maintenance")
+    .eq("id", alert.incident_id).maybeSingle();
+  if (integration.set_service_status && quiet.data?.maintenance !== true) {
     statuses = await applyServiceStatuses(admin, tenantId, alertServiceIds(alert), event.kind, statuses);
   }
   await admin
