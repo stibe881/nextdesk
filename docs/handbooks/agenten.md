@@ -362,7 +362,7 @@ beim Anbieter hängen bleibt.
   laden** nach.
 - **Nur von Hand abgeschlossen**: Meldet die Überwachung (nextDesk oder PRTG)
   für alle Sensoren wieder OK, wird die Störung **nicht** automatisch
-  abgeschlossen. Sie steht dann auf **Wieder OK – offen**, bleibt unter
+  abgeschlossen. Die Störung steht dann auf **Wieder OK – offen**, bleibt unter
   _Aktiv_ und in der Zahl im Menü, und die Alarmierung hört auf. Abgeschlossen
   wird sie immer von dir unter **Abschliessen** mit der **Ursache**; dort
   lassen sich auch zugeordnete Tickets informieren und ein Fall eröffnen
