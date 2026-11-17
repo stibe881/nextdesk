@@ -8,6 +8,7 @@ import {
   ScrollView,
   Text,
   View,
+  TextInput,
 } from "react-native";
 import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
@@ -153,11 +154,31 @@ export default function MonitoringDeviceScreen() {
   const allPaused =
     !!data?.sensors.length && data.sensors.every((entry) => entry.paused);
 
+  // Pausing asks for a reason first (shown on the device and in the events).
+  const [pauseReason, setPauseReason] = useState<string | null>(null);
   const togglePause = async () => {
     if (!tenantId || !id) return;
+    if (!allPaused && pauseReason === null) {
+      setPauseReason("");
+      return;
+    }
+    const reason = pauseReason?.trim() ?? "";
+    if (!allPaused && reason.length < 3) {
+      setError(
+        "Bitte einen Grund für das Pausieren angeben (mindestens 3 Zeichen).",
+      );
+      return;
+    }
     setBusy(true);
     try {
-      await pauseMonitoringDevice(tenantId, id, !allPaused);
+      await pauseMonitoringDevice(
+        tenantId,
+        id,
+        !allPaused,
+        allPaused ? null : reason,
+      );
+      setPauseReason(null);
+      setError("");
       await load();
     } catch (nextError) {
       setError(
@@ -480,6 +501,14 @@ export default function MonitoringDeviceScreen() {
                           .filter(Boolean)
                           .join(" · ")}
                       </Text>
+                      {entry.paused ? (
+                        <Text numberOfLines={3} style={styles.rowMeta}>
+                          {entry.pausedByName
+                            ? `Pausiert von ${entry.pausedByName}`
+                            : "Pausiert"}
+                          {entry.pausedReason ? `: ${entry.pausedReason}` : ""}
+                        </Text>
+                      ) : null}
                     </View>
                   </Pressable>
                 );
@@ -576,7 +605,40 @@ export default function MonitoringDeviceScreen() {
               </View>
             ) : null}
 
-            {data.canManage && data.sensors.length ? (
+            {data.canManage && data.sensors.length && pauseReason !== null ? (
+              <View style={styles.card}>
+                <Text style={styles.rowTitle}>Grund für das Pausieren</Text>
+                <TextInput
+                  autoFocus
+                  maxLength={300}
+                  onChangeText={setPauseReason}
+                  placeholder="z. B. Wartung des Switches bis 14 Uhr"
+                  placeholderTextColor={colors.subtle}
+                  style={styles.input}
+                  value={pauseReason}
+                />
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={busy}
+                    onPress={() => void togglePause()}
+                    style={[styles.chip, { alignSelf: "flex-start" }]}
+                  >
+                    <Text style={styles.chipText}>
+                      {busy ? "Wird geändert …" : "Pausieren"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={busy}
+                    onPress={() => setPauseReason(null)}
+                    style={[styles.chip, { alignSelf: "flex-start" }]}
+                  >
+                    <Text style={styles.chipText}>Abbrechen</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : data.canManage && data.sensors.length ? (
               <Pressable
                 accessibilityRole="button"
                 disabled={busy}

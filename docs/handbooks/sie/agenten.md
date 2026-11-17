@@ -479,6 +479,19 @@ sonst grau.
   Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
   Ein Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter kehrt die
   Reihenfolge um. Standard ist der Zustand, das Dringende zuoberst.
+- **Aufklappen und pausieren**: Der Pfeil vor einem Gerät klappt seine
+  Sensoren mit Zustand, Messwert und letzter Prüfung auf. Mit dem Recht
+  «Assets verwalten» pausieren Sie rechts ein ganzes Gerät oder in der
+  aufgeklappten Liste einen einzelnen Sensor (**Pausieren** / **Fortsetzen**).
+  Über die Kästchen links wählen Sie mehrere Geräte und Sensoren aus und
+  pausieren oder setzen sie in der Leiste über der Liste gemeinsam fort.
+  Beim Pausieren geben Sie immer einen **Grund** an (3 bis 300 Zeichen). Er
+  steht mit Person und Zeitpunkt beim Gerät und beim Sensor («Pausiert von
+  … : Grund»), auch im Gerätedetail und in der App. Ein pausierter Sensor
+  wird nicht gemessen, löst keinen Alarm aus und schliesst einen offenen
+  Alarm.
+- **Letzte Ereignisse** zeigen neben Ausfällen und Warnungen auch, wer ein
+  Gerät oder einen Sensor pausiert (mit Grund) oder fortgesetzt hat.
 
 ![Überwachung mit Kacheln, letzten Ereignissen, Verfügbarkeit und aktiven Alarmen](images/ag-ueberwachung.jpg)
 
@@ -651,6 +664,10 @@ Unter **Tickets** arbeiten Sie die Warteschlangen ab. Jede Ticketkarte zeigt
 neben Nummer und Betreff auch die **anfragende Person** – in der Liste, auf
 der Übersicht, im Kanban und in der App.
 
+- **Meine Tickets** (Kachel und Liste) zeigt nur offene Tickets, die Ihnen
+  zugewiesen sind oder die Sie angefragt haben. Gelöste und geschlossene
+  Tickets finden Sie über die Kachel **Gelöste Tickets** oder den Filter
+  _Status_.
 - **Queues**: Register pro Warteschlange. Arbeiten Sie in Teams mehrerer
   Supportstufen, erscheinen zusätzlich _Alle Stufen / 1st / 2nd / 3rd Level_.
   Wählen Sie eine Stufe, zeigen auch die Kacheln oben nur die Zahlen dieser

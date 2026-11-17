@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ChevronDown,
+  ChevronRight,
   Download,
   FlaskConical,
   LoaderCircle,
@@ -22,6 +23,7 @@ import {
   useMemo,
   useRef,
   useState,
+  Fragment,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -93,7 +95,7 @@ import {
   type SnmpMetric,
 } from "./lib/monitoring";
 import { tn } from "./lib/formality";
-import { confirmDialog } from "./app-dialog";
+import { confirmDialog, promptDialog } from "./app-dialog";
 
 import "./monitoring.css";
 
@@ -107,6 +109,33 @@ type Props = {
   /** Opens a ticket; set for agents, who may create tickets from an outage. */
   onOpenTicket?: ((ticketId: string) => void) | undefined;
 };
+
+/**
+ * Asks for the reason of a pause (3–300 characters). null: cancelled.
+ * `what` names what is paused, e.g. «SW-CORE-01» or «3 Geräte».
+ */
+async function askPauseReason(what: string): Promise<string | null> {
+  let hint = "";
+  for (;;) {
+    const answer = await promptDialog(
+      `${hint}Grund für das Pausieren von ${what}:`,
+      { confirmLabel: "Pausieren", multiline: false },
+    );
+    if (answer === null) return null;
+    const reason = answer.replace(/\s+/g, " ").trim();
+    if (reason.length >= 3 && reason.length <= 300) return reason;
+    hint = "Bitte 3 bis 300 Zeichen angeben. ";
+  }
+}
+
+/** «Pausiert von Mara Keller: Wartung» for a paused sensor or device. */
+function pauseText(pause: {
+  reason?: string | null;
+  by?: string | null;
+}): string {
+  const who = pause.by ? `Pausiert von ${pause.by}` : "Pausiert";
+  return pause.reason ? `${who}: ${pause.reason}` : who;
+}
 
 /**
  * Creates a ticket for a device after a confirmation and opens it. Returns
@@ -222,6 +251,38 @@ function OverviewView({
   const [data, setData] = useState<MonitoringOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const ticket = useDeviceTicket(tenantId, onOpenTicket, setError);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [pausing, setPausing] = useState<string | null>(null);
+  const [sensorRevision, setSensorRevision] = useState(0);
+  // Several devices and sensors can be chosen and paused together.
+  const [chosenDevices, setChosenDevices] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [chosenSensors, setChosenSensors] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const toggleIn =
+    (setter: (update: (current: Set<string>) => Set<string>) => void) =>
+    (id: string) =>
+      setter((current) => {
+        const next = new Set(current);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+  const toggleDevice = toggleIn(setChosenDevices);
+  const toggleSensor = toggleIn(setChosenSensors);
+  const clearChosen = () => {
+    setChosenDevices(new Set());
+    setChosenSensors(new Set());
+  };
+  const toggleExpanded = (assetId: string) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
   const [filter, setFilter] = useState<MonitoringState | "all">("all");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
@@ -235,6 +296,60 @@ function OverviewView({
       .catch((failure) => setError(message(failure)));
   }, [tenantId]);
   useEffect(load, [load]);
+  // Pauses or resumes a whole device or one sensor, then reloads the list
+  // and the open sensor rows.
+  const setPaused = async (
+    key: string,
+    body: Record<string, unknown>,
+    what: string,
+  ): Promise<boolean> => {
+    let reason: string | null = null;
+    if (body.paused === true) {
+      reason = await askPauseReason(what);
+      if (reason === null) return false;
+    }
+    setPausing(key);
+    try {
+      await monitoringCall({
+        ...body,
+        ...(reason ? { reason } : {}),
+        tenantId,
+      });
+      setSensorRevision((current) => current + 1);
+      load();
+      return true;
+    } catch (failure) {
+      setError(message(failure));
+      return false;
+    } finally {
+      setPausing(null);
+    }
+  };
+  const pauseChosen = async (paused: boolean) => {
+    const parts = [
+      chosenDevices.size === 1
+        ? "1 Gerät"
+        : chosenDevices.size
+          ? `${chosenDevices.size} Geräten`
+          : null,
+      chosenSensors.size === 1
+        ? "1 Sensor"
+        : chosenSensors.size
+          ? `${chosenSensors.size} Sensoren`
+          : null,
+    ].filter(Boolean);
+    const done = await setPaused(
+      "chosen",
+      {
+        type: "pauseMany",
+        assetIds: [...chosenDevices],
+        sensorIds: [...chosenSensors],
+        paused,
+      },
+      parts.join(" und "),
+    );
+    if (done) clearChosen();
+  };
   const now = useNow(load);
 
   const [sort, setSort] = useState<DeviceSort>({
@@ -504,49 +619,228 @@ function OverviewView({
               </p>
             ) : (
               <div className="monitoring__scroll">
+                {chosenDevices.size + chosenSensors.size > 0 ? (
+                  <div
+                    aria-label="Auswahl pausieren"
+                    className="monitoring-bulk"
+                    role="region"
+                  >
+                    <strong>
+                      {[
+                        chosenDevices.size === 1
+                          ? "1 Gerät"
+                          : chosenDevices.size
+                            ? `${chosenDevices.size} Geräte`
+                            : null,
+                        chosenSensors.size === 1
+                          ? "1 Sensor"
+                          : chosenSensors.size
+                            ? `${chosenSensors.size} Sensoren`
+                            : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" und ")}{" "}
+                      ausgewählt
+                    </strong>
+                    <button
+                      className="secondary-button"
+                      disabled={pausing !== null}
+                      onClick={() => void pauseChosen(true)}
+                      type="button"
+                    >
+                      <Pause aria-hidden="true" size={15} /> Pausieren
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={pausing !== null}
+                      onClick={() => void pauseChosen(false)}
+                      type="button"
+                    >
+                      <Play aria-hidden="true" size={15} /> Fortsetzen
+                    </button>
+                    <button
+                      className="text-button"
+                      onClick={clearChosen}
+                      type="button"
+                    >
+                      Auswahl aufheben
+                    </button>
+                  </div>
+                ) : null}
                 <table className="monitoring-table">
                   <thead>
                     <tr>
+                      {data.canManage ? (
+                        <th className="monitoring-table__check">
+                          <input
+                            aria-label="Alle angezeigten Geräte auswählen"
+                            checked={
+                              devices.length > 0 &&
+                              devices.every((device) =>
+                                chosenDevices.has(device.assetId),
+                              )
+                            }
+                            onChange={(event) =>
+                              setChosenDevices(
+                                event.target.checked
+                                  ? new Set(
+                                      devices.map((device) => device.assetId),
+                                    )
+                                  : new Set(),
+                              )
+                            }
+                            type="checkbox"
+                          />
+                        </th>
+                      ) : null}
+                      <th>
+                        <span className="sr-only">Sensoren aufklappen</span>
+                      </th>
                       {sortHeader("state", "Status")}
                       {sortHeader("name", "Gerät")}
                       {sortHeader("sensors", "Sensoren")}
                       {sortHeader("response", "Antwortzeit")}
                       {sortHeader("lastCheck", "Letzte Prüfung")}
+                      {data.canManage ? (
+                        <th>
+                          <span className="sr-only">Überwachung pausieren</span>
+                        </th>
+                      ) : null}
                     </tr>
                   </thead>
                   <tbody>
-                    {devices.map((device) => (
-                      <tr key={device.assetId}>
-                        <td>
-                          <StateChip state={device.state} />
-                        </td>
-                        <td>
-                          <button
-                            className="text-button monitoring-table__name"
-                            onClick={() => onOpenDevice(device.assetId)}
-                            type="button"
-                          >
-                            {device.name}
-                          </button>
-                          <span className="monitoring-muted">
-                            {[
-                              categoryText(
-                                device.category,
-                                device.categoryLabel,
-                              ),
-                              device.ipAddress ?? device.hostname,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </span>
-                        </td>
-                        <td>{sensorCountsText(device.counts)}</td>
-                        <td>{formatMs(device.responseMs)}</td>
-                        <td className="monitoring-muted">
-                          {formatAgo(device.lastCheckAt, now)}
-                        </td>
-                      </tr>
-                    ))}
+                    {devices.map((device) => {
+                      const open = expanded.has(device.assetId);
+                      const devicePaused = device.state === "paused";
+                      return (
+                        <Fragment key={device.assetId}>
+                          <tr>
+                            {data.canManage ? (
+                              <td className="monitoring-table__check">
+                                <input
+                                  aria-label={`${device.name} auswählen`}
+                                  checked={chosenDevices.has(device.assetId)}
+                                  onChange={() => toggleDevice(device.assetId)}
+                                  type="checkbox"
+                                />
+                              </td>
+                            ) : null}
+                            <td className="monitoring-table__toggle">
+                              <button
+                                aria-expanded={open}
+                                aria-label={
+                                  open
+                                    ? `Sensoren von ${device.name} zuklappen`
+                                    : `Sensoren von ${device.name} aufklappen`
+                                }
+                                className="monitoring-table__expand"
+                                onClick={() => toggleExpanded(device.assetId)}
+                                type="button"
+                              >
+                                {open ? (
+                                  <ChevronDown aria-hidden="true" size={16} />
+                                ) : (
+                                  <ChevronRight aria-hidden="true" size={16} />
+                                )}
+                              </button>
+                            </td>
+                            <td>
+                              <StateChip state={device.state} />
+                            </td>
+                            <td>
+                              <button
+                                className="text-button monitoring-table__name"
+                                onClick={() => onOpenDevice(device.assetId)}
+                                type="button"
+                              >
+                                {device.name}
+                              </button>
+                              <span className="monitoring-muted">
+                                {[
+                                  categoryText(
+                                    device.category,
+                                    device.categoryLabel,
+                                  ),
+                                  device.ipAddress ?? device.hostname,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                              {devicePaused && device.pause ? (
+                                <span className="monitoring-pause-note">
+                                  {pauseText(device.pause)}
+                                </span>
+                              ) : null}
+                            </td>
+                            <td>{sensorCountsText(device.counts)}</td>
+                            <td>{formatMs(device.responseMs)}</td>
+                            <td className="monitoring-muted">
+                              {formatAgo(device.lastCheckAt, now)}
+                            </td>
+                            {data.canManage ? (
+                              <td className="monitoring-table__action">
+                                {device.sensorCount > 0 ? (
+                                  <button
+                                    className="text-button"
+                                    disabled={pausing !== null}
+                                    onClick={() =>
+                                      void setPaused(
+                                        `device:${device.assetId}`,
+                                        {
+                                          type: "pauseDevice",
+                                          assetId: device.assetId,
+                                          paused: !devicePaused,
+                                        },
+                                        `«${device.name}»`,
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    {devicePaused ? (
+                                      <Play aria-hidden="true" size={14} />
+                                    ) : (
+                                      <Pause aria-hidden="true" size={14} />
+                                    )}
+                                    {pausing === `device:${device.assetId}`
+                                      ? "…"
+                                      : devicePaused
+                                        ? "Fortsetzen"
+                                        : "Pausieren"}
+                                  </button>
+                                ) : null}
+                              </td>
+                            ) : null}
+                          </tr>
+                          {open ? (
+                            <tr className="monitoring-table__sensors">
+                              <td colSpan={data.canManage ? 8 : 6}>
+                                <DeviceSensorList
+                                  assetId={device.assetId}
+                                  canManage={data.canManage}
+                                  chosen={chosenSensors}
+                                  now={now}
+                                  onChoose={toggleSensor}
+                                  onPause={(sensorId, paused, name) =>
+                                    void setPaused(
+                                      `sensor:${sensorId}`,
+                                      {
+                                        type: "pauseSensor",
+                                        sensorId,
+                                        paused,
+                                      },
+                                      `«${name}» (${device.name})`,
+                                    )
+                                  }
+                                  pausing={pausing}
+                                  revision={sensorRevision}
+                                  tenantId={tenantId}
+                                />
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -571,6 +865,118 @@ function OverviewView({
   );
 }
 
+/** Sensors of one device, shown when its row in the list is expanded. */
+function DeviceSensorList({
+  assetId,
+  canManage,
+  chosen,
+  now,
+  onChoose,
+  onPause,
+  pausing,
+  revision,
+  tenantId,
+}: {
+  assetId: string;
+  canManage: boolean;
+  chosen: ReadonlySet<string>;
+  now: number;
+  onChoose: (sensorId: string) => void;
+  onPause: (sensorId: string, paused: boolean, name: string) => void;
+  pausing: string | null;
+  revision: number;
+  tenantId: string;
+}) {
+  const [sensors, setSensors] = useState<MonitoringSensor[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    monitoringCall<MonitoringDeviceDetail>({
+      type: "device",
+      tenantId,
+      assetId,
+    })
+      .then((result) => {
+        if (!active) return;
+        setSensors(result.sensors);
+        setError(null);
+      })
+      .catch((failure) => {
+        if (active) setError(message(failure));
+      });
+    return () => {
+      active = false;
+    };
+  }, [assetId, revision, tenantId]);
+
+  if (error) return <p className="monitoring__empty">{error}</p>;
+  if (!sensors)
+    return <p className="monitoring-muted">Sensoren werden geladen …</p>;
+  if (sensors.length === 0)
+    return <p className="monitoring-muted">Dieses Gerät hat keine Sensoren.</p>;
+  return (
+    <ul className="monitoring-sensor-rows">
+      {sensors.map((sensor) => (
+        <li
+          className={canManage ? "monitoring-sensor-rows__item--check" : ""}
+          key={sensor.id}
+        >
+          {canManage ? (
+            <input
+              aria-label={`Sensor ${sensor.name} auswählen`}
+              checked={chosen.has(sensor.id)}
+              onChange={() => onChoose(sensor.id)}
+              type="checkbox"
+            />
+          ) : null}
+          <StateChip state={sensor.state} />
+          <span className="monitoring-sensor-rows__name">
+            <strong>{sensor.name}</strong>
+            <span className="monitoring-muted">
+              {[
+                kindLabel(sensor),
+                sensor.paused ? null : sensorValueText(sensor),
+                sensor.paused ? null : sensor.lastMessage,
+                sensor.lastCheckAt ? formatAgo(sensor.lastCheckAt, now) : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+            {sensor.paused ? (
+              <span className="monitoring-pause-note">
+                {pauseText({
+                  reason: sensor.pausedReason ?? null,
+                  by: sensor.pausedByName ?? null,
+                })}
+                {sensor.pausedAt ? ` · ${formatAgo(sensor.pausedAt, now)}` : ""}
+              </span>
+            ) : null}
+          </span>
+          {canManage ? (
+            <button
+              className="text-button"
+              disabled={pausing !== null}
+              onClick={() => onPause(sensor.id, !sensor.paused, sensor.name)}
+              type="button"
+            >
+              {sensor.paused ? (
+                <Play aria-hidden="true" size={14} />
+              ) : (
+                <Pause aria-hidden="true" size={14} />
+              )}
+              {pausing === `sensor:${sensor.id}`
+                ? "…"
+                : sensor.paused
+                  ? "Fortsetzen"
+                  : "Pausieren"}
+            </button>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Sonden
 
@@ -591,6 +997,8 @@ const EVENT_LABELS: Record<MonitoringEvent["kind"], string> = {
   down: "Ausfall",
   warning: "Warnung",
   up: "behoben",
+  paused: "pausiert",
+  resumed: "fortgesetzt",
 };
 
 /**
@@ -725,7 +1133,9 @@ function EventsCard({
                             ? "up"
                             : event.kind === "warning"
                               ? "warning"
-                              : "down"
+                              : event.kind === "down"
+                                ? "down"
+                                : "paused"
                         }`}
                       />
                       <div className="monitoring-events__main">
@@ -751,22 +1161,25 @@ function EventsCard({
                         <span className="monitoring-muted">
                           {eventText(event)}
                         </span>
-                        <span className="monitoring-events__services">
-                          {event.services.length ? (
-                            event.services.map((service) => (
-                              <span
-                                className="monitoring-service-chip"
-                                key={service}
-                              >
-                                {service}
+                        {event.kind === "paused" ||
+                        event.kind === "resumed" ? null : (
+                          <span className="monitoring-events__services">
+                            {event.services.length ? (
+                              event.services.map((service) => (
+                                <span
+                                  className="monitoring-service-chip"
+                                  key={service}
+                                >
+                                  {service}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="monitoring-muted">
+                                kein Dienst verknüpft
                               </span>
-                            ))
-                          ) : (
-                            <span className="monitoring-muted">
-                              kein Dienst verknüpft
-                            </span>
-                          )}
-                        </span>
+                            )}
+                          </span>
+                        )}
                       </div>
                       {event.incident && onOpenIncident ? (
                         <button
@@ -1399,11 +1812,18 @@ function DeviceView({
                     className="secondary-button"
                     disabled={busy}
                     onClick={() =>
-                      void act({
-                        type: "pauseDevice",
-                        assetId,
-                        paused: !allPaused,
-                      })
+                      void (async () => {
+                        const reason = allPaused
+                          ? null
+                          : await askPauseReason(`«${data.device.name}»`);
+                        if (!allPaused && reason === null) return;
+                        await act({
+                          type: "pauseDevice",
+                          assetId,
+                          paused: !allPaused,
+                          ...(reason ? { reason } : {}),
+                        });
+                      })()
                     }
                     type="button"
                   >
@@ -1823,6 +2243,15 @@ function SensorRow({
               ? agent.name
               : "keine Sonde zugewiesen"}
         </span>
+        {sensor.paused ? (
+          <span className="monitoring-pause-note">
+            {pauseText({
+              reason: sensor.pausedReason ?? null,
+              by: sensor.pausedByName ?? null,
+            })}
+            {sensor.pausedAt ? ` · ${formatAgo(sensor.pausedAt, now)}` : ""}
+          </span>
+        ) : null}
       </td>
       <td>
         {sensor.state === "down"
@@ -2639,14 +3068,6 @@ function SensorDialog({
             </div>
           </fieldset>
         ) : null}
-        <label className="monitoring-check">
-          <input
-            checked={draft.paused}
-            onChange={(event) => change({ paused: event.target.checked })}
-            type="checkbox"
-          />
-          <span>Pausiert (wird nicht gemessen, kein Alarm)</span>
-        </label>
         {error ? (
           <p className="ticket-detail-message error" role="alert">
             {error}

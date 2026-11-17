@@ -127,6 +127,9 @@ function sensorView(sensor: Row, status: Row | undefined, now: number) {
     cloud: sensor.cloud === true,
     failuresToDown: number(sensor.failures_to_down) ?? 2,
     paused: sensor.paused === true,
+    pausedReason: sensor.paused === true ? text(sensor.paused_reason) : null,
+    pausedAt: sensor.paused === true ? text(sensor.paused_at) : null,
+    pausedBy: sensor.paused === true ? text(sensor.paused_by) : null,
     serviceIds: Array.isArray(sensor.service_ids) ? (sensor.service_ids as unknown[]).filter(isUuid) : [],
     // Only while it runs.
     simulateUntil: text(sensor.simulate_until) && Date.parse(String(sensor.simulate_until)) > now
@@ -151,7 +154,7 @@ function sensorView(sensor: Row, status: Row | undefined, now: number) {
 
 async function loadSensors(admin: Client, tenantId: string, assetId?: string) {
   let sensorQuery = admin.from("monitoring_sensors")
-    .select("id, asset_id, agent_id, kind, name, target, port, url, interval_seconds, timeout_ms, warning_above, warning_below, down_above, down_below, snmp_metric, snmp_oid, snmp_index, scale, unit, expect, cloud, failures_to_down, paused, service_ids, simulate_until")
+    .select("id, asset_id, agent_id, kind, name, target, port, url, interval_seconds, timeout_ms, warning_above, warning_below, down_above, down_below, snmp_metric, snmp_oid, snmp_index, scale, unit, expect, cloud, failures_to_down, paused, paused_reason, paused_by, paused_at, service_ids, simulate_until")
     .eq("tenant_id", tenantId).order("name").limit(MAX_SENSORS);
   if (assetId) sensorQuery = sensorQuery.eq("asset_id", assetId);
   const sensors = await sensorQuery;
@@ -168,7 +171,89 @@ async function loadSensors(admin: Client, tenantId: string, assetId?: string) {
     })();
   const statuses = new Map(statusRows.map((row) => [String(row.sensor_id), row]));
   const now = Date.now();
-  return rows.map((row) => sensorView(row, statuses.get(String(row.id)), now));
+  const names = await profileNames(admin, rows.map((row) => text(row.paused_by)));
+  return rows.map((row) => {
+    const view = sensorView(row, statuses.get(String(row.id)), now);
+    return { ...view, pausedByName: view.pausedBy ? names.get(view.pausedBy) ?? null : null };
+  });
+}
+
+/** Display names of people (e.g. who paused a sensor). */
+async function profileNames(admin: Client, ids: (string | null)[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((id): id is string => !!id && isUuid(id)))];
+  if (!unique.length) return new Map();
+  const { data, error } = await admin.from("user_profiles").select("id, display_name").in("id", unique);
+  if (error) return new Map();
+  return new Map(((data ?? []) as Row[]).map((row) => [String(row.id), text(row.display_name) ?? "Unbekannte Person"]));
+}
+
+/**
+ * Pauses or resumes whole devices and single sensors. Pausing needs a reason;
+ * it is kept on each sensor and, like resuming, written to the activity log
+ * shown under «Letzte Ereignisse». Only sensors whose state changes count.
+ */
+async function setPause(
+  admin: Client,
+  tenantId: string,
+  actorId: string,
+  input: { assetIds: string[]; sensorIds: string[]; paused: boolean; reason: string | null },
+) {
+  const rows: Row[] = [];
+  for (const [column, ids] of [["asset_id", input.assetIds], ["id", input.sensorIds]] as const) {
+    for (const part of chunks(ids, 100)) {
+      const { data, error } = await admin.from("monitoring_sensors").select("id, asset_id, name, paused")
+        .eq("tenant_id", tenantId).in(column, part);
+      if (error) throw unavailable();
+      rows.push(...((data ?? []) as Row[]));
+    }
+  }
+  const unique = new Map(rows.map((row) => [String(row.id), row]));
+  if (input.sensorIds.some((id) => !unique.has(id))) {
+    throw new HttpError(404, "sensor_not_found", "Mindestens ein Sensor wurde nicht gefunden.");
+  }
+  const changed = [...unique.values()].filter((row) => (row.paused === true) !== input.paused);
+  const now = new Date().toISOString();
+  for (const part of chunks(changed.map((row) => String(row.id)), 100)) {
+    const { error } = await admin.from("monitoring_sensors").update({
+      paused: input.paused,
+      paused_reason: input.paused ? input.reason : null,
+      paused_by: input.paused ? actorId : null,
+      paused_at: input.paused ? now : null,
+      updated_at: now,
+    }).eq("tenant_id", tenantId).in("id", part);
+    if (error) throw unavailable();
+  }
+  if (input.paused) {
+    for (const row of changed) {
+      await closeSensorAlert(admin, tenantId, String(row.id), `Pausiert: ${input.reason}`);
+    }
+  }
+  // Activity: one entry per device that was chosen as a whole, one per single sensor.
+  const assetIds = [...new Set(changed.map((row) => String(row.asset_id)))];
+  const assets = assetIds.length ? await selectIn(admin, "assets", "id, name", tenantId, "id", assetIds) : [];
+  const assetName = new Map(assets.map((row) => [String(row.id), String(row.name)]));
+  const wholeDevices = new Set(input.assetIds);
+  const entries: Row[] = [];
+  for (const assetId of assetIds) {
+    if (!wholeDevices.has(assetId)) continue;
+    entries.push({ asset_id: assetId, sensor_id: null, sensor_name: null });
+  }
+  for (const row of changed) {
+    if (wholeDevices.has(String(row.asset_id))) continue;
+    entries.push({ asset_id: String(row.asset_id), sensor_id: String(row.id), sensor_name: String(row.name) });
+  }
+  if (entries.length) {
+    const { error } = await admin.from("monitoring_sensor_activity").insert(entries.map((entry) => ({
+      ...entry,
+      tenant_id: tenantId,
+      device_name: assetName.get(String(entry.asset_id)) ?? "",
+      action: input.paused ? "paused" : "resumed",
+      reason: input.paused ? input.reason : null,
+      actor_id: actorId,
+    })));
+    if (error) console.error("monitoring activity failed", error.code, error.message);
+  }
+  return { ok: true, sensors: changed.length };
 }
 
 const PACKAGE_BUCKET = "probe-packages";
@@ -301,6 +386,14 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
         }
         : null,
       incident: incidents.get(id) ?? null,
+      // Newest pause on the device: who, when and why.
+      pause: (() => {
+        const latest = own.filter((sensor) => sensor.paused && sensor.pausedAt)
+          .sort((a, b) => String(b.pausedAt).localeCompare(String(a.pausedAt)))[0];
+        return latest
+          ? { reason: latest.pausedReason, by: latest.pausedByName, at: latest.pausedAt }
+          : null;
+      })(),
     };
   }).sort((a, b) => rank[a.state] - rank[b.state] || a.name.localeCompare(b.name, "de"));
   // Services affected by the active alarms: those of the sensor, else those
@@ -837,7 +930,7 @@ async function saveSensor(admin: Client, tenantId: string, actorId: string, acti
     expect: sensor.expect,
     cloud: sensor.cloud,
     failures_to_down: sensor.failuresToDown,
-    paused: sensor.paused,
+    // Pausing goes through pauseDevice/pauseSensor/pauseMany (with a reason).
     updated_at: new Date().toISOString(),
     // Only when the client sent them (older apps do not know the field).
     ...(sensor.serviceIds === null ? {} : { service_ids: sensor.serviceIds }),
@@ -847,7 +940,6 @@ async function saveSensor(admin: Client, tenantId: string, actorId: string, acti
       .eq("tenant_id", tenantId).eq("id", sensor.id).eq("asset_id", sensor.assetId).select("id").maybeSingle();
     if (updated.error) throw unavailable();
     if (!updated.data) throw new HttpError(404, "sensor_not_found", "Der Sensor wurde nicht gefunden.");
-    if (sensor.paused) await closeSensorAlert(admin, tenantId, sensor.id, "Sensor pausiert");
     return { sensorId: sensor.id };
   }
   const count = await admin.from("monitoring_sensors").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("asset_id", sensor.assetId);
@@ -856,7 +948,7 @@ async function saveSensor(admin: Client, tenantId: string, actorId: string, acti
     throw new HttpError(422, "too_many_sensors", `Ein Gerät kann höchstens ${MAX_SENSORS_PER_DEVICE} Sensoren haben.`);
   }
   const inserted = await admin.from("monitoring_sensors")
-    .insert({ ...values, tenant_id: tenantId, asset_id: sensor.assetId, created_by: actorId }).select("id").single();
+    .insert({ ...values, paused: false, tenant_id: tenantId, asset_id: sensor.assetId, created_by: actorId }).select("id").single();
   if (inserted.error) throw unavailable();
   return { sensorId: String(inserted.data.id) };
 }
@@ -983,11 +1075,34 @@ async function eventsOverview(admin: Client, tenantId: string, range: EventRange
   const assetName = new Map(assets.map((row) => [String(row.id), String(row.name)]));
   const serviceName = new Map(services.map((row) => [String(row.id), String(row.name)]));
   const incidentNumber = new Map(incidents.map((row) => [String(row.id), String(row.number)]));
+  // Paused / resumed by people (activity log), mixed into the feed by time.
+  const activity = await admin.from("monitoring_sensor_activity")
+    .select("id, asset_id, device_name, sensor_name, action, reason, actor_id, created_at")
+    .eq("tenant_id", tenantId).gte("created_at", from)
+    .order("created_at", { ascending: false }).limit(100);
+  const activityRows = activity.error ? [] : (activity.data ?? []) as Row[];
+  const actors = await profileNames(admin, activityRows.map((row) => text(row.actor_id)));
+  const activityEvents = activityRows.map((row) => ({
+    id: `activity:${String(row.id)}`,
+    at: String(row.created_at),
+    kind: String(row.action) === "paused" ? "paused" as const : "resumed" as const,
+    assetId: text(row.asset_id),
+    deviceName: text(row.device_name) || "Gerät",
+    sensorName: text(row.sensor_name),
+    message: null,
+    durationSeconds: null,
+    ongoing: false,
+    services: [] as string[],
+    incident: null,
+    test: false,
+    actor: text(row.actor_id) ? actors.get(String(row.actor_id)) ?? "Unbekannte Person" : null,
+    reason: text(row.reason),
+  }));
   return {
     range,
     counts: feed.counts,
     buckets: feed.buckets,
-    events: feed.events.map((event) => ({
+    events: [...feed.events.map((event) => ({
       id: event.id,
       at: event.at,
       kind: event.kind,
@@ -1003,7 +1118,11 @@ async function eventsOverview(admin: Client, tenantId: string, range: EventRange
         ? { id: event.incidentId, number: incidentNumber.get(event.incidentId)! }
         : null,
       test: event.test,
-    })),
+      actor: null as string | null,
+      reason: null as string | null,
+    })), ...activityEvents]
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .slice(0, 60),
   };
 }
 
@@ -1423,19 +1542,19 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
       if (removed.error) throw unavailable();
       return { ok: true, sensors: (sensors.data ?? []).length };
     }
-    case "pauseDevice": {
+    case "pauseDevice":
       manage();
-      const updated = await admin.from("monitoring_sensors")
-        .update({ paused: action.paused, updated_at: new Date().toISOString() })
-        .eq("tenant_id", action.tenantId).eq("asset_id", action.assetId).select("id");
-      if (updated.error) throw unavailable();
-      if (action.paused) {
-        for (const row of (updated.data ?? []) as Row[]) {
-          await closeSensorAlert(admin, action.tenantId, String(row.id), "Überwachung des Geräts pausiert");
-        }
-      }
-      return { ok: true, sensors: (updated.data ?? []).length };
-    }
+      return await setPause(admin, action.tenantId, actorId, {
+        assetIds: [action.assetId], sensorIds: [], paused: action.paused, reason: action.reason,
+      });
+    case "pauseSensor":
+      manage();
+      return await setPause(admin, action.tenantId, actorId, {
+        assetIds: [], sensorIds: [action.sensorId], paused: action.paused, reason: action.reason,
+      });
+    case "pauseMany":
+      manage();
+      return await setPause(admin, action.tenantId, actorId, action);
   }
 }
 

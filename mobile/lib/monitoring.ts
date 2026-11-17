@@ -48,14 +48,17 @@ export const loadMonitoringSeries = (
     range,
   });
 
+/** Pausing needs a reason (3–300 characters); resuming does not. */
 export const pauseMonitoringDevice = (
   tenantId: string,
   assetId: string,
   paused: boolean,
+  reason: string | null = null,
 ) =>
   call<{ ok: boolean }>({
     type: "pauseDevice",
     tenantId,
     assetId,
     paused,
+    ...(paused ? { reason } : {}),
   });
