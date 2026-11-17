@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Phishing-/Junk-Fälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # Handbuch für Agenten
@@ -829,6 +829,12 @@ Tickets aus E-Mails enthalten die E-Mail-Signatur nicht mehr. Stammt die Mail
 von einer Adresse ausserhalb deiner Organisation, stehen unter **Anfragende
 Person** zusätzlich die E-Mail-Adresse und alle Telefonnummern aus der
 Signatur; ein Klick startet Anruf oder E-Mail.
+
+War bei der E-Mail jemand im **Cc**, steht diese Person unter **In Kopie (CC)**.
+Beim Schreiben einer externen Antwort kannst du sie unter **Auch antworten an
+(im CC der Anfrage)** ankreuzen: Sie erhält die Nachricht dann ebenfalls per
+E-Mail, als Kopie. Standardmässig ist niemand angekreuzt. Weitere Personen
+fügst du mit **Kopie per E-Mail senden** hinzu.
 
 Hat die anfragende Person genau ein Gerät (zugewiesen oder als primäre Person
 in Intune), verknüpft nextDesk es beim Erstellen des Tickets automatisch. Bei
