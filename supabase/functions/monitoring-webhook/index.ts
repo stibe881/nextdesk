@@ -372,11 +372,11 @@ async function incidentForAlert(
     .select(INCIDENT_COLUMNS)
     .eq("tenant_id", tenantId)
     .eq("incident_key", deviceKey)
-    // Resolved by an «Up» (before 0311: closed automatically), never one an
-    // agent closed.
+    // «Wieder OK» and not closed yet (any age), or closed automatically
+    // (before 0364) a few minutes ago; never one an agent closed.
     .in("state", ["resolved", "closed"])
     .is("closed_by", null)
-    .gte("resolved_at", new Date(now.getTime() - REOPEN_WINDOW_MS).toISOString())
+    .or(`state.eq.resolved,resolved_at.gte.${new Date(now.getTime() - REOPEN_WINDOW_MS).toISOString()}`)
     .order("resolved_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -517,13 +517,11 @@ async function resolveIncidentIfClear(
   if (open.error || ((open.data ?? []) as Row[]).length > 0) return false;
   const updated = await admin
     .from("monitoring_incidents")
-    // Back to OK: closed automatically, nobody has to confirm or close it.
-    // The cause can be added afterwards (incidents «close» on a closed one).
+    // Back to OK: «Wieder OK», but the incident stays open until an agent
+    // closes it with the cause (never closed automatically).
     .update({
-      state: "closed",
+      state: "resolved",
       resolved_at: now.toISOString(),
-      closed_at: now.toISOString(),
-      closing_note: "Automatisch abgeschlossen: Alle Sensoren melden wieder OK.",
       last_event_at: now.toISOString(),
     })
     .eq("id", incidentId)
@@ -531,7 +529,7 @@ async function resolveIncidentIfClear(
     .select("id");
   if (((updated.data ?? []) as Row[]).length) {
     await addIncidentEvent(admin, tenantId, incidentId, "resolved", null,
-      "Alle Sensoren melden wieder OK. Störung automatisch abgeschlossen.");
+      "Alle Sensoren melden wieder OK. Die Störung bleibt offen, bis sie abgeschlossen wird.");
     return true;
   }
   return false;
@@ -632,12 +630,7 @@ async function settleAfterDown(
   if (!stillOpen.error && ((stillOpen.data ?? []) as Row[]).length === 0) {
     await admin
       .from("monitoring_incidents")
-      .update({
-        state: "closed",
-        resolved_at: now.toISOString(),
-        closed_at: now.toISOString(),
-        closing_note: "Automatisch abgeschlossen: Alle Sensoren melden wieder OK.",
-      })
+      .update({ state: "resolved", resolved_at: now.toISOString() })
       .eq("id", incidentId)
       .eq("state", "active");
   }

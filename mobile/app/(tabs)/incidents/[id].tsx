@@ -741,14 +741,16 @@ export default function IncidentDetailScreen() {
               </Text>
             ) : detail.state === "active" ? (
               <Text style={styles.muted}>
-                Meldet PRTG wieder OK, schliesst sich die Störung automatisch.
-                Abschliessen beendet sie auch ohne OK-Meldung.
+                {tn(
+                  "Auch wenn die Überwachung wieder OK meldet, bleibt die Störung offen, bis du sie mit der Ursache abschliesst.",
+                  "Auch wenn die Überwachung wieder OK meldet, bleibt die Störung offen, bis Sie sie mit der Ursache abschliessen.",
+                )}
               </Text>
             ) : detail.state === "resolved" ? (
               <Text style={styles.muted}>
                 {tn(
-                  "PRTG meldet wieder OK. Trage die Ursache bei Bedarf nach.",
-                  "PRTG meldet wieder OK. Tragen Sie die Ursache bei Bedarf nach.",
+                  "Die Überwachung meldet wieder OK. Schliesse die Störung mit der Ursache ab.",
+                  "Die Überwachung meldet wieder OK. Schliessen Sie die Störung mit der Ursache ab.",
                 )}
               </Text>
             ) : null}

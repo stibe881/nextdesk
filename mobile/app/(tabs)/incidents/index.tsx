@@ -40,7 +40,7 @@ const STATUS_PAGE_LABELS: Record<string, string> = {
 const FILTERS: { key: IncidentFilter; label: string }[] = [
   { key: "active", label: "Aktiv" },
   { key: "unacknowledged", label: "Unbestätigt" },
-  { key: "closed", label: "Behoben" },
+  { key: "closed", label: "Abgeschlossen" },
   { key: "all", label: "Alle" },
 ];
 
@@ -48,7 +48,7 @@ const EMPTY: Partial<Record<IncidentFilter, string>> = {
   active: "Keine aktiven Störungen. Alles läuft.",
   unacknowledged: "Alle aktiven Störungen sind bestätigt.",
   resolved: "Keine behobenen Störungen, die noch abgeschlossen werden müssen.",
-  closed: "Noch keine behobenen Störungen.",
+  closed: "Noch keine abgeschlossenen Störungen.",
 };
 
 /** «Störungen»: PRTG incidents, handled without tickets. Agents only. */

@@ -33,7 +33,7 @@ export const CAUSES = Object.keys(CAUSE_LABELS) as IncidentCause[];
 
 export const STATE_LABELS: Record<string, string> = {
   active: "Aktiv",
-  resolved: "Behoben",
+  resolved: "Wieder OK – offen",
   closed: "Abgeschlossen",
 };
 
