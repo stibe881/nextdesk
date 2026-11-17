@@ -996,6 +996,68 @@ button.monitoring-tile[aria-pressed="true"] {
   background: var(--tone-danger);
 }
 
+.monitoring__columns--even {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.monitoring__columns--even > .monitoring-card {
+  align-content: start;
+}
+
+.monitoring-dot--warning {
+  background: var(--tone-warning);
+}
+
+.monitoring-events {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.monitoring-events li {
+  display: grid;
+  grid-template-columns: 76px 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding: 9px 0;
+}
+
+.monitoring-events__time {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.monitoring-events__main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.monitoring-events__main > span:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.monitoring-events__main .text-button,
+.monitoring-events li > .text-button {
+  padding: 0;
+  font-weight: 650;
+}
+
+.monitoring-events__services,
+.monitoring-alarms__services {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .monitoring-steps {
   display: grid;
   gap: 6px;

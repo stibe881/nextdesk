@@ -18,6 +18,7 @@ import {
   rangePlan,
   parseCategoryLabel,
   availabilityReport,
+  eventFeed,
 } from "./logic.ts";
 
 const TENANT = "00000000-0000-4000-8000-000000000001";
@@ -397,4 +398,40 @@ Deno.test("availability: nothing monitored yet", () => {
   assertEquals(report.overall, null);
   assertEquals(report.buckets.every((bar) => bar.level === "none"), true);
   assertEquals(parseAction({ type: "availability", tenantId: TENANT, range: "2d" }), null);
+});
+
+Deno.test("events: an alert is an event when it opens and when it ends", () => {
+  const now = Date.parse("2026-11-17T12:00:00Z");
+  const minute = 60_000;
+  const alert = (overrides: Record<string, unknown>) => ({
+    id: "a1", assetId: "dev", sensorName: "Ping", openedAt: now - 30 * minute, resolvedAt: null as number | null,
+    wasDown: true, simulated: false, lastMessage: "Keine Antwort auf Ping", serviceIds: ["s1"], incidentId: "i1",
+    ...overrides,
+  });
+  const feed = eventFeed({
+    now,
+    range: "24h",
+    alerts: [
+      alert({}),
+      alert({ id: "a2", openedAt: now - 5 * 60 * minute, resolvedAt: now - 5 * 60 * minute + 4 * minute, lastMessage: "Wieder erreichbar" }),
+      alert({ id: "a3", wasDown: false, simulated: true, openedAt: now - 2 * minute }),
+      // Opened before the range, ended inside: only the end shows.
+      alert({ id: "a4", openedAt: now - 30 * 60 * minute, resolvedAt: now - 60 * minute }),
+    ],
+  });
+  assertEquals(feed.events.map((event) => [event.id, event.kind, event.ongoing, event.durationSeconds]), [
+    ["a3:open", "warning", true, null],
+    ["a1:open", "down", true, null],
+    ["a4:end", "up", false, 29 * 3600],
+    ["a2:end", "up", false, 240],
+    ["a2:open", "down", false, null],
+  ]);
+  assertEquals(feed.counts, { down: 2, warning: 1, up: 2 });
+  assertEquals(feed.events[0]!.test, true);
+  // A finished alert keeps only the message of its end.
+  assertEquals(feed.events[4]!.message, null);
+  assertEquals(feed.buckets.length, 24);
+  assertEquals(feed.buckets[23]!.level, "down");
+  assertEquals(feed.buckets[19]!.level, "down");
+  assertEquals(feed.buckets[0]!.level, "none");
 });

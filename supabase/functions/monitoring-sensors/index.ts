@@ -22,6 +22,8 @@ import {
   availabilityPlan,
   type AvailabilityRange,
   availabilityReport,
+  eventFeed,
+  type EventRange,
   type DeviceEdit,
   bucketize,
   deviceState,
@@ -288,11 +290,37 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
       responseMs: primary && primary.state !== "unknown" && primary.state !== "down" ? primary.lastValue : null,
       lastCheckAt: own.map((sensor) => sensor.lastCheckAt).filter((value): value is string => !!value).sort().at(-1) ?? null,
       problem: problem
-        ? { sensorId: problem.id, sensorName: problem.name, state: problem.state, since: problem.since, message: problem.lastMessage }
+        ? {
+          sensorId: problem.id,
+          sensorName: problem.name,
+          state: problem.state,
+          since: problem.since,
+          message: problem.lastMessage,
+          services: [] as string[],
+          serviceIds: problem.serviceIds,
+        }
         : null,
       incident: incidents.get(id) ?? null,
     };
   }).sort((a, b) => rank[a.state] - rank[b.state] || a.name.localeCompare(b.name, "de"));
+  // Services affected by the active alarms: those of the sensor, else those
+  // linked to the device.
+  const alarmed = devices.filter((device) => device.problem);
+  await Promise.all(alarmed.filter((device) => !device.problem!.serviceIds.length).slice(0, 50).map(async (device) => {
+    const resolved = await admin.rpc("monitoring_resolve_asset", { p_tenant_id: tenantId, p_asset_id: device.assetId });
+    if (!resolved.error && Array.isArray(resolved.data?.serviceIds)) {
+      device.problem!.serviceIds = (resolved.data.serviceIds as unknown[]).filter(isUuid);
+    }
+  }));
+  const alarmServiceIds = [...new Set(alarmed.flatMap((device) => device.problem!.serviceIds))];
+  const alarmServices = new Map(
+    (alarmServiceIds.length ? await selectIn(admin, "services", "id, name", tenantId, "id", alarmServiceIds) : [])
+      .map((row) => [String(row.id), String(row.name)]),
+  );
+  for (const device of alarmed) {
+    device.problem!.services = device.problem!.serviceIds.map((id) => alarmServices.get(id))
+      .filter((name): name is string => !!name).sort((a, b) => a.localeCompare(b, "de"));
+  }
   const totals: Record<DisplayState, number> = { down: 0, warning: 0, up: 0, unknown: 0, paused: 0 };
   for (const device of devices) totals[device.state] += 1;
   const sensorCounts = new Map<string, number>();
@@ -912,6 +940,74 @@ async function interfaces(admin: Client, tenantId: string, jobId: string) {
 }
 
 /**
+ * Latest events of the sensors for the overview: outages, warnings and
+ * recoveries with device, services affected and incident.
+ */
+async function eventsOverview(admin: Client, tenantId: string, range: EventRange) {
+  const now = Date.now();
+  const from = new Date(now - (range === "24h" ? 24 : 7 * 24) * 3_600_000).toISOString();
+  const alerts = await admin.from("monitoring_alerts")
+    .select("id, asset_id, device_name, sensor_name, opened_at, resolved_at, was_down, simulated, last_message, service_ids, service_id, incident_id")
+    .eq("tenant_id", tenantId).like("external_key", "nd:sensor:%")
+    .or(`opened_at.gte.${from},resolved_at.gte.${from}`)
+    .order("opened_at", { ascending: false }).limit(1000);
+  if (alerts.error) throw unavailable();
+  const rows = (alerts.data ?? []) as Row[];
+  const feed = eventFeed({
+    now,
+    range,
+    alerts: rows.map((row) => ({
+      id: String(row.id),
+      assetId: text(row.asset_id),
+      sensorName: text(row.sensor_name),
+      openedAt: Date.parse(String(row.opened_at)),
+      resolvedAt: row.resolved_at ? Date.parse(String(row.resolved_at)) : null,
+      wasDown: row.was_down === true,
+      simulated: row.simulated === true,
+      lastMessage: text(row.last_message),
+      serviceIds: Array.isArray(row.service_ids) && row.service_ids.length
+        ? (row.service_ids as unknown[]).filter(isUuid)
+        : isUuid(row.service_id) ? [row.service_id] : [],
+      incidentId: text(row.incident_id),
+    })),
+  });
+  const deviceNames = new Map(rows.map((row) => [String(row.asset_id), text(row.device_name)]));
+  const assetIds = [...new Set(feed.events.map((event) => event.assetId).filter((id): id is string => !!id))];
+  const serviceIds = [...new Set(feed.events.flatMap((event) => event.serviceIds))];
+  const incidentIds = [...new Set(feed.events.map((event) => event.incidentId).filter((id): id is string => !!id))];
+  const [assets, services, incidents] = await Promise.all([
+    assetIds.length ? selectIn(admin, "assets", "id, name", tenantId, "id", assetIds) : Promise.resolve([]),
+    serviceIds.length ? selectIn(admin, "services", "id, name", tenantId, "id", serviceIds) : Promise.resolve([]),
+    incidentIds.length ? selectIn(admin, "monitoring_incidents", "id, number", tenantId, "id", incidentIds) : Promise.resolve([]),
+  ]);
+  const assetName = new Map(assets.map((row) => [String(row.id), String(row.name)]));
+  const serviceName = new Map(services.map((row) => [String(row.id), String(row.name)]));
+  const incidentNumber = new Map(incidents.map((row) => [String(row.id), String(row.number)]));
+  return {
+    range,
+    counts: feed.counts,
+    buckets: feed.buckets,
+    events: feed.events.map((event) => ({
+      id: event.id,
+      at: event.at,
+      kind: event.kind,
+      assetId: event.assetId,
+      deviceName: (event.assetId ? assetName.get(event.assetId) ?? deviceNames.get(event.assetId) : null) ?? "Gerät",
+      sensorName: event.sensorName,
+      message: event.message,
+      durationSeconds: event.durationSeconds,
+      ongoing: event.ongoing,
+      services: event.serviceIds.map((id) => serviceName.get(id)).filter((name): name is string => !!name)
+        .sort((a, b) => a.localeCompare(b, "de")),
+      incident: event.incidentId && incidentNumber.has(event.incidentId)
+        ? { id: event.incidentId, number: incidentNumber.get(event.incidentId)! }
+        : null,
+      test: event.test,
+    })),
+  };
+}
+
+/**
  * Availability of the monitored devices for the overview: overall value, a
  * bar per day (week), and the devices that were down most, with the services
  * affected. Computed from the outages of nextDesk's own sensors; simulated
@@ -1284,6 +1380,8 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
       return await interfaces(admin, action.tenantId, action.jobId);
     case "availability":
       return await availabilityOverview(admin, action.tenantId, action.range);
+    case "events":
+      return await eventsOverview(admin, action.tenantId, action.range);
     case "simulate":
       manage();
       return await simulate(admin, action.tenantId, action.assetId, action.sensorId, action.minutes);
