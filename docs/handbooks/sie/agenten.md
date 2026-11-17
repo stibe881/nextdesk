@@ -635,6 +635,10 @@ der Übersicht, im Kanban und in der App.
   Supportstufen, erscheinen zusätzlich _Alle Stufen / 1st / 2nd / 3rd Level_.
   Wählen Sie eine Stufe, zeigen auch die Kacheln oben nur die Zahlen dieser
   Stufe.
+- **Sortieren nach:** rechts in der Leiste über der Liste, für alle Agenten:
+  Letzte Änderung, Agent, Status, Abteilung oder Priorität. Der Pfeil daneben
+  wechselt zwischen absteigend und aufsteigend. Dieselbe Einstellung gibt es
+  unter **Filter & Sortierung**.
 - **Filter & Sortierung**: Suche, Status (Mehrfachauswahl: mehrere Status
   gleichzeitig ankreuzen), Priorität, Agent (_Mir zugewiesen_,
   _Nicht zugewiesen_), Abteilung, Sortierung. **Filter zurücksetzen** stellt

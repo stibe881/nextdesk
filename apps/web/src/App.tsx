@@ -345,6 +345,13 @@ type NotificationItem = {
 };
 
 type TicketSortBy = "updated" | "agent" | "status" | "department" | "priority";
+const TICKET_SORT_OPTIONS: readonly { value: TicketSortBy; label: string }[] = [
+  { value: "updated", label: "Letzte Änderung" },
+  { value: "agent", label: "Agent" },
+  { value: "status", label: "Status" },
+  { value: "department", label: "Abteilung" },
+  { value: "priority", label: "Priorität" },
+];
 type TicketSortDirection = "asc" | "desc";
 type SavedTicketViewFilters = {
   agent: string;
@@ -7440,6 +7447,19 @@ function AuthenticatedApp() {
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
                 <SupportLevelQueueFilter
                   onChange={setSupportLevelFilter}
+                  sort={{
+                    options: TICKET_SORT_OPTIONS,
+                    sortBy: ticketListRefinement.sortBy,
+                    sortDirection: ticketListRefinement.sortDirection,
+                    onChange: (sortBy, sortDirection) => {
+                      setTicketPage(0);
+                      setTicketListRefinement((current) => ({
+                        ...current,
+                        sortBy,
+                        sortDirection,
+                      }));
+                    },
+                  }}
                   tenantId={activeTenant.id}
                   value={supportLevelFilter}
                 />
@@ -9504,11 +9524,11 @@ function TicketListFilters({
                     }
                     value={filters.sortBy}
                   >
-                    <option value="updated">Letzte Änderung</option>
-                    <option value="agent">Agent</option>
-                    <option value="status">Status</option>
-                    <option value="department">Abteilung</option>
-                    <option value="priority">Priorität</option>
+                    {TICKET_SORT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label>
