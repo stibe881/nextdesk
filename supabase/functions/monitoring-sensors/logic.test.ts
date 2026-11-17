@@ -7,6 +7,7 @@ import {
   deviceState,
   displayState,
   parseAction,
+  PAUSE_REASON_REQUIRED,
   parseDeviceEdit,
   parseInterfaces,
   isOlderVersion,
@@ -74,6 +75,8 @@ Deno.test("actions: tenant is required, validation message is passed on", () => 
   assertEquals(parseAction({ type: "overview", tenantId: TENANT }), { type: "overview", tenantId: TENANT });
   assertEquals(parseAction({ type: "overview" }), null);
   assertEquals(parseAction({ type: "summary", tenantId: TENANT }), { type: "summary", tenantId: TENANT });
+  assertEquals(parseAction({ type: "pauseSensor", tenantId: TENANT, sensorId: "x", paused: true }), null);
+  assertEquals(parseAction({ type: "pauseSensor", tenantId: TENANT, sensorId: TENANT, paused: "ja" }), null);
   assertEquals(parseAction({ type: "deviceTicket", tenantId: TENANT, assetId: "nope" }), null);
   assertEquals(parseAction({ type: "series", tenantId: TENANT, sensorId: ASSET, range: "2y" }), null);
   assertEquals(parseAction({ type: "saveSensor", tenantId: TENANT, sensor: { assetId: ASSET, kind: "tcp" } }), "Der Port muss zwischen 1 und 65535 liegen.");
@@ -434,4 +437,30 @@ Deno.test("events: an alert is an event when it opens and when it ends", () => {
   assertEquals(feed.buckets[23]!.level, "down");
   assertEquals(feed.buckets[19]!.level, "down");
   assertEquals(feed.buckets[0]!.level, "none");
+});
+
+Deno.test("Pausieren braucht einen Grund, Fortsetzen nicht", () => {
+  const asset = "11111111-1111-4111-8111-111111111111";
+  const sensor = "22222222-2222-4222-8222-222222222222";
+  assertEquals(
+    parseAction({ type: "pauseDevice", tenantId: TENANT, assetId: asset, paused: true }),
+    PAUSE_REASON_REQUIRED,
+  );
+  assertEquals(
+    parseAction({ type: "pauseDevice", tenantId: TENANT, assetId: asset, paused: true, reason: "  Wartung\nSwitch  " }),
+    { type: "pauseDevice", tenantId: TENANT, assetId: asset, paused: true, reason: "Wartung Switch" },
+  );
+  assertEquals(
+    parseAction({ type: "pauseSensor", tenantId: TENANT, sensorId: sensor, paused: false, reason: "egal" }),
+    { type: "pauseSensor", tenantId: TENANT, sensorId: sensor, paused: false, reason: null },
+  );
+  assertEquals(
+    parseAction({ type: "pauseMany", tenantId: TENANT, assetIds: [asset, asset], sensorIds: [sensor], paused: true, reason: "ab" }),
+    PAUSE_REASON_REQUIRED,
+  );
+  assertEquals(
+    parseAction({ type: "pauseMany", tenantId: TENANT, assetIds: [asset, asset], sensorIds: [sensor], paused: true, reason: "Umbau" }),
+    { type: "pauseMany", tenantId: TENANT, assetIds: [asset], sensorIds: [sensor], paused: true, reason: "Umbau" },
+  );
+  assertEquals(parseAction({ type: "pauseMany", tenantId: TENANT, assetIds: [], sensorIds: [], paused: false }), null);
 });
