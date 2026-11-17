@@ -5362,6 +5362,36 @@ function AuthenticatedApp() {
     setQueue("alle");
     setTicketScope(canWorkTickets ? "all" : "mine");
   };
+  // Applies a saved view (from the filter panel or the bar above the list).
+  const applySavedTicketView = (filters: SavedTicketViewFilters) => {
+    clearTicketSelection();
+    setMetricTicketFilter(null);
+    setReportDrilldown(null);
+    setQuery(filters.query);
+    setQueue(filters.queue);
+    setTicketScope(filters.ticketScope);
+    setTicketListRefinement({
+      agent: filters.agent,
+      department: filters.department,
+      priority: filters.priority,
+      sortBy: filters.sortBy,
+      sortDirection: filters.sortDirection,
+      status: filters.status,
+    });
+  };
+  // The saved view that matches the current filters exactly, if any.
+  const activeSavedTicketView =
+    savedTicketViews.find((view) => {
+      const current: SavedTicketViewFilters = {
+        ...ticketListRefinement,
+        query,
+        queue,
+        ticketScope,
+      };
+      return (Object.keys(current) as (keyof SavedTicketViewFilters)[]).every(
+        (key) => view.filters[key] === current[key],
+      );
+    }) ?? null;
   const updateTicketSearchQuery = (nextQuery: string) => {
     if (!nextQuery.trim()) setMetricTicketFilter(null);
     setQuery(nextQuery);
@@ -7366,22 +7396,7 @@ function AuthenticatedApp() {
                   onChange={setTicketListRefinement}
                   onClear={clearTicketFilters}
                   onQueryChange={updateTicketSearchQuery}
-                  onSavedViewApply={(filters) => {
-                    clearTicketSelection();
-                    setMetricTicketFilter(null);
-                    setReportDrilldown(null);
-                    setQuery(filters.query);
-                    setQueue(filters.queue);
-                    setTicketScope(filters.ticketScope);
-                    setTicketListRefinement({
-                      agent: filters.agent,
-                      department: filters.department,
-                      priority: filters.priority,
-                      sortBy: filters.sortBy,
-                      sortDirection: filters.sortDirection,
-                      status: filters.status,
-                    });
-                  }}
+                  onSavedViewApply={applySavedTicketView}
                   onSavedViewsChange={setSavedTicketViews}
                   priorities={ticketFilterOptions.priorities}
                   query={query}
@@ -7446,6 +7461,23 @@ function AuthenticatedApp() {
               />
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
                 <SupportLevelQueueFilter
+                  views={{
+                    options: savedTicketViews.map((view) => ({
+                      value: view.id,
+                      label:
+                        view.ownerId === session?.user.id
+                          ? view.name
+                          : `${view.name} (geteilt)`,
+                    })),
+                    value: activeSavedTicketView?.id ?? "",
+                    onChange: (viewId) => {
+                      const view = savedTicketViews.find(
+                        (entry) => entry.id === viewId,
+                      );
+                      if (view) applySavedTicketView(view.filters);
+                      else clearTicketFilters();
+                    },
+                  }}
                   onChange={setSupportLevelFilter}
                   sort={{
                     options: TICKET_SORT_OPTIONS,

@@ -719,6 +719,10 @@ der Übersicht, im Kanban und in der App.
   alles zurück.
 - **Gespeicherte Ansichten**: Filter als **Neue Ansicht** speichern und auf
   Wunsch mit der Abteilung teilen («Teilen mit»).
+  Gespeicherte Ansichten (auch geteilte) wählst du direkt in der Leiste über
+  der Liste unter **Ansicht:** aus; dort ist die passende Ansicht markiert,
+  solange die Filter nicht verändert wurden. **Filter zurücksetzen** im
+  selben Feld hebt sie wieder auf.
 - In der **iOS- und Android-App** wählst du in der Ticketliste unter **Status**
   einen oder mehrere Status gleichzeitig; **Zurücksetzen** hebt die Auswahl auf.
   Das Filtersymbol in der Suchleiste öffnet dieselben Filter wie im Web:

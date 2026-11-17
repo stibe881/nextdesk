@@ -19,14 +19,25 @@ export type TicketSortControl<Key extends string> = {
  * «2nd Level»), nur wenn die Person in Teams mehrerer Supportstufen arbeitet;
  * rechts für alle «Sortieren nach».
  */
+/** Saved views of the filter panel, offered in the bar. */
+export type SavedViewControl = {
+  options: readonly { value: string; label: string }[];
+  /** Id of the view that matches the current filters, or "". */
+  value: string;
+  /** "" resets the filters. */
+  onChange: (viewId: string) => void;
+};
+
 export function SupportLevelQueueFilter<Key extends string>({
   onChange,
   sort,
   tenantId,
   value,
+  views,
 }: {
   onChange: (value: SupportLevelFilter) => void;
   sort: TicketSortControl<Key>;
+  views?: SavedViewControl;
   tenantId: string;
   value: SupportLevelFilter;
 }) {
@@ -99,6 +110,24 @@ export function SupportLevelQueueFilter<Key extends string>({
         </div>
       ) : null}
       <div className="support-level-queue__sort">
+        {views && views.options.length > 0 ? (
+          <label className="support-level-queue__views">
+            <span>Ansicht:</span>
+            <select
+              onChange={(event) => views.onChange(event.target.value)}
+              value={views.value}
+            >
+              <option value="">
+                {views.value ? "Filter zurücksetzen" : "– keine gespeicherte –"}
+              </option>
+              {views.options.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label>
           <span>Sortieren nach:</span>
           <select

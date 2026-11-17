@@ -2311,8 +2311,37 @@ const HANDLERS = {
     }));
     return ok({ notifications, unreadCount: 1 });
   },
-  "ticket-saved-views": (body) =>
-    body.type === "listSavedViews" ? ok({ savedViews: [] }) : null,
+  "ticket-saved-views": (body, { persona }) => {
+    if (body.type !== "listSavedViews") return null;
+    const view = (n, name, ownerId, filters) => ({
+      id: D.uid("51515151", n),
+      ownerId,
+      name,
+      visibility: "private",
+      createdAt: D.ago(20 * D.DAY),
+      updatedAt: D.ago(2 * D.DAY),
+      filters: {
+        agent: "all",
+        department: "all",
+        priority: "all",
+        query: "",
+        queue: "alle",
+        sortBy: "updated",
+        sortDirection: "desc",
+        status: "all",
+        ticketScope: "all",
+        ...filters,
+      },
+    });
+    return ok({
+      savedViews: [
+        view(1, "Dringend ICT", persona.id, { priority: "Hoch", queue: "ict" }),
+        view(2, "Nicht zugewiesen (Team)", D.U.lukas?.id ?? persona.id, {
+          ticketScope: "unassigned",
+        }),
+      ],
+    });
+  },
   "ticket-bulk-status": (body) =>
     body.type === "listStatusOptions"
       ? ok({
