@@ -115,6 +115,24 @@ for (const id of ORDER) {
       `${id}: die du- und die förmliche Fassung haben nicht dieselben Überschriften (erste Abweichung: «${duHeadings[index] ?? "–"}» gegen «${sieHeadings[index] ?? "–"}»).`,
     );
   }
+  // Jedes Handbuch hat den Bereich «Wie mache ich …?» mit Anleitungen («### Wie …?»).
+  for (const [label, headings] of [
+    [`docs/handbooks/${id}.md`, duHeadings],
+    [`docs/handbooks/sie/${id}.md`, sieHeadings],
+  ]) {
+    const howTo = headings.findIndex((heading) =>
+      /^## Wie mache ich/.test(heading),
+    );
+    const guides = headings.filter((heading) => /^### Wie /.test(heading));
+    if (howTo === -1 || guides.length < 3) {
+      fail(
+        `${label}: Es fehlt der Bereich «## Wie mache ich …?» mit mindestens drei Anleitungen («### Wie …?»).`,
+      );
+    }
+    if (new Set(guides).size !== guides.length) {
+      fail(`${label}: Die Überschriften «### Wie …?» müssen eindeutig sein.`);
+    }
+  }
   for (const name of duImages) usedImages.add(name);
   handbooks.push({
     id,

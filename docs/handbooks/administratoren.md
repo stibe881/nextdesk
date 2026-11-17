@@ -14,6 +14,617 @@ Für die tägliche Ticketarbeit gilt zusätzlich das _Handbuch für Agenten_, f�
 die erstmalige Einrichtung von Microsoft 365, SSO und Monitoring die
 _Installationsanleitung_.
 
+## Wie mache ich …?
+
+Hier findest du zu jeder Aufgabe eine kurze Anleitung. Ausführliche Erklärungen stehen in den weiteren Abschnitten.
+
+### Wie öffne ich die Einstellungen?
+
+1. Suche unten in der linken Navigation den Menüpunkt **Einstellungen**. Er ist nur für Administratoren sichtbar.
+2. Wähle das gewünschte Register, zum Beispiel **Design** oder **Personen**.
+3. Mit **Schliessen** kehrst du in den Arbeitsbereich zurück.
+
+Mehr dazu unter «Einstellungen öffnen».
+
+### Wie arbeite ich die Checkliste «Bereit für den Arbeitsstart» ab?
+
+1. Öffne die Einstellungen und das Register **Übersicht**.
+2. Suche die Checkliste **«Bereit für den Arbeitsstart»**.
+3. Beginne beim obersten Punkt. Er springt direkt in das passende Register.
+4. Erledige den Schritt und gehe dann zum nächsten Punkt.
+
+Mehr dazu unter «Übersicht».
+
+### Wie ändere ich Portalname und Logo?
+
+1. Öffne **Design → Corporate Design bearbeiten**.
+2. Gib den **Portalname** ein (höchstens 160 Zeichen). Lass das Feld leer, wenn nur das Logo erscheinen soll.
+3. Wähle beim **Portal-Logo** die Option «Datei auswählen» und wähle eine PNG-, JPEG- oder WebP-Datei bis 2 MB.
+4. Prüfe die **Portalansicht**.
+5. Wähle **Corporate Design speichern**.
+
+Mehr dazu unter «Design (Corporate Design)».
+
+### Wie entferne ich das Portal-Logo?
+
+1. Öffne **Design → Corporate Design bearbeiten**.
+2. Wähle beim **Portal-Logo** die Option «Logo entfernen».
+3. Wähle **Corporate Design speichern**.
+
+Mehr dazu unter «Design (Corporate Design)».
+
+### Wie ändere ich die Farben des Portals?
+
+1. Öffne **Design → Corporate Design bearbeiten**.
+2. Wähle die **Primärfarbe**, die **Sekundärfarbe** und die **Akzentfarbe**.
+3. Die **Portalansicht** zeigt die Wirkung sofort.
+4. Wähle **Corporate Design speichern**. Die Änderung gilt für alle Personen des Mandanten.
+
+Mehr dazu unter «Design (Corporate Design)».
+
+### Wie stelle ich die Anrede ein?
+
+1. Öffne **Design → Anrede**.
+2. Lege fest, ob nextDesk alle Texte duzt (Standard) oder siezt.
+3. Die Einstellung wirkt sofort für alle Personen des Mandanten, in der Oberfläche, der Mobile-App, in E-Mails, Mitteilungen und den Handbüchern.
+
+Mehr dazu unter «Design (Corporate Design)».
+
+### Wie finde ich eine Funktion?
+
+1. Öffne das Register **Funktionen**.
+2. Tippe den Namen in das Feld **Funktionen durchsuchen**.
+3. Oder filtere nach _Alle_, _Aktiv_ oder _Deaktiviert_.
+
+Mehr dazu unter «Funktionen & Integrationen».
+
+### Wie schalte ich eine Funktion ein oder aus?
+
+1. Öffne das Register **Funktionen**.
+2. Suche die Karte der Funktion.
+3. Wähle **Aktivieren**, um die Funktion einzuschalten, oder **Deaktivieren**, um sie auszuschalten.
+4. Wo vorhanden, öffnest du die Einstellungen der Funktion mit **Konfigurieren**.
+
+Eine deaktivierte Funktion behält ihre Konfiguration, verwendet sie aber nicht. Mehr dazu unter «Funktionen & Integrationen».
+
+### Wie lege ich eine Ticketvorlage an?
+
+1. Öffne das Register **Funktionen** und suche die Karte **Ticketvorlagen**.
+2. Wähle **Vorlagen verwalten**.
+3. Wähle **Neue Vorlage**.
+4. Erfasse Name, Betreff- und Beschreibungsvorlage, Abteilung, Priorität und Checklistenpunkte.
+5. Speichere die Vorlage.
+
+Mehr dazu unter «Funktionen & Integrationen».
+
+### Wie richte ich Microsoft Teams im Shop ein?
+
+1. Öffne das Register **Funktionen** und schalte die Funktion **Microsoft Teams im Shop** mit **Aktivieren** ein.
+2. Gib den **Zustimmungslink** an den Microsoft-Admin. Er öffnet ihn einmalig und erteilt der nextDesk-App die Teams-Rechte.
+3. Wähle **Verbindung prüfen**. Dort siehst du, ob alles erteilt ist oder welches Recht noch fehlt. Nach der Zustimmung kann es einige Minuten dauern.
+4. Stelle die **Längste Laufzeit** (in Monaten, Standard 12) ein und entscheide bei **Gäste dürfen eingeladen werden**.
+
+Mehr dazu unter «Microsoft Teams im Shop». Die Einrichtungsschritte stehen im Installationshandbuch.
+
+### Wie erstelle ich einen Hinweis für Anfragende?
+
+1. Schalte die Funktion **Hinweise für Anfragende** ein und öffne ihre Karte.
+2. Wähle **Neuer Hinweis**. Erfasse Titel (höchstens 60 Zeichen), Text (höchstens 300 Zeichen), Schaltfläche und Ziel (_Shop_, _Wissensartikel_, _Ticket erfassen_ oder eine https-Adresse), Symbol (bis 4 Zeichen) und Farbe.
+3. Wähle unter **Wo erscheint er?**, wo der Hinweis zu sehen sein soll: Portal-Banner, Portal-Hinweisleiste, E-Mails an Anfragende oder App. Die Vorschau zeigt das Ergebnis.
+4. Lege im **Zeitplan** den Start (Standard heute) und das **Ende** fest. Das Ende ist Pflicht.
+5. Schalte **Wegklicken erlauben** ein, wenn Personen den Hinweis ausblenden dürfen.
+6. Wähle **Veröffentlichen**, damit der Hinweis aktiv wird, oder **Als Entwurf speichern**, damit er noch nicht aktiv wird.
+
+Mehr dazu unter «Hinweise für Anfragende».
+
+### Wie lege ich eine Regel für neue Tickets an?
+
+1. Öffne **Funktionen → SLA-Automatisierung → Konfigurieren**.
+2. Suche den Bereich **Regeln für neue Tickets**.
+3. Wähle den Auslöser: «Beim Erstellen eines Tickets» oder «Zeitgesteuert».
+4. Definiere im Teil **Wenn …** die Bedingungen, zum Beispiel Stichworte in Betreff oder Beschreibung.
+5. Wähle im Teil **… dann** die Aktion: Team zuweisen, Person zuweisen oder Priorität setzen.
+6. Wähle **Regel speichern**.
+
+Mehr dazu unter «SLA-Automatisierung konfigurieren».
+
+### Wie prüfe ich Automatisierungen vor dem Einsatz?
+
+1. Öffne **Funktionen → SLA-Automatisierung → Konfigurieren**.
+2. Suche den Bereich **Automatisierungen**.
+3. Wähle **Vorschau ausführen**, um deine Regeln vor dem Einsatz zu prüfen.
+4. Stelle bei Bedarf das **Prüfintervall in Tagen** ein. Es erinnert dich an die regelmässige Kontrolle.
+
+Mehr dazu unter «SLA-Automatisierung konfigurieren».
+
+### Wie erfasse ich einen Drittanbieter?
+
+1. Öffne **Funktionen → SLA-Automatisierung → Konfigurieren** und scrolle zum Bereich **Drittanbieter**.
+2. Wähle **Drittanbieter erfassen**.
+3. Fülle _Name_ (Pflicht), _E-Mail_, _Telefon_ und _Erinnerung nach (Stunden)_ aus. Erlaubt sind 1 bis 2160 Stunden, voreingestellt sind 48.
+4. Lass **Aktiv** eingeschaltet und wähle **Speichern**.
+
+Du benötigst dafür die Berechtigung **Automationen verwalten**. Mehr dazu unter «Drittanbieter erfassen».
+
+### Wie bearbeite ich einen Drittanbieter?
+
+1. Öffne **Funktionen → SLA-Automatisierung → Konfigurieren** und scrolle zum Bereich **Drittanbieter**.
+2. Wähle beim Eintrag den Stift.
+3. Ändere die Angaben und speichere.
+
+Mehr dazu unter «Drittanbieter erfassen».
+
+### Wie schalte ich einen Drittanbieter ab?
+
+1. Öffne **Funktionen → SLA-Automatisierung → Konfigurieren** und scrolle zum Bereich **Drittanbieter**.
+2. Wähle beim Eintrag den Stift.
+3. Schalte **Aktiv** aus und speichere. Der Anbieter bleibt erhalten, wird aber nicht mehr verwendet.
+
+Mehr dazu unter «Drittanbieter erfassen».
+
+### Wie sende ich eine Push-Mitteilung?
+
+1. Schalte die Funktion **Push-Benachrichtigungen** ein und öffne **Einstellungen → Funktionen → Push-Benachrichtigungen**.
+2. Suche die Karte **Push-Mitteilung senden**.
+3. Erfasse den **Titel** (höchstens 60 Zeichen) und den **Text** (höchstens 200 Zeichen). Die Vorschau zeigt die Mitteilung auf dem Sperrbildschirm.
+4. Wähle die **Zielgruppe**: _Alle_, _Nach Rolle_ oder _Nach Abteilung_. Eine Zeile nennt, wie viele Personen und Geräte erreicht werden.
+5. Wähle **Senden …** und bestätige mit **Jetzt senden**. Eine gesendete Mitteilung lässt sich nicht zurückholen.
+6. Im **Verlauf** darunter siehst du, wie viele Zustellungen gelungen sind.
+
+Mehr dazu unter «Eigene Push-Mitteilung senden».
+
+### Wie stelle ich Erinnerungen für wartende Tickets ein?
+
+1. Öffne das Register **Ticket-Lebenszyklus**. Es setzt die SLA-Automatisierung voraus.
+2. Suche den Bereich **Erinnerung** bei «Wartend auf Kunde».
+3. Schalte die Regel ein. Die Regel ist zunächst ausgeschaltet.
+4. Lege _Erinnern nach Werktagen_ und _Höchstens so viele Erinnerungen_ fest.
+
+Gezählt werden Werktage von Montag bis Freitag. Mehr dazu unter «Ticket-Lebenszyklus».
+
+### Wie lasse ich wartende Tickets automatisch lösen?
+
+1. Öffne das Register **Ticket-Lebenszyklus**.
+2. Suche den Bereich **Automatisch lösen**.
+3. Schalte die Regel ein.
+4. Lege _Lösen nach Werktagen (ab Beginn der Wartezeit)_ fest.
+
+Mehr dazu unter «Ticket-Lebenszyklus».
+
+### Wie lasse ich gelöste Tickets automatisch schliessen?
+
+1. Öffne das Register **Ticket-Lebenszyklus**.
+2. Suche den Bereich **Gelöste Tickets automatisch schliessen**.
+3. Schalte die Regel ein.
+4. Lege _Schliessen nach Werktagen_ fest. So lange bleibt ein Ticket auf «Gelöst».
+
+Antwortet die anfragende Person vorher, wird das Ticket wieder geöffnet. Mehr dazu unter «Ticket-Lebenszyklus».
+
+### Wie stelle ich eine SLA-Regel ein?
+
+1. Öffne das Register **SLA**. Es erscheint, sobald die SLA-Automatisierung aktiv ist.
+2. Wähle **Neue SLA-Regel**.
+3. Erfasse den **Namen der Regel** und die **Definition & Auswirkung**.
+4. Wähle die **Priorität** und die **Abteilung** (oder _Mandantenweit_).
+5. Lege die **Servicezeit** fest: Wochentage und Von/Bis in der Zeitzone Europe/Zurich.
+6. Gib die **Reaktionszeit** und die **Lösungszeit** in Minuten ein.
+7. Lass **Regel aktiv** eingeschaltet und speichere die Regel.
+
+Mehr dazu unter «SLA-Regeln».
+
+### Wie sehe ich Tickets mit gefährdeter SLA?
+
+1. Öffne das Register **SLA**.
+2. Suche den Bereich **Aktuelle Eskalationen**.
+3. Dort siehst du die Tickets, deren SLA gefährdet oder verletzt ist.
+
+Mehr dazu unter «SLA-Regeln».
+
+### Wie archiviere ich eine SLA-Regel?
+
+1. Öffne das Register **SLA**.
+2. Suche die Regel, die du nicht mehr benötigst.
+3. Archiviere die Regel, statt sie zu löschen.
+
+Mehr dazu unter «SLA-Regeln».
+
+### Wie lege ich fest, welche Status die SLA anhalten?
+
+1. Öffne das Register **SLA** und suche den Abschnitt **SLA-Pause nach Status**.
+2. Lege pro offenem Status fest, ob er **die SLA anhält**. Voreingestellt halten **Wartend**, **Wartend auf Kunde** und **Wartend auf Drittanbieter** die SLA an.
+3. Die Änderung wirkt sofort auf offene Tickets in diesem Status. Die Tickets werden pausiert bzw. fortgesetzt.
+
+Du brauchst dafür die mandantenweite Berechtigung **SLA-Profile verwalten**. Jede Änderung steht im Protokoll. Mehr dazu unter «SLA-Pause nach Status».
+
+### Wie füge ich ein Ticketfeld hinzu?
+
+1. Öffne das Register **Ticketfelder**.
+2. Wähle **Feld auswählen** bzw. **Feld hinzufügen**.
+3. Lege den Feldtyp fest.
+4. Markiere das Feld bei Bedarf als **Pflichtfeld**.
+5. Wähle **Feld speichern**.
+
+Felder unter _Immer enthalten_ sind fix. Mehr dazu unter «Ticketfelder».
+
+### Wie ändere ich die Reihenfolge der Ticketfelder?
+
+1. Öffne das Register **Ticketfelder**.
+2. Ziehe ein Feld mit der Maus an die gewünschte Stelle und lege es dort ab.
+
+Mehr dazu unter «Ticketfelder».
+
+### Wie lege ich eine Abteilung an?
+
+1. Öffne das Register **Abteilungen**.
+2. Gib im Bereich **Abteilungen** den Namen ein.
+3. Wähle _Abteilung anlegen_.
+
+Mehr dazu unter «Abteilungen und Teams».
+
+### Wie archiviere ich eine Abteilung?
+
+1. Öffne das Register **Abteilungen**.
+2. Suche die Abteilung, die du nicht mehr benötigst.
+3. Archiviere sie.
+
+Mehr dazu unter «Abteilungen und Teams».
+
+### Wie lege ich die Leitung einer Abteilung fest?
+
+1. Öffne das Register **Abteilungen**.
+2. Suche den Bereich **Abteilungsleitungen**.
+3. Lege die Leitung und die Stellvertretung der Abteilung fest. Die beiden werden für interne Rückfragen zu Tickets verwendet.
+
+Mehr dazu unter «Abteilungen und Teams».
+
+### Wie lege ich ein Team an?
+
+1. Öffne das Register **Abteilungen**.
+2. Suche den Bereich **Teams pro Abteilung**.
+3. Erfasse den Namen des Teams und wähle die Abteilung.
+4. Wähle die Supportstufe: 1st, 2nd oder 3rd Level.
+
+Das einzige aktive 2nd-Level-Team einer Abteilung erhält auch die Tickets, die Agenten als **Spam-/Phishing-Verdacht** markieren. Mehr dazu unter «Abteilungen und Teams».
+
+### Wie ordne ich Agenten einem Team zu?
+
+1. Öffne das Register **Abteilungen**.
+2. Suche im Bereich **Teams pro Abteilung** das Team.
+3. Wähle **Mitglieder verwalten**.
+4. Ordne die gewünschten Agenten zu.
+
+Mehr dazu unter «Abteilungen und Teams».
+
+### Wie lege ich fest, welche Module eine Abteilung nutzt?
+
+1. Öffne das Register **Abteilungen**.
+2. Suche den Bereich **Module pro Abteilung**.
+3. Lege für jede Abteilung fest, welche Zusatzmodule sie nutzt.
+
+Mehr dazu unter «Abteilungen und Teams».
+
+### Wie passe ich eine E-Mail-Vorlage an?
+
+1. Öffne das Register **E-Mail-Vorlagen**. Die Vorlagen sind nach Kategorie geordnet.
+2. Öffne die gewünschte Vorlage.
+3. Passe Betreff, Überschriften, Texte und Hinweise an. Ein geleertes Feld verwendet wieder den Standardtext.
+4. Prüfe rechts die **Vorschau mit Beispieldaten**. Die Vorschau aktualisiert sich beim Tippen.
+5. Füge bei Bedarf Platzhalter wie `{{ticketNumber}}`, `{{ticketSubject}}` oder `{{portalName}}` ein. Welche Platzhalter gelten, steht unter dem Formular.
+6. Wähle **Speichern**.
+
+Mehr dazu unter «E-Mail-Vorlagen».
+
+### Wie setze ich eine E-Mail-Vorlage auf den Standard zurück?
+
+1. Öffne das Register **E-Mail-Vorlagen**.
+2. Öffne die gewünschte Vorlage.
+3. Wähle **Auf Standard**.
+
+Mehr dazu unter «E-Mail-Vorlagen».
+
+### Wie schalte ich eine E-Mail-Vorlage ein oder aus?
+
+1. Öffne das Register **E-Mail-Vorlagen**.
+2. Suche die Vorlage.
+3. Schalte den Schieber rechts ein oder aus. Der Versand ändert sich sofort.
+
+Ausgeschaltet wird diese E-Mail nicht mehr gesendet. Die Vorlage bleibt als «Vorlage deaktiviert» markiert. Mehr dazu unter «E-Mail-Vorlagen».
+
+### Wie lege ich das Team für die Alarmierung fest?
+
+1. Öffne das Register **Monitoring** und suche die Karte **Alarmierung**. Das Register setzt Asset-Management voraus.
+2. Wähle das **Team für die Alarmierung**. Nur dieses Team sieht Störungen.
+3. Lege fest, ob auch Warnungen eine Störung öffnen, wie oft unbestätigte Störungen erneut alarmieren, ob Folgestörungen gebündelt werden und ob während einer Wartung alarmiert wird.
+
+Die Karte gilt für die eigene Überwachung und für PRTG. Mehr dazu unter «Monitoring».
+
+### Wie beende ich einen hängenden PRTG-Alarm?
+
+1. Öffne das Register **Monitoring**.
+2. Suche den Bereich **Alarme aus PRTG**.
+3. Wähle beim hängenden Alarm **Alarm beenden**.
+
+Mehr dazu unter «Monitoring».
+
+### Wie lese ich externe Statusquellen ein?
+
+1. Öffne das Register **Monitoring** und suche den Bereich **Externe Statusquellen**.
+2. Hake die gewünschten Quellen an, zum Beispiel Microsoft 365, GitHub oder Claude.
+3. Speichere die Auswahl.
+4. Wähle **Jetzt prüfen**, damit die Quellen sofort gelesen werden. Sonst geschieht das alle 5 Minuten.
+
+Pro Quelle siehst du, wann zuletzt geprüft wurde und ob ein Fehler auftrat. Mehr dazu unter «Monitoring».
+
+### Wie melde ich Störungen externer Anbieter automatisch auf der Statusseite?
+
+1. Öffne das Register **Monitoring** und aktiviere die gewünschte externe Statusquelle.
+2. Suche den Bereich **Automatisch auf der Statusseite melden für**.
+3. Ordne der aktivierten Quelle Dienste der Statusseite zu, zum Beispiel Microsoft 365 den Diensten Microsoft Teams, E-Mail, OneDrive und SharePoint.
+4. Speichere die Zuordnung.
+
+Ohne zugeordnete Dienste gibt es keine öffentliche Meldung. Mehr dazu unter «Monitoring».
+
+### Wie richte ich die eigene Überwachung ein?
+
+1. Aktiviere unter **Funktionen** das Modul _Überwachung_. Danach erscheint **Dienste und Überwachung → Überwachung**.
+2. Vergib die Rechte: «Assets ansehen» zeigt die Überwachung, «Assets verwalten» erlaubt, Geräte, Sensoren und Sonden zu ändern.
+3. Lege unter **Einstellungen → Monitoring → Überwachung** eine Sonde an (siehe «Wie lege ich eine Sonde an?»).
+4. Installiere das Installationspaket auf einem Server im Netz (siehe Installationshandbuch).
+5. Erfasse Geräte und Sensoren (siehe Handbuch für Agenten, «Überwachung»).
+
+Mehr dazu unter «Eigene Überwachung».
+
+### Wie lege ich eine Sonde an?
+
+1. Öffne **Einstellungen → Monitoring → Überwachung** oder in der Überwachung die Karte **Sonden**.
+2. Wähle **Sonde hinzufügen**.
+3. Wähle **config.json herunterladen**. Die Datei enthält Adresse und Zugangsschlüssel für diesen Mandanten.
+4. Bewahre die Datei sicher auf. Der Schlüssel wird nur dieses eine Mal angezeigt. Geht die Datei verloren, legst du eine neue Sonde an.
+5. Lade am selben Ort mit **Sonde herunterladen** das Installationspaket und installiere es auf einem Server im Netz.
+
+Mehr dazu unter «Eigene Überwachung».
+
+### Wie bearbeite ich eine Sonde?
+
+1. Öffne **Einstellungen → Monitoring → Überwachung** und suche die Karte **Sonden**.
+2. Wähle bei der Sonde den Stift.
+3. Ändere den Namen oder schalte die Sonde auf aktiv oder deaktiviert.
+4. Speichere die Änderung.
+
+Mehr dazu unter «Eigene Überwachung».
+
+### Wie erzeuge ich einen neuen Token für eine Sonde?
+
+1. Öffne **Einstellungen → Monitoring → Überwachung** und wähle bei der Sonde den Stift.
+2. Wähle **Neuen Token erzeugen**. Der alte Token gilt sofort nicht mehr.
+3. Kopiere den neuen Token. Er wird nur einmal angezeigt.
+4. Trage ihn auf dem Server in der `config.json` der Sonde im Feld `agentToken` ein und starte den Dienst neu.
+
+Mehr dazu unter «Eigene Überwachung».
+
+### Wie lösche ich eine Sonde?
+
+1. Öffne **Einstellungen → Monitoring → Überwachung** und suche die Karte **Sonden**.
+2. Wähle bei der Sonde den Papierkorb.
+3. Der Token der Sonde wird beim Löschen widerrufen.
+
+Die Sensoren übernimmt eine andere aktive Sonde, oder sie bleiben ohne Sonde und werden nicht mehr gemessen. Mehr dazu unter «Eigene Überwachung».
+
+### Wie aktualisiere ich eine Sonde?
+
+1. Suche in der Karte **Sonden** die Sonde mit dem Hinweis «Aktualisierung verfügbar».
+2. Lade das Paket mit **Sonde herunterladen**.
+3. Entpacke es auf dem Server.
+4. Führe das Installationsskript erneut aus. Die Konfiguration bleibt erhalten.
+
+Mehr dazu unter «Eigene Überwachung».
+
+### Wie veröffentliche ich Ausfälle automatisch auf der Statusseite?
+
+1. Öffne das Register **Monitoring** und suche die Karte **Alarmierung**.
+2. Schalte **Ausfälle mit betroffenen Diensten automatisch veröffentlichen** ein.
+
+Ein Ausfall erscheint dann als Banner und auf der Statusseite, sobald jemand aus dem Team die Störung **bestätigt** oder spätestens 10 Minuten nach dem Ausfall. Mehr dazu unter «Eigene Überwachung».
+
+### Wie lade ich eine Person ein?
+
+1. Öffne das Register **Personen** und suche den Bereich **Person einladen**.
+2. Erfasse Vor- und Nachname, E-Mail-Adresse, Angebot und Funktion.
+3. Soll die Person Tickets bearbeiten, aktiviere den Schalter **Arbeitet als Support-Agent** und wähle einen **Ticketzugriffsbereich**. Er ist für Agenten Pflicht.
+4. Wähle **Einladung versenden**. Die Einladung ist 7 Tage gültig.
+
+Mehr dazu unter «Person einladen».
+
+### Wie widerrufe ich eine Einladung?
+
+1. Öffne das Register **Personen**.
+2. Suche die Einladung unter **Offene Einladungen**.
+3. Widerrufe sie dort.
+
+Mehr dazu unter «Person einladen».
+
+### Wie ändere ich die Angaben einer Person?
+
+1. Öffne das Register **Personen**.
+2. Suche die Person in der Liste **Agenten** (mit Suche) oder **Angemeldete Personen**.
+3. Wähle **Bearbeiten**.
+4. Ändere Name, vorgesetzte Person, Ticketzugriffsbereich oder **Team**. Die Teams erscheinen, sobald der Ticketzugriffsbereich gewählt ist.
+5. Wähle **Person speichern**.
+
+Mehr dazu unter «Person einladen».
+
+### Wie merke ich eine Person aus Microsoft Entra als Agent vor?
+
+1. Öffne das Register **Personen**. Der Verzeichnisabgleich muss eingerichtet sein.
+2. Suche die Person aus Entra in der Liste.
+3. Wähle **als Agent vormerken**.
+4. Name, vorgesetzte Person, Ticketzugriffsbereich und Team werden bei der ersten Microsoft-Anmeldung übernommen.
+
+Mehr dazu unter «Personen aus Microsoft Entra».
+
+### Wie weise ich einer Person eine Rolle zu?
+
+1. Öffne das Register **Rollen** und die Ansicht **Personen zuweisen**.
+2. Suche die Person über **Person suchen …**. Du kannst nach **Agenten** oder **Alle Personen** filtern.
+3. Setze in der Tabelle bei der Person ein Häkchen bei der gewünschten Rolle.
+4. Die Änderung wirkt sofort für den ganzen Mandanten.
+
+Mehr dazu unter «Rollen und Berechtigungen».
+
+### Wie entziehe ich einer Person eine Rolle?
+
+1. Öffne das Register **Rollen** und die Ansicht **Personen zuweisen**.
+2. Suche die Person über **Person suchen …**.
+3. Entferne in der Tabelle das Häkchen bei der Rolle. Die Änderung wirkt sofort.
+4. Rollen, die nur für eine Abteilung oder ein Team gelten, stehen unter **Auf Abteilung oder Team begrenzte Zuweisungen**. Nimm sie dort mit **Entziehen** weg.
+
+Mehr dazu unter «Rollen und Berechtigungen».
+
+### Wie lege ich eine Rolle an?
+
+1. Öffne das Register **Rollen** und die Ansicht **Rollen definieren**.
+2. Wähle links **+ Neue Rolle**.
+3. Gib den **Namen der neuen Rolle** ein.
+4. Wähle unter **Berechtigungen** die gewünschten Rechte. Mit **Alle auswählen** wählst du eine ganze Gruppe. Rechte mit weitreichendem Zugriff sind als «Erweitert» markiert.
+5. Wähle **Rolle erstellen**.
+
+Mehr dazu unter «Rollen und Berechtigungen».
+
+### Wie ändere ich eine Rolle?
+
+1. Öffne das Register **Rollen** und die Ansicht **Rollen definieren**.
+2. Wähle links die eigene Rolle. Systemrollen sind mit «System» markiert und geschützt.
+3. Ändere die Berechtigungen.
+4. Wähle **Änderungen speichern**.
+
+Mehr dazu unter «Rollen und Berechtigungen».
+
+### Wie deaktiviere oder aktiviere ich eine Rolle?
+
+1. Öffne das Register **Rollen** und die Ansicht **Rollen definieren**.
+2. Wähle links die eigene Rolle.
+3. Wähle **Rolle deaktivieren**, um sie abzuschalten, oder **Rolle aktivieren**, um sie wieder einzuschalten.
+
+Mehr dazu unter «Rollen und Berechtigungen».
+
+### Wie erlaube ich Agenten, Bestände im Lager auszubuchen?
+
+1. Öffne das Register **Rollen** und die Ansicht **Personen zuweisen**.
+2. Suche den Agenten über **Person suchen …**.
+3. Setze das Häkchen bei der Systemrolle **Lagerverwaltung**.
+4. Danach erscheint in Web und App neben **Einbuchen** der Knopf **Ausbuchen**.
+
+Bei eigenen Rollen musst du das Recht «Bestände von Hand ausbuchen» selbst ergänzen. Mehr dazu unter «Rollen und Berechtigungen».
+
+### Wie erstelle ich einen API-Schlüssel für die IP-Adressverwaltung?
+
+1. Öffne in der IP-Adressverwaltung das Register **API & Webhooks**. Du brauchst das Recht «IP-Adressen, Subnetze und VLANs verwalten».
+2. Wähle bei **API-Schlüssel** einen Namen und die Rechte: «Nur lesen» oder «Lesen und schreiben».
+3. Erstelle den Schlüssel und kopiere ihn sofort. Er wird nur einmal angezeigt.
+4. Andere Systeme senden ihn als `Authorization: Bearer …`.
+
+Nicht mehr benötigte Schlüssel widerrufst du sofort. Mehr dazu unter «Rollen und Berechtigungen».
+
+### Wie richte ich einen Webhook für die IP-Adressverwaltung ein?
+
+1. Öffne in der IP-Adressverwaltung das Register **API & Webhooks**.
+2. Gib bei **Webhooks** die Adresse (HTTPS) ein.
+3. Wähle die Ereignisse, zum Beispiel Adresse reserviert, Subnetz geändert oder neuer Fund.
+4. Speichere den Webhook. Jede Zustellung ist mit dem angezeigten Geheimnis signiert.
+5. Wähle **Testen**, um eine Probenachricht zu senden. Mit **Pausieren** hältst du die Zustellung an.
+
+Mehr dazu unter «Rollen und Berechtigungen».
+
+### Wie lege ich Aufbewahrungsfristen fest?
+
+1. Öffne das Register **Datenschutz**.
+2. Lege die Fristen in Tagen fest für _Geschlossene Tickets_, _Private Anhänge_ und das _Audit-Protokoll_.
+
+Diese Werte sind Richtlinien. Tickets und Anhänge löscht nextDesk nie automatisch. Mehr dazu unter «Datenschutz und Aufbewahrung».
+
+### Wie lege ich Fristen für Betriebsdaten fest?
+
+1. Öffne das Register **Datenschutz**.
+2. Suche den Bereich **Betriebsdaten (automatische Bereinigung)**.
+3. Lege die Fristen in Monaten fest (1 bis 120) für Monitoring, IP-Adressverwaltung und Phishing-Meldungen.
+
+Mehr dazu unter «Datenschutz und Aufbewahrung».
+
+### Wie verhindere ich jede Bereinigung?
+
+1. Öffne das Register **Datenschutz**.
+2. Schalte die **Rechtliche Aufbewahrungssperre** ein.
+3. Die Sperre hält auch die Bereinigung der Betriebsdaten und das endgültige Entfernen gelöschter Tickets an.
+
+Mehr dazu unter «Datenschutz und Aufbewahrung».
+
+### Wie finde ich eine Änderung im Protokoll?
+
+1. Öffne das Register **Protokoll**.
+2. Filtere nach Person, Aktion, Objekt, Schweregrad und Zeitraum.
+3. Öffne einen Eintrag, um die _Änderungen_ und _Metadaten_ zu sehen.
+
+Mehr dazu unter «Protokoll».
+
+### Wie exportiere ich das Protokoll?
+
+1. Öffne das Register **Protokoll**.
+2. Filtere bei Bedarf die Einträge.
+3. Exportiere als **CSV** oder **JSON**.
+
+Mehr dazu unter «Protokoll».
+
+### Wie erfasse ich eine Störungsmeldung?
+
+1. Öffne im Bereich **Dienste und Überwachung** den Systemstatus und suche **Störungsmeldungen**.
+2. Wähle **Neue Meldung**.
+3. Erfasse den **Titel**, den **Zustand** (Wird untersucht, Ursache erkannt, Wird beobachtet, Behoben), den **Text** und die **betroffenen Dienste**.
+4. Aktiviere **Auf der öffentlichen Statusseite zeigen und Abonnenten informieren**, wenn die Meldung öffentlich erscheinen soll.
+5. Speichere die Meldung.
+
+Mehr dazu unter «Störungsmeldungen».
+
+### Wie ergänze ich eine Störungsmeldung mit einem Update?
+
+1. Öffne im Systemstatus die **Störungsmeldungen**.
+2. Suche die Meldung und wähle **Update erfassen**.
+3. Passe Zustand und Text an.
+4. Speichere das Update. Der bisherige Verlauf bleibt sichtbar.
+
+Mehr dazu unter «Störungsmeldungen».
+
+### Wie verlängere ich eine laufende Wartung?
+
+1. Öffne **Systemstatus → Wartungen**.
+2. Suche die laufende Wartung.
+3. Wähle **Verlängern …** und die Dauer (30 Minuten bis 4 Stunden).
+
+Sensoren, Banner und Dienststatus bleiben dann bis zum neuen Ende in Wartung. Mehr dazu unter «Wartungsfenster automatisch».
+
+### Wie zeige ich die Verfügbarkeit auf der Statusseite?
+
+1. Öffne im Bereich **Dienste und Überwachung** den Systemstatus.
+2. Schalte **Verfügbarkeit in Prozent zeigen** ein.
+3. Auf der öffentlichen Statusseite erscheint pro Dienst die Verfügbarkeit der letzten 90 Tage.
+
+Mehr dazu unter «Verfügbarkeit».
+
+### Wie passe ich die Statusmail an?
+
+1. Öffne das Register **E-Mail-Vorlagen**.
+2. Öffne die Vorlage **Statusseite: Statusänderung**.
+3. Passe Betreff und Text an und wähle **Speichern**.
+
+Voraussetzung für Statusmeldungen per E-Mail ist ein aktives Exchange-Postfach. Mehr dazu unter «Statusmeldungen per E-Mail».
+
+### Wie öffne ich die Handbücher?
+
+1. Öffne unten links deinen Namen.
+2. Wähle **Persönliche Einstellungen**.
+3. Unter **Handbücher** findest du alle vier Handbücher.
+
+Mehr dazu unter «Eigenes Profil und Handbücher».
+
 ## Einstellungen öffnen
 
 Der Menüpunkt **Einstellungen** ist nur für Administratoren sichtbar und

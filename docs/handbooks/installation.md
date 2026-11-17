@@ -19,6 +19,301 @@ In jedem Abschnitt ist markiert, wer handelt:
 - **[Admin]** – du als nextDesk-Administrator
 - **[Microsoft-Admin]** – globale Administratorin bzw. globaler Administrator deines Microsoft-365-Mandanten
 
+## Wie mache ich …?
+
+Hier findest du zu jeder Aufgabe eine kurze Anleitung. Ausführliche Erklärungen stehen in den weiteren Abschnitten.
+
+### Wie sehe ich, was bei der Einrichtung noch fehlt?
+
+1. Öffne **Einstellungen → Übersicht**.
+2. Lies die Checkliste **«Bereit für den Arbeitsstart»**.
+3. Erledige die offenen Punkte der Reihe nach.
+
+Ausführlich: «Übersicht und Reihenfolge».
+
+### Wie melde ich mich zum ersten Mal an?
+
+1. Öffne den Link in der Einladungs-E-Mail. Die Einladung ist 7 Tage gültig.
+2. Melde dich mit der eingeladenen E-Mail-Adresse an (Anmeldelink per E-Mail oder Passwort).
+3. Prüfe, dass links unten der Menüpunkt **Einstellungen** erscheint.
+
+Ausführlich: «Schritt 1: Erste Anmeldung».
+
+### Wie richte ich Design und Anrede ein?
+
+1. Öffne **Einstellungen → Design**.
+2. Hinterlege Portalname, Logo und Farben und wähle **Corporate Design speichern**.
+3. Stelle unter **Anrede** ein, ob nextDesk alle Texte duzt (Standard) oder siezt.
+
+Ausführlich: «Schritt 2: Grundeinstellungen».
+
+### Wie lege ich Abteilungen und Teams an?
+
+1. Öffne **Einstellungen → Abteilungen**.
+2. Lege die Abteilungen an (z. B. ICT, Facility, HR).
+3. Bestimme die Leitungen.
+4. Erfasse die **Teams pro Abteilung** mit Supportstufe.
+
+Ausführlich: «Schritt 2: Grundeinstellungen».
+
+### Wie aktiviere ich Funktionen und Module?
+
+1. Öffne **Einstellungen → Funktionen**.
+2. Aktiviere die gewünschten Module (z. B. Wissensdatenbank, Self-Service, Ticketvorlagen, SLA-Automatisierung).
+
+Ausführlich: «Schritt 2: Grundeinstellungen».
+
+### Wie lege ich SLA-Regeln an?
+
+1. Öffne **Einstellungen → SLA**.
+2. Lege mindestens eine SLA-Regel pro Priorität an.
+
+Ausführlich: «Schritt 2: Grundeinstellungen».
+
+### Wie richte ich die Anmeldung mit Microsoft ein?
+
+1. Hole beim Betreiber die **Client-ID** der App «nextDesk – Kunden SSO» ein.
+2. Lass die Administratorzustimmung für deinen Microsoft-Mandanten erteilen. Der Microsoft-Admin nutzt dafür den Link, den dir der Betreiber sendet.
+3. Öffne in nextDesk **Einstellungen → Funktionen → Single Sign-On → Konfigurieren** und trage die Felder aus der Tabelle ein (Anbieter, Client-ID, Issuer-URL, Discovery-URL, zugelassene E-Mail-Domains).
+4. Kreuze **SSO aktivieren** an, lass **SSO für die Anmeldung erzwingen** vorerst leer und wähle **SSO-Konfiguration speichern**.
+5. Teste in einem privaten Browserfenster mit **Mit SSO anmelden**.
+6. Setze erst nach erfolgreichem Test **SSO für die Anmeldung erzwingen**.
+
+Ausführlich: «Schritt 3: Microsoft Entra SSO».
+
+### Wie lade ich Personen ein?
+
+1. Öffne **Einstellungen → Personen → Person einladen**.
+2. Lade Agenten mit **Arbeitet als Support-Agent** und Ticketzugriffsbereich ein.
+3. Mitarbeitende ohne Ticketbearbeitung müssen mit SSO nicht eingeladen werden.
+
+Ausführlich: «Schritt 4: Personen und Rollen».
+
+### Wie vergebe ich Rollen?
+
+1. Öffne **Einstellungen → Rollen → Rollen zuweisen**.
+2. Vergib weitere Administratoren oder eigene Rollen.
+
+Ausführlich: «Schritt 4: Personen und Rollen».
+
+### Wie verbinde ich das Exchange-Postfach?
+
+1. Lass im Exchange Admin Center dem Connector-Konto für **jedes** Support-Postfach die Rechte **Vollzugriff** und **Senden als** geben (Aufgabe des Microsoft-Admins).
+2. Aktiviere unter **Einstellungen → Funktionen → E-Mail-Kanal (Exchange Online)** den Kanal und öffne **Konfigurieren**.
+3. Wähle **Microsoft 365 verbinden** und melde dich mit dem Connector-Konto an.
+4. Wähle **Postfach hinzufügen** und erfasse Support-Postfach, Ziel-Abteilung für neue Tickets, optional das Team für neue Tickets und die gewünschten Mitteilungen. Speichere mit **Postfach speichern**.
+5. Wähle **Prüfen**, dann **Aktivieren** und sende eine **Testmail**.
+6. Neue E-Mails werden etwa alle 5 Minuten abgeholt.
+
+Ausführlich: «Schritt 5: Exchange Online (E-Mail-Kanal)».
+
+### Wie richte ich die Phishing-Meldungen ein?
+
+1. Öffne im Bereich E-Mail-Kanal (Exchange Online) die Einstellungen für die **Phishing-Meldungen** und aktiviere sie.
+2. Trage die Meldeadresse und die Zielabteilung ein.
+3. Wähle Kategorie und Unterkategorie des Sicherheitstickets aus oder erfasse sie über **+ Neue Kategorie …** bzw. **+ Neue Unterkategorie …**.
+4. Lege unter **Massnahmen je Urteil** fest, welche Checkliste nach dem Urteil _Harmlos_, _Spam_, _Phishing_ oder _Gezielter Angriff_ erscheint. Ohne eigene Liste gelten Standard-Checklisten.
+5. Das **Sicherheitsteam** bekommt die Fälle zugewiesen und wird benachrichtigt. Nur seine Mitglieder sehen den Bereich **Phishing / Junk**.
+
+Ausführlich: «Schritt 5: Exchange Online (E-Mail-Kanal)».
+
+### Wie richte ich das Melden von Phishing in Outlook ein?
+
+1. Öffne in Microsoft Defender _Einstellungen → E-Mail und Zusammenarbeit → Von Benutzern gemeldete Einstellungen_.
+2. Trage die Meldeadresse als **Meldepostfach** ein (_Nur mein Berichtspostfach_).
+3. Stelle sicher, dass die Meldeadresse beim verbundenen Postfach ankommt.
+4. Mitarbeitende melden danach in Outlook mit **Melden → Phishing melden**.
+
+Ausführlich: «Schritt 5: Exchange Online (E-Mail-Kanal)».
+
+### Wie gleiche ich das Microsoft-Entra-Verzeichnis ab?
+
+1. Stelle sicher, dass SSO mit deiner eigenen Tenant-ID konfiguriert ist (nicht `common`).
+2. Lass die Zustimmung für die Berechtigung _User.Read.All_ erteilen (Link vom Betreiber, Aufgabe des Microsoft-Admins).
+3. Öffne **Einstellungen → Personen → Microsoft Entra-Verzeichnis**.
+4. Aktiviere den _Connector für manuelle Abgleiche_ und wähle **Konfiguration speichern**.
+5. Wähle **Verbindung testen** und danach **Manuellen Abgleich starten**.
+6. Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
+
+Ausführlich: «Microsoft-Entra-Verzeichnisabgleich».
+
+### Wie binde ich Microsoft Intune an?
+
+1. Lass die Zustimmung für die Intune-App mit _DeviceManagementManagedDevices.Read.All_ (nur lesend) erteilen (Aufgabe des Microsoft-Admins).
+2. Aktiviere die Funktion **Asset-Management** und öffne **Konfigurieren**.
+3. Gib den _Manuellen Microsoft-Graph-Abgleich für diesen Mandanten_ frei.
+4. Prüfe die Vorschau und wähle **Übernahme ausdrücklich bestätigen**.
+5. Wähle **Jetzt einmalig abgleichen**.
+6. Danach läuft der Abgleich zusätzlich jede Nacht automatisch. Geräte mit bereits vorhandener Seriennummer werden übersprungen, es wird nie etwas gelöscht.
+
+Ausführlich: «Microsoft Intune (Geräte)».
+
+### Wie ermögliche ich Massnahmen in Phishing-/Junk-Fällen?
+
+1. Lass für dieselbe Intune-/Entra-App zusätzliche Anwendungsberechtigungen mit Administratorzustimmung erteilen (Aufgabe des Microsoft-Admins).
+2. Für **Gerät synchronisieren** und **Defender-Schnellscan** braucht es _DeviceManagementManagedDevices.PrivilegedOperations.All_.
+3. Für **Sitzungen widerrufen** braucht es _User.RevokeSessions.All_.
+4. Für **Passwort-Reset erzwingen** braucht es _User-PasswordProfile.ReadWrite.All_. Für Konten mit Administratorrolle braucht die App zusätzlich eine passende Entra-Rolle.
+5. Fehlt eine Berechtigung, zeigt nextDesk im Fall eine klare Meldung.
+
+Ausführlich: «Microsoft Intune (Geräte)».
+
+### Wie richte ich Microsoft Teams im Shop ein?
+
+1. Prüfe die Voraussetzungen: SSO mit der eigenen Tenant-ID, Verzeichnisabgleich und die Funktion **Shop**.
+2. Schalte unter **Einstellungen → Funktionen** den Schalter **Microsoft Teams im Shop** ein (standardmässig aus).
+3. Lass den **Zustimmungslink** in derselben Karte vom Globalen Administrator öffnen und mit **Akzeptieren** bestätigen.
+4. Prüfe den Umfang der Berechtigungen mit deiner IT-Sicherheit.
+5. Wähle nach einigen Minuten **Verbindung prüfen**. Die Karte nennt, was noch fehlt.
+6. Stelle in der Karte die längste Laufzeit und die Gastregel ein.
+
+Ausführlich: «Microsoft Teams im Shop».
+
+### Wie richte ich Push-Benachrichtigungen für iOS ein?
+
+1. Aktiviere unter **Einstellungen → Funktionen** die Funktion **Push-Benachrichtigungen**.
+2. Wähle die Inhaltsstufe **Nur Ticketnummer** (empfohlen).
+3. Sage den Personen, dass sie unter _Persönliche Einstellungen → Benachrichtigungen → Benachrichtigungszeit_ selbst festlegen, wann sie Mitteilungen erhalten, und pro Benachrichtigung Push und E-Mail einschalten.
+4. Zum Testen wählen Anwenderinnen und Anwender in der iOS-App _Profil → Benachrichtigungen → Testmitteilung senden_.
+
+Ausführlich: «Push-Benachrichtigungen (iOS)».
+
+### Wie richte ich Push-Mitteilungen auf Android ein?
+
+1. Diese Einrichtung erledigt der Betreiber einmalig.
+2. Der Betreiber legt in der Firebase-Konsole ein Projekt an und fügt die Android-App mit der Paket-ID `ch.nextdesk.grossict` hinzu.
+3. Er hinterlegt in EAS die Datei `google-services.json` als Datei-Variable `GOOGLE_SERVICES_JSON` und lädt den Dienstkonto-Schlüssel unter _Credentials → Android → FCM V1_ hoch.
+4. Er erstellt und veröffentlicht einen neuen Android-Build. Erst Geräte mit diesem Build melden sich für Push an.
+
+Ausführlich: «Push-Mitteilungen auf Android».
+
+### Wie richte ich das PRTG-Monitoring ein?
+
+1. Öffne **Einstellungen → Monitoring**, aktiviere unter **Monitoring (PRTG)** die Verarbeitung und wähle in der Karte **Alarmierung** das Team, «Störung öffnen bei» und **Erneut alarmieren, solange unbestätigt**.
+2. Wähle **Token erzeugen** und kopiere die Webhook-Adresse sofort. Die Adresse wird nur einmal angezeigt.
+3. Lege in PRTG unter _Setup → Kontoeinstellungen → Benachrichtigungsvorlagen_ eine Vorlage **HTTP-Aktion ausführen** mit Methode **POST** an. Die Postdaten stehen unter «PRTG-Monitoring».
+4. Setze Zustands-Trigger auf der Gruppe oder dem Gerät: _Fehler_ (Down), bei Bedarf _Warnung_ und zwingend die Zeile «nicht mehr im Status …» (Up) mit derselben Vorlage.
+5. Ohne den Up-Trigger erfährt nextDesk nie, dass die Störung vorbei ist.
+
+Ausführlich: «PRTG-Monitoring».
+
+### Wie verknüpfe ich Geräte und Dienste mit PRTG?
+
+1. Öffne in der **Infrastruktur** das Gerät mit **Gerät bearbeiten**.
+2. Trage die **PRTG-Objekt-ID** ein, am besten die Geräte-ID aus der PRTG-Adresse.
+3. Kreuze bei **Dienste (für Systemstatus)** einen oder mehrere Dienste an. Nur damit ändert sich der Systemstatus.
+4. Trage beim Gerät den **Uplink** (vorgelagertes Gerät) ein, damit Folgestörungen erkannt werden.
+
+Ausführlich: «PRTG-Monitoring».
+
+### Wie gebe ich PRTG den Weg durch die Firewall frei?
+
+1. Dies ist nötig, wenn PRTG beim Zustellen «403 Forbidden» meldet.
+2. Gib die Domain `supabase.co` für den PRTG-Server in der Firewall frei.
+3. Verwende alternativ die Weiterleitung über die eigene Domain und lass auch diese Domain für den PRTG-Server zu.
+4. Prüfe die Erreichbarkeit auf dem PRTG-Server. Wie, steht unter «PRTG-Monitoring».
+
+Ausführlich: «PRTG-Monitoring».
+
+### Wie beende ich einen offenen PRTG-Alarm?
+
+1. Öffne das Register **Monitoring**.
+2. Wähle unter **Alarme aus PRTG** die Aktion **Alarm beenden**. Die gestörten Dienste werden zurückgesetzt.
+3. Alternativ schliessen Agenten die Störung unter **Störungen** ab.
+
+Ausführlich: «PRTG-Monitoring».
+
+### Wie richte ich die eigene Überwachung (Sonde) ein?
+
+1. Schalte unter **Funktionen** das Modul _Überwachung_ ein.
+2. Lege unter **Einstellungen → Monitoring → Überwachung** mit **Sonde hinzufügen** die Sonde an und lade die `config.json` herunter. Lade danach mit **Sonde herunterladen** das Installationspaket.
+3. Stelle einen Server im Netz bereit (Linux mit Docker oder Windows Server). Er braucht ausgehend HTTPS sowie ICMP und die geprüften TCP-Ports zu den überwachten Geräten.
+4. Entpacke das Paket, lege die `config.json` in den Ordner `nextdesk-sonde` und führe das Installationsskript für dein System aus. Die genauen Befehle stehen unter «Eigene Überwachung (Sonde)».
+5. Die Sonde erscheint nach etwa einer Minute als «online».
+6. Lösche die `config.json` nach der Installation aus dem Download- und dem Paketordner, denn sie enthält den Zugangsschlüssel.
+
+Ausführlich: «Eigene Überwachung (Sonde)».
+
+### Wie richte ich SNMP-Sensoren für die Sonde ein?
+
+1. Richte auf den Geräten SNMP nur lesend ein.
+2. Ergänze in der `config.json` der Sonde den Block `snmp` mit den Zugangsdaten. nextDesk speichert sie nie. Den Aufbau zeigt der Abschnitt «Eigene Überwachung (Sonde)».
+3. `default` gilt für alle Geräte, `hosts` für einzelne Geräte mit anderen Zugangsdaten.
+4. Erlaube der Sonde UDP 161 zu den Geräten.
+5. Starte die Sonde neu.
+
+Ausführlich: «Eigene Überwachung (Sonde)».
+
+### Wie aktualisiere ich die Sonde?
+
+1. Zeigt nextDesk bei einer Sonde «Aktualisierung verfügbar», lade das neue Paket herunter.
+2. Entpacke es.
+3. Führe dasselbe Skript erneut aus. Die installierte Konfiguration mit ihren Ergänzungen bleibt erhalten.
+
+Ausführlich: «Eigene Überwachung (Sonde)».
+
+### Wie richte ich externe Statusquellen ein?
+
+1. Öffne **Einstellungen → Monitoring → Externe Statusquellen**.
+2. Hake die gewünschten Anbieter an und wähle **Speichern**. Öffentliche Quellen brauchen keine weitere Einrichtung.
+3. Für **Microsoft 365** fügst du in Microsoft Entra bei der App unter _API-Berechtigungen_ die Anwendungsberechtigung `ServiceHealth.Read.All` hinzu und erteilst die Administratorzustimmung.
+4. Teste die Verbindung mit **Jetzt prüfen**. Danach prüft nextDesk alle 5 Minuten selbständig.
+5. Für WWZ und Swisscom gibt es keine Statusquelle; dort helfen Sensoren in PRTG.
+
+Ausführlich: «Externe Statusquellen (Microsoft 365, GitHub, Claude …)».
+
+### Wie überwache ich Zertifikate, Domains und Backups?
+
+1. Öffne das Register **Monitoring** (dasselbe Register wie bei den externen Statusquellen).
+2. Erfasse **Zertifikate und Domains**, damit nextDesk vor dem Ablauf erinnert.
+3. Richte die **Backup-Überwachung** ein (z. B. Veeam per E-Mail oder Webhook) mit erwartetem Intervall und Toleranz.
+
+Ausführlich: «Zertifikate, Domains und Backups».
+
+### Wie richte ich die IP-Adressverwaltung ein?
+
+1. Schalte unter **Module** die _IP-Adressverwaltung_ ein (für alle oder einzelne Abteilungen).
+2. Vergib die Rechte «IP-Adressverwaltung ansehen» bzw. «IP-Adressen, Subnetze und VLANs verwalten».
+3. Übernimm bestehende Listen unter **IP-Adressen → Import** (Excel, CSV, phpIPAM, NetBox).
+4. Der Abgleich mit **Intune** und **PRTG** läuft jede Nacht automatisch, sobald die jeweilige Anbindung eingerichtet ist.
+
+Ausführlich: «IP-Adressverwaltung und Netzwerkagent».
+
+### Wie installiere ich den Netzwerkagenten?
+
+1. Lege unter **IP-Adressen → Discovery → Agenten → Agent anlegen** den Agenten an und wähle Subnetze, Zeitplan und SNMP-Ziele. Der Token wird nur einmal angezeigt.
+2. Stelle auf einer VM `tools/ipam-agent` bereit und kopiere `config.example.json` als `config.json`. Trage Adresse, Token und SNMP-Zugangsdaten ein. SNMP-Schlüssel stehen nur in dieser Datei.
+3. Starte den Agenten unter Linux oder Windows. Die genauen Befehle stehen unter «IP-Adressverwaltung und Netzwerkagent».
+4. Richte auf den Switches SNMPv3 nur lesend ein und erlaube ICMP vom Agenten in alle Subnetze.
+5. Der Agent verbindet sich nur ausgehend per HTTPS; eingehende Firewall-Regeln braucht es nicht.
+
+Ausführlich: «IP-Adressverwaltung und Netzwerkagent».
+
+### Wie erlaube ich DHCP- und DNS-Änderungen durch den Agenten?
+
+1. Schalte beim Agenten in nextDesk «Änderungen an DHCP/DNS erlauben» ein.
+2. Schalte in der lokalen `config.json` des Agenten `allowWrites` ein.
+3. Der Agent schreibt nur für Aufträge, die eine Person mit Verwaltungsrecht freigegeben hat.
+
+Ausführlich: «IP-Adressverwaltung und Netzwerkagent».
+
+### Wie verteile ich die Mobile-App?
+
+1. Die **nextDesk-App** für iOS steht im App Store.
+2. Weise Mitarbeitende darauf hin.
+3. Die Mitarbeitenden melden sich mit derselben Adresse bzw. per SSO an.
+
+Ausführlich: «Schritt 7: Mobile-App und Abschluss».
+
+### Wie führe ich den Abschluss-Test durch?
+
+1. Erfasse als Mitarbeitende/r ein Ticket.
+2. Übernimm als Agent das Ticket und antworte öffentlich.
+3. Sende eine E-Mail an das Support-Postfach und prüfe, dass ein Ticket entsteht.
+4. Prüfe im **Protokoll**, dass alle Einrichtungsschritte erfasst sind.
+
+Ausführlich: «Schritt 7: Mobile-App und Abschluss».
+
 ## Übersicht und Reihenfolge
 
 1. Mandant und ersten Administrator erhalten (Betreiber)

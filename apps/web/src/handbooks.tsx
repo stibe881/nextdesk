@@ -26,6 +26,11 @@ import {
   type HandbookId,
   type HandbookSummary,
 } from "./lib/handbooks";
+import {
+  handbookHeadingId,
+  handbookToc,
+  type HandbookTocEntry,
+} from "./lib/handbook-toc";
 import "./knowledge-markdown.css";
 import "./handbooks.css";
 
@@ -39,18 +44,6 @@ function textOf(children: ReactNode): string {
         : "",
     )
     .join("");
-}
-
-export function handbookHeadingId(text: string): string {
-  return (
-    "hb-" +
-    text
-      .toLocaleLowerCase("de-CH")
-      .normalize("NFKD")
-      .replace(/[̀-ͯ]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-  );
 }
 
 /** Lists the handbooks the signed-in person may open (decided server-side). */
@@ -206,14 +199,8 @@ export function HandbookViewer({
     };
   }, [handbookId, tenantId]);
 
-  const contents = useMemo(
-    () =>
-      handbook
-        ? [...handbook.markdown.matchAll(/^## (.+)$/gm)].map(([, title]) => ({
-            id: handbookHeadingId(title!.trim()),
-            title: title!.trim(),
-          }))
-        : [],
+  const contents = useMemo<HandbookTocEntry[]>(
+    () => (handbook ? handbookToc(handbook.markdown) : []),
     [handbook],
   );
 
@@ -261,6 +248,17 @@ export function HandbookViewer({
                   <a href={`#${entry.id}`} onClick={jumpToHeading}>
                     {entry.title}
                   </a>
+                  {entry.children.length > 0 ? (
+                    <ol className="handbook-viewer__toc-sub">
+                      {entry.children.map((child) => (
+                        <li key={child.id}>
+                          <a href={`#${child.id}`} onClick={jumpToHeading}>
+                            {child.title}
+                          </a>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
                 </li>
               ))}
             </ol>
@@ -280,6 +278,9 @@ export function HandbookViewer({
                   h1: () => null,
                   h2: ({ children }) => (
                     <h2 id={handbookHeadingId(textOf(children))}>{children}</h2>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 id={handbookHeadingId(textOf(children))}>{children}</h3>
                   ),
                   img: ({ src, alt }) =>
                     typeof src === "string" && src ? (

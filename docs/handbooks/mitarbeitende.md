@@ -12,6 +12,489 @@ Gerät, eine fehlende Berechtigung oder eine Frage – und verfolgen jederzeit,
 wie weit dein Anliegen ist. Dieses Handbuch erklärt alles, was du dafür
 brauchst.
 
+## Wie mache ich …?
+
+Hier findest du zu jeder Aufgabe eine kurze Anleitung. Ausführliche
+Erklärungen stehen in den weiteren Abschnitten.
+
+### Wie melde ich mich an?
+
+1. Öffne `https://app.nextdesk.ch` im Browser.
+2. Ist dein Unternehmen mit Microsoft 365 verbunden, wähle **Mit SSO
+   anmelden** und melde dich mit deinem gewohnten Microsoft-Konto an.
+3. Ohne SSO gibst du unter «Oder mit E-Mail» deine E-Mail-Adresse ein und
+   wählst **Anmeldelink senden**.
+4. Öffne den Link aus der E-Mail im selben Browser.
+
+Mehr dazu unter «Anmelden».
+
+### Wie melde ich mich mit einem Passwort an?
+
+1. Öffne `https://app.nextdesk.ch` im Browser.
+2. Wähle «Mit Passwort anmelden». Das Passwortfeld erscheint.
+3. Gib deine Zugangsdaten ein. Das geht nur, wenn du ein Passwort gesetzt hast.
+
+Mehr dazu unter «Anmelden».
+
+### Wie erstelle ich ein Konto?
+
+1. Öffne `https://app.nextdesk.ch` im Browser.
+2. Wähle «Neu bei nextDesk? Konto erstellen». Das brauchst du nur, wenn dich
+   dein Unternehmen nicht eingeladen hat.
+3. Bestätige dein Konto per E-Mail.
+4. Erstelle danach deinen eigenen Arbeitsbereich.
+
+Gehört deine E-Mail-Domain zu einem Unternehmen mit SSO, meldest du dich
+stattdessen mit SSO an. Mehr dazu unter «Anmelden».
+
+### Wie gehe ich vor, wenn die Anmeldung scheitert?
+
+1. Lies die rote Meldung unter dem Formular.
+2. Gib den Text dieser Meldung an deine IT weiter.
+3. Kommt kein Anmeldelink an, prüfe den Spam-Ordner und ob die
+   E-Mail-Adresse stimmt.
+4. Funktioniert der Anmeldelink nicht, öffne ihn im selben Browser, in dem du
+   ihn angefordert hast, und fordere bei Bedarf einen neuen an.
+
+Mehr dazu unter «Anmelden» und «Häufige Fragen».
+
+### Wie erfasse ich ein Ticket?
+
+1. Klicke oben rechts auf **+** und dann auf **Ticket erfassen**.
+2. Gib einen kurzen, aussagekräftigen **Betreff** ein.
+3. Wähle unter **Einordnung** die **Abteilung / Angebot** und, wenn du
+   möchtest, **Kategorie** und **Unterkategorie**.
+4. Wähle die **Priorität**. Im Zweifel belässt du die vorgeschlagene.
+5. Beschreibe das Anliegen in der **Beschreibung**: Was ist passiert? Seit
+   wann? Welche Fehlermeldung? Welches Gerät?
+6. Klicke auf **Ticket erstellen**.
+7. Notiere dir die **Ticketnummer**. Mit **Öffnen** springst du direkt ins
+   Ticket.
+
+Mehr dazu unter «Ein Anliegen melden (Ticket erfassen)».
+
+### Wie finde ich eine Lösung, bevor ich ein Ticket erfasse?
+
+1. Beginne, ein Ticket zu erfassen, und schreibe den Betreff.
+2. Schau dir die Artikel an, die nextDesk unter «Könnte dir das helfen?»
+   vorschlägt.
+3. Öffne einen passenden Artikel und prüfe, ob er dein Problem löst.
+4. Löst er es nicht, erfasst du das Ticket wie gewohnt.
+
+Mehr dazu unter «Ein Anliegen melden (Ticket erfassen)».
+
+### Wie löse ich mein Anliegen mit dem Assistenten?
+
+1. Klicke oben rechts auf **+** und dann auf **Ticket erfassen**.
+2. Wähle **Mit dem Assistenten lösen**. Das gibt es nur, wenn der Assistent
+   aktiviert ist.
+3. Schildere dein Anliegen im Dialog.
+4. Übernimm den vorbereiteten Entwurf, wenn du ein Ticket brauchst.
+
+Mehr dazu unter «Ein Anliegen melden (Ticket erfassen)».
+
+### Wie verwerfe ich einen Ticket-Entwurf?
+
+1. Klicke oben rechts auf **+** und dann auf **Ticket erfassen**. Halbfertige
+   Eingaben sind als Entwurf noch da.
+2. Wähle **Entwurf verwerfen**.
+3. Beginne neu.
+
+Mehr dazu unter «Ein Anliegen melden (Ticket erfassen)».
+
+### Wie sehe ich den Stand meiner Tickets?
+
+1. Wähle im Menü **Tickets**.
+2. Lies bei jedem Anliegen Nummer, Betreff und Status.
+3. Klicke auf ein Ticket, um Einzelheiten zu sehen.
+4. Der Block **Fortschritt** zeigt die Schritte mit Zeitpunkten.
+
+Mehr dazu unter «Eigene Tickets verfolgen» und «Ein Ticket öffnen und
+antworten».
+
+### Wie suche ich ein Ticket?
+
+1. Klicke oben rechts in die **globale Suche** («Global suchen …»).
+2. Gib ein Stichwort oder einen Teil der Ticketnummer ein, zum Beispiel «82»
+   für ICT-2026-000082.
+3. Klicke auf den passenden Treffer.
+
+Mehr dazu unter «Die Oberfläche im Überblick».
+
+### Wie antworte ich auf ein Ticket?
+
+1. Wähle im Menü **Tickets** und klicke auf das Ticket.
+2. Schreibe deine Antwort in **Deine Nachricht**.
+3. Klicke auf **Nachricht senden**.
+
+Du kannst auch direkt auf die E-Mail des Supports antworten. Mehr dazu unter
+«Ein Ticket öffnen und antworten».
+
+### Wie hänge ich eine Datei an ein Ticket an?
+
+1. Öffne das Ticket und schreibe deine Nachricht in **Deine Nachricht**.
+2. Wähle **Dateien anhängen** und suche den Screenshot oder das Dokument aus.
+   Erlaubt sind unter anderem PDF, Office-Dokumente, TXT, CSV, PNG und JPG.
+3. Klicke auf **Nachricht senden**.
+
+Mehr dazu unter «Ein Ticket öffnen und antworten».
+
+### Wie bestätige ich, dass mein Problem gelöst ist?
+
+1. Öffne das Ticket mit dem Status «Wartet auf dich».
+2. Beantworte die Frage «Ist dein Problem inzwischen gelöst?» mit **Problem
+   ist gelöst**.
+
+Mehr dazu unter «Ein Ticket öffnen und antworten».
+
+### Wie melde ich, dass ich noch Hilfe brauche?
+
+1. Öffne das Ticket mit dem Status «Wartet auf dich».
+2. Klicke bei der Frage «Ist dein Problem inzwischen gelöst?» auf **Ich
+   brauche noch Hilfe**.
+3. Beschreibe kurz, was noch offen ist.
+4. Wähle **Rückmeldung senden**.
+
+Mehr dazu unter «Ein Ticket öffnen und antworten».
+
+### Wie gebe ich etwas frei oder lehne es ab?
+
+1. Öffne das Ticket, in dem eine Freigabe auf dich wartet.
+2. Entscheide direkt im Ticket mit **Freigeben** oder **Ablehnen**.
+
+Mehr dazu unter «Ein Ticket öffnen und antworten».
+
+### Wie bewerte ich ein gelöstes Ticket?
+
+1. Öffne das gelöste Ticket. Unter «Fortschritt» steht die Frage **Wie
+   zufrieden bist du?**
+2. Wähle 1 bis 5 Sterne.
+3. Schreibe bei Bedarf einen kurzen Kommentar.
+4. Klicke auf **Bewertung senden**.
+
+Mehr dazu unter «Ticket bewerten».
+
+### Wie ändere ich meine Bewertung?
+
+1. Öffne das bewertete Ticket. Das geht innerhalb von 14 Tagen nach der
+   Bewertung.
+2. Wähle **Bewertung ändern**.
+3. Ändere Sterne oder Kommentar.
+4. Klicke auf **Bewertung senden**.
+
+Du kannst die Bewertung nur einmal ändern. Mehr dazu unter «Ticket bewerten».
+
+### Wie bewerte ich ein Ticket per E-Mail?
+
+1. Öffne die E-Mail «Ticket gelöst».
+2. Klicke auf einen der fünf Sterne. Du musst dafür nicht angemeldet sein.
+3. Ändere auf der Seite, die sich öffnet, bei Bedarf die Sterne und schreibe
+   einen Kommentar.
+4. Bestätige mit **Bewertung senden**.
+
+Der Link ist persönlich und 14 Tage gültig. Mehr dazu unter «Ticket bewerten».
+
+### Wie melde ich eine verdächtige E-Mail?
+
+1. Klicke in der verdächtigen E-Mail keine Links an und öffne keine Anhänge.
+2. Wähle in **Outlook** **Melden → Phishing melden**. Oder wähle im Portal oder
+   in der App **Phishing melden**.
+3. Antworte ehrlich, wenn das Sicherheitsteam nachfragt, ob du einen Link
+   geöffnet oder Daten eingegeben hast.
+
+Hast du bereits dein Passwort eingegeben, melde dich sofort beim Support. Mehr
+dazu unter «Verdächtige E-Mail melden (Phishing)».
+
+### Wie suche ich in der Wissensdatenbank?
+
+1. Wähle im Menü **Wissensdatenbank**.
+2. Tippe ein Stichwort ins Suchfeld. Mit der Taste `/` springst du direkt
+   hinein.
+3. Klicke auf einen Treffer, um den Artikel zu öffnen.
+4. Wähle **Alle Artikel** oder **Zurück zu den Treffern**, um zur Liste
+   zurückzukehren.
+
+Mehr dazu unter «Wissensdatenbank».
+
+### Wie finde ich einen Artikel nach Thema?
+
+1. Wähle im Menü **Wissensdatenbank**.
+2. Wähle ein **Thema**. Die Reihe mit Symbolen scrollt seitlich.
+3. Wähle bei Bedarf ein Unterthema.
+4. Klicke auf einen Artikel.
+
+Bei langen Artikeln springst du über **Auf dieser Seite** zum Abschnitt. Mehr
+dazu unter «Wissensdatenbank».
+
+### Wie bestelle ich im Shop?
+
+1. Wähle im Menü **Shop** und dort das Register **Katalog**.
+2. Wähle einen Artikel und klicke auf **In den Warenkorb**.
+3. Gib im Warenkorb den **Grund der Bestellung** an.
+4. Wähle die Lieferung: _Abholung beim Support_ oder _An meinen Arbeitsplatz_.
+5. Klicke auf **Jetzt bestellen**. Ist eine Freigabe nötig, heisst der Knopf
+   **Zur Freigabe senden**.
+
+Fehlt dir ein Artikel, wende dich an den Support. Mehr dazu unter «Shop –
+Geräte und Zubehör bestellen».
+
+### Wie leihe ich ein Gerät aus?
+
+1. Wähle im Menü **Shop** und dort das Register **Katalog**.
+2. Wähle das Leihgerät und klicke auf **Ausleihen**.
+3. Gib den Zeitraum an.
+4. Gib im Warenkorb den **Grund der Bestellung** an und wähle die Lieferung.
+5. Klicke auf **Jetzt bestellen** bzw. **Zur Freigabe senden**.
+
+nextDesk erinnert dich zwei Tage vor dem Rückgabedatum. Mehr dazu unter «Shop –
+Geräte und Zubehör bestellen».
+
+### Wie sehe ich den Stand meiner Bestellungen?
+
+1. Wähle im Menü **Shop**.
+2. Öffne **Meine Bestellungen**.
+
+Mehr dazu unter «Shop – Geräte und Zubehör bestellen».
+
+### Wie sehe ich meine Geräte?
+
+1. Öffne **Mein Bereich**.
+2. Wähle **Geräte**. Dort steht ein Gerät, das du aus dem Shop erhalten hast.
+
+Mehr dazu unter «Shop – Geräte und Zubehör bestellen».
+
+### Wie entscheide ich über Bestellungen meines Teams?
+
+1. Wähle im Menü **Shop**.
+2. Öffne das Register **Freigaben**.
+3. Entscheide über die Bestellungen deines Teams.
+
+Das gilt für dich als vorgesetzte Person. Mehr dazu unter «Shop – Geräte und
+Zubehör bestellen».
+
+### Wie bestelle ich ein neues Team in Microsoft Teams?
+
+1. Wähle im Shop im Katalog die Kachel **Microsoft Teams: neues Team**.
+2. Wähle **Team zusammenstellen …**.
+3. Fülle nacheinander **Grunddaten**, **Kanäle & Tabs**, **Personen** und
+   **Laufzeit** aus.
+4. Lege unter **Personen** mindestens einen Owner fest.
+5. Lege unter **Laufzeit** Start und Ende fest. Das Ende ist Pflicht.
+6. Prüfe alles in der **Übersicht** und wähle **Verbindlich bestellen**.
+
+Mehr dazu unter «Microsoft Teams: neues Team bestellen».
+
+### Wie verlängere ich ein Team?
+
+1. Öffne im Shop **Meine Teams**.
+2. Wähle das Team.
+3. Verlängere die Laufzeit mit einem Klick um 1, 3, 6 Monate oder 1 Jahr.
+
+Ohne Verlängerung wird das Team nach dem Ende archiviert. Mehr dazu unter
+«Microsoft Teams: neues Team bestellen».
+
+### Wie bearbeite ich ein Team?
+
+1. Öffne im Shop **Meine Teams**.
+2. Wähle beim Team **Bearbeiten**. Das geht als Besteller oder Owner.
+3. Füge Personen hinzu oder entferne sie, oder ändere ihre Owner-Rolle. Ein
+   Owner bleibt immer.
+4. Verlängere bei Bedarf die Laufzeit oder **archiviere** das Team.
+
+Name, Kanäle und Tabs änderst du direkt in Microsoft Teams. Mehr dazu unter
+«Microsoft Teams: neues Team bestellen».
+
+### Wie sehe ich meine Benachrichtigungen?
+
+1. Klicke oben rechts auf die **Glocke**.
+2. Klicke auf einen Eintrag, um das Ticket bzw. die Bestellung zu öffnen.
+3. Wähle «Alle als gelesen markieren», um die Liste zu leeren.
+
+In der App öffnest du die **Glocke** oben auf der Startseite. Mehr dazu unter
+«Die Oberfläche im Überblick».
+
+### Wie erkenne ich eine Störung oder Wartung?
+
+1. Achte oben auf einen Hinweis oder im Menü auf den Eintrag **Aktive
+   Störung**.
+2. Wähle **+1 weitere**, wenn es mehrere Störungen gibt, um alle aufzuklappen.
+3. Lies bei einer Wartung den blauen Hinweis «Laufende Wartung» bzw.
+   «Geplante Wartung» mit Zeitraum und betroffenen Diensten.
+
+Für eine bekannte Störung musst du kein eigenes Ticket erfassen. Mehr dazu
+unter «Die Oberfläche im Überblick».
+
+### Wie blende ich einen Hinweis der ICT aus?
+
+1. Suche den Hinweis oben auf der Startseite.
+2. Klicke auf das **X-Symbol**.
+
+Der Hinweis erscheint danach nicht mehr. Mehr dazu unter «Hinweise der ICT».
+
+### Wie ändere ich die Darstellung?
+
+1. Klicke unten links auf deinen **Namen**. Die **Persönlichen
+   Einstellungen** öffnen sich.
+2. Öffne **Profil & Darstellung** und wähle **Darstellung anpassen**.
+3. Wähle das Farbschema (Hell, Dunkel, Systemeinstellung).
+4. Schalte bei Bedarf hohen Kontrast oder Bewegung reduzieren ein.
+
+Mehr dazu unter «Persönliche Einstellungen und Handbücher».
+
+### Wie stelle ich Benachrichtigungen ein?
+
+1. Klicke unten links auf deinen **Namen**.
+2. Öffne **Benachrichtigungen**.
+3. Schalte bei jeder Benachrichtigung **Push** und **E-Mail** ein oder aus.
+
+E-Mail-Benachrichtigungen gibt es, sobald dein Unternehmen ein
+Exchange-Postfach verbunden hat. Mehr dazu unter «Persönliche Einstellungen und
+Handbücher».
+
+### Wie lege ich fest, wann ich Benachrichtigungen erhalte?
+
+1. Klicke unten links auf deinen **Namen** und öffne **Benachrichtigungen**.
+2. Wähle bei der **Benachrichtigungszeit** **Jederzeit** oder **Nur zu
+   bestimmten Zeiten**.
+3. Wähle bei **Nur zu bestimmten Zeiten** die Tage (Mo–So) und die Uhrzeit von
+   und bis.
+
+Was ausserhalb der Zeit anfällt, kommt zu Beginn der nächsten
+Benachrichtigungszeit. Mehr dazu unter «Persönliche Einstellungen und
+Handbücher».
+
+### Wie melde ich mich von allen anderen Geräten ab?
+
+1. Klicke unten links auf deinen **Namen**.
+2. Öffne die **Sitzungsverwaltung**.
+3. Melde alle anderen Geräte ab.
+
+Mehr dazu unter «Persönliche Einstellungen und Handbücher».
+
+### Wie melde ich mich ab?
+
+1. Klicke unten links auf deinen **Namen**.
+2. Wähle **Abmelden**.
+
+Mehr dazu unter «Persönliche Einstellungen und Handbücher».
+
+### Wie lösche ich mein Konto?
+
+1. Klicke unten links auf deinen **Namen**.
+2. Wähle **Konto löschen**.
+
+Meldest du dich mit SSO deines Unternehmens an, kannst du das Konto hier nicht
+löschen. Wende dich dann an deine IT. Mehr dazu unter «Persönliche
+Einstellungen und Handbücher».
+
+### Wie lese oder drucke ich ein Handbuch?
+
+1. Klicke unten links auf deinen **Namen**.
+2. Öffne **Handbücher** und wähle das Handbuch.
+3. Wähle **Drucken / PDF**, um es auszudrucken oder als PDF zu speichern.
+
+In der App findest du die Handbücher unter **Profil → Hilfe und Rechtliches**.
+Mehr dazu unter «Persönliche Einstellungen und Handbücher».
+
+### Wie erfasse ich ein Ticket in der App?
+
+1. Wähle in der App **Neues Ticket**.
+2. Fülle das Formular aus wie im Browser.
+3. Füge unter **Fotos (optional)** bei Bedarf Bilder hinzu. Bis zu fünf pro
+   Ticket sind möglich.
+4. Sende das Ticket ab.
+
+Mehr dazu unter «nextDesk auf dem iPhone».
+
+### Wie füge ich in der App ein Foto zum Ticket hinzu?
+
+1. Öffne in der App **Neues Ticket**.
+2. Wähle unter **Fotos (optional)** **Foto aufnehmen** oder **Aus Mediathek**.
+3. Erlaube beim ersten Mal den Zugriff auf die Kamera.
+4. Wähle **Markieren**, um eine Stelle im Bild zu kennzeichnen.
+5. Entferne ein Bild mit dem **×**.
+
+Hast du den Kamerazugriff abgelehnt, erlaubst du ihn in den Einstellungen des
+Geräts oder wählst ein Bild aus der Mediathek. Mehr dazu unter «nextDesk auf dem
+iPhone».
+
+### Wie hänge ich in der App eine Datei an eine Nachricht an?
+
+1. Öffne in der App das Ticket.
+2. Tippe auf die **Büroklammer** neben dem Nachrichtenfeld.
+3. Wähle Fotos aus der Mediathek oder Dateien (PDF, Word, Excel, TXT, CSV). Bis
+   zu fünf pro Nachricht sind möglich.
+4. Sende die Nachricht.
+
+Mehr dazu unter «nextDesk auf dem iPhone».
+
+### Wie öffne ich in der App eine Datei aus einem Ticket?
+
+1. Öffne in der App das Ticket.
+2. Suche die Datei in der **Unterhaltung** oder unter der Beschreibung.
+3. Tippe auf die Datei.
+
+Mehr dazu unter «nextDesk auf dem iPhone».
+
+### Wie filtere ich meine Tickets in der App?
+
+1. Wähle in der App unten **Tickets**. Die Liste beginnt mit dem Filter
+   **Meine**.
+2. Wechsle die Ansicht mit **Alle**, **Beobachtet**, **Offen**, **Gelöst** oder
+   **Nicht zugewiesen**.
+3. Tippe auf das Filtersymbol in der Suchleiste für weitere Filter, zum Beispiel
+   **Priorität** oder **Sortieren nach**.
+4. Wähle **Filter zurücksetzen**, um wieder zu **Meine** zu kommen.
+
+Mehr dazu unter «nextDesk auf dem iPhone».
+
+### Wie lese ich einen Wissensartikel in der App?
+
+1. Wähle in der App unten rechts **Wissen**.
+2. Suche einen Artikel oder wische durch die Themen.
+3. Tippe auf den Artikel.
+4. Teile ihn unten im Artikel, oder erstelle mit **Ticket erstellen** eine
+   Rückfrage dazu.
+
+Mehr dazu unter «nextDesk auf dem iPhone».
+
+### Wie passe ich die Home-Seite in der App an?
+
+1. Tippe auf der **Home**-Seite oben rechts auf **Home anpassen**.
+2. Blende die Bereiche ein oder aus, zum Beispiel Suche, Zuletzt geöffnet oder
+   Geräte.
+3. Verschiebe Bereiche mit den Pfeilen.
+4. Wähle **Standard wiederherstellen**, um alles zurückzusetzen.
+
+Die Einstellung gilt nur für dich und wird zwischen deinen Geräten abgeglichen.
+Mehr dazu unter «nextDesk auf dem iPhone».
+
+### Wie stelle ich Benachrichtigungen in der App ein?
+
+1. Öffne die App-Einstellungen.
+2. Schalte bei jedem Hinweis **Push** und **Mail** einzeln ein oder aus.
+3. Wähle unter **Benachrichtigungszeit** die Tage und Zeiten.
+
+Ein Tipp auf eine Mitteilung öffnet direkt das Ticket bzw. die Bestellung. Mehr
+dazu unter «nextDesk auf dem iPhone».
+
+### Wie sehe ich meine letzten Mitteilungen in der App?
+
+1. Tippe auf der Startseite oben auf die **Glocke**.
+2. Lies die **Mitteilungen**.
+
+Die rote Zahl auf dem App-Symbol zeigt, wie viele Mitteilungen du noch nicht
+gelesen hast. Mehr dazu unter «nextDesk auf dem iPhone».
+
+### Wie finde ich die App-Version?
+
+1. Öffne in der App das Profil.
+2. Scrolle ganz nach unten.
+3. Lies **Version** und **Build** ab.
+
+Nenne diese Angaben dem Support, wenn du ein Problem meldest. Mehr dazu unter
+«nextDesk auf dem iPhone».
+
 ## Anmelden
 
 Öffne `https://app.nextdesk.ch` im Browser.
