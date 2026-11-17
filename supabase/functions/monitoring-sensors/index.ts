@@ -2,7 +2,7 @@ import { withSupabase } from "@supabase/server";
 import { isUuid, json, noContent } from "../_shared/http.ts";
 import { createAgentToken, sha256Hex, tokenHint } from "../_shared/ipam-discovery.ts";
 import { publicTarget } from "../_shared/monitoring-cloud.ts";
-import { sensorKey } from "../_shared/monitoring-native.ts";
+import { closeSensorAlert as closeSharedSensorAlert } from "../_shared/monitoring-pause.ts";
 import {
   attachments,
   comparePorts,
@@ -14,7 +14,6 @@ import {
   resolvePort,
 } from "../_shared/monitoring-topology.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
-import { INTEGRATION_COLUMNS, processEvent } from "../monitoring-webhook/index.ts";
 import {
   type Action,
   agentOnline,
@@ -953,42 +952,12 @@ async function saveSensor(admin: Client, tenantId: string, actorId: string, acti
   return { sensorId: String(inserted.data.id) };
 }
 
-/**
- * A sensor that is paused or deleted reports no «OK» any more. Its open
- * alert is ended through the incident logic (like an «OK» of the sensor), so
- * the service status is restored and the incident can resolve.
- */
 async function closeSensorAlert(admin: Client, tenantId: string, sensorId: string, reason: string): Promise<void> {
-  const key = sensorKey(sensorId);
-  const open = await admin.from("monitoring_alerts").select("id, sensor_name, device_name")
-    .eq("tenant_id", tenantId).eq("external_key", key).eq("state", "open").maybeSingle();
-  if (open.error) throw unavailable();
-  if (open.data) {
-    const integration = await admin.from("monitoring_integrations").select(INTEGRATION_COLUMNS).eq("tenant_id", tenantId).maybeSingle();
-    if (integration.error || !integration.data) throw unavailable();
-    await processEvent(admin, integration.data, {
-      device: text(open.data.device_name),
-      host: null,
-      sensor: text(open.data.sensor_name),
-      status: "OK",
-      kind: "up",
-      message: reason,
-      objectId: null,
-      sensorId: null,
-      deviceId: null,
-      lastValue: null,
-      dateTime: null,
-      group: null,
-      probe: null,
-      down: null,
-      priority: null,
-      link: null,
-      origin: "sensor",
-    }, new Date(), { key, device: null });
+  try {
+    await closeSharedSensorAlert(admin, tenantId, sensorId, reason);
+  } catch {
+    throw unavailable();
   }
-  await admin.from("monitoring_sensor_status")
-    .update({ state: "unknown", consecutive_failures: 0, since: new Date().toISOString() })
-    .eq("tenant_id", tenantId).eq("sensor_id", sensorId);
 }
 
 /** Asks the probe for the interfaces of a device (answer within about a minute). */

@@ -492,6 +492,15 @@ sonst grau.
   Alarm.
 - **Letzte Ereignisse** zeigen neben Ausfällen und Warnungen auch, wer ein
   Gerät oder einen Sensor pausiert (mit Grund) oder fortgesetzt hat.
+- **Wartungsfenster pausieren automatisch**: Beginnt ein Wartungsfenster
+  (Systemstatus, Register **Wartung**), pausiert nextDesk innerhalb einer
+  Minute alle Sensoren der dort gewählten Geräte. Als Grund steht
+  «Wartungsfenster «Titel» (automatisch)», offene Alarme schliessen sich, und
+  unter **Letzte Ereignisse** erscheint die Pause. Endet das Fenster (Endzeit
+  erreicht, abgeschlossen, abgesagt oder gelöscht), setzt nextDesk genau
+  diese Sensoren wieder fort. Sensoren, die Sie schon vorher pausiert hatten,
+  bleiben pausiert; pausieren Sie einen Sensor während des Fensters mit einem
+  anderen Grund neu, bleibt er ebenfalls pausiert.
 
 ![Überwachung mit Kacheln, letzten Ereignissen, Verfügbarkeit und aktiven Alarmen](images/ag-ueberwachung.jpg)
 

@@ -28,6 +28,7 @@ import {
   transitionEvent,
 } from "../_shared/monitoring-native.ts";
 import { verifyDispatchSecret } from "../_shared/monitoring-admin.ts";
+import { maintenancePauses } from "../_shared/monitoring-pause.ts";
 import { mapLimit, parseCloudChecks, runCloudCheck } from "../_shared/monitoring-cloud.ts";
 import { type SimulatedSensor, simulateResults } from "../_shared/monitoring-simulation.ts";
 import { parseTopology } from "../_shared/monitoring-topology.ts";
@@ -824,7 +825,13 @@ const handler = withSupabase(
       try {
         const watchdog = await probeWatchdog(context.supabaseAdmin);
         const cloud = await cloudChecks(context.supabaseAdmin);
-        return reply({ ok: true, ...watchdog, ...cloud });
+        let maintenance: Record<string, number> = {};
+        try {
+          maintenance = await maintenancePauses(context.supabaseAdmin);
+        } catch (failure) {
+          console.error("monitoring_maintenance_pauses_failed", failure instanceof Error ? failure.message : "");
+        }
+        return reply({ ok: true, ...watchdog, ...cloud, ...maintenance });
       } catch (failure) {
         console.error("monitoring_probe_watchdog_failed", failure instanceof Error ? failure.message : "");
         return reply({ ok: false, error: "processing_failed" }, 500);
