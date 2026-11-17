@@ -2347,12 +2347,12 @@ async function serviceIncidentMailContent(
   };
 }
 
-/** Inhalt der Mail bei Beginn bzw. Ende eines öffentlichen Wartungsfensters. */
+/** Inhalt der Mail bei Ankündigung, Beginn bzw. Ende eines öffentlichen Wartungsfensters. */
 async function serviceMaintenanceMailContent(
   admin: Admin,
   tenantId: string,
   maintenanceId: string,
-  phase: "start" | "end",
+  phase: "announce" | "start" | "end",
 ): Promise<StatusMailContent | null> {
   const [maintenance, links] = await Promise.all([
     admin
@@ -2378,11 +2378,21 @@ async function serviceMaintenanceMailContent(
   );
   const title = asString(maintenance.data.title) ?? "Wartung";
   const description = asString(maintenance.data.description);
-  const status = phase === "start" ? "Wartung begonnen" : "Wartung beendet";
+  const status = phase === "announce"
+    ? "Wartung geplant"
+    : phase === "start"
+    ? "Wartung begonnen"
+    : "Wartung beendet";
   const services = names.length
     ? `\n\nBetroffene Dienste: ${names.join(", ")}.`
     : "";
-  const text = phase === "start"
+  if (phase === "announce" && maintenance.data.state !== "scheduled") return null;
+  const text = phase === "announce"
+    ? `Geplante Wartung «${title}»: von ${swissDateTime(maintenance.data.starts_at)} bis ${
+      swissDateTime(maintenance.data.ends_at)
+    }. In dieser Zeit können die Dienste eingeschränkt oder nicht verfügbar sein.` +
+      (description ? `\n\n${description}` : "") + services
+    : phase === "start"
     ? `Die geplante Wartung «${title}» hat begonnen. Geplant bis ${
       swissDateTime(maintenance.data.ends_at)
     }.` + (description ? `\n\n${description}` : "") + services
@@ -2498,7 +2508,11 @@ async function dispatchServiceStatusMail(
           admin,
           message.tenant_id,
           maintenanceId,
-          asString(row.data?.maintenance_phase) === "end" ? "end" : "start",
+          asString(row.data?.maintenance_phase) === "end"
+            ? "end"
+            : asString(row.data?.maintenance_phase) === "announce"
+            ? "announce"
+            : "start",
         )
         : undefined;
       if (extra === null) {

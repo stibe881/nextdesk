@@ -1211,6 +1211,8 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
           await addEvent(admin, action.tenantId, action.incidentId, "assigned", actorId,
             `Zugewiesen an ${people.get(actorId) ?? "Agent"}.`);
         }
+        // Confirmed: publish the outage now (otherwise after 10 minutes).
+        await admin.rpc("monitoring_publish_pending", { p_incident_id: action.incidentId });
       }
       return await detail(admin, client, action.tenantId, action.incidentId);
     }

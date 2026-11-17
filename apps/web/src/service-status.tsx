@@ -1055,11 +1055,16 @@ function MaintenanceList({
   services,
   canManagePublication,
   onEdit,
+  onExtend,
+  extending,
 }: {
   maintenances: readonly StatusMaintenance[];
   services: readonly StatusService[];
   canManagePublication: boolean;
   onEdit: (maintenance: StatusMaintenance) => void;
+  /** Extends a running maintenance by the given minutes. */
+  onExtend?: (maintenance: StatusMaintenance, minutes: number) => void;
+  extending?: boolean;
 }) {
   const serviceNames = new Map(
     services.map((service) => [service.id, service.name]),
@@ -1176,6 +1181,28 @@ function MaintenanceList({
                           >
                             Wartung bearbeiten
                           </button>
+                          {onExtend &&
+                          maintenance.state === "active" &&
+                          !(
+                            maintenance.publicEnabled && !canManagePublication
+                          ) ? (
+                            <select
+                              aria-label={`Wartung «${maintenance.title}» verlängern`}
+                              disabled={extending}
+                              onChange={(event) => {
+                                const minutes = Number(event.target.value);
+                                event.target.value = "";
+                                if (minutes > 0) onExtend(maintenance, minutes);
+                              }}
+                              value=""
+                            >
+                              <option value="">Verlängern …</option>
+                              <option value="30">um 30 Minuten</option>
+                              <option value="60">um 1 Stunde</option>
+                              <option value="120">um 2 Stunden</option>
+                              <option value="240">um 4 Stunden</option>
+                            </select>
+                          ) : null}
                         </p>
                         {maintenance.publicEnabled && !canManagePublication ? (
                           <p className="service-status__maintenance-access-note">
@@ -1951,6 +1978,49 @@ export function ServiceStatus({
     }
   }
 
+  /** Running maintenance: move the end (from now if it is already over). */
+  async function extendMaintenance(
+    maintenance: StatusMaintenance,
+    minutes: number,
+  ) {
+    const base = Math.max(Date.parse(maintenance.endsAt), Date.now());
+    const endsAt = new Date(base + minutes * 60_000).toISOString();
+    setMaintenanceSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const next = await requestStatus({
+        type: "manageMaintenance",
+        operation: "update",
+        tenantId,
+        maintenanceId: maintenance.id,
+        title: maintenance.title,
+        description: maintenance.description ?? null,
+        startsAt: maintenance.startsAt,
+        endsAt,
+        state: maintenance.state,
+        publicEnabled: maintenance.publicEnabled,
+        serviceIds: maintenance.serviceIds,
+      });
+      applyOverview(next);
+      setNotice(
+        `Die Wartung «${maintenance.title}» wurde bis ${new Intl.DateTimeFormat(
+          "de-CH",
+          { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Zurich" },
+        ).format(new Date(endsAt))} verlängert.`,
+      );
+    } catch (nextError) {
+      setError(
+        await errorMessage(
+          nextError,
+          "Die Wartung konnte nicht verlängert werden.",
+        ),
+      );
+    } finally {
+      setMaintenanceSaving(false);
+    }
+  }
+
   return (
     <section className="service-status" aria-labelledby="service-status-title">
       <header className="service-status__header">
@@ -2001,6 +2071,10 @@ export function ServiceStatus({
               canManagePublication={overview.canManagePublication}
               maintenances={overview.maintenances}
               onEdit={openMaintenanceEditor}
+              onExtend={(maintenance, minutes) =>
+                void extendMaintenance(maintenance, minutes)
+              }
+              extending={maintenanceSaving}
               services={overview.services}
             />
           ) : null}

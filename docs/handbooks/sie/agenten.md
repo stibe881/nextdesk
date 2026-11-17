@@ -385,7 +385,17 @@ Ein Klick öffnet die Störung:
    **Behoben** werden die gewählten Dienste auf «Betriebsbereit» gesetzt; Sie
    können das vor dem Veröffentlichen noch ändern. Eine bereits
    veröffentlichte Meldung korrigieren Sie mit **Bearbeiten** (Zustand, Titel,
-   Text, Dienste) und **Änderungen speichern**.
+   Text, Dienste) und **Änderungen speichern**. Die Meldung folgt der Störung:
+   Meldet die Überwachung wieder OK, steht sie auf **Wird beobachtet**; beim
+   Abschliessen der Störung wird sie **Behoben** (mit der Ursache), fällt das
+   Gerät erneut aus, wieder **Wird untersucht**. Meldet ein Anbieter eine
+   externe Störung als behoben, wird ihre Meldung direkt **Behoben**. Behobene
+   Meldungen verschwinden aus dem Störungsbanner in Web und App, Abonnenten
+   erhalten jedes Update, und die Dienste der Meldung sind wieder
+   betriebsbereit (ausser sie stehen noch in einer anderen offenen Meldung).
+   Beim nächsten **Update veröffentlichen** schlägt nextDesk den passenden
+   Zustand vor (gestört: Ursache bekannt, wieder OK: Wird beobachtet,
+   abgeschlossen: Behoben).
 7. **Abschliessen bzw. Ursache nachtragen**: Wählen Sie die **Ursache** (Strom, Netzwerk, Hardware,
    Software, Wartung, Extern, Unbekannt) und halten Sie die Lösung fest. Sind
    Tickets zugeordnet, ist **Tickets informieren und auf «Gelöst» setzen**
@@ -641,7 +651,8 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    den Dienst «Abacus»), wählen Sie sie hier; dann wirkt dieser Sensor nur
    auf diese Dienste. Die Störung nennt sie, der Systemstatus der Dienste
    wechselt, und – wenn in den Einstellungen eingeschaltet – erscheint der
-   Ausfall sofort als Banner und auf der Statusseite.
+   Ausfall als Banner und auf der Statusseite, sobald jemand die Störung
+   bestätigt oder spätestens nach 10 Minuten. Warnungen bleiben intern.
 
 3. Sensoren **bearbeiten** oder **löschen** (Symbole in der Sensorzeile).
    Im Kopf des Gerätedetails:

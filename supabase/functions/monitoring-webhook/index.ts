@@ -158,6 +158,9 @@ async function applyServiceStatus(
     .eq("id", serviceId)
     .maybeSingle();
   if (error || !data) return null;
+  // Warnings stay internal (the incident shows them); only an outage
+  // changes the status the status page shows.
+  if (kind !== "down") return null;
   const target = targetServiceStatus(kind, data.status as ServiceStatus);
   if (!target) return null;
   // The services_status_history trigger records the status event. No status
@@ -652,28 +655,6 @@ async function settleAfterDown(
   }
 }
 
-/**
- * Public notice (banner, status page) for an outage that affects services,
- * when the tenant switched that on. Warnings are not published. Never fails:
- * the notice must not get in the way of recording the incident.
- */
-async function publishIncident(admin: Admin, incidentId: string, serviceIds: string[], event: PrtgEvent) {
-  if (event.kind !== "down" || !serviceIds.length) return;
-  const subject = [event.device ?? event.host, event.sensor].filter(Boolean).join(" – ");
-  const message = `Die Überwachung meldet einen Ausfall${subject ? `: ${subject}` : ""}.${
-    event.message ? ` ${event.message}` : ""
-  }`;
-  try {
-    await admin.rpc("monitoring_incident_publish", {
-      p_incident_id: incidentId,
-      p_service_ids: serviceIds,
-      p_message: message.slice(0, 2000),
-    });
-  } catch (failure) {
-    console.error("monitoring_publish_failed", failure instanceof Error ? failure.message : typeof failure);
-  }
-}
-
 export async function processEvent(
   admin: Admin,
   integration: Integration,
@@ -752,7 +733,8 @@ export async function processEvent(
           service_status_applied: Object.values(statuses)[0] ?? null,
         })
         .eq("id", alertId);
-      await publishIncident(admin, incident.incident.id, device?.serviceIds ?? [], event);
+      // Published by monitoring_publish_pending (minute job) once an agent
+      // confirms the incident or it is 10 minutes old.
       await settleAfterDown(admin, tenantId, key, incident.incident.id, event, now);
       return incident.created ? "incident_opened" : "incident_updated";
     }
@@ -793,8 +775,6 @@ export async function processEvent(
       .maybeSingle();
     if (data) await notifyIncident(admin, data as Incident, "escalated");
     await admin.from("monitoring_alerts").update({ was_down: true }).eq("id", alert.id);
-    // A warning that became an outage is published now.
-    await publishIncident(admin, alert.incident_id, alertServiceIds(alert), event);
   }
   await admin
     .from("monitoring_incidents")

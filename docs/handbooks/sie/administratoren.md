@@ -376,22 +376,28 @@ Schalter für den Empfang von PRTG-Meldungen und der Token.
 
 Der Schalter **Ausfälle mit betroffenen Diensten automatisch
 veröffentlichen** in der Karte «Alarmierung» zeigt einen Ausfall aus der
-Überwachung oder aus PRTG sofort allen als Banner und als Meldung auf der
-Statusseite – ohne Wartezeit und ohne Bestätigung durch das Team. Das gilt
-nur für Ausfälle (nicht für Warnungen) und nur, wenn Dienste betroffen sind:
-die Dienste des Sensors, sonst die Dienste des Geräts. Jeder Ausfall in der
-Überwachung öffnet eine Störung; die Statusmeldung kommt immer aus dieser
-Störung. Setzt die Überwachung den Status eines Dienstes, geht deshalb keine
-eigene Statusmail an die Abonnenten – sie erhalten die Meldung der Störung
-und ihre Updates. Ohne diesen Schalter erscheint ein Ausfall aus der
-Überwachung nicht auf der Statusseite. Während einer Wartung (Dienst auf
-Wartung oder Gerät in einem laufenden Wartungsfenster) wird nichts
-veröffentlicht und der Dienststatus nicht verändert; die Störung wird still
-erfasst. Die Meldung wird «Behoben», sobald die Überwachung wieder OK meldet
-(die Störung selbst schliesst ein Agent ab), und erscheint im Namen der
-Person, die den Schalter zuletzt gespeichert hat. Ein Fehlalarm steht damit sofort öffentlich
-da; ein Ausfall zählt erst nach der eingestellten Anzahl Fehlversuche in
-Folge.
+Überwachung oder aus PRTG allen als Banner und als Meldung auf der
+Statusseite (mit Mail an die Abonnenten), sobald jemand aus dem Team die
+Störung **bestätigt** oder spätestens **10 Minuten** nach dem Ausfall. Ist das
+Gerät vorher wieder OK, wird nichts veröffentlicht – ein kurzer Fehlalarm
+bleibt intern. Das gilt nur für Ausfälle und nur, wenn Dienste betroffen
+sind: die Dienste des Sensors, sonst die Dienste des Geräts. **Warnungen**
+öffnen eine Störung, bleiben aber intern und ändern den Dienststatus nicht.
+Jeder Ausfall in der Überwachung öffnet eine Störung; die Statusmeldung kommt
+immer aus dieser Störung. Setzt die Überwachung den Status eines Dienstes,
+geht deshalb keine eigene Statusmail an die Abonnenten – sie erhalten die
+Meldung der Störung und ihre Updates. Ohne diesen Schalter erscheint ein
+Ausfall aus der Überwachung nicht auf der Statusseite. Die Meldung folgt der
+Störung: Meldet die Überwachung wieder OK, wird sie **Wird beobachtet**;
+**Behoben** (mit der Ursache) wird sie erst, wenn ein Agent die Störung
+abschliesst; fällt das Gerät erneut aus, steht sie wieder auf **Wird
+untersucht**. Während einer Wartung (Dienst auf Wartung oder Gerät in einem
+laufenden Wartungsfenster) wird nichts veröffentlicht und der Dienststatus
+nicht verändert; die Störung wird still erfasst. Ist das Gerät nach dem Ende
+der Wartung noch gestört, wird die Störung normal: Das Team wird alarmiert,
+der Dienststatus gesetzt und der Ausfall veröffentlicht. Die Meldung
+erscheint im Namen der Person, die den Schalter zuletzt gespeichert hat. Ein
+Ausfall zählt erst nach der eingestellten Anzahl Fehlversuche in Folge.
 
 Jede Sonde lässt sich über den Stift **bearbeiten** (Name, aktiv oder
 deaktiviert) und über den Papierkorb **löschen**. Beim Löschen wird ihr Token
@@ -594,11 +600,16 @@ innerhalb einer Minute **pausiert** und am Ende wieder fortgesetzt; fällt ein
 Gerät in Wartung trotzdem aus (z. B. über PRTG), entsteht eine stille
 Störung ohne Statusmeldung. Die Wartung hat ihre **eigene** Meldung: Ein
 öffentliches Fenster (beim Planen voreingestellt) erscheint auf der
-Statusseite, Abonnenten erhalten bei Beginn und Ende eine Mail, und in Web und
+Statusseite, Abonnenten erhalten 24 Stunden vorher eine Ankündigung (bei
+kurzfristig geplanten Wartungen sofort) sowie bei Beginn und Ende eine Mail,
+und in Web und
 App zeigt ein blauer **Wartungsbanner** laufende Wartungen und solche, die in
 den nächsten 24 Stunden beginnen, mit Zeitraum, Diensten und Geräten. Sind dem
 Fenster Geräte zugeordnet (z. B. aus der Infrastruktur geplant), entsteht nach
-dem Ende ein Eintrag im **Wartungsprotokoll** der Geräte.
+dem Ende ein Eintrag im **Wartungsprotokoll** der Geräte. Dauert eine laufende
+Wartung länger, wählen Sie unter **Systemstatus → Wartungen** bei der Wartung
+**Verlängern …** (30 Minuten bis 4 Stunden); Sensoren, Banner und
+Dienststatus bleiben dann bis zum neuen Ende in Wartung.
 
 ### Verfügbarkeit
 
@@ -618,8 +629,9 @@ Adressen eingetragen werden). Danach bekommen sie bei jeder Statusänderung
 eines öffentlich sichtbaren Dienstes, die von Hand erfolgt, eine E-Mail mit
 altem und neuem Status (Änderungen durch die Überwachung melden die
 Störungsmeldungen),
-bei jeder öffentlichen Störungsmeldung und jedem Update eine E-Mail sowie bei
-Beginn und Ende eines öffentlichen Wartungsfensters je eine E-Mail (statt
+bei jeder öffentlichen Störungsmeldung und jedem Update eine E-Mail sowie zur
+Ankündigung (24 Stunden vorher), bei Beginn und bei Ende eines öffentlichen
+Wartungsfensters je eine E-Mail (statt
 einzelner Mails pro Dienst). Jede Mail enthält einen Link **Abmelden**.
 
 Voraussetzung ist ein aktives Exchange-Postfach (Einstellungen → E-Mail); die
