@@ -903,11 +903,30 @@ button.monitoring-tile[aria-pressed="true"] {
   font-size: 12px;
 }
 
-.monitoring-availability__title {
-  margin: 4px 0 0;
+.monitoring-availability__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--border);
+  padding: 10px 0 0;
+  background: none;
   color: var(--muted);
+  font: inherit;
   font-size: 13px;
   font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+.monitoring-availability__toggle svg {
+  transition: transform 0.15s ease;
+}
+
+.monitoring-availability__toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
 }
 
 .monitoring-availability__list {

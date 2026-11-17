@@ -454,7 +454,8 @@ sonst grau.
 - **Verfügbarkeit**: wie viel der Zeit die überwachten Geräte erreichbar
   waren, für 7 Tage, 30 Tage oder 1 Jahr. Jeder Balken steht für einen Tag
   (beim Jahr für eine Woche): grün ohne Ausfall, orange bei mindestens 99 %,
-  rot darunter. **Am häufigsten ausgefallen** nennt die Geräte mit der
+  rot darunter. **Am häufigsten ausgefallen** ist zunächst eingeklappt; ein
+  Klick klappt die Liste auf. Aufgeführt sind die Geräte mit der
   schlechtesten Verfügbarkeit, mit Anzahl und Dauer der Ausfälle und den
   betroffenen Diensten; ein Klick öffnet das Gerät. Gerechnet wird aus den
   Ausfällen der eigenen Sensoren ab dem Tag, an dem ein Gerät überwacht wird.
