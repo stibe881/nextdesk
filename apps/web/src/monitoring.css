@@ -355,7 +355,12 @@ button.monitoring-tile[aria-pressed="true"] {
   display: block;
 }
 
-.monitoring-table__name {
+/* Doubled class: wins over the general .text-button padding, so the name
+   lines up with the line below it. */
+.monitoring-table__name.monitoring-table__name {
+  display: block;
+  min-height: 0;
+  border: 0;
   padding: 0;
   font-weight: 650;
   text-align: left;
