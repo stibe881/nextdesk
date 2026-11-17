@@ -222,6 +222,53 @@ export function portLinkText(port: MonitoringPort): string {
   return port.deviceCount > 0 ? `${port.deviceCount} unbekannte Geräte` : "–";
 }
 
+export type AvailabilityRange = "7d" | "30d" | "1y";
+
+export const AVAILABILITY_RANGE_LABELS: Record<AvailabilityRange, string> = {
+  "7d": "7 Tage",
+  "30d": "30 Tage",
+  "1y": "1 Jahr",
+};
+
+/** Availability of the monitored devices for the overview. */
+export type MonitoringAvailability = {
+  range: AvailabilityRange;
+  /** Percent over all devices; null when nothing was monitored. */
+  overall: number | null;
+  devices: number;
+  /** A bar per day (per week for a year), oldest first. */
+  buckets: {
+    from: string;
+    level: "none" | "ok" | "warning" | "down";
+    availability: number | null;
+  }[];
+  /** Devices that were down most, with the services affected. */
+  worst: {
+    assetId: string;
+    name: string;
+    availability: number;
+    outages: number;
+    downSeconds: number;
+    services: string[];
+  }[];
+};
+
+/** «99.62 %» with two decimals, Swiss style. */
+export function formatPercent(value: number): string {
+  return `${value.toFixed(2)} %`;
+}
+
+/** Duration of outages: «4 Min.», «10 Std.», «2 Tg. 14 Std.». */
+export function formatDowntime(seconds: number): string {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  if (minutes < 60) return `${minutes} Min.`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} Std.`;
+  const days = Math.floor(hours / 24);
+  const rest = hours - days * 24;
+  return rest ? `${days} Tg. ${rest} Std.` : `${days} Tg.`;
+}
+
 export type PortState = "linked" | "trunk" | "up" | "down" | "unknown";
 
 /** State of a port for the matrix: what its colour says. */

@@ -16468,4 +16468,30 @@ $$;
 rollback;
 SQL
 
+# 0359: Alarme merken sich Ausfall und Simulation (Verfügbarkeit).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_integration uuid;
+  v_row record;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  insert into public.monitoring_integrations (tenant_id) values (v_tenant)
+  on conflict (tenant_id) do nothing;
+  select id into v_integration from public.monitoring_integrations where tenant_id = v_tenant;
+  insert into public.monitoring_alerts (tenant_id, integration_id, external_key, sensor_name)
+  values (v_tenant, v_integration, 'nd:sensor:0359', 'Ping')
+  returning was_down, simulated into v_row;
+  if v_row.was_down or v_row.simulated then
+    raise exception '0359 test: new alert starts flagged';
+  end if;
+  update public.monitoring_alerts set was_down = true, simulated = true
+   where tenant_id = v_tenant and external_key = 'nd:sensor:0359';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

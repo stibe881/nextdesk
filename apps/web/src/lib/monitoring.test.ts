@@ -7,6 +7,8 @@ import {
   formatSince,
   categoryText,
   connectedPorts,
+  formatDowntime,
+  formatPercent,
   kindFields,
   kindValue,
   linkDiagram,
@@ -429,5 +431,16 @@ describe("Überwachung: Matrix der Ports", () => {
     expect(diagram.links).toHaveLength(3);
     expect(diagram.hidden).toBe(0);
     expect(linkDiagram([]).height).toBeGreaterThan(0);
+  });
+});
+
+describe("Überwachung: Verfügbarkeit", () => {
+  it("formatiert Prozent und Ausfalldauer", () => {
+    expect(formatPercent(99.6)).toBe("99.60 %");
+    expect(formatDowntime(20)).toBe("1 Min.");
+    expect(formatDowntime(240)).toBe("4 Min.");
+    expect(formatDowntime(10 * 3600)).toBe("10 Std.");
+    expect(formatDowntime(62 * 3600)).toBe("2 Tg. 14 Std.");
+    expect(formatDowntime(72 * 3600)).toBe("3 Tg.");
   });
 });

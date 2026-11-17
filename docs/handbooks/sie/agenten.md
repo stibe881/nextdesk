@@ -451,17 +451,27 @@ sonst grau.
   das Ticket geht an das Team aus den Überwachungseinstellungen und wird der
   offenen Störung zugeordnet. Danach öffnet sich das Ticket. Dasselbe gibt
   es im Gerätedetail unter **Verknüpft in nextDesk**.
-- **Sonden**: jede Sonde mit Zustand und letzter Meldung. Meldet sich eine
-  Sonde länger als drei Minuten nicht, gelten ihre Sensoren als «Unbekannt».
-  Nach fünf Minuten öffnet nextDesk eine Störung «Sonde … – Verbindung zu
-  nextDesk» und alarmiert das Alarmteam; sie gilt als behoben, sobald die
-  Sonde sich wieder meldet.
+- **Verfügbarkeit**: wie viel der Zeit die überwachten Geräte erreichbar
+  waren, für 7 Tage, 30 Tage oder 1 Jahr. Jeder Balken steht für einen Tag
+  (beim Jahr für eine Woche): grün ohne Ausfall, orange bei mindestens 99 %,
+  rot darunter. **Am häufigsten ausgefallen** nennt die Geräte mit der
+  schlechtesten Verfügbarkeit, mit Anzahl und Dauer der Ausfälle und den
+  betroffenen Diensten; ein Klick öffnet das Gerät. Gerechnet wird aus den
+  Ausfällen der eigenen Sensoren ab dem Tag, an dem ein Gerät überwacht wird.
+  Warnungen und simulierte Ausfälle zählen nicht.
+- **Sonden**: Die Kachel «Sonden online» zeigt, wie viele Sonden sich melden.
+  Ein Hinweis erscheint nur, wenn eine Sonde sich nicht meldet oder eine
+  neuere Version bereitsteht. Meldet sich eine Sonde länger als drei Minuten
+  nicht, gelten ihre Sensoren als «Unbekannt». Nach fünf Minuten öffnet
+  nextDesk eine Störung «Sonde … – Verbindung zu nextDesk» und alarmiert das
+  Alarmteam; sie gilt als behoben, sobald die Sonde sich wieder meldet.
+  Verwaltet werden Sonden unter **Einstellungen → Monitoring**.
 - **Geräteliste**: Zustand, Sensoren, Antwortzeit und letzte Prüfung. Die
   Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
   Ein Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter kehrt die
   Reihenfolge um. Standard ist der Zustand, das Dringende zuoberst.
 
-![Überwachung mit Kacheln, aktiven Alarmen, Sonden und Geräteliste](images/ag-ueberwachung.jpg)
+![Überwachung mit Kacheln, aktiven Alarmen, Verfügbarkeit und Geräteliste](images/ag-ueberwachung.jpg)
 
 Ein Klick auf ein Gerät öffnet das **Gerätedetail**:
 

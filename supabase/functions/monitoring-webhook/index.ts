@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { SIMULATION_MESSAGE } from "../_shared/monitoring-simulation.ts";
 import {
   buildEvent,
   candidateObjectIds,
@@ -700,6 +701,9 @@ export async function processEvent(
         asset_id: device?.assetId ?? null,
         service_id: device?.serviceIds[0] ?? null,
         service_ids: device?.serviceIds ?? [],
+        // For the availability: an outage (not only a warning), and not a test.
+        was_down: event.kind === "down",
+        simulated: event.message === SIMULATION_MESSAGE,
         state: "open",
         last_status: event.status.slice(0, 80),
         last_message: event.message,
@@ -777,6 +781,7 @@ export async function processEvent(
       .select(INCIDENT_COLUMNS)
       .maybeSingle();
     if (data) await notifyIncident(admin, data as Incident, "escalated");
+    await admin.from("monitoring_alerts").update({ was_down: true }).eq("id", alert.id);
     // A warning that became an outage is published now.
     await publishIncident(admin, alert.incident_id, alertServiceIds(alert), event);
   }

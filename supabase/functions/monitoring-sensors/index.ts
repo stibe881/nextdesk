@@ -19,6 +19,9 @@ import {
   type Action,
   agentOnline,
   availability,
+  availabilityPlan,
+  type AvailabilityRange,
+  availabilityReport,
   type DeviceEdit,
   bucketize,
   deviceState,
@@ -909,6 +912,78 @@ async function interfaces(admin: Client, tenantId: string, jobId: string) {
 }
 
 /**
+ * Availability of the monitored devices for the overview: overall value, a
+ * bar per day (week), and the devices that were down most, with the services
+ * affected. Computed from the outages of nextDesk's own sensors; simulated
+ * outages and warnings do not count.
+ */
+async function availabilityOverview(admin: Client, tenantId: string, range: AvailabilityRange) {
+  const now = Date.now();
+  const plan = availabilityPlan(range);
+  const from = new Date(now - plan.buckets * plan.bucketMs).toISOString();
+  const [sensors, alerts] = await Promise.all([
+    admin.from("monitoring_sensors").select("asset_id, created_at").eq("tenant_id", tenantId).limit(MAX_SENSORS),
+    admin.from("monitoring_alerts").select("asset_id, opened_at, resolved_at, service_ids, service_id")
+      .eq("tenant_id", tenantId).like("external_key", "nd:sensor:%")
+      .eq("was_down", true).eq("simulated", false).not("asset_id", "is", null)
+      .or(`resolved_at.is.null,resolved_at.gte.${from}`)
+      .order("opened_at", { ascending: false }).limit(5000),
+  ]);
+  if (sensors.error || alerts.error) throw unavailable();
+  const devices = new Map<string, number>();
+  for (const row of (sensors.data ?? []) as Row[]) {
+    const assetId = String(row.asset_id);
+    const since = Date.parse(String(row.created_at));
+    if (Number.isFinite(since)) devices.set(assetId, Math.min(devices.get(assetId) ?? since, since));
+  }
+  const report = availabilityReport({
+    now,
+    range,
+    devices,
+    outages: ((alerts.data ?? []) as Row[]).map((row) => ({
+      assetId: String(row.asset_id),
+      from: Date.parse(String(row.opened_at)),
+      to: row.resolved_at ? Date.parse(String(row.resolved_at)) : now,
+      serviceIds: Array.isArray(row.service_ids) && row.service_ids.length
+        ? (row.service_ids as unknown[]).filter(isUuid)
+        : isUuid(row.service_id) ? [row.service_id] : [],
+    })),
+  });
+  // Devices whose outages named no service: the services linked to them now.
+  const linked = new Map<string, string[]>();
+  await Promise.all(report.worst.filter((entry) => !entry.serviceIds.length).map(async (entry) => {
+    const resolved = await admin.rpc("monitoring_resolve_asset", { p_tenant_id: tenantId, p_asset_id: entry.assetId });
+    if (!resolved.error && Array.isArray(resolved.data?.serviceIds)) {
+      linked.set(entry.assetId, (resolved.data.serviceIds as unknown[]).filter(isUuid));
+    }
+  }));
+  const serviceIds = [...new Set(report.worst.flatMap((entry) => [...entry.serviceIds, ...(linked.get(entry.assetId) ?? [])]))];
+  const [names, services] = await Promise.all([
+    report.worst.length
+      ? selectIn(admin, "assets", "id, name", tenantId, "id", report.worst.map((entry) => entry.assetId))
+      : Promise.resolve([]),
+    serviceIds.length ? selectIn(admin, "services", "id, name", tenantId, "id", serviceIds) : Promise.resolve([]),
+  ]);
+  const assetName = new Map(names.map((row) => [String(row.id), String(row.name)]));
+  const serviceName = new Map(services.map((row) => [String(row.id), String(row.name)]));
+  return {
+    range,
+    overall: report.overall,
+    devices: report.devices,
+    buckets: report.buckets,
+    worst: report.worst.map((entry) => ({
+      assetId: entry.assetId,
+      name: assetName.get(entry.assetId) ?? "Gerät",
+      availability: entry.availability,
+      outages: entry.outages,
+      downSeconds: entry.downSeconds,
+      services: (entry.serviceIds.length ? entry.serviceIds : linked.get(entry.assetId) ?? [])
+        .map((id) => serviceName.get(id)).filter((name): name is string => !!name).sort((a, b) => a.localeCompare(b, "de")),
+    })),
+  };
+}
+
+/**
  * Starts (minutes > 0) or ends (0) a simulated outage of one sensor or of all
  * sensors of a device. While it runs, the measured results count as failed;
  * everything that follows is real: incident, alerting, service status, notice.
@@ -1207,6 +1282,8 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
     case "interfaces":
       manage();
       return await interfaces(admin, action.tenantId, action.jobId);
+    case "availability":
+      return await availabilityOverview(admin, action.tenantId, action.range);
     case "simulate":
       manage();
       return await simulate(admin, action.tenantId, action.assetId, action.sensorId, action.minutes);
