@@ -551,13 +551,22 @@ export async function loadLiveDashboard(
           .eq("is_security_case", false)
           .in("status_id", closedStatusIds)
       : Promise.resolve({ count: 0, error: null }),
+    // «Meine Tickets» counts only open tickets (as the list since 0361).
     user
-      ? client
-          .from("tickets")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenant.id)
-          .eq("is_security_case", false)
-          .eq("assigned_agent_id", user.id)
+      ? closedStatusIds.length > 0
+        ? client
+            .from("tickets")
+            .select("id", { count: "exact", head: true })
+            .eq("tenant_id", tenant.id)
+            .eq("is_security_case", false)
+            .eq("assigned_agent_id", user.id)
+            .not("status_id", "in", `(${closedStatusIds.join(",")})`)
+        : client
+            .from("tickets")
+            .select("id", { count: "exact", head: true })
+            .eq("tenant_id", tenant.id)
+            .eq("is_security_case", false)
+            .eq("assigned_agent_id", user.id)
       : Promise.resolve({ count: 0, error: null }),
     client
       .from("tickets")

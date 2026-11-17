@@ -686,6 +686,10 @@ Unter **Tickets** arbeitest du die Warteschlangen ab. Jede Ticketkarte zeigt
 neben Nummer und Betreff auch die **anfragende Person** – in der Liste, auf
 der Übersicht, im Kanban und in der App.
 
+- **Meine Tickets** (Kachel und Liste) zeigt nur offene Tickets, die dir
+  zugewiesen sind oder die du angefragt hast. Gelöste und geschlossene
+  Tickets findest du über die Kachel **Gelöste Tickets** oder den Filter
+  _Status_.
 - **Queues**: Register pro Warteschlange. Arbeitest du in Teams mehrerer
   Supportstufen, erscheinen zusätzlich _Alle Stufen / 1st / 2nd / 3rd Level_.
   Wählst du eine Stufe, zeigen auch die Kacheln oben nur die Zahlen dieser
