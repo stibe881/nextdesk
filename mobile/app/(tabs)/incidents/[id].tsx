@@ -245,7 +245,12 @@ export default function IncidentDetailScreen() {
                 Extern
                 {detail.externalProvider ? ` · ${detail.externalProvider}` : ""}
               </Text>
-            ) : null}
+            ) : (
+              <Text style={styles.badge}>
+                Gemeldet von{" "}
+                {detail.origin === "nextdesk" ? "nextDesk-Überwachung" : "PRTG"}
+              </Text>
+            )}
           </View>
           <Text style={styles.titleSmall}>{detail.title}</Text>
           {detail.source === "external" ? (
@@ -390,43 +395,45 @@ export default function IncidentDetailScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Verlauf</Text>
           {(() => {
-            const headings = dayHeadings(detail.events.map((entry) => entry.at));
-            return detail.events.map((event, index) => {
-            const tone = eventTone(event.kind, event.status);
-            const heading = headings[index];
-            return (
-              <View key={event.id}>
-                {heading ? (
-                  <Text style={styles.eventDay}>{heading}</Text>
-                ) : null}
-              <View style={styles.event}>
-                <Text style={styles.eventTime}>
-                  {TIME.format(new Date(event.at))}
-                </Text>
-                <View
-                  style={[
-                    styles.eventDot,
-                    tone === "bad"
-                      ? styles.sevBad
-                      : tone === "warn"
-                        ? styles.sevWarn
-                        : tone === "ok"
-                          ? styles.sevOk
-                          : { backgroundColor: colors.primary },
-                  ]}
-                />
-                <Text style={styles.eventBody}>
-                  <Text style={{ fontWeight: "800" }}>
-                    {event.kind === "prtg" || event.kind === "sensor"
-                      ? `${event.sensor ?? (event.kind === "sensor" ? "Sensor" : "PRTG")}: ${event.status ?? ""}`
-                      : (EVENT_LABELS[event.kind] ?? event.kind)}
-                  </Text>
-                  {event.message ? ` · ${event.message}` : ""}
-                  {event.actor ? ` · ${event.actor}` : ""}
-                </Text>
-              </View>
-              </View>
+            const headings = dayHeadings(
+              detail.events.map((entry) => entry.at),
             );
+            return detail.events.map((event, index) => {
+              const tone = eventTone(event.kind, event.status);
+              const heading = headings[index];
+              return (
+                <View key={event.id}>
+                  {heading ? (
+                    <Text style={styles.eventDay}>{heading}</Text>
+                  ) : null}
+                  <View style={styles.event}>
+                    <Text style={styles.eventTime}>
+                      {TIME.format(new Date(event.at))}
+                    </Text>
+                    <View
+                      style={[
+                        styles.eventDot,
+                        tone === "bad"
+                          ? styles.sevBad
+                          : tone === "warn"
+                            ? styles.sevWarn
+                            : tone === "ok"
+                              ? styles.sevOk
+                              : { backgroundColor: colors.primary },
+                      ]}
+                    />
+                    <Text style={styles.eventBody}>
+                      <Text style={{ fontWeight: "800" }}>
+                        {event.kind === "prtg" || event.kind === "sensor"
+                          ? `${event.sensor ?? (event.kind === "sensor" ? "Sensor" : "PRTG")}: ${event.status ?? ""}`
+                          : (EVENT_LABELS[event.kind] ?? event.kind)}
+                      </Text>
+                      {event.message ? ` · ${event.message}` : ""}
+                      {event.actor ? ` · ${event.actor}` : ""}
+                    </Text>
+                  </View>
+                </View>
+              );
             });
           })()}
           {canChange ? (
