@@ -75,6 +75,7 @@ export type Action =
   | { type: "listInterfaces"; tenantId: string; assetId: string; agentId: string }
   | { type: "interfaces"; tenantId: string; jobId: string }
   | { type: "availability"; tenantId: string; range: AvailabilityRange }
+  | { type: "events"; tenantId: string; range: EventRange }
   | { type: "simulate"; tenantId: string; assetId: string; sensorId: string | null; minutes: number }
   | { type: "connections"; tenantId: string; assetId: string }
   | { type: "refreshConnections"; tenantId: string; assetId: string }
@@ -451,6 +452,10 @@ export function parseAction(value: unknown): Action | string | null {
       const jobId = uuid(value.jobId);
       return jobId ? { type: "interfaces", tenantId, jobId } : null;
     }
+    case "events": {
+      const range = EVENT_RANGES.includes(value.range as EventRange) ? (value.range as EventRange) : null;
+      return range ? { type: "events", tenantId, range } : null;
+    }
     case "availability": {
       const range = AVAILABILITY_RANGES.includes(value.range as AvailabilityRange)
         ? (value.range as AvailabilityRange)
@@ -646,6 +651,114 @@ export function availability(points: readonly Point[]): number | null {
   if (!points.length) return null;
   const sum = points.reduce((total, point) => total + point.ok, 0);
   return Math.round((sum / points.length) * 10000) / 100;
+}
+
+export const EVENT_RANGES = ["24h", "7d"] as const;
+export type EventRange = (typeof EVENT_RANGES)[number];
+
+export type AlertInput = {
+  id: string;
+  assetId: string | null;
+  sensorName: string | null;
+  openedAt: number;
+  /** Null while the alert is open. */
+  resolvedAt: number | null;
+  wasDown: boolean;
+  simulated: boolean;
+  lastMessage: string | null;
+  serviceIds: string[];
+  incidentId: string | null;
+};
+
+export type FeedEvent = {
+  id: string;
+  at: string;
+  kind: "down" | "warning" | "up";
+  assetId: string | null;
+  sensorName: string | null;
+  message: string | null;
+  /** Up: how long the outage lasted. */
+  durationSeconds: number | null;
+  /** Down or warning that has not ended yet. */
+  ongoing: boolean;
+  serviceIds: string[];
+  incidentId: string | null;
+  test: boolean;
+};
+
+export type EventFeed = {
+  counts: { down: number; warning: number; up: number };
+  /** A bar per hour (24 h) or per day (7 d), oldest first: the worst event in it. */
+  buckets: { from: string; level: "none" | "up" | "warning" | "down" }[];
+  events: FeedEvent[];
+};
+
+/**
+ * Latest state changes of the sensors, from their alerts: an alert is an
+ * event when it opens (outage or warning) and another when it ends.
+ */
+export function eventFeed(input: {
+  now: number;
+  range: EventRange;
+  alerts: readonly AlertInput[];
+  limit?: number;
+}): EventFeed {
+  const bucketMs = input.range === "24h" ? 3_600_000 : DAY_MS;
+  const count = input.range === "24h" ? 24 : 7;
+  const start = input.now - count * bucketMs;
+  const events: (FeedEvent & { time: number })[] = [];
+  for (const alert of input.alerts) {
+    const base = {
+      assetId: alert.assetId,
+      sensorName: alert.sensorName,
+      serviceIds: alert.serviceIds,
+      incidentId: alert.incidentId,
+      test: alert.simulated,
+    };
+    const open = alert.resolvedAt === null;
+    if (alert.openedAt >= start && alert.openedAt <= input.now) {
+      events.push({
+        ...base,
+        id: `${alert.id}:open`,
+        time: alert.openedAt,
+        at: new Date(alert.openedAt).toISOString(),
+        kind: alert.wasDown ? "down" : "warning",
+        // The message of a finished alert is the one of its end.
+        message: open ? alert.lastMessage : null,
+        durationSeconds: null,
+        ongoing: open,
+      });
+    }
+    if (alert.resolvedAt !== null && alert.resolvedAt >= start && alert.resolvedAt <= input.now) {
+      events.push({
+        ...base,
+        id: `${alert.id}:end`,
+        time: alert.resolvedAt,
+        at: new Date(alert.resolvedAt).toISOString(),
+        kind: "up",
+        message: alert.lastMessage,
+        durationSeconds: Math.max(0, Math.round((alert.resolvedAt - alert.openedAt) / 1000)),
+        ongoing: false,
+      });
+    }
+  }
+  events.sort((a, b) => b.time - a.time || a.id.localeCompare(b.id));
+  const rank = { none: 0, up: 1, warning: 2, down: 3 } as const;
+  const buckets: EventFeed["buckets"] = Array.from({ length: count }, (_, index) => ({
+    from: new Date(start + index * bucketMs).toISOString(),
+    level: "none" as const,
+  }));
+  const counts = { down: 0, warning: 0, up: 0 };
+  for (const event of events) {
+    counts[event.kind] += 1;
+    const bucket = buckets[Math.min(count - 1, Math.floor((event.time - start) / bucketMs))];
+    if (bucket && rank[event.kind] > rank[bucket.level]) bucket.level = event.kind;
+  }
+  return {
+    counts,
+    buckets,
+    events: events.slice(0, input.limit ?? 50).map(({ time: _time, ...event }) => event),
+  };
 }
 
 export const AVAILABILITY_RANGES = ["7d", "30d", "1y"] as const;

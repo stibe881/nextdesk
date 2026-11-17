@@ -207,6 +207,8 @@ export const SHOTS = [
       await h.open();
       await h.nav("Überwachung");
       await h.waitText("Aktive Alarme");
+      await h.waitText("Ereignisse anzeigen");
+      await h.click("Ereignisse anzeigen");
       await h.settle(300);
     },
   },

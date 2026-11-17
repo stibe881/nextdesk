@@ -7,6 +7,9 @@ import {
   formatSince,
   categoryText,
   connectedPorts,
+  eventCountsText,
+  eventText,
+  type MonitoringEvent,
   formatDowntime,
   formatPercent,
   kindFields,
@@ -442,5 +445,50 @@ describe("Überwachung: Verfügbarkeit", () => {
     expect(formatDowntime(10 * 3600)).toBe("10 Std.");
     expect(formatDowntime(62 * 3600)).toBe("2 Tg. 14 Std.");
     expect(formatDowntime(72 * 3600)).toBe("3 Tg.");
+  });
+});
+
+describe("Überwachung: Letzte Ereignisse", () => {
+  const event = (overrides: Partial<MonitoringEvent>): MonitoringEvent => ({
+    id: "e",
+    at: "2026-11-17T09:42:00Z",
+    kind: "down",
+    assetId: null,
+    deviceName: "CSW01",
+    sensorName: "Ping",
+    message: null,
+    durationSeconds: null,
+    ongoing: false,
+    services: [],
+    incident: null,
+    test: false,
+    ...overrides,
+  });
+
+  it("beschreibt Ausfall, laufenden Ausfall und Behebung", () => {
+    expect(eventText(event({}))).toBe("Ausfall");
+    expect(
+      eventText(event({ message: "Keine Antwort auf Ping", ongoing: true })),
+    ).toBe("Keine Antwort auf Ping · dauert an");
+    expect(
+      eventText(
+        event({
+          kind: "up",
+          message: "Wieder erreichbar",
+          durationSeconds: 240,
+        }),
+      ),
+    ).toBe("Wieder erreichbar · dauerte 4 Min.");
+    expect(eventText(event({ kind: "warning" }))).toBe("Warnung");
+  });
+
+  it("fasst die Anzahl zusammen", () => {
+    expect(eventCountsText({ down: 2, warning: 1, up: 2 })).toBe(
+      "2 Ausfälle · 1 Warnung · 2 behoben",
+    );
+    expect(eventCountsText({ down: 1, warning: 0, up: 0 })).toBe("1 Ausfall");
+    expect(eventCountsText({ down: 0, warning: 0, up: 0 })).toBe(
+      "keine Ereignisse",
+    );
   });
 });

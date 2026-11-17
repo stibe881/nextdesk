@@ -70,6 +70,13 @@ import {
   type InterfaceRow,
   type MonitoringAddressChoice,
   type AvailabilityRange,
+  eventCountsText,
+  type EventRange,
+  EVENT_RANGE_LABELS,
+  eventText,
+  eventTime,
+  type MonitoringEvent,
+  type MonitoringEvents,
   AVAILABILITY_RANGE_LABELS,
   formatDowntime,
   formatPercent,
@@ -372,70 +379,88 @@ function OverviewView({
               </p>
             ))}
 
-          <div className="monitoring__columns">
-            <article className="monitoring-card">
-              <div className="monitoring-card__head">
-                <h3>Aktive Alarme</h3>
-                <span className="monitoring-muted">{alarms.length}</span>
-              </div>
-              {alarms.length === 0 ? (
-                <p className="monitoring__empty">
-                  Kein Sensor meldet einen Ausfall oder eine Warnung.
-                </p>
-              ) : (
-                <ul className="monitoring-alarms">
-                  {alarms.map((device) => (
-                    <li key={device.assetId}>
-                      <StateChip state={device.problem!.state} />
-                      <button
-                        className="monitoring-alarms__main"
-                        onClick={() => onOpenDevice(device.assetId)}
-                        type="button"
-                      >
-                        <strong>
-                          {device.name} · {device.problem!.sensorName}
-                        </strong>
-                        <span>
-                          {device.problem!.message ?? "Keine Angabe"}
-                          {device.problem!.since
-                            ? ` · ${formatSince(device.problem!.since, now)}`
-                            : ""}
-                        </span>
-                      </button>
-                      <div className="monitoring-alarms__actions">
-                        {device.incident && onOpenIncident ? (
-                          <button
-                            className="text-button"
-                            onClick={() => onOpenIncident(device.incident!.id)}
-                            type="button"
-                          >
-                            Störung {device.incident.number}
-                            {device.incident.acknowledged ? " (bestätigt)" : ""}
-                          </button>
-                        ) : null}
-                        {onOpenTicket ? (
-                          <button
-                            className="text-button"
-                            disabled={ticket.busy !== null}
-                            onClick={() =>
-                              void ticket.create(device.assetId, device.name)
-                            }
-                            type="button"
-                          >
-                            {ticket.busy === device.assetId
-                              ? "Ticket wird erstellt …"
-                              : "Ticket erstellen"}
-                          </button>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </article>
-
+          <div className="monitoring__columns monitoring__columns--even">
+            <EventsCard
+              now={now}
+              onOpenDevice={onOpenDevice}
+              onOpenIncident={onOpenIncident}
+              tenantId={tenantId}
+            />
             <AvailabilityCard onOpenDevice={onOpenDevice} tenantId={tenantId} />
           </div>
+
+          <article className="monitoring-card">
+            <div className="monitoring-card__head">
+              <h3>Aktive Alarme</h3>
+              <span className="monitoring-muted">{alarms.length}</span>
+            </div>
+            {alarms.length === 0 ? (
+              <p className="monitoring__empty">
+                Kein Sensor meldet einen Ausfall oder eine Warnung.
+              </p>
+            ) : (
+              <ul className="monitoring-alarms">
+                {alarms.map((device) => (
+                  <li key={device.assetId}>
+                    <StateChip state={device.problem!.state} />
+                    <button
+                      className="monitoring-alarms__main"
+                      onClick={() => onOpenDevice(device.assetId)}
+                      type="button"
+                    >
+                      <strong>
+                        {device.name} · {device.problem!.sensorName}
+                      </strong>
+                      <span>
+                        {device.problem!.message ?? "Keine Angabe"}
+                        {device.problem!.since
+                          ? ` · ${formatSince(device.problem!.since, now)}`
+                          : ""}
+                      </span>
+                    </button>
+                    {device.problem!.services?.length ? (
+                      <span className="monitoring-alarms__services">
+                        {device.problem!.services.map((service) => (
+                          <span
+                            className="monitoring-service-chip"
+                            key={service}
+                          >
+                            {service}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null}
+                    <div className="monitoring-alarms__actions">
+                      {device.incident && onOpenIncident ? (
+                        <button
+                          className="text-button"
+                          onClick={() => onOpenIncident(device.incident!.id)}
+                          type="button"
+                        >
+                          Störung {device.incident.number}
+                          {device.incident.acknowledged ? " (bestätigt)" : ""}
+                        </button>
+                      ) : null}
+                      {onOpenTicket ? (
+                        <button
+                          className="text-button"
+                          disabled={ticket.busy !== null}
+                          onClick={() =>
+                            void ticket.create(device.assetId, device.name)
+                          }
+                          type="button"
+                        >
+                          {ticket.busy === device.assetId
+                            ? "Ticket wird erstellt …"
+                            : "Ticket erstellen"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </article>
 
           <article className="monitoring-card monitoring-card--flush">
             <div className="monitoring__toolbar">
@@ -560,6 +585,227 @@ async function downloadProbePackage(tenantId: string): Promise<void> {
     tenantId,
   });
   window.location.assign(result.url);
+}
+
+const EVENT_LABELS: Record<MonitoringEvent["kind"], string> = {
+  down: "Ausfall",
+  warning: "Warnung",
+  up: "behoben",
+};
+
+/**
+ * Latest events of the sensors: how many, when (a bar per hour or day), and
+ * folded in the list with device, services affected and incident. Built like
+ * the availability card, so both fold at the same height.
+ */
+function EventsCard({
+  tenantId,
+  now,
+  onOpenDevice,
+  onOpenIncident,
+}: {
+  tenantId: string;
+  now: number;
+  onOpenDevice: (assetId: string) => void;
+  onOpenIncident?: ((incidentId: string) => void) | undefined;
+}) {
+  const [range, setRange] = useState<EventRange>("24h");
+  const [data, setData] = useState<MonitoringEvents | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [all, setAll] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      monitoringCall<MonitoringEvents>({ type: "events", tenantId, range })
+        .then((result) => {
+          if (cancelled) return;
+          setData(result);
+          setError(null);
+        })
+        .catch((failure) => {
+          if (!cancelled) setError(message(failure));
+        });
+    void load();
+    const timer = window.setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [tenantId, range]);
+  const shown = data && data.range === range ? data : null;
+  const total = shown
+    ? shown.counts.down + shown.counts.warning + shown.counts.up
+    : 0;
+  const events = shown ? (all ? shown.events : shown.events.slice(0, 5)) : [];
+  return (
+    <article className="monitoring-card">
+      <div className="monitoring-card__head">
+        <h3>Letzte Ereignisse</h3>
+        <div
+          aria-label="Zeitraum der Ereignisse"
+          className="monitoring-toggle"
+          role="group"
+        >
+          {(Object.keys(EVENT_RANGE_LABELS) as EventRange[]).map((key) => (
+            <button
+              aria-pressed={range === key}
+              key={key}
+              onClick={() => setRange(key)}
+              type="button"
+            >
+              {EVENT_RANGE_LABELS[key]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {error ? (
+        <p className="ticket-detail-message error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {!shown && !error ? <Spinner label="Wird geladen …" /> : null}
+      {shown ? (
+        <>
+          <p className="monitoring-availability__value">
+            <strong>{total}</strong>
+            <span className="monitoring-muted">
+              {eventCountsText(shown.counts)}
+            </span>
+          </p>
+          <div
+            aria-label={`Ereignisse je ${range === "24h" ? "Stunde" : "Tag"}`}
+            className="monitoring-availability__bars"
+            role="img"
+          >
+            {shown.buckets.map((bucket) => (
+              <span
+                className={`monitoring-availability__bar monitoring-availability__bar--${
+                  bucket.level === "up" ? "ok" : bucket.level
+                }`}
+                key={bucket.from}
+                title={`${eventTime(bucket.from, now)}: ${
+                  bucket.level === "none"
+                    ? "kein Ereignis"
+                    : EVENT_LABELS[bucket.level]
+                }`}
+              />
+            ))}
+          </div>
+          <div className="monitoring-availability__axis">
+            <span>vor {range === "24h" ? "24 Stunden" : "7 Tagen"}</span>
+            <span>jetzt</span>
+          </div>
+          <button
+            aria-expanded={expanded}
+            className="monitoring-availability__toggle"
+            onClick={() => setExpanded((value) => !value)}
+            type="button"
+          >
+            <span>Ereignisse anzeigen{total ? ` (${total})` : ""}</span>
+            <ChevronDown aria-hidden="true" size={16} />
+          </button>
+          {expanded ? (
+            shown.events.length === 0 ? (
+              <p className="monitoring__empty">
+                In diesem Zeitraum hat sich kein Zustand geändert.
+              </p>
+            ) : (
+              <>
+                <ul className="monitoring-events">
+                  {events.map((event) => (
+                    <li key={event.id}>
+                      <span className="monitoring-events__time">
+                        {eventTime(event.at, now)}
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className={`monitoring-dot monitoring-dot--${
+                          event.kind === "up"
+                            ? "up"
+                            : event.kind === "warning"
+                              ? "warning"
+                              : "down"
+                        }`}
+                      />
+                      <div className="monitoring-events__main">
+                        <span>
+                          {event.assetId ? (
+                            <button
+                              className="text-button"
+                              onClick={() => onOpenDevice(event.assetId!)}
+                              type="button"
+                            >
+                              {event.deviceName}
+                            </button>
+                          ) : (
+                            <strong>{event.deviceName}</strong>
+                          )}
+                          {event.sensorName ? ` · ${event.sensorName}` : ""}
+                          {event.test ? (
+                            <span className="monitoring-chip monitoring-chip--warning">
+                              Test
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="monitoring-muted">
+                          {eventText(event)}
+                        </span>
+                        <span className="monitoring-events__services">
+                          {event.services.length ? (
+                            event.services.map((service) => (
+                              <span
+                                className="monitoring-service-chip"
+                                key={service}
+                              >
+                                {service}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="monitoring-muted">
+                              kein Dienst verknüpft
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      {event.incident && onOpenIncident ? (
+                        <button
+                          className="text-button"
+                          onClick={() => onOpenIncident(event.incident!.id)}
+                          type="button"
+                        >
+                          {event.incident.number}
+                        </button>
+                      ) : (
+                        <span
+                          className={`monitoring-chip monitoring-chip--${
+                            event.kind === "up" ? "up" : event.kind
+                          }`}
+                        >
+                          {EVENT_LABELS[event.kind]}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {shown.events.length > 5 ? (
+                  <button
+                    className="text-button monitoring-form__all"
+                    onClick={() => setAll((value) => !value)}
+                    type="button"
+                  >
+                    {all
+                      ? "Weniger anzeigen"
+                      : `Weitere ${shown.events.length - 5} anzeigen`}
+                  </button>
+                ) : null}
+              </>
+            )
+          ) : null}
+        </>
+      ) : null}
+    </article>
+  );
 }
 
 /**
