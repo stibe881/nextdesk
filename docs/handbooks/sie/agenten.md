@@ -442,7 +442,23 @@ sonst grau.
   - **Unbekannt** – es kommen keine Messwerte: keine Sonde zugewiesen, oder
     die Sonde meldet sich nicht.
   - **Pausiert** – die Überwachung des Geräts ist angehalten.
-- **Aktive Alarme**: Geräte mit Ausfall oder Warnung, mit Sensor, Meldung und
+- **Letzte Ereignisse**: was sich in den letzten 24 Stunden oder 7 Tagen
+  geändert hat. Oben steht die Anzahl (Ausfälle, Warnungen, behoben), darunter
+  ein Balken je Stunde bzw. Tag in der Farbe des schwersten Ereignisses.
+  **Ereignisse anzeigen** klappt die Liste auf (zunächst eingeklappt): Zeit,
+  Gerät und Sensor, Meldung, bei einer Behebung die Dauer des Ausfalls, die
+  betroffenen Dienste und der Link zur Störung. Simulierte Ausfälle tragen das
+  Etikett «Test».
+- **Verfügbarkeit**: wie viel der Zeit die überwachten Geräte erreichbar
+  waren, für 7 Tage, 30 Tage oder 1 Jahr. Jeder Balken steht für einen Tag
+  (beim Jahr für eine Woche): grün ohne Ausfall, orange bei mindestens 99 %,
+  rot darunter. **Am häufigsten ausgefallen** ist zunächst eingeklappt; ein
+  Klick klappt die Liste auf. Aufgeführt sind die Geräte mit der
+  schlechtesten Verfügbarkeit, mit Anzahl und Dauer der Ausfälle und den
+  betroffenen Diensten; ein Klick öffnet das Gerät. Gerechnet wird aus den
+  Ausfällen der eigenen Sensoren ab dem Tag, an dem ein Gerät überwacht wird.
+  Warnungen und simulierte Ausfälle zählen nicht.
+- **Aktive Alarme** (unter den beiden Karten, über die ganze Breite): Geräte mit Ausfall oder Warnung, mit Sensor, Meldung und
   Dauer. Bei einem Ausfall öffnet nextDesk automatisch eine **Störung**; der
   Link führt direkt dorthin. Alarmteam, Wiederalarmierung, Folgestörungen und
   die Ruhe während Wartungsfenstern gelten wie bei allen Störungen.
@@ -451,17 +467,20 @@ sonst grau.
   das Ticket geht an das Team aus den Überwachungseinstellungen und wird der
   offenen Störung zugeordnet. Danach öffnet sich das Ticket. Dasselbe gibt
   es im Gerätedetail unter **Verknüpft in nextDesk**.
-- **Sonden**: jede Sonde mit Zustand und letzter Meldung. Meldet sich eine
-  Sonde länger als drei Minuten nicht, gelten ihre Sensoren als «Unbekannt».
-  Nach fünf Minuten öffnet nextDesk eine Störung «Sonde … – Verbindung zu
-  nextDesk» und alarmiert das Alarmteam; sie gilt als behoben, sobald die
-  Sonde sich wieder meldet.
+  Neben dem Alarm stehen die betroffenen Dienste.
+- **Sonden**: Die Kachel «Sonden online» zeigt, wie viele Sonden sich melden.
+  Ein Hinweis erscheint nur, wenn eine Sonde sich nicht meldet oder eine
+  neuere Version bereitsteht. Meldet sich eine Sonde länger als drei Minuten
+  nicht, gelten ihre Sensoren als «Unbekannt». Nach fünf Minuten öffnet
+  nextDesk eine Störung «Sonde … – Verbindung zu nextDesk» und alarmiert das
+  Alarmteam; sie gilt als behoben, sobald die Sonde sich wieder meldet.
+  Verwaltet werden Sonden unter **Einstellungen → Monitoring**.
 - **Geräteliste**: Zustand, Sensoren, Antwortzeit und letzte Prüfung. Die
   Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
   Ein Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter kehrt die
   Reihenfolge um. Standard ist der Zustand, das Dringende zuoberst.
 
-![Überwachung mit Kacheln, aktiven Alarmen, Sonden und Geräteliste](images/ag-ueberwachung.jpg)
+![Überwachung mit Kacheln, letzten Ereignissen, Verfügbarkeit und aktiven Alarmen](images/ag-ueberwachung.jpg)
 
 Ein Klick auf ein Gerät öffnet das **Gerätedetail**:
 

@@ -1266,6 +1266,140 @@ const HANDLERS = {
       lastMessage: null,
       ...extra,
     });
+    if (body.type === "events") {
+      const count = body.range === "7d" ? 7 : 24;
+      const step = (body.range === "7d" ? 24 : 1) * 60 * D.MIN;
+      const event = (
+        id,
+        minutes,
+        kind,
+        deviceName,
+        assetId,
+        sensorName,
+        extra,
+      ) => ({
+        id,
+        at: D.iso(-minutes * D.MIN),
+        kind,
+        assetId,
+        deviceName,
+        sensorName,
+        message: null,
+        durationSeconds: null,
+        ongoing: false,
+        services: [],
+        incident: null,
+        test: false,
+        ...extra,
+      });
+      return ok({
+        range: body.range,
+        counts: { down: 2, warning: 1, up: 1 },
+        buckets: Array.from({ length: count }, (_, index) => ({
+          from: D.iso(-(count - index) * step),
+          level:
+            index === count - 1
+              ? "down"
+              : index === count - 3
+                ? "warning"
+                : index === count - 6
+                  ? "up"
+                  : "none",
+        })),
+        events: [
+          event("e1", 14, "down", "SW-CORE-01", D.uid("49494949", 1), "Ping", {
+            message: "Keine Antwort auf Ping",
+            ongoing: true,
+            services: ["ERP", "Intranet"],
+            incident: { id: D.uid("29292929", 2), number: "STO-2026-0042" },
+          }),
+          event(
+            "e2",
+            120,
+            "warning",
+            "SRV-SQL-01",
+            D.uid("49494949", 2),
+            "Port 1433",
+            {
+              message: "Antwortzeit über dem Schwellenwert (412 ms)",
+              ongoing: true,
+              services: ["ERP"],
+            },
+          ),
+          event(
+            "e3",
+            318,
+            "up",
+            "SRV-BACKUP-01",
+            D.uid("49494949", 5),
+            "Ping",
+            {
+              message: "Wieder erreichbar",
+              durationSeconds: 240,
+            },
+          ),
+          event(
+            "e4",
+            322,
+            "down",
+            "SRV-BACKUP-01",
+            D.uid("49494949", 5),
+            "Ping",
+            {},
+          ),
+        ],
+      });
+    }
+    if (body.type === "availability") {
+      const count = body.range === "7d" ? 7 : body.range === "1y" ? 52 : 30;
+      const step = (body.range === "1y" ? 7 : 1) * 24 * 60 * D.MIN;
+      return ok({
+        range: body.range,
+        overall: 99.62,
+        devices: 7,
+        buckets: Array.from({ length: count }, (_, index) => ({
+          from: D.iso(-(count - index) * step),
+          level:
+            index === count - 1
+              ? "down"
+              : index === Math.floor(count / 3)
+                ? "warning"
+                : "ok",
+          availability:
+            index === count - 1
+              ? 96.4
+              : index === Math.floor(count / 3)
+                ? 99.6
+                : 100,
+        })),
+        worst: [
+          {
+            assetId: D.uid("49494949", 1),
+            name: "SW-CORE-01",
+            availability: 97.42,
+            outages: 3,
+            downSeconds: 18.5 * 3600,
+            services: ["ERP", "Intranet"],
+          },
+          {
+            assetId: D.uid("49494949", 2),
+            name: "SRV-SQL-01",
+            availability: 99.31,
+            outages: 2,
+            downSeconds: 5 * 3600,
+            services: ["ERP", "Zeiterfassung"],
+          },
+          {
+            assetId: D.uid("49494949", 5),
+            name: "SRV-BACKUP-01",
+            availability: 99.86,
+            outages: 1,
+            downSeconds: 3600,
+            services: [],
+          },
+        ],
+      });
+    }
     if (body.type === "connections") {
       const link = (name, port, assetId, monitored, address) => ({
         source: port ? "lldp" : "mac",

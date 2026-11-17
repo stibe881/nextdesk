@@ -74,6 +74,8 @@ export type Action =
   | { type: "probePackage"; tenantId: string }
   | { type: "listInterfaces"; tenantId: string; assetId: string; agentId: string }
   | { type: "interfaces"; tenantId: string; jobId: string }
+  | { type: "availability"; tenantId: string; range: AvailabilityRange }
+  | { type: "events"; tenantId: string; range: EventRange }
   | { type: "simulate"; tenantId: string; assetId: string; sensorId: string | null; minutes: number }
   | { type: "connections"; tenantId: string; assetId: string }
   | { type: "refreshConnections"; tenantId: string; assetId: string }
@@ -450,6 +452,16 @@ export function parseAction(value: unknown): Action | string | null {
       const jobId = uuid(value.jobId);
       return jobId ? { type: "interfaces", tenantId, jobId } : null;
     }
+    case "events": {
+      const range = EVENT_RANGES.includes(value.range as EventRange) ? (value.range as EventRange) : null;
+      return range ? { type: "events", tenantId, range } : null;
+    }
+    case "availability": {
+      const range = AVAILABILITY_RANGES.includes(value.range as AvailabilityRange)
+        ? (value.range as AvailabilityRange)
+        : null;
+      return range ? { type: "availability", tenantId, range } : null;
+    }
     case "simulate": {
       // minutes 0 ends the simulation; sensorId null means the whole device.
       const assetId = uuid(value.assetId);
@@ -639,6 +651,237 @@ export function availability(points: readonly Point[]): number | null {
   if (!points.length) return null;
   const sum = points.reduce((total, point) => total + point.ok, 0);
   return Math.round((sum / points.length) * 10000) / 100;
+}
+
+export const EVENT_RANGES = ["24h", "7d"] as const;
+export type EventRange = (typeof EVENT_RANGES)[number];
+
+export type AlertInput = {
+  id: string;
+  assetId: string | null;
+  sensorName: string | null;
+  openedAt: number;
+  /** Null while the alert is open. */
+  resolvedAt: number | null;
+  wasDown: boolean;
+  simulated: boolean;
+  lastMessage: string | null;
+  serviceIds: string[];
+  incidentId: string | null;
+};
+
+export type FeedEvent = {
+  id: string;
+  at: string;
+  kind: "down" | "warning" | "up";
+  assetId: string | null;
+  sensorName: string | null;
+  message: string | null;
+  /** Up: how long the outage lasted. */
+  durationSeconds: number | null;
+  /** Down or warning that has not ended yet. */
+  ongoing: boolean;
+  serviceIds: string[];
+  incidentId: string | null;
+  test: boolean;
+};
+
+export type EventFeed = {
+  counts: { down: number; warning: number; up: number };
+  /** A bar per hour (24 h) or per day (7 d), oldest first: the worst event in it. */
+  buckets: { from: string; level: "none" | "up" | "warning" | "down" }[];
+  events: FeedEvent[];
+};
+
+/**
+ * Latest state changes of the sensors, from their alerts: an alert is an
+ * event when it opens (outage or warning) and another when it ends.
+ */
+export function eventFeed(input: {
+  now: number;
+  range: EventRange;
+  alerts: readonly AlertInput[];
+  limit?: number;
+}): EventFeed {
+  const bucketMs = input.range === "24h" ? 3_600_000 : DAY_MS;
+  const count = input.range === "24h" ? 24 : 7;
+  const start = input.now - count * bucketMs;
+  const events: (FeedEvent & { time: number })[] = [];
+  for (const alert of input.alerts) {
+    const base = {
+      assetId: alert.assetId,
+      sensorName: alert.sensorName,
+      serviceIds: alert.serviceIds,
+      incidentId: alert.incidentId,
+      test: alert.simulated,
+    };
+    const open = alert.resolvedAt === null;
+    if (alert.openedAt >= start && alert.openedAt <= input.now) {
+      events.push({
+        ...base,
+        id: `${alert.id}:open`,
+        time: alert.openedAt,
+        at: new Date(alert.openedAt).toISOString(),
+        kind: alert.wasDown ? "down" : "warning",
+        // The message of a finished alert is the one of its end.
+        message: open ? alert.lastMessage : null,
+        durationSeconds: null,
+        ongoing: open,
+      });
+    }
+    if (alert.resolvedAt !== null && alert.resolvedAt >= start && alert.resolvedAt <= input.now) {
+      events.push({
+        ...base,
+        id: `${alert.id}:end`,
+        time: alert.resolvedAt,
+        at: new Date(alert.resolvedAt).toISOString(),
+        kind: "up",
+        message: alert.lastMessage,
+        durationSeconds: Math.max(0, Math.round((alert.resolvedAt - alert.openedAt) / 1000)),
+        ongoing: false,
+      });
+    }
+  }
+  events.sort((a, b) => b.time - a.time || a.id.localeCompare(b.id));
+  const rank = { none: 0, up: 1, warning: 2, down: 3 } as const;
+  const buckets: EventFeed["buckets"] = Array.from({ length: count }, (_, index) => ({
+    from: new Date(start + index * bucketMs).toISOString(),
+    level: "none" as const,
+  }));
+  const counts = { down: 0, warning: 0, up: 0 };
+  for (const event of events) {
+    counts[event.kind] += 1;
+    const bucket = buckets[Math.min(count - 1, Math.floor((event.time - start) / bucketMs))];
+    if (bucket && rank[event.kind] > rank[bucket.level]) bucket.level = event.kind;
+  }
+  return {
+    counts,
+    buckets,
+    events: events.slice(0, input.limit ?? 50).map(({ time: _time, ...event }) => event),
+  };
+}
+
+export const AVAILABILITY_RANGES = ["7d", "30d", "1y"] as const;
+export type AvailabilityRange = (typeof AVAILABILITY_RANGES)[number];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Period and bars of a range: a bar per day, for a year a bar per week. */
+export function availabilityPlan(range: AvailabilityRange): { buckets: number; bucketMs: number } {
+  if (range === "7d") return { buckets: 7, bucketMs: DAY_MS };
+  if (range === "30d") return { buckets: 30, bucketMs: DAY_MS };
+  return { buckets: 52, bucketMs: 7 * DAY_MS };
+}
+
+export type OutageInput = { assetId: string; from: number; to: number; serviceIds: string[] };
+
+export type AvailabilityReport = {
+  /** Percent over all devices, null when nothing was monitored in the period. */
+  overall: number | null;
+  devices: number;
+  buckets: { from: string; level: "none" | "ok" | "warning" | "down"; availability: number | null }[];
+  worst: {
+    assetId: string;
+    availability: number;
+    outages: number;
+    downSeconds: number;
+    serviceIds: string[];
+  }[];
+};
+
+/** Intervals merged where they overlap or touch, sorted. */
+function mergeIntervals(intervals: [number, number][]): [number, number][] {
+  const sorted = intervals.filter(([from, to]) => to > from).sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const [from, to] of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && from <= last[1]) last[1] = Math.max(last[1], to);
+    else merged.push([from, to]);
+  }
+  return merged;
+}
+
+const percent = (up: number, total: number) => Math.round((up / total) * 10000) / 100;
+
+/**
+ * Availability of the monitored devices from their outages. A device counts
+ * from the moment it is monitored; several sensors down at once are one
+ * outage of the device. Bars: no outage = ok, at least 99 % = warning, else
+ * down; before the first monitored device = none.
+ */
+export function availabilityReport(input: {
+  now: number;
+  range: AvailabilityRange;
+  /** Monitored since (ms) per device. */
+  devices: ReadonlyMap<string, number>;
+  outages: readonly OutageInput[];
+  worst?: number;
+}): AvailabilityReport {
+  const { buckets, bucketMs } = availabilityPlan(input.range);
+  const start = input.now - buckets * bucketMs;
+  const perDevice = new Map<string, { since: number; intervals: [number, number][]; services: Set<string> }>();
+  for (const [assetId, since] of input.devices) {
+    perDevice.set(assetId, { since: Math.max(since, start), intervals: [], services: new Set() });
+  }
+  for (const outage of input.outages) {
+    const device = perDevice.get(outage.assetId);
+    if (!device) continue;
+    const from = Math.max(outage.from, device.since);
+    const to = Math.min(outage.to, input.now);
+    if (to <= from) continue;
+    device.intervals.push([from, to]);
+    for (const id of outage.serviceIds) device.services.add(id);
+  }
+  let total = 0;
+  let down = 0;
+  const worst: AvailabilityReport["worst"] = [];
+  const merged = new Map<string, [number, number][]>();
+  for (const [assetId, device] of perDevice) {
+    const period = input.now - device.since;
+    if (period <= 0) continue;
+    const intervals = mergeIntervals(device.intervals);
+    merged.set(assetId, intervals);
+    const downMs = intervals.reduce((sum, [from, to]) => sum + (to - from), 0);
+    total += period;
+    down += downMs;
+    if (downMs > 0) {
+      worst.push({
+        assetId,
+        availability: percent(period - downMs, period),
+        outages: intervals.length,
+        downSeconds: Math.round(downMs / 1000),
+        serviceIds: [...device.services],
+      });
+    }
+  }
+  const bars: AvailabilityReport["buckets"] = [];
+  for (let index = 0; index < buckets; index += 1) {
+    const from = start + index * bucketMs;
+    const to = from + bucketMs;
+    let monitored = 0;
+    let lost = 0;
+    for (const [assetId, device] of perDevice) {
+      const begin = Math.max(from, device.since);
+      if (to <= begin) continue;
+      monitored += to - begin;
+      for (const [a, b] of merged.get(assetId) ?? []) {
+        lost += Math.max(0, Math.min(b, to) - Math.max(a, begin));
+      }
+    }
+    const value = monitored > 0 ? percent(monitored - lost, monitored) : null;
+    bars.push({
+      from: new Date(from).toISOString(),
+      availability: value,
+      level: value === null ? "none" : lost === 0 ? "ok" : value >= 99 ? "warning" : "down",
+    });
+  }
+  return {
+    overall: total > 0 ? percent(total - down, total) : null,
+    devices: [...perDevice.values()].filter((device) => input.now > device.since).length,
+    buckets: bars,
+    worst: worst.sort((a, b) => a.availability - b.availability || b.downSeconds - a.downSeconds)
+      .slice(0, input.worst ?? 5),
+  };
 }
 
 export type ProbePackage = {

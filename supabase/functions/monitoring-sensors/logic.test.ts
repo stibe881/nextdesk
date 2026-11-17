@@ -17,6 +17,8 @@ import {
   probeConfig,
   rangePlan,
   parseCategoryLabel,
+  availabilityReport,
+  eventFeed,
 } from "./logic.ts";
 
 const TENANT = "00000000-0000-4000-8000-000000000001";
@@ -358,4 +360,78 @@ Deno.test("simulation: device or sensor, at most an hour, 0 ends it", () => {
     parseAction({ type: "simulate", tenantId: TENANT, assetId: ASSET, minutes: 600 }),
     "Die Dauer der Simulation muss zwischen 0 und 60 Minuten liegen.",
   );
+});
+
+Deno.test("availability: overlapping sensor outages are one outage, devices count since they are monitored", () => {
+  const now = Date.parse("2026-11-17T12:00:00Z");
+  const hour = 3_600_000;
+  const report = availabilityReport({
+    now,
+    range: "7d",
+    devices: new Map([["a", now - 30 * 24 * hour], ["b", now - 24 * hour], ["c", now - 24 * hour]]),
+    outages: [
+      { assetId: "a", from: now - 10 * hour, to: now - 8 * hour, serviceIds: ["s1"] },
+      // Second sensor of the same device, overlapping: still one outage.
+      { assetId: "a", from: now - 9 * hour, to: now - 7 * hour, serviceIds: ["s2"] },
+      // Before the device was monitored: clipped away.
+      { assetId: "b", from: now - 48 * hour, to: now - 30 * hour, serviceIds: [] },
+      { assetId: "zz", from: now - hour, to: now, serviceIds: [] },
+    ],
+  });
+  assertEquals(report.devices, 3);
+  assertEquals(report.worst.length, 1);
+  assertEquals(report.worst[0], {
+    assetId: "a",
+    availability: 98.21,
+    outages: 1,
+    downSeconds: 3 * 3600,
+    serviceIds: ["s1", "s2"],
+  });
+  // a: 168 h, b and c: 24 h each; 3 h down.
+  assertEquals(report.overall, Math.round(((216 - 3) / 216) * 10000) / 100);
+  assertEquals(report.buckets.length, 7);
+  assertEquals(report.buckets.map((bar) => bar.level), ["ok", "ok", "ok", "ok", "ok", "ok", "down"]);
+});
+
+Deno.test("availability: nothing monitored yet", () => {
+  const report = availabilityReport({ now: 1_000_000_000_000, range: "30d", devices: new Map(), outages: [] });
+  assertEquals(report.overall, null);
+  assertEquals(report.buckets.every((bar) => bar.level === "none"), true);
+  assertEquals(parseAction({ type: "availability", tenantId: TENANT, range: "2d" }), null);
+});
+
+Deno.test("events: an alert is an event when it opens and when it ends", () => {
+  const now = Date.parse("2026-11-17T12:00:00Z");
+  const minute = 60_000;
+  const alert = (overrides: Record<string, unknown>) => ({
+    id: "a1", assetId: "dev", sensorName: "Ping", openedAt: now - 30 * minute, resolvedAt: null as number | null,
+    wasDown: true, simulated: false, lastMessage: "Keine Antwort auf Ping", serviceIds: ["s1"], incidentId: "i1",
+    ...overrides,
+  });
+  const feed = eventFeed({
+    now,
+    range: "24h",
+    alerts: [
+      alert({}),
+      alert({ id: "a2", openedAt: now - 5 * 60 * minute, resolvedAt: now - 5 * 60 * minute + 4 * minute, lastMessage: "Wieder erreichbar" }),
+      alert({ id: "a3", wasDown: false, simulated: true, openedAt: now - 2 * minute }),
+      // Opened before the range, ended inside: only the end shows.
+      alert({ id: "a4", openedAt: now - 30 * 60 * minute, resolvedAt: now - 60 * minute }),
+    ],
+  });
+  assertEquals(feed.events.map((event) => [event.id, event.kind, event.ongoing, event.durationSeconds]), [
+    ["a3:open", "warning", true, null],
+    ["a1:open", "down", true, null],
+    ["a4:end", "up", false, 29 * 3600],
+    ["a2:end", "up", false, 240],
+    ["a2:open", "down", false, null],
+  ]);
+  assertEquals(feed.counts, { down: 2, warning: 1, up: 2 });
+  assertEquals(feed.events[0]!.test, true);
+  // A finished alert keeps only the message of its end.
+  assertEquals(feed.events[4]!.message, null);
+  assertEquals(feed.buckets.length, 24);
+  assertEquals(feed.buckets[23]!.level, "down");
+  assertEquals(feed.buckets[19]!.level, "down");
+  assertEquals(feed.buckets[0]!.level, "none");
 });

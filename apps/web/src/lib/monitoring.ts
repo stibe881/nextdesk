@@ -79,6 +79,8 @@ export type MonitoringDeviceRow = {
     state: MonitoringState;
     since: string | null;
     message: string | null;
+    /** Names of the services affected (of the sensor, else of the device). */
+    services?: string[];
   } | null;
   incident: MonitoringIncident | null;
 };
@@ -220,6 +222,131 @@ export function portLinkText(port: MonitoringPort): string {
   if (port.deviceCount > 8)
     return `${port.deviceCount} Geräte (Uplink oder Trunk)`;
   return port.deviceCount > 0 ? `${port.deviceCount} unbekannte Geräte` : "–";
+}
+
+export type EventRange = "24h" | "7d";
+
+export const EVENT_RANGE_LABELS: Record<EventRange, string> = {
+  "24h": "24 Stunden",
+  "7d": "7 Tage",
+};
+
+export type MonitoringEvent = {
+  id: string;
+  at: string;
+  kind: "down" | "warning" | "up";
+  assetId: string | null;
+  deviceName: string;
+  sensorName: string | null;
+  message: string | null;
+  /** Up: how long the outage lasted. */
+  durationSeconds: number | null;
+  /** Down or warning that has not ended yet. */
+  ongoing: boolean;
+  services: string[];
+  incident: { id: string; number: string } | null;
+  /** From a simulated outage. */
+  test: boolean;
+};
+
+/** Latest events of the sensors for the overview. */
+export type MonitoringEvents = {
+  range: EventRange;
+  counts: { down: number; warning: number; up: number };
+  /** A bar per hour (24 h) or day (7 d), oldest first: the worst event in it. */
+  buckets: { from: string; level: "none" | "up" | "warning" | "down" }[];
+  events: MonitoringEvent[];
+};
+
+/** «Ausfall dauerte 4 Min.» / «Keine Antwort auf Ping · dauert an» / «Ausfall». */
+export function eventText(event: MonitoringEvent): string {
+  if (event.kind === "up") {
+    const lasted =
+      event.durationSeconds === null
+        ? null
+        : `dauerte ${formatDowntime(event.durationSeconds)}`;
+    return [event.message ?? "Wieder in Ordnung", lasted]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  const fallback = event.kind === "down" ? "Ausfall" : "Warnung";
+  return [event.message ?? fallback, event.ongoing ? "dauert an" : null]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** «2 Ausfälle · 1 Warnung · 2 behoben», or «keine Ereignisse». */
+export function eventCountsText(counts: MonitoringEvents["counts"]): string {
+  const parts = [
+    counts.down
+      ? `${counts.down} ${counts.down === 1 ? "Ausfall" : "Ausfälle"}`
+      : null,
+    counts.warning
+      ? `${counts.warning} ${counts.warning === 1 ? "Warnung" : "Warnungen"}`
+      : null,
+    counts.up ? `${counts.up} behoben` : null,
+  ].filter(Boolean);
+  return parts.join(" · ") || "keine Ereignisse";
+}
+
+/** Time of an event: «09:42» today, else «16.11. 17:20». */
+export function eventTime(iso: string, now: number): string {
+  const at = new Date(iso);
+  const time = at.toLocaleTimeString("de-CH", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const sameDay = at.toDateString() === new Date(now).toDateString();
+  return sameDay
+    ? time
+    : `${at.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit" })} ${time}`;
+}
+
+export type AvailabilityRange = "7d" | "30d" | "1y";
+
+export const AVAILABILITY_RANGE_LABELS: Record<AvailabilityRange, string> = {
+  "7d": "7 Tage",
+  "30d": "30 Tage",
+  "1y": "1 Jahr",
+};
+
+/** Availability of the monitored devices for the overview. */
+export type MonitoringAvailability = {
+  range: AvailabilityRange;
+  /** Percent over all devices; null when nothing was monitored. */
+  overall: number | null;
+  devices: number;
+  /** A bar per day (per week for a year), oldest first. */
+  buckets: {
+    from: string;
+    level: "none" | "ok" | "warning" | "down";
+    availability: number | null;
+  }[];
+  /** Devices that were down most, with the services affected. */
+  worst: {
+    assetId: string;
+    name: string;
+    availability: number;
+    outages: number;
+    downSeconds: number;
+    services: string[];
+  }[];
+};
+
+/** «99.62 %» with two decimals, Swiss style. */
+export function formatPercent(value: number): string {
+  return `${value.toFixed(2)} %`;
+}
+
+/** Duration of outages: «4 Min.», «10 Std.», «2 Tg. 14 Std.». */
+export function formatDowntime(seconds: number): string {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  if (minutes < 60) return `${minutes} Min.`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} Std.`;
+  const days = Math.floor(hours / 24);
+  const rest = hours - days * 24;
+  return rest ? `${days} Tg. ${rest} Std.` : `${days} Tg.`;
 }
 
 export type PortState = "linked" | "trunk" | "up" | "down" | "unknown";
