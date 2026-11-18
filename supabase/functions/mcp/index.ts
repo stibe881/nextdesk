@@ -267,7 +267,37 @@ const SECURITY_STATE_LABELS: Json = {
 
 type Workspace = { id: string; name: string; slug: string };
 
-async function listWorkspaces(
+/**
+ * Kurzer Zwischenspeicher je Person (nur im laufenden Edge-Prozess): spart bei
+ * jeder Anfrage die Abfrage der Arbeitsbereiche und bei jeder Werkzeugliste die
+ * Titelliste der Wissensartikel. Die Daten gelten nur für die Person, die sie
+ * geladen hat (Schlüssel enthält die Benutzer-ID) und verfallen nach kurzer Zeit.
+ */
+const MEMORY_CACHE = new Map<string, { at: number; value: unknown }>();
+
+async function remember<T>(
+  key: string,
+  ttlMs: number,
+  load: () => Promise<T>,
+): Promise<T> {
+  const hit = MEMORY_CACHE.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
+  const value = await load();
+  if (MEMORY_CACHE.size > 500) MEMORY_CACHE.clear();
+  MEMORY_CACHE.set(key, { at: Date.now(), value });
+  return value;
+}
+
+function listWorkspaces(
+  config: Config,
+  session: Session,
+): Promise<Workspace[]> {
+  return remember(`workspaces:${session.userId}`, 60_000, () =>
+    loadWorkspaces(config, session),
+  );
+}
+
+async function loadWorkspaces(
   config: Config,
   session: Session,
 ): Promise<Workspace[]> {
@@ -980,7 +1010,7 @@ const TOOLS: Tool[] = [
   {
     name: "wissen_suchen",
     description:
-      "Durchsucht die Wissensdatenbank von nextDesk (Anleitungen und Lösungen der eigenen Organisation), nicht OneDrive, SharePoint oder Google Drive. Bei jeder Frage zu Software, Programmen (z. B. AbaClient), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst und vor jeder Websuche verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». suchbegriff: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen. Als Quelle immer den Link aus dem Feld «quelle» verwenden (Artikeltitel als Linktext), nie Nummern.",
+      "Durchsucht die Wissensdatenbank von nextDesk (Anleitungen und Lösungen der eigenen Organisation), nicht OneDrive, SharePoint oder Google Drive. Bei jeder Frage zu Software, Programmen (z. B. AbaClient), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst und vor jeder Websuche verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». suchbegriff: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen. Das erste Ergebnis enthält meist schon den ganzen Text im Feld excerpt; wissensartikel_lesen nur aufrufen, wenn der Text dort abgeschnitten ist (endet auf «…»). Als Quelle immer den Link aus dem Feld «quelle» verwenden (Artikeltitel als Linktext), nie Nummern.",
     annotations: { readOnlyHint: true, title: "Wissen durchsuchen" },
     inputSchema: {
       type: "object",
@@ -1013,32 +1043,35 @@ const TOOLS: Tool[] = [
             })
           ).articles,
         );
-      let articles = await search(query);
+      // Die ganze Frage und die einzelnen Stichwörter (längste zuerst)
+      // gleichzeitig suchen: Ganze Fragen finden oft nichts, dann gelten die
+      // Treffer der Stichwörter. So braucht es keine zweite Runde.
+      const words = [
+        ...new Set(
+          query
+            .toLocaleLowerCase("de-CH")
+            .split(/[^\p{L}\p{N}]+/u)
+            .filter(
+              (word) => Array.from(word).length >= 3 && !STOP_WORDS.has(word),
+            ),
+        ),
+      ]
+        .sort((a, b) => b.length - a.length)
+        .slice(0, 4);
+      const [whole, ...byWord] = await Promise.all([
+        search(query),
+        ...words.map(search),
+      ]);
+      let articles = whole;
       let searchedFor = [query];
-      // Ganze Fragen finden oft nichts; dann einzeln nach den
-      // aussagekräftigen Stichwörtern suchen (längste zuerst).
-      if (articles.length === 0) {
-        const words = [
-          ...new Set(
-            query
-              .toLocaleLowerCase("de-CH")
-              .split(/[^\p{L}\p{N}]+/u)
-              .filter(
-                (word) => Array.from(word).length >= 3 && !STOP_WORDS.has(word),
-              ),
-          ),
-        ]
-          .sort((a, b) => b.length - a.length)
-          .slice(0, 4);
-        if (words.length > 0) {
-          searchedFor = words;
-          const seen = new Set<unknown>();
-          for (const list of await Promise.all(words.map(search))) {
-            for (const article of list) {
-              if (!seen.has(article.id)) {
-                seen.add(article.id);
-                articles.push(article);
-              }
+      if (articles.length === 0 && words.length > 0) {
+        searchedFor = words;
+        const seen = new Set<unknown>();
+        for (const list of byWord) {
+          for (const article of list) {
+            if (!seen.has(article.id)) {
+              seen.add(article.id);
+              articles.push(article);
             }
           }
         }
@@ -1067,14 +1100,16 @@ const TOOLS: Tool[] = [
               note: "Zum genannten Programm gibt es keinen eigenen Artikel. Diese Artikel beschreiben den allgemeinen Weg, Software zu beziehen; mit wissensartikel_lesen lesen und der Person danach erklären.",
             }
           : {}),
-        articles: articles.map((article) => {
+        articles: articles.map((article, index) => {
           const revision = isRecord(article.revision) ? article.revision : {};
           return {
             id: article.id,
             title: article.title,
             quelle: articleSourceLink(article.id, article.title),
             summary: clip(article.summary ?? revision.summary, 300) || null,
-            excerpt: clip(revision.body, 600) || null,
+            // Der beste Treffer kommt (fast) vollständig mit, damit die
+            // Antwort ohne weiteren Aufruf von wissensartikel_lesen möglich ist.
+            excerpt: clip(revision.body, index === 0 ? 5000 : 600) || null,
             updatedAt: article.updated_at ?? article.updatedAt ?? null,
           };
         }),
@@ -8067,7 +8102,7 @@ async function knowledgeTitleHint(
   };
   try {
     return await Promise.race([
-      load(),
+      remember(`knowledge-titles:${session.userId}`, 600_000, load),
       new Promise<string>((resolve) => setTimeout(() => resolve(""), 2500)),
     ]);
   } catch {
