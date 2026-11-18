@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Phishing-/Junk-Fälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-17
+updated: 2026-11-18
 ---
 
 # Handbuch für Agenten
@@ -1310,6 +1310,24 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
+### Wie buche ich Ware auf mehrere Lagerplätze ein?
+
+1. Öffnen Sie **Lager → Artikel** und klicken Sie beim Artikel auf **Einbuchen**.
+2. Geben Sie die Menge ein und wählen Sie den ersten **Lagerort**, zum Beispiel «G10.2.1».
+3. Wählen Sie unter **Bis Lagerplatz (Bereich, optional)** den letzten Platz, zum Beispiel «G10.2.4». Das Feld erscheint, sobald es passende Plätze gibt.
+4. Bestätigen Sie die Buchung. Die Menge wird **einmal** gebucht: 5 Stück auf G10.2.1 bis G10.2.4 sind insgesamt 5 Stück, nicht je Platz.
+
+In der App tippen Sie in der Bestandsliste auf den Artikel, wählen den ersten Lagerort und danach unter **Bis Lagerplatz** den letzten Platz.
+
+Dabei gilt:
+
+- Nur die letzte Zahl darf sich unterscheiden. G10.2.1 bis G10.2.4 geht, G10.2.1 bis G11.2.4 nicht.
+- Alle Plätze dazwischen müssen als aktive Lagerorte existieren. Fehlt einer, wird nichts gebucht und die fehlenden Plätze werden genannt.
+- Der Bereich gilt als ein Lagerplatz. Solange dort Bestand liegt, kann auf keinem der Plätze etwas anderes gebucht werden, und ein neuer Bereich ist nur auf vollständig freien Plätzen möglich. Sobald der Bestand ausgebucht ist, sind alle Plätze wieder frei.
+- Mehr vom selben Artikel können Sie auf denselben Bereich einbuchen. Ausbuchen und Umlagern wählen Sie beim ersten Platz des Bereichs (hier G10.2.1).
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
 ### Wie buche ich Ware aus?
 
 1. Öffnen Sie **Lager → Artikel**. **Ausbuchen** sehen nur Personen mit der Rolle **Lagerverwaltung** (oder dem Recht «Bestände von Hand ausbuchen»).
@@ -2453,6 +2471,7 @@ informieren.
 Mit dem Recht «Assets verwalten» können Sie zusätzlich:
 
 1. **Geräte hinzufügen** – die Suche findet:
+
    - **Geräte der Infrastruktur.** Geräte mit Adresse stehen zuoberst,
      bereits überwachte Geräte zuunterst in der Liste.
    - **Einträge der IP-Adressverwaltung**, die noch kein Gerät sind (ab zwei
@@ -2478,6 +2497,7 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    Ping-Sensor.
 
 2. **Sensor hinzufügen** (im Gerätedetail) – Art wählen:
+
    - **Ping**: Ist das Gerät erreichbar?
    - **TCP-Port**: Antwortet ein Dienst, z. B. 3389 (RDP) oder 1433 (SQL)?
    - **HTTP**: Antwortet eine Webseite ohne Fehler? Fehlercodes ab 400 und
@@ -2531,6 +2551,7 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
 
 3. Sensoren **bearbeiten** oder **löschen** (Symbole in der Sensorzeile).
    Im Kopf des Gerätedetails:
+
    - **Pausieren** hält die Überwachung des ganzen Geräts an.
    - **Bearbeiten** ändert Name, Art, IP-Adresse und Hostname des Geräts. Die
      Änderung gilt auch in der Infrastruktur; Sensoren ohne eigenes Ziel

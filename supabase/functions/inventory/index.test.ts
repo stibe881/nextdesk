@@ -97,6 +97,7 @@ Deno.test(
       upsertLocation: "upsert_inventory_location",
       upsertItem: "upsert_inventory_item_scoped",
       postMovement: "post_inventory_movement",
+      postRangeReceipt: "post_inventory_range_receipt",
       createReservation: "create_inventory_reservation",
       releaseReservation: "release_inventory_reservation",
       startCount: "start_inventory_count",
@@ -1699,3 +1700,64 @@ Deno.test("cancelCount is parsed strictly", () => {
   );
   assertEquals(parseAction({ type: "cancelCount", tenantId }), null);
 });
+
+Deno.test(
+  "postMovement accepts an area end only for a receipt and treats the same place as plain",
+  () => {
+    const END_ID = "00000000-0000-4000-8000-0000000000e1";
+    const base = {
+      type: "postMovement" as const,
+      tenantId: TENANT_ID,
+      itemId: ITEM_ID,
+      quantity: 5,
+      clientRequestId: REQUEST_ID,
+    };
+    const area = parseAction({
+      ...base,
+      movementType: "receipt",
+      toLocationId: LOCATION_ID,
+      toLocationEndId: END_ID,
+    });
+    assertEquals(
+      area && area.type === "postMovement" && area.toLocationEndId,
+      END_ID,
+    );
+    assertEquals(
+      area && area.type === "postMovement" && area.toLocationId,
+      LOCATION_ID,
+    );
+    // The same place as start and end is one place, not an area.
+    const same = parseAction({
+      ...base,
+      movementType: "receipt",
+      toLocationId: LOCATION_ID,
+      toLocationEndId: LOCATION_ID,
+    });
+    assertEquals(
+      same && same.type === "postMovement" && "toLocationEndId" in same,
+      false,
+    );
+    // No area end for any other movement, and no malformed end id.
+    for (const movementType of ["issue", "transfer", "adjustment_in"]) {
+      assertEquals(
+        parseAction({
+          ...base,
+          movementType,
+          fromLocationId: LOCATION_ID,
+          toLocationId: END_ID,
+          toLocationEndId: END_ID,
+        }),
+        null,
+      );
+    }
+    assertEquals(
+      parseAction({
+        ...base,
+        movementType: "receipt",
+        toLocationId: LOCATION_ID,
+        toLocationEndId: "not-a-uuid",
+      }),
+      null,
+    );
+  },
+);

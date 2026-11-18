@@ -303,6 +303,8 @@ type InventoryAction =
       quantity: number;
       fromLocationId?: string;
       toLocationId?: string;
+      /** Receipt on an area: last place of «G10.2.1» to «G10.2.4». */
+      toLocationEndId?: string;
       clientRequestId: string;
     }
   | {
@@ -2251,6 +2253,74 @@ function InventoryItems({
  * Ausbuchen needs inventory.issue (role «Lagerverwaltung»); the server checks
  * the permission and the available stock again.
  */
+/** «G10.2.4» → Präfix «G10.2.», Zahl 4. Nur die letzte Zahl läuft im Bereich. */
+function splitPlaceName(
+  name: string,
+): { prefix: string; number: number } | null {
+  const match = /^(.*?)(\d+)$/.exec(name.trim());
+  if (!match) return null;
+  const number = Number(match[2]);
+  return Number.isSafeInteger(number) ? { prefix: match[1]!, number } : null;
+}
+
+/**
+ * Lagerplätze, die mit dem Startplatz einen Bereich bilden können: gleicher
+ * Namensanfang, nur die letzte Zahl höher (z. B. G10.2.1 → G10.2.2 …). Die
+ * Prüfung, dass alle Plätze dazwischen existieren, macht der Server.
+ */
+function areaEndOptions(
+  locations: readonly InventoryLocation[],
+  startId: string,
+): InventoryLocation[] {
+  const start = locations.find((location) => location.id === startId);
+  const first = start ? splitPlaceName(start.name) : null;
+  if (!start || !first) return [];
+  return locations
+    .filter((location) => {
+      if (!location.active || location.id === start.id) return false;
+      const parts = splitPlaceName(location.name);
+      return (
+        parts !== null &&
+        parts.prefix.toLowerCase() === first.prefix.toLowerCase() &&
+        parts.number > first.number
+      );
+    })
+    .sort(
+      (a, b) => splitPlaceName(a.name)!.number - splitPlaceName(b.name)!.number,
+    );
+}
+
+/** Optionales «bis»-Feld beim Einlagern: mehrere Plätze gelten als ein Lagerplatz. */
+function AreaEndField({
+  locations,
+  onChange,
+  startId,
+  value,
+}: {
+  locations: readonly InventoryLocation[];
+  onChange: (id: string) => void;
+  startId: string;
+  value: string;
+}) {
+  const options = areaEndOptions(locations, startId);
+  if (options.length === 0) return null;
+  return (
+    <FormField
+      hint="Mehrere Plätze gelten als ein Lagerplatz: Die Menge wird einmal gebucht, und alle Plätze sind belegt, bis der Bestand ausgebucht ist. Nur die letzte Zahl darf sich unterscheiden."
+      label="Bis Lagerplatz (Bereich, optional)"
+    >
+      <select onChange={(event) => onChange(event.target.value)} value={value}>
+        <option value="">Nur dieser Lagerplatz</option>
+        {options.map((location) => (
+          <option key={location.id} value={location.id}>
+            {location.name}
+          </option>
+        ))}
+      </select>
+    </FormField>
+  );
+}
+
 function InventoryBookingDialog({
   item,
   locations,
@@ -2273,6 +2343,7 @@ function InventoryBookingDialog({
       activeLocations.find((location) => location.name === item.locationName)
         ?.id ?? (activeLocations.length === 1 ? activeLocations[0]!.id : ""),
   );
+  const [endLocationId, setEndLocationId] = useState("");
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState("");
   const clientRequest = useClientRequestId(
@@ -2280,6 +2351,14 @@ function InventoryBookingDialog({
     `booking-${mode}-${item.id}`,
   );
   const issuing = mode === "issue";
+  // Ein Bereich gilt nur für ein Einlagern und nur, solange sein Ende noch passt.
+  const areaEnd =
+    !issuing &&
+    areaEndOptions(activeLocations, locationId).some(
+      (location) => location.id === endLocationId,
+    )
+      ? endLocationId
+      : "";
   const amount = Number(quantity);
   const validAmount =
     Number.isFinite(amount) &&
@@ -2330,11 +2409,18 @@ function InventoryBookingDialog({
         ...(issuing
           ? { fromLocationId: locationId }
           : { toLocationId: locationId }),
+        ...(areaEnd ? { toLocationEndId: areaEnd } : {}),
         clientRequestId: clientRequest.requestId(),
       },
       issuing
         ? `${amount} ${item.unit} «${item.name}» ausgebucht.`
-        : `${amount} ${item.unit} «${item.name}» eingebucht.`,
+        : areaEnd
+          ? `${amount} ${item.unit} «${item.name}» auf ${
+              activeLocations.find((place) => place.id === locationId)?.name
+            }–${
+              activeLocations.find((place) => place.id === areaEnd)?.name
+            } eingebucht.`
+          : `${amount} ${item.unit} «${item.name}» eingebucht.`,
     );
     setSaving(false);
     if (saved) {
@@ -2411,6 +2497,14 @@ function InventoryBookingDialog({
               ))}
             </select>
           </FormField>
+          {!issuing ? (
+            <AreaEndField
+              locations={activeLocations}
+              onChange={setEndLocationId}
+              startId={locationId}
+              value={areaEnd}
+            />
+          ) : null}
         </FormGrid>
         {problem ? (
           <p className="ticket-detail-message error" role="alert">
@@ -2454,7 +2548,9 @@ async function uploadInventoryItemImageFile(
     throw new Error("Die Verbindung zu nextDesk ist nicht konfiguriert.");
   }
   const contentType = file.type.trim().toLowerCase() as
-    "image/jpeg" | "image/png" | "image/webp";
+    | "image/jpeg"
+    | "image/png"
+    | "image/webp";
   const { data: createData, error: createError } =
     await supabase.functions.invoke<unknown>("inventory", {
       body: {
@@ -3391,7 +3487,8 @@ function SourceReservationRuleForm({
             <select
               onChange={(event) => {
                 const nextSourceKind = event.target.value as
-                  "event_space_equipment" | "onboarding_template_task";
+                  | "event_space_equipment"
+                  | "onboarding_template_task";
                 setSourceKind(nextSourceKind);
               }}
               value={selectedSourceKind}
@@ -3970,6 +4067,7 @@ function InventoryMovementForm({
   const [itemId, setItemId] = useState("");
   const [fromLocationId, setFromLocationId] = useState("");
   const [toLocationId, setToLocationId] = useState("");
+  const [toLocationEndId, setToLocationEndId] = useState("");
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const clientRequest = useClientRequestId(tenantId, "movement");
@@ -3986,6 +4084,13 @@ function InventoryMovementForm({
     selectedType === "receipt" ||
     selectedType === "transfer" ||
     selectedType === "adjustment_in";
+  const receiptAreaEnd =
+    selectedType === "receipt" &&
+    areaEndOptions(locations, toLocationId).some(
+      (location) => location.id === toLocationEndId,
+    )
+      ? toLocationEndId
+      : "";
   const amountNumber = Number(amount);
   const complete =
     itemId.length > 0 &&
@@ -4008,6 +4113,9 @@ function InventoryMovementForm({
         quantity: amountNumber,
         ...(requiresFrom ? { fromLocationId } : {}),
         ...(requiresTo ? { toLocationId } : {}),
+        ...(selectedType === "receipt" && receiptAreaEnd
+          ? { toLocationEndId: receiptAreaEnd }
+          : {}),
         clientRequestId: clientRequest.requestId(),
       },
       "Die Buchung wurde gespeichert und die Ansicht aktualisiert.",
@@ -4018,6 +4126,7 @@ function InventoryMovementForm({
       setItemId("");
       setFromLocationId("");
       setToLocationId("");
+      setToLocationEndId("");
       setAmount("");
     }
   };
@@ -4089,6 +4198,14 @@ function InventoryMovementForm({
                 ))}
               </select>
             </FormField>
+          ) : null}
+          {selectedType === "receipt" ? (
+            <AreaEndField
+              locations={locations}
+              onChange={setToLocationEndId}
+              startId={toLocationId}
+              value={receiptAreaEnd}
+            />
           ) : null}
           <FormField label="Menge" required>
             <input
