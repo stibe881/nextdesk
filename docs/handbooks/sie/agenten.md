@@ -2194,7 +2194,7 @@ bearbeiten die Störung vollständig dort.
 **Externe Störungen**: Zusätzlich erscheinen Störungen, die Anbieter auf ihren
 offiziellen Statusseiten melden (z. B. Microsoft 365 mit Teams, Outlook,
 OneDrive und SharePoint, GitHub, Claude, Gemini, App Store, Google Play,
-Init7), gekennzeichnet mit **Extern · Anbieter**. Sie zeigen, dass die Ursache
+Init7, Swisscom, Salt), gekennzeichnet mit **Extern · Anbieter**. Sie zeigen, dass die Ursache
 beim Anbieter liegt und nicht in Ihrem Netz, z. B. wenn mehrere Personen
 melden, dass Teams nicht geht. Das Team wird beim Auftreten benachrichtigt (ohne Wiederholungsalarm); meldet der Anbieter die Störung als
 behoben, schliesst sie sich automatisch. **Statusseite des Anbieters öffnen**

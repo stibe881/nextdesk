@@ -5,7 +5,9 @@ import {
   parseGoogleDashboard,
   parseInit7,
   parseMicrosoftIssues,
+  parseSalt,
   parseStatuspage,
+  parseSwisscom,
 } from "./providers.ts";
 
 Deno.test("Statuspage: nur ungelöste Vorfälle, Schweregrad aus impact", () => {
@@ -91,4 +93,44 @@ Deno.test("Microsoft 365: nur ungelöste Vorfälle (keine Hinweise)", () => {
     ],
   });
   assertEquals(issues.map((issue) => [issue.id, issue.title]), [["TM123", "Microsoft Teams: Users can't join meetings"]]);
+});
+
+Deno.test("Swisscom: nur schweizweite Störungen ohne TV-Sender", () => {
+  const outage = (extra: Record<string, unknown>) => ({
+    id: 1,
+    type: "INCIDENT",
+    title: "Internet beeinträchtigt",
+    description: "Unsere Spezialisten arbeiten an der Behebung.",
+    services: ["INTERNET"],
+    state: "RED",
+    nationWide: true,
+    category: "nationwide",
+    startDate: "2026-11-18T20:12:00+01:00",
+    ...extra,
+  });
+  const issues = parseSwisscom([
+    outage({ id: 10 }),
+    outage({ id: 11, nationWide: false, category: "regional" }),
+    outage({ id: 12, category: "tv", services: ["TV", "TVS"], title: "OCS HD Senderstörung" }),
+    outage({ id: 13, state: "ORANGE", title: "Mobilfunk eingeschränkt", services: ["MOBILE"] }),
+  ], "https://example.ch/status");
+  assertEquals(issues.map((issue) => [issue.id, issue.title, issue.severity]), [
+    ["10", "Swisscom: Internet beeinträchtigt", "down"],
+    ["13", "Swisscom: Mobilfunk eingeschränkt", "warning"],
+  ]);
+  assertEquals(issues[0].url, "https://example.ch/status#outageId=10");
+  assertEquals(issues[0].startedAt, "2026-11-18T20:12:00+01:00");
+  assertThrows(() => parseSwisscom({}, "u"));
+});
+
+Deno.test("Salt: leer ergibt nichts, sonst je Eintrag eine Störung", () => {
+  assertEquals(parseSalt({ html: "", status: "success" }, "u"), []);
+  const issues = parseSalt({
+    html: "<div><button>Mobilfunk Region Zürich</button><div><p>Eingeschränkter Empfang.</p></div>" +
+      "<button>Internet Bern</button><div><p>Unterbruch.</p></div></div>",
+  }, "u");
+  assertEquals(issues.map((issue) => issue.title), ["Salt: Mobilfunk Region Zürich", "Salt: Internet Bern"]);
+  assertEquals(issues[0].id === issues[1].id, false);
+  assertEquals(parseSalt({ html: "<p>Störung im Mobilnetz.</p>" }, "u")[0].title, "Salt: Störung im Netz");
+  assertThrows(() => parseSalt({ status: "success" }, "u"));
 });

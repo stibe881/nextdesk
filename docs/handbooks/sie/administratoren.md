@@ -2,7 +2,7 @@
 title: Handbuch für Administratoren
 description: Mandant einrichten – Design, Funktionen, SLA, Abteilungen, Personen, Rollen, Datenschutz und Protokoll.
 audienceLabel: Administratoren
-updated: 2026-11-17
+updated: 2026-11-18
 ---
 
 # Handbuch für Administratoren
@@ -941,7 +941,8 @@ Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
 - **Externe Statusquellen** – offizielle Statusmeldungen von Anbietern, die
   alle 5 Minuten gelesen werden: Microsoft 365 (alle Dienste Ihres Mandanten,
   auch Teams, Outlook, OneDrive, SharePoint), GitHub, Claude, Google Gemini,
-  Apple App Store, Google Play Store und Init7. Haken Sie die gewünschten
+  Apple App Store, Google Play Store, Init7, Swisscom (nur schweizweite
+  Störungen, ohne regionale und TV-Sender) und Salt. Haken Sie die gewünschten
   Quellen an und **speichern** Sie; **Jetzt prüfen** liest sie sofort. Eine
   gemeldete Störung erscheint unter **Störungen** als «Extern» und
   benachrichtigt das Team für die Alarmierung, ebenso jedes Update des Anbieters und die Behebung. Pro Quelle sehen Sie,

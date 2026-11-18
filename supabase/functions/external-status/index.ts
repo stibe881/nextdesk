@@ -26,6 +26,8 @@ import {
   parseAppleStatus,
   parseGoogleDashboard,
   parseInit7,
+  parseSalt,
+  parseSwisscom,
   parseMicrosoftIssues,
   parseStatuspage,
   SOURCE_KEYS,
@@ -200,6 +202,16 @@ async function publicIssues(key: SourceKey): Promise<ExternalIssue[]> {
       ]);
       return parseInit7(html, rss, "https://www.as13030.net/status.php");
     }
+    case "swisscom":
+      return parseSwisscom(
+        await fetchJson("https://www.swisscom.ch/outages/guest/?origin=portal&lang=de"),
+        "https://www.swisscom.ch/de/privatkunden/hilfe/netz-und-servicestatus.html",
+      );
+    case "salt":
+      return parseSalt(
+        await fetchJson("https://www.salt.ch/de/scheduled-promo/get/30649/de"),
+        "https://www.salt.ch/de/mobile/network-and-service-interruptions",
+      );
     default:
       throw new Error("unknown_source");
   }
