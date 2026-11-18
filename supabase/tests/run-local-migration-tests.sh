@@ -16616,4 +16616,154 @@ $$;
 rollback;
 SQL
 
+# Lagerbereiche (z. B. G10.2.1 bis G10.2.4): ein Bereich ist ein Lagerplatz mit
+# einmal gebuchter Menge; solange Bestand liegt, sind alle Plätze belegt.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'a6800000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_x uuid;
+  v_y uuid;
+  v_a1 uuid; v_a2 uuid; v_a3 uuid; v_a4 uuid; v_b1 uuid; v_inactive uuid;
+  v_event uuid;
+  v_again uuid;
+  v_state text;
+  v_qty numeric;
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'lagerbereich@example.ch', 'Lagerbereich');
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'g10-2-1', 'G10.2.1') returning id into v_a1;
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'g10-2-2', 'G10.2.2') returning id into v_a2;
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'g10-2-3', 'G10.2.3') returning id into v_a3;
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'g10-2-4', 'G10.2.4') returning id into v_a4;
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'g10-2-5', 'G10.2.5') returning id into v_b1;
+  insert into public.inventory_locations (tenant_id, code, name, active) values (v_tenant, 'g10-2-6', 'G10.2.6', false) returning id into v_inactive;
+  insert into public.inventory_items (tenant_id, article_number, name) values (v_tenant, 'bereich-x', 'Artikel X') returning id into v_x;
+  insert into public.inventory_items (tenant_id, article_number, name) values (v_tenant, 'bereich-y', 'Artikel Y') returning id into v_y;
+
+  -- 1. Der Bereich bucht die Menge einmal auf den ersten Platz.
+  v_event := public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_x,
+    array[v_a1, v_a2, v_a3, v_a4], 5);
+  select sum(physical_quantity) into v_qty from public.inventory_stock_balances
+  where tenant_id = v_tenant and item_id = v_x;
+  if v_qty <> 5
+     or (select count(*) from public.inventory_stock_balances
+         where tenant_id = v_tenant and item_id = v_x and location_id = v_a1 and physical_quantity = 5) <> 1
+     or (select count(*) from public.inventory_placement_slots where tenant_id = v_tenant) <> 4 then
+    raise exception 'range receipt: total quantity or slots wrong (%)', v_qty;
+  end if;
+
+  -- 2. Ein Wiederholen derselben Anfrage bucht nicht doppelt.
+  v_again := public.post_inventory_range_receipt(v_owner, v_tenant,
+    (select client_request_id from public.inventory_events where id = v_event), v_x,
+    array[v_a1, v_a2, v_a3, v_a4], 5);
+  if v_again <> v_event
+     or (select count(*) from public.inventory_placements where tenant_id = v_tenant) <> 1
+     or (select sum(physical_quantity) from public.inventory_stock_balances
+         where tenant_id = v_tenant and item_id = v_x) <> 5 then
+    raise exception 'range receipt: retry changed the stock';
+  end if;
+
+  -- 3. Etwas anderes auf einen Platz des belegten Bereichs: nicht möglich.
+  begin
+    perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'receipt',
+      jsonb_build_array(jsonb_build_object('item_id', v_y, 'location_id', v_a3, 'quantity', 1)), null);
+    raise exception 'range receipt: another item was booked into an occupied area';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> 'ND411' then raise; end if;
+  end;
+  -- ... auch derselbe Artikel nicht auf einen Platz ausser dem Anker.
+  begin
+    perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'receipt',
+      jsonb_build_array(jsonb_build_object('item_id', v_x, 'location_id', v_a2, 'quantity', 1)), null);
+    raise exception 'range receipt: a non-anchor place of the area accepted stock';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> 'ND411' then raise; end if;
+  end;
+  -- ... und ein überlappender neuer Bereich auch nicht.
+  begin
+    perform public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_y,
+      array[v_a4, v_b1], 2);
+    raise exception 'range receipt: an overlapping area was accepted';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> 'ND411' then raise; end if;
+  end;
+  if exists (select 1 from public.inventory_stock_balances
+             where tenant_id = v_tenant and item_id = v_y and physical_quantity > 0) then
+    raise exception 'range receipt: a rejected booking left stock behind';
+  end if;
+
+  -- 4. Ein Platz ausserhalb des Bereichs bleibt frei buchbar.
+  perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'receipt',
+    jsonb_build_array(jsonb_build_object('item_id', v_y, 'location_id', v_b1, 'quantity', 2)), null);
+
+  -- 5. Mehr vom selben Artikel auf denselben Bereich: gleicher Bereich, höhere Menge.
+  perform public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_x,
+    array[v_a1, v_a2, v_a3, v_a4], 3);
+  if (select count(*) from public.inventory_placements where tenant_id = v_tenant) <> 1
+     or (select physical_quantity from public.inventory_stock_balances
+         where tenant_id = v_tenant and item_id = v_x and location_id = v_a1) <> 8 then
+    raise exception 'range receipt: adding to the same area failed';
+  end if;
+
+  -- 6. Teilweise ausbuchen: der Bereich bleibt belegt.
+  perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'issue',
+    jsonb_build_array(jsonb_build_object('item_id', v_x, 'location_id', v_a1, 'quantity', 3)), null);
+  begin
+    perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'receipt',
+      jsonb_build_array(jsonb_build_object('item_id', v_y, 'location_id', v_a4, 'quantity', 1)), null);
+    raise exception 'range receipt: area was released with stock left';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> 'ND411' then raise; end if;
+  end;
+
+  -- 7. Ganz ausbuchen: alle vier Plätze sind wieder frei.
+  perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'issue',
+    jsonb_build_array(jsonb_build_object('item_id', v_x, 'location_id', v_a1, 'quantity', 5)), null);
+  perform public.post_inventory_movement(v_owner, v_tenant, gen_random_uuid(), 'receipt',
+    jsonb_build_array(jsonb_build_object('item_id', v_y, 'location_id', v_a3, 'quantity', 1)), null);
+  -- Ein neuer Bereich auf noch freien Plätzen räumt den leeren alten Bereich auf.
+  perform public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_y,
+    array[v_a1, v_a2], 4);
+  if exists (select 1 from public.inventory_placements where tenant_id = v_tenant and item_id = v_x) then
+    raise exception 'range receipt: finished area was not cleaned up';
+  end if;
+
+  -- 8. Plätze, die es nicht gibt oder die inaktiv sind, lehnen alles ab.
+  begin
+    perform public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_x,
+      array[v_b1, v_inactive], 1);
+    raise exception 'range receipt: inactive place accepted';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> 'P0002' then raise; end if;
+  end;
+  begin
+    perform public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_x,
+      array[v_b1, gen_random_uuid()], 1);
+    raise exception 'range receipt: unknown place accepted';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> 'P0002' then raise; end if;
+  end;
+  begin
+    perform public.post_inventory_range_receipt(v_owner, v_tenant, gen_random_uuid(), v_x,
+      array[v_b1], 1);
+    raise exception 'range receipt: a single place counted as an area';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> '22023' then raise; end if;
+  end;
+  raise notice 'inventory location range checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

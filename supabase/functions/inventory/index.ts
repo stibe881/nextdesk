@@ -12,6 +12,7 @@ import {
   resolveRecordDepartment,
   scopeDepartmentOptions,
 } from "../_shared/department-scope.ts";
+import { resolveLocationRange } from "./location-range.ts";
 import {
   type BackorderAction,
   type BackorderEntry,
@@ -104,6 +105,7 @@ export const INVENTORY_RPC_NAMES = {
   upsertLocation: "upsert_inventory_location",
   upsertItem: "upsert_inventory_item_scoped",
   postMovement: "post_inventory_movement",
+  postRangeReceipt: "post_inventory_range_receipt",
   createReservation: "create_inventory_reservation",
   releaseReservation: "release_inventory_reservation",
   startCount: "start_inventory_count",
@@ -293,6 +295,11 @@ type PostMovementAction = {
   quantity?: number;
   fromLocationId?: string;
   toLocationId?: string;
+  /**
+   * Only for a receipt: last place of an area («G10.2.1» to «G10.2.4»). The
+   * whole area is booked as one place with the full quantity.
+   */
+  toLocationEndId?: string;
   /** Present only for a reservation-backed issue; never accepted with line data. */
   reservationId?: string;
 };
@@ -962,16 +969,19 @@ export function parseAction(value: unknown): Action | null {
       "clientRequestId",
       ...(requiresFrom ? ["fromLocationId"] : []),
       ...(requiresTo ? ["toLocationId"] : []),
+      ...(movementType === "receipt" ? ["toLocationEndId"] : []),
     ];
     // ticketId is intentionally not allowlisted: migration 0068 tracks a ticket
     // only on reservations, never on an arbitrary movement.
     if (!hasOnlyKeys(value, allowed)) return null;
     const fromLocationId = validOptionalUuid(value.fromLocationId);
     const toLocationId = validOptionalUuid(value.toLocationId);
+    const toLocationEndId = validOptionalUuid(value.toLocationEndId);
     if (
       quantity === null ||
       fromLocationId === null ||
       toLocationId === null ||
+      toLocationEndId === null ||
       (requiresFrom && fromLocationId === undefined) ||
       (requiresTo && toLocationId === undefined) ||
       (movementType === "transfer" && fromLocationId === toLocationId)
@@ -986,6 +996,10 @@ export function parseAction(value: unknown): Action | null {
       quantity,
       ...(fromLocationId ? { fromLocationId } : {}),
       ...(toLocationId ? { toLocationId } : {}),
+      // The same place as start and end is a plain receipt on one place.
+      ...(toLocationEndId && toLocationEndId !== toLocationId
+        ? { toLocationEndId }
+        : {}),
       clientRequestId: value.clientRequestId.toLowerCase(),
     };
   }
@@ -1173,6 +1187,16 @@ function databaseFailure(error: { code?: unknown } | null): never {
   }
   if (code === "P0002") {
     throw new HttpError(404, "not_found", "Der Eintrag wurde nicht gefunden.");
+  }
+  if (code === "ND411") {
+    // post_inventory_range_receipt / balance guard (migration 0368): the place
+    // belongs to an area that still holds stock, or a place of the new area is
+    // occupied.
+    throw new HttpError(
+      409,
+      "inventory_location_occupied",
+      "Der Lagerplatz ist belegt. Ein Bereich bleibt belegt, bis sein Bestand ausgebucht ist; vorher kann dort nichts anderes gebucht werden.",
+    );
   }
   if (code === "ND410") {
     // cancel_inventory_count (migration 0346): the count is already closed.
@@ -3631,12 +3655,101 @@ export function movementRpcParameters(
   };
 }
 
+/** Loads the tenant's locations by name for resolving an area. */
+async function loadRangeLocations(
+  admin: AdminClient,
+  tenantId: string,
+): Promise<Array<{ id: string; name: string; active: boolean }>> {
+  const rows = await serviceRows(
+    admin
+      .from("inventory_locations")
+      .select("id,name,active")
+      .eq("tenant_id", tenantId)
+      .limit(MAX_LOCATIONS + 1),
+  );
+  if (rows.length > MAX_LOCATIONS) {
+    throw new HttpError(
+      503,
+      "inventory_contract_invalid",
+      "Die Lagerdaten konnten nicht sicher gelesen werden.",
+    );
+  }
+  const locations: Array<{ id: string; name: string; active: boolean }> = [];
+  for (const row of rows) {
+    if (
+      !isRecord(row) ||
+      !isUuid(row.id) ||
+      typeof row.name !== "string" ||
+      typeof row.active !== "boolean"
+    ) {
+      throw new HttpError(
+        503,
+        "inventory_contract_invalid",
+        "Die Lagerdaten konnten nicht sicher gelesen werden.",
+      );
+    }
+    locations.push({
+      id: row.id.toLowerCase(),
+      name: row.name,
+      active: row.active,
+    });
+  }
+  return locations;
+}
+
+/**
+ * Receipt on an area («G10.2.1» to «G10.2.4»): only the last number may differ,
+ * every place must exist and be active, and the full quantity is booked once.
+ * Occupancy is enforced by the database.
+ */
+async function postRangeReceipt(
+  request: Request,
+  admin: AdminClient,
+  actorId: string,
+  action: ResolvedPostMovementAction,
+): Promise<Response> {
+  const locations = await loadRangeLocations(admin, action.tenantId);
+  const range = resolveLocationRange(
+    locations,
+    action.toLocationId!,
+    action.toLocationEndId!,
+  );
+  if (!range.ok) {
+    throw new HttpError(422, range.code, range.message);
+  }
+  const raw = await serviceRpc(admin, INVENTORY_RPC_NAMES.postRangeReceipt, {
+    p_actor_id: actorId,
+    p_tenant_id: action.tenantId,
+    p_client_request_id: action.clientRequestId,
+    p_item_id: action.itemId,
+    p_location_ids: range.locationIds,
+    p_quantity: action.quantity,
+  });
+  return json(
+    request,
+    { data: { ...mutationReceipt(raw), area: range.label } },
+    201,
+  );
+}
+
 async function postMovement(
   request: Request,
   admin: AdminClient,
   actorId: string,
   action: Extract<Action, { type: "postMovement" }>,
 ): Promise<Response> {
+  if (
+    action.movementType === "receipt" &&
+    action.toLocationEndId &&
+    !action.reservationId
+  ) {
+    return await postRangeReceipt(
+      request,
+      admin,
+      actorId,
+      resolvedClientMovement(action),
+    );
+  }
   const resolved = action.reservationId
     ? await resolvedReservationIssue(admin, action)
     : resolvedClientMovement(action);
