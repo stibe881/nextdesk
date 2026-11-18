@@ -722,6 +722,10 @@ async function inventoryRefs(
   };
 }
 
+/** Hinweis im Ergebnis von Wissensabfragen: keine Fussnoten in der Antwort. */
+const ANSWER_NOTE =
+  "Antwort ohne Quellenverweise im Text schreiben: keine Fussnoten oder Marker wie [0], [1] oder [ID] hinter Sätzen. Die Quelle bei Bedarf einmal am Ende mit dem Artikeltitel nennen.";
+
 const CONFIRM_PROPERTY = {
   type: "boolean",
   description:
@@ -1044,6 +1048,7 @@ const TOOLS: Tool[] = [
       return textResult({
         count: articles.length,
         searchedFor,
+        ...(articles.length > 0 ? { hinweis_antwort: ANSWER_NOTE } : {}),
         ...(generalMatch
           ? {
               note: "Zum genannten Programm gibt es keinen eigenen Artikel. Diese Artikel beschreiben den allgemeinen Weg, Software zu beziehen; mit wissensartikel_lesen lesen und der Person danach erklären.",
@@ -1099,6 +1104,7 @@ const TOOLS: Tool[] = [
       return textResult({
         title: article.title,
         body: clip(revision.body, 12000),
+        hinweis_antwort: ANSWER_NOTE,
       });
     },
   },
