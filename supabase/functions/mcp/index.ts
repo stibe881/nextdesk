@@ -7937,6 +7937,41 @@ function rpcError(id: unknown, code: number, message: string): Json {
   return { jsonrpc: "2.0", id: id ?? null, error: { code, message } };
 }
 
+/**
+ * Betriebsprotokoll ohne Inhalte: Werkzeugname, Dauer, Fehler und bei
+ * Suchen die Zahl der Treffer. Zeigt, ob und womit ein KI-Client nextDesk
+ * befragt hat. Suchbegriffe und Antworten werden nicht protokolliert.
+ */
+function logToolCall(
+  tool: string,
+  startedAt: number,
+  result: ToolResult | null,
+  error?: unknown,
+): void {
+  let count: number | null = null;
+  try {
+    const text = result?.content[0]?.text;
+    const parsed = typeof text === "string" ? JSON.parse(text) : null;
+    if (isRecord(parsed) && typeof parsed.count === "number") {
+      count = parsed.count;
+    }
+  } catch {
+    // Kein JSON: keine Trefferzahl.
+  }
+  console.log(
+    JSON.stringify({
+      event: "mcp_tool_call",
+      tool,
+      ms: Date.now() - startedAt,
+      ok: result !== null && result.isError !== true,
+      ...(count !== null ? { count } : {}),
+      ...(error !== undefined
+        ? { error: error instanceof ToolError ? "tool_error" : "failed" }
+        : {}),
+    }),
+  );
+}
+
 export async function handleMessage(
   message: unknown,
   config: Config,
@@ -7957,6 +7992,15 @@ export async function handleMessage(
   const isNotification = id === undefined;
   if (method === "initialize") {
     const params = isRecord(message.params) ? message.params : {};
+    if (isRecord(params.clientInfo)) {
+      console.log(
+        JSON.stringify({
+          event: "mcp_initialize",
+          client: String(params.clientInfo.name ?? "").slice(0, 60),
+          version: String(params.clientInfo.version ?? "").slice(0, 30),
+        }),
+      );
+    }
     const requested =
       typeof params.protocolVersion === "string" ? params.protocolVersion : "";
     const version = (SUPPORTED_PROTOCOLS as readonly string[]).includes(
@@ -8041,10 +8085,14 @@ export async function handleMessage(
     const tool = TOOLS.find((entry) => entry.name === requested);
     if (!tool) return rpcError(id, -32602, "Unbekanntes Werkzeug.");
     const raw = isRecord(params.arguments) ? params.arguments : {};
+    const startedAt = Date.now();
     try {
       const args = translateInput(tool.inputSchema, raw, "") as Json;
-      return rpcResult(id, await tool.run(config, session, args));
+      const result = await tool.run(config, session, args);
+      logToolCall(tool.name, startedAt, result);
+      return rpcResult(id, result);
     } catch (error) {
+      logToolCall(tool.name, startedAt, null, error);
       const text =
         error instanceof ToolError
           ? error.message
