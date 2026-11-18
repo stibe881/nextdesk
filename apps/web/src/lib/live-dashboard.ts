@@ -663,11 +663,12 @@ export async function loadLiveDashboard(
   const slaPausedAt = new Map<string, string>();
   const teamNames = new Map<string, string>();
   const requesterNames = new Map<string, string>();
+  const ticketsWithContact = new Set<string>();
   if (listedTicketIds.length > 0) {
     const [teamRowsResult, teamsResult, requesterResult] = await Promise.all([
       client
         .from("tickets")
-        .select("id, assigned_team_id, sla_paused_at")
+        .select("id, assigned_team_id, sla_paused_at, requester_contact_id")
         .in("id", listedTicketIds),
       client.functions.invoke("ticket-agent-assignment", {
         body: { tenantId: tenant.id, type: "listTeams" },
@@ -693,8 +694,10 @@ export async function loadLiveDashboard(
       id: string;
       assigned_team_id: string | null;
       sla_paused_at?: string | null;
+      requester_contact_id?: string | null;
     }[]) {
       ticketTeamIds.set(row.id, row.assigned_team_id ?? null);
+      if (row.requester_contact_id) ticketsWithContact.add(row.id);
       if (row.sla_paused_at) slaPausedAt.set(row.id, row.sla_paused_at);
     }
     for (const team of ticketTeamsFromResponse(teamsResult.data)) {
@@ -727,9 +730,10 @@ export async function loadLiveDashboard(
       createdAt: ticket.created_at,
       id: ticket.ticket_number,
       recordId: ticket.id,
-      // Own tickets need no name (e.g. the list of an employee).
+      // Own tickets need no name (e.g. the list of an employee), unless a
+      // requester contact is linked (e.g. ticket created via Gemini).
       requesterName:
-        ticket.requester_id === user?.id
+        ticket.requester_id === user?.id && !ticketsWithContact.has(ticket.id)
           ? null
           : (requesterNames.get(ticket.id) ?? null),
       isClosed: ticket.status_is_closed,
