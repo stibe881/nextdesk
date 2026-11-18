@@ -74,7 +74,8 @@ type NextDeskTabBarProps = BottomTabBarProps & {
  */
 export function NextDeskTabBar({
   state,
-  navigation,
+  emitter,
+  navigateToTab,
   items,
   badges,
   onNavigate,
@@ -107,13 +108,13 @@ export function NextDeskTabBar({
       return;
     }
     const isFocused = state.routes[state.index]?.key === route.key;
-    const event = navigation.emit({
+    const event = emitter.emit({
       type: "tabPress",
       target: route.key,
       canPreventDefault: true,
     });
     if (!isFocused && !event.defaultPrevented) {
-      navigation.navigate(route.name, route.params);
+      navigateToTab(route.key);
       onNavigate?.();
     }
   }
@@ -123,7 +124,7 @@ export function NextDeskTabBar({
       (candidate) => candidate.name === routeName,
     );
     if (route) {
-      navigation.emit({ type: "tabLongPress", target: route.key });
+      emitter.emit({ type: "tabLongPress", target: route.key });
     }
   }
 

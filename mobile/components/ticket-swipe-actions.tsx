@@ -1,9 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRef, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import Swipeable from "react-native-gesture-handler/Swipeable";
+import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import { useAppColors } from "@/lib/themed-styles";
+
+/** Methods of the swipeable row (react-native-gesture-handler 3). */
+type SwipeableMethods = {
+  close: () => void;
+  openLeft: () => void;
+  openRight: () => void;
+  reset: () => void;
+};
 
 /**
  * Wischaktionen für Ticketzeilen: nach rechts wischen für Zuweisen, Beobachten
@@ -40,7 +48,7 @@ export function TicketSwipeActions({
   onFollowUp: () => void;
 }) {
   const colors = useAppColors();
-  const swipeable = useRef<Swipeable>(null);
+  const swipeable = useRef<SwipeableMethods>(null);
 
   const closeAndRun = (action: () => void) => {
     swipeable.current?.close();

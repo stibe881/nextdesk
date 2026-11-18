@@ -175,6 +175,11 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-asset",
+    "expo-font",
+    "expo-image",
+    "expo-secure-store",
+    "expo-status-bar",
+    "expo-web-browser",
     "expo-router",
     "@react-native-community/datetimepicker",
     ["expo-notifications", { mode: "production" }],

@@ -64,7 +64,9 @@ export function DeviceProtection() {
   const colors = useAppColors();
   const router = useRouter();
   const { tenantId: confirmedTenantId } = useMobileFeatures();
-  const appState = useRef<AppStateStatus>(AppState.currentState);
+  const appState = useRef<AppStateStatus>(
+    (AppState.currentState as AppStateStatus | null | undefined) ?? "active",
+  );
   const checkingRef = useRef(false);
   /** Zuletzt bekannter Schutzstatus, um beim Verlassen sofort abzudecken. */
   const protectionEnabledRef = useRef(false);

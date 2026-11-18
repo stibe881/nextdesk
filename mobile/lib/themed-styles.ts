@@ -1,5 +1,10 @@
 import { useMemo } from "react";
-import { StyleSheet } from "react-native";
+import {
+  StyleSheet,
+  type ImageStyle,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native";
 
 import type { ColorScheme, SchemeColorPalette } from "@/constants/theme";
 import { useThemeContext } from "@/lib/theme-provider";
@@ -15,7 +20,14 @@ export type AppPalette = SchemeColorPalette;
  *   const useStyles = makeThemedStyles((c) => ({ card: { backgroundColor: c.surface } }));
  *   function Card() { const styles = useStyles(); ... }
  */
-export function makeThemedStyles<T extends StyleSheet.NamedStyles<T>>(
+/**
+ * Style objects by name. React Native 0.88 no longer exports
+ * StyleSheet.NamedStyles; this keeps the literal types (e.g. "row") that
+ * StyleSheet.create needs.
+ */
+type NamedStyles<T> = { [P in keyof T]: ViewStyle | TextStyle | ImageStyle };
+
+export function makeThemedStyles<T extends NamedStyles<T>>(
   factory: (colors: AppPalette, scheme: ColorScheme) => T,
 ): () => T {
   return function useThemedStyles(): T {

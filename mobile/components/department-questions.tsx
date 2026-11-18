@@ -445,7 +445,9 @@ export function DepartmentQuestions({ ticketId }: { ticketId: string }) {
       ) : null}
       <Modal
         animationType="slide"
-        onRequestClose={() => !sending && setComposer(null)}
+        onRequestClose={() => {
+          if (!sending) setComposer(null);
+        }}
         transparent
         visible={composer !== null && Boolean(confirmedTenantId)}
       >
