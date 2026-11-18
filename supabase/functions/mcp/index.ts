@@ -1,3 +1,8 @@
+import {
+  TICKET_FORM_HTML,
+  TICKET_FORM_MIME,
+  TICKET_FORM_URI,
+} from "./ticket-form-ui.ts";
 // nextDesk-Connector nach dem Model Context Protocol (MCP) über HTTP.
 //
 // Anmeldung: OAuth 2.1 des Supabase-Auth-Servers. Der Client erhält ein
@@ -123,6 +128,7 @@ type Session = { token: string; userId: string };
 type ToolResult = {
   content: { type: "text"; text: string }[];
   isError?: boolean;
+  structuredContent?: Json;
 };
 
 class ToolError extends Error {}
@@ -767,7 +773,7 @@ function articleSourceLink(id: unknown, title: unknown): string | null {
 
 /** Hinweis im Ergebnis von Wissensabfragen: Quelle als anklickbarer Titel, keine Marker. */
 const ANSWER_NOTE =
-  "Quellenangabe: Keine Fussnoten, Nummern oder Marker wie [0], [1] oder [ID] in den Text setzen. Am Ende der Antwort die Quelle genau einmal als Markdown-Link aus dem Feld «quelle» angeben, mit dem Artikeltitel als Linktext, z. B. «Quelle: [Titel](Adresse)». Der Link öffnet den Artikel in nextDesk. Danach genau einmal nachfragen, in genau diesem Aufbau (Anrede wie im Gespräch): eine kurze Frage, ob die Antwort geholfen hat, darunter zwei Zeilen mit den Optionen «**Gelöst**» und «**Ticket erstellen**» und der Bitte, mit einem dieser Wörter zu antworten. Antwortet die Person mit «Gelöst», freundlich verabschieden und nichts weiter anbieten. Antwortet sie mit «Ticket erstellen», KEINE Fragen nach Betreff oder Beschreibung stellen: Betreff und Beschreibung selbst aus dem bisherigen Gespräch formulieren (Thema der Frage, was die Person versucht hat, genannte Geräte oder Fehlermeldungen, Hinweis auf den gelesenen Artikel) und sofort ticket_fuer_mich_erfassen ohne bestaetigt aufrufen. Den Entwurf der Person zeigen (Betreff und Beschreibung, kurz) und fragen, ob er so erfasst werden soll oder ob sie etwas ergänzen möchte, zum Beispiel das betroffene Gerät. Erst nach ihrem Ja mit bestaetigt=true abschicken. Eine Ergänzung der Person direkt in den Entwurf einarbeiten und erneut zur Bestätigung zeigen. Nie nach Priorität, Abteilung, Agent, Ticketvorlage oder Kategorie fragen.";
+  "Quellenangabe: Keine Fussnoten, Nummern oder Marker wie [0], [1] oder [ID] in den Text setzen. Am Ende der Antwort die Quelle genau einmal als Markdown-Link aus dem Feld «quelle» angeben, mit dem Artikeltitel als Linktext, z. B. «Quelle: [Titel](Adresse)». Der Link öffnet den Artikel in nextDesk. Danach genau einmal nachfragen, in genau diesem Aufbau (Anrede wie im Gespräch): eine kurze Frage, ob die Antwort geholfen hat, darunter zwei Zeilen mit den Optionen «**Gelöst**» und «**Ticket erstellen**» und der Bitte, mit einem dieser Wörter zu antworten. Antwortet die Person mit «Gelöst», freundlich verabschieden und nichts weiter anbieten. Antwortet sie mit «Ticket erstellen», KEINE Fragen stellen: Betreff und Beschreibung selbst aus dem bisherigen Gespräch formulieren (Thema der Frage, was die Person versucht hat, genannte Geräte oder Fehlermeldungen, Hinweis auf den gelesenen Artikel) und sofort ticket_formular_oeffnen damit aufrufen. Die Person sieht dann ein Formular im Chat, prüft es und klickt selbst auf «Ticket erstellen»; dazu nur einen kurzen Satz schreiben. Zeigt der Client kein Formular, ticket_fuer_mich_erfassen ohne bestaetigt aufrufen, den Entwurf zeigen und erst nach dem Ja der Person mit bestaetigt=true abschicken. Nie nach Priorität, Abteilung, Agent, Ticketvorlage oder Kategorie fragen.";
 
 const CONFIRM_PROPERTY = {
   type: "boolean",
@@ -795,6 +801,8 @@ function draftResult(
 
 type Tool = {
   annotations: Json;
+  /** MCP Apps: _meta.ui (Verweis auf die Oberfläche des Werkzeugs). */
+  meta?: Json;
   description: string;
   inputSchema: Json;
   name: string;
@@ -1390,6 +1398,65 @@ const TOOLS: Tool[] = [
             }
           : {}),
       });
+    },
+  },
+  {
+    name: "ticket_formular_oeffnen",
+    description:
+      "Zeigt der Person ein Formular «Ticket erstellen» direkt im Chat, vorausgefüllt mit Betreff, Beschreibung und optional dem Gerät. Die Person prüft die Angaben und klickt selbst auf «Ticket erstellen»; das Ticket wird dann für die angemeldete Person erfasst. Betreff und Beschreibung vorher aus dem Gespräch formulieren und KEINE Fragen dazu stellen. Danach nur kurz sagen, dass das Formular bereitsteht. Zeigt der Client kein Formular, stattdessen ticket_fuer_mich_erfassen ohne bestaetigt aufrufen.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      title: "Ticket-Formular öffnen",
+    },
+    meta: { ui: { resourceUri: TICKET_FORM_URI } },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        betreff: {
+          type: "string",
+          maxLength: 240,
+          description: "Vorschlag für den Betreff, aus dem Gespräch formuliert.",
+        },
+        beschreibung: {
+          type: "string",
+          maxLength: 8000,
+          description:
+            "Vorschlag für die Beschreibung: Thema, was versucht wurde, Geräte, Fehlermeldungen, gelesene Anleitung.",
+        },
+        geraet: {
+          type: "string",
+          maxLength: 200,
+          description: "Betroffenes Gerät, falls bekannt.",
+        },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const text = (value: unknown, max: number) =>
+        typeof value === "string" ? value.trim().slice(0, max) : "";
+      const prefill = {
+        betreff: text(args.betreff, 240),
+        beschreibung: text(args.beschreibung, 8000),
+        geraet: text(args.geraet, 200),
+        arbeitsbereich: workspace.slug,
+      };
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Das Formular «Ticket erstellen» wird angezeigt. Sage der Person nur kurz, dass sie die Angaben prüfen und auf «Ticket erstellen» klicken kann. Sieht die Person kein Formular, rufe ticket_fuer_mich_erfassen ohne bestaetigt auf und zeige den Entwurf zur Bestätigung.",
+          },
+        ],
+        structuredContent: prefill,
+      };
     },
   },
   {
@@ -8202,6 +8269,7 @@ export async function handleMessage(
       capabilities: {
         tools: { listChanged: false },
         prompts: { listChanged: false },
+        resources: { listChanged: false },
       },
       serverInfo: SERVER_INFO,
       instructions: [
@@ -8217,6 +8285,49 @@ export async function handleMessage(
   }
   if (method === "ping") return isNotification ? null : rpcResult(id, {});
   if (method.startsWith("notifications/")) return null;
+  if (method === "resources/list") {
+    return rpcResult(id, {
+      resources: [
+        {
+          uri: TICKET_FORM_URI,
+          name: "ticket_formular",
+          title: "Formular: Ticket erstellen",
+          description: "Formular zum Erstellen eines Tickets für die angemeldete Person.",
+          mimeType: TICKET_FORM_MIME,
+        },
+      ],
+    });
+  }
+  if (method === "resources/templates/list") {
+    return rpcResult(id, { resourceTemplates: [] });
+  }
+  if (method === "resources/read") {
+    const params = isRecord(message.params) ? message.params : {};
+    if (params.uri !== TICKET_FORM_URI) {
+      return rpcError(id, -32602, "Unbekannte Ressource.");
+    }
+    return rpcResult(id, {
+      contents: [
+        {
+          uri: TICKET_FORM_URI,
+          mimeType: TICKET_FORM_MIME,
+          text: TICKET_FORM_HTML,
+          _meta: {
+            ui: {
+              prefersBorder: true,
+              // Keine externen Quellen: Das Formular spricht nur über den Client.
+              csp: {
+                connectDomains: [],
+                resourceDomains: [],
+                frameDomains: [],
+                baseUriDomains: [],
+              },
+            },
+          },
+        },
+      ],
+    });
+  }
   if (method === "prompts/list") {
     return rpcResult(id, {
       prompts: PROMPTS.map(({ name, title, description, arguments: args }) => ({
@@ -8251,7 +8362,7 @@ export async function handleMessage(
   if (method === "tools/list") {
     const knowledgeHint = await knowledgeTitleHint(config, session);
     return rpcResult(id, {
-      tools: TOOLS.map(({ name, description, inputSchema, annotations }) => {
+      tools: TOOLS.map(({ name, description, inputSchema, annotations, meta }) => {
         const pairs = enumPairs(inputSchema);
         return {
           name,
@@ -8264,6 +8375,7 @@ export async function handleMessage(
           }`,
           inputSchema: localizeSchema(inputSchema, pairs),
           annotations,
+          ...(meta ? { _meta: meta } : {}),
         };
       }),
     });

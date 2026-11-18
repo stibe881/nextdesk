@@ -45,6 +45,7 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `netzwerk_fragen` | lesen | IP-Adressverwaltung in Alltagssprache: «Freie IP im VLAN 67 in Baar?», «Was hängt an SW-A2-01 Port 14?», «Welche IP hat DRU-A2-KOPIE?», «Welche Subnetze sind fast voll?» (deterministische Abfragen, nichts erfunden) |
 | `freie_ip_suchen`, `ip_nachschlagen`, `switchport_anzeigen`, `volle_subnetze_anzeigen`, `netzwerk_zum_ticket` | lesen | IPAM: freie IP im VLAN/Standort (nur Vorschlag), Host/IP/MAC nachschlagen, Switch-Port, volle Subnetze, Netzwerkangaben im Ticket (braucht `ipam.read` und das Modul IP-Adressverwaltung) |
 | `ticket_erfassen` | schreiben | Ticket erfassen, für sich selbst oder eine anfragende Person (`anfragende_person`) |
+| `ticket_formular_oeffnen` | lesen | Zeigt ein Formular «Ticket erstellen» direkt im Chat (MCP App, Ressource `ui://nextdesk/ticket-formular`), vorausgefüllt aus dem Gespräch; ein Klick auf «Ticket erstellen» erfasst das Ticket für die angemeldete Person über `ticket_fuer_mich_erfassen`. Clients ohne MCP-Apps-Unterstützung erhalten den Hinweis, stattdessen den Entwurf über `ticket_fuer_mich_erfassen` zu zeigen |
 | `ticket_fuer_mich_erfassen` | schreiben | Einfaches Ticket für die angemeldete Person: nur Betreff, Beschreibung und optional das Gerät; Standardwerte für Priorität, Abteilung, Agent, Vorlage und Kategorie; Entwurf, dann `bestaetigt=true` |
 | `interne_notiz_hinzufuegen` | schreiben | Interne Notiz an ein Ticket |
 | `ticketstatus_aendern` | schreiben | Status ändern; Lösen/Schliessen nur mit `bestaetigt=true` |
@@ -192,3 +193,17 @@ Dann in der Gemini CLI `/mcp auth nextdesk` ausführen, im Browser anmelden und
   Zeilenregeln wie in der Web-App. Es gibt keinen eigenen Rechtepfad.
 - Die Person bestätigt jede Verbindung auf der Seite `/oauth/consent` und kann
   sie jederzeit in Supabase widerrufen.
+
+
+## MCP App: Formular «Ticket erstellen»
+
+Der Connector unterstützt MCP Apps (Erweiterung `io.modelcontextprotocol/ui`,
+Version 2026-01-26), die Gemini Enterprise anzeigt: Das Werkzeug
+`ticket_formular_oeffnen` verweist über `_meta.ui.resourceUri` auf die
+Ressource `ui://nextdesk/ticket-formular` (`text/html;profile=mcp-app`, Datei
+`ticket-form-ui.ts`). Die Seite hat keine externen Quellen und spricht nur über
+postMessage mit dem Client (`ui/initialize`, `ui/notifications/tool-input` zur
+Vorbelegung, `tools/call` auf `ticket_fuer_mich_erfassen` beim Absenden).
+Nach dem Einspielen in der Google-Cloud-Konsole bei der nextDesk-Anbindung
+«Reload custom actions» ausführen und das Werkzeug `ticket_formular_oeffnen`
+einschalten.
