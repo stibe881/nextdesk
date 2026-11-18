@@ -40,6 +40,11 @@ baut oder ändert, ergänzt bzw. passt die passende Anleitung dort an;
 `pnpm handbooks:build` prüft, dass der Bereich vorhanden ist. Das Verzeichnis
 (Web und App) entsteht automatisch aus den Überschriften `##` und den
 Anleitungen `### Wie …?`.
+Jede dieser Anleitungen wird beim Sync auch als Wissensartikel in alle
+Organisationsmandanten übernommen (Mitarbeitende → extern, alle anderen →
+intern, in der Anrede des Mandanten; Details in `docs/handbooks/README.md`).
+Eine umbenannte Überschrift ersetzt daher den Artikel, und Bilder sind in
+diesen Anleitungen nicht erlaubt.
 
 Die App stellt nur einen Markdown-Ausschnitt dar
 (`mobile/lib/handbooks-model.ts`: Überschriften `##`/`###`, Absätze, Listen,

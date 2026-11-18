@@ -16494,4 +16494,126 @@ $$;
 rollback;
 SQL
 
+# Handbuch-Anleitungen («Wie mache ich …?») werden pro Organisationsmandant als
+# Wissensartikel in dessen Anrede angelegt, bei Änderungen versioniert, bei
+# Entfernung archiviert, folgen einem Wechsel der Anrede und lassen eigene
+# Artikel sowie persönliche Arbeitsbereiche unberührt.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+insert into public.tenants (id, slug, name) values
+  ('a5500000-0000-4000-8000-000000000001', 'handbook-articles-a', 'Handbook Articles A');
+insert into public.tenant_settings (tenant_id, portal_name)
+values ('a5500000-0000-4000-8000-000000000001', 'Handbook A');
+insert into public.knowledge_articles (tenant_id, title, slug, visibility, status)
+values ('a5500000-0000-4000-8000-000000000001', 'Eigener Artikel', 'eigener-artikel', 'internal', 'published');
+insert into public.handbook_articles (
+  slug, handbook_id, visibility, title, body, body_sie, sort_order, source_ref
+) values
+  ('hb-mitarbeitende-test', 'mitarbeitende', 'external', 'Wie teste ich extern?', 'Du klickst hier', 'Sie klicken hier', 0, repeat('a', 40)),
+  ('hb-agenten-test', 'agenten', 'internal', 'Wie teste ich intern?', 'Schritt zwei', null, 1, repeat('a', 40));
+do $$
+declare
+  v_tenant constant uuid := 'a5500000-0000-4000-8000-000000000001';
+  v_new constant uuid := 'a5500000-0000-4000-8000-000000000002';
+  v_personal constant uuid := 'a5500000-0000-4000-8000-000000000003';
+  v_count integer;
+begin
+  if public.sync_handbook_articles(v_tenant) <> 2 then
+    raise exception 'handbook articles: first sync must create two articles';
+  end if;
+  if (select count(*) from public.knowledge_articles
+      where tenant_id = v_tenant and handbook_slug is not null
+        and status = 'published' and published_revision = 1
+        and ((handbook_slug = 'hb-mitarbeitende-test' and visibility = 'external')
+          or (handbook_slug = 'hb-agenten-test' and visibility = 'internal'))) <> 2 then
+    raise exception 'handbook articles: wrong visibility or status';
+  end if;
+  if not exists (
+    select 1 from public.knowledge_article_revisions revision
+    join public.knowledge_articles article on article.id = revision.article_id
+    where article.tenant_id = v_tenant and article.handbook_slug = 'hb-mitarbeitende-test'
+      and revision.revision = 1 and revision.body = 'Du klickst hier'
+  ) then
+    raise exception 'handbook articles: du wording missing in revision 1';
+  end if;
+
+  -- Unverändert: nichts passiert.
+  if public.sync_handbook_articles(v_tenant) <> 0 then
+    raise exception 'handbook articles: unchanged sync must not write';
+  end if;
+
+  -- Wechsel auf «Sie»: nur der Artikel mit Sie-Fassung bekommt eine Revision.
+  update public.tenant_settings set formality = 'sie' where tenant_id = v_tenant;
+  if not exists (
+    select 1 from public.knowledge_article_revisions revision
+    join public.knowledge_articles article on article.id = revision.article_id
+    where article.tenant_id = v_tenant and article.handbook_slug = 'hb-mitarbeitende-test'
+      and revision.revision = 2 and revision.body = 'Sie klicken hier'
+      and article.current_revision = 2 and article.published_revision = 2
+  ) then
+    raise exception 'handbook articles: switch to Sie did not publish the Sie wording';
+  end if;
+  if (select current_revision from public.knowledge_articles
+      where tenant_id = v_tenant and handbook_slug = 'hb-agenten-test') <> 1 then
+    raise exception 'handbook articles: article without Sie wording must stay unchanged';
+  end if;
+  update public.tenant_settings set formality = 'du' where tenant_id = v_tenant;
+  if (select current_revision from public.knowledge_articles
+      where tenant_id = v_tenant and handbook_slug = 'hb-mitarbeitende-test') <> 3 then
+    raise exception 'handbook articles: switch back to du must create revision 3';
+  end if;
+
+  -- Inhaltsänderung: neue veröffentlichte Revision.
+  update public.handbook_articles set body = 'Du klickst dort' where slug = 'hb-mitarbeitende-test';
+  if public.sync_handbook_articles(v_tenant) <> 1 then
+    raise exception 'handbook articles: changed content must create one revision';
+  end if;
+
+  -- Aus dem Handbuch entfernt: archiviert; eigener Mandantenartikel bleibt.
+  delete from public.handbook_articles where slug = 'hb-agenten-test';
+  perform public.sync_handbook_articles(v_tenant);
+  if (select status from public.knowledge_articles
+      where tenant_id = v_tenant and handbook_slug = 'hb-agenten-test') <> 'archived' then
+    raise exception 'handbook articles: removed article must be archived';
+  end if;
+  if (select status from public.knowledge_articles
+      where tenant_id = v_tenant and slug = 'eigener-artikel') <> 'published' then
+    raise exception 'handbook articles: tenant article must stay untouched';
+  end if;
+
+  -- Wieder aufgenommen: erneut veröffentlicht.
+  insert into public.handbook_articles (
+    slug, handbook_id, visibility, title, body, body_sie, sort_order, source_ref
+  ) values ('hb-agenten-test', 'agenten', 'internal', 'Wie teste ich intern?', 'Schritt zwei', null, 1, repeat('a', 40));
+  perform public.sync_handbook_articles(v_tenant);
+  if (select status from public.knowledge_articles
+      where tenant_id = v_tenant and handbook_slug = 'hb-agenten-test') <> 'published' then
+    raise exception 'handbook articles: returning article must be published again';
+  end if;
+
+  -- Neue Organisationsmandanten erhalten die Artikel automatisch.
+  insert into public.tenants (id, slug, name)
+  values (v_new, 'handbook-articles-b', 'Handbook Articles B');
+  select count(*) into v_count from public.knowledge_articles
+  where tenant_id = v_new and handbook_slug is not null and status = 'published';
+  if v_count <> 2 then
+    raise exception 'handbook articles: new tenant got % articles instead of 2', v_count;
+  end if;
+
+  -- Persönliche Arbeitsbereiche bleiben ausgenommen (eigene Beispielartikel).
+  insert into auth.users (id, email) values (v_personal, 'handbook-personal@example.test');
+  insert into public.user_profiles (id, display_name) values (v_personal, 'Handbook Personal Owner');
+  insert into public.tenants (id, slug, name, workspace_kind, owner_user_id)
+  values (v_personal, 'handbook-personal', 'Handbook Personal', 'personal', v_personal);
+  perform public.sync_handbook_articles();
+  if exists (select 1 from public.knowledge_articles
+             where tenant_id = v_personal and handbook_slug is not null) then
+    raise exception 'handbook articles: personal workspace must not receive handbook articles';
+  end if;
+  raise notice 'handbook knowledge article sync checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

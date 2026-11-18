@@ -39,6 +39,34 @@ Anrede**; die Edge Function `handbooks` liefert die passende Fassung aus.
    (`tenant_settings.formality`) aus – in der Web-App unter **Persönliche Einstellungen
    → Handbücher**, in der iOS-App unter **Profil → Hilfe und Rechtliches**.
 
+## Anleitungen als Wissensartikel
+
+Jede Anleitung `### Wie …?` im Bereich `## Wie mache ich …?` wird beim Sync
+zusätzlich als **Wissensartikel** in jedem Organisationsmandanten
+veröffentlicht (Tabelle `handbook_articles`, Funktion
+`public.sync_handbook_articles`, Migration 0367), in der Anrede des Mandanten
+(Wechsel der Anrede unter **Einstellungen → Design → Anrede** stellt die Artikel um):
+
+| Handbuch             | Sichtbarkeit des Artikels                   |
+| -------------------- | ------------------------------------------- |
+| `mitarbeitende.md`   | **extern** (für Mitarbeitende)              |
+| `agenten.md`         | **intern** (für Agenten und Administration) |
+| `administratoren.md` | **intern**                                  |
+| `installation.md`    | **intern**                                  |
+
+- Eine Überschrift = ein Artikel. Der Titel (3–240 Zeichen) ist die
+  Überschrift; der Artikel-Slug (`hb-<handbuch>-<titel>`) ergibt sich daraus.
+  Wer eine Überschrift umbenennt, archiviert damit den alten Artikel und legt
+  einen neuen an.
+- Keine Bilder in diesem Bereich (`pnpm handbooks:build` bricht ab), und jede
+  Anleitung muss ohne das übrige Handbuch verständlich sein.
+- Ein Artikel wird bei geändertem Text, Titel oder geänderter Sichtbarkeit als
+  neue veröffentlichte Revision eingespielt und überschreibt Änderungen, die
+  ein Mandant am Artikel selbst vorgenommen hat. Entfällt eine Überschrift,
+  wird der Artikel in allen Mandanten archiviert. Selbst geschriebene Artikel
+  der Mandanten und persönliche Arbeitsbereiche (eigene Beispielartikel) bleiben
+  unberührt; neue Organisationsmandanten erhalten die Artikel automatisch.
+
 > Das Repository ist öffentlich: Die Markdown-Quellen sind auf GitHub für alle
 > lesbar. Die Rollenprüfung steuert, was in nextDesk angezeigt wird, macht die
 > Inhalte aber nicht geheim. Keine vertraulichen Angaben in die Handbücher
