@@ -28,6 +28,9 @@ export type OnboardingPdfData = {
   ictAccess: string | null;
   ictEquipment: string | null;
   jobTitle: string | null;
+  /** Standort (neueres Layout), z. B. «Baar (Landhausstrasse)». */
+  location: string | null;
+  needsBadge: boolean;
   needsKey: boolean;
   remarks: string | null;
   room: string | null;
@@ -68,6 +71,7 @@ type Field =
   | "supervisor"
   | "gender"
   | "room"
+  | "location"
   | "ictEquipment"
   | "ictAccess"
   | "groupMailboxes"
@@ -77,9 +81,10 @@ type Field =
 
 function labelField(
   normalized: string,
-): Field | "section1" | "section2" | "ignore" | null {
+): Field | "section1" | "section2" | "section3" | "ignore" | null {
   if (normalized === "funktion1") return "section1";
   if (normalized === "funktion2") return "section2";
+  if (normalized === "funktion3") return "section3";
   if (normalized.startsWith("weitereangaben")) return "ignore";
   // Fortsetzungszeilen zweizeiliger Bezeichnungen ("Angebot/ Abteilung" usw.).
   if (normalized === "abteilung" || normalized === "lernende,ziv")
@@ -98,6 +103,7 @@ function labelField(
   if (/^d[a-z]{3,6}kten?vorgesetzten?$/.test(normalized)) return "supervisor";
   if (normalized === "geschlecht") return "gender";
   if (normalized === "raumnummer") return "room";
+  if (normalized === "standort") return "location";
   if (normalized === "ictausstattung") return "ictEquipment";
   if (normalized === "ictzugange") return "ictAccess";
   if (normalized === "gruppenpostfacher") return "groupMailboxes";
@@ -191,17 +197,20 @@ export function parseOnboardingPdf(
     }
     values.set(field, parts);
   };
-  const functions: Record<1 | 2, Partial<Record<Field, string>>> = {
+  const functions: Record<1 | 2 | 3, Partial<Record<Field, string>>> = {
     1: {},
     2: {},
+    3: {},
   };
-  const functionValue = (section: 1 | 2, field: Field, value: string) => {
+  const functionValue = (section: 1 | 2 | 3, field: Field, value: string) => {
     functions[section][field] = functions[section][field]
       ? `${functions[section][field]} ${value}`
       : value;
   };
 
-  let section: 1 | 2 | null = null;
+  let section: 1 | 2 | 3 | null = null;
+  let needsKey: string | null = null;
+  let needsBadge: string | null = null;
   let current: Field | null = null;
   let doubleNameCount = 0;
   let permanent: string | null = null;
@@ -234,10 +243,22 @@ export function parseOnboardingPdf(
       continue;
     }
 
+    // Zeile "Schlüssel Ja Badge Ja" (neueres Layout mit Badge daneben).
+    if (normalized === "schlussel") {
+      const tokens = line.values.map((item) => item.text.trim());
+      const badgeAt = tokens.findIndex(
+        (token) => normalizeLabel(token) === "badge",
+      );
+      needsKey = (badgeAt === 0 ? null : tokens[0]) ?? null;
+      needsBadge = badgeAt >= 0 ? (tokens[badgeAt + 1] ?? null) : null;
+      current = null;
+      continue;
+    }
+
     if (line.labels.length > 0) {
       const kind = labelField(normalized);
-      if (kind === "section1" || kind === "section2") {
-        section = kind === "section1" ? 1 : 2;
+      if (kind === "section1" || kind === "section2" || kind === "section3") {
+        section = kind === "section1" ? 1 : kind === "section2" ? 2 : 3;
         current = null;
         continue;
       }
@@ -282,7 +303,7 @@ export function parseOnboardingPdf(
   const startDate = parseSwissDate(get("start"));
   if (!employeeName || !startDate) return null;
 
-  const parsedFunctions: OnboardingFunction[] = ([1, 2] as const)
+  const parsedFunctions: OnboardingFunction[] = ([1, 2, 3] as const)
     .map((index) => ({
       offer: clean(functions[index].offer) ?? "",
       role: clean(functions[index].role) ?? "",
@@ -307,7 +328,9 @@ export function parseOnboardingPdf(
     ictAccess: get("ictAccess"),
     ictEquipment: get("ictEquipment"),
     jobTitle: get("jobTitle"),
-    needsKey: isYes(get("needsKey")),
+    location: get("location"),
+    needsBadge: isYes(needsBadge),
+    needsKey: isYes(needsKey ?? get("needsKey")),
     remarks: get("remarks"),
     room: get("room"),
     startDate,
@@ -379,7 +402,13 @@ export function buildOnboardingTasks(
   if (data.needsKey) {
     tasks.push({
       dueOffsetDays: -3,
-      title: taskTitle("Schlüssel bereitstellen", data.room),
+      title: taskTitle("Schlüssel bereitstellen", data.room ?? data.location),
+    });
+  }
+  if (data.needsBadge) {
+    tasks.push({
+      dueOffsetDays: -3,
+      title: taskTitle("Badge bereitstellen", data.location),
     });
   }
   return tasks;

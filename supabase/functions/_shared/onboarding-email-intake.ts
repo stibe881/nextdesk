@@ -18,6 +18,8 @@ type IntakeInput = Readonly<{
   tenantId: string;
   ticketId: string;
   ticketNumber: string;
+  /** Absender der Mail: die meldende Person. */
+  senderEmail?: string | null;
 }>;
 
 export type OnboardingIntakeOutcome =
@@ -126,6 +128,15 @@ export async function processOnboardingEmailTicketIntake(
     const data = await firstOnboardingPdf(input.attachments);
     if (!data) return "ignored";
 
+    // Vorgesetzte Person ist die Person, die den Eintritt meldet ("Ausgefüllt
+    // von", sonst die Angabe im PDF). Als Mitglied gesucht wird sie über die
+    // Absender-Adresse, dann über den Namen; ohne Konto bleibt der Name stehen.
+    const reporter = data.filledBy ?? data.supervisor;
+    const details = {
+      ...data,
+      supervisor: reporter,
+      reporterEmail: input.senderEmail?.trim().toLowerCase() || null,
+    };
     const { data: rows, error } = await admin.rpc(
       "create_onboarding_entry_from_email",
       {
@@ -135,9 +146,9 @@ export async function processOnboardingEmailTicketIntake(
         p_starts_on: data.startDate,
         p_organisation_unit:
           data.functions[0]?.offer || data.functions[0]?.team || null,
-        p_location: data.room,
-        p_supervisor_name: data.supervisor,
-        p_details: data,
+        p_location: data.room ?? data.location,
+        p_supervisor_name: reporter,
+        p_details: details,
         p_extra_tasks: buildOnboardingTasks(data),
         p_source_ticket_number: input.ticketNumber,
       },
