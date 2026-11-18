@@ -4,6 +4,7 @@ import {
   type OnboardingPdfData,
 } from "./onboarding-pdf-intake.ts";
 import { extractPdfTextItems } from "./onboarding-pdf-text.ts";
+import { resolveReporterAccount } from "./onboarding-reporter.ts";
 
 type Admin = any;
 
@@ -20,6 +21,8 @@ type IntakeInput = Readonly<{
   ticketNumber: string;
   /** Absender der Mail: die meldende Person. */
   senderEmail?: string | null;
+  /** Dienstkonto des Mail-Eingangs (für Rollenzuweisung und Audit). */
+  actorId: string;
 }>;
 
 export type OnboardingIntakeOutcome =
@@ -132,10 +135,21 @@ export async function processOnboardingEmailTicketIntake(
     // von", sonst die Angabe im PDF). Als Mitglied gesucht wird sie über die
     // Absender-Adresse, dann über den Namen; ohne Konto bleibt der Name stehen.
     const reporter = data.filledBy ?? data.supervisor;
+    const reporterEmail = input.senderEmail?.trim().toLowerCase() || null;
+    // Ohne Konto der meldenden Person (auch nicht aus Entra) entsteht kein
+    // Eintritt mit einer anderen Person: die Mail bleibt ein Ticket.
+    const reporterUserId = await resolveReporterAccount(
+      admin,
+      input.tenantId,
+      { email: reporterEmail, name: reporter },
+      input.actorId,
+    );
+    if (!reporterUserId) return "failed";
     const details = {
       ...data,
       supervisor: reporter,
-      reporterEmail: input.senderEmail?.trim().toLowerCase() || null,
+      reporterEmail,
+      reporterUserId,
     };
     const { data: rows, error } = await admin.rpc(
       "create_onboarding_entry_from_email",

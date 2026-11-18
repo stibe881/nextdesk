@@ -1863,6 +1863,7 @@ export async function processInboundMessage(
         ticketNumber,
         attachments: inboundAttachments,
         senderEmail: sender,
+        actorId: serviceIdentityId,
       });
     }
     if (kind === "new_ticket") {
