@@ -963,7 +963,7 @@ const TOOLS: Tool[] = [
   {
     name: "wissen_suchen",
     description:
-      "Durchsucht die Wissensdatenbank von nextDesk (Anleitungen und Lösungen der eigenen Organisation), nicht OneDrive, SharePoint oder Google Drive. Bei jeder IT-Frage zuerst verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». suchbegriff: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen.",
+      "Durchsucht die Wissensdatenbank von nextDesk (Anleitungen und Lösungen der eigenen Organisation), nicht OneDrive, SharePoint oder Google Drive. Bei jeder Frage zu Software, Programmen (z. B. AbaClient), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst und vor jeder Websuche verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». suchbegriff: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen.",
     annotations: { readOnlyHint: true, title: "Wissen durchsuchen" },
     inputSchema: {
       type: "object",
@@ -7938,6 +7938,54 @@ function rpcError(id: unknown, code: number, message: string): Json {
 }
 
 /**
+ * Titel der veröffentlichten Wissensartikel des ersten Arbeitsbereichs. Sie
+ * stehen in der Beschreibung von wissen_suchen, damit ein KI-Client sieht, zu
+ * welchen Themen die Organisation eigene Anleitungen hat, und nextDesk vor
+ * der Websuche befragt. Best effort: Bei Fehler oder Zeitüberschreitung bleibt
+ * die Beschreibung unverändert.
+ */
+async function knowledgeTitleHint(
+  config: Config,
+  session: Session,
+): Promise<string> {
+  const load = async (): Promise<string> => {
+    const [workspace] = await listWorkspaces(config, session);
+    if (!workspace) return "";
+    const articles = records(
+      (
+        await callFunction(config, session, "knowledge-base", {
+          type: "listArticles",
+          tenantId: workspace.id,
+          query: "",
+        })
+      ).articles,
+    );
+    const titles = articles
+      .filter(
+        (article) =>
+          article.status === undefined || article.status === "published",
+      )
+      .map((article) =>
+        typeof article.title === "string" ? article.title.trim() : "",
+      )
+      .filter((title) => title.length > 0)
+      .map((title) => clip(title, 60) ?? title)
+      .slice(0, 60);
+    return titles.length > 0
+      ? ` Die Organisation hat eigene Anleitungen, z. B.: ${titles.join("; ")}.`
+      : "";
+  };
+  try {
+    return await Promise.race([
+      load(),
+      new Promise<string>((resolve) => setTimeout(() => resolve(""), 2500)),
+    ]);
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Betriebsprotokoll ohne Inhalte: Werkzeugname, Dauer, Fehler und bei
  * Suchen die Zahl der Treffer. Zeigt, ob und womit ein KI-Client nextDesk
  * befragt hat. Suchbegriffe und Antworten werden nicht protokolliert.
@@ -8076,6 +8124,7 @@ export async function handleMessage(
     });
   }
   if (method === "tools/list") {
+    const knowledgeHint = await knowledgeTitleHint(config, session);
     return rpcResult(id, {
       tools: TOOLS.map(({ name, description, inputSchema, annotations }) => {
         const pairs = enumPairs(inputSchema);
@@ -8085,7 +8134,9 @@ export async function handleMessage(
           ...(typeof annotations.title === "string"
             ? { title: annotations.title }
             : {}),
-          description: `nextDesk: ${localizeText(description, pairs)}`,
+          description: `nextDesk: ${localizeText(description, pairs)}${
+            name === "wissen_suchen" ? knowledgeHint : ""
+          }`,
           inputSchema: localizeSchema(inputSchema, pairs),
           annotations,
         };
