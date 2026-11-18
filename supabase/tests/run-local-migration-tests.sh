@@ -13053,4 +13053,102 @@ $$;
 rollback;
 SQL
 
+# Handbuchartikel («Wie mache ich …?») werden pro Mandant als Wissensartikel
+# angelegt, bei Änderungen versioniert, bei Entfernung archiviert und lassen
+# eigene Mandantenartikel unberührt.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+insert into public.tenants (id, slug, name) values
+  ('a5500000-0000-4000-8000-000000000001', 'handbook-articles-a', 'Handbook Articles A');
+insert into public.knowledge_articles (tenant_id, title, slug, visibility, status)
+values ('a5500000-0000-4000-8000-000000000001', 'Eigener Artikel', 'eigener-artikel', 'internal', 'published');
+insert into public.handbook_articles (
+  slug, handbook_id, visibility, title, body, content_hash, sort_order, source_ref
+) values
+  ('hb-mitarbeitende-test', 'mitarbeitende', 'external', 'Test extern', 'Schritt eins', md5('a'), 0, repeat('a', 40)),
+  ('hb-agenten-test', 'agenten', 'internal', 'Test intern', 'Schritt zwei', md5('b'), 1, repeat('a', 40));
+do $$
+declare
+  v_tenant constant uuid := 'a5500000-0000-4000-8000-000000000001';
+  v_new constant uuid := 'a5500000-0000-4000-8000-000000000002';
+  v_count integer;
+begin
+  if public.sync_handbook_articles(v_tenant) <> 2 then
+    raise exception 'handbook articles: first sync must create two articles';
+  end if;
+  if (select count(*) from public.knowledge_articles
+      where tenant_id = v_tenant and handbook_slug is not null
+        and status = 'published' and published_revision = 1
+        and ((handbook_slug = 'hb-mitarbeitende-test' and visibility = 'external')
+          or (handbook_slug = 'hb-agenten-test' and visibility = 'internal'))) <> 2 then
+    raise exception 'handbook articles: wrong visibility or status';
+  end if;
+  if (select count(*) from public.knowledge_article_revisions revision
+      join public.knowledge_articles article on article.id = revision.article_id
+      where article.tenant_id = v_tenant and article.handbook_slug is not null
+        and revision.revision = 1 and revision.body in ('Schritt eins', 'Schritt zwei')) <> 2 then
+    raise exception 'handbook articles: revision 1 missing';
+  end if;
+
+  -- Unverändert: nichts passiert.
+  if public.sync_handbook_articles(v_tenant) <> 0 then
+    raise exception 'handbook articles: unchanged sync must not write';
+  end if;
+
+  -- Inhaltsänderung: neue veröffentlichte Revision.
+  update public.handbook_articles
+  set body = 'Schritt eins neu', content_hash = md5('a2')
+  where slug = 'hb-mitarbeitende-test';
+  if public.sync_handbook_articles(v_tenant) <> 1 then
+    raise exception 'handbook articles: changed content must create one revision';
+  end if;
+  if not exists (
+    select 1 from public.knowledge_articles article
+    where article.tenant_id = v_tenant and article.handbook_slug = 'hb-mitarbeitende-test'
+      and article.current_revision = 2 and article.published_revision = 2
+  ) or not exists (
+    select 1 from public.knowledge_article_revisions revision
+    join public.knowledge_articles article on article.id = revision.article_id
+    where article.tenant_id = v_tenant and article.handbook_slug = 'hb-mitarbeitende-test'
+      and revision.revision = 2 and revision.body = 'Schritt eins neu'
+  ) then
+    raise exception 'handbook articles: revision 2 not published';
+  end if;
+
+  -- Aus dem Handbuch entfernt: archiviert; eigener Mandantenartikel bleibt.
+  delete from public.handbook_articles where slug = 'hb-agenten-test';
+  perform public.sync_handbook_articles(v_tenant);
+  if (select status from public.knowledge_articles
+      where tenant_id = v_tenant and handbook_slug = 'hb-agenten-test') <> 'archived' then
+    raise exception 'handbook articles: removed article must be archived';
+  end if;
+  if (select status from public.knowledge_articles
+      where tenant_id = v_tenant and slug = 'eigener-artikel') <> 'published' then
+    raise exception 'handbook articles: tenant article must stay untouched';
+  end if;
+
+  -- Wieder aufgenommen: erneut veröffentlicht.
+  insert into public.handbook_articles (
+    slug, handbook_id, visibility, title, body, content_hash, sort_order, source_ref
+  ) values ('hb-agenten-test', 'agenten', 'internal', 'Test intern', 'Schritt zwei', md5('b'), 1, repeat('a', 40));
+  perform public.sync_handbook_articles(v_tenant);
+  if (select status from public.knowledge_articles
+      where tenant_id = v_tenant and handbook_slug = 'hb-agenten-test') <> 'published' then
+    raise exception 'handbook articles: returning article must be published again';
+  end if;
+
+  -- Neue Mandanten erhalten die Artikel automatisch.
+  insert into public.tenants (id, slug, name)
+  values (v_new, 'handbook-articles-b', 'Handbook Articles B');
+  select count(*) into v_count from public.knowledge_articles
+  where tenant_id = v_new and handbook_slug is not null and status = 'published';
+  if v_count <> 2 then
+    raise exception 'handbook articles: new tenant got % articles instead of 2', v_count;
+  end if;
+  raise notice 'handbook knowledge article sync checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

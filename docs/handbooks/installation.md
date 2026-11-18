@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-09
+updated: 2026-11-18
 ---
 
 # Installationsanleitung
@@ -266,6 +266,213 @@ erwartetem Intervall und Toleranz).
 | PRTG meldet «403 Forbidden» beim Zustellen      | Firewall/Webfilter des PRTG-Servers blockiert die Domain; Freigabe oder Weiterleitung nutzen |
 | Dienst bleibt auf «Teilweiser Ausfall»          | Fehlt der Up-Trigger oder kam das Up nicht an? Alarm im Register Monitoring beenden          |
 | Agent sieht keine Tickets                       | Rolle und Ticketzugriffsbereich unter **Personen** bzw. **Rollen** prüfen                    |
+
+## Wie mache ich …?
+
+Kurze Anleitungen für die häufigsten Einrichtungsaufgaben. Jede Anleitung steht
+auch als interner Artikel in der **Wissensdatenbank**. Wer handelt, ist wie
+oben markiert: **[Betreiber]**, **[Admin]**, **[Microsoft-Admin]**.
+
+### Wie melde ich mich als Administrator zum ersten Mal an?
+
+1. Öffnen Sie den Link in der Einladungs-E-Mail. Die Einladung ist 7 Tage
+   gültig.
+2. Melden Sie sich mit der eingeladenen E-Mail-Adresse an (Anmeldelink per
+   E-Mail oder Passwort).
+3. Prüfen Sie, dass links unten der Menüpunkt **Einstellungen** erscheint.
+
+Den Mandanten legt der Betreiber an und lädt die erste Administratorin bzw.
+den ersten Administrator per E-Mail ein.
+
+### Wie richte ich die Grundeinstellungen ein?
+
+1. **Einstellungen → Design**: Portalname, Logo und Farben hinterlegen,
+   **Corporate Design speichern**.
+2. **Einstellungen → Abteilungen**: Abteilungen anlegen (z. B. ICT, Facility,
+   HR), Leitungen bestimmen und **Teams pro Abteilung** mit Supportstufe
+   erfassen.
+3. **Einstellungen → Funktionen**: die gewünschten Module aktivieren (z. B.
+   Wissensdatenbank, Self-Service, Ticketvorlagen, SLA-Automatisierung).
+4. **Einstellungen → SLA**: mindestens eine SLA-Regel pro Priorität anlegen.
+
+Die Checkliste **Einstellungen → Übersicht → «Bereit für den Arbeitsstart»**
+zeigt jederzeit, was noch fehlt.
+
+### Wie richte ich Microsoft Entra SSO ein?
+
+Mit SSO melden sich Mitarbeitende mit ihrem Microsoft-Konto an.
+
+1. **[Betreiber]** Die zentrale App-Registrierung «nextDesk – Kunden SSO» ist
+   vorhanden. Sie erhalten vom Betreiber deren **Client-ID**.
+2. **[Microsoft-Admin]** Erteilen Sie die Administratorzustimmung für Ihren
+   Microsoft-Mandanten über den Link des Betreibers der Form
+   `https://login.microsoftonline.com/<IHRE-TENANT-ID>/adminconsent?client_id=<CLIENT-ID>`.
+   Ihre Tenant-ID finden Sie im Microsoft Entra Admin Center unter _Übersicht →
+   Mandanten-ID_.
+3. **[Admin]** Öffnen Sie **Einstellungen → Funktionen → Single Sign-On →
+   Konfigurieren** und erfassen Sie: Anbieter _Microsoft Entra ID_, die
+   **Client-ID**, die **Issuer-URL**
+   `https://login.microsoftonline.com/<IHRE-TENANT-ID>/v2.0`, die
+   **Discovery-URL**
+   `https://login.microsoftonline.com/<IHRE-TENANT-ID>/v2.0/.well-known/openid-configuration`
+   und die **Zugelassenen E-Mail-Domains** (eine pro Zeile, z. B. `muster.ch`).
+4. Kreuzen Sie **SSO aktivieren** an, lassen Sie **SSO für die Anmeldung
+   erzwingen** vorerst _nicht_ angekreuzt und speichern Sie mit
+   **SSO-Konfiguration speichern**.
+5. Testen Sie in einem privaten Browserfenster mit **Mit SSO anmelden**.
+6. Erst wenn der Test klappt, setzen Sie **SSO für die Anmeldung erzwingen**.
+
+Eine Domain kann nur einem nextDesk-Mandanten zugeordnet sein. Personen aus
+zugelassenen Domains werden beim ersten Login als _anfragende Person_
+angelegt – Agenten- und Adminrechte vergeben Sie separat.
+
+### Wie lade ich Agenten ein und vergebe Rollen?
+
+1. Öffnen Sie **Einstellungen → Personen → Person einladen** und laden Sie
+   Agenten mit **Arbeitet als Support-Agent** und Ticketzugriffsbereich ein.
+   Mitarbeitende ohne Ticketbearbeitung müssen mit SSO nicht eingeladen
+   werden.
+2. Öffnen Sie **Einstellungen → Rollen → Rollen zuweisen** und vergeben Sie
+   weitere Administratoren oder eigene Rollen.
+
+### Wie verbinde ich Exchange Online als E-Mail-Kanal?
+
+E-Mails an Ihre Support-Adresse werden zu Tickets, Agentenantworten gehen als
+E-Mail zurück.
+
+1. **[Betreiber]** Die App «nextDesk – Exchange Online» mit den delegierten
+   Berechtigungen _User.Read, Mail.Read, Mail.Send, Mail.Read.Shared,
+   Mail.Send.Shared_ ist eingerichtet. nextDesk verwendet keine
+   Anwendungsberechtigungen für Mail.
+2. **[Microsoft-Admin]** Bestimmen Sie ein Connector-Konto (z. B.
+   `nextdesk-connector@muster.ch`) und geben Sie ihm im Exchange Admin Center
+   unter _Empfänger → Postfächer → Postfachdelegierung_ für **jedes**
+   Support-Postfach die Rechte **Vollzugriff** und **Senden als**.
+3. **[Admin]** Aktivieren Sie unter **Einstellungen → Funktionen → E-Mail-Kanal
+   (Exchange Online)** die Funktion und öffnen Sie **Konfigurieren**.
+4. Wählen Sie **Microsoft 365 verbinden** und melden Sie sich mit dem
+   Connector-Konto an.
+5. Wählen Sie **Postfach hinzufügen**: Support-Postfach, _Ziel-Abteilung für
+   neue Tickets_ und die gewünschten Mitteilungen (Eingangsbestätigung,
+   Agentenantworten per E-Mail, Lösungsmitteilung) → **Postfach speichern**.
+6. Wählen Sie **Prüfen** → **Aktivieren** → **Testmail** senden.
+
+Neue E-Mails werden etwa alle 5 Minuten abgeholt. Ein Postfach kann nur einem
+Mandanten gehören. Über das aktive Postfach verschickt nextDesk auch die
+**E-Mail-Benachrichtigungen**. Optional aktivieren Sie im selben Bereich die
+**Phishing-Meldungen** mit eigener Meldeadresse und Zielabteilung.
+
+### Wie richte ich den Microsoft-Entra-Verzeichnisabgleich ein?
+
+Der Abgleich übernimmt Name, E-Mail, Funktion, Abteilung und Aktivstatus aus
+Entra. Voraussetzung: SSO ist mit Ihrer **eigenen Tenant-ID** konfiguriert
+(nicht `common`).
+
+1. **[Microsoft-Admin]** Erteilen Sie die Zustimmung für die Berechtigung
+   _User.Read.All_ (Link vom Betreiber).
+2. **[Admin]** Öffnen Sie **Einstellungen → Personen → Microsoft
+   Entra-Verzeichnis**.
+3. Aktivieren Sie _Connector für manuelle Abgleiche aktivieren_ und wählen Sie
+   **Konfiguration speichern**.
+4. Wählen Sie **Verbindung testen** und danach **Manuellen Abgleich starten**.
+
+Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
+
+### Wie richte ich den Microsoft-Intune-Abgleich ein?
+
+1. **[Microsoft-Admin]** Erteilen Sie die Zustimmung für die Intune-App mit
+   _DeviceManagementManagedDevices.Read.All_ (nur lesend).
+2. **[Admin]** Aktivieren Sie die Funktion **Asset-Management** und öffnen Sie
+   **Konfigurieren**.
+3. Geben Sie _Manuellen Microsoft-Graph-Abgleich für diesen Mandanten frei_ und
+   prüfen Sie die Vorschau.
+4. Wählen Sie **Übernahme ausdrücklich bestätigen** und danach **Jetzt
+   einmalig abgleichen**.
+
+Geräte mit bereits vorhandener Seriennummer werden übersprungen, es wird nie
+etwas gelöscht.
+
+### Wie aktiviere ich Push-Benachrichtigungen für iOS?
+
+1. **[Admin]** Aktivieren Sie die Funktion **Push-Benachrichtigungen** und
+   wählen Sie die Inhaltsstufe **Nur Ticketnummer** (empfohlen).
+2. Jede Person legt unter _Persönliche Einstellungen → Benachrichtigungen →
+   Benachrichtigungszeit_ selbst fest, an welchen Tagen und zu welchen Zeiten
+   sie Mitteilungen erhält, und schaltet pro Benachrichtigung Push und E-Mail
+   ein. Ein Einchecken ist nicht nötig.
+3. Zum Testen öffnen Anwenderinnen und Anwender in der iOS-App _Profil →
+   Benachrichtigungen → Testmitteilung senden_.
+
+### Wie richte ich das PRTG-Monitoring ein?
+
+1. **[Admin]** Öffnen Sie **Einstellungen → Monitoring → Monitoring (PRTG)**:
+   Verarbeitung aktivieren, Abteilung/Team, «Ticket erstellen bei» (Down bzw.
+   Down und Warning) und Priorität wählen, **Token erzeugen**. Die
+   Webhook-Adresse wird **nur einmal** angezeigt – sofort kopieren.
+2. Legen Sie in PRTG unter _Setup → Kontoeinstellungen →
+   Benachrichtigungsvorlagen_ eine Vorlage **HTTP-Aktion ausführen** mit
+   Methode **POST** an. Postdaten:
+
+   ```text
+   device=%device&host=%host&sensor=%sensor&status=%status&message=%message&down=%down&lastvalue=%lastvalue&datetime=%datetime&group=%group&probe=%probe&sensorid=%sensorid&deviceid=%deviceid
+   ```
+
+3. Setzen Sie Zustands-Trigger auf der Gruppe oder dem Gerät: _Fehler_ (Down),
+   bei Bedarf _Warnung_ und **zwingend** die Zeile «nicht mehr im Status …»
+   (Up) mit derselben Vorlage. Ohne den Up-Trigger erfährt nextDesk nie, dass
+   die Störung vorbei ist, und der Dienst bleibt im Systemstatus gestört.
+4. Verknüpfen Sie Geräte und Dienste (nur damit ändert sich der
+   Systemstatus): Tragen Sie unter **Infrastruktur → Gerät bearbeiten** die
+   **PRTG-Objekt-ID** ein (am besten die Geräte-ID aus der PRTG-Adresse
+   `device.htm?id=…`) und kreuzen Sie bei **Dienste (für Systemstatus)** einen
+   oder mehrere Dienste an. Ohne ID ordnet nextDesk über Hostname bzw.
+   IP-Adresse und zuletzt über den Gerätenamen zu.
+5. Blockiert Ihre Firewall die Webhook-Adresse (PRTG meldet «403 Forbidden»),
+   geben Sie die Domain `supabase.co` für den PRTG-Server frei oder verwenden
+   Sie die Weiterleitung `https://app.nextdesk.ch/prtg-relay.php?token=<TOKEN>`.
+   Prüfen Sie die Erreichbarkeit mit `curl.exe -ik …` auf dem PRTG-Server
+   (Antwort 401 mit falschem Token = erreichbar).
+6. Geht ein «Up» verloren, bleibt ein Alarm offen. Beenden Sie ihn im Register
+   **Monitoring** unter **Alarme aus PRTG → Alarm beenden**.
+
+### Wie richte ich Zertifikats-, Domain- und Backup-Überwachung ein?
+
+Öffnen Sie **Einstellungen → Monitoring**:
+
+1. Erfassen Sie **Zertifikate und Domains**, um vor Ablauf erinnert zu werden.
+2. Richten Sie die **Backup-Überwachung** ein (z. B. Veeam per E-Mail oder
+   Webhook) mit erwartetem Intervall und Toleranz.
+
+### Wie verteile ich die Mobile-App und führe den Abschlusstest durch?
+
+1. Die **nextDesk-App** für iOS steht im App Store. Mitarbeitende melden sich
+   mit derselben Adresse bzw. per SSO an.
+2. Führen Sie den Abschlusstest durch:
+   1. Als Mitarbeitende/r ein Ticket erfassen.
+   2. Als Agent das Ticket übernehmen und öffentlich antworten.
+   3. Eine E-Mail an das Support-Postfach senden und prüfen, dass ein Ticket
+      entsteht.
+   4. Im **Protokoll** prüfen, dass alle Einrichtungsschritte erfasst sind.
+
+### Wie behebe ich häufige Probleme bei der Einrichtung?
+
+- **SSO-Anmeldung meldet fehlende Zustimmung:** Den Admin-Consent-Link erneut
+  durch den Microsoft-Admin ausführen lassen.
+- **Person landet im falschen bzw. keinem Mandanten:** Domain unter
+  «Zugelassene E-Mail-Domains» prüfen; eine Domain gehört nur zu einem
+  Mandanten.
+- **Postfach lässt sich nicht prüfen:** Vollzugriff und «Senden als» für das
+  Connector-Konto prüfen, danach erneut **Prüfen**.
+- **Keine Tickets aus E-Mails:** Ist das Postfach aktiv? Bis zu 5 Minuten
+  warten; Status im Bereich E-Mail-Kanäle prüfen.
+- **PRTG-Alarme erzeugen keine Tickets:** Token neu erzeugen, Postdaten und
+  Methode POST prüfen, ggf. `prtg-relay.php` verwenden.
+- **PRTG meldet «403 Forbidden» beim Zustellen:** Firewall/Webfilter des
+  PRTG-Servers blockiert die Domain; Freigabe oder Weiterleitung nutzen.
+- **Dienst bleibt auf «Teilweiser Ausfall»:** Fehlt der Up-Trigger oder kam das
+  Up nicht an? Alarm im Register Monitoring beenden.
+- **Agent sieht keine Tickets:** Rolle und Ticketzugriffsbereich unter
+  **Personen** bzw. **Rollen** prüfen.
 
 ## Anhang: Plattformbetrieb (nur Betreiber)
 

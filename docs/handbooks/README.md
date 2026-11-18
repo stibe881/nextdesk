@@ -22,6 +22,36 @@
    erlaubten Handbücher aus – in der Web-App unter **Persönliche Einstellungen
    → Handbücher**, in der iOS-App unter **Profil → Hilfe und Rechtliches**.
 
+## «Wie mache ich …?» und Wissensartikel
+
+Jedes Handbuch endet mit dem Abschnitt `## Wie mache ich …?`. Jede
+`### Wie …?`-Überschrift darin ist eine in sich geschlossene Anleitung und
+wird beim Sync zusätzlich als **Wissensartikel** in jedem Mandanten
+veröffentlicht (Tabelle `handbook_articles`, Funktion
+`public.sync_handbook_articles`, Migration 0255):
+
+| Handbuch             | Sichtbarkeit des Artikels                   |
+| -------------------- | ------------------------------------------- |
+| `mitarbeitende.md`   | **extern** (für Mitarbeitende)              |
+| `agenten.md`         | **intern** (für Agenten und Administration) |
+| `administratoren.md` | **intern**                                  |
+| `installation.md`    | **intern**                                  |
+
+Regeln:
+
+- Eine Überschrift = ein Artikel; Titel 3–240 Zeichen und je Handbuch eindeutig.
+  Der Artikel-Slug (`hb-<handbuch>-<titel>`) ergibt sich aus dem Titel – eine
+  Umbenennung archiviert den alten und legt einen neuen Artikel an.
+- Keine Bilder in diesen Abschnitten (`pnpm handbooks:build` bricht ab). Der
+  Text vor der ersten `###`-Überschrift dient nur dem Handbuchleser.
+- Der Text jedes Artikels muss ohne das restliche Handbuch verständlich sein
+  (Menüpfad und Rolle nennen).
+- Ein Artikel wird bei Inhalts-, Titel- oder Sichtbarkeitsänderung als neue
+  veröffentlichte Revision eingespielt und überschreibt Änderungen, die ein
+  Mandant am Artikel selbst vorgenommen hat. Entfällt eine Überschrift, wird der
+  Artikel in allen Mandanten archiviert. Eigene Artikel der Mandanten bleiben
+  unberührt, neue Mandanten erhalten die Artikel automatisch.
+
 > Das Repository ist öffentlich: Die Markdown-Quellen sind auf GitHub für alle
 > lesbar. Die Rollenprüfung steuert, was in nextDesk angezeigt wird, macht die
 > Inhalte aber nicht geheim. Keine vertraulichen Angaben in die Handbücher

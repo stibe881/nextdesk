@@ -15,6 +15,12 @@ nur den berechtigten Rollen ausgeliefert (Edge Function `handbooks`, Regel in
 | `docs/handbooks/administratoren.md` | Mandantenadministratoren        | `tenant-admin-settings.tsx` und alle dort eingebundenen Einstellungen, Rollen, Benutzer, SLA, Module                 |
 | `docs/handbooks/installation.md`    | Mandantenadministratoren        | Deployment, Supabase, SSO, Exchange, Entra, Intune, Push, Monitoring, Umgebungsvariablen                             |
 
+Jedes Handbuch endet mit `## Wie mache ich …?`. Jede `###`-Überschrift darin
+ist eine Aufgabenanleitung und wird beim Sync als Wissensartikel in alle
+Mandanten übernommen (Handbuch Mitarbeitende → extern, alle anderen → intern;
+Details in `docs/handbooks/README.md`). Neue oder geänderte Funktionen
+brauchen daher auch dort eine passende Anleitung.
+
 Bei **jeder** Änderung an Funktionen, Beschriftungen, Navigation, Berechtigungen
 oder Einrichtungsschritten:
 
@@ -28,7 +34,8 @@ oder Einrichtungsschritten:
 3. `pnpm handbooks:build` ausführen. Das erzeugt
    `docs/handbooks/handbooks.bundle.json`; `pnpm test:schema` schlägt fehl,
    solange das Paket nicht zur Quelle passt.
-4. Nach dem Merge die Inhalte in die Datenbank laden (Commit-SHA von `main`):
+4. Nach dem Merge die Inhalte in die Datenbank laden (Commit-SHA von `main`;
+   das verteilt auch die «Wie mache ich …?»-Artikel in alle Mandanten):
    `select public.request_handbook_sync('<sha>');` und danach mit der
    zurückgegebenen ID `select public.apply_handbook_sync(<id>, '<sha>');`.
    Die Edge Function `handbooks` muss nur bei Codeänderungen neu deployt werden.

@@ -2,7 +2,7 @@
 title: Handbuch für Administratoren
 description: Mandant einrichten – Design, Funktionen, SLA, Abteilungen, Personen, Rollen, Datenschutz und Protokoll.
 audienceLabel: Administratoren
-updated: 2026-11-09
+updated: 2026-11-18
 ---
 
 # Handbuch für Administratoren
@@ -259,3 +259,219 @@ Ihre persönlichen Einstellungen öffnen Sie unten links über Ihren Namen →
 Handbücher.
 
 ![Persönliche Einstellungen eines Administrators mit allen Handbüchern](images/ad-profil.jpg)
+
+## Wie mache ich …?
+
+Kurze Anleitungen für die häufigsten Aufgaben. Jede Anleitung steht auch als
+interner Artikel in der **Wissensdatenbank**.
+
+### Wie öffne ich die Einstellungen?
+
+Der Menüpunkt **Einstellungen** steht nur Administratoren zur Verfügung, unten
+in der linken Navigation. Die Register sind in Gruppen gegliedert:
+
+- **Allgemein** – Übersicht, Design
+- **Betrieb** – Funktionen, SLA, Ticketfelder, Abteilungen, Monitoring
+- **Zugriff & Sicherheit** – Personen, Rollen, Datenschutz, Protokoll
+
+Mit **Schliessen** kehren Sie in den Arbeitsbereich zurück.
+
+### Wie arbeite ich die Checkliste «Bereit für den Arbeitsstart» ab?
+
+1. Öffnen Sie **Einstellungen → Übersicht**. Der Mandantenüberblick zeigt
+   Portalname, Support-E-Mail, Ticketzugang und externen Ticketzugang.
+2. Arbeiten Sie die Checkliste **«Bereit für den Arbeitsstart»** beim Start
+   eines neuen Mandanten von oben nach unten ab.
+3. Jeder Punkt springt direkt in das passende Register.
+
+### Wie passe ich das Corporate Design an?
+
+1. Öffnen Sie **Einstellungen → Design → Corporate Design bearbeiten**.
+2. Erfassen Sie optional den **Portalnamen** (max. 160 Zeichen). Lassen Sie ihn
+   leer, wenn nur das Logo erscheinen soll.
+3. Laden Sie das **Portal-Logo** hoch (PNG, JPEG oder WebP bis 2 MB; «Datei
+   auswählen», «Logo entfernen»).
+4. Wählen Sie **Primärfarbe**, **Sekundärfarbe** und **Akzentfarbe**.
+5. Prüfen Sie die Wirkung in der **Portalansicht** und übernehmen Sie sie mit
+   **Corporate Design speichern**. Die Änderung gilt für alle Personen des
+   Mandanten.
+
+### Wie schalte ich eine Funktion ein oder aus?
+
+1. Öffnen Sie **Einstellungen → Funktionen**.
+2. Suchen Sie über **Funktionen durchsuchen** oder filtern Sie nach _Alle /
+   Aktiv / Deaktiviert_.
+3. Klicken Sie auf der Karte auf **Aktivieren** bzw. **Deaktivieren**. Wo
+   vorhanden, öffnet **Konfigurieren** die Einstellungen der Funktion.
+
+Die Konfiguration ändert den Funktionsstatus nicht. Eine deaktivierte Funktion
+behält ihre Konfiguration, verwendet sie aber nicht.
+
+### Wie lege ich eine Ticketvorlage an?
+
+1. Aktivieren Sie unter **Einstellungen → Funktionen** die Funktion
+   **Ticketvorlagen**.
+2. Wählen Sie **Vorlagen verwalten → Neue Vorlage**.
+3. Erfassen Sie Name, Betreff- und Beschreibungsvorlage, Abteilung, Priorität
+   und Checklistenpunkte.
+
+### Wie konfiguriere ich die SLA-Automatisierung?
+
+Öffnen Sie **Einstellungen → Funktionen → SLA-Automatisierung →
+Konfigurieren**:
+
+1. **Erinnern, lösen, schliessen** (läuft stündlich): _Erinnern nach Tagen_,
+   _Höchstens so viele Erinnerungen_, _Lösen nach Tagen (ab Beginn der
+   Wartezeit)_, _Schliessen nach Tagen_.
+2. **Regeln für neue Tickets**: Wählen Sie den Auslöser «Beim Erstellen eines
+   Tickets» oder «Zeitgesteuert». Definieren Sie im Teil **Wenn …**
+   Bedingungen (z. B. Stichworte in Betreff oder Beschreibung) und im Teil
+   **… dann** die Aktion (Team zuweisen, Person zuweisen, Priorität setzen).
+   Speichern Sie mit **Regel speichern**.
+3. **Neue Tickets automatisch einordnen** (KI-Triage) bei Bedarf aktivieren.
+4. **Automatisierungen**: Mit **Vorschau ausführen** prüfen Sie Regeln vor dem
+   Einsatz; das **Prüfintervall in Tagen** erinnert an die regelmässige
+   Kontrolle.
+5. **Drittanbieter**: externe Lieferanten mit E-Mail, Telefon und _Erinnerung
+   nach (Stunden)_ erfassen.
+
+### Wie lege ich eine SLA-Regel an?
+
+Das Register **SLA** erscheint, sobald die SLA-Automatisierung aktiv ist.
+
+1. Wählen Sie **Neue SLA-Regel**.
+2. Erfassen Sie **Name der Regel** und **Definition & Auswirkung**.
+3. Wählen Sie **Priorität** und **Abteilung** (oder _Mandantenweit_).
+4. Legen Sie die **Servicezeit** fest: Wochentage und Von/Bis in der Zeitzone
+   Europe/Zurich.
+5. Erfassen Sie **Reaktionszeit** und **Lösungszeit** in Minuten und setzen Sie
+   **Regel aktiv**.
+
+Unter **Aktuelle Eskalationen** sehen Sie Tickets, deren SLA gefährdet oder
+verletzt ist. Nicht mehr benötigte Regeln **archivieren** Sie, statt sie zu
+löschen.
+
+### Wie gestalte ich das Ticketformular?
+
+1. Öffnen Sie **Einstellungen → Ticketfelder**. Felder unter _Immer
+   enthalten_ sind fix.
+2. Fügen Sie über **Feld auswählen** bzw. **Feld hinzufügen** weitere Felder
+   hinzu und legen Sie den Feldtyp fest.
+3. Markieren Sie ein Feld bei Bedarf als **Pflichtfeld** und speichern Sie mit
+   **Feld speichern**.
+4. Ändern Sie die Reihenfolge per Ziehen und Ablegen.
+
+### Wie lege ich Abteilungen und Teams an?
+
+Öffnen Sie **Einstellungen → Abteilungen**:
+
+1. Legen Sie **Abteilungen** an (Name → _Abteilung anlegen_). Nicht mehr
+   benötigte Abteilungen archivieren Sie.
+2. Bestimmen Sie die **Abteilungsleitungen**: Leitung und Stellvertretung für
+   interne Rückfragen zu Tickets.
+3. Erfassen Sie **Teams pro Abteilung**: Name, Abteilung und Supportstufe
+   (1st/2nd/3rd Level). Über **Mitglieder verwalten** ordnen Sie Agenten zu.
+4. Legen Sie unter **Module pro Abteilung** fest, welche Abteilung welche
+   Zusatzmodule nutzt.
+
+### Wie beende ich einen hängenden Monitoring-Alarm?
+
+Das Register **Monitoring** setzt aktiviertes Asset-Management voraus.
+
+1. Öffnen Sie **Einstellungen → Monitoring → Monitoring (PRTG)**.
+2. Suchen Sie unter **Alarme aus PRTG** den offenen Alarm.
+3. Klicken Sie auf **Alarm beenden**.
+
+Dabei werden die gestörten Dienste zurückgesetzt. Die Einrichtung des
+Monitorings steht in der _Installationsanleitung_.
+
+### Wie lade ich eine Person ein?
+
+1. Öffnen Sie **Einstellungen → Personen → Person einladen** und erfassen Sie
+   Vor- und Nachname, E-Mail-Adresse, Angebot und Funktion.
+2. Soll die Person Tickets bearbeiten, kreuzen Sie **Arbeitet als
+   Support-Agent** an und wählen einen **Ticketzugriffsbereich** (Pflicht für
+   Agenten).
+3. Klicken Sie auf **Einladung versenden**. Die Einladung ist 7 Tage gültig.
+
+Offene Einladungen sehen und widerrufen Sie unter **Offene Einladungen**. Mit
+**Bearbeiten** ändern Sie Name, vorgesetzte Person, Ticketzugriffsbereich und
+**Team**; speichern Sie mit **Person speichern**. Mit aktivem SSO werden
+Personen aus zugelassenen Domains beim ersten Login automatisch als _anfragende
+Person_ angelegt. Agentenrechte gibt es nur per Einladung, Vormerkung oder
+Rollenzuweisung.
+
+### Wie merke ich eine Person aus Microsoft Entra als Agent vor?
+
+Ist der Verzeichnisabgleich eingerichtet, erscheinen Personen aus Entra im
+Register **Personen**.
+
+1. Suchen Sie die Person in der Liste.
+2. Wählen Sie **als Agent vormerken**.
+
+Name, vorgesetzte Person, Ticketzugriffsbereich und Team werden bei der ersten
+Microsoft-Anmeldung übernommen.
+
+### Wie weise ich Rollen zu?
+
+1. Öffnen Sie **Einstellungen → Rollen** und wählen Sie die Ansicht **Personen
+   zuweisen**.
+2. Suchen Sie über **Person suchen …** und filtern Sie nach **Agenten** oder
+   **Alle Personen**.
+3. Setzen Sie in der Tabelle pro Person ein Häkchen bei der gewünschten Rolle.
+   Ohne Häkchen ist die Rolle wieder entzogen. Die Änderung wirkt sofort für
+   den ganzen Mandanten.
+4. Rollen, die nur für eine Abteilung oder ein Team gelten, stehen unter **Auf
+   Abteilung oder Team begrenzte Zuweisungen**; dort nehmen Sie sie mit
+   **Entziehen** wieder weg.
+
+Die Basisrollen _Requester_ und _Support agent_ werden nicht direkt vergeben.
+
+### Wie erstelle ich eine eigene Rolle?
+
+1. Öffnen Sie **Einstellungen → Rollen** und wählen Sie die Ansicht **Rollen
+   definieren**.
+2. Klicken Sie links auf **+ Neue Rolle** und geben Sie den **Namen der neuen
+   Rolle** ein.
+3. Wählen Sie unter **Berechtigungen** die gewünschten Rechte (je Gruppe mit
+   **Alle auswählen**). Unter jeder Berechtigung steht kurz, was sie erlaubt;
+   Rechte mit weitreichendem Zugriff sind als «Erweitert» markiert.
+4. Klicken Sie auf **Rolle erstellen**.
+
+Bestehende eigene Rollen ändern Sie und speichern mit **Änderungen
+speichern**; mit **Rolle deaktivieren** bzw. **Rolle aktivieren** schalten Sie
+sie ab oder wieder ein. Systemrollen sind mit «System» markiert und geschützt.
+
+### Wie lege ich Aufbewahrungsfristen fest?
+
+1. Öffnen Sie **Einstellungen → Datenschutz** («Aufbewahrung & Datenschutz»).
+2. Legen Sie Fristen in Tagen fest für _Geschlossene Tickets_, _Private
+   Anhänge_ und das _Audit-Protokoll_.
+3. Setzen Sie bei Bedarf die **Rechtliche Aufbewahrungssperre**; sie
+   verhindert jede Bereinigung.
+
+Die Werte sind Richtlinien – nextDesk löscht nie automatisch.
+
+### Wie prüfe ich das Protokoll?
+
+1. Öffnen Sie **Einstellungen → Protokoll** (Änderungsprotokoll). Es zeichnet
+   alle administrativen Änderungen auf.
+2. Filtern Sie nach Person, Aktion, Objekt, Schweregrad und Zeitraum.
+3. Öffnen Sie einen Eintrag für _Änderungen_ und _Metadaten_.
+4. Exportieren Sie bei Bedarf als **CSV** oder **JSON**.
+
+### Wie veröffentliche ich den Systemstatus?
+
+Der **Systemstatus** liegt im Arbeitsbereich, nicht in den Einstellungen.
+Dort planen Sie **Wartungen** und veröffentlichen eine **öffentliche
+Statusseite** sowie ein **SharePoint-Badge** (SVG-Bild) für das Intranet. Das
+Badge in der Navigation und die Seiten aktualisieren sich selbst (intern alle
+30 Sekunden, öffentlich jede Minute); ein manuelles Neuladen ist nicht nötig.
+
+### Wie sehe ich, welche Handbücher eine Person sieht?
+
+Die Handbücher im Profil folgen automatisch den Rollen: Alle Mitglieder sehen
+das Handbuch für Mitarbeitende, Personen mit Ticketbearbeitung zusätzlich das
+Handbuch für Agenten, Administratoren alle Handbücher inklusive
+Installationsanleitung. Ihre eigenen Handbücher öffnen Sie über Ihren Namen
+unten links → **Persönliche Einstellungen → Handbücher**.

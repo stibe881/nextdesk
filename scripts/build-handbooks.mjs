@@ -10,6 +10,12 @@
  * (public.request_handbook_sync / apply_handbook_sync, migration 0246), and
  * the handbooks Function serves it only to the roles that may read it. The
  * Markdown files are the single source of truth; never edit the bundle.
+ *
+ * Every «### …» block in a handbook's «## Wie mache ich …?» section also
+ * becomes a knowledge base article («articles» in the bundle). The same sync
+ * (migration 0255, public.sync_handbook_articles) publishes them in every
+ * tenant: internal for the agent, administrator and installation handbooks,
+ * external for the employee handbook.
  */
 import {
   existsSync,
@@ -34,6 +40,10 @@ const MIME = {
   ".webp": "image/webp",
 };
 const MAX_IMAGE_BYTES = 400 * 1024;
+// Handbooks whose «Wie mache ich …?» articles are visible to employees.
+const EXTERNAL_ARTICLE_HANDBOOKS = new Set(["mitarbeitende"]);
+const ARTICLE_SECTION = /^## Wie mache ich/;
+const MAX_ARTICLE_BODY = 60_000;
 
 function fail(message) {
   console.error(`build-handbooks: ${message}`);
@@ -57,7 +67,82 @@ function parseFrontMatter(source, file) {
   return { meta, body: source.slice(match[0].length).trim() + "\n" };
 }
 
+function slugify(title) {
+  return title
+    .toLowerCase()
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Splits the «## Wie mache ich …?» section of one handbook into articles: one
+ * article per «### Titel» block. Text before the first «###» is introduction
+ * for the handbook reader only. Headings inside code fences are ignored.
+ */
+function extractArticles(id, body) {
+  const articles = [];
+  let inFence = false;
+  let inSection = false;
+  let current = null;
+  const flush = () => {
+    if (!current) return;
+    const markdown = current.lines.join("\n").trim() + "\n";
+    articles.push({ title: current.title, markdown });
+    current = null;
+  };
+  for (const line of body.split("\n")) {
+    if (/^\s*```/.test(line)) inFence = !inFence;
+    if (!inFence && /^## /.test(line)) {
+      flush();
+      inSection = ARTICLE_SECTION.test(line);
+      continue;
+    }
+    if (!inSection) continue;
+    if (!inFence && /^### /.test(line)) {
+      flush();
+      current = { title: line.slice(4).trim(), lines: [] };
+      continue;
+    }
+    if (current) current.lines.push(line);
+  }
+  flush();
+
+  if (articles.length === 0) {
+    fail(`${id}.md: Abschnitt «## Wie mache ich …?» ohne «###»-Artikel.`);
+  }
+  const visibility = EXTERNAL_ARTICLE_HANDBOOKS.has(id)
+    ? "external"
+    : "internal";
+  return articles.map((article) => {
+    if (article.title.length < 3 || article.title.length > 240) {
+      fail(
+        `${id}.md: Artikeltitel «${article.title}» muss 3–240 Zeichen haben.`,
+      );
+    }
+    if (article.markdown.trim().length < 20) {
+      fail(`${id}.md: Artikel «${article.title}» hat keinen Inhalt.`);
+    }
+    if (article.markdown.length > MAX_ARTICLE_BODY) {
+      fail(`${id}.md: Artikel «${article.title}» ist zu lang.`);
+    }
+    if (/!\[[^\]]*\]\(/.test(article.markdown)) {
+      fail(
+        `${id}.md: Artikel «${article.title}» enthält ein Bild. Bilder gehören in die Handbuchabschnitte, nicht in «Wie mache ich …?».`,
+      );
+    }
+    const slug = `hb-${id}-${slugify(article.title)}`
+      .slice(0, 120)
+      .replace(/-+$/, "");
+    return { slug, handbook: id, visibility, ...article };
+  });
+}
+
 const handbooks = [];
+const articles = [];
 const usedImages = new Set();
 for (const id of ORDER) {
   const file = join(sourceDir, `${id}.md`);
@@ -81,7 +166,19 @@ for (const id of ORDER) {
     updatedAt: meta.updated,
     markdown: body,
   });
+  articles.push(...extractArticles(id, body));
 }
+
+const seenSlugs = new Set();
+for (const article of articles) {
+  if (seenSlugs.has(article.slug)) {
+    fail(`Doppelter Artikel «${article.title}» (${article.slug}).`);
+  }
+  seenSlugs.add(article.slug);
+}
+articles.forEach((article, index) => {
+  article.sortOrder = index;
+});
 
 const images = {};
 for (const name of [...usedImages].sort()) {
@@ -105,7 +202,7 @@ if (unused.length) {
   );
 }
 
-const output = JSON.stringify({ handbooks, images }) + "\n";
+const output = JSON.stringify({ handbooks, images, articles }) + "\n";
 
 if (process.argv.includes("--check")) {
   const current = existsSync(target) ? readFileSync(target, "utf8") : "";
@@ -115,12 +212,12 @@ if (process.argv.includes("--check")) {
     );
   }
   console.log(
-    `Handbücher aktuell (${handbooks.length} Handbücher, ${usedImages.size} Bilder).`,
+    `Handbücher aktuell (${handbooks.length} Handbücher, ${articles.length} Artikel, ${usedImages.size} Bilder).`,
   );
 } else {
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, output);
   console.log(
-    `Handbücher generiert (${handbooks.length} Handbücher, ${usedImages.size} Bilder).`,
+    `Handbücher generiert (${handbooks.length} Handbücher, ${articles.length} Artikel, ${usedImages.size} Bilder).`,
   );
 }

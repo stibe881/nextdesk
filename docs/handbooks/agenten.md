@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-09
+updated: 2026-11-18
 ---
 
 # Handbuch für Agenten
@@ -308,3 +308,242 @@ Zusätzlich zu den Karten für Mitarbeitende sehen Agenten:
 - Interne Informationen immer als **Interne Notiz**, nie als externe Antwort.
 - Lösungen, die mehr als einmal gebraucht werden, als **Wissensartikel**
   festhalten.
+
+## Wie mache ich …?
+
+Kurze Anleitungen für die häufigsten Aufgaben. Jede Anleitung steht auch als
+interner Artikel in der **Wissensdatenbank**.
+
+### Wie starte ich die Einführungstour erneut?
+
+Beim ersten Login startet automatisch eine kurze **Einführung** (Startseite,
+Tickets, Im Ticket, Benachrichtigungen, Darstellung). Mit **Einführung
+beenden** brechen Sie sie ab. Zum Wiederholen öffnen Sie _Persönliche
+Einstellungen → Darstellung anpassen → Einführung erneut starten_.
+
+### Wie finde ich eine Person und öffne ihre Personenübersicht?
+
+1. Suchen Sie in der **globalen Suche** nach Name, E-Mail-Adresse, Funktion
+   oder Abteilung. Die Reiter _Alle / Personen / Tickets …_ filtern die
+   Treffer. Neben dem Namen sehen Sie die Anzahl offener Tickets; gesperrte
+   Konten sind als **Deaktiviert** markiert.
+2. Klicken Sie auf die Person. Alternativ öffnen Sie im Ticket den Namen unter
+   **Anfragende Person** (in der App **Personenübersicht** unter der
+   anfragenden Person).
+3. In der Personenübersicht finden Sie Funktion, Abteilung, E-Mail,
+   vorgesetzte Person und Kontostatus, Kennzahlen (offene Tickets, Tickets der
+   letzten 12 Monate, Lösungszeit, **Zufriedenheit**) sowie die Reiter
+   **Tickets**, **Geräte**, **Lizenzen**, **Bestellungen** und **Verlauf**.
+   Mit **Ticket für … erfassen** öffnen Sie das Ticketformular mit der Person
+   als anfragender Person.
+
+Sie sehen nur Tickets, die Sie auch sonst öffnen dürfen. Einzelne Bewertungen
+und Kommentare der Person werden nie angezeigt, nur der Durchschnitt und erst
+ab 3 Bewertungen.
+
+### Wie passe ich die Startseite an und priorisiere meine Tickets?
+
+1. Wählen Sie auf der **Übersicht** den Zeitraum _Heute / 7 Tage / 30 Tage_.
+   Ein Klick auf eine Kachel öffnet die passende gefilterte Liste.
+2. Mit **Startseite anpassen** blenden Sie Blöcke ein oder aus.
+3. In **Priorisierte Tickets** und **Meine Prioritäten** passen Sie die von der
+   KI vorgeschlagene Reihenfolge per Ziehen an, mit **Neu priorisieren**
+   erzeugen Sie sie neu und mit **Eigene Reihenfolge verwerfen** setzen Sie sie
+   zurück.
+
+### Wie arbeite ich mit den Team-Warteschlangen?
+
+1. Öffnen Sie den **Arbeitsplatz** und das Register **Team**.
+2. Dort sehen Sie die offenen Tickets pro Team; Ihre eigenen Teams stehen
+   zuoberst (_Mein Team_). Daneben steht, wie viele davon noch **ohne
+   Bearbeiter** sind.
+3. **Ohne Teamzuordnung** sammelt offene Tickets, die noch keinem Team
+   zugeteilt sind.
+4. Ein Klick zeigt genau diese Tickets in der Ticketliste (Filter
+   «Warteschlange: …», mit × entfernen).
+
+Weitere Register im Arbeitsplatz: **Erwähnungen**, **Stellvertretung**,
+**Störungen**, **Wiedervorlagen** und **Mein Bereich**.
+
+### Wie lege ich eine Stellvertretung an?
+
+1. Öffnen Sie **Arbeitsplatz → Stellvertretung → Stellvertretung anlegen**.
+2. Wählen Sie die stellvertretende Person, Beginn und Ende und erfassen Sie
+   eine Notiz.
+3. Speichern Sie mit **Stellvertretung speichern**.
+
+Ihre Tickets erscheinen in dieser Zeit bei der Stellvertretung.
+
+### Wie melde ich eine Phishing-E-Mail?
+
+1. Öffnen Sie **Mein Bereich → Phishing melden**.
+2. Laden Sie die verdächtige E-Mail (.eml oder .msg) hoch oder fügen Sie die
+   Kopfzeilen ein.
+3. Klicken Sie auf **Melden**.
+
+Daraus entsteht automatisch ein Sicherheitsticket.
+
+### Wie filtere ich die Ticketliste und speichere eine Ansicht?
+
+1. Öffnen Sie **Tickets** und wählen Sie das Register der gewünschten
+   **Queue**. Arbeiten Sie in Teams mehrerer Supportstufen, erscheinen
+   zusätzlich _Alle Stufen / 1st / 2nd / 3rd Level_.
+2. Grenzen Sie ein über Suche, Status, Priorität, Agent (_Mir zugewiesen_,
+   _Nicht zugewiesen_), Abteilung und Sortierung. **Filter zurücksetzen**
+   stellt alles zurück.
+3. Speichern Sie den Filter als **Neue Ansicht** und teilen Sie ihn auf Wunsch
+   mit der Abteilung («Teilen mit»).
+4. Unter **Ansicht** stellen Sie die Listendichte (_Kompakt / Standard /
+   Komfortabel_) und die Listen-Detail-Ansicht ein.
+
+Tastenkürzel: `?` zeigt die Hilfe, `J`/`K` springen zum nächsten bzw.
+vorherigen Ticket, `Enter` öffnet, `Esc` schliesst.
+
+### Wie ändere ich den Status mehrerer Tickets gleichzeitig?
+
+1. Markieren Sie in der Ticketliste mehrere Tickets.
+2. Wählen Sie den **Neuen Status**.
+3. Klicken Sie auf **Status für Auswahl setzen**.
+
+### Wie nutze ich die Kanban-Ansicht?
+
+Schalten Sie in **Tickets** mit dem Umschalter **Liste / Kanban** auf Kanban.
+Die Tickets erscheinen als Spalten nach Status. Ziehen Sie eine Karte in eine
+andere Spalte, um den Status zu ändern.
+
+### Wie bearbeite ich ein Ticket?
+
+Öffnen Sie das Ticket mit einem Klick.
+
+1. Ändern Sie im Kopf- und Infobereich direkt **Status**, **Priorität**,
+   **Kategorie**, **Team** und **zugewiesene Person**.
+2. Bearbeiten Sie die Beschreibung mit dem **Stift** in der Karte
+   **Beschreibung** und speichern Sie mit **Beschreibung speichern** (oder
+   Strg/⌘ + Enter). Betreff und Beschreibung zusammen ändern Sie über **Inhalt
+   bearbeiten**.
+3. Der **Verlauf** zeigt alle Nachrichten, Notizen und Änderungen
+   chronologisch; die SLA-Anzeige zeigt die verbleibende Zeit.
+4. Wird eine SLA verletzt, erfassen Sie die **Ursache der SLA-Verletzung**.
+
+Ein Klick auf den Namen der **anfragenden Person** öffnet ihre
+Personenübersicht.
+
+### Wie antworte ich auf ein Ticket oder schreibe eine interne Notiz?
+
+Wählen Sie im Antwortbereich des Tickets den Modus:
+
+1. **Antwort an anfragende Person** → **Externe Antwort senden**. Die Person
+   sieht die Antwort im Portal und per E-Mail.
+2. **Interne Notiz** → **Interne Notiz speichern**. Nur für berechtigte
+   Mitarbeitende sichtbar.
+
+Praktische Helfer: **Antwort senden und als gelöst markieren** in einem
+Schritt, `@Name` erwähnt Kolleginnen und Kollegen, **Bilder hochladen**,
+**Makro anwenden** und **KI-Entwurf erstellen** (falls KI-Assistenz aktiv).
+Interne Informationen gehören immer in eine **Interne Notiz**, nie in eine
+externe Antwort.
+
+### Wie übergebe ich ein Ticket an die nächste Stufe oder an einen Drittanbieter?
+
+1. Öffnen Sie das Ticket.
+2. Wählen Sie **An nächste Stufe übergeben**, um an 2nd/3rd Level zu
+   eskalieren. Die Übergabenotiz ist Pflicht.
+3. Wählen Sie **An Drittanbieter übergeben**, um Lieferanten einzubeziehen;
+   nextDesk erinnert Sie daran.
+
+### Wie nutze ich die weiteren Ticketaktionen?
+
+Im Ticket stehen unter anderem diese Aktionen bereit:
+
+- **Anhang hochladen** – Dateien zum Ticket ablegen.
+- **Beobachtende hinzufügen / Personen in Kopie** – weitere Personen
+  informieren.
+- **Tickets zusammenführen** – doppelte Meldungen bündeln.
+- **Aufteilen** – ein Ticket in mehrere Aufgaben trennen.
+- **Vorgesetzte Person fragen** – interne Rückfrage an die Abteilungsleitung.
+- **Freigabe anfordern** – Genehmigung einholen (z. B. Kosten, Berechtigungen).
+- **Wiedervorlage setzen** – das Ticket zu einem Datum wieder vorlegen.
+- **Arbeitszeit erfassen, Checkliste** – Aufwand und Arbeitsschritte
+  dokumentieren.
+- **Zusammenfassen (KI)** – Kurzfassung langer Verläufe.
+- **Ticketakte als PDF** – Ticket drucken oder ablegen.
+
+### Wie sehe ich die Bewertungen der anfragenden Personen?
+
+Sobald ein Ticket **gelöst** ist, kann die anfragende Person es mit 1 bis 5
+Sternen und einem Kommentar bewerten. Eine abgegebene Bewertung sehen Sie im
+Ticket unter «Bewertung der anfragenden Person». Die Auswertung über alle
+Tickets finden Sie unter **Berichte → Feedback-Themen** (mit KI-Assistenz
+zusätzlich nach Themen gruppiert).
+
+### Wie erfasse ich ein Ticket für eine andere Person?
+
+1. Klicken Sie auf **+ → Ticket erfassen**.
+2. Wählen Sie die **anfragende Person** (Suche, «Mich auswählen» oder neue
+   Person).
+3. Füllen Sie Betreff, Einordnung, Priorität und Beschreibung aus und setzen
+   Sie bei Bedarf direkt einen **zugewiesenen Agenten**.
+4. Schliessen Sie mit **Ticket erstellen** ab.
+
+Im selben Menü erfassen Sie – je nach Freischaltung – auch Wiedervorlagen,
+Fälle, Serviceaufgaben, Wissensartikel, Lagerartikel, Verträge und Lizenzen.
+
+### Wie schreibe und veröffentliche ich einen Wissensartikel?
+
+1. Wählen Sie **Neuer Artikel** und erfassen Sie Titel, Inhalt (Markdown mit
+   Bildern), Kategorie und Sichtbarkeit (_Intern_ oder _Extern_ für
+   Mitarbeitende).
+2. Optional: **Mit KI aufbereiten** oder direkt aus einem gelösten Ticket
+   **Entwurf mit KI erstellen**.
+3. Wählen Sie **Zur Freigabe einreichen**. Nach der Prüfung wird der Artikel
+   **veröffentlicht**.
+4. Veraltete Artikel **archivieren** Sie.
+
+Status: _Entwurf → Prüfung → Veröffentlicht_.
+
+### Wie schränke ich einen Shop-Artikel auf Kaderstufen ein?
+
+1. Öffnen Sie im Shop **Artikel hinzufügen** bzw. **Bearbeiten**.
+2. Legen Sie unter **Sichtbar für** fest, wer den Artikel sieht: **Alle
+   Mitarbeitenden** (Standard) oder **Kaderstufe 1**, **2** und/oder **3**.
+   Eine höhere Stufe sieht die Artikel tieferer Stufen nicht automatisch;
+   kreuzen Sie dafür mehrere Stufen an.
+
+Agenten sehen immer alle Artikel; eingeschränkte Artikel tragen das Etikett
+«Nur Kaderstufe …». Bestellen Sie für eine andere Person, weist der Warenkorb
+darauf hin, wenn ein Artikel für deren Kaderstufe nicht freigegeben ist – die
+Bestellung ist trotzdem möglich. Die Stufe einer Person ergibt sich aus ihrer
+**Funktion in Entra**; die Zuordnung pflegen Sie im Shop über **Kaderstufen**,
+dort können Sie für einzelne Personen auch von Hand eine Stufe festlegen oder
+«Kein Kader» setzen.
+
+### Wie stelle ich Benachrichtigungen und Erreichbarkeit ein?
+
+1. Die **Glocke** zeigt Zuweisungen, Erwähnungen, Antworten und Eskalationen.
+2. Öffnen Sie _Persönliche Einstellungen → Benachrichtigungen →
+   Benachrichtigungszeit_ und legen Sie fest, an welchen **Tagen** und zu
+   welchen **Zeiten** Sie Mitteilungen erhalten (z. B. Mo–Fr, 06:00–17:00)
+   oder ob **Jederzeit**. Was ausserhalb anfällt, kommt zu Beginn der nächsten
+   Benachrichtigungszeit.
+3. Schalten Sie in der Tabelle **Benachrichtigungen** pro Benachrichtigung
+   einzeln **Push** und **E-Mail** ein oder aus. E-Mails sind verfügbar, sobald
+   ein Exchange-Postfach verbunden ist.
+
+Push-Benachrichtigungen auf dem iPhone kommen ohne Einchecken. Das iPhone-Widget
+**Meine Prioritäten** zeigt Ihre wichtigsten Tickets; öffnen Sie die App
+einmal, damit es aktuell ist.
+
+### Wie pflege ich Racks und die Wartungscheckliste in der Infrastruktur?
+
+1. Erfassen Sie in der Ansicht **Racks** mit **Rack erfassen** ein Rack (Name,
+   Standort, Höhe in HE, Notizen). Einen fehlenden Standort legen Sie dort mit
+   **+ Neuer Standort …** an.
+2. Ändern Sie ein Rack über den **Stift** am Rack. Ein neuer Name oder
+   Standort gilt auch für die Geräte im Rack; die Höhe muss mindestens bis zum
+   obersten Gerät reichen. Leere Racks lassen sich löschen.
+3. Hinterlegen Sie bei einem Gerät einen oder mehrere **Dienste (für
+   Systemstatus)**, die bei einer Überwachungsstörung (PRTG) ihren Status
+   ändern.
+4. Erfassen Sie in der **Wartungscheckliste** jeden Punkt in einer eigenen
+   Zeile mit eigenem **Datum**. **Punkt hinzufügen** ergänzt eine Zeile, ×
+   entfernt sie.

@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-09
+updated: 2026-11-18
 ---
 
 # Handbuch für Mitarbeitende
@@ -216,3 +216,199 @@ Ihr Unternehmen frei.
 
 **Mein Problem ist von selbst verschwunden.** Antworten Sie kurz im Ticket
 oder klicken Sie bei «Wartet auf Sie» auf **Problem ist gelöst**.
+
+## Wie mache ich …?
+
+Kurze Anleitungen für die häufigsten Aufgaben. Jede Anleitung steht auch als
+Artikel in der **Wissensdatenbank**.
+
+### Wie melde ich mich bei nextDesk an?
+
+Öffnen Sie `https://app.nextdesk.ch` im Browser und wählen Sie eine
+Anmeldeart:
+
+1. **Mit SSO anmelden** – Ist Ihr Unternehmen mit Microsoft 365 verbunden,
+   melden Sie sich mit Ihrem gewohnten Microsoft-Konto an. Das ist der
+   empfohlene Weg.
+2. **Anmeldelink per E-Mail** – Geben Sie unter «Oder mit E-Mail» Ihre
+   E-Mail-Adresse ein und wählen Sie **Anmeldelink senden**. Öffnen Sie den
+   Link aus der E-Mail **im selben Browser**.
+3. **Mit Passwort anmelden** – Falls Sie ein Passwort gesetzt haben, wechseln
+   Sie über «Mit Passwort anmelden» zum Passwortfeld.
+
+### Wie erstelle ich ein eigenes Konto?
+
+Ohne Einladung Ihres Unternehmens legen Sie ein eigenes Konto an:
+
+1. Wählen Sie auf der Anmeldeseite **Neu bei nextDesk? Konto erstellen** (in
+   der App **Konto erstellen**).
+2. Bestätigen Sie Ihre E-Mail-Adresse über die E-Mail, die Sie erhalten.
+3. Erstellen Sie Ihren eigenen Arbeitsbereich.
+
+Gehört Ihre E-Mail-Domain zu einem Unternehmen mit SSO, melden Sie sich
+stattdessen mit **Mit SSO anmelden** an.
+
+### Wie behebe ich Probleme bei der Anmeldung?
+
+- **Ich erhalte keinen Anmeldelink.** Prüfen Sie den Spam-Ordner und ob die
+  E-Mail-Adresse stimmt. Nutzt Ihr Unternehmen SSO, melden Sie sich mit **Mit
+  SSO anmelden** an.
+- **Der Anmeldelink funktioniert nicht.** Öffnen Sie ihn im selben Browser, in
+  dem Sie ihn angefordert haben, und fordern Sie bei Bedarf einen neuen an.
+- **Ich sehe den Shop oder die Wissensdatenbank nicht.** Diese Bereiche
+  schaltet Ihr Unternehmen frei.
+
+### Wie erfasse ich ein Ticket?
+
+1. Klicken Sie oben rechts auf **+** und dann auf **Ticket erfassen**.
+2. Geben Sie einen kurzen, aussagekräftigen **Betreff** ein, z. B. «Drucker im 2. OG druckt nicht».
+3. Wählen Sie unter **Ticket einordnen** die **Abteilung / Angebot** (z. B.
+   ICT), optional eine **Ticketvorlage** sowie **Kategorie** und
+   **Unterkategorie**.
+4. Wählen Sie die **Priorität** – im Zweifel die vorgeschlagene belassen.
+5. Beschreiben Sie das Anliegen in der **Beschreibung** möglichst konkret: Was
+   ist passiert? Seit wann? Welche Fehlermeldung? Welches Gerät?
+6. Klicken Sie auf **Ticket erstellen**.
+
+Sie erhalten sofort die **Ticketnummer** sowie die erwarteten Reaktions- und
+Lösungszeiten. Mit **Öffnen** springen Sie direkt ins Ticket.
+
+Während Sie schreiben, schlägt nextDesk passende Artikel vor («Könnte Ihnen das
+helfen?»). Halbfertige Eingaben bleiben als Entwurf erhalten; mit **Entwurf
+verwerfen** beginnen Sie neu. Ist der **Assistent** aktiviert, können Sie Ihr
+Anliegen auch mit **Mit dem Assistenten lösen** klären und den vorbereiteten
+Entwurf übernehmen.
+
+### Wie erfahre ich, ob es eine aktive Störung gibt?
+
+Gibt es eine aktive Störung (z. B. «E-Mail ausgefallen»), erscheint oben ein
+Hinweis bzw. im Menü der Eintrag **Aktive Störung**. Dann müssen Sie dafür kein
+eigenes Ticket erfassen.
+
+### Wie verfolge ich den Stand meiner Tickets?
+
+Unter **Tickets** sehen Sie alle Ihre Anliegen mit Nummer, Betreff und Status.
+Ein Klick öffnet das Ticket; der Block **Fortschritt** zeigt die Schritte
+_Eingegangen → In Bearbeitung → Wartet auf Sie → Gelöst → Geschlossen_ mit
+Zeitpunkten.
+
+- **Eingegangen/Neu** – Das Ticket ist beim Support angekommen.
+- **In Bearbeitung** – Jemand kümmert sich darum.
+- **Wartet auf Sie** – Der Support braucht eine Antwort oder Bestätigung von
+  Ihnen.
+- **Gelöst** – Der Support hat das Anliegen erledigt.
+- **Geschlossen** – Das Ticket ist abgeschlossen.
+
+### Wie antworte ich auf ein Ticket oder gebe etwas frei?
+
+Öffnen Sie das Ticket mit einem Klick.
+
+1. **Antworten:** Schreiben Sie in **Ihre Nachricht** und klicken Sie auf
+   **Nachricht senden**. Mit **Bilder hochladen** fügen Sie Screenshots hinzu.
+   Erlaubt sind u. a. PDF, Office-Dokumente, TXT, CSV, PNG und JPG.
+2. **Wartet auf Sie:** nextDesk fragt «Ist Ihr Problem inzwischen gelöst?».
+   Klicken Sie auf **Problem ist gelöst** oder **Ich brauche noch Hilfe**. Bei
+   Letzterem beschreiben Sie kurz, was noch offen ist, und wählen
+   **Rückmeldung senden**.
+3. **Freigaben:** Müssen Sie etwas freigeben (z. B. als vorgesetzte Person),
+   entscheiden Sie direkt im Ticket mit **Freigeben** oder **Ablehnen**.
+
+Antworten des Supports erhalten Sie zusätzlich per E-Mail (falls im
+Unternehmen eingerichtet). Sie können auch direkt auf diese E-Mail antworten.
+
+### Wie bewerte ich ein gelöstes Ticket?
+
+Sobald Ihr Ticket **gelöst** ist, erscheint im Ticket unter «Fortschritt» die
+Frage **Wie zufrieden sind Sie?**
+
+1. Wählen Sie 1 bis 5 Sterne.
+2. Schreiben Sie bei Bedarf einen kurzen Kommentar – was war gut, was können
+   wir besser machen?
+3. Klicken Sie auf **Bewertung senden**.
+
+Sie können Ihre Bewertung innerhalb von 14 Tagen **einmal ändern**
+(**Bewertung ändern**). Bewerten können nur Sie als anfragende bzw.
+betroffene Person. In der iPhone-App finden Sie die Bewertung im Ticket direkt
+unter dem Fortschritt.
+
+### Wie finde ich eine Lösung in der Wissensdatenbank?
+
+1. Öffnen Sie im Menü die **Wissensdatenbank**.
+2. Suchen Sie über **Wissensdatenbank durchsuchen** oder filtern Sie nach
+   Kategorie.
+3. Öffnen Sie einen Artikel, z. B. «VPN einrichten» oder «Passwort
+   zurücksetzen».
+
+Prüfen Sie hier zuerst, ob es eine Lösung gibt – das geht oft schneller als
+ein Ticket. Sehen Sie die Wissensdatenbank nicht, hat Ihr Unternehmen sie nicht
+freigeschaltet.
+
+### Wie bestelle ich im Shop Geräte und Zubehör?
+
+Falls Ihr Unternehmen den Shop nutzt:
+
+1. Wählen Sie im Register **Katalog** einen Artikel und klicken Sie auf **In
+   den Warenkorb** (bei Leihgeräten auf **Ausleihen** mit Zeitraum).
+2. Geben Sie im Warenkorb den **Grund der Bestellung** an und wählen Sie die
+   Lieferung: _Abholung beim Support_ oder _An meinen Arbeitsplatz_.
+3. Klicken Sie auf **Jetzt bestellen** bzw. auf **Zur Freigabe senden**, wenn
+   eine Freigabe nötig ist.
+
+Unter **Meine Bestellungen** sehen Sie den Stand. Manche Artikel sind nur für
+bestimmte Kaderstufen freigegeben und erscheinen deshalb nicht bei allen
+Mitarbeitenden; fehlt Ihnen ein Artikel, wenden Sie sich an den Support. Als
+vorgesetzte Person entscheiden Sie im Register **Freigaben** über Bestellungen
+Ihres Teams.
+
+### Wie stelle ich Benachrichtigungen ein?
+
+1. Klicken Sie unten links auf Ihren **Namen**, um die **Persönlichen
+   Einstellungen** zu öffnen.
+2. Öffnen Sie **Benachrichtigungen**.
+3. Wählen Sie die **Benachrichtigungszeit**: **Jederzeit** oder **Nur zu
+   bestimmten Zeiten** mit Tagen Mo–So und Uhrzeit von/bis. Was ausserhalb
+   anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit.
+4. Schalten Sie pro Benachrichtigung **Push** und **E-Mail** ein oder aus.
+
+E-Mail-Benachrichtigungen gibt es, sobald Ihr Unternehmen ein Exchange-Postfach
+verbunden hat. Die Glocke oben rechts zeigt Benachrichtigungen; mit **Alle als
+gelesen markieren** leeren Sie die Liste.
+
+### Wie passe ich die Darstellung an?
+
+1. Öffnen Sie über Ihren **Namen** unten links die **Persönlichen
+   Einstellungen**.
+2. Wählen Sie unter **Profil & Darstellung** die Aktion **Darstellung
+   anpassen**.
+3. Stellen Sie das Farbschema (Hell, Dunkel, Systemeinstellung) ein und
+   aktivieren Sie bei Bedarf **hoher Kontrast** oder **Bewegung reduzieren**.
+
+### Wie melde ich andere Geräte ab oder lösche mein Konto?
+
+Öffnen Sie über Ihren **Namen** unten links die **Persönlichen Einstellungen**:
+
+- **Sitzungsverwaltung** – meldet alle anderen Geräte ab.
+- **Abmelden** – beendet die Sitzung auf diesem Gerät.
+- **Konto löschen** – löscht Ihr Konto. Melden Sie sich mit dem SSO Ihres
+  Unternehmens an, wird Ihr Konto von Ihrem Unternehmen verwaltet und kann hier
+  nicht gelöscht werden; wenden Sie sich dafür an Ihre IT.
+
+### Wie öffne und drucke ich ein Handbuch?
+
+1. Öffnen Sie über Ihren **Namen** unten links die **Persönlichen
+   Einstellungen**.
+2. Wählen Sie die Karte **Handbücher** und öffnen Sie das gewünschte Handbuch.
+3. Mit **Drucken / PDF** drucken Sie es aus oder speichern es als PDF.
+
+In der iPhone-App finden Sie die Handbücher unter **Profil → Hilfe und
+Rechtliches**. Bildschirmfotos lassen sich dort antippen und vergrössern.
+
+### Wie nutze ich nextDesk auf dem iPhone?
+
+1. Laden Sie die **nextDesk-App** aus dem App Store.
+2. Melden Sie sich wie im Browser an.
+3. Unten finden Sie **Tickets**, **Shop**, **Home**, **Wissen** und **Scan**.
+   Über **Neues Ticket** erfassen Sie Anliegen unterwegs, auf Wunsch mit Foto.
+4. Aktivieren Sie in den App-Einstellungen die Benachrichtigungen, z. B. für
+   Antworten des Supports, und wählen Sie unter **Benachrichtigungszeit**, an
+   welchen Tagen und zu welchen Zeiten sie kommen.
