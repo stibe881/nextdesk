@@ -159,7 +159,10 @@ export function PushNotificationBridge() {
       if (route.feature && !enabled(route.feature)) {
         Alert.alert(
           "Nicht verfügbar",
-          tn("Diese Funktion ist in deinem Arbeitsbereich nicht freigeschaltet oder dir fehlt die Berechtigung.","Diese Funktion ist in Ihrem Arbeitsbereich nicht freigeschaltet oder Ihnen fehlt die Berechtigung."),
+          tn(
+            "Diese Funktion ist in deinem Arbeitsbereich nicht freigeschaltet oder dir fehlt die Berechtigung.",
+            "Diese Funktion ist in Ihrem Arbeitsbereich nicht freigeschaltet oder Ihnen fehlt die Berechtigung.",
+          ),
         );
         return;
       }
@@ -273,7 +276,8 @@ export function PushNotificationBridge() {
       })();
     });
 
-    let previousAppState: AppStateStatus = AppState.currentState;
+    let previousAppState: AppStateStatus =
+      (AppState.currentState as AppStateStatus | null | undefined) ?? "active";
     void syncAppBadge();
     // Eine Mitteilung im Vordergrund: Zahl neu lesen (der Server hat sie gerade angelegt).
     const receivedSubscription = Notifications.addNotificationReceivedListener(

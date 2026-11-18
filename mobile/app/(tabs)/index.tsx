@@ -20,6 +20,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type ScrollViewInstance,
 } from "react-native";
 
 import { GlobalSearch } from "@/components/global-search";
@@ -202,7 +203,7 @@ export default function HomeScreen() {
     ReadonlySet<string>
   >(() => new Set());
   const focusLoadInFlight = useRef("");
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   // Each person arranges their own home screen (order and visible sections).
   const [homeLayout, setHomeLayout] = useState<HomeLayout>(DEFAULT_HOME_LAYOUT);
   const [homeLayoutUserId, setHomeLayoutUserId] = useState<string | null>(null);

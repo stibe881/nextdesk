@@ -14,6 +14,8 @@ import {
   Text,
   TextInput,
   View,
+  type ScrollViewInstance,
+  type TextInputInstance,
 } from "react-native";
 
 import { PhotoMarkupEditor } from "@/components/photo-markup-editor";
@@ -121,9 +123,9 @@ export default function NewTicketScreen() {
   const [phishing, setPhishing] = useState<PhishingConfig | null>(null);
   const [phishingOpen, setPhishingOpen] = useState(false);
   const draftReady = useRef(false);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const subjectInputRef = useRef<TextInput>(null);
-  const descriptionInputRef = useRef<TextInput>(null);
+  const scrollViewRef = useRef<ScrollViewInstance>(null);
+  const subjectInputRef = useRef<TextInputInstance>(null);
+  const descriptionInputRef = useRef<TextInputInstance>(null);
   const styles = useStyles();
   const colors = useAppColors();
 
@@ -338,7 +340,7 @@ export default function NewTicketScreen() {
     );
   }
 
-  function revealFieldAboveKeyboard(input: TextInput | null) {
+  function revealFieldAboveKeyboard(input: TextInputInstance | null) {
     const inputHandle = findNodeHandle(input);
     const scrollResponder = scrollViewRef.current?.getScrollResponder();
     if (!inputHandle || !scrollResponder) return;
@@ -475,7 +477,12 @@ export default function NewTicketScreen() {
     const cleanDescription = description.trim();
     if (cleanSubject.length < 3) {
       hapticError();
-      setError(tn("Bitte gib einen Betreff mit mindestens 3 Zeichen ein.", "Bitte geben Sie einen Betreff mit mindestens 3 Zeichen ein."));
+      setError(
+        tn(
+          "Bitte gib einen Betreff mit mindestens 3 Zeichen ein.",
+          "Bitte geben Sie einen Betreff mit mindestens 3 Zeichen ein.",
+        ),
+      );
       return;
     }
     if (!departmentId || !priorityKey) {
