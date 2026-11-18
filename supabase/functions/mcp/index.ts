@@ -737,7 +737,7 @@ function articleSourceLink(id: unknown, title: unknown): string | null {
 
 /** Hinweis im Ergebnis von Wissensabfragen: Quelle als anklickbarer Titel, keine Marker. */
 const ANSWER_NOTE =
-  "Quellenangabe: Keine Fussnoten, Nummern oder Marker wie [0], [1] oder [ID] in den Text setzen. Am Ende der Antwort die Quelle genau einmal als Markdown-Link aus dem Feld «quelle» angeben, mit dem Artikeltitel als Linktext, z. B. «Quelle: [Titel](Adresse)». Der Link öffnet den Artikel in nextDesk.";
+  "Quellenangabe: Keine Fussnoten, Nummern oder Marker wie [0], [1] oder [ID] in den Text setzen. Am Ende der Antwort die Quelle genau einmal als Markdown-Link aus dem Feld «quelle» angeben, mit dem Artikeltitel als Linktext, z. B. «Quelle: [Titel](Adresse)». Der Link öffnet den Artikel in nextDesk. Danach genau einmal nachfragen, ob das Problem damit gelöst ist oder ob ein Ticket erfasst werden soll (Anrede wie im Gespräch). Wünscht die Person ein Ticket, nur nach Betreff und Beschreibung fragen (optional nach dem betroffenen Gerät) und ticket_fuer_mich_erfassen verwenden. Nie nach Priorität, Abteilung, Agent, Ticketvorlage oder Kategorie fragen.";
 
 const CONFIRM_PROPERTY = {
   type: "boolean",
@@ -1318,15 +1318,20 @@ const TOOLS: Tool[] = [
             prioritaet: priority,
             vorlage: template?.name ?? null,
           },
-          [
-            args.beschreibung === undefined &&
-              !template &&
-              "beschreibung (sonst wird der Betreff verwendet)",
-            args.prioritaet === undefined &&
-              !template &&
-              "prioritaet (Standard normal)",
-            args.abteilung === undefined && "abteilung (Standard: erste)",
-          ],
+          args.einfach === true
+            ? [
+                args.beschreibung === undefined &&
+                  "beschreibung (sonst wird der Betreff verwendet)",
+              ]
+            : [
+                args.beschreibung === undefined &&
+                  !template &&
+                  "beschreibung (sonst wird der Betreff verwendet)",
+                args.prioritaet === undefined &&
+                  !template &&
+                  "prioritaet (Standard normal)",
+                args.abteilung === undefined && "abteilung (Standard: erste)",
+              ],
         );
       }
       const created = await callFunction(config, session, "ticket-actions", {
@@ -1343,7 +1348,70 @@ const TOOLS: Tool[] = [
         created: true,
         number: created.ticketNumber ?? null,
         workspace: workspace.slug,
+        ...(args.einfach === true
+          ? {
+              hinweis:
+                "Nenne der Person die Ticketnummer und dass sich die IT melden wird.",
+            }
+          : {}),
       });
+    },
+  },
+  {
+    name: "ticket_fuer_mich_erfassen",
+    description:
+      "Erfasst ein Ticket für die angemeldete Person selbst, ohne Rückfragen zu Priorität, Abteilung, Agent, Vorlage oder Kategorie (dafür gelten die Standardwerte). Nur nach Betreff und Beschreibung fragen, dazu optional das betroffene Gerät. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf; die Person bestätigt, erst dann mit bestaetigt=true abschicken. Antwort danach mit der Ticketnummer.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "Ticket für mich erfassen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        bestaetigt: CONFIRM_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        betreff: {
+          type: "string",
+          minLength: 3,
+          maxLength: 240,
+          description: "Kurzer Betreff: Worum geht es?",
+        },
+        beschreibung: {
+          type: "string",
+          maxLength: 8000,
+          description:
+            "Was ist passiert, seit wann, welche Fehlermeldung, was wurde schon versucht?",
+        },
+        geraet: {
+          type: "string",
+          maxLength: 200,
+          description: "Betroffenes Gerät (optional), z. B. «iPhone», «NB001».",
+        },
+      },
+      required: ["betreff"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const base = TOOLS.find((entry) => entry.name === "ticket_erfassen");
+      if (!base) throw new ToolError("Werkzeug nicht verfügbar.");
+      const device =
+        typeof args.geraet === "string" && args.geraet.trim()
+          ? `Betroffenes Gerät: ${args.geraet.trim()}`
+          : "";
+      const text =
+        typeof args.beschreibung === "string" ? args.beschreibung.trim() : "";
+      const description = [text, device].filter(Boolean).join("\n\n");
+      const result = await base.run(config, session, {
+        betreff: args.betreff,
+        ...(description ? { beschreibung: description } : {}),
+        ...(typeof args.arbeitsbereich === "string"
+          ? { arbeitsbereich: args.arbeitsbereich }
+          : {}),
+        ...(args.bestaetigt === true ? { bestaetigt: true } : {}),
+        einfach: true,
+      });
+      return result;
     },
   },
   {
