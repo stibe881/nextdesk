@@ -7990,6 +7990,22 @@ export async function handleMessage(
   }
   const { id, method } = message;
   const isNotification = id === undefined;
+  if (method !== "initialize") {
+    // Nur die Art der Anfrage und bei Werkzeugaufrufen der Name; keine Inhalte.
+    const calledTool =
+      method === "tools/call" &&
+      isRecord(message.params) &&
+      typeof message.params.name === "string"
+        ? message.params.name.slice(0, 80)
+        : undefined;
+    console.log(
+      JSON.stringify({
+        event: "mcp_method",
+        method: method.slice(0, 60),
+        ...(calledTool ? { tool: calledTool } : {}),
+      }),
+    );
+  }
   if (method === "initialize") {
     const params = isRecord(message.params) ? message.params : {};
     if (isRecord(params.clientInfo)) {
