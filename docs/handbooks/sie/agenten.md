@@ -1317,6 +1317,8 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 3. Wählen Sie unter **Bis Lagerplatz (Bereich, optional)** den letzten Platz, zum Beispiel «G10.2.4». Das Feld erscheint, sobald es passende Plätze gibt.
 4. Bestätigen Sie die Buchung. Die Menge wird **einmal** gebucht: 5 Stück auf G10.2.1 bis G10.2.4 sind insgesamt 5 Stück, nicht je Platz.
 
+In der App tippen Sie in der Bestandsliste auf den Artikel, wählen den ersten Lagerort und danach unter **Bis Lagerplatz** den letzten Platz.
+
 Dabei gilt:
 
 - Nur die letzte Zahl darf sich unterscheiden. G10.2.1 bis G10.2.4 geht, G10.2.1 bis G11.2.4 nicht.

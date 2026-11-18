@@ -146,6 +146,8 @@ export async function postMobileInventoryReceipt(input: {
   tenantId: string;
   itemId: string;
   locationId: string;
+  /** Last place of an area («G10.2.1» to «G10.2.4»); the quantity is booked once. */
+  endLocationId?: string | null;
   quantity: number;
   clientRequestId: string;
 }): Promise<void> {
@@ -155,6 +157,7 @@ export async function postMobileInventoryReceipt(input: {
     movementType: "receipt",
     itemId: input.itemId,
     toLocationId: input.locationId,
+    ...(input.endLocationId ? { toLocationEndId: input.endLocationId } : {}),
     quantity: input.quantity,
     clientRequestId: input.clientRequestId,
   });
