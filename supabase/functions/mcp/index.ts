@@ -1386,6 +1386,11 @@ const TOOLS: Tool[] = [
         subject,
         description: `${description}\n\n${CONNECTOR_NOTE}`,
         ...(template ? { templateId: template.id } : {}),
+        // Einfaches Ticket für die angemeldete Person: Kontakt über die
+        // Anmelde-E-Mail suchen und dem Team «Supportstufe 1» zuweisen.
+        ...(args.einfach === true
+          ? { useLoginEmailContact: true, assignDefaultTeam: true }
+          : {}),
       });
       return textResult({
         created: true,
