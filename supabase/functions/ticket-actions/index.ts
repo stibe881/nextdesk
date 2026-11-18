@@ -46,6 +46,10 @@ type Action =
       assignedAgentId?: string | null;
       templateId?: string;
       formAnswers?: FormAnswers;
+      /** Anfragende Person über die Anmelde-E-Mail der handelnden Person suchen (z. B. KI-Connector). */
+      useLoginEmailContact?: boolean;
+      /** Dem einzigen aktiven Team der Supportstufe 1 der Abteilung zuweisen (z. B. «Service Desk»). */
+      assignDefaultTeam?: boolean;
     };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -343,6 +347,10 @@ export function parseAction(value: unknown): Action | null {
     isOptionalUuid(value.categoryId) &&
     isOptionalUuid(value.subcategoryId) &&
     (value.templateId === undefined || isUuid(value.templateId)) &&
+    (value.useLoginEmailContact === undefined ||
+      typeof value.useLoginEmailContact === "boolean") &&
+    (value.assignDefaultTeam === undefined ||
+      typeof value.assignDefaultTeam === "boolean") &&
     (assignedAgentId === undefined ||
       assignedAgentId === null ||
       isUuid(assignedAgentId))
@@ -366,6 +374,10 @@ export function parseAction(value: unknown): Action | null {
         : {}),
       ...(formAnswers !== undefined ? { formAnswers } : {}),
       ...(assignedAgentId !== undefined ? { assignedAgentId } : {}),
+      ...(value.useLoginEmailContact === true
+        ? { useLoginEmailContact: true }
+        : {}),
+      ...(value.assignDefaultTeam === true ? { assignDefaultTeam: true } : {}),
     };
   }
   return null;
@@ -1599,12 +1611,41 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (!department || !status) {
     return json(request, { error: { code: "ticket_reference_missing" } }, 422);
   }
+  // KI-Connector: Die anfragende Person ist die angemeldete Person. Gibt es in
+  // diesem Arbeitsbereich schon einen Kontakt mit ihrer Anmelde-E-Mail
+  // (Verzeichnis oder E-Mail-Eingang), wird dieser verknüpft; so erscheint ihr
+  // Name wie bei einem Ticket aus einer E-Mail.
+  let effectiveContactId = action.requesterContactId;
+  let ownEmailContact = false;
+  if (action.useLoginEmailContact === true && typeof actorId === "string") {
+    const { data: authUser } =
+      await context.supabaseAdmin.auth.admin.getUserById(actorId);
+    const loginEmail = authUser?.user?.email?.trim().toLowerCase();
+    if (loginEmail) {
+      const { data: matches } = await context.supabaseAdmin
+        .from("ticket_requesters")
+        .select("id, source")
+        .eq("tenant_id", action.tenantId)
+        .is("user_id", null)
+        .ilike("email", loginEmail.replace(/[\\%_]/g, (char) => `\\${char}`))
+        .limit(10);
+      const rank = (source: unknown) =>
+        source === "entra" ? 0 : source === "email" ? 1 : 2;
+      const best = (matches ?? [])
+        .slice()
+        .sort((left: any, right: any) => rank(left.source) - rank(right.source))[0];
+      if (best && isUuid(best.id)) {
+        effectiveContactId = best.id;
+        ownEmailContact = true;
+      }
+    }
+  }
   const { data: requesterContact, error: requesterContactError } =
     await context.supabaseAdmin
       .from("ticket_requesters")
       .select("id, user_id, display_name")
       .eq("tenant_id", action.tenantId)
-      .eq("id", action.requesterContactId)
+      .eq("id", effectiveContactId)
       .maybeSingle();
   if (requesterContactError) {
     return requesterError(
@@ -1628,7 +1669,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       422,
     );
   }
-  if (requesterContact.user_id !== actorId) {
+  if (!ownEmailContact && requesterContact.user_id !== actorId) {
     const updatePermission = await hasTicketPermission(
       context.supabaseAdmin,
       actorId,
@@ -1896,7 +1937,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       category_id: categoryId,
       subcategory_id: subcategoryId,
       requester_id: requesterId,
-      requester_contact_id: action.requesterContactId,
+      requester_contact_id: effectiveContactId,
       assigned_agent_id: action.assignedAgentId ?? null,
     })
     .select("id, ticket_number")
@@ -1908,6 +1949,23 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
   if (ticketError || !ticket) {
     return json(request, { error: { code: "ticket_create_failed" } }, 422);
+  }
+  if (action.assignDefaultTeam === true) {
+    // Wie bei E-Mail-Tickets: das einzige aktive Team der Supportstufe 1.
+    const { data: firstLevelTeams } = await context.supabaseAdmin
+      .from("teams")
+      .select("id")
+      .eq("tenant_id", action.tenantId)
+      .eq("department_id", action.departmentId)
+      .eq("active", true)
+      .eq("support_level", 1);
+    if (firstLevelTeams?.length === 1) {
+      await context.supabaseAdmin
+        .from("tickets")
+        .update({ assigned_team_id: firstLevelTeams[0].id })
+        .eq("tenant_id", action.tenantId)
+        .eq("id", ticket.id);
+    }
   }
   const removeIncompleteTemplateTicket = async () => {
     await context.supabaseAdmin
