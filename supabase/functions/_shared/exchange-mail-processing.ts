@@ -1862,6 +1862,7 @@ export async function processInboundMessage(
         ticketId,
         ticketNumber,
         attachments: inboundAttachments,
+        senderEmail: sender,
       });
     }
     if (kind === "new_ticket") {

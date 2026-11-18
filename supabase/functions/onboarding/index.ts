@@ -130,6 +130,23 @@ function validDate(value: unknown): value is string {
 }
 const MAX_RETURN_TASKS = 50;
 /** Compares person names case-insensitively with normalized whitespace. */
+
+/**
+ * Eintritt aus einer Mail: Vorgesetzte Person ist die meldende Person. Hat sie
+ * kein nextDesk-Konto, ist die verantwortliche Person eingetragen; angezeigt
+ * wird dann der gemeldete Name.
+ */
+function reportedManagerName(entry: Record<string, unknown>, memberName: string): string {
+  const details = entry.details as Record<string, unknown> | null;
+  const reported = entry.source === "email" && typeof details?.supervisor === "string"
+    ? details.supervisor.trim()
+    : "";
+  if (!reported) return memberName;
+  return reported.toLocaleLowerCase("de-CH") === memberName.trim().toLocaleLowerCase("de-CH")
+    ? memberName
+    : `${reported} (ohne nextDesk-Konto)`;
+}
+
 export function normalizePersonName(value: unknown): string {
   return typeof value === "string"
     ? value
@@ -992,9 +1009,11 @@ async function listWorkspace(
           ? entry.organisation_unit
           : null,
       location: typeof entry.location === "string" ? entry.location : null,
-      managerName:
+      managerName: reportedManagerName(
+        entry,
         peopleResult.names.get(String(entry.manager_user_id)) ??
-        "Führungsperson",
+          "Führungsperson",
+      ),
       ictResponsibleName:
         peopleResult.names.get(String(entry.ict_responsible_user_id)) ??
         "ICT-Verantwortung",
