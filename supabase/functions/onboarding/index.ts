@@ -1,3 +1,4 @@
+import { resolveReporterAccount } from "../_shared/onboarding-reporter.ts";
 import { msg } from "../_shared/formality.ts";
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
@@ -131,20 +132,51 @@ function validDate(value: unknown): value is string {
 const MAX_RETURN_TASKS = 50;
 /** Compares person names case-insensitively with normalized whitespace. */
 
+
 /**
- * Eintritt aus einer Mail: Vorgesetzte Person ist die meldende Person. Hat sie
- * kein nextDesk-Konto, ist die verantwortliche Person eingetragen; angezeigt
- * wird dann der gemeldete Name.
+ * Eintritte aus einer Mail, die mangels Konto der meldenden Person auf die
+ * verantwortliche Person zeigen: Konto anlegen (Entra) und eintragen.
  */
-function reportedManagerName(entry: Record<string, unknown>, memberName: string): string {
-  const details = entry.details as Record<string, unknown> | null;
-  const reported = entry.source === "email" && typeof details?.supervisor === "string"
-    ? details.supervisor.trim()
-    : "";
-  if (!reported) return memberName;
-  return reported.toLocaleLowerCase("de-CH") === memberName.trim().toLocaleLowerCase("de-CH")
-    ? memberName
-    : `${reported} (ohne nextDesk-Konto)`;
+async function repairReporterManagers(
+  admin: Admin,
+  tenantId: string,
+  entries: Row[],
+  actorId: string,
+): Promise<boolean> {
+  let changed = false;
+  for (const entry of entries.slice(0, 20)) {
+    const details = entry.details as Record<string, unknown> | null;
+    const reporter = typeof details?.supervisor === "string" ? details.supervisor : null;
+    if (
+      entry.source !== "email" ||
+      !reporter ||
+      typeof details?.reporterUserId === "string" ||
+      entry.manager_user_id !== entry.ict_responsible_user_id
+    ) {
+      continue;
+    }
+    const reporterUserId = await resolveReporterAccount(
+      admin,
+      tenantId,
+      {
+        email: typeof details?.reporterEmail === "string" ? details.reporterEmail : null,
+        name: reporter,
+      },
+      actorId,
+    );
+    if (!reporterUserId || reporterUserId === entry.manager_user_id) continue;
+    const nextDetails = { ...details, reporterUserId };
+    const { error } = await admin
+      .from("onboarding_entries")
+      .update({ manager_user_id: reporterUserId, details: nextDetails })
+      .eq("tenant_id", tenantId)
+      .eq("id", entry.id);
+    if (error) continue;
+    entry.manager_user_id = reporterUserId;
+    entry.details = nextDetails;
+    changed = true;
+  }
+  return changed;
 }
 
 export function normalizePersonName(value: unknown): string {
@@ -856,7 +888,7 @@ async function listWorkspace(
     hasPermission(client, tenantId, "onboarding.request"),
     hasPermission(client, tenantId, "onboarding.manage"),
   ]);
-  const [templatesResult, peopleResult] = await Promise.all([
+  let [templatesResult, peopleResult] = await Promise.all([
     admin
       .from("onboarding_templates")
       .select("id, template_key, name")
@@ -919,6 +951,11 @@ async function listWorkspace(
     ) {
       entries.push(focusedEntry as Row);
     }
+  }
+  // Eintritte aus einer Mail, bei denen die meldende Person noch kein Konto
+  // hatte: Konto aus Entra anlegen und sie als vorgesetzte Person eintragen.
+  if (canManage && (await repairReporterManagers(admin, tenantId, entries, actorId))) {
+    peopleResult = await peopleForTenant(admin, tenantId);
   }
   const entryIds = entries.map((row) => String(row.id));
   const [tasksResult, exceptionsResult] = entryIds.length
@@ -1009,11 +1046,9 @@ async function listWorkspace(
           ? entry.organisation_unit
           : null,
       location: typeof entry.location === "string" ? entry.location : null,
-      managerName: reportedManagerName(
-        entry,
+      managerName:
         peopleResult.names.get(String(entry.manager_user_id)) ??
-          "Führungsperson",
-      ),
+        "Führungsperson",
       ictResponsibleName:
         peopleResult.names.get(String(entry.ict_responsible_user_id)) ??
         "ICT-Verantwortung",
