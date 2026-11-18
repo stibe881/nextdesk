@@ -19,7 +19,9 @@ export type SourceKey =
   | "gemini"
   | "apple_app_store"
   | "google_play"
-  | "init7";
+  | "init7"
+  | "swisscom"
+  | "salt";
 
 export type SourceDefinition = {
   key: SourceKey;
@@ -78,6 +80,19 @@ export const SOURCES: readonly SourceDefinition[] = [
     label: "Init7",
     description: "Aktuelle Störungen im Netz von Init7 (ohne geplante Wartungen).",
     statusUrl: "https://www.as13030.net/status.php",
+  },
+  {
+    key: "swisscom",
+    label: "Swisscom",
+    description:
+      "Schweizweite Störungen bei Swisscom (Internet, Festnetz, Mobilfunk; ohne regionale Störungen und TV-Sender).",
+    statusUrl: "https://www.swisscom.ch/de/privatkunden/hilfe/netz-und-servicestatus.html",
+  },
+  {
+    key: "salt",
+    label: "Salt",
+    description: "Aktuelle Netz- und Dienststörungen bei Salt (Mobilfunk und Internet).",
+    statusUrl: "https://www.salt.ch/de/mobile/network-and-service-interruptions",
   },
 ];
 
@@ -246,6 +261,70 @@ export function parseInit7(html: string, rss: string | null, statusUrl: string):
     severity: "down" as const,
     url: `https://as13030.net/status/?ticket=${ticket}`,
     message: null,
+    startedAt: null,
+  }));
+}
+
+/**
+ * Swisscom network and service status (public list behind
+ * swisscom.ch/…/netz-und-servicestatus.html): current outages. Only
+ * nationwide ones count; regional outages (no place given) and TV channel
+ * outages would mostly be noise.
+ */
+export function parseSwisscom(value: unknown, statusUrl: string): ExternalIssue[] {
+  if (!Array.isArray(value)) throw new Error("swisscom_status_invalid");
+  return value.filter(isRecord).flatMap((outage) => {
+    const id = typeof outage.id === "number" || typeof outage.id === "string" ? String(outage.id) : null;
+    const services = Array.isArray(outage.services) ? outage.services.map(String) : [];
+    const tvOnly = outage.category === "tv" ||
+      (services.length > 0 && services.every((service) => /^TV/i.test(service)));
+    if (!id || outage.nationWide !== true || tvOnly) return [];
+    if (outage.type && outage.type !== "INCIDENT") return [];
+    const title = text(outage.title, 230) ?? "Störung";
+    return [{
+      id,
+      title: `Swisscom: ${title}`.slice(0, 250),
+      severity: outage.state === "RED" || outage.isInterrupted === true ? "down" as const : "warning" as const,
+      url: `${statusUrl}#outageId=${id}`,
+      message: plain(outage.description),
+      startedAt: typeof outage.startDate === "string" ? outage.startDate : null,
+    } satisfies ExternalIssue];
+  });
+}
+
+/**
+ * Salt «Network and Service interruptions»: the page loads its current
+ * interruptions as HTML ({ html }) — empty when there are none. Each entry of
+ * the accordion becomes an issue; without recognisable entries the whole
+ * text is one issue.
+ */
+export function parseSalt(value: unknown, statusUrl: string): ExternalIssue[] {
+  if (!isRecord(value) || typeof value.html !== "string") throw new Error("salt_status_invalid");
+  const html = value.html;
+  const all = plain(html, 1500);
+  if (!all) return [];
+  const titles = [
+    ...html.matchAll(
+      /<(?:h[2-5]|summary|button)[^>]*>([\s\S]*?)<\/(?:h[2-5]|summary|button)>/gi,
+    ),
+  ]
+    .map((match) => plain(match[1], 230))
+    .filter((title): title is string => Boolean(title));
+  const unique = [...new Set(titles)];
+  const id = (title: string) => {
+    let hash = 0;
+    for (const character of title) hash = (hash * 31 + character.charCodeAt(0)) | 0;
+    return `t${(hash >>> 0).toString(36)}`;
+  };
+  if (!unique.length) {
+    return [{ id: id(all.slice(0, 120)), title: "Salt: Störung im Netz", severity: "down", url: statusUrl, message: all, startedAt: null }];
+  }
+  return unique.map((title) => ({
+    id: id(title),
+    title: `Salt: ${title}`.slice(0, 250),
+    severity: "down" as const,
+    url: statusUrl,
+    message: all,
     startedAt: null,
   }));
 }

@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-17
+updated: 2026-11-18
 ---
 
 # Installationsanleitung
@@ -775,7 +775,8 @@ und liefert sie nach.
 
 1. **[Admin]** **Einstellungen → Monitoring → Externe Statusquellen**: die
    gewünschten Anbieter anhaken und **Speichern**. Die öffentlichen Quellen
-   (GitHub, Claude, Gemini, App Store, Google Play, Init7) brauchen keine
+   (GitHub, Claude, Gemini, App Store, Google Play, Init7, Swisscom, Salt)
+   brauchen keine
    weitere Einrichtung.
 2. Für **Microsoft 365** liest nextDesk den Dienststatus deines Mandanten über
    Microsoft Graph mit derselben Entra-App wie der Verzeichnisabgleich. In
