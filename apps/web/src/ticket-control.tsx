@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   FolderPlus,
@@ -225,7 +226,10 @@ function OpenCaseForm({
       await onChanged();
     } catch {
       setError(
-        "Der Fall konnte nicht eröffnet werden. Prüfen Sie, ob Sie Fälle verwalten dürfen.",
+        tn(
+          "Der Fall konnte nicht eröffnet werden. Prüfe, ob du Fälle verwalten darfst.",
+          "Der Fall konnte nicht eröffnet werden. Prüfen Sie, ob Sie Fälle verwalten dürfen.",
+        ),
       );
     } finally {
       setSaving(false);
@@ -374,11 +378,13 @@ function SupervisorRequestForm({
     if (!supabase || saving) return;
     const text = question.trim();
     if (!recipientId) {
-      setError("Bitte wählen Sie eine Person.");
+      setError(tn("Bitte wähle eine Person.", "Bitte wählen Sie eine Person."));
       return;
     }
     if (!text) {
-      setError("Bitte geben Sie Ihre Frage ein.");
+      setError(
+        tn("Bitte gib deine Frage ein.", "Bitte geben Sie Ihre Frage ein."),
+      );
       return;
     }
     setSaving(true);
@@ -446,7 +452,10 @@ function SupervisorRequestForm({
           disabled={saving}
           maxLength={4000}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Was möchten Sie wissen oder freigeben lassen?"
+          placeholder={tn(
+            "Was möchtest du wissen oder freigeben lassen?",
+            "Was möchten Sie wissen oder freigeben lassen?",
+          )}
           rows={4}
           value={question}
         />

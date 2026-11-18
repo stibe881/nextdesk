@@ -22,7 +22,7 @@ Start, vor Tokenbezug, jede Graph-Seite und Commit prüfen diese Voraussetzungen
 
 ## Einmalige Microsoft-Administration
 
-Für alle Kundenmandanten ist eine **separate mehrmandantenfähige** Microsoft-Entra-App-Registrierung vorgesehen. Sie darf nicht dieselben Credentials wie der nextDesk-Personenabgleich verwenden.
+Für alle Kundenmandanten ist eine **separate mehrmandantenfähige** Microsoft-Entra-App-Registrierung vorgesehen. Diese darf nicht dieselben Credentials wie der nextDesk-Personenabgleich verwenden.
 
 1. In Microsoft Entra ID eine neue App-Registrierung für den manuellen nextDesk-Intune-Assetabgleich erstellen.
 2. Unter **API-Berechtigungen → Microsoft Graph → Anwendungsberechtigungen** ausschliesslich `DeviceManagementManagedDevices.Read.All` hinzufügen.
@@ -57,7 +57,7 @@ Der Lauf validiert Paging-Herkunft und -Pfad, erlaubt nur HTTPS zu Microsoft Gra
 - Besteht bereits ein Asset mit derselben Seriennummer, wird weder verknüpft noch überschrieben; der Fall wird als übersprungen gezählt.
 - Ein nicht mehr in Intune gelistetes Gerät löscht, deaktiviert, entkoppelt oder verändert kein vorhandenes Asset.
 
-Die datensparsame Vorschau (`dry_run`) liest Intune und berechnet ausschliesslich aggregierte Zähler. Sie schreibt weder Assets noch einen aktuellen Gerätebestand. Erst «Intune-Assets abgleichen» kann nach der zweiten Bestätigung Assets anlegen oder technische Aggregatfelder aktualisieren.
+Die datensparsame Vorschau (`dry_run`) liest Intune und berechnet ausschliesslich aggregierte Zähler. Diese schreibt weder Assets noch einen aktuellen Gerätebestand. Erst «Intune-Assets abgleichen» kann nach der zweiten Bestätigung Assets anlegen oder technische Aggregatfelder aktualisieren.
 
 ## Run-Historie, Retry und Recovery
 

@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useEffect,
   useId,
@@ -25,12 +26,24 @@ import "./person-overview.css";
 
 export type GlobalSearchResult = {
   resultType:
-    "ticket" | "follow_up" | "knowledge" | "event_space" | "onboarding";
+    | "ticket"
+    | "follow_up"
+    | "knowledge"
+    | "event_space"
+    | "onboarding"
+    | "incident"
+    | "security_case";
   entityId: string;
   title: string;
   detail: string;
   section:
-    "Tickets" | "Wiedervorlagen" | "Wissen" | "Raumplanung" | "Eintritte";
+    | "Tickets"
+    | "Erinnerungen"
+    | "Wissen"
+    | "Raumplanung"
+    | "Eintritte"
+    | "Störungen"
+    | "Phishing / Junk";
   ticketId: string | null;
 };
 
@@ -60,7 +73,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseResults(value: unknown): GlobalSearchResult[] | null {
+/** Former section names the search may still return. */
+const LEGACY_SEARCH_SECTIONS: Record<string, string> = {
+  Veranstaltungsräume: "Raumplanung",
+  Wiedervorlagen: "Erinnerungen",
+  Sicherheitsfälle: "Phishing / Junk",
+};
+
+export function parseResults(value: unknown): GlobalSearchResult[] | null {
   if (
     !isRecord(value) ||
     !isRecord(value.data) ||
@@ -74,20 +94,25 @@ function parseResults(value: unknown): GlobalSearchResult[] | null {
     "knowledge",
     "event_space",
     "onboarding",
+    "incident",
+    "security_case",
   ]);
   const allowedSections = new Set<GlobalSearchResult["section"]>([
     "Tickets",
-    "Wiedervorlagen",
+    "Erinnerungen",
     "Wissen",
     "Raumplanung",
     "Eintritte",
+    "Störungen",
+    "Phishing / Junk",
   ]);
   const results: GlobalSearchResult[] = [];
   for (const rawItem of value.data.results) {
-    // The search function still labels this section with its former name.
     const item =
-      isRecord(rawItem) && rawItem.section === "Veranstaltungsräume"
-        ? { ...rawItem, section: "Raumplanung" }
+      isRecord(rawItem) &&
+      typeof rawItem.section === "string" &&
+      rawItem.section in LEGACY_SEARCH_SECTIONS
+        ? { ...rawItem, section: LEGACY_SEARCH_SECTIONS[rawItem.section] }
         : rawItem;
     if (
       !isRecord(item) ||
@@ -123,10 +148,12 @@ export function filterGlobalSearchResults(
 
 const typeLabel: Record<GlobalSearchResult["resultType"], string> = {
   ticket: "Ticket",
-  follow_up: "Wiedervorlage",
+  follow_up: "Erinnerung",
   knowledge: "Wissensartikel",
   event_space: "Raumauftrag",
   onboarding: "Eintritt",
+  incident: "Störung",
+  security_case: "Phishing-/Junk-Fall",
 };
 
 export function GlobalSearch({
@@ -425,7 +452,10 @@ export function GlobalSearch({
             </p>
           ) : loading ? (
             <p className="global-search__state" role="status">
-              Durchsuche Ihre zugänglichen Inhalte …
+              {tn(
+                "Durchsuche deine zugänglichen Inhalte …",
+                "Durchsuche Ihre zugänglichen Inhalte …",
+              )}
             </p>
           ) : scopedResults.length === 0 && shownPeople.length === 0 ? (
             <p className="global-search__state">

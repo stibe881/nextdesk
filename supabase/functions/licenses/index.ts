@@ -41,6 +41,8 @@ type Values = {
   seatCost?: SeatCost;
   // Microsoft 365 skuId for the optional license removal in Entra.
   m365SkuId?: string | null;
+  // Contract this license belongs to; undefined keeps the current one.
+  contractId?: string | null;
 };
 type SeatCost = {
   amount: number | null;
@@ -88,6 +90,7 @@ function parseSeatCost(value: Row): SeatCost | null | undefined {
 type Action =
   | { type: "list"; tenantId: string; includeArchived: boolean }
   | { type: "listPeople"; tenantId: string }
+  | { type: "listContracts"; tenantId: string }
   | { type: "create"; tenantId: string; values: Values }
   | { type: "update"; tenantId: string; licenseId: string; values: Values }
   | { type: "archive"; tenantId: string; licenseId: string };
@@ -153,6 +156,7 @@ function parseValues(value: unknown): Values | null {
         "seatCostCurrency",
         "seatCostPeriod",
         "m365SkuId",
+        "contractId",
       ].includes(key),
     )
   )
@@ -208,9 +212,17 @@ function parseValues(value: unknown): Values | null {
       : isUuid(value.m365SkuId)
         ? value.m365SkuId.toLowerCase()
         : false;
+  const contractId = !("contractId" in value)
+    ? undefined
+    : value.contractId === null || value.contractId === ""
+      ? null
+      : isUuid(value.contractId)
+        ? value.contractId.toLowerCase()
+        : false;
   if (
     seatCost === null ||
     m365SkuId === false ||
+    contractId === false ||
     departmentId === false ||
     quantity === undefined ||
     !title ||
@@ -243,6 +255,7 @@ function parseValues(value: unknown): Values | null {
     notes,
     ...(seatCost !== undefined ? { seatCost } : {}),
     ...(m365SkuId !== undefined ? { m365SkuId } : {}),
+    ...(contractId !== undefined ? { contractId } : {}),
   };
 }
 function parseAction(value: unknown): Action | null {
@@ -266,6 +279,11 @@ function parseAction(value: unknown): Action | null {
     Object.keys(value).every((key) => ["type", "tenantId"].includes(key))
   )
     return { type: "listPeople", tenantId };
+  if (
+    value.type === "listContracts" &&
+    Object.keys(value).every((key) => ["type", "tenantId"].includes(key))
+  )
+    return { type: "listContracts", tenantId };
   if (
     (value.type === "create" || value.type === "update") &&
     isRecord(value.values)
@@ -416,6 +434,7 @@ const rowToLicense = (row: Row) => ({
   seatCostCurrency: row.seat_cost_currency ?? "CHF",
   seatCostPeriod: row.seat_cost_period ?? null,
   m365SkuId: row.m365_sku_id ?? null,
+  contractId: row.contract_id ?? null,
   archivedAt: row.archived_at,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -448,6 +467,33 @@ async function visibleLicenseDepartment(
     );
   const departmentId = (data as Row).department_id;
   return departmentId ? String(departmentId) : null;
+}
+// A contract of the tenant that the caller may see (department scope).
+async function assertContract(
+  admin: Admin,
+  tenantId: string,
+  contractId: string | null | undefined,
+  scope: DepartmentScope,
+): Promise<void> {
+  if (!contractId) return;
+  const { data, error } = await admin
+    .from("contracts")
+    .select("id, department_id")
+    .eq("tenant_id", tenantId)
+    .eq("id", contractId)
+    .maybeSingle();
+  if (error)
+    throw new HttpError(
+      503,
+      "licenses_unavailable",
+      "Der Vertrag konnte nicht geprüft werden.",
+    );
+  if (!data || !departmentVisible(scope, (data as Row).department_id))
+    throw new HttpError(
+      422,
+      "contract_invalid",
+      "Der Vertrag gehört nicht zu diesem Mandanten.",
+    );
 }
 async function handler(
   request: Request,
@@ -493,11 +539,39 @@ async function handler(
       },
     });
   }
+  if (action.type === "listContracts") {
+    const { data, error } = await applyDepartmentScope(
+      context.supabaseAdmin
+        .from("contracts")
+        .select("id, title, counterparty_name, status")
+        .eq("tenant_id", action.tenantId)
+        .neq("status", "archived")
+        .order("title")
+        .limit(2000),
+      scope,
+    );
+    if (error)
+      throw new HttpError(
+        503,
+        "licenses_unavailable",
+        "Verträge konnten nicht geladen werden.",
+      );
+    return reply(request, {
+      data: {
+        contracts: (data ?? []).map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          counterpartyName: item.counterparty_name,
+          status: item.status,
+        })),
+      },
+    });
+  }
   if (action.type === "list") {
     let query = context.supabaseAdmin
       .from("licenses")
       .select(
-        "id, title, vendor_name, reference_number, license_type, quantity, status, starts_on, ends_on, notice_period_days, reminder_days_before, reminder_sent_for, department_id, responsible_user_id, notes, seat_cost_amount, seat_cost_currency, seat_cost_period, m365_sku_id, archived_at, created_at, updated_at",
+        "id, title, vendor_name, reference_number, license_type, quantity, status, starts_on, ends_on, notice_period_days, reminder_days_before, reminder_sent_for, department_id, responsible_user_id, notes, seat_cost_amount, seat_cost_currency, seat_cost_period, m365_sku_id, contract_id, archived_at, created_at, updated_at",
       )
       .eq("tenant_id", action.tenantId)
       .order("ends_on", { ascending: true, nullsFirst: false })
@@ -544,6 +618,12 @@ async function handler(
       action.tenantId,
       action.values.responsibleUserId,
     );
+    await assertContract(
+      context.supabaseAdmin,
+      action.tenantId,
+      action.values.contractId,
+      scope,
+    );
     const payload = {
       tenant_id: action.tenantId,
       title: action.values.title,
@@ -572,6 +652,9 @@ async function handler(
         : {}),
       ...(action.values.m365SkuId !== undefined
         ? { m365_sku_id: action.values.m365SkuId }
+        : {}),
+      ...(action.values.contractId !== undefined
+        ? { contract_id: action.values.contractId }
         : {}),
       updated_by: actorId,
     };

@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -23,6 +24,7 @@ import {
 import type { TicketDrilldown } from "./lib/ticket-drilldown";
 import "./team-leadership.css";
 
+import { confirmDialog } from "./app-dialog";
 type BoardAgent = {
   id: string;
   displayName: string;
@@ -441,9 +443,10 @@ export function SkillMatrix({ tenantId }: { tenantId: string }) {
   return (
     <div className="skill-matrix">
       <p className="data-caption">
-        Klicken Sie auf ein Feld, um die Stufe zu wechseln: – → Grundlagen →
-        Fortgeschritten → Experte. Fähigkeiten mit weniger als zwei
-        fortgeschrittenen Personen sind als Lücke markiert.
+        {tn(
+          "Klicke auf ein Feld, um die Stufe zu wechseln: – → Grundlagen → Fortgeschritten → Experte. Fähigkeiten mit weniger als zwei fortgeschrittenen Personen sind als Lücke markiert.",
+          "Klicken Sie auf ein Feld, um die Stufe zu wechseln: – → Grundlagen → Fortgeschritten → Experte. Fähigkeiten mit weniger als zwei fortgeschrittenen Personen sind als Lücke markiert.",
+        )}
       </p>
       <form
         className="skill-matrix__add"
@@ -479,7 +482,10 @@ export function SkillMatrix({ tenantId }: { tenantId: string }) {
         <p className="empty-state">Skill-Matrix wird geladen …</p>
       ) : data.skills.length === 0 ? (
         <p className="empty-state">
-          Noch keine Fähigkeiten erfasst. Legen Sie oben die erste an.
+          {tn(
+            "Noch keine Fähigkeiten erfasst. Lege oben die erste an.",
+            "Noch keine Fähigkeiten erfasst. Legen Sie oben die erste an.",
+          )}
         </p>
       ) : (
         <div className="skill-matrix__scroll">
@@ -510,9 +516,9 @@ export function SkillMatrix({ tenantId }: { tenantId: string }) {
                         aria-label={`${skill.name} löschen`}
                         className="icon-button"
                         disabled={busy === skill.id}
-                        onClick={() => {
+                        onClick={async () => {
                           if (
-                            window.confirm(
+                            await confirmDialog(
                               `Fähigkeit «${skill.name}» mit allen Einstufungen löschen?`,
                             )
                           ) {

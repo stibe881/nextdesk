@@ -99,6 +99,7 @@ export const DEPARTMENT_SCOPED_FEATURES = [
   "reporting.service",
   "event.spaces",
   "onboarding.entries",
+  "ipam.management",
 ] as const;
 
 /**

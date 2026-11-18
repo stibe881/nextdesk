@@ -5,6 +5,7 @@ import {
   INVENTORY_RPC_NAMES,
   itemDepartmentChange,
   movementRpcParameters,
+  movementPermission,
   movementRpcPayload,
   parseAction,
   recordCountLineRpcParameters,
@@ -72,7 +73,22 @@ const permissions = {
   canMove: true,
   canAdjust: false,
   canCloseInventoryCount: false,
+  canIssue: false,
 };
+
+Deno.test("manual issue needs inventory.issue, reservation issue stays with inventory.move", () => {
+  assertEquals(movementPermission({ movementType: "issue" }), "inventory.issue");
+  assertEquals(
+    movementPermission({ movementType: "issue", reservationId: "r" }),
+    "inventory.move",
+  );
+  assertEquals(movementPermission({ movementType: "receipt" }), "inventory.move");
+  assertEquals(movementPermission({ movementType: "transfer" }), "inventory.move");
+  assertEquals(
+    movementPermission({ movementType: "adjustment_out" }),
+    "inventory.adjust",
+  );
+});
 
 Deno.test(
   "inventory uses only the real migration 0068 mutation RPC names",
@@ -86,6 +102,7 @@ Deno.test(
       startCount: "start_inventory_count",
       recordCountLine: "record_inventory_count_line",
       closeCount: "close_inventory_count",
+      cancelCount: "cancel_inventory_count",
     });
   },
 );
@@ -1091,6 +1108,7 @@ Deno.test(
     assertEquals(sortedKeys(workspace.permissions), [
       "canAdjust",
       "canCloseInventoryCount",
+      "canIssue",
       "canManage",
       "canMove",
       "canRead",
@@ -1107,6 +1125,7 @@ Deno.test(
       "departmentId",
       "hasPrimaryImage",
       "id",
+      "loanItem",
       "locationName",
       "minQuantity",
       "name",
@@ -1153,6 +1172,7 @@ Deno.test(
           targetQuantity: 12,
           locationName: "Hauptlager",
           active: true,
+          loanItem: false,
           departmentId: null,
         },
       ],
@@ -1191,6 +1211,7 @@ Deno.test(
           targetQuantity: 12,
           locationName: "Hauptlager",
           active: true,
+          loanItem: false,
           departmentId: null,
         },
       ],
@@ -1633,3 +1654,48 @@ Deno.test(
     );
   },
 );
+
+Deno.test("item RPC parameters keep optional fields as null when not sent", () => {
+  const params = upsertItemRpcParameters(
+    TENANT_ID,
+    TENANT_ID,
+    REQUEST_ID,
+    null,
+    {
+      articleNumber: "1105050",
+      name: "Presenter",
+      category: "Presenter",
+      unit: "stk",
+      trackingMode: "quantity",
+      minimumStock: 3,
+      targetStock: 3,
+      // Not sent by the create form: undefined, which JSON would drop.
+      manufacturer: undefined,
+      model: undefined,
+      supplier: undefined,
+      privateNote: undefined,
+      active: true,
+    } as unknown as Parameters<typeof upsertItemRpcParameters>[4],
+  );
+  // PostgREST needs every parameter without a default to be present.
+  const body = JSON.parse(JSON.stringify(params));
+  for (const key of ["p_manufacturer", "p_model", "p_supplier", "p_note"]) {
+    assertEquals(key in body, true, key);
+    assertEquals(body[key], null, key);
+  }
+});
+
+Deno.test("cancelCount is parsed strictly", () => {
+  const tenantId = "11111111-1111-4111-8111-111111111111";
+  const countId = "22222222-2222-4222-8222-222222222222";
+  assertEquals(parseAction({ type: "cancelCount", tenantId, countId }), {
+    type: "cancelCount",
+    tenantId,
+    countId,
+  });
+  assertEquals(
+    parseAction({ type: "cancelCount", tenantId, countId, extra: 1 }),
+    null,
+  );
+  assertEquals(parseAction({ type: "cancelCount", tenantId }), null);
+});

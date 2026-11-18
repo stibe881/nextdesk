@@ -1,8 +1,8 @@
 # nextDesk E-Mail-Kanäle mit Microsoft 365
 
-nextDesk verbindet **mehrere Support-Postfächer pro Mandant** mit Microsoft 365. Die Verbindung erfolgt über eine einmalig angemeldete Microsoft-365-Connectoridentität und eine **pro Postfach** vergebene Exchange-Delegation. Sie ist deshalb für Kundinnen und Kunden in der nextDesk-Oberfläche bedienbar und benötigt für die normale Einrichtung keine PowerShell.
+nextDesk verbindet **mehrere Support-Postfächer pro Mandant** mit Microsoft 365. Die Verbindung erfolgt über eine einmalig angemeldete Microsoft-365-Connectoridentität und eine **pro Postfach** vergebene Exchange-Delegation. Diese ist deshalb für Kundinnen und Kunden in der nextDesk-Oberfläche bedienbar und benötigt für die normale Einrichtung keine PowerShell.
 
-> **Sicherheitsgrundsatz:** Client-Secret, Refresh-Token und Verschlüsselungsschlüssel gehören nie in Chat, Git, Tickets oder Screenshots. Sie werden ausschliesslich im Supabase Secret Store verarbeitet. Tokens werden verschlüsselt gespeichert und nicht in nextDesk angezeigt.
+> **Sicherheitsgrundsatz:** Client-Secret, Refresh-Token und Verschlüsselungsschlüssel gehören nie in Chat, Git, Tickets oder Screenshots. Diese werden ausschliesslich im Supabase Secret Store verarbeitet. Tokens werden verschlüsselt gespeichert und nicht in nextDesk angezeigt.
 
 ## Architektur und Grenzen
 
@@ -15,15 +15,15 @@ nextDesk verbindet **mehrere Support-Postfächer pro Mandant** mit Microsoft 365
 
 ## 1. Einmalig bei Gross ICT: zentrale Entra-App aktualisieren
 
-Öffnen Sie im Gross-ICT-Entra-Mandanten die App-Registrierung **`nextDesk – Exchange Online`**.
+Öffne im Gross-ICT-Entra-Mandanten die App-Registrierung **`nextDesk – Exchange Online`**.
 
-1. Prüfen Sie unter **Authentication**, dass diese Web-Redirect-URI vorhanden ist:
+1. Prüfe unter **Authentication**, dass diese Web-Redirect-URI vorhanden ist:
 
    ```text
    https://ewizsylzrwogsztsthbl.supabase.co/functions/v1/exchange-mail-connect
    ```
 
-2. Unter **API permissions → Microsoft Graph → Delegated permissions** ergänzen Sie nur:
+2. Unter **API permissions → Microsoft Graph → Delegated permissions** ergänzt du nur:
 
    ```text
    User.Read
@@ -82,7 +82,7 @@ Die Delegationen gelten nur für die ausgewählten Postfächer. Ohne **Vollzugri
 4. **Postfach speichern**.
 5. **Prüfen** wählen. nextDesk prüft das Postfach über die eingegebene Adresse, führt eine Leseabfrage des Eingangskorbs aus und versendet eine kurze Berechtigungs-Bestätigung an das verbundene Microsoft-365-Konto. Damit wird auch **Senden als** vor der Aktivierung nachgewiesen.
 6. Erst nach erfolgreicher Prüfung **Aktivieren** wählen.
-7. **Testmail** wählen. Sie wird an die E-Mail-Adresse der aktuell angemeldeten nextDesk-Person in die Versandwarteschlange gestellt.
+7. **Testmail** wählen. Diese wird an die E-Mail-Adresse der aktuell angemeldeten nextDesk-Person in die Versandwarteschlange gestellt.
 8. Einen echten kontrollierten Test durchführen: neue E-Mail an das Support-Postfach, Ticketentstehung, Agentenantwort, Zustellstatus und bei Bedarf Anhang.
 
 ## 3. Fehlerbilder
@@ -106,7 +106,7 @@ Die Delegationen gelten nur für die ausgewählten Postfächer. Ohne **Vollzugri
 - Anhänge bleiben im bestehenden mandantenisolierten nextDesk-Ticketanhang-Speicher und unterliegen dessen Dateityp- und Grössenlimits.
 - Pausieren eines Kanals beendet die weitere Verarbeitung dieses Postfachs; bereits offene Queue-Einträge des Kanals werden fail-closed verworfen.
 - Wird ein Postfach geändert, muss es erneut geprüft werden. Dadurch kann keine alte Queue-Nachricht versehentlich über eine neue Postfachkonfiguration versandt werden.
-- Beim Wechsel auf den delegierten Microsoft-365-Connect werden ältere Application-RBAC-Kanäle automatisch pausiert, ihre alten Warteschlangeneinträge verworfen und vorhandene Graph-Abos lokal stillgelegt. Sie können erst nach dem sicheren Microsoft-365-Connect wieder aktiviert werden.
+- Beim Wechsel auf den delegierten Microsoft-365-Connect werden ältere Application-RBAC-Kanäle automatisch pausiert, ihre alten Warteschlangeneinträge verworfen und vorhandene Graph-Abos lokal stillgelegt. Diese können erst nach dem sicheren Microsoft-365-Connect wieder aktiviert werden.
 
 ## Offizielle Microsoft-Referenzen
 

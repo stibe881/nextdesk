@@ -1,14 +1,23 @@
 import * as Notifications from "expo-notifications";
-import { useRouter } from "expo-router";
-import { useEffect, useRef } from "react";
-import { AppState, Platform, type AppStateStatus } from "react-native";
+import { type Href, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, AppState, Platform, type AppStateStatus } from "react-native";
+
+import { useMobileFeatures } from "@/components/mobile-feature-gate";
 
 import {
   getMobileUserId,
   loadCurrentTenant,
   nextDesk,
 } from "@/lib/nextdesk-client";
+import { registerAndroidPush } from "@/lib/android-push";
+import { syncAppBadge } from "@/lib/app-badge";
 import { reregisterPushTokenIfEnabled } from "@/lib/push-notifications";
+import {
+  parsePushNavigationData,
+  type PushNavigationData,
+  pushRoute,
+} from "@/lib/push-navigation";
 import {
   REMINDER_ACTION_NEED_HELP,
   REMINDER_ACTION_RESOLVED,
@@ -20,6 +29,7 @@ import {
   startNotificationActions,
 } from "@/lib/notification-actions";
 import { startWatchBridge } from "@/lib/watch-bridge";
+import { tn } from "@/lib/formality";
 
 // Antwort-Knöpfe (iPhone-Sperrbildschirm, Apple Watch) und die Verbindung zur
 // Watch-App schon beim Laden des Moduls starten, damit sie auch bei einem
@@ -53,46 +63,6 @@ if (Platform.OS === "ios") {
   });
 }
 
-type PushNavigationData = {
-  tenantId: string;
-  ticketId?: string;
-  orderId?: string;
-  assetId?: string;
-  notificationId?: string;
-  kind?: string;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parsePushNavigationData(value: unknown): PushNavigationData | null {
-  if (!isRecord(value)) return null;
-  const nestedBody = isRecord(value.body) ? value.body : value;
-  if (typeof nestedBody.tenantId !== "string" || !nestedBody.tenantId) {
-    return null;
-  }
-  return {
-    tenantId: nestedBody.tenantId,
-    ...(typeof nestedBody.ticketId === "string" && nestedBody.ticketId
-      ? { ticketId: nestedBody.ticketId }
-      : {}),
-    ...(typeof nestedBody.orderId === "string" && nestedBody.orderId
-      ? { orderId: nestedBody.orderId }
-      : {}),
-    ...(typeof nestedBody.assetId === "string" && nestedBody.assetId
-      ? { assetId: nestedBody.assetId }
-      : {}),
-    ...(typeof nestedBody.notificationId === "string" &&
-    nestedBody.notificationId
-      ? { notificationId: nestedBody.notificationId }
-      : {}),
-    ...(typeof nestedBody.kind === "string" && nestedBody.kind
-      ? { kind: nestedBody.kind }
-      : {}),
-  };
-}
-
 function navigationDataFromNotification(
   notification: Notifications.Notification,
 ): PushNavigationData | null {
@@ -107,86 +77,178 @@ function navigationDataFromNotification(
   return parsePushNavigationData(trigger.payload?.body);
 }
 
-async function clearBadge(): Promise<void> {
-  if (Platform.OS !== "ios") return;
-  await Notifications.setBadgeCountAsync(0).catch(() => undefined);
-}
+type PendingTap = {
+  data: PushNavigationData;
+  actionIdentifier: string;
+  /** Wechsel in den Arbeitsbereich der Mitteilung wurde schon versucht. */
+  switchTried: boolean;
+};
 
 export function PushNotificationBridge() {
   const router = useRouter();
+  const { isEnabled, loading, switchTenant, tenantId } = useMobileFeatures();
+  const ready = !loading && Boolean(tenantId);
   const handledResponseIds = useRef(new Set<string>());
+  const pending = useRef<PendingTap | null>(null);
+  const switching = useRef(false);
+  const [retry, setRetry] = useState(0);
+  // Aktueller Stand für asynchrone Abläufe (Kaltstart, Wechsel).
+  const current = useRef({ isEnabled, ready, router, switchTenant, tenantId });
+  useEffect(() => {
+    current.current = { isEnabled, ready, router, switchTenant, tenantId };
+  });
+
+  /**
+   * Öffnet das Objekt der angetippten Mitteilung, sobald der Arbeitsbereich
+   * bestätigt ist (auch beim Kaltstart). Gehört die Mitteilung zu einem
+   * anderen Arbeitsbereich, wird zuerst dorthin gewechselt.
+   */
+  const process = useCallback(async () => {
+    const tap = pending.current;
+    const state = current.current;
+    if (!tap || switching.current || !state.ready || !state.tenantId) return;
+
+    if (tap.data.tenantId !== state.tenantId) {
+      if (tap.switchTried) {
+        pending.current = null;
+        return;
+      }
+      tap.switchTried = true;
+      switching.current = true;
+      try {
+        // Der Wechsel bestätigt Mitgliedschaft und Freigaben neu; danach
+        // läuft process() über den Effekt erneut.
+        await state.switchTenant(tap.data.tenantId);
+      } catch (error) {
+        pending.current = null;
+        Alert.alert(
+          "Mitteilung aus einem anderen Arbeitsbereich",
+          error instanceof Error && error.message
+            ? `Der Arbeitsbereich dieser Mitteilung kann nicht geöffnet werden: ${error.message}`
+            : "Der Arbeitsbereich dieser Mitteilung kann nicht geöffnet werden.",
+        );
+      } finally {
+        switching.current = false;
+      }
+      // Falls der Effekt schon vor dem Ende des Wechsels lief.
+      setRetry((value) => value + 1);
+      return;
+    }
+
+    pending.current = null;
+    const route = pushRoute(tap.data);
+    const navigate = () => {
+      const { router: nextRouter, isEnabled: enabled } = current.current;
+      if (!route) return;
+      if (route.kind === "message") {
+        Alert.alert(route.title, route.message);
+        return;
+      }
+      if (route.kind === "ticket") {
+        const reminderAnswer = reminderAnswerFromNotificationAction(
+          tap.actionIdentifier,
+        );
+        nextRouter.push({
+          pathname: "/ticket/[id]",
+          params: reminderAnswer
+            ? { id: route.ticketId, reminderAnswer }
+            : { id: route.ticketId },
+        });
+        return;
+      }
+      if (route.feature && !enabled(route.feature)) {
+        Alert.alert(
+          "Nicht verfügbar",
+          tn("Diese Funktion ist in deinem Arbeitsbereich nicht freigeschaltet oder dir fehlt die Berechtigung.","Diese Funktion ist in Ihrem Arbeitsbereich nicht freigeschaltet oder Ihnen fehlt die Berechtigung."),
+        );
+        return;
+      }
+      nextRouter.push(route.path as Href);
+    };
+    // Nach einem Wechsel wird der Routenbaum neu aufgebaut; kurz warten.
+    if (tap.switchTried) setTimeout(navigate, 350);
+    else navigate();
+
+    if (tap.data.notificationId && nextDesk) {
+      void nextDesk.functions
+        .invoke("notification-center", {
+          body: { type: "markRead", notificationId: tap.data.notificationId },
+        })
+        .catch(() => undefined);
+    }
+  }, []);
+
+  useEffect(() => {
+    void process();
+  }, [process, ready, retry, tenantId]);
+
+  // Android: Mitteilungen der Administration (Expo-Push) empfangen, Zahl auf
+  // dem Symbol nachführen.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+    void syncAppBadge();
+    const received = Notifications.addNotificationReceivedListener(
+      () => void syncAppBadge(),
+    );
+    const appState = AppState.addEventListener("change", (state) => {
+      if (state === "active") void syncAppBadge();
+    });
+    return () => {
+      received.remove();
+      appState.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || !ready || !tenantId) return;
+    void registerAndroidPush(tenantId);
+  }, [ready, tenantId]);
 
   useEffect(() => {
     if (Platform.OS !== "ios") return;
     let active = true;
 
-    const handleResponse = async (
-      response: Notifications.NotificationResponse,
-    ) => {
+    const handleResponse = (response: Notifications.NotificationResponse) => {
       // Antwort-Knöpfe führen eine Aktion aus und öffnen kein Ticket.
       if (isNotificationAction(response)) return;
       const responseId = response.notification.request.identifier;
       if (handledResponseIds.current.has(responseId)) return;
       handledResponseIds.current.add(responseId);
+      // Beim nächsten Start nicht nochmals öffnen.
+      try {
+        Notifications.clearLastNotificationResponse();
+      } catch {
+        // Older native module: harmless.
+      }
 
       const data = navigationDataFromNotification(response.notification);
-      if (!data || !nextDesk) return;
-
-      try {
-        const {
-          data: { session },
-        } = await nextDesk.auth.getSession();
-        if (!active || !session?.user.id) return;
-
-        const tenant = await loadCurrentTenant();
-        if (!active || tenant.id !== data.tenantId) return;
-
-        if (data.ticketId) {
-          const reminderAnswer = reminderAnswerFromNotificationAction(
-            response.actionIdentifier,
-          );
-          router.push({
-            pathname: "/ticket/[id]",
-            params: reminderAnswer
-              ? { id: data.ticketId, reminderAnswer }
-              : { id: data.ticketId },
-          });
-        } else if (data.kind === "shop" && data.orderId) {
-          router.push({
-            pathname: "/shop/order/[id]",
-            params: { id: data.orderId },
-          } as never);
-        } else if (data.kind === "infrastructure" && data.assetId) {
-          router.push(`/infrastructure/${data.assetId}` as never);
-        } else if (data.kind === "summary") {
-          router.push("/tickets");
-        } else {
-          return;
-        }
-
-        if (data.notificationId) {
-          void nextDesk.functions
-            .invoke("notification-center", {
-              body: { type: "markRead", notificationId: data.notificationId },
-            })
-            .catch(() => undefined);
-        }
-      } catch {
-        // A stale session, missing server Function or tenant lookup failure must
-        // never route a notification into another workspace.
-      }
+      if (!data) return;
+      pending.current = {
+        data,
+        actionIdentifier: response.actionIdentifier,
+        switchTried: false,
+      };
+      void process();
     };
 
     const responseSubscription =
-      Notifications.addNotificationResponseReceivedListener((response) => {
-        void handleResponse(response);
-      });
+      Notifications.addNotificationResponseReceivedListener(handleResponse);
 
-    void Notifications.getLastNotificationResponseAsync()
-      .then((response) => {
-        if (response) return handleResponse(response);
-      })
-      .catch(() => undefined);
+    // Kaltstart: die App wurde über die Mitteilung geöffnet.
+    try {
+      const initial = Notifications.getLastNotificationResponse();
+      if (initial) handleResponse(initial);
+    } catch {
+      // Not available: the listener still handles later taps.
+    }
 
     const tokenSubscription = Notifications.addPushTokenListener((token) => {
       void (async () => {
@@ -212,14 +274,18 @@ export function PushNotificationBridge() {
     });
 
     let previousAppState: AppStateStatus = AppState.currentState;
-    void clearBadge();
+    void syncAppBadge();
+    // Eine Mitteilung im Vordergrund: Zahl neu lesen (der Server hat sie gerade angelegt).
+    const receivedSubscription = Notifications.addNotificationReceivedListener(
+      () => void syncAppBadge(),
+    );
     const appStateSubscription = AppState.addEventListener(
       "change",
       (state) => {
         const becameActive =
           previousAppState !== "active" && state === "active";
         previousAppState = state;
-        if (becameActive) void clearBadge();
+        if (becameActive) void syncAppBadge();
       },
     );
 
@@ -228,8 +294,9 @@ export function PushNotificationBridge() {
       responseSubscription.remove();
       tokenSubscription.remove();
       appStateSubscription.remove();
+      receivedSubscription.remove();
     };
-  }, [router]);
+  }, [process]);
 
   return null;
 }

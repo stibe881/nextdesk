@@ -71,7 +71,7 @@ export const TICKET_FIELD_PRESETS: readonly TicketFieldPreset[] = [
   {
     id: "yes-no",
     category: "Feldtypen",
-    symbol: "✓",
+    symbol: "J/N",
     label: "Ja / Nein",
     description: "Für eine eindeutige Bestätigung oder Anfrage.",
     fieldKeyBase: "bestaetigung",
@@ -126,7 +126,7 @@ export const TICKET_FIELD_PRESETS: readonly TicketFieldPreset[] = [
   {
     id: "callback-requested",
     category: "Ticketvorlagen",
-    symbol: "✓",
+    symbol: "J/N",
     label: "Rückruf erwünscht",
     description: "Erfasst einen gewünschten telefonischen Rückruf.",
     fieldKeyBase: "rueckruf_erwuenscht",

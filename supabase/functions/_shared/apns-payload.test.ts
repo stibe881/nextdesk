@@ -68,7 +68,7 @@ Deno.test("summary payload is source-neutral", () => {
   assertFalse(String(alert.body).toLowerCase().includes("ticket"));
 });
 
-Deno.test("low-stock payload contains no item data or deep link", () => {
+Deno.test("low-stock payload contains no item names or details", () => {
   const payload = buildApnsPayload({
     kind: "inventory_low_stock",
     tenantId: "00000000-0000-4000-8000-000000000001",
@@ -294,4 +294,166 @@ Deno.test("phishing reports alert the security team", () => {
   const alert = (payload.aps as { alert: { title: string; body: string } }).alert;
   assertEquals(alert.title, "Phishing-Meldung");
   assertStringIncludes(alert.body, "SEC-3");
+});
+
+Deno.test("IP address notifications open the address or the device", () => {
+  const payload = buildApnsPayload({
+    kind: "ipam",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000007",
+    ipamEvent: "reservation_expiring",
+    ipamNumber: "10.1.2.3",
+    ipamAddress: "10.1.2.3",
+    ipamTitle: "DRU-01",
+    dueOn: "2026-11-14",
+  });
+  const alert = (payload.aps as { alert: { title: string; body: string } })
+    .alert;
+  assertEquals(alert.title, "Reservierung läuft ab");
+  assertStringIncludes(alert.body, "14.11.2026");
+  const body = payload.body as Record<string, unknown>;
+  assertEquals(body.kind, "ipam");
+  assertEquals(body.ipamAddress, "10.1.2.3");
+  assertEquals(body.ticketId, undefined);
+
+  const offline = buildApnsPayload({
+    kind: "ipam",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000008",
+    ipamEvent: "agent_offline",
+    ipamAgentName: "Agent Baar",
+  });
+  assertEquals(
+    (offline.aps as { alert: { title: string } }).alert.title,
+    "Netzwerkagent offline",
+  );
+});
+
+Deno.test("security cases, shop and inventory reminders have own texts", () => {
+  const alert = (input: Parameters<typeof buildApnsPayload>[0]) =>
+    (buildApnsPayload(input).aps as { alert: { title: string; body: string } })
+      .alert;
+  const base = {
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000009",
+  };
+  assertEquals(
+    alert({ ...base, kind: "security_report", securityEvent: "overdue", ticketNumber: "SEC-4" }).title,
+    "Phishing-/Junk-Fall überfällig",
+  );
+  assertStringIncludes(
+    alert({ ...base, kind: "security_report", securityEvent: "campaign", securityCount: 3 }).body,
+    "3 Personen",
+  );
+  assertEquals(
+    alert({ ...base, kind: "shop", shopEvent: "loan_due", orderNumber: "B-7" }).title,
+    "Ausleihe endet bald",
+  );
+  assertEquals(
+    alert({ ...base, kind: "shop", shopEvent: "loan_overdue", shopEscalated: true }).title,
+    "Ausleihe im Team überfällig",
+  );
+  assertEquals(
+    alert({ ...base, kind: "inventory_low_stock", inventoryEvent: "count_due" }).title,
+    "Inventur fällig",
+  );
+});
+
+Deno.test("payload carries the exact kind and the ids the app opens", () => {
+  const base = {
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+  };
+  const itemId = "00000000-0000-4000-8000-000000000010";
+  const locationId = "00000000-0000-4000-8000-000000000011";
+  const body = (input: Parameters<typeof buildApnsPayload>[0]) =>
+    buildApnsPayload(input).body as Record<string, unknown>;
+
+  const reorder = body({
+    ...base,
+    kind: "inventory_low_stock",
+    notificationKind: "inventory.reorder",
+    inventoryEvent: "reorder",
+    inventoryItemId: itemId,
+  });
+  assertEquals(reorder.notificationKind, "inventory.reorder");
+  assertEquals(reorder.inventoryItemId, itemId);
+  assertFalse("inventoryLocationId" in reorder);
+
+  const count = body({
+    ...base,
+    kind: "inventory_low_stock",
+    notificationKind: "inventory.count_due",
+    inventoryLocationId: locationId,
+  });
+  assertEquals(count.inventoryLocationId, locationId);
+
+  // Only UUIDs and plain kinds, never names or paths.
+  const invalid = body({
+    ...base,
+    kind: "inventory_low_stock",
+    notificationKind: "Inventory Count",
+    inventoryItemId: "../x",
+  });
+  assertFalse("inventoryItemId" in invalid);
+  assertFalse("notificationKind" in invalid);
+
+  const task = body({
+    ...base,
+    kind: "service_task",
+    notificationKind: "service_task.overdue",
+    occurrenceId: itemId,
+  });
+  assertEquals(task.occurrenceId, itemId);
+  assertEquals(task.notificationKind, "service_task.overdue");
+
+  const summary = body({
+    ...base,
+    kind: "summary",
+    notificationKind: "ticket.assigned",
+    summaryCount: 2,
+  });
+  assertFalse("notificationKind" in summary);
+});
+
+Deno.test("push texts follow the tenant's form of address", () => {
+  const input = {
+    kind: "approval" as const,
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "event-1",
+    ticketNumber: "NX-1",
+  };
+  const text = (formality?: "du" | "sie") =>
+    (
+      (formality
+        ? buildApnsPayload(input, formality)
+        : buildApnsPayload(input)
+      ).aps as { alert: { body: string } }
+    ).alert.body;
+
+  assertEquals(text(), "Für NX-1 wird deine Freigabe benötigt.");
+  assertEquals(text("du"), "Für NX-1 wird deine Freigabe benötigt.");
+  assertEquals(text("sie"), "Für NX-1 wird Ihre Freigabe benötigt.");
+});
+
+Deno.test("Die Zahl auf dem App-Symbol (badge) wird nur für gültige Zahlen gesetzt", () => {
+  const base = {
+    kind: "test" as const,
+    tenantId: "11111111-1111-4111-8111-111111111111",
+    notificationId: "22222222-2222-4222-8222-222222222222",
+  };
+  const withBadge = buildApnsPayload({ ...base, badge: 7 }) as {
+    aps: Record<string, unknown>;
+  };
+  if (withBadge.aps.badge !== 7) throw new Error("badge fehlt");
+  const clamped = buildApnsPayload({ ...base, badge: 123456 }) as {
+    aps: Record<string, unknown>;
+  };
+  if (clamped.aps.badge !== 9999) throw new Error("badge nicht begrenzt");
+  for (const badge of [undefined, -1, 1.5, Number.NaN]) {
+    const payload = buildApnsPayload({ ...base, badge }) as {
+      aps: Record<string, unknown>;
+    };
+    if ("badge" in payload.aps) throw new Error("ungültiges badge gesetzt");
+  }
 });

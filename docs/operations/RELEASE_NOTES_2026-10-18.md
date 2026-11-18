@@ -19,7 +19,7 @@
 - Die serverseitige Durchsetzung der Funktionsschalter umfasst jetzt auch Ticketvorlagen, Kategorien, Anfragendenkontext, Anhänge, Agentenzuweisung, Abteilungswechsel, Freigaben, Wissen, Übergaben, Kundenfeedback, Qualitätsprüfung, Präsenz und Ticket-Attributwerte. Asset-Management wird ebenfalls vor jedem Serverzugriff gegen den Mandantenschalter geprüft. Fehlende, fehlerhafte oder abgelaufene Schalter werden fail-closed behandelt. Ein Merge darf ein Ticket nur dann automatisch auf «gelöst» setzen, wenn die handelnde Person zusätzlich die Abschlussberechtigung besitzt.
 - Ergänzung Funktionsschalter: Wissens-API, SLA-Verwaltung, Service-Reporting und die unabhängige Asset-Registry prüfen ihre jeweilige Mandantenfreigabe nun ebenfalls serverseitig und fail-closed. Web-Einstellungen laden die Freigaben direkt nach einem Schalter- oder Pilotwechsel nach; die mobile App aktualisiert sie bei Mandantenwechsel und Rückkehr in den Vordergrund.
 - Massenstatusänderungen in einen geschlossenen Status sind zweistufig: Die Ticketliste zeigt zuerst eine klare Inline-Bestätigung mit Anzahl, Zielstatus und Audit-Hinweis. Erst die explizite zweite Aktion kann schliessen. Die neue Datenbank-RPC-Signatur verlangt dieselbe Bestätigung verpflichtend, ist weiterhin nur für die Service Role ausführbar, prüft Berechtigungen pro Ticket erneut und protokolliert den bestätigten Abschluss atomar.
-- Die nur manuell auslösbare Auto-Close-Aktion übergibt ihre sichtbare Webbestätigung jetzt explizit an die neue Massenabschluss-RPC. Sie bleibt auf aktuelle serverseitige Kandidaten, eine erneute Rechteprüfung und einen separaten Lauf- sowie Audit-Eintrag begrenzt; ein unbeaufsichtigter Scheduler wird nicht aktiviert.
+- Die nur manuell auslösbare Auto-Close-Aktion übergibt ihre sichtbare Webbestätigung jetzt explizit an die neue Massenabschluss-RPC. Diese bleibt auf aktuelle serverseitige Kandidaten, eine erneute Rechteprüfung und einen separaten Lauf- sowie Audit-Eintrag begrenzt; ein unbeaufsichtigter Scheduler wird nicht aktiviert.
 
 ## Nachlieferung 16:30 Uhr
 
@@ -52,7 +52,7 @@ Anfragendenportal: Störungsmeldungen, Zeitleiste, SLA-Erwartung, eigene Geräte
 
 ## Sicherheits- und Betriebsgrenzen
 
-Die Integration mit Microsoft Intune, der vollständige Entra-Personenabgleich, E-Mail/Kalender/Teams/Slack, Webhooks/API-Schlüssel, produktives Monitoring sowie zeitgesteuerte Regelruns bleiben bewusst deaktiviert, bis die je erforderlichen Provider- und Datenschutzfreigaben, Secrets und Einwilligungen vorliegen. Sie sind nicht als aktiv ausgegeben.
+Die Integration mit Microsoft Intune, der vollständige Entra-Personenabgleich, E-Mail/Kalender/Teams/Slack, Webhooks/API-Schlüssel, produktives Monitoring sowie zeitgesteuerte Regelruns bleiben bewusst deaktiviert, bis die je erforderlichen Provider- und Datenschutzfreigaben, Secrets und Einwilligungen vorliegen. Diese sind nicht als aktiv ausgegeben.
 
 Automatische Datenlöschung und unbeaufsichtigte Ticket-Schliessungen sind nicht aktiv. Retentionswerte sind zunächst Richtlinien; ein kontrollierter, separat freigegebener Lösch- oder Schedulerbetrieb ist nötig.
 

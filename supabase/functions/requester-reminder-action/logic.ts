@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 export type ReminderActionError = {
   status: number;
   code: string;
@@ -8,11 +9,17 @@ const ERRORS: Record<string, Omit<ReminderActionError, "code">> = {
   invalid_request: { status: 400, message: "Die Anfrage ist ungültig." },
   token_invalid: {
     status: 400,
-    message: "Dieser Link ist ungültig. Bitte öffnen Sie das Ticket im Portal.",
+    message: msg(
+      "Dieser Link ist ungültig. Bitte öffne das Ticket im Portal.",
+      "Dieser Link ist ungültig. Bitte öffnen Sie das Ticket im Portal.",
+    ),
   },
   token_expired: {
     status: 410,
-    message: "Dieser Link ist abgelaufen. Bitte öffnen Sie das Ticket im Portal.",
+    message: msg(
+      "Dieser Link ist abgelaufen. Bitte öffne das Ticket im Portal.",
+      "Dieser Link ist abgelaufen. Bitte öffnen Sie das Ticket im Portal.",
+    ),
   },
   token_used: {
     status: 409,
@@ -20,11 +27,17 @@ const ERRORS: Record<string, Omit<ReminderActionError, "code">> = {
   },
   actions_disabled: {
     status: 409,
-    message: "Diese Aktion ist nicht mehr verfügbar. Bitte antworten Sie auf die E-Mail.",
+    message: msg(
+      "Diese Aktion ist nicht mehr verfügbar. Bitte antworte auf die E-Mail.",
+      "Diese Aktion ist nicht mehr verfügbar. Bitte antworten Sie auf die E-Mail.",
+    ),
   },
   ticket_not_waiting: {
     status: 409,
-    message: "Das Ticket wartet nicht mehr auf Ihre Rückmeldung.",
+    message: msg(
+      "Das Ticket wartet nicht mehr auf deine Rückmeldung.",
+      "Das Ticket wartet nicht mehr auf Ihre Rückmeldung.",
+    ),
   },
   ticket_not_available: {
     status: 404,
@@ -32,17 +45,25 @@ const ERRORS: Record<string, Omit<ReminderActionError, "code">> = {
   },
   status_rule: {
     status: 409,
-    message:
+    message: msg(
+      "Der Status kann gerade nicht geändert werden. Bitte antworte auf die E-Mail.",
       "Der Status kann gerade nicht geändert werden. Bitte antworten Sie auf die E-Mail.",
+    ),
   },
   status_missing: {
     status: 409,
-    message: "Diese Aktion ist für Ihr Ticket nicht eingerichtet.",
+    message: msg(
+      "Diese Aktion ist für dein Ticket nicht eingerichtet.",
+      "Diese Aktion ist für Ihr Ticket nicht eingerichtet.",
+    ),
   },
   message_too_long: { status: 422, message: "Die Nachricht ist zu lang." },
   unavailable: {
     status: 503,
-    message: "Der Dienst ist gerade nicht erreichbar. Bitte versuchen Sie es später.",
+    message: msg(
+      "Der Dienst ist gerade nicht erreichbar. Bitte versuche es später.",
+      "Der Dienst ist gerade nicht erreichbar. Bitte versuchen Sie es später.",
+    ),
   },
   failed: {
     status: 500,

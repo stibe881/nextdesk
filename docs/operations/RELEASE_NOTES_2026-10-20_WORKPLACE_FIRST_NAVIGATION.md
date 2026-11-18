@@ -13,7 +13,7 @@ Ist der Arbeitsplatz für einen Mandanten nicht verfügbar, beginnt die Navigati
 
 ## Sicherheit und Datenwirkung
 
-Die Änderung betrifft ausschliesslich die Reihenfolge bereits berechtigter Navigationseinträge. Sie verändert keine Rollen, Funktionsfreigaben, Mandantenzuordnungen, Daten oder API-Aufrufe.
+Die Änderung betrifft ausschliesslich die Reihenfolge bereits berechtigter Navigationseinträge. Diese verändert keine Rollen, Funktionsfreigaben, Mandantenzuordnungen, Daten oder API-Aufrufe.
 
 Es wurden keine Datenbankmigrationen, Edge Functions, externen Integrationen oder Hintergrundaufgaben veröffentlicht.
 

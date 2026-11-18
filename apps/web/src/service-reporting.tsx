@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -7,6 +8,8 @@ import {
   type CSSProperties,
 } from "react";
 import { FeedbackInsights } from "./feedback-insights";
+import { SpamReportPanel } from "./spam-report";
+import "./spam-report.css";
 import { functionErrorMessage } from "./lib/function-error";
 import {
   PREDEFINED_REPORTS,
@@ -101,10 +104,20 @@ type ServiceReport = {
   averageSatisfaction: number | null;
   satisfactionSampleSize: number;
   deflectedTickets: number | null;
+  /** Verfügbarkeit der Dienste (30/90 Tage); null bei älteren Serverständen. */
+  serviceAvailability: ServiceAvailabilityMetric[] | null;
+};
+export type ServiceAvailabilityMetric = {
+  serviceId: string;
+  name: string;
+  days30: number | null;
+  days90: number | null;
+  maintenance90Percent: number | null;
 };
 type ReportLoadState =
   "idle" | "loading" | "forbidden" | "unavailable" | "error";
-type ReportSection = "overview" | "quality" | "distribution" | "time";
+type ReportSection =
+  "overview" | "quality" | "distribution" | "time" | "availability";
 
 type SummaryMetricProps = {
   label: string;
@@ -128,6 +141,7 @@ const REPORT_SECTIONS: readonly { key: ReportSection; label: string }[] = [
   { key: "quality", label: "Servicequalität" },
   { key: "distribution", label: "Verteilungen" },
   { key: "time", label: "Zeiterfassung" },
+  { key: "availability", label: "Verfügbarkeit" },
 ];
 const DATE_INPUT = /^\d{4}-\d{2}-\d{2}$/;
 const numberFormatter = new Intl.NumberFormat("de-CH");
@@ -327,7 +341,48 @@ function parseServiceReport(value: unknown): ServiceReport {
     averageSatisfaction: data.averageSatisfaction,
     satisfactionSampleSize: data.satisfactionSampleSize,
     deflectedTickets: optionalCount(data.deflectedTickets),
+    serviceAvailability: parseServiceAvailability(data.serviceAvailability),
   };
+}
+
+function percentValue(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 100
+    ? value
+    : null;
+}
+
+/** Optionale Verfügbarkeit pro Dienst (ungültige Einträge entfallen). */
+export function parseServiceAvailability(
+  value: unknown,
+): ServiceAvailabilityMetric[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.slice(0, 200).flatMap((entry) =>
+    isRecord(entry) &&
+    typeof entry.serviceId === "string" &&
+    typeof entry.name === "string" &&
+    entry.name.trim()
+      ? [
+          {
+            serviceId: entry.serviceId,
+            name: entry.name.trim(),
+            days30: percentValue(entry.days30),
+            days90: percentValue(entry.days90),
+            maintenance90Percent: percentValue(entry.maintenance90Percent),
+          },
+        ]
+      : [],
+  );
+}
+
+function formatPercent(value: number | null): string {
+  return value === null
+    ? "–"
+    : `${new Intl.NumberFormat("de-CH", {
+        maximumFractionDigits: value >= 99.95 && value < 100 ? 2 : 1,
+      }).format(value)} %`;
 }
 
 async function invokeServiceReporting(
@@ -609,9 +664,10 @@ export function ServiceReporting({
     quality: true,
     distribution: true,
     time: true,
+    availability: true,
   });
   const [view, setView] = useState<
-    "metrics" | "feedback" | PredefinedReportKey
+    "metrics" | "feedback" | "spam" | PredefinedReportKey
   >("overview");
   const [refreshKey, setRefreshKey] = useState(0);
   const requestVersion = useRef(0);
@@ -735,9 +791,18 @@ export function ServiceReporting({
         >
           Feedback-Themen
         </button>
+        <button
+          aria-selected={view === "spam"}
+          onClick={() => setView("spam")}
+          role="tab"
+          type="button"
+        >
+          Spam
+        </button>
       </nav>
       {view === "feedback" ? <FeedbackInsights tenantId={tenantId} /> : null}
-      {view !== "feedback" ? (
+      {view === "spam" ? <SpamReportPanel tenantId={tenantId} /> : null}
+      {view !== "feedback" && view !== "spam" ? (
         <header className="service-reporting__header">
           <div>
             <p className="service-reporting__intro">
@@ -790,7 +855,7 @@ export function ServiceReporting({
         </header>
       ) : null}
 
-      {period === "custom" && view !== "feedback" ? (
+      {period === "custom" && view !== "feedback" && view !== "spam" ? (
         <form
           className="service-reporting__custom-period"
           onSubmit={(event) => {
@@ -837,7 +902,7 @@ export function ServiceReporting({
         </form>
       ) : null}
 
-      {view !== "metrics" && view !== "feedback" ? (
+      {view !== "metrics" && view !== "feedback" && view !== "spam" ? (
         <PredefinedReports
           onOpenTicketList={onOpenTicketList}
           branding={{ logoUrl: branding.logoUrl, name: branding.name }}
@@ -861,8 +926,10 @@ export function ServiceReporting({
                 Eigenen Bericht zusammenstellen
               </h2>
               <p>
-                Wählen Sie Titel und Abschnitte für die aktuelle, bereits
-                autorisiert geladene Auswertung.
+                {tn(
+                  "Wähle Titel und Abschnitte für die aktuelle, bereits autorisiert geladene Auswertung.",
+                  "Wählen Sie Titel und Abschnitte für die aktuelle, bereits autorisiert geladene Auswertung.",
+                )}
               </p>
             </div>
             <button
@@ -919,8 +986,10 @@ export function ServiceReporting({
         <section className="service-reporting__state" role="alert">
           <h2>Kein Zugriff auf Berichte</h2>
           <p>
-            Sie haben für diesen Mandanten keine Berechtigung, Service-Berichte
-            zu lesen.
+            {tn(
+              "Du hast für diesen Mandanten keine Berechtigung, Service-Berichte zu lesen.",
+              "Sie haben für diesen Mandanten keine Berechtigung, Service-Berichte zu lesen.",
+            )}
           </p>
         </section>
       ) : null}
@@ -937,7 +1006,10 @@ export function ServiceReporting({
         <section className="service-reporting__state" role="alert">
           <h2>Bericht konnte nicht geladen werden</h2>
           <p>
-            Bitte prüfen Sie den Zeitraum oder versuchen Sie es später erneut.
+            {tn(
+              "Bitte prüfe den Zeitraum oder versuche es später erneut.",
+              "Bitte prüfen Sie den Zeitraum oder versuchen Sie es später erneut.",
+            )}
           </p>
         </section>
       ) : null}
@@ -1021,7 +1093,10 @@ export function ServiceReporting({
                       report.comparison.deflectedTickets,
                       formatNumber,
                     )}
-                    detail="Mit einem Artikel aus den Abteilungen Ihrer Teams oder ohne Abteilung gelöst, kein Ticket erstellt"
+                    detail={tn(
+                      "Mit einem Artikel aus den Abteilungen deiner Teams oder ohne Abteilung gelöst, kein Ticket erstellt",
+                      "Mit einem Artikel aus den Abteilungen Ihrer Teams oder ohne Abteilung gelöst, kein Ticket erstellt",
+                    )}
                     label="Vermiedene Tickets (Wissensdatenbank)"
                     value={formatNumber(report.deflectedTickets)}
                   />
@@ -1250,6 +1325,56 @@ export function ServiceReporting({
                     ))}
                   </ul>
                 )}
+              </section>
+            ) : null}
+
+            {selected("availability") &&
+            report.serviceAvailability &&
+            report.serviceAvailability.length > 0 ? (
+              <section
+                className="service-reporting__panel"
+                aria-labelledby={`${headingId}-availability`}
+              >
+                <div className="service-reporting__section-heading">
+                  <div>
+                    <h2 id={`${headingId}-availability`}>
+                      Verfügbarkeit der Dienste
+                    </h2>
+                    <p className="service-reporting__detail">
+                      Aus dem Statusverlauf: «In Betrieb» und «Wartung» gelten
+                      als verfügbar, der Wartungsanteil ist separat ausgewiesen.
+                      Unabhängig vom gewählten Zeitraum.
+                    </p>
+                  </div>
+                </div>
+                <ul className="service-reporting__list">
+                  {[...report.serviceAvailability]
+                    .sort(
+                      (left, right) =>
+                        (left.days90 ?? 101) - (right.days90 ?? 101) ||
+                        left.name.localeCompare(right.name, "de-CH"),
+                    )
+                    .map((metric) => (
+                      <li key={metric.serviceId}>
+                        <div className="service-reporting__row">
+                          <div>
+                            <div className="service-reporting__row-label">
+                              {metric.name}
+                            </div>
+                            <p className="service-reporting__detail">
+                              30 Tage: {formatPercent(metric.days30)} · davon
+                              Wartung (90 Tage):{" "}
+                              {formatPercent(metric.maintenance90Percent)}
+                            </p>
+                          </div>
+                          <strong>
+                            {formatPercent(metric.days90)}{" "}
+                            <small>in 90 Tagen</small>
+                          </strong>
+                        </div>
+                      </li>
+                    ))}
+                </ul>
               </section>
             ) : null}
 

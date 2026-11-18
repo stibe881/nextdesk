@@ -1,6 +1,8 @@
 // Load environment variables with proper priority (system > .env)
 import "./scripts/load-env.js";
+import { existsSync } from "node:fs";
 import type { ExpoConfig } from "expo/config";
+import { withAndroidManifest, type ConfigPlugin } from "expo/config-plugins";
 import type { WithAndroidWidgetsParams } from "react-native-android-widget";
 
 // Bundle ID format: space.manus.<project_name_dots>.<timestamp>
@@ -27,9 +29,50 @@ const bundleId =
 // Supabase, avoiding a redirect to a different or older development scheme.
 const schemeFromBundleId = "ch.grossict.nextdesk";
 
+// Android-Push über Expo braucht die Firebase-Datei google-services.json: als
+// EAS-Datei-Variable GOOGLE_SERVICES_JSON oder als Datei im Projektordner.
+// Fehlt sie, baut die App ohne Push-Zugangsdaten (Mitteilungen bleiben aus).
+const googleServicesFile =
+  process.env.GOOGLE_SERVICES_JSON ??
+  (existsSync("./google-services.json") ? "./google-services.json" : undefined);
+
+// Purpose strings for the iOS permission dialogs (App Review 5.1.1(ii): they
+// must clearly and completely describe the use). Several plugins write the
+// same key; each one gets the same German text, otherwise the last plugin
+// replaces it with its generic English default.
+const MICROPHONE_USAGE =
+  "nextDesk nutzt das Mikrofon nur, damit du Antworten in Tickets diktieren kannst."; // formality-ok: Text steht zur Build-Zeit fest (Systemdialog, Widget)
+const CAMERA_USAGE =
+  "nextDesk verwendet die Kamera, um QR-Codes von Assets zu scannen und Fotos direkt als Anhang zu einem Ticket aufzunehmen.";
+const PHOTOS_USAGE =
+  "nextDesk benötigt den Fotozugriff nur, um ausgewählte Bilder als Anhang zu einem Ticket hinzuzufügen.";
+
+// The camera is optional: tickets can be created without it and photos can
+// come from the system photo picker. Without this declaration the CAMERA
+// permission implies a required camera and Google Play hides the app on
+// devices without one (e.g. some tablets and Chromebooks).
+const withOptionalCamera: ConfigPlugin = (config) =>
+  withAndroidManifest(config, (mod) => {
+    const manifest = mod.modResults.manifest;
+    const features = (manifest["uses-feature"] ??= []);
+    for (const name of [
+      "android.hardware.camera",
+      "android.hardware.camera.any",
+      "android.hardware.camera.autofocus",
+    ]) {
+      const existing = features.find((item) => item.$["android:name"] === name);
+      if (existing) existing.$["android:required"] = "false";
+      else
+        features.push({
+          $: { "android:name": name, "android:required": "false" },
+        });
+    }
+    return mod;
+  });
+
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "nextDesk iOS",
+  appName: "nextDesk",
   appSlug: "nextdeskios",
   logoUrl:
     "https://files.manuscdn.com/user_upload_by_module/session_file/310519663166174123/iJmIGyxNgxjtJGVS.png",
@@ -71,7 +114,7 @@ const publicRuntime = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
-  version: "1.0.0",
+  version: "1.0.3",
   extra: publicRuntime,
   orientation: "portrait",
   icon: "./assets/images/icon.png",
@@ -100,7 +143,17 @@ const config: ExpoConfig = {
     },
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
+    ...(googleServicesFile ? { googleServicesFile } : {}),
     permissions: ["POST_NOTIFICATIONS"],
+    // Google Play «Photo and Video Permissions»: photos are only picked now
+    // and then for a ticket, so the system photo picker is used and broad
+    // media access must not end up in the manifest through any library.
+    blockedPermissions: [
+      "android.permission.READ_MEDIA_IMAGES",
+      "android.permission.READ_MEDIA_VIDEO",
+      "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+      "android.permission.ACCESS_MEDIA_LOCATION",
+    ],
     intentFilters: [
       {
         action: "VIEW",
@@ -128,10 +181,9 @@ const config: ExpoConfig = {
     [
       "expo-speech-recognition",
       {
-        microphonePermission:
-          "nextDesk nutzt das Mikrofon, damit du Antworten diktieren kannst.",
+        microphonePermission: MICROPHONE_USAGE,
         speechRecognitionPermission:
-          "nextDesk wandelt dein Diktat in Text um, damit du Antworten nicht tippen musst.",
+          "nextDesk wandelt dein Diktat in Text um, damit du Antworten nicht tippen musst.", // formality-ok: Text steht zur Build-Zeit fest (Systemdialog, Widget)
         androidSpeechServicePackages: [
           "com.google.android.googlequicksearchbox",
         ],
@@ -140,38 +192,48 @@ const config: ExpoConfig = {
     [
       "expo-audio",
       {
-        microphonePermission:
-          "Allow $(PRODUCT_NAME) to access your microphone.",
+        microphonePermission: MICROPHONE_USAGE,
+        // Standardmässig trägt das Plugin «audio» in UIBackgroundModes ein
+        // (Hintergrund-Wiedergabe). Die App spielt nichts im Hintergrund ab
+        // und nimmt nicht im Hintergrund auf: Apple lehnt sonst ab (2.5.4).
+        enableBackgroundPlayback: false,
+        enableBackgroundRecording: false,
       },
     ],
     [
       "expo-camera",
       {
-        cameraPermission:
-          "nextDesk verwendet die Kamera, um QR-Codes von Assets zu scannen und Fotos direkt als Anhang zu einem Ticket aufzunehmen.",
+        cameraPermission: CAMERA_USAGE,
+        microphonePermission: MICROPHONE_USAGE,
+        // The scanner never records video; RECORD_AUDIO comes only from
+        // dictation (expo-speech-recognition).
+        recordAudioAndroid: false,
       },
     ],
     [
       "expo-image-picker",
       {
-        photosPermission:
-          "nextDesk benötigt den Fotozugriff nur, um einen Bildanhang zu einem Ticket hinzuzufügen.",
-        cameraPermission:
-          "nextDesk verwendet die Kamera, um QR-Codes von Assets zu scannen und Fotos direkt als Anhang zu einem Ticket aufzunehmen.",
+        photosPermission: PHOTOS_USAGE,
+        cameraPermission: CAMERA_USAGE,
+        // Only still images are taken; `false` would remove the dictation
+        // permission as well, so the shared text is passed instead.
+        microphonePermission: MICROPHONE_USAGE,
       },
     ],
     [
       "expo-local-authentication",
       {
         faceIDPermission:
-          "nextDesk verwendet Face ID nur, um deine bereits angemeldete Sitzung auf diesem Gerät zu schützen.",
+          "nextDesk verwendet Face ID nur, um deine bereits angemeldete Sitzung auf diesem Gerät zu schützen.", // formality-ok: Text steht zur Build-Zeit fest (Systemdialog, Widget)
       },
     ],
     [
       "expo-video",
       {
-        supportsBackgroundPlayback: true,
-        supportsPictureInPicture: true,
+        // Die App spielt keine Medien im Hintergrund: das Plugin würde sonst
+        // «audio» in UIBackgroundModes eintragen (Apple 2.5.4).
+        supportsBackgroundPlayback: false,
+        supportsPictureInPicture: false,
       },
     ],
     // Static home-screen quick actions on iOS: they show on long-press of the
@@ -183,7 +245,7 @@ const config: ExpoConfig = {
         iosActions: [
           {
             id: "follow-up",
-            title: "Wiedervorlage erfassen",
+            title: "Erinnerung erfassen",
             icon: "symbol:calendar.badge.clock",
           },
           {
@@ -230,7 +292,7 @@ const config: ExpoConfig = {
             name: "NextDeskPriorities",
             label: "Meine Prioritäten",
             description:
-              "Deine drei wichtigsten Tickets mit SLA-Warnungen und offenen Freigaben.",
+              "Deine drei wichtigsten Tickets mit SLA-Warnungen und offenen Freigaben.", // formality-ok: Text steht zur Build-Zeit fest (Systemdialog, Widget)
             minWidth: "250dp",
             minHeight: "180dp",
             targetCellWidth: 4,
@@ -242,7 +304,7 @@ const config: ExpoConfig = {
             name: "NextDeskCounters",
             label: "SLA & Freigaben",
             description:
-              "Deine SLA-Warnungen (fällig in unter 4 Stunden) und offenen Freigaben.",
+              "Deine SLA-Warnungen (fällig in unter 4 Stunden) und offenen Freigaben.", // formality-ok: Text steht zur Build-Zeit fest (Systemdialog, Widget)
             minWidth: "180dp",
             minHeight: "110dp",
             targetCellWidth: 3,
@@ -269,4 +331,4 @@ const config: ExpoConfig = {
   },
 };
 
-export default config;
+export default withOptionalCamera(config);

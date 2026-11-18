@@ -145,3 +145,45 @@
     margin-right: 20px;
   }
 }
+
+/* Assigned Störungen and security cases above the tickets. */
+.my-priorities__operations {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.my-priorities__operation {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: center;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--tone-warning, var(--border));
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.my-priorities__operation.is-urgent {
+  border-left-color: var(--tone-danger, var(--border));
+  background: var(--tone-danger-soft, var(--surface));
+}
+
+.my-priorities__operation strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.my-priorities__operation small {
+  grid-column: 2 / -1;
+  color: var(--muted);
+}

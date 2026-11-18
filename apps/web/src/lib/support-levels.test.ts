@@ -8,12 +8,14 @@ import {
   handoverNoteError,
   levelChangeText,
   parseQueueLevels,
+  parseSuspicionResult,
   parseSupportLevelReport,
   parseTicketSupportLevel,
   supportLevelFilterValue,
   supportLevelFromSelect,
   supportLevelLabel,
   supportLevelOfFilter,
+  suspicionResultText,
 } from "./support-levels";
 
 describe("Supportstufen", () => {
@@ -141,5 +143,55 @@ describe("Supportstufen", () => {
       }),
     ).toEqual([1, 2]);
     expect(parseQueueLevels(null)).toEqual([]);
+  });
+});
+
+describe("Spam-/Phishing-Verdacht", () => {
+  it("liest den Verdachtszustand aus der Ticketantwort", () => {
+    const parsed = parseTicketSupportLevel({
+      data: {
+        targets: { next: null, back: [] },
+        history: [],
+        suspicion: {
+          reported: false,
+          canReport: true,
+          targetTeam: { id: "team-2", name: "System Engineer" },
+        },
+      },
+    });
+    expect(parsed?.suspicion).toEqual({
+      reported: false,
+      canReport: true,
+      targetTeam: { id: "team-2", name: "System Engineer" },
+    });
+    // Ältere Antworten ohne Verdachtsangaben blenden den Knopf aus.
+    expect(
+      parseTicketSupportLevel({
+        data: { targets: { next: null, back: [] }, history: [] },
+      })?.suspicion,
+    ).toEqual({ reported: false, canReport: false, targetTeam: null });
+  });
+
+  it("beschreibt Übergabe und Antwort", () => {
+    const sent = parseSuspicionResult({
+      data: { teamName: "System Engineer", moved: true, reply: "queued" },
+    });
+    expect(sent).toEqual({
+      teamName: "System Engineer",
+      moved: true,
+      reply: "queued",
+    });
+    expect(suspicionResultText(sent!)).toBe(
+      "Als Spam-/Phishing-Verdacht markiert. Das Ticket wurde an den 2nd Level (System Engineer) übergeben. Die Standardantwort an die anfragende Person ist unterwegs.",
+    );
+    const noMail = parseSuspicionResult({
+      data: { teamName: "System Engineer", moved: false, reply: "no_requester_email" },
+    });
+    expect(suspicionResultText(noMail!)).toMatch(/bereits beim 2nd Level/);
+    expect(suspicionResultText(noMail!)).toMatch(/keine E-Mail-Adresse/);
+    expect(
+      parseSuspicionResult({ data: { teamName: "X", reply: "unbekannt" } })?.reply,
+    ).toBe("failed");
+    expect(parseSuspicionResult({ data: {} })).toBeNull();
   });
 });

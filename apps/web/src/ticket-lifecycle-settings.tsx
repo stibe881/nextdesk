@@ -151,8 +151,9 @@ export function TicketLifecycleSettings({ tenantId }: { tenantId: string }) {
           <p className="eyebrow">TICKET-ABLAUF</p>
           <h2 id="ticket-lifecycle-heading">Erinnern, lösen, schliessen</h2>
           <p>
-            Diese Regeln laufen stündlich und automatisch. Antwortet die
-            anfragende Person, beginnt die Wartezeit neu.
+            Diese Regeln laufen stündlich und automatisch. Gezählt werden
+            Werktage (Montag bis Freitag), Samstag und Sonntag zählen nicht mit.
+            Antwortet die anfragende Person, beginnt die Wartezeit neu.
           </p>
         </div>
         {loading ? (
@@ -188,7 +189,7 @@ export function TicketLifecycleSettings({ tenantId }: { tenantId: string }) {
           </div>
           <div className="tenant-automation__controls">
             <label>
-              Erinnern nach Tagen
+              Erinnern nach Werktagen
               {days("waitingReminderDays", 60)}
             </label>
             <label>
@@ -197,9 +198,9 @@ export function TicketLifecycleSettings({ tenantId }: { tenantId: string }) {
             </label>
           </div>
           <p className="data-caption">
-            Weitere Erinnerungen folgen jeweils nach derselben Anzahl Tage. Die
-            meldende Person erhält sie per E-Mail und als Push-Mitteilung in der
-            App.
+            Weitere Erinnerungen folgen jeweils nach derselben Anzahl Werktage.
+            Die meldende Person erhält sie per E-Mail und als Push-Mitteilung in
+            der App.
           </p>
         </li>
         <li>
@@ -229,7 +230,7 @@ export function TicketLifecycleSettings({ tenantId }: { tenantId: string }) {
           </div>
           <div className="tenant-automation__controls">
             <label>
-              Lösen nach Tagen (ab Beginn der Wartezeit)
+              Lösen nach Werktagen (ab Beginn der Wartezeit)
               {days("waitingResolveDays", 90)}
             </label>
           </div>
@@ -248,7 +249,7 @@ export function TicketLifecycleSettings({ tenantId }: { tenantId: string }) {
           </div>
           <div className="tenant-automation__controls">
             <label>
-              Schliessen nach Tagen
+              Schliessen nach Werktagen
               {days("resolvedCloseDays", 90)}
             </label>
           </div>

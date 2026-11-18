@@ -1,4 +1,6 @@
+import { tn } from "./lib/formality";
 import { recordRecentItem } from "./lib/recent-items";
+import { ServiceInsightsPanel } from "./service-insights";
 import { CsvImportDialog } from "./csv-import-dialog";
 import { ASSET_IMPORT_FIELDS } from "./lib/import-fields";
 import { ProblemAnalysis } from "./problem-insights";
@@ -15,6 +17,16 @@ import {
   type SetStateAction,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  FormCard,
+  FormDialog,
+  FormField,
+  FormGrid,
+  FormLayout,
+  FormNote,
+  FormSummary,
+  FormSwitch,
+} from "./form-kit";
 import { supabase } from "./lib/supabase";
 import { IntuneActionsMenu, useIntuneAssetDevices } from "./intune-actions";
 import {
@@ -24,6 +36,7 @@ import {
 } from "./asset-label-dialog";
 import { assetLabelItem } from "./lib/asset-labels";
 
+import { confirmDialog } from "./app-dialog";
 export type ServiceAssetsProps = {
   tenantId: string;
   initialTab?: CatalogTab;
@@ -196,17 +209,52 @@ type CatalogRequest = {
   type: "listCatalog";
   tenantId: string;
   includeArchivedServices?: boolean;
+  sections?: Array<"services" | "assets" | "problems">;
+  assetOffset?: number;
+  assetLimit?: number;
+  assetQuery?: string;
+  assetServiceId?: string;
+  assetStatus?: string;
+};
+
+/** Seitengrösse der Asset-Liste (Filter und Seiten in SQL). */
+export const ASSET_PAGE_SIZE = 100;
+
+/** Filter der Asset-Seite; «all» bzw. leere Suche werden nicht gesendet. */
+export type AssetPageFilter = {
+  offset: number;
+  query: string;
+  serviceFilter: string;
+  statusFilter: string;
 };
 
 export function catalogRequest(
   tenantId: string,
   supportsArchivedServices: boolean,
   includeArchivedServices: boolean,
+  assetPage?: AssetPageFilter,
+  sections?: CatalogRequest["sections"],
 ): CatalogRequest {
   return {
     type: "listCatalog",
     tenantId,
     ...(supportsArchivedServices ? { includeArchivedServices } : {}),
+    ...(sections ? { sections } : {}),
+    ...(assetPage
+      ? {
+          assetOffset: assetPage.offset,
+          assetLimit: ASSET_PAGE_SIZE,
+          ...(assetPage.query.trim()
+            ? { assetQuery: assetPage.query.trim().slice(0, 120) }
+            : {}),
+          ...(assetPage.serviceFilter !== "all"
+            ? { assetServiceId: assetPage.serviceFilter }
+            : {}),
+          ...(assetPage.statusFilter !== "all"
+            ? { assetStatus: assetPage.statusFilter }
+            : {}),
+        }
+      : {}),
   };
 }
 
@@ -578,276 +626,297 @@ function ServiceEditorFields({
       </span>
     );
   }
+  const departmentName =
+    departments.find((entry) => entry.id === serviceForm.departmentId)?.name ??
+    "";
   return (
     <form onSubmit={(event) => void onSubmit(event)}>
-      <label>
-        Name
-        <input
-          disabled={controlsDisabled}
-          maxLength={240}
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              name: event.target.value,
-            }))
-          }
-          required
-          ref={nameInputRef}
-          value={serviceForm.name}
-        />
-      </label>
-      <DepartmentField
-        departments={departments}
-        disabled={controlsDisabled}
-        onChange={(departmentId) =>
-          setServiceForm((current) => ({ ...current, departmentId }))
-        }
-        required={serviceForm.id === null}
-        value={serviceForm.departmentId}
-      />
-      <label>
-        Kritikalität
-        <select
-          disabled={controlsDisabled}
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              criticality: event.target.value as Criticality,
-            }))
-          }
-          value={serviceForm.criticality}
-        >
-          {(Object.keys(CRITICALITY_LABELS) as Criticality[]).map(
-            (criticality) => (
-              <option key={criticality} value={criticality}>
-                {CRITICALITY_LABELS[criticality]}
-              </option>
-            ),
-          )}
-        </select>
-      </label>
-      <label>
-        Betriebszustand
-        <select
-          disabled={controlsDisabled}
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              status: event.target.value as ServiceStatus,
-            }))
-          }
-          value={serviceForm.status}
-        >
-          {(Object.keys(SERVICE_STATUS_LABELS) as ServiceStatus[]).map(
-            (status) => (
-              <option key={status} value={status}>
-                {SERVICE_STATUS_LABELS[status]}
-              </option>
-            ),
-          )}
-        </select>
-      </label>
-      <label>
-        Beschreibung (optional)
-        <textarea
-          disabled={controlsDisabled}
-          maxLength={50000}
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              description: event.target.value,
-            }))
-          }
-          rows={3}
-          value={serviceForm.description}
-        />
-      </label>
-      {supportsServiceCategories ? (
-        <div
-          aria-label="Serviceeinordnung"
-          className="service-assets__service-category-fields"
-          role="group"
-        >
-          <div>
-            <strong>Serviceeinordnung</strong>
-            <small>
-              Wählen Sie den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei
-              Bedarf eine Kategorie und Unterkategorie.
-            </small>
-          </div>
-          <label>
-            Ort
-            <select
+      <FormLayout
+        side={
+          <>
+            <FormSummary
+              eyebrow="Statusseite"
+              rows={[
+                ["Zustand", SERVICE_STATUS_LABELS[serviceForm.status]],
+                ["Kritikalität", CRITICALITY_LABELS[serviceForm.criticality]],
+                ["Ort", selectedCategoryPath[0]?.name ?? ""],
+                ["Abteilung", departmentName],
+              ]}
+              title={serviceForm.name.trim()}
+            />
+            <FormSwitch
+              checked={serviceForm.statusPublic}
               disabled={controlsDisabled}
-              onChange={(event) =>
+              hint="Der Dienst erscheint erst nach bewusster Freigabe der Statusseite unter Systemstatus."
+              label="Auf öffentlicher Statusseite anzeigen"
+              onChange={(checked) =>
                 setServiceForm((current) => ({
                   ...current,
-                  categoryId: event.target.value,
+                  statusPublic: checked,
                 }))
               }
-              value={rootCategoryId}
-            >
-              <option value="">Nicht zugeordnet</option>
-              {rootCategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-            {addControl(0)}
-          </label>
-          <label>
-            Kategorie
-            <select
-              disabled={controlsDisabled || !rootCategoryId}
-              onChange={(event) =>
-                setServiceForm((current) => ({
-                  ...current,
-                  categoryId: event.target.value || rootCategoryId,
-                }))
+            />
+          </>
+        }
+      >
+        <FormCard title="Dienst">
+          <FormGrid cols={1}>
+            <FormField label="Name" required>
+              <input
+                disabled={controlsDisabled}
+                maxLength={240}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                required
+                ref={nameInputRef}
+                value={serviceForm.name}
+              />
+            </FormField>
+            <FormField label="Beschreibung">
+              <textarea
+                disabled={controlsDisabled}
+                maxLength={50000}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                rows={3}
+                value={serviceForm.description}
+              />
+            </FormField>
+          </FormGrid>
+        </FormCard>
+        <FormCard title="Betrieb">
+          <FormGrid cols={3}>
+            <FormField label="Kritikalität">
+              <select
+                disabled={controlsDisabled}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    criticality: event.target.value as Criticality,
+                  }))
+                }
+                value={serviceForm.criticality}
+              >
+                {(Object.keys(CRITICALITY_LABELS) as Criticality[]).map(
+                  (criticality) => (
+                    <option key={criticality} value={criticality}>
+                      {CRITICALITY_LABELS[criticality]}
+                    </option>
+                  ),
+                )}
+              </select>
+            </FormField>
+            <FormField label="Betriebszustand">
+              <select
+                disabled={controlsDisabled}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    status: event.target.value as ServiceStatus,
+                  }))
+                }
+                value={serviceForm.status}
+              >
+                {(Object.keys(SERVICE_STATUS_LABELS) as ServiceStatus[]).map(
+                  (status) => (
+                    <option key={status} value={status}>
+                      {SERVICE_STATUS_LABELS[status]}
+                    </option>
+                  ),
+                )}
+              </select>
+            </FormField>
+            <DepartmentField
+              departments={departments}
+              disabled={controlsDisabled}
+              onChange={(departmentId) =>
+                setServiceForm((current) => ({ ...current, departmentId }))
               }
-              value={subcategoryId}
+              required={serviceForm.id === null}
+              value={serviceForm.departmentId}
+            />
+          </FormGrid>
+        </FormCard>
+        {supportsServiceCategories ? (
+          <FormCard
+            sub="Ort, Kategorie, Unterkategorie"
+            title="Serviceeinordnung"
+          >
+            <FormNote>
+              {tn(
+                "Wähle den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei Bedarf eine Kategorie und Unterkategorie.",
+                "Wählen Sie den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei Bedarf eine Kategorie und Unterkategorie.",
+              )}
+            </FormNote>
+            <FormGrid cols={3}>
+              <FormField label="Ort">
+                <select
+                  disabled={controlsDisabled}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      categoryId: event.target.value,
+                    }))
+                  }
+                  value={rootCategoryId}
+                >
+                  <option value="">Nicht zugeordnet</option>
+                  {rootCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                {addControl(0)}
+              </FormField>
+              <FormField label="Kategorie">
+                <select
+                  disabled={controlsDisabled || !rootCategoryId}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      categoryId: event.target.value || rootCategoryId,
+                    }))
+                  }
+                  value={subcategoryId}
+                >
+                  <option value="">
+                    {rootCategoryId ? "Keine Kategorie" : "Zuerst Ort wählen"}
+                  </option>
+                  {subcategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                {addControl(1)}
+              </FormField>
+              <FormField label="Unterkategorie">
+                <select
+                  disabled={controlsDisabled || !subcategoryId}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      categoryId:
+                        event.target.value || subcategoryId || rootCategoryId,
+                    }))
+                  }
+                  value={
+                    selectedCategoryPath[2]?.id && subcategoryId
+                      ? selectedCategoryPath[2].id
+                      : ""
+                  }
+                >
+                  <option value="">
+                    {subcategoryId
+                      ? "Keine Unterkategorie"
+                      : "Zuerst Kategorie wählen"}
+                  </option>
+                  {detailCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                {addControl(2)}
+              </FormField>
+            </FormGrid>
+            {rootCategories.length === 0 ? (
+              <FormNote>
+                {tn(
+                  "Es sind noch keine Orte und Kategorien angelegt. Du kannst die Einordnung später ergänzen.",
+                  "Es sind noch keine Orte und Kategorien angelegt. Sie können die Einordnung später ergänzen.",
+                )}
+              </FormNote>
+            ) : null}
+          </FormCard>
+        ) : null}
+        <FormCard title="Verantwortung">
+          <FormGrid cols={2}>
+            <FormField label="Primär verantwortliche Agent:in">
+              <select
+                disabled={controlsDisabled || serviceResponsibleAgentsLoading}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    primaryResponsibleId: event.target.value,
+                    secondaryResponsibleId:
+                      event.target.value === current.secondaryResponsibleId
+                        ? ""
+                        : current.secondaryResponsibleId,
+                  }))
+                }
+                value={serviceForm.primaryResponsibleId}
+              >
+                <option value="">Nicht zugeordnet</option>
+                {serviceForm.primaryResponsibleId &&
+                !serviceResponsibleAgentNames.has(
+                  serviceForm.primaryResponsibleId,
+                ) ? (
+                  <option value={serviceForm.primaryResponsibleId}>
+                    Nicht mehr verfügbar
+                  </option>
+                ) : null}
+                {serviceResponsibleAgents
+                  .filter(
+                    (agent) => agent.id !== serviceForm.secondaryResponsibleId,
+                  )
+                  .map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.displayName}
+                    </option>
+                  ))}
+              </select>
+            </FormField>
+            <FormField
+              label="Sekundär verantwortliche Agent:in"
+              hint="Nur aktuell berechtigte interne Agent:innen stehen zur Auswahl."
             >
-              <option value="">
-                {rootCategoryId ? "Keine Kategorie" : "Zuerst Ort wählen"}
-              </option>
-              {subcategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-            {addControl(1)}
-          </label>
-          <label>
-            Unterkategorie
-            <select
-              disabled={controlsDisabled || !subcategoryId}
-              onChange={(event) =>
-                setServiceForm((current) => ({
-                  ...current,
-                  categoryId:
-                    event.target.value || subcategoryId || rootCategoryId,
-                }))
-              }
-              value={
-                selectedCategoryPath[2]?.id && subcategoryId
-                  ? selectedCategoryPath[2].id
-                  : ""
-              }
-            >
-              <option value="">
-                {subcategoryId
-                  ? "Keine Unterkategorie"
-                  : "Zuerst Kategorie wählen"}
-              </option>
-              {detailCategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-            {addControl(2)}
-          </label>
-          {rootCategories.length === 0 ? (
-            <p>
-              Es sind noch keine Orte und Kategorien angelegt. Sie können die
-              Einordnung später ergänzen.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      <label>
-        Primär verantwortliche Agent:in (optional)
-        <select
-          disabled={controlsDisabled || serviceResponsibleAgentsLoading}
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              primaryResponsibleId: event.target.value,
-              secondaryResponsibleId:
-                event.target.value === current.secondaryResponsibleId
-                  ? ""
-                  : current.secondaryResponsibleId,
-            }))
-          }
-          value={serviceForm.primaryResponsibleId}
-        >
-          <option value="">Nicht zugeordnet</option>
-          {serviceForm.primaryResponsibleId &&
-          !serviceResponsibleAgentNames.has(
-            serviceForm.primaryResponsibleId,
-          ) ? (
-            <option value={serviceForm.primaryResponsibleId}>
-              Nicht mehr verfügbar
-            </option>
-          ) : null}
-          {serviceResponsibleAgents
-            .filter((agent) => agent.id !== serviceForm.secondaryResponsibleId)
-            .map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.displayName}
-              </option>
-            ))}
-        </select>
-      </label>
-      <label>
-        Sekundär verantwortliche Agent:in (optional)
-        <select
-          disabled={
-            controlsDisabled ||
-            serviceResponsibleAgentsLoading ||
-            !serviceForm.primaryResponsibleId
-          }
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              secondaryResponsibleId: event.target.value,
-            }))
-          }
-          value={serviceForm.secondaryResponsibleId}
-        >
-          <option value="">Nicht zugeordnet</option>
-          {serviceForm.secondaryResponsibleId &&
-          !serviceResponsibleAgentNames.has(
-            serviceForm.secondaryResponsibleId,
-          ) ? (
-            <option value={serviceForm.secondaryResponsibleId}>
-              Nicht mehr verfügbar
-            </option>
-          ) : null}
-          {serviceResponsibleAgents
-            .filter((agent) => agent.id !== serviceForm.primaryResponsibleId)
-            .map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.displayName}
-              </option>
-            ))}
-        </select>
-        <small>
-          Nur aktuell berechtigte interne Agent:innen stehen zur Auswahl.
-        </small>
-      </label>
-      <label className="service-assets__status-public-toggle">
-        <input
-          checked={serviceForm.statusPublic}
-          disabled={controlsDisabled}
-          onChange={(event) =>
-            setServiceForm((current) => ({
-              ...current,
-              statusPublic: event.target.checked,
-            }))
-          }
-          type="checkbox"
-        />
-        <span>
-          <strong>Auf öffentlicher Statusseite anzeigen</strong>
-          <small>
-            Der Dienst erscheint erst nach bewusster Freigabe der Statusseite
-            unter Systemstatus.
-          </small>
-        </span>
-      </label>
+              <select
+                disabled={
+                  controlsDisabled ||
+                  serviceResponsibleAgentsLoading ||
+                  !serviceForm.primaryResponsibleId
+                }
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    secondaryResponsibleId: event.target.value,
+                  }))
+                }
+                value={serviceForm.secondaryResponsibleId}
+              >
+                <option value="">Nicht zugeordnet</option>
+                {serviceForm.secondaryResponsibleId &&
+                !serviceResponsibleAgentNames.has(
+                  serviceForm.secondaryResponsibleId,
+                ) ? (
+                  <option value={serviceForm.secondaryResponsibleId}>
+                    Nicht mehr verfügbar
+                  </option>
+                ) : null}
+                {serviceResponsibleAgents
+                  .filter(
+                    (agent) => agent.id !== serviceForm.primaryResponsibleId,
+                  )
+                  .map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.displayName}
+                    </option>
+                  ))}
+              </select>
+            </FormField>
+          </FormGrid>
+        </FormCard>
+      </FormLayout>
       <p>
         <button
           className="primary-button"
@@ -868,28 +937,34 @@ function ServiceEditorFields({
   );
 }
 
-const CATALOG_PAGE_COPY: Readonly<
+const catalogPageCopy = (): Readonly<
   Record<CatalogTab, { eyebrow: string; title: string; description: string }>
-> = {
+> => ({
   services: {
     eyebrow: "Dienstkatalog",
     title: "Dienste",
-    description:
+    description: tn(
+      "Verwalte die aktiven Dienste dieses Mandanten und ihre Kritikalität.",
       "Verwalten Sie die aktiven Dienste dieses Mandanten und ihre Kritikalität.",
+    ),
   },
   assets: {
     eyebrow: "Asset Management",
     title: "Assets",
-    description:
+    description: tn(
+      "Verwalte die aktiven Assets dieses Mandanten und ihre Zuordnung zu Diensten.",
       "Verwalten Sie die aktiven Assets dieses Mandanten und ihre Zuordnung zu Diensten.",
+    ),
   },
   problems: {
     eyebrow: "Fallmanagement",
     title: "Fälle",
-    description:
+    description: tn(
+      "Verfolge offene Fälle, dokumentiere Ursachen und verknüpfe betroffene Tickets.",
       "Verfolgen Sie offene Fälle, dokumentieren Sie Ursachen und verknüpfen Sie betroffene Tickets.",
+    ),
   },
-};
+});
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -1275,6 +1350,8 @@ export function parseCatalog(value: unknown): {
   serviceCategories: ServiceCategory[];
   supportsServiceCategories: boolean;
   assets: Asset[];
+  /** Anzahl passender Assets insgesamt (bei seitenweiser Abfrage). */
+  assetTotal: number;
   problems: Problem[];
   departments: DepartmentOption[];
 } {
@@ -1329,6 +1406,12 @@ export function parseCatalog(value: unknown): {
     serviceCategories: categories as ServiceCategory[],
     supportsServiceCategories,
     assets: assets as Asset[],
+    assetTotal:
+      typeof data.assetTotal === "number" &&
+      Number.isInteger(data.assetTotal) &&
+      data.assetTotal >= assets.length
+        ? data.assetTotal
+        : assets.length,
     problems: problems as Problem[],
     departments: departments as DepartmentOption[],
   };
@@ -1375,8 +1458,7 @@ function DepartmentField({
 }: DepartmentFieldProps) {
   if (departments.length <= 1) return null;
   return (
-    <label>
-      Abteilung
+    <FormField label="Abteilung" required={required}>
       <select
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
@@ -1395,7 +1477,7 @@ function DepartmentField({
           </option>
         ))}
       </select>
-    </label>
+    </FormField>
   );
 }
 
@@ -1434,10 +1516,19 @@ function defaultTicketFollowUpMessage(
   const lines = [
     "Guten Tag",
     "",
-    `Die Ursache Ihrer Meldung wurde behoben (${title.trim()}).`,
+    tn(
+      `Die Ursache deiner Meldung wurde behoben (${title.trim()}).`,
+      `Die Ursache Ihrer Meldung wurde behoben (${title.trim()}).`,
+    ),
   ];
   if (workaround.trim()) lines.push("", workaround.trim());
-  lines.push("", "Bitte melden Sie sich, falls das Problem weiterhin besteht.");
+  lines.push(
+    "",
+    tn(
+      "Bitte melde dich, falls das Problem weiterhin besteht.",
+      "Bitte melden Sie sich, falls das Problem weiterhin besteht.",
+    ),
+  );
   return lines.join("\n");
 }
 
@@ -1456,7 +1547,10 @@ function caseArticleMarkdown(form: {
     .map(([heading, text]) => `## ${heading}\n\n${text!.trim()}`);
   return sections.length > 0
     ? sections.join("\n\n")
-    : "## Lösung\n\nBeschreiben Sie hier die Lösung.";
+    : tn(
+        "## Lösung\n\nBeschreibe hier die Lösung.",
+        "## Lösung\n\nBeschreiben Sie hier die Lösung.",
+      );
 }
 
 /** Creates a knowledge draft and returns its id. */
@@ -1586,13 +1680,22 @@ async function apiErrorMessage(
     }
   }
   if (status === 401) {
-    return "Ihre Anmeldung ist nicht mehr gültig. Bitte melden Sie sich erneut an.";
+    return tn(
+      "Deine Anmeldung ist nicht mehr gültig. Bitte melde dich erneut an.",
+      "Ihre Anmeldung ist nicht mehr gültig. Bitte melden Sie sich erneut an.",
+    );
   }
   if (status === 403) {
-    return "Der Zugriff wurde von der API verweigert. Für diese Aktion fehlt Ihnen die erforderliche Berechtigung.";
+    return tn(
+      "Der Zugriff wurde von der API verweigert. Für diese Aktion fehlt dir die erforderliche Berechtigung.",
+      "Der Zugriff wurde von der API verweigert. Für diese Aktion fehlt Ihnen die erforderliche Berechtigung.",
+    );
   }
   if (status === 503) {
-    return "Der Dienst oder die Berechtigungsprüfung ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.";
+    return tn(
+      "Der Dienst oder die Berechtigungsprüfung ist derzeit nicht verfügbar. Bitte versuche es später erneut.",
+      "Der Dienst oder die Berechtigungsprüfung ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.",
+    );
   }
   return fallback;
 }
@@ -1877,6 +1980,22 @@ export function ServiceAssets({
   );
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const [assetStatusFilter, setAssetStatusFilter] = useState("all");
+  const [assetTotal, setAssetTotal] = useState(0);
+  const [assetPageLoading, setAssetPageLoading] = useState(false);
+  const assetPageVersion = useRef(0);
+  const assetFilterRef = useRef({
+    query: assetQuery,
+    serviceFilter: "all",
+    statusFilter: "all",
+  });
+  assetFilterRef.current = {
+    query: assetQuery,
+    serviceFilter: assetServiceFilter,
+    statusFilter: assetStatusFilter,
+  };
+  const [insightsServiceId, setInsightsServiceId] = useState<string | null>(
+    null,
+  );
   const [problemQuery, setProblemQuery] = useState("");
   const [problemStatusFilter, setProblemStatusFilter] = useState<
     "open" | "all" | ProblemStatus
@@ -2130,7 +2249,7 @@ export function ServiceAssets({
     : allowAssets
       ? ["services", "assets", "problems"]
       : ["services", "problems"];
-  const pageCopy = fixedTab ? CATALOG_PAGE_COPY[fixedTab] : null;
+  const pageCopy = fixedTab ? catalogPageCopy()[fixedTab] : null;
 
   useEffect(() => {
     setActiveTab(
@@ -2153,6 +2272,7 @@ export function ServiceAssets({
             tenantId,
             supportsArchivedServicesRef.current,
             showArchivedServices,
+            { offset: 0, ...assetFilterRef.current },
           ),
         ),
       );
@@ -2168,7 +2288,8 @@ export function ServiceAssets({
         setServiceCategoryManagerOpen(false);
         setServiceCategoryForm(EMPTY_SERVICE_CATEGORY_FORM);
       }
-      setAssets(sortByName(catalog.assets));
+      setAssets(catalog.assets);
+      setAssetTotal(catalog.assetTotal);
       setProblems(sortProblems(catalog.problems));
       setDepartments(catalog.departments);
     } catch (nextError) {
@@ -2202,6 +2323,56 @@ export function ServiceAssets({
       requestVersion.current += 1;
     };
   }, [loadCatalog]);
+
+  // Asset-Seiten: Filter und Seiten werden in SQL ausgewertet.
+  const loadAssetPage = useCallback(
+    async (offset: number) => {
+      const version = assetPageVersion.current + 1;
+      assetPageVersion.current = version;
+      setAssetPageLoading(true);
+      try {
+        const catalog = parseCatalog(
+          await requestServiceAssets(
+            catalogRequest(
+              tenantId,
+              false,
+              false,
+              { offset, ...assetFilterRef.current },
+              ["assets"],
+            ),
+          ),
+        );
+        if (assetPageVersion.current !== version) return;
+        setAssets((current) =>
+          offset === 0 ? catalog.assets : [...current, ...catalog.assets],
+        );
+        setAssetTotal(catalog.assetTotal);
+      } catch (nextError) {
+        if (assetPageVersion.current !== version) return;
+        setError(
+          await apiErrorMessage(
+            nextError,
+            "Die Assets konnten nicht geladen werden.",
+          ),
+        );
+      } finally {
+        if (assetPageVersion.current === version) setAssetPageLoading(false);
+      }
+    },
+    [tenantId],
+  );
+  const assetFilterKey = `${assetQuery.trim()}|${assetServiceFilter}|${assetStatusFilter}`;
+  const appliedAssetFilterKey = useRef(assetFilterKey);
+  useEffect(() => {
+    if (!allowAssets || appliedAssetFilterKey.current === assetFilterKey) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      appliedAssetFilterKey.current = assetFilterKey;
+      void loadAssetPage(0);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [allowAssets, assetFilterKey, loadAssetPage]);
 
   useEffect(() => {
     const version = serviceResponsibleAgentsRequestVersion.current + 1;
@@ -2664,7 +2835,12 @@ export function ServiceAssets({
     event.preventDefault();
     const name = serviceForm.name.trim();
     if (!name) {
-      setError("Bitte geben Sie einen Servicenamen ein.");
+      setError(
+        tn(
+          "Bitte gib einen Servicenamen ein.",
+          "Bitte geben Sie einen Servicenamen ein.",
+        ),
+      );
       return;
     }
 
@@ -2734,7 +2910,12 @@ export function ServiceAssets({
     event.preventDefault();
     const name = serviceCategoryForm.name.trim();
     if (!name) {
-      setError("Bitte geben Sie einen Namen für die Servicekategorie ein.");
+      setError(
+        tn(
+          "Bitte gib einen Namen für die Servicekategorie ein.",
+          "Bitte geben Sie einen Namen für die Servicekategorie ein.",
+        ),
+      );
       return;
     }
     if (!supportsServiceCategories || !canManageServices) return;
@@ -2871,7 +3052,7 @@ export function ServiceAssets({
     if (!canArchiveServices(canManageServices, supportsArchivedServices)) {
       return;
     }
-    if (!window.confirm(`Dienst „${service.name}“ archivieren?`)) return;
+    if (!(await confirmDialog(`Dienst „${service.name}“ archivieren?`))) return;
     const closesCurrentServiceEditor =
       serviceForm.id === service.id || inlineServiceEditorId === service.id;
     beginAction(`service:archive:${service.id}`);
@@ -2923,7 +3104,8 @@ export function ServiceAssets({
   }
 
   async function restoreService(service: Service) {
-    if (!window.confirm(`Dienst „${service.name}“ wiederherstellen?`)) return;
+    if (!(await confirmDialog(`Dienst „${service.name}“ wiederherstellen?`)))
+      return;
     beginAction(`service:restore:${service.id}`);
     try {
       const restored = parseSavedService(
@@ -3043,7 +3225,7 @@ export function ServiceAssets({
   }
 
   async function archiveAsset(asset: Asset) {
-    if (!window.confirm(`Asset „${asset.name}“ archivieren?`)) return;
+    if (!(await confirmDialog(`Asset „${asset.name}“ archivieren?`))) return;
     beginAction(`asset:archive:${asset.id}`);
     try {
       parseSavedAsset(
@@ -3086,9 +3268,9 @@ export function ServiceAssets({
 
   async function deleteProblem(problem: Problem) {
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Den Fall „${problem.title}“ endgültig löschen? Die Verknüpfungen zu Tickets werden entfernt; die Tickets selbst bleiben bestehen.`,
-      )
+      ))
     ) {
       return;
     }
@@ -3398,7 +3580,7 @@ export function ServiceAssets({
     activeTab === "services"
       ? filteredServices.length
       : activeTab === "assets"
-        ? filteredAssets.length
+        ? assetTotal
         : filteredProblems.length;
 
   return (
@@ -3422,7 +3604,10 @@ export function ServiceAssets({
           )}
           <p>
             {pageCopy?.description ??
-              "Verwalten Sie den aktuellen Katalog dieses Mandanten. Archivierte und gelöste Einträge werden von der API nicht mehr im Katalog angezeigt."}
+              tn(
+                "Verwalte den aktuellen Katalog dieses Mandanten. Archivierte und gelöste Einträge werden von der API nicht mehr im Katalog angezeigt.",
+                "Verwalten Sie den aktuellen Katalog dieses Mandanten. Archivierte und gelöste Einträge werden von der API nicht mehr im Katalog angezeigt.",
+              )}
           </p>
         </div>
         {fixedTab === "services" ? (
@@ -3503,7 +3688,7 @@ export function ServiceAssets({
               tabIndex={activeTab === "assets" ? 0 : -1}
               type="button"
             >
-              Assets ({assets.length})
+              Assets ({assetTotal})
             </button>
           ) : null}
           <button
@@ -3660,8 +3845,10 @@ export function ServiceAssets({
               </form>
               {serviceCategories.length === 0 ? (
                 <p className="service-assets__category-manager-empty">
-                  Legen Sie den ersten Ort an, um Services strukturiert
-                  einzuordnen.
+                  {tn(
+                    "Lege den ersten Ort an, um Services strukturiert einzuordnen.",
+                    "Legen Sie den ersten Ort an, um Services strukturiert einzuordnen.",
+                  )}
                 </p>
               ) : (
                 <ul
@@ -3740,8 +3927,10 @@ export function ServiceAssets({
 
           {services.length === 0 ? (
             <p className="empty-state">
-              Für diesen Mandanten sind noch keine aktiven Services vorhanden.
-              Erstellen Sie den ersten Dienst über die Kopfaktion.
+              {tn(
+                "Für diesen Mandanten sind noch keine aktiven Services vorhanden. Erstelle den ersten Dienst über die Kopfaktion.",
+                "Für diesen Mandanten sind noch keine aktiven Services vorhanden. Erstellen Sie den ersten Dienst über die Kopfaktion.",
+              )}
             </p>
           ) : filteredServices.length === 0 ? (
             <p className="empty-state">
@@ -4014,44 +4203,57 @@ export function ServiceAssets({
                         <dd>{formatDate(service.updated_at)}</dd>
                       </div>
                     </dl>
-                    {canManageServices ||
-                    canArchiveServices(
-                      canManageServices,
-                      supportsArchivedServices,
-                    ) ? (
-                      <div className="service-assets__service-card-actions">
-                        {canManageServices ? (
-                          <button
-                            aria-expanded={inlineServiceEditorId === service.id}
-                            disabled={controlsDisabled}
-                            onClick={(event) =>
-                              openInlineServiceEditor(
-                                service,
-                                event.currentTarget,
-                              )
-                            }
-                            type="button"
-                          >
-                            {inlineServiceEditorId === service.id
-                              ? "Bearbeitung schliessen"
-                              : "Bearbeiten"}
-                          </button>
-                        ) : null}
-                        {canArchiveServices(
-                          canManageServices,
-                          supportsArchivedServices,
-                        ) ? (
-                          <button
-                            disabled={controlsDisabled}
-                            onClick={() => void archiveService(service)}
-                            type="button"
-                          >
-                            {pendingAction === `service:archive:${service.id}`
-                              ? "Wird archiviert …"
-                              : "Archivieren"}
-                          </button>
-                        ) : null}
-                      </div>
+                    <div className="service-assets__service-card-actions">
+                      <button
+                        aria-expanded={insightsServiceId === service.id}
+                        onClick={() =>
+                          setInsightsServiceId((current) =>
+                            current === service.id ? null : service.id,
+                          )
+                        }
+                        type="button"
+                      >
+                        {insightsServiceId === service.id
+                          ? "Details schliessen"
+                          : "Details"}
+                      </button>
+                      {canManageServices ? (
+                        <button
+                          aria-expanded={inlineServiceEditorId === service.id}
+                          disabled={controlsDisabled}
+                          onClick={(event) =>
+                            openInlineServiceEditor(
+                              service,
+                              event.currentTarget,
+                            )
+                          }
+                          type="button"
+                        >
+                          {inlineServiceEditorId === service.id
+                            ? "Bearbeitung schliessen"
+                            : "Bearbeiten"}
+                        </button>
+                      ) : null}
+                      {canArchiveServices(
+                        canManageServices,
+                        supportsArchivedServices,
+                      ) ? (
+                        <button
+                          disabled={controlsDisabled}
+                          onClick={() => void archiveService(service)}
+                          type="button"
+                        >
+                          {pendingAction === `service:archive:${service.id}`
+                            ? "Wird archiviert …"
+                            : "Archivieren"}
+                        </button>
+                      ) : null}
+                    </div>
+                    {insightsServiceId === service.id ? (
+                      <ServiceInsightsPanel
+                        serviceId={service.id}
+                        tenantId={tenantId}
+                      />
                     ) : null}
                     {inlineServiceEditorId === service.id ? (
                       <section
@@ -4129,8 +4331,10 @@ export function ServiceAssets({
                     Archivierte Services
                   </h4>
                   <p>
-                    Archivierte Services werden nicht als aktiv angeboten. Sie
-                    können bewusst wiederhergestellt werden.
+                    {tn(
+                      "Archivierte Services werden nicht als aktiv angeboten. Diese können bewusst wiederhergestellt werden.",
+                      "Archivierte Services werden nicht als aktiv angeboten. Sie können bewusst wiederhergestellt werden.",
+                    )}
                   </p>
                 </div>
               </div>
@@ -4397,8 +4601,10 @@ export function ServiceAssets({
 
           {assets.length === 0 ? (
             <p className="empty-state">
-              Für diesen Mandanten sind noch keine aktiven Assets vorhanden.
-              Legen Sie unten das erste Asset an.
+              {tn(
+                "Für diesen Mandanten sind noch keine aktiven Assets vorhanden. Lege unten das erste Asset an.",
+                "Für diesen Mandanten sind noch keine aktiven Assets vorhanden. Legen Sie unten das erste Asset an.",
+              )}
             </p>
           ) : filteredAssets.length === 0 ? (
             <p className="empty-state">Keine Assets entsprechen dem Filter.</p>
@@ -4537,6 +4743,19 @@ export function ServiceAssets({
                   </li>
                 ))}
               </ul>
+              {assets.length < assetTotal ? (
+                <p className="service-assets__load-more">
+                  <button
+                    disabled={controlsDisabled || assetPageLoading}
+                    onClick={() => void loadAssetPage(assets.length)}
+                    type="button"
+                  >
+                    {assetPageLoading
+                      ? "Wird geladen …"
+                      : `Weitere Assets laden (${assets.length} von ${assetTotal})`}
+                  </button>
+                </p>
+              ) : null}
             </>
           )}
 
@@ -4650,168 +4869,190 @@ export function ServiceAssets({
                       </aside>
                     ) : null}
                     <form onSubmit={(event) => void saveAsset(event)}>
-                      <label>
-                        Name
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={240}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              name: event.target.value,
-                            }))
-                          }
-                          ref={assetNameInputRef}
-                          required
-                          value={assetForm.name}
-                        />
-                      </label>
-                      <DepartmentField
-                        departments={departments}
-                        disabled={controlsDisabled}
-                        onChange={(departmentId) =>
-                          setAssetForm((current) => ({
-                            ...current,
-                            departmentId,
-                          }))
+                      <FormLayout
+                        side={
+                          <FormSummary
+                            eyebrow={assetForm.kind.trim() || "Asset"}
+                            rows={[
+                              ["Status", assetForm.status.trim()],
+                              [
+                                "Dienst",
+                                services.find(
+                                  (service) =>
+                                    service.id === assetForm.serviceId,
+                                )?.name ?? "",
+                              ],
+                              ["Inventarnr.", assetForm.inventoryNumber.trim()],
+                            ]}
+                            title={assetForm.name.trim()}
+                          />
                         }
-                        required={assetForm.id === null}
-                        value={assetForm.departmentId}
-                      />
-                      <label>
-                        Zugehöriger Dienst (optional)
-                        <select
-                          disabled={controlsDisabled}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              serviceId: event.target.value,
-                            }))
-                          }
-                          value={assetForm.serviceId}
-                        >
-                          <option value="">Nicht zugeordnet</option>
-                          {services.map((service) => (
-                            <option key={service.id} value={service.id}>
-                              {service.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Asset-Kennung (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={160}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              assetTag: event.target.value,
-                            }))
-                          }
-                          value={assetForm.assetTag}
-                        />
-                      </label>
-                      <label>
-                        Inventarnummer (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={160}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              inventoryNumber: event.target.value,
-                            }))
-                          }
-                          value={assetForm.inventoryNumber}
-                        />
-                      </label>
-                      <label>
-                        Seriennummer (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={160}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              serialNumber: event.target.value,
-                            }))
-                          }
-                          value={assetForm.serialNumber}
-                        />
-                      </label>
-                      <label>
-                        Hersteller (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={160}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              manufacturer: event.target.value,
-                            }))
-                          }
-                          value={assetForm.manufacturer}
-                        />
-                      </label>
-                      <label>
-                        Modell (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={160}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              model: event.target.value,
-                            }))
-                          }
-                          value={assetForm.model}
-                        />
-                      </label>
-                      <label>
-                        Betriebssystem (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={160}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              operatingSystem: event.target.value,
-                            }))
-                          }
-                          value={assetForm.operatingSystem}
-                        />
-                      </label>
-                      <label>
-                        Art
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={64}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              kind: event.target.value,
-                            }))
-                          }
-                          required
-                          value={assetForm.kind}
-                        />
-                      </label>
-                      <label>
-                        Status
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={64}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              status: event.target.value,
-                            }))
-                          }
-                          required
-                          value={assetForm.status}
-                        />
-                      </label>
+                      >
+                        <FormCard title="Gerät">
+                          <FormGrid cols={2}>
+                            <FormField label="Name" required>
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={240}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    name: event.target.value,
+                                  }))
+                                }
+                                ref={assetNameInputRef}
+                                required
+                                value={assetForm.name}
+                              />
+                            </FormField>
+                            <FormField label="Art" required>
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={64}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    kind: event.target.value,
+                                  }))
+                                }
+                                required
+                                value={assetForm.kind}
+                              />
+                            </FormField>
+                            <FormField label="Status" required>
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={64}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    status: event.target.value,
+                                  }))
+                                }
+                                required
+                                value={assetForm.status}
+                              />
+                            </FormField>
+                            <FormField label="Zugehöriger Dienst">
+                              <select
+                                disabled={controlsDisabled}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    serviceId: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.serviceId}
+                              >
+                                <option value="">Nicht zugeordnet</option>
+                                {services.map((service) => (
+                                  <option key={service.id} value={service.id}>
+                                    {service.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </FormField>
+                            <DepartmentField
+                              departments={departments}
+                              disabled={controlsDisabled}
+                              onChange={(departmentId) =>
+                                setAssetForm((current) => ({
+                                  ...current,
+                                  departmentId,
+                                }))
+                              }
+                              required={assetForm.id === null}
+                              value={assetForm.departmentId}
+                            />
+                          </FormGrid>
+                        </FormCard>
+                        <FormCard title="Hersteller und Modell">
+                          <FormGrid cols={3}>
+                            <FormField label="Hersteller">
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={160}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    manufacturer: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.manufacturer}
+                              />
+                            </FormField>
+                            <FormField label="Modell">
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={160}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    model: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.model}
+                              />
+                            </FormField>
+                            <FormField label="Betriebssystem">
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={160}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    operatingSystem: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.operatingSystem}
+                              />
+                            </FormField>
+                          </FormGrid>
+                        </FormCard>
+                        <FormCard title="Kennungen">
+                          <FormGrid cols={3}>
+                            <FormField label="Asset-Kennung">
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={160}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    assetTag: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.assetTag}
+                              />
+                            </FormField>
+                            <FormField label="Inventarnummer">
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={160}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    inventoryNumber: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.inventoryNumber}
+                              />
+                            </FormField>
+                            <FormField label="Seriennummer">
+                              <input
+                                disabled={controlsDisabled}
+                                maxLength={160}
+                                onChange={(event) =>
+                                  setAssetForm((current) => ({
+                                    ...current,
+                                    serialNumber: event.target.value,
+                                  }))
+                                }
+                                value={assetForm.serialNumber}
+                              />
+                            </FormField>
+                          </FormGrid>
+                        </FormCard>
+                      </FormLayout>
                       <p>
                         <button
                           className="primary-button"
@@ -4845,6 +5086,7 @@ export function ServiceAssets({
 
       {!loading && !forbidden && activeTab === "problems" ? (
         <section
+          className="service-assets__problems-panel"
           aria-labelledby={
             fixedTab ? "service-assets-title" : "service-assets-problems-tab"
           }
@@ -4907,8 +5149,10 @@ export function ServiceAssets({
 
           {problems.length === 0 ? (
             <p className="empty-state">
-              Es sind keine Fälle vorhanden. Legen Sie bei Bedarf mit «Neuer
-              Fall» einen an.
+              {tn(
+                "Es sind keine Fälle vorhanden. Lege bei Bedarf mit «Neuer Fall» einen an.",
+                "Es sind keine Fälle vorhanden. Legen Sie bei Bedarf mit «Neuer Fall» einen an.",
+              )}
             </p>
           ) : filteredProblems.length === 0 ? (
             <p className="empty-state">Keine Fälle entsprechen dem Filter.</p>
@@ -5200,9 +5444,10 @@ export function ServiceAssets({
                         </>
                       ) : (
                         <p>
-                          Beim Speichern wird dieser Fall als gelöst markiert.
-                          Gelöste Fälle finden Sie über den Statusfilter
-                          «Gelöst».
+                          {tn(
+                            "Beim Speichern wird dieser Fall als gelöst markiert. Gelöste Fälle findest du über den Statusfilter «Gelöst».",
+                            "Beim Speichern wird dieser Fall als gelöst markiert. Gelöste Fälle finden Sie über den Statusfilter «Gelöst».",
+                          )}
                         </p>
                       )}
                       <label>
@@ -5255,7 +5500,10 @@ export function ServiceAssets({
                             <p>
                               {problemForm.id
                                 ? "Noch keine Tickets angehängt."
-                                : "Suchen Sie Tickets, die zu diesem Fall gehören. Sie werden beim Anlegen angehängt."}
+                                : tn(
+                                    "Suche Tickets, die zu diesem Fall gehören. Diese werden beim Anlegen angehängt.",
+                                    "Suchen Sie Tickets, die zu diesem Fall gehören. Sie werden beim Anlegen angehängt.",
+                                  )}
                             </p>
                           ) : (
                             <ul aria-label="Verknüpfte Tickets">
@@ -5298,7 +5546,10 @@ export function ServiceAssets({
                             />
                           </label>
                           <p id="service-assets-ticket-search-help">
-                            Geben Sie mindestens zwei Zeichen ein.
+                            {tn(
+                              "Gib mindestens zwei Zeichen ein.",
+                              "Geben Sie mindestens zwei Zeichen ein.",
+                            )}
                           </p>
                           {ticketSearchQuery.trim().length >= 2 &&
                           ticketSearchLoading ? (
@@ -5433,10 +5684,10 @@ export function ServiceAssets({
                                 </select>
                               </label>
                               <p className="data-caption">
-                                Der Artikel wird aus Beschreibung, Workaround
-                                und Ursache als Entwurf angelegt. Sie können ihn
-                                danach in der Wissensdatenbank überarbeiten und
-                                freigeben.
+                                {tn(
+                                  "Der Artikel wird aus Beschreibung, Workaround und Ursache als Entwurf angelegt. Du kannst ihn danach in der Wissensdatenbank überarbeiten und freigeben.",
+                                  "Der Artikel wird aus Beschreibung, Workaround und Ursache als Entwurf angelegt. Sie können ihn danach in der Wissensdatenbank überarbeiten und freigeben.",
+                                )}
                               </p>
                             </>
                           ) : null}

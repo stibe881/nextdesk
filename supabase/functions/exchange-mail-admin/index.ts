@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import {
   delegatedExchangeCallbackUrl,
@@ -29,6 +30,7 @@ type Channel = Row & {
   mailbox_address: string;
   mailbox_object_id: string | null;
   default_department_id: string | null;
+  default_team_id: string | null;
   send_acknowledgement: boolean;
   send_agent_replies: boolean;
   send_resolution: boolean;
@@ -54,6 +56,8 @@ type Action =
       mailboxAddress: string;
       mailboxObjectId: string | null;
       defaultDepartmentId: string | null;
+      /** Team for new tickets; absent = keep the current team. */
+      defaultTeamId?: string | null;
       sendAcknowledgement: boolean;
       sendAgentReplies: boolean;
       sendResolution: boolean;
@@ -159,6 +163,7 @@ function parseAction(value: unknown): Action | null {
       "mailboxAddress",
       "mailboxObjectId",
       "defaultDepartmentId",
+      "defaultTeamId",
       "sendAcknowledgement",
       "sendAgentReplies",
       "sendResolution",
@@ -176,6 +181,9 @@ function parseAction(value: unknown): Action | null {
   const defaultDepartmentId = nullableUuid(value.defaultDepartmentId);
   if (mailboxObjectId === undefined || defaultDepartmentId === undefined)
     return null;
+  const hasTeam = Object.prototype.hasOwnProperty.call(value, "defaultTeamId");
+  const defaultTeamId = hasTeam ? nullableUuid(value.defaultTeamId) : null;
+  if (hasTeam && defaultTeamId === undefined) return null;
   return {
     action: "saveMailbox",
     tenantId: base.tenantId,
@@ -184,6 +192,7 @@ function parseAction(value: unknown): Action | null {
     mailboxAddress: mailbox(value.mailboxAddress) as string,
     mailboxObjectId,
     defaultDepartmentId,
+    ...(hasTeam ? { defaultTeamId } : {}),
     sendAcknowledgement: value.sendAcknowledgement,
     sendAgentReplies: value.sendAgentReplies,
     sendResolution: value.sendResolution,
@@ -196,30 +205,53 @@ function message(code: string): string {
       "Die zentrale Microsoft-365-Verbindung von nextDesk ist noch nicht vollständig eingerichtet.",
     feature_disabled:
       "Der E-Mail-Kanal ist für diesen Mandanten nicht aktiviert.",
-    forbidden: "Sie dürfen diese Mandanteneinstellung nicht verwalten.",
-    tenant_access_denied: "Sie haben keinen Zugriff auf diesen Mandanten.",
+    forbidden: msg(
+      "Du darfst diese Mandanteneinstellung nicht verwalten.",
+      "Sie dürfen diese Mandanteneinstellung nicht verwalten.",
+    ),
+    tenant_access_denied: msg(
+      "Du hast keinen Zugriff auf diesen Mandanten.",
+      "Sie haben keinen Zugriff auf diesen Mandanten.",
+    ),
     invalid_settings:
       "Die Einstellungen für dieses Support-Postfach sind ungültig.",
+    team_department_mismatch:
+      "Das gewählte Team gehört zu einer anderen Abteilung als die Ziel-Abteilung dieses Postfachs.",
     exchange_verification_required:
-      "Bitte prüfen Sie dieses Support-Postfach erfolgreich, bevor Sie es aktivieren.",
+      msg(
+        "Bitte prüfe dieses Support-Postfach erfolgreich, bevor du es aktivierst.",
+        "Bitte prüfen Sie dieses Support-Postfach erfolgreich, bevor Sie es aktivieren.",
+      ),
     exchange_configuration_changed:
-      "Die Postfachkonfiguration wurde zwischenzeitlich geändert. Laden Sie die Einstellungen neu und prüfen Sie erneut.",
+      msg(
+        "Die Postfachkonfiguration wurde zwischenzeitlich geändert. Lade die Einstellungen neu und prüfe erneut.",
+        "Die Postfachkonfiguration wurde zwischenzeitlich geändert. Laden Sie die Einstellungen neu und prüfen Sie erneut.",
+      ),
     mailbox_in_use:
       "Dieses Support-Postfach ist bereits mit einem anderen Mandanten verbunden.",
     exchange_mailbox_not_found: "Das Support-Postfach wurde nicht gefunden.",
     exchange_access_denied:
-      "Microsoft 365 verweigert den Zugriff auf dieses Postfach. Geben Sie dem verbundenen Konto in Exchange Admin Center mindestens Vollzugriff und Senden als für dieses Postfach.",
+      msg(
+        "Microsoft 365 verweigert den Zugriff auf dieses Postfach. Gib dem verbundenen Konto in Exchange Admin Center mindestens Vollzugriff und Senden als für dieses Postfach.",
+        "Microsoft 365 verweigert den Zugriff auf dieses Postfach. Geben Sie dem verbundenen Konto in Exchange Admin Center mindestens Vollzugriff und Senden als für dieses Postfach.",
+      ),
     exchange_reauthorization_required:
       "Die Microsoft-365-Verbindung muss erneut angemeldet werden.",
     legacy_migration_required:
       "Dieser bisherige E-Mail-Kanal muss zuerst über Microsoft 365 migriert werden.",
     exchange_throttled:
-      "Microsoft Graph drosselt die Anfrage. Bitte versuchen Sie es später erneut.",
+      msg(
+        "Microsoft Graph drosselt die Anfrage. Bitte versuche es später erneut.",
+        "Microsoft Graph drosselt die Anfrage. Bitte versuchen Sie es später erneut.",
+      ),
     exchange_unavailable:
-      "Microsoft 365 ist vorübergehend nicht erreichbar. Bitte versuchen Sie es später erneut.",
+      msg(
+        "Microsoft 365 ist vorübergehend nicht erreichbar. Bitte versuche es später erneut.",
+        "Microsoft 365 ist vorübergehend nicht erreichbar. Bitte versuchen Sie es später erneut.",
+      ),
     connection_not_found:
       "Die gewählte Microsoft-365-Verbindung ist nicht verfügbar.",
-    not_authenticated: "Sie sind nicht angemeldet.",
+    not_authenticated: msg("Du bist nicht angemeldet.", "Sie sind nicht angemeldet."),
     invalid_request: "Die Anfrage ist ungültig.",
     operation_failed: "Die E-Mail-Kanal-Aktion konnte nicht ausgeführt werden.",
   };
@@ -358,6 +390,7 @@ function channelPayload(channel: Channel) {
     mailboxAddress: channel.mailbox_address,
     mailboxObjectId: channel.mailbox_object_id,
     defaultDepartmentId: channel.default_department_id,
+    defaultTeamId: channel.default_team_id ?? null,
     sendAcknowledgement: channel.send_acknowledgement,
     sendAgentReplies: channel.send_agent_replies,
     sendResolution: channel.send_resolution,
@@ -376,7 +409,7 @@ async function getStatus(
   admin: Admin,
   tenantId: string,
 ): Promise<Response> {
-  const [feature, connections, channels, departments, stats] =
+  const [feature, connections, channels, departments, teams, stats] =
     await Promise.all([
       resolveTenantFeatureStates(admin, tenantId, [FEATURE]),
       admin
@@ -399,6 +432,12 @@ async function getStatus(
         .eq("active", true)
         .order("name"),
       admin
+        .from("teams")
+        .select("id, name, department_id")
+        .eq("tenant_id", tenantId)
+        .eq("active", true)
+        .order("name"),
+      admin
         .from("mail_messages")
         .select("direction, processing_status")
         .eq("tenant_id", tenantId)
@@ -412,6 +451,7 @@ async function getStatus(
     connections.error ||
     channels.error ||
     departments.error ||
+    teams.error ||
     stats.error
   )
     throw new HttpError(500, "operation_failed");
@@ -434,6 +474,11 @@ async function getStatus(
         channelPayload(item as Channel),
       ),
       departments: departments.data ?? [],
+      teams: (teams.data ?? []).map((team: any) => ({
+        id: team.id,
+        name: team.name,
+        departmentId: team.department_id ?? null,
+      })),
       stats: {
         inbound24h: rows.filter((row: any) => row.direction === "inbound")
           .length,
@@ -522,6 +567,23 @@ async function saveMailbox(
     if (department.error || !department.data)
       throw new HttpError(422, "invalid_settings");
   }
+  if (action.defaultTeamId) {
+    const team = await admin
+      .from("teams")
+      .select("id, department_id")
+      .eq("id", action.defaultTeamId)
+      .eq("tenant_id", action.tenantId)
+      .eq("active", true)
+      .maybeSingle();
+    if (team.error || !team.data) throw new HttpError(422, "invalid_settings");
+    // New tickets of this mailbox go to the chosen department; the team can
+    // only receive them when it belongs to that department.
+    if (
+      action.defaultDepartmentId &&
+      team.data.department_id !== action.defaultDepartmentId
+    )
+      throw new HttpError(422, "team_department_mismatch");
+  }
   const existing = action.channelId
     ? await getChannel(admin, action.tenantId, action.channelId)
     : null;
@@ -542,6 +604,9 @@ async function saveMailbox(
     mailbox_address: action.mailboxAddress,
     mailbox_object_id: action.mailboxObjectId,
     default_department_id: action.defaultDepartmentId,
+    ...(action.defaultTeamId !== undefined
+      ? { default_team_id: action.defaultTeamId }
+      : {}),
     send_acknowledgement: action.sendAcknowledgement,
     send_agent_replies: action.sendAgentReplies,
     send_resolution: action.sendResolution,

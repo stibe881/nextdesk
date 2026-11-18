@@ -39,6 +39,8 @@ type Values = {
   autoRenew?: boolean;
   renewalMonths?: number | null;
   assetIds?: string[];
+  // Licenses covered by this contract; undefined keeps the current links.
+  licenseIds?: string[];
   // undefined: not sent (older clients); an update keeps the department.
   departmentId?: string | null;
   responsibleUserId: string | null;
@@ -48,6 +50,7 @@ type Action =
   | { type: "list"; tenantId: string; includeArchived: boolean }
   | { type: "listPeople"; tenantId: string }
   | { type: "listAssets"; tenantId: string }
+  | { type: "listLicenses"; tenantId: string }
   | { type: "create"; tenantId: string; values: Values }
   | { type: "update"; tenantId: string; contractId: string; values: Values }
   | { type: "archive"; tenantId: string; contractId: string };
@@ -113,6 +116,7 @@ function parseValues(value: unknown): Values | null {
         "autoRenew",
         "renewalMonths",
         "assetIds",
+        "licenseIds",
         "departmentId",
         "responsibleUserId",
         "notes",
@@ -189,9 +193,17 @@ function parseValues(value: unknown): Values | null {
         value.assetIds.every(isUuid)
       ? [...new Set((value.assetIds as string[]).map((id) => id.toLowerCase()))]
       : null;
+  const licenseIds = !("licenseIds" in value)
+    ? undefined
+    : Array.isArray(value.licenseIds) &&
+        value.licenseIds.length <= 200 &&
+        value.licenseIds.every(isUuid)
+      ? [...new Set((value.licenseIds as string[]).map((id) => id.toLowerCase()))]
+      : null;
   const departmentId = parseDepartmentInput(value);
   if (
     departmentId === false ||
+    licenseIds === null ||
     (cancelled !== undefined && typeof cancelled !== "boolean") ||
     cancelledOn === undefined && "cancelledOn" in value ||
     (cancelledOn && cancelled !== true) ||
@@ -238,6 +250,7 @@ function parseValues(value: unknown): Values | null {
     ...(autoRenew !== undefined ? { autoRenew: autoRenew as boolean } : {}),
     ...(renewalMonths !== undefined ? { renewalMonths: renewalMonths as number | null } : {}),
     ...(assetIds !== undefined ? { assetIds: assetIds as string[] } : {}),
+    ...(licenseIds !== undefined ? { licenseIds: licenseIds as string[] } : {}),
     ...(departmentId !== undefined ? { departmentId } : {}),
     responsibleUserId,
     notes,
@@ -264,6 +277,11 @@ function parseAction(value: unknown): Action | null {
     Object.keys(value).every((key) => ["type", "tenantId"].includes(key))
   )
     return { type: "listAssets", tenantId };
+  if (
+    value.type === "listLicenses" &&
+    Object.keys(value).every((key) => ["type", "tenantId"].includes(key))
+  )
+    return { type: "listLicenses", tenantId };
   if (
     value.type === "listPeople" &&
     Object.keys(value).every((key) => ["type", "tenantId"].includes(key))
@@ -396,7 +414,11 @@ async function assertResponsible(
       "Die verantwortliche Person gehört nicht zum aktiven Mandanten.",
     );
 }
-const rowToContract = (row: Row, assetIds: string[] = []) => ({
+const rowToContract = (
+  row: Row,
+  assetIds: string[] = [],
+  licenseIds: string[] = [],
+) => ({
   id: row.id,
   title: row.title,
   counterpartyName: row.counterparty_name,
@@ -418,6 +440,7 @@ const rowToContract = (row: Row, assetIds: string[] = []) => ({
   autoRenew: row.auto_renew === true,
   renewalMonths: row.renewal_months ?? null,
   assetIds,
+  licenseIds,
   departmentId: row.department_id ?? null,
   responsibleUserId: row.responsible_user_id,
   notes: row.notes,
@@ -485,6 +508,85 @@ async function syncAssetLinks(
       toAdd.map((assetId) => ({ tenant_id: tenantId, contract_id: contractId, asset_id: assetId })),
     );
     if (error) throw new HttpError(503, "contract_assets_failed", "Die Asset-Verknüpfung konnte nicht gespeichert werden.");
+  }
+}
+// Licenses linked to the given contracts (licenses.contract_id), limited to
+// the departments the caller may see.
+async function readLicenseIds(
+  admin: Admin,
+  tenantId: string,
+  contractIds: string[],
+  scope: DepartmentScope,
+): Promise<Map<string, string[]>> {
+  const byContract = new Map<string, string[]>();
+  if (contractIds.length === 0) return byContract;
+  const { data, error } = await applyDepartmentScope(
+    admin
+      .from("licenses")
+      .select("id, contract_id")
+      .eq("tenant_id", tenantId)
+      .in("contract_id", contractIds)
+      .order("title")
+      .limit(10_000),
+    scope,
+  );
+  if (error) {
+    throw new HttpError(503, "contracts_unavailable", "Verknüpfte Lizenzen konnten nicht geladen werden.");
+  }
+  for (const link of data ?? []) {
+    const row = link as Row;
+    const list = byContract.get(String(row.contract_id)) ?? [];
+    list.push(String(row.id));
+    byContract.set(String(row.contract_id), list);
+  }
+  return byContract;
+}
+// Links exactly the given licenses to the contract. A license that belonged
+// to another contract moves to this one (a license has at most one contract).
+async function syncLicenseLinks(
+  admin: Admin,
+  tenantId: string,
+  contractId: string,
+  licenseIds: string[],
+  scope: DepartmentScope,
+  actorId: string,
+): Promise<void> {
+  if (licenseIds.length > 0) {
+    const { data, error } = await applyDepartmentScope(
+      admin
+        .from("licenses")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .in("id", licenseIds),
+      scope,
+    );
+    if (error) {
+      throw new HttpError(503, "contracts_unavailable", "Lizenzen konnten nicht geprüft werden.");
+    }
+    if ((data ?? []).length !== licenseIds.length) {
+      throw new HttpError(422, "license_invalid", "Mindestens eine Lizenz gehört nicht zu diesem Mandanten.");
+    }
+  }
+  const existing =
+    (await readLicenseIds(admin, tenantId, [contractId], scope)).get(contractId) ?? [];
+  const toRemove = existing.filter((id) => !licenseIds.includes(id));
+  const toAdd = licenseIds.filter((id) => !existing.includes(id));
+  if (toRemove.length > 0) {
+    const { error } = await admin
+      .from("licenses")
+      .update({ contract_id: null, updated_by: actorId })
+      .eq("tenant_id", tenantId)
+      .eq("contract_id", contractId)
+      .in("id", toRemove);
+    if (error) throw new HttpError(503, "contract_licenses_failed", "Die Lizenz-Verknüpfung konnte nicht gespeichert werden.");
+  }
+  if (toAdd.length > 0) {
+    const { error } = await admin
+      .from("licenses")
+      .update({ contract_id: contractId, updated_by: actorId })
+      .eq("tenant_id", tenantId)
+      .in("id", toAdd);
+    if (error) throw new HttpError(503, "contract_licenses_failed", "Die Lizenz-Verknüpfung konnte nicht gespeichert werden.");
   }
 }
 // The contract's department, or a 404 when it is missing or outside the
@@ -558,6 +660,31 @@ async function handler(
       },
     });
   }
+  if (action.type === "listLicenses") {
+    const { data, error } = await applyDepartmentScope(
+      context.supabaseAdmin
+        .from("licenses")
+        .select("id, title, vendor_name, status, contract_id")
+        .eq("tenant_id", action.tenantId)
+        .neq("status", "archived")
+        .order("title")
+        .limit(2000),
+      scope,
+    );
+    if (error)
+      throw new HttpError(503, "contracts_unavailable", "Lizenzen konnten nicht geladen werden.");
+    return reply(request, {
+      data: {
+        licenses: (data ?? []).map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          vendorName: item.vendor_name,
+          status: item.status,
+          contractId: item.contract_id ?? null,
+        })),
+      },
+    });
+  }
   if (action.type === "listPeople") {
     const { data, error } = await context.supabaseAdmin
       .from("tenant_memberships")
@@ -603,15 +730,19 @@ async function handler(
         "contracts_unavailable",
         "Verträge konnten nicht geladen werden.",
       );
-    const links = await readAssetIds(
-      context.supabaseAdmin,
-      action.tenantId,
-      (data ?? []).map((item) => String((item as Row).id)),
-    );
+    const ids = (data ?? []).map((item) => String((item as Row).id));
+    const [links, licenseLinks] = await Promise.all([
+      readAssetIds(context.supabaseAdmin, action.tenantId, ids),
+      readLicenseIds(context.supabaseAdmin, action.tenantId, ids, scope),
+    ]);
     return reply(request, {
       data: {
         contracts: (data ?? []).map((item) =>
-          rowToContract(item as Row, links.get(String((item as Row).id)) ?? []),
+          rowToContract(
+            item as Row,
+            links.get(String((item as Row).id)) ?? [],
+            licenseLinks.get(String((item as Row).id)) ?? [],
+          ),
         ),
         departments,
       },
@@ -732,14 +863,29 @@ async function handler(
         action.values.assetIds,
       );
     }
-    const savedLinks = await readAssetIds(context.supabaseAdmin, action.tenantId, [
-      String(saved.id),
+    if (action.values.licenseIds !== undefined) {
+      await syncLicenseLinks(
+        context.supabaseAdmin,
+        action.tenantId,
+        String(saved.id),
+        action.values.licenseIds,
+        scope,
+        actorId,
+      );
+    }
+    const [savedLinks, savedLicenses] = await Promise.all([
+      readAssetIds(context.supabaseAdmin, action.tenantId, [String(saved.id)]),
+      readLicenseIds(context.supabaseAdmin, action.tenantId, [String(saved.id)], scope),
     ]);
     return reply(
       request,
       {
         data: {
-          contract: rowToContract(saved, savedLinks.get(String(saved.id)) ?? []),
+          contract: rowToContract(
+            saved,
+            savedLinks.get(String(saved.id)) ?? [],
+            savedLicenses.get(String(saved.id)) ?? [],
+          ),
         },
       },
       action.type === "create" ? 201 : 200,
@@ -770,14 +916,17 @@ async function handler(
       "contract_not_found",
       "Der Vertrag wurde nicht gefunden.",
     );
-  const archivedLinks = await readAssetIds(context.supabaseAdmin, action.tenantId, [
-    String((data as Row).id),
+  const archivedId = String((data as Row).id);
+  const [archivedLinks, archivedLicenses] = await Promise.all([
+    readAssetIds(context.supabaseAdmin, action.tenantId, [archivedId]),
+    readLicenseIds(context.supabaseAdmin, action.tenantId, [archivedId], scope),
   ]);
   return reply(request, {
     data: {
       contract: rowToContract(
         data as Row,
-        archivedLinks.get(String((data as Row).id)) ?? [],
+        archivedLinks.get(archivedId) ?? [],
+        archivedLicenses.get(archivedId) ?? [],
       ),
     },
   });

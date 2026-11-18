@@ -22,6 +22,7 @@ import { listMobileAssets, type MobileAsset } from "@/lib/asset-registry";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 function statusLabel(value: string): string {
   return value.replaceAll("_", " ");
@@ -254,13 +255,12 @@ export default function AssetsScreen() {
             <View style={styles.emptyCard}>
               <Ionicons
                 color={colors.primaryText}
-                name="cube-outline"
+                name="laptop-outline"
                 size={28}
               />
               <Text style={styles.emptyTitle}>Keine Assets gefunden</Text>
               <Text style={styles.emptyText}>
-                Passe die Suche an oder ziehe die Ansicht zum Aktualisieren nach
-                unten.
+                {tn("Passe die Suche an oder ziehe die Ansicht zum Aktualisieren nach unten.", "Passen Sie die Suche an oder ziehen Sie die Ansicht zum Aktualisieren nach unten.")}
               </Text>
             </View>
           ) : null}

@@ -22,6 +22,8 @@ export interface DashboardTicket {
   queueLabel: string;
   risk: "ok" | "warnung" | "kritisch";
   sla: string;
+  /** SLA paused (waiting status): neither kritisch, warnung nor ok. */
+  slaPaused?: boolean;
   state: string;
   statusOrder?: number;
   subject: string;

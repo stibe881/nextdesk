@@ -28,29 +28,46 @@ const PROFILE_OR_REACTION_PREFIX =
   /^\[(?:profile image|like|love|laugh|sad|angry)\]\s*/iu;
 const OUTLOOK_FOOTER_START =
   /^(?:führen sie jetzt ein upgrade auf das neueste outlook|diese e-mail wird durch die verwendung microsoft(?: 365| outlook)?)/iu;
+// Outlook safety banner for unfamiliar senders.
+const OUTLOOK_FIRST_CONTACT_BANNER =
+  /^(?:sie erhalten nicht häufig e-mails von|you don't often get email from)\b/iu;
 const OUTLOOK_LINK_LINE =
   /^(?:zu nachricht wechseln|abonnement kündigen|mac|ios|android)\s*<https?:\/\/[^>]+>\s*$/iu;
 // A farewell either stands on its own line ("Liebe Grüsse") or ends a short
 // closing sentence ("Danke für eure Hilfe und e liebe Gruess"); Swiss German
 // spellings (Gruess, Grüess, Grüessli) count too.
-const SIGNATURE_FAREWELL =
-  /(?:^|\s)(?:(?:(?:mit\s+)?freundliche[nr]?|liebe[nr]?|liebi|beste[nr]?|herzliche[nr]?|herzlichi|viele[nr]?|vieli)\s+)?gr(?:uss|üsse|uesse|üess|uess)(?:li)?[,!\.\s]*$/iu;
+// English farewells ("Best regards", "Kind regards") and bilingual lines
+// ("Freundliche Grüsse / Best regards") count as well.
+const GERMAN_FAREWELL =
+  "(?:(?:(?:mit\\s+)?freundliche[nr]?|liebe[nr]?|liebi|beste[nr]?|herzliche[nr]?|herzlichi|viele[nr]?|vieli)\\s+)?gr(?:uss|üsse|üssen|uesse|uessen|üess|uess)(?:li)?";
+const ENGLISH_FAREWELL =
+  "(?:(?:best|kind|warm|warmest|many)\\s+)?regards|cheers|sincerely|best\\s+wishes";
+const FAREWELL_CORE = `(?:${GERMAN_FAREWELL}|${ENGLISH_FAREWELL})`;
+const SIGNATURE_FAREWELL = new RegExp(
+  `(?:^|\\s)${FAREWELL_CORE}(?:\\s*[/|]\\s*${FAREWELL_CORE})?[,!\\.\\s]*$`,
+  "iu",
+);
 const SIGNATURE_FAREWELL_MAX_LENGTH = 80;
+const SIGNATURE_FAREWELL_WITH_NAME = new RegExp(
+  `(?:^|\\s)${FAREWELL_CORE}\\s*,\\s*\\p{L}[\\p{L}.' -]{0,40}$`,
+  "iu",
+);
 const SIGNATURE_BRACKETED_LINK = /\[https?:\/\/[^\]\s]*\]/giu;
 const SIGNATURE_IMAGE_FILE =
   /^\s*\[(?!cid:)([^\]]+\.(?:png|jpe?g|gif|webp|svg))\]\s*$/iu;
-const SIGNATURE_CONTACT = /^(?:tel(?:efon)?|mobile?|handy|t|m|f|w)\s*:\s*\S+/iu;
+const SIGNATURE_CONTACT =
+  /^(?:(?:tel(?:efon)?|mobile?|handy|t|m|f|w)\s*:\s*\S+|(?:phone|natel|direkt|direct|helpdesk|hotline|support|zentrale|p)\s*:?\s*\+?\d[\d\s()./-]{6,})/iu;
 const SIGNATURE_EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
 const SIGNATURE_LINK =
   /(?:<https?:\/\/[^>]+>|https?:\/\/\S+|(?:linkedin|facebook|instagram)\.com)/iu;
 const SIGNATURE_POSTAL_ADDRESS = /\b(?:CH-)?\d{4}\s+[\p{L}.-]+/iu;
 const PERSONAL_POSTSCRIPT = /^(?:p\.?\s*s\.?|nachtrag|hinweis)\b/iu;
-const DECORATIVE_SIGNATURE_IMAGE =
-  /(?:^|[-_.\s])(?:logo|signatur|signature|footer|banner)(?=$|[-_.\s])/iu;
 const RAW_SIGNATURE_LINK = /(?:<https?:\/\/[^>]+>|https?:\/\/[^\s<]+)/giu;
-const SOCIAL_NETWORK_LABEL =
-  /^(?:linkedin|facebook|instagram|x|twitter|youtube|tiktok)\s*:?\s*$/iu;
 const SIGNATURE_SCAN_LIMIT = 18;
+const COMPANY_LINE =
+  /\b(?:AG|GmbH|SA|Sàrl|Sarl|KG|AB|Ltd\.?|Inc\.?|LLC|S\.p\.A\.|Genossenschaft|Stiftung|Verein)$/u;
+const PERSON_NAME_LINE =
+  /^\p{Lu}[\p{L}'’-]+(?:\s+(?:von|van|de|der|da|di|\p{Lu}[\p{L}'’.-]*)){1,3}$/u;
 
 function decodeEntitiesOnce(value: string): string {
   const named: Record<string, string> = {
@@ -71,8 +88,8 @@ function decodeEntitiesOnce(value: string): string {
         ? Number.parseInt(encoded.slice(1), 16)
         : Number.parseInt(encoded, 10);
       return Number.isSafeInteger(codePoint) &&
-          codePoint > 0 &&
-          codePoint <= 0x10ffff
+        codePoint > 0 &&
+        codePoint <= 0x10ffff
         ? String.fromCodePoint(codePoint)
         : match;
     });
@@ -96,8 +113,8 @@ function decodeMarkupDelimiters(value: string): string {
         return name.toLowerCase() === "amp"
           ? "&"
           : name.toLowerCase() === "lt"
-          ? "<"
-          : ">";
+            ? "<"
+            : ">";
       })
       .replace(/&#(x[0-9a-f]+|\d+);/giu, (match, encoded: string) => {
         const codePoint = encoded.toLowerCase().startsWith("x")
@@ -106,10 +123,10 @@ function decodeMarkupDelimiters(value: string): string {
         return codePoint === 38
           ? "&"
           : codePoint === 60
-          ? "<"
-          : codePoint === 62
-          ? ">"
-          : match;
+            ? "<"
+            : codePoint === 62
+              ? ">"
+              : match;
       });
     if (next === decoded) break;
     decoded = next;
@@ -222,6 +239,7 @@ function shouldRemoveLine(value: string): boolean {
   const line = value.trim();
   return (
     line === "Microsoft Outlook" ||
+    OUTLOOK_FIRST_CONTACT_BANNER.test(line) ||
     OUTLOOK_LINK_LINE.test(line) ||
     /^\[?(?:profile image|like|love|laugh|sad|angry)\]?$/iu.test(line)
   );
@@ -258,24 +276,6 @@ function signatureEvidence(value: string): Set<string> {
   return signals;
 }
 
-function displayableSignatureLine(value: string): string | null {
-  const line = value.trim();
-  if (!line) return null;
-  const imageFile = SIGNATURE_IMAGE_FILE.exec(line)?.[1] ?? null;
-  if (imageFile) {
-    return DECORATIVE_SIGNATURE_IMAGE.test(imageFile)
-      ? null
-      : `Bildanhang: ${imageFile}`;
-  }
-  const withoutLinks = line
-    .replace(SIGNATURE_BRACKETED_LINK, "")
-    .replace(RAW_SIGNATURE_LINK, "")
-    .replace(/\s{2,}/gu, " ")
-    .trim();
-  if (!withoutLinks || SOCIAL_NETWORK_LABEL.test(withoutLinks)) return null;
-  return withoutLinks;
-}
-
 type SignatureLocation = {
   /** Index of the farewell line ("Liebe Grüsse"). */
   farewellIndex: number;
@@ -292,22 +292,38 @@ function locateCorporateSignature(lines: string[]): SignatureLocation | null {
     farewellIndex += 1
   ) {
     const farewell = lines[farewellIndex].trim();
-    if (
-      farewell.length > SIGNATURE_FAREWELL_MAX_LENGTH ||
-      !SIGNATURE_FAREWELL.test(farewell)
-    ) {
-      continue;
+    if (farewell.length > SIGNATURE_FAREWELL_MAX_LENGTH) continue;
+    // "Beste Grüsse, Gabriela": farewell and name on one line.
+    const sameLineName = SIGNATURE_FAREWELL_WITH_NAME.test(farewell);
+    if (!sameLineName && !SIGNATURE_FAREWELL.test(farewell)) continue;
+    let closingIndex = farewellIndex;
+    if (!sameLineName) {
+      closingIndex = farewellIndex + 1;
+      while (closingIndex < lines.length && !lines[closingIndex].trim()) {
+        closingIndex += 1;
+      }
+      if (
+        closingIndex >= lines.length ||
+        closingIndex - farewellIndex > 3 ||
+        !lines[closingIndex].trim()
+      ) {
+        continue;
+      }
     }
-    let closingIndex = farewellIndex + 1;
-    while (closingIndex < lines.length && !lines[closingIndex].trim()) {
-      closingIndex += 1;
-    }
-    if (
-      closingIndex >= lines.length ||
-      closingIndex - farewellIndex > 3 ||
-      !lines[closingIndex].trim()
-    ) {
-      continue;
+
+    // "dormakaba Schweiz AG" above "Philippe Ramel": keep the name as well.
+    if (!sameLineName && COMPANY_LINE.test(lines[closingIndex].trim())) {
+      let nameIndex = closingIndex + 1;
+      while (nameIndex < lines.length && !lines[nameIndex].trim()) {
+        nameIndex += 1;
+      }
+      if (
+        nameIndex < lines.length &&
+        nameIndex - closingIndex <= 2 &&
+        PERSON_NAME_LINE.test(lines[nameIndex].trim())
+      ) {
+        closingIndex = nameIndex;
+      }
     }
 
     const signals = new Set<string>();
@@ -338,29 +354,79 @@ function locateCorporateSignature(lines: string[]): SignatureLocation | null {
 }
 
 /**
- * Keeps a clearly identifiable corporate signature visible, but separates it
- * from the actual message and removes technical image filenames and raw link
- * lists. CID markers remain untouched for the private inline-media pipeline.
+ * Removes a clearly identifiable corporate signature from a new ticket
+ * description. The farewell and the closing line (usually the sender's name)
+ * stay, a personal postscript after the signature stays too. Contact details
+ * of external senders are kept separately (see extractSignatureContacts).
  */
 function formatCorporateSignature(value: string): string {
   const lines = value.split("\n");
   const location = locateCorporateSignature(lines);
   if (!location) return value;
   const { closingIndex, postscriptIndex } = location;
-  const signatureLines = lines
-    .slice(closingIndex + 1, postscriptIndex ?? lines.length)
-    .map(displayableSignatureLine)
-    .filter((line): line is string => line !== null);
-  if (!signatureLines.length) return value;
   return [
     ...lines.slice(0, closingIndex + 1),
-    "",
-    "E-Mail-Signatur",
-    ...signatureLines,
     ...(postscriptIndex === null ? [] : ["", ...lines.slice(postscriptIndex)]),
   ]
     .join("\n")
     .trimEnd();
+}
+
+const SIGNATURE_PHONE = /(?:\+|\b00|\b0)\d[\d\s()./-]{6,}\d/gu;
+const SIGNATURE_EMAIL_ALL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu;
+const MAX_SIGNATURE_CONTACTS = 6;
+
+function normalizePhone(value: string): string | null {
+  const compact = value.replace(/[^\d+]/gu, "");
+  const digits = compact.replace(/\D/gu, "");
+  if (digits.length < 8 || digits.length > 15) return null;
+  return value.replace(/\s{2,}/gu, " ").trim();
+}
+
+/**
+ * Phone numbers and e-mail addresses from a detected corporate signature,
+ * in the order they appear. Empty lists when no signature is found.
+ */
+export function extractSignatureContacts(value: unknown): {
+  phones: string[];
+  emails: string[];
+} {
+  const empty = { phones: [] as string[], emails: [] as string[] };
+  if (typeof value !== "string") return empty;
+  const text = decodeEntities(
+    stripHtmlToText(decodeMarkupDelimiters(value.replace(/\u0000/gu, ""))),
+  );
+  const lines = normalizeLines(text).split("\n");
+  const location = locateCorporateSignature(lines);
+  if (!location) return empty;
+  const phones: string[] = [];
+  const phoneKeys = new Set<string>();
+  const emails: string[] = [];
+  const emailKeys = new Set<string>();
+  const end = location.postscriptIndex ?? lines.length;
+  for (let index = location.closingIndex + 1; index < end; index += 1) {
+    const line = lines[index]
+      .replace(SIGNATURE_BRACKETED_LINK, " ")
+      .replace(RAW_SIGNATURE_LINK, " ");
+    for (const match of line.match(SIGNATURE_EMAIL_ALL) ?? []) {
+      const email = match.toLowerCase();
+      if (emailKeys.has(email) || emails.length >= MAX_SIGNATURE_CONTACTS)
+        continue;
+      emailKeys.add(email);
+      emails.push(email);
+    }
+    const withoutEmails = line.replace(SIGNATURE_EMAIL_ALL, " ");
+    for (const match of withoutEmails.match(SIGNATURE_PHONE) ?? []) {
+      const phone = normalizePhone(match);
+      if (!phone) continue;
+      const key = phone.replace(/\D/gu, "").replace(/^(?:00|0)/u, "");
+      if (phoneKeys.has(key) || phones.length >= MAX_SIGNATURE_CONTACTS)
+        continue;
+      phoneKeys.add(key);
+      phones.push(phone);
+    }
+  }
+  return { phones, emails };
 }
 
 /**

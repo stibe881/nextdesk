@@ -131,6 +131,7 @@ export const THEME_SCHEMA = {
 };
 
 export const THEME_SYSTEM = [
+  // formality-ok: Anweisung an das KI-Modell, keine Anrede an eine Person.
   "Du ordnest Freitext-Kommentare aus Zufriedenheitsumfragen eines IT-Supports",
   "Themen zu. Erlaubte Themen (Schlüssel): long_wait = lange Wartezeit/Reaktionszeit,",
   "unclear_answer = unklare oder unverständliche Antwort, friendly_competent =",

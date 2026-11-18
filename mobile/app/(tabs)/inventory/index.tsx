@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { Image } from "expo-image";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,6 +16,7 @@ import {
   View,
 } from "react-native";
 
+import { BoxesIcon } from "@/components/section-icons";
 import { ScreenContainer } from "@/components/screen-container";
 import {
   MobileFeatureLoadingScreen,
@@ -25,13 +28,16 @@ import {
   loadMobileInventory,
   newInventoryRequestId,
   parseReceiptQuantity,
+  postMobileInventoryIssue,
   postMobileInventoryReceipt,
   type MobileInventoryItem,
   type MobileInventoryOverview,
 } from "@/lib/inventory";
+import { useInventoryItemImages } from "@/lib/inventory-images";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 const quantityFormat = new Intl.NumberFormat("de-CH", {
   maximumFractionDigits: 2,
@@ -49,6 +55,29 @@ export default function InventoryScreen() {
     null,
   );
   const [query, setQuery] = useState("");
+  // «?item=…» from a scanned article label shows only this article.
+  // «?location=…» from an inventory reminder (count due) shows that location.
+  const { item: itemParam, location: locationParam } = useLocalSearchParams<{
+    item?: string;
+    location?: string;
+  }>();
+  const scannedItemId =
+    typeof itemParam === "string" && itemParam.trim()
+      ? itemParam.trim().toLowerCase()
+      : "";
+  const [appliedItemId, setAppliedItemId] = useState(scannedItemId);
+  if (scannedItemId !== "" && scannedItemId !== appliedItemId) {
+    setAppliedItemId(scannedItemId);
+  }
+  const requestedLocationId =
+    typeof locationParam === "string" && locationParam.trim()
+      ? locationParam.trim().toLowerCase()
+      : "";
+  const [appliedLocationId, setAppliedLocationId] =
+    useState(requestedLocationId);
+  if (requestedLocationId !== "" && requestedLocationId !== appliedLocationId) {
+    setAppliedLocationId(requestedLocationId);
+  }
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -61,6 +90,9 @@ export default function InventoryScreen() {
     null,
   );
   const [receiptRequestId, setReceiptRequestId] = useState("");
+  // Separate id: a receipt and an issue of the same sheet are two bookings.
+  const [issueRequestId, setIssueRequestId] = useState("");
+  const [issueSaving, setIssueSaving] = useState(false);
   const [receiptSaving, setReceiptSaving] = useState(false);
   const [receiptError, setReceiptError] = useState("");
   const [notice, setNotice] = useState("");
@@ -108,18 +140,37 @@ export default function InventoryScreen() {
     () => new Set(overview?.lowStockIds ?? []),
     [overview],
   );
+  const appliedLocation = useMemo(
+    () =>
+      appliedLocationId
+        ? ((overview?.locations ?? []).find(
+            (location) => location.id.toLowerCase() === appliedLocationId,
+          ) ?? null)
+        : null,
+    [overview, appliedLocationId],
+  );
   const items = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("de-CH");
     return (overview?.items ?? []).filter(
       (item) =>
-        !needle ||
-        `${item.name} ${item.articleNumber ?? ""} ${item.locationName ?? ""}`
-          .toLocaleLowerCase("de-CH")
-          .includes(needle),
+        (!appliedItemId || item.id.toLowerCase() === appliedItemId) &&
+        (!appliedLocation || item.locationName === appliedLocation.name) &&
+        (!needle ||
+          `${item.name} ${item.articleNumber ?? ""} ${item.locationName ?? ""}`
+            .toLocaleLowerCase("de-CH")
+            .includes(needle)),
     );
-  }, [overview, query]);
+  }, [overview, query, appliedItemId, appliedLocation]);
+
+  // Pictures for all articles (not only the filtered ones), so typing in the
+  // search field does not request them again.
+  const images = useInventoryItemImages(tenantId, overview?.items ?? []);
 
   const canReceive = overview?.canMove === true;
+  // «Ausbuchen» only for the role «Lagerverwaltung» (permission inventory.issue).
+  const canIssue = overview?.canIssue === true;
+  const canBook = canReceive || canIssue;
+  const bookingBusy = receiptSaving || issueSaving;
   const locations = overview?.locations ?? [];
 
   const openReceipt = (item: MobileInventoryItem) => {
@@ -134,23 +185,93 @@ export default function InventoryScreen() {
       matching?.id ?? (locations.length === 1 ? locations[0].id : null),
     );
     setReceiptRequestId(newInventoryRequestId());
+    setIssueRequestId(newInventoryRequestId());
     setReceiptItem(item);
   };
 
   const closeReceipt = () => {
-    if (receiptSaving) return;
+    if (bookingBusy) return;
     setReceiptItem(null);
   };
 
-  const submitReceipt = async () => {
-    if (!receiptItem || !tenantId || receiptSaving) return;
+  const postIssue = async (item: MobileInventoryItem, quantity: number) => {
+    if (!tenantId || !receiptLocationId) return;
+    setIssueSaving(true);
+    setReceiptError("");
+    try {
+      await postMobileInventoryIssue({
+        tenantId,
+        itemId: item.id,
+        locationId: receiptLocationId,
+        quantity,
+        clientRequestId: issueRequestId,
+      });
+      setNotice(
+        `${quantityFormat.format(quantity)} ${item.unit} «${item.name}» ausgebucht.`,
+      );
+      setReceiptItem(null);
+      void load(true);
+    } catch (nextError) {
+      setReceiptError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Menge konnte nicht ausgebucht werden.",
+      );
+    } finally {
+      setIssueSaving(false);
+    }
+  };
+
+  const submitIssue = () => {
+    if (!receiptItem || !tenantId || bookingBusy) return;
+    const item = receiptItem;
     const quantity = parseReceiptQuantity(receiptQuantity);
     if (quantity === null) {
-      setReceiptError("Bitte gib eine gültige Menge grösser als 0 ein.");
+      setReceiptError(
+        tn(
+          "Bitte gib eine gültige Menge grösser als 0 ein.",
+          "Bitte geben Sie eine gültige Menge grösser als 0 ein.",
+        ),
+      );
+      return;
+    }
+    if (quantity > item.availableQuantity) {
+      setReceiptError(
+        `Es sind nur ${quantityFormat.format(item.availableQuantity)} ${item.unit} verfügbar.`,
+      );
       return;
     }
     if (!receiptLocationId) {
-      setReceiptError("Bitte wähle einen Lagerort.");
+      setReceiptError(
+        tn("Bitte wähle einen Lagerort.", "Bitte wählen Sie einen Lagerort."),
+      );
+      return;
+    }
+    Alert.alert(
+      "Wirklich ausbuchen?",
+      `${quantityFormat.format(quantity)} ${item.unit} «${item.name}» werden aus dem Lager ausgebucht.`,
+      [
+        { text: "Abbrechen", style: "cancel" },
+        {
+          text: "Ausbuchen",
+          style: "destructive",
+          onPress: () => void postIssue(item, quantity),
+        },
+      ],
+    );
+  };
+
+  const submitReceipt = async () => {
+    if (!receiptItem || !tenantId || bookingBusy) return;
+    const quantity = parseReceiptQuantity(receiptQuantity);
+    if (quantity === null) {
+      setReceiptError(tn("Bitte gib eine gültige Menge grösser als 0 ein.", "Bitte geben Sie eine gültige Menge grösser als 0 ein."));
+      return;
+    }
+    if (!receiptLocationId) {
+      setReceiptError(
+        tn("Bitte wähle einen Lagerort.", "Bitte wählen Sie einen Lagerort."),
+      );
       return;
     }
     setReceiptSaving(true);
@@ -277,9 +398,54 @@ export default function InventoryScreen() {
           />
         </View>
 
-        {canReceive ? (
+        {appliedLocation ? (
           <Text style={styles.hint}>
-            Tippe auf einen Artikel, um einen Wareneingang einzubuchen.
+            Lagerort «{appliedLocation.name}».{" "}
+            <Text
+              accessibilityRole="button"
+              onPress={() => {
+                setAppliedLocationId("");
+                router.setParams({ location: "" } as never);
+              }}
+              style={{ color: colors.primaryText, fontWeight: "700" }}
+            >
+              Alle Artikel anzeigen
+            </Text>
+          </Text>
+        ) : null}
+
+        {appliedItemId ? (
+          <Text style={styles.hint}>
+            Nur dieser Artikel.{" "}
+            <Text
+              accessibilityRole="button"
+              onPress={() => {
+                setAppliedItemId("");
+                router.setParams({ item: "" } as never);
+              }}
+              style={{ color: colors.primaryText, fontWeight: "700" }}
+            >
+              Alle Artikel anzeigen
+            </Text>
+          </Text>
+        ) : null}
+
+        {canBook ? (
+          <Text style={styles.hint}>
+            {canIssue && canReceive
+              ? tn(
+                  "Tippe auf einen Artikel, um Bestand ein- oder auszubuchen.",
+                  "Tippen Sie auf einen Artikel, um Bestand ein- oder auszubuchen.",
+                )
+              : canIssue
+                ? tn(
+                    "Tippe auf einen Artikel, um Bestand auszubuchen.",
+                    "Tippen Sie auf einen Artikel, um Bestand auszubuchen.",
+                  )
+                : tn(
+                    "Tippe auf einen Artikel, um einen Wareneingang einzubuchen.",
+                    "Tippen Sie auf einen Artikel, um einen Wareneingang einzubuchen.",
+                  )}
           </Text>
         ) : null}
 
@@ -309,12 +475,12 @@ export default function InventoryScreen() {
           {items.map((item) => (
             <Pressable
               accessibilityHint={
-                canReceive
-                  ? "Öffnet den Wareneingang für diesen Artikel"
+                canBook
+                  ? "Öffnet die Buchung für diesen Artikel"
                   : undefined
               }
-              accessibilityRole={canReceive ? "button" : undefined}
-              disabled={!canReceive}
+              accessibilityRole={canBook ? "button" : undefined}
+              disabled={!canBook}
               key={item.id}
               onPress={() => openReceipt(item)}
               style={({ pressed }) => [
@@ -323,11 +489,19 @@ export default function InventoryScreen() {
               ]}
             >
               <View style={styles.itemIcon}>
-                <Ionicons
-                  color={colors.primaryText}
-                  name="cube-outline"
-                  size={22}
-                />
+                {images.has(item.id) ? (
+                  <Image
+                    accessibilityIgnoresInvertColors
+                    cachePolicy="memory"
+                    contentFit="cover"
+                    recyclingKey={item.id}
+                    source={{ uri: images.get(item.id) }}
+                    style={styles.itemImage}
+                    transition={150}
+                  />
+                ) : (
+                  <BoxesIcon color={colors.primaryText} size={22} />
+                )}
               </View>
               <View style={styles.itemCopy}>
                 <Text numberOfLines={1} style={styles.itemName}>
@@ -364,8 +538,7 @@ export default function InventoryScreen() {
               />
               <Text style={styles.emptyTitle}>Keine Artikel gefunden</Text>
               <Text style={styles.emptyText}>
-                Passe die Suche an oder ziehe die Ansicht zum Aktualisieren nach
-                unten.
+                {tn("Passe die Suche an oder ziehe die Ansicht zum Aktualisieren nach unten.", "Passen Sie die Suche an oder ziehen Sie die Ansicht zum Aktualisieren nach unten.")}
               </Text>
             </View>
           ) : null}
@@ -383,9 +556,15 @@ export default function InventoryScreen() {
             style={styles.sheet}
           >
             <View style={styles.sheetHeader}>
-              <Text style={styles.eyebrow}>WARENEINGANG</Text>
+              <Text style={styles.eyebrow}>
+                {canIssue && !canReceive
+                  ? "AUSBUCHEN"
+                  : canIssue
+                    ? "BESTAND BUCHEN"
+                    : "WARENEINGANG"}
+              </Text>
               <Pressable
-                accessibilityLabel="Wareneingang schliessen"
+                accessibilityLabel="Buchung schliessen"
                 accessibilityRole="button"
                 hitSlop={12}
                 onPress={closeReceipt}
@@ -403,6 +582,9 @@ export default function InventoryScreen() {
                   {[
                     receiptItem.articleNumber,
                     `${quantityFormat.format(receiptItem.physicalQuantity)} ${receiptItem.unit} an Lager`,
+                    canIssue
+                      ? `${quantityFormat.format(receiptItem.availableQuantity)} verfügbar`
+                      : null,
                   ]
                     .filter(Boolean)
                     .join(" · ")}
@@ -417,8 +599,10 @@ export default function InventoryScreen() {
                     size={19}
                   />
                   <Text style={styles.errorText}>
-                    Dieser Artikel wird mit Seriennummern geführt. Bitte buche
-                    ihn in der Webversion ein.
+                    {tn(
+                      "Dieser Artikel wird mit Seriennummern geführt. Bitte buche ihn in der Webversion ein.",
+                      "Dieser Artikel wird mit Seriennummern geführt. Bitte buchen Sie ihn in der Webversion ein.",
+                    )}
                   </Text>
                 </View>
               ) : (
@@ -467,8 +651,7 @@ export default function InventoryScreen() {
                     <Text style={styles.fieldLabel}>Lagerort</Text>
                     {locations.length === 0 ? (
                       <Text style={styles.itemMeta}>
-                        Es ist noch kein Lagerort erfasst. Lege ihn in der
-                        Webversion an.
+                        {tn("Es ist noch kein Lagerort erfasst. Lege ihn in der Webversion an.", "Es ist noch kein Lagerort erfasst. Legen Sie ihn in der Webversion an.")}
                       </Text>
                     ) : (
                       <View style={styles.locationList}>
@@ -513,23 +696,73 @@ export default function InventoryScreen() {
                     </View>
                   ) : null}
 
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={receiptSaving || locations.length === 0}
-                    onPress={() => void submitReceipt()}
-                    style={({ pressed }) => [
-                      styles.primaryButton,
-                      (receiptSaving || locations.length === 0) &&
-                        styles.disabled,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    {receiptSaving ? (
-                      <ActivityIndicator color={colors.onPrimary} />
-                    ) : (
-                      <Text style={styles.primaryButtonText}>Einbuchen</Text>
-                    )}
-                  </Pressable>
+                  <View style={styles.bookingActions}>
+                    {canReceive ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          busy: receiptSaving,
+                          disabled: bookingBusy || locations.length === 0,
+                        }}
+                        disabled={bookingBusy || locations.length === 0}
+                        onPress={() => void submitReceipt()}
+                        style={({ pressed }) => [
+                          styles.primaryButton,
+                          styles.bookingButton,
+                          (bookingBusy || locations.length === 0) &&
+                            styles.disabled,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        {receiptSaving ? (
+                          <ActivityIndicator color={colors.onPrimary} />
+                        ) : (
+                          <Text style={styles.primaryButtonText}>
+                            Einbuchen
+                          </Text>
+                        )}
+                      </Pressable>
+                    ) : null}
+                    {canIssue ? (
+                      <Pressable
+                        accessibilityHint="Fragt vor dem Ausbuchen nach."
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          busy: issueSaving,
+                          disabled:
+                            bookingBusy ||
+                            locations.length === 0 ||
+                            receiptItem.availableQuantity <= 0,
+                        }}
+                        disabled={
+                          bookingBusy ||
+                          locations.length === 0 ||
+                          receiptItem.availableQuantity <= 0
+                        }
+                        onPress={submitIssue}
+                        style={({ pressed }) => [
+                          styles.issueButton,
+                          styles.bookingButton,
+                          (bookingBusy ||
+                            locations.length === 0 ||
+                            receiptItem.availableQuantity <= 0) &&
+                            styles.disabled,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        {issueSaving ? (
+                          <ActivityIndicator color={colors.error} />
+                        ) : (
+                          <Text style={styles.issueButtonText}>Ausbuchen</Text>
+                        )}
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {canIssue && receiptItem.availableQuantity <= 0 ? (
+                    <Text style={styles.itemMeta}>
+                      Kein verfügbarer Bestand zum Ausbuchen.
+                    </Text>
+                  ) : null}
                 </>
               )}
             </ScrollView>
@@ -608,6 +841,18 @@ const useStyles = makeThemedStyles((c) => ({
     marginTop: 4,
   },
   primaryButtonText: { color: c.onPrimary, fontSize: 16, fontWeight: "800" },
+  bookingActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+  bookingButton: { flex: 1, marginTop: 0 },
+  issueButton: {
+    alignItems: "center",
+    backgroundColor: c.errorSoft,
+    borderColor: c.error,
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 52,
+  },
+  issueButtonText: { color: c.error, fontSize: 16, fontWeight: "800" },
   quantityInput: {
     backgroundColor: c.surface,
     borderColor: c.borderStrong,
@@ -667,8 +912,10 @@ const useStyles = makeThemedStyles((c) => ({
     borderRadius: 14,
     height: 46,
     justifyContent: "center",
+    overflow: "hidden",
     width: 46,
   },
+  itemImage: { height: "100%", width: "100%" },
   itemMeta: { color: c.muted, fontSize: 12 },
   itemName: { color: c.foreground, fontSize: 15, fontWeight: "800" },
   list: { gap: 10 },

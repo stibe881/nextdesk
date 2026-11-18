@@ -10,6 +10,8 @@ export const MAX_BODY_BYTES = 16 * 1024;
 export const COMMENT_THROTTLE_MS = 15 * 60 * 1000;
 const MAX_FIELD_LENGTH = 2000;
 
+import { germanPrtgMessage } from "./prtg-text.ts";
+
 export type StatusKind = "down" | "warning" | "up" | "ignore";
 
 export type PrtgEvent = {
@@ -29,10 +31,12 @@ export type PrtgEvent = {
   down: string | null;
   priority: string | null;
   link: string | null;
+  /** Set for results of nextDesk's own sensors (timeline kind «sensor»). */
+  origin?: "sensor";
 };
 
 /** Field aliases (normalised: lower case, no "%", "_", "-" or spaces). */
-const ALIASES: Record<keyof Omit<PrtgEvent, "kind">, string[]> = {
+const ALIASES: Record<keyof Omit<PrtgEvent, "kind" | "origin">, string[]> = {
   device: ["device", "devicename", "name"],
   host: ["host", "hostname", "ip", "ipaddress", "address"],
   sensor: ["sensor", "sensorname"],
@@ -127,10 +131,17 @@ export function parseQuery(url: URL): Record<string, string> {
  * "Warning", "Unusual", "Paused (paused by user)", "Down (Acknowledged)",
  * "Down (Partial)", "Up (was: Down)", "Unknown". German: "OK", "Fehler",
  * "Warnung", "Ungewöhnlich", "Pausiert", "Fehler (Teilweise)", "Unbekannt".
+ * Recovery texts: "Down ended (now: Up)" / "Fehler beendet (jetzt: OK)".
  */
 export function classifyStatus(status: string | null): StatusKind | null {
   if (!status) return null;
   const head = status.trim().toLowerCase();
+  // Recovery texts: «Fehler beendet (jetzt: OK)», «Down ended (now: Up)». The
+  // state in brackets is the new one; without it the problem simply ended.
+  if (/\b(beendet|ended)\b/.test(head)) {
+    const now = /\((?:jetzt|now):\s*([^)]+)\)/.exec(head);
+    return (now ? classifyStatus(now[1]!) : null) ?? "up";
+  }
   if (/^(up|ok|ended|resolved|behoben|in ordnung)\b/.test(head)) return "up";
   if (
     /^(down|error|critical|failed|fehler|ausfall|st[öo]rung|kritisch|teilweiser fehler)/
@@ -187,7 +198,8 @@ export function buildEvent(
     sensor: value("sensor"),
     status: status ?? value("down") ?? kind,
     kind,
-    message: value("message"),
+    // Short German text (PRTG partly reports in English, with error codes).
+    message: germanPrtgMessage(value("message")),
     objectId: value("objectId"),
     sensorId: value("sensorId"),
     deviceId: value("deviceId"),

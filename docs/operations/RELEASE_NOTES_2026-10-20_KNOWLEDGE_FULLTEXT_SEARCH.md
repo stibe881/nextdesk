@@ -11,7 +11,7 @@
 
 ## Ausgeliefert
 
-Die Suche in der Wissensdatenbank ist nun eine serverseitige Volltextsuche. Sie berücksichtigt Artikeltitel, Zusammenfassungen und Artikelinhalt und ordnet Ergebnisse nach Relevanz. Die Eingabe erklärt dies als Suche über die gesamte Wissensdatenbank.
+Die Suche in der Wissensdatenbank ist nun eine serverseitige Volltextsuche. Diese berücksichtigt Artikeltitel, Zusammenfassungen und Artikelinhalt und ordnet Ergebnisse nach Relevanz. Die Eingabe erklärt dies als Suche über die gesamte Wissensdatenbank.
 
 Für jede Wissensrevision wird ein revisionsgebundener Titel geführt. Dadurch sucht und zeigt eine externe Person ausschliesslich Titel und Inhalt der veröffentlichten Revision, auch wenn intern bereits ein neuer Entwurf existiert.
 
@@ -29,4 +29,4 @@ Die vollständige Projekt-, Schema-, Datenbank-, Edge-, Format- und Webbuild-Sui
 
 ## Rücknahmegrenze
 
-Die Migration ergänzt Revisionsdaten, Suchindex, Trigger und eine serverseitige Suchfunktion. Sie wird nicht durch das Löschen der historischen Migration zurückgenommen. Ein Web-Rollback verwendet das genannte Backup; eine Datenrücknahme wird nur nach abgestimmter Prüfung und Wiederherstellungsfenster vorgenommen.
+Die Migration ergänzt Revisionsdaten, Suchindex, Trigger und eine serverseitige Suchfunktion. Diese wird nicht durch das Löschen der historischen Migration zurückgenommen. Ein Web-Rollback verwendet das genannte Backup; eine Datenrücknahme wird nur nach abgestimmter Prüfung und Wiederherstellungsfenster vorgenommen.

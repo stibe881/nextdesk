@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   AlertTriangle,
   AtSign,
@@ -12,6 +13,7 @@ import {
   ShieldCheck,
   UserRound,
   UsersRound,
+  Wrench,
 } from "lucide-react";
 import {
   useEffect,
@@ -84,7 +86,10 @@ type ActiveIncidentNotice = Pick<
   | "status"
   | "title"
   | "updatedAt"
->;
+> & {
+  /** Betroffene Dienste der Störungsmeldung (fehlt bei älteren Serverständen). */
+  serviceNames: string[];
+};
 type Person = {
   id: string;
   name: string;
@@ -111,7 +116,157 @@ type MetricTicketIds = {
   solvedToday: string[];
 };
 
-export type { ActiveIncidentNotice, TeamQueue };
+/** Maintenance window for the banner (running or starting within 24 h). */
+type BannerMaintenance = {
+  id: string;
+  title: string;
+  description: string | null;
+  startsAt: string;
+  endsAt: string;
+  running: boolean;
+  serviceNames: string[];
+  deviceNames: string[];
+};
+
+export type { ActiveIncidentNotice, BannerMaintenance, TeamQueue };
+
+const nameList = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+
+/** Maintenance windows of the banner response; missing on older servers. */
+export function bannerMaintenancesFromResponse(
+  value: unknown,
+): BannerMaintenance[] {
+  const data = responseData(value);
+  if (!data || !Array.isArray(data.maintenances)) return [];
+  return data.maintenances.flatMap((entry: unknown) => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.id !== "string" ||
+      typeof entry.title !== "string" ||
+      typeof entry.starts_at !== "string" ||
+      typeof entry.ends_at !== "string"
+    ) {
+      return [];
+    }
+    return [
+      {
+        id: entry.id,
+        title: entry.title,
+        description:
+          typeof entry.description === "string" && entry.description.trim()
+            ? entry.description
+            : null,
+        startsAt: entry.starts_at,
+        endsAt: entry.ends_at,
+        running: entry.running === true,
+        serviceNames: nameList(entry.service_names),
+        deviceNames: nameList(entry.device_names),
+      },
+    ];
+  });
+}
+
+/** «heute 18:00 – 20:00» or with dates when the window spans days. */
+export function maintenanceWindowText(
+  startsAt: string,
+  endsAt: string,
+): string {
+  const zone = "Europe/Zurich";
+  const day = (value: string) =>
+    new Intl.DateTimeFormat("de-CH", {
+      dateStyle: "medium",
+      timeZone: zone,
+    }).format(new Date(value));
+  const time = (value: string) =>
+    new Intl.DateTimeFormat("de-CH", {
+      timeStyle: "short",
+      timeZone: zone,
+    }).format(new Date(value));
+  return day(startsAt) === day(endsAt)
+    ? `${day(startsAt)}, ${time(startsAt)} – ${time(endsAt)}`
+    : `${day(startsAt)}, ${time(startsAt)} – ${day(endsAt)}, ${time(endsAt)}`;
+}
+
+/** Banner for maintenance windows, shown next to the incident banner. */
+export function MaintenanceBanner({
+  maintenances,
+}: {
+  maintenances: readonly BannerMaintenance[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (maintenances.length === 0) return null;
+  const several = maintenances.length > 1;
+  const shown = several && expanded ? maintenances : maintenances.slice(0, 1);
+  return (
+    <section
+      aria-label={several ? "Wartungen" : "Wartung"}
+      className="workbench-incident-banner workbench-incident-banner--maintenance"
+      role="status"
+    >
+      <Wrench aria-hidden="true" size={21} strokeWidth={1.9} />
+      <ul
+        className="workbench-incident-banner__list"
+        id="maintenance-banner-list"
+      >
+        {shown.map((maintenance) => {
+          const affected = [
+            ...maintenance.serviceNames,
+            ...maintenance.deviceNames.filter(
+              (name) => !maintenance.serviceNames.includes(name),
+            ),
+          ];
+          return (
+            <li key={maintenance.id}>
+              <div className="workbench-incident-banner__heading">
+                <strong>
+                  {maintenance.running ? "Laufende Wartung" : "Geplante Wartung"}
+                  : {maintenance.title}
+                </strong>
+                <span>
+                  {maintenanceWindowText(
+                    maintenance.startsAt,
+                    maintenance.endsAt,
+                  )}
+                </span>
+              </div>
+              {maintenance.description ? (
+                <p
+                  className={
+                    several ? "workbench-incident-banner__excerpt" : undefined
+                  }
+                  title={several ? maintenance.description : undefined}
+                >
+                  {maintenance.description}
+                </p>
+              ) : null}
+              {affected.length > 0 ? (
+                <p className="workbench-incident-banner__services">
+                  Betroffen: {affected.join(", ")}
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      {several ? (
+        <button
+          aria-controls="maintenance-banner-list"
+          aria-expanded={expanded}
+          className="workbench-incident-banner__count"
+          onClick={() => setExpanded((current) => !current)}
+          type="button"
+        >
+          {expanded
+            ? "Weniger anzeigen"
+            : `+${maintenances.length - 1} weitere`}
+        </button>
+      ) : null}
+    </section>
+  );
+}
 
 export function activeIncidentNoticesFromResponse(
   value: unknown,
@@ -121,7 +276,20 @@ export function activeIncidentNoticesFromResponse(
   const notices = data.notices.map(incidentNoticeFromValue);
   return notices.every((notice): notice is IncidentNotice => notice !== null)
     ? notices.map(
-        ({
+        (
+          {
+            categoryId,
+            departmentId,
+            description,
+            id,
+            resolvedAt,
+            startsAt,
+            status,
+            title,
+            updatedAt,
+          },
+          index,
+        ) => ({
           categoryId,
           departmentId,
           description,
@@ -131,19 +299,25 @@ export function activeIncidentNoticesFromResponse(
           status,
           title,
           updatedAt,
-        }) => ({
-          categoryId,
-          departmentId,
-          description,
-          id,
-          resolvedAt,
-          startsAt,
-          status,
-          title,
-          updatedAt,
+          serviceNames: incidentServiceNames(
+            (data.notices as unknown[])[index],
+          ),
         }),
       )
     : null;
+}
+
+/** Namen der betroffenen Dienste einer Meldung (optional in der Antwort). */
+export function incidentServiceNames(value: unknown): string[] {
+  if (!isRecord(value) || !Array.isArray(value.service_names)) return [];
+  return value.service_names
+    .filter(
+      (name): name is string =>
+        typeof name === "string" &&
+        name.trim().length > 0 &&
+        name.length <= 240,
+    )
+    .slice(0, 20);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -488,11 +662,23 @@ function TeamQueuesPanel({
           </p>
         </div>
         <HelpHint label="Team-Warteschlangen">
-          Ihre eigenen Teams stehen oben. «Ohne Teamzuordnung» sind offene
-          Tickets, die noch keinem Team zugeteilt sind – verteilen Sie sie,
-          damit sich jemand zuständig fühlt. «ohne Bearbeiter» zählt Tickets,
-          die noch niemandem zugewiesen sind. Sie sehen nur Tickets, die Sie
-          öffnen dürfen; eine Warteschlange weist nichts automatisch zu.
+          {tn(
+            <>
+              Deine eigenen Teams stehen oben. «Ohne Teamzuordnung» sind offene
+              Tickets, die noch keinem Team zugeteilt sind – verteile sie, damit
+              sich jemand zuständig fühlt. «ohne Bearbeiter» zählt Tickets, die
+              noch niemandem zugewiesen sind. Du siehst nur Tickets, die du
+              öffnen darfst; eine Warteschlange weist nichts automatisch zu.
+            </>,
+            <>
+              Ihre eigenen Teams stehen oben. «Ohne Teamzuordnung» sind offene
+              Tickets, die noch keinem Team zugeteilt sind – verteilen Sie sie,
+              damit sich jemand zuständig fühlt. «ohne Bearbeiter» zählt
+              Tickets, die noch niemandem zugewiesen sind. Sie sehen nur
+              Tickets, die Sie öffnen dürfen; eine Warteschlange weist nichts
+              automatisch zu.
+            </>,
+          )}
         </HelpHint>
       </div>
       {state === "loading" ? (
@@ -644,7 +830,10 @@ function MentionsPanel({
           onUnreadChange(0);
         } else {
           setMessage(
-            "Die Erwähnung konnte nicht als gelesen markiert werden. Bitte versuchen Sie es erneut.",
+            tn(
+              "Die Erwähnung konnte nicht als gelesen markiert werden. Bitte versuche es erneut.",
+              "Die Erwähnung konnte nicht als gelesen markiert werden. Bitte versuchen Sie es erneut.",
+            ),
           );
         }
       } finally {
@@ -679,7 +868,12 @@ function MentionsPanel({
           Erwähnungen sind für diesen Mandanten derzeit nicht verfügbar.
         </p>
       ) : mentions.length === 0 ? (
-        <p className="workbench-empty">Keine Erwähnungen in Ihrem Eingang.</p>
+        <p className="workbench-empty">
+          {tn(
+            "Keine Erwähnungen in deinem Eingang.",
+            "Keine Erwähnungen in Ihrem Eingang.",
+          )}
+        </p>
       ) : (
         <ul className="workbench-mention-list">
           {mentions.map((mention) => (
@@ -842,7 +1036,10 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
       Date.parse(end) <= Date.parse(start)
     ) {
       setMessage(
-        "Bitte wählen Sie eine aktive Person sowie einen gültigen, positiven Zeitraum.",
+        tn(
+          "Bitte wähle eine aktive Person sowie einen gültigen, positiven Zeitraum.",
+          "Bitte wählen Sie eine aktive Person sowie einen gültigen, positiven Zeitraum.",
+        ),
       );
       return;
     }
@@ -870,7 +1067,10 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
       if (isQuietUnavailable(error)) setState("unavailable");
       else {
         setMessage(
-          "Die Stellvertretung konnte nicht gespeichert werden. Prüfen Sie Zeitraum und Berechtigung.",
+          tn(
+            "Die Stellvertretung konnte nicht gespeichert werden. Prüfe Zeitraum und Berechtigung.",
+            "Die Stellvertretung konnte nicht gespeichert werden. Prüfen Sie Zeitraum und Berechtigung.",
+          ),
         );
       }
     } finally {
@@ -893,7 +1093,10 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
       if (isQuietUnavailable(error)) setState("unavailable");
       else {
         setMessage(
-          "Die Stellvertretung konnte nicht beendet werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Stellvertretung konnte nicht beendet werden. Bitte versuche es erneut.",
+            "Die Stellvertretung konnte nicht beendet werden. Bitte versuchen Sie es erneut.",
+          ),
         );
       }
     } finally {
@@ -912,15 +1115,32 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
           <h2 id="workbench-delegations-heading">Stellvertretung</h2>
           <p>
             {managedAgents.length > 0
-              ? "Verwalten Sie Ihre Stellvertretungen und die Ihres Teams."
-              : "Verwalten Sie Ihre eigenen Stellvertretungen."}
+              ? tn(
+                  "Verwalte deine Stellvertretungen und die deines Teams.",
+                  "Verwalten Sie Ihre Stellvertretungen und die Ihres Teams.",
+                )
+              : tn(
+                  "Verwalte deine eigenen Stellvertretungen.",
+                  "Verwalten Sie Ihre eigenen Stellvertretungen.",
+                )}
           </p>
         </div>
         <HelpHint label="Stellvertretung">
-          Während der Stellvertretung erhält die stellvertretende Person Ihre
-          Ticketbenachrichtigungen, sieht Ihre Tickets, Wiedervorlagen und
-          Serviceaufgaben, und neue Zuweisungen an Sie gehen an sie. Zu Beginn
-          und am Ende gibt es eine Übergabe-Zusammenfassung.
+          {tn(
+            <>
+              Während der Stellvertretung erhält die stellvertretende Person
+              deine Ticketbenachrichtigungen, sieht deine Tickets,
+              Erinnerungen und Serviceaufgaben, und neue Zuweisungen an dich
+              gehen an sie. Zu Beginn und am Ende gibt es eine
+              Übergabe-Zusammenfassung.
+            </>,
+            <>
+              Während der Stellvertretung erhält die stellvertretende Person
+              Ihre Ticketbenachrichtigungen, sieht Ihre Tickets, Erinnerungen
+              und Serviceaufgaben, und neue Zuweisungen an Sie gehen an sie. Zu
+              Beginn und am Ende gibt es eine Übergabe-Zusammenfassung.
+            </>,
+          )}
         </HelpHint>
       </div>
       {state === "loading" ? (
@@ -1203,7 +1423,10 @@ function IncidentsPanel({
       (departmentId && !isUuid(departmentId))
     ) {
       setMessage(
-        "Bitte prüfen Sie Titel, Beschreibung, Zeitpunkt sowie optionale Kategorie- und Abteilungs-ID.",
+        tn(
+          "Bitte prüfe Titel, Beschreibung, Zeitpunkt sowie optionale Kategorie- und Abteilungs-ID.",
+          "Bitte prüfen Sie Titel, Beschreibung, Zeitpunkt sowie optionale Kategorie- und Abteilungs-ID.",
+        ),
       );
       return;
     }
@@ -1232,7 +1455,10 @@ function IncidentsPanel({
       if (isQuietUnavailable(error)) setState("unavailable");
       else {
         setMessage(
-          "Die Störungsmeldung konnte nicht gespeichert werden. Prüfen Sie Ihre Berechtigung.",
+          tn(
+            "Die Störungsmeldung konnte nicht gespeichert werden. Prüfe deine Berechtigung.",
+            "Die Störungsmeldung konnte nicht gespeichert werden. Prüfen Sie Ihre Berechtigung.",
+          ),
         );
       }
     } finally {
@@ -1255,6 +1481,7 @@ function IncidentsPanel({
           </p>
         </div>
         <HelpHint label="Störungsmeldungen">
+          {/* formality-ok: «Sie» bezieht sich auf die Meldung */}
           Eine Meldung informiert über eine Störung. Sie verändert keine
           Tickets, Zuweisungen oder Abschlüsse.
         </HelpHint>
@@ -1518,8 +1745,16 @@ export function AgentMetricsCard({
           <h2 id="workbench-metrics-heading">Meine Kennzahlen</h2>
         </div>
         <HelpHint label="Meine Kennzahlen">
-          Die Werte beziehen sich nur auf Ihre eigene Arbeit im aktiven
-          Mandanten.
+          {tn(
+            <>
+              Die Werte beziehen sich nur auf deine eigene Arbeit im aktiven
+              Mandanten.
+            </>,
+            <>
+              Die Werte beziehen sich nur auf Ihre eigene Arbeit im aktiven
+              Mandanten.
+            </>,
+          )}
         </HelpHint>
       </div>
       {state === "loading" ? (
@@ -1657,31 +1892,59 @@ export function IncidentBanner({
 }: {
   notices: readonly ActiveIncidentNotice[];
 }) {
+  const [expanded, setExpanded] = useState(false);
   if (notices.length === 0) return null;
-  const primary = notices[0];
-  if (!primary) return null;
+  // Oldest notice first.
+  const sorted = [...notices].sort((a, b) =>
+    a.startsAt.localeCompare(b.startsAt),
+  );
+  const several = sorted.length > 1;
+  const shown = several && expanded ? sorted : sorted.slice(0, 1);
   return (
     <section
-      aria-label="Aktive Störung"
+      aria-label={several ? "Aktive Störungen" : "Aktive Störung"}
       className="workbench-incident-banner"
       role="status"
     >
       <AlertTriangle aria-hidden="true" size={21} strokeWidth={1.9} />
-      <div>
-        <div className="workbench-incident-banner__heading">
-          <strong>Aktive Störung: {primary.title}</strong>
-          <span>
-            {incidentStatusLabel(primary.status)} · Beginn{" "}
-            {displayDateTime(primary.startsAt)}
-          </span>
-        </div>
-        <p>{primary.description}</p>
-      </div>
-      {notices.length > 1 && (
-        <span className="workbench-incident-banner__count">
-          +{notices.length - 1} weitere
-        </span>
-      )}
+      <ul className="workbench-incident-banner__list" id="incident-banner-list">
+        {shown.map((notice) => (
+          <li key={notice.id}>
+            <div className="workbench-incident-banner__heading">
+              <strong>Aktive Störung: {notice.title}</strong>
+              <span>
+                {incidentStatusLabel(notice.status)} · Beginn{" "}
+                {displayDateTime(notice.startsAt)}
+              </span>
+            </div>
+            {/* With several notices only an excerpt of each text. */}
+            <p
+              className={
+                several ? "workbench-incident-banner__excerpt" : undefined
+              }
+              title={several ? notice.description : undefined}
+            >
+              {notice.description}
+            </p>
+            {notice.serviceNames.length > 0 ? (
+              <p className="workbench-incident-banner__services">
+                Betroffene Dienste: {notice.serviceNames.join(", ")}
+              </p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {several ? (
+        <button
+          aria-controls="incident-banner-list"
+          aria-expanded={expanded}
+          className="workbench-incident-banner__count"
+          onClick={() => setExpanded((current) => !current)}
+          type="button"
+        >
+          {expanded ? "Weniger anzeigen" : `+${sorted.length - 1} weitere`}
+        </button>
+      ) : null}
     </section>
   );
 }
@@ -1754,7 +2017,7 @@ export function AgentWorkbenchPanel({
       ? [
           {
             Icon: ListTodo,
-            label: "Wiedervorlagen",
+            label: "Erinnerungen",
             value: "followUps" as const,
           },
         ]

@@ -1,0 +1,96 @@
+.spam-report {
+  display: grid;
+  gap: 14px;
+}
+.spam-report__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.spam-report__head h3,
+.spam-report__head p {
+  margin: 0;
+}
+.spam-report__periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.spam-report__kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.spam-report__kpis div {
+  padding: 12px 14px;
+  border: 1px solid var(--border, #dde3ef);
+  border-radius: 12px;
+}
+.spam-report__kpis dt {
+  color: var(--muted, #5b6b86);
+  font-size: 0.85em;
+}
+.spam-report__kpis dd {
+  margin: 2px 0 0;
+  font-size: 1.6em;
+  font-weight: 700;
+}
+.spam-report__days {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.spam-report__days li {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 10px;
+}
+.spam-report__bar {
+  display: flex;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--surface-muted, #eef2f8);
+  overflow: hidden;
+}
+.spam-report i.is-auto {
+  background: var(--primary, #2563eb);
+}
+.spam-report i.is-manual {
+  background: var(--warning, #d97706);
+}
+.spam-report__legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted, #5b6b86);
+  font-size: 0.85em;
+}
+.spam-report__legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.spam-report__columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+.spam-report table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.spam-report th,
+.spam-report td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border, #dde3ef);
+  text-align: left;
+  overflow-wrap: anywhere;
+}

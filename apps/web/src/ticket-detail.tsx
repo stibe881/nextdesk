@@ -1,5 +1,8 @@
+import { tn } from "./lib/formality";
 import { TicketAiTriage } from "./ticket-ai-triage";
+import { TicketMonitoringIncidentHint } from "./incidents-ticket-hint";
 import { TicketAiSummary } from "./ticket-ai-summary";
+import { TicketTextRewrite } from "./ticket-text-rewrite";
 import { RequesterTicketProgress } from "./requester-ticket-progress";
 import {
   absenceLabel,
@@ -33,6 +36,8 @@ import {
   LoaderCircle,
   Mail,
   MessageSquare,
+  Phone,
+  Plus,
   RefreshCw,
   Save,
   Search,
@@ -48,6 +53,8 @@ import {
   ticketCommentDraftForMode,
   updateTicketCommentDraft,
   type TicketCommentComposerContext,
+  isReplyGreetingOnly,
+  ticketReplyGreeting,
 } from "./lib/ticket-comment-composer";
 import {
   chronologicalTicketComments,
@@ -61,6 +68,7 @@ import {
 import {
   MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS,
   ticketCommentAttachmentIds,
+  requestAttachments,
   ticketCommentBodyWithAttachments,
 } from "./lib/ticket-comment-attachments";
 import { ticketWatchPresentation } from "./lib/ticket-watch-presentation";
@@ -85,8 +93,10 @@ import {
   TicketSolutionPrompt,
 } from "./ticket-learning";
 import {
-  EmailSignatureFrame,
+  parseEmailSenderContacts,
+  phoneHref,
   splitPlainTextSignature,
+  type EmailSenderContacts,
 } from "./email-signature-frame";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
@@ -102,6 +112,8 @@ import { TicketPdfRecord } from "./ticket-pdf-record";
 import { TicketCoordination } from "./ticket-coordination";
 import { TicketSlaBreachReason } from "./ticket-sla-breach-reason";
 import { TicketSupportLevel } from "./ticket-support-level";
+import { TicketSuspicionAction } from "./ticket-suspicion-action";
+import { IpamTicketPanel } from "./ipam-ticket-panel";
 import {
   TicketFormAnswersBlock,
   parseStoredFormAnswers,
@@ -110,10 +122,13 @@ import {
 import {
   TicketCopyRecipients,
   TicketMentionPicker,
+  loadTicketMailCc,
   type CopyRecipient,
   useTicketReplyDraft,
 } from "./ticket-workbench";
+import { slaPauseEventLabel } from "./lib/sla-pause";
 
+import { confirmDialog } from "./app-dialog";
 type CommentVisibility = "external" | "internal";
 type BillingKind = "internal" | "billable" | "goodwill";
 type RelationType =
@@ -463,6 +478,7 @@ type TicketAgent = {
 
 type TicketPresencePerson = {
   displayName: string;
+  photoUrl: string | null;
   editing: boolean;
   composing: "external" | "internal" | null;
   lastSeenAt: string;
@@ -573,6 +589,8 @@ type MergeSearchTarget = {
 type TicketAttachment = {
   id: string;
   commentId: string | null;
+  /** Inline e-mail image, already shown inside the message text. */
+  inline: boolean;
   visibility: CommentVisibility;
   originalFilename: string;
   contentType: string;
@@ -805,6 +823,8 @@ type TicketDetailProps = {
   requesterView?: boolean;
   /** Opens another ticket (e.g. a child or parent ticket of a split). */
   onOpenTicket?: ((ticketId: string) => void) | undefined;
+  /** Opens a monitoring incident the ticket belongs to («Störungen»). */
+  onOpenIncident?: ((incidentId: string) => void) | undefined;
   /** Agents: opens the person overview of the requester. */
   onOpenPerson?:
     | ((person: {
@@ -832,14 +852,16 @@ const ALLOWED_ATTACHMENT_CONTENT_TYPES = new Set<string>(
   ATTACHMENT_CONTENT_TYPES,
 );
 const ATTACHMENT_ACCEPT = ATTACHMENT_CONTENT_TYPES.join(",");
+/** Outlook-Anhang «winmail.dat» (nur aus eingehenden E-Mails, kein Upload). */
+const TNEF_CONTENT_TYPE = "application/ms-tnef";
+function isListedAttachmentType(contentType: string): boolean {
+  return (
+    ALLOWED_ATTACHMENT_CONTENT_TYPES.has(contentType) ||
+    contentType === TNEF_CONTENT_TYPE
+  );
+}
 const ATTACHMENT_ALLOWLIST_LABEL =
   "PDF, TXT, CSV, DOC, DOCX, XLS, XLSX, PNG, JPG/JPEG und WebP";
-const COMMENT_IMAGE_CONTENT_TYPES = new Set<string>([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-]);
-const COMMENT_IMAGE_ACCEPT = [...COMMENT_IMAGE_CONTENT_TYPES].join(",");
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -1145,6 +1167,11 @@ function toTicketPresencePerson(value: unknown): TicketPresencePerson | null {
   }
   return {
     displayName: person.displayName.trim(),
+    photoUrl:
+      typeof person.photoUrl === "string" &&
+      person.photoUrl.startsWith("https://")
+        ? person.photoUrl
+        : null,
     editing: person.editing,
     composing:
       person.composing === "external" || person.composing === "internal"
@@ -1422,7 +1449,7 @@ function toTicketAttachment(value: unknown): TicketAttachment | null {
     typeof originalFilename !== "string" ||
     !originalFilename.trim() ||
     typeof contentType !== "string" ||
-    !ALLOWED_ATTACHMENT_CONTENT_TYPES.has(contentType) ||
+    !isListedAttachmentType(contentType) ||
     typeof byteSize !== "number" ||
     !Number.isSafeInteger(byteSize) ||
     byteSize < 1 ||
@@ -1437,6 +1464,7 @@ function toTicketAttachment(value: unknown): TicketAttachment | null {
   return {
     id: attachment.id,
     commentId,
+    inline: attachment.inline === true,
     visibility,
     originalFilename,
     contentType,
@@ -1995,12 +2023,9 @@ function attachmentFileError(file: File): string | null {
   return null;
 }
 
+// Message attachments accept every allowed attachment type, not only images.
 function commentImageFileError(file: File): string | null {
-  const validationError = attachmentFileError(file);
-  if (validationError) return validationError;
-  return COMMENT_IMAGE_CONTENT_TYPES.has(file.type.trim().toLowerCase())
-    ? null
-    : "Hier können nur PNG-, JPG/JPEG- oder WebP-Bilder hochgeladen werden.";
+  return attachmentFileError(file);
 }
 
 function valuesOf<T>(value: unknown, guard: (item: unknown) => item is T): T[] {
@@ -2173,7 +2198,10 @@ function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     const message = error.message.trim();
     if (message.includes("non-2xx") || message.includes("FunctionsHttpError")) {
-      return "Die Ticketdetails konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
+      return tn(
+        "Die Ticketdetails konnten nicht geladen werden. Bitte versuche es erneut.",
+        "Die Ticketdetails konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+      );
     }
     return message;
   }
@@ -2187,12 +2215,21 @@ function errorMessage(error: unknown): string {
 function mergeErrorMessage(error: unknown, action: "search" | "merge"): string {
   const status = functionErrorStatus(error);
   if (status === 401) {
-    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+    return tn(
+      "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+      "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+    );
   }
   if (status === 403) {
     return action === "search"
-      ? "Sie sind nicht berechtigt, mögliche Haupttickets zu suchen."
-      : "Sie sind nicht berechtigt, dieses Ticket zusammenzuführen.";
+      ? tn(
+          "Du bist nicht berechtigt, mögliche Haupttickets zu suchen.",
+          "Sie sind nicht berechtigt, mögliche Haupttickets zu suchen.",
+        )
+      : tn(
+          "Du bist nicht berechtigt, dieses Ticket zusammenzuführen.",
+          "Sie sind nicht berechtigt, dieses Ticket zusammenzuführen.",
+        );
   }
   if (status === 404) {
     return action === "search"
@@ -2200,7 +2237,10 @@ function mergeErrorMessage(error: unknown, action: "search" | "merge"): string {
       : "Das ausgewählte Hauptticket ist nicht mehr verfügbar.";
   }
   if (status === 409) {
-    return "Das Ticket wurde zwischenzeitlich geändert. Bitte laden Sie die Ticketdetails neu.";
+    return tn(
+      "Das Ticket wurde zwischenzeitlich geändert. Bitte lade die Ticketdetails neu.",
+      "Das Ticket wurde zwischenzeitlich geändert. Bitte laden Sie die Ticketdetails neu.",
+    );
   }
   if (status === 422) {
     return action === "search"
@@ -2208,8 +2248,14 @@ function mergeErrorMessage(error: unknown, action: "search" | "merge"): string {
       : "Dieses Ticket kann nicht in das ausgewählte Ticket zusammengeführt werden.";
   }
   return action === "search"
-    ? "Die möglichen Haupttickets konnten nicht geladen werden. Bitte versuchen Sie es erneut."
-    : "Das Ticket konnte nicht zusammengeführt werden. Bitte versuchen Sie es erneut.";
+    ? tn(
+        "Die möglichen Haupttickets konnten nicht geladen werden. Bitte versuche es erneut.",
+        "Die möglichen Haupttickets konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+      )
+    : tn(
+        "Das Ticket konnte nicht zusammengeführt werden. Bitte versuche es erneut.",
+        "Das Ticket konnte nicht zusammengeführt werden. Bitte versuchen Sie es erneut.",
+      );
 }
 
 function formatDateTime(timestamp: string): string {
@@ -2219,6 +2265,14 @@ function formatDateTime(timestamp: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(value);
+}
+
+const ATTACHMENT_STRIP_LIMIT = 4;
+
+function attachmentExtension(filename: string): string {
+  const dot = filename.lastIndexOf(".");
+  const extension = dot > 0 ? filename.slice(dot + 1) : "";
+  return (extension || "DATEI").slice(0, 4).toUpperCase();
 }
 
 function formatFileSize(byteSize: number): string {
@@ -2314,6 +2368,8 @@ function eventLabel(
   if (eventType === "asset.intune_action") {
     return intuneActionEventLabel(payload ?? null);
   }
+  const slaPause = slaPauseEventLabel(eventType, payload);
+  if (slaPause) return slaPause;
   const labels: Record<string, string> = {
     "ticket.created": "Ticket erstellt",
     "comment.external_added": "Externer Kommentar hinzugefügt",
@@ -2323,6 +2379,7 @@ function eventLabel(
     "ticket.category_changed": "Kategorie aktualisiert",
     "ticket.support_level_changed":
       "Supportstufe gewechselt (mit Übergabenotiz)",
+    "ticket.phishing_suspicion": "Spam-/Phishing-Verdacht gemeldet",
     "ticket.knowledge.sent":
       "Wissensartikel als externe Ticketantwort versendet",
   };
@@ -2485,6 +2542,18 @@ async function invokeTicketAgentAssignment(
   return data;
 }
 
+function presenceInitials(name: string): string {
+  const parts = name
+    .replace(/@.*$/, "")
+    .split(/[\s._-]+/)
+    .filter(Boolean);
+  const letters =
+    parts.length > 1
+      ? `${parts[0]![0]}${parts[parts.length - 1]![0]}`
+      : (parts[0] ?? "?").slice(0, 2);
+  return letters.toUpperCase();
+}
+
 async function invokeTicketPresence(
   action: TicketPresenceAction,
 ): Promise<unknown> {
@@ -2574,43 +2643,76 @@ function feedbackErrorMessage(
   const status = functionErrorStatus(error);
   if (status === 403) {
     return action === "submit"
-      ? "Sie sind nicht berechtigt, die Zufriedenheit für dieses Ticket zu bewerten."
+      ? tn(
+          "Du bist nicht berechtigt, die Zufriedenheit für dieses Ticket zu bewerten.",
+          "Sie sind nicht berechtigt, die Zufriedenheit für dieses Ticket zu bewerten.",
+        )
       : "Die Zufriedenheitsdaten sind für dieses Ticket nicht verfügbar.";
   }
   if (status === 422) {
     return action === "submit"
-      ? "Die Bewertung kann derzeit nicht abgegeben werden. Sie ist erst möglich, wenn das Ticket gelöst ist."
+      ? tn(
+          "Die Bewertung kann derzeit nicht abgegeben werden. Das ist erst möglich, wenn das Ticket gelöst ist.",
+          "Die Bewertung kann derzeit nicht abgegeben werden. Sie ist erst möglich, wenn das Ticket gelöst ist.",
+        )
       : "Die Zufriedenheitsdaten können für dieses Ticket derzeit nicht verarbeitet werden.";
   }
   return action === "submit"
-    ? "Die Bewertung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut."
-    : "Die Zufriedenheitsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
+    ? tn(
+        "Die Bewertung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+        "Die Bewertung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+      )
+    : tn(
+        "Die Zufriedenheitsdaten konnten nicht geladen werden. Bitte versuche es erneut.",
+        "Die Zufriedenheitsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+      );
 }
 
 function qualityErrorMessage(error: unknown, action: "get" | "submit"): string {
   const status = functionErrorStatus(error);
   if (status === 401) {
-    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+    return tn(
+      "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+      "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+    );
   }
   if (status === 403) {
     return action === "submit"
-      ? "Sie sind nicht berechtigt, für dieses Ticket eine Qualitätsprüfung abzugeben."
+      ? tn(
+          "Du bist nicht berechtigt, für dieses Ticket eine Qualitätsprüfung abzugeben.",
+          "Sie sind nicht berechtigt, für dieses Ticket eine Qualitätsprüfung abzugeben.",
+        )
       : "Die Qualitätsprüfungsdaten sind für dieses Ticket nicht verfügbar.";
   }
   if (status === 409) {
-    return "Die Qualitätsprüfung wurde zwischenzeitlich geändert. Bitte laden Sie die Ticketdetails neu.";
+    return tn(
+      "Die Qualitätsprüfung wurde zwischenzeitlich geändert. Bitte lade die Ticketdetails neu.",
+      "Die Qualitätsprüfung wurde zwischenzeitlich geändert. Bitte laden Sie die Ticketdetails neu.",
+    );
   }
   if (status === 422) {
     return action === "submit"
-      ? "Die Qualitätsprüfung kann nicht gespeichert werden. Sie ist nur für geschlossene Tickets möglich und nach der ersten Abgabe höchstens 14 Tage lang änderbar."
+      ? tn(
+          "Die Qualitätsprüfung kann nicht gespeichert werden. Das ist nur für geschlossene Tickets möglich und nach der ersten Abgabe höchstens 14 Tage lang änderbar.",
+          "Die Qualitätsprüfung kann nicht gespeichert werden. Sie ist nur für geschlossene Tickets möglich und nach der ersten Abgabe höchstens 14 Tage lang änderbar.",
+        )
       : "Die Qualitätsprüfungsdaten können für dieses Ticket derzeit nicht verarbeitet werden.";
   }
   if (status === 400) {
-    return "Die Anfrage zur Qualitätsprüfung ist ungültig. Bitte laden Sie die Ticketdetails neu.";
+    return tn(
+      "Die Anfrage zur Qualitätsprüfung ist ungültig. Bitte lade die Ticketdetails neu.",
+      "Die Anfrage zur Qualitätsprüfung ist ungültig. Bitte laden Sie die Ticketdetails neu.",
+    );
   }
   return action === "submit"
-    ? "Die Qualitätsprüfung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut."
-    : "Die Qualitätsprüfungsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
+    ? tn(
+        "Die Qualitätsprüfung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+        "Die Qualitätsprüfung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+      )
+    : tn(
+        "Die Qualitätsprüfungsdaten konnten nicht geladen werden. Bitte versuche es erneut.",
+        "Die Qualitätsprüfungsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+      );
 }
 
 function handoverErrorMessage(
@@ -2619,41 +2721,77 @@ function handoverErrorMessage(
 ): string {
   const status = functionErrorStatus(error);
   if (status === 401) {
-    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+    return tn(
+      "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+      "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+    );
   }
   if (status === 403) {
     return action === "list"
-      ? "Sie sind nicht berechtigt, die Übergaben dieses Tickets zu laden."
-      : "Sie sind nicht berechtigt, Übergaben für dieses Ticket zu bearbeiten.";
+      ? tn(
+          "Du bist nicht berechtigt, die Übergaben dieses Tickets zu laden.",
+          "Sie sind nicht berechtigt, die Übergaben dieses Tickets zu laden.",
+        )
+      : tn(
+          "Du bist nicht berechtigt, Übergaben für dieses Ticket zu bearbeiten.",
+          "Sie sind nicht berechtigt, Übergaben für dieses Ticket zu bearbeiten.",
+        );
   }
   if (status === 404) {
     return action === "list" || action === "create"
       ? "Das Ticket wurde nicht gefunden oder darf nicht eingesehen werden."
-      : "Die Übergabe ist nicht mehr verfügbar. Bitte laden Sie die Liste erneut.";
+      : tn(
+          "Die Übergabe ist nicht mehr verfügbar. Bitte lade die Liste erneut.",
+          "Die Übergabe ist nicht mehr verfügbar. Bitte laden Sie die Liste erneut.",
+        );
   }
   if (status === 409) {
     return action === "acknowledge"
-      ? "Die Übergabe wurde zwischenzeitlich bereits übernommen. Bitte laden Sie die Liste erneut."
+      ? tn(
+          "Die Übergabe wurde zwischenzeitlich bereits übernommen. Bitte lade die Liste erneut.",
+          "Die Übergabe wurde zwischenzeitlich bereits übernommen. Bitte laden Sie die Liste erneut.",
+        )
       : action === "resolve"
-        ? "Die Übergabe wurde zwischenzeitlich bereits als erledigt markiert. Bitte laden Sie die Liste erneut."
-        : "Die Übergabeliste wurde zwischenzeitlich geändert. Bitte laden Sie sie erneut.";
+        ? tn(
+            "Die Übergabe wurde zwischenzeitlich bereits als erledigt markiert. Bitte lade die Liste erneut.",
+            "Die Übergabe wurde zwischenzeitlich bereits als erledigt markiert. Bitte laden Sie die Liste erneut.",
+          )
+        : tn(
+            "Die Übergabeliste wurde zwischenzeitlich geändert. Bitte lade sie erneut.",
+            "Die Übergabeliste wurde zwischenzeitlich geändert. Bitte laden Sie sie erneut.",
+          );
   }
   if (status === 422) {
     return action === "create"
-      ? "Die Übergabe konnte nicht gespeichert werden. Bitte prüfen Sie Zusammenfassung, nächste Schritte und Risikostufe."
-      : "Die Übergabe konnte nicht aktualisiert werden. Bitte laden Sie die Liste erneut.";
+      ? tn(
+          "Die Übergabe konnte nicht gespeichert werden. Bitte prüfe Zusammenfassung, nächste Schritte und Risikostufe.",
+          "Die Übergabe konnte nicht gespeichert werden. Bitte prüfen Sie Zusammenfassung, nächste Schritte und Risikostufe.",
+        )
+      : tn(
+          "Die Übergabe konnte nicht aktualisiert werden. Bitte lade die Liste erneut.",
+          "Die Übergabe konnte nicht aktualisiert werden. Bitte laden Sie die Liste erneut.",
+        );
   }
   const messages: Record<
     "list" | Exclude<PendingHandoverAction, null>,
     string
   > = {
-    list: "Die Übergaben konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
-    create:
+    list: tn(
+      "Die Übergaben konnten nicht geladen werden. Bitte versuche es erneut.",
+      "Die Übergaben konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    ),
+    create: tn(
+      "Die Übergabe konnte nicht gespeichert werden. Bitte versuche es erneut.",
       "Die Übergabe konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
-    acknowledge:
+    ),
+    acknowledge: tn(
+      "Die Übergabe konnte nicht übernommen werden. Bitte versuche es erneut.",
       "Die Übergabe konnte nicht übernommen werden. Bitte versuchen Sie es erneut.",
-    resolve:
+    ),
+    resolve: tn(
+      "Die Übergabe konnte nicht als erledigt markiert werden. Bitte versuche es erneut.",
       "Die Übergabe konnte nicht als erledigt markiert werden. Bitte versuchen Sie es erneut.",
+    ),
   };
   return messages[action];
 }
@@ -2664,26 +2802,46 @@ function affectedItemsErrorMessage(
 ): string {
   const status = functionErrorStatus(error);
   if (status === 401) {
-    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+    return tn(
+      "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+      "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+    );
   }
   if (status === 403) {
     return action === "list"
-      ? "Sie sind nicht berechtigt, die betroffenen Elemente dieses Tickets zu laden."
-      : "Sie sind nicht berechtigt, betroffene Elemente für dieses Ticket zu bearbeiten.";
+      ? tn(
+          "Du bist nicht berechtigt, die betroffenen Elemente dieses Tickets zu laden.",
+          "Sie sind nicht berechtigt, die betroffenen Elemente dieses Tickets zu laden.",
+        )
+      : tn(
+          "Du bist nicht berechtigt, betroffene Elemente für dieses Ticket zu bearbeiten.",
+          "Sie sind nicht berechtigt, betroffene Elemente für dieses Ticket zu bearbeiten.",
+        );
   }
   if (status === 404) {
     return action === "unlink"
-      ? "Die Verknüpfung ist nicht mehr vorhanden. Bitte laden Sie die Liste erneut."
+      ? tn(
+          "Die Verknüpfung ist nicht mehr vorhanden. Bitte lade die Liste erneut.",
+          "Die Verknüpfung ist nicht mehr vorhanden. Bitte laden Sie die Liste erneut.",
+        )
       : "Das Ticket oder der ausgewählte Katalogeintrag ist nicht mehr verfügbar.";
   }
   if (status === 409 && action === "link") {
     return "Dieser Katalogeintrag ist bereits mit dem Ticket verknüpft.";
   }
   const messages: Record<"list" | "link" | "unlink", string> = {
-    list: "Die betroffenen Elemente konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
-    link: "Der Katalogeintrag konnte nicht mit dem Ticket verknüpft werden. Bitte versuchen Sie es erneut.",
-    unlink:
+    list: tn(
+      "Die betroffenen Elemente konnten nicht geladen werden. Bitte versuche es erneut.",
+      "Die betroffenen Elemente konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    ),
+    link: tn(
+      "Der Katalogeintrag konnte nicht mit dem Ticket verknüpft werden. Bitte versuche es erneut.",
+      "Der Katalogeintrag konnte nicht mit dem Ticket verknüpft werden. Bitte versuchen Sie es erneut.",
+    ),
+    unlink: tn(
+      "Die Verknüpfung konnte nicht entfernt werden. Bitte versuche es erneut.",
       "Die Verknüpfung konnte nicht entfernt werden. Bitte versuchen Sie es erneut.",
+    ),
   };
   return messages[action];
 }
@@ -2695,13 +2853,22 @@ function attachmentErrorMessage(
     Exclude<PendingAttachmentAction, null> | "list",
     string
   > = {
-    list: "Die Anhänge konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
-    upload:
+    list: tn(
+      "Die Anhänge konnten nicht geladen werden. Bitte versuche es erneut.",
+      "Die Anhänge konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    ),
+    upload: tn(
+      "Der Anhang konnte nicht hochgeladen werden. Bitte versuche es erneut.",
       "Der Anhang konnte nicht hochgeladen werden. Bitte versuchen Sie es erneut.",
-    download:
+    ),
+    download: tn(
+      "Der Anhang konnte nicht heruntergeladen werden. Bitte versuche es erneut.",
       "Der Anhang konnte nicht heruntergeladen werden. Bitte versuchen Sie es erneut.",
-    delete:
+    ),
+    delete: tn(
+      "Der Anhang konnte nicht gelöscht werden. Bitte versuche es erneut.",
       "Der Anhang konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+    ),
   };
   return messages[action];
 }
@@ -2960,54 +3127,94 @@ async function knowledgeErrorMessage(
   if (backendMessage) return backendMessage;
   const status = functionErrorStatus(error);
   if (status === 401)
-    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+    return tn(
+      "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+      "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+    );
   if (status === 403)
     return action === "createAndAttach"
-      ? "Sie sind nicht berechtigt, Wissensartikel zu erstellen. Dafür ist zusätzlich die Berechtigung zur Wissensverwaltung erforderlich."
-      : "Sie sind nicht berechtigt, diesen Wissensvorgang auszuführen.";
+      ? tn(
+          "Du bist nicht berechtigt, Wissensartikel zu erstellen. Dafür ist zusätzlich die Berechtigung zur Wissensverwaltung erforderlich.",
+          "Sie sind nicht berechtigt, Wissensartikel zu erstellen. Dafür ist zusätzlich die Berechtigung zur Wissensverwaltung erforderlich.",
+        )
+      : tn(
+          "Du bist nicht berechtigt, diesen Wissensvorgang auszuführen.",
+          "Sie sind nicht berechtigt, diesen Wissensvorgang auszuführen.",
+        );
   if (status === 404)
     return "Das Ticket oder der Artikel ist nicht mehr verfügbar oder darf nicht eingesehen werden.";
   if (status === 409)
-    return "Der Artikel ist bereits mit einer anderen Sichtbarkeit angehängt. Bitte prüfen Sie die aktualisierte Liste.";
+    return tn(
+      "Der Artikel ist bereits mit einer anderen Sichtbarkeit angehängt. Bitte prüfe die aktualisierte Liste.",
+      "Der Artikel ist bereits mit einer anderen Sichtbarkeit angehängt. Bitte prüfen Sie die aktualisierte Liste.",
+    );
   if (status === 413)
-    return "Der Artikeltext ist zu groß. Bitte kürzen Sie den Text.";
+    return tn(
+      "Der Artikeltext ist zu groß. Bitte kürze den Text.",
+      "Der Artikeltext ist zu groß. Bitte kürzen Sie den Text.",
+    );
   if (status === 422)
     return action === "sendToRequester"
-      ? "Nur veröffentlichte externe Artikel mit externer Verknüpfung und höchstens 50'000 Zeichen können versendet werden. Bitte prüfen Sie die aktualisierte Liste."
-      : "Die Wissensanfrage ist ungültig. Bitte prüfen Sie Text, Sichtbarkeit und Artikelauswahl.";
+      ? tn(
+          "Nur veröffentlichte externe Artikel mit externer Verknüpfung und höchstens 50'000 Zeichen können versendet werden. Bitte prüfe die aktualisierte Liste.",
+          "Nur veröffentlichte externe Artikel mit externer Verknüpfung und höchstens 50'000 Zeichen können versendet werden. Bitte prüfen Sie die aktualisierte Liste.",
+        )
+      : tn(
+          "Die Wissensanfrage ist ungültig. Bitte prüfe Text, Sichtbarkeit und Artikelauswahl.",
+          "Die Wissensanfrage ist ungültig. Bitte prüfen Sie Text, Sichtbarkeit und Artikelauswahl.",
+        );
   const messages: Record<TicketKnowledgeAction["type"], string> = {
-    list: "Die angehängten Wissensartikel konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
-    searchArticles:
+    list: tn(
+      "Die angehängten Wissensartikel konnten nicht geladen werden. Bitte versuche es erneut.",
+      "Die angehängten Wissensartikel konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    ),
+    searchArticles: tn(
+      "Die Artikelsuche ist fehlgeschlagen. Bitte versuche es erneut.",
       "Die Artikelsuche ist fehlgeschlagen. Bitte versuchen Sie es erneut.",
-    attach:
+    ),
+    attach: tn(
+      "Der Artikel konnte nicht angehängt werden. Bitte prüfe die Liste und versuche es erneut.",
       "Der Artikel konnte nicht angehängt werden. Bitte prüfen Sie die Liste und versuchen Sie es erneut.",
-    detach:
+    ),
+    detach: tn(
+      "Die Verknüpfung konnte nicht entfernt werden. Bitte prüfe die Liste und versuche es erneut.",
       "Die Verknüpfung konnte nicht entfernt werden. Bitte prüfen Sie die Liste und versuchen Sie es erneut.",
-    createAndAttach:
+    ),
+    createAndAttach: tn(
+      "Der Artikel konnte nicht bestätigt werden. Bitte prüfe vor einem erneuten Erstellen die aktualisierte Liste.",
       "Der Artikel konnte nicht bestätigt werden. Bitte prüfen Sie vor einem erneuten Erstellen die aktualisierte Liste.",
-    sendToRequester:
+    ),
+    sendToRequester: tn(
+      "Der Versand konnte nicht bestätigt werden. Bitte prüfe den Versandstatus, bevor du es erneut versuchst.",
       "Der Versand konnte nicht bestätigt werden. Bitte prüfen Sie den Versandstatus, bevor Sie es erneut versuchen.",
+    ),
   };
   // Database details are never rendered; only the curated error.message above.
   return messages[action];
 }
 
-const AI_TICKET_DRAFT_ERRORS: Record<string, string> = {
-  article_manage_denied:
+const aiTicketDraftErrors = (): Record<string, string> => ({
+  article_manage_denied: tn(
+    "Für einen Wissensartikel fehlt dir die Berechtigung zur Wissensverwaltung.",
     "Für einen Wissensartikel fehlt Ihnen die Berechtigung zur Wissensverwaltung.",
+  ),
   ai_feature_disabled:
     "Die KI-Unterstützung ist für diesen Mandanten nicht aktiviert.",
   ai_provider_not_approved:
     "Die KI-Unterstützung ist für diesen Mandanten noch nicht freigegeben.",
   ai_purpose_not_approved:
     "Die KI-Unterstützung für Wissensartikel ist noch nicht freigegeben.",
-  ai_budget_exceeded:
+  ai_budget_exceeded: tn(
+    "Das stündliche KI-Kontingent ist erreicht. Bitte versuche es später erneut.",
     "Das stündliche KI-Kontingent ist erreicht. Bitte versuchen Sie es später erneut.",
-  ai_provider_rate_limited:
+  ),
+  ai_provider_rate_limited: tn(
+    "Der KI-Dienst ist gerade ausgelastet. Bitte versuche es in einer Minute erneut.",
     "Der KI-Dienst ist gerade ausgelastet. Bitte versuchen Sie es in einer Minute erneut.",
+  ),
   ai_provider_not_configured: "Die KI-Anbindung ist noch nicht eingerichtet.",
   ticket_not_found: "Das Ticket ist nicht mehr verfügbar.",
-};
+});
 
 async function requestAiTicketDraft(
   tenantId: string,
@@ -3031,9 +3238,12 @@ async function requestAiTicketDraft(
       }
     }
     throw new Error(
-      AI_TICKET_DRAFT_ERRORS[code] ??
+      aiTicketDraftErrors()[code] ??
         (await knowledgeErrorBackendMessage(error)) ??
-        "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+        tn(
+          "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuche es erneut.",
+          "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+        ),
     );
   }
   const result = (data as { data?: unknown } | null)?.data;
@@ -3240,7 +3450,10 @@ function KnowledgeSection({
     if (!canUpdate || [...text].length < 2) return;
     if (!isKnowledgeText(text, 2, 120)) {
       setSearchError(
-        "Bitte geben Sie zwischen 2 und 120 gültige Zeichen für die Suche ein.",
+        tn(
+          "Bitte gib zwischen 2 und 120 gültige Zeichen für die Suche ein.",
+          "Bitte geben Sie zwischen 2 und 120 gültige Zeichen für die Suche ein.",
+        ),
       );
       return;
     }
@@ -3301,7 +3514,12 @@ function KnowledgeSection({
   function validDraft(send: boolean): boolean {
     if (!canUpdate || inFlight.current) return false;
     if (visibility === "internal" && !canUseInternalNotes) {
-      setActionError("Sie sind nicht berechtigt, interne Artikel anzuhängen.");
+      setActionError(
+        tn(
+          "Du bist nicht berechtigt, interne Artikel anzuhängen.",
+          "Sie sind nicht berechtigt, interne Artikel anzuhängen.",
+        ),
+      );
       return false;
     }
     if (!isKnowledgeText(title.trim(), 3, 240)) {
@@ -3734,9 +3952,10 @@ function KnowledgeSection({
         <div className="ticket-knowledge__block">
           <h3>Wissensartikel aus diesem Ticket erstellen</h3>
           <p className="data-caption">
-            Der Artikel wird als Entwurf in der Wissensdatenbank gespeichert.
-            Sobald Sie ihn dort geprüft und veröffentlicht haben, erscheint er
-            hier beim Ticket. Bitte keine Namen oder Kontaktdaten übernehmen.
+            {tn(
+              "Der Artikel wird als Entwurf in der Wissensdatenbank gespeichert. Sobald du ihn dort geprüft und veröffentlicht hast, erscheint er hier beim Ticket. Bitte keine Namen oder Kontaktdaten übernehmen.",
+              "Der Artikel wird als Entwurf in der Wissensdatenbank gespeichert. Sobald Sie ihn dort geprüft und veröffentlicht haben, erscheint er hier beim Ticket. Bitte keine Namen oder Kontaktdaten übernehmen.",
+            )}
           </p>
           <div className="ticket-knowledge__ai">
             <button
@@ -3841,6 +4060,7 @@ export function TicketDetail({
   requesterView = false,
   onOpenTicket,
   onOpenPerson,
+  onOpenIncident,
 }: TicketDetailProps) {
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
   // Answers from a ticket template form (only tickets created with one).
@@ -3882,17 +4102,33 @@ export function TicketDetail({
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
+  const [suspicionNotice, setSuspicionNotice] = useState<{
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
   const [presence, setPresence] = useState<TicketPresencePerson[]>([]);
+  useEffect(() => {
+    setSuspicionNotice(null);
+  }, [ticketId]);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [statusKey, setStatusKey] = useState("");
   const resolveAfterCommentRef = useRef(false);
+  // Breaches without a reason while the close confirmation is open.
+  const [closeSlaOpenCount, setCloseSlaOpenCount] = useState<number | null>(
+    null,
+  );
   const [pendingCloseConfirmation, setPendingCloseConfirmation] =
     useState<PendingCloseConfirmation | null>(null);
   const [solutionPromptOpen, setSolutionPromptOpen] = useState(false);
   const [priorityKey, setPriorityKey] = useState("");
+  // Der gewählte Status wird sofort angezeigt, bis die Ansicht neu geladen ist.
+  const [optimisticStatusKey, setOptimisticStatusKey] = useState<string | null>(
+    null,
+  );
   const [isEditingTicket, setIsEditingTicket] = useState(false);
   // Description edited in place via the pencil in the «Beschreibung» card.
   const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [timelineHost, setTimelineHost] = useState<HTMLDivElement | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [editSubject, setEditSubject] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -3914,6 +4150,21 @@ export function TicketDetail({
     useState<CommentVisibility>("internal");
   const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([]);
   const [copyRecipients, setCopyRecipients] = useState<CopyRecipient[]>([]);
+  const [mailCc, setMailCc] = useState<string[]>([]);
+  const canReadMailCc = detail?.canUseInternalNotes === true;
+  useEffect(() => {
+    setMailCc([]);
+    if (!canReadMailCc || requesterView) return;
+    let active = true;
+    void loadTicketMailCc(tenantId, ticketId)
+      .then((addresses) => {
+        if (active) setMailCc(addresses);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [canReadMailCc, requesterView, tenantId, ticketId]);
   const [commentNotice, setCommentNotice] = useState("");
   const [undoChange, setUndoChange] = useState<UndoChange | null>(null);
   const [isClosureContextOpen, setIsClosureContextOpen] = useState(false);
@@ -3960,29 +4211,26 @@ export function TicketDetail({
     Record<string, TicketInlineImage>
   >({});
   const [inlineImagesLoading, setInlineImagesLoading] = useState(false);
-  const [emailSignatureHtml, setEmailSignatureHtml] = useState<string | null>(
-    null,
-  );
-  const [selectedAttachmentFile, setSelectedAttachmentFile] =
-    useState<File | null>(null);
+  const [emailSenderContacts, setEmailSenderContacts] =
+    useState<EmailSenderContacts | null>(null);
+  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
+  const [attachmentDragOver, setAttachmentDragOver] = useState(false);
 
   useEffect(() => {
-    // The signature of an e-mail ticket is read directly under RLS
-    // (can_read_ticket); a missing row simply means "no HTML signature".
+    // Contact details of an external e-mail sender (phone numbers and
+    // addresses from the signature) are read directly under RLS
+    // (can_read_ticket); a missing row simply means "nothing to show".
     let active = true;
-    setEmailSignatureHtml(null);
+    setEmailSenderContacts(null);
     if (!supabase) return;
     void supabase
       .from("ticket_email_signatures")
-      .select("html")
+      .select("phones, emails")
       .eq("ticket_id", ticketId)
       .maybeSingle()
-      .then(({ data, error: signatureError }) => {
-        if (!active || signatureError) return;
-        const html = (data as { html?: unknown } | null)?.html;
-        setEmailSignatureHtml(
-          typeof html === "string" && html.trim() ? html : null,
-        );
+      .then(({ data, error: contactsError }) => {
+        if (!active || contactsError) return;
+        setEmailSenderContacts(parseEmailSenderContacts(data));
       });
     return () => {
       active = false;
@@ -4029,6 +4277,7 @@ export function TicketDetail({
     null,
   );
   const [catalog, setCatalog] = useState<TicketCatalog>(emptyTicketCatalog);
+  const [requesterDeviceIds, setRequesterDeviceIds] = useState<string[]>([]);
   const [linkedCatalogItems, setLinkedCatalogItems] = useState<
     LinkedCatalogItem[]
   >([]);
@@ -4086,12 +4335,17 @@ export function TicketDetail({
     handoversLoading ||
     affectedItemsLoading ||
     mergeSearchLoading ||
-    commentDrafts.external.trim().length > 0 ||
+    (commentDrafts.external.trim().length > 0 &&
+      !isReplyGreetingOnly(
+        commentDrafts.external,
+        requesterView
+          ? null
+          : ticketReplyGreeting(detail?.requesterContact?.displayName),
+      )) ||
     commentDrafts.internal.trim().length > 0 ||
     commentImageAttachments.external.length > 0 ||
     commentImageAttachments.internal.length > 0 ||
-    ticketCategoryDraft !== null ||
-    selectedAttachmentFile !== null;
+    ticketCategoryDraft !== null;
   detailRef.current = detail;
   backgroundTicketRefreshBlockedRef.current = backgroundTicketRefreshBlocked;
   const ticketIsClosed = Boolean(
@@ -4152,11 +4406,24 @@ export function TicketDetail({
     commentVisibility,
   );
   const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  // Replies to the requester start with «Lieber <Vorname>» and room to write.
+  const replyGreeting = requesterView
+    ? null
+    : ticketReplyGreeting(detail?.requesterContact?.displayName);
+  const externalGreetingOnly = isReplyGreetingOnly(
+    commentDrafts.external,
+    replyGreeting,
+  );
+  const greetingAppliedRef = useRef<string | null>(null);
   const activeCommentImageAttachments =
     commentImageAttachments[commentVisibility];
   // Shared with colleagues so nobody answers the same ticket twice.
   const composingVisibility: "external" | "internal" | null =
-    !requesterView && commentBody.trim() ? commentVisibility : null;
+    !requesterView &&
+    commentBody.trim() &&
+    !(commentVisibility === "external" && externalGreetingOnly)
+      ? commentVisibility
+      : null;
   const colleaguesComposing = presence.filter((person) => person.composing);
   const canAttachCommentImages = Boolean(
     detail &&
@@ -4174,12 +4441,63 @@ export function TicketDetail({
     }
     return grouped;
   }, [attachments]);
+  const descriptionAttachments = useMemo(
+    () =>
+      detail ? requestAttachments(attachments, detail.ticket.created_at) : [],
+    [attachments, detail],
+  );
+
+  /** File list below a message (request, reply or note) in the conversation. */
+  function renderMessageAttachments(list: readonly TicketAttachment[]) {
+    return (
+      <ul className="ticket-comment-attachment-list">
+        {list.map((attachment) => (
+          <li key={attachment.id}>
+            {inlineImagesByAttachmentId[attachment.id] ? (
+              <button
+                aria-label={`${attachment.originalFilename} gross anzeigen`}
+                className="ticket-comment-image-preview"
+                onClick={() => void downloadAttachment(attachment)}
+                type="button"
+              >
+                <img
+                  alt={attachment.originalFilename}
+                  loading="lazy"
+                  onError={() => refreshInlineImageAfterError(attachment.id)}
+                  src={inlineImagesByAttachmentId[attachment.id]?.signedUrl}
+                />
+              </button>
+            ) : null}
+            <Paperclip aria-hidden="true" size={16} />
+            <span>
+              <strong>{attachment.originalFilename}</strong>
+              <small>{formatFileSize(attachment.byteSize)}</small>
+            </span>
+            <button
+              className="text-button"
+              disabled={attachmentBusy}
+              onClick={() => void downloadAttachment(attachment)}
+              type="button"
+            >
+              {pendingAttachmentAction === "download" &&
+              pendingAttachmentId === attachment.id
+                ? "Wird geöffnet …"
+                : "Öffnen"}
+            </button>
+          </li>
+        ))}
+      </ul>
+    );
+  }
   const commentComposer = requesterView
     ? {
         ...ticketCommentComposerCopy("external"),
-        bodyLabel: "Ihre Nachricht",
+        bodyLabel: tn("Deine Nachricht", "Ihre Nachricht"),
         placeholder: "Nachricht an den Support schreiben …",
-        hint: "Der Support sieht Ihre Nachricht im Ticket und antwortet Ihnen hier.",
+        hint: tn(
+          "Der Support sieht deine Nachricht im Ticket und antwortet dir hier.",
+          "Der Support sieht Ihre Nachricht im Ticket und antwortet Ihnen hier.",
+        ),
         submitLabel: "Nachricht senden",
       }
     : ticketCommentComposerCopy(commentVisibility);
@@ -4269,7 +4587,8 @@ export function TicketDetail({
     visibility: "internal",
   });
   const externalReplyDraft = useTicketReplyDraft({
-    body: commentDrafts.external,
+    // The pre-filled greeting alone is no draft.
+    body: externalGreetingOnly ? "" : commentDrafts.external,
     onRestore: restoreExternalReplyDraft,
     remote: externalDraftRemote,
     tenantId,
@@ -4277,6 +4596,20 @@ export function TicketDetail({
     userId: currentUserId,
     visibility: "external",
   });
+  // Pre-fill the greeting once per ticket, after a stored draft was restored.
+  useEffect(() => {
+    if (
+      !replyGreeting ||
+      !draftDetailReady ||
+      !detail?.canCommentExternal ||
+      greetingAppliedRef.current === ticketId
+    )
+      return;
+    greetingAppliedRef.current = ticketId;
+    setCommentDrafts((current) =>
+      current.external ? current : { ...current, external: replyGreeting },
+    );
+  }, [detail?.canCommentExternal, draftDetailReady, replyGreeting, ticketId]);
   const activeCommunicationDraft =
     commentVisibility === "internal" ? internalNoteDraft : externalReplyDraft;
 
@@ -4388,7 +4721,10 @@ export function TicketDetail({
         if (requestId !== ticketCategoriesRequestSequence.current) return;
         setTicketCategories([]);
         setTicketCategoryError(
-          "Die Kategorien konnten nicht geladen werden. Bitte aktualisieren Sie das Ticket.",
+          tn(
+            "Die Kategorien konnten nicht geladen werden. Bitte aktualisiere das Ticket.",
+            "Die Kategorien konnten nicht geladen werden. Bitte aktualisieren Sie das Ticket.",
+          ),
         );
       } finally {
         if (requestId === ticketCategoriesRequestSequence.current) {
@@ -4792,6 +5128,20 @@ export function TicketDetail({
       if (requestId !== affectedItemsRequestSequence.current) return false;
 
       setCatalog(nextCatalog);
+      // Devices of the requesting person as link suggestions (best effort).
+      void client
+        .rpc("ticket_requester_devices", {
+          p_tenant_id: tenantId,
+          p_ticket_id: ticketId,
+        })
+        .then(({ data, error: devicesError }) => {
+          if (requestId !== affectedItemsRequestSequence.current) return;
+          setRequesterDeviceIds(
+            !devicesError && Array.isArray(data)
+              ? data.filter((id): id is string => typeof id === "string")
+              : [],
+          );
+        });
       // Linked assets show their primary person, like the asset picker.
       const primaryPersonByAssetId = new Map(
         nextCatalog.assets.map((asset) => [asset.id, asset.primaryPersonName]),
@@ -5001,7 +5351,19 @@ export function TicketDetail({
         });
         const people = parseTicketPresence(response);
         if (!people) throw new Error("Ungültige Präsenzdaten.");
-        if (!cancelled) setPresence(people);
+        if (!cancelled)
+          // A new signed URL on every poll would reload the photos: keep the
+          // URL already shown for the same person.
+          setPresence((current) =>
+            people.map((person) => ({
+              ...person,
+              photoUrl:
+                current.find(
+                  (known) =>
+                    known.displayName === person.displayName && known.photoUrl,
+                )?.photoUrl ?? person.photoUrl,
+            })),
+          );
       } catch {
         // Presence is contextual convenience only. Ticket work remains available
         // when the short-lived indicator cannot be refreshed.
@@ -5070,7 +5432,7 @@ export function TicketDetail({
   useEffect(() => {
     setAttachments([]);
     setAttachmentsLoaded(false);
-    setSelectedAttachmentFile(null);
+    setAttachmentsExpanded(false);
     if (attachmentInputRef.current) attachmentInputRef.current.value = "";
     void loadAttachments();
     return () => {
@@ -5108,6 +5470,7 @@ export function TicketDetail({
     ) {
       setCatalog(emptyTicketCatalog());
       setLinkedCatalogItems([]);
+      setRequesterDeviceIds([]);
       setAffectedItemsLoaded(false);
       setAffectedItemsError("");
       setSelectedCatalogItemKey("");
@@ -5115,6 +5478,7 @@ export function TicketDetail({
     }
     setCatalog(emptyTicketCatalog());
     setLinkedCatalogItems([]);
+    setRequesterDeviceIds([]);
     setAffectedItemsLoaded(false);
     setAffectedItemsError("");
     setSelectedCatalogItemKey("");
@@ -5384,6 +5748,22 @@ export function TicketDetail({
         );
       });
   }, [catalog, linkedCatalogItems]);
+
+  // With several devices nothing is linked automatically; offer them here
+  // until one of the person's devices is linked.
+  const requesterDeviceSuggestions = useMemo(() => {
+    if (requesterDeviceIds.length < 2) return [];
+    const deviceIds = new Set(requesterDeviceIds);
+    if (
+      linkedCatalogItems.some(
+        (item) => item.kind === "asset" && deviceIds.has(item.targetId),
+      )
+    )
+      return [];
+    return availableCatalogItems.filter(
+      (item) => item.kind === "asset" && deviceIds.has(item.id),
+    );
+  }, [availableCatalogItems, linkedCatalogItems, requesterDeviceIds]);
   const selectedCatalogItem = useMemo(
     () =>
       availableCatalogItems.find(
@@ -5443,7 +5823,10 @@ export function TicketDetail({
     }
     if (feedbackScore === null) {
       setFeedbackError(
-        "Bitte wählen Sie eine Bewertung von 1 bis 5 Sternen aus.",
+        tn(
+          "Bitte wähle eine Bewertung von 1 bis 5 Sternen aus.",
+          "Bitte wählen Sie eine Bewertung von 1 bis 5 Sternen aus.",
+        ),
       );
       return;
     }
@@ -5471,7 +5854,12 @@ export function TicketDetail({
       await invokeTicketFeedbackAction(action);
       onChanged();
       await loadFeedback();
-      setFeedbackSuccess("Ihre Bewertung wurde gespeichert.");
+      setFeedbackSuccess(
+        tn(
+          "Deine Bewertung wurde gespeichert.",
+          "Ihre Bewertung wurde gespeichert.",
+        ),
+      );
     } catch (nextError) {
       setFeedbackError(feedbackErrorMessage(nextError, "submit"));
     } finally {
@@ -5489,7 +5877,10 @@ export function TicketDetail({
     }
     if (!isTicketQualityScore(qualityScore)) {
       setQualityError(
-        "Bitte wählen Sie eine Qualitätsbewertung von 1 bis 5 Sternen aus.",
+        tn(
+          "Bitte wähle eine Qualitätsbewertung von 1 bis 5 Sternen aus.",
+          "Bitte wählen Sie eine Qualitätsbewertung von 1 bis 5 Sternen aus.",
+        ),
       );
       return;
     }
@@ -5665,20 +6056,6 @@ export function TicketDetail({
     }
   }
 
-  function selectAttachmentFile(file: File | null) {
-    setAttachmentError("");
-    setSelectedAttachmentFile(null);
-    if (!file) return;
-
-    const validationError = attachmentFileError(file);
-    if (validationError) {
-      setAttachmentError(validationError);
-      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
-      return;
-    }
-    setSelectedAttachmentFile(file);
-  }
-
   async function uploadTicketAttachment(
     file: File,
     visibility?: CommentVisibility,
@@ -5727,28 +6104,27 @@ export function TicketDetail({
     return attachment;
   }
 
-  async function uploadAttachment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!detail || !detail.canUpdate || !selectedAttachmentFile) return;
-
-    const file = selectedAttachmentFile;
-    const validationError = attachmentFileError(file);
-    if (validationError) {
-      setAttachmentError(validationError);
-      return;
+  async function uploadAttachmentFiles(files: File[]) {
+    if (!detail || !detail.canUpdate || files.length === 0) return;
+    setAttachmentError("");
+    for (const file of files) {
+      const validationError = attachmentFileError(file);
+      if (validationError) {
+        setAttachmentError(`${file.name}: ${validationError}`);
+        if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+        return;
+      }
     }
 
     setPendingAttachmentAction("upload");
-    setAttachmentError("");
     try {
-      await uploadTicketAttachment(file);
-      setSelectedAttachmentFile(null);
-      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+      for (const file of files) await uploadTicketAttachment(file);
       onChanged();
       await loadAttachments();
     } catch {
       setAttachmentError(attachmentErrorMessage("upload"));
     } finally {
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
       setPendingAttachmentAction(null);
     }
   }
@@ -5812,7 +6188,7 @@ export function TicketDetail({
     if (remaining < 1) {
       setCommentImageNotice({
         tone: "error",
-        text: `Pro Nachricht sind höchstens ${MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS} Bilder möglich.`,
+        text: `Pro Nachricht sind höchstens ${MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS} Dateien möglich.`,
       });
       return;
     }
@@ -5844,8 +6220,10 @@ export function TicketDetail({
       tone: "success",
       text:
         queuedImages.length === 1
-          ? "Bild vorgemerkt. Es wird erst beim Speichern der Nachricht hochgeladen."
-          : `${queuedImages.length} Bilder vorgemerkt. Sie werden erst beim Speichern der Nachricht hochgeladen.`,
+          ? // formality-ok: «Sie» ist hier die Datei, keine Anrede
+            "Datei vorgemerkt. Sie wird erst beim Senden der Nachricht hochgeladen."
+          : // formality-ok: «Sie» sind hier die Dateien, keine Anrede
+            `${queuedImages.length} Dateien vorgemerkt. Sie werden erst beim Senden der Nachricht hochgeladen.`,
     });
     if (commentImageInputRef.current) commentImageInputRef.current.value = "";
   }
@@ -5875,17 +6253,6 @@ export function TicketDetail({
     event.preventDefault();
     setIsCommentImageDropActive(false);
     void addCommentImages([...event.dataTransfer.files]);
-  }
-
-  function startTicketEdit() {
-    if (!detail || !detail.canUpdate || busy) return;
-    setFocusMode(false);
-    setIsWorkToolsOpen(true);
-    setEditSubject(detail.ticket.subject);
-    setEditDescription(detail.ticket.description);
-    setIsEditingDescription(false);
-    setIsEditingTicket(true);
-    setError("");
   }
 
   function startDescriptionEdit() {
@@ -5931,24 +6298,14 @@ export function TicketDetail({
     const updatesAgent = change.assignedAgentId !== undefined;
     if (!updatesTicket && !updatesAgent) return;
     const closingStatus = closingStatusForKey(change.statusKey);
-    if (
-      change.statusKey !== undefined &&
-      change.statusKey !== "new" &&
-      selectedStatus?.key === "new" &&
-      !detail.ticket.assigned_agent_id &&
-      !change.assignedAgentId
-    ) {
-      setStatusKey(selectedStatus.key);
-      setError(
-        "Der Status «Neu» kann erst geändert werden, wenn das Ticket einer Person zugewiesen ist.",
-      );
-      return;
-    }
     if (closingStatus) {
       const missing = [
         requiredCloseFields.category ? "Kategorie" : null,
         requiredCloseFields.team ? "Team" : null,
-        requiredCloseFields.assignee ? "Zuweisung" : null,
+        // The person who closes the ticket is assigned automatically.
+        requiredCloseFields.assignee && !hasAgentExperienceAccess
+          ? "Zuweisung"
+          : null,
       ].filter((label): label is string => label !== null);
       if (missing.length > 0) {
         setStatusKey(selectedStatus?.key ?? "");
@@ -5980,6 +6337,9 @@ export function TicketDetail({
       previousChange.assignedAgentId = assignedAgentId || null;
     }
 
+    if (change.statusKey !== undefined && !closingStatus) {
+      setOptimisticStatusKey(change.statusKey);
+    }
     setPendingAction("update");
     setError("");
     try {
@@ -6011,8 +6371,13 @@ export function TicketDetail({
         });
       }
       onChanged();
-      await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
-      if (closingStatus) void offerSolutionArticle();
+      // Gespeichert: die Auswahl sofort wieder freigeben, die Ansicht lädt im
+      // Hintergrund neu (vorher blieb sie mehrere Sekunden gesperrt).
+      setPendingAction(null);
+      const refresh = Promise.all([loadTicket(), loadFeedback(), loadQuality()])
+        .catch(() => undefined)
+        .finally(() => setOptimisticStatusKey(null));
+      if (closingStatus) void refresh.then(() => offerSolutionArticle());
       if (shouldOfferUndo && Object.keys(previousChange).length > 0) {
         const label = change.priorityKey
           ? "Priorität"
@@ -6024,6 +6389,7 @@ export function TicketDetail({
         offerUndo({ change: previousChange, label });
       }
     } catch (nextError) {
+      setOptimisticStatusKey(null);
       if (change.assignedTeamId !== undefined) {
         setSelectedTeamId(detail.ticket.assigned_team_id ?? "");
       }
@@ -6035,7 +6401,10 @@ export function TicketDetail({
         functionErrorStatus(nextError) === 422
       ) {
         setError(
-          "Das Team wurde nicht geändert, weil die zugewiesene Person diesem Team nicht angehört. Fügen Sie die Person zuerst zum Team hinzu oder heben Sie die Zuweisung bewusst auf.",
+          tn(
+            "Das Team wurde nicht geändert, weil die zugewiesene Person diesem Team nicht angehört. Füge die Person zuerst zum Team hinzu oder hebe die Zuweisung bewusst auf.",
+            "Das Team wurde nicht geändert, weil die zugewiesene Person diesem Team nicht angehört. Fügen Sie die Person zuerst zum Team hinzu oder heben Sie die Zuweisung bewusst auf.",
+          ),
         );
       } else if (change.statusKey !== undefined) {
         // e.g. required fields missing before closing: show the reason.
@@ -6058,7 +6427,10 @@ export function TicketDetail({
     try {
       await invokeTicketDepartmentChange({ tenantId, ticketId, departmentId });
       onChanged();
-      await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
+      setPendingAction(null);
+      void Promise.all([loadTicket(), loadFeedback(), loadQuality()]).catch(
+        () => undefined,
+      );
     } catch (nextError) {
       setSelectedDepartmentId(detail.ticket.department_id);
       setError(errorMessage(nextError));
@@ -6193,7 +6565,10 @@ export function TicketDetail({
     );
     selectCommentMode("external");
     setCommentNotice(
-      "Die Lösung wurde in die Antwort übernommen. Bitte prüfen und anpassen, bevor Sie sie senden.",
+      tn(
+        "Die Lösung wurde in die Antwort übernommen. Bitte prüfen und anpassen, bevor du sie sendest.",
+        "Die Lösung wurde in die Antwort übernommen. Bitte prüfen und anpassen, bevor Sie sie senden.",
+      ),
     );
   }
 
@@ -6204,19 +6579,38 @@ export function TicketDetail({
     await saveOverviewChange({ statusKey: confirmation.statusKey }, true);
   }
 
+  /** Untouched greeting: continue writing right below it. */
+  function placeCaretAfterGreeting(field: HTMLTextAreaElement) {
+    if (
+      commentVisibility === "external" &&
+      replyGreeting &&
+      field.value === replyGreeting &&
+      field.selectionStart === field.selectionEnd
+    ) {
+      field.setSelectionRange(field.value.length, field.value.length);
+    }
+  }
+
   async function saveComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const resolveAfter = resolveAfterCommentRef.current;
     resolveAfterCommentRef.current = false;
     const body = ticketCommentBodyWithAttachments(
-      commentBody,
+      commentVisibility === "external" && externalGreetingOnly
+        ? ""
+        : commentBody,
       activeCommentImageAttachments.length,
     );
     const mentionRecipients = detail?.canUseInternalNotes
       ? mentionedUserIds.filter((userId) => userId !== currentUserId)
       : [];
     if (!body) {
-      setError("Bitte geben Sie einen Kommentar ein.");
+      setError(
+        tn(
+          "Bitte gib einen Kommentar ein.",
+          "Bitte geben Sie einen Kommentar ein.",
+        ),
+      );
       return;
     }
     if (body.length > 50_000) {
@@ -6231,7 +6625,12 @@ export function TicketDetail({
       : undefined;
     if (resolveAfter) {
       if (!detail?.canClose || !resolvedStatus) {
-        setError("Sie dürfen dieses Ticket nicht schliessen.");
+        setError(
+          tn(
+            "Du darfst dieses Ticket nicht schliessen.",
+            "Sie dürfen dieses Ticket nicht schliessen.",
+          ),
+        );
         return;
       }
       const missing = [
@@ -6287,7 +6686,13 @@ export function TicketDetail({
         setCommentNotice(copyNotice);
       }
       setCommentDrafts((current) =>
-        updateTicketCommentDraft(current, commentVisibility, ""),
+        updateTicketCommentDraft(
+          current,
+          commentVisibility,
+          commentVisibility === "external" && replyGreeting
+            ? replyGreeting
+            : "",
+        ),
       );
       clearCommentImageAttachments(commentVisibility);
       onChanged();
@@ -6381,7 +6786,12 @@ export function TicketDetail({
     const minutes = Number(timeEntryMinutes);
     const note = timeEntryNote.trim();
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
-      setError("Bitte geben Sie eine ganze Minutenanzahl von 1 bis 1'440 ein.");
+      setError(
+        tn(
+          "Bitte gib eine ganze Minutenanzahl von 1 bis 1'440 ein.",
+          "Bitte geben Sie eine ganze Minutenanzahl von 1 bis 1'440 ein.",
+        ),
+      );
       return;
     }
     if (note.length > 500) {
@@ -6482,7 +6892,10 @@ export function TicketDetail({
     const description = checklistDescription.trim();
     if (!description) {
       setError(
-        "Bitte geben Sie eine Beschreibung für den Checklistenpunkt ein.",
+        tn(
+          "Bitte gib eine Beschreibung für den Checklistenpunkt ein.",
+          "Bitte geben Sie eine Beschreibung für den Checklistenpunkt ein.",
+        ),
       );
       return;
     }
@@ -6560,7 +6973,12 @@ export function TicketDetail({
       (categoryId !== null && !selectedCategory) ||
       (subcategoryId !== null && !selectedSubcategory)
     ) {
-      setTicketCategoryError("Bitte wählen Sie eine gültige Kategorie aus.");
+      setTicketCategoryError(
+        tn(
+          "Bitte wähle eine gültige Kategorie aus.",
+          "Bitte wählen Sie eine gültige Kategorie aus.",
+        ),
+      );
       return false;
     }
 
@@ -6589,7 +7007,10 @@ export function TicketDetail({
       return true;
     } catch {
       setTicketCategoryError(
-        "Die Kategorie konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+        tn(
+          "Die Kategorie konnte nicht gespeichert werden. Bitte versuche es erneut.",
+          "Die Kategorie konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+        ),
       );
       return false;
     } finally {
@@ -6614,7 +7035,10 @@ export function TicketDetail({
       /[\u0000-\u001f\u007f]/.test(name)
     ) {
       setTicketCategoryError(
-        "Bitte geben Sie einen Namen mit 2 bis 120 gültigen Zeichen ein.",
+        tn(
+          "Bitte gib einen Namen mit 2 bis 120 gültigen Zeichen ein.",
+          "Bitte geben Sie einen Namen mit 2 bis 120 gültigen Zeichen ein.",
+        ),
       );
       return;
     }
@@ -6653,7 +7077,10 @@ export function TicketDetail({
       );
     } catch {
       setTicketCategoryError(
-        "Die Kategorie konnte nicht erstellt werden. Bitte prüfen Sie den Namen und versuchen Sie es erneut.",
+        tn(
+          "Die Kategorie konnte nicht erstellt werden. Bitte prüfe den Namen und versuche es erneut.",
+          "Die Kategorie konnte nicht erstellt werden. Bitte prüfen Sie den Namen und versuchen Sie es erneut.",
+        ),
       );
     } finally {
       setTicketCategorySaving(false);
@@ -6689,7 +7116,12 @@ export function TicketDetail({
       (ticket) => ticket.id === selectedRelatedTicketId,
     );
     if (!relatedTicket) {
-      setError("Bitte wählen Sie ein ähnliches Ticket aus.");
+      setError(
+        tn(
+          "Bitte wähle ein ähnliches Ticket aus.",
+          "Bitte wählen Sie ein ähnliches Ticket aus.",
+        ),
+      );
       return;
     }
 
@@ -6786,7 +7218,10 @@ export function TicketDetail({
     );
     if (!item) {
       setAffectedItemsError(
-        "Bitte wählen Sie einen verfügbaren Katalogeintrag aus.",
+        tn(
+          "Bitte wähle einen verfügbaren Katalogeintrag aus.",
+          "Bitte wählen Sie einen verfügbaren Katalogeintrag aus.",
+        ),
       );
       return;
     }
@@ -6939,6 +7374,50 @@ export function TicketDetail({
           <h2>{detail.ticket.subject}</h2>
         </div>
         <div className="ticket-detail-header-actions">
+          {!requesterView && presence.length > 0 ? (
+            <ul
+              aria-label="Personen, die dieses Ticket gerade geöffnet haben"
+              className="ticket-presence-avatars"
+            >
+              {presence.slice(0, 5).map((person, index) => (
+                <li
+                  className={
+                    person.editing
+                      ? "ticket-presence-avatar is-editing"
+                      : "ticket-presence-avatar"
+                  }
+                  key={`${person.displayName}-${index}`}
+                  title={
+                    person.editing
+                      ? `${person.displayName} bearbeitet gerade`
+                      : `${person.displayName} hat das Ticket geöffnet`
+                  }
+                >
+                  {person.photoUrl ? (
+                    <img
+                      alt=""
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                      }}
+                      src={person.photoUrl}
+                    />
+                  ) : null}
+                  <span>{presenceInitials(person.displayName)}</span>
+                </li>
+              ))}
+              {presence.length > 5 ? (
+                <li
+                  className="ticket-presence-avatar is-more"
+                  title={presence
+                    .slice(5)
+                    .map((person) => person.displayName)
+                    .join(", ")}
+                >
+                  +{presence.length - 5}
+                </li>
+              ) : null}
+            </ul>
+          ) : null}
           <TicketPdfRecord
             canExport={detail.canExport}
             tenantId={tenantId}
@@ -6951,6 +7430,19 @@ export function TicketDetail({
             ticketId={ticketId}
             ticketNumber={detail.ticket.ticket_number}
           />
+          {requesterView || !detail.canUpdate ? null : (
+            <TicketSuspicionAction
+              disabled={busy}
+              onDone={(result) => {
+                setSuspicionNotice(result);
+                onChanged();
+                void loadTicket();
+              }}
+              refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}`}
+              tenantId={tenantId}
+              ticketId={ticketId}
+            />
+          )}
           {requesterView ? null : (
             <button
               aria-label={watchPresentation.actionLabel}
@@ -6980,18 +7472,6 @@ export function TicketDetail({
               </span>
             </button>
           )}
-          {detail.canUpdate && (
-            <button
-              aria-expanded={isEditingTicket}
-              className="secondary-button"
-              disabled={busy}
-              onClick={startTicketEdit}
-              title="Betreff und Beschreibung bearbeiten"
-              type="button"
-            >
-              Inhalt bearbeiten
-            </button>
-          )}
           <button
             aria-label="Ticketdetails schliessen"
             className="more-button"
@@ -7010,6 +7490,28 @@ export function TicketDetail({
           <AlertCircle aria-hidden="true" size={17} />
           {error}
         </p>
+      )}
+
+      {suspicionNotice && (
+        <p
+          className={`ticket-detail-message ${suspicionNotice.tone}`}
+          role={suspicionNotice.tone === "error" ? "alert" : "status"}
+        >
+          {suspicionNotice.tone === "error" ? (
+            <AlertCircle aria-hidden="true" size={17} />
+          ) : (
+            <CircleCheck aria-hidden="true" size={17} />
+          )}
+          {suspicionNotice.text}
+        </p>
+      )}
+
+      {!requesterView && (
+        <TicketMonitoringIncidentHint
+          onOpenIncident={onOpenIncident}
+          tenantId={tenantId}
+          ticketId={ticketId}
+        />
       )}
 
       {detail.canUpdate && (
@@ -7060,6 +7562,9 @@ export function TicketDetail({
 
       <div className="ticket-detail-layout">
         <div className="ticket-detail-main">
+          {requesterView ? null : (
+            <div className="ticket-timeline-slot" ref={setTimelineHost} />
+          )}
           <section
             className="ticket-detail-summary ticket-detail-primary"
             aria-labelledby="ticket-description-heading"
@@ -7090,6 +7595,23 @@ export function TicketDetail({
                   void saveTicketContent();
                 }}
               >
+                <label className="ticket-description-editor__subject">
+                  <span>Betreff</span>
+                  <input
+                    disabled={busy}
+                    maxLength={240}
+                    onChange={(event) => setEditSubject(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.stopPropagation();
+                        cancelDescriptionEdit();
+                      }
+                    }}
+                    required
+                    type="text"
+                    value={editSubject}
+                  />
+                </label>
                 <label className="ticket-comment-body">
                   <span className="sr-only">Beschreibung</span>
                   <textarea
@@ -7153,52 +7675,183 @@ export function TicketDetail({
               <div className="ticket-detail-description">
                 <TicketTextWithInlineImages
                   body={
-                    emailSignatureHtml
-                      ? splitPlainTextSignature(detail.ticket.description)
-                          .message
-                      : detail.ticket.description
+                    splitPlainTextSignature(detail.ticket.description).message
                   }
                   imagesByAttachmentId={inlineImagesByAttachmentId}
                   loading={inlineImagesLoading}
                   onImageError={refreshInlineImageAfterError}
                 />
-                {emailSignatureHtml ? (
-                  <EmailSignatureFrame html={emailSignatureHtml} />
-                ) : null}
+                {descriptionAttachments.length > 0
+                  ? renderMessageAttachments(descriptionAttachments)
+                  : null}
               </div>
             )}
             {storedFormAnswers?.ticketId === detail.ticket.id && (
               <TicketFormAnswersBlock stored={storedFormAnswers.stored} />
             )}
+            <div
+              aria-label="Anhänge"
+              className={`ticket-attachment-strip${
+                attachmentDragOver ? " is-dragover" : ""
+              }`}
+              onDragLeave={() => setAttachmentDragOver(false)}
+              onDragOver={(event) => {
+                if (!detail.canUpdate) return;
+                event.preventDefault();
+                setAttachmentDragOver(true);
+              }}
+              onDrop={(event) => {
+                if (!detail.canUpdate) return;
+                event.preventDefault();
+                setAttachmentDragOver(false);
+                void uploadAttachmentFiles(
+                  Array.from(event.dataTransfer.files),
+                );
+              }}
+              role="group"
+            >
+              <span className="ticket-attachment-strip__label">
+                <Paperclip aria-hidden="true" size={15} strokeWidth={1.8} />
+                {attachments.length > 0
+                  ? `${attachments.length} ${
+                      attachments.length === 1 ? "Anhang" : "Anhänge"
+                    }`
+                  : "Anhänge"}
+              </span>
+              {attachmentsLoading && !attachmentsLoaded ? (
+                <LoaderCircle
+                  aria-label="Anhänge werden geladen"
+                  className="ticket-detail-spinner"
+                  size={15}
+                />
+              ) : (
+                (attachmentsExpanded
+                  ? attachments
+                  : attachments.slice(0, ATTACHMENT_STRIP_LIMIT)
+                ).map((attachment) => {
+                  const image = inlineImagesByAttachmentId[attachment.id];
+                  const isBusy =
+                    pendingAttachmentId === attachment.id &&
+                    pendingAttachmentAction !== null;
+                  return (
+                    <span
+                      className="ticket-attachment-chip"
+                      key={attachment.id}
+                    >
+                      <button
+                        aria-label={`${attachment.originalFilename} herunterladen`}
+                        className="ticket-attachment-chip__main"
+                        disabled={attachmentBusy || busy}
+                        onClick={() => void downloadAttachment(attachment)}
+                        title={`${attachment.originalFilename} · ${formatFileSize(
+                          attachment.byteSize,
+                        )} · ${formatDateTime(attachment.createdAt)}`}
+                        type="button"
+                      >
+                        {isBusy ? (
+                          <LoaderCircle
+                            aria-hidden="true"
+                            className="ticket-detail-spinner"
+                            size={14}
+                          />
+                        ) : image?.signedUrl ? (
+                          <img
+                            alt=""
+                            loading="lazy"
+                            onError={() =>
+                              refreshInlineImageAfterError(attachment.id)
+                            }
+                            src={image.signedUrl}
+                          />
+                        ) : (
+                          <span className="ticket-attachment-chip__ext">
+                            {attachmentExtension(attachment.originalFilename)}
+                          </span>
+                        )}
+                        <span className="ticket-attachment-chip__name">
+                          {attachment.originalFilename}
+                        </span>
+                        <small>{formatFileSize(attachment.byteSize)}</small>
+                      </button>
+                      {detail.canUpdate && (
+                        <button
+                          aria-label={`${attachment.originalFilename} löschen`}
+                          className="ticket-attachment-chip__remove"
+                          disabled={attachmentBusy || busy}
+                          onClick={async () => {
+                            if (
+                              await confirmDialog(
+                                `«${attachment.originalFilename}» wirklich löschen?`,
+                              )
+                            ) {
+                              void deleteAttachment(attachment);
+                            }
+                          }}
+                          type="button"
+                        >
+                          <X aria-hidden="true" size={13} strokeWidth={2} />
+                        </button>
+                      )}
+                    </span>
+                  );
+                })
+              )}
+              {attachments.length > ATTACHMENT_STRIP_LIMIT && (
+                <button
+                  className="ticket-attachment-more"
+                  onClick={() => setAttachmentsExpanded((value) => !value)}
+                  type="button"
+                >
+                  {attachmentsExpanded
+                    ? "Weniger"
+                    : `+${attachments.length - ATTACHMENT_STRIP_LIMIT} weitere`}
+                </button>
+              )}
+              {detail.canUpdate && (
+                <>
+                  <input
+                    accept={ATTACHMENT_ACCEPT}
+                    aria-label="Dateien als Anhang auswählen"
+                    className="sr-only"
+                    disabled={attachmentBusy || busy}
+                    multiple
+                    onChange={(event) =>
+                      void uploadAttachmentFiles(
+                        Array.from(event.target.files ?? []),
+                      )
+                    }
+                    ref={attachmentInputRef}
+                    tabIndex={-1}
+                    type="file"
+                  />
+                  <button
+                    className="ticket-attachment-add"
+                    disabled={attachmentBusy || busy}
+                    onClick={() => attachmentInputRef.current?.click()}
+                    title={`Erlaubt sind ${ATTACHMENT_ALLOWLIST_LABEL}. Maximal 25 MiB pro Datei. Dateien können auch hierher gezogen werden.`}
+                    type="button"
+                  >
+                    {pendingAttachmentAction === "upload" ? (
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="ticket-detail-spinner"
+                        size={14}
+                      />
+                    ) : (
+                      <Plus aria-hidden="true" size={14} strokeWidth={2} />
+                    )}
+                    Anhang
+                  </button>
+                </>
+              )}
+              {attachmentError && (
+                <p className="ticket-attachment-strip__error" role="alert">
+                  <AlertCircle aria-hidden="true" size={14} />
+                  {attachmentError}
+                </p>
+              )}
+            </div>
           </section>
-
-          {requesterView ? null : (
-            <TicketSupportLevel
-              onChanged={() => {
-                onChanged();
-                void loadTicket();
-              }}
-              refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}|${detail.events[0]?.id ?? ""}`}
-              tenantId={tenantId}
-              ticketId={detail.ticket.id}
-            />
-          )}
-
-          {requesterView ? null : (
-            <TicketCoordination
-              description={detail.ticket.description}
-              onChanged={() => {
-                onChanged();
-                void loadTicket();
-              }}
-              onOpenTicket={onOpenTicket}
-              refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
-              subject={detail.ticket.subject}
-              tenantId={tenantId}
-              ticketId={detail.ticket.id}
-              ticketNumber={detail.ticket.ticket_number}
-            />
-          )}
 
           <section
             className="ticket-detail-comments ticket-detail-primary"
@@ -7303,58 +7956,9 @@ export function TicketDetail({
                         loading={inlineImagesLoading}
                         onImageError={refreshInlineImageAfterError}
                       />
-                      {commentAttachments.length > 0 ? (
-                        <ul className="ticket-comment-attachment-list">
-                          {commentAttachments.map((attachment) => (
-                            <li key={attachment.id}>
-                              {inlineImagesByAttachmentId[attachment.id] ? (
-                                <button
-                                  aria-label={`${attachment.originalFilename} gross anzeigen`}
-                                  className="ticket-comment-image-preview"
-                                  onClick={() =>
-                                    void downloadAttachment(attachment)
-                                  }
-                                  type="button"
-                                >
-                                  <img
-                                    alt={attachment.originalFilename}
-                                    loading="lazy"
-                                    onError={() =>
-                                      refreshInlineImageAfterError(
-                                        attachment.id,
-                                      )
-                                    }
-                                    src={
-                                      inlineImagesByAttachmentId[attachment.id]
-                                        ?.signedUrl
-                                    }
-                                  />
-                                </button>
-                              ) : null}
-                              <ImagePlus aria-hidden="true" size={16} />
-                              <span>
-                                <strong>{attachment.originalFilename}</strong>
-                                <small>
-                                  {formatFileSize(attachment.byteSize)}
-                                </small>
-                              </span>
-                              <button
-                                className="text-button"
-                                disabled={attachmentBusy}
-                                onClick={() =>
-                                  void downloadAttachment(attachment)
-                                }
-                                type="button"
-                              >
-                                {pendingAttachmentAction === "download" &&
-                                pendingAttachmentId === attachment.id
-                                  ? "Wird geöffnet …"
-                                  : "Öffnen"}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
+                      {commentAttachments.length > 0
+                        ? renderMessageAttachments(commentAttachments)
+                        : null}
                     </li>
                   );
                 })}
@@ -7374,7 +7978,10 @@ export function TicketDetail({
                       }`,
                   )
                   .join(" · ")}
-                . Stimmen Sie sich ab, bevor Sie ebenfalls antworten.
+                {tn(
+                  ". Stimm dich ab, bevor du ebenfalls antwortest.",
+                  ". Stimmen Sie sich ab, bevor Sie ebenfalls antworten.",
+                )}
               </p>
             ) : null}
             <form className="ticket-comment-form" onSubmit={saveComment}>
@@ -7430,11 +8037,41 @@ export function TicketDetail({
                       ),
                     )
                   }
+                  onClick={(event) =>
+                    placeCaretAfterGreeting(event.currentTarget)
+                  }
+                  onFocus={(event) => {
+                    const field = event.currentTarget;
+                    window.setTimeout(() => placeCaretAfterGreeting(field), 0);
+                  }}
                   placeholder={commentComposer.placeholder}
                   rows={4}
                   value={commentBody}
                 />
               </label>
+              {requesterView ? null : (
+                <TicketTextRewrite
+                  audience={
+                    commentVisibility === "internal" ? "internal" : "customer"
+                  }
+                  disabled={
+                    busy ||
+                    attachmentBusy ||
+                    (commentVisibility === "external" && externalGreetingOnly)
+                  }
+                  onApply={(next) =>
+                    setCommentDrafts((current) =>
+                      updateTicketCommentDraft(
+                        current,
+                        commentVisibility,
+                        next,
+                      ),
+                    )
+                  }
+                  tenantId={tenantId}
+                  text={commentBody}
+                />
+              )}
               {canAttachCommentImages ? (
                 <div
                   className={`ticket-comment-image-dropzone${isCommentImageDropActive ? " ticket-comment-image-dropzone--active" : ""}`}
@@ -7443,8 +8080,8 @@ export function TicketDetail({
                   onDrop={handleCommentImageDrop}
                 >
                   <input
-                    accept={COMMENT_IMAGE_ACCEPT}
-                    aria-label="Bilder für diese Nachricht auswählen"
+                    accept={ATTACHMENT_ACCEPT}
+                    aria-label="Dateien für diese Nachricht auswählen"
                     className="ticket-comment-image-input"
                     disabled={busy || attachmentBusy}
                     multiple
@@ -7457,12 +8094,13 @@ export function TicketDetail({
                     type="file"
                   />
                   <div className="ticket-comment-image-dropzone__copy">
-                    <ImagePlus aria-hidden="true" size={19} />
+                    <Paperclip aria-hidden="true" size={19} />
                     <span>
-                      <strong>Bilder zur Nachricht hinzufügen</strong>
+                      <strong>Dateien zur Nachricht hinzufügen</strong>
                       <small>
-                        Hierher ziehen oder hochladen · PNG, JPG/JPEG und WebP ·
-                        maximal 25 MiB pro Bild
+                        Hierher ziehen oder auswählen ·{" "}
+                        {ATTACHMENT_ALLOWLIST_LABEL} · höchstens{" "}
+                        {MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS} Dateien à 25 MiB
                       </small>
                     </span>
                   </div>
@@ -7472,14 +8110,14 @@ export function TicketDetail({
                     onClick={() => commentImageInputRef.current?.click()}
                     type="button"
                   >
-                    <ImagePlus aria-hidden="true" size={16} />
-                    Bilder hochladen
+                    <Paperclip aria-hidden="true" size={16} />
+                    Dateien anhängen
                   </button>
                   {activeCommentImageAttachments.length > 0 ? (
                     <ul className="ticket-comment-image-preview-list">
                       {activeCommentImageAttachments.map((attachment) => (
                         <li key={attachment.key}>
-                          <ImagePlus aria-hidden="true" size={19} />
+                          <Paperclip aria-hidden="true" size={19} />
                           <span>
                             <strong>{attachment.originalFilename}</strong>
                             <small>{formatFileSize(attachment.byteSize)}</small>
@@ -7564,6 +8202,7 @@ export function TicketDetail({
               detail.canUseInternalNotes ? (
                 <TicketCopyRecipients
                   disabled={busy}
+                  mailCc={mailCc}
                   onChange={setCopyRecipients}
                   selected={copyRecipients}
                   tenantId={tenantId}
@@ -7662,6 +8301,7 @@ export function TicketDetail({
                   {!requesterView && (
                     <TicketSlaBreachReason
                       tenantId={tenantId}
+                      onOpenCountChange={setCloseSlaOpenCount}
                       ticketId={ticketId}
                       variant="closing"
                     />
@@ -7669,8 +8309,13 @@ export function TicketDetail({
                   <div className="ticket-detail-actions">
                     <button
                       className="primary-button"
-                      disabled={busy}
+                      disabled={busy || (closeSlaOpenCount ?? 0) > 0}
                       onClick={() => void confirmTicketClose()}
+                      title={
+                        closeSlaOpenCount
+                          ? "Erst möglich, wenn die Ursache der SLA-Verletzung erfasst ist."
+                          : undefined
+                      }
                       type="button"
                     >
                       Abschluss bestätigen
@@ -7726,7 +8371,7 @@ export function TicketDetail({
               >
                 <h3 id="ticket-satisfaction-heading">
                   {requesterView
-                    ? "Wie zufrieden sind Sie?"
+                    ? tn("Wie zufrieden bist du?", "Wie zufrieden sind Sie?")
                     : "Bewertung der anfragenden Person"}
                 </h3>
                 {feedbackLoading ? (
@@ -7867,7 +8512,13 @@ export function TicketDetail({
             ) : (
               <dl className="ticket-detail-facts-grid">
                 {detail.requesterContact && (
-                  <div>
+                  <div
+                    className={
+                      emailSenderContacts && !requesterView
+                        ? "ticket-requester-fact ticket-requester-fact--contacts"
+                        : "ticket-requester-fact"
+                    }
+                  >
                     <dt>Anfragende Person</dt>
                     <dd>
                       {onOpenPerson && !requesterView ? (
@@ -7897,44 +8548,60 @@ export function TicketDetail({
                           detail.requesterContact.displayName,
                         )
                       )}
+                      {emailSenderContacts && !requesterView ? (
+                        <ul
+                          aria-label="Kontaktdaten aus der E-Mail"
+                          className="ticket-requester-contacts"
+                        >
+                          {emailSenderContacts.phones.map((phone) => (
+                            <li key={`phone:${phone}`}>
+                              <Phone aria-hidden="true" size={13} />
+                              <a href={phoneHref(phone)}>{phone}</a>
+                            </li>
+                          ))}
+                          {emailSenderContacts.emails.map((email) => (
+                            <li key={`email:${email}`}>
+                              <Mail aria-hidden="true" size={13} />
+                              <a href={`mailto:${email}`}>{email}</a>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </dd>
                   </div>
                 )}
-                <div
-                  className={
-                    detail.canUpdate && requesterProfile
-                      ? "ticket-detail-fact--editable ticket-requester-context"
-                      : undefined
-                  }
-                >
-                  <dt>Abteilung / Angebot</dt>
-                  <dd>
-                    {detail.canUpdate && requesterProfile ? (
-                      <span className="ticket-requester-context-fields">
-                        {requesterDepartment.trim() ? (
-                          <input
-                            aria-label="Abteilung der anfragenden Person"
-                            disabled={busy || requesterProfileBusy}
-                            onBlur={() => void saveRequesterContext()}
-                            onChange={(event) =>
-                              setRequesterDepartment(event.target.value)
-                            }
-                            placeholder="Abteilung"
-                            value={requesterDepartment}
-                          />
-                        ) : requesterOffer.trim() ? (
-                          <input
-                            aria-label="Angebot der anfragenden Person"
-                            disabled={busy || requesterProfileBusy}
-                            onBlur={() => void saveRequesterContext()}
-                            onChange={(event) =>
-                              setRequesterOffer(event.target.value)
-                            }
-                            placeholder="Angebot"
-                            value={requesterOffer}
-                          />
-                        ) : (
-                          <>
+                {!requesterView && mailCc.length > 0 ? (
+                  <div className="ticket-requester-fact">
+                    <dt>In Kopie (CC)</dt>
+                    <dd>
+                      <ul
+                        aria-label="Personen im CC der E-Mail"
+                        className="ticket-requester-contacts"
+                      >
+                        {mailCc.map((email) => (
+                          <li key={`cc:${email}`}>
+                            <Mail aria-hidden="true" size={13} />
+                            <a href={`mailto:${email}`}>{email}</a>
+                          </li>
+                        ))}
+                      </ul>
+                    </dd>
+                  </div>
+                ) : null}
+                {/* Externe Absender: Abteilung / Angebot ist nicht relevant. */}
+                {emailSenderContacts ? null : (
+                  <div
+                    className={
+                      detail.canUpdate && requesterProfile
+                        ? "ticket-detail-fact--editable ticket-requester-context"
+                        : undefined
+                    }
+                  >
+                    <dt>Abteilung / Angebot</dt>
+                    <dd>
+                      {detail.canUpdate && requesterProfile ? (
+                        <span className="ticket-requester-context-fields">
+                          {requesterDepartment.trim() ? (
                             <input
                               aria-label="Abteilung der anfragenden Person"
                               disabled={busy || requesterProfileBusy}
@@ -7945,6 +8612,7 @@ export function TicketDetail({
                               placeholder="Abteilung"
                               value={requesterDepartment}
                             />
+                          ) : requesterOffer.trim() ? (
                             <input
                               aria-label="Angebot der anfragenden Person"
                               disabled={busy || requesterProfileBusy}
@@ -7955,16 +8623,39 @@ export function TicketDetail({
                               placeholder="Angebot"
                               value={requesterOffer}
                             />
-                          </>
-                        )}
-                      </span>
-                    ) : requesterContext.length > 0 ? (
-                      requesterContext.join(" · ")
-                    ) : (
-                      "Nicht hinterlegt"
-                    )}
-                  </dd>
-                </div>
+                          ) : (
+                            <>
+                              <input
+                                aria-label="Abteilung der anfragenden Person"
+                                disabled={busy || requesterProfileBusy}
+                                onBlur={() => void saveRequesterContext()}
+                                onChange={(event) =>
+                                  setRequesterDepartment(event.target.value)
+                                }
+                                placeholder="Abteilung"
+                                value={requesterDepartment}
+                              />
+                              <input
+                                aria-label="Angebot der anfragenden Person"
+                                disabled={busy || requesterProfileBusy}
+                                onBlur={() => void saveRequesterContext()}
+                                onChange={(event) =>
+                                  setRequesterOffer(event.target.value)
+                                }
+                                placeholder="Angebot"
+                                value={requesterOffer}
+                              />
+                            </>
+                          )}
+                        </span>
+                      ) : requesterContext.length > 0 ? (
+                        requesterContext.join(" · ")
+                      ) : (
+                        "Nicht hinterlegt"
+                      )}
+                    </dd>
+                  </div>
+                )}
                 <div
                   className={
                     detail.canUpdate
@@ -7983,7 +8674,7 @@ export function TicketDetail({
                             statusKey: event.target.value,
                           });
                         }}
-                        value={selectedStatus?.key ?? ""}
+                        value={optimisticStatusKey ?? selectedStatus?.key ?? ""}
                       >
                         {selectableStatuses.map((status) => (
                           <option key={status.id} value={status.key}>
@@ -8542,6 +9233,36 @@ export function TicketDetail({
                         ) : null}
                       </form>
                     ) : null}
+                    {detail.canUpdate &&
+                    requesterDeviceSuggestions.length > 0 ? (
+                      <div
+                        aria-label="Geräte der anfragenden Person"
+                        className="ticket-device-suggestions"
+                      >
+                        <p className="data-caption">
+                          Geräte der anfragenden Person
+                        </p>
+                        <ul>
+                          {requesterDeviceSuggestions.map((item) => (
+                            <li key={catalogSelectionKey(item)}>
+                              <button
+                                disabled={catalogBusy}
+                                onClick={() =>
+                                  void linkCatalogItemByKey(
+                                    catalogSelectionKey(item),
+                                  )
+                                }
+                                title={item.description}
+                                type="button"
+                              >
+                                <Plus aria-hidden="true" size={14} />
+                                {item.label}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
                     {linkedCatalogItems.length > 0 ? (
                       <div
                         aria-label="Verknüpfte Assets und Katalogeinträge"
@@ -8612,11 +9333,55 @@ export function TicketDetail({
             )}
           </section>
 
+          {requesterView ? null : (
+            <TicketCoordination
+              description={detail.ticket.description}
+              onChanged={() => {
+                onChanged();
+                void loadTicket();
+              }}
+              onOpenTicket={onOpenTicket}
+              refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
+              subject={detail.ticket.subject}
+              tenantId={tenantId}
+              ticketId={detail.ticket.id}
+              ticketNumber={detail.ticket.ticket_number}
+              timelineHost={timelineHost}
+              supportLevel={
+                <TicketSupportLevel
+                  embedded
+                  onChanged={() => {
+                    onChanged();
+                    void loadTicket();
+                  }}
+                  refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}|${detail.events[0]?.id ?? ""}`}
+                  tenantId={tenantId}
+                  ticketId={detail.ticket.id}
+                />
+              }
+            />
+          )}
+
           <TicketCustomFields
             canUpdate={detail.canUpdate}
             tenantId={tenantId}
             ticketId={detail.ticket.id}
           />
+
+          {!requesterView ? (
+            <IpamTicketPanel
+              canUpdate={detail.canUpdate}
+              comments={detail.comments.map((comment) => comment.body)}
+              description={detail.ticket.description}
+              onLinked={onChanged}
+              onOpenAsset={onOpenAsset}
+              ticketNumber={detail.ticket.ticket_number}
+              refreshKey={`${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
+              subject={detail.ticket.subject}
+              tenantId={tenantId}
+              ticketId={detail.ticket.id}
+            />
+          ) : null}
 
           {!requesterView ? (
             <TicketAiTriage
@@ -8634,109 +9399,12 @@ export function TicketDetail({
             <TicketAiSummary tenantId={tenantId} ticketId={detail.ticket.id} />
           ) : null}
 
-          {!requesterView && presence.length > 0 && (
-            <aside
-              className="ticket-presence"
-              aria-label="Aktive Ticketbearbeitung"
-            >
-              <UsersRound aria-hidden="true" size={17} strokeWidth={1.8} />
-              <div>
-                <strong>
-                  {presence.some((person) => person.editing)
-                    ? "Ticket wird parallel bearbeitet"
-                    : "Weitere Personen sehen dieses Ticket"}
-                </strong>
-                <span>
-                  {presence
-                    .map((person) =>
-                      person.editing
-                        ? `${person.displayName} bearbeitet gerade`
-                        : person.displayName,
-                    )
-                    .join(", ")}
-                </span>
-              </div>
-            </aside>
-          )}
-
           {focusMode && (
             <p className="ticket-focus-notice" role="status">
               Fokusmodus aktiv: Kommunikation, Status und die nächste Aktion
               bleiben im Blick. Weitere Ticketbereiche können über „Alle
               Bereiche“ eingeblendet werden.
             </p>
-          )}
-
-          {detail.canUpdate && isEditingTicket && (
-            <section
-              className="ticket-detail-editor"
-              aria-labelledby="ticket-content-heading"
-              id="ticket-editor"
-            >
-              <div className="ticket-detail-section-heading">
-                <div>
-                  <p className="eyebrow">BEARBEITEN</p>
-                  <h3 id="ticket-content-heading">Ticketinhalt bearbeiten</h3>
-                </div>
-              </div>
-              <div className="ticket-comment-form">
-                <label className="ticket-comment-body">
-                  Titel
-                  <input
-                    autoFocus
-                    disabled={busy}
-                    maxLength={240}
-                    minLength={3}
-                    onChange={(event) => setEditSubject(event.target.value)}
-                    required
-                    value={editSubject}
-                  />
-                </label>
-                <p className="data-caption" aria-live="polite">
-                  {[...editSubject].length}/240 Zeichen
-                </p>
-                <label className="ticket-comment-body">
-                  Beschreibung
-                  <textarea
-                    disabled={busy}
-                    maxLength={10_000}
-                    minLength={1}
-                    onChange={(event) => setEditDescription(event.target.value)}
-                    required
-                    rows={5}
-                    value={editDescription}
-                  />
-                </label>
-                <p className="data-caption" aria-live="polite">
-                  {[...editDescription].length}/10&apos;000 Zeichen
-                </p>
-                <button
-                  className="secondary-button"
-                  disabled={busy}
-                  onClick={cancelTicketEdit}
-                  type="button"
-                >
-                  Abbrechen
-                </button>
-                <button
-                  className="secondary-button"
-                  disabled={busy || !hasContentChanges}
-                  onClick={() => void saveTicketContent()}
-                  type="button"
-                >
-                  {pendingAction === "update" ? (
-                    <LoaderCircle
-                      aria-hidden="true"
-                      className="ticket-detail-spinner"
-                      size={16}
-                    />
-                  ) : (
-                    <Save aria-hidden="true" size={16} strokeWidth={1.8} />
-                  )}
-                  Ticketinhalt speichern
-                </button>
-              </div>
-            </section>
           )}
 
           {!requesterView && detail.ticketModules.checklists ? (
@@ -9252,227 +9920,6 @@ export function TicketDetail({
               )}
             </details>
           )}
-
-          <details className="ticket-detail-disclosure">
-            <summary>
-              <span className="ticket-detail-disclosure-label">
-                <Paperclip aria-hidden="true" size={17} strokeWidth={1.8} />
-                Anhänge
-              </span>
-              <span className="ticket-detail-disclosure-meta">
-                Dateien zum Ticket
-                <ChevronDown
-                  aria-hidden="true"
-                  className="ticket-detail-disclosure-icon"
-                  size={18}
-                  strokeWidth={1.8}
-                />
-              </span>
-            </summary>
-            <div className="ticket-detail-disclosure-content">
-              <section
-                className="ticket-detail-comments"
-                aria-labelledby="ticket-attachments-heading"
-              >
-                <div className="ticket-detail-section-heading">
-                  <div>
-                    <p className="eyebrow">ANHÄNGE</p>
-                    <h3 id="ticket-attachments-heading">Anhänge</h3>
-                  </div>
-                  <span className="data-caption">{attachments.length}</span>
-                </div>
-                <p className="data-caption" id="ticket-attachments-help">
-                  Erlaubt sind {ATTACHMENT_ALLOWLIST_LABEL}. Maximal 25 MiB pro
-                  Datei.
-                </p>
-
-                {attachmentError && (
-                  <p className="ticket-detail-message error" role="alert">
-                    <AlertCircle aria-hidden="true" size={17} />
-                    {attachmentError}
-                  </p>
-                )}
-
-                {detail.canUpdate && (
-                  <form
-                    className="ticket-comment-form"
-                    onSubmit={uploadAttachment}
-                  >
-                    <label className="ticket-comment-body">
-                      Datei auswählen
-                      <input
-                        accept={ATTACHMENT_ACCEPT}
-                        aria-describedby="ticket-attachments-help"
-                        disabled={attachmentBusy || busy}
-                        onChange={(event) =>
-                          selectAttachmentFile(event.target.files?.[0] ?? null)
-                        }
-                        ref={attachmentInputRef}
-                        type="file"
-                      />
-                    </label>
-                    {pendingAttachmentAction === "upload" ? (
-                      <p
-                        className="data-caption ticket-detail-loading"
-                        role="status"
-                      >
-                        <LoaderCircle
-                          aria-hidden="true"
-                          className="ticket-detail-spinner"
-                          size={16}
-                        />
-                        Anhang wird hochgeladen …
-                      </p>
-                    ) : selectedAttachmentFile ? (
-                      <p className="data-caption" aria-live="polite">
-                        Ausgewählt: {selectedAttachmentFile.name} (
-                        {formatFileSize(selectedAttachmentFile.size)})
-                      </p>
-                    ) : null}
-                    <button
-                      className="secondary-button"
-                      disabled={
-                        attachmentBusy || busy || !selectedAttachmentFile
-                      }
-                      type="submit"
-                    >
-                      {pendingAttachmentAction === "upload" ? (
-                        <LoaderCircle
-                          aria-hidden="true"
-                          className="ticket-detail-spinner"
-                          size={16}
-                        />
-                      ) : (
-                        <Circle
-                          aria-hidden="true"
-                          size={16}
-                          strokeWidth={1.8}
-                        />
-                      )}
-                      Anhang hochladen
-                    </button>
-                  </form>
-                )}
-
-                {attachmentsLoading && !attachmentsLoaded ? (
-                  <p
-                    className="empty-state ticket-detail-loading"
-                    role="status"
-                  >
-                    <LoaderCircle
-                      aria-hidden="true"
-                      className="ticket-detail-spinner"
-                      size={18}
-                    />
-                    Anhänge werden geladen …
-                  </p>
-                ) : attachments.length === 0 ? (
-                  <p className="empty-state">Noch keine Anhänge vorhanden.</p>
-                ) : (
-                  <ol
-                    className="ticket-comment-list"
-                    aria-busy={attachmentsLoading}
-                  >
-                    {attachments.map((attachment) => {
-                      const isDownloading =
-                        pendingAttachmentAction === "download" &&
-                        pendingAttachmentId === attachment.id;
-                      const isDeleting =
-                        pendingAttachmentAction === "delete" &&
-                        pendingAttachmentId === attachment.id;
-
-                      return (
-                        <li className="ticket-comment" key={attachment.id}>
-                          {inlineImagesByAttachmentId[attachment.id] ? (
-                            <button
-                              aria-label={`${attachment.originalFilename} gross anzeigen`}
-                              className="ticket-attachment-thumbnail"
-                              onClick={() =>
-                                void downloadAttachment(attachment)
-                              }
-                              type="button"
-                            >
-                              <img
-                                alt=""
-                                loading="lazy"
-                                onError={() =>
-                                  refreshInlineImageAfterError(attachment.id)
-                                }
-                                src={
-                                  inlineImagesByAttachmentId[attachment.id]
-                                    ?.signedUrl
-                                }
-                              />
-                            </button>
-                          ) : null}
-                          <div className="ticket-comment-meta">
-                            <strong>{attachment.originalFilename}</strong>
-                            <span>{formatFileSize(attachment.byteSize)}</span>
-                            <time dateTime={attachment.createdAt}>
-                              Hochgeladen am{" "}
-                              {formatDateTime(attachment.createdAt)}
-                            </time>
-                          </div>
-                          <div className="ticket-detail-actions">
-                            <button
-                              aria-label={`${attachment.originalFilename} herunterladen`}
-                              className="secondary-button"
-                              disabled={attachmentBusy || busy}
-                              onClick={() =>
-                                void downloadAttachment(attachment)
-                              }
-                              type="button"
-                            >
-                              {isDownloading ? (
-                                <LoaderCircle
-                                  aria-hidden="true"
-                                  className="ticket-detail-spinner"
-                                  size={16}
-                                />
-                              ) : (
-                                <Save
-                                  aria-hidden="true"
-                                  size={16}
-                                  strokeWidth={1.8}
-                                />
-                              )}
-                              Herunterladen
-                            </button>
-                            {detail.canUpdate && (
-                              <button
-                                aria-label={`${attachment.originalFilename} löschen`}
-                                className="secondary-button"
-                                disabled={attachmentBusy || busy}
-                                onClick={() =>
-                                  void deleteAttachment(attachment)
-                                }
-                                type="button"
-                              >
-                                {isDeleting ? (
-                                  <LoaderCircle
-                                    aria-hidden="true"
-                                    className="ticket-detail-spinner"
-                                    size={16}
-                                  />
-                                ) : (
-                                  <X
-                                    aria-hidden="true"
-                                    size={16}
-                                    strokeWidth={1.8}
-                                  />
-                                )}
-                                Löschen
-                              </button>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                )}
-              </section>
-            </div>
-          </details>
 
           {requesterView ? null : (
             <details className="ticket-detail-disclosure ticket-detail-disclosure--timeline">

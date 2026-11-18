@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { LayoutPanelTop, UserRound, X, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -11,18 +12,24 @@ type IntroTipDefinition = {
 
 type StoredIntroTips = Partial<Record<IntroTipId, true>>;
 
-const INTRO_TIPS: Record<IntroTipId, IntroTipDefinition> = {
+const introTips = (): Record<IntroTipId, IntroTipDefinition> => ({
   arbeitsplatz: {
     Icon: LayoutPanelTop,
-    text: "Nutzen Sie den Arbeitsplatz für Makros, Erwähnungen und nachvollziehbare Arbeitsvorschläge. Vorschläge ändern kein Ticket automatisch.",
+    text: tn(
+      "Nutze den Arbeitsplatz für Makros, Erwähnungen und nachvollziehbare Arbeitsvorschläge. Vorschläge ändern kein Ticket automatisch.",
+      "Nutzen Sie den Arbeitsplatz für Makros, Erwähnungen und nachvollziehbare Arbeitsvorschläge. Vorschläge ändern kein Ticket automatisch.",
+    ),
     title: "Neu: Arbeitsplatz",
   },
   "mein-portal": {
     Icon: UserRound,
-    text: "Im Arbeitsplatz finden Sie Störungen, offene Freigaben, Ihre Geräte und Ihre Anfragen. Verfügbare Bereiche richten sich nach Ihrem Mandanten.",
-    title: "Ihr Arbeitsplatz",
+    text: tn(
+      "Im Arbeitsplatz findest du Störungen, offene Freigaben, deine Geräte und deine Anfragen. Verfügbare Bereiche richten sich nach deinem Mandanten.",
+      "Im Arbeitsplatz finden Sie Störungen, offene Freigaben, Ihre Geräte und Ihre Anfragen. Verfügbare Bereiche richten sich nach Ihrem Mandanten.",
+    ),
+    title: tn("Dein Arbeitsplatz", "Ihr Arbeitsplatz"),
   },
-};
+});
 
 function readStoredTips(storageKey: string): StoredIntroTips {
   try {
@@ -51,7 +58,7 @@ export function IntroTip({
   tip: IntroTipId;
   userId: string;
 }) {
-  const definition = INTRO_TIPS[tip];
+  const definition = introTips()[tip];
   const storageKey = useMemo(
     () =>
       `nextdesk:intro-tips:${encodeURIComponent(tenantId)}:${encodeURIComponent(userId)}`,

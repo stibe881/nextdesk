@@ -18,6 +18,7 @@ import {
   type ServiceTaskRepeat,
   type ServiceTaskSetup,
 } from "@/lib/quick-create";
+import { tn } from "@/lib/formality";
 
 type Start = "today" | "tomorrow" | "nextWeek";
 
@@ -70,11 +71,11 @@ export default function NewServiceTaskScreen() {
   async function save() {
     if (!tenantId || !setup) return;
     if (!title.trim()) {
-      setError("Bitte gib einen Titel ein.");
+      setError(tn("Bitte gib einen Titel ein.", "Bitte geben Sie einen Titel ein."));
       return;
     }
     if (!/^([01]\d|2[0-3]):[0-5]\d$/u.test(dueTime)) {
-      setError("Bitte gib die Uhrzeit als HH:MM ein, z. B. 16:00.");
+      setError(tn("Bitte gib die Uhrzeit als HH:MM ein, z. B. 16:00.", "Bitte geben Sie die Uhrzeit als HH:MM ein, z. B. 16:00."));
       return;
     }
     setSaving(true);
@@ -115,7 +116,7 @@ export default function NewServiceTaskScreen() {
       ) : setup && !setup.canManage ? (
         <FormCard>
           <FormMessage
-            text="Für das Erfassen von Serviceaufgaben fehlt dir die Berechtigung."
+            text={tn("Für das Erfassen von Serviceaufgaben fehlt dir die Berechtigung.", "Für das Erfassen von Serviceaufgaben fehlt Ihnen die Berechtigung.")}
             tone="info"
           />
         </FormCard>

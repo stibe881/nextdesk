@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useState } from "react";
 
 import { RefreshCw } from "lucide-react";
@@ -185,10 +186,10 @@ export function DepartmentModules({
           <p className="eyebrow">MODULE</p>
           <h3 id="department-modules-heading">Module pro Abteilung</h3>
           <p>
-            Legen Sie fest, welche Abteilung ein Modul nutzt. Wer keiner
-            Abteilung angehört, sieht ein Modul, sobald es in mindestens einer
-            Abteilung eingeschaltet ist. Module, die unter „Funktionen“
-            ausgeschaltet sind, bleiben für alle aus.
+            {tn(
+              "Lege fest, welche Abteilung ein Modul nutzt. Wer keiner Abteilung angehört, sieht ein Modul, sobald es in mindestens einer Abteilung eingeschaltet ist. Module, die unter „Funktionen“ ausgeschaltet sind, bleiben für alle aus.",
+              "Legen Sie fest, welche Abteilung ein Modul nutzt. Wer keiner Abteilung angehört, sieht ein Modul, sobald es in mindestens einer Abteilung eingeschaltet ist. Module, die unter „Funktionen“ ausgeschaltet sind, bleiben für alle aus.",
+            )}
           </p>
         </div>
       </div>
@@ -214,8 +215,10 @@ export function DepartmentModules({
         </p>
       ) : matrix && matrix.departments.length === 0 ? (
         <p className="department-management__empty">
-          Legen Sie zuerst eine Abteilung an. Bis dahin gilt der Schalter unter
-          „Funktionen“ für alle.
+          {tn(
+            "Lege zuerst eine Abteilung an. Bis dahin gilt der Schalter unter „Funktionen“ für alle.",
+            "Legen Sie zuerst eine Abteilung an. Bis dahin gilt der Schalter unter „Funktionen“ für alle.",
+          )}
         </p>
       ) : matrix ? (
         <div className="department-modules__scroll">

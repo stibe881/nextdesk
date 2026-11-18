@@ -1,4 +1,7 @@
+import { assertEquals } from "jsr:@std/assert@1";
 import {
+  inboundAttachmentContentType,
+  inboundSubjectKind,
   customerTicketEmailKindForOutbound,
   supportsInlineCustomerEmailLogo,
   tenantBrandingStoragePath,
@@ -10,6 +13,7 @@ Deno.test(
     const expected = new Map([
       ["agent_reply", "agent_reply"],
       ["ticket_copy", "agent_reply"],
+      ["security_notice", "security_notice"],
       ["acknowledgement", "acknowledgement"],
       ["resolution", "resolution"],
       ["test", "test"],
@@ -134,3 +138,29 @@ Deno.test(
     }
   },
 );
+
+Deno.test("Anhang-Dateityp: ohne Parameter, Fallback über die Endung", () => {
+  assertEquals(
+    inboundAttachmentContentType("application/pdf; name=rechnung.pdf"),
+    "application/pdf",
+  );
+  assertEquals(inboundAttachmentContentType("IMAGE/JPG"), "image/jpeg");
+  assertEquals(
+    inboundAttachmentContentType("application/octet-stream", "Offerte.XLSX"),
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  assertEquals(inboundAttachmentContentType(null, "notiz.txt"), "text/plain");
+  assertEquals(inboundAttachmentContentType(null, "ohne-endung"), null);
+});
+
+Deno.test("Betreff: Antwort, Weiterleitung oder neue Mail", () => {
+  assertEquals(inboundSubjectKind("AW: Drucker"), "reply");
+  assertEquals(inboundSubjectKind("RE: Drucker"), "reply");
+  assertEquals(inboundSubjectKind("Antw: Drucker"), "reply");
+  assertEquals(inboundSubjectKind("WG: TestAnhang"), "forward");
+  assertEquals(inboundSubjectKind("Fwd: TestAnhang"), "forward");
+  assertEquals(inboundSubjectKind("[EXTERN] FW: Rechnung"), "forward");
+  assertEquals(inboundSubjectKind("TestAnhang"), "new");
+  assertEquals(inboundSubjectKind("Wartung: Server"), "new");
+  assertEquals(inboundSubjectKind(null), "new");
+});

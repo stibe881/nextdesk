@@ -4,7 +4,7 @@
 
 nextDesk wird zentral auf `app.nextdesk.ch` betrieben. Jeder Kunde besitzt einen vollständig eigenen nextDesk-Mandanten, eigene Daten und sein eigenes Microsoft-Entra-Verzeichnis. Kundenbenutzer werden **nicht** als Gastkonten im Gross-ICT-Verzeichnis angelegt.
 
-Für Kunden-SSO gibt es eine zentrale mehrmandantenfähige Entra-App von nextDesk. Sie kann nach expliziter Zustimmung im jeweiligen Kundenverzeichnis anmelden. Die bestehende Plattform-Eigentümerprüfung bleibt separat: Nur aktive `platform_administrators` erhalten die Eigentümerkonsole.
+Für Kunden-SSO gibt es eine zentrale mehrmandantenfähige Entra-App von nextDesk. Diese kann nach expliziter Zustimmung im jeweiligen Kundenverzeichnis anmelden. Die bestehende Plattform-Eigentümerprüfung bleibt separat: Nur aktive `platform_administrators` erhalten die Eigentümerkonsole.
 
 ## 1. Zentrale Entra-App registrieren
 

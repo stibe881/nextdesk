@@ -1,3 +1,4 @@
+import { salutationForFirstName } from "./first-name-gender";
 export type TicketCommentComposerMode = "internal" | "external";
 
 export type TicketCommentComposerCopy = {
@@ -75,4 +76,38 @@ export function ticketCommentComposerModeForTicketContext({
   if (!nextContext.canUseInternalNotes) return "external";
   if (!previousContext.canUseInternalNotes) return "internal";
   return currentMode;
+}
+
+/** Vorname der anfragenden Person aus «Vorname Nachname» oder «Nachname, Vorname». */
+export function requesterFirstName(
+  displayName: string | null | undefined,
+): string | null {
+  if (typeof displayName !== "string") return null;
+  const name = displayName.trim();
+  if (!name || name.includes("@")) return null;
+  const afterComma = name.includes(",") ? name.split(",")[1]?.trim() : "";
+  const first = (afterComma || name).split(/\s+/)[0] ?? "";
+  if (!first || first.length > 40) return null;
+  // Ganz kleingeschriebene Namen (aus E-Mail-Adressen) bekommen einen Grossbuchstaben.
+  return first === first.toLowerCase()
+    ? first.charAt(0).toUpperCase() + first.slice(1)
+    : first;
+}
+
+/** Begrüssung am Anfang einer Antwort an die anfragende Person. */
+export function ticketReplyGreeting(
+  displayName: string | null | undefined,
+): string | null {
+  const firstName = requesterFirstName(displayName);
+  return firstName
+    ? `${salutationForFirstName(firstName)} ${firstName}\n\n`
+    : null;
+}
+
+/** Nur die vorbelegte Begrüssung, noch nichts geschrieben. */
+export function isReplyGreetingOnly(
+  draft: string,
+  greeting: string | null,
+): boolean {
+  return greeting !== null && draft.trim() === greeting.trim();
 }

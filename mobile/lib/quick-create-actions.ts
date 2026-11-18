@@ -19,7 +19,7 @@ export type QuickCreate = {
 export const QUICK_CREATE: readonly QuickCreate[] = [
   {
     id: "follow-up",
-    title: "Wiedervorlage erfassen",
+    title: "Erinnerung erfassen",
     href: "/create/follow-up",
     icon: "alarm-outline",
     feature: "experience.workspace",
@@ -43,5 +43,37 @@ export const QUICK_CREATE: readonly QuickCreate[] = [
     href: "/create/inventory-item",
     icon: "cube-outline",
     feature: "inventory.management",
+  },
+];
+
+/** Only members of this team see the «Öffnen» group of the menu. */
+export const QUICK_OPEN_TEAM = "System Engineer";
+
+/**
+ * Pages behind the same long press («Öffnen»), shown above the create arc to
+ * the team QUICK_OPEN_TEAM. A missing module hides its entry; the pages check
+ * access again.
+ */
+export const QUICK_OPEN: readonly QuickCreate[] = [
+  {
+    id: "monitoring",
+    title: "Überwachung",
+    href: "/monitoring",
+    icon: "pulse-outline",
+    feature: "monitoring.native",
+  },
+  {
+    id: "infrastructure",
+    title: "Infrastruktur",
+    href: "/infrastructure",
+    icon: "server-outline",
+    feature: "assets.management",
+  },
+  {
+    id: "ipam",
+    title: "IP-Adressen",
+    href: "/ipam",
+    icon: "git-network-outline",
+    feature: "ipam.management",
   },
 ];

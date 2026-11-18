@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 export type PickerTeam = {
   id: string;
   name: string;
@@ -27,7 +28,10 @@ export function TeamPicker({
       <legend>Team</legend>
       {!departmentId ? (
         <small className="tenant-admin-settings__field-hint">
-          Wählen Sie zuerst den Ticketzugriffsbereich.
+          {tn(
+            "Wähle zuerst den Ticketzugriffsbereich.",
+            "Wählen Sie zuerst den Ticketzugriffsbereich.",
+          )}
         </small>
       ) : options.length === 0 ? (
         <small className="tenant-admin-settings__field-hint">

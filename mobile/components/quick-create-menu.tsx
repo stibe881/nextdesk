@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, type Href } from "expo-router";
 import { useEffect, useState } from "react";
-import { Modal, Pressable, StyleSheet, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -13,7 +13,13 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
-import { QUICK_CREATE, type QuickCreate } from "@/lib/quick-create-actions";
+import { isInTeamNamed } from "@/lib/incidents";
+import {
+  QUICK_CREATE,
+  QUICK_OPEN,
+  QUICK_OPEN_TEAM,
+  type QuickCreate,
+} from "@/lib/quick-create-actions";
 import { useAppColors } from "@/lib/themed-styles";
 
 const RADIUS = 128;
@@ -22,6 +28,8 @@ const HOME_SIZE = 52;
 const STAGGER_MS = 45;
 const CLOSE_MS = 180;
 const SPRING = { damping: 14, stiffness: 190, mass: 0.8 };
+/** Gap between the top of the create arc and the «Öffnen» panel. */
+const PANEL_GAP = 34;
 
 type QuickCreateMenuProps = {
   visible: boolean;
@@ -53,10 +61,29 @@ export function QuickCreateMenu({
 }: QuickCreateMenuProps) {
   const colors = useAppColors();
   const router = useRouter();
-  const { isEnabled } = useMobileFeatures();
+  const { isEnabled, tenantId } = useMobileFeatures();
+  // «Öffnen» only for the team QUICK_OPEN_TEAM (checked per tenant).
+  const [openTeam, setOpenTeam] = useState<{
+    tenantId: string;
+    member: boolean;
+  } | null>(null);
+  useEffect(() => {
+    if (!tenantId) return;
+    let active = true;
+    void isInTeamNamed(tenantId, QUICK_OPEN_TEAM).then((member) => {
+      if (active) setOpenTeam({ tenantId, member });
+    });
+    return () => {
+      active = false;
+    };
+  }, [tenantId]);
+  const openAllowed = openTeam?.tenantId === tenantId && openTeam.member;
   const items = QUICK_CREATE.filter(
     (item) => !item.feature || isEnabled(item.feature),
   );
+  const openItems = openAllowed
+    ? QUICK_OPEN.filter((item) => !item.feature || isEnabled(item.feature))
+    : [];
   const angles = arcAngles(items.length);
 
   const [mounted, setMounted] = useState(visible);
@@ -68,16 +95,19 @@ export function QuickCreateMenu({
   const p2 = useSharedValue(0);
   const p3 = useSharedValue(0);
   const progress = [p0, p1, p2, p3];
+  const panel = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
       backdrop.set(withTiming(1, { duration: 200 }));
+      panel.set(withDelay(items.length * STAGGER_MS, withSpring(1, SPRING)));
       progress.forEach((value, index) =>
         value.set(withDelay(index * STAGGER_MS, withSpring(1, SPRING))),
       );
       return;
     }
     backdrop.set(withTiming(0, { duration: CLOSE_MS }));
+    panel.set(withTiming(0, { duration: CLOSE_MS }));
     progress.forEach((value) =>
       value.set(withTiming(0, { duration: CLOSE_MS })),
     );
@@ -89,6 +119,10 @@ export function QuickCreateMenu({
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdrop.get(),
   }));
+  const panelStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(panel.get(), [0, 0.5, 1], [0, 1, 1]),
+    transform: [{ translateY: interpolate(panel.get(), [0, 1], [24, 0]) }],
+  }));
   const closeStyle = useAnimatedStyle(() => ({
     transform: [
       { rotate: `${interpolate(backdrop.get(), [0, 1], [-90, 0])}deg` },
@@ -98,7 +132,8 @@ export function QuickCreateMenu({
 
   function choose(item: QuickCreate) {
     onClose();
-    router.push(item.href as Href);
+    // Navigate once the menu has closed, not while its modal is still shown.
+    setTimeout(() => router.push(item.href as Href), CLOSE_MS);
   }
 
   return (
@@ -117,6 +152,59 @@ export function QuickCreateMenu({
       >
         <Animated.View style={[styles.backdrop, backdropStyle]} />
       </Pressable>
+      {openItems.length > 0 ? (
+        <Animated.View
+          pointerEvents="box-none"
+          style={[
+            styles.panel,
+            {
+              bottom:
+                homeCenterFromBottom + RADIUS + BUBBLE_SIZE / 2 + PANEL_GAP,
+            },
+            panelStyle,
+          ]}
+        >
+          <Text accessibilityRole="header" style={styles.groupTitle}>
+            Öffnen
+          </Text>
+          <View style={styles.grid}>
+            {openItems.map((item) => (
+              <Pressable
+                accessibilityHint={`Öffnet ${item.title}`}
+                accessibilityLabel={item.title}
+                accessibilityRole="button"
+                key={item.id}
+                onPress={() => choose(item)}
+                style={({ pressed }) => [
+                  styles.tile,
+                  {
+                    backgroundColor: colors.surface,
+                    shadowColor: colors.shadow,
+                  },
+                  pressed && styles.bubblePressed,
+                ]}
+              >
+                <Ionicons
+                  color={colors.primaryText}
+                  name={item.icon}
+                  size={20}
+                />
+                <Text
+                  numberOfLines={1}
+                  style={[styles.tileLabel, { color: colors.text }]}
+                >
+                  {item.title}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {items.length > 0 ? (
+            <Text style={[styles.groupTitle, styles.groupTitleBelow]}>
+              Erfassen
+            </Text>
+          ) : null}
+        </Animated.View>
+      ) : null}
       <View
         pointerEvents="box-none"
         style={[styles.anchor, { bottom: homeCenterFromBottom }]}
@@ -248,6 +336,54 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0, 0, 0, 0.35)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  panel: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    alignItems: "center",
+  },
+  groupTitle: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginBottom: 8,
+    textTransform: "uppercase",
+    textShadowColor: "rgba(0, 0, 0, 0.35)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  groupTitleBelow: {
+    marginBottom: 0,
+    marginTop: 14,
+  },
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    justifyContent: "center",
+    maxWidth: 360,
+    width: "100%",
+  },
+  tile: {
+    alignItems: "center",
+    borderRadius: 18,
+    elevation: 8,
+    flexBasis: "46%",
+    flexDirection: "row",
+    flexGrow: 1,
+    gap: 10,
+    minHeight: 52,
+    paddingHorizontal: 14,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+  },
+  tileLabel: {
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: "700",
   },
   close: {
     position: "absolute",

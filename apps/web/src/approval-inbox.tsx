@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, ClipboardCheck, LoaderCircle, X } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
+import { confirmDialog } from "./app-dialog";
 type InboxItem = {
   approvalId: string;
   approvalKind: string;
@@ -94,7 +95,7 @@ export function ApprovalInboxCard({
   async function decide(item: InboxItem, decision: "approved" | "rejected") {
     if (
       decision === "rejected" &&
-      !window.confirm(`Freigabe für «${item.ticketNumber}» ablehnen?`)
+      !(await confirmDialog(`Freigabe für «${item.ticketNumber}» ablehnen?`))
     ) {
       return;
     }

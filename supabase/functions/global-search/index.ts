@@ -7,16 +7,24 @@ const MAX_QUERY_LENGTH = 120;
 type Client = SupabaseContext["supabase"];
 type SearchResult = {
   resultType:
-    "ticket" | "follow_up" | "knowledge" | "event_space" | "onboarding";
+    | "ticket"
+    | "follow_up"
+    | "knowledge"
+    | "event_space"
+    | "onboarding"
+    | "incident"
+    | "security_case";
   entityId: string;
   title: string;
   detail: string;
   section:
     | "Tickets"
-    | "Wiedervorlagen"
+    | "Erinnerungen"
     | "Wissen"
     | "Veranstaltungsräume"
-    | "Eintritte";
+    | "Eintritte"
+    | "Störungen"
+    | "Phishing / Junk";
   ticketId: string | null;
 };
 
@@ -146,6 +154,11 @@ function json(request: Request, body: Record<string, unknown>, status = 200) {
   });
 }
 
+const LEGACY_SECTIONS: Record<string, string> = {
+  Wiedervorlagen: "Erinnerungen",
+  Sicherheitsfälle: "Phishing / Junk",
+};
+
 function parseResults(value: unknown): SearchResult[] | null {
   if (!Array.isArray(value)) return null;
   const allowed = new Set<SearchResult["resultType"]>([
@@ -154,16 +167,27 @@ function parseResults(value: unknown): SearchResult[] | null {
     "knowledge",
     "event_space",
     "onboarding",
+    "incident",
+    "security_case",
   ]);
   const sections = new Set<SearchResult["section"]>([
     "Tickets",
-    "Wiedervorlagen",
+    "Erinnerungen",
     "Wissen",
     "Veranstaltungsräume",
     "Eintritte",
+    "Störungen",
+    "Phishing / Junk",
   ]);
   const result: SearchResult[] = [];
-  for (const row of value) {
+  for (const rawRow of value) {
+    // Sections the database may still label with their former names.
+    const row =
+      isRecord(rawRow) &&
+      typeof rawRow.section === "string" &&
+      rawRow.section in LEGACY_SECTIONS
+        ? { ...rawRow, section: LEGACY_SECTIONS[rawRow.section] }
+        : rawRow;
     if (
       !isRecord(row) ||
       !allowed.has(row.result_type as SearchResult["resultType"]) ||
@@ -171,7 +195,9 @@ function parseResults(value: unknown): SearchResult[] | null {
       typeof row.title !== "string" ||
       typeof row.detail !== "string" ||
       !sections.has(row.section as SearchResult["section"]) ||
-      (row.ticket_id !== null && !isUuid(row.ticket_id))
+      (row.ticket_id !== null &&
+        row.ticket_id !== undefined &&
+        !isUuid(row.ticket_id))
     ) {
       return null;
     }
@@ -181,7 +207,7 @@ function parseResults(value: unknown): SearchResult[] | null {
       title: row.title,
       detail: row.detail,
       section: row.section as SearchResult["section"],
-      ticketId: row.ticket_id,
+      ticketId: isUuid(row.ticket_id) ? row.ticket_id : null,
     });
   }
   return result;
@@ -225,6 +251,27 @@ function parsePeople(value: unknown): PersonResult[] | null {
     });
   }
   return people;
+}
+
+// Störungen and security cases: only for the responsible team (the
+// database function checks can_work_incidents / can_work_security_cases).
+// A failing lookup must not break the rest of the search.
+async function searchOperations(
+  client: Client,
+  tenantId: string,
+  query: string,
+): Promise<SearchResult[]> {
+  const { data, error } = await client.rpc("search_operations", {
+    p_tenant_id: tenantId,
+    p_query: query,
+    p_limit: 8,
+  });
+  if (error || !Array.isArray(data)) return [];
+  return (
+    parseResults(
+      data.map((row) => (isRecord(row) ? { ...row, ticket_id: null } : row)),
+    ) ?? []
+  );
 }
 
 // People (from the Entra directory) are only searchable for ticket agents.
@@ -293,13 +340,14 @@ const handler = withSupabase(
         );
       }
       await requireMembership(context.supabase, action.tenantId);
-      const [{ data, error }, people] = await Promise.all([
+      const [{ data, error }, people, operations] = await Promise.all([
         context.supabase.rpc("search_global_workspace", {
           p_tenant_id: action.tenantId,
           p_query: action.query,
           p_limit: 40,
         }),
         searchPeople(context.supabase, action.tenantId, action.query),
+        searchOperations(context.supabase, action.tenantId, action.query),
       ]);
       if (error) {
         throw new HttpError(
@@ -316,7 +364,9 @@ const handler = withSupabase(
           "Die globale Suche konnte nicht gelesen werden.",
         );
       }
-      return json(request, { data: { results, people } });
+      return json(request, {
+        data: { results: [...results, ...operations], people },
+      });
     } catch (error) {
       const failure =
         error instanceof HttpError

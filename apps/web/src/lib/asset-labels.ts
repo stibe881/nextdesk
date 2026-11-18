@@ -8,7 +8,12 @@
 export const APP_SCHEME = "ch.grossict.nextdesk";
 
 export type LabelFormatId =
-  "avery-l7651" | "avery-3474" | "avery-l7163" | "roll-62x29" | "roll-62x100";
+  | "avery-l7651"
+  | "avery-l6009"
+  | "avery-3474"
+  | "avery-l7163"
+  | "roll-62x29"
+  | "roll-62x100";
 
 export type LabelFormat = {
   id: LabelFormatId;
@@ -90,6 +95,15 @@ export const LABEL_FORMATS: readonly LabelFormat[] = [
     [5, 13],
     [10.7, 4.75],
     [40.6, 21.2],
+  ),
+  sheet(
+    "avery-l6009",
+    "Avery L6009-20 (A4, 48 Etiketten)",
+    "45,7 × 21,2 mm, 4 × 12 pro Bogen – silbernes Polyester, wetterfest",
+    [45.7, 21.2],
+    [4, 12],
+    [21.5, 9.75],
+    [48.3, 21.2],
   ),
   sheet(
     "avery-3474",
@@ -263,6 +277,21 @@ export function rackWebLink(baseUrl: string, rackName: string): string {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Web link of a stock article: the web app opens the Lager article list. */
+export function inventoryWebLink(baseUrl: string, itemId: string): string {
+  const url = new URL(baseUrl);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("inventory", itemId.toLowerCase());
+  return url.toString();
+}
+
+/** «?inventory=<uuid>» from a stock article label link, if valid. */
+export function inventoryIdFromSearch(search: string): string | null {
+  const value = new URLSearchParams(search).get("inventory")?.trim() ?? "";
+  return UUID_PATTERN.test(value) ? value.toLowerCase() : null;
+}
+
 /** «?asset=<uuid>» from a web fallback link, if valid. */
 export function assetIdFromSearch(search: string): string | null {
   const value = new URLSearchParams(search).get("asset")?.trim() ?? "";
@@ -318,6 +347,34 @@ export function assetLabelItem(
       mode === "app"
         ? assetDeepLink(asset.id)
         : assetWebLink(baseUrl, asset.id),
+  };
+}
+
+export type LabelInventoryItem = {
+  id: string;
+  name: string;
+  articleNumber: string | null;
+  /** Shown as «Lagerort», e.g. «Wandschrank ICT». */
+  locationName: string | null;
+};
+
+/** Label of a stock article; the QR code is always the web link. */
+export function inventoryLabelItem(
+  item: LabelInventoryItem,
+  baseUrl: string,
+): LabelItem {
+  return {
+    key: `inventory:${item.id}`,
+    title: item.name.trim() || "Artikel",
+    meta: [
+      present(item.articleNumber)
+        ? `Artikel: ${item.articleNumber.trim()}`
+        : null,
+      present(item.locationName)
+        ? `Lagerort: ${item.locationName.trim()}`
+        : null,
+    ].filter(present),
+    qrText: inventoryWebLink(baseUrl, item.id),
   };
 }
 
@@ -444,4 +501,15 @@ ${body}
 ${input.autoPrint === false ? "" : `<script>window.onload=()=>{const imgs=[...document.images];Promise.all(imgs.map(i=>i.complete?null:new Promise(r=>{i.onload=i.onerror=r;}))).then(()=>window.print());};</script>`}
 </body>
 </html>`;
+}
+
+export const MAX_LABEL_COPIES = 200;
+
+/** Jedes Etikett so oft wie gewünscht, in der Reihenfolge A, A, B, B … */
+export function repeatLabelItems<T>(items: readonly T[], copies: number): T[] {
+  const times = Math.min(
+    MAX_LABEL_COPIES,
+    Math.max(1, Math.floor(Number.isFinite(copies) ? copies : 1)),
+  );
+  return items.flatMap((item) => Array.from({ length: times }, () => item));
 }

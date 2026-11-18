@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -8,9 +9,11 @@ import {
   Laptop,
   LoaderCircle,
   Lock,
+  Activity,
   Mail,
   Monitor,
   Plus,
+  ShieldAlert,
   ShoppingBag,
   Smartphone,
   Star,
@@ -23,7 +26,9 @@ import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 import {
   formatDuration,
+  incidentStateLabel,
   orderStatusLabel,
+  securityCaseLabel,
   parsePersonOverview,
   personInitials,
   personTimeline,
@@ -35,7 +40,14 @@ import {
 } from "./lib/person-overview";
 import "./person-overview.css";
 
-type Tab = "tickets" | "devices" | "licenses" | "orders" | "history";
+type Tab =
+  | "tickets"
+  | "devices"
+  | "licenses"
+  | "orders"
+  | "security"
+  | "incidents"
+  | "history";
 type TicketFilter = "all" | "open" | "closed";
 
 type PersonOverviewProps = {
@@ -47,6 +59,9 @@ type PersonOverviewProps = {
   onCreateTicket?:
     ((requester: { id: string; displayName: string }) => void) | undefined;
   onOpenAsset?: ((query: string) => void) | undefined;
+  /** Security cases and Störungen (only for the responsible teams). */
+  onOpenSecurityCase?: ((ticketId: string) => void) | undefined;
+  onOpenIncident?: ((incidentId: string) => void) | undefined;
 };
 
 const dateFormat = new Intl.DateTimeFormat("de-CH", {
@@ -134,6 +149,8 @@ export function PersonOverview({
   onOpenTicket,
   onCreateTicket,
   onOpenAsset,
+  onOpenSecurityCase,
+  onOpenIncident,
 }: PersonOverviewProps) {
   const [data, setData] = useState<PersonOverviewData | null>(null);
   const [error, setError] = useState("");
@@ -275,6 +292,20 @@ export function PersonOverview({
       count: data.orders.length,
     });
   }
+  if (data?.securityCases) {
+    tabs.push({
+      key: "security",
+      label: "Phishing / Junk",
+      count: data.securityCases.length,
+    });
+  }
+  if (data?.incidents) {
+    tabs.push({
+      key: "incidents",
+      label: "Störungen",
+      count: data.incidents.length,
+    });
+  }
   tabs.push({ key: "history", label: "Verlauf" });
 
   return (
@@ -329,7 +360,16 @@ export function PersonOverview({
                 className="person-avatar person-avatar--big"
                 aria-hidden="true"
               >
-                {personInitials(name)}
+                {data.person.photoUrl ? (
+                  <img
+                    alt=""
+                    className="person-avatar__photo"
+                    referrerPolicy="no-referrer"
+                    src={data.person.photoUrl}
+                  />
+                ) : (
+                  personInitials(name)
+                )}
               </div>
               <div className="person-head__main">
                 <h1>
@@ -523,7 +563,10 @@ export function PersonOverview({
                     {tickets.length === 0 ? (
                       <p className="person-empty">
                         {data.tickets.length === 0
-                          ? `${firstName} hat noch keine Tickets, die Sie sehen dürfen.`
+                          ? tn(
+                              `${firstName} hat noch keine Tickets, die du sehen darfst.`,
+                              `${firstName} hat noch keine Tickets, die Sie sehen dürfen.`,
+                            )
                           : "Keine Tickets in dieser Auswahl."}
                       </p>
                     ) : (
@@ -688,6 +731,101 @@ export function PersonOverview({
                   )
                 ) : null}
 
+                {tab === "security" && data.securityCases ? (
+                  data.securityCases.length === 0 ? (
+                    <p className="person-empty">
+                      Keine gemeldeten Phishing-Mails.
+                    </p>
+                  ) : (
+                    <ul className="person-list">
+                      {data.securityCases.map((entry) => (
+                        <li key={entry.id}>
+                          <span className="person-icon">
+                            <ShieldAlert aria-hidden="true" size={18} />
+                          </span>
+                          <div>
+                            <button
+                              className="text-button"
+                              disabled={!onOpenSecurityCase}
+                              onClick={() => onOpenSecurityCase?.(entry.id)}
+                              type="button"
+                            >
+                              <strong>
+                                {entry.number} · {entry.title}
+                              </strong>
+                            </button>
+                            <small>
+                              {entry.reportedAt
+                                ? `gemeldet ${formatDate(entry.reportedAt)}`
+                                : ""}
+                            </small>
+                          </div>
+                          <span
+                            className={
+                              entry.clicked
+                                ? "person-chip person-chip--bad"
+                                : "person-chip"
+                            }
+                          >
+                            {entry.clicked
+                              ? "Geklickt"
+                              : securityCaseLabel(entry)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                ) : null}
+
+                {tab === "incidents" && data.incidents ? (
+                  data.incidents.length === 0 ? (
+                    <p className="person-empty">
+                      Keine Störungen ihrer Geräte in den letzten 12 Monaten.
+                    </p>
+                  ) : (
+                    <ul className="person-list">
+                      {data.incidents.map((entry) => (
+                        <li key={entry.id}>
+                          <span className="person-icon">
+                            <Activity aria-hidden="true" size={18} />
+                          </span>
+                          <div>
+                            <button
+                              className="text-button"
+                              disabled={!onOpenIncident}
+                              onClick={() => onOpenIncident?.(entry.id)}
+                              type="button"
+                            >
+                              <strong>
+                                {entry.number} · {entry.title}
+                              </strong>
+                            </button>
+                            <small>
+                              {[
+                                entry.deviceName,
+                                entry.openedAt
+                                  ? formatDate(entry.openedAt)
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </small>
+                          </div>
+                          <span
+                            className={
+                              entry.state === "active"
+                                ? "person-chip person-chip--bad"
+                                : "person-chip"
+                            }
+                          >
+                            {incidentStateLabel(entry)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                ) : null}
+
                 {tab === "history" ? (
                   timeline.length === 0 ? (
                     <p className="person-empty">Noch keine Ereignisse.</p>
@@ -790,8 +928,7 @@ export function PersonOverview({
                   <p className="person-note">
                     <Lock aria-hidden="true" size={13} />
                     Einzelne Bewertungen und Kommentare sind nicht sichtbar.
-                    nextDesk zeigt nur den Durchschnitt, erst ab{" "}
-                    {satisfaction?.minimumRatings ?? 3} Bewertungen.
+                    nextDesk zeigt nur den Durchschnitt.
                   </p>
                 </section>
 
@@ -808,20 +945,30 @@ export function PersonOverview({
                         const Icon = deviceIcon(device);
                         return (
                           <li key={device.id}>
-                            <span className="person-icon">
-                              <Icon aria-hidden="true" size={16} />
-                            </span>
-                            <div>
-                              <b>{device.name}</b>
-                              <small>
-                                {[
-                                  device.model,
-                                  complianceLabel(device.complianceState),
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </small>
-                            </div>
+                            <button
+                              className="person-mini-list__item"
+                              disabled={!onOpenAsset}
+                              onClick={() =>
+                                onOpenAsset?.(device.assetTag ?? device.name)
+                              }
+                              title={onOpenAsset ? "Gerät öffnen" : undefined}
+                              type="button"
+                            >
+                              <span className="person-icon">
+                                <Icon aria-hidden="true" size={16} />
+                              </span>
+                              <span className="person-mini-list__text">
+                                <b>{device.name}</b>
+                                <small>
+                                  {[
+                                    device.model,
+                                    complianceLabel(device.complianceState),
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </small>
+                              </span>
+                            </button>
                           </li>
                         );
                       })}

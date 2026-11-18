@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, Text, View } from "react-native";
 
 import {
   type IncidentStatus,
@@ -38,8 +39,14 @@ export function IncidentBanner({
   const { density } = useThemeContext();
   const colors = useAppColors();
   const styles = useStyles();
+  const [openId, setOpenId] = useState<string | null>(null);
 
   if (notices.length === 0) return null;
+  // Oldest notice first; with several only an excerpt (tap shows all).
+  const sorted = [...notices].sort((a, b) =>
+    a.starts_at.localeCompare(b.starts_at),
+  );
+  const several = sorted.length > 1;
 
   return (
     <View
@@ -56,7 +63,7 @@ export function IncidentBanner({
           <Text style={styles.eyebrow}>STÖRUNG</Text>
           <Text style={styles.count}>{notices.length} aktiv</Text>
         </View>
-        {notices.map((notice) => {
+        {sorted.map((notice) => {
           const status = statusCopy[notice.status];
           return (
             <View key={notice.id} style={styles.notice}>
@@ -74,7 +81,26 @@ export function IncidentBanner({
                   <Text style={styles.statusText}>{status.label}</Text>
                 </View>
               </View>
-              <Text style={styles.body}>{notice.description}</Text>
+              {several ? (
+                <Pressable
+                  accessibilityHint="Zeigt den ganzen Text"
+                  accessibilityRole="button"
+                  onPress={() =>
+                    setOpenId((current) =>
+                      current === notice.id ? null : notice.id,
+                    )
+                  }
+                >
+                  <Text
+                    numberOfLines={openId === notice.id ? undefined : 3}
+                    style={styles.body}
+                  >
+                    {notice.description}
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text style={styles.body}>{notice.description}</Text>
+              )}
               <Text style={styles.meta}>
                 Seit {formatStart(notice.starts_at)}
               </Text>

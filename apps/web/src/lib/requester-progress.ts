@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 // Ticket progress for requesters («Paketverfolgung»). The server
 // (requester-portal, action ticketProgress) maps statuses by key; this module
 // only validates the response and words it for the web («Sie»).
@@ -87,31 +88,40 @@ export function parseRequesterProgress(
   };
 }
 
-const LABELS: Record<ProgressStepKey, string> = {
+const labels = (): Record<ProgressStepKey, string> => ({
   received: "Eingegangen",
   in_progress: "In Bearbeitung",
-  waiting_for_requester: "Wartet auf Sie",
+  waiting_for_requester: tn("Wartet auf dich", "Wartet auf Sie"),
   resolved: "Gelöst",
   closed: "Geschlossen",
-};
+});
 
 export function progressStepLabel(key: ProgressStepKey): string {
-  return LABELS[key];
+  return labels()[key];
 }
 
-const HINTS: Record<ProgressStepKey, string> = {
-  received:
+const hints = (): Record<ProgressStepKey, string> => ({
+  received: tn(
+    "Dein Anliegen ist eingegangen und wird demnächst einer Fachperson zugeteilt.",
     "Ihr Anliegen ist eingegangen und wird demnächst einer Fachperson zugeteilt.",
-  in_progress: "Eine Fachperson kümmert sich um Ihr Anliegen.",
-  waiting_for_requester:
+  ),
+  in_progress: tn(
+    "Eine Fachperson kümmert sich um dein Anliegen.",
+    "Eine Fachperson kümmert sich um Ihr Anliegen.",
+  ),
+  waiting_for_requester: tn(
+    "Wir brauchen eine Rückmeldung von dir, damit wir weiterarbeiten können.",
     "Wir brauchen eine Rückmeldung von Ihnen, damit wir weiterarbeiten können.",
-  resolved:
+  ),
+  resolved: tn(
+    "Dein Anliegen wurde gelöst. Melde dich, falls noch etwas offen ist.",
     "Ihr Anliegen wurde gelöst. Melden Sie sich, falls noch etwas offen ist.",
+  ),
   closed: "Das Ticket ist abgeschlossen.",
-};
+});
 
 export function progressStepHint(key: ProgressStepKey): string {
-  return HINTS[key];
+  return hints()[key];
 }
 
 /** «Mo., 9. Nov., 14:00» – or «heute, 14:00» / «morgen, 14:00». */

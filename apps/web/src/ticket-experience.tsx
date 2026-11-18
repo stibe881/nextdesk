@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   CalendarClock,
   Check,
@@ -309,17 +310,29 @@ function followUpErrorMessage(
   if (status === 404) {
     return action === "save"
       ? "Das Ticket ist nicht mehr verfügbar."
-      : "Die Wiedervorlage ist nicht mehr verfügbar.";
+      : "Die Erinnerung ist nicht mehr verfügbar.";
   }
   if (status === 409) {
-    return "Die Wiedervorlage wurde zwischenzeitlich geändert. Bitte aktualisieren Sie die Liste.";
+    return tn(
+      "Die Erinnerung wurde zwischenzeitlich geändert. Bitte aktualisiere die Liste.",
+      "Die Erinnerung wurde zwischenzeitlich geändert. Bitte aktualisieren Sie die Liste.",
+    );
   }
   if (status === 422 || status === 400) {
-    return "Bitte prüfen Sie Titel, Notiz und Termin der Wiedervorlage.";
+    return tn(
+      "Bitte prüfe Titel, Notiz und Termin der Erinnerung.",
+      "Bitte prüfen Sie Titel, Notiz und Termin der Erinnerung.",
+    );
   }
   return action === "save"
-    ? "Die Wiedervorlage konnte nicht gespeichert werden. Bitte versuchen Sie es erneut."
-    : "Die Wiedervorlage konnte nicht als erledigt markiert werden. Bitte versuchen Sie es erneut.";
+    ? tn(
+        "Die Erinnerung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+        "Die Erinnerung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+      )
+    : tn(
+        "Die Erinnerung konnte nicht als erledigt markiert werden. Bitte versuche es erneut.",
+        "Die Erinnerung konnte nicht als erledigt markiert werden. Bitte versuchen Sie es erneut.",
+      );
 }
 
 export function TicketFollowUps({
@@ -453,7 +466,10 @@ export function TicketFollowUps({
       (dueAt && (!due || Number.isNaN(due.getTime())))
     ) {
       setError(
-        "Bitte geben Sie einen Titel und bei Bedarf eine gültige Notiz und einen gültigen Termin ein.",
+        tn(
+          "Bitte gib einen Titel und bei Bedarf eine gültige Notiz und einen gültigen Termin ein.",
+          "Bitte geben Sie einen Titel und bei Bedarf eine gültige Notiz und einen gültigen Termin ein.",
+        ),
       );
       return;
     }
@@ -480,8 +496,11 @@ export function TicketFollowUps({
       resetFollowUpForm();
       setNotice(
         editingFollowUpId
-          ? "Wiedervorlage wurde aktualisiert."
-          : "Wiedervorlage wurde für Sie gespeichert.",
+          ? "Erinnerung wurde aktualisiert."
+          : tn(
+              "Erinnerung wurde für dich gespeichert.",
+              "Erinnerung wurde für Sie gespeichert.",
+            ),
       );
       await loadFollowUps();
     } catch (nextError) {
@@ -508,7 +527,7 @@ export function TicketFollowUps({
         tenantId,
         followUpId: followUp.id,
       });
-      setNotice("Wiedervorlage als erledigt markiert.");
+      setNotice("Erinnerung als erledigt markiert.");
       await loadFollowUps();
     } catch (nextError) {
       const status = functionErrorStatus(nextError);
@@ -532,7 +551,7 @@ export function TicketFollowUps({
         aria-controls={formId}
         aria-expanded={expanded}
         aria-label={
-          expanded ? "Wiedervorlage-Fenster schliessen" : "Wiedervorlage setzen"
+          expanded ? "Erinnerung-Fenster schliessen" : "Erinnerung setzen"
         }
         className="secondary-button ticket-experience__header-action"
         disabled={pending !== null}
@@ -547,12 +566,12 @@ export function TicketFollowUps({
         }}
         ref={triggerRef}
         title={
-          expanded ? "Wiedervorlage-Fenster schliessen" : "Wiedervorlage setzen"
+          expanded ? "Erinnerung-Fenster schliessen" : "Erinnerung setzen"
         }
         type="button"
       >
         <CalendarClock aria-hidden="true" size={16} strokeWidth={1.8} />
-        <span className="ticket-detail-action-label">Wiedervorlage setzen</span>
+        <span className="ticket-detail-action-label">Erinnerung setzen</span>
       </button>
       {expanded &&
         createPortal(
@@ -614,12 +633,12 @@ export function TicketFollowUps({
                   <p className="eyebrow">MEINE ARBEIT</p>
                   <h3 id={`${formId}-heading`}>
                     {editingFollowUp
-                      ? "Wiedervorlage ändern"
-                      : "Wiedervorlage setzen"}
+                      ? "Erinnerung ändern"
+                      : "Erinnerung setzen"}
                   </h3>
                 </div>
                 <button
-                  aria-label="Wiedervorlage schliessen"
+                  aria-label="Erinnerung schliessen"
                   className="more-button ticket-experience__close"
                   disabled={pending !== null}
                   onClick={closeDialog}
@@ -629,8 +648,10 @@ export function TicketFollowUps({
                 </button>
               </div>
               <p className="data-caption">
-                Die Wiedervorlage gehört nur Ihnen und ändert dieses Ticket
-                nicht.
+                {tn(
+                  "Die Erinnerung gehört nur dir und ändert dieses Ticket nicht.",
+                  "Die Erinnerung gehört nur Ihnen und ändert dieses Ticket nicht.",
+                )}
               </p>
               {error && (
                 <p className="ticket-detail-message error" role="alert">
@@ -694,7 +715,10 @@ export function TicketFollowUps({
                     disabled={pending !== null}
                     maxLength={5000}
                     onChange={(event) => setDescription(event.target.value)}
-                    placeholder="Woran möchten Sie erinnert werden?"
+                    placeholder={tn(
+                      "Woran möchtest du erinnert werden?",
+                      "Woran möchten Sie erinnert werden?",
+                    )}
                     rows={2}
                     value={description}
                   />
@@ -713,17 +737,17 @@ export function TicketFollowUps({
                   ) : (
                     <CalendarClock aria-hidden="true" size={16} />
                   )}
-                  Wiedervorlage speichern
+                  Erinnerung speichern
                 </button>
               </form>
               <div className="ticket-experience__follow-up-list">
                 <div className="ticket-experience__list-heading">
-                  <strong>Eigene offene Wiedervorlagen</strong>
+                  <strong>Eigene offene Erinnerungen</strong>
                   <span className="data-caption">{followUps.length}</span>
                 </div>
                 {followUps.length === 0 ? (
                   <p className="data-caption">
-                    Für dieses Ticket ist keine Wiedervorlage offen.
+                    Für dieses Ticket ist keine Erinnerung offen.
                   </p>
                 ) : (
                   <ol>
@@ -898,7 +922,10 @@ export function TicketResolutionExperience({
         setError("Dieses Ticket ist nicht mehr verfügbar.");
       } else {
         setError(
-          "Die Rückmeldung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Rückmeldung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+            "Die Rückmeldung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+          ),
         );
       }
     } finally {
@@ -918,7 +945,7 @@ export function TicketResolutionExperience({
           <div>
             <p className="eyebrow">RÜCKMELDUNG</p>
             <h3 id={`ticket-resolution-prompt-${ticketId}`}>
-              Wurde Ihr Anliegen gelöst?
+              {tn("Wurde dein Anliegen gelöst?", "Wurde Ihr Anliegen gelöst?")}
             </h3>
           </div>
           {submitted ? (
@@ -935,9 +962,18 @@ export function TicketResolutionExperience({
                     : "Als nicht gelöst gemeldet"}
                 </strong>
                 <br />
-                Ihre Rückmeldung wurde am{" "}
-                {formatDateTime(submitted.confirmedAt)} gespeichert. Der
-                Ticketstatus wurde nicht geändert.
+                {tn(
+                  <>
+                    Deine Rückmeldung wurde am{" "}
+                    {formatDateTime(submitted.confirmedAt)} gespeichert. Der
+                    Ticketstatus wurde nicht geändert.
+                  </>,
+                  <>
+                    Ihre Rückmeldung wurde am{" "}
+                    {formatDateTime(submitted.confirmedAt)} gespeichert. Der
+                    Ticketstatus wurde nicht geändert.
+                  </>,
+                )}
               </span>
             </p>
           ) : (
@@ -947,8 +983,10 @@ export function TicketResolutionExperience({
               onSubmit={submitConfirmation}
             >
               <p id={`ticket-resolution-note-${ticketId}`}>
-                Ihre Rückmeldung wird als eigener, unveränderlicher Eintrag
-                gespeichert. Sie ändert den Ticketstatus nicht.
+                {tn(
+                  "Deine Rückmeldung wird als eigener, unveränderlicher Eintrag gespeichert und ändert den Ticketstatus nicht.",
+                  "Ihre Rückmeldung wird als eigener, unveränderlicher Eintrag gespeichert. Sie ändert den Ticketstatus nicht.",
+                )}
               </p>
               {error && (
                 <p className="ticket-detail-message error" role="alert">
@@ -956,7 +994,7 @@ export function TicketResolutionExperience({
                 </p>
               )}
               <fieldset disabled={pending}>
-                <legend>Ihre Antwort</legend>
+                <legend>{tn("Deine Antwort", "Ihre Antwort")}</legend>
                 <label className={choice === true ? "is-selected" : undefined}>
                   <input
                     checked={choice === true}

@@ -101,6 +101,7 @@ async function loadBreaches(admin: Client, ticket: Row) {
       resolutionDueAt: (ticket.resolution_due_at as string | null) ?? null,
       resolvedAt: (ticket.resolved_at as string | null) ?? null,
       closedAt: (ticket.closed_at as string | null) ?? null,
+      slaPausedAt: (ticket.sla_paused_at as string | null) ?? null,
     },
     ((events.data ?? []) as Row[]).map((row) => String(row.event_type)),
   );
@@ -169,7 +170,7 @@ const handler = withSupabase(
       context.supabase
         .from("tickets")
         .select(
-          "id, tenant_id, ticket_number, department_id, response_due_at, first_responded_at, resolution_due_at, resolved_at, closed_at",
+          "id, tenant_id, ticket_number, department_id, response_due_at, first_responded_at, resolution_due_at, resolved_at, closed_at, sla_paused_at",
         )
         .eq("tenant_id", action.tenantId)
         .eq("id", action.ticketId)

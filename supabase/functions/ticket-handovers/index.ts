@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
@@ -337,7 +338,10 @@ const handler = withSupabase(
       return secureError(
         request,
         "ticket_feature_disabled",
-        "Diese Ticketfunktion ist für Ihren Mandanten deaktiviert.",
+        msg(
+          "Diese Ticketfunktion ist für deinen Mandanten deaktiviert.",
+          "Diese Ticketfunktion ist für Ihren Mandanten deaktiviert.",
+        ),
         403,
       );
     }

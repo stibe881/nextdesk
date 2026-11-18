@@ -1,12 +1,14 @@
+import { useVisibleInterval } from "./lib/use-visible-interval";
 import { useTicketHoverPreview } from "./ticket-hover-preview";
 import {
-  AGENT_TOUR,
+  agentTour,
   markTourSeen,
   OnboardingTour,
   tourSeen,
 } from "./onboarding-tour";
 import {
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -19,6 +21,7 @@ import {
 } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
+  Activity,
   AtSign,
   ArrowDown,
   ArrowLeft,
@@ -38,6 +41,8 @@ import {
   ClipboardList,
   CircleCheck,
   CircleEllipsis,
+  EthernetPort,
+  Radar,
   Filter,
   FileWarning,
   FileText,
@@ -48,6 +53,7 @@ import {
   Minus,
   MonitorCog,
   Network,
+  ShieldAlert,
   Plus,
   Settings,
   SlidersHorizontal,
@@ -55,10 +61,13 @@ import {
   UserRound,
   UsersRound,
   Boxes,
+  Laptop,
   ShoppingBag,
   List,
   ListChecks,
   Package,
+  MailX,
+  Trash2,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -81,7 +90,9 @@ import {
 import {
   loadActiveTenants,
   loadLiveDashboard,
+  joinStatusFilter,
   loadProfileName,
+  splitStatusFilter,
   ticketTeamsFromResponse,
   type LiveDashboardSnapshot,
   type TicketAgentOption,
@@ -94,8 +105,25 @@ import {
   type TicketDrilldown,
 } from "./lib/ticket-drilldown";
 import { createPersonalWorkspace, deleteAccount } from "./lib/account";
-import { assetIdFromSearch, rackFromSearch } from "./lib/asset-labels";
+import {
+  assetIdFromSearch,
+  inventoryIdFromSearch,
+  rackFromSearch,
+} from "./lib/asset-labels";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
+import {
+  notificationTarget,
+  type NotificationIpamFocus,
+} from "./lib/notification-target";
+import {
+  forgetNotificationLink,
+  notificationIdFromSearch,
+  notificationLinkMessage,
+  notificationLinkStep,
+  pendingNotificationLink,
+  rememberNotificationLink,
+  urlWithoutNotificationLink,
+} from "./lib/notification-link";
 import { normalizeQueueSelection, shouldShowQueueTabs } from "./lib/queue-tabs";
 import {
   collapsedNavigationCategoryAttentionCount,
@@ -122,6 +150,13 @@ import {
   type SupportLevelFilter,
 } from "./lib/support-levels";
 import { Infrastructure } from "./infrastructure";
+import { Ipam } from "./ipam";
+import { IpamImportWizard } from "./ipam-import";
+import { IpamApiSettings } from "./ipam-api-settings";
+import { IpamDiscoveryPanel } from "./ipam-discovery";
+import { Incidents } from "./incidents";
+import { Monitoring } from "./monitoring";
+import { SecurityCases } from "./security-cases";
 import {
   HomeLayoutEditor,
   loadHomeLayout,
@@ -145,6 +180,8 @@ import { EventSpaces } from "./event-spaces";
 import { Onboarding } from "./onboarding";
 import { Inventory } from "./inventory";
 import { Shop } from "./shop";
+import { TeamsAdmin } from "./teams-admin";
+import { teamsAdminApi } from "./lib/teams-admin";
 import { PersonalSettings } from "./personal-settings";
 import { ApprovalInboxCard } from "./approval-inbox";
 import {
@@ -154,12 +191,17 @@ import {
 import { ExperienceWorkspace, MyDayCard } from "./experience-workspace";
 import {
   activeIncidentNoticesFromResponse,
+  bannerMaintenancesFromResponse,
+  MaintenanceBanner,
   AgentMetricsCard,
   AgentWorkbenchPanel,
   IncidentBanner,
   type ActiveIncidentNotice,
+  type BannerMaintenance,
   type TeamQueue,
 } from "./agent-workbench";
+import { RequesterNotices } from "./requester-notice-banner";
+import type { NoticeLink } from "./lib/requester-notices";
 import { RequesterPortalPanel } from "./requester-portal";
 import { IntroTip } from "./intro-tips";
 import {
@@ -167,7 +209,9 @@ import {
   resolveOwnerAccess,
   type OwnerAccess,
 } from "./platform-owner";
-import { functionErrorMessage } from "./lib/function-error";
+import { functionErrorCode, functionErrorMessage } from "./lib/function-error";
+import { TicketSpamDialog } from "./ticket-spam";
+import { TicketTrashDialog } from "./ticket-trash";
 import {
   bootstrapBrowserAuthSession,
   cleanBrowserAuthCallbackUrl,
@@ -207,12 +251,15 @@ import {
 } from "./lib/workplace-first-navigation";
 import { nextExpandedAccordionId } from "./lib/navigation-accordion";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
+import { setFormality, tn } from "./lib/formality";
 import { loadServiceTaskAccess, ServiceTasks } from "./service-tasks";
 
+import { confirmDialog } from "./app-dialog";
 type Section =
   | "Übersicht"
   | "Tickets"
   | "Shop"
+  | "Teams"
   | "Arbeitsplatz"
   | "Erwähnungen"
   | "Mein Portal"
@@ -221,8 +268,12 @@ type Section =
   | "Systemstatus"
   | "Assets"
   | "Infrastruktur"
+  | "IP-Adressen"
+  | "Überwachung"
   | "Lager"
   | "Fälle"
+  | "Phishing / Junk"
+  | "Störungen"
   | "Verträge"
   | "Lizenzen"
   | "Raumplanung"
@@ -258,7 +309,7 @@ const quickCreateActionPresentation: Record<
   QuickCreateAction,
   { Icon: LucideIcon; label: string }
 > = {
-  followUp: { Icon: CalendarClock, label: "Wiedervorlage erfassen" },
+  followUp: { Icon: CalendarClock, label: "Erinnerung erfassen" },
   ticket: { Icon: Ticket, label: "Ticket erfassen" },
   problem: { Icon: FileWarning, label: "Fall erfassen" },
   serviceTask: { Icon: ListChecks, label: "Serviceaufgabe erfassen" },
@@ -297,6 +348,13 @@ type NotificationItem = {
 };
 
 type TicketSortBy = "updated" | "agent" | "status" | "department" | "priority";
+const TICKET_SORT_OPTIONS: readonly { value: TicketSortBy; label: string }[] = [
+  { value: "updated", label: "Letzte Änderung" },
+  { value: "agent", label: "Agent" },
+  { value: "status", label: "Status" },
+  { value: "department", label: "Abteilung" },
+  { value: "priority", label: "Priorität" },
+];
 type TicketSortDirection = "asc" | "desc";
 type SavedTicketViewFilters = {
   agent: string;
@@ -353,12 +411,17 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Übersicht", Icon: LayoutDashboard },
     { label: "Tickets", Icon: Ticket },
     { label: "Shop", Icon: ShoppingBag },
+    { label: "Teams", Icon: UsersRound },
     { label: "Fälle", Icon: FileWarning },
+    { label: "Phishing / Junk", Icon: ShieldAlert },
+    { label: "Störungen", Icon: Activity },
     { label: "Wissen", Icon: BookOpen },
     { label: "Services", Icon: MonitorCog },
     { label: "Serviceaufgaben", Icon: ListChecks },
-    { label: "Assets", Icon: Boxes },
+    { label: "Assets", Icon: Laptop },
     { label: "Infrastruktur", Icon: Network },
+    { label: "IP-Adressen", Icon: EthernetPort },
+    { label: "Überwachung", Icon: Radar },
     { label: "Lager", Icon: Boxes },
     { label: "Systemstatus", Icon: CircleCheck },
     { label: "Raumplanung", Icon: CalendarDays },
@@ -375,7 +438,13 @@ const NAVIGATION_CATEGORIES = [
     heading: "ARBEITSBEREICH",
     id: "navigation-category-workspace",
     navigationLabel: "Arbeitsbereich",
-    sectionLabels: ["Tickets", "Shop", "Fälle"],
+    sectionLabels: ["Tickets", "Shop", "Teams", "Fälle"],
+  },
+  {
+    heading: "SICHERHEIT & STÖRUNGEN",
+    id: "navigation-category-security",
+    navigationLabel: "Sicherheit und Störungen",
+    sectionLabels: ["Phishing / Junk", "Störungen"],
   },
   {
     heading: "PLANUNG & BETRIEB",
@@ -384,16 +453,22 @@ const NAVIGATION_CATEGORIES = [
     sectionLabels: ["Raumplanung", "Eintritte", "Serviceaufgaben"],
   },
   {
-    heading: "WISSEN & RESSOURCEN",
+    heading: "RESSOURCEN",
     id: "navigation-category-resources",
-    navigationLabel: "Wissen und Ressourcen",
-    sectionLabels: ["Wissen", "Assets", "Lager", "Verträge", "Lizenzen"],
+    navigationLabel: "Ressourcen",
+    sectionLabels: ["Assets", "Lager", "Verträge", "Lizenzen"],
   },
   {
     heading: "DIENSTE & ÜBERWACHUNG",
     id: "navigation-category-services",
     navigationLabel: "Dienste und Überwachung",
-    sectionLabels: ["Services", "Infrastruktur", "Systemstatus"],
+    sectionLabels: [
+      "Services",
+      "Infrastruktur",
+      "IP-Adressen",
+      "Überwachung",
+      "Systemstatus",
+    ],
   },
 ] as const satisfies readonly {
   heading: string;
@@ -549,7 +624,7 @@ function TicketScopeMetricTiles({
         onClick={() => onOpenScope("mine")}
         type="button"
       >
-        <p>Meine Tickets</p>
+        <p>Meine offenen Tickets</p>
         {loading ? (
           <MetricLoadingState />
         ) : (
@@ -676,7 +751,10 @@ function tenantFeatureFlagsFromResponse(
 
 function displayAuthError(message: string): string {
   if (message.toLocaleLowerCase("en-US").includes("email rate limit")) {
-    return "Zu viele Anmelde-E-Mails wurden für dieses Projekt versendet. Bitte warten Sie bis zu einer Stunde und fordern Sie danach nur einen neuen Magic Link an.";
+    return tn(
+      "Zu viele Anmelde-E-Mails wurden für dieses Projekt versendet. Bitte warte bis zu einer Stunde und fordere danach nur einen neuen Magic Link an.",
+      "Zu viele Anmelde-E-Mails wurden für dieses Projekt versendet. Bitte warten Sie bis zu einer Stunde und fordern Sie danach nur einen neuen Magic Link an.",
+    );
   }
   return message;
 }
@@ -773,10 +851,7 @@ function sectionPageTitle(section: Section): string {
 }
 
 function sectionFromGlobalSearchResult(result: GlobalSearchResult): Section {
-  if (
-    result.resultType === "follow_up" ||
-    result.section === "Wiedervorlagen"
-  ) {
+  if (result.resultType === "follow_up" || result.section === "Erinnerungen") {
     return "Arbeitsplatz";
   }
   return result.section;
@@ -1117,7 +1192,10 @@ function SupervisorRequestReply({
   if (state === "done") {
     return (
       <p className="notification-reply__done" role="status">
-        Antwort gespeichert. Sie steht als interne Notiz im Ticket.
+        {tn(
+          "Antwort gespeichert. Diese steht als interne Notiz im Ticket.",
+          "Antwort gespeichert. Sie steht als interne Notiz im Ticket.",
+        )}
       </p>
     );
   }
@@ -1183,7 +1261,10 @@ function baseNotificationPresentation(
   switch (notification.kind) {
     case "ticket.assigned":
       return {
-        description: `${ticketLabel} wurde dir zugewiesen.`,
+        description: tn(
+          `${ticketLabel} wurde dir zugewiesen.`,
+          `${ticketLabel} wurde Ihnen zugewiesen.`,
+        ),
         Icon: UserRound,
         title: "Ticket zugewiesen",
       };
@@ -1201,15 +1282,24 @@ function baseNotificationPresentation(
       };
     case "ticket.requester_reminder":
       return {
-        description: `${ticketLabel} wartet auf Ihre Rückmeldung. Ist Ihr Problem gelöst?`,
+        description: tn(
+          `${ticketLabel} wartet auf deine Rückmeldung. Ist dein Problem gelöst?`,
+          `${ticketLabel} wartet auf Ihre Rückmeldung. Ist Ihr Problem gelöst?`,
+        ),
         Icon: MessageSquareText,
-        title: "Erinnerung: Ihre Rückmeldung fehlt",
+        title: tn(
+          "Erinnerung: Deine Rückmeldung fehlt",
+          "Erinnerung: Ihre Rückmeldung fehlt",
+        ),
       };
     case "ticket.mention":
       return {
-        description: `Du wurdest in ${ticketLabel} erwähnt.`,
+        description: tn(
+          `Du wurdest in ${ticketLabel} erwähnt.`,
+          `Sie wurden in ${ticketLabel} erwähnt.`,
+        ),
         Icon: AtSign,
-        title: "Du wurdest erwähnt",
+        title: tn("Du wurdest erwähnt", "Sie wurden erwähnt"),
       };
     case "ticket.resolved":
       return {
@@ -1219,20 +1309,23 @@ function baseNotificationPresentation(
       };
     case "ticket.approval.requested":
       return {
-        description: `Für ${ticketLabel} wird deine Freigabe benötigt.`,
+        description: tn(
+          `Für ${ticketLabel} wird deine Freigabe benötigt.`,
+          `Für ${ticketLabel} wird Ihre Freigabe benötigt.`,
+        ),
         Icon: BadgeCheck,
         title: "Freigabe benötigt",
       };
     case "ticket.follow_up_due": {
       const followUpTitle =
-        notificationPayloadText(notification, "title", 240) ?? "Wiedervorlage";
+        notificationPayloadText(notification, "title", 240) ?? "Erinnerung";
       const dueAt = notificationPayloadDateTime(notification, "dueAt");
       return {
         description: dueAt
           ? `${followUpTitle} · Fällig am ${notificationTime(dueAt)}`
           : followUpTitle,
         Icon: CalendarClock,
-        title: "Wiedervorlage fällig",
+        title: "Erinnerung fällig",
       };
     }
     case "ticket.supervisor_request": {
@@ -1244,7 +1337,7 @@ function baseNotificationPresentation(
       return {
         description: `${askedBy} fragt zu ${ticketLabel}: ${question}`,
         Icon: MessageSquareText,
-        title: "Anfrage an dich",
+        title: tn("Anfrage an dich", "Anfrage an Sie"),
       };
     }
     case "ticket.supervisor_answer": {
@@ -1256,7 +1349,7 @@ function baseNotificationPresentation(
       return {
         description: `${answeredBy} zu ${ticketLabel}: ${answer}`,
         Icon: MessageSquareText,
-        title: "Antwort auf deine Anfrage",
+        title: tn("Antwort auf deine Anfrage", "Antwort auf Ihre Anfrage"),
       };
     }
     case "infrastructure.due": {
@@ -1376,7 +1469,7 @@ function baseNotificationPresentation(
       const open = notificationPayloadNumber(notification, "openTickets");
       const overdue = notificationPayloadNumber(notification, "overdueTickets");
       return {
-        description: `${agent}${department ? ` (${department})` : ""} trägt ${open ?? "viele"} offene Tickets${overdue ? `, davon ${overdue} mit überschrittener SLA` : ""}. Prüfen Sie eine Umverteilung.`,
+        description: `${agent}${department ? ` (${department})` : ""} trägt ${open ?? "viele"} offene Tickets${overdue ? `, davon ${overdue} mit überschrittener SLA` : ""}. ${tn("Prüfe eine Umverteilung.", "Prüfen Sie eine Umverteilung.")}`,
         Icon: AlertTriangle,
         title: "Frühwarnung: Überlastung",
       };
@@ -1427,12 +1520,108 @@ function baseNotificationPresentation(
         Icon: ArrowUp,
         title: "Ticket eskaliert",
       };
+    case "security.case_clicked":
+      return {
+        description: `Eine meldende Person hat in ${ticketLabel} geklickt oder Daten eingegeben. Der Fall hat jetzt Priorität hoch.`,
+        Icon: AlertTriangle,
+        title: "Phishing: geklickt",
+      };
+    case "security.case_overdue": {
+      const supervisor =
+        notificationPayloadText(notification, "stage", 20) === "supervisor";
+      return {
+        description: supervisor
+          ? `Das Urteil zu ${ticketLabel} ist seit über 24 Stunden überfällig.`
+          : `Das Urteil zu ${ticketLabel} ist überfällig.`,
+        Icon: AlertTriangle,
+        title: supervisor
+          ? "Phishing-/Junk-Fall eskaliert"
+          : "Phishing-/Junk-Fall überfällig",
+      };
+    }
+    case "security.campaign": {
+      const reporters = notificationPayloadNumber(notification, "reporters");
+      return {
+        description: `${reporters ?? "Mehrere"} Personen haben ähnliche Mails gemeldet (${ticketLabel}).`,
+        Icon: AlertTriangle,
+        title: "Phishing-Kampagne",
+      };
+    }
     case "ticket.security_report": {
       const risk = notificationPayloadText(notification, "riskLabel", 20);
       return {
         description: `Eine verdächtige E-Mail wurde gemeldet (${ticketLabel}${risk ? `, Risiko ${risk}` : ""}).`,
         Icon: AlertTriangle,
         title: "Phishing-Meldung",
+      };
+    }
+    case "ipam.agent_offline": {
+      const agent =
+        notificationPayloadText(notification, "agentName", 120) ??
+        "Ein Netzwerkagent";
+      return {
+        description: `${agent} hat sich seit über zwei Stunden nicht gemeldet.`,
+        Icon: AlertTriangle,
+        title: "Netzwerkagent offline",
+      };
+    }
+    case "ipam.reservation_expiring": {
+      const address = notificationPayloadText(notification, "address", 60);
+      const until = notificationPayloadText(notification, "reservedUntil", 10);
+      const day =
+        until && /^\d{4}-\d{2}-\d{2}$/.test(until)
+          ? `${until.slice(8, 10)}.${until.slice(5, 7)}.${until.slice(0, 4)}`
+          : null;
+      return {
+        description: `${address ?? "Eine IP-Adresse"}: Reservierung endet${day ? ` am ${day}` : " bald"}.`,
+        Icon: AlertTriangle,
+        title: "Reservierung läuft ab",
+      };
+    }
+    case "ipam.finding":
+    case "monitoring.ipam_finding": {
+      const address = notificationPayloadText(notification, "number", 60);
+      const title = notificationPayloadText(notification, "title", 200);
+      const critical =
+        notificationPayloadText(notification, "severity", 20) === "critical";
+      return {
+        description: `${address ? `${address}: ` : ""}${title ?? "Neuer Fund in der IP-Adressverwaltung"}`,
+        Icon: AlertTriangle,
+        title: critical ? "IP-Konflikt" : "IP-Adressverwaltung",
+      };
+    }
+    case "monitoring.incident": {
+      const number = notificationPayloadText(notification, "number", 40);
+      const title = notificationPayloadText(notification, "title", 200);
+      const reason = notificationPayloadText(notification, "reason", 20);
+      const warning =
+        notificationPayloadText(notification, "severity", 20) === "warning";
+      if (notificationPayloadText(notification, "source", 20) === "external") {
+        return {
+          description: `${number ?? "Störung"}: ${title ?? "Störung beim Anbieter"}`,
+          Icon: AlertTriangle,
+          title: `${
+            reason === "updated"
+              ? "Update"
+              : reason === "resolved"
+                ? "Behoben"
+                : "Externe Störung"
+          }: ${notificationPayloadText(notification, "provider", 80) ?? "Anbieter"}`,
+        };
+      }
+      return {
+        description: `${number ?? "Störung"}: ${title ?? "PRTG-Meldung"}`,
+        Icon: AlertTriangle,
+        title:
+          reason === "realert"
+            ? "Störung noch unbestätigt"
+            : reason === "escalated"
+              ? "Störung: jetzt Ausfall"
+              : reason === "reopened"
+                ? "Störung erneut"
+                : warning
+                  ? "Warnung"
+                  : "Störung",
       };
     }
     case "ticket.sla.supervisor_risk": {
@@ -1446,7 +1635,7 @@ function baseNotificationPresentation(
     case "ticket.sla.supervisor_no_response": {
       const agent = notificationPayloadText(notification, "agentName", 200);
       return {
-        description: `${ticketLabel} ist seit über 24 Stunden ohne Antwort${agent ? ` (${agent})` : " (nicht zugewiesen)"}.`,
+        description: `${ticketLabel}: Frist für die erste Antwort abgelaufen${agent ? ` (${agent})` : " (nicht zugewiesen)"}.`,
         Icon: AlertTriangle,
         title: "Team: Ticket ohne Antwort",
       };
@@ -1462,7 +1651,10 @@ function baseNotificationPresentation(
       };
       const note = notificationPayloadText(notification, "note", 2000);
       return {
-        description: `Du vertrittst ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Wiedervorlagen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
+        description: tn(
+          `Du vertrittst ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Erinnerungen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
+          `Sie vertreten ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Erinnerungen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
+        ),
         Icon: UserRound,
         title: "Stellvertretung beginnt",
       };
@@ -1470,7 +1662,7 @@ function baseNotificationPresentation(
     case "delegation.ended": {
       const delegate =
         notificationPayloadText(notification, "delegateName", 200) ??
-        "Deine Stellvertretung";
+        tn("Deine Stellvertretung", "Ihre Stellvertretung");
       const count = (key: string) => {
         const value = isRecord(notification.payload)
           ? notification.payload[key]
@@ -1478,7 +1670,10 @@ function baseNotificationPresentation(
         return typeof value === "number" ? value : 0;
       };
       return {
-        description: `Willkommen zurück! ${delegate} hat ${count("handledTickets")} deiner Tickets bearbeitet, ${count("resolvedTickets")} wurden gelöst. Offen: ${count("openTickets")}.`,
+        description: tn(
+          `Willkommen zurück! ${delegate} hat ${count("handledTickets")} deiner Tickets bearbeitet, ${count("resolvedTickets")} wurden gelöst. Offen: ${count("openTickets")}.`,
+          `Willkommen zurück! ${delegate} hat ${count("handledTickets")} Ihrer Tickets bearbeitet, ${count("resolvedTickets")} wurden gelöst. Offen: ${count("openTickets")}.`,
+        ),
         Icon: UserRound,
         title: "Stellvertretung beendet",
       };
@@ -1490,7 +1685,10 @@ function baseNotificationPresentation(
         const shopTitles: Record<string, string> = {
           "shop.order.approval_requested": "Freigabe für Bestellung",
           "shop.order.submitted": "Neue Bestellung",
-          "shop.order.placed_for_you": "Bestellung für dich erfasst",
+          "shop.order.placed_for_you": tn(
+            "Bestellung für dich erfasst",
+            "Bestellung für Sie erfasst",
+          ),
           "shop.order.approved": "Bestellung freigegeben",
           "shop.order.in_progress": "Bestellung in Bearbeitung",
           "shop.order.ready": "Bereit zur Abholung",
@@ -1499,11 +1697,38 @@ function baseNotificationPresentation(
           "shop.order.rejected": "Bestellung abgelehnt",
           "shop.order.cancelled": "Bestellung storniert",
           "shop.order.note": "Nachricht zur Bestellung",
+          "shop.order.team_ready": "Team bereit",
+          "shop.order.team_failed": "Team konnte nicht angelegt werden",
+          "shop.order.team_expiring": "Team läuft bald ab",
+          "shop.order.team_archived": "Team archiviert",
         };
+        const teamName =
+          notificationPayloadText(notification, "teamName", 120) ?? "";
+        const toDesk =
+          notificationPayloadText(notification, "deliveryMethod", 20) ===
+          "desk";
+        const deskLocation = notificationPayloadText(
+          notification,
+          "deliveryLocation",
+          200,
+        );
+        const handover =
+          notification.kind === "shop.order.ready"
+            ? toDesk
+              ? ` · an den Arbeitsplatz${deskLocation ? ` (${deskLocation})` : ""}`
+              : notificationPayloadText(notification, "deliveryMethod", 20)
+                ? " · Abholung beim Support"
+                : ""
+            : "";
         return {
-          description: `Shop · Bestellung ${orderNumber}`.trim(),
+          description: notification.kind.startsWith("shop.order.team_")
+            ? `Shop · Team ${teamName}`.trim()
+            : `Shop · Bestellung ${orderNumber}${handover}`.trim(),
           Icon: ShoppingBag,
-          title: shopTitles[notification.kind] ?? "Shop",
+          title:
+            notification.kind === "shop.order.ready" && toDesk
+              ? "Bereit zur Lieferung"
+              : (shopTitles[notification.kind] ?? "Shop"),
         };
       }
       if (notification.kind === "license.reclaim_candidates") {
@@ -1534,7 +1759,9 @@ function baseNotificationPresentation(
           Icon: ListChecks,
           title:
             notification.kind === "service_task.overdue"
-              ? "Serviceaufgabe überfällig"
+              ? notificationPayloadText(notification, "handover", 20) === "team"
+                ? "Serviceaufgabe ans Team übergeben"
+                : "Serviceaufgabe überfällig"
               : "Serviceaufgabe heute fällig",
         };
       }
@@ -1548,7 +1775,10 @@ function baseNotificationPresentation(
       return {
         description: ticketNumber
           ? `Neue Benachrichtigung zu ${ticketLabel}.`
-          : "Neue Benachrichtigung in deinem Mandanten.",
+          : tn(
+              "Neue Benachrichtigung in deinem Mandanten.",
+              "Neue Benachrichtigung in Ihrem Mandanten.",
+            ),
         Icon: Bell,
         title: "Benachrichtigung",
       };
@@ -1622,16 +1852,36 @@ function AccessShell({ children }: { children: ReactNode }) {
   );
 }
 
-function SignInScreen() {
+/** Fehlertext einer fehlgeschlagenen Rückkehr vom Anmeldeanbieter (z. B. Microsoft). */
+function callbackErrorMessage(detail: string): string {
+  return `Die Anmeldung konnte nicht abgeschlossen werden. Meldung des Anmeldedienstes: ${detail}`;
+}
+
+function SignInScreen({ callbackError = "" }: { callbackError?: string }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<
     "idle" | "sending" | "sso" | "sent" | "error"
-  >("idle");
-  const [message, setMessage] = useState("");
+  >(callbackError ? "error" : "idle");
+  const [message, setMessage] = useState(
+    callbackError ? callbackErrorMessage(callbackError) : "",
+  );
   const [passwordMode, setPasswordMode] = useState(false);
   const [password, setPassword] = useState("");
   const [registerMode, setRegisterMode] = useState(false);
   const [fullName, setFullName] = useState("");
+
+  const messageRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (!callbackError) return;
+    setStatus("error");
+    setMessage(callbackErrorMessage(callbackError));
+    // Auf dem Handy liegt die Meldung unter dem Bildschirmrand.
+    const frame = window.requestAnimationFrame(() =>
+      messageRef.current?.scrollIntoView?.({ block: "center" }),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [callbackError]);
 
   async function register(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1639,7 +1889,9 @@ function SignInScreen() {
     const name = fullName.trim().replace(/\s+/g, " ");
     if (name.length < 2) {
       setStatus("error");
-      setMessage("Bitte geben Sie Ihren Namen ein.");
+      setMessage(
+        tn("Bitte gib deinen Namen ein.", "Bitte geben Sie Ihren Namen ein."),
+      );
       return;
     }
     if (password.length < 8) {
@@ -1660,7 +1912,10 @@ function SignInScreen() {
     if (error) {
       setStatus("error");
       setMessage(
-        "Das Konto konnte nicht erstellt werden. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut.",
+        tn(
+          "Das Konto konnte nicht erstellt werden. Bitte prüfe deine Angaben und versuche es erneut.",
+          "Das Konto konnte nicht erstellt werden. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut.",
+        ),
       );
       return;
     }
@@ -1683,7 +1938,10 @@ function SignInScreen() {
     }
     setStatus("sent");
     setMessage(
-      "Fast geschafft: Wir haben Ihnen eine E-Mail gesendet. Bestätigen Sie Ihre Adresse über den Link und erstellen Sie danach Ihren Arbeitsbereich. Ist die Adresse bereits registriert, enthält die E-Mail stattdessen einen Anmeldelink.",
+      tn(
+        "Fast geschafft: Wir haben dir eine E-Mail gesendet. Bestätige deine Adresse über den Link und erstelle danach deinen Arbeitsbereich. Ist die Adresse bereits registriert, enthält die E-Mail stattdessen einen Anmeldelink.",
+        "Fast geschafft: Wir haben Ihnen eine E-Mail gesendet. Bestätigen Sie Ihre Adresse über den Link und erstellen Sie danach Ihren Arbeitsbereich. Ist die Adresse bereits registriert, enthält die E-Mail stattdessen einen Anmeldelink.",
+      ),
     );
   }
 
@@ -1699,7 +1957,10 @@ function SignInScreen() {
     if (error) {
       setStatus("error");
       setMessage(
-        "Die Anmeldung war nicht möglich. Bitte prüfen Sie E-Mail-Adresse und Passwort.",
+        tn(
+          "Die Anmeldung war nicht möglich. Bitte prüfe E-Mail-Adresse und Passwort.",
+          "Die Anmeldung war nicht möglich. Bitte prüfen Sie E-Mail-Adresse und Passwort.",
+        ),
       );
       return;
     }
@@ -1727,7 +1988,10 @@ function SignInScreen() {
     if (error) {
       setStatus("error");
       setMessage(
-        "Gross-ICT-SSO ist noch nicht in Supabase eingerichtet. Hinterlegen Sie zuerst die Entra-App-Registrierung.",
+        tn(
+          "Gross-ICT-SSO ist noch nicht in Supabase eingerichtet. Hinterlege zuerst die Entra-App-Registrierung.",
+          "Gross-ICT-SSO ist noch nicht in Supabase eingerichtet. Hinterlegen Sie zuerst die Entra-App-Registrierung.",
+        ),
       );
     }
   }
@@ -1751,7 +2015,10 @@ function SignInScreen() {
 
     setStatus("sent");
     setMessage(
-      "Der Anmeldelink wurde versendet. Öffnen Sie ihn in diesem Browser.",
+      tn(
+        "Der Anmeldelink wurde versendet. Öffne ihn in diesem Browser.",
+        "Der Anmeldelink wurde versendet. Öffnen Sie ihn in diesem Browser.",
+      ),
     );
   }
 
@@ -1760,13 +2027,24 @@ function SignInScreen() {
       <AccessShell>
         <p className="eyebrow">KONTO ERSTELLEN</p>
         <h2>
-          Ihr eigener
-          <br />
-          Arbeitsbereich.
+          {tn(
+            <>
+              Dein eigener
+              <br />
+              Arbeitsbereich.
+            </>,
+            <>
+              Ihr eigener
+              <br />
+              Arbeitsbereich.
+            </>,
+          )}
         </h2>
         <p className="access-lead">
-          Auch ohne Firma: Erstellen Sie ein Konto, verwalten Sie Ihre Tickets
-          und laden Sie Teammitglieder zur Zusammenarbeit ein.
+          {tn(
+            "Auch ohne Firma: Erstelle ein Konto, verwalte deine Tickets und lade Teammitglieder zur Zusammenarbeit ein.",
+            "Auch ohne Firma: Erstellen Sie ein Konto, verwalten Sie Ihre Tickets und laden Sie Teammitglieder zur Zusammenarbeit ein.",
+          )}
         </p>
         <form className="access-form" onSubmit={register}>
           <label>
@@ -1813,9 +2091,18 @@ function SignInScreen() {
             {status === "sending" ? "Konto wird erstellt …" : "Konto erstellen"}
           </button>
           <p className="access-legal">
-            Mit der Registrierung akzeptieren Sie die{" "}
-            <a href={PRIVACY_URL}>Datenschutzerklärung</a>. Ihr Konto können Sie
-            jederzeit in den persönlichen Einstellungen löschen.
+            {tn(
+              <>
+                Mit der Registrierung akzeptierst du die{" "}
+                <a href={PRIVACY_URL}>Datenschutzerklärung</a>. Dein Konto
+                kannst du jederzeit in den persönlichen Einstellungen löschen.
+              </>,
+              <>
+                Mit der Registrierung akzeptieren Sie die{" "}
+                <a href={PRIVACY_URL}>Datenschutzerklärung</a>. Ihr Konto können
+                Sie jederzeit in den persönlichen Einstellungen löschen.
+              </>,
+            )}
           </p>
           <button
             className="access-toggle"
@@ -1840,9 +2127,18 @@ function SignInScreen() {
     <AccessShell>
       <p className="eyebrow">KUNDEN-LOGIN</p>
       <h2>
-        Sicher in Ihre
-        <br />
-        Servicezentrale.
+        {tn(
+          <>
+            Sicher in deine
+            <br />
+            Servicezentrale.
+          </>,
+          <>
+            Sicher in Ihre
+            <br />
+            Servicezentrale.
+          </>,
+        )}
       </h2>
       <p className="access-lead">
         Organisationen melden sich über ihr Unternehmens-SSO an und werden
@@ -1937,7 +2233,15 @@ function SignInScreen() {
           Neu bei nextDesk? Konto erstellen
         </button>
       </form>
-      {message && <p className={`access-message ${status}`}>{message}</p>}
+      {message && (
+        <p
+          className={`access-message ${status}`}
+          ref={messageRef}
+          role={status === "error" ? "alert" : undefined}
+        >
+          {message}
+        </p>
+      )}
     </AccessShell>
   );
 }
@@ -1962,7 +2266,10 @@ function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
     const trimmed = name.trim().replace(/\s+/g, " ");
     if (trimmed.length < 2) {
       setMessage(
-        "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein.",
+        tn(
+          "Bitte gib einen Namen mit mindestens zwei Zeichen ein.",
+          "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein.",
+        ),
       );
       return;
     }
@@ -1984,9 +2291,12 @@ function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
 
   async function removeAccount() {
     if (
-      !window.confirm(
-        "Konto endgültig löschen? Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht.",
-      )
+      !(await confirmDialog(
+        tn(
+          "Konto endgültig löschen? Dein Konto und deine persönlichen Daten werden unwiderruflich gelöscht.",
+          "Konto endgültig löschen? Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht.",
+        ),
+      ))
     )
       return;
     setState("deleting");
@@ -2009,11 +2319,10 @@ function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
       <p className="eyebrow">WILLKOMMEN BEI NEXTDESK</p>
       <h2>Arbeitsbereich erstellen.</h2>
       <p className="access-lead">
-        Ihr Konto gehört noch zu keiner Organisation. Erstellen Sie Ihren
-        eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten.
-        Teammitglieder laden Sie danach unter Einstellungen → Benutzer ein.
-        Wurden Sie von einem Team eingeladen, öffnen Sie den Link aus der
-        Einladungs-E-Mail.
+        {tn(
+          "Dein Konto gehört noch zu keiner Organisation. Erstelle deinen eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten. Teammitglieder lädst du danach unter Einstellungen → Benutzer ein. Wurdest du von einem Team eingeladen, öffne den Link aus der Einladungs-E-Mail.",
+          "Ihr Konto gehört noch zu keiner Organisation. Erstellen Sie Ihren eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten. Teammitglieder laden Sie danach unter Einstellungen → Benutzer ein. Wurden Sie von einem Team eingeladen, öffnen Sie den Link aus der Einladungs-E-Mail.",
+        )}
       </p>
       <form className="access-form" onSubmit={submit}>
         <label>
@@ -2250,12 +2559,6 @@ function TicketQuickAssign({
     if (open === "status") {
       const status = options?.find((option) => option.id === value);
       if (!status) return;
-      if (value !== "new" && ticket.isUnassigned && ticket.state === "Neu") {
-        setError(
-          "Der Status «Neu» kann erst geändert werden, wenn das Ticket einer Person zugewiesen ist.",
-        );
-        return;
-      }
       // Closing needs an explicit confirmation, as in the ticket detail.
       if (status.isClosed && !confirmed) {
         setPendingClose(status);
@@ -2483,27 +2786,112 @@ const initialKnowledgeDeepLink: string | null = (() => {
   }
 })();
 
-// "?asset=<uuid>" and "?rack=<name>" are the web fallback of printed asset
-// labels (QR code). They open the asset list or the rack view.
-const initialAssetLabelDeepLink: {
-  assetId: string | null;
-  rack: string | null;
-} = (() => {
-  if (typeof window === "undefined") return { assetId: null, rack: null };
+// "?ziel=shop|neues-ticket" comes from links in e-mails (requester notices).
+// The parameter is removed afterwards.
+const TARGET_DEEP_LINK_PARAM = "ziel";
+const initialTargetDeepLink: "shop" | "neues-ticket" | null = (() => {
+  if (typeof window === "undefined") return null;
   try {
     const url = new URL(window.location.href);
-    const assetId = assetIdFromSearch(url.search);
-    const rack = assetId ? null : rackFromSearch(url.search);
-    if (url.searchParams.has("asset") || url.searchParams.has("rack")) {
-      url.searchParams.delete("asset");
-      url.searchParams.delete("rack");
-      window.history.replaceState(window.history.state, "", url.toString());
-    }
-    return { assetId, rack };
+    const value = url.searchParams.get(TARGET_DEEP_LINK_PARAM);
+    if (value === null) return null;
+    url.searchParams.delete(TARGET_DEEP_LINK_PARAM);
+    window.history.replaceState(window.history.state, "", url.toString());
+    return value === "shop" || value === "neues-ticket" ? value : null;
   } catch {
-    return { assetId: null, rack: null };
+    return null;
   }
 })();
+
+// "?asset=<uuid>" and "?rack=<name>" are the web fallback of printed asset
+// labels (QR code). They open the asset list or the rack view.
+const LABEL_LINK_STORAGE_KEY = "nextdesk.pendingLabelLink";
+const initialAssetLabelDeepLink: {
+  assetId: string | null;
+  inventoryId: string | null;
+  rack: string | null;
+} = (() => {
+  if (typeof window === "undefined")
+    return { assetId: null, inventoryId: null, rack: null };
+  try {
+    const url = new URL(window.location.href);
+    let search = url.search;
+    const hasLabelParam =
+      url.searchParams.has("asset") ||
+      url.searchParams.has("rack") ||
+      url.searchParams.has("inventory");
+    if (hasLabelParam) {
+      // Scanned while signed out: the sign-in redirect drops the address
+      // parameters, so remember the link for this tab until it is used.
+      try {
+        window.sessionStorage.setItem(LABEL_LINK_STORAGE_KEY, search);
+      } catch {
+        // Storage not available: the link only works when already signed in.
+      }
+      url.searchParams.delete("asset");
+      url.searchParams.delete("rack");
+      url.searchParams.delete("inventory");
+      window.history.replaceState(window.history.state, "", url.toString());
+    } else {
+      try {
+        search = window.sessionStorage.getItem(LABEL_LINK_STORAGE_KEY) ?? "";
+      } catch {
+        search = "";
+      }
+    }
+    const assetId = assetIdFromSearch(search);
+    const inventoryId = assetId ? null : inventoryIdFromSearch(search);
+    const rack = assetId || inventoryId ? null : rackFromSearch(search);
+    return { assetId, inventoryId, rack };
+  } catch {
+    return { assetId: null, inventoryId: null, rack: null };
+  }
+})();
+
+// "?benachrichtigung=<notification id>" is the button of a notification
+// e-mail. The id is removed from the address at once and kept in local
+// storage for up to an hour, so it survives the sign-in (SSO redirect or a
+// sign-in link opened in a new tab). See lib/notification-link.ts.
+(() => {
+  if (typeof window === "undefined") return;
+  try {
+    const notificationId = notificationIdFromSearch(window.location.search);
+    const cleanUrl = urlWithoutNotificationLink(window.location.href);
+    if (cleanUrl) {
+      window.history.replaceState(window.history.state, "", cleanUrl);
+    }
+    if (notificationId) {
+      rememberNotificationLink(window.localStorage, notificationId, Date.now());
+    }
+  } catch {
+    // No storage or history: the link opens the start page.
+  }
+})();
+
+function browserLinkStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+type NotificationLinkState = {
+  id: string;
+  status: "idle" | "loading" | "loaded" | "done";
+  notification: (NotificationItem & { tenantId: string }) | null;
+  switched: boolean;
+};
+
+function linkedNotificationFromResponse(
+  value: unknown,
+): (NotificationItem & { tenantId: string }) | null {
+  if (!isRecord(value) || !isRecord(value.data)) return null;
+  const raw = value.data.notification;
+  if (!isRecord(raw) || typeof raw.tenantId !== "string") return null;
+  const notification = notificationFromValue(raw);
+  return notification ? { ...notification, tenantId: raw.tenantId } : null;
+}
 
 function TicketList({
   assignment,
@@ -2547,15 +2935,30 @@ function TicketList({
           {hasActiveFilters
             ? "Keine Tickets entsprechen den aktiven Filtern."
             : onCreateTicket
-              ? "Ihre Ticketliste ist bereit."
-              : "Aktuell liegen keine Tickets in Ihrer Queue."}
+              ? tn(
+                  "Deine Ticketliste ist bereit.",
+                  "Ihre Ticketliste ist bereit.",
+                )
+              : tn(
+                  "Aktuell liegen keine Tickets in deiner Queue.",
+                  "Aktuell liegen keine Tickets in Ihrer Queue.",
+                )}
         </strong>
         <span>
           {hasActiveFilters
-            ? "Passen Sie Suche oder Queue an oder setzen Sie alle Filter zurück."
+            ? tn(
+                "Passe Suche oder Queue an oder setze alle Filter zurück.",
+                "Passen Sie Suche oder Queue an oder setzen Sie alle Filter zurück.",
+              )
             : onCreateTicket
-              ? "Erfassen Sie den ersten Vorgang, damit er priorisiert und nachvollziehbar bearbeitet werden kann."
-              : "Prüfen Sie später erneut oder wechseln Sie zu einer anderen Queue."}
+              ? tn(
+                  "Erfasse den ersten Vorgang, damit er priorisiert und nachvollziehbar bearbeitet werden kann.",
+                  "Erfassen Sie den ersten Vorgang, damit er priorisiert und nachvollziehbar bearbeitet werden kann.",
+                )
+              : tn(
+                  "Prüfe später erneut oder wechsle zu einer anderen Queue.",
+                  "Prüfen Sie später erneut oder wechseln Sie zu einer anderen Queue.",
+                )}
         </span>
         {hasActiveFilters && onClearFilters ? (
           <button onClick={onClearFilters} type="button">
@@ -2743,8 +3146,10 @@ function TicketListDetailPreview({
         <p className="eyebrow">DETAIL</p>
         <h3>Ticket auswählen</h3>
         <p>
-          Wählen Sie ein Ticket aus der Liste, um die Zusammenfassung hier zu
-          sehen.
+          {tn(
+            "Wähle ein Ticket aus der Liste, um die Zusammenfassung hier zu sehen.",
+            "Wählen Sie ein Ticket aus der Liste, um die Zusammenfassung hier zu sehen.",
+          )}
         </p>
       </aside>
     );
@@ -2796,8 +3201,10 @@ function TicketListDetailPreview({
         </div>
       </dl>
       <p className="ticket-list-detail__hint">
-        Diese Übersicht ändert nichts am Ticket. Öffnen Sie die vollständige
-        Detailansicht für bestätigte Bearbeitungsschritte.
+        {tn(
+          "Diese Übersicht ändert nichts am Ticket. Öffne die vollständige Detailansicht für bestätigte Bearbeitungsschritte.",
+          "Diese Übersicht ändert nichts am Ticket. Öffnen Sie die vollständige Detailansicht für bestätigte Bearbeitungsschritte.",
+        )}
       </p>
       <button className="primary-button" onClick={onOpenFull} type="button">
         Vollständige Details öffnen
@@ -2918,6 +3325,8 @@ function AuthenticatedApp() {
     string | undefined
   >(initialKnowledgeDeepLink ?? undefined);
   // Device opened from a ticket: the asset list starts filtered to it.
+  // Article from a printed stock label (QR link): shown once in the Lager.
+  const [inventoryFocusId, setInventoryFocusId] = useState<string | null>(null);
   const [assetFocusQuery, setAssetFocusQuery] = useState<{
     query: string;
     id: number;
@@ -2959,12 +3368,60 @@ function AuthenticatedApp() {
   const [eventSpaceAttentionRevision, setEventSpaceAttentionRevision] =
     useState(0);
   // Navigation badges for new shop orders and untouched onboarding entries.
+  const [teamsManage, setTeamsManage] = useState<{ today: string } | null>(
+    null,
+  );
   const [shopAttentionCount, setShopAttentionCount] = useState<number | null>(
     null,
   );
   const [onboardingAttentionCount, setOnboardingAttentionCount] = useState<
     number | null
   >(null);
+  // Agents: tickets without an assigned agent, security cases without an agent.
+  const [ticketAttentionCount, setTicketAttentionCount] = useState<
+    number | null
+  >(null);
+  const [securityAttentionCount, setSecurityAttentionCount] = useState<
+    number | null
+  >(null);
+  // Agents: active incidents nobody has acknowledged yet.
+  // «Phishing»/«Störungen» only for the responsible team (server decides).
+  const [teamModuleAccess, setTeamModuleAccess] = useState({
+    securityCases: false,
+    incidents: false,
+  });
+  const [incidentAttentionCount, setIncidentAttentionCount] = useState<
+    number | null
+  >(null);
+  // «Überwachung»: devices in «Ausfall» or «Warnung»; red while one is down.
+  const [monitoringAttention, setMonitoringAttention] = useState<{
+    count: number;
+    urgent: boolean;
+  } | null>(null);
+  // Badges of «Phishing / Junk»/«Störungen» count all open cases / active
+  // incidents; red while some are unassigned / unacknowledged.
+  const [teamModuleUrgent, setTeamModuleUrgent] = useState({
+    securityCases: false,
+    incidents: false,
+  });
+  const [incidentFocusId, setIncidentFocusId] = useState<string | null>(null);
+  const clearIncidentFocus = useCallback(() => setIncidentFocusId(null), []);
+  const [securityFocusId, setSecurityFocusId] = useState<string | null>(null);
+  const clearSecurityFocus = useCallback(() => setSecurityFocusId(null), []);
+  // Objects a notification opens in the shop, infrastructure and IPAM views.
+  const [shopFocusOrderId, setShopFocusOrderId] = useState<string | null>(null);
+  const clearShopFocus = useCallback(() => setShopFocusOrderId(null), []);
+  const [infrastructureFocusId, setInfrastructureFocusId] = useState<
+    string | null
+  >(null);
+  const clearInfrastructureFocus = useCallback(
+    () => setInfrastructureFocusId(null),
+    [],
+  );
+  const [ipamFocus, setIpamFocus] = useState<NotificationIpamFocus | null>(
+    null,
+  );
+  const clearIpamFocus = useCallback(() => setIpamFocus(null), []);
   const [navigationAttentionTick, setNavigationAttentionTick] = useState(0);
   const [canManageContracts, setCanManageContracts] = useState(false);
   const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
@@ -2984,6 +3441,10 @@ function AuthenticatedApp() {
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState("");
   const [notificationStatus, setNotificationStatus] = useState("");
+  // Link from a notification e-mail (?benachrichtigung=<id>).
+  const notificationLinkRef = useRef<NotificationLinkState | null>(null);
+  const [notificationLinkRevision, setNotificationLinkRevision] = useState(0);
+  const [notificationLinkNotice, setNotificationLinkNotice] = useState("");
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [notificationActionPending, setNotificationActionPending] = useState<
     string | null
@@ -3010,6 +3471,12 @@ function AuthenticatedApp() {
   const [tenantFeatures, setTenantFeatures] = useState<Record<string, boolean>>(
     {},
   );
+  // Reloads the incident banner so resolved incidents disappear by themselves.
+  const [incidentNoticeTick, setIncidentNoticeTick] = useState(0);
+  useVisibleInterval(() => setIncidentNoticeTick((tick) => tick + 1), 30_000);
+  const [bannerMaintenances, setBannerMaintenances] = useState<
+    BannerMaintenance[]
+  >([]);
   const [activeIncidentNotices, setActiveIncidentNotices] = useState<
     ActiveIncidentNotice[]
   >([]);
@@ -3278,7 +3745,10 @@ function AuthenticatedApp() {
         setTenantLoadError(
           await functionErrorMessage(
             error,
-            "Ihre Anmeldung konnte keinem berechtigten Mandanten zugeordnet werden. Bitte wenden Sie sich an die Mandantenadministration.",
+            tn(
+              "Deine Anmeldung konnte keinem berechtigten Mandanten zugeordnet werden. Bitte wende dich an die Mandantenadministration.",
+              "Ihre Anmeldung konnte keinem berechtigten Mandanten zugeordnet werden. Bitte wenden Sie sich an die Mandantenadministration.",
+            ),
           ),
         );
       })
@@ -3318,6 +3788,29 @@ function AuthenticatedApp() {
     () => tenants.find((tenant) => tenant.id === activeTenantId) ?? null,
     [activeTenantId, tenants],
   );
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !activeTenant?.id) {
+      setTeamsManage(null);
+      return;
+    }
+    let active = true;
+    teamsAdminApi
+      .context(activeTenant.id)
+      .then((context) => {
+        if (active) {
+          setTeamsManage(
+            context.canManage && context.configured
+              ? { today: context.today }
+              : null,
+          );
+        }
+      })
+      .catch(() => active && setTeamsManage(null));
+    return () => {
+      active = false;
+    };
+  }, [activeTenant?.id]);
   // Eigenes Profilfoto aus Entra (nur wenn vorhanden; sonst Initialen).
   const [operatorPhotoUrl, setOperatorPhotoUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -3377,6 +3870,7 @@ function AuthenticatedApp() {
       canManageServiceStatus,
     });
   const knowledgeDeepLinkConsumedRef = useRef(false);
+  const targetDeepLinkConsumedRef = useRef(false);
   const assetLabelDeepLinkConsumedRef = useRef(false);
   // Rack from a label QR code; only for the first visit of the rack view.
   const [infrastructureRackFocus, setInfrastructureRackFocus] = useState<
@@ -3412,15 +3906,36 @@ function AuthenticatedApp() {
       setSection("Wissen");
       return;
     }
+    // Link from a notice e-mail: open the shop or start a new ticket.
+    if (initialTargetDeepLink && !targetDeepLinkConsumedRef.current) {
+      targetDeepLinkConsumedRef.current = true;
+      if (initialTargetDeepLink === "neues-ticket") {
+        setSection("Tickets");
+        setTicketComposerOpen(true);
+      } else {
+        setSection("Shop");
+      }
+      return;
+    }
     // Asset label QR code (web fallback): open the asset or the rack.
     if (!assetLabelDeepLinkConsumedRef.current) {
       assetLabelDeepLinkConsumedRef.current = true;
+      try {
+        window.sessionStorage.removeItem(LABEL_LINK_STORAGE_KEY);
+      } catch {
+        // Nothing to clear.
+      }
       if (initialAssetLabelDeepLink.assetId) {
         setAssetFocusQuery({
           query: initialAssetLabelDeepLink.assetId,
           id: Date.now(),
         });
         setSection("Assets");
+        return;
+      }
+      if (initialAssetLabelDeepLink.inventoryId) {
+        setInventoryFocusId(initialAssetLabelDeepLink.inventoryId);
+        setSection("Lager");
         return;
       }
       if (initialAssetLabelDeepLink.rack) {
@@ -3438,6 +3953,122 @@ function AuthenticatedApp() {
     workspacePreferencesStorageKey,
   ]);
 
+  // The hint must not block later workspace messages.
+  useEffect(() => {
+    if (!notificationLinkNotice) return;
+    const timeout = window.setTimeout(
+      () => setNotificationLinkNotice(""),
+      8_000,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [notificationLinkNotice]);
+
+  // Notification e-mail link: after sign-in and once the workspace is ready,
+  // load the notification, switch to its tenant if needed and open exactly
+  // its object. Declared after the start navigation so it wins over it.
+  useEffect(() => {
+    if (
+      !supabase ||
+      !session ||
+      !activeTenant ||
+      !workspacePreferencesHydrated ||
+      !workspaceNavigationReady
+    ) {
+      return;
+    }
+    const storage = browserLinkStorage();
+    let link = notificationLinkRef.current;
+    if (!link || link.status === "done") {
+      const pendingId = storage
+        ? pendingNotificationLink(storage, Date.now())
+        : null;
+      if (!pendingId) return;
+      link = {
+        id: pendingId,
+        status: "idle",
+        notification: null,
+        switched: false,
+      };
+      notificationLinkRef.current = link;
+    }
+    const current = link;
+    const finish = () => {
+      current.status = "done";
+      if (storage) forgetNotificationLink(storage);
+    };
+
+    if (current.status === "idle") {
+      current.status = "loading";
+      void supabase.functions
+        .invoke("notification-center", {
+          body: { type: "get", notificationId: current.id },
+        })
+        .then(({ data, error }) => {
+          if (error) throw error;
+          const notification = linkedNotificationFromResponse(data);
+          if (!notification) throw new Error("invalid_notification_response");
+          current.notification = notification;
+          current.status = "loaded";
+          setNotificationLinkRevision((value) => value + 1);
+        })
+        .catch(async (error: unknown) => {
+          finish();
+          setNotificationLinkNotice(
+            notificationLinkMessage(await functionErrorCode(error)),
+          );
+        });
+      return;
+    }
+    if (current.status !== "loaded" || !current.notification) return;
+
+    const notification = current.notification;
+    const step = notificationLinkStep({
+      notificationTenantId: notification.tenantId,
+      activeTenantId: activeTenant.id,
+      tenantIds: tenants.map((tenant) => tenant.id),
+    });
+    if (step === "switch" && !current.switched) {
+      // Runs again once the other tenant is ready.
+      current.switched = true;
+      activateTenant(notification.tenantId);
+      return;
+    }
+    finish();
+    if (step !== "open") {
+      setNotificationLinkNotice(notificationLinkMessage("tenant_unavailable"));
+      return;
+    }
+    if (!notification.readAt) {
+      void supabase.functions
+        .invoke("notification-center", {
+          body: { type: "markRead", notificationId: notification.id },
+        })
+        .then(({ error }) => {
+          if (error) return;
+          const readAt = new Date().toISOString();
+          setNotifications((items) =>
+            items.map((item) =>
+              item.id === notification.id ? { ...item, readAt } : item,
+            ),
+          );
+        })
+        .catch(() => undefined);
+    }
+    if (!openNotificationTarget(notification)) {
+      // Nothing to open (e.g. an older kind): show the bell instead.
+      setNotificationPanelOpen(true);
+    }
+    // activateTenant and openNotificationTarget only set state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    activeTenant,
+    notificationLinkRevision,
+    session,
+    tenants,
+    workspaceNavigationReady,
+    workspacePreferencesHydrated,
+  ]);
+
   useEffect(() => {
     if (!supabase || !session || !activeTenant) {
       setTenantWorkspaceBranding(null);
@@ -3448,7 +4079,7 @@ function AuthenticatedApp() {
     void Promise.all([
       supabase
         .from("tenant_settings")
-        .select("portal_name")
+        .select("portal_name, formality")
         .eq("tenant_id", activeTenant.id)
         .maybeSingle(),
       supabase
@@ -3461,6 +4092,7 @@ function AuthenticatedApp() {
         if (settingsResult.error) throw settingsResult.error;
         if (brandingResult.error) throw brandingResult.error;
         if (!mounted) return;
+        setFormality(settingsResult.data?.formality === "sie" ? "sie" : "du");
         const portalName = settingsResult.data?.portal_name?.trim();
         setTenantWorkspaceBranding({
           accentColor: usableBrandColor(brandingResult.data?.accent_color),
@@ -3516,7 +4148,10 @@ function AuthenticatedApp() {
         setErrorMessage(
           await functionErrorMessage(
             error,
-            "Gespeicherte Ticketansichten konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+            tn(
+              "Gespeicherte Ticketansichten konnten nicht geladen werden. Bitte versuche es erneut.",
+              "Gespeicherte Ticketansichten konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+            ),
           ),
         );
       })
@@ -3697,11 +4332,11 @@ function AuthenticatedApp() {
     };
   }, [activeTenant?.id, eventSpaceAttentionRevision, session?.user.id]);
 
-  // Refresh the menu badges every minute and whenever the section changes.
+  // Refresh the menu badges every 30 seconds and whenever the section changes.
   useEffect(() => {
     const timer = window.setInterval(
       () => setNavigationAttentionTick((tick) => tick + 1),
-      60_000,
+      30_000,
     );
     return () => window.clearInterval(timer);
   }, []);
@@ -3710,6 +4345,9 @@ function AuthenticatedApp() {
     if (!supabase || !session || !activeTenant) {
       setShopAttentionCount(null);
       setOnboardingAttentionCount(null);
+      setTicketAttentionCount(null);
+      setSecurityAttentionCount(null);
+      setIncidentAttentionCount(null);
       return;
     }
     let mounted = true;
@@ -3741,6 +4379,63 @@ function AuthenticatedApp() {
         );
       })
       .catch(() => mounted && setShopAttentionCount(null));
+    if (canWorkTickets) {
+      void supabase
+        .rpc("navigation_ticket_attention", { p_tenant_id: tenantId })
+        .then(({ data, error }) => {
+          if (!mounted) return;
+          const summary =
+            !error && data && typeof data === "object"
+              ? (data as Record<string, unknown>)
+              : null;
+          const count = (value: unknown) =>
+            typeof value === "number" && Number.isSafeInteger(value)
+              ? value
+              : null;
+          setTicketAttentionCount(count(summary?.unassignedTickets));
+          const securityTriage = count(summary?.securityTriage);
+          const incidentsUnacknowledged = count(
+            summary?.incidentsUnacknowledged,
+          );
+          // Older servers only report the counts needing action.
+          setSecurityAttentionCount(
+            count(summary?.securityOpen) ?? securityTriage,
+          );
+          setIncidentAttentionCount(
+            count(summary?.incidentsActive) ?? incidentsUnacknowledged,
+          );
+          setTeamModuleUrgent({
+            securityCases: (securityTriage ?? 0) > 0,
+            incidents: (incidentsUnacknowledged ?? 0) > 0,
+          });
+          setTeamModuleAccess({
+            securityCases: summary?.canWorkSecurityCases === true,
+            incidents: summary?.canWorkIncidents === true,
+          });
+        });
+    } else {
+      setTicketAttentionCount(null);
+      setSecurityAttentionCount(null);
+      setIncidentAttentionCount(null);
+      setTeamModuleAccess({ securityCases: false, incidents: false });
+    }
+    if (tenantFeatures["monitoring.native"] === true) {
+      void supabase.functions
+        .invoke("monitoring-sensors", { body: { type: "summary", tenantId } })
+        .then(({ data, error }) => {
+          if (!mounted) return;
+          const down = error ? null : readCount(data, "down");
+          const warning = error ? null : readCount(data, "warning");
+          setMonitoringAttention(
+            down === null || warning === null
+              ? null
+              : { count: down + warning, urgent: down > 0 },
+          );
+        })
+        .catch(() => mounted && setMonitoringAttention(null));
+    } else {
+      setMonitoringAttention(null);
+    }
     void supabase.functions
       .invoke("onboarding", { body: { type: "navigationSummary", tenantId } })
       .then(({ data, error }) => {
@@ -3753,7 +4448,15 @@ function AuthenticatedApp() {
     return () => {
       mounted = false;
     };
-  }, [activeTenant?.id, navigationAttentionTick, section, session?.user.id]);
+  }, [
+    activeTenant?.id,
+    canWorkTickets,
+    dashboardRevision,
+    navigationAttentionTick,
+    section,
+    session?.user.id,
+    tenantFeatures["monitoring.native"],
+  ]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !session || !activeTenant) {
@@ -3791,6 +4494,7 @@ function AuthenticatedApp() {
   useEffect(() => {
     if (!supabase || !session || !activeTenant || !requesterPortalEnabled) {
       setActiveIncidentNotices([]);
+      setBannerMaintenances([]);
       return;
     }
 
@@ -3803,17 +4507,23 @@ function AuthenticatedApp() {
         if (error) throw error;
         const notices = activeIncidentNoticesFromResponse(data);
         if (!notices) throw new Error("invalid_incident_notices_response");
-        if (mounted) setActiveIncidentNotices(notices);
+        if (mounted) {
+          setActiveIncidentNotices(notices);
+          setBannerMaintenances(bannerMaintenancesFromResponse(data));
+        }
       })
       .catch(() => {
         // Feature, membership and network failures are intentionally quiet.
-        if (mounted) setActiveIncidentNotices([]);
+        if (mounted) {
+          setActiveIncidentNotices([]);
+          setBannerMaintenances([]);
+        }
       });
 
     return () => {
       mounted = false;
     };
-  }, [activeTenant, requesterPortalEnabled, session]);
+  }, [activeTenant, incidentNoticeTick, requesterPortalEnabled, session]);
 
   useEffect(() => {
     if (
@@ -4035,7 +4745,10 @@ function AuthenticatedApp() {
         setErrorMessage(
           await functionErrorMessage(
             error,
-            "Die Ticketübersicht konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+            tn(
+              "Die Ticketübersicht konnte nicht geladen werden. Bitte versuche es erneut.",
+              "Die Ticketübersicht konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+            ),
           ),
         );
       })
@@ -4167,7 +4880,6 @@ function AuthenticatedApp() {
   async function handleNotificationClick(notification: NotificationItem) {
     if (!supabase) return;
 
-    const ticketId = notification.ticket?.id;
     setNotificationActionPending(notification.id);
     setNotificationsError("");
     setNotificationStatus("");
@@ -4193,35 +4905,41 @@ function AuthenticatedApp() {
       setNotificationActionPending(null);
     }
 
-    if (ticketId) {
+    openNotificationTarget(notification);
+  }
+
+  /** Opens exactly the object that triggered the notification. */
+  function openNotificationTarget(notification: NotificationItem): boolean {
+    const target = notificationTarget({
+      kind: notification.kind,
+      payload: notification.payload,
+      ticketId: notification.ticket?.id ?? null,
+    });
+    if (!target) return false;
+    setNotificationPanelOpen(false);
+    if (target.type === "ticket") {
       setSection("Tickets");
-      setSelectedTicketId(ticketId);
-      setNotificationPanelOpen(false);
-    } else if (notification.kind.startsWith("shop.order.")) {
-      setSection("Shop");
-      setNotificationPanelOpen(false);
-    } else if (notification.kind === "team.overload") {
-      setSection("Teamführung");
-      setNotificationPanelOpen(false);
-    } else if (notification.kind === "problem.recurring_detected") {
-      setSection("Fälle");
-      setNotificationPanelOpen(false);
-    } else if (notification.kind === "maintenance.upcoming") {
-      setSection("Systemstatus");
-      setNotificationPanelOpen(false);
-    } else if (notification.kind === "infrastructure.due") {
-      setSection("Infrastruktur");
-      setNotificationPanelOpen(false);
-    } else if (notification.kind.startsWith("service_task.")) {
-      const occurrenceId = notificationPayloadText(
-        notification,
-        "occurrenceId",
-        64,
-      );
-      setServiceTaskFocusId(occurrenceId);
-      setSection("Serviceaufgaben");
-      setNotificationPanelOpen(false);
+      setSelectedTicketId(target.ticketId);
+      return true;
     }
+    const focus = target.focus;
+    if (focus?.kind === "security") setSecurityFocusId(focus.id);
+    else if (focus?.kind === "incident") setIncidentFocusId(focus.id);
+    else if (focus?.kind === "serviceTask") setServiceTaskFocusId(focus.id);
+    else if (focus?.kind === "inventoryItem") setInventoryFocusId(focus.id);
+    else if (focus?.kind === "shopOrder") setShopFocusOrderId(focus.id);
+    else if (focus?.kind === "infrastructureDevice") {
+      setInfrastructureFocusId(focus.id);
+    } else if (focus?.kind === "ipam") {
+      setIpamFocus({
+        addressId: focus.addressId,
+        ip: focus.ip,
+        prefixId: focus.prefixId,
+        view: focus.view,
+      });
+    }
+    setSection(target.section);
+    return true;
   }
 
   async function markAllNotificationsAsRead() {
@@ -4657,6 +5375,36 @@ function AuthenticatedApp() {
     setQueue("alle");
     setTicketScope(canWorkTickets ? "all" : "mine");
   };
+  // Applies a saved view (from the filter panel or the bar above the list).
+  const applySavedTicketView = (filters: SavedTicketViewFilters) => {
+    clearTicketSelection();
+    setMetricTicketFilter(null);
+    setReportDrilldown(null);
+    setQuery(filters.query);
+    setQueue(filters.queue);
+    setTicketScope(filters.ticketScope);
+    setTicketListRefinement({
+      agent: filters.agent,
+      department: filters.department,
+      priority: filters.priority,
+      sortBy: filters.sortBy,
+      sortDirection: filters.sortDirection,
+      status: filters.status,
+    });
+  };
+  // The saved view that matches the current filters exactly, if any.
+  const activeSavedTicketView =
+    savedTicketViews.find((view) => {
+      const current: SavedTicketViewFilters = {
+        ...ticketListRefinement,
+        query,
+        queue,
+        ticketScope,
+      };
+      return (Object.keys(current) as (keyof SavedTicketViewFilters)[]).every(
+        (key) => view.filters[key] === current[key],
+      );
+    }) ?? null;
   const updateTicketSearchQuery = (nextQuery: string) => {
     if (!nextQuery.trim()) setMetricTicketFilter(null);
     setQuery(nextQuery);
@@ -4690,7 +5438,7 @@ function AuthenticatedApp() {
   const ticketScopeLabel: Record<TicketScope, string> = {
     all: "Alle sichtbaren Tickets",
     closed: "Gelöste Tickets",
-    mine: "Meine Tickets",
+    mine: "Meine offenen Tickets",
     open: "Offene Tickets",
     unassigned: "Nicht zugewiesene Tickets",
     delegated: delegatedForNames.length
@@ -4736,8 +5484,23 @@ function AuthenticatedApp() {
     if (item.label === "Infrastruktur") {
       return isFeatureEnabled("assets.management");
     }
+    if (item.label === "IP-Adressen") {
+      return isFeatureEnabled("ipam.management");
+    }
+    if (item.label === "Überwachung") {
+      return isFeatureEnabled("monitoring.native");
+    }
+    if (item.label === "Phishing / Junk") {
+      return canWorkTickets && teamModuleAccess.securityCases;
+    }
+    if (item.label === "Störungen") {
+      return canWorkTickets && teamModuleAccess.incidents;
+    }
     if (item.label === "Lager") return isFeatureEnabled("inventory.management");
     if (item.label === "Shop") return isFeatureEnabled("self_service.shop");
+    if (item.label === "Teams") {
+      return isFeatureEnabled("self_service.shop") && teamsManage !== null;
+    }
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
     if (item.label === "Verträge" || item.label === "Lizenzen") {
       return contractsAvailable;
@@ -4772,6 +5535,8 @@ function AuthenticatedApp() {
   const employeeHiddenSections: readonly Section[] = [
     "Raumplanung",
     "Infrastruktur",
+    "IP-Adressen",
+    "Überwachung",
     "Lager",
     "Arbeitsplatz",
     "Systemstatus",
@@ -5066,6 +5831,20 @@ function AuthenticatedApp() {
     );
   }
 
+  // Click on a requester notice (banner or bar in the portal).
+  function openRequesterNotice(link: NoticeLink) {
+    if (link.kind === "url") {
+      window.open(link.href, "_blank", "noopener");
+    } else if (link.kind === "knowledge") {
+      setKnowledgeFocusArticleId(link.id);
+      setSection("Wissen");
+    } else if (link.kind === "new_ticket") {
+      startQuickCreate("ticket");
+    } else {
+      setSection(link.section);
+    }
+  }
+
   function startQuickCreate(action: QuickCreateAction) {
     setPersonalSettingsOpen(false);
     closeQuickCreateMenu(false);
@@ -5183,35 +5962,42 @@ function AuthenticatedApp() {
         title: "Datenzugriff prüfen",
         tone: "error" as const,
       }
-    : notificationsError
+    : notificationLinkNotice
       ? {
-          id: `notification-error:${notificationsError}`,
-          message: notificationsError,
-          title: "Benachrichtigungen prüfen",
+          id: `notification-link:${notificationLinkNotice}`,
+          message: notificationLinkNotice,
+          title: "Benachrichtigung öffnen",
           tone: "error" as const,
         }
-      : ticketActionStatus
+      : notificationsError
         ? {
-            id: `ticket-status:${ticketActionStatus}`,
-            message: ticketActionStatus,
-            title: "Ticketstatus aktualisiert",
-            tone: "success" as const,
+            id: `notification-error:${notificationsError}`,
+            message: notificationsError,
+            title: "Benachrichtigungen prüfen",
+            tone: "error" as const,
           }
-        : notificationStatus
+        : ticketActionStatus
           ? {
-              id: `notification-status:${notificationStatus}`,
-              message: notificationStatus,
-              title: "Benachrichtigungen aktualisiert",
+              id: `ticket-status:${ticketActionStatus}`,
+              message: ticketActionStatus,
+              title: "Ticketstatus aktualisiert",
               tone: "success" as const,
             }
-          : experienceNotice
+          : notificationStatus
             ? {
-                id: `experience:${experienceNotice.tone}:${experienceNotice.message}`,
-                message: experienceNotice.message,
-                title: "Wiedervorlagen",
-                tone: experienceNotice.tone,
+                id: `notification-status:${notificationStatus}`,
+                message: notificationStatus,
+                title: "Benachrichtigungen aktualisiert",
+                tone: "success" as const,
               }
-            : null;
+            : experienceNotice
+              ? {
+                  id: `experience:${experienceNotice.tone}:${experienceNotice.message}`,
+                  message: experienceNotice.message,
+                  title: "Erinnerungen",
+                  tone: experienceNotice.tone,
+                }
+              : null;
 
   const workspaceLiveMessageId = workspaceLiveMessage?.id ?? null;
 
@@ -5290,16 +6076,63 @@ function AuthenticatedApp() {
           ? shopAttentionCount
           : label === "Eintritte"
             ? onboardingAttentionCount
-            : null,
+            : label === "Tickets"
+              ? ticketAttentionCount
+              : label === "Phishing / Junk"
+                ? securityAttentionCount
+                : label === "Störungen"
+                  ? incidentAttentionCount
+                  : label === "Überwachung"
+                    ? (monitoringAttention?.count ?? null)
+                    : null,
     );
+  /** Red badge (needs action) or grey (open, but taken over). */
+  const navigationBadgeTone = (label: Section): "urgent" | "muted" | null =>
+    label === "Phishing / Junk"
+      ? teamModuleUrgent.securityCases
+        ? "urgent"
+        : "muted"
+      : label === "Störungen"
+        ? teamModuleUrgent.incidents
+          ? "urgent"
+          : "muted"
+        : label === "Überwachung"
+          ? monitoringAttention?.urgent
+            ? "urgent"
+            : "muted"
+          : null;
+  const navigationBadgeClass = (
+    base: string,
+    tone: "urgent" | "muted" | null,
+  ) => (tone ? `${base} ${base.split(" ")[0]}--${tone}` : base);
   const navigationAttentionDescription = (label: Section): string =>
     label === "Raumplanung"
       ? "Raumaufträge benötigen Zuweisung oder Klärung"
       : label === "Shop"
         ? "neue Bestellungen warten auf Bearbeitung"
-        : "Eintritte sind noch nicht in Bearbeitung";
-  // Berichte stands on its own below the categories.
-  const reportsNavigationItem = navigationItemsBySection.get("Berichte");
+        : label === "Tickets"
+          ? "Tickets sind noch keinem Agenten zugewiesen"
+          : label === "Phishing / Junk"
+            ? teamModuleUrgent.securityCases
+              ? "offene Phishing-/Junk-Fälle, davon nicht alle zugewiesen"
+              : "offene Phishing-/Junk-Fälle"
+            : label === "Störungen"
+              ? teamModuleUrgent.incidents
+                ? "aktive Störungen, davon nicht alle bestätigt"
+                : "aktive Störungen"
+              : label === "Überwachung"
+                ? monitoringAttention?.urgent
+                  ? "Geräte mit Ausfall oder Warnung, davon mindestens eines mit Ausfall"
+                  : "Geräte mit Warnung"
+                : "Eintritte sind noch nicht in Bearbeitung";
+  // Berichte und darunter die Wissensdatenbank stehen für sich unter den
+  // Kategorien.
+  const standaloneNavigationItems = (["Berichte", "Wissen"] as const).flatMap(
+    (label) => {
+      const item = navigationItemsBySection.get(label);
+      return item ? [item] : [];
+    },
+  );
   const navigationGroups = NAVIGATION_CATEGORIES.map((category) => ({
     ...category,
     items: category.sectionLabels.flatMap((label) => {
@@ -5313,12 +6146,59 @@ function AuthenticatedApp() {
         .length,
     [notifications],
   );
+  // Wer ein Ticket öffnet, hat die Mitteilungen dazu gesehen: sie gelten als
+  // gelesen (Glocke und Zahl auf dem App-Symbol). Kommt bei geöffnetem Ticket
+  // eine neue Mitteilung dazu, wird sie ebenfalls gleich gelesen.
+  const openTicketId = selectedTicketId ?? splitSelectedTicketId ?? null;
+  const hasUnreadForOpenTicket = openTicketId
+    ? notifications.some(
+        (notification) =>
+          notification.readAt === null &&
+          notification.ticket?.id === openTicketId,
+      )
+    : false;
+  const markedTicketRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openTicketId) {
+      markedTicketRef.current = null;
+      return;
+    }
+    if (!supabase || !activeTenant?.id) return;
+    if (markedTicketRef.current === openTicketId && !hasUnreadForOpenTicket) {
+      return;
+    }
+    markedTicketRef.current = openTicketId;
+    void supabase.functions
+      .invoke("notification-center", {
+        body: {
+          type: "markTicketRead",
+          tenantId: activeTenant.id,
+          ticketId: openTicketId,
+        },
+      })
+      .then(({ error }) => {
+        if (error) return;
+        const readAt = new Date().toISOString();
+        setNotifications((items) =>
+          items.some(
+            (item) => item.readAt === null && item.ticket?.id === openTicketId,
+          )
+            ? items.map((item) =>
+                item.readAt === null && item.ticket?.id === openTicketId
+                  ? { ...item, readAt }
+                  : item,
+              )
+            : items,
+        );
+      })
+      .catch(() => undefined);
+  }, [openTicketId, activeTenant?.id, hasUnreadForOpenTicket]);
 
   if (isSupabaseConfigured && session === undefined) {
     return <LoadingScreen message="Sichere Sitzung wird geprüft." />;
   }
   if (isSupabaseConfigured && session === null) {
-    return <SignInScreen />;
+    return <SignInScreen callbackError={errorMessage} />;
   }
   if (isSupabaseConfigured && session && oauthAuthorizationId) {
     return (
@@ -5429,14 +6309,18 @@ function AuthenticatedApp() {
                   const label = sectionDisplayLabel(item.label);
                   return (
                     <button
-                      aria-current={navSection === item.label ? "page" : undefined}
+                      aria-current={
+                        navSection === item.label ? "page" : undefined
+                      }
                       aria-label={
                         hasAttention
                           ? `${label} – ${attentionCount} ${navigationAttentionDescription(item.label)}`
                           : label
                       }
                       className={
-                        navSection === item.label ? "nav-item active" : "nav-item"
+                        navSection === item.label
+                          ? "nav-item active"
+                          : "nav-item"
                       }
                       key={item.label}
                       onClick={() => {
@@ -5454,7 +6338,10 @@ function AuthenticatedApp() {
                       {hasAttention ? (
                         <span
                           aria-hidden="true"
-                          className="nav-item__badge nav-item__badge--trailing"
+                          className={navigationBadgeClass(
+                            "nav-item__badge nav-item__badge--trailing",
+                            navigationBadgeTone(item.label),
+                          )}
                         >
                           {attentionCount > 99 ? "99+" : attentionCount}
                         </span>
@@ -5501,6 +6388,17 @@ function AuthenticatedApp() {
                     ),
                   });
                 const hasCategoryAttention = categoryAttentionCount !== null;
+                // Grey only when every counted item is merely open.
+                const categoryTones = category.items
+                  .filter((item) => navigationAttentionFor(item.label) !== null)
+                  .map((item) => navigationBadgeTone(item.label));
+                const categoryBadgeTone: "urgent" | "muted" | null =
+                  categoryTones.includes("urgent")
+                    ? "urgent"
+                    : categoryTones.length > 0 &&
+                        categoryTones.every((tone) => tone === "muted")
+                      ? "muted"
+                      : null;
                 const panelId = `${category.id}-panel`;
 
                 return (
@@ -5528,7 +6426,10 @@ function AuthenticatedApp() {
                           {hasCategoryAttention ? (
                             <span
                               aria-hidden="true"
-                              className="navigation-cluster__badge"
+                              className={navigationBadgeClass(
+                                "navigation-cluster__badge",
+                                categoryBadgeTone,
+                              )}
                             >
                               {categoryAttentionCount > 99
                                 ? "99+"
@@ -5587,7 +6488,10 @@ function AuthenticatedApp() {
                               {hasAttention ? (
                                 <span
                                   aria-hidden="true"
-                                  className="nav-item__badge nav-item__badge--trailing"
+                                  className={navigationBadgeClass(
+                                    "nav-item__badge nav-item__badge--trailing",
+                                    navigationBadgeTone(item.label),
+                                  )}
                                 >
                                   {attentionCount > 99 ? "99+" : attentionCount}
                                 </span>
@@ -5601,33 +6505,30 @@ function AuthenticatedApp() {
                 );
               })}
             </div>
-            {reportsNavigationItem ? (
+            {standaloneNavigationItems.length > 0 ? (
               <nav
-                aria-label="Berichte"
+                aria-label="Berichte und Wissensdatenbank"
                 className="workplace-primary-navigation rail-reports-navigation"
               >
-                <button
-                  aria-current={
-                    navSection === reportsNavigationItem.label ? "page" : undefined
-                  }
-                  className={
-                    navSection === reportsNavigationItem.label
-                      ? "nav-item active"
-                      : "nav-item"
-                  }
-                  onClick={() => {
-                    setPersonalSettingsOpen(false);
-                    setSection(reportsNavigationItem.label);
-                  }}
-                  type="button"
-                >
-                  <reportsNavigationItem.Icon
-                    aria-hidden="true"
-                    size={18}
-                    strokeWidth={1.8}
-                  />
-                  {sectionDisplayLabel(reportsNavigationItem.label)}
-                </button>
+                {standaloneNavigationItems.map((item) => (
+                  <button
+                    aria-current={
+                      navSection === item.label ? "page" : undefined
+                    }
+                    className={
+                      navSection === item.label ? "nav-item active" : "nav-item"
+                    }
+                    key={item.label}
+                    onClick={() => {
+                      setPersonalSettingsOpen(false);
+                      setSection(item.label);
+                    }}
+                    type="button"
+                  >
+                    <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
+                    {sectionDisplayLabel(item.label)}
+                  </button>
+                ))}
               </nav>
             ) : null}
           </>
@@ -5848,6 +6749,11 @@ function AuthenticatedApp() {
                     return;
                   }
                   setGlobalSearchTarget(result);
+                  if (result.resultType === "incident") {
+                    setIncidentFocusId(result.entityId);
+                  } else if (result.resultType === "security_case") {
+                    setSecurityFocusId(result.entityId);
+                  }
                   if (result.resultType === "ticket" && result.ticketId) {
                     setSection("Tickets");
                     setSelectedTicketId(result.ticketId);
@@ -6050,7 +6956,10 @@ function AuthenticatedApp() {
           </section>
         )}
         {activeTenant && requesterPortalEnabled && (
-          <IncidentBanner notices={activeIncidentNotices} />
+          <>
+            <IncidentBanner notices={activeIncidentNotices} />
+            <MaintenanceBanner maintenances={bannerMaintenances} />
+          </>
         )}
         {personalSettingsOpen && session ? (
           <PersonalSettings
@@ -6132,11 +7041,34 @@ function AuthenticatedApp() {
             }}
             tenantId={activeTenant.id}
           />
+        ) : section === "Phishing / Junk" &&
+          activeTenant &&
+          canWorkTickets &&
+          teamModuleAccess.securityCases ? (
+          <SecurityCases
+            focusId={securityFocusId}
+            key={activeTenant.id}
+            onFocusConsumed={clearSecurityFocus}
+            tenantId={activeTenant.id}
+          />
+        ) : section === "Störungen" &&
+          activeTenant &&
+          canWorkTickets &&
+          teamModuleAccess.incidents ? (
+          <Incidents
+            focusId={incidentFocusId}
+            key={activeTenant.id}
+            onFocusConsumed={clearIncidentFocus}
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Infrastruktur" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
           <Infrastructure
+            focusDeviceId={infrastructureFocusId}
             initialRack={infrastructureRackFocus ?? undefined}
+            onFocusConsumed={clearInfrastructureFocus}
             labelBranding={{
               name: workspaceBrandName,
               logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
@@ -6144,10 +7076,62 @@ function AuthenticatedApp() {
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             tenantId={activeTenant.id}
           />
+        ) : section === "IP-Adressen" &&
+          activeTenant &&
+          isFeatureEnabled("ipam.management") ? (
+          <Ipam
+            apiPanel={(panel) => (
+              <IpamApiSettings
+                canManage={panel.canManage}
+                tenantId={panel.tenantId}
+              />
+            )}
+            discoveryPanel={(panel) => <IpamDiscoveryPanel {...panel} />}
+            focus={ipamFocus}
+            importPanel={(panel) => <IpamImportWizard {...panel} />}
+            key={activeTenant.id}
+            onFocusConsumed={clearIpamFocus}
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
+            tenantId={activeTenant.id}
+          />
+        ) : section === "Überwachung" &&
+          activeTenant &&
+          isFeatureEnabled("monitoring.native") ? (
+          <Monitoring
+            key={activeTenant.id}
+            onOpenIncident={
+              canWorkTickets && teamModuleAccess.incidents
+                ? (id) => {
+                    setIncidentFocusId(id);
+                    setSection("Störungen");
+                  }
+                : undefined
+            }
+            onOpenInfrastructure={
+              isFeatureEnabled("assets.management")
+                ? (id) => {
+                    setInfrastructureFocusId(id);
+                    setSection("Infrastruktur");
+                  }
+                : undefined
+            }
+            onOpenTicket={
+              canWorkTickets
+                ? (ticketId) => setSelectedTicketId(ticketId)
+                : undefined
+            }
+            tenantId={activeTenant.id}
+          />
         ) : section === "Lager" &&
           activeTenant &&
           isFeatureEnabled("inventory.management") ? (
           <Inventory
+            focusItemId={inventoryFocusId ?? undefined}
+            onFocusConsumed={() => setInventoryFocusId(null)}
+            labelBranding={{
+              name: workspaceBrandName,
+              logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
+            }}
             createRequestId={
               activeQuickCreateRequest?.action === "inventoryItem"
                 ? activeQuickCreateRequest.id
@@ -6159,7 +7143,18 @@ function AuthenticatedApp() {
         ) : section === "Shop" &&
           activeTenant &&
           isFeatureEnabled("self_service.shop") ? (
-          <Shop key={activeTenant.id} tenantId={activeTenant.id} />
+          <Shop
+            focusOrderId={shopFocusOrderId}
+            key={activeTenant.id}
+            onFocusConsumed={clearShopFocus}
+            tenantId={activeTenant.id}
+          />
+        ) : section === "Teams" && activeTenant && teamsManage ? (
+          <TeamsAdmin
+            key={activeTenant.id}
+            tenantId={activeTenant.id}
+            today={teamsManage.today}
+          />
         ) : section === "Serviceaufgaben" && activeTenant ? (
           <ServiceTasks
             createRequestId={
@@ -6318,23 +7313,31 @@ function AuthenticatedApp() {
               onUnreadMentionsChange={ignoreUnreadMentions}
               portalPanel={
                 requesterPortalEnabled ? (
-                  <RequesterPortalPanel
-                    embedded={
-                      agentWorkbenchEnabled || workplaceFollowUpsEnabled
-                    }
-                    onCreateTicket={() => startQuickCreate("ticket")}
-                    onOpenShop={
-                      workSections.some((item) => item.label === "Shop")
-                        ? () => setSection("Shop")
-                        : undefined
-                    }
-                    onOpenTicket={(ticketId) => {
-                      setSection("Tickets");
-                      setSelectedTicketId(ticketId);
-                    }}
-                    onOpenTickets={() => setSection("Tickets")}
-                    tenantId={activeTenant.id}
-                  />
+                  <>
+                    {isFeatureEnabled("portal.notices") ? (
+                      <RequesterNotices
+                        onNavigate={openRequesterNotice}
+                        tenantId={activeTenant.id}
+                      />
+                    ) : null}
+                    <RequesterPortalPanel
+                      embedded={
+                        agentWorkbenchEnabled || workplaceFollowUpsEnabled
+                      }
+                      onCreateTicket={() => startQuickCreate("ticket")}
+                      onOpenShop={
+                        workSections.some((item) => item.label === "Shop")
+                          ? () => setSection("Shop")
+                          : undefined
+                      }
+                      onOpenTicket={(ticketId) => {
+                        setSection("Tickets");
+                        setSelectedTicketId(ticketId);
+                      }}
+                      onOpenTickets={() => setSection("Tickets")}
+                      tenantId={activeTenant.id}
+                    />
+                  </>
                 ) : undefined
               }
               requestedView={
@@ -6353,6 +7356,15 @@ function AuthenticatedApp() {
           </>
         ) : section === "Tickets" ? (
           <>
+            {activeTenant &&
+            isSupabaseConfigured &&
+            !canWorkTickets &&
+            isFeatureEnabled("portal.notices") ? (
+              <RequesterNotices
+                onNavigate={openRequesterNotice}
+                tenantId={activeTenant.id}
+              />
+            ) : null}
             <section className="ticket-panel panel ticket-module">
               <div className="panel-heading">
                 <div>
@@ -6389,6 +7401,10 @@ function AuthenticatedApp() {
               />
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
                 <TicketListFilters
+                  onTicketsRestored={() => {
+                    setTicketPage(0);
+                    setDashboardRevision((current) => current + 1);
+                  }}
                   agents={ticketFilterOptions.agents}
                   departments={ticketFilterOptions.departments}
                   filters={ticketListRefinement}
@@ -6396,22 +7412,7 @@ function AuthenticatedApp() {
                   onChange={setTicketListRefinement}
                   onClear={clearTicketFilters}
                   onQueryChange={updateTicketSearchQuery}
-                  onSavedViewApply={(filters) => {
-                    clearTicketSelection();
-                    setMetricTicketFilter(null);
-                    setReportDrilldown(null);
-                    setQuery(filters.query);
-                    setQueue(filters.queue);
-                    setTicketScope(filters.ticketScope);
-                    setTicketListRefinement({
-                      agent: filters.agent,
-                      department: filters.department,
-                      priority: filters.priority,
-                      sortBy: filters.sortBy,
-                      sortDirection: filters.sortDirection,
-                      status: filters.status,
-                    });
-                  }}
+                  onSavedViewApply={applySavedTicketView}
                   onSavedViewsChange={setSavedTicketViews}
                   priorities={ticketFilterOptions.priorities}
                   query={query}
@@ -6445,7 +7446,22 @@ function AuthenticatedApp() {
                     setTicketActionStatus(
                       cleanupPending > 0
                         ? `${deleted} Tickets wurden gelöscht. Die Bereinigung von ${cleanupPending} Dateianhängen ist protokolliert.`
-                        : `${deleted} Tickets wurden endgültig gelöscht.`,
+                        : tn(
+                            `${deleted} Tickets wurden in den Papierkorb verschoben. Diese lassen sich 90 Tage lang über den Filter «Gelöschte Tickets» wiederherstellen.`,
+                            `${deleted} Tickets wurden in den Papierkorb verschoben. Sie lassen sich 90 Tage lang über den Filter «Gelöschte Tickets» wiederherstellen.`,
+                          ),
+                    );
+                  }}
+                  onSpammed={(marked, blockedSenders) => {
+                    clearTicketSelection();
+                    setTicketPage(0);
+                    setDashboardRevision((current) => current + 1);
+                    setTicketActionStatus(
+                      `${marked} Tickets wurden als Spam markiert${
+                        blockedSenders > 0
+                          ? `, ${blockedSenders} Absender gesperrt`
+                          : ""
+                      }. Die Tickets sind über den Filter «Spam» auffindbar.`,
                     );
                   }}
                   onClearSelection={clearTicketSelection}
@@ -6461,7 +7477,37 @@ function AuthenticatedApp() {
               />
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
                 <SupportLevelQueueFilter
+                  views={{
+                    options: savedTicketViews.map((view) => ({
+                      value: view.id,
+                      label:
+                        view.ownerId === session?.user.id
+                          ? view.name
+                          : `${view.name} (geteilt)`,
+                    })),
+                    value: activeSavedTicketView?.id ?? "",
+                    onChange: (viewId) => {
+                      const view = savedTicketViews.find(
+                        (entry) => entry.id === viewId,
+                      );
+                      if (view) applySavedTicketView(view.filters);
+                      else clearTicketFilters();
+                    },
+                  }}
                   onChange={setSupportLevelFilter}
+                  sort={{
+                    options: TICKET_SORT_OPTIONS,
+                    sortBy: ticketListRefinement.sortBy,
+                    sortDirection: ticketListRefinement.sortDirection,
+                    onChange: (sortBy, sortDirection) => {
+                      setTicketPage(0);
+                      setTicketListRefinement((current) => ({
+                        ...current,
+                        sortBy,
+                        sortDirection,
+                      }));
+                    },
+                  }}
                   tenantId={activeTenant.id}
                   value={supportLevelFilter}
                 />
@@ -6518,9 +7564,20 @@ function AuthenticatedApp() {
                   <div>
                     <strong>Aktive Suche</strong>
                     <span>
-                      Nutzen Sie z. B. <code>status:offen</code>,{" "}
-                      <code>prio:hoch</code>, <code>queue:ict</code>,{" "}
-                      <code>sla:kritisch</code> oder <code>agent:mir</code>.
+                      {tn(
+                        <>
+                          Nutze z. B. <code>status:offen</code>,{" "}
+                          <code>prio:hoch</code>, <code>queue:ict</code>,{" "}
+                          <code>sla:kritisch</code>, <code>sla:pausiert</code>{" "}
+                          oder <code>agent:mir</code>.
+                        </>,
+                        <>
+                          Nutzen Sie z. B. <code>status:offen</code>,{" "}
+                          <code>prio:hoch</code>, <code>queue:ict</code>,{" "}
+                          <code>sla:kritisch</code>, <code>sla:pausiert</code>{" "}
+                          oder <code>agent:mir</code>.
+                        </>,
+                      )}
                     </span>
                   </div>
                   <div
@@ -6798,6 +7855,14 @@ function AuthenticatedApp() {
                         <>
                           {activeTenant && canWorkTickets && (
                             <MyPrioritiesCard
+                              onOpenIncident={(id) => {
+                                setIncidentFocusId(id);
+                                setSection("Störungen");
+                              }}
+                              onOpenSecurityCase={(id) => {
+                                setSecurityFocusId(id);
+                                setSection("Phishing / Junk");
+                              }}
                               onOpenTicket={(ticketId) => {
                                 setSection("Tickets");
                                 setSelectedTicketId(ticketId);
@@ -6895,7 +7960,7 @@ function AuthenticatedApp() {
             if (session?.user.id) markTourSeen(session.user.id, true);
           }}
           onNavigate={navigateForTour}
-          steps={AGENT_TOUR}
+          steps={agentTour()}
         />
       ) : null}
       {workspaceLiveMessage &&
@@ -6956,8 +8021,10 @@ function AuthenticatedApp() {
               </button>
             </header>
             <p>
-              Die Kürzel sind in Eingabefeldern deaktiviert, damit Sie ungestört
-              suchen und schreiben können.
+              {tn(
+                "Die Kürzel sind in Eingabefeldern deaktiviert, damit du ungestört suchen und schreiben kannst.",
+                "Die Kürzel sind in Eingabefeldern deaktiviert, damit Sie ungestört suchen und schreiben können.",
+              )}
             </p>
             <dl>
               <div>
@@ -7254,7 +8321,12 @@ function AuthenticatedApp() {
         <aside className="ticket-success-toast" aria-live="polite">
           <CheckCircle2 aria-hidden="true" size={24} strokeWidth={1.8} />
           <div>
-            <strong>Ihr Entwurf wurde gespeichert</strong>
+            <strong>
+              {tn(
+                "Dein Entwurf wurde gespeichert",
+                "Ihr Entwurf wurde gespeichert",
+              )}
+            </strong>
             <span>
               Beim nächsten Öffnen von «Ticket erfassen» ist er wieder da.
             </span>
@@ -7323,6 +8395,11 @@ function AuthenticatedApp() {
                 : undefined
             }
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
+            onOpenIncident={(incidentId) => {
+              setSelectedTicketId(null);
+              setIncidentFocusId(incidentId);
+              setSection("Störungen");
+            }}
             onOpenPerson={
               canWorkTickets ? (person) => setPersonOverview(person) : undefined
             }
@@ -7350,6 +8427,16 @@ function AuthenticatedApp() {
                 }
               : undefined
           }
+          onOpenIncident={(id) => {
+            setPersonOverview(null);
+            setIncidentFocusId(id);
+            setSection("Störungen");
+          }}
+          onOpenSecurityCase={(id) => {
+            setPersonOverview(null);
+            setSecurityFocusId(id);
+            setSection("Phishing / Junk");
+          }}
           onOpenTicket={(ticketId) => {
             setPersonOverview(null);
             setSection("Tickets");
@@ -7379,12 +8466,14 @@ export function App() {
 function BulkTicketStatusActions({
   onApplied,
   onDeleted,
+  onSpammed,
   onClearSelection,
   selectedTicketIds,
   tenantId,
 }: {
   onApplied: (updated: number, statusLabel: string) => void;
   onDeleted: (deleted: number, cleanupPending: number) => void;
+  onSpammed: (marked: number, blockedSenders: number) => void;
   onClearSelection: () => void;
   selectedTicketIds: ReadonlySet<string>;
   tenantId: string;
@@ -7399,6 +8488,7 @@ function BulkTicketStatusActions({
   const [deleteConfirmationPending, setDeleteConfirmationPending] =
     useState(false);
   const [deleteTicketIds, setDeleteTicketIds] = useState<string[] | null>(null);
+  const [spamTicketIds, setSpamTicketIds] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -7409,6 +8499,7 @@ function BulkTicketStatusActions({
     setCloseConfirmationPending(false);
     setDeleteConfirmationPending(false);
     setDeleteTicketIds(null);
+    setSpamTicketIds(null);
     void supabase.functions
       .invoke("ticket-bulk-status", {
         body: { type: "listStatusOptions", tenantId },
@@ -7496,8 +8587,64 @@ function BulkTicketStatusActions({
       return;
     }
     setCloseConfirmationPending(false);
+    setSpamTicketIds(null);
     setDeleteTicketIds([...selectedTicketIds]);
     setDeleteConfirmationPending(true);
+  }
+
+  function prepareTicketSpam() {
+    if (selectedTicketIds.size > 50) {
+      setErrorMessage(
+        "Für Spam können höchstens 50 Tickets auf einmal ausgewählt werden.",
+      );
+      return;
+    }
+    setCloseConfirmationPending(false);
+    setDeleteConfirmationPending(false);
+    setDeleteTicketIds(null);
+    setSpamTicketIds([...selectedTicketIds]);
+  }
+
+  async function markTicketsSpam() {
+    if (!supabase || !spamTicketIds || spamTicketIds.length < 1) return;
+    setPending(true);
+    setErrorMessage("");
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "ticket-bulk-status",
+        {
+          body: {
+            type: "markSpam",
+            tenantId,
+            ticketIds: spamTicketIds,
+            confirmSpam: true,
+          },
+        },
+      );
+      if (error) throw error;
+      if (
+        !isRecord(data) ||
+        !isRecord(data.data) ||
+        typeof data.data.marked !== "number"
+      ) {
+        throw new Error("invalid_bulk_ticket_spam_response");
+      }
+      onSpammed(
+        data.data.marked,
+        typeof data.data.blockedSenders === "number"
+          ? data.data.blockedSenders
+          : 0,
+      );
+    } catch (error: unknown) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          "Die ausgewählten Tickets konnten nicht als Spam markiert werden.",
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
   }
 
   async function deleteTickets() {
@@ -7554,8 +8701,10 @@ function BulkTicketStatusActions({
       <div>
         <strong>{selectedTicketIds.size} Tickets ausgewählt</strong>
         <span>
-          Der Status wird nur gesetzt, wenn Sie für jedes Ticket berechtigt
-          sind.
+          {tn(
+            "Der Status wird nur gesetzt, wenn du für jedes Ticket berechtigt bist.",
+            "Der Status wird nur gesetzt, wenn Sie für jedes Ticket berechtigt sind.",
+          )}
         </span>
       </div>
       <label>
@@ -7613,7 +8762,51 @@ function BulkTicketStatusActions({
         >
           Tickets löschen
         </button>
+        <button
+          className="ticket-bulk-actions__delete-button"
+          disabled={pending}
+          onClick={prepareTicketSpam}
+          type="button"
+        >
+          Als Spam markieren
+        </button>
       </div>
+      {spamTicketIds && (
+        <div
+          aria-labelledby="bulk-spam-confirmation-title"
+          className="ticket-bulk-actions__confirmation ticket-bulk-actions__confirmation--danger"
+          role="group"
+        >
+          <div>
+            <strong id="bulk-spam-confirmation-title">
+              {spamTicketIds.length} Tickets als Spam markieren?
+            </strong>
+            <p>
+              Alle zukünftigen Tickets dieser Absender gehen automatisch in den
+              Spam: ohne Regeln, Mitteilungen und Statistik. Die Tickets sind
+              über den Filter «Spam» auffindbar.
+            </p>
+          </div>
+          <div className="ticket-bulk-actions__confirmation-buttons">
+            <button
+              className="ticket-bulk-actions__delete-button"
+              disabled={pending}
+              onClick={() => void markTicketsSpam()}
+              type="button"
+            >
+              Als Spam markieren
+            </button>
+            <button
+              className="secondary-button"
+              disabled={pending}
+              onClick={() => setSpamTicketIds(null)}
+              type="button"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
       {closeConfirmationPending && selectedStatus?.isClosed && (
         <div
           aria-labelledby="bulk-close-confirmation-title"
@@ -7658,11 +8851,13 @@ function BulkTicketStatusActions({
         >
           <div>
             <strong id="bulk-delete-confirmation-title">
-              {deleteTicketIds.length} Tickets endgültig löschen?
+              {deleteTicketIds.length} Tickets löschen?
             </strong>
             <p>
-              Tickets, Kommentare und zugehörige Einträge werden unwiderruflich
-              entfernt.
+              {tn(
+                "Die Tickets kommen in den Papierkorb und sind nirgends mehr sichtbar. Diese lassen sich 90 Tage lang wiederherstellen und werden danach endgültig entfernt.",
+                "Die Tickets kommen in den Papierkorb und sind nirgends mehr sichtbar. Sie lassen sich 90 Tage lang wiederherstellen und werden danach endgültig entfernt.",
+              )}
             </p>
           </div>
           <div className="ticket-bulk-actions__confirmation-buttons">
@@ -7672,7 +8867,7 @@ function BulkTicketStatusActions({
               onClick={() => void deleteTickets()}
               type="button"
             >
-              {deleteTicketIds.length} Tickets endgültig löschen
+              {deleteTicketIds.length} Tickets löschen
             </button>
             <button
               className="secondary-button"
@@ -7816,7 +9011,12 @@ function SavedTicketViews({
 
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setErrorMessage("Bitte geben Sie einen Namen für die Ansicht ein.");
+      setErrorMessage(
+        tn(
+          "Bitte gib einen Namen für die Ansicht ein.",
+          "Bitte geben Sie einen Namen für die Ansicht ein.",
+        ),
+      );
       return;
     }
 
@@ -7859,7 +9059,10 @@ function SavedTicketViews({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Ansicht konnte nicht gespeichert werden. Prüfen Sie Name und Berechtigung.",
+          tn(
+            "Die Ansicht konnte nicht gespeichert werden. Prüfe Name und Berechtigung.",
+            "Die Ansicht konnte nicht gespeichert werden. Prüfen Sie Name und Berechtigung.",
+          ),
         ),
       );
     } finally {
@@ -7908,7 +9111,12 @@ function SavedTicketViews({
       <div className="saved-ticket-views__heading">
         <div>
           <p className="eyebrow">GESPEICHERTE ANSICHTEN</p>
-          <p>Eigene Ansichten und Ansichten, die Ihr Team mit Ihnen teilt.</p>
+          <p>
+            {tn(
+              "Eigene Ansichten und Ansichten, die dein Team mit dir teilt.",
+              "Eigene Ansichten und Ansichten, die Ihr Team mit Ihnen teilt.",
+            )}
+          </p>
         </div>
       </div>
       <div className="saved-ticket-views__picker">
@@ -8042,6 +9250,62 @@ function SavedTicketViews({
   );
 }
 
+function TicketStatusMultiSelect({
+  onChange,
+  selected,
+  statuses,
+}: {
+  onChange: (labels: string[]) => void;
+  selected: string[];
+  statuses: readonly string[];
+}) {
+  const summary =
+    selected.length === 0
+      ? "Alle Status"
+      : selected.length <= 2
+        ? selected.join(", ")
+        : `${selected.length} Status gewählt`;
+  const toggle = (label: string) =>
+    onChange(
+      selected.includes(label)
+        ? selected.filter((entry) => entry !== label)
+        : [...selected, label],
+    );
+  return (
+    <div className="ticket-status-multi">
+      <span className="ticket-status-multi__label">Status</span>
+      <details className="ticket-status-multi__details">
+        <summary>{summary}</summary>
+        <div
+          className="ticket-status-multi__options"
+          role="group"
+          aria-label="Status"
+        >
+          {statuses.map((status) => (
+            <label key={status}>
+              <input
+                checked={selected.includes(status)}
+                onChange={() => toggle(status)}
+                type="checkbox"
+              />
+              <span>{status}</span>
+            </label>
+          ))}
+          {selected.length > 0 ? (
+            <button
+              className="ticket-status-multi__reset"
+              onClick={() => onChange([])}
+              type="button"
+            >
+              Auswahl aufheben
+            </button>
+          ) : null}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function TicketListFilters({
   agents,
   currentUserId,
@@ -8060,7 +9324,9 @@ function TicketListFilters({
   savedViewsLoading,
   statuses,
   tenantId,
+  onTicketsRestored,
 }: {
+  onTicketsRestored?: (count: number) => void;
   agents: readonly TicketAgentOption[];
   currentUserId: string | undefined;
   departments: readonly { key: string; label: string }[];
@@ -8080,6 +9346,8 @@ function TicketListFilters({
   tenantId: string;
 }) {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [isTrashOpen, setIsTrashOpen] = useState(false);
+  const [isSpamOpen, setIsSpamOpen] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const savedViewsSelectRef = useRef<HTMLSelectElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -8204,8 +9472,10 @@ function TicketListFilters({
                 <p className="eyebrow">TICKETLISTE</p>
                 <h2 id="ticket-list-filter-heading">Filter &amp; Sortierung</h2>
                 <p id="ticket-list-filter-description">
-                  Verfeinern Sie die sichtbaren Tickets nach den gewünschten
-                  Kriterien.
+                  {tn(
+                    "Verfeinere die sichtbaren Tickets nach den gewünschten Kriterien.",
+                    "Verfeinern Sie die sichtbaren Tickets nach den gewünschten Kriterien.",
+                  )}
                 </p>
               </div>
               <button
@@ -8257,20 +9527,13 @@ function TicketListFilters({
                     ))}
                   </select>
                 </label>
-                <label>
-                  <span>Status</span>
-                  <select
-                    onChange={(event) => update("status", event.target.value)}
-                    value={filters.status}
-                  >
-                    <option value="all">Alle Status</option>
-                    {statuses.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <TicketStatusMultiSelect
+                  onChange={(labels) =>
+                    update("status", joinStatusFilter(labels))
+                  }
+                  selected={splitStatusFilter(filters.status)}
+                  statuses={statuses}
+                />
                 <label>
                   <span>Abteilung</span>
                   <select
@@ -8309,11 +9572,11 @@ function TicketListFilters({
                     }
                     value={filters.sortBy}
                   >
-                    <option value="updated">Letzte Änderung</option>
-                    <option value="agent">Agent</option>
-                    <option value="status">Status</option>
-                    <option value="department">Abteilung</option>
-                    <option value="priority">Priorität</option>
+                    {TICKET_SORT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label>
@@ -8332,6 +9595,37 @@ function TicketListFilters({
                   </select>
                 </label>
               </div>
+            </div>
+            <div className="ticket-list-filter-panel__trash">
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  setIsPanelOpen(false);
+                  setIsTrashOpen(true);
+                }}
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={16} /> Gelöschte Tickets
+                anzeigen
+              </button>
+              <small>
+                Gelöschte Tickets 90 Tage lang ansehen und wiederherstellen.
+              </small>
+            </div>
+            <div className="ticket-list-filter-panel__trash">
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  setIsPanelOpen(false);
+                  setIsSpamOpen(true);
+                }}
+                type="button"
+              >
+                <MailX aria-hidden="true" size={16} /> Spam anzeigen
+              </button>
+              <small>
+                Als Spam eingestufte Tickets ansehen und Absender freigeben.
+              </small>
             </div>
             <footer className="ticket-list-filter-panel__footer">
               <button
@@ -8352,6 +9646,26 @@ function TicketListFilters({
             </footer>
           </section>
         </div>
+      )}
+      {isSpamOpen && (
+        <TicketSpamDialog
+          onClose={() => {
+            setIsSpamOpen(false);
+            window.requestAnimationFrame(() => triggerRef.current?.focus());
+          }}
+          onRestored={(count) => onTicketsRestored?.(count)}
+          tenantId={tenantId}
+        />
+      )}
+      {isTrashOpen && (
+        <TicketTrashDialog
+          onClose={() => {
+            setIsTrashOpen(false);
+            window.requestAnimationFrame(() => triggerRef.current?.focus());
+          }}
+          onRestored={(count) => onTicketsRestored?.(count)}
+          tenantId={tenantId}
+        />
       )}
     </>
   );

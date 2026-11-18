@@ -1,4 +1,5 @@
 import { formatPersonDisplayName } from "./person-display-name";
+import { slaPausedLabel } from "./sla-pause";
 import { supabase } from "./supabase";
 import { parseTicketSearch } from "./ticket-search";
 import {
@@ -47,6 +48,22 @@ export type LiveTicketListRefinement = {
   sortDirection: "asc" | "desc";
   status: string;
 };
+
+/** Mehrfachauswahl wird als "A|B" gespeichert; "all" = kein Filter. */
+export const STATUS_FILTER_SEPARATOR = "|";
+
+export function splitStatusFilter(value: string): string[] {
+  if (!value || value === "all") return [];
+  return value
+    .split(STATUS_FILTER_SEPARATOR)
+    .map((label) => label.trim())
+    .filter(Boolean);
+}
+
+export function joinStatusFilter(labels: readonly string[]): string {
+  const unique = [...new Set(labels)];
+  return unique.length ? unique.join(STATUS_FILTER_SEPARATOR) : "all";
+}
 
 export type LiveTicketScope =
   "all" | "mine" | "unassigned" | "open" | "closed" | "delegated";
@@ -190,7 +207,12 @@ export function ticketListRpcArguments(
       : records
           .filter((record) => record.label === selectedLabel)
           .map((record) => record.id);
-  const statusIds = idsForLabel(statuses, activeRefinement.status);
+  const selectedStatusLabels = splitStatusFilter(activeRefinement.status);
+  const statusIds = selectedStatusLabels.length
+    ? statuses
+        .filter((record) => selectedStatusLabels.includes(record.label))
+        .map((record) => record.id)
+    : null;
   const priorityIds = idsForLabel(priorities, activeRefinement.priority);
   const departmentIds =
     activeRefinement.department === "all"
@@ -345,10 +367,16 @@ function formatAge(timestamp: string): string {
   return `${Math.floor(hours / 24)} T`;
 }
 
-function formatDueAt(dueAt: string | null): {
+export function formatDueAt(
+  dueAt: string | null,
+  slaPausedAt: string | null = null,
+): {
   label: string;
   risk: DashboardTicket["risk"];
 } {
+  // A paused SLA (waiting status) shows its start instead of a countdown.
+  const paused = slaPausedLabel(slaPausedAt);
+  if (paused) return { label: paused, risk: "ok" };
   if (!dueAt) return { label: "kein SLA-Ziel", risk: "ok" };
   const difference = Date.parse(dueAt) - Date.now();
   if (difference <= 0) return { label: "SLA überfällig", risk: "kritisch" };
@@ -372,6 +400,8 @@ function normaliseEvent(eventType: string): string {
   const labels: Record<string, string> = {
     "ticket.created": "Ticket erstellt",
     "ticket.updated": "Ticket aktualisiert",
+    "ticket.sla.paused": "SLA pausiert",
+    "ticket.sla.resumed": "SLA fortgesetzt",
     "comment.external_added": "Externer Kommentar hinzugefügt",
     "comment.internal_added": "Interne Notiz hinzugefügt",
     "ticket.tag_added": "Einordnung aktualisiert",
@@ -506,29 +536,44 @@ export async function loadLiveDashboard(
   const closedStatusIds = statuses
     .filter((status) => status.is_closed)
     .map((status) => status.id);
+  // Security cases (phishing reports) are not counted with the tickets.
   const countsPromise = Promise.all([
     client
       .from("tickets")
       .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenant.id),
+      .eq("tenant_id", tenant.id)
+      .eq("is_security_case", false),
     closedStatusIds.length > 0
       ? client
           .from("tickets")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenant.id)
+          .eq("is_security_case", false)
           .in("status_id", closedStatusIds)
       : Promise.resolve({ count: 0, error: null }),
+    // «Meine offenen Tickets»: the same count as the list behind the tile
+    // (assigned to or requested by me, not solved or closed, no security
+    // cases), taken from the list function itself so both always agree.
     user
       ? client
-          .from("tickets")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenant.id)
-          .eq("assigned_agent_id", user.id)
+          .rpc("list_authorized_ticket_list_page_v2", {
+            p_limit: 1,
+            p_scope: "mine",
+            p_tenant_id: tenant.id,
+          })
+          .then(({ data, error }) => ({
+            count: Number(
+              (Array.isArray(data) ? data[0] : null)?.matching_ticket_count ??
+                0,
+            ),
+            error,
+          }))
       : Promise.resolve({ count: 0, error: null }),
     client
       .from("tickets")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenant.id)
+      .eq("is_security_case", false)
       .is("assigned_agent_id", null),
     client
       .from("ticket_events")
@@ -541,6 +586,15 @@ export async function loadLiveDashboard(
   // Avoid an unhandled rejection if the list query throws first.
   countsPromise.catch(() => undefined);
   const supportLevel = ticketListControls?.supportLevel ?? null;
+  // With a support level queue (1st/2nd/3rd Level) the tiles count only the
+  // tickets of that level, like the list below them (0260).
+  const levelCountsPromise = supportLevel
+    ? client.rpc("ticket_level_counts", {
+        p_tenant_id: tenant.id,
+        p_support_level: supportLevel,
+      })
+    : null;
+  levelCountsPromise?.then(undefined, () => undefined);
   // v2 (0232) carries the report drilldown filters and the support level
   // queue filter (0230) in one function.
   const ticketsResult = await client.rpc(
@@ -606,13 +660,14 @@ export async function loadLiveDashboard(
     .slice(0, TICKET_PAGE_SIZE)
     .map((ticket) => ticket.id);
   const ticketTeamIds = new Map<string, string | null>();
+  const slaPausedAt = new Map<string, string>();
   const teamNames = new Map<string, string>();
   const requesterNames = new Map<string, string>();
   if (listedTicketIds.length > 0) {
     const [teamRowsResult, teamsResult, requesterResult] = await Promise.all([
       client
         .from("tickets")
-        .select("id, assigned_team_id")
+        .select("id, assigned_team_id, sla_paused_at")
         .in("id", listedTicketIds),
       client.functions.invoke("ticket-agent-assignment", {
         body: { tenantId: tenant.id, type: "listTeams" },
@@ -637,8 +692,10 @@ export async function loadLiveDashboard(
     for (const row of (teamRowsResult.data ?? []) as {
       id: string;
       assigned_team_id: string | null;
+      sla_paused_at?: string | null;
     }[]) {
       ticketTeamIds.set(row.id, row.assigned_team_id ?? null);
+      if (row.sla_paused_at) slaPausedAt.set(row.id, row.sla_paused_at);
     }
     for (const team of ticketTeamsFromResponse(teamsResult.data)) {
       teamNames.set(team.id, team.name);
@@ -646,7 +703,10 @@ export async function loadLiveDashboard(
   }
 
   const ticketRows = tickets.slice(0, TICKET_PAGE_SIZE).map((ticket) => {
-    const due = formatDueAt(ticket.resolution_due_at);
+    const pausedAt = ticket.status_is_closed
+      ? null
+      : (slaPausedAt.get(ticket.id) ?? null);
+    const due = formatDueAt(ticket.resolution_due_at, pausedAt);
     return {
       age: formatAge(ticket.created_at),
       assignedAgentId: ticket.assigned_agent_id,
@@ -680,6 +740,7 @@ export async function loadLiveDashboard(
       queueLabel: ticket.department_name,
       risk: due.risk,
       sla: due.label,
+      slaPaused: pausedAt !== null,
       state: ticket.status_label,
       statusOrder: ticket.status_sort_order,
       subject: ticket.subject,
@@ -701,10 +762,21 @@ export async function loadLiveDashboard(
   if (unassignedCountResult.error) throw unassignedCountResult.error;
   if (eventsResult.error) throw eventsResult.error;
 
-  const totalTicketCount = totalCountResult.count ?? 0;
-  const closedCount = closedCountResult.count ?? 0;
-  const mineCount = mineCountResult.count ?? 0;
-  const unassignedCount = unassignedCountResult.count ?? 0;
+  let totalTicketCount = totalCountResult.count ?? 0;
+  let closedCount = closedCountResult.count ?? 0;
+  let mineCount = mineCountResult.count ?? 0;
+  let unassignedCount = unassignedCountResult.count ?? 0;
+  if (levelCountsPromise) {
+    const levelCounts = await levelCountsPromise;
+    if (levelCounts.error) throw levelCounts.error;
+    const row = (
+      Array.isArray(levelCounts.data) ? levelCounts.data[0] : levelCounts.data
+    ) as Record<string, unknown> | null | undefined;
+    totalTicketCount = Number(row?.total ?? 0);
+    closedCount = Number(row?.closed ?? 0);
+    mineCount = Number(row?.mine ?? 0);
+    unassignedCount = Number(row?.unassigned ?? 0);
+  }
   const matchingTicketCount = Number(tickets[0]?.matching_ticket_count ?? 0);
   const ticketListCount =
     Number.isSafeInteger(matchingTicketCount) && matchingTicketCount >= 0
@@ -737,7 +809,7 @@ export async function loadLiveDashboard(
       closed: String(closedCount),
       closedDetail: "im aktuellen Bestand",
       mine: String(mineCount),
-      mineDetail: "mir zugewiesen",
+      mineDetail: "zugewiesen oder angefragt",
       open: String(openCount),
       openDetail: "aktuell offen",
       unassigned: String(unassignedCount),

@@ -20,6 +20,7 @@ const KNOWLEDGE_READ_PERMISSION = "knowledge.read";
 const KNOWLEDGE_PUBLISH_PERMISSION = "knowledge.publish";
 const KNOWLEDGE_FEATURE = "knowledge.base";
 const MAX_TITLE_LENGTH = 240;
+const MAX_SUMMARY_LENGTH = 500;
 const MAX_BODY_LENGTH = 100_000;
 const MAX_QUERY_LENGTH = 120;
 /** Request bodies: article texts stay well below 1 MB; images up to 5 MB. */
@@ -57,7 +58,13 @@ type Action =
       collectionId: string;
       name: string;
     }
-  | { type: "listArticles"; tenantId: string; query?: string }
+  | {
+      type: "listArticles";
+      tenantId: string;
+      query?: string;
+      /** Web list: excerpts instead of full bodies, no image URLs. */
+      compact?: boolean;
+    }
   | { type: "getArticle"; tenantId: string; articleId: string }
   | { type: "listRevisions"; tenantId: string; articleId: string }
   | {
@@ -67,6 +74,7 @@ type Action =
       collectionIds: string[];
     }
   | { type: "requestReview"; tenantId: string; articleId: string }
+  | { type: "publishArticle"; tenantId: string; articleId: string }
   | {
       type: "decideReview";
       tenantId: string;
@@ -80,6 +88,8 @@ type Action =
       articleId?: string;
       title: string;
       bodyMarkdown: string;
+      /** «Kurz gesagt» of the article (optional, up to 500 characters). */
+      summary?: string;
       visibility: Visibility;
       departmentId?: string;
     }
@@ -181,6 +191,7 @@ function parseAction(value: unknown): Action | null {
       type: value.type,
       tenantId: value.tenantId,
       ...(query !== undefined && query.length > 0 ? { query } : {}),
+      ...(value.compact === true ? { compact: true } : {}),
     };
   }
 
@@ -214,7 +225,10 @@ function parseAction(value: unknown): Action | null {
     };
   }
 
-  if (value.type === "requestReview" && isUuid(value.articleId))
+  if (
+    (value.type === "requestReview" || value.type === "publishArticle") &&
+    isUuid(value.articleId)
+  )
     return {
       type: value.type,
       tenantId: value.tenantId,
@@ -279,10 +293,18 @@ function parseAction(value: unknown): Action | null {
     const article = optionalUuid(value.articleId);
     const department = optionalUuid(value.departmentId);
     const title = requiredText(value.title, 3, MAX_TITLE_LENGTH);
+    const summary =
+      value.summary === undefined || value.summary === null
+        ? ""
+        : typeof value.summary === "string" &&
+            value.summary.trim().length <= MAX_SUMMARY_LENGTH
+          ? value.summary.trim()
+          : null;
     if (
       !article.valid ||
       !department.valid ||
       title === null ||
+      summary === null ||
       typeof value.bodyMarkdown !== "string" ||
       value.bodyMarkdown.length > MAX_BODY_LENGTH ||
       (value.visibility !== "internal" && value.visibility !== "external")
@@ -297,6 +319,7 @@ function parseAction(value: unknown): Action | null {
         : {}),
       title,
       bodyMarkdown: value.bodyMarkdown,
+      ...(summary ? { summary } : {}),
       visibility: value.visibility,
       ...(typeof department.value === "string"
         ? { departmentId: department.value.toLowerCase() }
@@ -477,12 +500,104 @@ async function fetchCurrentRevision(
   return { data: data ?? null, error: Boolean(error) };
 }
 
+/** Plain-text teaser of an article body (no markdown syntax, no images). */
+export function articleExcerpt(
+  body: unknown,
+  maxLength = 160,
+  query?: string,
+): string {
+  if (typeof body !== "string") return "";
+  const plain = body
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s*>+\s?/gm, "")
+    .replace(/^\s*([-*+]|\d+[.)])\s+/gm, "")
+    .replace(/^\s*\|?[\s:|-]+\|[\s:|-]*$/gm, " ")
+    .replace(/[*_`~|]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  // With a search, show the passage around the first hit.
+  let start = 0;
+  if (query) {
+    const lower = plain.toLowerCase();
+    const hits = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((term) => term.length >= 2)
+      .map((term) => lower.indexOf(term))
+      .filter((index) => index >= 0);
+    const first = hits.length > 0 ? Math.min(...hits) : -1;
+    if (first > 60) {
+      const from = Math.max(0, first - 40);
+      const space = plain.indexOf(" ", from);
+      start = space >= 0 && space < first ? space + 1 : from;
+    }
+  }
+  const text = start > 0 ? plain.slice(start) : plain;
+  const shown =
+    text.length > maxLength
+      ? `${text.slice(0, maxLength - 1).trimEnd()}…`
+      : text;
+  return start > 0 ? `…${shown}` : shown;
+}
+
+/**
+ * The shown revision of every article, fetched by exact (article, revision)
+ * pair instead of loading every revision body of every article. Null when an
+ * article has no usable revision number (the caller falls back).
+ */
+async function fetchShownRevisions(
+  admin: any,
+  articles: any[],
+  publishedOnly: boolean,
+): Promise<{ data: Map<string, any>; error: boolean } | null> {
+  const pairs: string[] = [];
+  for (const article of articles) {
+    const revision = publishedOnly
+      ? article.published_revision
+      : article.current_revision;
+    if (!Number.isInteger(revision) || typeof article.id !== "string") {
+      return null;
+    }
+    pairs.push(`and(article_id.eq.${article.id},revision.eq.${revision})`);
+  }
+  const chunks: string[][] = [];
+  for (let index = 0; index < pairs.length; index += 40) {
+    chunks.push(pairs.slice(index, index + 40));
+  }
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      admin
+        .from("knowledge_article_revisions")
+        .select(REVISION_SELECT)
+        .or(chunk.join(",")),
+    ),
+  );
+  const byArticle = new Map<string, any>();
+  for (const result of results) {
+    if (result.error) return null;
+    for (const revision of result.data ?? []) {
+      if (typeof revision.article_id === "string") {
+        byArticle.set(revision.article_id, revision);
+      }
+    }
+  }
+  return { data: byArticle, error: false };
+}
+
 async function fetchLatestRevisions(
   admin: any,
   articles: any[],
   publishedOnly = false,
+  compact = false,
 ): Promise<{ data: Map<string, any>; error: boolean }> {
   if (articles.length === 0) return { data: new Map(), error: false };
+  if (compact) {
+    const shown = await fetchShownRevisions(admin, articles, publishedOnly);
+    if (shown) return shown;
+  }
 
   const articleIds = articles.map((article) => article.id);
   const { data, error } = await admin
@@ -835,6 +950,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     action.type === "updateCollection" ||
     action.type === "setArticleCollections" ||
     action.type === "requestReview" ||
+    action.type === "publishArticle" ||
     action.type === "decideReview";
   // The feature lookup is independent of the authorization check, so both run
   // at once; an authorization failure is still reported first.
@@ -1139,6 +1255,54 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     });
   }
 
+  // Entwurf ohne Freigabe-Schritt veröffentlichen (z. B. KI-Entwürfe).
+  if (action.type === "publishArticle") {
+    const { data: article, error: articleError } = await admin
+      .from("knowledge_articles")
+      .select(ARTICLE_SELECT)
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.articleId)
+      .in("status", ["draft", "review"])
+      .maybeSingle();
+    if (articleError)
+      return json(request, { error: { code: "article_read_failed" } }, 500);
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
+    if (!article || !departmentVisible(scope, article.department_id))
+      return articleNotFound();
+    const now = new Date().toISOString();
+    const { data: updated, error: updateError } = await admin
+      .from("knowledge_articles")
+      .update({
+        status: "published",
+        published_revision: article.current_revision,
+        published_at: now,
+        review_requested_at: null,
+        review_requested_by: null,
+        reviewed_at: null,
+        reviewed_by: null,
+        updated_at: now,
+      })
+      .eq("tenant_id", action.tenantId)
+      .eq("id", article.id)
+      .eq("current_revision", article.current_revision)
+      .in("status", ["draft", "review"])
+      .select(ARTICLE_SELECT)
+      .maybeSingle();
+    if (updateError || !updated)
+      return json(request, { error: { code: "article_update_conflict" } }, 409);
+    await writeAudit(
+      admin,
+      action.tenantId,
+      actorId,
+      "knowledge.article.published",
+      article.id,
+      auditData(article, null),
+      auditData(updated, null),
+    );
+    return json(request, { data: { article: updated } });
+  }
+
   if (action.type === "requestReview") {
     const { data: article, error: articleError } = await admin
       .from("knowledge_articles")
@@ -1398,10 +1562,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             (ranks.get(right.id) ?? 0) - (ranks.get(left.id) ?? 0),
         );
       }
+      const compact = action.compact === true;
       const revisions = await fetchLatestRevisions(
         admin,
         articles,
         !canReadInternal,
+        compact,
       );
       if (revisions.error)
         return json(
@@ -1438,15 +1604,40 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
               ? { outcomes: outcomes.get(article.id) }
               : {}),
             revision: revisions.data.has(article.id)
-              ? revisionResponse(revisions.data.get(article.id))
+              ? {
+                  ...revisionResponse(revisions.data.get(article.id)),
+                  ...(compact
+                    ? {
+                        // The written summary is the best teaser, unless a search
+                        // should show the passage around the hit.
+                        body:
+                          !action.query &&
+                          typeof revisions.data.get(article.id).summary ===
+                            "string" &&
+                          revisions.data.get(article.id).summary.trim()
+                            ? articleExcerpt(
+                                revisions.data.get(article.id).summary,
+                              )
+                            : articleExcerpt(
+                                revisions.data.get(article.id).body,
+                                160,
+                                action.query,
+                              ),
+                      }
+                    : {}),
+                }
               : null,
           })),
           departments,
-          imageUrls: await resolveImageUrls(
-            admin,
-            action.tenantId,
-            [...revisions.data.values()].map((revision: any) => revision.body),
-          ),
+          imageUrls: compact
+            ? {}
+            : await resolveImageUrls(
+                admin,
+                action.tenantId,
+                [...revisions.data.values()].map(
+                  (revision: any) => revision.body,
+                ),
+              ),
         },
       });
     }
@@ -1547,8 +1738,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           title: action.title,
           slug: createSlug(action.title),
           visibility: action.visibility,
-          status: "draft",
+          // Gespeicherte Artikel sind sofort veröffentlicht (kein Freigabe-Schritt).
+          status: "published",
           current_revision: 1,
+          published_revision: 1,
+          published_at: updatedAt,
           created_by: actorId,
           updated_at: updatedAt,
         })
@@ -1564,6 +1758,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           revision: 1,
           title_snapshot: action.title,
           body: action.bodyMarkdown,
+          summary: action.summary ?? null,
           author_id: actorId,
         })
         .select(REVISION_SELECT)
@@ -1653,6 +1848,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         revision: nextRevision,
         title_snapshot: action.title,
         body: action.bodyMarkdown,
+        summary: action.summary ?? null,
         author_id: actorId,
       })
       .select(REVISION_SELECT)
@@ -1671,9 +1867,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         visibility: action.visibility,
         ...(departmentChange ?? {}),
         current_revision: nextRevision,
-        // A previous published revision remains readable to customers. The new
-        // text always returns to a draft and requires a fresh review.
-        status: "draft",
+        // Speichern veröffentlicht die neue Revision direkt.
+        status: "published",
+        published_revision: nextRevision,
+        published_at: updatedAt,
         review_requested_at: null,
         review_requested_by: null,
         reviewed_at: null,

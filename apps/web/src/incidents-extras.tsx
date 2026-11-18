@@ -1,0 +1,901 @@
+import { tn } from "./lib/formality";
+import {
+  BookOpen,
+  Megaphone,
+  Pencil,
+  Network,
+  Ticket as TicketIcon,
+  X,
+} from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+
+import { functionErrorMessage } from "./lib/function-error";
+import {
+  parseArticleDraft,
+  TICKET_SOURCE_LABELS,
+  type IncidentDetail,
+  type IncidentNeighbour,
+} from "./lib/incidents";
+import {
+  INCIDENT_MESSAGE_STATE_LABELS,
+  INCIDENT_MESSAGE_STATES,
+  parseIncidentMessages,
+  filterStatusPageServices,
+  parseStatusPageServices,
+  SERVICE_OPERATING_STATE_LABELS,
+  SERVICE_OPERATING_STATES,
+  suggestedServiceState,
+  type IncidentMessage,
+  type IncidentMessageState,
+  type ServiceOperatingState,
+  type StatusPageService,
+} from "./lib/incidents-public-messages";
+import { supabase } from "./lib/supabase";
+
+// Cards of the incident view: linked tickets, network context, public
+// status message (Teil B's service-status actions) and the knowledge draft.
+
+async function invoke(
+  name: string,
+  body: Record<string, unknown>,
+  fallback: string,
+): Promise<unknown> {
+  if (!supabase) throw new Error("Die Verbindung ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke(name, { body });
+  if (error) throw new Error(await functionErrorMessage(error, fallback));
+  return data;
+}
+
+const DATE_TIME = new Intl.DateTimeFormat("de-CH", {
+  dateStyle: "short",
+  timeStyle: "short",
+  timeZone: "Europe/Zurich",
+});
+
+export function IncidentTicketsCard({
+  detail,
+  busy,
+  onLink,
+  onUnlink,
+  onOpenTicket,
+}: {
+  detail: IncidentDetail;
+  busy: boolean;
+  onLink: (ticket: string) => Promise<boolean>;
+  onUnlink: (ticketId: string) => void;
+  onOpenTicket?: ((ticketId: string) => void) | undefined;
+}) {
+  const [reference, setReference] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reference.trim()) return;
+    if (await onLink(reference.trim())) setReference("");
+  }
+
+  return (
+    <article className="incident-card">
+      <div className="incident-card__head">
+        <h3>
+          <TicketIcon aria-hidden="true" size={15} /> Tickets
+        </h3>
+        <span className="incident-muted">
+          {detail.tickets.length === 1
+            ? "1 Ticket"
+            : `${detail.tickets.length} Tickets`}
+        </span>
+      </div>
+      {detail.tickets.length ? (
+        <ul className="incident-sensors">
+          {detail.tickets.map((ticket) => (
+            <li key={ticket.id}>
+              <span>
+                {onOpenTicket ? (
+                  <button
+                    className="text-button incident-ticket__open"
+                    onClick={() => onOpenTicket(ticket.id)}
+                    type="button"
+                  >
+                    {ticket.number} · {ticket.subject}
+                  </button>
+                ) : (
+                  <strong>
+                    {ticket.number} · {ticket.subject}
+                  </strong>
+                )}
+                <small>
+                  {TICKET_SOURCE_LABELS[ticket.source]}
+                  {ticket.notifiedAt
+                    ? ` · informiert ${DATE_TIME.format(new Date(ticket.notifiedAt))}`
+                    : ""}
+                </small>
+              </span>
+              <span className="incident-ticket__actions">
+                <span
+                  className={`incident-chip incident-chip--${ticket.closed ? "ok" : "line"}`}
+                >
+                  {ticket.status || "–"}
+                </span>
+                {detail.state !== "closed" ? (
+                  <button
+                    aria-label={`${ticket.number} von der Störung lösen`}
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => onUnlink(ticket.id)}
+                    title="Von der Störung lösen"
+                    type="button"
+                  >
+                    <X aria-hidden="true" size={14} />
+                  </button>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="incident-muted">
+          Noch keine Tickets. Tickets zum gestörten Gerät oder Dienst werden
+          während der Störung automatisch zugeordnet.
+        </p>
+      )}
+      {detail.hiddenTickets ? (
+        <p className="incident-muted">
+          {detail.hiddenTickets === 1
+            ? tn(
+                "1 weiteres Ticket siehst du nicht (andere Abteilung).",
+                "1 weiteres Ticket sehen Sie nicht (andere Abteilung).",
+              )
+            : tn(
+                `${detail.hiddenTickets} weitere Tickets siehst du nicht (andere Abteilung).`,
+                `${detail.hiddenTickets} weitere Tickets sehen Sie nicht (andere Abteilung).`,
+              )}
+        </p>
+      ) : null}
+      {detail.state !== "closed" ? (
+        <form
+          className="incident-note"
+          onSubmit={(event) => void submit(event)}
+        >
+          <label className="sr-only" htmlFor="incident-ticket-link">
+            Ticketnummer
+          </label>
+          <input
+            disabled={busy}
+            id="incident-ticket-link"
+            maxLength={64}
+            onChange={(event) => setReference(event.target.value)}
+            placeholder="Ticketnummer zuordnen …"
+            type="text"
+            value={reference}
+          />
+          <button
+            className="secondary-button"
+            disabled={busy || !reference.trim()}
+            type="submit"
+          >
+            Zuordnen
+          </button>
+        </form>
+      ) : null}
+    </article>
+  );
+}
+
+function NeighbourList({
+  entries,
+  onOpen,
+  withPort,
+}: {
+  entries: IncidentNeighbour[];
+  onOpen: (incidentId: string) => void;
+  withPort: boolean;
+}) {
+  return (
+    <ul className="incident-topology">
+      {entries.map((entry, index) => (
+        <li key={`${entry.assetId ?? entry.address ?? entry.name}-${index}`}>
+          <span
+            aria-hidden="true"
+            className={`incident-dot incident-dot--${entry.state === "down" ? "bad" : entry.state === "warning" ? "warn" : entry.state === "ok" ? "ok" : "unknown"}`}
+          />
+          {entry.incidentId ? (
+            <button
+              className="text-button"
+              onClick={() => onOpen(entry.incidentId!)}
+              type="button"
+            >
+              {entry.name}
+            </button>
+          ) : (
+            <span>{entry.name}</span>
+          )}
+          <small className="incident-muted">
+            {[withPort ? entry.port : null, entry.address]
+              .filter(Boolean)
+              .join(" · ")}
+            {entry.state === "down"
+              ? " · Ausfall"
+              : entry.state === "warning"
+                ? " · Warnung"
+                : entry.state === "unknown"
+                  ? " · nicht überwacht"
+                  : ""}
+          </small>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function IncidentNetworkCard({
+  detail,
+  onOpen,
+}: {
+  detail: IncidentDetail;
+  onOpen: (incidentId: string) => void;
+}) {
+  const network = detail.network;
+  if (
+    !network ||
+    (!network.addresses.length &&
+      !network.subnetNeighbours.length &&
+      !network.switchNeighbours.length)
+  ) {
+    return null;
+  }
+  const down = [...network.subnetNeighbours, ...network.switchNeighbours]
+    .filter((entry) => entry.state === "down")
+    .map((entry) => entry.assetId ?? entry.name);
+  const neighbours =
+    network.subnetNeighbours.length + network.switchNeighbours.length;
+  const summary = [
+    network.addresses
+      .map((address) => address.address)
+      .filter(Boolean)
+      .join(", "),
+    neighbours
+      ? `${neighbours} ${neighbours === 1 ? "Nachbar" : "Nachbarn"}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <article className="incident-card">
+      {/* Long list of neighbours: collapsed by default. */}
+      <details className="incident-collapsible">
+        <summary>
+          <h3>
+            <Network aria-hidden="true" size={15} /> Netzwerk
+          </h3>
+          {summary ? <span className="incident-muted">{summary}</span> : null}
+        </summary>
+        {network.addresses.map((address, index) => (
+          <dl
+            className="incident-kv"
+            key={`${address.address ?? "mac"}-${index}`}
+          >
+            {address.address ? (
+              <>
+                <dt>IP</dt>
+                <dd className="incident-mono">
+                  {address.address}
+                  {address.hostname ? ` · ${address.hostname}` : ""}
+                </dd>
+              </>
+            ) : null}
+            {address.prefix ? (
+              <>
+                <dt>Subnetz</dt>
+                <dd className="incident-mono">
+                  {address.prefix}
+                  {address.gateway ? ` · GW ${address.gateway}` : ""}
+                </dd>
+              </>
+            ) : null}
+            {address.vlanNumber !== null ? (
+              <>
+                <dt>VLAN</dt>
+                <dd>
+                  {address.vlanNumber}
+                  {address.vlanName ? ` · ${address.vlanName}` : ""}
+                </dd>
+              </>
+            ) : null}
+            {address.site ? (
+              <>
+                <dt>Standort</dt>
+                <dd>{address.site}</dd>
+              </>
+            ) : null}
+            {address.switchName ? (
+              <>
+                <dt>Switch-Port</dt>
+                <dd className="incident-mono">
+                  {address.switchName}
+                  {address.switchPort ? ` · ${address.switchPort}` : ""}
+                  {address.portSource === "lldp" || address.portSource === "fdb"
+                    ? " (erkannt)"
+                    : ""}
+                </dd>
+              </>
+            ) : null}
+          </dl>
+        ))}
+        {network.subnetNeighbours.length ? (
+          <>
+            <h4 className="incident-subhead">Weitere Geräte im Subnetz</h4>
+            <NeighbourList
+              entries={network.subnetNeighbours}
+              onOpen={onOpen}
+              withPort={false}
+            />
+          </>
+        ) : null}
+        {network.switchNeighbours.length ? (
+          <>
+            <h4 className="incident-subhead">Am selben Switch</h4>
+            <NeighbourList
+              entries={network.switchNeighbours}
+              onOpen={onOpen}
+              withPort
+            />
+          </>
+        ) : null}
+      </details>
+      {new Set(down).size >= 2 ? (
+        <p className="incident-muted">
+          Mehrere Geräte im selben Netz sind gestört: Ursache eher im Netzwerk
+          (Switch, Uplink, Strom) suchen.
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
+/**
+ * Public status message for the incident («Öffentliche Meldung»): uses the
+ * service-status actions publishIncidentMessage / incidentMessages.
+ */
+export function IncidentPublicMessageCard({
+  detail,
+  tenantId,
+}: {
+  detail: IncidentDetail;
+  tenantId: string;
+}) {
+  const [messages, setMessages] = useState<IncidentMessage[] | null>(null);
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<IncidentMessageState>("investigating");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [serviceIds, setServiceIds] = useState<string[]>([]);
+  /** Message being edited; null publishes a new message (update). */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [serviceStates, setServiceStates] = useState<
+    Record<string, ServiceOperatingState>
+  >({});
+  const [services, setServices] = useState<StatusPageService[] | null>(null);
+  const [servicesError, setServicesError] = useState("");
+  const [serviceQuery, setServiceQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      setMessages(
+        parseIncidentMessages(
+          await invoke(
+            "service-status",
+            {
+              type: "incidentMessages",
+              tenantId,
+              monitoringIncidentId: detail.id,
+            },
+            "Die öffentlichen Meldungen sind gerade nicht verfügbar.",
+          ),
+        ),
+      );
+    } catch {
+      setMessages([]);
+    }
+  }, [detail.id, tenantId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function loadServices(): Promise<StatusPageService[]> {
+    if (services) return services;
+    try {
+      const next = parseStatusPageServices(
+        await invoke(
+          "service-status",
+          { type: "getStatusOverview", tenantId },
+          "Die Dienste sind gerade nicht verfügbar.",
+        ),
+      );
+      setServices(next);
+      return next;
+    } catch (cause) {
+      setServicesError((cause as Error).message);
+      return [];
+    }
+  }
+
+  function start(edit?: IncidentMessage) {
+    const latest = messages?.[0];
+    const nextState: IncidentMessageState = edit
+      ? edit.state
+      : latest
+        ? // Still down: cause known; OK again: watching; closed: resolved.
+          detail.state === "active"
+          ? "identified"
+          : detail.state === "resolved"
+            ? "monitoring"
+            : "resolved"
+        : "investigating";
+    setEditingId(edit?.id ?? null);
+    setState(nextState);
+    setTitle(
+      edit?.title ??
+        latest?.title ??
+        `Störung: ${detail.services.map((service) => service.name).join(", ") || detail.deviceName || detail.title}`,
+    );
+    setBody(edit?.body ?? "");
+    // Editing keeps the message's services; otherwise the linked services
+    // plus those named in the latest message.
+    const ids = edit
+      ? edit.serviceIds
+      : [
+          ...new Set([
+            ...detail.services.map((service) => service.id),
+            ...(latest?.serviceIds ?? []),
+          ]),
+        ];
+    setServiceIds(ids);
+    setServiceStates({});
+    setServicesError("");
+    setServiceQuery("");
+    setMessage("");
+    setOpen(true);
+    void loadServices().then((list) => {
+      const byId = new Map(list.map((service) => [service.id, service]));
+      setServiceStates(
+        Object.fromEntries(
+          ids.flatMap((id) => {
+            const service = byId.get(id);
+            return service
+              ? [
+                  [
+                    id,
+                    // Editing a text must not change states unasked.
+                    edit
+                      ? service.status
+                      : suggestedServiceState(service.status, nextState),
+                  ],
+                ]
+              : [];
+          }),
+        ),
+      );
+    });
+  }
+
+  function changeState(next: IncidentMessageState) {
+    setState(next);
+    // «Behoben» sets the chosen services back to «Betriebsbereit».
+    if (next === "resolved") {
+      setServiceStates((current) =>
+        Object.fromEntries(
+          Object.keys(current).map((id) => [id, "operational" as const]),
+        ),
+      );
+    }
+  }
+
+  function addService(id: string) {
+    const service = services?.find((entry) => entry.id === id);
+    if (!service || serviceIds.includes(id)) return;
+    setServiceIds((current) => [...current, id]);
+    setServiceQuery("");
+    setServiceStates((current) => ({
+      ...current,
+      [id]: suggestedServiceState(service.status, state),
+    }));
+  }
+
+  function removeService(id: string) {
+    setServiceIds((current) => current.filter((entry) => entry !== id));
+    setServiceStates((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
+
+  const serviceById = new Map(
+    (services ?? []).map((service) => [service.id, service]),
+  );
+  const linkedNames = new Map(
+    detail.services.map((service) => [service.id, service.name]),
+  );
+  const availableServices = (services ?? []).filter(
+    (service) => !serviceIds.includes(service.id),
+  );
+  const serviceMatches = filterStatusPageServices(
+    availableServices,
+    serviceQuery,
+  );
+
+  async function publish(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    try {
+      await invoke(
+        "service-status",
+        {
+          ...(editingId
+            ? { type: "updateIncidentMessage", messageId: editingId }
+            : {
+                type: "publishIncidentMessage",
+                monitoringIncidentId: detail.id,
+              }),
+          tenantId,
+          serviceIds,
+          state,
+          title: title.trim(),
+          body: body.trim(),
+          // Only services whose operating state actually changes.
+          serviceStatuses: Object.fromEntries(
+            serviceIds.flatMap((id) => {
+              const chosen = serviceStates[id];
+              const current = serviceById.get(id)?.status;
+              return chosen && current && chosen !== current
+                ? [[id, chosen]]
+                : [];
+            }),
+          ),
+        },
+        "Die Meldung konnte nicht veröffentlicht werden.",
+      );
+      setOpen(false);
+      setServices(null);
+      setMessage(
+        editingId
+          ? "Die Meldung wurde auf der Statusseite aktualisiert."
+          : "Die Meldung ist auf der Statusseite veröffentlicht.",
+      );
+      setEditingId(null);
+      await load();
+    } catch (cause) {
+      setMessage((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className="incident-card">
+      <div className="incident-card__head">
+        <h3>
+          <Megaphone aria-hidden="true" size={15} /> Statusseite
+        </h3>
+        {!open ? (
+          <button className="text-button" onClick={() => start()} type="button">
+            {messages?.length
+              ? "Update veröffentlichen"
+              : "Öffentliche Meldung"}
+          </button>
+        ) : null}
+      </div>
+      {messages?.length ? (
+        <ul className="incident-sensors">
+          {messages.map((entry) => (
+            <li key={entry.id}>
+              <span>
+                <strong>{entry.title}</strong>
+                <small>
+                  {entry.body ? `${entry.body} · ` : ""}
+                  {DATE_TIME.format(
+                    new Date(entry.updatedAt ?? entry.createdAt),
+                  )}
+                </small>
+              </span>
+              <span className="incident-message__side">
+                <span
+                  className={`incident-chip incident-chip--${entry.state === "resolved" ? "ok" : "warn"}`}
+                >
+                  {INCIDENT_MESSAGE_STATE_LABELS[entry.state]}
+                </span>
+                {!open ? (
+                  <button
+                    aria-label={`Meldung «${entry.title}» bearbeiten`}
+                    className="text-button"
+                    onClick={() => start(entry)}
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" size={13} /> Bearbeiten
+                  </button>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : !open ? (
+        <p className="incident-muted">
+          {tn(
+            "Informiere Mitarbeitende und Abonnenten über die Statusseite.",
+            "Informieren Sie Mitarbeitende und Abonnenten über die Statusseite.",
+          )}
+        </p>
+      ) : null}
+      {open ? (
+        <form
+          className="incident-close"
+          onSubmit={(event) => void publish(event)}
+        >
+          <label className="incident-field">
+            Zustand
+            <select
+              disabled={busy}
+              onChange={(event) =>
+                changeState(event.target.value as IncidentMessageState)
+              }
+              value={state}
+            >
+              {INCIDENT_MESSAGE_STATES.map((entry) => (
+                <option key={entry} value={entry}>
+                  {INCIDENT_MESSAGE_STATE_LABELS[entry]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="incident-field">
+            Titel
+            <input
+              disabled={busy}
+              maxLength={200}
+              onChange={(event) => setTitle(event.target.value)}
+              required
+              type="text"
+              value={title}
+            />
+          </label>
+          <label className="incident-field">
+            Text
+            <textarea
+              disabled={busy}
+              maxLength={10000}
+              onChange={(event) => setBody(event.target.value)}
+              placeholder="Was ist betroffen, was tun wir, wann gibt es das nächste Update?"
+              required
+              rows={editingId ? 8 : 3}
+              value={body}
+            />
+          </label>
+          <fieldset className="incident-services">
+            <legend>Betroffene Dienste und Betriebszustand</legend>
+            {serviceIds.length ? (
+              <ul>
+                {serviceIds.map((id) => {
+                  const service = serviceById.get(id);
+                  const name = service?.name ?? linkedNames.get(id) ?? "Dienst";
+                  return (
+                    <li key={id}>
+                      <span>
+                        <strong>{name}</strong>
+                        {service ? (
+                          <small>
+                            Aktuell:{" "}
+                            {SERVICE_OPERATING_STATE_LABELS[service.status]}
+                          </small>
+                        ) : null}
+                      </span>
+                      <select
+                        aria-label={`Betriebszustand von ${name}`}
+                        disabled={busy || !service}
+                        onChange={(event) =>
+                          setServiceStates((current) => ({
+                            ...current,
+                            [id]: event.target.value as ServiceOperatingState,
+                          }))
+                        }
+                        value={serviceStates[id] ?? service?.status ?? ""}
+                      >
+                        {!service ? (
+                          <option value="">Wird geladen …</option>
+                        ) : null}
+                        {SERVICE_OPERATING_STATES.map((entry) => (
+                          <option key={entry} value={entry}>
+                            {SERVICE_OPERATING_STATE_LABELS[entry]}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        aria-label={`${name} entfernen`}
+                        disabled={busy}
+                        onClick={() => removeService(id)}
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={14} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="incident-muted">Noch kein Dienst gewählt.</p>
+            )}
+            <label className="incident-field">
+              Dienst hinzufügen
+              <input
+                autoComplete="off"
+                disabled={busy || !services || !availableServices.length}
+                onChange={(event) => setServiceQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  // Enter adds the first match instead of submitting.
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    if (serviceQuery.trim() && serviceMatches[0]) {
+                      addService(serviceMatches[0].id);
+                    }
+                  }
+                }}
+                placeholder={
+                  services
+                    ? "Dienst suchen, z. B. Teams …"
+                    : "Dienste werden geladen …"
+                }
+                type="search"
+                value={serviceQuery}
+              />
+            </label>
+            {serviceQuery.trim() ? (
+              serviceMatches.length ? (
+                <ul
+                  aria-label="Gefundene Dienste"
+                  className="incident-service-results"
+                >
+                  {serviceMatches.slice(0, 8).map((service) => (
+                    <li key={service.id}>
+                      <button
+                        disabled={busy}
+                        onClick={() => addService(service.id)}
+                        type="button"
+                      >
+                        <strong>{service.name}</strong>
+                        <small>
+                          {service.category ? `${service.category} · ` : ""}
+                          {SERVICE_OPERATING_STATE_LABELS[service.status]}
+                        </small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="incident-muted">Kein Dienst gefunden.</p>
+              )
+            ) : null}
+            {servicesError ? (
+              <p className="incident-muted" role="alert">
+                {servicesError}
+              </p>
+            ) : null}
+          </fieldset>
+          <div className="incident-actions">
+            <button
+              className="primary-button"
+              disabled={busy || !title.trim() || !body.trim()}
+              type="submit"
+            >
+              {editingId ? "Änderungen speichern" : "Veröffentlichen"}
+            </button>
+            <button
+              className="secondary-button"
+              disabled={busy}
+              onClick={() => {
+                setOpen(false);
+                setEditingId(null);
+              }}
+              type="button"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </form>
+      ) : null}
+      {message ? (
+        <p className="incident-muted" role="status">
+          {message}
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
+/** «Wissensartikel-Entwurf» from a closed incident with a cause. */
+export function IncidentKnowledgeCard({
+  detail,
+  tenantId,
+}: {
+  detail: IncidentDetail;
+  tenantId: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{
+    articleId: string;
+    title: string;
+    aiUsed: boolean;
+  } | null>(null);
+  const [error, setError] = useState("");
+
+  if (
+    detail.state !== "closed" ||
+    !detail.cause ||
+    !detail.permissions.draftArticle
+  ) {
+    return null;
+  }
+
+  async function draft() {
+    setBusy(true);
+    setError("");
+    try {
+      const parsed = parseArticleDraft(
+        await invoke(
+          "incidents",
+          { type: "draftArticle", tenantId, incidentId: detail.id },
+          "Der Artikelentwurf konnte nicht erstellt werden.",
+        ),
+      );
+      if (!parsed) throw new Error("Die Antwort ist unvollständig.");
+      setResult(parsed);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className="incident-card">
+      <h3>
+        <BookOpen aria-hidden="true" size={15} /> Wissen
+      </h3>
+      {result ? (
+        <p className="incident-muted" role="status">
+          Entwurf «{result.title}» erstellt
+          {result.aiUsed ? " (mit KI)" : ""}.{" "}
+          <a href={`?wissen=${encodeURIComponent(result.articleId)}`}>
+            Entwurf öffnen
+          </a>
+        </p>
+      ) : (
+        <>
+          <p className="incident-muted">
+            {tn(
+              "Halte Ursache und Lösung als internen Wissensartikel fest. Der Entwurf wird erst nach deiner Prüfung veröffentlicht.",
+              "Halten Sie Ursache und Lösung als internen Wissensartikel fest. Der Entwurf wird erst nach Ihrer Prüfung veröffentlicht.",
+            )}
+          </p>
+          <button
+            className="secondary-button"
+            disabled={busy}
+            onClick={() => void draft()}
+            type="button"
+          >
+            {busy
+              ? "Entwurf wird erstellt …"
+              : "Wissensartikel-Entwurf erstellen"}
+          </button>
+        </>
+      )}
+      {error ? (
+        <p className="ticket-detail-message error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </article>
+  );
+}

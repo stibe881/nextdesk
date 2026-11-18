@@ -4,6 +4,7 @@
 // the Exchange inbound processing (forward to the report address).
 
 import {
+  defang,
   domainOf,
   type ParsedMail,
   type PhishingAnalysis,
@@ -11,6 +12,8 @@ import {
   storedAnalysis,
   summaryText,
 } from "./phishing-analysis.ts";
+import { type Formality, tone } from "./formality.ts";
+import { iocHitNote, processReportIntel } from "./phishing-campaigns.ts";
 
 // deno-lint-ignore no-explicit-any
 type Admin = any;
@@ -21,14 +24,22 @@ export type PhishingSettings = {
   reportAddress: string | null;
   departmentId: string | null;
   categoryId: string | null;
+  subcategoryId: string | null;
   priorityKey: "low" | "normal" | "high" | "urgent";
   notifyTeamId: string | null;
 };
 
 export type PhishingChannel = "email" | "portal" | "mobile";
 
-export const THANK_YOU_TEXT =
-  "Danke für die Meldung! Unser Sicherheitsteam prüft die E-Mail. Bitte klicken Sie keine Links an und öffnen Sie keine Anhänge dieser Nachricht. Wenn Sie bereits Daten eingegeben haben, melden Sie sich bitte umgehend beim Support.";
+export function thankYouText(formality: Formality = "du"): string {
+  return tone(
+    formality,
+    "Danke für die Meldung! Unser Sicherheitsteam prüft die E-Mail. Bitte klicke keine Links an und öffne keine Anhänge dieser Nachricht. Wenn du bereits Daten eingegeben hast, melde dich bitte umgehend beim Support.",
+    "Danke für die Meldung! Unser Sicherheitsteam prüft die E-Mail. Bitte klicken Sie keine Links an und öffnen Sie keine Anhänge dieser Nachricht. Wenn Sie bereits Daten eingegeben haben, melden Sie sich bitte umgehend beim Support.",
+  );
+}
+
+export const THANK_YOU_TEXT = thankYouText("du");
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -41,6 +52,7 @@ export function parseSettingsRow(row: Row | null | undefined): PhishingSettings 
     reportAddress: text(row?.report_address)?.toLowerCase() ?? null,
     departmentId: text(row?.department_id),
     categoryId: text(row?.category_id),
+    subcategoryId: text(row?.subcategory_id),
     priorityKey: priority === "low" || priority === "normal" || priority === "urgent"
       ? priority
       : "high",
@@ -54,7 +66,7 @@ export async function loadPhishingSettings(
 ): Promise<PhishingSettings | null> {
   const { data, error } = await admin
     .from("phishing_report_settings")
-    .select("enabled, report_address, department_id, category_id, priority_key, notify_team_id")
+    .select("enabled, report_address, department_id, category_id, subcategory_id, priority_key, notify_team_id")
     .eq("tenant_id", tenantId)
     .maybeSingle();
   if (error) return null;
@@ -77,7 +89,11 @@ export function isReportRecipient(
  * other mail to the support mailbox stays an ordinary ticket.
  */
 export function isMarkedPhishingReport(subject: string | null | undefined): boolean {
-  return /phishing|verd(ä|ae)chtig/i.test(subject ?? "");
+  const value = subject ?? "";
+  // Outlook «Nachricht melden» (Junk / Phishing) schickt den Betreff
+  // «Junk:<Kennung>|<Absender>|<Betreff>» bzw. «Phish:…» an das Meldepostfach.
+  // «Not junk:» (Fehlalarm) ist keine Meldung.
+  return /phishing|verd(ä|ae)chtig/i.test(value) || /^\s*(junk|phish)\s*:/i.test(value);
 }
 
 /**
@@ -196,6 +212,37 @@ async function validCategory(
   return text((data as Row | null)?.id);
 }
 
+/**
+ * The security team also gets the ticket assigned (so it shows in its queue
+ * and support level), provided it belongs to the target department.
+ */
+async function validTeam(
+  admin: Admin,
+  tenantId: string,
+  departmentId: string,
+  teamId: string | null,
+): Promise<string | null> {
+  if (!teamId) return null;
+  const { data } = await admin.from("teams").select("id")
+    .eq("id", teamId).eq("tenant_id", tenantId).eq("department_id", departmentId)
+    .eq("active", true).maybeSingle();
+  return text((data as Row | null)?.id);
+}
+
+async function validSubcategory(
+  admin: Admin,
+  tenantId: string,
+  departmentId: string,
+  categoryId: string | null,
+  subcategoryId: string | null,
+): Promise<string | null> {
+  if (!categoryId || !subcategoryId) return null;
+  const { data } = await admin.from("ticket_categories").select("id")
+    .eq("id", subcategoryId).eq("tenant_id", tenantId).eq("department_id", departmentId)
+    .eq("active", true).eq("parent_id", categoryId).maybeSingle();
+  return text((data as Row | null)?.id);
+}
+
 async function requesterContactFor(
   admin: Admin,
   tenantId: string,
@@ -262,9 +309,23 @@ export async function createSecurityTicket(
     status_id: status.data.id,
     priority_id: priority,
     category_id: category,
+    subcategory_id: await validSubcategory(
+      admin,
+      input.tenantId,
+      department.id,
+      category,
+      input.settings.subcategoryId,
+    ),
+    assigned_team_id: await validTeam(
+      admin,
+      input.tenantId,
+      department.id,
+      input.settings.notifyTeamId,
+    ),
     requester_id: input.reporterId,
     requester_contact_id: contact.id,
     source: "portal",
+    is_security_case: true,
   }).select("id, ticket_number").single()
     .setHeader("x-nextdesk-actor-id", input.reporterId);
   if (created.error || !created.data?.id) throw new Error("ticket_create_failed");
@@ -296,11 +357,28 @@ export async function convertToSecurityTicket(
   if (input.description) update.description = input.description.slice(0, 50_000);
   if (priority) update.priority_id = priority;
   if (department) {
+    const category = await validCategory(
+      admin,
+      input.tenantId,
+      department.id,
+      input.settings.categoryId,
+    );
     Object.assign(update, {
       department_id: department.id,
-      category_id: await validCategory(admin, input.tenantId, department.id, input.settings.categoryId),
-      subcategory_id: null,
-      assigned_team_id: null,
+      category_id: category,
+      subcategory_id: await validSubcategory(
+        admin,
+        input.tenantId,
+        department.id,
+        category,
+        input.settings.subcategoryId,
+      ),
+      assigned_team_id: await validTeam(
+        admin,
+        input.tenantId,
+        department.id,
+        input.settings.notifyTeamId,
+      ),
       assigned_agent_id: null,
     });
   }
@@ -317,9 +395,76 @@ export async function convertToSecurityTicket(
 }
 
 /**
+ * Campaign grouping and IOC check of a new report (migration 0313). Writes
+ * an internal note when the case joins a campaign with other cases or when
+ * known indicators match. Never fails the report.
+ */
+async function reportIntelNotes(
+  admin: Admin,
+  input: {
+    tenantId: string;
+    ticketId: string;
+    reportId: string;
+    noteAuthorId: string;
+    analysis: unknown;
+  },
+): Promise<void> {
+  try {
+    const referenceDomains = await tenantReferenceDomains(admin, input.tenantId).catch(() => []);
+    const { campaign, hits } = await processReportIntel(admin, { ...input, referenceDomains });
+    const notes: string[] = [];
+    if (campaign?.campaignId && campaign.caseLinked && campaign.cases > 1) {
+      notes.push(
+        `Kampagne erkannt: Diese Meldung gehört zu einer Kampagne mit ${campaign.reports} Meldungen von ${campaign.reporters} Personen in ${campaign.cases} Fällen (gleiche Absenderdomain, ähnlicher Betreff oder gleiche Link-Domains).`,
+      );
+    }
+    if (hits.length) {
+      notes.push(iocHitNote(hits.map((hit) => ({ kind: hit.kind, value: defang(hit.value) }))));
+    }
+    if (notes.length) {
+      await admin.from("ticket_comments").insert({
+        ticket_id: input.ticketId,
+        author_id: input.noteAuthorId,
+        visibility: "internal",
+        body: notes.join("\n\n"),
+      });
+    }
+  } catch {
+    // Best effort.
+  }
+}
+
+/**
  * Stores the report, writes the internal summary and notifies the security
  * team. Errors in the notification never undo the report.
  */
+/**
+ * The reported mail as received: all headers, HTML and text (size-limited).
+ * It is only ever rendered sandboxed, with links and images disabled.
+ */
+export function storedOriginalMail(mail: ParsedMail) {
+  const header = (name: string) =>
+    mail.headers.find((entry) => entry.name.toLowerCase() === name)?.value ?? null;
+  return {
+    subject: header("subject")?.slice(0, 500) ?? null,
+    from: header("from")?.slice(0, 500) ?? null,
+    to: header("to")?.slice(0, 2000) ?? null,
+    cc: header("cc")?.slice(0, 2000) ?? null,
+    date: header("date")?.slice(0, 200) ?? null,
+    headers: mail.headers.slice(0, 400).map((entry) => ({
+      name: entry.name.slice(0, 200),
+      value: entry.value.slice(0, 4000),
+    })),
+    html: mail.html.length <= 1_500_000 ? mail.html : "",
+    text: mail.text.slice(0, 300_000),
+    attachments: mail.attachments.slice(0, 50).map((entry) => ({
+      filename: entry.filename.slice(0, 255),
+      contentType: entry.contentType.slice(0, 120),
+      size: entry.size,
+    })),
+  };
+}
+
 export async function finalizePhishingReport(
   admin: Admin,
   input: {
@@ -332,6 +477,10 @@ export async function finalizePhishingReport(
     channel: PhishingChannel;
     analysis: PhishingAnalysis;
     fingerprint: string;
+    /** The reported mail itself, shown to the security team as received. */
+    mail?: ParsedMail;
+    /** Another report of a mail that already is an open case: no new alert. */
+    bundled?: boolean;
   },
 ): Promise<{ previousReports: number }> {
   const previous = await admin.from("phishing_reports").select("id", { count: "exact", head: true })
@@ -352,8 +501,9 @@ export async function finalizePhishingReport(
     sending_ip: h.sendingIp?.slice(0, 64) ?? null,
     fingerprint: input.fingerprint,
     analysis: storedAnalysis(input.analysis),
-  });
-  if (stored.error) throw new Error("phishing_report_store_failed");
+    original_mail: input.mail ? storedOriginalMail(input.mail) : null,
+  }).select("id").single();
+  if (stored.error || !stored.data?.id) throw new Error("phishing_report_store_failed");
   await admin.from("ticket_comments").insert({
     ticket_id: input.ticketId,
     author_id: input.noteAuthorId,
@@ -371,6 +521,14 @@ export async function finalizePhishingReport(
       previousReports,
     },
   });
+  await reportIntelNotes(admin, {
+    tenantId: input.tenantId,
+    ticketId: input.ticketId,
+    reportId: String(stored.data.id),
+    noteAuthorId: input.noteAuthorId,
+    analysis: storedAnalysis(input.analysis),
+  });
+  if (input.bundled) return { previousReports };
   try {
     await admin.rpc("phishing_report_notify", {
       p_tenant_id: input.tenantId,

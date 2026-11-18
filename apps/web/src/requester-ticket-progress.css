@@ -193,3 +193,15 @@
   display: grid;
   gap: 6px;
 }
+
+.security-response__actions {
+  display: grid;
+  gap: 8px;
+}
+
+.security-response__actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}

@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, CheckCircle2, Lightbulb, Ticket } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -256,7 +257,10 @@ export function TicketSuggestionPanel({
         <div className="ticket-suggestions__duplicate" key={ticket.id}>
           <Ticket aria-hidden="true" size={18} strokeWidth={1.8} />
           <p>
-            Sie haben dazu bereits ein offenes Ticket:{" "}
+            {tn(
+              "Du hast dazu bereits ein offenes Ticket:",
+              "Sie haben dazu bereits ein offenes Ticket:",
+            )}{" "}
             <strong>{ticketLabel(ticket)}</strong>
             {ticket.statusLabel && (
               <span className="ticket-suggestions__muted">
@@ -284,7 +288,7 @@ export function TicketSuggestionPanel({
             <Lightbulb aria-hidden="true" size={18} strokeWidth={1.8} />
             <h3 id="ticket-suggestions-heading">
               {requester
-                ? "Könnte Ihnen das helfen?"
+                ? tn("Könnte dir das helfen?", "Könnte Ihnen das helfen?")
                 : "Passende Artikel aus der Wissensdatenbank"}
             </h3>
           </div>

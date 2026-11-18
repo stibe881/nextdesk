@@ -5,6 +5,7 @@ import { Alert, Platform } from "react-native";
 
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { QUICK_CREATE, type QuickCreate } from "@/lib/quick-create-actions";
+import { tn } from "@/lib/formality";
 
 function actionFor(action: QuickActions.Action | null | undefined) {
   if (!action) return null;
@@ -32,7 +33,7 @@ export function QuickActionsBridge() {
     if (item.feature && !isEnabled(item.feature)) {
       Alert.alert(
         item.title,
-        "Diese Funktion ist in deinem Arbeitsbereich nicht freigeschaltet.",
+        tn("Diese Funktion ist in deinem Arbeitsbereich nicht freigeschaltet.","Diese Funktion ist in Ihrem Arbeitsbereich nicht freigeschaltet."),
       );
       return;
     }

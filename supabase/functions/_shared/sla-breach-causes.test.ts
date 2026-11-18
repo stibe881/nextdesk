@@ -78,6 +78,36 @@ Deno.test("recorded breach events always count", () => {
   assertEquals(detectBreaches(base, ["response_breached"], NOW), []);
 });
 
+Deno.test("a paused SLA is measured at the pause start", () => {
+  // Due while paused (after the pause began): not breached.
+  assertEquals(
+    detectBreaches(
+      {
+        ...base,
+        responseDueAt: "2026-11-07T10:00:00Z",
+        resolutionDueAt: "2026-11-07T11:00:00Z",
+        slaPausedAt: "2026-11-07T09:00:00Z",
+      },
+      [],
+      NOW,
+    ),
+    [],
+  );
+  // Already due before the pause began: still breached.
+  assertEquals(
+    detectBreaches(
+      {
+        ...base,
+        resolutionDueAt: "2026-11-07T08:00:00Z",
+        slaPausedAt: "2026-11-07T09:00:00Z",
+      },
+      [],
+      NOW,
+    ).map((breach) => breach.kind),
+    ["resolution"],
+  );
+});
+
 Deno.test("praise is a 5 or a 4 with a comment", () => {
   assertEquals(isPraise(5, null), true);
   assertEquals(isPraise(4, "  "), false);

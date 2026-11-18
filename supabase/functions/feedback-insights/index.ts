@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import {
@@ -237,6 +238,7 @@ async function report(admin: Admin, action: ReportAction) {
     let query = admin.from("ticket_satisfaction")
       .select("score, comment, submitted_at, tickets!inner(tenant_id, department_id, assigned_team_id)")
       .eq("tickets.tenant_id", action.tenantId)
+      .is("tickets.deleted_at", null)
       .gte("submitted_at", since)
       .order("submitted_at", { ascending: true })
       .range(from, to);
@@ -284,6 +286,7 @@ async function report(admin: Admin, action: ReportAction) {
       .select("themes, sentiment, quote, analyzed_at, tickets!inner(department_id, assigned_team_id)")
       .eq("tenant_id", action.tenantId)
       .eq("state", "analyzed")
+      .is("tickets.deleted_at", null)
       .not("quote", "is", null)
       .gte("analyzed_at", since)
       .order("analyzed_at", { ascending: false })
@@ -340,7 +343,7 @@ async function authorize(admin: Admin, client: Admin, tenantId: string, actorId:
     throw new HttpError(403, "reporting_feature_disabled", "Berichte sind für diesen Mandanten ausgeschaltet.");
   }
   if (permission.data !== true) {
-    throw new HttpError(403, "report_read_permission_required", "Dafür fehlt Ihnen die Berechtigung «Berichte lesen».");
+    throw new HttpError(403, "report_read_permission_required", msg("Dafür fehlt dir die Berechtigung «Berichte lesen».", msg("Dafür fehlt dir die Berechtigung «Berichte lesen».", "Dafür fehlt Ihnen die Berechtigung «Berichte lesen».")));
   }
 }
 

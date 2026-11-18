@@ -5,12 +5,18 @@ import {
 } from "../_shared/handbook-access.ts";
 import {
   inlineHandbookImages,
+  markdownOf,
   parseHandbookAction,
   referencedHandbookImages,
+  summaryOf,
 } from "./index.ts";
 
 type Bundle = {
-  handbooks: Array<{ id: string; markdown: string }>;
+  handbooks: Array<{
+    id: string;
+    markdown: string;
+    sie: { title: string; description: string; audienceLabel: string; markdown: string };
+  }>;
   images: Record<string, { mime: string; data: string }>;
 };
 
@@ -145,6 +151,63 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  "every handbook has a «Sie» wording with the same screenshots",
+  async () => {
+    const { handbooks } = await readBundle();
+    for (const handbook of handbooks) {
+      if (!handbook.sie?.markdown) throw new Error(`${handbook.id}: no Sie text`);
+      assertEquals(
+        referencedHandbookImages(handbook.sie.markdown),
+        referencedHandbookImages(handbook.markdown),
+        `${handbook.id} images`,
+      );
+      if (handbook.sie.markdown === handbook.markdown) {
+        throw new Error(`${handbook.id}: Sie text equals the du text`);
+      }
+    }
+  },
+);
+
+Deno.test("the wording follows the form of address of the tenant", () => {
+  const row = {
+    id: "agenten" as const,
+    title: "Handbuch",
+    description: "Du bearbeitest Tickets.",
+    audience_label: "Agenten",
+    updated_on: "2026-11-13",
+    title_sie: "Handbuch (Sie)",
+    description_sie: "Sie bearbeiten Tickets.",
+    audience_label_sie: null,
+    markdown: "Du kannst.",
+    markdown_sie: "Sie können.",
+  };
+  assertEquals(summaryOf(row, "du").description, "Du bearbeitest Tickets.");
+  assertEquals(summaryOf(row, "sie").description, "Sie bearbeiten Tickets.");
+  assertEquals(summaryOf(row, "sie").title, "Handbuch (Sie)");
+  // No Sie text stored yet (before the next sync): fall back to du.
+  assertEquals(summaryOf(row, "sie").audienceLabel, "Agenten");
+  assertEquals(markdownOf(row, "du"), "Du kannst.");
+  assertEquals(markdownOf(row, "sie"), "Sie können.");
+  assertEquals(markdownOf({ markdown: "Du kannst." }, "sie"), "Du kannst.");
+  assertEquals(summaryOf(row).description, "Du bearbeitest Tickets.");
+});
+
+Deno.test("the Sie columns are added without breaking existing rows", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../../migrations/0330_handbook_formality.sql", import.meta.url),
+  );
+  for (const required of [
+    "add column if not exists markdown_sie text",
+    "add column if not exists title_sie text",
+    "create or replace function public.apply_handbook_sync(",
+    "item -> 'sie' ->> 'markdown'",
+    "revoke all on function public.apply_handbook_sync(bigint, text)",
+  ]) {
+    if (!migration.includes(required)) throw new Error(`missing: ${required}`);
+  }
+});
 
 Deno.test("the handbook tables are closed to clients", async () => {
   const migration = await Deno.readTextFile(

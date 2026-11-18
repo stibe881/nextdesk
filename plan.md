@@ -63,7 +63,7 @@ Die neue Migration ergänzt den Berechtigungskatalog um `event.spaces.request` u
 
 Synchronisierte Personen bleiben immer normale Personen. In «Personen & Agenten» kann eine Mandantenadministration eine aktive Entra-Person bewusst einer aktiven Ziel-Abteilung als Support-Agent zuordnen oder diese Vormerkung wieder aufheben. Die Datenbank hält die auslösende Mandantenadministration, den Zeitpunkt und ausschliesslich die daraus erzeugte Rollen-Zuweisung fest. Bei bereits aktiver nextDesk-Mitgliedschaft wird diese Rollen-Zuweisung sofort eingerichtet; bei einer Person ohne bisherigen Login nur vorgemerkt und ausschliesslich beim späteren, objektgebundenen Entra-Login angewendet.
 
-Die drei service-role-only Datenbankfunktionen prüfen Mandant, aktive Adminrolle, aktive Entra-Person, Ziel-Abteilung und Rollenbesitz atomar. Sie übernehmen keine vorbestehende fremde Agentenrolle. Bei Entra-Deaktivierung oder Entfernung beendet der nächste Directory-Sync nur die nachweislich über diese Vormerkung geschaffene Rollen-Zuweisung und löscht die Vormerkung. Browserrollen können weder die privaten Verzeichnisdaten noch die Verwaltungsfunktionen direkt aufrufen.
+Die drei service-role-only Datenbankfunktionen prüfen Mandant, aktive Adminrolle, aktive Entra-Person, Ziel-Abteilung und Rollenbesitz atomar. Diese übernehmen keine vorbestehende fremde Agentenrolle. Bei Entra-Deaktivierung oder Entfernung beendet der nächste Directory-Sync nur die nachweislich über diese Vormerkung geschaffene Rollen-Zuweisung und löscht die Vormerkung. Browserrollen können weder die privaten Verzeichnisdaten noch die Verwaltungsfunktionen direkt aufrufen.
 
 ## Ticketakte als PDF – Redesign
 
@@ -85,7 +85,7 @@ Die relevanten Module liegen in `apps/web/src/tenant-admin-settings.tsx` und `ap
 
 ## SLA-Backlog-Zuverlässigkeit
 
-Die SLA-Automation lässt die Datenbank pro Breach-Art nur noch offene, fällige Tickets auswählen, die kein gleichartiges Breach-Ereignis besitzen und deren Mandant `automation.sla` wirksam freigegeben hat. Damit können frühere, bereits protokollierte Ereignisse sowie inaktive Mandanten den begrenzten Worker-Batch nicht belegen. Auswahl- und Breach-RPC sind ausschließlich für `service_role` ausführbar. Die Datenbankzeit bestimmt Fälligkeit und Pilotablauf; die atomare Breach-RPC sperrt den zugehörigen Funktionsschalter und prüft ihn unmittelbar vor den Folgeschreibvorgängen nochmals. Sie bleibt damit zugleich letzte Freigabe- und Idempotenzsicherung bei parallelen Läufen.
+Die SLA-Automation lässt die Datenbank pro Breach-Art nur noch offene, fällige Tickets auswählen, die kein gleichartiges Breach-Ereignis besitzen und deren Mandant `automation.sla` wirksam freigegeben hat. Damit können frühere, bereits protokollierte Ereignisse sowie inaktive Mandanten den begrenzten Worker-Batch nicht belegen. Auswahl- und Breach-RPC sind ausschließlich für `service_role` ausführbar. Die Datenbankzeit bestimmt Fälligkeit und Pilotablauf; die atomare Breach-RPC sperrt den zugehörigen Funktionsschalter und prüft ihn unmittelbar vor den Folgeschreibvorgängen nochmals. Diese bleibt damit zugleich letzte Freigabe- und Idempotenzsicherung bei parallelen Läufen.
 
 ## Konsolidierung offener Webpunkte vom 19. Oktober
 
@@ -101,7 +101,7 @@ Neue Mitarbeitende werden als eigenständige operative Eintrittsvorgänge gefüh
 
 Der Prozess wird beim Anlegen einmalig materialisiert: Es gibt keinen Scheduler, keine automatische nachträgliche Terminverschiebung und keine automatische Ticketanlage. Führungspersonen sehen ihre ihnen zugeordneten Eintritte, ICT-Verantwortliche ausschliesslich die eigenen technischen Aufgaben; Personen mit Verwaltungsberechtigung sehen und verwalten den Mandantenbestand. Ein Ausnahmeticket kann nur über eine sichtbare, bewusste Aktion erzeugt und danach serverseitig mit dem Eintritt beziehungsweise einer Aufgabe verknüpft werden. Der normale Ticketendpunkt prüft dabei weiterhin seine eigenen Ticketberechtigungen; die Onboarding-API akzeptiert nur Tickets desselben Mandanten und protokolliert die Verknüpfung.
 
-Die additive Migration 0090 legt Vorlagen, Vorlagenaufgaben, Eintrittsvorgänge, konkrete Aufgaben und Ausnahmeverknüpfungen an. Direktzugriffe für Browserrollen werden widerrufen; eine JWT-geschützte `onboarding`-Function prüft aktive Mandantenmitgliedschaft und die neuen Berechtigungen `onboarding.request` beziehungsweise `onboarding.manage` vor jeder Operation. Sie verwendet eine service-role-only Datenbankprozedur für atomare Anlage, Terminierung und Audit. Die Weboberfläche bleibt eine klare Arbeitsansicht mit Fortschritt, Fälligkeiten, Zuständigkeiten und Ausnahmeaktion.
+Die additive Migration 0090 legt Vorlagen, Vorlagenaufgaben, Eintrittsvorgänge, konkrete Aufgaben und Ausnahmeverknüpfungen an. Direktzugriffe für Browserrollen werden widerrufen; eine JWT-geschützte `onboarding`-Function prüft aktive Mandantenmitgliedschaft und die neuen Berechtigungen `onboarding.request` beziehungsweise `onboarding.manage` vor jeder Operation. Diese verwendet eine service-role-only Datenbankprozedur für atomare Anlage, Terminierung und Audit. Die Weboberfläche bleibt eine klare Arbeitsansicht mit Fortschritt, Fälligkeiten, Zuständigkeiten und Ausnahmeaktion.
 
 ## Wissensdatenbank: Volltextsuche
 
@@ -109,7 +109,7 @@ Die Wissensdatenbank erhält eine serverseitige PostgreSQL-Volltextsuche. Ein GI
 
 ## Globale zugriffsgesicherte Volltextsuche
 
-Das Suchfeld in der Kopfzeile wird zur globalen Volltextsuche des aktiven Mandanten. Sie durchsucht Tickets, die persönlichen Wiedervorlagen, zugängliche Wissensartikel, Veranstaltungsräume und Eintritte. Jede Abfrage ist serverseitig auf die aktive Mandantenmitgliedschaft, die bestehende Fachberechtigung und die einschlägigen Funktionsschalter begrenzt; die Ergebnisantwort enthält nur einen minimalen Navigationsvertrag ohne Rohbeschreibungen, Aufgabenlisten oder interne Detaildaten. Wissen respektiert weiterhin interne/externe Revisionen und aktive Kundenorganisationen, Wiedervorlagen bleiben ausschliesslich persönlich sichtbar. Veranstaltungsräume werden bewusst auf das im Planungsbereich navigierbare Zeitfenster begrenzt.
+Das Suchfeld in der Kopfzeile wird zur globalen Volltextsuche des aktiven Mandanten. Diese durchsucht Tickets, die persönlichen Wiedervorlagen, zugängliche Wissensartikel, Veranstaltungsräume und Eintritte. Jede Abfrage ist serverseitig auf die aktive Mandantenmitgliedschaft, die bestehende Fachberechtigung und die einschlägigen Funktionsschalter begrenzt; die Ergebnisantwort enthält nur einen minimalen Navigationsvertrag ohne Rohbeschreibungen, Aufgabenlisten oder interne Detaildaten. Wissen respektiert weiterhin interne/externe Revisionen und aktive Kundenorganisationen, Wiedervorlagen bleiben ausschliesslich persönlich sichtbar. Veranstaltungsräume werden bewusst auf das im Planungsbereich navigierbare Zeitfenster begrenzt.
 
 Treffer werden nach Relevanz gruppiert angezeigt und per Tastatur oder Klick geöffnet. Tickets öffnen direkt den Ticketkontext. Wissensartikel laden den Artikel, Eintritte und persönliche Wiedervorlagen laden den gezielt gefundenen, weiterhin berechtigten Eintrag zusätzlich zur Arbeitsliste nach, und Raumaufträge laden innerhalb des Planungsjahres kontrolliert weitere Seiten bis zum Treffer nach. Die Suche legt keine Daten an, startet keine Hintergrundabläufe und aktiviert keine Integrationen.
 
@@ -117,7 +117,7 @@ Die nachgelagerten Zielansichten halten dieselben Zugriffsgrenzen ein: Der Veran
 
 ## Ticketbereich: Volltextsuche und Listenfilter
 
-Die globale Kopfsuche bleibt unverändert als mandantenweite Navigation bestehen. Im Bereich «Tickets» wird zusätzlich direkt oberhalb der vorhandenen Auswahlfelder eine eigene Ticket-Suche angezeigt. Sie durchsucht ausschliesslich Tickets, nicht Wissen, Wiedervorlagen oder andere Module. Die Suche kombiniert die Volltextbegriffe mit den vorhandenen Auswahlfiltern für zuständige Person, Status, Ticketabteilung, Priorität sowie der bestehenden Sortierung; eine Suche erweitert dabei niemals die bereits berechtigte Ticketmenge.
+Die globale Kopfsuche bleibt unverändert als mandantenweite Navigation bestehen. Im Bereich «Tickets» wird zusätzlich direkt oberhalb der vorhandenen Auswahlfelder eine eigene Ticket-Suche angezeigt. Diese durchsucht ausschliesslich Tickets, nicht Wissen, Wiedervorlagen oder andere Module. Die Suche kombiniert die Volltextbegriffe mit den vorhandenen Auswahlfiltern für zuständige Person, Status, Ticketabteilung, Priorität sowie der bestehenden Sortierung; eine Suche erweitert dabei niemals die bereits berechtigte Ticketmenge.
 
 Die globale Suche hat bereits einen gewichteten deutschen GIN-Volltextindex über Ticketnummer, Betreff und Beschreibung angelegt. Eine additive Datenbankmigration stellt die bestehende sicherheitsdefinierte Listen-RPC auf genau diesen Index um; `can_read_ticket`, aktive Mandantenbindung, Auswahlfilter, Queue, Kennzahlenfilter und Sortierung bleiben innerhalb derselben Abfrage wirksam. Der Webclient übergibt Freitext nur an diese serverseitige Listen-RPC. Leere oder zu kurze Begriffe führen keine Volltextfilterung aus; Fehler werden verständlich gezeigt. Es gibt keine Mutation, keinen Scheduler und keine neue Integration.
 
@@ -145,7 +145,7 @@ Das Anlegen und Bearbeiten eines Wissensartikels öffnet den bestehenden Editor 
 
 ## Wiedervorlagen im Arbeitsplatz
 
-Wiedervorlagen werden nicht mehr als eigener Eintrag in der Hauptnavigation geführt. Sie werden als eigener Registerbereich «Wiedervorlagen» im Arbeitsplatz angezeigt und verwenden dabei unverändert den bestehenden, mandantengebundenen Daten- und Speicherpfad.
+Wiedervorlagen werden nicht mehr als eigener Eintrag in der Hauptnavigation geführt. Diese werden als eigener Registerbereich «Wiedervorlagen» im Arbeitsplatz angezeigt und verwenden dabei unverändert den bestehenden, mandantengebundenen Daten- und Speicherpfad.
 
 Direkte Zugänge aus «Mein Tag», der globalen Suche und dem zentralen Plus-Menü navigieren in den Arbeitsplatz und öffnen dort gezielt den Registerbereich «Wiedervorlagen». Bestehende persönliche Startseiten, die noch auf «Wiedervorlagen» zeigen, werden beim Laden sicher auf «Arbeitsplatz» umgestellt. Der Arbeitsplatz bleibt erreichbar, sofern mindestens Agentenwerkbank oder Wiedervorlagen für den Mandanten freigegeben ist; ohne Agentenwerkbank zeigt er ausschliesslich den Wiedervorlagenbereich.
 
@@ -179,7 +179,7 @@ Die Einstellungen blenden die vollständige Konfiguration «Abteilungsleitungen�
 
 ## Personenorientierte Rollenverwaltung
 
-Die administrativ geschützte Seite «Rollen» wird als verständliche Zugriffsverwaltung neu geordnet. Sie beginnt mit einer kompakten Zusammenfassung und der primären Handlung «Zugriff vergeben». Danach folgt eine personenorientierte Übersicht mit Rollenbezeichnungen und einer leicht erreichbaren Entzugsaktion; technische Berechtigungscodes werden nicht mehr als primäre Information gezeigt.
+Die administrativ geschützte Seite «Rollen» wird als verständliche Zugriffsverwaltung neu geordnet. Diese beginnt mit einer kompakten Zusammenfassung und der primären Handlung «Zugriff vergeben». Danach folgt eine personenorientierte Übersicht mit Rollenbezeichnungen und einer leicht erreichbaren Entzugsaktion; technische Berechtigungscodes werden nicht mehr als primäre Information gezeigt.
 
 Die Rollenübersicht bleibt vollständig funktionsfähig, trennt jedoch geschützte Systemrollen klar von eigenen Rollen, zeigt Status und Anzahl Berechtigungen in lesbaren Kennzahlen und hält Detailberechtigungen auf Anforderung in gruppierten, fachlich benannten Bereichen bereit. Das Erstellen und Bearbeiten eigener Rollen fasst Berechtigungen nach Fachbereich zusammen und verwendet die vorhandenen serverseitigen Aktionen unverändert. Datenmodell, Mandantentrennung, Berechtigungschecks sowie der Schutz von Systemrollen bleiben unverändert.
 
@@ -273,7 +273,7 @@ Die bestehende private Verknüpfung über `asset_intune_asset_links` bleibt die 
 
 Eine additive Migration führt private Run- und Staging-Relationen, Generation-/Lease-Fencing, Idempotenz je Client-Request-ID, maximal zwei explizite manuelle Wiederholungen sowie Ergebniszähler für empfangene, aktualisierte, neu angelegte, übersprungene und mehrdeutige Geräte ein. Die Datenbank-RPCs prüfen bei jedem Start, unmittelbar vor jeder Providerseite, jedem Staging-Batch und Commit erneut aktive Mitgliedschaft, `assets.management`, `asset.integration.manage`, SSO-Bindung, Konfigurationsgeneration und Lease. Ein abgelaufener Lauf wird beim nächsten bewussten Start als `run_expired` abgeschlossen und seine private Staging-Projektion wird gelöscht, bevor ein neuer Lauf beansprucht werden kann. Der alte Schalter `sync_enabled` bleibt deaktiviert; die neue manuelle Freigabe ist getrennt und aktiviert keine Hintergrundausführung.
 
-Die Einstellungsoberfläche zeigt weiterhin den lokalen Preflight sowie eine klar getrennte Sektion «Manueller Microsoft-Graph-Abgleich». Sie informiert über den notwendigen Microsoft-Admin-Consent, bietet eine datensparsame Vorschau und eine zweite bewusste Synchronisationsbestätigung, zeigt nur aggregierte Laufresultate und ermöglicht eine begrenzte manuelle Wiederholung. Die native Assetansicht bleibt bei den bisherigen reduzierten Compliance-, Verschlüsselungs- und Zeitaggregaten.
+Die Einstellungsoberfläche zeigt weiterhin den lokalen Preflight sowie eine klar getrennte Sektion «Manueller Microsoft-Graph-Abgleich». Diese informiert über den notwendigen Microsoft-Admin-Consent, bietet eine datensparsame Vorschau und eine zweite bewusste Synchronisationsbestätigung, zeigt nur aggregierte Laufresultate und ermöglicht eine begrenzte manuelle Wiederholung. Die native Assetansicht bleibt bei den bisherigen reduzierten Compliance-, Verschlüsselungs- und Zeitaggregaten.
 
 ### Projektstruktur
 
@@ -298,7 +298,7 @@ Der manuelle Intune-Abgleich liest zusätzlich ausschliesslich `managedDevice.us
 
 Eine Auflösung ist nur möglich, wenn die Entra-Person im gleichen Mandanten aktiv ist. Persistiert wird dann ausschliesslich die relationale Verknüpfung `Asset ↔ Entra-Objekt-ID`; unaufgelöste, deaktivierte oder ungültige Graph-IDs erzeugen weder eine Zuweisung noch einen Fallback über E-Mail. Der Browser erhält für berechtigte Asset-Verwaltende nur den aktuellen Anzeigenamen der lokal verifizierten Verzeichnis-Person. Objekt-ID, UPN, E-Mail und rohe Graph-Antworten bleiben serverseitig. Die automatisch angezeigte Intune-Primärperson ist bewusst keine manuelle Ausleihe oder Ticket-Anfragendenzuordnung.
 
-Die Erweiterung bleibt an den bestehenden, bewusst gestarteten `dry_run`-/`synchronize`-Ablauf gebunden. Sie führt keine Hintergrundsynchronisation ein und muss nach Produktivbereitstellung über einen neuen, expliziten manuellen Abgleich aktualisiert werden.
+Die Erweiterung bleibt an den bestehenden, bewusst gestarteten `dry_run`-/`synchronize`-Ablauf gebunden. Diese führt keine Hintergrundsynchronisation ein und muss nach Produktivbereitstellung über einen neuen, expliziten manuellen Abgleich aktualisiert werden.
 
 ## Sichtbare Intune-Primärperson bei Assets
 
@@ -308,7 +308,7 @@ Die bereits serverseitig lokal aufgelöste, schreibgeschützte Intune-Primärper
 
 Das Vertragsmodul wird als eigenes, standardmässig deaktiviertes Mandantenfeature `contracts.management` umgesetzt. Es erhält einen linken Menüpunkt «Verträge» und eine separate, serverautorisiert geschützte Edge Function. Die Sichtbarkeit im Browser ist nur eine UX-Hilfe: Jeder Lese- und Schreibzugriff prüft weiterhin aktive Mandantenmitgliedschaft, das aktive Feature und die dedizierte Vertragsberechtigung.
 
-Die Berechtigung `contracts.manage` ist bewusst auf zwei geschützte Systemrollen begrenzt: «Tenant administrator» und die neue Tenant-Rolle «Verträge». Die Rolle «Verträge» wird pro bestehendem und künftigem Mandanten systemseitig mit genau dieser Berechtigung angelegt, aber nie automatisch Personen zugewiesen. Sie kann in der Rollenverwaltung zugewiesen oder entzogen, jedoch nicht umbenannt, deaktiviert oder mit zusätzlichen Rechten verändert werden. So bleibt die fachliche Zugriffsvorgabe nachvollziehbar und erlaubt keine versehentliche Freigabe über beliebige Custom-Rollen.
+Die Berechtigung `contracts.manage` ist bewusst auf zwei geschützte Systemrollen begrenzt: «Tenant administrator» und die neue Tenant-Rolle «Verträge». Die Rolle «Verträge» wird pro bestehendem und künftigem Mandanten systemseitig mit genau dieser Berechtigung angelegt, aber nie automatisch Personen zugewiesen. Diese kann in der Rollenverwaltung zugewiesen oder entzogen, jedoch nicht umbenannt, deaktiviert oder mit zusätzlichen Rechten verändert werden. So bleibt die fachliche Zugriffsvorgabe nachvollziehbar und erlaubt keine versehentliche Freigabe über beliebige Custom-Rollen.
 
 Verträge enthalten in der ersten Ausbaustufe nur fachlich notwendige Metadaten: Bezeichnung, Gegenpartei, optionale Referenznummer, Kategorie, Status, Start-/Enddatum, Kündigungsfrist, verantwortliche Person und Notiz. Es werden keine Vertragsdateien, Kontaktadressen, Zahlungsdaten, automatischen Verlängerungen, Scheduler oder Benachrichtigungen eingeführt. Fälligkeiten und Kündigungstermine werden rein lokal aus Kalenderdaten berechnet und nicht persistent dupliziert. Archivieren ist terminal; Browserclients erhalten keine Löschmöglichkeit. Änderungen werden mit IDs und Statuswechseln auditiert, aber ohne Freitextinhalte in das Auditprotokoll zu kopieren.
 
@@ -328,7 +328,7 @@ Die iOS-Einstellung zeigt die Dreifachauswahl pro serverseitig erlaubter Kategor
 
 ## Wissensdatenbank: Sichtbarkeits- und Entwurfsfilter
 
-Die bestehende serverautorisierte Liste bleibt die alleinige Datenquelle. `knowledge-base.tsx` ergänzt darauf eine lokale, kombinierbare Listenauswahl für Intern, Extern, Entwurf und Alle Artikel. Sie filtert nur bereits autorisierte, nicht archivierte Artikel; bei einem Wechsel wird ein nicht mehr passender Detailartikel geschlossen. Eine neue Function, Datenbankabfrage oder Rechteableitung im Browser ist nicht erforderlich.
+Die bestehende serverautorisierte Liste bleibt die alleinige Datenquelle. `knowledge-base.tsx` ergänzt darauf eine lokale, kombinierbare Listenauswahl für Intern, Extern, Entwurf und Alle Artikel. Diese filtert nur bereits autorisierte, nicht archivierte Artikel; bei einem Wechsel wird ein nicht mehr passender Detailartikel geschlossen. Eine neue Function, Datenbankabfrage oder Rechteableitung im Browser ist nicht erforderlich.
 
 ## Wissenseditor: Kategorien und Unterkategorien
 
@@ -344,9 +344,9 @@ Die Stellvertretung lädt die erlaubten Zielpersonen über eine eigene, JWT-gesc
 
 ## Wissensdatenbank: Kategorien, Unterkategorien und Versionen in der Lesedarstellung
 
-Die bestehende, serverautorisierte Artikelliste enthält die Artikelzuordnungen `collectionIds`; die bereits mandantengefencete Kategorienliste liefert dazu `id`, `name`, `parentId` und `active`. Die Weboberfläche löst diese beiden bereits geladenen Antworten ausschliesslich lokal für die Darstellung zusammen. Sie führt keine zusätzliche Kategorien- oder Artikelabfrage aus und leitet daraus keine Berechtigung, Sichtbarkeit oder Veröffentlichung ab.
+Die bestehende, serverautorisierte Artikelliste enthält die Artikelzuordnungen `collectionIds`; die bereits mandantengefencete Kategorienliste liefert dazu `id`, `name`, `parentId` und `active`. Die Weboberfläche löst diese beiden bereits geladenen Antworten ausschliesslich lokal für die Darstellung zusammen. Diese führt keine zusätzliche Kategorien- oder Artikelabfrage aus und leitet daraus keine Berechtigung, Sichtbarkeit oder Veröffentlichung ab.
 
-Eine kleine reine Hilfslogik akzeptiert nur aktive, bekannte Kategorien. Sie zeigt eine Oberkategorie eigenständig oder eine Unterkategorie mit ihrer bekannten aktiven Oberkategorie im Format `Kategorie · Unterkategorie`. Unbekannte, inaktive oder strukturell ungültige Zuordnungen bleiben leer; Namen werden nie geraten. Die gleiche Hilfslogik bestimmt die sichtbare Versionsnummer: die vom Backend gelieferte Revision hat Vorrang, andernfalls fällt eine interne Darstellung auf die aktuelle und eine externe Darstellung nur auf die veröffentlichte Revision zurück.
+Eine kleine reine Hilfslogik akzeptiert nur aktive, bekannte Kategorien. Diese zeigt eine Oberkategorie eigenständig oder eine Unterkategorie mit ihrer bekannten aktiven Oberkategorie im Format `Kategorie · Unterkategorie`. Unbekannte, inaktive oder strukturell ungültige Zuordnungen bleiben leer; Namen werden nie geraten. Die gleiche Hilfslogik bestimmt die sichtbare Versionsnummer: die vom Backend gelieferte Revision hat Vorrang, andernfalls fällt eine interne Darstellung auf die aktuelle und eine externe Darstellung nur auf die veröffentlichte Revision zurück.
 
 Artikelkarten behalten Status und Sichtbarkeit bei und ergänzen eine kompakte Zeile `Version n` sowie eine sekundäre Ordnerzeile für die Kategoriehierarchie. Die Detailansicht setzt Sichtbarkeit, Version, Aktualisierung und Kategorien vor den Titel und den Markdown-Inhalt, analog zur iOS-Reihenfolge. Die bestehende nextDesk-Leseoberfläche erhält dafür nur scoped, responsive Stile mit Umbruchschutz für lange Kategorienamen; es gibt keine Datenbank-, Function-, Berechtigungs- oder Releaseänderung.
 
@@ -371,7 +371,7 @@ Kategorienamen werden nur dann in den Suchumfang aufgenommen, wenn der serversei
 
 ## Berichte: Zeitvergleich, frei erstellter Druckbericht und Corporate Design
 
-Der bestehende, feature- und berechtigungsgeschützte Menüpunkt «Berichte» wird als Berichts-Dashboard erweitert; es entsteht kein paralleler Reportingpfad. Die `service-reporting`-Function bleibt die alleinige Kennzahlenquelle. Sie akzeptiert neben 7, 30 und 90 Tagen einen strikt begrenzten, datumsbasierten Zeitraum und liefert für jede Abfrage die direkt vorhergehende Periode gleicher Länge. Aktive Mitgliedschaft, das aktivierte Reporting-Feature, `report.read` sowie die bestehende Teamgrenze werden serverseitig vor jeder Kennzahlenberechnung geprüft. Der vorhandene `tenant-users`-Vertrag gibt die wirksame, mandantenbezogene Leseberechtigung für die sichtbare Navigation zurück; der Browser leitet sie nicht selbst ab.
+Der bestehende, feature- und berechtigungsgeschützte Menüpunkt «Berichte» wird als Berichts-Dashboard erweitert; es entsteht kein paralleler Reportingpfad. Die `service-reporting`-Function bleibt die alleinige Kennzahlenquelle. Diese akzeptiert neben 7, 30 und 90 Tagen einen strikt begrenzten, datumsbasierten Zeitraum und liefert für jede Abfrage die direkt vorhergehende Periode gleicher Länge. Aktive Mitgliedschaft, das aktivierte Reporting-Feature, `report.read` sowie die bestehende Teamgrenze werden serverseitig vor jeder Kennzahlenberechnung geprüft. Der vorhandene `tenant-users`-Vertrag gibt die wirksame, mandantenbezogene Leseberechtigung für die sichtbare Navigation zurück; der Browser leitet sie nicht selbst ab.
 
 Das Dashboard vergleicht Ticketvolumen, offene und gelöste Tickets, Eskalationen, Erstreaktion, Lösungszeit, Zufriedenheit und Zeitaufwand mit der Vorperiode. Berechtigte Personen können ausschliesslich lokal einen Titel und die gewünschten Abschnitte eines Berichts zusammenstellen. Der Browserdruck verwendet nur die bereits geladene autorisierte Ansicht und speichert, versendet oder verändert weder Berichte noch Kennzahlen. Logo, Portalname und Farben stammen aus dem bestehenden Workspace-Branding; der Druckkopf enthält Brand, Zeitraum und Erstellzeitpunkt und blendet Navigation sowie Bedienelemente aus. Es gibt keine Migration, Rollenaufweitung, Scheduler-Aktivierung oder automatischen Produktionsrelease.
 
@@ -391,7 +391,7 @@ Die neue öffentliche Statusseite übernimmt die klare Informationshierarchie de
 
 ### Freigabe, Datenschutz und Mandantentrennung
 
-Eine öffentliche Statusseite ist immer eine explizite Mandantenentscheidung. Sie bleibt standardmässig deaktiviert. Erst eine Person mit `tenant.settings.manage` kann die Veröffentlichung aktivieren und damit eine zufällige öffentliche Kennung freigeben. Dieselbe Berechtigung kann die Kennung rotieren. Die öffentliche Function gibt bei deaktivierter oder unbekannter Kennung dieselbe neutrale Nichtverfügbarkeitsantwort zurück. Sie verwendet ausschliesslich eine serverseitige Auswahl veröffentlichter Services mit Name, bewusst gesetztem Zustand, öffentlicher Seitenüberschrift, zulässiger Markeninformation und aggregiertem Verlauf. Sie gibt keine Tenant-ID, Tickets, Assetdaten, Fälle, Personalien, interne Beschreibungen, Auditdaten oder nicht veröffentlichte Services aus.
+Eine öffentliche Statusseite ist immer eine explizite Mandantenentscheidung. Diese bleibt standardmässig deaktiviert. Erst eine Person mit `tenant.settings.manage` kann die Veröffentlichung aktivieren und damit eine zufällige öffentliche Kennung freigeben. Dieselbe Berechtigung kann die Kennung rotieren. Die öffentliche Function gibt bei deaktivierter oder unbekannter Kennung dieselbe neutrale Nichtverfügbarkeitsantwort zurück. Diese verwendet ausschliesslich eine serverseitige Auswahl veröffentlichter Services mit Name, bewusst gesetztem Zustand, öffentlicher Seitenüberschrift, zulässiger Markeninformation und aggregiertem Verlauf. Diese gibt keine Tenant-ID, Tickets, Assetdaten, Fälle, Personalien, interne Beschreibungen, Auditdaten oder nicht veröffentlichte Services aus.
 
 Der öffentliche Badge ist ein minimales SVG mit deutschem Statussatz, etwa «Alle Dienste verfügbar» oder «Teilweise eingeschränkt». Er ist als Bildadresse für den SharePoint-Bild-Webpart vorgesehen und verlinkt auf die öffentliche nextDesk-Statusseite. Es wird keine SharePoint-Sitzung, Graph-Berechtigung oder automatische Änderung einer SharePoint-Seite benötigt oder eingerichtet. Die Seite zeigt in nextDesk eine kopierbare Bildadresse, einen HTML-Fallback sowie kurze manuelle SharePoint-Schritte. Dadurch bleiben DSGVO, revDSG und die Datenminimierung gewahrt.
 
@@ -434,7 +434,7 @@ Die 90-Tage-Verlaufslinie erhält pro Service zusätzlich den letzten serverauto
 
 Die bestehende Navigation bleibt in ihren sicheren, serverautorisierten Bereichs- und Featuregrenzen unverändert. Der Arbeitsplatz bleibt als primärer Einstieg direkt unter der Marke. Mein Portal bleibt im abgetrennten persönlichen Bereich oberhalb des Benutzerprofils. Die übrigen verfügbaren Bereiche folgen dem fachlichen Arbeitsfluss: Übersicht, Tickets, Fälle, Wissen, Services, Assets, Systemstatus, Veranstaltungsräume, Eintritte, Verträge und Berichte. Mandantenadministrationen sehen Einstellungen weiterhin als letzten Verwaltungsbereich.
 
-Die Umsetzung ändert ausschliesslich die zentrale Reihenfolge der bestehenden Abschnittsdeklaration. Sie führt weder neue Datenabfragen noch neue Berechtigungsableitungen ein und verändert die eingeschränkte Navigation für reine Anfragende nicht. Bestehende Dialoge, Direktzugriffe aus Suche und Schnellaktionen sowie der aktuelle Anmelde- und Mandantenwechselpfad bleiben unverändert.
+Die Umsetzung ändert ausschliesslich die zentrale Reihenfolge der bestehenden Abschnittsdeklaration. Diese führt weder neue Datenabfragen noch neue Berechtigungsableitungen ein und verändert die eingeschränkte Navigation für reine Anfragende nicht. Bestehende Dialoge, Direktzugriffe aus Suche und Schnellaktionen sowie der aktuelle Anmelde- und Mandantenwechselpfad bleiben unverändert.
 
 Die heutige Vite-Auslieferung beantwortet direkte Pfade wie `/tickets` noch mit 404. Eine echte mehrseitige Webauslieferung mit stabilen Bereichs-URLs braucht deshalb eine separate Routing- und Hostingumstellung; sie wird nicht unbemerkt mit dieser reinen Reihenfolgenänderung vermischt.
 
@@ -448,13 +448,13 @@ Die heutige Vite-Auslieferung beantwortet direkte Pfade wie `/tickets` noch mit 
 
 Die vorhandene, bereits serverautorisierte Kategorienliste enthält bei importierten Artikeln teilweise übergeordnete Sammelgruppen wie «ICT intern» oder «ICT öffentlich». Diese Gruppen beschreiben die Sichtbarkeit, welche in nextDesk bereits bewusst über «Anzeigen» gefiltert wird. Der Kategorienfilter darf sie deshalb nicht zusätzlich als fachliche Themen anbieten.
 
-Die Weboberfläche verwendet weiterhin ausschliesslich die bereits für den aktiven Mandanten geladene Liste. Sie erkennt ausschliesslich die stabilen Import-Slugs der zwei sichtbarkeitsbezogenen Obergruppen als technische Gruppierung, nie deren umbenennbare Namen. Deren aktive direkte Untereinträge – etwa «WLAN» oder «Toniebox» – erscheinen im Dropdown «Kategorie» und werden als exakte, fachliche Zuordnung gefiltert. Reguläre Kategorien ausserhalb solcher Obergruppen sowie deren echte Unterkategorien bleiben vollständig nutzbar. Fehlende, inaktive oder unvollständige Einträge bleiben fail-soft verborgen.
+Die Weboberfläche verwendet weiterhin ausschliesslich die bereits für den aktiven Mandanten geladene Liste. Diese erkennt ausschliesslich die stabilen Import-Slugs der zwei sichtbarkeitsbezogenen Obergruppen als technische Gruppierung, nie deren umbenennbare Namen. Deren aktive direkte Untereinträge – etwa «WLAN» oder «Toniebox» – erscheinen im Dropdown «Kategorie» und werden als exakte, fachliche Zuordnung gefiltert. Reguläre Kategorien ausserhalb solcher Obergruppen sowie deren echte Unterkategorien bleiben vollständig nutzbar. Fehlende, inaktive oder unvollständige Einträge bleiben fail-soft verborgen.
 
 Auf Artikellisten und in Details wird eine erkannte Sichtbarkeitsgruppe ebenfalls nicht mehr vor dem fachlichen Thema wiederholt; «Anzeigen» und die vorhandenen Statuschips bleiben die einzige Sichtbarkeitsdarstellung. Die Änderung lädt keine Daten nach, leitet keine Berechtigungen ab und verändert keine Kategorienzuordnungen.
 
 ## Wissenseditor: fachliche Kategorien statt Sichtbarkeitsgruppen
 
-Der Wissenseditor verwendet für die Einordnung dieselbe, rein präsentative Themenprojektion wie der Listenfilter. Die stabil vom XML-Import gekennzeichneten Wurzeln `legacy-root-ict-intern` und `legacy-root-ict-oeffentlich` bleiben technische Sichtbarkeitsgruppen und erscheinen weder beim Anlegen noch beim Bearbeiten als Kategorie. Ihre aktiven direkten Kinder – etwa «WLAN» oder «Toniebox» – sind die auswählbaren fachlichen Kategorien.
+Der Wissenseditor verwendet für die Einordnung dieselbe, rein präsentative Themenprojektion wie der Listenfilter. Die stabil vom XML-Import gekennzeichneten Wurzeln `legacy-root-ict-intern` und `legacy-root-ict-oeffentlich` bleiben technische Sichtbarkeitsgruppen und erscheinen weder beim Anlegen noch beim Bearbeiten als Kategorie. Deren aktive direkte Kinder – etwa «WLAN» oder «Toniebox» – sind die auswählbaren fachlichen Kategorien.
 
 Bei bestehenden Artikeln wird die serverautorisierte Zuordnung fail-soft auf die sichtbare Bearbeitungswahl abgebildet: Eine echte Unterkategorie wird zusammen mit ihrer regulären Oberkategorie wiederhergestellt; ein Thema unter einer technischen Sichtbarkeitsgruppe wird direkt als Kategorie gewählt. Unbekannte, inaktive, verwaiste oder zu tiefe Zuordnungen werden nicht erraten. Die nicht geänderte Artikelspeicherung erhält ursprüngliche Mehrfachzuordnungen, bis eine Person bewusst eine neue Einordnung wählt.
 
@@ -474,7 +474,7 @@ Die bestehende serverautorisierte Ticketabfrage, Volltextsuche, Filter- und Sort
 
 ## Quick-Infos für Ticketaktionen
 
-Die kompakte Aktionsleiste in Ticketdetails erhält für die Maussteuerung plattformnative Quick-Infos über `title`-Attribute. Sie decken PDF-Druck, Wiedervorlage, Beobachten, Bearbeiten, Fokusmodus und Schliessen ab. Bei umschaltbaren Aktionen entspricht der Hinweis dem gerade möglichen Schritt. Die bereits vorhandenen `aria-label`-, `aria-pressed`- und sichtbaren Beschriftungen bleiben erhalten; die Änderung betrifft nur die Darstellung und übermittelt oder verändert keine Ticket-, Mandanten- oder Berechtigungsdaten.
+Die kompakte Aktionsleiste in Ticketdetails erhält für die Maussteuerung plattformnative Quick-Infos über `title`-Attribute. Diese decken PDF-Druck, Wiedervorlage, Beobachten, Bearbeiten, Fokusmodus und Schliessen ab. Bei umschaltbaren Aktionen entspricht der Hinweis dem gerade möglichen Schritt. Die bereits vorhandenen `aria-label`-, `aria-pressed`- und sichtbaren Beschriftungen bleiben erhalten; die Änderung betrifft nur die Darstellung und übermittelt oder verändert keine Ticket-, Mandanten- oder Berechtigungsdaten.
 
 ## Globale Suche hinter offenem Ticketdetail
 
@@ -506,7 +506,7 @@ Die CID-Auflösung deckt neben der aus der Textdarstellung bekannten Klammerform
 
 Die Verwaltung gespeicherter Ansichten wird aus der Ticketliste in das rechte Panel «Filter & Sortierung» verlegt. Dort kann die aktuelle Kombination aus Suche, Filter- und Sortierwerten unter einem frei wählbaren Namen gespeichert, später ausgewählt, aktualisiert oder gelöscht werden. Der Auswahlbereich bleibt im Panel unmittelbar bei den Kriterien; ein Bereich ausserhalb der Paneloberfläche entfällt.
 
-Jede gespeicherte Ansicht ist ausschliesslich persönlich: Sie gehört der erstellenden Person und ist nur für diese lesbar, änderbar und löschbar. Diese Regel wird nicht bloss über die Oberfläche umgesetzt. Der serverautorisierte `ticket-saved-views`-Vertrag akzeptiert und liefert nur eigene private Ansichten; eine Migration normalisiert frühere mandantenweite Ansichten auf die jeweiligen Eigentümer:innen und verschärft die bestehenden RLS-Richtlinien auf persönliche Sichtbarkeit. Die vorhandene serverseitige Ticketabfrage und ihre Berechtigungsgrenzen bleiben unverändert; eine gespeicherte Ansicht speichert nur die bereits zulässigen Filterparameter und löst keine Aktion oder Veröffentlichung aus.
+Jede gespeicherte Ansicht ist ausschliesslich persönlich: Diese gehört der erstellenden Person und ist nur für diese lesbar, änderbar und löschbar. Diese Regel wird nicht bloss über die Oberfläche umgesetzt. Der serverautorisierte `ticket-saved-views`-Vertrag akzeptiert und liefert nur eigene private Ansichten; eine Migration normalisiert frühere mandantenweite Ansichten auf die jeweiligen Eigentümer:innen und verschärft die bestehenden RLS-Richtlinien auf persönliche Sichtbarkeit. Die vorhandene serverseitige Ticketabfrage und ihre Berechtigungsgrenzen bleiben unverändert; eine gespeicherte Ansicht speichert nur die bereits zulässigen Filterparameter und löst keine Aktion oder Veröffentlichung aus.
 
 ## Harmonisierung des Hintergrunds gespeicherter Ansichten
 
@@ -540,7 +540,7 @@ Die Ticketarbeitsfläche soll ohne Lockerung der Mandantentrennung schneller und
 
 Eingehende Ticketänderungen lösen im Browser ausschliesslich eine Invalidierung aus. Ein Supabase-Realtime-Ereignis enthält keine übernommene Ticket- oder Kommentardaten und entscheidet keine Berechtigung. Es veranlasst lediglich das erneute Laden über die vorhandenen RLS- und Edge-Function-Pfade. Ticket- und Kommentar-Tabellen werden dafür nur nach ausdrücklichem Datenbankrelease in die bestehende `supabase_realtime`-Publikation aufgenommen; RLS bleibt vor jeder Ereignislieferung und jedem anschliessenden Abruf verbindlich. Die Web-Kommunikation folgt derselben ruhigen Chronologie wie die iOS-App: ältere Nachrichten stehen oben, neue Nachrichten unten; die serverseitig berechtigte Kommentarmenge bleibt unverändert.
 
-Der bereits aktive Exchange-Mail-Wartungslauf bleibt im automatischen Migrationspfad unverändert auf fünf Minuten. Eine spätere Taktverkürzung für freigegebene Shared Mailboxes ist eine separate Betriebsaktion: Sie wird erst nach einer ausdrücklichen neuen Freigabe ausserhalb von Migrationen konfiguriert und muss den bestehenden idempotenten Worker, die Graph-Quota und die aktuelle Scheduler-Konfiguration vor der Änderung prüfen.
+Der bereits aktive Exchange-Mail-Wartungslauf bleibt im automatischen Migrationspfad unverändert auf fünf Minuten. Eine spätere Taktverkürzung für freigegebene Shared Mailboxes ist eine separate Betriebsaktion: Diese wird erst nach einer ausdrücklichen neuen Freigabe ausserhalb von Migrationen konfiguriert und muss den bestehenden idempotenten Worker, die Graph-Quota und die aktuelle Scheduler-Konfiguration vor der Änderung prüfen.
 
 ### Projektstruktur
 
@@ -600,7 +600,7 @@ Eine additive Migration `0113_service_status_maintenance.sql` ergänzt mandanten
 
 ### Kundenstatusseite und SharePoint
 
-Die öffentliche Statusseite liefert weiterhin ausschliesslich bewusst freigegebene Serviceinformationen. Sie ergänzt aktuelle und kommende, bewusst öffentliche Wartungsfenster mit Titel, Beschreibung, Beginn, Ende, Zustand und den Namen der veröffentlichten betroffenen Services. Interne Wartungen, interne Services, Personen, Tenant-ID, Ticket-/Assetbezüge und Auditdaten bleiben ausgeschlossen. Eine zur Zeit aktive öffentliche Wartung beeinflusst den Gesamtstatus und damit den SVG-Badge, ohne den Status eines Services automatisch in der Datenbank zu verändern.
+Die öffentliche Statusseite liefert weiterhin ausschliesslich bewusst freigegebene Serviceinformationen. Diese ergänzt aktuelle und kommende, bewusst öffentliche Wartungsfenster mit Titel, Beschreibung, Beginn, Ende, Zustand und den Namen der veröffentlichten betroffenen Services. Interne Wartungen, interne Services, Personen, Tenant-ID, Ticket-/Assetbezüge und Auditdaten bleiben ausgeschlossen. Eine zur Zeit aktive öffentliche Wartung beeinflusst den Gesamtstatus und damit den SVG-Badge, ohne den Status eines Services automatisch in der Datenbank zu verändern.
 
 Die bestehende SharePoint-Ausgabe bleibt eine kopierbare SVG-Bildadresse plus Kundenstatusadresse. Der Badge führt per bewusster SharePoint-Bildverlinkung zur öffentlichen Statusseite. nextDesk verbindet sich nicht mit SharePoint, verändert keine externe Seite und veröffentlicht nichts automatisch.
 
@@ -675,7 +675,7 @@ Nicht Bestandteil dieser Lieferung sind Seriengeräte-Erfassung und -Buchung, au
 
 ## Erweiterter Lieferumfang – Unterbestand, Artikelbilder und Quellreservationen
 
-Die folgenden Erweiterungen gehören verbindlich zur vorbereiteten Lagerlieferung. Sie bleiben bis zu einer separaten Produktionsfreigabe ausschliesslich Quellcode und lokale Qualitätssicherung.
+Die folgenden Erweiterungen gehören verbindlich zur vorbereiteten Lagerlieferung. Diese bleiben bis zu einer separaten Produktionsfreigabe ausschliesslich Quellcode und lokale Qualitätssicherung.
 
 1. **Unterbestandsmeldung:** Nach einer abgeschlossenen Bestandsbuchung wird der Gesamtbestand eines Artikels über alle Lagerorte als physisch minus reserviert bewertet. Beim einmaligen Übergang in Unterbestand wird eine bestehende In-App-/Push-Mitteilung ausschliesslich an aktive Personen mit `inventory.manage` und explizitem Opt-in für «Mindestbestand» vorgemerkt; der Buchungsactor wird nie selbst benachrichtigt. Die Zustellung bleibt über die vorhandene Push-Outbox, inklusive erneuter Autorisierung direkt vor dem Versand. Kein Scheduler, keine automatische Nachbestellung, keine Provideraktivierung und keine Push-Freigabe pro Mandant erfolgen automatisch.
 2. **Privates Artikelbild:** Ein Lagerartikel kann genau ein primäres Bild haben. Der Bucket bleibt privat; die Weboberfläche erhält zum Hoch- und Herunterladen nur kurzlebige, serverseitig autorisierte URLs. Zulässig sind JPEG, PNG und WebP bis 5 MiB sowie klar begrenzte Bilddimensionen; der Server prüft Pfad, Storage-Metadaten, Magic Bytes und Bildgrenzen. Dauerhafte URLs, öffentliche Buckets, Browser-Storage-Policies und personenbezogene EXIF-Daten im Bildvertrag werden nicht verwendet.

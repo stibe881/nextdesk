@@ -267,7 +267,7 @@ function createPrintDocument(
     ? checklist
         .map((item) => {
           const completed = Boolean(item.completed_at);
-          return `<li class="checklist__item${completed ? " is-complete" : ""}"><span class="checklist__mark" aria-hidden="true">${completed ? "✓" : ""}</span><span>${escapeHtml(item.description)}</span></li>`;
+          return `<li class="checklist__item${completed ? " is-complete" : ""}"><span class="checklist__mark" aria-hidden="true">${completed ? '<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ""}</span><span>${escapeHtml(item.description)}</span></li>`;
         })
         .join("")
     : '<li class="checklist__empty">Keine Checkliste hinterlegt.</li>';

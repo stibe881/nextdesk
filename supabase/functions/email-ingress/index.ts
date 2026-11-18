@@ -1,4 +1,8 @@
 import { withSupabase } from "@supabase/server";
+import {
+  ensureRequesterContact,
+  nameFromAddress,
+} from "../_shared/requester-name.ts";
 import { processEventSpaceEmailTicketIntake } from "../_shared/event-space-email-ticket-intake.ts";
 import { routeBackupEmail } from "../_shared/backup-monitoring.ts";
 
@@ -204,14 +208,7 @@ async function sha256Hex(value: string): Promise<string> {
  * a value that could later be rendered to an operator.
  */
 function requesterDisplayName(address: string): string {
-  const localPart = address.slice(0, address.lastIndexOf("@"));
-  const label = localPart
-    .normalize("NFKC")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .replace(/\s+/g, " ")
-    .slice(0, 120);
-  return label || "E-Mail-Kontakt";
+  return nameFromAddress(address);
 }
 
 function emailAuditMetadata(
@@ -726,20 +723,12 @@ const handler = withSupabase(
     }
     const department = departments[0] as { id: string; key: string };
 
-    const { data: requesterContact, error: requesterContactError } =
-      await context.supabaseAdmin
-        .from("ticket_requesters")
-        .upsert(
-          {
-            tenant_id: tenant.id,
-            email: payload.from,
-            display_name: requesterDisplayName(payload.from),
-            source: "email",
-          },
-          { onConflict: "tenant_id,email" },
-        )
-        .select("id")
-        .single();
+    // Keeps an existing (possibly corrected) name; see requester-name.ts.
+    const requesterContact = await ensureRequesterContact(
+      context.supabaseAdmin,
+      { tenantId: tenant.id, address: payload.from },
+    );
+    const requesterContactError = requesterContact ? null : true;
     if (
       requesterContactError ||
       !requesterContact ||

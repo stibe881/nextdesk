@@ -1,4 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
+import { msg } from "../_shared/formality.ts";
 import { departmentForSave, parseDepartmentInput } from "./department-input.ts";
 
 const ICT = "11111111-1111-4111-8111-111111111111";
@@ -22,7 +23,7 @@ Deno.test("new records get a department from the caller's scope", () => {
   assertEquals(departmentForSave(none, null), { departmentId: null });
   assertEquals(departmentForSave(several, HR), { departmentId: HR });
   assertEquals(departmentForSave(several, null), {
-    error: "Bitte wählen Sie eine Abteilung.",
+    error: msg("Bitte wähle eine Abteilung.", "Bitte wählen Sie eine Abteilung."),
   });
   assertEquals(departmentForSave(several, OTHER), {
     error: "Die Abteilung ist ungültig.",

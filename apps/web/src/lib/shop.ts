@@ -113,6 +113,12 @@ export type OrderSummary = {
   decisionReason: string | null;
   /** Grund der Bestellung (ältere Bestellungen: leer). */
   reason?: string | null;
+  /** Herkunft einer Bestellung ohne Genehmigung (z. B. Phishing-/Junk-Fall). */
+  source?: {
+    type: "security_case";
+    id: string;
+    reference: string | null;
+  } | null;
   lineCount: number;
   itemsLabel?: string;
   createdAt: string;
@@ -233,6 +239,19 @@ export function sortCatalogByName<T extends { name: string }>(items: T[]): T[] {
   );
 }
 
+export type ImportedProduct = {
+  name: string;
+  description: string;
+  articleNumber: string;
+  supplierUrl: string;
+  category: string;
+  brand: string;
+  price: string;
+  specifications: Record<string, string>;
+  images: { type: string; base64: string }[];
+  notes?: string[];
+};
+
 export const shopApi = {
   context: (tenantId: string) =>
     call<ShopContext>({ type: "getContext", tenantId }),
@@ -247,6 +266,8 @@ export const shopApi = {
       type: "listInventoryItems",
       tenantId,
     }).then((data) => data.items),
+  importProduct: (tenantId: string, url: string) =>
+    call<ImportedProduct>({ type: "importProduct", tenantId, url }),
   saveItem: (tenantId: string, item: Record<string, unknown>) =>
     call<{ id: string }>({ type: "saveCatalogItem", tenantId, item }),
   cadreSettings: (tenantId: string) =>
@@ -377,6 +398,8 @@ export const EVENT_LABEL: Record<string, string> = {
   backorder_ordered: "Beim Lieferanten bestellt",
   backorder_received: "Ware eingetroffen und reserviert",
   backorder_cancelled: "Beschaffung storniert",
+  approval_skipped: "Ohne Genehmigung bestellt",
+  line_returned: "Ausleihe zurückgenommen",
 };
 
 /** Beschaffungsstand einer Bestellzeile, die nicht an Lager ist. */

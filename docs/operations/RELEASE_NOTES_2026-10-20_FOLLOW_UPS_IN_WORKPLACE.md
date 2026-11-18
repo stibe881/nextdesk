@@ -7,15 +7,15 @@
 
 ## Ausgeliefert
 
-Wiedervorlagen sind kein eigener Eintrag der Hauptnavigation mehr. Sie erscheinen als eigenes Register im Bereich «Arbeitsplatz». Alle bisherigen persönlichen Wiedervorlagen mit Ticketverknüpfung, Anlegen, Bearbeiten und Erledigen bleiben erhalten.
+Wiedervorlagen sind kein eigener Eintrag der Hauptnavigation mehr. Diese erscheinen als eigenes Register im Bereich «Arbeitsplatz». Alle bisherigen persönlichen Wiedervorlagen mit Ticketverknüpfung, Anlegen, Bearbeiten und Erledigen bleiben erhalten.
 
 Die zentrale Erfassung, «Mein Tag», globale Suchtreffer und ältere gespeicherte Startansichten führen in den Arbeitsplatz direkt zum Register «Wiedervorlagen». Eine gespeicherte frühere Startansicht wird erst nach abgeschlossener Sitzungs-, Mandanten-, Berechtigungs- und Funktionsprüfung sicher angewendet.
 
 ## Rollen und Mandantentrennung
 
-Reine Anfragende sehen weiterhin ausschliesslich Übersicht, Tickets und gegebenenfalls Mein Portal. Sie können Wiedervorlagen weder über Navigation, direkte Webzustände, globale Suche, PostgREST noch die zugrundeliegende Datenbank lesen, erstellen oder erledigen.
+Reine Anfragende sehen weiterhin ausschliesslich Übersicht, Tickets und gegebenenfalls Mein Portal. Diese können Wiedervorlagen weder über Navigation, direkte Webzustände, globale Suche, PostgREST noch die zugrundeliegende Datenbank lesen, erstellen oder erledigen.
 
-Migration `0094_follow_up_agent_authorization` ist produktiv angewendet. Sie führt die gemeinsame Funktion `can_work_tickets_in_tenant` ein, härtet alle RLS-Policies für Wiedervorlagen und begrenzt den Wiedervorlagenzweig der globalen Suche zusätzlich auf aktive Ticketarbeit im jeweiligen Mandanten. Berechtigte Agent:innen behalten die vollständige persönliche Wiedervorlagenfunktion; Schreibversuche in fremden Mandanten bleiben gesperrt.
+Migration `0094_follow_up_agent_authorization` ist produktiv angewendet. Diese führt die gemeinsame Funktion `can_work_tickets_in_tenant` ein, härtet alle RLS-Policies für Wiedervorlagen und begrenzt den Wiedervorlagenzweig der globalen Suche zusätzlich auf aktive Ticketarbeit im jeweiligen Mandanten. Berechtigte Agent:innen behalten die vollständige persönliche Wiedervorlagenfunktion; Schreibversuche in fremden Mandanten bleiben gesperrt.
 
 Die bereits produktive `experience-hub`-Function arbeitet mit dem aufrufenden Benutzerkontext. Die neue RLS-Schicht schützt daher auch den bestehenden Function-Stand fail-closed. Die ergänzte, früher abweisende Function-Prüfung liegt im Commit und ist getestet; ihr separater Supabase-Function-Austausch konnte in dieser Umgebung ohne Deployberechtigung nicht ausgeführt werden. Daraus entsteht keine Rechteausweitung, weil die produktiven RLS-Policies sämtliche Datenoperationen weiterhin verweigern.
 

@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 /**
  * «Ticket-Aufteilung»: draft handling and validation of the child tickets
  * before they are sent to the ticket-coordination function.
@@ -58,12 +59,18 @@ export function splitChildErrors(child: SplitDraftChild): SplitDraftErrors {
   }
   const description = child.description.trim();
   if (!description) {
-    errors.description = "Bitte beschreiben Sie den Teilauftrag.";
+    errors.description = tn(
+      "Bitte beschreibe den Teilauftrag.",
+      "Bitte beschreiben Sie den Teilauftrag.",
+    );
   } else if (description.length > SPLIT_DESCRIPTION_MAX) {
     errors.description = "Die Beschreibung ist zu lang.";
   }
   if (!child.departmentId) {
-    errors.departmentId = "Bitte wählen Sie eine Abteilung.";
+    errors.departmentId = tn(
+      "Bitte wähle eine Abteilung.",
+      "Bitte wählen Sie eine Abteilung.",
+    );
   }
   return errors;
 }
@@ -81,7 +88,10 @@ export function validateSplitDraft(
   const childErrors = children.map(splitChildErrors);
   let formError: string | null = null;
   if (children.length < 1) {
-    formError = "Erfassen Sie mindestens ein Teil-Ticket.";
+    formError = tn(
+      "Erfasse mindestens ein Teil-Ticket.",
+      "Erfassen Sie mindestens ein Teil-Ticket.",
+    );
   } else if (children.length > MAX_SPLIT_CHILDREN) {
     formError = `Es sind höchstens ${MAX_SPLIT_CHILDREN} Teil-Tickets auf einmal möglich.`;
   }

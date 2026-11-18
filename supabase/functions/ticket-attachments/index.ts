@@ -344,6 +344,7 @@ async function resolveReadableTicket(
   const { data: ticket, error: ticketError } = await admin
     .from("tickets")
     .select("id, tenant_id, department_id, requester_id")
+    .is("deleted_at", null)
     .eq("id", ticketId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -615,7 +616,7 @@ const handler = withSupabase(
       let attachmentQuery = admin
         .from("ticket_attachments")
         .select(
-          "id, ticket_id, comment_id, visibility, original_filename, content_type, byte_size, malware_status, uploaded_by, created_at",
+          "id, ticket_id, comment_id, visibility, original_filename, content_type, byte_size, malware_status, uploaded_by, created_at, inline_content_id",
         )
         .eq("ticket_id", ticket.id)
         .order("created_at", { ascending: false });
@@ -630,7 +631,18 @@ const handler = withSupabase(
           500,
         );
       }
-      return json(request, { data: { attachments: attachments ?? [] } });
+      // Inline e-mail images are shown inside the message text; the client
+      // only needs to know which ones they are, not their content IDs.
+      return json(request, {
+        data: {
+          attachments: (attachments ?? []).map(
+            ({ inline_content_id, ...attachment }) => ({
+              ...attachment,
+              inline: typeof inline_content_id === "string",
+            }),
+          ),
+        },
+      });
     }
 
     if (action.type === "createInlineImageUrls") {
@@ -917,7 +929,12 @@ const handler = withSupabase(
           422,
         );
       }
-      if (action.visibility !== undefined) {
+      // Message attachments may be any allowed file type; images must
+      // really be images, because they are previewed in the conversation.
+      if (
+        action.visibility !== undefined &&
+        TICKET_COMMENT_IMAGE_CONTENT_TYPES.has(action.contentType)
+      ) {
         const validCommentImage = await hasValidCommentImageSignature(
           admin,
           action.storageObjectPath,

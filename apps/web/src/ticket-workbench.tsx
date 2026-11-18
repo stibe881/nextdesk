@@ -1,4 +1,6 @@
+import { tn } from "./lib/formality";
 import { formatSlaRemaining } from "./lib/live-dashboard";
+import { slaPausedLabel } from "./lib/sla-pause";
 import {
   AlertCircle,
   BookOpenCheck,
@@ -98,6 +100,8 @@ type ReopenRequest = {
 type SlaExpectation = {
   responseDueAt: string | null;
   resolutionDueAt: string | null;
+  /** Start of a running SLA pause (waiting status). */
+  slaPausedAt?: string | null;
   message: string;
 };
 
@@ -230,6 +234,8 @@ function eventLabel(value: string): string {
     "ticket.comment.external": "Externe Nachricht",
     "ticket.created": "Ticket erstellt",
     "ticket.resolved": "Ticket gelöst",
+    "ticket.sla.paused": "SLA pausiert",
+    "ticket.sla.resumed": "SLA fortgesetzt",
     "ticket.status_changed": "Status geändert",
   };
   return (
@@ -401,6 +407,7 @@ function parseAgentContext(value: unknown): AgentContext | null {
           expectation: {
             responseDueAt: ticket.response_due_at ?? null,
             resolutionDueAt: ticket.resolution_due_at ?? null,
+            slaPausedAt: ticket.sla_paused_at ?? null,
             message: "SLA-Zeiten aus den Ticketdaten.",
           },
         },
@@ -423,13 +430,20 @@ function parseSlaExpectation(value: unknown): SlaExpectation | null {
   if (!expectation || typeof expectation.message !== "string") return null;
   const responseDueAt = stringOrNull(expectation.responseDueAt);
   const resolutionDueAt = stringOrNull(expectation.resolutionDueAt);
+  const slaPausedAt = stringOrNull(expectation.slaPausedAt);
   if (
     (responseDueAt !== null && !isTimestamp(responseDueAt)) ||
     (resolutionDueAt !== null && !isTimestamp(resolutionDueAt))
   ) {
     return null;
   }
-  return { responseDueAt, resolutionDueAt, message: expectation.message };
+  return {
+    responseDueAt,
+    resolutionDueAt,
+    slaPausedAt:
+      slaPausedAt !== null && isTimestamp(slaPausedAt) ? slaPausedAt : null,
+    message: expectation.message,
+  };
 }
 
 function parseTimeline(value: unknown): PublicTimelineItem[] | null {
@@ -724,6 +738,25 @@ export function useTicketReplyDraft({
 
 export type CopyRecipient = { email: string; displayName: string | null };
 
+/** Personen im CC der E-Mails, mit denen das Ticket eingegangen ist. */
+export async function loadTicketMailCc(
+  tenantId: string,
+  ticketId: string,
+): Promise<string[]> {
+  const value = await invokeWorkbench("agent-workbench", {
+    type: "listMailCc",
+    tenantId,
+    ticketId,
+  });
+  const rows = asRecord(asRecord(value)?.data)?.cc;
+  return Array.isArray(rows)
+    ? rows.filter(
+        (entry): entry is string =>
+          typeof entry === "string" && copyEmailPattern.test(entry),
+      )
+    : [];
+}
+
 const copyEmailPattern = /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/;
 
 /**
@@ -734,12 +767,15 @@ const copyEmailPattern = /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/;
 export function TicketCopyRecipients({
   disabled,
   onChange,
+  mailCc = [],
   selected,
   tenantId,
   ticketId,
 }: {
   disabled: boolean;
   onChange: (recipients: CopyRecipient[]) => void;
+  /** Personen im CC der eingegangenen E-Mail: als Auswahl «Auch antworten an». */
+  mailCc?: readonly string[];
   selected: readonly CopyRecipient[];
   tenantId: string;
   ticketId: string;
@@ -826,6 +862,28 @@ export function TicketCopyRecipients({
       aria-label="Kopie per E-Mail"
       className="ticket-workbench__mentions"
     >
+      {mailCc.length > 0 && (
+        <fieldset className="ticket-workbench__mail-cc">
+          <legend>Auch antworten an (im CC der Anfrage)</legend>
+          {mailCc.map((email) => (
+            <label key={email}>
+              <input
+                checked={selectedEmails.has(email)}
+                disabled={disabled}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    add({ email, displayName: null });
+                  } else {
+                    onChange(selected.filter((item) => item.email !== email));
+                  }
+                }}
+                type="checkbox"
+              />
+              {email}
+            </label>
+          ))}
+        </fieldset>
+      )}
       <button
         aria-expanded={expanded}
         className="text-button ticket-workbench__mention-toggle"
@@ -1012,12 +1070,16 @@ function SlaLine({ expectation }: { expectation: SlaExpectation | null }) {
   );
   const response = relativeSlaLabel(expectation?.responseDueAt ?? null, now);
   const value = resolution ?? response;
+  // Waiting statuses stop the SLA: show since when instead of a countdown.
+  const paused = slaPausedLabel(expectation?.slaPausedAt, now);
   return (
     <span className="ticket-workbench__context-value">
       <Clock3 aria-hidden="true" size={15} />
-      {value
-        ? `SLA ${resolution ? "Lösung" : "Antwort"}: ${value}`
-        : (expectation?.message ?? "SLA-Zeit nicht verfügbar")}
+      {paused
+        ? paused
+        : value
+          ? `SLA ${resolution ? "Lösung" : "Antwort"}: ${value}`
+          : (expectation?.message ?? "SLA-Zeit nicht verfügbar")}
     </span>
   );
 }
@@ -1157,11 +1219,17 @@ function MacroPanel({
       await onApplyMacro(preview);
       setPreview(null);
       setNotice(
-        "Makro wurde in den Antwortentwurf und die bestehenden Ticketfelder übernommen. Bitte prüfen und speichern Sie Ihre Antwort getrennt.",
+        tn(
+          "Makro wurde in den Antwortentwurf und die bestehenden Ticketfelder übernommen. Bitte prüfe und speichere deine Antwort getrennt.",
+          "Makro wurde in den Antwortentwurf und die bestehenden Ticketfelder übernommen. Bitte prüfen und speichern Sie Ihre Antwort getrennt.",
+        ),
       );
     } catch {
       setNotice(
-        "Das Makro konnte nicht übernommen werden. Bitte versuchen Sie es erneut.",
+        tn(
+          "Das Makro konnte nicht übernommen werden. Bitte versuche es erneut.",
+          "Das Makro konnte nicht übernommen werden. Bitte versuchen Sie es erneut.",
+        ),
       );
     } finally {
       setApplying(false);
@@ -1675,7 +1743,10 @@ function KnowledgeDraftButton({
       if (isUnavailable(error)) setAvailable(false);
       else
         setNotice(
-          "Der Wissensentwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Der Wissensentwurf konnte nicht erstellt werden. Bitte versuche es erneut.",
+            "Der Wissensentwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+          ),
         );
     } finally {
       setPending(false);
@@ -1935,7 +2006,10 @@ function RequesterPortal({
     const cleaned = reason.trim();
     if (cleaned.length < 3 || cleaned.length > 3_000 || pending) {
       setNotice(
-        "Bitte begründen Sie die Wiedereröffnung mit 3 bis 3'000 Zeichen.",
+        tn(
+          "Bitte begründe die Wiedereröffnung mit 3 bis 3'000 Zeichen.",
+          "Bitte begründen Sie die Wiedereröffnung mit 3 bis 3'000 Zeichen.",
+        ),
       );
       return;
     }
@@ -1958,13 +2032,19 @@ function RequesterPortal({
       setShowReopen(false);
       setReason("");
       setNotice(
-        "Ihre Wiedereröffnungsanfrage wurde übermittelt. Der Ticketstatus wurde nicht automatisch geändert.",
+        tn(
+          "Deine Wiedereröffnungsanfrage wurde übermittelt. Der Ticketstatus wurde nicht automatisch geändert.",
+          "Ihre Wiedereröffnungsanfrage wurde übermittelt. Der Ticketstatus wurde nicht automatisch geändert.",
+        ),
       );
     } catch (error) {
       if (isUnavailable(error)) setAvailability("unavailable");
       else
         setNotice(
-          "Die Wiedereröffnungsanfrage konnte nicht übermittelt werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Wiedereröffnungsanfrage konnte nicht übermittelt werden. Bitte versuche es erneut.",
+            "Die Wiedereröffnungsanfrage konnte nicht übermittelt werden. Bitte versuchen Sie es erneut.",
+          ),
         );
     } finally {
       setPending(false);
@@ -1981,7 +2061,9 @@ function RequesterPortal({
       <div className="ticket-workbench__panel-heading">
         <div>
           <p className="eyebrow">ÖFFENTLICHER VERLAUF</p>
-          <h3 id="ticket-public-timeline-heading">Ihr Ticketverlauf</h3>
+          <h3 id="ticket-public-timeline-heading">
+            {tn("Dein Ticketverlauf", "Ihr Ticketverlauf")}
+          </h3>
         </div>
         <button
           aria-label="Ticketverlauf aktualisieren"
@@ -2167,7 +2249,10 @@ function ReopenRequests({
       if (isUnavailable(error)) setAvailability("unavailable");
       else
         setNotice(
-          "Die Entscheidung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Entscheidung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+            "Die Entscheidung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+          ),
         );
     } finally {
       setPending(false);

@@ -509,7 +509,7 @@ export async function requireTicketWorkspaceAccess(
     throw new HttpError(
       403,
       "ticket_workspace_access_required",
-      "Wiedervorlagen stehen nur berechtigten Agent:innen zur Verfügung.",
+      "Erinnerungen stehen nur berechtigten Agent:innen zur Verfügung.",
     );
   }
 }

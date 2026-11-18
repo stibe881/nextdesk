@@ -4,7 +4,7 @@ TicketHub veröffentlicht **eine** gemeinsame iOS-App und **eine** gemeinsame An
 
 ## Technischer Stack
 
-Die App basiert auf React Native, Expo, Expo Router, TypeScript und NativeWind. Sie verwendet Expo Notifications, SecureStore, ImagePicker, DocumentPicker, Linking und AuthSession. Business-Regeln, Typen und Zod-Schemata stammen aus den Paketen des Monorepos; UI-Komponenten bleiben nativ.
+Die App basiert auf React Native, Expo, Expo Router, TypeScript und NativeWind. Diese verwendet Expo Notifications, SecureStore, ImagePicker, DocumentPicker, Linking und AuthSession. Business-Regeln, Typen und Zod-Schemata stammen aus den Paketen des Monorepos; UI-Komponenten bleiben nativ.
 
 ## Navigation und Sicherheit
 

@@ -2,7 +2,7 @@
 
 ## Zweck und Umfang
 
-Die erste startbare Webschicht zeigt eine operative Übersicht für einen Mandanten. Sie verbindet später Supabase-Auth, RLS-Tickets, Benachrichtigungen und SLA-Daten. Zusätzlich erhält der Plattform-Eigentümer eine getrennte Kontrollfläche für alle Mandanten, Mandantenanlage, Archivierung und den auslösbaren GitHub-Pages-Deploy. In dieser Lieferung ist sie bewusst als lokale Vorschau nutzbar: Wenn keine sichere Publishable-Supabase-Konfiguration vorliegt, macht die Oberfläche den Preview-Modus sichtbar, statt Produktdaten vorzutäuschen.
+Die erste startbare Webschicht zeigt eine operative Übersicht für einen Mandanten. Die Webschicht verbindet später Supabase-Auth, RLS-Tickets, Benachrichtigungen und SLA-Daten. Zusätzlich erhält der Plattform-Eigentümer eine getrennte Kontrollfläche für alle Mandanten, Mandantenanlage, Archivierung und den auslösbaren GitHub-Pages-Deploy. In dieser Lieferung ist sie bewusst als lokale Vorschau nutzbar: Wenn keine sichere Publishable-Supabase-Konfiguration vorliegt, macht die Oberfläche den Preview-Modus sichtbar, statt Produktdaten vorzutäuschen.
 
 ## Architektur
 
@@ -10,7 +10,7 @@ Die erste startbare Webschicht zeigt eine operative Übersicht für einen Mandan
 
 Die Webauslieferung wechselt von GitHub Pages auf Hetzner Webhosting L. Der Vite-Build erhält dort den Basis-Pfad `/` und wird über einen manuellen GitHub-Workflow per SSH/SFTP auf die Zielsubdomain übertragen. Supabase bleibt bis zu einer ausdrücklich beauftragten Backend-Neuentwicklung für PostgreSQL-RLS, Auth, Storage und die privilegierten Functions autoritativ. Eine spätere Node.js-API auf `api.<domain>` enthält lediglich serverseitige Integrations- und Deploy-Logik; sie ersetzt keine RLS-Prüfung im Browser.
 
-Die Plattform-Eigentümerkonsole ist eine eigenständige, MFA-geschützte Ansicht. Sie ergänzt die Mandantenarbeitsfläche um Übersicht, Anlage und Statuswechsel von Mandanten; sie ist nur nach Magic Link, TOTP-AAL2 und erfolgreicher Serverprüfung der Plattformrolle sichtbar. Ihr visueller Stil folgt dem Gross-ICT-Auftritt: Graphit als Führungsfläche, warmes Gold als Handlungs- und Statusfarbe, helle Elfenbeinflächen und prägnante Versal-Hierarchie. Die zugrundeliegenden Bild- und Wortmarken werden nicht übernommen.
+Die Plattform-Eigentümerkonsole ist eine eigenständige, MFA-geschützte Ansicht. Die Konsole ergänzt die Mandantenarbeitsfläche um Übersicht, Anlage und Statuswechsel von Mandanten; sie ist nur nach Magic Link, TOTP-AAL2 und erfolgreicher Serverprüfung der Plattformrolle sichtbar. Der visuelle Stil folgt dem Gross-ICT-Auftritt: Graphit als Führungsfläche, warmes Gold als Handlungs- und Statusfarbe, helle Elfenbeinflächen und prägnante Versal-Hierarchie. Die zugrundeliegenden Bild- und Wortmarken werden nicht übernommen.
 
 ```text
 apps/web/

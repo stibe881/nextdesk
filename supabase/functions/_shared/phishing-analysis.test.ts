@@ -431,6 +431,7 @@ Deno.test("support mailbox as report address only counts marked subjects", async
     reportAddress: "support-ict@example.ch",
     departmentId: null,
     categoryId: null,
+    subcategoryId: null,
     priorityKey: "high",
     notifyTeamId: null,
   } as unknown as Parameters<typeof isPhishingReportMail>[0];

@@ -1,3 +1,5 @@
+import { tn } from "./lib/formality";
+import { StatusSubscriptionPanel } from "./status-subscription";
 import {
   useCallback,
   useEffect,
@@ -13,46 +15,23 @@ import {
   buildServiceStatusHistoryDays,
   type ServiceAvailabilityStatus,
 } from "./lib/service-status-history";
+import { useVisibleInterval } from "./lib/use-visible-interval";
+import {
+  formatAvailability,
+  IncidentMessagesPanel,
+  incidentMessagesToPublic,
+  type IncidentMessage,
+  parseIncidentMessages,
+  parsePublicIncidents,
+  PublicIncidentList,
+  type PublicIncident,
+} from "./service-status-incidents";
 
+import { confirmDialog } from "./app-dialog";
 type ServiceStatus = ServiceAvailabilityStatus;
 
 /** Seconds between silent background refreshes of the status. */
 export const STATUS_REFRESH_MS = 30_000;
-
-/**
- * Calls `refresh` every `intervalMs` while the page is visible, and right away
- * when the tab becomes visible or the window gets focus again (browsers
- * throttle timers in background tabs). Runs are at least 5 s apart.
- */
-export function useStatusPolling(
-  refresh: () => void,
-  intervalMs: number,
-  enabled = true,
-) {
-  const latest = useRef(refresh);
-  useEffect(() => {
-    latest.current = refresh;
-  }, [refresh]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    let lastRun = Date.now();
-    const run = () => {
-      if (document.visibilityState !== "visible") return;
-      if (Date.now() - lastRun < 5_000) return;
-      lastRun = Date.now();
-      latest.current();
-    };
-    const timer = window.setInterval(run, intervalMs);
-    document.addEventListener("visibilitychange", run);
-    window.addEventListener("focus", run);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", run);
-      window.removeEventListener("focus", run);
-    };
-  }, [enabled, intervalMs]);
-}
 
 type StatusService = {
   categoryPath: string[];
@@ -102,22 +81,33 @@ type StatusPage = {
   publicId: string | null;
   title: string;
   updatedAt: string | null;
+  showAvailability: boolean;
+};
+/** Verfügbarkeit eines Dienstes in % (operational/maintenance = verfügbar). */
+export type ServiceAvailabilityInfo = {
+  serviceId: string;
+  days30: number | null;
+  days90: number | null;
+  maintenance90Percent: number | null;
 };
 type StatusOverview = {
+  availability: ServiceAvailabilityInfo[];
   canManage: boolean;
   canManagePublication: boolean;
   events: StatusEvent[];
+  incidents: IncidentMessage[];
   maintenances: StatusMaintenance[];
   page: StatusPage;
   services: StatusService[];
 };
 type StatusAction =
-  | { type: "getStatusOverview"; tenantId: string }
+  | { type: "getStatusOverview"; tenantId: string; withDetails?: boolean }
   | {
       type: "saveStatusPage";
       tenantId: string;
       title: string;
       publicEnabled: boolean;
+      showAvailability: boolean;
     }
   | { type: "rotateStatusPageId"; tenantId: string }
   | {
@@ -146,6 +136,7 @@ type StatusAction =
       serviceIds: string[];
     };
 type PublicService = {
+  availability90?: number | null;
   categoryPath: string[];
   displayStatus: ServiceStatus;
   history: Array<{ changedAt: string; status: ServiceStatus }>;
@@ -156,6 +147,7 @@ type PublicService = {
 type PublicStatusPayload = {
   accentColor: string | null;
   generatedAt: string;
+  incidents: PublicIncident[];
   logoUrl: string | null;
   overallStatus: ServiceStatus;
   services: PublicService[];
@@ -490,19 +482,52 @@ export function parseStatusOverview(value: unknown): StatusOverview {
     throw new Error("Die Wartungsliste enthält ungültige Werte.");
   }
   return {
+    availability: parseAvailability(data.availability, serviceIds),
     // Older function versions only answered asset managers.
     canManage: typeof data.canManage === "boolean" ? data.canManage : true,
     canManagePublication: data.canManagePublication,
     events: parsedEvents,
+    incidents: parseIncidentMessages(data.incidents),
     maintenances: parsedMaintenances,
     page: {
       publicEnabled: page.publicEnabled,
       publicId,
       title: page.title.trim(),
       updatedAt: page.updatedAt,
+      showAvailability: page.showAvailability === true,
     },
     services: parsedServices,
   };
+}
+
+function percentOrNull(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 100
+    ? value
+    : null;
+}
+
+/** Optionale Verfügbarkeit (ältere Funktionsstände liefern keine). */
+export function parseAvailability(
+  value: unknown,
+  serviceIds: ReadonlySet<string>,
+): ServiceAvailabilityInfo[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const serviceId = normalizeUuid(item.serviceId);
+    if (!serviceId || !serviceIds.has(serviceId)) return [];
+    return [
+      {
+        serviceId,
+        days30: percentOrNull(item.days30),
+        days90: percentOrNull(item.days90),
+        maintenance90Percent: percentOrNull(item.maintenance90Percent),
+      },
+    ];
+  });
 }
 
 function parsePublicService(value: unknown): PublicService | null {
@@ -530,6 +555,7 @@ function parsePublicService(value: unknown): PublicService | null {
   const categoryPath = parseCategoryPath(value.categoryPath);
   if (categoryPath === null) return null;
   return {
+    availability90: percentOrNull(value.availability90),
     categoryPath,
     displayStatus: value.displayStatus,
     history: history as Array<{ changedAt: string; status: ServiceStatus }>,
@@ -605,6 +631,7 @@ export function parsePublicServiceStatus(value: unknown): PublicStatusPayload {
   return {
     accentColor: data.accentColor,
     generatedAt: data.generatedAt,
+    incidents: parsePublicIncidents(data.incidents),
     logoUrl: data.logoUrl,
     overallStatus: data.overallStatus,
     services: services.filter(
@@ -643,7 +670,10 @@ async function errorMessage(error: unknown, fallback: string): Promise<string> {
   }
   if (status === 403) return "Für diese Statusaktion fehlt die Berechtigung.";
   if (status === 401)
-    return "Ihre Anmeldung ist nicht mehr gültig. Bitte melden Sie sich erneut an.";
+    return tn(
+      "Deine Anmeldung ist nicht mehr gültig. Bitte melde dich erneut an.",
+      "Ihre Anmeldung ist nicht mehr gültig. Bitte melden Sie sich erneut an.",
+    );
   return fallback;
 }
 
@@ -900,7 +930,15 @@ function ServiceCard({ service }: { service: PublicService }) {
       <div className="service-status__service-heading">
         <div>
           <h3>{service.name}</h3>
-          <p>Zuletzt aktualisiert: {dateLabel(service.updatedAt)}</p>
+          <p>
+            Zuletzt aktualisiert: {dateLabel(service.updatedAt)}
+            {typeof service.availability90 === "number" ? (
+              <span className="service-status__availability-percent">
+                {" "}
+                · {formatAvailability(service.availability90)} in 90 Tagen
+              </span>
+            ) : null}
+          </p>
         </div>
         <StatusPill status={service.displayStatus} />
       </div>
@@ -1017,11 +1055,16 @@ function MaintenanceList({
   services,
   canManagePublication,
   onEdit,
+  onExtend,
+  extending,
 }: {
   maintenances: readonly StatusMaintenance[];
   services: readonly StatusService[];
   canManagePublication: boolean;
   onEdit: (maintenance: StatusMaintenance) => void;
+  /** Extends a running maintenance by the given minutes. */
+  onExtend?: (maintenance: StatusMaintenance, minutes: number) => void;
+  extending?: boolean;
 }) {
   const serviceNames = new Map(
     services.map((service) => [service.id, service.name]),
@@ -1064,8 +1107,10 @@ function MaintenanceList({
           <p className="eyebrow">Serviceplanung</p>
           <h3 id="service-status-maintenance-title">Wartungen</h3>
           <p>
-            Erfassen Sie geplante Arbeiten transparent. Zustandswechsel und
-            Veröffentlichungen erfolgen nur nach Ihrer expliziten Eingabe.
+            {tn(
+              "Erfasse geplante Arbeiten transparent. Zustandswechsel und Veröffentlichungen erfolgen nur nach deiner expliziten Eingabe.",
+              "Erfassen Sie geplante Arbeiten transparent. Zustandswechsel und Veröffentlichungen erfolgen nur nach Ihrer expliziten Eingabe.",
+            )}
           </p>
         </div>
       </header>
@@ -1136,6 +1181,28 @@ function MaintenanceList({
                           >
                             Wartung bearbeiten
                           </button>
+                          {onExtend &&
+                          maintenance.state === "active" &&
+                          !(
+                            maintenance.publicEnabled && !canManagePublication
+                          ) ? (
+                            <select
+                              aria-label={`Wartung «${maintenance.title}» verlängern`}
+                              disabled={extending}
+                              onChange={(event) => {
+                                const minutes = Number(event.target.value);
+                                event.target.value = "";
+                                if (minutes > 0) onExtend(maintenance, minutes);
+                              }}
+                              value=""
+                            >
+                              <option value="">Verlängern …</option>
+                              <option value="30">um 30 Minuten</option>
+                              <option value="60">um 1 Stunde</option>
+                              <option value="120">um 2 Stunden</option>
+                              <option value="240">um 4 Stunden</option>
+                            </select>
+                          ) : null}
                         </p>
                         {maintenance.publicEnabled && !canManagePublication ? (
                           <p className="service-status__maintenance-access-note">
@@ -1345,8 +1412,10 @@ function MaintenanceEditorDialog({
           <fieldset className="service-status__maintenance-services">
             <legend>Betroffene Services</legend>
             <p id="service-status-maintenance-services-help">
-              Wählen Sie ausschliesslich Services aus, die in dieser Übersicht
-              bereits serverautorisiert geladen wurden.
+              {tn(
+                "Wähle ausschliesslich Services aus, die in dieser Übersicht bereits serverautorisiert geladen wurden.",
+                "Wählen Sie ausschliesslich Services aus, die in dieser Übersicht bereits serverautorisiert geladen wurden.",
+              )}
             </p>
             <div>
               {services.map((service) => {
@@ -1468,9 +1537,13 @@ function internalToPublicPayload(
     overview.maintenances,
     now,
   );
+  const availability = new Map(
+    overview.availability.map((item) => [item.serviceId, item.days90]),
+  );
   const services = overview.services
     .filter((service) => service.statusPublic)
     .map((service) => ({
+      availability90: availability.get(service.id) ?? null,
       categoryPath: service.categoryPath,
       displayStatus: maintenanceServiceIds.has(service.id)
         ? "maintenance"
@@ -1505,9 +1578,18 @@ function internalToPublicPayload(
         (serviceId) => publicServiceNames.get(serviceId) ?? [],
       ),
     }));
+  const allServiceNames = new Map(
+    overview.services.map((service) => [service.id, service.name]),
+  );
   return {
     accentColor: null,
     generatedAt: new Date().toISOString(),
+    // Intern sehen Mitglieder auch interne Meldungen (wie im Portal-Banner).
+    incidents: incidentMessagesToPublic(
+      overview.incidents,
+      allServiceNames,
+      false,
+    ),
     logoUrl: null,
     overallStatus: displayOverallStatus(services),
     services,
@@ -1545,6 +1627,7 @@ export function ServiceStatus({
     useState<MaintenanceDraft | null>(null);
   const [title, setTitle] = useState("Systemstatus");
   const [publicEnabled, setPublicEnabled] = useState(false);
+  const [showAvailability, setShowAvailability] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [statusClock, setStatusClock] = useState(() => Date.now());
@@ -1554,6 +1637,7 @@ export function ServiceStatus({
     setOverview(next);
     setTitle(next.page.title);
     setPublicEnabled(next.page.publicEnabled);
+    setShowAvailability(next.page.showAvailability);
     setStatusClock(Date.now());
   }
 
@@ -1561,7 +1645,11 @@ export function ServiceStatus({
     setLoading(true);
     setError("");
     try {
-      const next = await requestStatus({ type: "getStatusOverview", tenantId });
+      const next = await requestStatus({
+        type: "getStatusOverview",
+        tenantId,
+        withDetails: true,
+      });
       applyOverview(next);
     } catch (nextError) {
       setOverview(null);
@@ -1584,14 +1672,18 @@ export function ServiceStatus({
   // without touching unsaved form fields (title, public switch).
   const refreshOverview = useCallback(async () => {
     try {
-      const next = await requestStatus({ type: "getStatusOverview", tenantId });
+      const next = await requestStatus({
+        type: "getStatusOverview",
+        tenantId,
+        withDetails: true,
+      });
       setOverview(next);
       setStatusClock(Date.now());
     } catch {
       // Keep the last known state; the next run tries again.
     }
   }, [tenantId]);
-  useStatusPolling(
+  useVisibleInterval(
     () => void refreshOverview(),
     STATUS_REFRESH_MS,
     !loading && !saving && !maintenanceSaving,
@@ -1649,6 +1741,7 @@ export function ServiceStatus({
         tenantId,
         title: trimmed,
         publicEnabled,
+        showAvailability,
       });
       applyOverview(next);
       setNotice(
@@ -1671,9 +1764,9 @@ export function ServiceStatus({
   async function rotatePublicId() {
     if (!overview?.canManagePublication) return;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         "Die bisherige öffentliche Adresse und der bisherige SharePoint-Badge funktionieren danach nicht mehr. Neue Adresse erstellen?",
-      )
+      ))
     ) {
       return;
     }
@@ -1687,7 +1780,10 @@ export function ServiceStatus({
       });
       applyOverview(next);
       setNotice(
-        "Eine neue öffentliche Adresse wurde erstellt. Ersetzen Sie die frühere SharePoint-Bildadresse.",
+        tn(
+          "Eine neue öffentliche Adresse wurde erstellt. Ersetze die frühere SharePoint-Bildadresse.",
+          "Eine neue öffentliche Adresse wurde erstellt. Ersetzen Sie die frühere SharePoint-Bildadresse.",
+        ),
       );
     } catch (nextError) {
       setError(
@@ -1744,7 +1840,9 @@ export function ServiceStatus({
       startsAt: toDateTimeLocal(startsAt),
       endsAt: toDateTimeLocal(endsAt),
       state: "scheduled",
-      publicEnabled: false,
+      // Maintenance has its own status page entry (and banner): public by
+      // default for those who may publish.
+      publicEnabled: overview?.canManagePublication === true,
       serviceIds: [],
     });
   }
@@ -1804,7 +1902,10 @@ export function ServiceStatus({
     ) {
       setError(
         maintenanceDraft.serviceIds.length < 1
-          ? "Wählen Sie mindestens einen betroffenen Service aus."
+          ? tn(
+              "Wähle mindestens einen betroffenen Service aus.",
+              "Wählen Sie mindestens einen betroffenen Service aus.",
+            )
           : "Die ausgewählten Services sind nicht mehr verfügbar.",
       );
       return;
@@ -1877,6 +1978,49 @@ export function ServiceStatus({
     }
   }
 
+  /** Running maintenance: move the end (from now if it is already over). */
+  async function extendMaintenance(
+    maintenance: StatusMaintenance,
+    minutes: number,
+  ) {
+    const base = Math.max(Date.parse(maintenance.endsAt), Date.now());
+    const endsAt = new Date(base + minutes * 60_000).toISOString();
+    setMaintenanceSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const next = await requestStatus({
+        type: "manageMaintenance",
+        operation: "update",
+        tenantId,
+        maintenanceId: maintenance.id,
+        title: maintenance.title,
+        description: maintenance.description ?? null,
+        startsAt: maintenance.startsAt,
+        endsAt,
+        state: maintenance.state,
+        publicEnabled: maintenance.publicEnabled,
+        serviceIds: maintenance.serviceIds,
+      });
+      applyOverview(next);
+      setNotice(
+        `Die Wartung «${maintenance.title}» wurde bis ${new Intl.DateTimeFormat(
+          "de-CH",
+          { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Zurich" },
+        ).format(new Date(endsAt))} verlängert.`,
+      );
+    } catch (nextError) {
+      setError(
+        await errorMessage(
+          nextError,
+          "Die Wartung konnte nicht verlängert werden.",
+        ),
+      );
+    } finally {
+      setMaintenanceSaving(false);
+    }
+  }
+
   return (
     <section className="service-status" aria-labelledby="service-status-title">
       <header className="service-status__header">
@@ -1886,7 +2030,10 @@ export function ServiceStatus({
           <p>
             {overview && !overview.canManage
               ? "Aktueller Zustand der Services und geplante Wartungen."
-              : "Zeigen Sie den bewusst gesetzten Zustand Ihrer Services und veröffentlichen Sie bei Bedarf eine datensparsame Statusseite."}
+              : tn(
+                  "Zeige den bewusst gesetzten Zustand deiner Services und veröffentliche bei Bedarf eine datensparsame Statusseite.",
+                  "Zeigen Sie den bewusst gesetzten Zustand Ihrer Services und veröffentlichen Sie bei Bedarf eine datensparsame Statusseite.",
+                )}
           </p>
         </div>
       </header>
@@ -1908,11 +2055,26 @@ export function ServiceStatus({
       {!loading && overview && publicPayload ? (
         <>
           <StatusPresentation payload={publicPayload} />
+          <PublicIncidentList incidents={publicPayload.incidents} />
+          {overview.canManage ? (
+            <IncidentMessagesPanel
+              onChanged={() => void refreshOverview()}
+              services={overview.services.map((service) => ({
+                id: service.id,
+                name: service.name,
+              }))}
+              tenantId={tenantId}
+            />
+          ) : null}
           {overview.canManage ? (
             <MaintenanceList
               canManagePublication={overview.canManagePublication}
               maintenances={overview.maintenances}
               onEdit={openMaintenanceEditor}
+              onExtend={(maintenance, minutes) =>
+                void extendMaintenance(maintenance, minutes)
+              }
+              extending={maintenanceSaving}
               services={overview.services}
             />
           ) : null}
@@ -1968,6 +2130,24 @@ export function ServiceStatus({
                       </small>
                     </span>
                   </label>
+                  <label className="service-status__publish-toggle">
+                    <input
+                      checked={showAvailability}
+                      disabled={saving}
+                      onChange={(event) =>
+                        setShowAvailability(event.target.checked)
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>Verfügbarkeit in Prozent zeigen</strong>
+                      <small>
+                        Zeigt pro Dienst die Verfügbarkeit der letzten 90 Tage
+                        (z. B. «99.8 % in 90 Tagen»). Geplante Wartung zählt als
+                        verfügbar.
+                      </small>
+                    </span>
+                  </label>
                   <p className="service-status__publication-actions">
                     <button
                       className="primary-button"
@@ -2003,11 +2183,10 @@ export function ServiceStatus({
                 <div className="service-status__sharepoint">
                   <h4>In SharePoint einfügen</h4>
                   <p>
-                    Für den Bild-Webpart verwenden Sie die Bildadresse und
-                    verlinken das Badge mit der Statusseite. Für das
-                    Einbetten-Webpart zeigt der iFrame ausschliesslich das
-                    kompakte Statusbadge. nextDesk verändert keine
-                    SharePoint-Seite automatisch.
+                    {tn(
+                      "Für den Bild-Webpart verwendest du die Bildadresse und verlinkst das Badge mit der Statusseite. Für das Einbetten-Webpart zeigt der iFrame ausschliesslich das kompakte Statusbadge. nextDesk verändert keine SharePoint-Seite automatisch.",
+                      "Für den Bild-Webpart verwenden Sie die Bildadresse und verlinken das Badge mit der Statusseite. Für das Einbetten-Webpart zeigt der iFrame ausschliesslich das kompakte Statusbadge. nextDesk verändert keine SharePoint-Seite automatisch.",
+                    )}
                   </p>
                   <label>
                     Öffentliche Statusseite
@@ -2132,6 +2311,7 @@ export function PublicServiceStatusBadgePage({
   const [status, setStatus] = useState<ServiceStatus | null | "unavailable">(
     null,
   );
+  const reloadBadge = useRef<() => void>(() => undefined);
   useEffect(() => {
     const abortController = new AbortController();
     async function load() {
@@ -2161,12 +2341,13 @@ export function PublicServiceStatusBadgePage({
       }
     }
     void load();
-    const timer = window.setInterval(() => void load(), 60_000);
+    reloadBadge.current = () => void load();
     return () => {
       abortController.abort();
-      window.clearInterval(timer);
+      reloadBadge.current = () => undefined;
     };
   }, [publicId]);
+  useVisibleInterval(() => reloadBadge.current(), 60_000);
 
   const visual =
     status === null || status === "unavailable" ? "unavailable" : status;
@@ -2239,7 +2420,7 @@ export function PublicServiceStatusPage({
     },
     [publicId],
   );
-  useStatusPolling(() => void load(true), 60_000, payload !== null);
+  useVisibleInterval(() => void load(true), 60_000, payload !== null);
 
   useEffect(() => {
     void load();
@@ -2297,11 +2478,15 @@ export function PublicServiceStatusPage({
         ) : null}
         {payload ? (
           <>
-            <header className="public-service-status__heading">
-              <p className="eyebrow">Live-Übersicht</p>
-              <h1 id="public-service-status-title">{payload.title}</h1>
-              <p>Zuletzt aktualisiert: {dateLabel(payload.generatedAt)}</p>
-            </header>
+            <div className="public-service-status__top">
+              <header className="public-service-status__heading">
+                <p className="eyebrow">Live-Übersicht</p>
+                <h1 id="public-service-status-title">{payload.title}</h1>
+                <p>Zuletzt aktualisiert: {dateLabel(payload.generatedAt)}</p>
+              </header>
+              <StatusSubscriptionPanel publicId={publicId} />
+            </div>
+            <PublicIncidentList incidents={payload.incidents} />
             <StatusPresentation payload={payload} publicView />
             <PublicMaintenanceList maintenances={payload.maintenances} />
             <p className="public-service-status__footer">
@@ -2355,7 +2540,7 @@ export function NavigationStatusBadge({
       refreshBadge.current = () => undefined;
     };
   }, [tenantId]);
-  useStatusPolling(() => refreshBadge.current(), STATUS_REFRESH_MS);
+  useVisibleInterval(() => refreshBadge.current(), STATUS_REFRESH_MS);
 
   const status = useMemo(() => {
     if (!overview) return null;

@@ -134,7 +134,9 @@ function matches(row, column, expression) {
     case "eq":
       result =
         String(value) === String(parseValue(operand)) ||
-        value === parseValue(operand);
+        value === parseValue(operand) ||
+        // Flags missing in the demo data count as false (e.g. is_security_case).
+        (value === undefined && operand === "false");
       break;
     case "neq":
       result = String(value) !== operand;
@@ -419,6 +421,14 @@ const RPCS = {
         : [];
     }),
   list_active_delegations: () => [],
+  // Menu counters and team modules («Störungen», «Phishing / Junk»).
+  navigation_ticket_attention: (args, ctx) => ({
+    unassignedTickets: 3,
+    securityTriage: 1,
+    incidentsUnacknowledged: 1,
+    canWorkSecurityCases: ctx.persona?.role !== "employee",
+    canWorkIncidents: ctx.persona?.role !== "employee",
+  }),
   list_ticket_rule_statuses: () =>
     D.STATUSES.map((s) => ({ key: s.key, label: s.label })),
   get_ticket_lifecycle_settings: () => ({

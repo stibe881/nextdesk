@@ -1,6 +1,12 @@
+import {
+  matchesStatusSelection,
+  splitStatusFilter,
+  statusFilterOptions,
+  toggleStatus,
+} from "@/lib/ticket-status-filter";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useFocusEffect, useNavigation, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionSheetIOS,
   Alert,
@@ -16,8 +22,10 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import {
+  TicketCreatedText,
   TicketPriorityText,
   TicketRequesterText,
+  TicketSlaPauseText,
   TicketStatusBadge,
 } from "@/components/ticket-status-badge";
 import { TicketSwipeActions } from "@/components/ticket-swipe-actions";
@@ -33,6 +41,7 @@ import {
   assignTicketToMe,
   BULK_STATUS_OPTIONS,
   bulkDeleteTickets,
+  markTicketsSpam,
   bulkSetTicketStatus,
   dueToday,
   followUpTitle,
@@ -42,14 +51,36 @@ import {
   listWatchedTicketIds,
   setTicketWatched,
 } from "@/lib/mobile-ticket-actions";
+import {
+  activeRefinementCount,
+  DEFAULT_REFINEMENT,
+  matchesRefinement,
+  SORT_OPTIONS,
+  sortTickets,
+  type TicketRefinement,
+  type TicketSortBy,
+} from "@/lib/ticket-list-refinement";
 import { useUndoableDelete } from "@/lib/use-undoable-delete";
 import { isNextDeskConfigured, nextDesk } from "@/lib/nextdesk-client";
-import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
+import {
+  loadMobileDashboard,
+  loadTicketFilterDirectory,
+  type MobileTicket,
+  type TicketFilterDirectory,
+} from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
+import { tn } from "@/lib/formality";
 
 type TicketScope =
-  "all" | "mine" | "watched" | "open" | "resolved" | "unassigned";
+  | "all"
+  | "mine"
+  | "watched"
+  | "open"
+  | "resolved"
+  | "unassigned";
+
+const DEFAULT_SCOPE: TicketScope = "mine";
 
 const scopes: { key: TicketScope; label: string }[] = [
   { key: "all", label: "Alle" },
@@ -57,7 +88,6 @@ const scopes: { key: TicketScope; label: string }[] = [
   { key: "watched", label: "Beobachtet" },
   { key: "open", label: "Offen" },
   { key: "resolved", label: "Gelöst" },
-  { key: "unassigned", label: "Nicht zugewiesen" },
 ];
 
 function offlineCacheTimestamp(value: string): string {
@@ -69,6 +99,66 @@ function offlineCacheTimestamp(value: string): string {
     minute: "2-digit",
     month: "short",
   }).format(timestamp);
+}
+
+function FilterChipRow({
+  label,
+  onSelect,
+  options,
+  selected,
+}: {
+  label: string;
+  onSelect: (key: string) => void;
+  options: readonly { key: string; label: string }[];
+  selected: string;
+}) {
+  const styles = useStyles();
+  const colors = useAppColors();
+  const tokenStyles = {
+    control: {
+      backgroundColor: colors.surfaceSubtle,
+      borderColor: colors.border,
+    },
+    muted: { color: colors.muted },
+    onPrimary: { color: colors.onPrimary },
+    primary: { backgroundColor: colors.primary },
+  };
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={[styles.filterPanelLabel, tokenStyles.muted]}>
+        {label.toUpperCase()}
+      </Text>
+      <ScrollView
+        contentContainerStyle={styles.filters}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+      >
+        {options.map((option) => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: selected === option.key }}
+            key={option.key}
+            onPress={() => onSelect(option.key)}
+            style={[
+              styles.filter,
+              tokenStyles.control,
+              selected === option.key && tokenStyles.primary,
+            ]}
+          >
+            <Text
+              style={[
+                styles.filterText,
+                tokenStyles.muted,
+                selected === option.key && tokenStyles.onPrimary,
+              ]}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  );
 }
 
 export default function TicketsScreen() {
@@ -119,7 +209,8 @@ export default function TicketsScreen() {
   const [tenantName, setTenantName] = useState("");
   const [tenantId, setTenantId] = useState("");
   const [currentUserId, setCurrentUserId] = useState("");
-  const [scope, setScope] = useState<TicketScope>("all");
+  // The list opens on «Meine» (assigned to me or requested by me).
+  const [scope, setScope] = useState<TicketScope>(DEFAULT_SCOPE);
   const [watchedIds, setWatchedIds] = useState<string[]>([]);
   const watchedIdsRef = useRef<string[]>([]);
   const [query, setQuery] = useState("");
@@ -137,6 +228,14 @@ export default function TicketsScreen() {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [refinement, setRefinement] =
+    useState<TicketRefinement>(DEFAULT_REFINEMENT);
+  const [directory, setDirectory] = useState<TicketFilterDirectory>({
+    agents: [],
+    departments: [],
+  });
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [savedViews, setSavedViews] = useState<SavedTicketView[]>([]);
@@ -183,6 +282,11 @@ export default function TicketsScreen() {
       setWatchedIds(watchedList);
       setOfflineCacheAt(result.isOfflineCache ? result.cachedAt : null);
       if (!result.isOfflineCache) {
+        void loadTicketFilterDirectory(result.tenant.id)
+          .then((next) => {
+            if (loadId === latestLoad.current) setDirectory(next);
+          })
+          .catch(() => undefined);
         void listSavedTicketViews()
           .then((views) => {
             if (loadId === latestLoad.current) setSavedViews(views);
@@ -203,6 +307,21 @@ export default function TicketsScreen() {
       setRefreshing(false);
     }
   }, [isOffline, router]);
+
+  const navigation = useNavigation();
+  useEffect(() => {
+    // Tapping «Tickets» in the tab bar from another tab starts again on
+    // «Meine». Returning from a ticket keeps the chosen filter, and so does
+    // tapping the tab while the list is already shown.
+    return navigation.addListener("tabPress" as never, () => {
+      if (navigation.isFocused()) return;
+      setScope(DEFAULT_SCOPE);
+      setActiveViewId(null);
+      setStatusFilter([]);
+      setRefinement(DEFAULT_REFINEMENT);
+      setQuery("");
+    });
+  }, [navigation]);
 
   useFocusEffect(
     useCallback(() => {
@@ -229,8 +348,8 @@ export default function TicketsScreen() {
       setWatchedIds(nextIds);
       setMessage(
         nextWatched
-          ? `Du beobachtest «${ticket.ticketNumber}» und wirst über Änderungen benachrichtigt.`
-          : `Du beobachtest «${ticket.ticketNumber}» nicht mehr.`,
+          ? tn(`Du beobachtest «${ticket.ticketNumber}» und wirst über Änderungen benachrichtigt.`, `Sie beobachten «${ticket.ticketNumber}» und werden über Änderungen benachrichtigt.`)
+          : tn(`Du beobachtest «${ticket.ticketNumber}» nicht mehr.`, `Sie beobachten «${ticket.ticketNumber}» nicht mehr.`),
       );
     } catch {
       setError("Das Beobachten konnte nicht gespeichert werden.");
@@ -258,7 +377,7 @@ export default function TicketsScreen() {
         ticketId: ticket.id,
       });
       setMessage(
-        `Wiedervorlage für «${ticket.ticketNumber}» für heute gesetzt.`,
+        `Erinnerung für «${ticket.ticketNumber}» für heute gesetzt.`,
       );
     } catch (nextError) {
       if (isExperienceUnavailableError(nextError)) {
@@ -269,7 +388,7 @@ export default function TicketsScreen() {
       setError(
         nextError instanceof Error
           ? nextError.message
-          : "Die Wiedervorlage konnte nicht gesetzt werden.",
+          : "Die Erinnerung konnte nicht gesetzt werden.",
       );
     } finally {
       setCreatingFollowUpFor(null);
@@ -280,6 +399,40 @@ export default function TicketsScreen() {
     setError("");
     setMessage("");
     undoDelete.schedule(ticket);
+  }
+
+  function spamTicket(ticket: MobileTicket) {
+    Alert.alert(
+      "Wirklich als Spam markieren?",
+      `«${ticket.ticketNumber}» wird als Spam eingestuft. Alle zukünftigen Tickets von diesem Absender gehen automatisch in den Spam.`,
+      [
+        { style: "cancel", text: "Abbrechen" },
+        {
+          onPress: () =>
+            void (async () => {
+              setError("");
+              setMessage("");
+              try {
+                await markTicketsSpam([ticket.id]);
+                setTickets((current) =>
+                  current.filter((item) => item.id !== ticket.id),
+                );
+                setMessage(
+                  `«${ticket.ticketNumber}» ist jetzt Spam. Künftige Tickets dieses Absenders gehen automatisch in den Spam.`,
+                );
+              } catch (nextError) {
+                setError(
+                  nextError instanceof Error && nextError.message
+                    ? nextError.message
+                    : "Das Ticket konnte nicht als Spam markiert werden.",
+                );
+              }
+            })(),
+          style: "destructive",
+          text: "Als Spam markieren",
+        },
+      ],
+    );
   }
 
   async function assignToMe(ticket: MobileTicket) {
@@ -295,7 +448,7 @@ export default function TicketsScreen() {
             : item,
         ),
       );
-      setMessage(`«${ticket.ticketNumber}» wurde dir zugewiesen.`);
+      setMessage(tn(`«${ticket.ticketNumber}» wurde dir zugewiesen.`, `«${ticket.ticketNumber}» wurde Ihnen zugewiesen.`));
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -349,7 +502,7 @@ export default function TicketsScreen() {
       }
       return result.failed > 0
         ? `${result.succeeded} Tickets zugewiesen, ${result.failed} nicht möglich.`
-        : `${result.succeeded} Tickets wurden dir zugewiesen.`;
+        : tn(`${result.succeeded} Tickets wurden dir zugewiesen.`, `${result.succeeded} Tickets wurden Ihnen zugewiesen.`);
     }, "Die Tickets konnten nicht zugewiesen werden.");
   }
 
@@ -374,7 +527,7 @@ export default function TicketsScreen() {
       setWatchedIds(nextIds);
       return succeeded < ids.length
         ? `${succeeded} Tickets werden beobachtet, ${ids.length - succeeded} nicht möglich.`
-        : `Du beobachtest jetzt ${succeeded} Tickets.`;
+        : tn(`Du beobachtest jetzt ${succeeded} Tickets.`, `Sie beobachten jetzt ${succeeded} Tickets.`);
     }, "Die Tickets konnten nicht beobachtet werden.");
   }
 
@@ -406,6 +559,7 @@ export default function TicketsScreen() {
     const ids = [...selectedIds];
     Alert.alert(
       `${ids.length} Tickets löschen?`,
+      // formality-ok: «Sie» sind hier die Tickets
       "Sie werden endgültig gelöscht. Das kann nicht rückgängig gemacht werden.",
       [
         { style: "cancel", text: "Abbrechen" },
@@ -425,12 +579,27 @@ export default function TicketsScreen() {
   function applySavedView(view: SavedTicketView) {
     if (activeViewId === view.id) {
       setActiveViewId(null);
-      setScope("all");
+      setScope(DEFAULT_SCOPE);
       setQuery("");
+      setStatusFilter([]);
+      setRefinement(DEFAULT_REFINEMENT);
       return;
     }
     setActiveViewId(view.id);
+    setRefinement({
+      agent:
+        view.filters.agent === "mine" || view.filters.agent === "unassigned"
+          ? "all"
+          : view.filters.agent,
+      department: view.filters.department,
+      priority: view.filters.priority,
+      sortBy: SORT_OPTIONS.some((o) => o.key === view.filters.sortBy)
+        ? (view.filters.sortBy as TicketSortBy)
+        : "updated",
+      sortDirection: view.filters.sortDirection === "asc" ? "asc" : "desc",
+    });
     setQuery(view.filters.query);
+    setStatusFilter(splitStatusFilter(view.filters.status));
     if (view.filters.agent === "mine") setScope("mine");
     else if (view.filters.agent === "unassigned") setScope("unassigned");
     else if (view.filters.ticketScope === "mine") setScope("mine");
@@ -453,11 +622,11 @@ export default function TicketsScreen() {
       {
         cancelButtonIndex: 0,
         message:
-          "Beim Beobachten wirst du über Status, Nachrichten und Notizen benachrichtigt.",
+          tn("Beim Beobachten wirst du über Status, Nachrichten und Notizen benachrichtigt.", "Beim Beobachten werden Sie über Status, Nachrichten und Notizen benachrichtigt."),
         options: [
           "Abbrechen",
           isWatched ? "Nicht mehr beobachten" : "Beobachten",
-          ...(canCreateFollowUp ? ["Wiedervorlage für heute setzen"] : []),
+          ...(canCreateFollowUp ? ["Erinnerung für heute setzen"] : []),
         ],
         title: ticket.ticketNumber,
       },
@@ -469,8 +638,11 @@ export default function TicketsScreen() {
   }
 
   const normalizedQuery = query.trim().toLocaleLowerCase("de-CH");
-  const visibleTickets = tickets.filter((ticket) => {
+  const filteredTickets = tickets.filter((ticket) => {
     if (undoDelete.hiddenIds.has(ticket.id)) return false;
+    if (!matchesStatusSelection(ticket.status, statusFilter)) return false;
+    if (!matchesRefinement(ticket, refinement, currentUserId || null))
+      return false;
     const matchesScope =
       scope === "mine"
         ? ticket.assignedToCurrentUser
@@ -494,6 +666,30 @@ export default function TicketsScreen() {
       value.toLocaleLowerCase("de-CH").includes(normalizedQuery),
     );
   });
+  const agentNames = new Map(
+    directory.agents.map((agent) => [agent.id, agent.displayName]),
+  );
+  const departmentNames = new Map(
+    directory.departments.map((department) => [department.id, department.label]),
+  );
+  const visibleTickets = sortTickets(filteredTickets, refinement, {
+    agentName: (id) => (id ? (agentNames.get(id) ?? "") : ""),
+    departmentName: (id) => (id ? (departmentNames.get(id) ?? "") : ""),
+  });
+  const refinementCount =
+    activeRefinementCount(refinement) + (scope !== DEFAULT_SCOPE ? 1 : 0);
+  const priorityOptions = [
+    ...new Map(
+      tickets
+        .slice()
+        .sort(
+          (a, b) =>
+            (a.priorityRank ?? Number.MAX_SAFE_INTEGER) -
+            (b.priorityRank ?? Number.MAX_SAFE_INTEGER),
+        )
+        .map((ticket) => [ticket.priority, ticket.priority] as const),
+    ).keys(),
+  ];
 
   if (loading && tickets.length === 0) {
     return (
@@ -571,7 +767,7 @@ export default function TicketsScreen() {
             </Text>
             <Text style={[styles.title, tokenStyles.foreground]}>Tickets</Text>
             <Text style={[styles.subtitle, tokenStyles.muted]}>
-              {tenantName || "Deine autorisierten Vorgänge"}
+              {tenantName || tn("Deine autorisierten Vorgänge", "Ihre autorisierten Vorgänge")}
             </Text>
           </View>
           <Pressable
@@ -597,32 +793,73 @@ export default function TicketsScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
         >
-          {scopes.map((option) => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: scope === option.key }}
-              key={option.key}
-              onPress={() => {
-                setActiveViewId(null);
-                setScope(option.key);
-              }}
+          <Text style={[styles.viewsLabel, tokenStyles.muted]}>Status</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: scope === "unassigned" }}
+            onPress={() => {
+              setActiveViewId(null);
+              setScope(scope === "unassigned" ? DEFAULT_SCOPE : "unassigned");
+            }}
+            style={[
+              styles.filter,
+              tokenStyles.card,
+              scope === "unassigned" && tokenStyles.primary,
+            ]}
+          >
+            <Text
               style={[
-                styles.filter,
-                tokenStyles.card,
-                scope === option.key && tokenStyles.primary,
+                styles.filterText,
+                tokenStyles.muted,
+                scope === "unassigned" && tokenStyles.onPrimary,
               ]}
             >
-              <Text
+              Nicht zugewiesen
+            </Text>
+          </Pressable>
+          {statusFilterOptions(
+            tickets.map((ticket) => ticket.status),
+            statusFilter,
+          ).map((label) => {
+            const active = statusFilter.includes(label);
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                key={label}
+                onPress={() => {
+                  setActiveViewId(null);
+                  setStatusFilter((current) => toggleStatus(current, label));
+                }}
                 style={[
-                  styles.filterText,
-                  tokenStyles.muted,
-                  scope === option.key && tokenStyles.onPrimary,
+                  styles.filter,
+                  tokenStyles.card,
+                  active && tokenStyles.primary,
                 ]}
               >
-                {option.label}
+                <Text
+                  style={[
+                    styles.filterText,
+                    tokenStyles.muted,
+                    active && tokenStyles.onPrimary,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {statusFilter.length > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setStatusFilter([])}
+              style={[styles.filter, tokenStyles.card]}
+            >
+              <Text style={[styles.filterText, tokenStyles.muted]}>
+                Zurücksetzen
               </Text>
             </Pressable>
-          ))}
+          ) : null}
         </ScrollView>
 
         {savedViews.length > 0 ? (
@@ -672,6 +909,23 @@ export default function TicketsScreen() {
             style={[styles.searchInput, tokenStyles.foreground]}
             value={query}
           />
+          <Pressable
+            accessibilityLabel="Tickets filtern"
+            accessibilityRole="button"
+            accessibilityState={{ expanded: filterOpen }}
+            hitSlop={10}
+            onPress={() => setFilterOpen((open) => !open)}
+          >
+            <Ionicons
+              color={
+                filterOpen || refinementCount > 0
+                  ? colors.primary
+                  : colors.muted
+              }
+              name={filterOpen ? "funnel" : "funnel-outline"}
+              size={20}
+            />
+          </Pressable>
           {query ? (
             <Pressable
               accessibilityLabel="Ticketsuche löschen"
@@ -683,6 +937,115 @@ export default function TicketsScreen() {
             </Pressable>
           ) : null}
         </View>
+
+        {filterOpen ? (
+          <View style={[styles.filterPanel, tokenStyles.card]}>
+            <FilterChipRow
+              label="Bereich"
+              onSelect={(key) => {
+                setActiveViewId(null);
+                setScope(key as TicketScope);
+              }}
+              options={scopes.map((option) => ({
+                key: option.key,
+                label: option.label,
+              }))}
+              selected={scope}
+            />
+            <FilterChipRow
+              label="Agent"
+              onSelect={(key) => {
+                setActiveViewId(null);
+                setRefinement((current) => ({ ...current, agent: key }));
+              }}
+              options={[
+                { key: "all", label: "Alle Agenten" },
+                { key: "mine", label: "Mir zugewiesen" },
+                { key: "unassigned", label: "Nicht zugewiesen" },
+                ...directory.agents
+                  .filter((agent) => agent.id !== currentUserId)
+                  .map((agent) => ({
+                    key: agent.id,
+                    label: agent.displayName,
+                  })),
+              ]}
+              selected={refinement.agent}
+            />
+            {directory.departments.length > 0 ? (
+              <FilterChipRow
+                label="Abteilung"
+                onSelect={(key) => {
+                  setActiveViewId(null);
+                  setRefinement((current) => ({ ...current, department: key }));
+                }}
+                options={[
+                  { key: "all", label: "Alle Abteilungen" },
+                  ...directory.departments.map((department) => ({
+                    key: department.id,
+                    label: department.label,
+                  })),
+                ]}
+                selected={refinement.department}
+              />
+            ) : null}
+            <FilterChipRow
+              label="Priorität"
+              onSelect={(key) => {
+                setActiveViewId(null);
+                setRefinement((current) => ({ ...current, priority: key }));
+              }}
+              options={[
+                { key: "all", label: "Alle Prioritäten" },
+                ...priorityOptions.map((label) => ({ key: label, label })),
+              ]}
+              selected={refinement.priority}
+            />
+            <FilterChipRow
+              label="Sortieren nach"
+              onSelect={(key) => {
+                setActiveViewId(null);
+                setRefinement((current) => ({
+                  ...current,
+                  sortBy: key as TicketSortBy,
+                }));
+              }}
+              options={SORT_OPTIONS}
+              selected={refinement.sortBy}
+            />
+            <FilterChipRow
+              label="Reihenfolge"
+              onSelect={(key) => {
+                setActiveViewId(null);
+                setRefinement((current) => ({
+                  ...current,
+                  sortDirection: key === "asc" ? "asc" : "desc",
+                }));
+              }}
+              options={[
+                { key: "desc", label: "Absteigend" },
+                { key: "asc", label: "Aufsteigend" },
+              ]}
+              selected={refinement.sortDirection}
+            />
+            {refinementCount > 0 || statusFilter.length > 0 || query ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setScope(DEFAULT_SCOPE);
+                  setRefinement(DEFAULT_REFINEMENT);
+                  setStatusFilter([]);
+                  setQuery("");
+                  setActiveViewId(null);
+                }}
+                style={[styles.filter, tokenStyles.control, styles.filterReset]}
+              >
+                <Text style={[styles.filterText, tokenStyles.foreground]}>
+                  Filter zurücksetzen
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
 
         {error ? (
           <View
@@ -772,14 +1135,16 @@ export default function TicketsScreen() {
                 ? "Alle Tickets"
                 : scope === "watched"
                   ? "Favorisierte Tickets"
-                  : "Gefilterte Tickets"}
+                  : scope === "mine"
+                    ? "Meine Tickets"
+                    : "Gefilterte Tickets"}
             </Text>
             {!checkingFeatures &&
             !reducedMotion &&
             workspaceEnabled &&
             workspaceAvailable ? (
               <Text style={[styles.gestureHint, tokenStyles.muted]}>
-                Nach rechts wischen: zuweisen, beobachten oder Wiedervorlage.
+                Nach rechts wischen: zuweisen, beobachten oder Erinnerung.
                 Nach links: löschen.
               </Text>
             ) : null}
@@ -820,15 +1185,17 @@ export default function TicketsScreen() {
             <Text style={[styles.emptyText, tokenStyles.muted]}>
               {scope !== "all" || query
                 ? "Mit diesem Filter gibt es keine Treffer."
-                : "Hier ist noch nichts. Erfasse das erste Ticket."}
+                : tn("Hier ist noch nichts. Erfasse das erste Ticket.", "Hier ist noch nichts. Erfassen Sie das erste Ticket.")}
             </Text>
             <View style={styles.emptyActions}>
-              {scope !== "all" || query ? (
+              {scope !== "all" || query || activeRefinementCount(refinement) > 0 ? (
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => {
                     setScope("all");
                     setQuery("");
+                    setStatusFilter([]);
+                    setRefinement(DEFAULT_REFINEMENT);
                     setActiveViewId(null);
                   }}
                   style={[styles.emptyButton, tokenStyles.control]}
@@ -877,6 +1244,7 @@ export default function TicketsScreen() {
                     !ticket.assignedToCurrentUser
                   }
                   canDelete={!isOffline && !offlineCacheAt && !checkingFeatures}
+                  onSpam={() => spamTicket(ticket)}
                   onAssign={() => void assignToMe(ticket)}
                   onCreateFollowUp={() => void createFollowUp(ticket)}
                   onDelete={() => deleteTicket(ticket)}
@@ -1049,6 +1417,7 @@ function SwipeableTicketRow({
   onAssign,
   onCreateFollowUp,
   onDelete,
+  onSpam,
   onWatch,
   onLongPress,
   onPress,
@@ -1068,6 +1437,7 @@ function SwipeableTicketRow({
   onAssign: () => void;
   onCreateFollowUp: () => void;
   onDelete: () => void;
+  onSpam: () => void;
   onWatch: () => void;
   onLongPress: () => void;
   onPress: () => void;
@@ -1086,12 +1456,14 @@ function SwipeableTicketRow({
     <TicketSwipeActions
       canAssign={actionsAvailable && canAssign}
       canDelete={actionsAvailable && canDelete}
+      canSpam={actionsAvailable && canDelete}
       canWatch={actionsAvailable}
       canFollowUp={actionsAvailable && canCreateFollowUp}
       enabled={swipeEnabled}
       watched={watched}
       onAssign={onAssign}
       onDelete={onDelete}
+      onSpam={onSpam}
       onWatch={onWatch}
       onFollowUp={onCreateFollowUp}
     >
@@ -1173,7 +1545,7 @@ function TicketRow({
     ...(canCreateFollowUp
       ? [
           {
-            label: "Wiedervorlage für heute setzen",
+            label: "Erinnerung für heute setzen",
             name: "followUp",
           },
         ]
@@ -1226,6 +1598,8 @@ function TicketRow({
           </Text>
           <TicketRequesterText name={ticket.requesterName} />
           <TicketPriorityText priority={ticket.priority} />
+          <TicketCreatedText createdAt={ticket.createdAt} />
+          <TicketSlaPauseText pausedAt={ticket.slaPausedAt} />
         </View>
         <View style={styles.ticketState}>
           {watched ? (
@@ -1361,6 +1735,14 @@ const useStyles = makeThemedStyles((c) => ({
   },
   filterText: { fontSize: 13, fontWeight: "800" },
   filters: { gap: 9, paddingRight: 16 },
+  filterPanel: {
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 12,
+    padding: 12,
+  },
+  filterPanelLabel: { fontSize: 12, fontWeight: "800", letterSpacing: 0.4 },
+  filterReset: { alignSelf: "flex-start" },
   gestureHint: { fontSize: 11, marginTop: 3 },
   header: {
     alignItems: "center",

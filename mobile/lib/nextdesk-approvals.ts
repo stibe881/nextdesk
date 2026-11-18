@@ -1,4 +1,5 @@
 import { loadCurrentTenant, requireNextDesk } from "@/lib/nextdesk-client";
+import { tn } from "./formality";
 
 export type InboxApproval = {
   approvalId: string;
@@ -24,15 +25,20 @@ export class ApprovalError extends Error {
   }
 }
 
-const ERROR_MESSAGES: Record<string, string> = {
-  ticket_approval_decision_denied:
+const errorMessages = (): Record<string, string> => ({
+  ticket_approval_decision_denied: tn(
     "Du hast keine Berechtigung, diese Freigabe zu entscheiden.",
+    "Sie haben keine Berechtigung, diese Freigabe zu entscheiden.",
+  ),
   ticket_approval_decision_failed:
     "Die Freigabe wurde bereits entschieden oder ist nicht mehr offen.",
-  ticket_access_denied: "Dieses Ticket ist für dich nicht verfügbar.",
+  ticket_access_denied: tn(
+    "Dieses Ticket ist für dich nicht verfügbar.",
+    "Dieses Ticket ist für Sie nicht verfügbar.",
+  ),
   ticket_feature_disabled:
     "Die Freigaben sind für diesen Mandanten nicht aktiv.",
-};
+});
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -55,7 +61,7 @@ async function errorFrom(error: unknown): Promise<ApprovalError> {
     if (code) {
       return new ApprovalError(
         code,
-        ERROR_MESSAGES[code] ?? "Die Freigabe konnte nicht verarbeitet werden.",
+        errorMessages()[code] ?? "Die Freigabe konnte nicht verarbeitet werden.",
       );
     }
   }

@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 // One-click answers from reminder e-mails (#ticket-aktion=<token>).
 
 export type ReminderActionState =
@@ -65,30 +66,55 @@ export function parseReminderActionResponse(
   };
 }
 
-const MESSAGES: Record<string, string> = {
-  token_invalid:
+const messages = (): Record<string, string> => ({
+  token_invalid: tn(
+    "Dieser Link ist ungültig. Bitte melde dich an und öffne das Ticket im Portal.",
     "Dieser Link ist ungültig. Bitte melden Sie sich an und öffnen Sie das Ticket im Portal.",
-  token_expired:
+  ),
+  token_expired: tn(
+    "Dieser Link ist abgelaufen. Bitte melde dich an und öffne das Ticket im Portal.",
     "Dieser Link ist abgelaufen. Bitte melden Sie sich an und öffnen Sie das Ticket im Portal.",
-  expired:
+  ),
+  expired: tn(
+    "Dieser Link ist abgelaufen. Bitte melde dich an und öffne das Ticket im Portal.",
     "Dieser Link ist abgelaufen. Bitte melden Sie sich an und öffnen Sie das Ticket im Portal.",
-  token_used: "Sie haben auf diese Erinnerung bereits geantwortet. Danke!",
-  used: "Sie haben auf diese Erinnerung bereits geantwortet. Danke!",
-  disabled:
+  ),
+  token_used: tn(
+    "Du hast auf diese Erinnerung bereits geantwortet. Danke!",
+    "Sie haben auf diese Erinnerung bereits geantwortet. Danke!",
+  ),
+  used: tn(
+    "Du hast auf diese Erinnerung bereits geantwortet. Danke!",
+    "Sie haben auf diese Erinnerung bereits geantwortet. Danke!",
+  ),
+  disabled: tn(
+    "Diese Aktion ist nicht mehr verfügbar. Bitte antworte direkt auf die E-Mail.",
     "Diese Aktion ist nicht mehr verfügbar. Bitte antworten Sie direkt auf die E-Mail.",
-  actions_disabled:
+  ),
+  actions_disabled: tn(
+    "Diese Aktion ist nicht mehr verfügbar. Bitte antworte direkt auf die E-Mail.",
     "Diese Aktion ist nicht mehr verfügbar. Bitte antworten Sie direkt auf die E-Mail.",
-  not_waiting:
+  ),
+  not_waiting: tn(
+    "Das Ticket wartet nicht mehr auf deine Rückmeldung. Es ist keine Aktion nötig.",
     "Das Ticket wartet nicht mehr auf Ihre Rückmeldung. Es ist keine Aktion nötig.",
-  ticket_not_waiting:
+  ),
+  ticket_not_waiting: tn(
+    "Das Ticket wartet nicht mehr auf deine Rückmeldung. Es ist keine Aktion nötig.",
     "Das Ticket wartet nicht mehr auf Ihre Rückmeldung. Es ist keine Aktion nötig.",
-  status_rule:
+  ),
+  status_rule: tn(
+    "Der Status kann gerade nicht geändert werden. Bitte antworte direkt auf die E-Mail.",
     "Der Status kann gerade nicht geändert werden. Bitte antworten Sie direkt auf die E-Mail.",
-};
+  ),
+});
 
 export function reminderActionErrorText(code: string): string {
   return (
-    MESSAGES[code] ??
-    "Die Rückmeldung konnte nicht übermittelt werden. Bitte versuchen Sie es später erneut oder antworten Sie auf die E-Mail."
+    messages()[code] ??
+    tn(
+      "Die Rückmeldung konnte nicht übermittelt werden. Bitte versuche es später erneut oder antworte auf die E-Mail.",
+      "Die Rückmeldung konnte nicht übermittelt werden. Bitte versuchen Sie es später erneut oder antworten Sie auf die E-Mail.",
+    )
   );
 }

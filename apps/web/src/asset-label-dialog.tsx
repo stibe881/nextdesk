@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { Printer, QrCode, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -6,7 +7,9 @@ import {
   buildLabelDocument,
   labelFormat,
   labelsPerPage,
+  MAX_LABEL_COPIES,
   pageCount,
+  repeatLabelItems,
   type LabelFormatId,
   type LabelItem,
   type LabelQrMode,
@@ -89,24 +92,29 @@ export function AssetLabelDialog({
   count,
   branding,
   onClose,
+  webOnly = false,
 }: {
   /** Creates the label items for the chosen QR mode. */
   buildItems: (mode: LabelQrMode, baseUrl: string) => LabelItem[];
   count: number;
   branding?: LabelBranding | undefined;
   onClose: () => void;
+  /** Only a web link is offered (e.g. stock articles have no app link). */
+  webOnly?: boolean;
 }) {
   const [formatId, setFormatId] = useState<LabelFormatId>(storedFormat);
   const [skip, setSkip] = useState(0);
-  const [mode, setMode] = useState<LabelQrMode>("app");
+  const [copies, setCopies] = useState(1);
+  const total = count * copies;
+  const [mode, setMode] = useState<LabelQrMode>(webOnly ? "web" : "app");
   const [withLogo, setWithLogo] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const format = labelFormat(formatId);
   const perPage = labelsPerPage(format);
   const pages = useMemo(
-    () => pageCount(format, count, skip),
-    [count, format, skip],
+    () => pageCount(format, total, skip),
+    [total, format, skip],
   );
   const firstFieldRef = useRef<HTMLSelectElement>(null);
   const hasLogo = Boolean(branding?.logoUrl || branding?.name);
@@ -134,7 +142,10 @@ export function AssetLabelDialog({
     );
     if (!view) {
       setError(
-        "Das Druckfenster wurde blockiert. Bitte erlauben Sie Pop-ups für nextDesk.",
+        tn(
+          "Das Druckfenster wurde blockiert. Bitte erlaube Pop-ups für nextDesk.",
+          "Das Druckfenster wurde blockiert. Bitte erlauben Sie Pop-ups für nextDesk.",
+        ),
       );
       return;
     }
@@ -146,7 +157,7 @@ export function AssetLabelDialog({
       } catch {
         // Remembering the format is a convenience only.
       }
-      const items = buildItems(mode, webAppBaseUrl());
+      const items = repeatLabelItems(buildItems(mode, webAppBaseUrl()), copies);
       // QR library is loaded only when labels are printed.
       const QRCode = await import("qrcode");
       const qrSvgs = new Map<string, string>();
@@ -202,7 +213,7 @@ export function AssetLabelDialog({
           <div>
             <p className="eyebrow">Etiketten mit QR-Code</p>
             <h2 id="asset-label-dialog-heading">
-              {count === 1 ? "1 Etikett drucken" : `${count} Etiketten drucken`}
+              {total === 1 ? "1 Etikett drucken" : `${total} Etiketten drucken`}
             </h2>
           </div>
           <button
@@ -239,6 +250,28 @@ export function AssetLabelDialog({
             </select>
             <small>{format.description}</small>
           </label>
+          <label>
+            {count === 1 ? "Anzahl Etiketten" : "Anzahl Etiketten pro Eintrag"}
+            <input
+              max={MAX_LABEL_COPIES}
+              min={1}
+              onChange={(event) =>
+                setCopies(
+                  Math.min(
+                    MAX_LABEL_COPIES,
+                    Math.max(1, Math.floor(Number(event.target.value) || 1)),
+                  ),
+                )
+              }
+              type="number"
+              value={copies}
+            />
+            {count > 1 ? (
+              <small>
+                {count} ausgewählte Einträge × {copies} = {total} Etiketten
+              </small>
+            ) : null}
+          </label>
           {format.kind === "sheet" ? (
             <label>
               Bereits verwendete Etiketten überspringen
@@ -262,44 +295,60 @@ export function AssetLabelDialog({
             </label>
           ) : (
             <p className="asset-label-dialog__hint">
-              Stellen Sie im Druckdialog den Etikettendrucker und die
-              Papiergrösse {format.labelWidthMm} × {format.labelHeightMm} mm
-              ein, Ränder «Keine».
+              {tn(
+                <>
+                  Stelle im Druckdialog den Etikettendrucker und die
+                  Papiergrösse {format.labelWidthMm} × {format.labelHeightMm} mm
+                  ein, Ränder «Keine».
+                </>,
+                <>
+                  Stellen Sie im Druckdialog den Etikettendrucker und die
+                  Papiergrösse {format.labelWidthMm} × {format.labelHeightMm} mm
+                  ein, Ränder «Keine».
+                </>,
+              )}
             </p>
           )}
-          <fieldset>
-            <legend>Inhalt des QR-Codes</legend>
-            <label className="asset-label-dialog__choice">
-              <input
-                checked={mode === "app"}
-                name="asset-label-qr"
-                onChange={() => setMode("app")}
-                type="radio"
-              />
-              <span>
-                <strong>App-Link</strong>
-                <small>
-                  Öffnet das Gerät direkt in der nextDesk-App (Scanner oder
-                  Kamera).
-                </small>
-              </span>
-            </label>
-            <label className="asset-label-dialog__choice">
-              <input
-                checked={mode === "web"}
-                name="asset-label-qr"
-                onChange={() => setMode("web")}
-                type="radio"
-              />
-              <span>
-                <strong>Web-Link</strong>
-                <small>
-                  Öffnet nextDesk im Browser; der App-Scanner erkennt den Link
-                  ebenfalls.
-                </small>
-              </span>
-            </label>
-          </fieldset>
+          {webOnly ? (
+            <p className="asset-label-dialog__hint">
+              Der QR-Code enthält einen Web-Link: Er öffnet den Artikel im Lager
+              von nextDesk (Anmeldung nötig).
+            </p>
+          ) : (
+            <fieldset>
+              <legend>Inhalt des QR-Codes</legend>
+              <label className="asset-label-dialog__choice">
+                <input
+                  checked={mode === "app"}
+                  name="asset-label-qr"
+                  onChange={() => setMode("app")}
+                  type="radio"
+                />
+                <span>
+                  <strong>App-Link</strong>
+                  <small>
+                    Öffnet das Gerät direkt in der nextDesk-App (Scanner oder
+                    Kamera).
+                  </small>
+                </span>
+              </label>
+              <label className="asset-label-dialog__choice">
+                <input
+                  checked={mode === "web"}
+                  name="asset-label-qr"
+                  onChange={() => setMode("web")}
+                  type="radio"
+                />
+                <span>
+                  <strong>Web-Link</strong>
+                  <small>
+                    Öffnet nextDesk im Browser; der App-Scanner erkennt den Link
+                    ebenfalls.
+                  </small>
+                </span>
+              </label>
+            </fieldset>
+          )}
           {hasLogo ? (
             <label className="asset-label-dialog__choice">
               <input

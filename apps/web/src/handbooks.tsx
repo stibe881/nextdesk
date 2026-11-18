@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   ArrowLeft,
   BookOpen,
@@ -25,6 +26,11 @@ import {
   type HandbookId,
   type HandbookSummary,
 } from "./lib/handbooks";
+import {
+  handbookHeadingId,
+  handbookToc,
+  type HandbookTocEntry,
+} from "./lib/handbook-toc";
 import "./knowledge-markdown.css";
 import "./handbooks.css";
 
@@ -38,18 +44,6 @@ function textOf(children: ReactNode): string {
         : "",
     )
     .join("");
-}
-
-export function handbookHeadingId(text: string): string {
-  return (
-    "hb-" +
-    text
-      .toLocaleLowerCase("de-CH")
-      .normalize("NFKD")
-      .replace(/[̀-ͯ]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-  );
 }
 
 /** Lists the handbooks the signed-in person may open (decided server-side). */
@@ -97,8 +91,10 @@ export function HandbookCard({
         <div>
           <h3 id="personal-handbooks-heading">Handbücher</h3>
           <p>
-            Schritt-für-Schritt-Anleitungen mit Bildschirmfotos – passend zu
-            deiner Rolle.
+            {tn(
+              "Schritt-für-Schritt-Anleitungen mit Bildschirmfotos – passend zu deiner Rolle.",
+              "Schritt-für-Schritt-Anleitungen mit Bildschirmfotos – passend zu Ihrer Rolle.",
+            )}
           </p>
         </div>
       </div>
@@ -115,7 +111,10 @@ export function HandbookCard({
       ) : null}
       {state === "loaded" && handbooks.length === 0 ? (
         <p className="personal-settings__hint">
-          Für dein Konto sind keine Handbücher verfügbar.
+          {tn(
+            "Für dein Konto sind keine Handbücher verfügbar.",
+            "Für Ihr Konto sind keine Handbücher verfügbar.",
+          )}
         </p>
       ) : null}
       {handbooks.length ? (
@@ -200,14 +199,8 @@ export function HandbookViewer({
     };
   }, [handbookId, tenantId]);
 
-  const contents = useMemo(
-    () =>
-      handbook
-        ? [...handbook.markdown.matchAll(/^## (.+)$/gm)].map(([, title]) => ({
-            id: handbookHeadingId(title!.trim()),
-            title: title!.trim(),
-          }))
-        : [],
+  const contents = useMemo<HandbookTocEntry[]>(
+    () => (handbook ? handbookToc(handbook.markdown) : []),
     [handbook],
   );
 
@@ -238,8 +231,10 @@ export function HandbookViewer({
       ) : null}
       {state === "error" ? (
         <p className="personal-settings__notice personal-settings__notice--error">
-          Dieses Handbuch ist für dein Konto nicht verfügbar oder konnte nicht
-          geladen werden.
+          {tn(
+            "Dieses Handbuch ist für dein Konto nicht verfügbar oder konnte nicht geladen werden.",
+            "Dieses Handbuch ist für Ihr Konto nicht verfügbar oder konnte nicht geladen werden.",
+          )}
         </p>
       ) : null}
 
@@ -253,6 +248,17 @@ export function HandbookViewer({
                   <a href={`#${entry.id}`} onClick={jumpToHeading}>
                     {entry.title}
                   </a>
+                  {entry.children.length > 0 ? (
+                    <ol className="handbook-viewer__toc-sub">
+                      {entry.children.map((child) => (
+                        <li key={child.id}>
+                          <a href={`#${child.id}`} onClick={jumpToHeading}>
+                            {child.title}
+                          </a>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
                 </li>
               ))}
             </ol>
@@ -266,12 +272,35 @@ export function HandbookViewer({
             </p>
             <h2 id="handbook-title">{handbook.title}</h2>
             <p className="handbook-viewer__lead">{handbook.description}</p>
+            {contents.length > 0 ? (
+              <nav
+                aria-label="Inhaltsverzeichnis"
+                className="handbook-viewer__contents"
+              >
+                <h3>Inhaltsverzeichnis</h3>
+                <ol>
+                  {contents.map((entry) => (
+                    <li key={entry.id}>
+                      <a href={`#${entry.id}`} onClick={jumpToHeading}>
+                        {entry.title}
+                      </a>
+                      {entry.children.length > 0 ? (
+                        <small>{entry.children.length} Anleitungen</small>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              </nav>
+            ) : null}
             <div className="knowledge-markdown handbook-viewer__body">
               <ReactMarkdown
                 components={{
                   h1: () => null,
                   h2: ({ children }) => (
                     <h2 id={handbookHeadingId(textOf(children))}>{children}</h2>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 id={handbookHeadingId(textOf(children))}>{children}</h3>
                   ),
                   img: ({ src, alt }) =>
                     typeof src === "string" && src ? (

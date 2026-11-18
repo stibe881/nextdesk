@@ -1,4 +1,9 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
+import {
+  SLA_REASON_REQUIRED_MESSAGE,
+  ticketIdsWithOpenSlaBreach,
+} from "../_shared/sla-breach-gate.ts";
 import {
   loadDepartmentScope,
   scopeDepartmentOptions,
@@ -884,6 +889,7 @@ async function getTicket(admin: any, tenantId: string, ticketId: string) {
   const { data } = await admin
     .from("tickets")
     .select("*")
+    .is("deleted_at", null)
     .eq("id", ticketId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -1221,6 +1227,7 @@ async function similarTicketsWithSolutions(
   const { data: tenantTickets } = await admin
     .from("tickets")
     .select("id")
+    .is("deleted_at", null)
     .eq("tenant_id", tenantId)
     .in(
       "id",
@@ -1552,6 +1559,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .select(
           "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, customer_organization_id, parent_ticket_id, merged_into_ticket_id, status:ticket_statuses(id, key, label, is_closed)",
         )
+        .is("deleted_at", null)
         .eq("tenant_id", ticket.tenant_id)
         .or(
           `parent_ticket_id.eq.${ticket.id},merged_into_ticket_id.eq.${ticket.id}`,
@@ -1807,6 +1815,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           .select(
             "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, customer_organization_id, status:ticket_statuses(id, key, label, is_closed)",
           )
+          .is("deleted_at", null)
           .eq("tenant_id", ticket.tenant_id)
           .in("id", relatedTicketIds)
       : { data: [] };
@@ -2112,6 +2121,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .select(
         "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, customer_organization_id, status:ticket_statuses(label)",
       )
+      .is("deleted_at", null)
       .eq("tenant_id", ticket.tenant_id)
       .neq("id", ticket.id)
       .is("merged_into_ticket_id", null)
@@ -2791,11 +2801,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .eq("author_id", actorId)
         .eq("visibility", action.visibility);
       if (discardError)
-        return response(
-          request,
-          { error: { code: "draft_save_failed" } },
-          422,
-        );
+        return response(request, { error: { code: "draft_save_failed" } }, 422);
       return response(request, { data: { draft: null } });
     }
     const { data: draft, error } = await context.supabaseAdmin
@@ -2895,7 +2901,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           error: {
             code: "internal_note_denied",
             message:
-              "Sie sind nicht berechtigt, interne Kommentare zu verfassen.",
+              msg(
+                "Du bist nicht berechtigt, interne Kommentare zu verfassen.",
+                "Sie sind nicht berechtigt, interne Kommentare zu verfassen.",
+              ),
           },
         },
         403,
@@ -2910,7 +2919,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           error: {
             code: "external_comment_denied",
             message:
-              "Sie sind nicht berechtigt, externe Portalantworten zu veröffentlichen.",
+              msg(
+                "Du bist nicht berechtigt, externe Portalantworten zu veröffentlichen.",
+                "Sie sind nicht berechtigt, externe Portalantworten zu veröffentlichen.",
+              ),
           },
         },
         403,
@@ -3009,6 +3021,82 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             .eq("tenant_id", ticket.tenant_id)
             .eq("first_responded_at", firstResponseTicket.first_responded_at);
         }
+      }
+    }
+    // Whoever answers the requester takes the ticket: without an assignee it
+    // is assigned to the author (if they are an eligible agent), and a new
+    // ticket moves to "in progress". Failures never block the reply itself.
+    if (action.visibility === "external" && actorId !== ticket.requester_id) {
+      try {
+        const { data: currentStatus } = await context.supabaseAdmin
+          .from("ticket_statuses")
+          .select("key")
+          .eq("id", ticket.status_id)
+          .maybeSingle();
+        const takeUpdate: Record<string, unknown> = {};
+        const takeFields: string[] = [];
+        let assigneeAfter: string | null = ticket.assigned_agent_id ?? null;
+        if (!assigneeAfter && typeof actorId === "string") {
+          const eligible = await getEligibleTicketAgentIds(
+            context.supabaseAdmin,
+            ticket,
+          );
+          if (!eligible.error && eligible.agentIds.includes(actorId)) {
+            takeUpdate.assigned_agent_id = actorId;
+            takeFields.push("assignedAgent");
+            assigneeAfter = actorId;
+          }
+        }
+        let toStatusId: string | null = null;
+        if (currentStatus?.key === "new" && assigneeAfter) {
+          const { data: inProgress } = await context.supabaseAdmin
+            .from("ticket_statuses")
+            .select("id")
+            .eq("tenant_id", ticket.tenant_id)
+            .eq("key", "in_progress")
+            .maybeSingle();
+          if (inProgress) {
+            toStatusId = inProgress.id;
+            takeUpdate.status_id = inProgress.id;
+            takeUpdate.waiting_since = null;
+            takeFields.push("status");
+          }
+        }
+        if (takeFields.length > 0) {
+          const { error: takeError } = await context.supabaseAdmin
+            .from("tickets")
+            .update(takeUpdate)
+            .eq("id", ticket.id)
+            .setHeader(
+              "x-nextdesk-actor-id",
+              typeof actorId === "string" ? actorId : "",
+            );
+          if (!takeError) {
+            await context.supabaseAdmin.from("ticket_events").insert({
+              ticket_id: ticket.id,
+              actor_id: actorId,
+              event_type: "ticket.updated",
+              payload: {
+                changedFields: takeFields,
+                trigger: "external_reply",
+                ...(toStatusId
+                  ? {
+                      statusTransition: {
+                        fromStatusId: ticket.status_id,
+                        toStatusKey: "in_progress",
+                        isClosed: false,
+                        confirmed: false,
+                        occurredAt: new Date().toISOString(),
+                      },
+                    }
+                  : {}),
+              },
+            });
+          }
+        }
+      } catch {
+        // The reply is already saved; assignment and status follow on the
+        // next change.
       }
     }
     let copiesQueued = 0;
@@ -3198,25 +3286,73 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       // Same rules as the database trigger (0195), with clear error codes.
       const { data: currentStatus } = await context.supabaseAdmin
         .from("ticket_statuses")
-        .select("key")
+        .select("key, is_closed")
         .eq("id", ticket.status_id)
         .maybeSingle();
+      const currentIsClosed = currentStatus?.is_closed === true;
       if (status.key === "new" && currentStatus?.key !== "new")
         return response(
           request,
           { error: { code: "ticket_status_new_locked" } },
           422,
         );
+      // Whoever changes the status takes the ticket: it is assigned to them,
+      // as long as they are an eligible agent of the ticket (an explicit
+      // assignment in the same request wins).
+      let autoAssignAgentId: string | null = null;
+      if (
+        action.assignedAgentId === undefined &&
+        typeof actorId === "string" &&
+        ticket.assigned_agent_id !== actorId
+      ) {
+        const eligible = await getEligibleTicketAgentIds(
+          context.supabaseAdmin,
+          {
+            ...ticket,
+            assigned_team_id:
+              action.assignedTeamId === undefined
+                ? ticket.assigned_team_id
+                : action.assignedTeamId,
+          },
+        );
+        if (!eligible.error && eligible.agentIds.includes(actorId))
+          autoAssignAgentId = actorId;
+      }
       const nextAgentId =
         action.assignedAgentId !== undefined
           ? action.assignedAgentId
-          : ticket.assigned_agent_id;
+          : (autoAssignAgentId ?? ticket.assigned_agent_id);
       if (currentStatus?.key === "new" && !nextAgentId)
         return response(
           request,
           { error: { code: "ticket_assignee_required" } },
           422,
         );
+      if (status.is_closed && !currentIsClosed) {
+        // A breached SLA target needs its cause before resolving or closing.
+        const openBreaches = await ticketIdsWithOpenSlaBreach(
+          context.supabaseAdmin,
+          ticket.tenant_id,
+          [ticket.id],
+        );
+        if (openBreaches === null)
+          return response(
+            request,
+            { error: { code: "sla_breach_lookup_failed" } },
+            503,
+          );
+        if (openBreaches.length > 0)
+          return response(
+            request,
+            {
+              error: {
+                code: "sla_breach_reason_required",
+                message: SLA_REASON_REQUIRED_MESSAGE,
+              },
+            },
+            422,
+          );
+      }
       if (status.is_closed) {
         if (action.confirmClose !== true)
           return response(
@@ -3228,7 +3364,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           context.supabaseAdmin,
           ticket,
           action.assignedTeamId,
-          action.assignedAgentId,
+          action.assignedAgentId !== undefined
+            ? action.assignedAgentId
+            : (autoAssignAgentId ?? undefined),
         );
         if (missing.length > 0)
           return response(
@@ -3251,6 +3389,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         ? occurredAt
         : null;
       changedFields.push("status");
+      if (autoAssignAgentId) {
+        update.assigned_agent_id = autoAssignAgentId;
+        changedFields.push("assignedAgent");
+      }
       statusTransition = {
         fromStatusId: ticket.status_id,
         toStatusKey: status.key,

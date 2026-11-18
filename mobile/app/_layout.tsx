@@ -22,6 +22,10 @@ import {
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
+import {
+  FormalityBoundary,
+  TenantFormalitySynchronizer,
+} from "@/components/formality-bridge";
 import { DeviceProtection } from "@/components/device-protection";
 import { MobileFeatureProvider } from "@/components/mobile-feature-gate";
 import { TenantBrandingBridge } from "@/components/tenant-branding-bridge";
@@ -216,14 +220,19 @@ export default function RootLayout() {
           <MobileNetworkStatusProvider>
             <MobileFeatureProvider>
               <TenantBrandingBridge>
-                <TenantBoundRouteStack />
+                <TenantFormalitySynchronizer />
+                <FormalityBoundary>
+                  <TenantBoundRouteStack />
+                </FormalityBoundary>
                 <NextDeskAuthDeepLinkHandler />
                 <NextDeskSessionNavigator />
                 <PushNotificationBridge />
                 <QuickActionsBridge />
                 <WidgetSnapshotBridge />
-                <OfflineStatus />
-                <DeviceProtection />
+                <FormalityBoundary>
+                  <OfflineStatus />
+                  <DeviceProtection />
+                </FormalityBoundary>
                 <ThemedStatusBar />
               </TenantBrandingBridge>
             </MobileFeatureProvider>

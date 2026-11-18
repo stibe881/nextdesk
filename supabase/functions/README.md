@@ -33,7 +33,7 @@ Bis die zwei Secret-Speicher und der Hetzner-Cronjob eingerichtet sind, antworte
 Supabase stellt `SUPABASE_URL`, Publishable-/Secret-Keys und JWT-Material für die Server-Hülle bereit. Zusätzlich müssen Umgebungswerte gesetzt werden:
 
 - `CORS_ALLOWED_ORIGINS`: kommagetrennte, exakte Web-Origins wie `https://acme.tickethub.ch,https://admin.tickethub.ch`. Ein Wildcard-Origin ist absichtlich nicht vorgesehen.
-- `TENANT_INVITATION_REDIRECT_URL`: eine in Supabase Auth erlaubte URL für Einladungslinks. Sie wird nicht aus dem Clientrequest übernommen.
+- `TENANT_INVITATION_REDIRECT_URL`: eine in Supabase Auth erlaubte URL für Einladungslinks. Der Wert wird nicht aus dem Clientrequest übernommen.
 
 Die Supabase-Redirect-Allowlist enthält Web-, Expo-Development-, EAS-Preview- sowie Produktions-Universal-/App-Link-URLs. Die Funktionen werden erst nach `supabase db push` mit `supabase functions deploy <name>` bereitgestellt. Ein Service-Role-Schlüssel gehört nie in Web- oder Mobile-Bundles.
 

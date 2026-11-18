@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import {
   resolveTenantFeatureStatesCached,
@@ -20,6 +21,15 @@ import {
   type LocationStock,
   parseBackorderAction,
 } from "./backorders.ts";
+import {
+  AutomationError,
+  type AutomationAction,
+  isAutomationActionType,
+  loadAutomation,
+  manageReorderRequest,
+  parseAutomationAction,
+  saveAutomation,
+} from "./automation.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "inventory.management";
@@ -57,6 +67,7 @@ const INVENTORY_PERMISSIONS = [
   "inventory.move",
   "inventory.adjust",
   "inventory.count.close",
+  "inventory.issue",
 ] as const;
 type InventoryPermission = (typeof INVENTORY_PERMISSIONS)[number];
 type TenantPermission =
@@ -66,7 +77,10 @@ type TenantPermission =
   | "onboarding.manage";
 const MOVEMENT_PERMISSIONS = {
   receipt: "inventory.move",
-  issue: "inventory.move",
+  // «Ausbuchen» by hand needs its own permission (role «Lagerverwaltung»).
+  // Issuing a reservation (e.g. a shop hand-out) stays with inventory.move,
+  // see movementPermission().
+  issue: "inventory.issue",
   transfer: "inventory.move",
   defect: "inventory.adjust",
   loss: "inventory.adjust",
@@ -74,6 +88,16 @@ const MOVEMENT_PERMISSIONS = {
   adjustment_out: "inventory.adjust",
 } as const satisfies Record<string, InventoryPermission>;
 type MovementType = keyof typeof MOVEMENT_PERMISSIONS;
+
+/** Permission for a postMovement action. */
+export function movementPermission(action: {
+  movementType: MovementType;
+  reservationId?: string;
+}): InventoryPermission {
+  return action.movementType === "issue" && action.reservationId
+    ? "inventory.move"
+    : MOVEMENT_PERMISSIONS[action.movementType];
+}
 
 /** The only service-command RPCs supplied by migration 0068. */
 export const INVENTORY_RPC_NAMES = {
@@ -85,6 +109,7 @@ export const INVENTORY_RPC_NAMES = {
   startCount: "start_inventory_count",
   recordCountLine: "record_inventory_count_line",
   closeCount: "close_inventory_count",
+  cancelCount: "cancel_inventory_count",
 } as const;
 
 type TrackingMode = "quantity" | "serial";
@@ -100,6 +125,8 @@ export type InventoryPermissions = {
   canMove: boolean;
   canAdjust: boolean;
   canCloseInventoryCount: boolean;
+  /** «Ausbuchen» by hand (permission inventory.issue). */
+  canIssue: boolean;
 };
 
 export type WorkspaceItem = {
@@ -116,6 +143,8 @@ export type WorkspaceItem = {
   targetQuantity: number;
   locationName: string | null;
   active: boolean;
+  /** Is handed out and returned (shop offers it as a loan article). */
+  loanItem: boolean;
   /** Department of the item; null for items shared by all departments. */
   departmentId: string | null;
 };
@@ -193,6 +222,8 @@ type ItemValues = {
   supplier?: string | null;
   privateNote?: string | null;
   active?: boolean;
+  /** Loan article: handed out and returned instead of consumed. */
+  loanItem?: boolean;
   /**
    * Requested department, resolved against the caller's scope. On create it
    * may be left out when the caller has one department; on update it moves
@@ -297,6 +328,7 @@ type Action =
     }
   | { type: "createDownloadUrl"; tenantId: string; itemId: string }
   | { type: "delete"; tenantId: string; itemId: string }
+  | { type: "deleteItem"; tenantId: string; itemId: string }
   | {
       type: "manageItem";
       tenantId: string;
@@ -349,7 +381,8 @@ type Action =
       tenantId: string;
       countId: string;
       clientRequestId: string;
-    };
+    }
+  | { type: "cancelCount"; tenantId: string; countId: string };
 
 class HttpError extends Error {
   constructor(
@@ -573,6 +606,7 @@ function parseItemValues(value: unknown): ItemValues | null {
     "supplier",
     "privateNote",
     "active",
+    "loanItem",
     "departmentId",
   ] as const;
   // Inventory identifiers deliberately have no Edge command in migration 0068.
@@ -631,6 +665,10 @@ function parseItemValues(value: unknown): ItemValues | null {
   if (Object.hasOwn(value, "active")) {
     if (typeof value.active !== "boolean") return null;
     result.active = value.active;
+  }
+  if (Object.hasOwn(value, "loanItem")) {
+    if (typeof value.loanItem !== "boolean") return null;
+    result.loanItem = value.loanItem;
   }
   if (Object.hasOwn(value, "departmentId")) {
     if (value.departmentId === null || value.departmentId === "") {
@@ -858,7 +896,11 @@ export function parseAction(value: unknown): Action | null {
         }
       : null;
   }
-  if (value.type === "createDownloadUrl" || value.type === "delete") {
+  if (
+    value.type === "createDownloadUrl" ||
+    value.type === "delete" ||
+    value.type === "deleteItem"
+  ) {
     return hasOnlyKeys(value, ["type", "tenantId", "itemId"]) &&
       isUuid(value.itemId)
       ? {
@@ -1046,6 +1088,12 @@ export function parseAction(value: unknown): Action | null {
         }
       : null;
   }
+  if (value.type === "cancelCount") {
+    return hasOnlyKeys(value, ["type", "tenantId", "countId"]) &&
+      isUuid(value.countId)
+      ? { type: value.type, tenantId, countId: value.countId.toLowerCase() }
+      : null;
+  }
   if (value.type === "closeCount") {
     return hasOnlyKeys(value, [
       "type",
@@ -1125,6 +1173,14 @@ function databaseFailure(error: { code?: unknown } | null): never {
   }
   if (code === "P0002") {
     throw new HttpError(404, "not_found", "Der Eintrag wurde nicht gefunden.");
+  }
+  if (code === "ND410") {
+    // cancel_inventory_count (migration 0346): the count is already closed.
+    throw new HttpError(
+      409,
+      "inventory_count_not_running",
+      "Abgeschlossene Inventuren können nicht gelöscht werden.",
+    );
   }
   if (
     [
@@ -1323,14 +1379,29 @@ async function workspacePermissions(
   canMove: boolean;
   canAdjust: boolean;
   canCloseInventoryCount: boolean;
+  canIssue: boolean;
 }> {
-  const [canRead, canManage, canMove, canAdjust, canCloseInventoryCount] =
-    await Promise.all(
-      INVENTORY_PERMISSIONS.map((permission) =>
-        permissionState(client, tenantId, permission),
-      ),
-    );
-  return { canRead, canManage, canMove, canAdjust, canCloseInventoryCount };
+  const [
+    canRead,
+    canManage,
+    canMove,
+    canAdjust,
+    canCloseInventoryCount,
+    canIssue,
+  ] = await Promise.all(
+    INVENTORY_PERMISSIONS.map((permission) =>
+      permissionState(client, tenantId, permission),
+    ),
+  );
+  return {
+    canRead,
+    canManage,
+    canMove,
+    canAdjust,
+    canCloseInventoryCount,
+    // post_inventory_movement also requires inventory.move for every issue.
+    canIssue: canIssue && canMove,
+  };
 }
 
 async function requireEnabledInventory(
@@ -1462,6 +1533,7 @@ type ItemSeed = {
   minQuantity: number;
   targetQuantity: number;
   active: boolean;
+  loanItem: boolean;
   departmentId: string | null;
 };
 
@@ -1519,6 +1591,7 @@ function workspaceItemSeed(value: unknown): ItemSeed | typeof INVALID {
     minQuantity,
     targetQuantity,
     active: value.active,
+    loanItem: value.loan_item === true,
     departmentId,
   };
 }
@@ -1882,6 +1955,7 @@ export function toWorkspaceContract(
         ? (locationById.get(locationId)?.name ?? null)
         : null,
       active: item.active,
+      loanItem: item.loanItem,
       departmentId: item.departmentId,
     };
   });
@@ -1923,6 +1997,7 @@ export function toWorkspaceContract(
       canMove: permissions.canMove,
       canAdjust: permissions.canAdjust,
       canCloseInventoryCount: permissions.canCloseInventoryCount,
+      canIssue: permissions.canIssue,
     },
     summary: {
       criticalItemCount: lowStockItems.length,
@@ -2154,7 +2229,7 @@ async function workspace(
         admin
           .from("inventory_items")
           .select(
-            "id,name,article_number,unit,tracking_mode,minimum_quantity,target_quantity,active,department_id",
+            "id,name,article_number,unit,tracking_mode,minimum_quantity,target_quantity,active,loan_item,department_id",
           )
           .eq("tenant_id", action.tenantId),
         scope,
@@ -3168,7 +3243,7 @@ export function itemDepartmentChange(
       throw new HttpError(
         422,
         "invalid_department",
-        "Bitte wählen Sie eine Abteilung.",
+        msg("Bitte wähle eine Abteilung.", "Bitte wählen Sie eine Abteilung."),
       );
     }
   } else if (action.operation !== "create") {
@@ -3254,10 +3329,12 @@ export function upsertItemRpcParameters(
     p_tracking_mode: item.trackingMode,
     p_minimum_quantity: item.minimumStock,
     p_target_quantity: item.targetStock,
-    p_manufacturer: item.manufacturer,
-    p_model: item.model,
-    p_supplier: item.supplier,
-    p_note: item.privateNote,
+    // Optional fields that were not sent are undefined; JSON would drop them
+    // and PostgREST would answer 404 (no function with these parameters).
+    p_manufacturer: item.manufacturer ?? null,
+    p_model: item.model ?? null,
+    p_supplier: item.supplier ?? null,
+    p_note: item.privateNote ?? null,
     p_active: item.active,
     // Migration 0187: set together with the item, so a new item is never
     // visible outside its department.
@@ -3353,9 +3430,24 @@ async function manage(
         scope.scoped ? scope.departments : null,
       ),
     );
+    const receipt = mutationReceipt(raw);
+    // The loan flag is not part of the upsert function: set it on the saved
+    // row (same tenant, the row the function just wrote or changed).
+    if (action.values?.loanItem !== undefined) {
+      const savedItemId =
+        action.operation === "create" ? receipt.id : action.itemId;
+      if (typeof savedItemId === "string" && isUuid(savedItemId)) {
+        const loanResult = await admin
+          .from("inventory_items")
+          .update({ loan_item: action.values.loanItem })
+          .eq("tenant_id", action.tenantId)
+          .eq("id", savedItemId);
+        if (loanResult.error) databaseFailure(loanResult.error);
+      }
+    }
     return json(
       request,
-      { data: mutationReceipt(raw) },
+      { data: receipt },
       action.operation === "create" ? 201 : 200,
     );
   }
@@ -3637,10 +3729,40 @@ async function closeCount(
   actorId: string,
   action: Extract<Action, { type: "closeCount" }>,
 ): Promise<Response> {
+  // close_inventory_count refuses an empty count with a generic constraint
+  // error; check first so the person learns what is missing.
+  const lines = await admin
+    .from("inventory_count_lines")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", action.tenantId)
+    .eq("count_id", action.countId);
+  if (lines.error) databaseFailure(lines.error);
+  if ((lines.count ?? 0) === 0) {
+    throw new HttpError(
+      422,
+      "inventory_count_empty",
+      "Die Inventur hat noch keine Zähllinie und lässt sich noch nicht abschliessen.",
+    );
+  }
   const raw = await serviceRpc(admin, INVENTORY_RPC_NAMES.closeCount, {
     p_actor_id: actorId,
     p_tenant_id: action.tenantId,
     p_client_request_id: action.clientRequestId,
+    p_count_id: action.countId,
+  });
+  return json(request, { data: mutationReceipt(raw) });
+}
+
+/** «Inventur löschen»: discards a running count; stock stays unchanged. */
+async function cancelCount(
+  request: Request,
+  admin: AdminClient,
+  actorId: string,
+  action: Extract<Action, { type: "cancelCount" }>,
+): Promise<Response> {
+  const raw = await serviceRpc(admin, INVENTORY_RPC_NAMES.cancelCount, {
+    p_actor_id: actorId,
+    p_tenant_id: action.tenantId,
     p_count_id: action.countId,
   });
   return json(request, { data: mutationReceipt(raw) });
@@ -4035,6 +4157,7 @@ async function requireActionInScope(
     case "completeUpload":
     case "createDownloadUrl":
     case "delete":
+    case "deleteItem":
     case "reserve":
     case "recordCountLine":
       return await requireVisibleItem(
@@ -4459,6 +4582,45 @@ async function deleteInventoryItemImage(
   return json(request, { data: { itemId: action.itemId, deleted: true } });
 }
 
+/**
+ * Deletes an item for good. Items with movements, reservations or counts are
+ * protected by foreign keys: they answer «in_use» and can only be archived.
+ */
+async function deleteInventoryItem(
+  request: Request,
+  admin: AdminClient,
+  action: Extract<Action, { type: "deleteItem" }>,
+): Promise<Response> {
+  const image = await loadPrimaryInventoryItemImage(
+    admin,
+    action.tenantId,
+    action.itemId,
+  );
+  const result = await admin
+    .from("inventory_items")
+    .delete()
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.itemId)
+    .select("id");
+  if (result.error) {
+    if (result.error.code === "23503") {
+      return json(request, {
+        data: { itemId: action.itemId, deleted: false, reason: "in_use" },
+      });
+    }
+    databaseFailure(result.error);
+  }
+  if (!Array.isArray(result.data) || result.data.length === 0) {
+    throw new HttpError(404, "not_found", "Der Artikel wurde nicht gefunden.");
+  }
+  if (image) {
+    await admin.storage
+      .from(INVENTORY_ITEM_IMAGE_BUCKET)
+      .remove([image.storageObjectPath]);
+  }
+  return json(request, { data: { itemId: action.itemId, deleted: true } });
+}
+
 // Beschaffung (Rückstände aus dem Shop, Migration 0224)
 // ------------------------------------------------------
 const MAX_BACKORDERS = 1_000;
@@ -4712,11 +4874,12 @@ const securedHandler = withSupabase(
         );
       }
       const body = await request.json().catch(() => null);
-      const parsed: Action | BackorderAction | null = isBackorderActionType(
-        body,
-      )
-        ? parseBackorderAction(body)
-        : parseAction(body);
+      const parsed: Action | BackorderAction | AutomationAction | null =
+        isBackorderActionType(body)
+          ? parseBackorderAction(body)
+          : isAutomationActionType(body)
+            ? parseAutomationAction(body)
+            : parseAction(body);
       if (!parsed) {
         throw new HttpError(
           400,
@@ -4761,6 +4924,45 @@ const securedHandler = withSupabase(
           scope,
           parsed,
         );
+      }
+      if (
+        parsed.type === "getInventoryAutomation" ||
+        parsed.type === "saveInventoryAutomation" ||
+        parsed.type === "manageReorderRequest"
+      ) {
+        // Lager-Automatik ist Aufgabe der Lagerverwaltung.
+        await requirePermission(
+          context.supabase,
+          parsed.tenantId,
+          "inventory.manage",
+        );
+        try {
+          if (parsed.type === "saveInventoryAutomation") {
+            await saveAutomation(
+              context.supabaseAdmin,
+              actorId.toLowerCase(),
+              parsed,
+            );
+          } else if (parsed.type === "manageReorderRequest") {
+            await manageReorderRequest(
+              context.supabaseAdmin,
+              actorId.toLowerCase(),
+              parsed,
+            );
+          }
+          return json(request, {
+            data: await loadAutomation(context.supabaseAdmin, parsed.tenantId),
+          });
+        } catch (automationError) {
+          if (automationError instanceof AutomationError) {
+            throw new HttpError(
+              automationError.status,
+              automationError.code,
+              automationError.message,
+            );
+          }
+          throw automationError;
+        }
       }
       const action: Action = parsed;
       if (action.type === "workspace") {
@@ -4871,6 +5073,19 @@ const securedHandler = withSupabase(
           action,
         );
       }
+      if (action.type === "deleteItem") {
+        await requirePermission(
+          context.supabase,
+          action.tenantId,
+          "inventory.manage",
+        );
+        await requireActionInScope(context.supabaseAdmin, scope, action);
+        return await deleteInventoryItem(
+          request,
+          context.supabaseAdmin,
+          action,
+        );
+      }
       if (action.type === "manageItem" || action.type === "manageLocation") {
         await requirePermission(
           context.supabase,
@@ -4890,7 +5105,7 @@ const securedHandler = withSupabase(
         await requirePermission(
           context.supabase,
           action.tenantId,
-          MOVEMENT_PERMISSIONS[action.movementType],
+          movementPermission(action),
         );
         await requireActionInScope(context.supabaseAdmin, scope, action);
         return await postMovement(
@@ -4941,6 +5156,19 @@ const securedHandler = withSupabase(
               actorId.toLowerCase(),
               action,
             );
+      }
+      if (action.type === "cancelCount") {
+        await requirePermission(
+          context.supabase,
+          action.tenantId,
+          "inventory.manage",
+        );
+        return await cancelCount(
+          request,
+          context.supabaseAdmin,
+          actorId.toLowerCase(),
+          action,
+        );
       }
       await requirePermission(
         context.supabase,

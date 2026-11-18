@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Alert,
   findNodeHandle,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -60,6 +62,7 @@ import {
   type TicketFormOptions,
 } from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 const NEW_TICKET_DRAFT_ID = "new-ticket";
 const MAX_NEW_TICKET_PHOTOS = 5;
@@ -179,6 +182,29 @@ export default function NewTicketScreen() {
     })();
   }, [initialPrefill, isOffline]);
 
+  useEffect(() => {
+    // Android may end nextDesk while the camera app or photo picker is open
+    // (low memory). The pick is then delivered on the next start and would be
+    // lost without this call.
+    if (Platform.OS !== "android") return;
+    let active = true;
+    void ImagePicker.getPendingResultAsync()
+      .then((result) => {
+        if (!active || !result || !("assets" in result)) return;
+        if (result.canceled || !result.assets?.length) return;
+        const images = result.assets.filter(
+          (asset) => !asset.type || asset.type === "image",
+        );
+        setPhotos((current) =>
+          [...current, ...images].slice(0, MAX_NEW_TICKET_PHOTOS),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const selectedDepartment = useMemo(
     () =>
       options?.departments.find(
@@ -187,6 +213,7 @@ export default function NewTicketScreen() {
     [departmentId, options],
   );
   const selectedRequester = requester ?? options?.currentRequester ?? null;
+  const photosFull = photos.length >= MAX_NEW_TICKET_PHOTOS;
   // Offered to people who create a ticket for themselves.
   const showAssistant =
     assistantEnabled &&
@@ -326,14 +353,47 @@ export default function NewTicketScreen() {
     });
   }
 
+  function explainBlockedCamera() {
+    // The system dialog is not shown again after a permanent refusal. The
+    // choice is respected; only a way to change it is offered, and photos
+    // from the media library keep working without camera access.
+    Alert.alert(
+      "Kamerazugriff ist ausgeschaltet",
+      tn(
+        "Du kannst den Kamerazugriff für nextDesk in den Einstellungen erlauben oder stattdessen ein Bild aus der Mediathek wählen.",
+        "Sie können den Kamerazugriff für nextDesk in den Einstellungen erlauben oder stattdessen ein Bild aus der Mediathek wählen.",
+      ),
+      [
+        { text: "Abbrechen", style: "cancel" },
+        {
+          text: "Einstellungen öffnen",
+          onPress: () => void Linking.openSettings().catch(() => undefined),
+        },
+      ],
+    );
+  }
+
   async function addPhoto(source: "camera" | "library") {
-    if (photos.length >= MAX_NEW_TICKET_PHOTOS) return;
+    const remaining = MAX_NEW_TICKET_PHOTOS - photos.length;
+    if (remaining <= 0) return;
     hapticSelection();
+    setError("");
     try {
       if (source === "camera") {
+        // Asked only now, when the person wants to take a photo, never in
+        // advance (Apple HIG «Privacy», Android «Request permissions»).
         const permission = await ImagePicker.requestCameraPermissionsAsync();
         if (!permission.granted) {
-          setError("Bitte erlaube den Kamerazugriff, um ein Foto aufzunehmen.");
+          if (!permission.canAskAgain) {
+            explainBlockedCamera();
+            return;
+          }
+          setError(
+            tn(
+              "Ohne Kamerazugriff kannst du kein Foto aufnehmen. Du kannst stattdessen ein Bild aus der Mediathek wählen.",
+              "Ohne Kamerazugriff können Sie kein Foto aufnehmen. Sie können stattdessen ein Bild aus der Mediathek wählen.",
+            ),
+          );
           return;
         }
         const result = await ImagePicker.launchCameraAsync({
@@ -350,14 +410,18 @@ export default function NewTicketScreen() {
         }
         return;
       }
+      // System photo picker (PHPicker on iOS, Android Photo Picker): it runs
+      // outside the app, needs no library permission and hands over only the
+      // selected images (Apple 5.1.1(iii), Google Play photo and video
+      // permissions policy).
       const result = await ImagePicker.launchImageLibraryAsync({
         allowsEditing: false,
-        allowsMultipleSelection: true,
+        allowsMultipleSelection: remaining > 1,
         exif: false,
         mediaTypes: ["images"],
         orderedSelection: true,
         quality: 1,
-        selectionLimit: MAX_NEW_TICKET_PHOTOS - photos.length,
+        selectionLimit: remaining,
       });
       if (!result.canceled) {
         setPhotos((current) =>
@@ -365,7 +429,12 @@ export default function NewTicketScreen() {
         );
       }
     } catch {
-      setError("Das Foto konnte nicht ausgewählt werden.");
+      hapticError();
+      setError(
+        source === "camera"
+          ? "Die Kamera konnte nicht geöffnet werden. Möglicherweise hat dieses Gerät keine Kamera."
+          : "Die Mediathek konnte nicht geöffnet werden.",
+      );
     }
   }
 
@@ -386,7 +455,10 @@ export default function NewTicketScreen() {
     router.back();
     Alert.alert(
       "Schön, dass es geklappt hat",
-      "Es wurde kein Ticket erstellt. Danke für deine Rückmeldung.",
+      tn(
+        "Es wurde kein Ticket erstellt. Danke für deine Rückmeldung.",
+        "Es wurde kein Ticket erstellt. Danke für Ihre Rückmeldung.",
+      ),
     );
   }
 
@@ -403,17 +475,27 @@ export default function NewTicketScreen() {
     const cleanDescription = description.trim();
     if (cleanSubject.length < 3) {
       hapticError();
-      setError("Bitte gib einen Betreff mit mindestens 3 Zeichen ein.");
+      setError(tn("Bitte gib einen Betreff mit mindestens 3 Zeichen ein.", "Bitte geben Sie einen Betreff mit mindestens 3 Zeichen ein."));
       return;
     }
     if (!departmentId || !priorityKey) {
       hapticError();
-      setError("Bitte wähle Abteilung und Priorität.");
+      setError(
+        tn(
+          "Bitte wähle Abteilung und Priorität.",
+          "Bitte wählen Sie Abteilung und Priorität.",
+        ),
+      );
       return;
     }
     if (!selectedRequester) {
       hapticError();
-      setError("Bitte wähle eine anfragende Person.");
+      setError(
+        tn(
+          "Bitte wähle eine anfragende Person.",
+          "Bitte wählen Sie eine anfragende Person.",
+        ),
+      );
       return;
     }
     setSaving(true);
@@ -478,7 +560,10 @@ export default function NewTicketScreen() {
       if (failedPhotos > 0) {
         Alert.alert(
           "Fotos nicht hochgeladen",
-          `${failedPhotos} Foto${failedPhotos === 1 ? "" : "s"} konnte${failedPhotos === 1 ? "" : "n"} nicht hochgeladen werden. Du kannst sie im Ticket erneut hinzufügen.`,
+          tn(
+            `${failedPhotos} Foto${failedPhotos === 1 ? "" : "s"} konnte${failedPhotos === 1 ? "" : "n"} nicht hochgeladen werden. Du kannst sie im Ticket erneut hinzufügen.`,
+            `${failedPhotos} Foto${failedPhotos === 1 ? "" : "s"} konnte${failedPhotos === 1 ? "" : "n"} nicht hochgeladen werden. Sie können sie im Ticket erneut hinzufügen.`,
+          ),
         );
       }
     } catch (nextError) {
@@ -519,10 +604,20 @@ export default function NewTicketScreen() {
         </View>
 
         <View style={styles.intro}>
-          <Text style={styles.title}>Was können wir für dich tun?</Text>
+          <Text style={styles.title}>
+            {tn("Was können wir für dich tun?", "Was können wir für Sie tun?")}
+          </Text>
           <Text style={styles.copy}>
-            Dein Ticket wird direkt im Mandanten {tenant?.name ?? "nextDesk"}{" "}
-            erfasst.
+            {tn(
+              <>
+                Dein Ticket wird direkt im Mandanten{" "}
+                {tenant?.name ?? "nextDesk"} erfasst.
+              </>,
+              <>
+                Ihr Ticket wird direkt im Mandanten {tenant?.name ?? "nextDesk"}{" "}
+                erfasst.
+              </>,
+            )}
           </Text>
         </View>
 
@@ -536,7 +631,10 @@ export default function NewTicketScreen() {
             {showAssistant && tenant ? (
               <>
                 <Pressable
-                  accessibilityHint="Beschreibe dein Problem in einem kurzen Chat"
+                  accessibilityHint={tn(
+                    "Beschreibe dein Problem in einem kurzen Chat",
+                    "Beschreiben Sie Ihr Problem in einem kurzen Chat",
+                  )}
                   accessibilityRole="button"
                   disabled={saving}
                   onPress={() => {
@@ -557,7 +655,10 @@ export default function NewTicketScreen() {
                     <Text style={styles.hint}>
                       {assistantResult
                         ? "Entwurf übernommen – prüfe ihn und erfasse das Ticket."
-                        : "Vielleicht gibt es schon eine Anleitung für dein Problem."}
+                        : tn(
+                            "Vielleicht gibt es schon eine Anleitung für dein Problem.",
+                            "Vielleicht gibt es schon eine Anleitung für Ihr Problem.",
+                          )}
                     </Text>
                   </View>
                 </Pressable>
@@ -598,8 +699,10 @@ export default function NewTicketScreen() {
                   <View style={styles.assistantCopy}>
                     <Text style={styles.assistantTitle}>Phishing melden</Text>
                     <Text style={styles.hint}>
-                      Verdächtige E-Mail? Füge die Kopfzeilen ein – wir prüfen
-                      sie für dich.
+                      {tn(
+                        "Verdächtige E-Mail? Füge die Kopfzeilen ein – wir prüfen sie für dich.",
+                        "Verdächtige E-Mail? Fügen Sie die Kopfzeilen ein – wir prüfen sie für Sie.",
+                      )}
                     </Text>
                   </View>
                 </Pressable>
@@ -646,7 +749,10 @@ export default function NewTicketScreen() {
               onFocus={() =>
                 revealFieldAboveKeyboard(descriptionInputRef.current)
               }
-              placeholder="Beschreibe dein Anliegen möglichst genau."
+              placeholder={tn(
+                "Beschreibe dein Anliegen möglichst genau.",
+                "Beschreiben Sie Ihr Anliegen möglichst genau.",
+              )}
               placeholderTextColor={colors.subtle}
               ref={descriptionInputRef}
               style={[styles.input, styles.descriptionInput]}
@@ -704,10 +810,17 @@ export default function NewTicketScreen() {
             <FieldLabel label="FOTOS (OPTIONAL)" />
             <View style={styles.photoActions}>
               <Pressable
+                accessibilityHint="Öffnet die Kamera, um ein Foto direkt aufzunehmen."
+                accessibilityLabel="Foto mit der Kamera aufnehmen"
                 accessibilityRole="button"
-                disabled={photos.length >= MAX_NEW_TICKET_PHOTOS}
+                accessibilityState={{ disabled: photosFull }}
+                disabled={photosFull}
                 onPress={() => void addPhoto("camera")}
-                style={styles.photoButton}
+                style={({ pressed }) => [
+                  styles.photoButton,
+                  pressed && styles.photoButtonPressed,
+                  photosFull && styles.photoButtonDisabled,
+                ]}
               >
                 <Ionicons
                   color={colors.primaryText}
@@ -717,10 +830,20 @@ export default function NewTicketScreen() {
                 <Text style={styles.photoButtonText}>Foto aufnehmen</Text>
               </Pressable>
               <Pressable
+                accessibilityHint={tn(
+                  `Wähle bis zu ${MAX_NEW_TICKET_PHOTOS} Bilder aus deiner Mediathek.`,
+                  `Wählen Sie bis zu ${MAX_NEW_TICKET_PHOTOS} Bilder aus Ihrer Mediathek.`,
+                )}
+                accessibilityLabel="Fotos aus der Mediathek auswählen"
                 accessibilityRole="button"
-                disabled={photos.length >= MAX_NEW_TICKET_PHOTOS}
+                accessibilityState={{ disabled: photosFull }}
+                disabled={photosFull}
                 onPress={() => void addPhoto("library")}
-                style={styles.photoButton}
+                style={({ pressed }) => [
+                  styles.photoButton,
+                  pressed && styles.photoButtonPressed,
+                  photosFull && styles.photoButtonDisabled,
+                ]}
               >
                 <Ionicons
                   color={colors.primaryText}
@@ -730,6 +853,11 @@ export default function NewTicketScreen() {
                 <Text style={styles.photoButtonText}>Aus Mediathek</Text>
               </Pressable>
             </View>
+            <Text style={styles.hint}>
+              {photosFull
+                ? `Maximal ${MAX_NEW_TICKET_PHOTOS} Fotos pro Ticket erreicht. Weitere ${tn("kannst du", "können Sie")} im Ticket ergänzen.`
+                : `${photos.length} von ${MAX_NEW_TICKET_PHOTOS} Fotos. Standortdaten werden vor dem Hochladen entfernt.`}
+            </Text>
             {photos.length > 0 ? (
               <View style={styles.photoRow}>
                 {photos.map((photo, index) => (
@@ -941,6 +1069,8 @@ const useStyles = makeThemedStyles((c) => ({
     paddingHorizontal: 12,
   },
   photoButtonText: { color: c.primaryText, fontSize: 13, fontWeight: "800" },
+  photoButtonPressed: { opacity: 0.75 },
+  photoButtonDisabled: { opacity: 0.45 },
   photoImage: { borderRadius: 12, height: "100%", width: "100%" },
   photoRemove: {
     alignItems: "center",

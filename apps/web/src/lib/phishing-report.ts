@@ -22,6 +22,7 @@ export type PhishingSettings = {
   reportAddress: string | null;
   departmentId: string | null;
   categoryId: string | null;
+  subcategoryId: string | null;
   priorityKey: PhishingPriority;
   notifyTeamId: string | null;
 };
@@ -29,7 +30,8 @@ export type PhishingSettings = {
 export type PhishingSettingsOptions = {
   departments: { id: string; name: string }[];
   categories: { id: string; name: string; departmentId: string | null }[];
-  teams: { id: string; name: string }[];
+  subcategories: { id: string; name: string; categoryId: string }[];
+  teams: { id: string; name: string; departmentId: string | null }[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -43,9 +45,14 @@ function text(value: unknown, max = 500): string | null {
 }
 
 /** Returns a German error text, or null when the file can be sent. */
+
+import { tn } from "./formality";
 export function validateReportFile(name: string, size: number): string | null {
   if (!/\.(eml|msg|txt)$/i.test(name)) {
-    return "Bitte laden Sie die E-Mail als .eml- oder .msg-Datei hoch.";
+    return tn(
+      "Bitte lade die E-Mail als .eml- oder .msg-Datei hoch.",
+      "Bitte laden Sie die E-Mail als .eml- oder .msg-Datei hoch.",
+    );
   }
   if (size <= 0) return "Die Datei ist leer.";
   if (size > MAX_REPORT_FILE_BYTES) {
@@ -108,6 +115,7 @@ export function parsePhishingSettings(
       reportAddress: text(settings.reportAddress, 320),
       departmentId: text(settings.departmentId, 64),
       categoryId: text(settings.categoryId, 64),
+      subcategoryId: text(settings.subcategoryId, 64),
       priorityKey: priority(settings.priorityKey),
       notifyTeamId: text(settings.notifyTeamId, 64),
     },
@@ -124,10 +132,18 @@ export function parsePhishingSettings(
           ? [{ id, name, departmentId: text(row.departmentId, 64) }]
           : [];
       }),
+      subcategories: list(options.subcategories).flatMap((row) => {
+        const id = text(row.id, 64);
+        const name = text(row.name, 200);
+        const categoryId = text(row.categoryId, 64);
+        return id && name && categoryId ? [{ id, name, categoryId }] : [];
+      }),
       teams: list(options.teams).flatMap((row) => {
         const id = text(row.id, 64);
         const name = text(row.name, 200);
-        return id && name ? [{ id, name }] : [];
+        return id && name
+          ? [{ id, name, departmentId: text(row.departmentId, 64) }]
+          : [];
       }),
     },
   };
@@ -142,7 +158,10 @@ export function settingsError(settings: PhishingSettings): string | null {
     return "Die Meldeadresse ist keine gültige E-Mail-Adresse.";
   }
   if (settings.enabled && !settings.departmentId) {
-    return "Bitte wählen Sie eine Zielabteilung.";
+    return tn(
+      "Bitte wähle eine Zielabteilung.",
+      "Bitte wählen Sie eine Zielabteilung.",
+    );
   }
   return null;
 }

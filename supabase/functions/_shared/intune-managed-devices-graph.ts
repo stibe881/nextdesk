@@ -30,6 +30,18 @@ const SELECT_FIELDS = [
   "enrolledDateTime",
 ] as const;
 const SELECT_QUERY_VALUE = SELECT_FIELDS.join(",");
+// Netzwerkdaten nur für die IP-Adressverwaltung (MAC-Abgleich). Der reine
+// Asset-Abgleich liest sie nie; ein gemeinsamer Abruf für beide Zwecke fragt
+// sie zusätzlich ab (includeNetwork).
+const NETWORK_FIELDS = [
+  "wiFiMacAddress",
+  "ethernetMacAddress",
+  "userPrincipalName",
+  "managementState",
+] as const;
+const NETWORK_SELECT_QUERY_VALUE = [...SELECT_FIELDS, ...NETWORK_FIELDS].join(
+  ",",
+);
 const CONTINUATION_QUERY_KEYS = new Set(["$skiptoken", "$top", "$select"]);
 
 export type IntuneManagedDevice = {
@@ -45,6 +57,20 @@ export type IntuneManagedDevice = {
   is_encrypted: boolean | null;
   last_sync_at: string | null;
   enrolled_at: string | null;
+  /** Nur bei includeNetwork: Netzwerkdaten für die IP-Adressverwaltung. */
+  network?: IntuneDeviceNetwork;
+};
+
+export type IntuneDeviceNetwork = {
+  wifi_mac: string | null;
+  ethernet_mac: string | null;
+  user_principal_name: string | null;
+  management_state: string | null;
+};
+
+export type ReadIntuneManagedDevicesOptions = {
+  /** Zusätzlich MAC-Adressen, UPN und Verwaltungsstatus lesen (IPAM). */
+  includeNetwork?: boolean;
 };
 
 export type IntuneGraphCredentials = {
@@ -157,6 +183,33 @@ function optionalPrimaryUserObjectId(value: unknown): string | null {
     : null;
 }
 
+/** «AABBCCDDEEFF», «aa-bb-…», «aa:bb:…» → «aa:bb:cc:dd:ee:ff» oder null. */
+export function normalizeMacAddress(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const hex = value.replace(/[\s:.-]/g, "").toLowerCase();
+  if (!/^[0-9a-f]{12}$/.test(hex)) return null;
+  if (hex === "000000000000" || hex === "ffffffffffff") return null;
+  return hex.match(/.{2}/g)!.join(":");
+}
+
+function lenientText(value: unknown, max: number): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || /[\u0000-\u001f\u007f]/.test(trimmed)) return null;
+  return Array.from(trimmed).slice(0, max).join("");
+}
+
+// Netzwerkfelder sind optional: ein unbekannter Wert verhindert den Abgleich
+// nie, er wird einfach nicht übernommen.
+function parseNetwork(value: Record<string, unknown>): IntuneDeviceNetwork {
+  return {
+    wifi_mac: normalizeMacAddress(value.wiFiMacAddress),
+    ethernet_mac: normalizeMacAddress(value.ethernetMacAddress),
+    user_principal_name: lenientText(value.userPrincipalName, 320),
+    management_state: lenientText(value.managementState, 40),
+  };
+}
+
 function parseDevice(value: unknown): IntuneManagedDevice {
   if (!isRecord(value)) throw new IntuneGraphError("provider_payload_invalid");
   const externalDeviceId = optionalText(value.id, 200);
@@ -189,14 +242,14 @@ function parseDevice(value: unknown): IntuneManagedDevice {
   };
 }
 
-function initialGraphUrl(): URL {
+function initialGraphUrl(select: string): URL {
   const url = new URL(`${GRAPH_ORIGIN}${GRAPH_PATH}`);
-  url.searchParams.set("$select", SELECT_QUERY_VALUE);
+  url.searchParams.set("$select", select);
   url.searchParams.set("$top", String(PAGE_SIZE));
   return url;
 }
 
-function validateNextLink(value: unknown): URL | null {
+function validateNextLink(value: unknown, select: string): URL | null {
   if (value === null || value === undefined) return null;
   if (typeof value !== "string" || value.length > 8_192) {
     throw new IntuneGraphError("provider_payload_invalid");
@@ -224,7 +277,7 @@ function validateNextLink(value: unknown): URL | null {
     Number(pageSizes[0]) < 1 ||
     Number(pageSizes[0]) > PAGE_SIZE ||
     selectValues.length !== 1 ||
-    selectValues[0] !== SELECT_QUERY_VALUE
+    selectValues[0] !== select
   ) {
     throw new IntuneGraphError("provider_payload_invalid");
   }
@@ -267,13 +320,22 @@ export async function requestIntuneGraphAccessToken(
   return token;
 }
 
+/**
+ * Liest alle verwalteten Geräte seitenweise. Gemeinsamer Abruf für den
+ * Asset-Abgleich und (mit includeNetwork) den MAC-Abgleich der
+ * IP-Adressverwaltung, damit Graph pro Lauf nur einmal abgefragt wird.
+ */
 export async function readIntuneManagedDevices(
   accessToken: string,
   onPage: (devices: IntuneManagedDevice[]) => Promise<void>,
   fetchImpl: FetchLike = fetch,
   beforePage?: () => Promise<void>,
+  options: ReadIntuneManagedDevicesOptions = {},
 ): Promise<number> {
-  let url: URL | null = initialGraphUrl();
+  const select = options.includeNetwork
+    ? NETWORK_SELECT_QUERY_VALUE
+    : SELECT_QUERY_VALUE;
+  let url: URL | null = initialGraphUrl(select);
   let pages = 0;
   let total = 0;
   const seenIds = new Set<string>();
@@ -303,7 +365,12 @@ export async function readIntuneManagedDevices(
     if (payload.value.length > PAGE_SIZE) {
       throw new IntuneGraphError("provider_payload_invalid");
     }
-    const devices = payload.value.map(parseDevice);
+    const devices = payload.value.map((entry: unknown) => {
+      const device = parseDevice(entry);
+      return options.includeNetwork && isRecord(entry)
+        ? { ...device, network: parseNetwork(entry) }
+        : device;
+    });
     for (const device of devices) {
       if (seenIds.has(device.external_device_id)) {
         throw new IntuneGraphError("provider_payload_invalid");
@@ -312,9 +379,18 @@ export async function readIntuneManagedDevices(
     }
     await onPage(devices);
     total += devices.length;
-    url = validateNextLink(payload["@odata.nextLink"]);
+    url = validateNextLink(payload["@odata.nextLink"], select);
   }
   return total;
 }
 
 export const INTUNE_MANAGED_DEVICE_SELECT = SELECT_FIELDS;
+export const INTUNE_MANAGED_DEVICE_NETWORK_SELECT = NETWORK_FIELDS;
+
+/** Gerät ohne Netzwerkdaten (für das Staging des Asset-Abgleichs). */
+export function withoutNetwork(
+  device: IntuneManagedDevice,
+): IntuneManagedDevice {
+  const { network: _network, ...asset } = device;
+  return asset;
+}

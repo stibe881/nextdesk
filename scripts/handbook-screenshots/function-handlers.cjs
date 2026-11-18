@@ -13,6 +13,85 @@ const HANDBOOK_DIR = path.join(REPO_ROOT, "docs/handbooks");
 
 const ok = (data) => ({ json: { data } });
 
+// Contracts and licenses (Ressourcen → Verträge / Lizenzen).
+const DEMO_CONTRACT_PEOPLE = () =>
+  D.AGENTS.map((user) => ({ id: user.id, displayName: user.name }));
+const demoRecord = (fields) => ({
+  referenceNumber: null,
+  status: "active",
+  startsOn: null,
+  endsOn: null,
+  noticePeriodDays: null,
+  reminderDaysBefore: null,
+  reminderSentFor: null,
+  departmentId: null,
+  responsibleUserId: null,
+  notes: null,
+  archivedAt: null,
+  createdAt: D.ago(200 * D.DAY),
+  updatedAt: D.ago(20 * D.DAY),
+  ...fields,
+});
+const DEMO_CONTRACTS = [
+  demoRecord({
+    id: D.uid("15151515", 1),
+    title: "Microsoft Enterprise Agreement",
+    counterpartyName: "Microsoft",
+    referenceNumber: "EA-2025-0412",
+    contractType: "license",
+    startsOn: "2025-07-01",
+    endsOn: "2028-06-30",
+    noticePeriodDays: 90,
+    cancelled: false,
+    cancelledOn: null,
+    costAmount: 48600,
+    costCurrency: "CHF",
+    costPeriod: "yearly",
+    autoRenew: false,
+    renewalMonths: null,
+    assetIds: [],
+    licenseIds: [D.uid("16161616", 1), D.uid("16161616", 2)],
+  }),
+  demoRecord({
+    id: D.uid("15151515", 2),
+    title: "Abacus Wartungsvertrag",
+    counterpartyName: "Abacus Research",
+    contractType: "maintenance",
+    startsOn: "2024-01-01",
+    endsOn: "2026-12-31",
+    noticePeriodDays: 60,
+    cancelled: false,
+    cancelledOn: null,
+    costAmount: 7200,
+    costCurrency: "CHF",
+    costPeriod: "yearly",
+    autoRenew: true,
+    renewalMonths: 12,
+    assetIds: [],
+    licenseIds: [D.uid("16161616", 3)],
+  }),
+];
+const DEMO_LICENSES = [
+  ["Microsoft 365 E3", "Microsoft", 180, D.uid("15151515", 1)],
+  ["Visio Plan 2", "Microsoft", 12, D.uid("15151515", 1)],
+  ["Abacus Finanzbuchhaltung", "Abacus Research", 8, D.uid("15151515", 2)],
+  ["Adobe Acrobat Pro", "Adobe", 25, null],
+  ["Power BI Pro", "Microsoft", 10, null],
+].map(([title, vendorName, quantity, contractId], index) =>
+  demoRecord({
+    id: D.uid("16161616", index + 1),
+    title,
+    vendorName,
+    licenseType: "subscription",
+    quantity,
+    contractId,
+    seatCostAmount: null,
+    seatCostCurrency: "CHF",
+    seatCostPeriod: null,
+    m365SkuId: null,
+  }),
+);
+
 // People that exist only in the Entra directory (people search).
 const PERSON_DIRECTORY_EXTRA = [
   {
@@ -49,8 +128,12 @@ const ENABLED_FEATURES = new Set([
   "ai.assist",
   "notifications.push",
   "self_service.shop",
+  "teams.provisioning",
+  "monitoring.native",
+  "contracts.management",
 ]);
 const ALL_FEATURES = [
+  "monitoring.native",
   "ticketing.detail",
   "ticketing.checklists",
   "ticketing.time-tracking",
@@ -73,6 +156,8 @@ const ALL_FEATURES = [
   "requester.portal",
   "requester.department-view",
   "notifications.push",
+  "teams.provisioning",
+  "portal.notices",
 ];
 
 const HANDBOOKS = [
@@ -629,6 +714,13 @@ const HANDLERS = {
     if (body.type === "listRules") {
       return ok({
         truncated: false,
+        statuses: D.STATUSES.map((status) => ({
+          id: status.id,
+          key: status.key,
+          label: status.label,
+          isClosed: status.is_closed,
+          pausesSla: status.key.startsWith("waiting") && !status.is_closed,
+        })),
         rules: [
           ...D.SLA_POLICIES.map((policy, index) => ({
             id: policy.id,
@@ -741,6 +833,57 @@ const HANDLERS = {
     }
     return null;
   },
+  "external-status": () => {
+    const source = (key, label, description, extra = {}) => ({
+      key,
+      label,
+      description,
+      statusUrl: "https://example.com",
+      requiresEntra: false,
+      enabled: true,
+      lastCheckedAt: D.ago(3 * D.MIN),
+      lastError: null,
+      activeIncidents: 0,
+      ...extra,
+    });
+    return ok({
+      sources: [
+        source(
+          "microsoft365",
+          "Microsoft 365",
+          "Alle Dienste deines Mandanten: Teams, Outlook/Exchange, OneDrive, SharePoint und weitere.",
+          { requiresEntra: true, activeIncidents: 1 },
+        ),
+        source("github", "GitHub", "Offizielle Statusseite von GitHub."),
+        source(
+          "claude",
+          "Claude",
+          "Offizielle Statusseite von Claude.ai und der Claude-API.",
+        ),
+        source(
+          "gemini",
+          "Google Gemini",
+          "Gemini in Google Workspace und die Gemini-API.",
+        ),
+        source(
+          "apple_app_store",
+          "Apple App Store",
+          "App Store und Mac App Store (Apple Systemstatus).",
+        ),
+        source(
+          "google_play",
+          "Google Play Store",
+          "Offizielles Status-Dashboard von Google Play.",
+          { enabled: false, lastCheckedAt: null },
+        ),
+        source(
+          "init7",
+          "Init7",
+          "Aktuelle Störungen im Netz von Init7 (ohne geplante Wartungen).",
+        ),
+      ],
+    });
+  },
   "monitoring-integrations": (body) => {
     if (body.type !== "get") return null;
     return ok({
@@ -753,6 +896,9 @@ const HANDLERS = {
         autoResolve: true,
         setServiceStatus: true,
         priorityKey: "high",
+        realertMinutes: 15,
+        groupDependencies: true,
+        suppressInMaintenance: true,
         hasToken: true,
         tokenRotatedAt: D.ago(45 * D.DAY),
         lastReceivedAt: D.ago(2 * D.HOUR + 10 * D.MIN),
@@ -954,6 +1100,1016 @@ const HANDLERS = {
       stats: { inbound24h: 23, outbound24h: 41, failed24h: 0 },
     });
   },
+  "monitoring-sensors": (body) => {
+    const now = Date.now();
+    const ago = (seconds) => new Date(now - seconds * 1000).toISOString();
+    const agents = [
+      {
+        id: D.uid("48484848", 1),
+        name: "Sonde Rechenzentrum",
+        active: true,
+        hostname: "srv-probe-01",
+        platform: "win32",
+        version: "1.1.0",
+        lastSeenAt: ago(8),
+        online: true,
+        sensorCount: 14,
+      },
+      {
+        id: D.uid("48484848", 2),
+        name: "Sonde Büro",
+        active: true,
+        hostname: "probe-buero",
+        platform: "linux",
+        version: "1.0.0",
+        updateAvailable: true,
+        lastSeenAt: ago(21),
+        online: true,
+        sensorCount: 4,
+      },
+    ];
+    const counts = (up, extra = {}) => ({
+      down: 0,
+      warning: 0,
+      up,
+      unknown: 0,
+      paused: 0,
+      ...extra,
+    });
+    const row = (
+      n,
+      name,
+      category,
+      ipAddress,
+      state,
+      sensorCounts,
+      responseMs,
+      extra = {},
+    ) => ({
+      assetId: D.uid("49494949", n),
+      name,
+      category,
+      hostname: null,
+      ipAddress,
+      state,
+      counts: sensorCounts,
+      sensorCount: Object.values(sensorCounts).reduce((a, b) => a + b, 0),
+      responseMs,
+      lastCheckAt: ago(10 + n * 3),
+      problem: null,
+      incident: null,
+      ...extra,
+    });
+    const devices = [
+      row(
+        1,
+        "SW-CORE-01",
+        "switch",
+        "10.10.0.2",
+        "down",
+        counts(0, { down: 1 }),
+        null,
+        {
+          problem: {
+            sensorId: D.uid("50505050", 1),
+            sensorName: "Ping",
+            state: "down",
+            since: ago(840),
+            message: "Keine Antwort auf Ping",
+          },
+          incident: {
+            id: D.uid("51515151", 1),
+            number: "STO-2026-0042",
+            title: "SW-CORE-01 – Ping",
+            severity: "down",
+            openedAt: ago(800),
+            acknowledged: false,
+            maintenance: false,
+          },
+        },
+      ),
+      row(
+        2,
+        "SRV-SQL-01",
+        "server",
+        "10.10.20.21",
+        "warning",
+        counts(2, { warning: 1 }),
+        1.2,
+        {
+          problem: {
+            sensorId: D.uid("50505050", 2),
+            sensorName: "Port 1433",
+            state: "warning",
+            since: ago(7200),
+            message: "Antwortzeit über dem Schwellenwert (412 ms)",
+          },
+        },
+      ),
+      row(3, "FW-BAAR-01", "firewall", "10.10.0.1", "up", counts(3), 0.8),
+      row(4, "Intranet", "server", "10.10.20.30", "up", counts(2), 182),
+      row(5, "AP-OG2-03", "access_point", "10.30.4.13", "up", counts(1), 4.1),
+      row(6, "NAS-01", "storage", "10.10.3.12", "up", counts(2), 0.6),
+      row(
+        7,
+        "SRV-BACKUP-01",
+        "server",
+        "10.10.20.40",
+        "paused",
+        counts(0, { paused: 3 }),
+        null,
+      ),
+    ];
+    const totals = counts(0);
+    for (const device of devices) totals[device.state] += 1;
+    // Who paused the backup server and why.
+    const backup = devices.find((device) => device.name === "SRV-BACKUP-01");
+    if (backup) {
+      backup.pause = {
+        reason: "Wartung Backup-Server, Firmware-Update",
+        by: "Mara Keller",
+        at: ago(600),
+      };
+    }
+    if (
+      body.type === "pauseDevice" ||
+      body.type === "pauseSensor" ||
+      body.type === "pauseMany"
+    ) {
+      return ok({ ok: true });
+    }
+    if (body.type === "summary") {
+      return ok({ down: totals.down, warning: totals.warning });
+    }
+    if (body.type === "overview") {
+      return ok({
+        canManage: true,
+        totals,
+        deviceCount: devices.length,
+        sensorCount: 18,
+        devices,
+        agents,
+        probePackage: { version: "1.1.0", builtAt: ago(7200), size: 8237661 },
+        checkedAt: ago(12),
+      });
+    }
+    const sensor = (n, kind, name, state, lastValue, extra = {}) => ({
+      id: D.uid("50505050", n),
+      assetId: D.uid("49494949", 2),
+      agentId: agents[0].id,
+      kind,
+      name,
+      target: null,
+      port: null,
+      url: null,
+      intervalSeconds: 60,
+      timeoutMs: 5000,
+      warningAbove: null,
+      warningBelow: null,
+      downAbove: null,
+      downBelow: null,
+      snmpMetric: null,
+      snmpOid: null,
+      snmpIndex: null,
+      scale: 1,
+      unit: null,
+      failuresToDown: 2,
+      paused: false,
+      state,
+      since: ago(86400),
+      lastCheckAt: ago(18),
+      lastValue,
+      lastMessage: null,
+      ...extra,
+    });
+    if (body.type === "events") {
+      const count = body.range === "7d" ? 7 : 24;
+      const step = (body.range === "7d" ? 24 : 1) * 60 * D.MIN;
+      const event = (
+        id,
+        minutes,
+        kind,
+        deviceName,
+        assetId,
+        sensorName,
+        extra,
+      ) => ({
+        id,
+        at: D.iso(-minutes * D.MIN),
+        kind,
+        assetId,
+        deviceName,
+        sensorName,
+        message: null,
+        durationSeconds: null,
+        ongoing: false,
+        services: [],
+        incident: null,
+        test: false,
+        ...extra,
+      });
+      return ok({
+        range: body.range,
+        counts: { down: 2, warning: 1, up: 1 },
+        buckets: Array.from({ length: count }, (_, index) => ({
+          from: D.iso(-(count - index) * step),
+          level:
+            index === count - 1
+              ? "down"
+              : index === count - 3
+                ? "warning"
+                : index === count - 6
+                  ? "up"
+                  : "none",
+        })),
+        events: [
+          event(
+            "p1",
+            10,
+            "paused",
+            "SRV-BACKUP-01",
+            D.uid("49494949", 5),
+            null,
+            {
+              actor: "Mara Keller",
+              reason: "Wartung Backup-Server, Firmware-Update",
+            },
+          ),
+          event("e1", 14, "down", "SW-CORE-01", D.uid("49494949", 1), "Ping", {
+            message: "Keine Antwort auf Ping",
+            ongoing: true,
+            services: ["ERP", "Intranet"],
+            incident: { id: D.uid("29292929", 2), number: "STO-2026-0042" },
+          }),
+          event(
+            "e2",
+            120,
+            "warning",
+            "SRV-SQL-01",
+            D.uid("49494949", 2),
+            "Port 1433",
+            {
+              message: "Antwortzeit über dem Schwellenwert (412 ms)",
+              ongoing: true,
+              services: ["ERP"],
+            },
+          ),
+          event(
+            "e3",
+            318,
+            "up",
+            "SRV-BACKUP-01",
+            D.uid("49494949", 5),
+            "Ping",
+            {
+              message: "Wieder erreichbar",
+              durationSeconds: 240,
+            },
+          ),
+          event(
+            "e4",
+            322,
+            "down",
+            "SRV-BACKUP-01",
+            D.uid("49494949", 5),
+            "Ping",
+            {},
+          ),
+        ],
+      });
+    }
+    if (body.type === "availability") {
+      const count = body.range === "7d" ? 7 : body.range === "1y" ? 52 : 30;
+      const step = (body.range === "1y" ? 7 : 1) * 24 * 60 * D.MIN;
+      return ok({
+        range: body.range,
+        overall: 99.62,
+        devices: 7,
+        buckets: Array.from({ length: count }, (_, index) => ({
+          from: D.iso(-(count - index) * step),
+          level:
+            index === count - 1
+              ? "down"
+              : index === Math.floor(count / 3)
+                ? "warning"
+                : "ok",
+          availability:
+            index === count - 1
+              ? 96.4
+              : index === Math.floor(count / 3)
+                ? 99.6
+                : 100,
+        })),
+        worst: [
+          {
+            assetId: D.uid("49494949", 1),
+            name: "SW-CORE-01",
+            availability: 97.42,
+            outages: 3,
+            downSeconds: 18.5 * 3600,
+            services: ["ERP", "Intranet"],
+          },
+          {
+            assetId: D.uid("49494949", 2),
+            name: "SRV-SQL-01",
+            availability: 99.31,
+            outages: 2,
+            downSeconds: 5 * 3600,
+            services: ["ERP", "Zeiterfassung"],
+          },
+          {
+            assetId: D.uid("49494949", 5),
+            name: "SRV-BACKUP-01",
+            availability: 99.86,
+            outages: 1,
+            downSeconds: 3600,
+            services: [],
+          },
+        ],
+      });
+    }
+    if (body.type === "connections") {
+      const link = (name, port, assetId, monitored, address) => ({
+        source: port ? "lldp" : "mac",
+        name,
+        port,
+        address,
+        mac: null,
+        assetId,
+        monitored,
+      });
+      return ok({
+        canManage: true,
+        scannedAt: D.iso(-42 * D.MIN),
+        pending: false,
+        error: null,
+        attachedTo: [
+          {
+            assetId: D.uid("49494949", 1),
+            name: "SW-CORE-01",
+            port: "1/1/7",
+            source: "mac",
+            monitored: true,
+          },
+        ],
+        ports: Array.from({ length: 28 }, (_, index) => {
+          const number = index + 1;
+          const named = {
+            3: link(
+              "SRV-SQL-01",
+              null,
+              D.uid("49494949", 2),
+              true,
+              "10.10.20.21",
+            ),
+            4: link(
+              "SRV-BACKUP-01",
+              null,
+              D.uid("49494949", 5),
+              true,
+              "10.10.20.40",
+            ),
+            9: link("ap-empfang", "eth0", null, false, "10.10.30.11"),
+            10: link("ap-sitzung", "eth0", null, false, "10.10.30.12"),
+            14: link("drucker-og2", null, null, false, "10.10.40.7"),
+            25: link(
+              "FW-BAAR-01",
+              "port3",
+              D.uid("49494949", 3),
+              true,
+              "10.10.0.1",
+            ),
+            27: link("asw-srv-raum", "1/1/52", null, false, "10.10.0.14"),
+            28: link("asw-og2", "1/1/52", null, false, "10.10.0.15"),
+          }[number];
+          const up =
+            named !== undefined ||
+            [1, 2, 5, 6, 11, 17, 18, 26].includes(number);
+          return {
+            port: `1/1/${number}`,
+            alias: number >= 25 ? "Uplink" : number <= 4 ? "Server" : "Client",
+            up,
+            speedMbps: up ? (number >= 25 ? 10000 : 1000) : null,
+            link: named ?? null,
+            deviceCount: named ? 1 : number === 26 ? 42 : up ? 1 : 0,
+          };
+        }),
+      });
+    }
+    if (body.type === "device") {
+      return ok({
+        canManage: true,
+        serviceOptions: [
+          { id: D.uid("31313131", 1), name: "ERP" },
+          { id: D.uid("31313131", 2), name: "E-Mail" },
+          { id: D.uid("31313131", 3), name: "Intranet" },
+          { id: D.uid("31313131", 4), name: "Zeiterfassung" },
+        ],
+        device: {
+          assetId: D.uid("49494949", 2),
+          name: "SRV-SQL-01",
+          category: "server",
+          hostname: "srv-sql-01.muster.local",
+          ipAddress: "10.10.20.21",
+          state: "warning",
+          services: [
+            { id: D.uid("29292929", 91), name: "ERP" },
+            { id: D.uid("29292929", 92), name: "Zeiterfassung" },
+          ],
+          uplink: { assetId: D.uid("49494949", 1), name: "SW-CORE-01" },
+          incident: null,
+        },
+        sensors: [
+          sensor(2, "tcp", "Port 1433", "warning", 412, {
+            port: 1433,
+            warningAbove: 250,
+            since: ago(7200),
+            lastMessage: null,
+          }),
+          sensor(3, "ping", "Ping", "up", 1.2),
+          sensor(4, "tcp", "Port 3389", "up", 2.4, {
+            port: 3389,
+            intervalSeconds: 300,
+          }),
+          sensor(5, "snmp", "eth0 Traffic", "up", 38400000, {
+            snmpMetric: "traffic",
+            snmpIndex: 2,
+            unit: "bit/s",
+            lastValue2: 4100000,
+          }),
+          sensor(6, "snmp", "Laufzeit", "up", 1047600, {
+            snmpMetric: "uptime",
+            unit: "s",
+            intervalSeconds: 300,
+          }),
+        ],
+        agents,
+        checkedAt: ago(12),
+      });
+    }
+    if (body.type === "series") {
+      const bucket = 300;
+      const start =
+        Math.floor((now - 24 * 3600 * 1000) / (bucket * 1000)) * bucket * 1000;
+      const points = [];
+      for (let index = 0; index < 288; index += 1) {
+        const rising = index > 262 ? (index - 262) * 14 : 0;
+        const base =
+          38 + Math.sin(index / 9) * 9 + ((index * 37) % 11) + rising;
+        points.push({
+          t: new Date(start + index * bucket * 1000).toISOString(),
+          avg: Math.round(base * 10) / 10,
+          min: Math.round(base * 7) / 10,
+          max: Math.round(base * 14) / 10,
+          ok: index === 120 || index === 121 ? 0.4 : 1,
+        });
+      }
+      return ok({
+        sensorId: body.sensorId,
+        range: body.range ?? "24h",
+        from: new Date(now - 24 * 3600 * 1000).toISOString(),
+        bucketSeconds: bucket,
+        points,
+        availability: 99.58,
+      });
+    }
+    if (body.type === "assets") {
+      return ok({
+        kinds: ["Drucker", "iLO"],
+        addresses:
+          String(body.query ?? "").trim().length >= 2
+            ? [
+                {
+                  addressId: D.uid("52525252", 1),
+                  address: "10.10.20.55",
+                  hostname: "srv-print-01",
+                  description: "Druckserver",
+                  deviceType: null,
+                },
+                {
+                  addressId: D.uid("52525252", 2),
+                  address: "10.10.20.56",
+                  hostname: "srv-backup-02",
+                  description: "Backup",
+                  deviceType: null,
+                },
+                {
+                  addressId: D.uid("52525252", 3),
+                  address: "10.10.0.14",
+                  hostname: "asw-srv-raum",
+                  description: "Switch Serverraum",
+                  deviceType: null,
+                },
+              ]
+            : [],
+        assets: devices
+          .filter((device) =>
+            device.name.toLowerCase().includes(
+              String(body.query ?? "")
+                .trim()
+                .toLowerCase(),
+            ),
+          )
+          .map((device) => ({
+            assetId: device.assetId,
+            name: device.name,
+            category: device.category,
+            hostname: null,
+            ipAddress: device.ipAddress,
+            monitored: true,
+          })),
+      });
+    }
+    return ok({ ok: true });
+  },
+  incidents: (body) => {
+    const agent = D.AGENTS[1] ?? D.AGENTS[0];
+    const services = [
+      {
+        id: D.uid("29292929", 90),
+        name: "Dateiablage",
+        status: "partial_outage",
+      },
+    ];
+    const summary = (n, extra) => ({
+      id: D.uid("29292929", n),
+      number: `STO-2026-00${40 + n}`,
+      assetId: null,
+      parentId: null,
+      maintenance: false,
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+      assignedAgentId: null,
+      assignedAgentName: null,
+      resolvedAt: null,
+      closedAt: null,
+      cause: null,
+      durationMinutes: 0,
+      services: [],
+      location: "Serverraum UG · Rack A",
+      realertCount: 0,
+      children: [],
+      ...extra,
+    });
+    const root = summary(1, {
+      title: "SW-CORE-01 – Ping",
+      deviceName: "SW-CORE-01",
+      severity: "down",
+      state: "active",
+      openedAt: D.ago(14 * D.MIN),
+      services,
+      children: [
+        summary(2, {
+          title: "SRV-FS01 – Ping",
+          deviceName: "SRV-FS01",
+          severity: "down",
+          state: "active",
+          parentId: D.uid("29292929", 1),
+          openedAt: D.ago(13 * D.MIN),
+        }),
+        summary(3, {
+          title: "AP-OG1-02 – Ping",
+          deviceName: "AP-OG1-02",
+          severity: "down",
+          state: "active",
+          parentId: D.uid("29292929", 1),
+          openedAt: D.ago(13 * D.MIN),
+        }),
+      ],
+    });
+    const warning = summary(4, {
+      title: "USV Serverraum – Temperatur",
+      deviceName: "USV Serverraum",
+      severity: "warning",
+      state: "active",
+      acknowledgedAt: D.ago(40 * D.MIN),
+      acknowledgedBy: agent.name,
+      assignedAgentId: agent.id,
+      assignedAgentName: agent.name,
+      openedAt: D.ago(2 * D.HOUR + 10 * D.MIN),
+    });
+    const resolved = summary(5, {
+      title: "FW-01 – HTTPS",
+      deviceName: "FW-01",
+      severity: "down",
+      state: "resolved",
+      acknowledgedAt: D.ago(26 * D.HOUR),
+      acknowledgedBy: agent.name,
+      assignedAgentId: agent.id,
+      assignedAgentName: agent.name,
+      openedAt: D.ago(26 * D.HOUR),
+      resolvedAt: D.ago(25 * D.HOUR + 20 * D.MIN),
+      durationMinutes: 40,
+    });
+    const stats = {
+      active: 2,
+      activeDown: 1,
+      activeWarning: 1,
+      unacknowledged: 1,
+      oldestUnacknowledgedAt: D.ago(14 * D.MIN),
+      affectedServices: ["Dateiablage"],
+      medianResolveMinutes: 38,
+      availability: 0.9981,
+      monitoredDevices: 42,
+    };
+    if (body.type === "list") {
+      const incidents =
+        body.filter === "closed" ||
+        body.filter === "recent" ||
+        body.filter === "resolved"
+          ? [resolved]
+          : body.filter === "unacknowledged" || body.filter === "services"
+            ? [root]
+            : body.filter === "all"
+              ? [root, warning, resolved]
+              : [root, warning];
+      return ok({ incidents, stats, nextCursor: null });
+    }
+    if (body.type === "report") {
+      return ok({
+        days: body.days ?? 30,
+        total: 17,
+        medianResolveMinutes: 38,
+        availability: 0.9981,
+        causes: [
+          { cause: "network", label: "Netzwerk", count: 6 },
+          { cause: "power", label: "Strom", count: 4 },
+          { cause: "hardware", label: "Hardware", count: 3 },
+          {
+            cause: "external",
+            label: "Extern (Provider, Lieferant)",
+            count: 2,
+          },
+          { cause: "unknown", label: "Unbekannt", count: 2 },
+        ],
+        devices: [
+          { name: "SW-CORE-01", count: 4, minutes: 95 },
+          { name: "USV Serverraum", count: 3, minutes: 410 },
+          { name: "FW-01", count: 2, minutes: 52 },
+        ],
+      });
+    }
+    if (body.type !== "get") return null;
+    const at = (minutes) => D.ago(minutes * D.MIN);
+    return ok({
+      ...root,
+      closedBy: null,
+      closingNote: null,
+      parent: null,
+      sensors: [
+        {
+          name: "Ping",
+          status: "Fehler",
+          state: "open",
+          lastEventAt: at(14),
+          message: "Zeitüberschreitung (100 % Paketverlust)",
+        },
+        {
+          name: "SNMP Uptime",
+          status: "Fehler",
+          state: "open",
+          lastEventAt: at(12),
+          message: "Keine Antwort",
+        },
+        {
+          name: "Port 24 (Uplink)",
+          status: "OK",
+          state: "resolved",
+          lastEventAt: at(30),
+          message: "1 Gbit/s",
+        },
+      ],
+      events: [
+        {
+          id: "e1",
+          kind: "prtg",
+          status: "Fehler",
+          sensor: "Ping",
+          message: "Zeitüberschreitung (100 % Paketverlust)",
+          actor: null,
+          at: at(14),
+        },
+        {
+          id: "e2",
+          kind: "opened",
+          status: null,
+          sensor: null,
+          message:
+            "Störung geöffnet, Team ICT Infrastruktur alarmiert (Push und Mail).",
+          actor: null,
+          at: at(14),
+        },
+        {
+          id: "e3",
+          kind: "child",
+          status: null,
+          sensor: null,
+          message: "SRV-FS01 und AP-OG1-02 als Folgestörungen angehängt.",
+          actor: null,
+          at: at(13),
+        },
+        {
+          id: "e4",
+          kind: "prtg",
+          status: "Fehler",
+          sensor: "SNMP Uptime",
+          message: "Keine Antwort",
+          actor: null,
+          at: at(12),
+        },
+        {
+          id: "e5",
+          kind: "realert",
+          status: null,
+          sensor: null,
+          message: "Noch unbestätigt: erneut alarmiert.",
+          actor: null,
+          at: at(0),
+        },
+      ],
+      device: {
+        name: "SW-CORE-01",
+        category: "Switch",
+        manufacturer: "HPE Aruba",
+        model: "6300M",
+        hostname: "sw-core-01.muster.local",
+        ipAddress: "10.10.0.2",
+        prtgObjectId: "2041",
+        location: "Serverraum UG · Rack A · HE 40",
+      },
+      dependencies: {
+        upstream: [{ assetId: "fw", name: "FW-01", failing: false }],
+      },
+      history: {
+        segments: [
+          { start: at(9 * 60), end: at(9 * 60 - 6), severity: "down" },
+          { start: at(14), end: at(0), severity: "down" },
+        ],
+        weekCount: 3,
+      },
+      tickets: [
+        {
+          id: D.uid("29292929", 61),
+          number: "ICT-2026-000318",
+          subject: "Kein Zugriff auf Laufwerk S:",
+          status: "Offen",
+          closed: false,
+          source: "service",
+          linkedAt: at(10),
+          notifiedAt: null,
+        },
+        {
+          id: D.uid("29292929", 62),
+          number: "ICT-2026-000319",
+          subject: "WLAN im 1. OG weg (AP-OG1-02)",
+          status: "Offen",
+          closed: false,
+          source: "text",
+          linkedAt: at(8),
+          notifiedAt: null,
+        },
+      ],
+      hiddenTickets: 0,
+      problems: [],
+      recurrence: { sameDevice30d: 4, sameCause30d: 0, suggestCase: true },
+      permissions: { openCase: true, draftArticle: true },
+      network: {
+        addresses: [
+          {
+            address: "10.10.0.2",
+            hostname: "sw-core-01",
+            prefix: "10.10.0.0/24",
+            gateway: "10.10.0.1",
+            vlanNumber: 10,
+            vlanName: "Management",
+            site: "Hauptgebäude",
+            switchName: "FW-01",
+            switchPort: "port3",
+            portSource: "lldp",
+          },
+        ],
+        subnetNeighbours: [
+          {
+            assetId: D.uid("29292929", 71),
+            name: "SRV-FS01",
+            address: "10.10.0.21",
+            state: "down",
+            incidentId: D.uid("29292929", 2),
+          },
+          {
+            assetId: D.uid("29292929", 72),
+            name: "USV Serverraum",
+            address: "10.10.0.30",
+            state: "warning",
+            incidentId: D.uid("29292929", 4),
+          },
+          {
+            assetId: D.uid("29292929", 73),
+            name: "SRV-APP01",
+            address: "10.10.0.22",
+            state: "ok",
+            incidentId: null,
+          },
+        ],
+        switchNeighbours: [],
+      },
+      agents: D.AGENTS.map((entry) => ({ id: entry.id, name: entry.name })),
+    });
+  },
+  "security-cases": (body) => {
+    const cases = [
+      {
+        ticketId: "sec-41",
+        ticketNumber: "ICT-2026-000041",
+        subject: "Voicemail (24 Sekunden)",
+        from: "noreply@vm-telefon-service.com",
+        state: "triage",
+        verdict: null,
+        riskScore: 82,
+        riskLevel: "high",
+        reports: 7,
+        reporters: 7,
+        firstReportedAt: D.ago(26 * 60 * 1000),
+        decisionDueAt: D.ago(-4 * 60 * 1000),
+        overdue: false,
+        teamName: "System Engineering",
+      },
+      {
+        ticketId: "sec-40",
+        ticketNumber: "ICT-2026-000040",
+        subject: "Deine Lieferung konnte nicht zugestellt werden",
+        from: "info@paket-zustellung24.net",
+        state: "triage",
+        verdict: null,
+        riskScore: 54,
+        riskLevel: "medium",
+        reports: 1,
+        reporters: 1,
+        firstReportedAt: D.ago(65 * 60 * 1000),
+        decisionDueAt: D.ago(-175 * 60 * 1000),
+        overdue: false,
+        teamName: "System Engineering",
+      },
+      {
+        ticketId: "sec-39",
+        ticketNumber: "ICT-2026-000039",
+        subject: "HIN Domain encryption: Neue Nachricht",
+        from: "noreply@hin.ch",
+        state: "triage",
+        verdict: null,
+        riskScore: 12,
+        riskLevel: "low",
+        reports: 1,
+        reporters: 1,
+        firstReportedAt: D.ago(3 * 60 * 60 * 1000),
+        decisionDueAt: D.ago(-21 * 60 * 60 * 1000),
+        overdue: false,
+        teamName: "System Engineering",
+      },
+    ];
+    if (body.type === "list") {
+      return ok({
+        cases: body.state === "triage" || body.state === "all" ? cases : [],
+        stats: {
+          triage: 3,
+          triageHigh: 1,
+          overdue: 0,
+          actions: 2,
+          reportsToday: 14,
+          reportersToday: 11,
+          medianVerdictMinutes: 18,
+          clickAnswers: 21,
+          clickYes: 1,
+        },
+      });
+    }
+    if (body.type === "getTemplates") {
+      return ok({
+        custom: false,
+        templates: {
+          harmless: [],
+          spam: ["Absender in Microsoft Defender als Spam sperren"],
+          phishing: [
+            "Absender und Domain in Microsoft Defender sperren",
+            "Link-Domains blockieren",
+            "Mail aus allen Postfächern entfernen (Defender → Bedrohungs-Explorer)",
+            "Melder fragen: geklickt oder Daten eingegeben?",
+            "Falls ja: Passwort zurücksetzen und Anmeldungen prüfen",
+          ],
+          targeted: [
+            "Absender und Domain in Microsoft Defender sperren",
+            "Link-Domains blockieren",
+            "Mail aus allen Postfächern entfernen (Defender → Bedrohungs-Explorer)",
+            "Melder fragen: geklickt oder Daten eingegeben?",
+            "Geschäftsleitung informieren",
+          ],
+        },
+      });
+    }
+    if (body.type === "get") {
+      return ok({
+        ticketId: "sec-41",
+        ticketNumber: "ICT-2026-000041",
+        subject: "Phishing-Meldung: Voicemail (24 Sekunden)",
+        description:
+          "Verdächtige E-Mail gemeldet von Lena Brunner.\n\nInhalt der gemeldeten E-Mail (Links entschärft):\n\nSie haben eine neue Sprachnachricht (24 Sekunden).\n\nNachricht anhören: hxxps://microsoftonline-login[.]co/voicemail?id=8812\n\nIhr Telefonie-Service",
+        teamName: "System Engineering",
+        assignedAgentId: null,
+        assignedAgentName: null,
+        createdAt: D.ago(26 * 60 * 1000),
+        state: "triage",
+        verdict: null,
+        verdictBy: null,
+        verdictAt: null,
+        decisionDueAt: D.ago(-4 * 60 * 1000),
+        reportersNotifiedAt: null,
+        closedAt: null,
+        analysis: {
+          score: 82,
+          level: "high",
+          from: "noreply@vm-telefon-service.com",
+          fromName: "Voicemail Service",
+          replyTo: "support@vm-telefon-service.top",
+          returnPath: "bounce@mail-relay-77.net",
+          subject: "Voicemail (24 Sekunden)",
+          date: "Mo, 9 Nov 2026 14:05:12 +0100",
+          sendingIp: "185.220.101.44",
+          auth: { spf: "softfail", dkim: "none", dmarc: "fail" },
+          findings: [
+            {
+              severity: "high",
+              message:
+                "Link-Text nennt Microsoft, das Ziel ist microsoftonline-login.co (nachgeahmte Domain).",
+            },
+            {
+              severity: "high",
+              message:
+                "Anhang ist eine HTML-Datei, typisch für gefälschte Anmeldeseiten.",
+            },
+            {
+              severity: "medium",
+              message:
+                "DMARC fehlgeschlagen, Antwort-Adresse weicht vom Absender ab.",
+            },
+            {
+              severity: "low",
+              message: "Keine Makros und keine ausführbaren Dateien.",
+            },
+          ],
+          links: [
+            {
+              href: "hxxps://microsoftonline-login[.]co/voicemail?id=8812",
+              text: "Nachricht anhören",
+              host: "microsoftonline-login[.]co",
+            },
+          ],
+          attachments: [
+            {
+              filename: "Voicemail_0924.htm",
+              contentType: "text/html",
+              size: 3174,
+            },
+          ],
+        },
+        reporters: [
+          {
+            name: "Lena Brunner",
+            email: "lena.brunner@muster.ch",
+            channel: "email",
+            reportedAt: D.ago(26 * 60 * 1000),
+            asked: false,
+            answer: null,
+          },
+          {
+            name: "Jonas Meier",
+            email: "jonas.meier@muster.ch",
+            channel: "email",
+            reportedAt: D.ago(24 * 60 * 1000),
+            asked: false,
+            answer: null,
+          },
+          {
+            name: "Sara Keller",
+            email: "sara.keller@muster.ch",
+            channel: "mobile",
+            reportedAt: D.ago(21 * 60 * 1000),
+            asked: false,
+            answer: null,
+          },
+          {
+            name: "Marco Rossi",
+            email: "marco.rossi@muster.ch",
+            channel: "portal",
+            reportedAt: D.ago(18 * 60 * 1000),
+            asked: false,
+            answer: null,
+          },
+        ],
+        actions: [],
+      });
+    }
+    return null;
+  },
   "phishing-reports": (body) => {
     if (body.type !== "getSettings") return null;
     return ok({
@@ -976,6 +2132,120 @@ const HANDLERS = {
       },
     });
   },
+  // Teams und Hinweise sind in den Demo-Daten ausgeschaltet.
+  "teams-admin": (body, { persona }) => {
+    if (body.type === "getContext") {
+      return ok({
+        canManage: persona.canWorkTickets,
+        configured: true,
+        today: "2026-11-12",
+        syncedAt: "2026-11-12T09:15:00.000Z",
+      });
+    }
+    if (body.type === "list") {
+      const team = (n, name, extra = {}) => ({
+        teamId: `aaaaaaaa-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`,
+        name,
+        description: null,
+        visibility: "private",
+        archived: false,
+        webUrl: "https://teams.microsoft.com/",
+        owners: ["Daniel Frei"],
+        ownerCount: 1,
+        source: "existing",
+        requestId: null,
+        requestStatus: null,
+        startDate: null,
+        endDate: null,
+        daysLeft: null,
+        createdAt: "2025-09-03T08:00:00Z",
+        memberCount: 12,
+        guestCount: 0,
+        ...extra,
+      });
+      return ok({
+        syncedAt: "2026-11-12T09:15:00.000Z",
+        teams: [
+          team(1, "Projekt Neubau Schulhaus", {
+            description: "Planung, Bauleitung und Bauherrschaft",
+            source: "order",
+            requestStatus: "ready",
+            startDate: "2026-11-12",
+            endDate: "2027-11-30",
+            daysLeft: 383,
+            createdAt: "2026-11-12T08:00:00Z",
+            memberCount: 9,
+            guestCount: 1,
+            owners: ["Daniel Frei", "Mara Keller"],
+            ownerCount: 2,
+          }),
+          team(2, "Marketing Kampagne Q1", {
+            source: "order",
+            requestStatus: "ready",
+            startDate: "2026-02-02",
+            endDate: "2026-11-19",
+            daysLeft: 7,
+            owners: ["Lena Brunner"],
+            memberCount: 12,
+          }),
+          team(3, "Klasse Kuhles", {
+            description: "Schulklasse, Schuljahr 26/27",
+            memberCount: 24,
+          }),
+          team(4, "Pilot Lernplattform", {
+            visibility: "public",
+            owners: [],
+            ownerCount: 0,
+            memberCount: 4,
+          }),
+          team(5, "Projekt Altbau 2025", {
+            archived: true,
+            source: "order",
+            requestStatus: "archived",
+            memberCount: 7,
+          }),
+        ],
+      });
+    }
+    if (body.type === "members") {
+      return ok({
+        members: [
+          {
+            membershipId: "m1",
+            userId: null,
+            displayName: "Daniel Frei",
+            email: "daniel.frei@muster.ch",
+            isOwner: true,
+            isGuest: false,
+          },
+          {
+            membershipId: "m2",
+            userId: null,
+            displayName: "Mara Keller",
+            email: "mara.keller@muster.ch",
+            isOwner: true,
+            isGuest: false,
+          },
+          {
+            membershipId: "m3",
+            userId: null,
+            displayName: "Lena Brunner",
+            email: "lena.brunner@muster.ch",
+            isOwner: false,
+            isGuest: false,
+          },
+        ],
+      });
+    }
+    if (body.type === "history") return ok({ events: [] });
+    return null;
+  },
+  "teams-provisioning": () => fail("feature_disabled", 403),
+  "teams-settings": () => fail("feature_disabled", 403),
+  "requester-notices": (body) =>
+    body.type === "active"
+      ? ok({ notices: [] })
+      : fail("feature_disabled", 403),
   "tenant-feature-flags": () =>
     ok({
       features: ALL_FEATURES.map((key) => ({
@@ -1007,6 +2277,14 @@ const HANDLERS = {
         ).map((a) => ({ id: a.id, displayName: a.name })),
       });
     }
+    if (body.type === "list") {
+      return ok({
+        agents: D.AGENTS.filter((a) => a.departmentKey === "ict").map((a) => ({
+          id: a.id,
+          displayName: a.name,
+        })),
+      });
+    }
     return null;
   },
   "notification-center": (body, { persona }) => {
@@ -1033,8 +2311,37 @@ const HANDLERS = {
     }));
     return ok({ notifications, unreadCount: 1 });
   },
-  "ticket-saved-views": (body) =>
-    body.type === "listSavedViews" ? ok({ savedViews: [] }) : null,
+  "ticket-saved-views": (body, { persona }) => {
+    if (body.type !== "listSavedViews") return null;
+    const view = (n, name, ownerId, filters) => ({
+      id: D.uid("51515151", n),
+      ownerId,
+      name,
+      visibility: "private",
+      createdAt: D.ago(20 * D.DAY),
+      updatedAt: D.ago(2 * D.DAY),
+      filters: {
+        agent: "all",
+        department: "all",
+        priority: "all",
+        query: "",
+        queue: "alle",
+        sortBy: "updated",
+        sortDirection: "desc",
+        status: "all",
+        ticketScope: "all",
+        ...filters,
+      },
+    });
+    return ok({
+      savedViews: [
+        view(1, "Dringend ICT", persona.id, { priority: "Hoch", queue: "ict" }),
+        view(2, "Nicht zugewiesen (Team)", D.U.lukas?.id ?? persona.id, {
+          ticketScope: "unassigned",
+        }),
+      ],
+    });
+  },
   "ticket-bulk-status": (body) =>
     body.type === "listStatusOptions"
       ? ok({
@@ -1049,14 +2356,31 @@ const HANDLERS = {
     if (body.type === "queueLevels") return ok({ levels: [] });
     if (body.type === "getTicket")
       return ok({
-        levelsConfigured: false,
-        currentLevel: null,
-        currentTeam: null,
+        levelsConfigured: true,
+        currentLevel: 1,
+        currentTeam: { id: "team-servicedesk", name: "ICT Servicedesk" },
         ticketClosed: false,
-        canHandover: false,
-        targets: { next: null, back: [] },
+        canHandover: true,
+        targets: {
+          next: {
+            level: 2,
+            teams: [{ id: "team-system", name: "System Engineering" }],
+          },
+          back: [],
+        },
         currentHandover: null,
-        history: [],
+        history: [
+          {
+            id: "level-1",
+            kind: "initial",
+            fromLevel: null,
+            toLevel: 1,
+            teamName: "ICT Servicedesk",
+            note: null,
+            actorName: "Mara Keller",
+            createdAt: "2026-11-09T07:50:00Z",
+          },
+        ],
       });
     return null;
   },
@@ -1780,8 +3104,34 @@ const HANDLERS = {
   },
   "portal-assistant": (body) =>
     body.type === "getSettings" ? ok({ enabled: false }) : null,
-  "ticket-attachments": (body) =>
-    body.type === "list" ? ok({ attachments: [] }) : null,
+  // The e-mail of «Laptop startet nach Windows-Update nicht mehr» came with a
+  // PDF; it is shown below the description in the conversation.
+  "ticket-attachments": (body) => {
+    if (body.type !== "list") return null;
+    const ticket = D.TICKETS.find((entry) => entry.id === body.ticketId);
+    if (!ticket || !ticket.subject.startsWith("Laptop startet")) {
+      return ok({ attachments: [] });
+    }
+    return ok({
+      attachments: [
+        {
+          id: D.uid("17171717", 1),
+          ticket_id: ticket.id,
+          comment_id: null,
+          visibility: "external",
+          original_filename: "Fehlermeldung-Startbildschirm.pdf",
+          content_type: "application/pdf",
+          byte_size: 184320,
+          malware_status: "clean",
+          uploaded_by: ticket.requester_id,
+          created_at: new Date(
+            Date.parse(ticket.created_at) + 5000,
+          ).toISOString(),
+          inline: false,
+        },
+      ],
+    });
+  },
   shop: (body, { persona }) => {
     if (body.type === "getContext") {
       return ok({
@@ -1816,6 +3166,42 @@ const HANDLERS = {
     body.type === "navigationSummary" ? ok({ attentionCount: 0 }) : null,
   "event-spaces": (body) =>
     body.type === "navigationSummary" ? fail("feature_disabled", 403) : null,
+  contracts: (body) => {
+    if (body.type === "list")
+      return ok({ contracts: DEMO_CONTRACTS, departments: [] });
+    if (body.type === "listPeople")
+      return ok({ people: DEMO_CONTRACT_PEOPLE() });
+    if (body.type === "listAssets") return ok({ assets: [] });
+    if (body.type === "listLicenses")
+      return ok({
+        licenses: DEMO_LICENSES.map((license) => ({
+          id: license.id,
+          title: license.title,
+          vendorName: license.vendorName,
+          status: license.status,
+          contractId: license.contractId,
+        })),
+      });
+    return null;
+  },
+  licenses: (body) => {
+    if (body.type === "list")
+      return ok({ licenses: DEMO_LICENSES, departments: [] });
+    if (body.type === "listPeople")
+      return ok({ people: DEMO_CONTRACT_PEOPLE() });
+    if (body.type === "listContracts")
+      return ok({
+        contracts: DEMO_CONTRACTS.map((contract) => ({
+          id: contract.id,
+          title: contract.title,
+          counterpartyName: contract.counterpartyName,
+          status: contract.status,
+        })),
+      });
+    return null;
+  },
+  "record-attachments": (body) =>
+    body.type === "list" ? ok({ attachments: [] }) : null,
   "service-assets": (body) => {
     if (body.type === "ownPhoto") return ok({ photoUrl: null });
     if (body.type === "listCatalog") {

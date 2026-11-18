@@ -1,4 +1,5 @@
 import { Tabs } from "expo-router";
+import { useEffect, useState } from "react";
 
 import { CreateWorkspaceScreen } from "@/components/create-workspace-screen";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
@@ -7,29 +8,83 @@ import {
   type NextDeskTabItem,
 } from "@/components/nextdesk-tab-bar";
 import { PushCheckInPrompt } from "@/components/push-checkin-prompt";
+import { canWorkIncidents, canWorkSecurityCases } from "@/lib/incidents";
+import { useNavigationBadges } from "@/lib/navigation-badges";
 
 export default function TabLayout() {
-  const { isEnabled, loading, needsWorkspace } = useMobileFeatures();
+  const { isEnabled, loading, needsWorkspace, tenantId } = useMobileFeatures();
+  // «Störungen» and «Phishing» only for the responsible team (per tenant).
+  const [moduleAccess, setModuleAccess] = useState<{
+    tenantId: string;
+    incidents: boolean;
+    phishing: boolean;
+  } | null>(null);
+  useEffect(() => {
+    if (!tenantId) return;
+    let active = true;
+    void Promise.all([
+      canWorkIncidents(tenantId),
+      canWorkSecurityCases(tenantId),
+    ]).then(([incidents, phishing]) => {
+      if (active) setModuleAccess({ tenantId, incidents, phishing });
+    });
+    return () => {
+      active = false;
+    };
+  }, [tenantId]);
+  const currentAccess =
+    tenantId && moduleAccess?.tenantId === tenantId ? moduleAccess : null;
+  const incidentsVisible = currentAccess?.incidents === true;
+  const phishingVisible = currentAccess?.phishing === true;
   const knowledgeVisible = !loading && isEnabled("knowledge.base");
   const scanVisible = !loading && isEnabled("assets.management");
   const shopVisible = !loading && isEnabled("self_service.shop");
+  // Menu badges like the web sidebar (open items per menu entry).
+  const { badges, refresh: refreshBadges } = useNavigationBadges(
+    tenantId ?? null,
+    shopVisible,
+  );
 
-  // Fachliche Reihenfolge ohne Home: Tickets, Shop | Home | Wissen, Scan.
-  // Die Leiste verteilt die sichtbaren Einträge gleichmässig um das zentrierte Home.
+  // Links vom Home: Tickets, Störungen, Phishing / Junk (Arbeit);
+  // rechts: Shop, Wissen, Scan.
   const tabItems: NextDeskTabItem[] = [
     {
       name: "tickets",
       label: "Tickets",
       icon: "ticket-outline",
       activeIcon: "ticket",
+      side: "left",
+      badge: "tickets",
     },
   ];
+  if (incidentsVisible) {
+    tabItems.push({
+      name: "incidents",
+      label: "Störungen",
+      icon: "pulse-outline",
+      activeIcon: "pulse",
+      side: "left",
+      badge: "incidents",
+    });
+  }
+  if (phishingVisible) {
+    tabItems.push({
+      name: "phishing",
+      label: "Phishing / Junk",
+      icon: "shield-outline",
+      activeIcon: "shield",
+      side: "left",
+      badge: "phishing",
+    });
+  }
   if (shopVisible) {
     tabItems.push({
       name: "shop",
       label: "Shop",
       icon: "bag-handle-outline",
       activeIcon: "bag-handle",
+      side: "right",
+      badge: "shop",
     });
   }
   if (knowledgeVisible) {
@@ -38,6 +93,7 @@ export default function TabLayout() {
       label: "Wissen",
       icon: "book-outline",
       activeIcon: "book",
+      side: "right",
     });
   }
   if (scanVisible) {
@@ -46,6 +102,7 @@ export default function TabLayout() {
       label: "Scan",
       icon: "scan-outline",
       activeIcon: "scan",
+      side: "right",
     });
   }
 
@@ -56,13 +113,35 @@ export default function TabLayout() {
       <Tabs
         initialRouteName="index"
         screenOptions={{ headerShown: false }}
-        tabBar={(props) => <NextDeskTabBar {...props} items={tabItems} />}
+        tabBar={(props) => (
+          <NextDeskTabBar
+            {...props}
+            badges={badges}
+            items={tabItems}
+            onNavigate={refreshBadges}
+          />
+        )}
       >
         <Tabs.Screen name="tickets" options={{ title: "Tickets" }} />
+        <Tabs.Screen
+          name="incidents"
+          options={{
+            href: incidentsVisible ? undefined : null,
+            title: "Störungen",
+          }}
+        />
+        <Tabs.Screen
+          name="phishing"
+          options={{
+            href: phishingVisible ? undefined : null,
+            title: "Phishing / Junk",
+          }}
+        />
         <Tabs.Screen name="services" options={{ href: null }} />
         <Tabs.Screen name="assets" options={{ href: null }} />
         <Tabs.Screen name="inventory" options={{ href: null }} />
         <Tabs.Screen name="infrastructure" options={{ href: null }} />
+        <Tabs.Screen name="monitoring" options={{ href: null }} />
         <Tabs.Screen name="priorities" options={{ href: null }} />
         <Tabs.Screen
           name="shop"

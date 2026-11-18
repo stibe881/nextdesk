@@ -50,3 +50,33 @@ Deno.test("sendTest preserves existing explicit low-stock preferences", () => {
     timezone: existing.timezone,
   });
 });
+
+Deno.test("phishing reports are off until a person opts in explicitly", () => {
+  const preferences = defaultPreferences();
+  assertEquals(
+    preferences.enabledCategories.includes("security_report"),
+    false,
+  );
+  assertEquals(preferences.categoryModes.security_report, "off");
+  assertEquals(preferences.emailCategories.includes("security_report"), false);
+});
+
+Deno.test(
+  "the opt-in migration switches phishing reports off everywhere",
+  async () => {
+    const migration = await Deno.readTextFile(
+      new URL(
+        "../../migrations/0267_phishing_notifications_opt_in.sql",
+        import.meta.url,
+      ),
+    );
+    for (const required of [
+      "coalesce(v_modes ->> 'security_report', 'off') <> 'off'",
+      "|| jsonb_build_object('security_report', 'off');",
+      "email_categories = array_remove(preference.email_categories, 'security_report')",
+    ]) {
+      if (!migration.includes(required))
+        throw new Error(`missing: ${required}`);
+    }
+  },
+);

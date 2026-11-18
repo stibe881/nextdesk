@@ -23,6 +23,7 @@ import {
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 function clock(value: string): string {
   return new Date(value).toLocaleTimeString("de-CH", {
@@ -140,8 +141,8 @@ export default function PrioritiesScreen() {
           <Text style={styles.title}>Meine Prioritäten</Text>
           <Text style={styles.subtitle}>
             {list?.rankedAt
-              ? `${list.source === "ai" ? "Von der KI priorisiert" : "Nach SLA, Priorität und Wartezeit sortiert"} um ${clock(list.rankedAt)}${list.hasManualOrder ? " · deine Anpassungen haben Vorrang" : ""}`
-              : "Deine zugewiesenen Tickets in sinnvoller Reihenfolge"}
+              ? `${list.source === "ai" ? "Von der KI priorisiert" : "Nach SLA, Priorität und Wartezeit sortiert"} um ${clock(list.rankedAt)}${list.hasManualOrder ? tn(" · deine Anpassungen haben Vorrang", " · Ihre Anpassungen haben Vorrang") : ""}`
+              : tn("Deine zugewiesenen Tickets in sinnvoller Reihenfolge", "Ihre zugewiesenen Tickets in sinnvoller Reihenfolge")}
           </Text>
         </View>
 
@@ -191,7 +192,46 @@ export default function PrioritiesScreen() {
           </View>
         ) : null}
 
-        {tickets.length === 0 && !error ? (
+        {(list?.operations ?? []).length > 0 ? (
+          <View style={styles.list}>
+            {(list?.operations ?? []).map((item) => (
+              <Pressable
+                accessibilityRole="button"
+                key={`${item.kind}:${item.id}`}
+                onPress={() =>
+                  router.push(
+                    (item.kind === "incident"
+                      ? `/incidents/${item.id}`
+                      : `/phishing/${item.id}`) as never,
+                  )
+                }
+                style={[styles.card, item.urgent ? styles.cardUrgent : null]}
+              >
+                <Ionicons
+                  color={item.urgent ? colors.error : colors.primaryText}
+                  name={
+                    item.kind === "incident"
+                      ? "pulse-outline"
+                      : "shield-outline"
+                  }
+                  size={18}
+                />
+                <View style={styles.cardCopy}>
+                  <Text numberOfLines={1} style={styles.cardTitle}>
+                    {item.title}
+                  </Text>
+                  <Text numberOfLines={2} style={styles.cardMeta}>
+                    {item.number} ·{" "}
+                    {item.kind === "incident" ? "Störung" : "Phishing-/Junk-Fall"}{" "}
+                    · {item.reason}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
+        {tickets.length === 0 && (list?.operations ?? []).length === 0 && !error ? (
           <View style={styles.emptyCard}>
             <Ionicons
               color={colors.primaryText}
@@ -200,7 +240,7 @@ export default function PrioritiesScreen() {
             />
             <Text style={styles.emptyTitle}>Nichts offen</Text>
             <Text style={styles.emptyText}>
-              Dir sind keine offenen Tickets zugewiesen.
+              {tn("Dir sind keine offenen Tickets zugewiesen.", "Ihnen sind keine offenen Tickets zugewiesen.")}
             </Text>
           </View>
         ) : null}
@@ -299,6 +339,7 @@ const useStyles = makeThemedStyles((c) => ({
     padding: 12,
   },
   cardCopy: { flex: 1, gap: 3 },
+  cardUrgent: { backgroundColor: c.errorSoft, borderColor: c.error },
   cardMeta: { color: c.muted, fontSize: 12, lineHeight: 16 },
   cardTitle: { color: c.foreground, fontSize: 15, fontWeight: "800" },
   centered: { alignItems: "center", flex: 1, justifyContent: "center" },

@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { unreadNotificationCount } from "../_shared/notification-badge.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const DEFAULT_LIMIT = 50;
@@ -15,8 +16,11 @@ type Action =
       unreadOnly?: boolean;
       limit: number;
     }
+  | { type: "get"; notificationId: string }
   | { type: "markRead"; notificationId: string }
-  | { type: "markAllRead"; tenantId: string };
+  | { type: "markAllRead"; tenantId: string }
+  | { type: "markTicketRead"; tenantId: string; ticketId: string }
+  | { type: "unreadCount" };
 
 type NotificationRow = {
   id: string;
@@ -58,7 +62,7 @@ function isLimit(value: unknown): value is number {
   );
 }
 
-function parseAction(value: unknown): Action | null {
+export function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || typeof value.type !== "string") return null;
 
   if (
@@ -84,6 +88,18 @@ function parseAction(value: unknown): Action | null {
     };
   }
 
+  if (value.type === "unreadCount" && hasOnlyKeys(value, ["type"])) {
+    return { type: "unreadCount" };
+  }
+
+  if (
+    value.type === "get" &&
+    hasOnlyKeys(value, ["type", "notificationId"]) &&
+    isUuid(value.notificationId)
+  ) {
+    return { type: "get", notificationId: value.notificationId };
+  }
+
   if (
     value.type === "markRead" &&
     hasOnlyKeys(value, ["type", "notificationId"]) &&
@@ -98,6 +114,19 @@ function parseAction(value: unknown): Action | null {
     isUuid(value.tenantId)
   ) {
     return { type: "markAllRead", tenantId: value.tenantId };
+  }
+
+  if (
+    value.type === "markTicketRead" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketId"]) &&
+    isUuid(value.tenantId) &&
+    isUuid(value.ticketId)
+  ) {
+    return {
+      type: "markTicketRead",
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+    };
   }
 
   return null;
@@ -276,6 +305,96 @@ async function listNotifications(
   });
 }
 
+/**
+ * One notification of the caller, e.g. from the link in a notification
+ * e-mail (?benachrichtigung=<id>). Same shape as a list entry. Someone else's
+ * notification is "not found"; without an active membership or without
+ * access to the ticket the object is not opened.
+ */
+async function getNotification(
+  request: Request,
+  admin: any,
+  client: any,
+  actorId: string,
+  notificationId: string,
+): Promise<Response> {
+  const { data, error } = await admin
+    .from("ticket_notifications")
+    .select(NOTIFICATION_SELECT)
+    .eq("id", notificationId)
+    .eq("user_id", actorId)
+    .maybeSingle();
+  if (error)
+    return json(request, { error: { code: "notification_read_failed" } }, 500);
+  if (!data)
+    return json(request, { error: { code: "notification_not_found" } }, 404);
+  const notification = data as NotificationRow;
+
+  const membership = await hasActiveTenantMembership(
+    admin,
+    actorId,
+    notification.tenant_id,
+  );
+  if (membership === null)
+    return json(
+      request,
+      { error: { code: "authorization_check_failed" } },
+      500,
+    );
+  if (!membership)
+    return json(
+      request,
+      { error: { code: "tenant_membership_required" } },
+      403,
+    );
+
+  let ticketReference: {
+    id: string;
+    ticketNumber: string;
+    subject: string;
+  } | null = null;
+  if (notification.ticket_id) {
+    // Caller's own client: row-level security decides about the ticket.
+    const { data: ticket, error: ticketError } = await client
+      .from("tickets")
+      .select("id, tenant_id, ticket_number, subject")
+      .eq("id", notification.ticket_id)
+      .maybeSingle();
+    if (ticketError)
+      return json(
+        request,
+        { error: { code: "notification_ticket_reference_failed" } },
+        500,
+      );
+    const row = ticket as TicketRow | null;
+    if (!row || row.tenant_id !== notification.tenant_id)
+      return json(
+        request,
+        { error: { code: "notification_target_unavailable" } },
+        403,
+      );
+    ticketReference = {
+      id: row.id,
+      ticketNumber: row.ticket_number,
+      subject: row.subject,
+    };
+  }
+
+  return json(request, {
+    data: {
+      notification: {
+        id: notification.id,
+        tenantId: notification.tenant_id,
+        kind: notification.kind,
+        payload: notification.payload,
+        readAt: notification.read_at,
+        createdAt: notification.created_at,
+        ticket: ticketReference,
+      },
+    },
+  });
+}
+
 async function markRead(
   request: Request,
   admin: any,
@@ -332,6 +451,48 @@ async function markRead(
       read: true,
       changed: Boolean(updated),
     },
+  });
+}
+
+/**
+ * Wer ein Ticket öffnet, hat die Mitteilungen dazu gesehen: alle ungelesenen
+ * Mitteilungen dieser Person zu diesem Ticket gelten als gelesen (Glocke und
+ * Zahl auf dem App-Symbol).
+ */
+async function markTicketRead(
+  request: Request,
+  admin: any,
+  actorId: string,
+  tenantId: string,
+  ticketId: string,
+): Promise<Response> {
+  const membership = await hasActiveTenantMembership(admin, actorId, tenantId);
+  if (membership === null)
+    return json(
+      request,
+      { error: { code: "authorization_check_failed" } },
+      500,
+    );
+  if (!membership)
+    return json(
+      request,
+      { error: { code: "tenant_membership_required" } },
+      403,
+    );
+
+  const { data: updated, error: updateError } = await admin
+    .from("ticket_notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("tenant_id", tenantId)
+    .eq("user_id", actorId)
+    .eq("ticket_id", ticketId)
+    .is("read_at", null)
+    .select("id");
+  if (updateError)
+    return json(request, { error: { code: "notification_read_failed" } }, 500);
+
+  return json(request, {
+    data: { ticketId, markedReadCount: (updated ?? []).length },
   });
 }
 
@@ -422,8 +583,29 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       actorId,
       action,
     );
+  if (action.type === "unreadCount") {
+    return json(request, {
+      data: { count: await unreadNotificationCount(admin, actorId) },
+    });
+  }
+  if (action.type === "get")
+    return await getNotification(
+      request,
+      admin,
+      context.supabase,
+      actorId,
+      action.notificationId,
+    );
   if (action.type === "markRead")
     return await markRead(request, admin, actorId, action.notificationId);
+  if (action.type === "markTicketRead")
+    return await markTicketRead(
+      request,
+      admin,
+      actorId,
+      action.tenantId,
+      action.ticketId,
+    );
   return await markAllRead(request, admin, actorId, action.tenantId);
 });
 

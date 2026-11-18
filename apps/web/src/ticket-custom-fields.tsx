@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useState, type FormEvent } from "react";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
@@ -40,10 +41,16 @@ const FIELD_TYPES = new Set<FieldType>([
   "select",
   "checkbox",
 ]);
-const LOAD_ERROR =
-  "Die Ticket-Zusatzfelder konnten nicht geladen werden. Bitte laden Sie die Ansicht erneut.";
-const SAVE_ERROR =
-  "Die Ticket-Zusatzfelder konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.";
+const loadError = () =>
+  tn(
+    "Die Ticket-Zusatzfelder konnten nicht geladen werden. Bitte lade die Ansicht erneut.",
+    "Die Ticket-Zusatzfelder konnten nicht geladen werden. Bitte laden Sie die Ansicht erneut.",
+  );
+const saveError = () =>
+  tn(
+    "Die Ticket-Zusatzfelder konnten nicht gespeichert werden. Bitte versuche es erneut.",
+    "Die Ticket-Zusatzfelder konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+  );
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -463,7 +470,7 @@ export function TicketCustomFields({
         ]);
         const parsedDefinitions = parseDefinitions(definitionsResponse);
         if (!parsedDefinitions) {
-          if (!cancelled) setErrorMessage(LOAD_ERROR);
+          if (!cancelled) setErrorMessage(loadError());
           return;
         }
 
@@ -472,7 +479,7 @@ export function TicketCustomFields({
           parsedDefinitions,
         );
         if (!parsedValues) {
-          if (!cancelled) setErrorMessage(LOAD_ERROR);
+          if (!cancelled) setErrorMessage(loadError());
           return;
         }
 
@@ -481,7 +488,7 @@ export function TicketCustomFields({
         setStoredValues(parsedValues);
         setDraft(initialDraft(parsedDefinitions, parsedValues));
       } catch (error) {
-        const message = await functionErrorMessage(error, LOAD_ERROR);
+        const message = await functionErrorMessage(error, loadError());
         if (!cancelled) setErrorMessage(message);
       } finally {
         if (!cancelled) setLoading(false);
@@ -518,7 +525,10 @@ export function TicketCustomFields({
     if (missingRequiredDefinition) {
       setStatusMessage(null);
       setErrorMessage(
-        `Bitte füllen Sie das Pflichtfeld „${missingRequiredDefinition.label}“ aus.`,
+        tn(
+          `Bitte fülle das Pflichtfeld „${missingRequiredDefinition.label}“ aus.`,
+          `Bitte füllen Sie das Pflichtfeld „${missingRequiredDefinition.label}“ aus.`,
+        ),
       );
       return;
     }
@@ -534,7 +544,7 @@ export function TicketCustomFields({
         values,
       });
       if (!isSetValuesResponse(response)) {
-        setErrorMessage(SAVE_ERROR);
+        setErrorMessage(saveError());
         return;
       }
 
@@ -543,7 +553,7 @@ export function TicketCustomFields({
       );
       setStatusMessage("Die Ticket-Zusatzfelder wurden gespeichert.");
     } catch (error) {
-      setErrorMessage(await functionErrorMessage(error, SAVE_ERROR));
+      setErrorMessage(await functionErrorMessage(error, saveError()));
     } finally {
       setSaving(false);
     }

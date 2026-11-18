@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { msg } from "../_shared/formality.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import {
   appendAnswersToDescription,
@@ -1038,7 +1039,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return requesterError(
         request,
         "invalid_requester_query",
-        "Bitte geben Sie einen gültigen Suchbegriff mit 2 bis 120 Zeichen ein.",
+        msg(
+"Bitte gib einen gültigen Suchbegriff mit 2 bis 120 Zeichen ein.",
+"Bitte geben Sie einen gültigen Suchbegriff mit 2 bis 120 Zeichen ein.",
+),
         422,
       );
     }
@@ -1046,7 +1050,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return requesterError(
         request,
         "invalid_requester_input",
-        "Bitte geben Sie einen gültigen Namen und gegebenenfalls eine gültige E-Mail-Adresse ein.",
+        msg(
+"Bitte gib einen gültigen Namen und gegebenenfalls eine gültige E-Mail-Adresse ein.",
+"Bitte geben Sie einen gültigen Namen und gegebenenfalls eine gültige E-Mail-Adresse ein.",
+),
         422,
       );
     }
@@ -1058,7 +1065,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return requesterError(
         request,
         "invalid_requester_contact",
-        "Bitte wählen Sie eine gültige anfragende Person aus.",
+        msg(
+"Bitte wähle eine gültige anfragende Person aus.",
+"Bitte wählen Sie eine gültige anfragende Person aus.",
+),
         422,
       );
     }
@@ -1250,7 +1260,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         return requesterError(
           request,
           "invalid_requester_query",
-          "Bitte geben Sie einen Suchbegriff mit 2 bis 120 Zeichen ein.",
+          msg(
+"Bitte gib einen Suchbegriff mit 2 bis 120 Zeichen ein.",
+"Bitte geben Sie einen Suchbegriff mit 2 bis 120 Zeichen ein.",
+),
           422,
         );
       }
@@ -1270,7 +1283,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         return requesterError(
           request,
           "invalid_requester_email",
-          "Bitte geben Sie eine gültige E-Mail-Adresse ein oder lassen Sie das Feld weg.",
+          msg(
+"Bitte gib eine gültige E-Mail-Adresse ein oder lass das Feld weg.",
+"Bitte geben Sie eine gültige E-Mail-Adresse ein oder lassen Sie das Feld weg.",
+),
           422,
         );
       }
@@ -1291,7 +1307,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return requesterError(
         request,
         "requester_manage_denied",
-        "Sie sind nicht berechtigt, anfragende Personen zu suchen oder anzulegen.",
+        msg(
+"Du bist nicht berechtigt, anfragende Personen zu suchen oder anzulegen.",
+"Sie sind nicht berechtigt, anfragende Personen zu suchen oder anzulegen.",
+),
         403,
       );
     }
@@ -1325,7 +1344,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return requesterError(
         request,
         "requester_create_failed",
-        "Die anfragende Person konnte nicht angelegt werden. Bitte versuchen Sie es erneut.",
+        msg(
+"Die anfragende Person konnte nicht angelegt werden. Bitte versuche es erneut.",
+"Die anfragende Person konnte nicht angelegt werden. Bitte versuchen Sie es erneut.",
+),
         500,
       );
     }
@@ -1523,7 +1545,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           error: {
             code: "ticket_assign_denied",
             message:
-              "Sie sind nicht berechtigt, für diese Abteilung zuweisbare Personen abzurufen.",
+              msg(
+"Du bist nicht berechtigt, für diese Abteilung zuweisbare Personen abzurufen.",
+"Sie sind nicht berechtigt, für diese Abteilung zuweisbare Personen abzurufen.",
+),
           },
         },
         403,
@@ -1596,7 +1621,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return requesterError(
       request,
       "invalid_requester_contact",
-      "Bitte wählen Sie eine gültige anfragende Person aus.",
+      msg(
+"Bitte wähle eine gültige anfragende Person aus.",
+"Bitte wählen Sie eine gültige anfragende Person aus.",
+),
       422,
     );
   }
@@ -1620,7 +1648,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return requesterError(
         request,
         "requester_selection_denied",
-        "Sie sind nicht berechtigt, ein Ticket für eine andere anfragende Person zu erstellen.",
+        msg(
+"Du bist nicht berechtigt, ein Ticket für eine andere anfragende Person zu erstellen.",
+"Sie sind nicht berechtigt, ein Ticket für eine andere anfragende Person zu erstellen.",
+),
         403,
       );
     }
@@ -1773,7 +1804,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           error: {
             code: "ticket_assign_denied",
             message:
-              "Sie sind nicht berechtigt, diesem Ticket eine Person zuzuweisen.",
+              msg(
+"Du bist nicht berechtigt, diesem Ticket eine Person zuzuweisen.",
+"Sie sind nicht berechtigt, diesem Ticket eine Person zuzuweisen.",
+),
           },
         },
         403,

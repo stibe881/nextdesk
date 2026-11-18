@@ -90,6 +90,80 @@ async function readBody(request: Request): Promise<unknown> {
   }
 }
 
+/**
+ * Profile photo of the person (copied from Entra into a private bucket) as a
+ * short-lived signed URL. Null without a photo or on any error: the overview
+ * works without it.
+ */
+async function personPhotoUrl(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  tenantId: string,
+  entraObjectId: string,
+): Promise<string | null> {
+  try {
+    const { data: row } = await admin
+      .from("tenant_entra_directory_people")
+      .select("photo_path")
+      .eq("tenant_id", tenantId)
+      .eq("entra_object_id", entraObjectId)
+      .maybeSingle();
+    const path =
+      typeof row?.photo_path === "string" &&
+      row.photo_path.startsWith(`${tenantId}/`)
+        ? row.photo_path
+        : null;
+    if (!path) return null;
+    const { data: signed } = await admin.storage
+      .from("entra-avatars")
+      .createSignedUrl(path, 3600);
+    return typeof signed?.signedUrl === "string" ? signed.signedUrl : null;
+  } catch {
+    return null;
+  }
+}
+
+/** {securityCases, incidents}; null per list when the caller may not see it. */
+export async function personOperations(
+  // deno-lint-ignore no-explicit-any
+  client: any,
+  tenantId: string,
+  overview: Record<string, unknown>,
+): Promise<{ securityCases: unknown[] | null; incidents: unknown[] | null }> {
+  const person =
+    typeof overview.person === "object" && overview.person !== null
+      ? (overview.person as Record<string, unknown>)
+      : {};
+  const assetIds = (Array.isArray(overview.devices) ? overview.devices : [])
+    .map((device) =>
+      typeof device === "object" && device !== null
+        ? (device as Record<string, unknown>).id
+        : null,
+    )
+    .filter(isUuid)
+    .slice(0, 100);
+  try {
+    const { data, error } = await client.rpc("person_overview_operations", {
+      p_tenant_id: tenantId,
+      p_user_id: isUuid(person.userId) ? person.userId : null,
+      p_email: typeof person.email === "string" ? person.email : null,
+      p_asset_ids: assetIds,
+    });
+    if (error || typeof data !== "object" || data === null) {
+      return { securityCases: null, incidents: null };
+    }
+    const result = data as Record<string, unknown>;
+    return {
+      securityCases: Array.isArray(result.securityCases)
+        ? result.securityCases
+        : null,
+      incidents: Array.isArray(result.incidents) ? result.incidents : null,
+    };
+  } catch {
+    return { securityCases: null, incidents: null };
+  }
+}
+
 const handler = withSupabase(
   { auth: "user", cors: "disabled", errors: { detailed: false } },
   async (request, context) => {
@@ -120,6 +194,33 @@ const handler = withSupabase(
     if (typeof data !== "object" || data === null || Array.isArray(data)) {
       return fail(request, "person_overview_failed", 500);
     }
+    // The database function has checked that the caller may see this person.
+    const person = (data as Record<string, unknown>).person;
+    const entraObjectId =
+      typeof person === "object" && person !== null
+        ? (person as Record<string, unknown>).entraObjectId
+        : null;
+    if (isUuid(entraObjectId)) {
+      const photoUrl = await personPhotoUrl(
+        context.supabaseAdmin,
+        action.tenantId,
+        entraObjectId,
+      );
+      (data as Record<string, Record<string, unknown>>).person = {
+        ...(person as Record<string, unknown>),
+        photoUrl,
+      };
+    }
+    // Security cases of the person and Störungen of their devices: only for
+    // the responsible teams (checked in the database function).
+    Object.assign(
+      data as Record<string, unknown>,
+      await personOperations(
+        context.supabase,
+        action.tenantId,
+        data as Record<string, unknown>,
+      ),
+    );
     return respond(request, { data });
   },
 );

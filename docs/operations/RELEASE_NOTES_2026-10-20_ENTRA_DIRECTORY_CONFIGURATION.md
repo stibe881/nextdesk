@@ -21,7 +21,7 @@ Die Veröffentlichung aktiviert keinen Kundenconnector, keinen echten Verzeichni
 
 ## Datenwirkung und Rücknahmegrenze
 
-Die Migration ergänzt ausschliesslich Spalten, Constraints sowie SECURITY-DEFINER-RPCs mit expliziten Grants. Sie startet weder Imports noch andere Datenmutationen für Kundenverzeichnisse. Bereits angewendete produktive Migrationen werden nicht gelöscht oder zurückgeschrieben. Eine allfällige spätere Rücknahme erfolgt deshalb über eine neue, separat geprüfte Vorwärtsmigration.
+Die Migration ergänzt ausschliesslich Spalten, Constraints sowie SECURITY-DEFINER-RPCs mit expliziten Grants. Diese startet weder Imports noch andere Datenmutationen für Kundenverzeichnisse. Bereits angewendete produktive Migrationen werden nicht gelöscht oder zurückgeschrieben. Eine allfällige spätere Rücknahme erfolgt deshalb über eine neue, separat geprüfte Vorwärtsmigration.
 
 ## Verifikation
 

@@ -4,12 +4,13 @@ import {
   requireNextDesk,
 } from "@/lib/nextdesk-client";
 import type { MobileTicket } from "@/lib/nextdesk-tickets";
+import { tn } from "./formality";
 
 export function followUpTitle(ticket: MobileTicket): string {
   return (
     Array.from(`${ticket.ticketNumber}: ${ticket.subject}`.trim())
       .slice(0, 240)
-      .join("") || "Ticket-Wiedervorlage"
+      .join("") || "Ticket-Erinnerung"
   );
 }
 
@@ -19,15 +20,17 @@ export function dueToday(): string {
   return due.toISOString();
 }
 
-const DELETE_ERROR_MESSAGES: Record<string, string> = {
-  bulk_ticket_delete_permission_denied:
+const deleteErrorMessages = (): Record<string, string> => ({
+  bulk_ticket_delete_permission_denied: tn(
     "Du hast keine Berechtigung, dieses Ticket zu löschen.",
+    "Sie haben keine Berechtigung, dieses Ticket zu löschen.",
+  ),
   bulk_ticket_delete_legal_hold:
     "Dieses Ticket unterliegt einer Aufbewahrungssperre und kann nicht gelöscht werden.",
   bulk_ticket_delete_dependency_blocked:
     "Dieses Ticket ist mit anderen Daten verknüpft und kann nicht gelöscht werden.",
   bulk_ticket_delete_target_missing: "Dieses Ticket ist nicht mehr verfügbar.",
-};
+});
 
 async function deleteErrorMessage(error: unknown): Promise<string> {
   const context =
@@ -47,9 +50,9 @@ async function deleteErrorMessage(error: unknown): Promise<string> {
       (payload as { error: { code?: unknown } | null }).error !== null
         ? (payload as { error: { code?: unknown } }).error.code
         : undefined;
-    if (typeof code === "string" && DELETE_ERROR_MESSAGES[code]) {
-      return DELETE_ERROR_MESSAGES[code];
-    }
+    const known =
+      typeof code === "string" ? deleteErrorMessages()[code] : undefined;
+    if (known) return known;
   }
   return "Das Ticket konnte nicht gelöscht werden.";
 }
@@ -150,10 +153,28 @@ export async function bulkDeleteTickets(
   });
 }
 
+/** Stuft Tickets als Spam ein; die Absender werden gesperrt (künftige Tickets gehen in den Spam). */
+export async function markTicketsSpam(
+  ticketIds: readonly string[],
+): Promise<void> {
+  const tenant = await loadCurrentTenant();
+  await invokeNextDesk("ticket-bulk-status", {
+    type: "markSpam",
+    tenantId: tenant.id,
+    ticketIds: [...ticketIds].slice(0, 50),
+    confirmSpam: true,
+  });
+}
+
 export type SavedTicketView = {
   filters: {
     agent: string;
+    department: string;
+    priority: string;
     query: string;
+    sortBy: string;
+    sortDirection: string;
+    status: string;
     ticketScope: string;
   };
   id: string;
@@ -191,7 +212,17 @@ export async function listSavedTicketViews(): Promise<SavedTicketView[]> {
       name: record.name,
       filters: {
         agent: typeof filters.agent === "string" ? filters.agent : "all",
+        department:
+          typeof filters.department === "string" ? filters.department : "all",
+        priority:
+          typeof filters.priority === "string" ? filters.priority : "all",
+        sortBy: typeof filters.sortBy === "string" ? filters.sortBy : "updated",
+        sortDirection:
+          typeof filters.sortDirection === "string"
+            ? filters.sortDirection
+            : "desc",
         query: typeof filters.query === "string" ? filters.query : "",
+        status: typeof filters.status === "string" ? filters.status : "all",
         ticketScope:
           typeof filters.ticketScope === "string" ? filters.ticketScope : "all",
       },

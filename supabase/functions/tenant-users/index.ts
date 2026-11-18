@@ -540,14 +540,20 @@ async function writeAudit(
   metadata: Record<string, unknown>,
   entityType = "tenant_member",
 ) {
+  // entity_id is a uuid column: an e-mail address (invitations) goes into the
+  // metadata instead, otherwise the insert fails after the invitation was sent.
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      entityId,
+    );
   const { error } = await admin.from("audit_logs").insert({
     tenant_id: tenantId,
     actor_id: actorId,
     action,
     entity_type: entityType,
-    entity_id: entityId,
+    entity_id: isUuid ? entityId : null,
     severity: "security",
-    metadata,
+    metadata: isUuid ? metadata : { ...metadata, entity: entityId },
   });
   return !error;
 }

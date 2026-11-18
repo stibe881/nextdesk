@@ -1,3 +1,4 @@
+import { Frown, Meh, Smile } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -720,19 +721,19 @@ function SatisfactionReport({ insights }: { insights: Insights }) {
     {
       key: "happy",
       label: "Zufrieden",
-      emoji: "🙂",
+      Icon: Smile,
       value: satisfaction.happyPercent,
     },
     {
       key: "neutral",
       label: "Neutral",
-      emoji: "😐",
+      Icon: Meh,
       value: satisfaction.neutralPercent,
     },
     {
       key: "unhappy",
       label: "Unzufrieden",
-      emoji: "🙁",
+      Icon: Frown,
       value: satisfaction.unhappyPercent,
     },
   ] as const;
@@ -747,7 +748,7 @@ function SatisfactionReport({ insights }: { insights: Insights }) {
                   aria-hidden="true"
                   className="predefined-report__mood-icon"
                 >
-                  {entry.emoji}
+                  <entry.Icon aria-hidden="true" size={28} />
                 </span>
                 <strong>{formatPercent(entry.value)}</strong>
                 <small>{entry.label}</small>
@@ -1502,8 +1503,8 @@ export const predefinedReportStyles = `
   .predefined-report__button { appearance: none; min-height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
   .predefined-report__button--primary { background: var(--report-primary, #4338ca); border-color: var(--report-primary, #4338ca); color: #fff; }
   .predefined-report__button:disabled { opacity: .6; cursor: not-allowed; }
-  .predefined-report__drill { appearance: none; background: none; border: 0; border-radius: 6px; color: inherit; cursor: pointer; font: inherit; padding: 0; text-align: left; text-decoration: underline dotted; text-underline-offset: 4px; }
-  .predefined-report__drill:hover { text-decoration-style: solid; }
+  .predefined-report__drill { appearance: none; background: none; border: 0; border-radius: 6px; color: inherit; cursor: pointer; font: inherit; padding: 0; text-align: left; text-decoration: none; }
+  .predefined-report__drill:hover strong { color: var(--primary); }
   .predefined-report__drill:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 40%, transparent); outline-offset: 2px; }
   .predefined-report__drill--inline { font-weight: inherit; }
   .predefined-report__pdf, .predefined-report__panel, .predefined-report__kpi, .predefined-report__masthead { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card, 12px); }

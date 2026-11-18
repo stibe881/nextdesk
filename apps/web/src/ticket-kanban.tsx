@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { useTicketHoverPreview } from "./ticket-hover-preview";
 
@@ -6,6 +7,7 @@ import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 import "./ticket-kanban.css";
 
+import { confirmDialog } from "./app-dialog";
 type Status = { key: string; label: string; isClosed: boolean };
 
 /**
@@ -74,9 +76,9 @@ export function TicketKanban({
     }
     if (
       status.isClosed &&
-      !window.confirm(
+      !(await confirmDialog(
         `Ticket ${ticket.id} wirklich auf «${status.label}» setzen? Die anfragende Person wird informiert.`,
-      )
+      ))
     ) {
       return;
     }
@@ -121,7 +123,10 @@ export function TicketKanban({
       {hoverPreview.overlay}
       <div className="ticket-kanban__toolbar">
         <p>
-          Ziehen Sie eine Karte in eine andere Spalte, um den Status zu ändern.
+          {tn(
+            "Ziehe eine Karte in eine andere Spalte, um den Status zu ändern.",
+            "Ziehen Sie eine Karte in eine andere Spalte, um den Status zu ändern.",
+          )}
         </p>
         <label>
           <input

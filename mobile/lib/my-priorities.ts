@@ -1,3 +1,4 @@
+import { parseOperations, type OperationItem } from "@/lib/my-priorities-model";
 import { invokeNextDesk } from "@/lib/nextdesk-client";
 import { recordWidgetPriorities } from "@/lib/widget-sync";
 
@@ -9,12 +10,17 @@ export type PriorityItem = {
   statusLabel: string;
   priorityLabel: string;
   resolutionDueAt: string | null;
+  /** Start of a running SLA pause (waiting status). */
+  slaPausedAt?: string | null;
   reason: string | null;
   aiRank: number | null;
   manual: boolean;
 };
 
+export { parseOperations, type OperationItem } from "@/lib/my-priorities-model";
+
 export type PriorityList = {
+  operations?: OperationItem[];
   rankedAt: string | null;
   source: "ai" | "rules" | null;
   hasManualOrder: boolean;
@@ -33,7 +39,10 @@ async function call(body: Record<string, unknown>): Promise<PriorityList> {
   if (typeof body.tenantId === "string") {
     void recordWidgetPriorities(body.tenantId, response.data);
   }
-  return response.data;
+  return {
+    ...response.data,
+    operations: parseOperations(response.data.operations),
+  };
 }
 
 export const loadMyPriorities = (tenantId: string) =>

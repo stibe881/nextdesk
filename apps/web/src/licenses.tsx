@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -12,6 +13,13 @@ import {
   Users,
   X,
 } from "lucide-react";
+import {
+  FormCard,
+  FormDialog,
+  FormField,
+  FormGrid,
+  FormSummary,
+} from "./form-kit";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import {
   RecordAttachments,
@@ -26,6 +34,16 @@ import {
 import { COST_PERIOD_LABEL, formatMoney } from "./lib/license-reclaim";
 import { LicenseReclaimPanel, LicenseSeatsDialog } from "./license-reclaim";
 
+import { confirmDialog } from "./app-dialog";
+import { PickOrCreate } from "./pick-or-create";
+import {
+  contractOptions,
+  invokeErrorMessage,
+  newContractValues,
+  newRecordProblem,
+  parseLinkableContracts,
+  type LinkableContract,
+} from "./lib/contract-license-link";
 type LicenseStatus = "draft" | "active" | "terminated" | "archived";
 type LicenseType = string;
 type License = {
@@ -50,6 +68,8 @@ type License = {
   seatCostPeriod?: "monthly" | "quarterly" | "yearly" | "one_time" | null;
   /** Microsoft-365-SKU (optional, für das Entfernen in Entra). */
   m365SkuId?: string | null;
+  /** Contract this license belongs to (missing from older servers). */
+  contractId?: string | null;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -74,6 +94,7 @@ type Form = {
   seatCostCurrency: "CHF" | "EUR" | "USD";
   seatCostPeriod: "" | "monthly" | "quarterly" | "yearly" | "one_time";
   m365SkuId: string;
+  contractId: string;
 };
 const EMPTY: Form = {
   id: null,
@@ -94,6 +115,7 @@ const EMPTY: Form = {
   seatCostCurrency: "CHF",
   seatCostPeriod: "",
   m365SkuId: "",
+  contractId: "",
 };
 const statusLabel: Record<LicenseStatus, string> = {
   draft: "Entwurf",
@@ -174,6 +196,7 @@ function formFor(contract: License): Form {
     seatCostCurrency: contract.seatCostCurrency ?? "CHF",
     seatCostPeriod: contract.seatCostPeriod ?? "",
     m365SkuId: contract.m365SkuId ?? "",
+    contractId: contract.contractId ?? "",
   };
 }
 function responseData(value: unknown): Record<string, unknown> | null {
@@ -207,6 +230,7 @@ export function Licenses({
 }) {
   const [licenses, setLicenses] = useState<License[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
+  const [contracts, setContracts] = useState<LinkableContract[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -227,11 +251,65 @@ export function Licenses({
   const [reclaimOpen, setReclaimOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
+  const contractTitle = (id: string) =>
+    contracts.find((contract) => contract.id === id)?.title ?? "Vertrag";
+  // Creates a contract from the license form and selects it.
+  const createContract = async (name: string): Promise<string | null> => {
+    if (!supabase) return null;
+    const problem = newRecordProblem(
+      name,
+      form.vendorName,
+      "Hersteller / Anbieter",
+    );
+    if (problem) {
+      setError(problem);
+      return null;
+    }
+    setError("");
+    const result = await supabase.functions.invoke("contracts", {
+      body: {
+        type: "create",
+        tenantId,
+        values: newContractValues(name, form),
+      },
+    });
+    const created = result.error
+      ? null
+      : parseLinkableContracts([responseData(result.data)?.contract])[0];
+    if (!created) {
+      setError(
+        (await invokeErrorMessage(result.error)) ||
+          "Der Vertrag konnte nicht erstellt werden.",
+      );
+      return null;
+    }
+    setContracts((current) =>
+      [...current, created].sort((a, b) =>
+        a.title.localeCompare(b.title, "de-CH"),
+      ),
+    );
+    setNotice(
+      tn(
+        `Der Vertrag «${created.title}» wurde erstellt. Ergänze Laufzeit und Kosten später unter «Verträge».`,
+        `Der Vertrag «${created.title}» wurde erstellt. Ergänzen Sie Laufzeit und Kosten später unter «Verträge».`,
+      ),
+    );
+    return created.id;
+  };
   const load = async () => {
     if (!supabase) return;
     setLoading(true);
     setError("");
     try {
+      // A failed contract list must not block the licenses themselves.
+      const contractsPromise = supabase.functions
+        .invoke("licenses", { body: { type: "listContracts", tenantId } })
+        .then((result) =>
+          result.error
+            ? []
+            : parseLinkableContracts(responseData(result.data)?.contracts),
+        )
+        .catch(() => [] as LinkableContract[]);
       const [licensesResult, peopleResult] = await Promise.all([
         supabase.functions.invoke("licenses", {
           body: { type: "list", tenantId, includeArchived },
@@ -246,6 +324,7 @@ export function Licenses({
       const nextPeople = parsePeople(peopleResult.data);
       if (!nextLicenses || !nextPeople) throw new Error("invalid_response");
       setLicenses(nextLicenses);
+      setContracts(await contractsPromise);
       setDepartments(parseDepartmentOptions(responseData(licensesResult.data)));
       setPeople(
         nextPeople.sort((a, b) =>
@@ -254,7 +333,10 @@ export function Licenses({
       );
     } catch {
       setError(
-        "Lizenzen konnten nicht geladen werden. Prüfen Sie Ihre Berechtigung oder versuchen Sie es später erneut.",
+        tn(
+          "Lizenzen konnten nicht geladen werden. Prüfe deine Berechtigung oder versuche es später erneut.",
+          "Lizenzen konnten nicht geladen werden. Prüfen Sie Ihre Berechtigung oder versuchen Sie es später erneut.",
+        ),
       );
     } finally {
       setLoading(false);
@@ -436,6 +518,7 @@ export function Licenses({
         seatCostCurrency: form.seatCostCurrency,
         seatCostPeriod: seatCostAmount === null ? null : form.seatCostPeriod,
         m365SkuId: form.m365SkuId.trim() || null,
+        contractId: form.contractId || null,
       };
       if (values.startsOn && values.endsOn && values.endsOn < values.startsOn)
         throw new Error("invalid_dates");
@@ -482,7 +565,10 @@ export function Licenses({
         }
         if (failed > 0) {
           setError(
-            `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffnen Sie «Dokumente», um es erneut zu versuchen.`,
+            tn(
+              `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffne «Dokumente», um es erneut zu versuchen.`,
+              `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffnen Sie «Dokumente», um es erneut zu versuchen.`,
+            ),
           );
         }
       }
@@ -514,9 +600,9 @@ export function Licenses({
   const archive = async (contract: License) => {
     if (
       !supabase ||
-      !window.confirm(
+      !(await confirmDialog(
         `«${contract.title}» archivieren? Archivierte Lizenzen bleiben nachvollziehbar, können aber nicht mehr geändert werden.`,
-      )
+      ))
     )
       return;
     setPending(true);
@@ -554,8 +640,10 @@ export function Licenses({
       <header className="page-heading">
         <div>
           <p>
-            Laufzeiten, Verlängerungen und Verantwortlichkeiten Ihrer Lizenzen
-            an einem Ort.
+            {tn(
+              "Laufzeiten, Verlängerungen und Verantwortlichkeiten deiner Lizenzen an einem Ort.",
+              "Laufzeiten, Verlängerungen und Verantwortlichkeiten Ihrer Lizenzen an einem Ort.",
+            )}
           </p>
         </div>
         <div className="contracts__actions">
@@ -697,6 +785,12 @@ export function Licenses({
                           : contract.quantity.toLocaleString("de-CH")}
                       </dd>
                     </div>
+                    {contract.contractId ? (
+                      <div>
+                        <dt>Vertrag</dt>
+                        <dd>{contractTitle(contract.contractId)}</dd>
+                      </div>
+                    ) : null}
                     {departmentLabel(contract.departmentId, departments) ? (
                       <div>
                         <dt>Abteilung</dt>
@@ -791,40 +885,57 @@ export function Licenses({
       )}
       {editorOpen &&
         createPortal(
-          <div
-            className="contracts__dialog-backdrop"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) close();
-            }}
+          <FormDialog
+            eyebrow={form.id ? "Lizenz bearbeiten" : "Neue Lizenz"}
+            onClose={close}
+            onSubmit={save}
+            side={
+              <FormSummary
+                eyebrow="Lizenz"
+                rows={[
+                  ["Anbieter", form.vendorName.trim()],
+                  ["Anzahl", form.quantity.trim()],
+                  [
+                    "Status",
+                    form.status === "draft"
+                      ? "Entwurf"
+                      : form.status === "active"
+                        ? "Aktiv"
+                        : "Beendet",
+                  ],
+                  ["Läuft bis", form.endsOn ? formatDate(form.endsOn) : ""],
+                  [
+                    "Kosten gesamt",
+                    form.seatCostAmount.trim() !== "" &&
+                    form.quantity.trim() !== ""
+                      ? `${form.seatCostCurrency} ${(
+                          Number(form.seatCostAmount) * Number(form.quantity)
+                        ).toLocaleString("de-CH", {
+                          maximumFractionDigits: 2,
+                        })}${
+                          form.seatCostPeriod
+                            ? ` ${
+                                {
+                                  monthly: "pro Monat",
+                                  quarterly: "pro Quartal",
+                                  yearly: "pro Jahr",
+                                  one_time: "einmalig",
+                                }[form.seatCostPeriod]
+                              }`
+                            : ""
+                        }`
+                      : "",
+                  ],
+                ]}
+                title={form.title.trim()}
+              />
+            }
+            submitting={pending}
+            title={form.id ? "Lizenz aktualisieren" : "Lizenz erfassen"}
           >
-            <section
-              className="contracts__editor-dialog"
-              aria-labelledby="license-editor-heading"
-              aria-modal="true"
-              role="dialog"
-            >
-              <header className="panel-heading">
-                <div>
-                  <p className="eyebrow">
-                    {form.id ? "Lizenz bearbeiten" : "Neue Lizenz"}
-                  </p>
-                  <h2 id="license-editor-heading">
-                    {form.id ? "Lizenz aktualisieren" : "Lizenz erfassen"}
-                  </h2>
-                </div>
-                <button
-                  aria-label="Dialog schliessen"
-                  className="icon-button"
-                  disabled={pending}
-                  onClick={close}
-                  type="button"
-                >
-                  <X size={18} />
-                </button>
-              </header>
-              <form onSubmit={save}>
-                <label>
-                  Produkt / Bezeichnung
+            <FormCard title="Lizenz">
+              <FormGrid cols={2}>
+                <FormField label="Produkt / Bezeichnung" required>
                   <input
                     ref={nameRef}
                     required
@@ -835,9 +946,8 @@ export function Licenses({
                       setForm({ ...form, title: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Hersteller / Anbieter
+                </FormField>
+                <FormField label="Hersteller / Anbieter" required>
                   <input
                     required
                     minLength={2}
@@ -854,9 +964,8 @@ export function Licenses({
                       <option key={name} value={name} />
                     ))}
                   </datalist>
-                </label>
-                <label>
-                  Lizenznummer
+                </FormField>
+                <FormField label="Lizenznummer">
                   <input
                     maxLength={120}
                     value={form.referenceNumber}
@@ -864,9 +973,8 @@ export function Licenses({
                       setForm({ ...form, referenceNumber: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Art
+                </FormField>
+                <FormField label="Art">
                   <select
                     value={addingType ? NEW_TYPE : form.licenseType}
                     onChange={(event) => {
@@ -922,9 +1030,8 @@ export function Licenses({
                       </button>
                     </span>
                   ) : null}
-                </label>
-                <label>
-                  Anzahl Lizenzen
+                </FormField>
+                <FormField label="Anzahl Lizenzen">
                   <input
                     min="1"
                     max="1000000"
@@ -935,9 +1042,8 @@ export function Licenses({
                       setForm({ ...form, quantity: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Status
+                </FormField>
+                <FormField label="Status">
                   <select
                     value={form.status}
                     onChange={(event) =>
@@ -951,49 +1057,12 @@ export function Licenses({
                     <option value="active">Aktiv</option>
                     <option value="terminated">Beendet</option>
                   </select>
-                </label>
-                {departments.length > 1 ? (
-                  <label>
-                    Abteilung
-                    <select
-                      required
-                      value={form.departmentId}
-                      onChange={(event) =>
-                        setForm({ ...form, departmentId: event.target.value })
-                      }
-                    >
-                      <option disabled value="">
-                        Abteilung wählen
-                      </option>
-                      {departments.map((department) => (
-                        <option key={department.id} value={department.id}>
-                          {department.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-                <label>
-                  Verantwortliche Person
-                  <select
-                    value={form.responsibleUserId}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        responsibleUserId: event.target.value,
-                      })
-                    }
-                  >
-                    <option value="">Nicht zugeordnet</option>
-                    {people.map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {person.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Startdatum
+                </FormField>
+              </FormGrid>
+            </FormCard>
+            <FormCard title="Laufzeit">
+              <FormGrid cols={3}>
+                <FormField label="Startdatum">
                   <input
                     type="date"
                     value={form.startsOn}
@@ -1001,9 +1070,8 @@ export function Licenses({
                       setForm({ ...form, startsOn: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Ablaufdatum
+                </FormField>
+                <FormField label="Ablaufdatum">
                   <input
                     type="date"
                     value={form.endsOn}
@@ -1011,9 +1079,8 @@ export function Licenses({
                       setForm({ ...form, endsOn: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Kündigungsfrist (Tage)
+                </FormField>
+                <FormField label="Kündigungsfrist (Tage)">
                   <input
                     min="0"
                     max="3650"
@@ -1024,9 +1091,13 @@ export function Licenses({
                       setForm({ ...form, noticePeriodDays: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Erinnerung per Ticket
+                </FormField>
+              </FormGrid>
+              <FormGrid cols={2}>
+                <FormField
+                  hint="Ein Ticket erinnert die verantwortliche Person rechtzeitig. Nur bei aktiven Einträgen mit Ablaufdatum."
+                  label="Erinnerung per Ticket"
+                >
                   <select
                     value={form.reminderDaysBefore}
                     onChange={(event) =>
@@ -1051,13 +1122,15 @@ export function Licenses({
                       </option>
                     ))}
                   </select>
-                  <small>
-                    Ein Ticket erinnert die verantwortliche Person rechtzeitig.
-                    Nur bei aktiven Einträgen mit Ablaufdatum.
-                  </small>
-                </label>
-                <label>
-                  Kosten pro Platz
+                </FormField>
+              </FormGrid>
+            </FormCard>
+            <FormCard title="Kosten">
+              <FormGrid cols={3}>
+                <FormField
+                  hint="Für die geschätzte Einsparung der Rückgewinnung."
+                  label="Kosten pro Platz"
+                >
                   <input
                     inputMode="decimal"
                     min="0"
@@ -1068,49 +1141,121 @@ export function Licenses({
                       setForm({ ...form, seatCostAmount: event.target.value })
                     }
                   />
-                  <small>
-                    Für die geschätzte Einsparung der Rückgewinnung.
-                  </small>
-                </label>
-                <label>
-                  Zeitraum der Kosten
-                  <span className="contracts__new-type">
+                </FormField>
+                <FormField label="Währung">
+                  <select
+                    value={form.seatCostCurrency}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        seatCostCurrency: event.target
+                          .value as Form["seatCostCurrency"],
+                      })
+                    }
+                  >
+                    <option value="CHF">CHF</option>
+                    <option value="EUR">EUR</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </FormField>
+                <FormField label="Zeitraum der Kosten">
+                  <select
+                    value={form.seatCostPeriod}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        seatCostPeriod: event.target
+                          .value as Form["seatCostPeriod"],
+                      })
+                    }
+                  >
+                    <option value="">Zeitraum wählen</option>
+                    <option value="monthly">pro Monat</option>
+                    <option value="quarterly">pro Quartal</option>
+                    <option value="yearly">pro Jahr</option>
+                    <option value="one_time">einmalig</option>
+                  </select>
+                </FormField>
+              </FormGrid>
+            </FormCard>
+            <FormCard title="Zuständigkeit">
+              <FormGrid cols={2}>
+                {departments.length > 1 ? (
+                  <FormField label="Abteilung" required>
                     <select
-                      aria-label="Währung"
-                      value={form.seatCostCurrency}
+                      required
+                      value={form.departmentId}
                       onChange={(event) =>
-                        setForm({
-                          ...form,
-                          seatCostCurrency: event.target
-                            .value as Form["seatCostCurrency"],
-                        })
+                        setForm({ ...form, departmentId: event.target.value })
                       }
                     >
-                      <option value="CHF">CHF</option>
-                      <option value="EUR">EUR</option>
-                      <option value="USD">USD</option>
+                      <option disabled value="">
+                        Abteilung wählen
+                      </option>
+                      {departments.map((department) => (
+                        <option key={department.id} value={department.id}>
+                          {department.name}
+                        </option>
+                      ))}
                     </select>
-                    <select
-                      aria-label="Zeitraum"
-                      value={form.seatCostPeriod}
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          seatCostPeriod: event.target
-                            .value as Form["seatCostPeriod"],
-                        })
-                      }
-                    >
-                      <option value="">Zeitraum wählen</option>
-                      <option value="monthly">pro Monat</option>
-                      <option value="quarterly">pro Quartal</option>
-                      <option value="yearly">pro Jahr</option>
-                      <option value="one_time">einmalig</option>
-                    </select>
-                  </span>
-                </label>
-                <label>
-                  Microsoft-365-SKU-ID (optional)
+                  </FormField>
+                ) : null}
+                <FormField label="Verantwortliche Person">
+                  <select
+                    value={form.responsibleUserId}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        responsibleUserId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">Nicht zugeordnet</option>
+                    {people.map((person) => (
+                      <option key={person.id} value={person.id}>
+                        {person.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </FormGrid>
+            </FormCard>
+            <FormCard title="Dokumente und Verknüpfungen">
+              <div className="fk-field">
+                <span className="fk-label" id="license-contract-label">
+                  Vertrag
+                </span>
+                <PickOrCreate
+                  createLabel="Neuer Vertrag"
+                  createPlaceholder="z. B. Microsoft Enterprise Agreement"
+                  emptyLabel="– kein Vertrag –"
+                  id="license-contract"
+                  labelledBy="license-contract-label"
+                  onChange={(value) =>
+                    setForm((current) => ({
+                      ...current,
+                      contractId: value ?? "",
+                    }))
+                  }
+                  onCreate={createContract}
+                  options={contractOptions(contracts)}
+                  value={form.contractId || null}
+                />
+              </div>
+              <RecordAttachments
+                entityId={form.id}
+                entityType="license"
+                onQueuedChange={setQueuedFiles}
+                queued={queuedFiles}
+                tenantId={tenantId}
+              />
+            </FormCard>
+            <FormCard collapsed title="Weitere Angaben">
+              <FormGrid cols={1}>
+                <FormField
+                  hint="Nur nötig, wenn beim Zurückgeben auch die Lizenz in Microsoft 365 entfernt werden soll."
+                  label="Microsoft-365-SKU-ID"
+                >
                   <input
                     maxLength={36}
                     placeholder="z. B. 05e9a617-0261-4cee-bb44-138d3ef5d965"
@@ -1120,13 +1265,8 @@ export function Licenses({
                       setForm({ ...form, m365SkuId: event.target.value })
                     }
                   />
-                  <small>
-                    Nur nötig, wenn beim Zurückgeben auch die Lizenz in
-                    Microsoft 365 entfernt werden soll.
-                  </small>
-                </label>
-                <label className="contracts__notes">
-                  Notiz
+                </FormField>
+                <FormField label="Notiz">
                   <textarea
                     maxLength={2000}
                     rows={5}
@@ -1135,36 +1275,10 @@ export function Licenses({
                       setForm({ ...form, notes: event.target.value })
                     }
                   />
-                </label>
-                <div className="contracts__notes">
-                  <RecordAttachments
-                    entityId={form.id}
-                    entityType="license"
-                    onQueuedChange={setQueuedFiles}
-                    queued={queuedFiles}
-                    tenantId={tenantId}
-                  />
-                </div>
-                <div className="form-actions">
-                  <button
-                    className="secondary-button"
-                    disabled={pending}
-                    onClick={close}
-                    type="button"
-                  >
-                    Abbrechen
-                  </button>
-                  <button
-                    className="primary-button"
-                    disabled={pending}
-                    type="submit"
-                  >
-                    {pending ? "Wird gespeichert …" : "Speichern"}
-                  </button>
-                </div>
-              </form>
-            </section>
-          </div>,
+                </FormField>
+              </FormGrid>
+            </FormCard>
+          </FormDialog>,
           document.body,
         )}
       {seatsFor ? (

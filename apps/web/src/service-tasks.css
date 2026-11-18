@@ -770,3 +770,15 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Wartungsfenster aus einer Serviceaufgabe planen. */
+.st-maintenance-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.st-maintenance-form label {
+  display: grid;
+  gap: 4px;
+}

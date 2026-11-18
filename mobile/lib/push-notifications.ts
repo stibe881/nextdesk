@@ -1,3 +1,4 @@
+import { unregisterAndroidPush } from "@/lib/android-push";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
@@ -13,6 +14,7 @@ import {
   NextDeskRequestError,
   nextDeskErrorMessage,
 } from "@/lib/nextdesk-error-messages";
+import { tn } from "./formality";
 
 export const PUSH_CATEGORIES = [
   "assigned",
@@ -27,6 +29,10 @@ export const PUSH_CATEGORIES = [
   "shop",
   "inventory_low_stock",
   "infrastructure",
+  "security_report",
+  "security_case",
+  "incident",
+  "ipam",
 ] as const;
 
 export type PushCategory = (typeof PUSH_CATEGORIES)[number];
@@ -34,7 +40,7 @@ export type PushEnvironment = "development" | "production";
 export type PushContentLevel = "minimal" | "subject";
 
 export function pushNotificationKindLabel(kind: string): string | null {
-  if (kind === "ticket.follow_up_due") return "Wiedervorlage fällig";
+  if (kind === "ticket.follow_up_due") return "Erinnerung fällig";
   if (kind === "ticket.kudos") return "Lob von Kund:innen";
   return null;
 }
@@ -56,7 +62,10 @@ export function pushNotificationSecondaryText(
       typeof payload.excerpt === "string" && payload.excerpt.trim()
         ? ` «${payload.excerpt.trim()}»`
         : "";
-    return `${name} hat dich gelobt.${excerpt}`;
+    return tn(
+      `${name} hat dich gelobt.${excerpt}`,
+      `${name} hat Sie gelobt.${excerpt}`,
+    );
   }
   if (kind !== "ticket.follow_up_due" || !isRecord(payload)) return null;
   const title = payload.title;
@@ -80,6 +89,8 @@ export type WorkHours = {
 
 export type PushPreferences = {
   enabledCategories: PushCategory[];
+  /** Categories that are also sent by e-mail. */
+  emailCategories: PushCategory[];
   /** ISO weekdays 1 (Monday) to 7 (Sunday) on which pushes arrive. */
   deliveryDays: number[];
   quietHoursEnabled: boolean;
@@ -104,6 +115,10 @@ export type PushNotificationStatus = {
   apnsConfigured: boolean;
   contentLevel: PushContentLevel;
   applicableCategories: PushCategory[];
+  /** Push categories delivered regardless of the setting (phishing team). */
+  alwaysDeliveredCategories: PushCategory[];
+  /** E-mail notifications can be sent in this workspace. */
+  emailAvailable: boolean;
   preferences: PushPreferences;
   devices: PushDevice[];
   workHours: WorkHours;
@@ -143,6 +158,7 @@ type PushAction =
       type: "updatePreferences";
       tenantId: string;
       enabledCategories: PushCategory[];
+      emailCategories: PushCategory[];
       categoryModes: Record<string, "immediate" | "off">;
       quietHoursEnabled: boolean;
       quietStart: number;
@@ -210,6 +226,7 @@ function normalizePushPreferences(
   return {
     ...preferences,
     enabledCategories: knownPushCategories(preferences?.enabledCategories),
+    emailCategories: knownPushCategories(preferences?.emailCategories),
     deliveryDays: normalizeDeliveryDays(preferences?.deliveryDays),
   };
 }
@@ -220,6 +237,11 @@ function normalizePushNotificationStatus(
   return {
     ...status,
     applicableCategories: knownPushCategories(status.applicableCategories),
+    alwaysDeliveredCategories: knownPushCategories(
+      (status as { alwaysDeliveredCategories?: unknown })
+        .alwaysDeliveredCategories,
+    ),
+    emailAvailable: status.emailAvailable !== false,
     preferences: normalizePushPreferences(status.preferences),
   };
 }
@@ -291,7 +313,10 @@ function tokenFromDevicePushToken(
     !APNS_TOKEN_PATTERN.test(token.data)
   ) {
     throw new Error(
-      "Der Apple-Gerätetoken ist ungültig. Bitte versuche es nochmals.",
+      tn(
+        "Der Apple-Gerätetoken ist ungültig. Bitte versuche es nochmals.",
+        "Der Apple-Gerätetoken ist ungültig. Bitte versuchen Sie es nochmals.",
+      ),
     );
   }
   return token.data;
@@ -341,7 +366,7 @@ async function requestPushPermissionFromPerson(): Promise<void> {
       });
   if (!permission.granted) {
     throw new Error(
-      "Mitteilungen sind in iOS deaktiviert. Öffne die iPhone-Einstellungen, um Push-Benachrichtigungen zu erlauben.",
+      tn("Mitteilungen sind in iOS deaktiviert. Öffne die iPhone-Einstellungen, um Push-Benachrichtigungen zu erlauben.", "Mitteilungen sind in iOS deaktiviert. Öffnen Sie die iPhone-Einstellungen, um Push-Benachrichtigungen zu erlauben."),
     );
   }
 }
@@ -397,6 +422,7 @@ export async function updatePushPreferences(input: {
     type: "updatePreferences",
     tenantId: input.tenantId,
     enabledCategories: preferences.enabledCategories,
+    emailCategories: preferences.emailCategories,
     // Explizite Modi, damit auch Kategorien ohne Eintrag in der gespeicherten
     // Liste (Infrastruktur) ausgeschaltet werden können.
     categoryModes: Object.fromEntries(
@@ -518,6 +544,19 @@ export async function reregisterPushTokenIfEnabled(
  */
 export async function unregisterPushDeviceBeforeSignOut(): Promise<void> {
   const client = nextDesk;
+  if (Platform.OS === "android" && client) {
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, 3_000);
+      void loadCurrentTenant()
+        .then((tenant) => unregisterAndroidPush(tenant.id))
+        .catch(() => undefined)
+        .finally(() => {
+          clearTimeout(timeout);
+          resolve();
+        });
+    });
+    return;
+  }
   if (Platform.OS !== "ios" || !client) return;
 
   const cleanup = async () => {

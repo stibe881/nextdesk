@@ -1,9 +1,12 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useState, type DragEvent } from "react";
 import {
+  Activity,
   ArrowDown,
   ArrowUp,
   GripVertical,
   RotateCcw,
+  ShieldAlert,
   Sparkles,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -21,7 +24,45 @@ export type PriorityItem = {
   aiRank: number | null;
   manual: boolean;
 };
+/** Assigned open Störung or security case (separate from the tickets). */
+export type OperationItem = {
+  kind: "incident" | "security_case";
+  id: string;
+  number: string;
+  title: string;
+  state: string;
+  urgent: boolean;
+  reason: string;
+};
+
+export function parseOperations(value: unknown): OperationItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const row = entry as Record<string, unknown>;
+    if (
+      (row.kind !== "incident" && row.kind !== "security_case") ||
+      typeof row.id !== "string" ||
+      typeof row.number !== "string"
+    ) {
+      return [];
+    }
+    return [
+      {
+        kind: row.kind,
+        id: row.id,
+        number: row.number,
+        title: typeof row.title === "string" ? row.title : "",
+        state: typeof row.state === "string" ? row.state : "",
+        urgent: row.urgent === true,
+        reason: typeof row.reason === "string" ? row.reason : "",
+      },
+    ];
+  });
+}
+
 type PriorityList = {
+  operations?: OperationItem[];
   rankedAt: string | null;
   source: "ai" | "rules" | null;
   hasManualOrder: boolean;
@@ -43,7 +84,8 @@ async function call(body: Record<string, unknown>): Promise<PriorityList> {
     }
     throw new Error("Die Prioritäten konnten nicht geladen werden.");
   }
-  return (data as { data: PriorityList }).data;
+  const list = (data as { data: PriorityList }).data;
+  return { ...list, operations: parseOperations(list.operations) };
 }
 
 const time = (value: string) =>
@@ -60,11 +102,16 @@ const time = (value: string) =>
 export function MyPrioritiesCard({
   tenantId,
   onOpenTicket,
+  onOpenIncident,
+  onOpenSecurityCase,
   refreshKey = 0,
   limit = 8,
 }: {
   tenantId: string;
   onOpenTicket: (ticketId: string) => void;
+  /** Mir zugewiesene Störungen und Phishing-/Junk-Fälle öffnen. */
+  onOpenIncident?: (incidentId: string) => void;
+  onOpenSecurityCase?: (ticketId: string) => void;
   refreshKey?: number;
   limit?: number;
 }) {
@@ -142,6 +189,7 @@ export function MyPrioritiesCard({
 
   const tickets = list?.tickets ?? [];
   const visible = expanded ? tickets : tickets.slice(0, limit);
+  const operations = list?.operations ?? [];
 
   return (
     <article className="panel my-priorities">
@@ -184,7 +232,12 @@ export function MyPrioritiesCard({
             ? "Von der KI priorisiert"
             : "Nach SLA, Priorität und Wartezeit sortiert"}{" "}
           um {time(list.rankedAt)}
-          {list.hasManualOrder ? " · Ihre Anpassungen haben Vorrang" : ""}
+          {list.hasManualOrder
+            ? tn(
+                " · Deine Anpassungen haben Vorrang",
+                " · Ihre Anpassungen haben Vorrang",
+              )
+            : ""}
         </p>
       ) : null}
       {error ? (
@@ -192,11 +245,46 @@ export function MyPrioritiesCard({
           {error}
         </p>
       ) : null}
+      {operations.length > 0 ? (
+        <ul
+          aria-label="Störungen und Phishing-/Junk-Fälle"
+          className="my-priorities__operations"
+        >
+          {operations.map((item) => (
+            <li key={`${item.kind}:${item.id}`}>
+              <button
+                className={`my-priorities__operation${item.urgent ? " is-urgent" : ""}`}
+                onClick={() =>
+                  item.kind === "incident"
+                    ? onOpenIncident?.(item.id)
+                    : onOpenSecurityCase?.(item.id)
+                }
+                type="button"
+              >
+                {item.kind === "incident" ? (
+                  <Activity aria-hidden="true" size={14} />
+                ) : (
+                  <ShieldAlert aria-hidden="true" size={14} />
+                )}
+                <span className="my-priorities__number">{item.number}</span>
+                <strong>{item.title}</strong>
+                <small>
+                  {item.kind === "incident" ? "Störung" : "Phishing-/Junk-Fall"}{" "}
+                  · {item.reason}
+                </small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {!list ? (
         <p className="empty-state">Prioritäten werden geladen …</p>
-      ) : tickets.length === 0 ? (
+      ) : tickets.length === 0 && operations.length === 0 ? (
         <p className="empty-state">
-          Ihnen sind keine offenen Tickets zugewiesen.
+          {tn(
+            "Dir sind keine offenen Tickets zugewiesen.",
+            "Ihnen sind keine offenen Tickets zugewiesen.",
+          )}
         </p>
       ) : (
         <ol className="my-priorities__list">

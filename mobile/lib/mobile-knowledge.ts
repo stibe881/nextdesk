@@ -1,3 +1,4 @@
+import { knowledgeExcerpt } from "@/lib/knowledge-article-structure";
 import { invokeNextDesk } from "@/lib/nextdesk-client";
 
 export type MobileKnowledgeCollection = {
@@ -9,8 +10,12 @@ export type MobileKnowledgeArticle = {
   id: string;
   title: string;
   visibility: "internal" | "external";
+  /** draft, review or published (readers only get published articles). */
+  status: string;
   updatedAt: string;
   summary: string;
+  /** Plain-text teaser of the body (used when there is no summary). */
+  excerpt: string;
   revision: number | null;
   collections: MobileKnowledgeCollection[];
 };
@@ -18,6 +23,8 @@ export type MobileKnowledgeArticle = {
 export type MobileKnowledgeArticleDetail = MobileKnowledgeArticle & {
   body: string;
   revision: number;
+  /** Signed URLs of the uploaded images (kb-image:<id> in the body). */
+  imageUrls: Record<string, string>;
 };
 
 type ParsedMobileKnowledgeArticle = MobileKnowledgeArticle & {
@@ -35,6 +42,16 @@ function dataEnvelope(value: unknown): Record<string, unknown> {
   const data = record(envelope?.data);
   if (!data) throw new Error("Die Wissensantwort ist unvollständig.");
   return data;
+}
+
+function imageUrlMap(value: unknown): Record<string, string> {
+  const urls: Record<string, string> = {};
+  const item = record(value);
+  if (!item) return urls;
+  for (const [id, url] of Object.entries(item)) {
+    if (typeof url === "string" && url.startsWith("https://")) urls[id] = url;
+  }
+  return urls;
 }
 
 function collection(value: unknown): MobileKnowledgeCollection | null {
@@ -95,9 +112,12 @@ function article(value: unknown): ParsedMobileKnowledgeArticle | null {
     id: item.id,
     title: item.title.trim(),
     visibility: item.visibility,
+    status: typeof item.status === "string" ? item.status : "published",
     updatedAt: item.updated_at,
     summary:
       typeof revision?.summary === "string" ? revision.summary.trim() : "",
+    excerpt:
+      typeof revision?.body === "string" ? knowledgeExcerpt(revision.body) : "",
     revision:
       typeof revision?.revision === "number" &&
       Number.isSafeInteger(revision.revision) &&
@@ -232,5 +252,6 @@ export async function loadMobileKnowledgeArticle(input: {
     ...withCollections,
     body: revision.body,
     revision: revision.revision,
+    imageUrls: imageUrlMap(response.imageUrls),
   };
 }

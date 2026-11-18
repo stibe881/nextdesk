@@ -16,6 +16,7 @@ import {
   type TicketSuggestions,
 } from "@/lib/mobile-ticket-suggestions";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 /**
  * Suggestions for the draft, requested with a debounce while typing.
@@ -143,7 +144,7 @@ export function TicketSuggestionList({
           <Ionicons color={colors.warning} name="copy-outline" size={18} />
           <View style={styles.flex}>
             <Text style={styles.duplicateText}>
-              Du hast dazu bereits ein offenes Ticket:
+              {tn("Du hast dazu bereits ein offenes Ticket:", "Sie haben dazu bereits ein offenes Ticket:")}
             </Text>
             <Text style={styles.ticketLabel}>
               {suggestedTicketLabel(ticket)}
@@ -164,7 +165,7 @@ export function TicketSuggestionList({
             />
             <Text style={styles.headingText}>
               {requester
-                ? "Könnte dir das helfen?"
+                ? tn("Könnte dir das helfen?", "Könnte Ihnen das helfen?")
                 : "Passende Artikel aus der Wissensdatenbank"}
             </Text>
           </View>

@@ -552,6 +552,7 @@ async function insightsResponse(
         .select(
           "id, assigned_team_id, assigned_agent_id, requester_id, requester_contact_id, category_id, subject, source, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
         )
+        .is("deleted_at", null)
         .eq("tenant_id", action.tenantId)
         .lte("created_at", until)
         .or(`resolved_at.is.null,resolved_at.gte.${since}`)
@@ -602,12 +603,28 @@ async function insightsResponse(
   );
 
   const ids = tickets.map((ticket) => ticket.id);
+  // Agent filter: every member of the readable teams (or of the chosen
+  // team), plus anyone with an assigned ticket in the period.
+  const memberTeamIds = action.teamId
+    ? [action.teamId].filter((id) => teamIds.has(id))
+    : [...teamIds];
+  const teamMembers = memberTeamIds.length
+    ? await admin
+        .from("team_memberships")
+        .select("user_id")
+        .eq("tenant_id", action.tenantId)
+        .in("team_id", memberTeamIds)
+        .limit(2000)
+    : { data: [] as { user_id: string }[], error: null };
   const agentIds = [
-    ...new Set(
-      visible.flatMap((ticket) =>
+    ...new Set([
+      ...visible.flatMap((ticket) =>
         ticket.assignedAgentId ? [ticket.assignedAgentId] : [],
       ),
-    ),
+      ...((teamMembers.data ?? []) as { user_id: string }[]).map(
+        (row) => row.user_id,
+      ),
+    ]),
   ];
   const [commentPages, ratingPages, teams, profiles] = await Promise.all([
     Promise.all(
@@ -895,6 +912,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .select(
           "id, assigned_team_id, created_at, first_responded_at, resolved_at, status:ticket_statuses!tickets_status_tenant_fk(key, label, is_closed), priority:ticket_priorities!tickets_priority_tenant_fk(key, label), department:departments!tickets_department_tenant_fk(id, name)",
         )
+        .is("deleted_at", null)
         .eq("tenant_id", action.tenantId)
         .gte("created_at", since)
         .lte("created_at", until)
@@ -908,6 +926,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           "created_at, minutes, billing_kind, tickets!inner(tenant_id, assigned_team_id)",
         )
         .eq("tickets.tenant_id", action.tenantId)
+        .is("tickets.deleted_at", null)
         .gte("created_at", since)
         .lte("created_at", until)
         .order("created_at", { ascending: true })
@@ -920,6 +939,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           "submitted_at, score, tickets!inner(tenant_id, assigned_team_id)",
         )
         .eq("tickets.tenant_id", action.tenantId)
+        .is("tickets.deleted_at", null)
         .gte("submitted_at", since)
         .lte("submitted_at", until)
         .order("submitted_at", { ascending: true })
@@ -932,6 +952,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           "opened_at, resolved_at, tickets!inner(tenant_id, assigned_team_id)",
         )
         .eq("tickets.tenant_id", action.tenantId)
+        .is("tickets.deleted_at", null)
         .gte("opened_at", since)
         .lte("opened_at", until)
         .is("resolved_at", null)
@@ -1194,6 +1215,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     deflectedCount(ranges.previous),
   ]);
 
+  const serviceAvailability = await readServiceAvailability(
+    context.supabaseAdmin,
+    action.tenantId,
+  );
+
   const current = buildMetrics(
     ranges.current,
     tickets.filter((ticket) => inRange(ticket.created_at, ranges.current)),
@@ -1215,6 +1241,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     data: {
       ...current,
       deflectedTickets,
+      serviceAvailability,
       comparison: {
         period: previous.period,
         deflectedTickets: previousDeflectedTickets,
@@ -1236,6 +1263,80 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     },
   });
 });
+
+type ServiceAvailabilityRow = {
+  serviceId: string;
+  name: string;
+  status: string;
+  days30: number | null;
+  days90: number | null;
+  maintenance90Percent: number | null;
+};
+
+const MAX_AVAILABILITY_SERVICES = 200;
+
+/**
+ * Verfügbarkeit der aktiven Dienste (30/90 Tage) aus service_status_events:
+ * operational und maintenance zählen als verfügbar, Wartung separat.
+ * Optional: Fehler liefern null, der Bericht bleibt verfügbar.
+ */
+async function readServiceAvailability(
+  admin: any,
+  tenantId: string,
+): Promise<ServiceAvailabilityRow[] | null> {
+  const services = await admin
+    .from("services")
+    .select("id, name, status")
+    .eq("tenant_id", tenantId)
+    .eq("active", true)
+    .order("name")
+    .limit(MAX_AVAILABILITY_SERVICES);
+  if (services.error) return null;
+  const rows = (services.data ?? []) as Array<Record<string, unknown>>;
+  if (rows.length === 0) return [];
+  const ids = rows.map((row) => String(row.id));
+  const now = Date.now();
+  const [days30, days90] = await Promise.all(
+    [30, 90].map((days) =>
+      admin.rpc("service_status_availability", {
+        p_tenant_id: tenantId,
+        p_service_ids: ids,
+        p_since: new Date(now - days * 86_400_000).toISOString(),
+      })
+    ),
+  );
+  if (days30.error || days90.error) return null;
+  const number = (value: unknown) => {
+    const parsed = typeof value === "string" ? Number(value) : value;
+    return typeof parsed === "number" && Number.isFinite(parsed)
+      ? Math.round(parsed * 1000) / 1000
+      : null;
+  };
+  const byId = (data: unknown) =>
+    new Map(
+      ((data ?? []) as Array<Record<string, unknown>>).map((
+        row,
+      ) => [String(row.service_id), row]),
+    );
+  const thirty = byId(days30.data);
+  const ninety = byId(days90.data);
+  return rows.map((row) => {
+    const id = String(row.id);
+    const long = ninety.get(id);
+    const observed = number(long?.observed_seconds);
+    const maintenance = number(long?.maintenance_seconds);
+    return {
+      serviceId: id,
+      name: String(row.name ?? ""),
+      status: String(row.status ?? "operational"),
+      days30: number(thirty.get(id)?.availability_percent),
+      days90: number(long?.availability_percent),
+      maintenance90Percent: observed && maintenance !== null
+        ? Math.round((100_000 * maintenance) / observed) / 1000
+        : null,
+    };
+  });
+}
 
 export default {
   fetch(request: Request): Response | Promise<Response> {

@@ -109,3 +109,11 @@ describe("parseHandbookInline", () => {
     ]);
   });
 });
+
+describe("Artikelbilder", () => {
+  it("erkennt kb-image-Verweise als Bildblock", () => {
+    expect(parseHandbookBlocks("![Screenshot](kb-image:1b2c-3d4e)")).toEqual([
+      { kind: "image", alt: "Screenshot", uri: "kb-image:1b2c-3d4e" },
+    ]);
+  });
+});

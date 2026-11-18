@@ -12,6 +12,7 @@ import {
 } from "@/lib/nextdesk-approvals";
 import { recordWidgetApprovals } from "@/lib/widget-sync";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 /**
  * Freigaben, die auf eine Entscheidung der angemeldeten Person warten. Die Karte
@@ -121,7 +122,7 @@ export function ApprovalInboxCard({ tenantId }: { tenantId: string | null }) {
           <Text style={[styles.subtitle, { color: colors.muted }]}>
             {approvals.length === 0
               ? "Keine offenen Freigaben"
-              : `${approvals.length} Freigabe${approvals.length === 1 ? "" : "n"} warten auf dich`}
+              : tn(`${approvals.length} Freigabe${approvals.length === 1 ? "" : "n"} warten auf dich`, `${approvals.length} Freigabe${approvals.length === 1 ? "" : "n"} warten auf Sie`)}
           </Text>
         </View>
       </View>

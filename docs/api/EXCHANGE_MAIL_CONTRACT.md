@@ -6,7 +6,7 @@ Stand: 27.10.2026. Verbindlich für die Migrationen `0061`, `0067`, `0068` und `
 
 Ein nextDesk-Mandant kann mehrere eigene Support-Postfächer anbinden. Er meldet einmal eine Microsoft-365-Connectoridentität an und kann danach nur die Postfächer konfigurieren, für die diese Identität in Exchange mindestens **Vollzugriff** und **Senden als** besitzt. Jeder aus einer E-Mail entstandene Ticketdatensatz erhält seinen Ursprungskanal; Antworten, Lösungsmitteilungen und Abteilungsrückfragen werden ausschliesslich über diesen Ursprungskanal versendet.
 
-Die zentrale Entra-App **`nextDesk – Exchange Online`** ist mehrmandantenfähig und erhält keine Graph-**Application permissions** `Mail.*`. Sie verwendet ausschliesslich folgende **Delegated permissions**: `User.Read`, `Mail.Read`, `Mail.Send`, `Mail.Read.Shared`, `Mail.Send.Shared`, `offline_access`, `openid`, `profile`.
+Die zentrale Entra-App **`nextDesk – Exchange Online`** ist mehrmandantenfähig und erhält keine Graph-**Application permissions** `Mail.*`. Diese verwendet ausschliesslich folgende **Delegated permissions**: `User.Read`, `Mail.Read`, `Mail.Send`, `Mail.Read.Shared`, `Mail.Send.Shared`, `offline_access`, `openid`, `profile`.
 
 ## Sichere OAuth-Verbindung
 

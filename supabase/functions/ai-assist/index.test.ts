@@ -60,3 +60,19 @@ Deno.test(
     );
   },
 );
+
+Deno.test("KI-Umformulierung: kurz oder ausführlich, stets freundlicher Ton", () => {
+  assert(
+    source.includes('value.length === "short"') &&
+      source.includes('value.length === "detailed"') &&
+      source.includes('"length"'),
+    "The rewrite action must accept only the lengths short and detailed (optional).",
+  );
+  assert(
+    source.includes("immer per Du an") &&
+      source.includes("professionell, aber persönlich und freundlich") &&
+      source.includes("erfinde nichts dazu") &&
+      source.includes("polishSystemPrompt(action.audience, action.length, formality)"),
+    "The rewrite prompt must keep the friendly tone and forbid invented facts.",
+  );
+});

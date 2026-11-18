@@ -644,3 +644,29 @@
 .ticket-workbench__copy-results small {
   color: var(--muted);
 }
+
+.ticket-workbench__mail-cc {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px 10px;
+  background: var(--surface-subtle);
+}
+
+.ticket-workbench__mail-cc legend {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ticket-workbench__mail-cc label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}

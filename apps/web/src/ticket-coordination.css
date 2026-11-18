@@ -4,9 +4,54 @@
  * light, dark and system themes work without extra rules.
  */
 
-.ticket-detail-layout .ticket-detail-primary.ticket-coordination,
+/* Koordination follows the ticket details (right column on wide screens). */
+.ticket-detail-layout .ticket-detail-primary.ticket-coordination {
+  order: 2;
+}
+
+.ticket-detail-primary.ticket-coordination {
+  display: grid;
+  gap: 12px;
+}
+
+.ticket-detail-primary.ticket-coordination > .ticket-detail-section-heading {
+  margin-bottom: 0;
+}
+
+/* An empty card (no rights, no support level) is not shown. */
+.ticket-detail-layout
+  .ticket-coordination:not(:has(> :not(.ticket-detail-section-heading))) {
+  display: none;
+}
+
+/* The timeline is rendered (portal) into a slot above the description. */
+.ticket-timeline-slot {
+  display: contents;
+}
+
 .ticket-detail-layout .ticket-detail-primary.ticket-timeline {
-  order: 5;
+  order: 3;
+}
+
+.ticket-coordination__group {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.ticket-coordination__group-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ticket-coordination__group-heading h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.92rem;
 }
 
 .ticket-coordination__actions {
@@ -264,13 +309,13 @@
 
 .ticket-timeline__overview {
   display: grid;
-  gap: 6px;
-  margin-bottom: 14px;
+  gap: 4px;
+  margin-bottom: 8px;
 }
 
 .ticket-timeline__track {
   position: relative;
-  height: 30px;
+  height: 22px;
   margin: 0 8px;
 }
 
@@ -425,10 +470,10 @@
 .ticket-timeline__list {
   position: relative;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   margin: 0;
   overflow-x: auto;
-  padding: 4px 2px 10px;
+  padding: 2px 2px 6px;
   list-style: none;
   scroll-snap-type: x proximity;
 }
@@ -438,11 +483,11 @@
   position: relative;
   display: flex;
   flex: 0 0 auto;
-  gap: 8px;
-  width: 190px;
+  gap: 6px;
+  width: 158px;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px;
+  border-radius: 8px;
+  padding: 6px 8px;
   background: var(--surface);
   scroll-snap-align: start;
 }
@@ -450,9 +495,9 @@
 .ticket-timeline__entry::before,
 .ticket-timeline__gap::before {
   position: absolute;
-  top: 17px;
+  top: 13px;
   right: 100%;
-  width: 10px;
+  width: 8px;
   height: 2px;
   background: var(--chart-grid);
   content: "";
@@ -466,8 +511,8 @@
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   margin-top: 1px;
   border-radius: 50%;
   background: var(--tone-neutral);
@@ -502,7 +547,7 @@
 .ticket-timeline__entry-body,
 .ticket-timeline__gap > span {
   display: grid;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 
@@ -510,12 +555,14 @@
 .ticket-timeline__entry-body small,
 .ticket-timeline__gap small {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
+  line-height: 1.3;
 }
 
 .ticket-timeline__entry-body strong {
   color: var(--ink);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
@@ -537,7 +584,8 @@
 }
 
 .ticket-timeline__gap strong {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
 }
 
 /* Narrow screens: vertical timeline. */
@@ -558,7 +606,7 @@
 
   .ticket-timeline__list {
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     overflow-x: visible;
     padding-left: 14px;
     scroll-snap-type: none;

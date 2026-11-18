@@ -42,6 +42,7 @@ export const permissionCodes = [
   "inventory.read",
   "inventory.manage",
   "inventory.move",
+  "inventory.issue",
   "inventory.adjust",
   "inventory.count.close",
   "shop.order",

@@ -12,6 +12,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { IpamNetworkCard } from "@/components/ipam-network-card";
 import {
   MobileFeatureLoadingScreen,
   MobileFeatureUnavailableScreen,
@@ -323,6 +324,11 @@ export default function AssetDetailScreen() {
             ["Betriebssystem", valueOrDash(asset.operatingSystem)],
           ]}
           title="Gerät"
+        />
+        <IpamNetworkCard
+          assetId={asset.id}
+          refreshKey={detail}
+          tenantId={tenantId}
         />
         {integrationRows.length ? (
           <InfoCard rows={integrationRows} title="Microsoft Intune" />

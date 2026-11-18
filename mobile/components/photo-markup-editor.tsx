@@ -50,6 +50,7 @@ import {
   type Point,
 } from "@/lib/photo-annotation";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 export type MarkupPhoto = { uri: string; width?: number; height?: number };
 export type MarkupResult = { uri: string; width: number; height: number };
@@ -506,7 +507,7 @@ function MarkupWorkspace({
         ) : (
           <View
             {...touchHandlers}
-            accessibilityHint="Zeichne mit dem Finger auf das Foto."
+            accessibilityHint={tn("Zeichne mit dem Finger auf das Foto.", "Zeichnen Sie mit dem Finger auf das Foto.")}
             accessibilityLabel="Foto zum Markieren"
             style={{
               height: layout.height,
@@ -544,12 +545,15 @@ function MarkupWorkspace({
       <View style={[styles.toolbar, { paddingBottom: insets.bottom + 10 }]}>
         <Text style={styles.toolHint}>
           {tool === "redact"
-            ? "Ziehe ein Feld über vertrauliche Inhalte – es wird fest geschwärzt."
+            ? tn("Ziehe ein Feld über vertrauliche Inhalte – es wird fest geschwärzt.", "Ziehen Sie ein Feld über vertrauliche Inhalte – es wird fest geschwärzt.")
             : tool === "text"
-              ? "Tippe auf die Stelle, an der der Text stehen soll."
+              ? tn(
+                  "Tippe auf die Stelle, an der der Text stehen soll.",
+                  "Tippen Sie auf die Stelle, an der der Text stehen soll.",
+                )
               : tool === "pen"
-                ? "Zeichne frei mit dem Finger."
-                : "Ziehe auf dem Foto, um zu markieren."}
+                ? tn("Zeichne frei mit dem Finger.", "Zeichnen Sie frei mit dem Finger.")
+                : tn("Ziehe auf dem Foto, um zu markieren.", "Ziehen Sie auf dem Foto, um zu markieren.")}
         </Text>
         <View style={styles.toolRow}>
           {TOOLS.map((entry) => (

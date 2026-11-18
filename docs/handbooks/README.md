@@ -7,28 +7,45 @@
 | `administratoren.md` | Handbuch für Administratoren | Mandantenadministratoren                |
 | `installation.md`    | Installationsanleitung       | Mandantenadministratoren                |
 
+## Zwei Fassungen: duzen und siezen
+
+Jedes Handbuch gibt es zweimal. Die **du-Fassung** (Standard) liegt in
+`docs/handbooks/*.md`, die **förmliche Fassung** in `docs/handbooks/sie/*.md`. Der
+Mandantenadministrator wählt die Anrede unter **Einstellungen → Design →
+Anrede**; die Edge Function `handbooks` liefert die passende Fassung aus.
+
+- Beide Fassungen haben dieselben Überschriften und Bilder. Sonst bricht
+  `pnpm handbooks:build` mit einem Fehler ab.
+- Ändere immer beide Dateien und setze `updated` in beiden.
+- Förmliche Anreden stehen nur in `sie/` (`node scripts/verify-formality.mjs
+--only=docs/handbooks/` prüft die du-Fassung).
+
 ## So funktioniert die Auslieferung
 
-1. Die Markdown-Dateien und die Bilder in `images/` sind die einzige Quelle.
-2. `pnpm handbooks:build` bündelt sie in `handbooks.bundle.json`.
+1. Die Markdown-Dateien (du und `sie/`) und die Bilder in `images/` sind die
+   einzige Quelle.
+2. `pnpm handbooks:build` bündelt beide Fassungen in `handbooks.bundle.json`
+   (die förmliche Fassung je Handbuch unter `sie`).
 3. Nach dem Merge lädt die Datenbank das Paket des gemergten Commits:
    `select public.request_handbook_sync('<sha>');`, danach
    `select public.apply_handbook_sync(<id>, '<sha>');`. Die Tabellen
    `handbook_documents` und `handbook_images` sind nur für den Service-Role-Zugang
-   lesbar (Migration 0246).
+   lesbar (Migrationen 0246 und 0328; die förmliche Fassung liegt in den Spalten
+   `*_sie`, solange sie fehlt, liefert die Function die du-Fassung).
 4. Die Edge Function `handbooks` prüft bei jedem Aufruf die Mitgliedschaft und
    die wirksamen Rollen der angemeldeten Person
    (`supabase/functions/_shared/handbook-access.ts`) und liefert nur die
-   erlaubten Handbücher aus – in der Web-App unter **Persönliche Einstellungen
+   erlaubten Handbücher in der Anrede des Mandanten
+   (`tenant_settings.formality`) aus – in der Web-App unter **Persönliche Einstellungen
    → Handbücher**, in der iOS-App unter **Profil → Hilfe und Rechtliches**.
 
-## «Wie mache ich …?» und Wissensartikel
+## Anleitungen als Wissensartikel
 
-Jedes Handbuch endet mit dem Abschnitt `## Wie mache ich …?`. Jede
-`### Wie …?`-Überschrift darin ist eine in sich geschlossene Anleitung und
-wird beim Sync zusätzlich als **Wissensartikel** in jedem Mandanten
+Jede Anleitung `### Wie …?` im Bereich `## Wie mache ich …?` wird beim Sync
+zusätzlich als **Wissensartikel** in jedem Organisationsmandanten
 veröffentlicht (Tabelle `handbook_articles`, Funktion
-`public.sync_handbook_articles`, Migration 0255):
+`public.sync_handbook_articles`, Migration 0367), in der Anrede des Mandanten
+(Wechsel der Anrede unter **Einstellungen → Design → Anrede** stellt die Artikel um):
 
 | Handbuch             | Sichtbarkeit des Artikels                   |
 | -------------------- | ------------------------------------------- |
@@ -37,20 +54,18 @@ veröffentlicht (Tabelle `handbook_articles`, Funktion
 | `administratoren.md` | **intern**                                  |
 | `installation.md`    | **intern**                                  |
 
-Regeln:
-
-- Eine Überschrift = ein Artikel; Titel 3–240 Zeichen und je Handbuch eindeutig.
-  Der Artikel-Slug (`hb-<handbuch>-<titel>`) ergibt sich aus dem Titel – eine
-  Umbenennung archiviert den alten und legt einen neuen Artikel an.
-- Keine Bilder in diesen Abschnitten (`pnpm handbooks:build` bricht ab). Der
-  Text vor der ersten `###`-Überschrift dient nur dem Handbuchleser.
-- Der Text jedes Artikels muss ohne das restliche Handbuch verständlich sein
-  (Menüpfad und Rolle nennen).
-- Ein Artikel wird bei Inhalts-, Titel- oder Sichtbarkeitsänderung als neue
-  veröffentlichte Revision eingespielt und überschreibt Änderungen, die ein
-  Mandant am Artikel selbst vorgenommen hat. Entfällt eine Überschrift, wird der
-  Artikel in allen Mandanten archiviert. Eigene Artikel der Mandanten bleiben
-  unberührt, neue Mandanten erhalten die Artikel automatisch.
+- Eine Überschrift = ein Artikel. Der Titel (3–240 Zeichen) ist die
+  Überschrift; der Artikel-Slug (`hb-<handbuch>-<titel>`) ergibt sich daraus.
+  Wer eine Überschrift umbenennt, archiviert damit den alten Artikel und legt
+  einen neuen an.
+- Keine Bilder in diesem Bereich (`pnpm handbooks:build` bricht ab), und jede
+  Anleitung muss ohne das übrige Handbuch verständlich sein.
+- Ein Artikel wird bei geändertem Text, Titel oder geänderter Sichtbarkeit als
+  neue veröffentlichte Revision eingespielt und überschreibt Änderungen, die
+  ein Mandant am Artikel selbst vorgenommen hat. Entfällt eine Überschrift,
+  wird der Artikel in allen Mandanten archiviert. Selbst geschriebene Artikel
+  der Mandanten und persönliche Arbeitsbereiche (eigene Beispielartikel) bleiben
+  unberührt; neue Organisationsmandanten erhalten die Artikel automatisch.
 
 > Das Repository ist öffentlich: Die Markdown-Quellen sind auf GitHub für alle
 > lesbar. Die Rollenprüfung steuert, was in nextDesk angezeigt wird, macht die
@@ -59,7 +74,8 @@ Regeln:
 
 ## Pflege
 
-- Text ändern → `updated` im Front Matter anpassen → `pnpm handbooks:build`.
+- Text ändern (beide Fassungen) → `updated` im Front Matter anpassen →
+  `pnpm handbooks:build`.
 - Screenshots neu erzeugen → `pnpm handbooks:screenshots` (alle) oder
   `pnpm handbooks:screenshots -- --only ag-ticket-detail` (einzeln). Das Skript
   startet die Web-App mit einem simulierten Backend und Demo-Daten

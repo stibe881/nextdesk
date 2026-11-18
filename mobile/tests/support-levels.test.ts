@@ -5,6 +5,8 @@ import {
   mobileSupportLevelLabel,
   parseMobileTicketSupportLevel,
   shouldShowSupportLevelCard,
+  mobileSuspicionResultText,
+  parseMobileSuspicionResult,
 } from "../lib/support-levels-model";
 
 describe("Supportstufen (mobil)", () => {
@@ -62,5 +64,54 @@ describe("Supportstufen (mobil)", () => {
     expect(shouldShowSupportLevelCard(state)).toBe(false);
     expect(shouldShowSupportLevelCard(null)).toBe(false);
     expect(parseMobileTicketSupportLevel({ data: {} })).toBeNull();
+  });
+});
+
+describe("Spam-/Phishing-Verdacht (mobil)", () => {
+  it("liest den Verdachtszustand und blendet ihn bei alten Antworten aus", () => {
+    const base = { targets: { next: null, back: [] }, history: [] };
+    expect(
+      parseMobileTicketSupportLevel({
+        data: {
+          ...base,
+          suspicion: {
+            reported: false,
+            canReport: true,
+            targetTeam: { id: "t2", name: "System Engineer" },
+          },
+        },
+      })?.suspicion,
+    ).toEqual({
+      reported: false,
+      canReport: true,
+      targetTeamName: "System Engineer",
+    });
+    expect(parseMobileTicketSupportLevel({ data: base })?.suspicion).toEqual({
+      reported: false,
+      canReport: false,
+      targetTeamName: null,
+    });
+  });
+
+  it("beschreibt Übergabe und Antwort", () => {
+    const result = parseMobileSuspicionResult({
+      data: { teamName: "System Engineer", moved: true, reply: "queued" },
+    });
+    expect(result).toEqual({
+      teamName: "System Engineer",
+      moved: true,
+      reply: "queued",
+    });
+    expect(mobileSuspicionResultText(result!)).toBe(
+      "Das Ticket wurde an den 2nd Level (System Engineer) übergeben. Die Standardantwort an die anfragende Person ist unterwegs.",
+    );
+    expect(
+      mobileSuspicionResultText({
+        teamName: "System Engineer",
+        moved: false,
+        reply: "no_mail_channel",
+      }),
+    ).toMatch(/kein aktives Exchange-Postfach/);
+    expect(parseMobileSuspicionResult({ data: {} })).toBeNull();
   });
 });

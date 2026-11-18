@@ -42,6 +42,7 @@ import {
 } from "@/lib/push-notifications";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
+import { tn } from "@/lib/formality";
 
 const CATEGORY_DETAILS: readonly {
   key: PushCategory;
@@ -51,32 +52,62 @@ const CATEGORY_DETAILS: readonly {
   {
     key: "assigned",
     label: "Mir zugewiesene Tickets",
-    description: "Wenn dir ein Ticket neu zugeteilt wird.",
+    get description() {
+      return tn(
+        "Wenn dir ein Ticket neu zugeteilt wird.",
+        "Wenn Ihnen ein Ticket neu zugeteilt wird.",
+      );
+    },
   },
   {
     key: "requester_reply",
     label: "Antworten von Anfragenden",
-    description: "Wenn eine anfragende Person auf dein Ticket antwortet.",
+    get description() {
+      return tn(
+        "Wenn eine anfragende Person auf dein Ticket antwortet.",
+        "Wenn eine anfragende Person auf Ihr Ticket antwortet.",
+      );
+    },
   },
   {
     key: "support_reply",
     label: "Antworten vom Support",
-    description: "Wenn der Support auf dein Ticket antwortet.",
+    get description() {
+      return tn(
+        "Wenn der Support auf dein Ticket antwortet.",
+        "Wenn der Support auf Ihr Ticket antwortet.",
+      );
+    },
   },
   {
     key: "mention",
     label: "Erwähnungen",
-    description: "Wenn du in einer internen Notiz erwähnt wirst.",
+    get description() {
+      return tn(
+        "Wenn du in einer internen Notiz erwähnt wirst.",
+        "Wenn Sie in einer internen Notiz erwähnt werden.",
+      );
+    },
   },
   {
     key: "resolved",
     label: "Gelöste Tickets",
-    description: "Wenn ein Ticket für dich als gelöst markiert wird.",
+    get description() {
+      return tn(
+        "Wenn ein Ticket für dich als gelöst markiert wird.",
+        "Wenn ein Ticket für Sie als gelöst markiert wird.",
+      );
+    },
   },
   {
     key: "approval",
     label: "Freigaben",
-    description: "Wenn für ein Ticket dein Entscheid benötigt wird.",
+    get description() {
+      return tn(
+        "Wenn für ein Ticket dein Entscheid benötigt wird.",
+        "Wenn für ein Ticket Ihr Entscheid benötigt wird.",
+      );
+    },
   },
   {
     key: "escalation",
@@ -84,10 +115,26 @@ const CATEGORY_DETAILS: readonly {
     description: "Wenn ein relevantes Ticket eskaliert wird.",
   },
   {
-    key: "follow_up",
-    label: "Wiedervorlagen",
+    key: "security_report",
+    label: "Phishing-Meldungen",
+    description: "Neue Phishing-Meldungen.",
+  },
+  {
+    key: "security_case",
+    label: "Phishing / Junk",
+    description: "Überfällige Phishing-/Junk-Fälle, «geklickt» und Kampagnen.",
+  },
+  {
+    key: "incident",
+    label: "Störungen",
     description:
-      "Erinnerungen zu Wiedervorlagen und aus zeitgesteuerten Regeln.",
+      "Wenn die Überwachung oder PRTG eine Störung meldet und solange sie niemand bestätigt.",
+  },
+  {
+    key: "follow_up",
+    label: "Erinnerungen",
+    description:
+      "Fällige Erinnerungen und Hinweise aus zeitgesteuerten Regeln.",
   },
   {
     key: "sla",
@@ -97,13 +144,24 @@ const CATEGORY_DETAILS: readonly {
   {
     key: "shop",
     label: "Shop",
-    description: "Freigaben, Bereitstellung und Status deiner Bestellungen.",
+    get description() {
+      return tn(
+        "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status deiner Bestellungen.",
+        "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status Ihrer Bestellungen.",
+      );
+    },
   },
   {
     key: "inventory_low_stock",
-    label: "Lagerunterbestand",
+    label: "Lager",
     description:
-      "Wenn die Verfügbarkeit eines Artikels den Mindestbestand erreicht.",
+      "Mindestbestand erreicht, Nachbestellung und fällige Inventur.",
+  },
+  {
+    key: "ipam",
+    label: "IP-Adressverwaltung",
+    description:
+      "Neue Funde (z. B. IP-Konflikte, volle Subnetze), Netzwerkagent offline und ablaufende Reservierungen.",
   },
   {
     key: "infrastructure",
@@ -120,6 +178,7 @@ function defaultPreferences(): PushPreferences {
     enabledCategories: PUSH_CATEGORIES.filter(
       (category) => category !== "inventory_low_stock",
     ),
+    emailCategories: [],
     deliveryDays: [...ALL_DELIVERY_DAYS],
     quietEnd: 7,
     quietHoursEnabled: false,
@@ -158,12 +217,18 @@ function testFeedback(
   results: Awaited<ReturnType<typeof sendPushTest>>["results"],
 ): string {
   if (results.some((result) => result.status === "sent")) {
-    return "Testmitteilung wurde an deine registrierten Geräte gesendet.";
+    return tn(
+      "Testmitteilung wurde an deine registrierten Geräte gesendet.",
+      "Testmitteilung wurde an Ihre registrierten Geräte gesendet.",
+    );
   }
   if (results.some((result) => result.status === "disabled")) {
     return "Dieses iPhone ist für Push-Benachrichtigungen derzeit nicht aktiv.";
   }
-  return "Die Testmitteilung konnte nicht gesendet werden. Bitte versuche es später erneut.";
+  return tn(
+    "Die Testmitteilung konnte nicht gesendet werden. Bitte versuche es später erneut.",
+    "Die Testmitteilung konnte nicht gesendet werden. Bitte versuchen Sie es später erneut.",
+  );
 }
 
 export default function NotificationsScreen() {
@@ -220,7 +285,10 @@ export default function NotificationsScreen() {
       setError(
         nextError instanceof Error
           ? nextError.message
-          : "Push-Benachrichtigungen konnten nicht geladen werden. Bitte versuche es später erneut.",
+          : tn(
+              "Push-Benachrichtigungen konnten nicht geladen werden. Bitte versuche es später erneut.",
+              "Push-Benachrichtigungen konnten nicht geladen werden. Bitte versuchen Sie es später erneut.",
+            ),
       );
     } finally {
       setLoading(false);
@@ -236,6 +304,8 @@ export default function NotificationsScreen() {
 
   const preferences = status?.preferences ?? defaultPreferences();
   const applicableCategories = status?.applicableCategories ?? [];
+  const alwaysDelivered = status?.alwaysDeliveredCategories ?? [];
+  const emailAvailable = status?.emailAvailable ?? false;
   const context = tenantId && userId ? { tenantId, userId } : null;
   const masterDisabled =
     !context ||
@@ -265,7 +335,10 @@ export default function NotificationsScreen() {
   const statusDescription = (() => {
     if (!status) return "Status wird geprüft";
     if (!status.featureEnabled) {
-      return "Für deinen Mandanten noch nicht aktiviert";
+      return tn(
+        "Für deinen Mandanten noch nicht aktiviert",
+        "Für Ihren Mandanten noch nicht aktiviert",
+      );
     }
     if (!status.apnsConfigured) {
       return "Apple-Zugang wird noch eingerichtet";
@@ -342,7 +415,12 @@ export default function NotificationsScreen() {
       setStatus((current) =>
         current ? { ...current, preferences: response.preferences } : current,
       );
-      setMessage("Deine Benachrichtigungseinstellungen wurden gespeichert.");
+      setMessage(
+        tn(
+          "Deine Benachrichtigungseinstellungen wurden gespeichert.",
+          "Ihre Benachrichtigungseinstellungen wurden gespeichert.",
+        ),
+      );
       hapticSuccess();
     } catch (nextError) {
       hapticError();
@@ -356,12 +434,17 @@ export default function NotificationsScreen() {
     }
   }
 
-  function toggleCategory(category: PushCategory, enabled: boolean) {
+  function toggleCategory(
+    category: PushCategory,
+    channel: "push" | "email",
+    enabled: boolean,
+  ) {
     hapticSelection();
-    const enabledCategories = enabled
-      ? [...new Set([...preferences.enabledCategories, category])]
-      : preferences.enabledCategories.filter((item) => item !== category);
-    void savePreferences({ ...preferences, enabledCategories });
+    const key = channel === "push" ? "enabledCategories" : "emailCategories";
+    const next = enabled
+      ? [...new Set([...preferences[key], category])]
+      : preferences[key].filter((item) => item !== category);
+    void savePreferences({ ...preferences, [key]: next });
   }
 
   function toggleQuietHours(enabled: boolean) {
@@ -661,14 +744,19 @@ export default function NotificationsScreen() {
                       Kategorien
                     </Text>
                     <Text style={[styles.cardHint, { color: colors.muted }]}>
-                      Wähle Hinweise, die für deine Rolle verfügbar sind.
+                      {tn(
+                        "Wähle pro Hinweis, ob er als Push, als Mail oder beides kommen soll.",
+                        "Wählen Sie pro Hinweis, ob er als Push, als Mail oder beides kommen soll.",
+                      )}
                     </Text>
                   </View>
                 </View>
                 {applicableCategories.length === 0 ? (
                   <Text style={[styles.emptyCopy, { color: colors.muted }]}>
-                    Für deine Rolle sind derzeit keine Push-Kategorien
-                    verfügbar.
+                    {tn(
+                      "Für deine Rolle sind derzeit keine Push-Kategorien verfügbar.",
+                      "Für Ihre Rolle sind derzeit keine Push-Kategorien verfügbar.",
+                    )}
                   </Text>
                 ) : (
                   <View style={styles.categoryList}>
@@ -676,6 +764,9 @@ export default function NotificationsScreen() {
                       applicableCategories.includes(category.key),
                     ).map((category) => {
                       const enabled = preferences.enabledCategories.includes(
+                        category.key,
+                      );
+                      const emailEnabled = preferences.emailCategories.includes(
                         category.key,
                       );
                       return (
@@ -703,27 +794,70 @@ export default function NotificationsScreen() {
                             >
                               {category.description}
                             </Text>
+                            {alwaysDelivered.includes(category.key) ? (
+                              <Text
+                                style={[
+                                  styles.categoryDescription,
+                                  { color: colors.muted },
+                                ]}
+                              >
+                                {tn(
+                                  "Als Mitglied des Phishing-Teams bekommst du diese Mitteilungen immer.",
+                                  "Als Mitglied des Phishing-Teams bekommen Sie diese Mitteilungen immer.",
+                                )}
+                              </Text>
+                            ) : null}
                           </View>
-                          <Switch
-                            accessibilityLabel={`${category.label} ${enabled ? "deaktivieren" : "aktivieren"}`}
-                            accessibilityRole="switch"
-                            accessibilityState={{
-                              checked: enabled,
-                              disabled: preferenceSaving,
-                            }}
-                            disabled={preferenceSaving}
-                            onValueChange={(value) =>
-                              toggleCategory(category.key, value)
-                            }
-                            thumbColor={
-                              enabled ? colors.onPrimary : colors.surface
-                            }
-                            trackColor={{
-                              false: colors.border,
-                              true: colors.primary,
-                            }}
-                            value={enabled}
-                          />
+                          <View style={styles.channelSwitches}>
+                            {(
+                              [
+                                ["push", "Push", enabled],
+                                ["email", "Mail", emailEnabled],
+                              ] as const
+                            ).map(([channel, label, on]) => {
+                              const unavailable =
+                                channel === "email" && !emailAvailable;
+                              return (
+                                <View
+                                  key={channel}
+                                  style={styles.channelSwitch}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.channelLabel,
+                                      { color: colors.muted },
+                                    ]}
+                                  >
+                                    {label}
+                                  </Text>
+                                  <Switch
+                                    accessibilityLabel={`${category.label} per ${label} ${on ? "deaktivieren" : "aktivieren"}`}
+                                    accessibilityRole="switch"
+                                    accessibilityState={{
+                                      checked: on && !unavailable,
+                                      disabled: preferenceSaving || unavailable,
+                                    }}
+                                    disabled={preferenceSaving || unavailable}
+                                    onValueChange={(value) =>
+                                      toggleCategory(
+                                        category.key,
+                                        channel,
+                                        value,
+                                      )
+                                    }
+                                    thumbColor={
+                                      on ? colors.onPrimary : colors.surface
+                                    }
+                                    trackColor={{
+                                      false: colors.border,
+                                      true: colors.primary,
+                                    }}
+                                    value={on && !unavailable}
+                                  />
+                                </View>
+                              );
+                            })}
+                          </View>
                         </View>
                       );
                     })}
@@ -782,8 +916,14 @@ export default function NotificationsScreen() {
                 </View>
                 <Text style={[styles.quietNote, { color: colors.muted }]}>
                   {deliveryLimited
-                    ? "Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit. In nextDesk siehst du alles sofort."
-                    : "Schalte ein, um Push-Mitteilungen nur an bestimmten Tagen und Zeiten zu erhalten."}
+                    ? tn(
+                        "Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit. In nextDesk siehst du alles sofort.",
+                        "Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit. In nextDesk sehen Sie alles sofort.",
+                      )
+                    : tn(
+                        "Schalte ein, um Push-Mitteilungen nur an bestimmten Tagen und Zeiten zu erhalten.",
+                        "Schalten Sie ein, um Push-Mitteilungen nur an bestimmten Tagen und Zeiten zu erhalten.",
+                      )}
                 </Text>
                 {deliveryLimited ? (
                   <>
@@ -1053,6 +1193,9 @@ const useStyles = makeThemedStyles((c) => ({
   cardTitle: { fontSize: 16, fontWeight: "900" },
   categoryCopy: { flex: 1, gap: 3, paddingRight: 12 },
   categoryDescription: { fontSize: 12, lineHeight: 17 },
+  channelLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 0.4 },
+  channelSwitch: { alignItems: "center", gap: 4 },
+  channelSwitches: { flexDirection: "row", gap: 10 },
   categoryList: { gap: 1 },
   categoryRow: {
     alignItems: "center",

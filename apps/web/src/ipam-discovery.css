@@ -1,0 +1,359 @@
+/*
+ * IPAM-Discovery (Agenten, Scans, DHCP & DNS). Farben aus Theme- und
+ * Status-Tokens, damit helles und dunkles Design funktionieren.
+ */
+
+.ipam-discovery {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.ipam-discovery__head,
+.ipam-discovery__intro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ipam-discovery__intro h3,
+.ipam-discovery h3,
+.ipam-discovery h4 {
+  margin: 0;
+  color: var(--ink);
+}
+
+.ipam-discovery__intro p {
+  max-width: 72ch;
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.ipam-discovery__stack {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.ipam-discovery__stack > section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ipam-discovery__muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ipam-discovery__empty {
+  margin: 0;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: var(--muted);
+}
+
+.ipam-discovery__message {
+  margin: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--tone-success-soft);
+  color: var(--tone-success);
+}
+
+.ipam-discovery__message.is-error {
+  background: var(--tone-danger-soft);
+  color: var(--tone-danger);
+}
+
+.ipam-discovery__warning {
+  margin: 0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--tone-warning-soft);
+  color: var(--tone-warning);
+  font-size: 13px;
+}
+
+.ipam-discovery__error-line {
+  color: var(--tone-danger);
+  font-size: 12px;
+}
+
+.ipam-discovery__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ipam-discovery__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+  gap: 14px;
+}
+
+.ipam-discovery__cards--compact {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+}
+
+.ipam-agent-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  background: var(--surface);
+}
+
+.ipam-agent-card__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  color: var(--primary);
+}
+
+.ipam-agent-card__head span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ipam-discovery__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.ipam-discovery__facts dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ipam-discovery__facts dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.ipam-discovery__token,
+.ipam-discovery__confirm {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  border: 1px solid var(--tone-warning);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: var(--tone-warning-soft);
+  color: var(--ink);
+}
+
+.ipam-discovery__confirm {
+  grid-template-columns: minmax(0, 1fr);
+  border-color: var(--border);
+  background: var(--surface-subtle);
+}
+
+.ipam-discovery__token p,
+.ipam-discovery__confirm p {
+  margin: 4px 0 8px;
+}
+
+.ipam-discovery__token code {
+  display: block;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.ipam-agent-form {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--surface-subtle);
+}
+
+.ipam-agent-form fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.ipam-agent-form legend {
+  padding: 0 4px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.ipam-agent-form__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.ipam-agent-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.ipam-agent-form input:not([type="checkbox"]),
+.ipam-agent-form select,
+.ipam-agent-form textarea,
+.ipam-prefix-picker input:not([type="checkbox"]),
+.ipam-discovery__search input {
+  min-width: 0;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.ipam-agent-form__snmp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ipam-agent-form__snmp > input {
+  flex: 1 1 180px;
+}
+
+.ipam-agent-form__collect {
+  display: inline-flex;
+  gap: 10px;
+}
+
+.ipam-agent-form__collect label,
+.ipam-agent-form .ipam-discovery__check,
+.ipam-discovery__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ipam-prefix-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.ipam-prefix-picker__list {
+  display: grid;
+  max-height: 240px;
+  overflow: auto;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--surface);
+}
+
+.ipam-prefix-picker__list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ipam-discovery__search {
+  display: flex;
+  gap: 8px;
+}
+
+.ipam-discovery__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.ipam-discovery__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.ipam-discovery__table th,
+.ipam-discovery__table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+  color: var(--ink);
+  text-align: left;
+  vertical-align: top;
+}
+
+.ipam-discovery__table th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ipam-discovery__table tr:last-child td {
+  border-bottom: 0;
+}
+
+.ipam-discovery__table tr.is-selected td {
+  background: var(--tone-info-soft);
+}
+
+.ipam-discovery__table code {
+  font-size: 13px;
+}
+
+.ipam-discovery__meter {
+  width: 140px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--tone-neutral-soft);
+}
+
+.ipam-discovery__meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--tone-success);
+}
+
+.ipam-discovery__meter[data-tone="warning"] span {
+  background: var(--tone-warning);
+}
+
+.ipam-discovery__meter[data-tone="danger"] span {
+  background: var(--tone-danger);
+}
+
+.ipam-discovery__meter[data-tone="neutral"] span {
+  background: var(--tone-neutral);
+}
+
+@media (max-width: 640px) {
+  .ipam-agent-card__head {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .ipam-agent-card__head > svg {
+    display: none;
+  }
+}

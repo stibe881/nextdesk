@@ -1,6 +1,7 @@
 import { assertEquals } from "jsr:@std/assert@1";
 import {
   effectiveOrder,
+  operationItems,
   parseAction,
   parseAiOrder,
   type PriorityTicket,
@@ -40,6 +41,22 @@ Deno.test("rule score puts SLA breaches above waiting tickets", () => {
   assertEquals(waiting.reason, "Priorität Hoch · Wartet auf Rückmeldung");
 });
 
+Deno.test("a paused SLA is not due and needs no first answer", () => {
+  const paused = ruleScore(
+    ticket({
+      statusKey: "waiting_customer",
+      resolutionDueAt: "2026-11-07T11:00:00Z",
+      firstRespondedAt: null,
+      responseDueAt: "2026-11-07T11:00:00Z",
+      slaPausedAt: "2026-11-07T09:00:00Z",
+    }),
+    now,
+  );
+  const running = ruleScore(ticket({ resolutionDueAt: "2026-11-07T11:00:00Z" }), now);
+  assertEquals(paused.reason, "SLA pausiert · Wartet auf Rückmeldung");
+  assertEquals(running.score > paused.score, true);
+});
+
 Deno.test("manual order wins, new tickets are slotted in by proposal", () => {
   const ranks = new Map([
     ["a", { ai_rank: 1, manual_rank: 2 }],
@@ -65,4 +82,23 @@ Deno.test("reorder needs unique ticket ids", () => {
   const id = "00000000-0000-4000-8000-0000000000aa";
   assertEquals(parseAction({ type: "reorder", tenantId, ticketIds: [id, id] }), null);
   assertEquals(parseAction({ type: "reorder", tenantId, ticketIds: [id] })?.type, "reorder");
+});
+
+Deno.test("Meine Prioritäten: Störungen und Phishing-/Junk-Fälle, dringende zuerst", () => {
+  const items = operationItems({
+    incidents: [
+      { id: "i1", number: "STO-1", title: "Switch", state: "resolved", severity: "down", acknowledged: true },
+      { id: "i2", number: "STO-2", title: "Server", state: "active", severity: "down", acknowledged: false },
+    ],
+    securityCases: [
+      { id: "s1", number: "SEC-1", title: "Rechnung", state: "triage", decisionDueAt: "2026-11-07T11:00:00Z" },
+      { id: "s2", number: "SEC-2", title: "Paket", state: "actions", clicked: false },
+      { number: "kaputt" },
+    ],
+  }, now);
+  assertEquals(items.map((item) => item.id), ["i2", "s1", "i1", "s2"]);
+  assertEquals(items[0]!.reason, "Ausfall · unbestätigt");
+  assertEquals(items[1]!.reason, "Urteil überfällig");
+  assertEquals(items[2]!.reason, "Behoben, Ursache erfassen und schliessen");
+  assertEquals(operationItems(null), []);
 });

@@ -24,6 +24,7 @@ import {
   type WorkHours,
 } from "@/lib/push-notifications";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 const STATUS_REFRESH_INTERVAL_MS = 60_000;
 
@@ -124,7 +125,10 @@ export function PushCheckInPrompt() {
       setError(
         nextError instanceof Error
           ? nextError.message
-          : "Der Check-in konnte nicht geändert werden. Bitte versuche es erneut.",
+          : tn(
+              "Der Check-in konnte nicht geändert werden. Bitte versuche es erneut.",
+              "Der Check-in konnte nicht geändert werden. Bitte versuchen Sie es erneut.",
+            ),
       );
     } finally {
       if (mounted.current) setSaving(false);
@@ -161,8 +165,16 @@ export function PushCheckInPrompt() {
             Einchecken?
           </Text>
           <Text style={styles.copy}>
-            Möchtest du dich einchecken? Dann erhältst du heute bis{" "}
-            {hourLabel(workHours.endHour)}:00 Uhr Push-Benachrichtigungen.
+            {tn(
+              <>
+                Möchtest du dich einchecken? Dann erhältst du heute bis{" "}
+                {hourLabel(workHours.endHour)}:00 Uhr Push-Benachrichtigungen.
+              </>,
+              <>
+                Möchten Sie sich einchecken? Dann erhalten Sie heute bis{" "}
+                {hourLabel(workHours.endHour)}:00 Uhr Push-Benachrichtigungen.
+              </>,
+            )}
           </Text>
           {error ? (
             <View accessibilityRole="alert" style={styles.error}>

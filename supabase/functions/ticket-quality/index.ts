@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
@@ -361,7 +362,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       request,
       403,
       "ticket_feature_disabled",
-      "Diese Ticketfunktion ist für Ihren Mandanten deaktiviert.",
+      msg("Diese Ticketfunktion ist für deinen Mandanten deaktiviert.", msg("Diese Ticketfunktion ist für deinen Mandanten deaktiviert.", "Diese Ticketfunktion ist für Ihren Mandanten deaktiviert.")),
     );
 
   const status = ticketStatus(callerTicket.ticket);
@@ -473,7 +474,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       request,
       403,
       "ticket_quality_review_denied",
-      "Sie sind nicht berechtigt, diese Qualitätsbewertung abzugeben.",
+      msg("Du bist nicht berechtigt, diese Qualitätsbewertung abzugeben.", msg("Du bist nicht berechtigt, diese Qualitätsbewertung abzugeben.", "Sie sind nicht berechtigt, diese Qualitätsbewertung abzugeben.")),
     );
 
   const existingResult = await getOwnReview(
@@ -525,7 +526,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         request,
         409,
         "review_changed_concurrently",
-        "Die Qualitätsbewertung wurde zwischenzeitlich geändert. Bitte laden Sie sie neu.",
+        msg("Die Qualitätsbewertung wurde zwischenzeitlich geändert. Bitte lade sie neu.", msg("Die Qualitätsbewertung wurde zwischenzeitlich geändert. Bitte lade sie neu.", "Die Qualitätsbewertung wurde zwischenzeitlich geändert. Bitte laden Sie sie neu.")),
       );
 
     const audited = await writeAudit(context.supabaseAdmin, {

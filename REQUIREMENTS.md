@@ -2,7 +2,7 @@
 
 ## Verpflichtender Kern
 
-TicketHub ist eine mandantenfähige Plattform für ICT- und Infrastruktur-Support. Sie unterstützt mehrere Organisationen, mehrere Abteilungen pro Organisation, getrennte Agentensichten, Endbenutzer-Self-Service und eine separat geschützte Betreiberadministration. Die gemeinsame Web- und Mobile-Geschäftslogik wird in TypeScript-Paketen gepflegt.
+TicketHub ist eine mandantenfähige Plattform für ICT- und Infrastruktur-Support. Diese unterstützt mehrere Organisationen, mehrere Abteilungen pro Organisation, getrennte Agentensichten, Endbenutzer-Self-Service und eine separat geschützte Betreiberadministration. Die gemeinsame Web- und Mobile-Geschäftslogik wird in TypeScript-Paketen gepflegt.
 
 ## MVP
 

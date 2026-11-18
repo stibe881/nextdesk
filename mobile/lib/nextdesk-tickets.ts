@@ -1,4 +1,5 @@
 import { formatRequesterName } from "./person-name";
+import { messageBodyWithAttachments } from "@/lib/ticket-message-attachments-model";
 import {
   invokeNextDesk,
   loadCurrentTenant,
@@ -10,6 +11,7 @@ import {
   loadOfflineTicketListCache,
   saveOfflineTicketListCache,
 } from "@/lib/mobile-private-state";
+import { openSlaPause } from "@/lib/sla-pause";
 
 export type MobileTicket = {
   id: string;
@@ -22,9 +24,18 @@ export type MobileTicket = {
   resolved: boolean;
   /** Ticket ohne zugewiesene Agentin bzw. zugewiesenen Agenten (wie im Web). */
   unassigned: boolean;
+  /** Zugewiesene Person und Abteilung für die Filter; fehlen in älteren Offline-Kopien. */
+  assignedAgentId?: string | null;
+  departmentId?: string | null;
+  /** Rang der Priorität (sort_order) für die Sortierung. */
+  priorityRank?: number | null;
   requesterId: string;
+  /** When the ticket was created (ISO); missing in older offline copies. */
+  createdAt?: string | null;
   /** Name of the requesting person; null for own tickets or when unknown. */
   requesterName?: string | null;
+  /** Start of a running SLA pause (waiting status); null while it runs. */
+  slaPausedAt?: string | null;
 };
 
 /**
@@ -126,6 +137,10 @@ export type MobileTicketDetail = {
   requesterContact: TicketRequester | null;
   assignedAgentId: string | null;
   resolvedAt: string | null;
+  /** Creation time; files stored with the ticket belong to the request. */
+  createdAt: string | null;
+  /** Start of a running SLA pause (waiting status); null while it runs. */
+  slaPausedAt: string | null;
   subcategoryId: string | null;
   statusId: string;
   priorityId: string;
@@ -326,9 +341,11 @@ export async function loadMobileDashboard(input: {
         client
           .from("tickets")
           .select(
-            "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, created_at",
+            "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, department_id, created_at, sla_paused_at",
           )
           .eq("tenant_id", tenant.id)
+          // Phishing reports are security cases, not tickets.
+          .eq("is_security_case", false)
           .order("updated_at", { ascending: false })
           .limit(50),
         client
@@ -337,7 +354,7 @@ export async function loadMobileDashboard(input: {
           .eq("tenant_id", tenant.id),
         client
           .from("ticket_priorities")
-          .select("id, label")
+          .select("id, label, sort_order")
           .eq("tenant_id", tenant.id),
       ],
     );
@@ -363,7 +380,15 @@ export async function loadMobileDashboard(input: {
         ticket.requester_id === activeUser.id,
       resolved: Boolean(statusById.get(ticket.status_id)?.is_closed),
       unassigned: !ticket.assigned_agent_id,
+      assignedAgentId: ticket.assigned_agent_id ?? null,
+      departmentId: ticket.department_id ?? null,
+      priorityRank: priorityById.get(ticket.priority_id)?.sort_order ?? null,
       requesterId: ticket.requester_id,
+      createdAt: ticket.created_at,
+      slaPausedAt: openSlaPause(
+        ticket.sla_paused_at,
+        Boolean(statusById.get(ticket.status_id)?.is_closed),
+      ),
     }));
     const tickets = await withRequesterNames(
       client,
@@ -379,18 +404,24 @@ export async function loadMobileDashboard(input: {
         client
           .from("tickets")
           .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenant.id),
+          .eq("tenant_id", tenant.id)
+          // Phishing reports are security cases, not tickets.
+          .eq("is_security_case", false),
         closedStatusIds.length > 0
           ? client
               .from("tickets")
               .select("id", { count: "exact", head: true })
               .eq("tenant_id", tenant.id)
+              // Phishing reports are security cases, not tickets.
+              .eq("is_security_case", false)
               .in("status_id", closedStatusIds)
           : Promise.resolve({ count: 0, error: null }),
         client
           .from("tickets")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenant.id)
+          // Phishing reports are security cases, not tickets.
+          .eq("is_security_case", false)
           .or(
             `assigned_agent_id.eq.${activeUser.id},requester_id.eq.${activeUser.id}`,
           ),
@@ -398,6 +429,8 @@ export async function loadMobileDashboard(input: {
           .from("tickets")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenant.id)
+          // Phishing reports are security cases, not tickets.
+          .eq("is_security_case", false)
           .is("assigned_agent_id", null),
       ]);
     if (
@@ -415,6 +448,7 @@ export async function loadMobileDashboard(input: {
         tickets: tickets.map(
           ({
             assignedToCurrentUser,
+            createdAt,
             id,
             priority,
             resolved,
@@ -424,6 +458,7 @@ export async function loadMobileDashboard(input: {
             unassigned,
           }) => ({
             assignedToCurrentUser,
+            createdAt: createdAt ?? undefined,
             id,
             priority,
             resolved,
@@ -498,7 +533,7 @@ export async function loadMobileTicketsByIds(
     client
       .from("tickets")
       .select(
-        "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, created_at",
+        "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, department_id, created_at, sla_paused_at",
       )
       .eq("tenant_id", tenant.id)
       .in("id", uniqueIds)
@@ -510,7 +545,7 @@ export async function loadMobileTicketsByIds(
       .eq("tenant_id", tenant.id),
     client
       .from("ticket_priorities")
-      .select("id, label")
+      .select("id, label, sort_order")
       .eq("tenant_id", tenant.id),
   ]);
   if (ticketsResult.error || statusesResult.error || prioritiesResult.error) {
@@ -533,7 +568,15 @@ export async function loadMobileTicketsByIds(
       ticket.assigned_agent_id === userId || ticket.requester_id === userId,
     resolved: Boolean(statusById.get(ticket.status_id)?.is_closed),
     unassigned: !ticket.assigned_agent_id,
+    assignedAgentId: ticket.assigned_agent_id ?? null,
+    departmentId: ticket.department_id ?? null,
+    priorityRank: priorityById.get(ticket.priority_id)?.sort_order ?? null,
     requesterId: ticket.requester_id,
+    createdAt: ticket.created_at,
+    slaPausedAt: openSlaPause(
+      ticket.sla_paused_at,
+      Boolean(statusById.get(ticket.status_id)?.is_closed),
+    ),
   }));
   return withRequesterNames(client, tenant.id, userId, tickets);
 }
@@ -707,6 +750,11 @@ export async function loadMobileTicketDetail(
         : null,
     resolvedAt:
       typeof record.resolved_at === "string" ? record.resolved_at : null,
+    createdAt: typeof record.created_at === "string" ? record.created_at : null,
+    slaPausedAt: openSlaPause(
+      record.sla_paused_at,
+      typeof record.closed_at === "string",
+    ),
     subcategoryId:
       typeof record.subcategory_id === "string" ? record.subcategory_id : null,
     statusId: record.status_id,
@@ -766,8 +814,11 @@ export async function addMobileTicketComment(input: {
   ticketId: string;
   body: string;
   visibility: TicketCommentVisibility;
+  /** Files uploaded for this message (with the same visibility). */
+  attachmentIds?: string[];
 }): Promise<void> {
-  const body = input.body.trim();
+  const attachmentIds = input.attachmentIds ?? [];
+  const body = messageBodyWithAttachments(input.body, attachmentIds.length);
   if (!body || Array.from(body).length > 50_000 || body.includes("\u0000")) {
     throw new Error(
       "Die Nachricht muss zwischen 1 und 50'000 Zeichen lang sein.",
@@ -779,6 +830,7 @@ export async function addMobileTicketComment(input: {
     ticketId: input.ticketId,
     body,
     visibility: input.visibility,
+    ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
   });
 }
 
@@ -795,4 +847,48 @@ export async function saveMobileTicketDraft(input: {
     body: input.body.slice(0, 50_000),
     visibility: input.visibility,
   });
+}
+
+export type TicketFilterDirectory = {
+  agents: { id: string; displayName: string }[];
+  departments: { id: string; key: string; label: string }[];
+};
+
+/**
+ * Agenten und Abteilungen für die Filter der Ticketliste (wie im Web, Funktion
+ * ticket-agent-assignment). Best effort: ohne Berechtigung bleiben die Listen leer.
+ */
+export async function loadTicketFilterDirectory(
+  tenantId: string,
+): Promise<TicketFilterDirectory> {
+  const { data, error } = await requireNextDesk().functions.invoke(
+    "ticket-agent-assignment",
+    {
+      body: {
+        type: "listForTenant",
+        tenantId,
+        includeAgents: true,
+        ticketIds: [],
+      },
+    },
+  );
+  const payload = (data as { data?: Record<string, unknown> } | null)?.data;
+  if (error || !payload) return { agents: [], departments: [] };
+  const agents = Array.isArray(payload.agents)
+    ? (payload.agents as Record<string, unknown>[]).flatMap((entry) =>
+        typeof entry.id === "string" && typeof entry.displayName === "string"
+          ? [{ id: entry.id, displayName: entry.displayName }]
+          : [],
+      )
+    : [];
+  const departments = Array.isArray(payload.departments)
+    ? (payload.departments as Record<string, unknown>[]).flatMap((entry) =>
+        typeof entry.id === "string" &&
+        typeof entry.key === "string" &&
+        typeof entry.label === "string"
+          ? [{ id: entry.id, key: entry.key, label: entry.label }]
+          : [],
+      )
+    : [];
+  return { agents, departments };
 }

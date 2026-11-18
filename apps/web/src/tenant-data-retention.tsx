@@ -8,13 +8,44 @@ type Policy = {
   attachmentRetentionDays: number;
   auditRetentionDays: number;
   legalHold: boolean;
+  /** Betriebsdaten, täglich automatisch bereinigt (Monate). */
+  monitoringRetentionMonths: number;
+  ipamRetentionMonths: number;
+  phishingRetentionMonths: number;
 };
 const initial: Policy = {
   ticketRetentionDays: 730,
   attachmentRetentionDays: 730,
   auditRetentionDays: 1825,
   legalHold: false,
+  monitoringRetentionMonths: 24,
+  ipamRetentionMonths: 24,
+  phishingRetentionMonths: 12,
 };
+const OPERATIONAL_FIELDS: {
+  key:
+    | "monitoringRetentionMonths"
+    | "ipamRetentionMonths"
+    | "phishingRetentionMonths";
+  label: string;
+  hint: string;
+}[] = [
+  {
+    key: "monitoringRetentionMonths",
+    label: "Monitoring",
+    hint: "Gelöste PRTG-Meldungen, Verlauf abgeschlossener Störungen, veraltete Sensorzustände",
+  },
+  {
+    key: "ipamRetentionMonths",
+    label: "IP-Adressverwaltung",
+    hint: "Beobachtungen der Discovery, Adressverlauf, Änderungsprotokoll",
+  },
+  {
+    key: "phishingRetentionMonths",
+    label: "Phishing-Meldungen",
+    hint: "Meldende Personen und Kopfzeilen abgeschlossener Fälle werden anonymisiert, nicht gelöscht",
+  },
+];
 function isPolicy(value: unknown): value is Policy {
   if (!value || typeof value !== "object") return false;
   const item = value as Record<string, unknown>;
@@ -27,6 +58,16 @@ function isPolicy(value: unknown): value is Policy {
       (key) => typeof item[key] === "number" && Number.isInteger(item[key]),
     ) && typeof item.legalHold === "boolean"
   );
+}
+function withOperationalDefaults(value: Policy): Policy {
+  const months = (entry: unknown, fallback: number) =>
+    typeof entry === "number" && Number.isInteger(entry) ? entry : fallback;
+  return {
+    ...value,
+    monitoringRetentionMonths: months(value.monitoringRetentionMonths, 24),
+    ipamRetentionMonths: months(value.ipamRetentionMonths, 24),
+    phishingRetentionMonths: months(value.phishingRetentionMonths, 12),
+  };
 }
 
 export function TenantDataRetention({ tenantId }: { tenantId: string }) {
@@ -44,7 +85,7 @@ export function TenantDataRetention({ tenantId }: { tenantId: string }) {
       );
       if (error || !isPolicy(data?.data?.policy))
         throw error ?? new Error("Ungültige Retention-Antwort");
-      setPolicy(data.data.policy);
+      setPolicy(withOperationalDefaults(data.data.policy));
     } catch (error) {
       setMessage(
         await functionErrorMessage(
@@ -71,7 +112,7 @@ export function TenantDataRetention({ tenantId }: { tenantId: string }) {
       );
       if (error) throw error;
       setMessage(
-        "Die Retention-Richtlinie wurde gespeichert. Es wurde nichts automatisch gelöscht.",
+        "Die Retention-Richtlinie wurde gespeichert. Tickets und Anhänge werden nicht automatisch gelöscht; Betriebsdaten werden nach den angegebenen Fristen täglich bereinigt.",
       );
     } catch (error) {
       setMessage(
@@ -155,6 +196,32 @@ export function TenantDataRetention({ tenantId }: { tenantId: string }) {
               />
             </label>
           </div>
+          <fieldset className="tenant-retention__operational">
+            <legend>Betriebsdaten (automatische Bereinigung)</legend>
+            <p className="data-caption">
+              Diese Daten werden täglich nach Ablauf der Frist gelöscht bzw.
+              anonymisiert. Die Aufbewahrungssperre unten hält die Bereinigung
+              an.
+            </p>
+            <div className="tenant-retention__grid">
+              {OPERATIONAL_FIELDS.map((field) => (
+                <label key={field.key}>
+                  {field.label} <span>in Monaten</span>
+                  <input
+                    max="120"
+                    min="1"
+                    onChange={(event) =>
+                      update(field.key, Number(event.target.value))
+                    }
+                    required
+                    type="number"
+                    value={policy[field.key]}
+                  />
+                  <small>{field.hint}</small>
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <label className="tenant-retention__hold">
             <input
               checked={policy.legalHold}
@@ -165,7 +232,8 @@ export function TenantDataRetention({ tenantId }: { tenantId: string }) {
               <strong>Rechtliche Aufbewahrungssperre</strong>
               <small>
                 Es dürfen keine späteren kontrollierten Löschvorgänge für diesen
-                Mandanten ausgeführt werden.
+                Mandanten ausgeführt werden; auch die automatische Bereinigung
+                der Betriebsdaten pausiert.
               </small>
             </span>
           </label>

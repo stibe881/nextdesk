@@ -6,9 +6,17 @@ import {
   useState,
   type DragEvent,
 } from "react";
-import { Download, FileText, Image as ImageIcon, Trash2, UploadCloud, X } from "lucide-react";
+import {
+  Download,
+  FileText,
+  Image as ImageIcon,
+  Trash2,
+  UploadCloud,
+  X,
+} from "lucide-react";
 import { supabase } from "./lib/supabase";
 
+import { confirmDialog } from "./app-dialog";
 export type RecordEntityType = "contract" | "license";
 export type RecordAttachment = {
   id: string;
@@ -92,7 +100,10 @@ export async function uploadRecordAttachment(
     contentType,
     byteSize: file.size,
   });
-  if (typeof created.signedUrl !== "string" || typeof created.storageObjectPath !== "string") {
+  if (
+    typeof created.signedUrl !== "string" ||
+    typeof created.storageObjectPath !== "string"
+  ) {
     throw new Error("Ungültige Upload-Antwort.");
   }
   const upload = await fetch(created.signedUrl, {
@@ -100,7 +111,8 @@ export async function uploadRecordAttachment(
     headers: { "Content-Type": contentType },
     body: file,
   });
-  if (!upload.ok) throw new Error(`«${file.name}» konnte nicht hochgeladen werden.`);
+  if (!upload.ok)
+    throw new Error(`«${file.name}» konnte nicht hochgeladen werden.`);
   const completed = await invokeAttachments({
     type: "completeUpload",
     tenantId,
@@ -121,9 +133,12 @@ function Thumbnail({ file }: { file: File }) {
     () => (file.type.startsWith("image/") ? URL.createObjectURL(file) : null),
     [file],
   );
-  useEffect(() => () => {
-    if (url) URL.revokeObjectURL(url);
-  }, [url]);
+  useEffect(
+    () => () => {
+      if (url) URL.revokeObjectURL(url);
+    },
+    [url],
+  );
   return url ? (
     <img alt="" className="record-attachments__thumb" src={url} />
   ) : (
@@ -175,9 +190,17 @@ export function RecordAttachments({
         entityType,
         entityId,
       });
-      setAttachments(Array.isArray(data.attachments) ? (data.attachments as RecordAttachment[]) : []);
+      setAttachments(
+        Array.isArray(data.attachments)
+          ? (data.attachments as RecordAttachment[])
+          : [],
+      );
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Anhänge konnten nicht geladen werden.");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Anhänge konnten nicht geladen werden.",
+      );
     } finally {
       setLoading(false);
     }
@@ -204,18 +227,30 @@ export function RecordAttachments({
     for (const file of valid) {
       setUploading((current) => [...current, file.name]);
       try {
-        const saved = await uploadRecordAttachment(tenantId, entityType, entityId, file);
+        const saved = await uploadRecordAttachment(
+          tenantId,
+          entityType,
+          entityId,
+          file,
+        );
         setAttachments((current) => [saved, ...current]);
       } catch (reason) {
         setError((current) =>
-          [current, reason instanceof Error ? reason.message : `«${file.name}» konnte nicht hochgeladen werden.`]
+          [
+            current,
+            reason instanceof Error
+              ? reason.message
+              : `«${file.name}» konnte nicht hochgeladen werden.`,
+          ]
             .filter(Boolean)
             .join(" "),
         );
       } finally {
         setUploading((current) => {
           const index = current.indexOf(file.name);
-          return index < 0 ? current : current.filter((_, position) => position !== index);
+          return index < 0
+            ? current
+            : current.filter((_, position) => position !== index);
         });
       }
     }
@@ -236,19 +271,24 @@ export function RecordAttachments({
         tenantId,
         attachmentId: attachment.id,
       });
-      if (typeof data.url !== "string") throw new Error("Ungültige Antwort des Servers.");
+      if (typeof data.url !== "string")
+        throw new Error("Ungültige Antwort des Servers.");
       const link = document.createElement("a");
       link.href = data.url;
       link.rel = "noopener";
       link.target = "_blank";
       link.click();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Der Download ist fehlgeschlagen.");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Der Download ist fehlgeschlagen.",
+      );
     }
   }
 
   async function remove(attachment: RecordAttachment) {
-    if (!window.confirm(`«${attachment.filename}» löschen?`)) return;
+    if (!(await confirmDialog(`«${attachment.filename}» löschen?`))) return;
     setError("");
     try {
       await invokeAttachments({
@@ -256,9 +296,15 @@ export function RecordAttachments({
         tenantId,
         attachmentId: attachment.id,
       });
-      setAttachments((current) => current.filter((item) => item.id !== attachment.id));
+      setAttachments((current) =>
+        current.filter((item) => item.id !== attachment.id),
+      );
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Der Anhang konnte nicht gelöscht werden.");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Der Anhang konnte nicht gelöscht werden.",
+      );
     }
   }
 
@@ -292,7 +338,9 @@ export function RecordAttachments({
         >
           <UploadCloud aria-hidden="true" size={28} />
           <strong>Dateien hierher ziehen</strong>
-          <span>oder klicken zum Auswählen · PDF, PNG, JPG, WebP · max. 25 MB</span>
+          <span>
+            oder klicken zum Auswählen · PDF, PNG, JPG, WebP · max. 25 MB
+          </span>
           <input
             accept={ACCEPT}
             hidden
@@ -317,12 +365,18 @@ export function RecordAttachments({
             <Thumbnail file={file} />
             <div>
               <strong>{file.name}</strong>
-              <small>{formatSize(file.size)} · wird beim Speichern hochgeladen</small>
+              <small>
+                {formatSize(file.size)} · wird beim Speichern hochgeladen
+              </small>
             </div>
             <button
               aria-label={`«${file.name}» entfernen`}
               className="icon-button"
-              onClick={() => onQueuedChange(queued.filter((_, position) => position !== index))}
+              onClick={() =>
+                onQueuedChange(
+                  queued.filter((_, position) => position !== index),
+                )
+              }
               type="button"
             >
               <X size={16} />
@@ -353,9 +407,9 @@ export function RecordAttachments({
               <strong>{attachment.filename}</strong>
               <small>
                 {formatSize(attachment.byteSize)} ·{" "}
-                {new Intl.DateTimeFormat("de-CH", { dateStyle: "medium" }).format(
-                  new Date(attachment.createdAt),
-                )}
+                {new Intl.DateTimeFormat("de-CH", {
+                  dateStyle: "medium",
+                }).format(new Date(attachment.createdAt))}
               </small>
             </div>
             <button
@@ -379,7 +433,9 @@ export function RecordAttachments({
           </li>
         ))}
       </ul>
-      {loading ? <p className="record-attachments__hint">Anhänge werden geladen …</p> : null}
+      {loading ? (
+        <p className="record-attachments__hint">Anhänge werden geladen …</p>
+      ) : null}
       {!loading &&
       !error &&
       entityId &&

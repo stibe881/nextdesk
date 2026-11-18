@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -10,6 +11,14 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
+import {
+  FormCard,
+  FormDialog,
+  FormField,
+  FormGrid,
+  FormSummary,
+  FormSwitch,
+} from "./form-kit";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import {
   RecordAttachments,
@@ -22,6 +31,16 @@ import {
   type DepartmentOption,
 } from "./lib/contract-departments";
 
+import { confirmDialog } from "./app-dialog";
+import { PickOrCreate } from "./pick-or-create";
+import {
+  invokeErrorMessage,
+  licenseOptions,
+  newLicenseValues,
+  newRecordProblem,
+  parseLinkableLicenses,
+  type LinkableLicense,
+} from "./lib/contract-license-link";
 type ContractStatus = "draft" | "active" | "terminated" | "archived";
 type ContractType = string;
 type Contract = {
@@ -44,6 +63,8 @@ type Contract = {
   autoRenew: boolean;
   renewalMonths: number | null;
   assetIds: string[];
+  /** Licenses covered by this contract (missing from older servers). */
+  licenseIds?: string[];
   departmentId: string | null;
   responsibleUserId: string | null;
   notes: string | null;
@@ -78,6 +99,7 @@ type Form = {
   autoRenew: boolean;
   renewalMonths: string;
   assetIds: string[];
+  licenseIds: string[];
   departmentId: string;
   responsibleUserId: string;
   notes: string;
@@ -101,6 +123,7 @@ const EMPTY: Form = {
   autoRenew: false,
   renewalMonths: "",
   assetIds: [],
+  licenseIds: [],
   departmentId: "",
   responsibleUserId: "",
   notes: "",
@@ -206,6 +229,7 @@ function formFor(contract: Contract): Form {
     renewalMonths:
       contract.renewalMonths === null ? "" : String(contract.renewalMonths),
     assetIds: contract.assetIds,
+    licenseIds: contract.licenseIds ?? [],
     departmentId: contract.departmentId ?? "",
     responsibleUserId: contract.responsibleUserId ?? "",
     notes: contract.notes ?? "",
@@ -245,6 +269,7 @@ export function Contracts({
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [assets, setAssets] = useState<AssetOption[]>([]);
   const [assetSearch, setAssetSearch] = useState("");
+  const [licenses, setLicenses] = useState<LinkableLicense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -262,6 +287,51 @@ export function Contracts({
   const [documentsFor, setDocumentsFor] = useState<Contract | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
+  const licenseTitle = (id: string) =>
+    licenses.find((license) => license.id === id)?.title ?? "Lizenz";
+  const contractTitle = (id: string) =>
+    contracts.find((contract) => contract.id === id)?.title ?? null;
+  // Creates a license from the contract form; it is linked when the contract
+  // is saved.
+  const createLicense = async (name: string): Promise<string | null> => {
+    if (!supabase) return null;
+    const problem = newRecordProblem(
+      name,
+      form.counterpartyName,
+      "Vertragspartner",
+    );
+    if (problem) {
+      setError(problem);
+      return null;
+    }
+    setError("");
+    const result = await supabase.functions.invoke("licenses", {
+      body: {
+        type: "create",
+        tenantId,
+        values: newLicenseValues(name, form),
+      },
+    });
+    const created = result.error
+      ? null
+      : parseLinkableLicenses([responseData(result.data)?.license])[0];
+    if (!created) {
+      setError(
+        (await invokeErrorMessage(result.error)) ||
+          "Die Lizenz konnte nicht erstellt werden.",
+      );
+      return null;
+    }
+    setLicenses((current) =>
+      [...current, created].sort((a, b) =>
+        a.title.localeCompare(b.title, "de-CH"),
+      ),
+    );
+    setNotice(
+      `Die Lizenz «${created.title}» wurde erstellt und wird beim Speichern verknüpft.`,
+    );
+    return created.id;
+  };
   const load = async () => {
     if (!supabase) return;
     setLoading(true);
@@ -277,6 +347,15 @@ export function Contracts({
             : [];
         })
         .catch(() => [] as AssetOption[]);
+      // Likewise the licenses offered for linking.
+      const licensesPromise = supabase.functions
+        .invoke("contracts", { body: { type: "listLicenses", tenantId } })
+        .then((result) =>
+          result.error
+            ? []
+            : parseLinkableLicenses(responseData(result.data)?.licenses),
+        )
+        .catch(() => [] as LinkableLicense[]);
       const [contractsResult, peopleResult] = await Promise.all([
         supabase.functions.invoke("contracts", {
           body: { type: "list", tenantId, includeArchived },
@@ -295,6 +374,7 @@ export function Contracts({
         parseDepartmentOptions(responseData(contractsResult.data)),
       );
       setAssets(await assetsPromise);
+      setLicenses(await licensesPromise);
       setPeople(
         nextPeople.sort((a, b) =>
           a.displayName.localeCompare(b.displayName, "de-CH"),
@@ -302,7 +382,10 @@ export function Contracts({
       );
     } catch {
       setError(
-        "Verträge konnten nicht geladen werden. Prüfen Sie Ihre Berechtigung oder versuchen Sie es später erneut.",
+        tn(
+          "Verträge konnten nicht geladen werden. Prüfe deine Berechtigung oder versuche es später erneut.",
+          "Verträge konnten nicht geladen werden. Prüfen Sie Ihre Berechtigung oder versuchen Sie es später erneut.",
+        ),
       );
     } finally {
       setLoading(false);
@@ -464,6 +547,7 @@ export function Contracts({
             ? Number(form.renewalMonths)
             : null,
         assetIds: form.assetIds,
+        licenseIds: form.licenseIds,
         departmentId: form.departmentId || null,
         responsibleUserId: form.responsibleUserId || null,
         notes: form.notes || null,
@@ -509,6 +593,31 @@ export function Contracts({
           (a, b) => a.title.localeCompare(b.title, "de-CH"),
         ),
       );
+      if (saved.licenseIds) {
+        const linked = saved.licenseIds;
+        // A license has one contract: it leaves the contract it belonged to.
+        setLicenses((current) =>
+          current.map((license) =>
+            linked.includes(license.id)
+              ? { ...license, contractId: saved.id }
+              : license.contractId === saved.id
+                ? { ...license, contractId: null }
+                : license,
+          ),
+        );
+        setContracts((current) =>
+          current.map((item) =>
+            item.id === saved.id
+              ? item
+              : {
+                  ...item,
+                  licenseIds: (item.licenseIds ?? []).filter(
+                    (id) => !linked.includes(id),
+                  ),
+                },
+          ),
+        );
+      }
       setNotice(
         form.id
           ? "Der Vertrag wurde aktualisiert."
@@ -525,7 +634,10 @@ export function Contracts({
         }
         if (failed > 0) {
           setError(
-            `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffnen Sie «Dokumente», um es erneut zu versuchen.`,
+            tn(
+              `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffne «Dokumente», um es erneut zu versuchen.`,
+              `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffnen Sie «Dokumente», um es erneut zu versuchen.`,
+            ),
           );
         }
       }
@@ -535,7 +647,10 @@ export function Contracts({
         reason instanceof Error && reason.message === "invalid_cost"
           ? "Die Kosten müssen eine Zahl ab 0 sein."
           : reason instanceof Error && reason.message === "cost_period_missing"
-            ? "Bitte wählen Sie die Kostenperiode."
+            ? tn(
+                "Bitte wähle die Kostenperiode.",
+                "Bitte wählen Sie die Kostenperiode.",
+              )
             : reason instanceof Error && reason.message === "invalid_renewal"
               ? "Die Verlängerung muss zwischen 1 und 120 Monaten liegen."
               : reason instanceof Error && reason.message === "invalid_dates"
@@ -554,9 +669,9 @@ export function Contracts({
   const archive = async (contract: Contract) => {
     if (
       !supabase ||
-      !window.confirm(
+      !(await confirmDialog(
         `«${contract.title}» archivieren? Archivierte Verträge bleiben nachvollziehbar, können aber nicht mehr geändert werden.`,
-      )
+      ))
     )
       return;
     setPending(true);
@@ -750,6 +865,16 @@ export function Contracts({
                         </dd>
                       </div>
                     ) : null}
+                    {(contract.licenseIds ?? []).length > 0 ? (
+                      <div>
+                        <dt>Lizenzen</dt>
+                        <dd>
+                          {(contract.licenseIds ?? [])
+                            .map(licenseTitle)
+                            .join(", ")}
+                        </dd>
+                      </div>
+                    ) : null}
                     {departmentLabel(contract.departmentId, departments) ? (
                       <div>
                         <dt>Abteilung</dt>
@@ -823,40 +948,57 @@ export function Contracts({
       )}
       {editorOpen &&
         createPortal(
-          <div
-            className="contracts__dialog-backdrop"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) close();
-            }}
+          <FormDialog
+            eyebrow={form.id ? "Vertrag bearbeiten" : "Neuer Vertrag"}
+            onClose={close}
+            onSubmit={save}
+            side={
+              <FormSummary
+                eyebrow="Vertrag"
+                rows={[
+                  ["Gegenpartei", form.counterpartyName.trim()],
+                  [
+                    "Status",
+                    form.status === "draft"
+                      ? "Entwurf"
+                      : form.status === "active"
+                        ? "Aktiv"
+                        : "Beendet",
+                  ],
+                  ["Läuft bis", form.endsOn ? formatDate(form.endsOn) : ""],
+                  [
+                    "Kündigen bis",
+                    form.endsOn && form.noticePeriodDays.trim() !== ""
+                      ? formatDate(
+                          new Date(
+                            new Date(`${form.endsOn}T12:00:00`).getTime() -
+                              Number(form.noticePeriodDays) * 86_400_000,
+                          )
+                            .toISOString()
+                            .slice(0, 10),
+                        )
+                      : "",
+                  ],
+                  [
+                    "Kosten",
+                    form.costAmount.trim() !== ""
+                      ? `${form.costCurrency} ${form.costAmount}${
+                          form.costPeriod
+                            ? ` ${costPeriodSuffix[form.costPeriod]}`
+                            : ""
+                        }`
+                      : "",
+                  ],
+                ]}
+                title={form.title.trim()}
+              />
+            }
+            submitting={pending}
+            title={form.id ? "Vertrag aktualisieren" : "Vertrag erfassen"}
           >
-            <section
-              className="contracts__editor-dialog"
-              aria-labelledby="contract-editor-heading"
-              aria-modal="true"
-              role="dialog"
-            >
-              <header className="panel-heading">
-                <div>
-                  <p className="eyebrow">
-                    {form.id ? "Vertrag bearbeiten" : "Neuer Vertrag"}
-                  </p>
-                  <h2 id="contract-editor-heading">
-                    {form.id ? "Vertrag aktualisieren" : "Vertrag erfassen"}
-                  </h2>
-                </div>
-                <button
-                  aria-label="Dialog schliessen"
-                  className="icon-button"
-                  disabled={pending}
-                  onClick={close}
-                  type="button"
-                >
-                  <X size={18} />
-                </button>
-              </header>
-              <form onSubmit={save}>
-                <label>
-                  Bezeichnung
+            <FormCard title="Vertrag">
+              <FormGrid cols={2}>
+                <FormField label="Bezeichnung" required>
                   <input
                     ref={nameRef}
                     required
@@ -867,9 +1009,8 @@ export function Contracts({
                       setForm({ ...form, title: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Gegenpartei
+                </FormField>
+                <FormField label="Gegenpartei" required>
                   <input
                     required
                     minLength={2}
@@ -886,9 +1027,8 @@ export function Contracts({
                       <option key={name} value={name} />
                     ))}
                   </datalist>
-                </label>
-                <label>
-                  Vertragsnummer
+                </FormField>
+                <FormField label="Vertragsnummer">
                   <input
                     maxLength={120}
                     value={form.referenceNumber}
@@ -896,9 +1036,8 @@ export function Contracts({
                       setForm({ ...form, referenceNumber: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Art
+                </FormField>
+                <FormField label="Art">
                   <select
                     value={addingType ? NEW_TYPE : form.contractType}
                     onChange={(event) => {
@@ -954,9 +1093,8 @@ export function Contracts({
                       </button>
                     </span>
                   ) : null}
-                </label>
-                <label>
-                  Status
+                </FormField>
+                <FormField label="Status">
                   <select
                     value={form.status}
                     onChange={(event) =>
@@ -970,49 +1108,12 @@ export function Contracts({
                     <option value="active">Aktiv</option>
                     <option value="terminated">Beendet</option>
                   </select>
-                </label>
-                {departments.length > 1 ? (
-                  <label>
-                    Abteilung
-                    <select
-                      required
-                      value={form.departmentId}
-                      onChange={(event) =>
-                        setForm({ ...form, departmentId: event.target.value })
-                      }
-                    >
-                      <option disabled value="">
-                        Abteilung wählen
-                      </option>
-                      {departments.map((department) => (
-                        <option key={department.id} value={department.id}>
-                          {department.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-                <label>
-                  Verantwortliche Person
-                  <select
-                    value={form.responsibleUserId}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        responsibleUserId: event.target.value,
-                      })
-                    }
-                  >
-                    <option value="">Nicht zugeordnet</option>
-                    {people.map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {person.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Startdatum
+                </FormField>
+              </FormGrid>
+            </FormCard>
+            <FormCard title="Laufzeit">
+              <FormGrid cols={3}>
+                <FormField label="Startdatum">
                   <input
                     type="date"
                     value={form.startsOn}
@@ -1020,9 +1121,8 @@ export function Contracts({
                       setForm({ ...form, startsOn: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Enddatum
+                </FormField>
+                <FormField label="Enddatum">
                   <input
                     type="date"
                     value={form.endsOn}
@@ -1030,9 +1130,8 @@ export function Contracts({
                       setForm({ ...form, endsOn: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Kündigungsfrist (Tage)
+                </FormField>
+                <FormField label="Kündigungsfrist (Tage)">
                   <input
                     min="0"
                     max="3650"
@@ -1043,9 +1142,13 @@ export function Contracts({
                       setForm({ ...form, noticePeriodDays: event.target.value })
                     }
                   />
-                </label>
-                <label>
-                  Erinnerung per Ticket
+                </FormField>
+              </FormGrid>
+              <FormGrid cols={2}>
+                <FormField
+                  hint="Ein Ticket erinnert die verantwortliche Person rechtzeitig. Nur bei aktiven Einträgen mit Ablaufdatum."
+                  label="Erinnerung per Ticket"
+                >
                   <select
                     value={form.reminderDaysBefore}
                     onChange={(event) =>
@@ -1070,30 +1173,23 @@ export function Contracts({
                       </option>
                     ))}
                   </select>
-                  <small>
-                    Ein Ticket erinnert die verantwortliche Person rechtzeitig.
-                    Nur bei aktiven Einträgen mit Ablaufdatum.
-                  </small>
-                </label>
-                <label className="contracts__check">
-                  <input
-                    checked={form.cancelled}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        cancelled: event.target.checked,
-                        cancelledOn: event.target.checked
-                          ? form.cancelledOn
-                          : "",
-                      })
-                    }
-                    type="checkbox"
-                  />
-                  Bereits gekündigt
-                </label>
-                {form.cancelled ? (
-                  <label>
-                    Gekündigt am
+                </FormField>
+              </FormGrid>
+              <FormSwitch
+                checked={form.cancelled}
+                hint="Zeigt das Feld «Gekündigt am»."
+                label="Bereits gekündigt"
+                onChange={(checked) =>
+                  setForm({
+                    ...form,
+                    cancelled: checked,
+                    cancelledOn: checked ? form.cancelledOn : "",
+                  })
+                }
+              />
+              {form.cancelled ? (
+                <FormGrid cols={3}>
+                  <FormField label="Gekündigt am">
                     <input
                       type="date"
                       value={form.cancelledOn}
@@ -1101,83 +1197,24 @@ export function Contracts({
                         setForm({ ...form, cancelledOn: event.target.value })
                       }
                     />
-                  </label>
-                ) : (
-                  <span aria-hidden="true" />
-                )}
-                <label>
-                  Kosten
-                  <input
-                    inputMode="decimal"
-                    min="0"
-                    step="0.01"
-                    type="number"
-                    value={form.costAmount}
-                    onChange={(event) =>
-                      setForm({ ...form, costAmount: event.target.value })
-                    }
-                  />
-                </label>
-                <div className="contracts__cost-row">
-                  <label>
-                    Währung
-                    <select
-                      value={form.costCurrency}
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          costCurrency: event.target
-                            .value as Form["costCurrency"],
-                        })
-                      }
-                    >
-                      <option value="CHF">CHF</option>
-                      <option value="EUR">EUR</option>
-                      <option value="USD">USD</option>
-                    </select>
-                  </label>
-                  <label>
-                    Kostenperiode
-                    <select
-                      required={form.costAmount.trim() !== ""}
-                      value={form.costPeriod}
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          costPeriod: event.target.value as Form["costPeriod"],
-                        })
-                      }
-                    >
-                      <option value="">Bitte wählen</option>
-                      {(Object.keys(costPeriodLabel) as CostPeriod[]).map(
-                        (key) => (
-                          <option key={key} value={key}>
-                            {costPeriodLabel[key]}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </label>
-                </div>
-                <label className="contracts__check">
-                  <input
-                    checked={form.autoRenew}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        autoRenew: event.target.checked,
-                        renewalMonths: event.target.checked
-                          ? form.renewalMonths
-                          : "",
-                      })
-                    }
-                    type="checkbox"
-                  />
-                  Automatische Verlängerung
-                </label>
-                {form.autoRenew ? (
-                  <label>
-                    Verlängerung um (Monate)
+                  </FormField>
+                </FormGrid>
+              ) : null}
+              <FormSwitch
+                checked={form.autoRenew}
+                hint="Der Vertrag verlängert sich um die angegebene Dauer."
+                label="Automatische Verlängerung"
+                onChange={(checked) =>
+                  setForm({
+                    ...form,
+                    autoRenew: checked,
+                    renewalMonths: checked ? form.renewalMonths : "",
+                  })
+                }
+              />
+              {form.autoRenew ? (
+                <FormGrid cols={3}>
+                  <FormField label="Verlängerung um (Monate)">
                     <input
                       inputMode="numeric"
                       max="120"
@@ -1188,128 +1225,265 @@ export function Contracts({
                         setForm({ ...form, renewalMonths: event.target.value })
                       }
                     />
-                  </label>
-                ) : (
-                  <span aria-hidden="true" />
-                )}
-                <div className="contracts__notes contracts__assets">
-                  <span className="contracts__assets-label">
-                    Verknüpfte Assets
-                  </span>
-                  {form.assetIds.length > 0 ? (
-                    <ul className="contracts__asset-chips">
-                      {form.assetIds.map((id) => (
-                        <li key={id}>
-                          {assets.find((asset) => asset.id === id)?.name ??
-                            "Unbekanntes Asset"}
+                  </FormField>
+                </FormGrid>
+              ) : null}
+            </FormCard>
+            <FormCard title="Kosten">
+              <FormGrid cols={3}>
+                <FormField label="Kosten">
+                  <input
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    type="number"
+                    value={form.costAmount}
+                    onChange={(event) =>
+                      setForm({ ...form, costAmount: event.target.value })
+                    }
+                  />
+                </FormField>
+                <FormField label="Währung">
+                  <select
+                    value={form.costCurrency}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        costCurrency: event.target
+                          .value as Form["costCurrency"],
+                      })
+                    }
+                  >
+                    <option value="CHF">CHF</option>
+                    <option value="EUR">EUR</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </FormField>
+                <FormField
+                  label="Kostenperiode"
+                  required={form.costAmount.trim() !== ""}
+                >
+                  <select
+                    required={form.costAmount.trim() !== ""}
+                    value={form.costPeriod}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        costPeriod: event.target.value as Form["costPeriod"],
+                      })
+                    }
+                  >
+                    <option value="">Bitte wählen</option>
+                    {(Object.keys(costPeriodLabel) as CostPeriod[]).map(
+                      (key) => (
+                        <option key={key} value={key}>
+                          {costPeriodLabel[key]}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </FormField>
+              </FormGrid>
+            </FormCard>
+            <FormCard title="Zuständigkeit">
+              <FormGrid cols={2}>
+                {departments.length > 1 ? (
+                  <FormField label="Abteilung" required>
+                    <select
+                      required
+                      value={form.departmentId}
+                      onChange={(event) =>
+                        setForm({ ...form, departmentId: event.target.value })
+                      }
+                    >
+                      <option disabled value="">
+                        Abteilung wählen
+                      </option>
+                      {departments.map((department) => (
+                        <option key={department.id} value={department.id}>
+                          {department.name}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                ) : null}
+                <FormField label="Verantwortliche Person">
+                  <select
+                    value={form.responsibleUserId}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        responsibleUserId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">Nicht zugeordnet</option>
+                    {people.map((person) => (
+                      <option key={person.id} value={person.id}>
+                        {person.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </FormGrid>
+            </FormCard>
+            <FormCard title="Dokumente und Verknüpfungen">
+              <div className="contracts__assets">
+                <span className="contracts__assets-label">
+                  Verknüpfte Assets
+                </span>
+                {form.assetIds.length > 0 ? (
+                  <ul className="contracts__asset-chips">
+                    {form.assetIds.map((id) => (
+                      <li key={id}>
+                        {assets.find((asset) => asset.id === id)?.name ??
+                          "Unbekanntes Asset"}
+                        <button
+                          aria-label="Verknüpfung entfernen"
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              assetIds: form.assetIds.filter(
+                                (assetId) => assetId !== id,
+                              ),
+                            })
+                          }
+                          type="button"
+                        >
+                          <X size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <input
+                  aria-label="Assets suchen"
+                  onChange={(event) => setAssetSearch(event.target.value)}
+                  placeholder={
+                    assets.length === 0
+                      ? "Keine Assets vorhanden"
+                      : "Asset suchen und anklicken …"
+                  }
+                  disabled={assets.length === 0}
+                  value={assetSearch}
+                />
+                {assetSearch.trim() ? (
+                  <ul className="contracts__asset-results">
+                    {assets
+                      .filter(
+                        (asset) =>
+                          !form.assetIds.includes(asset.id) &&
+                          `${asset.name} ${asset.tag ?? ""}`
+                            .toLocaleLowerCase("de-CH")
+                            .includes(
+                              assetSearch.trim().toLocaleLowerCase("de-CH"),
+                            ),
+                      )
+                      .slice(0, 8)
+                      .map((asset) => (
+                        <li key={asset.id}>
                           <button
-                            aria-label="Verknüpfung entfernen"
-                            onClick={() =>
+                            onClick={() => {
                               setForm({
                                 ...form,
-                                assetIds: form.assetIds.filter(
-                                  (assetId) => assetId !== id,
-                                ),
-                              })
-                            }
+                                assetIds: [...form.assetIds, asset.id],
+                              });
+                              setAssetSearch("");
+                            }}
                             type="button"
                           >
-                            <X size={12} />
+                            <strong>{asset.name}</strong>
+                            {asset.tag || asset.kind ? (
+                              <small>
+                                {[asset.tag, asset.kind]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </small>
+                            ) : null}
                           </button>
                         </li>
                       ))}
-                    </ul>
-                  ) : null}
-                  <input
-                    aria-label="Assets suchen"
-                    onChange={(event) => setAssetSearch(event.target.value)}
-                    placeholder={
-                      assets.length === 0
-                        ? "Keine Assets vorhanden"
-                        : "Asset suchen und anklicken …"
-                    }
-                    disabled={assets.length === 0}
-                    value={assetSearch}
-                  />
-                  {assetSearch.trim() ? (
-                    <ul className="contracts__asset-results">
-                      {assets
-                        .filter(
-                          (asset) =>
-                            !form.assetIds.includes(asset.id) &&
-                            `${asset.name} ${asset.tag ?? ""}`
-                              .toLocaleLowerCase("de-CH")
-                              .includes(
-                                assetSearch.trim().toLocaleLowerCase("de-CH"),
+                  </ul>
+                ) : null}
+              </div>
+              <div className="contracts__assets">
+                <span
+                  className="contracts__assets-label"
+                  id="contract-licenses-label"
+                >
+                  Verknüpfte Lizenzen
+                </span>
+                {form.licenseIds.length > 0 ? (
+                  <ul className="contracts__asset-chips">
+                    {form.licenseIds.map((id) => (
+                      <li key={id}>
+                        {licenseTitle(id)}
+                        <button
+                          aria-label={`Verknüpfung mit «${licenseTitle(id)}» entfernen`}
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              licenseIds: form.licenseIds.filter(
+                                (licenseId) => licenseId !== id,
                               ),
-                        )
-                        .slice(0, 8)
-                        .map((asset) => (
-                          <li key={asset.id}>
-                            <button
-                              onClick={() => {
-                                setForm({
-                                  ...form,
-                                  assetIds: [...form.assetIds, asset.id],
-                                });
-                                setAssetSearch("");
-                              }}
-                              type="button"
-                            >
-                              <strong>{asset.name}</strong>
-                              {asset.tag || asset.kind ? (
-                                <small>
-                                  {[asset.tag, asset.kind]
-                                    .filter(Boolean)
-                                    .join(" · ")}
-                                </small>
-                              ) : null}
-                            </button>
-                          </li>
-                        ))}
-                    </ul>
-                  ) : null}
-                </div>
-                <label className="contracts__notes">
-                  Notiz
-                  <textarea
-                    maxLength={2000}
-                    rows={5}
-                    value={form.notes}
-                    onChange={(event) =>
-                      setForm({ ...form, notes: event.target.value })
-                    }
-                  />
-                </label>
-                <div className="contracts__notes">
-                  <RecordAttachments
-                    entityId={form.id}
-                    entityType="contract"
-                    onQueuedChange={setQueuedFiles}
-                    queued={queuedFiles}
-                    tenantId={tenantId}
-                  />
-                </div>
-                <div className="form-actions">
-                  <button
-                    className="secondary-button"
-                    disabled={pending}
-                    onClick={close}
-                    type="button"
-                  >
-                    Abbrechen
-                  </button>
-                  <button
-                    className="primary-button"
-                    disabled={pending}
-                    type="submit"
-                  >
-                    {pending ? "Wird gespeichert …" : "Speichern"}
-                  </button>
-                </div>
-              </form>
-            </section>
-          </div>,
+                            })
+                          }
+                          type="button"
+                        >
+                          <X size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <PickOrCreate
+                  createLabel="Neue Lizenz"
+                  createPlaceholder="z. B. Microsoft 365 E3"
+                  emptyLabel="Lizenz hinzufügen …"
+                  id="contract-licenses"
+                  labelledBy="contract-licenses-label"
+                  onChange={(value) => {
+                    if (!value) return;
+                    setForm((current) =>
+                      current.licenseIds.includes(value)
+                        ? current
+                        : {
+                            ...current,
+                            licenseIds: [...current.licenseIds, value],
+                          },
+                    );
+                  }}
+                  onCreate={createLicense}
+                  options={licenseOptions(
+                    licenses,
+                    form.licenseIds,
+                    form.id,
+                    contractTitle,
+                  )}
+                  value={null}
+                />
+              </div>
+              <RecordAttachments
+                entityId={form.id}
+                entityType="contract"
+                onQueuedChange={setQueuedFiles}
+                queued={queuedFiles}
+                tenantId={tenantId}
+              />
+            </FormCard>
+            <FormCard collapsed title="Notiz">
+              <FormField label="Notiz">
+                <textarea
+                  maxLength={2000}
+                  rows={5}
+                  value={form.notes}
+                  onChange={(event) =>
+                    setForm({ ...form, notes: event.target.value })
+                  }
+                />
+              </FormField>
+            </FormCard>
+          </FormDialog>,
           document.body,
         )}
       {documentsFor &&

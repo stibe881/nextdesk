@@ -457,6 +457,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .select(
           "id, tenant_id, department_id, assigned_team_id, assigned_agent_id",
         )
+        .is("deleted_at", null)
         .eq("tenant_id", action.tenantId)
         .in("id", action.ticketIds)
       : { data: [], error: null };
@@ -536,6 +537,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const { data: ticket, error: ticketError } = await context.supabaseAdmin
     .from("tickets")
     .select("id, tenant_id, department_id, assigned_team_id, assigned_agent_id")
+    .is("deleted_at", null)
     .eq("id", action.ticketId)
     .eq("tenant_id", action.tenantId)
     .maybeSingle();

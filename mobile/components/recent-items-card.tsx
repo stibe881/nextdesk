@@ -11,6 +11,7 @@ import {
   type RecentItemType,
 } from "@/lib/recent-items-model";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 const COLLAPSED = 5;
 
@@ -66,7 +67,9 @@ export function RecentItemsCard({ tenantId }: { tenantId: string }) {
           <Text accessibilityRole="header" style={styles.title}>
             Zuletzt angesehen
           </Text>
-          <Text style={styles.subtitle}>Auf allen deinen Geräten</Text>
+          <Text style={styles.subtitle}>
+            {tn("Auf allen deinen Geräten", "Auf allen Ihren Geräten")}
+          </Text>
         </View>
       </View>
       {visible.map((item) => (

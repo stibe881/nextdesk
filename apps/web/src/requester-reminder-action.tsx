@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { Check, CircleHelp, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -91,14 +92,14 @@ export function RequesterReminderActionPage() {
 
   const resolved = preview?.action === "resolved";
   const title = !preview
-    ? "Rückmeldung zu Ihrem Ticket"
+    ? tn("Rückmeldung zu deinem Ticket", "Rückmeldung zu Ihrem Ticket")
     : preview.state === "done"
       ? resolved
         ? "Danke, das Ticket ist gelöst"
         : "Danke, wir kümmern uns weiter darum"
       : resolved
-        ? "Ist Ihr Problem gelöst?"
-        : "Sie brauchen noch Hilfe?";
+        ? tn("Ist dein Problem gelöst?", "Ist Ihr Problem gelöst?")
+        : tn("Brauchst du noch Hilfe?", "Sie brauchen noch Hilfe?");
 
   return (
     <main className="reminder-action-page">
@@ -128,8 +129,14 @@ export function RequesterReminderActionPage() {
           <>
             <p>
               {resolved
-                ? "Bestätigen Sie mit einem Klick, dass Ihr Problem gelöst ist. Das Ticket wird danach als gelöst markiert."
-                : "Bestätigen Sie, dass Sie noch Hilfe brauchen. Das Support-Team bearbeitet Ihr Ticket dann weiter."}
+                ? tn(
+                    "Bestätige mit einem Klick, dass dein Problem gelöst ist. Das Ticket wird danach als gelöst markiert.",
+                    "Bestätigen Sie mit einem Klick, dass Ihr Problem gelöst ist. Das Ticket wird danach als gelöst markiert.",
+                  )
+                : tn(
+                    "Bestätige, dass du noch Hilfe brauchst. Das Support-Team bearbeitet dein Ticket dann weiter.",
+                    "Bestätigen Sie, dass Sie noch Hilfe brauchen. Das Support-Team bearbeitet Ihr Ticket dann weiter.",
+                  )}
             </p>
             {!resolved ? (
               <label>
@@ -170,8 +177,14 @@ export function RequesterReminderActionPage() {
         {preview?.state === "done" ? (
           <p role="status">
             {resolved
-              ? "Vielen Dank für Ihre Rückmeldung. Sie können dieses Fenster schliessen."
-              : "Vielen Dank. Ihr Ticket ist wieder in Bearbeitung. Sie können dieses Fenster schliessen."}
+              ? tn(
+                  "Vielen Dank für deine Rückmeldung. Du kannst dieses Fenster schliessen.",
+                  "Vielen Dank für Ihre Rückmeldung. Sie können dieses Fenster schliessen.",
+                )
+              : tn(
+                  "Vielen Dank. Dein Ticket ist wieder in Bearbeitung. Du kannst dieses Fenster schliessen.",
+                  "Vielen Dank. Ihr Ticket ist wieder in Bearbeitung. Sie können dieses Fenster schliessen.",
+                )}
           </p>
         ) : null}
         {error ? (

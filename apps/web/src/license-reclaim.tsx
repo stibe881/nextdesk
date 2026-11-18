@@ -15,6 +15,7 @@ import {
 } from "./lib/license-reclaim";
 import "./license-reclaim.css";
 
+import { confirmDialog } from "./app-dialog";
 const formatDateTime = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat("de-CH", { dateStyle: "medium" }).format(
@@ -64,13 +65,13 @@ export function LicenseReclaimPanel({
     const withM365 =
       candidate.m365Removable && removeM365[candidate.assignmentId];
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Platz von «${candidate.assigneeLabel}» für «${candidate.licenseTitle}» zurückgeben?${
           withM365
             ? "\n\nDie Microsoft-365-Lizenz wird zusätzlich im Entra-Konto entfernt."
             : ""
         }`,
-      )
+      ))
     )
       return;
     setPending(true);
@@ -404,7 +405,9 @@ export function LicenseSeatsDialog({
   };
 
   const release = async (seat: LicenseSeat) => {
-    if (!window.confirm(`Platz von «${seat.assigneeLabel}» zurückgeben?`))
+    if (
+      !(await confirmDialog(`Platz von «${seat.assigneeLabel}» zurückgeben?`))
+    )
       return;
     setPending(true);
     setError("");

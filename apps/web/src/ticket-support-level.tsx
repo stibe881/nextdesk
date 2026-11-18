@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -47,11 +48,14 @@ export function TicketSupportLevel({
   refreshKey,
   tenantId,
   ticketId,
+  embedded = false,
 }: {
   onChanged: () => void;
   refreshKey: string;
   tenantId: string;
   ticketId: string;
+  /** Rendered as a block inside the «Koordination» card. */
+  embedded?: boolean;
 }) {
   const [state, setState] = useState<TicketSupportLevelState | null>(null);
   const [error, setError] = useState("");
@@ -97,26 +101,54 @@ export function TicketSupportLevel({
   }
 
   const handover = state.currentHandover;
+  const Wrapper = embedded ? "div" : "section";
   return (
-    <section
+    <Wrapper
       aria-labelledby="ticket-support-level-heading"
-      className="ticket-detail-primary ticket-support-level"
+      className={
+        embedded
+          ? "ticket-coordination__block ticket-support-level ticket-support-level--embedded"
+          : "ticket-detail-primary ticket-support-level"
+      }
     >
-      <div className="ticket-detail-section-heading">
-        <div>
-          <p className="eyebrow">SUPPORTSTUFE</p>
-          <h3 id="ticket-support-level-heading">
-            <Layers aria-hidden="true" size={18} />
-            {state.currentLevel
-              ? supportLevelLabel(state.currentLevel)
-              : "Ohne Stufe"}
-            {state.currentTeam ? (
-              <span className="ticket-support-level__team">
-                {state.currentTeam.name}
-              </span>
-            ) : null}
-          </h3>
-        </div>
+      <div
+        className={
+          embedded
+            ? "ticket-support-level__heading"
+            : "ticket-detail-section-heading"
+        }
+      >
+        {embedded ? (
+          <div>
+            <p className="ticket-support-level__label">Supportstufe</p>
+            <h4 id="ticket-support-level-heading">
+              <Layers aria-hidden="true" size={embedded ? 16 : 18} />
+              {state.currentLevel
+                ? supportLevelLabel(state.currentLevel)
+                : "Ohne Stufe"}
+              {state.currentTeam ? (
+                <span className="ticket-support-level__team">
+                  {state.currentTeam.name}
+                </span>
+              ) : null}
+            </h4>
+          </div>
+        ) : (
+          <div>
+            <p className="eyebrow">SUPPORTSTUFE</p>
+            <h3 id="ticket-support-level-heading">
+              <Layers aria-hidden="true" size={embedded ? 16 : 18} />
+              {state.currentLevel
+                ? supportLevelLabel(state.currentLevel)
+                : "Ohne Stufe"}
+              {state.currentTeam ? (
+                <span className="ticket-support-level__team">
+                  {state.currentTeam.name}
+                </span>
+              ) : null}
+            </h3>
+          </div>
+        )}
         {state.canHandover ? (
           <div className="ticket-support-level__actions">
             {state.targets.back.map((target) => (
@@ -161,8 +193,10 @@ export function TicketSupportLevel({
 
       {state.currentLevel === null && !state.ticketClosed ? (
         <p className="ticket-support-level__muted">
-          Das Ticket ist keinem Team mit Supportstufe zugewiesen. Weisen Sie es
-          einem Stufen-Team zu, um es später übergeben zu können.
+          {tn(
+            "Das Ticket ist keinem Team mit Supportstufe zugewiesen. Weise es einem Stufen-Team zu, um es später übergeben zu können.",
+            "Das Ticket ist keinem Team mit Supportstufe zugewiesen. Weisen Sie es einem Stufen-Team zu, um es später übergeben zu können.",
+          )}
         </p>
       ) : null}
 
@@ -239,7 +273,7 @@ export function TicketSupportLevel({
           ticketId={ticketId}
         />
       ) : null}
-    </section>
+    </Wrapper>
   );
 }
 
@@ -305,7 +339,12 @@ function HandoverDialog({
   async function submit() {
     setTouched(true);
     if (!teamId) {
-      setError(`Bitte wählen Sie ein Team der Stufe ${label}.`);
+      setError(
+        tn(
+          `Bitte wähle ein Team der Stufe ${label}.`,
+          `Bitte wählen Sie ein Team der Stufe ${label}.`,
+        ),
+      );
       return;
     }
     if (noteError) return;

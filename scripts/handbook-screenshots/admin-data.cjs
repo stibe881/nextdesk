@@ -50,6 +50,11 @@ const FEATURE_CATALOG = {
     "Geräte, Dienste und Systemstatus verwalten, inklusive Intune-Abgleich.",
     "assets",
   ],
+  "monitoring.native": [
+    "Überwachung",
+    "Geräte mit eigenen Sensoren überwachen (Ping, Port, HTTP) und bei Ausfall eine Störung öffnen.",
+    "assets",
+  ],
   "inventory.management": [
     "Lager",
     "Lagerorte, Bestände und Inventuren führen.",
@@ -64,6 +69,16 @@ const FEATURE_CATALOG = {
     "Shop",
     "Geräte und Zubehör im Self-Service bestellen.",
     "portal",
+  ],
+  "teams.provisioning": [
+    "Microsoft Teams im Shop",
+    "Teams im Shop bestellen, Laufzeit und Erinnerungen, Menü «Teams».",
+    "integrations",
+  ],
+  "portal.notices": [
+    "Hinweise für Anfragende",
+    "Eigene Hinweise der ICT in Ticket-Mails, Portal und App.",
+    "integrations",
   ],
   "service.tasks": [
     "Serviceaufgaben",
@@ -82,7 +97,7 @@ const FEATURE_CATALOG = {
   ],
   "experience.workspace": [
     "Arbeitsbereich",
-    "Persönliche Arbeitsbereichseinstellungen und Wiedervorlagen.",
+    "Persönliche Arbeitsbereichseinstellungen und Erinnerungen.",
     "ticketing",
   ],
   "portal.self-service": [

@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   type FormEvent,
   useCallback,
@@ -10,18 +11,38 @@ import {
   AlertTriangle,
   Archive,
   ArrowLeftRight,
+  CircleCheck,
   ClipboardList,
   MapPin,
   PackageCheck,
+  Pencil,
+  Plus,
   RefreshCw,
+  PackageMinus,
+  PackagePlus,
+  RotateCcw,
+  Search,
   ShieldCheck,
+  Trash2,
+  X,
 } from "lucide-react";
 
+import {
+  AssetLabelDialog,
+  LabelSelectionBar,
+  type LabelBranding,
+} from "./asset-label-dialog";
+import { FormField, FormGrid } from "./form-kit";
+import { inventoryLabelItem } from "./lib/asset-labels";
+import { filterInventoryItems } from "./lib/inventory-search";
+import { InventoryAutomation } from "./inventory-automation";
 import { InventoryProcurement } from "./inventory-procurement";
 import { functionErrorMessage } from "./lib/function-error";
+import { CatalogEditor, type EditorRequest, type StockEditor } from "./shop";
 import { shopApi } from "./lib/shop";
 import { supabase } from "./lib/supabase";
 
+import { confirmDialog } from "./app-dialog";
 type TrackingMode = "quantity" | "serial";
 type InventorySection =
   | "Übersicht"
@@ -30,11 +51,14 @@ type InventorySection =
   | "Bewegungen"
   | "Reservationen"
   | "Inventur"
-  | "Beschaffung";
+  | "Beschaffung"
+  | "Automatik";
 
 type InventoryPermissions = {
   canAdjust: boolean;
   canCloseInventoryCount: boolean;
+  /** «Ausbuchen» by hand (permission inventory.issue, role «Lagerverwaltung»). */
+  canIssue: boolean;
   canManage: boolean;
   canMove: boolean;
   canRead: true;
@@ -54,6 +78,8 @@ export type InventoryItemSummary = {
   departmentId: string | null;
   hasPrimaryImage: boolean;
   id: string;
+  /** Handed out and returned; the shop offers it as a loan article. */
+  loanItem?: boolean;
   locationName: string | null;
   minQuantity: number;
   name: string;
@@ -214,6 +240,21 @@ type InventoryAction =
       clientRequestId: string;
     }
   | {
+      type: "manageLocation";
+      tenantId: string;
+      locationId: string;
+      operation: "update";
+      values: { code?: string; name?: string; active?: boolean };
+      clientRequestId: string;
+    }
+  | {
+      type: "manageLocation";
+      tenantId: string;
+      locationId: string;
+      operation: "archive";
+      clientRequestId: string;
+    }
+  | {
       type: "manageItem";
       tenantId: string;
       operation: "create";
@@ -225,6 +266,7 @@ type InventoryAction =
         trackingMode: "quantity";
         minimumStock: number;
         targetStock: number;
+        loanItem?: boolean;
         departmentId?: string;
       };
       clientRequestId: string;
@@ -235,6 +277,22 @@ type InventoryAction =
       operation: "update";
       itemId: string;
       values: { departmentId: string };
+      clientRequestId: string;
+    }
+  | {
+      type: "manageItem";
+      tenantId: string;
+      operation: "update";
+      itemId: string;
+      values: {
+        articleNumber?: string;
+        name?: string;
+        category?: string;
+        unit?: string;
+        minimumStock?: number;
+        targetStock?: number;
+        loanItem?: boolean;
+      };
       clientRequestId: string;
     }
   | {
@@ -288,6 +346,7 @@ type InventoryAction =
       countId: string;
       clientRequestId: string;
     }
+  | { type: "cancelCount"; tenantId: string; countId: string }
   | {
       type: "manageSourceReservationRule";
       tenantId: string;
@@ -307,14 +366,17 @@ type InventoryChangedHandler = (
   successMessage: string,
 ) => Promise<InventoryMutationReceipt | null>;
 
-const sections: readonly InventorySection[] = [
-  "Übersicht",
-  "Artikel",
-  "Lagerorte",
-  "Bewegungen",
-  "Reservationen",
-  "Inventur",
-  "Beschaffung",
+/** Tab groups, shown like the settings tabs («section-tabs»). */
+const sectionGroups: readonly {
+  label: string;
+  sections: readonly InventorySection[];
+}[] = [
+  { label: "Bestand", sections: ["Übersicht", "Artikel", "Lagerorte"] },
+  {
+    label: "Buchungen",
+    sections: ["Bewegungen", "Reservationen", "Inventur"],
+  },
+  { label: "Planung", sections: ["Beschaffung", "Automatik"] },
 ];
 
 function isRecord(value: unknown): value is RecordValue {
@@ -361,9 +423,12 @@ function parseItem(value: unknown): InventoryItemSummary | null {
       "targetQuantity",
       "locationName",
       "active",
+      "loanItem",
       "departmentId",
     ])
   )
+    return null;
+  if (value.loanItem !== undefined && typeof value.loanItem !== "boolean")
     return null;
   if (
     value.departmentId !== undefined &&
@@ -401,6 +466,7 @@ function parseItem(value: unknown): InventoryItemSummary | null {
       typeof value.departmentId === "string" ? value.departmentId : null,
     hasPrimaryImage: value.hasPrimaryImage,
     id: value.id,
+    loanItem: value.loanItem === true,
     locationName: nullableText(value.locationName),
     minQuantity,
     name: value.name,
@@ -962,6 +1028,7 @@ export function parseInventoryWorkspace(
       "canMove",
       "canAdjust",
       "canCloseInventoryCount",
+      "canIssue",
     ]) ||
     !hasOnlyKeys(summary, [
       "criticalItemCount",
@@ -976,6 +1043,8 @@ export function parseInventoryWorkspace(
     typeof permissions.canMove !== "boolean" ||
     typeof permissions.canAdjust !== "boolean" ||
     typeof permissions.canCloseInventoryCount !== "boolean" ||
+    (permissions.canIssue !== undefined &&
+      typeof permissions.canIssue !== "boolean") ||
     nonnegativeNumber(summary.criticalItemCount) === null ||
     nonnegativeNumber(summary.openReservationCount) === null ||
     nonnegativeNumber(summary.activeCountSessionCount) === null ||
@@ -1002,6 +1071,8 @@ export function parseInventoryWorkspace(
     permissions: {
       canAdjust: permissions.canAdjust,
       canCloseInventoryCount: permissions.canCloseInventoryCount,
+      // Older servers do not send it; then nobody may book out by hand.
+      canIssue: permissions.canIssue === true,
       canManage: permissions.canManage,
       canMove: permissions.canMove,
       canRead: true,
@@ -1057,11 +1128,20 @@ function deltaLabel(value: number, unit: string): string {
 
 export function Inventory({
   createRequestId,
+  focusItemId,
+  labelBranding,
   onCreateRequestConsumed,
+  onFocusConsumed,
   tenantId,
 }: {
   createRequestId?: number | undefined;
+  /** Opens the article list showing only this article (QR label link). */
+  focusItemId?: string | undefined;
+  /** Tenant name and logo for printed labels. */
+  labelBranding?: LabelBranding | undefined;
   onCreateRequestConsumed?: (requestId: number) => void;
+  /** Called once the focus link was applied, so it does not apply again. */
+  onFocusConsumed?: () => void;
   tenantId: string;
 }) {
   const [activeSection, setActiveSection] =
@@ -1249,9 +1329,21 @@ export function Inventory({
     void load();
   }, [load]);
 
+  // QR label link: show only this article until «Alle Artikel» is chosen.
+  const [focusId, setFocusId] = useState<string | undefined>(focusItemId);
+  useEffect(() => {
+    if (!focusItemId) return;
+    setFocusId(focusItemId);
+    setActiveSection("Artikel");
+    onFocusConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusItemId]);
   const currentItems = useMemo(
-    () => workspace?.items.filter((item) => item.active) ?? [],
-    [workspace],
+    () =>
+      workspace?.items.filter(
+        (item) => item.active && (!focusId || item.id === focusId),
+      ) ?? [],
+    [focusId, workspace],
   );
 
   const onChanged = useCallback<InventoryChangedHandler>(
@@ -1315,30 +1407,56 @@ export function Inventory({
         </div>
       </header>
 
-      <div
-        className="inventory__tabs"
-        role="tablist"
+      <nav
         aria-label="Lagerbereiche"
+        className="section-tabs inventory__section-tabs"
+        role="tablist"
       >
-        {sections
-          // Beschaffung nur für die Lagerverwaltung.
-          .filter(
-            (section) =>
-              section !== "Beschaffung" ||
-              workspace?.permissions.canManage === true,
-          )
-          .map((section) => (
-            <button
-              aria-selected={activeSection === section}
-              key={section}
-              onClick={() => setActiveSection(section)}
-              role="tab"
-              type="button"
+        {sectionGroups
+          .map((group) => ({
+            ...group,
+            // Beschaffung und Automatik nur für die Lagerverwaltung.
+            sections: group.sections.filter(
+              (section) =>
+                (section !== "Beschaffung" && section !== "Automatik") ||
+                workspace?.permissions.canManage === true,
+            ),
+          }))
+          .filter((group) => group.sections.length > 0)
+          .map((group) => (
+            <div
+              className="section-tabs__group"
+              key={group.label}
+              role="presentation"
             >
-              {section}
-            </button>
+              <span aria-hidden="true" className="section-tabs__label">
+                {group.label}
+              </span>
+              <div className="section-tabs__row" role="presentation">
+                {group.sections.map((section) => (
+                  <button
+                    aria-selected={activeSection === section}
+                    className={
+                      activeSection === section
+                        ? "section-tabs__tab is-active"
+                        : "section-tabs__tab"
+                    }
+                    key={section}
+                    onClick={() => {
+                      // A notice belongs to the area where it happened.
+                      if (section !== activeSection) setMessage("");
+                      setActiveSection(section);
+                    }}
+                    role="tab"
+                    type="button"
+                  >
+                    {section}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
-      </div>
+      </nav>
 
       {loading ? (
         <p className="inventory__state">Lager wird geladen …</p>
@@ -1366,10 +1484,16 @@ export function Inventory({
           ) : null}
           {activeSection === "Artikel" ? (
             <InventoryItems
+              canIssue={workspace.permissions.canIssue}
               canManage={workspace.permissions.canManage}
+              canMove={workspace.permissions.canMove}
               createOpenRequestId={itemCreateRequestId}
               departments={workspace.departments}
+              focused={Boolean(focusId)}
               items={currentItems}
+              labelBranding={labelBranding}
+              locations={workspace.locations}
+              onShowAll={() => setFocusId(undefined)}
               onChanged={onChanged}
               onImagesChanged={load}
               tenantId={tenantId}
@@ -1386,6 +1510,7 @@ export function Inventory({
           {activeSection === "Bewegungen" ? (
             <InventoryEvents
               canAdjust={workspace.permissions.canAdjust}
+              canIssue={workspace.permissions.canIssue}
               canMove={workspace.permissions.canMove}
               events={workspace.recentEvents}
               hasMore={workspace.recentEventsHasMore}
@@ -1411,6 +1536,9 @@ export function Inventory({
           workspace.permissions.canManage ? (
             <InventoryProcurement tenantId={tenantId} />
           ) : null}
+          {activeSection === "Automatik" && workspace.permissions.canManage ? (
+            <InventoryAutomation tenantId={tenantId} />
+          ) : null}
           {activeSection === "Inventur" ? (
             <InventoryCounts
               activeCountSessionCount={
@@ -1435,11 +1563,25 @@ function InventoryOverview({ workspace }: { workspace: InventoryWorkspace }) {
   return (
     <>
       <div className="inventory__metrics">
-        <article className="inventory__metric inventory__metric--attention">
-          <AlertTriangle aria-hidden="true" size={19} />
+        <article
+          className={`inventory__metric ${
+            workspace.summary.criticalItemCount > 0
+              ? "inventory__metric--attention"
+              : "inventory__metric--ok"
+          }`}
+        >
+          {workspace.summary.criticalItemCount > 0 ? (
+            <AlertTriangle aria-hidden="true" size={19} />
+          ) : (
+            <CircleCheck aria-hidden="true" size={19} />
+          )}
           <span>Unterbestand</span>
           <strong>{workspace.summary.criticalItemCount}</strong>
-          <small>Artikel benötigen Aufmerksamkeit</small>
+          <small>
+            {workspace.summary.criticalItemCount > 0
+              ? "Artikel benötigen Aufmerksamkeit"
+              : "Alles im grünen Bereich"}
+          </small>
         </article>
         <article className="inventory__metric">
           <PackageCheck aria-hidden="true" size={19} />
@@ -1500,20 +1642,152 @@ function InventoryOverview({ workspace }: { workspace: InventoryWorkspace }) {
   );
 }
 
+async function inventoryInvoke(body: Record<string, unknown>) {
+  if (!supabase) {
+    throw new Error("Die Verbindung zu nextDesk ist nicht konfiguriert.");
+  }
+  const { data, error } = await supabase.functions.invoke<unknown>(
+    "inventory",
+    { body },
+  );
+  if (error) {
+    throw new Error(
+      await functionErrorMessage(
+        error,
+        "Die Lageraktion konnte nicht abgeschlossen werden.",
+      ),
+    );
+  }
+  return data;
+}
+
+/** Lagerzugriffe des gemeinsamen Artikelformulars (siehe shop.tsx). */
+function inventoryEditorApi(tenantId: string): StockEditor["api"] {
+  return {
+    saveItem: async (values, itemId) => {
+      const data = await inventoryInvoke(
+        itemId
+          ? {
+              type: "manageItem",
+              tenantId,
+              operation: "update",
+              itemId,
+              values,
+              clientRequestId: crypto.randomUUID(),
+            }
+          : {
+              type: "manageItem",
+              tenantId,
+              operation: "create",
+              values: { ...values, trackingMode: "quantity" },
+              clientRequestId: crypto.randomUUID(),
+            },
+      );
+      const receipt = parseMutationReceipt(data);
+      const id = receipt?.id ?? itemId;
+      if (!id) {
+        throw new Error(
+          "Die Lagerantwort hat keinen bestätigten Vorgang enthalten.",
+        );
+      }
+      return id;
+    },
+    postStock: async ({ itemId, locationId, delta }) => {
+      await inventoryInvoke({
+        type: "postMovement",
+        tenantId,
+        itemId,
+        movementType: delta > 0 ? "receipt" : "adjustment_out",
+        quantity: Math.abs(delta),
+        ...(delta > 0
+          ? { toLocationId: locationId }
+          : { fromLocationId: locationId }),
+        clientRequestId: crypto.randomUUID(),
+      });
+    },
+    moveStock: async ({ itemId, fromLocationId, toLocationId, quantity }) => {
+      await inventoryInvoke({
+        type: "postMovement",
+        tenantId,
+        itemId,
+        movementType: "transfer",
+        quantity,
+        fromLocationId,
+        toLocationId,
+        clientRequestId: crypto.randomUUID(),
+      });
+    },
+    uploadImage: (itemId, file) =>
+      uploadInventoryItemImageFile(tenantId, itemId, file),
+    deleteImage: async (itemId) => {
+      const data = await inventoryInvoke({ type: "delete", tenantId, itemId });
+      if (!parseInventoryItemImageDeletion(data, itemId)) {
+        throw new Error("Ungültige Löschantwort.");
+      }
+    },
+    deleteItem: async (itemId) => {
+      const data = await inventoryInvoke({
+        type: "deleteItem",
+        tenantId,
+        itemId,
+      });
+      const deleted =
+        isRecord(data) && isRecord(data.data) ? data.data.deleted : undefined;
+      if (deleted === true) return "deleted";
+      if (deleted === false) return "in_use";
+      throw new Error("Ungültige Löschantwort.");
+    },
+    archiveItem: async (itemId) => {
+      await inventoryInvoke({
+        type: "manageItem",
+        tenantId,
+        operation: "archive",
+        itemId,
+        clientRequestId: crypto.randomUUID(),
+      });
+    },
+    loadImageUrl: async (itemId) => {
+      const data = await inventoryInvoke({
+        type: "createDownloadUrl",
+        tenantId,
+        itemId,
+      });
+      return (
+        parseInventoryItemImageDownloadUrl(data, itemId)?.signedUrl ?? null
+      );
+    },
+  };
+}
+
 function InventoryItems({
+  canIssue,
   canManage,
+  canMove,
   createOpenRequestId,
   departments,
+  focused,
   items,
+  labelBranding,
+  locations,
   onChanged,
   onImagesChanged,
+  onShowAll,
   tenantId,
 }: {
+  /** «Ausbuchen» by hand (role «Lagerverwaltung»). */
+  canIssue: boolean;
   canManage: boolean;
+  /** «Einbuchen» (goods receipt). */
+  canMove: boolean;
   /** Opens the create form (key) when set by the "+" menu. */
   createOpenRequestId?: number | undefined;
   departments: readonly InventoryDepartment[];
+  /** Only one article is shown (QR label link). */
+  focused: boolean;
   items: readonly InventoryItemSummary[];
+  labelBranding?: LabelBranding | undefined;
+  locations: readonly InventoryLocation[];
+  onShowAll: () => void;
   onChanged: InventoryChangedHandler;
   onImagesChanged: () => Promise<boolean>;
   tenantId: string;
@@ -1526,21 +1800,92 @@ function InventoryItems({
   // Shop-Verknüpfung: welcher Lagerartikel im Shop angeboten wird.
   const [shop, setShop] = useState<{
     canManage: boolean;
-    linked: Map<string, { name: string; active: boolean }>;
+    linked: Map<
+      string,
+      { name: string; active: boolean; kind: string; imageUrl: string | null }
+    >;
   } | null>(null);
   const [shopNotice, setShopNotice] = useState("");
+  const [booking, setBooking] = useState<{
+    item: InventoryItemSummary;
+    mode: "receipt" | "issue";
+  } | null>(null);
   const [shopError, setShopError] = useState("");
   const [offering, setOffering] = useState<string | null>(null);
+  // Artikelformular (gleiche Felder wie im Shop) für Erfassen und Bearbeiten.
+  const [editorRequest, setEditorRequest] = useState<EditorRequest | null>(
+    null,
+  );
+  const [editorStock, setEditorStock] = useState<StockEditor | null>(null);
+  // Etiketten: ausgewählte Artikel und Druckdialog.
+  const [labelSelection, setLabelSelection] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
+  const labelItems = items.filter((item) => labelSelection.has(item.id));
+  const [articleQuery, setArticleQuery] = useState("");
+  const visibleItems = useMemo(
+    () => filterInventoryItems(items, articleQuery),
+    [items, articleQuery],
+  );
+  const openEditor = useCallback(
+    (item: InventoryItemSummary | null) => {
+      const activeLocations = locations
+        .filter((location) => location.active)
+        .map((location) => ({ id: location.id, name: location.name }));
+      setEditorStock({
+        item: item
+          ? {
+              id: item.id,
+              name: item.name,
+              articleNumber: item.articleNumber,
+              unit: item.unit,
+              minQuantity: item.minQuantity,
+              targetQuantity: item.targetQuantity,
+              loanItem: item.loanItem === true,
+              physicalQuantity: item.physicalQuantity,
+              locationId: item.locationName
+                ? (locations.find(
+                    (location) => location.name === item.locationName,
+                  )?.id ?? null)
+                : null,
+              hasPrimaryImage: item.hasPrimaryImage,
+              departmentId: item.departmentId,
+            }
+          : null,
+        locations: activeLocations,
+        api: inventoryEditorApi(tenantId),
+      });
+      setEditorRequest({ kind: "stock", nonce: Date.now() });
+    },
+    [locations, tenantId],
+  );
+  const openedCreateRequest = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (
+      canManage &&
+      createOpenRequestId !== undefined &&
+      openedCreateRequest.current !== createOpenRequestId
+    ) {
+      openedCreateRequest.current = createOpenRequestId;
+      openEditor(null);
+    }
+  }, [canManage, createOpenRequestId, openEditor]);
   const loadShop = useCallback(async () => {
     try {
       const context = await shopApi.context(tenantId);
       const catalog = await shopApi.catalog(tenantId, context.canManage);
-      const linked = new Map<string, { name: string; active: boolean }>();
+      const linked = new Map<
+        string,
+        { name: string; active: boolean; kind: string; imageUrl: string | null }
+      >();
       for (const entry of catalog) {
         if (entry.inventoryItemId) {
           linked.set(entry.inventoryItemId, {
             name: entry.name,
             active: entry.active,
+            kind: entry.kind,
+            imageUrl: entry.imageUrl ?? null,
           });
         }
       }
@@ -1593,59 +1938,210 @@ function InventoryItems({
         ) : null}
       </div>
       {canManage ? (
-        <InventoryItemCreateForm
-          defaultOpen={createOpenRequestId !== undefined}
-          departments={departments}
-          key={createOpenRequestId ?? "item-create"}
-          onChanged={onChanged}
+        <div className="inventory__create-row">
+          <button
+            className="primary-button"
+            onClick={() => openEditor(null)}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} /> Artikel erfassen
+          </button>
+        </div>
+      ) : null}
+      {canManage && editorStock ? (
+        <CatalogEditor
+          departments={[...departments]}
+          onDone={(message) => {
+            setEditorRequest(null);
+            if (message) {
+              setShopNotice(message);
+              void onImagesChanged();
+              void loadShop();
+            }
+          }}
+          request={editorRequest}
+          stock={editorStock}
           tenantId={tenantId}
         />
+      ) : null}
+      {focused ? (
+        <p className="inventory__focus-note" role="status">
+          Es wird nur der Artikel aus dem Etiketten-Link angezeigt.{" "}
+          <button className="text-button" onClick={onShowAll} type="button">
+            Alle Artikel anzeigen
+          </button>
+        </p>
       ) : null}
       {shopNotice ? (
         <p className="form-success" role="status">
           {shopNotice}
         </p>
       ) : null}
+      {items.length > 0 ? (
+        <label className="inventory__search">
+          <span className="sr-only">Artikel suchen</span>
+          <Search aria-hidden="true" size={16} />
+          <input
+            onChange={(event) => setArticleQuery(event.target.value)}
+            placeholder="Artikel suchen: Name, Artikelnummer oder Lagerort"
+            type="search"
+            value={articleQuery}
+          />
+        </label>
+      ) : null}
+      {items.length > 0 ? (
+        <LabelSelectionBar
+          onClear={() => setLabelSelection(new Set())}
+          onPrint={() => setLabelDialogOpen(true)}
+          onSelectVisible={() =>
+            setLabelSelection(new Set(visibleItems.map((item) => item.id)))
+          }
+          selectedCount={labelItems.length}
+          visibleCount={visibleItems.length}
+        />
+      ) : null}
+      {labelDialogOpen ? (
+        <AssetLabelDialog
+          branding={labelBranding}
+          buildItems={(_mode, baseUrl) =>
+            labelItems.map((item) =>
+              inventoryLabelItem(
+                {
+                  id: item.id,
+                  name: item.name,
+                  articleNumber: item.articleNumber,
+                  locationName: item.locationName,
+                },
+                baseUrl,
+              ),
+            )
+          }
+          count={labelItems.length}
+          onClose={() => setLabelDialogOpen(false)}
+          webOnly
+        />
+      ) : null}
       {shopError ? (
         <p className="form-error" role="alert">
           {shopError}
         </p>
       ) : null}
-      {items.length ? (
+      {items.length > 0 && visibleItems.length === 0 ? (
+        <p className="empty-state">
+          Kein Artikel passt zu «{articleQuery.trim()}».
+        </p>
+      ) : items.length ? (
         <div className="inventory__table-wrap">
           <table className="inventory__table">
             <thead>
               <tr>
+                <th className="inventory__col-check">
+                  <span className="sr-only">Für Etikett auswählen</span>
+                </th>
                 <th>Artikel</th>
-                <th>Bild</th>
                 {showDepartment ? <th>Abteilung</th> : null}
                 <th>Lagerort</th>
-                <th>Physisch</th>
-                <th>Reserviert</th>
-                <th>Verfügbar</th>
-                <th>Mindestbestand</th>
+                <th className="inventory__num">Physisch</th>
+                <th className="inventory__num">Reserviert</th>
+                <th className="inventory__num">Verfügbar</th>
+                <th className="inventory__num">Mindest&shy;bestand</th>
                 {shop ? <th>Shop</th> : null}
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
+              {visibleItems.map((item) => (
                 <tr key={item.id}>
-                  <td>
-                    <strong>{item.name}</strong>
-                    <small>
-                      {item.articleNumber ?? "Ohne Artikelnummer"} ·{" "}
-                      {item.trackingMode === "serial"
-                        ? "Serienführung"
-                        : "Mengenartikel"}
-                    </small>
+                  <td className="inventory__col-check">
+                    <label className="inventory__check">
+                      <input
+                        checked={labelSelection.has(item.id)}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setLabelSelection((current) => {
+                            const next = new Set(current);
+                            if (checked) next.add(item.id);
+                            else next.delete(item.id);
+                            return next;
+                          });
+                        }}
+                        type="checkbox"
+                      />
+                      <span className="sr-only">
+                        Für Etikett auswählen: {item.name}
+                      </span>
+                    </label>
                   </td>
                   <td>
-                    <InventoryItemImage
-                      canManage={canManage}
-                      item={item}
-                      onImagesChanged={onImagesChanged}
-                      tenantId={tenantId}
-                    />
+                    <div className="inventory__article">
+                      {/* Bilder werden nur im Artikelformular geändert. */}
+                      <InventoryItemImage
+                        canManage={false}
+                        fallbackImageUrl={
+                          shop?.linked.get(item.id)?.imageUrl ?? null
+                        }
+                        item={item}
+                        onImagesChanged={onImagesChanged}
+                        tenantId={tenantId}
+                      />
+                      <div className="inventory__article-copy">
+                        <strong>{item.name}</strong>
+                        <small>
+                          {item.articleNumber ?? "Ohne Artikelnummer"} ·{" "}
+                          {item.trackingMode === "serial"
+                            ? "Serienführung"
+                            : item.loanItem
+                              ? "Ausleihartikel"
+                              : "Mengenartikel"}
+                        </small>
+                        <span className="inventory__item-actions">
+                          {canManage ? (
+                            <button
+                              className="secondary-button inventory__item-edit"
+                              onClick={() => openEditor(item)}
+                              type="button"
+                            >
+                              Bearbeiten
+                            </button>
+                          ) : null}
+                          {(canMove || canIssue) &&
+                          item.active &&
+                          item.trackingMode !== "serial" ? (
+                            <span className="inventory__item-booking">
+                              {canMove ? (
+                                <button
+                                  className="secondary-button"
+                                  onClick={() =>
+                                    setBooking({ item, mode: "receipt" })
+                                  }
+                                  type="button"
+                                >
+                                  <PackagePlus aria-hidden="true" size={15} />
+                                  Einbuchen
+                                </button>
+                              ) : null}
+                              {canIssue ? (
+                                <button
+                                  className="secondary-button"
+                                  disabled={item.availableQuantity <= 0}
+                                  onClick={() =>
+                                    setBooking({ item, mode: "issue" })
+                                  }
+                                  title={
+                                    item.availableQuantity <= 0
+                                      ? "Kein verfügbarer Bestand zum Ausbuchen."
+                                      : undefined
+                                  }
+                                  type="button"
+                                >
+                                  <PackageMinus aria-hidden="true" size={15} />
+                                  Ausbuchen
+                                </button>
+                              ) : null}
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
+                    </div>
                   </td>
                   {showDepartment ? (
                     <td>
@@ -1665,18 +2161,30 @@ function InventoryItems({
                     </td>
                   ) : null}
                   <td>{item.locationName ?? "Nicht zugeordnet"}</td>
-                  <td>{quantity(item.physicalQuantity, item.unit)}</td>
-                  <td>{quantity(item.reservedQuantity, item.unit)}</td>
-                  <td
-                    className={
-                      item.availableQuantity <= item.minQuantity
-                        ? "inventory__value--attention"
-                        : undefined
-                    }
-                  >
-                    {quantity(item.availableQuantity, item.unit)}
+                  <td className="inventory__num">
+                    {quantity(item.physicalQuantity, item.unit)}
                   </td>
-                  <td>{quantity(item.minQuantity, item.unit)}</td>
+                  <td className="inventory__num">
+                    {quantity(item.reservedQuantity, item.unit)}
+                  </td>
+                  <td className="inventory__num">
+                    <span
+                      className={`inventory__available${
+                        item.availableQuantity <= item.minQuantity
+                          ? " inventory__available--low"
+                          : ""
+                      }`}
+                    >
+                      {quantity(item.availableQuantity, item.unit)}
+                    </span>
+                  </td>
+                  <td className="inventory__num">
+                    {item.loanItem ? (
+                      <span className="inventory__muted">–</span>
+                    ) : (
+                      quantity(item.minQuantity, item.unit)
+                    )}
+                  </td>
                   {shop ? (
                     <td>
                       {shop.linked.has(item.id) ? (
@@ -1686,6 +2194,10 @@ function InventoryItems({
                           {shop.linked.get(item.id)?.active
                             ? "Im Shop"
                             : "Im Shop · ausgeblendet"}
+                          {" · "}
+                          {shop.linked.get(item.id)?.kind === "loan"
+                            ? "Ausleihartikel"
+                            : "Bestellartikel"}
                         </span>
                       ) : shop.canManage ? (
                         <button
@@ -1713,21 +2225,288 @@ function InventoryItems({
           text={
             canManage
               ? "Noch keine Artikel. Erfasse zuerst einen Lagerartikel über die Lagerverwaltung."
-              : "Für deine Rolle sind keine aktiven Lagerartikel sichtbar."
+              : tn(
+                  "Für deine Rolle sind keine aktiven Lagerartikel sichtbar.",
+                  "Für Ihre Rolle sind keine aktiven Lagerartikel sichtbar.",
+                )
           }
         />
       )}
+      {booking ? (
+        <InventoryBookingDialog
+          item={booking.item}
+          locations={locations}
+          mode={booking.mode}
+          onChanged={onChanged}
+          onClose={() => setBooking(null)}
+          tenantId={tenantId}
+        />
+      ) : null}
     </section>
   );
 }
 
+/**
+ * «Einbuchen» / «Ausbuchen» for one article, like the stock sheet in the app.
+ * Ausbuchen needs inventory.issue (role «Lagerverwaltung»); the server checks
+ * the permission and the available stock again.
+ */
+function InventoryBookingDialog({
+  item,
+  locations,
+  mode,
+  onChanged,
+  onClose,
+  tenantId,
+}: {
+  item: InventoryItemSummary;
+  locations: readonly InventoryLocation[];
+  mode: "receipt" | "issue";
+  onChanged: InventoryChangedHandler;
+  onClose: () => void;
+  tenantId: string;
+}) {
+  const activeLocations = locations.filter((location) => location.active);
+  const [quantity, setQuantity] = useState("1");
+  const [locationId, setLocationId] = useState(
+    () =>
+      activeLocations.find((location) => location.name === item.locationName)
+        ?.id ?? (activeLocations.length === 1 ? activeLocations[0]!.id : ""),
+  );
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState("");
+  const clientRequest = useClientRequestId(
+    tenantId,
+    `booking-${mode}-${item.id}`,
+  );
+  const issuing = mode === "issue";
+  const amount = Number(quantity);
+  const validAmount =
+    Number.isFinite(amount) &&
+    amount > 0 &&
+    Number.isInteger(amount) &&
+    (!issuing || amount <= item.availableQuantity);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saving) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, saving]);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (saving) return;
+    if (!locationId) {
+      setProblem("Bitte einen Lagerort wählen.");
+      return;
+    }
+    if (!validAmount) {
+      setProblem(
+        issuing
+          ? `Bitte eine ganze Menge zwischen 1 und ${item.availableQuantity} angeben.`
+          : "Bitte eine ganze Menge ab 1 angeben.",
+      );
+      return;
+    }
+    if (
+      issuing &&
+      !(await confirmDialog(
+        `${amount} ${item.unit} «${item.name}» wirklich ausbuchen? Der Bestand wird um diese Menge verringert.`,
+      ))
+    ) {
+      return;
+    }
+    setProblem("");
+    setSaving(true);
+    const saved = await onChanged(
+      {
+        type: "postMovement",
+        tenantId,
+        itemId: item.id,
+        movementType: mode,
+        quantity: amount,
+        ...(issuing
+          ? { fromLocationId: locationId }
+          : { toLocationId: locationId }),
+        clientRequestId: clientRequest.requestId(),
+      },
+      issuing
+        ? `${amount} ${item.unit} «${item.name}» ausgebucht.`
+        : `${amount} ${item.unit} «${item.name}» eingebucht.`,
+    );
+    setSaving(false);
+    if (saved) {
+      clientRequest.discard();
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      className="inventory-booking-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose();
+      }}
+    >
+      <form
+        aria-labelledby="inventory-booking-title"
+        aria-modal="true"
+        className="inventory-booking"
+        onChange={clientRequest.discard}
+        onSubmit={(event) => void submit(event)}
+        role="dialog"
+      >
+        <header className="inventory-booking__header">
+          <div>
+            <p className="eyebrow">{issuing ? "AUSBUCHEN" : "WARENEINGANG"}</p>
+            <h2 id="inventory-booking-title">{item.name}</h2>
+            <p>
+              {[
+                item.articleNumber,
+                issuing
+                  ? `${item.availableQuantity} ${item.unit} verfügbar`
+                  : `${item.physicalQuantity} ${item.unit} an Lager`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          </div>
+          <button
+            aria-label="Schliessen"
+            className="more-button"
+            disabled={saving}
+            onClick={onClose}
+            type="button"
+          >
+            <X aria-hidden="true" size={18} />
+          </button>
+        </header>
+        <FormGrid cols={2}>
+          <FormField label={`Menge (${item.unit})`} required>
+            <input
+              autoFocus
+              inputMode="numeric"
+              max={issuing ? item.availableQuantity : undefined}
+              min={1}
+              onChange={(event) => setQuantity(event.target.value)}
+              step={1}
+              type="number"
+              value={quantity}
+            />
+          </FormField>
+          <FormField label="Lagerort" required>
+            <select
+              onChange={(event) => setLocationId(event.target.value)}
+              value={locationId}
+            >
+              <option value="">Lagerort wählen</option>
+              {activeLocations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.code
+                    ? `${location.name} (${location.code})`
+                    : location.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+        </FormGrid>
+        {problem ? (
+          <p className="ticket-detail-message error" role="alert">
+            <AlertTriangle aria-hidden="true" size={16} />
+            {problem}
+          </p>
+        ) : null}
+        <div className="inventory-booking__actions">
+          <button
+            className="secondary-button"
+            disabled={saving}
+            onClick={onClose}
+            type="button"
+          >
+            Abbrechen
+          </button>
+          <button
+            className={
+              issuing
+                ? "primary-button inventory-booking__issue"
+                : "primary-button"
+            }
+            disabled={saving}
+            type="submit"
+          >
+            {saving ? "Wird gebucht …" : issuing ? "Ausbuchen" : "Einbuchen"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/** Uploads the primary image of an item: signed upload URL, PUT, completion. */
+async function uploadInventoryItemImageFile(
+  tenantId: string,
+  itemId: string,
+  file: File,
+): Promise<void> {
+  if (!supabase) {
+    throw new Error("Die Verbindung zu nextDesk ist nicht konfiguriert.");
+  }
+  const contentType = file.type.trim().toLowerCase() as
+    "image/jpeg" | "image/png" | "image/webp";
+  const { data: createData, error: createError } =
+    await supabase.functions.invoke<unknown>("inventory", {
+      body: {
+        type: "createUpload",
+        tenantId,
+        itemId,
+        contentType,
+        byteSize: file.size,
+      },
+    });
+  if (createError) throw createError;
+  const upload = parseInventoryItemImageUpload(createData, tenantId, itemId);
+  if (
+    !upload ||
+    upload.contentType !== contentType ||
+    upload.byteSize !== file.size
+  ) {
+    throw new Error("Ungültige Upload-Antwort.");
+  }
+  const uploadResponse = await fetch(upload.signedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body: file,
+  });
+  if (!uploadResponse.ok) throw new Error("Bild-Upload fehlgeschlagen.");
+  const { data: completeData, error: completeError } =
+    await supabase.functions.invoke<unknown>("inventory", {
+      body: {
+        type: "completeUpload",
+        tenantId,
+        itemId,
+        storageObjectPath: upload.storageObjectPath,
+        contentType,
+        byteSize: file.size,
+      },
+    });
+  if (completeError) throw completeError;
+  if (!parseInventoryItemImageCompletion(completeData, itemId)) {
+    throw new Error("Ungültige Bildabschluss-Antwort.");
+  }
+}
+
 function InventoryItemImage({
   canManage,
+  fallbackImageUrl = null,
   item,
   onImagesChanged,
   tenantId,
 }: {
   canManage: boolean;
+  /** Bild des verknüpften Shop-Artikels, wenn der Lagerartikel kein eigenes hat. */
+  fallbackImageUrl?: string | null;
   item: InventoryItemSummary;
   onImagesChanged: () => Promise<boolean>;
   tenantId: string;
@@ -1822,56 +2601,11 @@ function InventoryItemImage({
       setError("Die Verbindung zu nextDesk ist nicht konfiguriert.");
       return;
     }
-    const contentType = file.type.trim().toLowerCase() as
-      "image/jpeg" | "image/png" | "image/webp";
     setPending("upload");
     setError("");
     setNotice("");
     try {
-      const { data: createData, error: createError } =
-        await supabase.functions.invoke<unknown>("inventory", {
-          body: {
-            type: "createUpload",
-            tenantId,
-            itemId: item.id,
-            contentType,
-            byteSize: file.size,
-          },
-        });
-      if (createError) throw createError;
-      const upload = parseInventoryItemImageUpload(
-        createData,
-        tenantId,
-        item.id,
-      );
-      if (
-        !upload ||
-        upload.contentType !== contentType ||
-        upload.byteSize !== file.size
-      ) {
-        throw new Error("Ungültige Upload-Antwort.");
-      }
-      const uploadResponse = await fetch(upload.signedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": contentType },
-        body: file,
-      });
-      if (!uploadResponse.ok) throw new Error("Bild-Upload fehlgeschlagen.");
-      const { data: completeData, error: completeError } =
-        await supabase.functions.invoke<unknown>("inventory", {
-          body: {
-            type: "completeUpload",
-            tenantId,
-            itemId: item.id,
-            storageObjectPath: upload.storageObjectPath,
-            contentType,
-            byteSize: file.size,
-          },
-        });
-      if (completeError) throw completeError;
-      if (!parseInventoryItemImageCompletion(completeData, item.id)) {
-        throw new Error("Ungültige Bildabschluss-Antwort.");
-      }
+      await uploadInventoryItemImageFile(tenantId, item.id, file);
       clearSelectedFile();
       setImageUrl(null);
       setImageRevision((revision) => revision + 1);
@@ -1932,7 +2666,10 @@ function InventoryItemImage({
     }
   }
 
-  const visibleImageUrl = localPreviewUrl ?? imageUrl;
+  const visibleImageUrl =
+    localPreviewUrl ??
+    imageUrl ??
+    (!item.hasPrimaryImage ? fallbackImageUrl : null);
   return (
     <div className="inventory__item-image">
       {visibleImageUrl ? (
@@ -2028,14 +2765,13 @@ function InventoryLocations({
       {locations.length ? (
         <ul className="inventory__location-grid">
           {locations.map((location) => (
-            <li key={location.id}>
-              <MapPin aria-hidden="true" size={18} />
-              <div>
-                <strong>{location.name}</strong>
-                <small>{location.code ?? "Ohne Ortscode"}</small>
-              </div>
-              {!location.active ? <span>Inaktiv</span> : null}
-            </li>
+            <InventoryLocationRow
+              canManage={canManage}
+              key={location.id}
+              location={location}
+              onChanged={onChanged}
+              tenantId={tenantId}
+            />
           ))}
         </ul>
       ) : (
@@ -2051,8 +2787,181 @@ function InventoryLocations({
   );
 }
 
+/** Ein Lagerort mit Bearbeiten, Löschen (archivieren) und Reaktivieren. */
+function InventoryLocationRow({
+  canManage,
+  location,
+  onChanged,
+  tenantId,
+}: {
+  canManage: boolean;
+  location: InventoryLocation;
+  onChanged: InventoryChangedHandler;
+  tenantId: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [code, setCode] = useState(location.code ?? "");
+  const [name, setName] = useState(location.name);
+  const [saving, setSaving] = useState(false);
+  const request = useClientRequestId(tenantId, `location-${location.id}`);
+
+  const run = async (
+    body:
+      | {
+          operation: "update";
+          values: { code?: string; name?: string; active?: boolean };
+        }
+      | { operation: "archive" },
+    message: string,
+  ): Promise<boolean> => {
+    setSaving(true);
+    const base = {
+      type: "manageLocation" as const,
+      tenantId,
+      locationId: location.id,
+      clientRequestId: request.requestId(),
+    };
+    const saved = await onChanged(
+      body.operation === "archive"
+        ? { ...base, operation: "archive" }
+        : { ...base, operation: "update", values: body.values },
+      message,
+    );
+    request.discard();
+    setSaving(false);
+    return Boolean(saved);
+  };
+
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!code.trim() || !name.trim() || saving) return;
+    const saved = await run(
+      {
+        operation: "update",
+        values: { code: code.trim(), name: name.trim() },
+      },
+      "Der Lagerort wurde gespeichert.",
+    );
+    if (saved) setEditing(false);
+  };
+
+  const archive = async () => {
+    if (
+      !(await confirmDialog(
+        `Lagerort «${location.name}» löschen? Er steht danach nicht mehr zur Auswahl. Bisherige Buchungen bleiben erhalten; ein vorhandener Bestand sollte vorher umgebucht werden.`,
+      ))
+    )
+      return;
+    await run({ operation: "archive" }, "Der Lagerort wurde gelöscht.");
+  };
+
+  const reactivate = () =>
+    run(
+      { operation: "update", values: { active: true } },
+      "Der Lagerort ist wieder aktiv.",
+    );
+
+  if (editing) {
+    return (
+      <li className="inventory__location-edit">
+        <form onSubmit={(event) => void save(event)}>
+          <FormGrid cols={2}>
+            <FormField label="Ortscode" required>
+              <input
+                autoComplete="off"
+                onChange={(event) => setCode(event.target.value)}
+                required
+                value={code}
+              />
+            </FormField>
+            <FormField label="Bezeichnung" required>
+              <input
+                autoComplete="off"
+                onChange={(event) => setName(event.target.value)}
+                required
+                value={name}
+              />
+            </FormField>
+          </FormGrid>
+          <div className="inventory__location-actions">
+            <button
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => {
+                setCode(location.code ?? "");
+                setName(location.name);
+                setEditing(false);
+              }}
+              type="button"
+            >
+              Abbrechen
+            </button>
+            <button
+              disabled={saving || !code.trim() || !name.trim()}
+              type="submit"
+            >
+              {saving ? "Wird gespeichert …" : "Speichern"}
+            </button>
+          </div>
+        </form>
+      </li>
+    );
+  }
+
+  return (
+    <li className={location.active ? undefined : "is-inactive"}>
+      <MapPin aria-hidden="true" size={18} />
+      <div>
+        <strong>{location.name}</strong>
+        <small>{location.code ?? "Ohne Ortscode"}</small>
+      </div>
+      {!location.active ? <span>Gelöscht</span> : null}
+      {canManage ? (
+        <span className="inventory__location-buttons">
+          {location.active ? (
+            <>
+              <button
+                aria-label={`${location.name} bearbeiten`}
+                className="icon-button"
+                disabled={saving}
+                onClick={() => setEditing(true)}
+                title="Bearbeiten"
+                type="button"
+              >
+                <Pencil aria-hidden="true" size={15} />
+              </button>
+              <button
+                aria-label={`${location.name} löschen`}
+                className="icon-button"
+                disabled={saving}
+                onClick={() => void archive()}
+                title="Löschen"
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={15} />
+              </button>
+            </>
+          ) : (
+            <button
+              aria-label={`${location.name} wieder aktivieren`}
+              className="icon-button"
+              disabled={saving}
+              onClick={() => void reactivate()}
+              title="Wieder aktivieren"
+              type="button"
+            >
+              <RotateCcw aria-hidden="true" size={15} />
+            </button>
+          )}
+        </span>
+      ) : null}
+    </li>
+  );
+}
+
 function InventoryEvents({
   canAdjust,
+  canIssue,
   canMove,
   events,
   hasMore,
@@ -2062,6 +2971,7 @@ function InventoryEvents({
   tenantId,
 }: {
   canAdjust: boolean;
+  canIssue: boolean;
   canMove: boolean;
   events: readonly InventoryEvent[];
   hasMore: boolean;
@@ -2083,7 +2993,7 @@ function InventoryEvents({
         </div>
         <Archive aria-hidden="true" size={21} />
       </div>
-      {canMove || canAdjust ? (
+      {canMove || canAdjust || canIssue ? (
         <>
           <p className="inventory__notice">
             <ShieldCheck aria-hidden="true" size={16} /> Buchungen werden erst
@@ -2092,6 +3002,7 @@ function InventoryEvents({
           </p>
           <InventoryMovementForm
             canAdjust={canAdjust}
+            canIssue={canIssue}
             canMove={canMove}
             items={items}
             locations={locations}
@@ -2122,11 +3033,28 @@ function InventoryEventList({
       {events.map((event) => {
         const unit = unitsByItemName.get(event.itemName) ?? "Stück";
         return (
-          <li key={event.id}>
-            <div>
-              <strong>
-                {eventLabel(event.type)} · {event.itemName}
-              </strong>
+          <li
+            className={`inventory__event ${
+              event.physicalDelta > 0
+                ? "inventory__event--in"
+                : event.physicalDelta < 0
+                  ? "inventory__event--out"
+                  : ""
+            }`}
+            key={event.id}
+          >
+            <span aria-hidden="true" className="inventory__event-icon">
+              {event.physicalDelta > 0 ? (
+                <PackagePlus size={17} />
+              ) : event.physicalDelta < 0 ? (
+                <PackageMinus size={17} />
+              ) : (
+                <Archive size={17} />
+              )}
+            </span>
+            <div className="inventory__event-copy">
+              <strong>{eventLabel(event.type)}</strong>
+              <span>{event.itemName}</span>
               <small>
                 {event.locationName ?? "Ohne Lagerort"} ·{" "}
                 {dateTime(event.occurredAt)}
@@ -2187,7 +3115,10 @@ function InventoryReservations({
       <p className="inventory__muted">
         {canMove
           ? "Reservationen werden bei jeder Änderung atomar gegen den aktuellen verfügbaren Bestand geprüft."
-          : "Für Reservationen benötigt deine Rolle die Berechtigung zur Lagerbewegung."}
+          : tn(
+              "Für Reservationen benötigt deine Rolle die Berechtigung zur Lagerbewegung.",
+              "Für Reservationen benötigt Ihre Rolle die Berechtigung zur Lagerbewegung.",
+            )}
       </p>
       {canMove ? (
         <>
@@ -2278,6 +3209,7 @@ function InventorySourceReservationRules({
             Regeln für künftige Quellen
           </h2>
           <p>
+            {/* formality-ok: «Sie» bezieht sich auf die Regeln */}
             Regeln sind standardmässig deaktiviert. Sie greifen nur bei künftig
             erzeugter {permittedSources}.
           </p>
@@ -2601,7 +3533,12 @@ function InventoryOpenReservationList({
       ))}
     </ul>
   ) : (
-    <EmptyInventoryState text="Keine offenen Reservationen für deinen Mandanten." />
+    <EmptyInventoryState
+      text={tn(
+        "Keine offenen Reservationen für deinen Mandanten.",
+        "Keine offenen Reservationen für Ihren Mandanten.",
+      )}
+    />
   );
 }
 
@@ -2734,56 +3671,94 @@ function InventoryCounts({
       </p>
       <p className="inventory__muted">
         {canClose
-          ? "Du darfst Inventuren abschliessen. Differenzen werden dabei unter Sperre geprüft und als eigene Bewegungen gebucht."
+          ? tn(
+              "Du darfst Inventuren abschliessen. Differenzen werden dabei unter Sperre geprüft und als eigene Bewegungen gebucht.",
+              "Sie dürfen Inventuren abschliessen. Differenzen werden dabei unter Sperre geprüft und als eigene Bewegungen gebucht.",
+            )
           : "Das Abschliessen einer Inventur benötigt eine gesonderte Berechtigung."}
       </p>
       {canManage || canClose ? (
         <InventoryActiveCountList
+          canDelete={canManage}
           counts={activeCounts}
-          onSelectCount={selectCount}
-          selectedCountId={selectedCountId}
-        />
-      ) : null}
-      {canManage ? (
-        <>
-          <InventoryCountStartForm
-            locations={locations}
-            onChanged={onChanged}
-            onStarted={selectCount}
-            tenantId={tenantId}
-          />
-          <InventoryCountLineForm
-            activeCounts={activeCounts}
-            items={items}
-            onChanged={onChanged}
-            onSelectCount={selectCount}
-            selectedCountId={selectedCountId}
-            tenantId={tenantId}
-          />
-        </>
-      ) : null}
-      {canClose ? (
-        <InventoryCountCloseForm
-          activeCounts={activeCounts}
           onChanged={onChanged}
           onSelectCount={selectCount}
           selectedCountId={selectedCountId}
           tenantId={tenantId}
         />
       ) : null}
+      {canManage || canClose ? (
+        <div className="inventory__steps">
+          {canManage ? (
+            <>
+              <InventoryCountStartForm
+                locations={locations}
+                onChanged={onChanged}
+                onStarted={selectCount}
+                tenantId={tenantId}
+              />
+              <InventoryCountLineForm
+                activeCounts={activeCounts}
+                items={items}
+                onChanged={onChanged}
+                onSelectCount={selectCount}
+                selectedCountId={selectedCountId}
+                tenantId={tenantId}
+              />
+            </>
+          ) : null}
+          {canClose ? (
+            <InventoryCountCloseForm
+              activeCounts={activeCounts}
+              onChanged={onChanged}
+              onSelectCount={selectCount}
+              selectedCountId={selectedCountId}
+              tenantId={tenantId}
+            />
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
 
 function InventoryActiveCountList({
+  canDelete,
   counts,
+  onChanged,
   onSelectCount,
   selectedCountId,
+  tenantId,
 }: {
+  /** «Inventur löschen» needs the same right as starting one. */
+  canDelete: boolean;
   counts: readonly ActiveInventoryCount[];
+  onChanged: InventoryChangedHandler;
   onSelectCount: (countId: string) => void;
   selectedCountId: string;
+  tenantId: string;
 }) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const deleteCount = async (count: ActiveInventoryCount) => {
+    if (deletingId) return;
+    if (
+      !(await confirmDialog(
+        `Inventur «${count.locationName}» wirklich löschen?\n\nDie bisher gezählten Mengen werden verworfen, der Bestand bleibt unverändert. Das lässt sich nicht rückgängig machen.`,
+        { confirmLabel: "Inventur löschen", tone: "danger" },
+      ))
+    ) {
+      return;
+    }
+    setDeletingId(count.id);
+    const deleted = await onChanged(
+      { type: "cancelCount", tenantId, countId: count.id },
+      `Die Inventur «${count.locationName}» wurde gelöscht.`,
+    );
+    setDeletingId(null);
+    if (deleted && selectedCountId === count.id) onSelectCount("");
+  };
+
   return counts.length ? (
     <ul className="inventory__list">
       {counts.map((count) => (
@@ -2795,13 +3770,28 @@ function InventoryActiveCountList({
               gestartet {dateTime(count.startedAt)}
             </small>
           </div>
-          <button
-            aria-pressed={selectedCountId === count.id}
-            onClick={() => onSelectCount(count.id)}
-            type="button"
-          >
-            {selectedCountId === count.id ? "Ausgewählt" : "Auswählen"}
-          </button>
+          <span className="inventory__count-actions">
+            <button
+              aria-pressed={selectedCountId === count.id}
+              onClick={() => onSelectCount(count.id)}
+              type="button"
+            >
+              {selectedCountId === count.id ? "Ausgewählt" : "Auswählen"}
+            </button>
+            {canDelete ? (
+              <button
+                aria-label={`Inventur ${count.locationName} löschen`}
+                className="inventory__count-delete"
+                disabled={deletingId !== null}
+                onClick={() => void deleteCount(count)}
+                title="Inventur löschen"
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={15} />
+                {deletingId === count.id ? "Wird gelöscht …" : "Löschen"}
+              </button>
+            ) : null}
+          </span>
         </li>
       ))}
     </ul>
@@ -2846,30 +3836,30 @@ function InventoryLocationCreateForm({
   };
 
   return (
-    <details className="inventory__form">
+    <details className="inventory__form" open>
       <summary>Lagerort erfassen</summary>
       <form
         onChange={clientRequest.discard}
         onSubmit={(event) => void submit(event)}
       >
-        <label>
-          Ortscode
-          <input
-            autoComplete="off"
-            onChange={(event) => setCode(event.target.value)}
-            required
-            value={code}
-          />
-        </label>
-        <label>
-          Bezeichnung
-          <input
-            autoComplete="off"
-            onChange={(event) => setName(event.target.value)}
-            required
-            value={name}
-          />
-        </label>
+        <FormGrid cols={2}>
+          <FormField label="Ortscode" required>
+            <input
+              autoComplete="off"
+              onChange={(event) => setCode(event.target.value)}
+              required
+              value={code}
+            />
+          </FormField>
+          <FormField label="Bezeichnung" required>
+            <input
+              autoComplete="off"
+              onChange={(event) => setName(event.target.value)}
+              required
+              value={name}
+            />
+          </FormField>
+        </FormGrid>
         <button disabled={!complete || saving} type="submit">
           {saving ? "Lagerort wird erfasst …" : "Lagerort erfassen"}
         </button>
@@ -2878,10 +3868,6 @@ function InventoryLocationCreateForm({
   );
 }
 
-/**
- * Abteilung eines bestehenden Artikels ändern. Zur Wahl stehen nur die
- * Abteilungen der Person; der Server prüft die Wahl erneut.
- */
 function InventoryItemDepartmentSelect({
   departments,
   item,
@@ -2942,170 +3928,9 @@ function InventoryItemDepartmentSelect({
   );
 }
 
-function InventoryItemCreateForm({
-  defaultOpen = false,
-  departments,
-  onChanged,
-  tenantId,
-}: {
-  defaultOpen?: boolean;
-  departments: readonly InventoryDepartment[];
-  onChanged: InventoryChangedHandler;
-  tenantId: string;
-}) {
-  // Eine Abteilung ist nur zu wählen, wenn mehrere in Frage kommen; bei
-  // einer einzigen setzt der Server sie selbst.
-  const chooseDepartment = departments.length > 1;
-  const [departmentId, setDepartmentId] = useState("");
-  const [articleNumber, setArticleNumber] = useState("");
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("");
-  const [unit, setUnit] = useState("stk");
-  const [minimumStock, setMinimumStock] = useState("0");
-  const [targetStock, setTargetStock] = useState("0");
-  const [saving, setSaving] = useState(false);
-  const clientRequest = useClientRequestId(tenantId, "item-create");
-  const minimumStockNumber = Number(minimumStock);
-  const targetStockNumber = Number(targetStock);
-  const complete =
-    articleNumber.trim().length > 0 &&
-    name.trim().length > 0 &&
-    category.trim().length > 0 &&
-    unit.trim().length > 0 &&
-    minimumStock !== "" &&
-    targetStock !== "" &&
-    Number.isFinite(minimumStockNumber) &&
-    Number.isFinite(targetStockNumber) &&
-    (!chooseDepartment || departmentId !== "");
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!complete || saving) return;
-    setSaving(true);
-    const saved = await onChanged(
-      {
-        type: "manageItem",
-        tenantId,
-        operation: "create",
-        values: {
-          articleNumber,
-          name,
-          category,
-          unit,
-          trackingMode: "quantity",
-          minimumStock: minimumStockNumber,
-          targetStock: targetStockNumber,
-          ...(chooseDepartment && departmentId ? { departmentId } : {}),
-        },
-        clientRequestId: clientRequest.requestId(),
-      },
-      "Der Artikel wurde erfasst und die Ansicht aktualisiert.",
-    );
-    setSaving(false);
-    if (saved) {
-      clientRequest.discard();
-      setArticleNumber("");
-      setName("");
-      setCategory("");
-      setUnit("stk");
-      setMinimumStock("0");
-      setTargetStock("0");
-      setDepartmentId("");
-    }
-  };
-
-  return (
-    <details className="inventory__form" open={defaultOpen || undefined}>
-      <summary>Artikel erfassen</summary>
-      <form
-        onChange={clientRequest.discard}
-        onSubmit={(event) => void submit(event)}
-      >
-        <label>
-          Artikelnummer
-          <input
-            autoComplete="off"
-            onChange={(event) => setArticleNumber(event.target.value)}
-            required
-            value={articleNumber}
-          />
-        </label>
-        <label>
-          Bezeichnung
-          <input
-            autoComplete="off"
-            onChange={(event) => setName(event.target.value)}
-            required
-            value={name}
-          />
-        </label>
-        <label>
-          Kategorie
-          <input
-            autoComplete="off"
-            onChange={(event) => setCategory(event.target.value)}
-            required
-            value={category}
-          />
-        </label>
-        {chooseDepartment ? (
-          <label>
-            Abteilung
-            <select
-              onChange={(event) => setDepartmentId(event.target.value)}
-              required
-              value={departmentId}
-            >
-              <option value="">Bitte wählen</option>
-              {departments.map((department) => (
-                <option key={department.id} value={department.id}>
-                  {department.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <label>
-          Einheit
-          <input
-            autoComplete="off"
-            onChange={(event) => setUnit(event.target.value)}
-            required
-            value={unit}
-          />
-        </label>
-        <label>
-          Mindestbestand
-          <input
-            min="0"
-            onChange={(event) => setMinimumStock(event.target.value)}
-            required
-            step="0.001"
-            type="number"
-            value={minimumStock}
-          />
-        </label>
-        <label>
-          Zielbestand
-          <input
-            min="0"
-            onChange={(event) => setTargetStock(event.target.value)}
-            required
-            step="0.001"
-            type="number"
-            value={targetStock}
-          />
-        </label>
-        <button disabled={!complete || saving} type="submit">
-          {saving ? "Artikel wird erfasst …" : "Artikel erfassen"}
-        </button>
-      </form>
-    </details>
-  );
-}
-
 function InventoryMovementForm({
   canAdjust,
+  canIssue,
   canMove,
   items,
   locations,
@@ -3113,6 +3938,7 @@ function InventoryMovementForm({
   tenantId,
 }: {
   canAdjust: boolean;
+  canIssue: boolean;
   canMove: boolean;
   items: readonly InventoryItemSummary[];
   locations: readonly InventoryLocation[];
@@ -3123,9 +3949,11 @@ function InventoryMovementForm({
     ...(canMove
       ? [
           { value: "receipt" as const, label: "Wareneingang" },
-          { value: "issue" as const, label: "Ausgabe" },
           { value: "transfer" as const, label: "Umlagerung" },
         ]
+      : []),
+    ...(canIssue
+      ? [{ value: "issue" as const, label: "Ausbuchen (Ausgabe)" }]
       : []),
     ...(canAdjust
       ? [
@@ -3195,87 +4023,84 @@ function InventoryMovementForm({
   };
 
   return (
-    <details className="inventory__form">
+    <details className="inventory__form" open>
       <summary>Bestandsbewegung buchen</summary>
       <form
         onChange={clientRequest.discard}
         onSubmit={(event) => void submit(event)}
       >
-        <label>
-          Buchungsart
-          <select
-            onChange={(event) =>
-              setMovementType(event.target.value as InventoryMovementType)
-            }
-            value={selectedType}
-          >
-            {options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Artikel
-          <select
-            onChange={(event) => setItemId(event.target.value)}
-            required
-            value={itemId}
-          >
-            <option value="">Artikel wählen</option>
-            {items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {requiresFrom ? (
-          <label>
-            Quelllagerort
+        <FormGrid cols={2}>
+          <FormField label="Buchungsart">
             <select
-              onChange={(event) => setFromLocationId(event.target.value)}
-              required
-              value={fromLocationId}
+              onChange={(event) =>
+                setMovementType(event.target.value as InventoryMovementType)
+              }
+              value={selectedType}
             >
-              <option value="">Lagerort wählen</option>
-              {locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
+              {options.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
-          </label>
-        ) : null}
-        {requiresTo ? (
-          <label>
-            Ziellagerort
+          </FormField>
+          <FormField label="Artikel" required>
             <select
-              onChange={(event) => setToLocationId(event.target.value)}
+              onChange={(event) => setItemId(event.target.value)}
               required
-              value={toLocationId}
+              value={itemId}
             >
-              <option value="">Lagerort wählen</option>
-              {locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
+              <option value="">Artikel wählen</option>
+              {items.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
                 </option>
               ))}
             </select>
-          </label>
-        ) : null}
-        <label>
-          Menge
-          <input
-            min="0.001"
-            onChange={(event) => setAmount(event.target.value)}
-            required
-            step="0.001"
-            type="number"
-            value={amount}
-          />
-        </label>
+          </FormField>
+          {requiresFrom ? (
+            <FormField label="Quelllagerort" required>
+              <select
+                onChange={(event) => setFromLocationId(event.target.value)}
+                required
+                value={fromLocationId}
+              >
+                <option value="">Lagerort wählen</option>
+                {locations.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          ) : null}
+          {requiresTo ? (
+            <FormField label="Ziellagerort" required>
+              <select
+                onChange={(event) => setToLocationId(event.target.value)}
+                required
+                value={toLocationId}
+              >
+                <option value="">Lagerort wählen</option>
+                {locations.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          ) : null}
+          <FormField label="Menge" required>
+            <input
+              min="0.001"
+              onChange={(event) => setAmount(event.target.value)}
+              required
+              step="0.001"
+              type="number"
+              value={amount}
+            />
+          </FormField>
+        </FormGrid>
         <button disabled={!complete || saving} type="submit">
           {saving ? "Buchung wird gespeichert …" : "Buchung speichern"}
         </button>
@@ -3339,47 +4164,46 @@ function InventoryReservationForm({
         onChange={clientRequest.discard}
         onSubmit={(event) => void submit(event)}
       >
-        <label>
-          Artikel
-          <select
-            onChange={(event) => setItemId(event.target.value)}
-            required
-            value={itemId}
-          >
-            <option value="">Artikel wählen</option>
-            {items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Lagerort
-          <select
-            onChange={(event) => setLocationId(event.target.value)}
-            required
-            value={locationId}
-          >
-            <option value="">Lagerort wählen</option>
-            {locations.map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Menge
-          <input
-            min="0.001"
-            onChange={(event) => setAmount(event.target.value)}
-            required
-            step="0.001"
-            type="number"
-            value={amount}
-          />
-        </label>
+        <FormGrid cols={2}>
+          <FormField label="Artikel" required>
+            <select
+              onChange={(event) => setItemId(event.target.value)}
+              required
+              value={itemId}
+            >
+              <option value="">Artikel wählen</option>
+              {items.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Lagerort" required>
+            <select
+              onChange={(event) => setLocationId(event.target.value)}
+              required
+              value={locationId}
+            >
+              <option value="">Lagerort wählen</option>
+              {locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Menge" required>
+            <input
+              min="0.001"
+              onChange={(event) => setAmount(event.target.value)}
+              required
+              step="0.001"
+              type="number"
+              value={amount}
+            />
+          </FormField>
+        </FormGrid>
         <button disabled={!complete || saving} type="submit">
           {saving ? "Reservation wird gespeichert …" : "Reservation speichern"}
         </button>
@@ -3427,7 +4251,7 @@ function InventoryCountStartForm({
   };
 
   return (
-    <details className="inventory__form">
+    <details className="inventory__form" open>
       <summary>Inventur starten</summary>
       <form
         onChange={clientRequest.discard}
@@ -3515,7 +4339,7 @@ function InventoryCountLineForm({
   };
 
   return (
-    <details className="inventory__form">
+    <details className="inventory__form" open>
       <summary>Zähllinie erfassen</summary>
       <form
         onChange={clientRequest.discard}
@@ -3619,7 +4443,7 @@ function InventoryCountCloseForm({
   };
 
   return (
-    <details className="inventory__form">
+    <details className="inventory__form" open>
       <summary>Inventur abschliessen</summary>
       <form onSubmit={(event) => void submit(event)}>
         <label>

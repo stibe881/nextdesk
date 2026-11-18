@@ -1,4 +1,6 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
+import { listAssignableAgents } from "../_shared/assignable-agents.ts";
 import {
   isRecord,
   isUuid,
@@ -387,7 +389,7 @@ async function directory(
   tenantId: string,
   visibility: Visibility,
 ) {
-  const [members, teams, departments] = await Promise.all([
+  const [members, teams, departments, teamMembers] = await Promise.all([
     admin
       .from("tenant_memberships")
       .select("user_id")
@@ -395,7 +397,7 @@ async function directory(
       .eq("status", "active"),
     admin
       .from("teams")
-      .select("id, name")
+      .select("id, name, department_id")
       .eq("tenant_id", tenantId)
       .eq("active", true)
       .order("name"),
@@ -407,18 +409,60 @@ async function directory(
           .in("id", visibility.departments)
           .order("name")
       : Promise.resolve({ data: [] }),
+    admin
+      .from("team_memberships")
+      .select("user_id, team_id")
+      .eq("tenant_id", tenantId),
   ]);
-  const people = await names(
-    admin,
+  // Zur Auswahl stehen nur Agenten (aktive Rolle mit Ticketbearbeitung) und
+  // nur in ihrer Abteilung; Nicht-Agenten erscheinen nie.
+  const agentDepartments = new Map<string, string[]>();
+  const departmentIdList = (departments.data ?? []).map(
+    (row: Row) => row.id as string,
+  );
+  const agentLists = await Promise.all(
+    departmentIdList.map((id) => listAssignableAgents(admin, tenantId, id)),
+  );
+  agentLists.forEach((result, index) => {
+    if (result.error) return;
+    for (const agent of result.agents) {
+      const list = agentDepartments.get(agent.id) ?? [];
+      list.push(departmentIdList[index]!);
+      agentDepartments.set(agent.id, list);
+    }
+  });
+  const activeMemberIds = new Set(
     (members.data ?? []).map((row: Row) => row.user_id as string),
   );
+  const people = await names(
+    admin,
+    [...agentDepartments.keys()].filter((id) => activeMemberIds.has(id)),
+  );
+  // Je Person: Abteilungen und Teams (das Formular zeigt nur passende Personen).
+  const idsOf = (rows: Row[] | null, key: string) => {
+    const byUser = new Map<string, string[]>();
+    for (const row of rows ?? []) {
+      const list = byUser.get(row.user_id as string) ?? [];
+      list.push(row[key] as string);
+      byUser.set(row.user_id as string, list);
+    }
+    return byUser;
+  };
+  const departmentsOf = agentDepartments;
+  const teamsOf = idsOf(teamMembers.data as Row[] | null, "team_id");
   return {
     people: [...people.entries()]
-      .map(([id, name]) => ({ id, name }))
+      .map(([id, name]) => ({
+        id,
+        name,
+        departmentIds: departmentsOf.get(id) ?? [],
+        teamIds: teamsOf.get(id) ?? [],
+      }))
       .sort((a, b) => a.name.localeCompare(b.name, "de-CH")),
     teams: (teams.data ?? []).map((row: Row) => ({
       id: row.id,
       name: row.name,
+      departmentId: row.department_id ?? null,
     })),
     departments: (departments.data ?? []).map((row: Row) => ({
       id: row.id,
@@ -683,7 +727,7 @@ async function saveTemplate(
         throw new HttpError(
           422,
           "invalid_data",
-          "Bitte wählen Sie eine Abteilung.",
+          msg("Bitte wähle eine Abteilung.", msg("Bitte wähle eine Abteilung.", "Bitte wählen Sie eine Abteilung.")),
         );
       }
       fields.department_id = visibility.departments[0];
@@ -709,6 +753,37 @@ async function saveTemplate(
       .maybeSingle();
     if (!data)
       throw new HttpError(422, "invalid_data", "Das Team ist ungültig.");
+  }
+  // Die verantwortliche Person gehört zum gewählten Team und zur Abteilung.
+  if (fields.assignee_id && fields.team_id) {
+    const { data } = await admin
+      .from("team_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("team_id", fields.team_id)
+      .eq("user_id", fields.assignee_id)
+      .maybeSingle();
+    if (!data) {
+      throw new HttpError(
+        422,
+        "invalid_data",
+        "Die verantwortliche Person gehört nicht zum gewählten Team.",
+      );
+    }
+  }
+  if (fields.assignee_id && fields.department_id) {
+    const agents = await listAssignableAgents(
+      admin,
+      tenantId,
+      fields.department_id,
+    );
+    if (agents.error || !agents.agents.some((a) => a.id === fields.assignee_id)) {
+      throw new HttpError(
+        422,
+        "invalid_data",
+        "Die verantwortliche Person ist kein Agent der Abteilung der Aufgabe.",
+      );
+    }
   }
   const today = swissToday();
   let templateId: string;
@@ -836,10 +911,20 @@ async function occurrenceDetail(
         1,
       )[0] ?? null)
     : null;
+  const maintenance = await maintenancePlanning(
+    admin,
+    tenantId,
+    String(occurrence.id),
+  );
   return {
     occurrence: occurrenceDto(occurrence, template ?? undefined, people, now),
     template: template ? templateDto(template, today) : null,
     nextDueOn: next,
+    maintenance: {
+      assetCount: maintenance.assetIds.length,
+      serviceCount: maintenance.serviceIds.length,
+      windows: maintenance.windows,
+    },
     history: (history ?? []).map((row: Row) =>
       occurrenceDto(row, template ?? undefined, people, now),
     ),
@@ -853,6 +938,183 @@ async function occurrenceDetail(
       createdAt: event.created_at,
     })),
   };
+}
+
+/** Wartungsfenster und Geräte/Dienste einer Aufgabe (für die Detailansicht). */
+async function maintenancePlanning(
+  admin: Admin,
+  tenantId: string,
+  occurrenceId: string,
+) {
+  const [targets, windows] = await Promise.all([
+    admin.rpc("service_task_maintenance_targets", {
+      p_tenant_id: tenantId,
+      p_occurrence_id: occurrenceId,
+    }),
+    admin
+      .from("service_status_maintenances")
+      .select("id, title, starts_at, ends_at, state, public_enabled")
+      .eq("tenant_id", tenantId)
+      .eq("service_task_occurrence_id", occurrenceId)
+      .order("starts_at", { ascending: false })
+      .limit(10),
+  ]);
+  const rows = (targets.error ? [] : (targets.data ?? [])) as Row[];
+  return {
+    assetIds: [...new Set(rows.map((row) => String(row.asset_id)))],
+    serviceIds: [
+      ...new Set(
+        rows.flatMap((row) =>
+          isUuid(row.service_id) ? [String(row.service_id)] : []
+        ),
+      ),
+    ],
+    windows: ((windows.error ? [] : windows.data ?? []) as Row[]).map((row) => ({
+      id: row.id,
+      title: row.title,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      state: row.state,
+      publicEnabled: row.public_enabled === true,
+    })),
+  };
+}
+
+function isoTimestamp(value: unknown): string | null {
+  if (
+    typeof value !== "string" ||
+    value.length > 64 ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/i
+      .test(value)
+  ) {
+    return null;
+  }
+  const epoch = Date.parse(value);
+  return Number.isFinite(epoch) ? new Date(epoch).toISOString() : null;
+}
+
+/**
+ * Serviceaufgabe → Wartungsfenster der Statusseite mit den Diensten der
+ * Geräte dieser Aufgabe. Nach dem Ende setzt die Wartungsautomatik die
+ * Dienste zurück; der Abschluss der Aufgabe protokolliert die Wartung.
+ */
+async function planMaintenanceWindow(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  body: Row,
+  visibility: Visibility,
+) {
+  const occurrence = await loadOccurrence(
+    admin,
+    tenantId,
+    body.occurrenceId,
+    visibility,
+  );
+  const states = await resolveTenantFeatureStates(admin, tenantId, [
+    "assets.management",
+  ]);
+  if (states?.["assets.management"] !== true) {
+    throw new HttpError(
+      403,
+      "asset_feature_disabled",
+      "Wartungsfenster erfordern das Asset-Management.",
+    );
+  }
+  const startsAt = isoTimestamp(body.startsAt);
+  const endsAt = isoTimestamp(body.endsAt);
+  if (!startsAt || !endsAt || Date.parse(endsAt) <= Date.parse(startsAt)) {
+    throw new HttpError(
+      422,
+      "invalid_data",
+      "Beginn und Ende des Wartungsfensters sind ungültig.",
+    );
+  }
+  if (typeof body.publicEnabled !== "boolean") {
+    throw new HttpError(422, "invalid_data", "Die Veröffentlichung ist ungültig.");
+  }
+  const planning = await maintenancePlanning(admin, tenantId, String(occurrence.id));
+  if (planning.serviceIds.length === 0) {
+    throw new HttpError(
+      422,
+      "no_services",
+      "Den Geräten dieser Aufgabe sind keine Dienste zugeordnet.",
+    );
+  }
+  if (
+    planning.windows.some((window) =>
+      window.state === "scheduled" || window.state === "active"
+    )
+  ) {
+    throw new HttpError(
+      409,
+      "maintenance_exists",
+      "Für diese Aufgabe ist bereits ein Wartungsfenster geplant.",
+    );
+  }
+  const { data: template } = await admin
+    .from("service_task_templates")
+    .select("title")
+    .eq("id", occurrence.template_id)
+    .maybeSingle();
+  const requestedTitle = typeof body.title === "string" ? body.title.trim() : "";
+  const title = (requestedTitle ||
+    String(template?.title ?? "Wartung")).slice(0, 180);
+  const { data: maintenanceId, error } = await admin.rpc(
+    "save_service_status_maintenance",
+    {
+      p_actor_id: actorId,
+      p_tenant_id: tenantId,
+      p_maintenance_id: null,
+      p_title: title.length >= 2 ? title : "Wartung",
+      p_description: "Geplant aus einer Serviceaufgabe.",
+      p_starts_at: startsAt,
+      p_ends_at: endsAt,
+      p_state: "scheduled",
+      p_public_enabled: body.publicEnabled,
+      p_service_ids: planning.serviceIds.slice(0, 100),
+    },
+  );
+  if (error?.code === "42501") {
+    throw new HttpError(
+      403,
+      "publication_denied",
+      "Öffentliche Wartungsfenster erfordern die Berechtigung für Mandanteneinstellungen.",
+    );
+  }
+  if (error || !isUuid(maintenanceId)) {
+    throw new HttpError(
+      422,
+      "maintenance_invalid",
+      "Das Wartungsfenster konnte nicht gespeichert werden.",
+    );
+  }
+  const [linked, assets] = await Promise.all([
+    admin
+      .from("service_status_maintenances")
+      .update({ service_task_occurrence_id: occurrence.id })
+      .eq("tenant_id", tenantId)
+      .eq("id", maintenanceId),
+    planning.assetIds.length
+      ? admin.from("service_status_maintenance_assets").insert(
+        planning.assetIds.map((assetId) => ({
+          tenant_id: tenantId,
+          maintenance_id: maintenanceId,
+          asset_id: assetId,
+        })),
+      )
+      : Promise.resolve({ error: null }),
+  ]);
+  if (linked.error || assets.error) throw databaseError();
+  await logEvent(
+    admin,
+    tenantId,
+    "maintenance_planned",
+    actorId,
+    { occurrenceId: String(occurrence.id) },
+    { maintenanceId, startsAt, endsAt },
+  );
+  return { maintenanceId };
 }
 
 async function updateOccurrence(
@@ -1205,7 +1467,9 @@ async function cron(admin: Admin) {
       reminders += dueRows.length;
     }
 
-    // Escalation after n days overdue: assignee plus the template's team.
+    // Escalation after n days overdue: with a team the task is handed over to
+    // it (no assignee any more, the team members see it and pick it up);
+    // without a team the assignee is only reminded.
     const { data: late } = await admin
       .from("service_task_occurrences")
       .select("id, template_id, assignee_id, due_on, due_at")
@@ -1243,12 +1507,16 @@ async function cron(admin: Admin) {
             title: template.title,
             dueOn: occurrence.due_on,
             overdueDays: days,
+            ...(template.team_id ? { handover: "team" } : {}),
           },
         })),
       );
       await admin
         .from("service_task_occurrences")
-        .update({ escalated_at: now.toISOString() })
+        .update({
+          escalated_at: now.toISOString(),
+          ...(template.team_id ? { assignee_id: null } : {}),
+        })
         .eq("id", occurrence.id);
       await logEvent(
         admin,
@@ -1259,7 +1527,11 @@ async function cron(admin: Admin) {
           occurrenceId: occurrence.id as string,
           templateId: template.id as string,
         },
-        { recipients: recipients.size },
+        {
+          recipients: recipients.size,
+          handedOverToTeam: Boolean(template.team_id),
+          previousAssigneeId: occurrence.assignee_id ?? null,
+        },
       );
       escalations += 1;
     }
@@ -1433,6 +1705,29 @@ const userHandler = withSupabase(
               visibility,
             ),
           });
+        }
+        case "planMaintenanceWindow": {
+          if (!rights.canExecute) {
+            return json(request, { error: { code: "forbidden" } }, 403);
+          }
+          const planned = await planMaintenanceWindow(
+            admin,
+            tenantId,
+            actorId,
+            body,
+            visibility,
+          );
+          return json(request, {
+            data: {
+              ...planned,
+              ...(await occurrenceDetail(
+                admin,
+                tenantId,
+                body.occurrenceId,
+                visibility,
+              )),
+            },
+          }, 201);
         }
         case "calendar":
           return json(request, {

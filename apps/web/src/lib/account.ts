@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 import { supabase } from "./supabase";
 
 /** Self-service account functions (personal workspace, account deletion). */
@@ -34,7 +35,10 @@ export async function createPersonalWorkspace(name: string): Promise<void> {
     throw new Error(
       await errorMessage(
         error,
-        "Der Arbeitsbereich konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+        tn(
+          "Der Arbeitsbereich konnte nicht erstellt werden. Bitte versuche es erneut.",
+          "Der Arbeitsbereich konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+        ),
       ),
     );
   }
@@ -49,7 +53,10 @@ export async function deleteAccount(): Promise<void> {
     throw new Error(
       await errorMessage(
         error,
-        "Das Konto konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+        tn(
+          "Das Konto konnte nicht gelöscht werden. Bitte versuche es erneut.",
+          "Das Konto konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+        ),
       ),
     );
   }

@@ -1,10 +1,11 @@
 import { withSupabase } from "@supabase/server";
+import { SIMULATION_MESSAGE } from "../_shared/monitoring-simulation.ts";
 import {
   buildEvent,
+  candidateObjectIds,
   classifyStatus,
   type DeviceCandidate,
   externalKey,
-  matchDevice,
   MAX_BODY_BYTES,
   opensAlert,
   parseBody,
@@ -13,11 +14,9 @@ import {
   type ServiceStatus,
   shouldComment,
   targetServiceStatus,
-  ticketDescription,
-  ticketSubject,
   TOKEN_PATTERN,
-  updateComment,
 } from "./prtg.ts";
+import { shortSensorName } from "./prtg-text.ts";
 
 /**
  * PRTG monitoring webhook («Execute HTTP Action»).
@@ -26,9 +25,15 @@ import {
  *   cannot send a Supabase JWT. The caller authenticates with the per-tenant
  *   token (`?token=…` or header `x-nextdesk-token`), which is stored only as
  *   SHA-256 hash in `monitoring_integrations.token_hash`.
- * - Down (and Warning if configured) opens one ticket per monitored object,
- *   repeated messages become throttled internal comments, Up resolves the
- *   alert, optionally the ticket, and restores the service status.
+ * - Down (and Warning if configured) opens an alert per sensor and an
+ *   incident («Störung») per device. No tickets are created: everything is
+ *   handled in the «Störungen» module. Devices behind a failed device (uplinks
+ *   in the infrastructure) become follow-up incidents without own alert. Up
+ *   resolves the alert, sets the incident to «resolved» once all its sensors
+ *   are OK again (an agent closes it with a cause) and restores the service
+ *   status.
+ * - Device, services and uplink chain come from one SQL resolver
+ *   (monitoring_resolve_device), shared with the incidents function.
  */
 
 // deno-lint-ignore no-explicit-any
@@ -39,16 +44,23 @@ type Integration = {
   id: string;
   tenant_id: string;
   enabled: boolean;
-  department_id: string | null;
   team_id: string | null;
   create_on: "down" | "down_and_warning";
-  auto_resolve: boolean;
   set_service_status: boolean;
-  priority_key: string | null;
+  group_dependencies: boolean;
+  suppress_in_maintenance: boolean;
 };
+
+/** A resolved device with its uplink chain (nearest first, at most 20). */
+export type ResolvedDevice = DeviceCandidate & { uplinks: string[] };
+
+/** Settings the webhook reads (no ticket settings: incidents have none). */
+export const INTEGRATION_COLUMNS =
+  "id, tenant_id, enabled, team_id, create_on, set_service_status, group_dependencies, suppress_in_maintenance";
 
 type Alert = {
   id: string;
+  incident_id: string | null;
   ticket_id: string | null;
   service_id: string | null;
   service_ids: string[] | null;
@@ -61,8 +73,8 @@ type Alert = {
   service_status_applied: "degraded" | "partial_outage" | null;
 };
 
-const SERVICE_EMAIL = "monitoring-service@app.nextdesk.ch";
-const SERVICE_NAME = "nextDesk Monitoring";
+/** A device that is OK again and fails within this time reopens its incident. */
+const REOPEN_WINDOW_MS = 10 * 60 * 1000;
 const encoder = new TextEncoder();
 
 function reply(body: Record<string, unknown>, status = 200): Response {
@@ -88,286 +100,49 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value ? value : null;
 }
 
-async function ensureServiceIdentity(admin: Admin): Promise<string> {
-  const existing = await admin
-    .from("monitoring_service_identity")
-    .select("user_id")
-    .eq("singleton", true)
-    .maybeSingle();
-  if (existing.error) throw new Error("service_identity_lookup_failed");
-  let userId = asString(existing.data?.user_id);
-  if (userId) return userId;
-
-  const created = await admin.auth.admin.createUser({
-    email: SERVICE_EMAIL,
-    email_confirm: true,
-    password: `N!m${crypto.randomUUID()}A`,
-    app_metadata: { nextdesk_service_identity: "monitoring" },
-    user_metadata: { display_name: SERVICE_NAME },
-  });
-  userId = asString(created?.data?.user?.id);
-  if (!userId) {
-    const users = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    const found = Array.isArray(users?.data?.users)
-      ? users.data.users.find(
-          (user: Row) =>
-            typeof user?.email === "string" &&
-            user.email.toLowerCase() === SERVICE_EMAIL,
-        )
-      : null;
-    userId = asString(found?.id);
-  }
-  if (!userId) throw new Error("service_identity_create_failed");
-  const profile = await admin
-    .from("user_profiles")
-    .upsert({ id: userId, display_name: SERVICE_NAME }, { onConflict: "id" });
-  if (profile.error) throw new Error("service_identity_profile_failed");
-  await admin.from("monitoring_service_identity").upsert(
-    { singleton: true, user_id: userId },
-    {
-      onConflict: "singleton",
-      ignoreDuplicates: true,
-    },
-  );
-  const stored = await admin
-    .from("monitoring_service_identity")
-    .select("user_id")
-    .eq("singleton", true)
-    .maybeSingle();
-  const storedId = asString(stored.data?.user_id);
-  if (!storedId) throw new Error("service_identity_store_failed");
-  return storedId;
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
 }
 
-async function loadDevices(
+/** Parses the result of the SQL function monitoring_resolve_device. */
+export function parseResolvedDevice(value: unknown): ResolvedDevice | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const row = value as Row;
+  const assetId = asString(row.assetId);
+  if (!assetId) return null;
+  return {
+    assetId,
+    name: asString(row.name) ?? "",
+    hostname: asString(row.hostname),
+    ipAddress: asString(row.ipAddress),
+    prtgObjectId: asString(row.prtgObjectId),
+    serviceIds: stringList(row.serviceIds),
+    uplinks: stringList(row.uplinks),
+  };
+}
+
+/**
+ * The device of a message, resolved in SQL (PRTG object id, host, name, IP
+ * address management) with its services and uplink chain: only the rows
+ * needed, not the whole inventory of the tenant.
+ */
+async function resolveDevice(
   admin: Admin,
   tenantId: string,
-): Promise<DeviceCandidate[]> {
-  const infra = await admin
-    .from("asset_infrastructure")
-    .select("asset_id, hostname, ip_address, prtg_object_id")
-    .eq("tenant_id", tenantId)
-    .limit(5000);
-  if (infra.error) throw new Error("device_lookup_failed");
-  const rows = (infra.data ?? []) as Row[];
-  if (!rows.length) return [];
-  const assets = await admin
-    .from("assets")
-    .select("id, name, service_id")
-    .eq("tenant_id", tenantId)
-    .in(
-      "id",
-      rows.map((row) => String(row.asset_id)),
-    );
-  if (assets.error) throw new Error("device_lookup_failed");
-  const links = await admin
-    .from("asset_services")
-    .select("asset_id, service_id")
-    .eq("tenant_id", tenantId)
-    .limit(20000);
-  if (links.error) throw new Error("device_lookup_failed");
-  const servicesByAsset = new Map<string, Set<string>>();
-  for (const link of (links.data ?? []) as Row[]) {
-    const key = String(link.asset_id);
-    const set = servicesByAsset.get(key) ?? new Set<string>();
-    set.add(String(link.service_id));
-    servicesByAsset.set(key, set);
-  }
-  const byId = new Map(
-    ((assets.data ?? []) as Row[]).map((row) => [String(row.id), row]),
-  );
-  return rows.flatMap((row) => {
-    const asset = byId.get(String(row.asset_id));
-    if (!asset) return [];
-    return [
-      {
-        assetId: String(asset.id),
-        name: String(asset.name ?? ""),
-        hostname: asString(row.hostname),
-        ipAddress: asString(row.ip_address),
-        prtgObjectId: asString(row.prtg_object_id),
-        // The primary service plus every additional one of the device.
-        serviceIds: [
-          ...new Set([
-            ...(asString(asset.service_id) ? [asString(asset.service_id)!] : []),
-            ...(servicesByAsset.get(String(asset.id)) ?? []),
-          ]),
-        ],
-      },
-    ];
-  });
-}
-
-async function addComment(
-  admin: Admin,
-  ticketId: string,
-  authorId: string,
-  body: string,
-): Promise<void> {
-  const comment = await admin
-    .from("ticket_comments")
-    .insert({
-      ticket_id: ticketId,
-      author_id: authorId,
-      visibility: "internal",
-      body: body.slice(0, 50_000),
-    })
-    .select("id")
-    .single();
-  if (comment.error) throw new Error("comment_create_failed");
-  await admin.from("ticket_events").insert({
-    ticket_id: ticketId,
-    actor_id: authorId,
-    event_type: "comment.internal_added",
-    payload: { source: "monitoring", provider: "prtg" },
-  });
-}
-
-async function resolvePriority(
-  admin: Admin,
-  tenantId: string,
-  configured: string | null,
-): Promise<string | null> {
-  const { data, error } = await admin
-    .from("ticket_priorities")
-    .select("id, key")
-    .eq("tenant_id", tenantId);
-  if (error) return null;
-  const rows = (data ?? []) as Row[];
-  for (const key of [configured, "high", "urgent", "normal"]) {
-    const found = key ? rows.find((row) => row.key === key) : null;
-    if (found) return String(found.id);
-  }
-  return rows[0] ? String(rows[0].id) : null;
-}
-
-/** The configured team with its department, while it is still active. */
-async function resolveTeam(
-  admin: Admin,
-  tenantId: string,
-  teamId: string | null,
-): Promise<{ id: string; departmentId: string } | null> {
-  if (!teamId) return null;
-  const { data } = await admin
-    .from("teams")
-    .select("id, department_id")
-    .eq("tenant_id", tenantId)
-    .eq("id", teamId)
-    .eq("active", true)
-    .maybeSingle();
-  return data && data.department_id
-    ? { id: String(data.id), departmentId: String(data.department_id) }
-    : null;
-}
-
-async function resolveDepartment(
-  admin: Admin,
-  tenantId: string,
-  departmentId: string | null,
-): Promise<{ id: string; key: string } | null> {
-  if (departmentId) {
-    const { data } = await admin
-      .from("departments")
-      .select("id, key")
-      .eq("tenant_id", tenantId)
-      .eq("id", departmentId)
-      .eq("active", true)
-      .maybeSingle();
-    if (data) return { id: String(data.id), key: String(data.key) };
-  }
-  const { data } = await admin
-    .from("departments")
-    .select("id, key")
-    .eq("tenant_id", tenantId)
-    .eq("active", true)
-    .order("key")
-    .limit(1)
-    .maybeSingle();
-  return data ? { id: String(data.id), key: String(data.key) } : null;
-}
-
-async function createTicket(
-  admin: Admin,
-  integration: Integration,
   event: PrtgEvent,
-  device: DeviceCandidate | null,
-  serviceIdentityId: string,
-): Promise<string> {
-  const tenantId = integration.tenant_id;
-  const team = await resolveTeam(admin, tenantId, integration.team_id);
-  const [department, status, priorityId] = await Promise.all([
-    // The team's department wins: a ticket's team must match its department.
-    resolveDepartment(
-      admin,
-      tenantId,
-      team?.departmentId ?? integration.department_id,
-    ),
-    admin
-      .from("ticket_statuses")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("key", "new")
-      .maybeSingle(),
-    resolvePriority(admin, tenantId, integration.priority_key),
-  ]);
-  if (!department || status.error || !status.data || !priorityId) {
-    throw new Error("ticket_defaults_unavailable");
-  }
-  const number = await admin.rpc("reserve_ticket_number", {
+): Promise<ResolvedDevice | null> {
+  const { data, error } = await admin.rpc("monitoring_resolve_device", {
     p_tenant_id: tenantId,
-    p_department_id: department.id,
-    p_prefix: department.key.slice(0, 8),
+    p_object_ids: candidateObjectIds(event),
+    p_host: event.host,
+    p_name: event.device,
   });
-  if (number.error || typeof number.data !== "string") {
-    throw new Error("ticket_number_failed");
-  }
-  const ticket = await admin
-    .from("tickets")
-    .insert({
-      tenant_id: tenantId,
-      department_id: department.id,
-      assigned_team_id: team && team.departmentId === department.id ? team.id : null,
-      ticket_number: number.data,
-      subject: ticketSubject(event),
-      description: ticketDescription(event, device?.name ?? null),
-      status_id: status.data.id,
-      priority_id: priorityId,
-      requester_id: serviceIdentityId,
-      // tickets.source allows portal, email, api, automation, phone.
-      source: "automation",
-    })
-    .select("id, ticket_number")
-    .single();
-  if (ticket.error || !ticket.data) throw new Error("ticket_create_failed");
-  const ticketId = String(ticket.data.id);
-  await admin.from("ticket_events").insert({
-    ticket_id: ticketId,
-    actor_id: serviceIdentityId,
-    event_type: "ticket.created",
-    payload: { source: "monitoring", provider: "prtg" },
-  });
-  if (device) {
-    await admin.from("ticket_assets").insert({
-      tenant_id: tenantId,
-      ticket_id: ticketId,
-      asset_id: device.assetId,
-      linked_by: null,
-    });
-  }
-  await admin.from("audit_logs").insert({
-    tenant_id: tenantId,
-    actor_id: serviceIdentityId,
-    action: "monitoring.ticket.created",
-    entity_type: "ticket",
-    entity_id: ticketId,
-    severity: "info",
-    metadata: {
-      provider: "prtg",
-      ticketNumber: ticket.data.ticket_number,
-      assetId: device?.assetId ?? null,
-    },
-  });
-  return ticketId;
+  if (error) throw new Error("device_lookup_failed");
+  return parseResolvedDevice(data);
 }
 
 async function applyServiceStatus(
@@ -383,16 +158,20 @@ async function applyServiceStatus(
     .eq("id", serviceId)
     .maybeSingle();
   if (error || !data) return null;
+  // Warnings stay internal (the incident shows them); only an outage
+  // changes the status the status page shows.
+  if (kind !== "down") return null;
   const target = targetServiceStatus(kind, data.status as ServiceStatus);
   if (!target) return null;
-  // The services_status_history trigger records the status event.
-  const updated = await admin
-    .from("services")
-    .update({ status: target })
-    .eq("tenant_id", tenantId)
-    .eq("id", serviceId)
-    .eq("status", data.status);
-  return updated.error ? null : target;
+  // The services_status_history trigger records the status event. No status
+  // mail to subscribers: the public message comes from the incident.
+  const updated = await admin.rpc("monitoring_set_service_status", {
+    p_tenant_id: tenantId,
+    p_service_id: serviceId,
+    p_status: target,
+    p_from: [data.status],
+  });
+  return updated.error || updated.data !== true ? null : target;
 }
 
 /** Services of an alert: the stored list, else the legacy single service. */
@@ -441,71 +220,12 @@ async function restoreServiceStatus(
     .limit(1);
   if (others.error || (others.data ?? []).length > 0) return;
   // Only undo what monitoring set; manual outages and maintenance stay.
-  await admin
-    .from("services")
-    .update({ status: "operational" })
-    .eq("tenant_id", tenantId)
-    .eq("id", serviceId)
-    .in("status", ["degraded", "partial_outage"]);
-}
-
-async function resolveTicket(
-  admin: Admin,
-  tenantId: string,
-  ticketId: string,
-  serviceIdentityId: string,
-): Promise<boolean> {
-  const [{ data: ticket }, { data: resolved }] = await Promise.all([
-    admin
-      .from("tickets")
-      .select("id, status_id, assigned_agent_id, closed_at")
-      .eq("tenant_id", tenantId)
-      .eq("id", ticketId)
-      .maybeSingle(),
-    admin
-      .from("ticket_statuses")
-      .select("id, key, is_closed")
-      .eq("tenant_id", tenantId)
-      .eq("key", "resolved")
-      .maybeSingle(),
-  ]);
-  if (!ticket || !resolved || ticket.closed_at) return false;
-  if (ticket.status_id === resolved.id) return false;
-  const { data: current } = await admin
-    .from("ticket_statuses")
-    .select("key")
-    .eq("id", ticket.status_id)
-    .maybeSingle();
-  // Status rule: a ticket leaves «Neu» only with an assignee.
-  if (current?.key === "new" && !ticket.assigned_agent_id) return false;
-  const now = new Date().toISOString();
-  const { error } = await admin
-    .from("tickets")
-    .update({
-      status_id: resolved.id,
-      closed_at: resolved.is_closed ? now : null,
-      resolved_at: now,
-      waiting_since: null,
-    })
-    .eq("tenant_id", tenantId)
-    .eq("id", ticketId);
-  if (error) return false;
-  await admin.from("ticket_events").insert({
-    ticket_id: ticketId,
-    actor_id: serviceIdentityId,
-    event_type: resolved.is_closed ? "ticket.closed" : "ticket.updated",
-    payload: {
-      changedFields: ["status"],
-      source: "monitoring",
-      statusTransition: {
-        fromStatusId: ticket.status_id,
-        toStatusKey: "resolved",
-        isClosed: resolved.is_closed === true,
-        occurredAt: now,
-      },
-    },
+  await admin.rpc("monitoring_set_service_status", {
+    p_tenant_id: tenantId,
+    p_service_id: serviceId,
+    p_status: "operational",
+    p_from: ["degraded", "partial_outage"],
   });
-  return true;
 }
 
 async function findOpenAlert(
@@ -516,7 +236,7 @@ async function findOpenAlert(
   const { data, error } = await admin
     .from("monitoring_alerts")
     .select(
-      "id, ticket_id, service_id, service_ids, service_statuses, asset_id, last_status, last_comment_at, opened_at, event_count, service_status_applied",
+      "id, incident_id, ticket_id, service_id, service_ids, service_statuses, asset_id, last_status, last_comment_at, opened_at, event_count, service_status_applied",
     )
     .eq("tenant_id", tenantId)
     .eq("external_key", key)
@@ -526,22 +246,440 @@ async function findOpenAlert(
   return (data as Alert | null) ?? null;
 }
 
+type Incident = {
+  id: string;
+  number: string;
+  severity: "down" | "warning";
+  state: "active" | "resolved" | "closed";
+  parent_incident_id: string | null;
+  maintenance: boolean;
+};
+
+const INCIDENT_COLUMNS =
+  "id, number, severity, state, parent_incident_id, maintenance";
+
+function incidentKey(event: PrtgEvent, device: ResolvedDevice | null, key: string): string {
+  if (device) return `asset:${device.assetId}`;
+  return `dev:${(event.device ?? event.host ?? key).toLowerCase()}`.slice(0, 300);
+}
+
+function incidentTitle(event: PrtgEvent, device: ResolvedDevice | null): string {
+  const name = device?.name ?? event.device ?? event.host ?? "Unbekanntes Gerät";
+  // Without the sensor type PRTG appends in brackets («Ping (Ping)»).
+  const sensorName = shortSensorName(event.sensor);
+  const sensor = sensorName ? ` – ${sensorName}` : "";
+  const title = `${name}${sensor}`.replace(/\s+/g, " ").trim();
+  return title.length > 300 ? `${title.slice(0, 299)}…` : title;
+}
+
+async function addIncidentEvent(
+  admin: Admin,
+  tenantId: string,
+  incidentId: string,
+  kind: string,
+  event: PrtgEvent | null,
+  message?: string | null,
+): Promise<void> {
+  await admin.from("monitoring_incident_events").insert({
+    tenant_id: tenantId,
+    incident_id: incidentId,
+    kind: kind === "prtg" && event?.origin === "sensor" ? "sensor" : kind,
+    status: event?.status?.slice(0, 120) ?? null,
+    sensor_name: event?.sensor?.slice(0, 300) ?? null,
+    message: (message ?? event?.message ?? null)?.slice(0, 4000) ?? null,
+  });
+}
+
+async function notifyIncident(
+  admin: Admin,
+  incident: Incident,
+  reason: string,
+): Promise<void> {
+  if (incident.parent_incident_id || incident.maintenance) return;
+  await admin.rpc("monitoring_incident_notify", {
+    p_incident_id: incident.id,
+    p_reason: reason,
+  });
+}
+
+/** Devices behind a device (their uplink chain contains it). */
+async function downstreamAssets(
+  admin: Admin,
+  tenantId: string,
+  assetId: string,
+): Promise<string[]> {
+  const { data, error } = await admin.rpc("monitoring_downstream_assets", {
+    p_tenant_id: tenantId,
+    p_asset_id: assetId,
+  });
+  return error ? [] : stringList(data);
+}
+
+async function inMaintenance(
+  admin: Admin,
+  tenantId: string,
+  serviceIds: string[],
+  assetId: string | null,
+): Promise<boolean> {
+  if (assetId) {
+    // The device is part of a running maintenance window.
+    const nowIso = new Date().toISOString();
+    const { data: windows } = await admin
+      .from("service_status_maintenance_assets")
+      .select("maintenance_id, service_status_maintenances!inner(state, starts_at, ends_at)")
+      .eq("tenant_id", tenantId)
+      .eq("asset_id", assetId)
+      .in("service_status_maintenances.state", ["scheduled", "active"])
+      .lte("service_status_maintenances.starts_at", nowIso)
+      .gt("service_status_maintenances.ends_at", nowIso)
+      .limit(1);
+    if (((windows ?? []) as Row[]).length > 0) return true;
+  }
+  if (!serviceIds.length) return false;
+  const { data } = await admin
+    .from("services")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .in("id", serviceIds)
+    .eq("status", "maintenance")
+    .limit(1);
+  return ((data ?? []) as Row[]).length > 0;
+}
+
+/**
+ * The incident of a device: the active one, a just resolved one (reopened)
+ * or a new one. New incidents behind a failed device become follow-ups;
+ * failed devices behind a new incident become its follow-ups.
+ */
+async function incidentForAlert(
+  admin: Admin,
+  integration: Integration,
+  event: PrtgEvent,
+  device: ResolvedDevice | null,
+  key: string,
+  now: Date,
+): Promise<{ incident: Incident; created: boolean }> {
+  const tenantId = integration.tenant_id;
+  const deviceKey = incidentKey(event, device, key);
+  const severity: "down" | "warning" = event.kind === "down" ? "down" : "warning";
+
+  const active = await admin
+    .from("monitoring_incidents")
+    .select(INCIDENT_COLUMNS)
+    .eq("tenant_id", tenantId)
+    .eq("incident_key", deviceKey)
+    .eq("state", "active")
+    .maybeSingle();
+  if (active.data) {
+    const incident = active.data as Incident;
+    await addIncidentEvent(admin, tenantId, incident.id, "prtg", event);
+    if (severity === "down" && incident.severity === "warning") {
+      await admin.from("monitoring_incidents").update({ severity: "down" }).eq("id", incident.id);
+      incident.severity = "down";
+      await notifyIncident(admin, incident, "escalated");
+    }
+    await admin
+      .from("monitoring_incidents")
+      .update({ last_event_at: now.toISOString() })
+      .eq("id", incident.id);
+    return { incident, created: false };
+  }
+
+  // Flapping: OK for a few minutes only, then down again → same incident.
+  const recent = await admin
+    .from("monitoring_incidents")
+    .select(INCIDENT_COLUMNS)
+    .eq("tenant_id", tenantId)
+    .eq("incident_key", deviceKey)
+    // «Wieder OK» and not closed yet (any age), or closed automatically
+    // (before 0364) a few minutes ago; never one an agent closed.
+    .in("state", ["resolved", "closed"])
+    .is("closed_by", null)
+    .or(`state.eq.resolved,resolved_at.gte.${new Date(now.getTime() - REOPEN_WINDOW_MS).toISOString()}`)
+    .order("resolved_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (recent.data) {
+    const incident = recent.data as Incident;
+    const reopened = await admin
+      .from("monitoring_incidents")
+      .update({
+        state: "active",
+        resolved_at: null,
+        closed_at: null,
+        closing_note: null,
+        severity,
+        last_event_at: now.toISOString(),
+      })
+      .eq("id", incident.id)
+      .in("state", ["resolved", "closed"])
+      .is("closed_by", null)
+      .select(INCIDENT_COLUMNS)
+      .maybeSingle();
+    if (reopened.data) {
+      const current = reopened.data as Incident;
+      await addIncidentEvent(admin, tenantId, current.id, "reopened", event,
+        "Nach kurzer Erholung erneut gestört.");
+      await notifyIncident(admin, current, "reopened");
+      return { incident: current, created: false };
+    }
+  }
+
+  const grouping = integration.group_dependencies && device !== null;
+  let parent: { id: string; number: string } | null = null;
+  if (device && grouping) {
+    const ancestors = device.uplinks;
+    if (ancestors.length) {
+      const { data } = await admin
+        .from("monitoring_incidents")
+        .select("id, number, incident_key")
+        .eq("tenant_id", tenantId)
+        .eq("state", "active")
+        .in("incident_key", ancestors.map((id) => `asset:${id}`));
+      const byKey = new Map(((data ?? []) as Row[]).map((row) => [String(row.incident_key), row]));
+      for (const ancestor of ancestors) {
+        const found = byKey.get(`asset:${ancestor}`);
+        if (found) {
+          // Follow the chain to the root cause.
+          parent = { id: String(found.id), number: String(found.number) };
+          break;
+        }
+      }
+    }
+  }
+  const maintenance = integration.suppress_in_maintenance &&
+    await inMaintenance(admin, tenantId, device?.serviceIds ?? [], device?.assetId ?? null);
+  const number = await admin.rpc("monitoring_next_incident_number", { p_tenant_id: tenantId });
+  if (number.error || typeof number.data !== "string") throw new Error("incident_number_failed");
+  const inserted = await admin
+    .from("monitoring_incidents")
+    .insert({
+      tenant_id: tenantId,
+      number: number.data,
+      incident_key: deviceKey,
+      asset_id: device?.assetId ?? null,
+      device_name: device?.name ?? event.device ?? event.host,
+      title: incidentTitle(event, device),
+      severity,
+      state: "active",
+      parent_incident_id: parent?.id ?? null,
+      team_id: integration.team_id,
+      service_ids: device?.serviceIds ?? [],
+      maintenance,
+      opened_at: now.toISOString(),
+      last_event_at: now.toISOString(),
+    })
+    .select(INCIDENT_COLUMNS)
+    .single();
+  if (inserted.error) {
+    // A concurrent message of the same device created it first.
+    if (inserted.error.code === "23505") {
+      const again = await admin
+        .from("monitoring_incidents")
+        .select(INCIDENT_COLUMNS)
+        .eq("tenant_id", tenantId)
+        .eq("incident_key", deviceKey)
+        .eq("state", "active")
+        .maybeSingle();
+      if (again.data) return { incident: again.data as Incident, created: false };
+    }
+    throw new Error("incident_create_failed");
+  }
+  const incident = inserted.data as Incident;
+  await addIncidentEvent(admin, tenantId, incident.id, "opened", event);
+  if (parent) {
+    await addIncidentEvent(admin, tenantId, incident.id, "child", null,
+      `Folgestörung von ${parent.number}: das vorgelagerte Gerät ist gestört.`);
+  }
+  if (maintenance) {
+    await addIncidentEvent(admin, tenantId, incident.id, "maintenance", null,
+      "Betroffener Dienst ist in Wartung: keine Alarmierung.");
+  }
+  await notifyIncident(admin, incident, "opened");
+
+  // Devices behind this one that already failed become its follow-ups.
+  if (device && grouping && !parent) {
+    const descendants = await downstreamAssets(admin, tenantId, device.assetId);
+    if (descendants.length) {
+      const { data } = await admin
+        .from("monitoring_incidents")
+        .update({ parent_incident_id: incident.id })
+        .eq("tenant_id", tenantId)
+        .eq("state", "active")
+        .is("parent_incident_id", null)
+        .is("acknowledged_at", null)
+        .in("incident_key", descendants.map((id) => `asset:${id}`))
+        .select("id");
+      for (const row of (data ?? []) as Row[]) {
+        await addIncidentEvent(admin, tenantId, String(row.id), "child", null,
+          `Folgestörung von ${incident.number}: das vorgelagerte Gerät ist gestört.`);
+      }
+    }
+  }
+  return { incident, created: true };
+}
+
+async function resolveIncidentIfClear(
+  admin: Admin,
+  tenantId: string,
+  incidentId: string,
+  event: PrtgEvent,
+  now: Date,
+): Promise<boolean> {
+  await addIncidentEvent(admin, tenantId, incidentId, "prtg", event);
+  const open = await admin
+    .from("monitoring_alerts")
+    .select("id")
+    .eq("incident_id", incidentId)
+    .eq("state", "open")
+    .limit(1);
+  if (open.error || ((open.data ?? []) as Row[]).length > 0) return false;
+  const updated = await admin
+    .from("monitoring_incidents")
+    // Back to OK: «Wieder OK», but the incident stays open until an agent
+    // closes it with the cause (never closed automatically).
+    .update({
+      state: "resolved",
+      resolved_at: now.toISOString(),
+      last_event_at: now.toISOString(),
+    })
+    .eq("id", incidentId)
+    .eq("state", "active")
+    .select("id");
+  if (((updated.data ?? []) as Row[]).length) {
+    await addIncidentEvent(admin, tenantId, incidentId, "resolved", null,
+      "Alle Sensoren melden wieder OK. Die Störung bleibt offen, bis sie abgeschlossen wird.");
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Records the message as the sensor's latest state. False when a newer
+ * message for the same sensor was already received (PRTG bursts are handled
+ * in parallel, so an older «Fehler» can come after its «OK»).
+ */
+async function recordSensorState(
+  admin: Admin,
+  tenantId: string,
+  key: string,
+  event: PrtgEvent,
+  receivedAt: Date,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc("monitoring_record_sensor_state", {
+    p_tenant_id: tenantId,
+    p_external_key: key,
+    p_kind: event.kind,
+    p_status: event.status,
+    p_received_at: receivedAt.toISOString(),
+  });
+  // Without the record the message is still handled.
+  return error ? true : data !== false;
+}
+
+async function latestSensorKind(admin: Admin, tenantId: string, key: string) {
+  const { data } = await admin
+    .from("monitoring_sensor_states")
+    .select("kind")
+    .eq("tenant_id", tenantId)
+    .eq("external_key", key)
+    .maybeSingle();
+  return typeof data?.kind === "string" ? data.kind : null;
+}
+
+async function resolveAlert(
+  admin: Admin,
+  tenantId: string,
+  alert: Alert,
+  event: PrtgEvent,
+  now: Date,
+) {
+  await admin
+    .from("monitoring_alerts")
+    .update({
+      state: "resolved",
+      resolved_at: now.toISOString(),
+      last_status: event.status.slice(0, 80),
+      last_message: event.message,
+      last_event_at: now.toISOString(),
+      last_comment_at: now.toISOString(),
+      event_count: alert.event_count + 1,
+    })
+    .eq("id", alert.id)
+    .eq("state", "open");
+  for (const serviceId of Object.keys(alertServiceStatuses(alert))) {
+    await restoreServiceStatus(admin, tenantId, serviceId, alert.id);
+  }
+  if (alert.incident_id) {
+    await resolveIncidentIfClear(admin, tenantId, alert.incident_id, event, now);
+  }
+}
+
+/**
+ * After a «Fehler» was handled: an «OK» for the same sensor may have been
+ * handled meanwhile (and found no open alert yet). Then close it now.
+ */
+async function settleAfterDown(
+  admin: Admin,
+  tenantId: string,
+  key: string,
+  incidentId: string,
+  event: PrtgEvent,
+  now: Date,
+) {
+  if ((await latestSensorKind(admin, tenantId, key)) === "up") {
+    const open = await findOpenAlert(admin, tenantId, key);
+    if (open) {
+      await resolveAlert(admin, tenantId, open, {
+        ...event,
+        kind: "up",
+        status: "OK",
+        message: "Die OK-Meldung von PRTG kam vor dem Fehler an.",
+      }, now);
+      return;
+    }
+  }
+  // The alert was resolved before it was linked to the incident.
+  const stillOpen = await admin
+    .from("monitoring_alerts")
+    .select("id")
+    .eq("incident_id", incidentId)
+    .eq("state", "open")
+    .limit(1);
+  if (!stillOpen.error && ((stillOpen.data ?? []) as Row[]).length === 0) {
+    await admin
+      .from("monitoring_incidents")
+      .update({ state: "resolved", resolved_at: now.toISOString() })
+      .eq("id", incidentId)
+      .eq("state", "active");
+  }
+}
+
 export async function processEvent(
   admin: Admin,
   integration: Integration,
   event: PrtgEvent,
+  receivedAt: Date = new Date(),
+  // nextDesk's own sensors know their key and device; PRTG messages are
+  // resolved from the message.
+  known: { key?: string; device?: ResolvedDevice | null } = {},
 ): Promise<string> {
   if (event.kind === "ignore") return "ignored";
   const tenantId = integration.tenant_id;
-  const key = externalKey(event);
+  const key = known.key ?? externalKey(event);
+  const deviceOf = async () =>
+    known.device !== undefined ? known.device : await resolveDevice(admin, tenantId, event);
   const now = new Date();
+  if (!(await recordSensorState(admin, tenantId, key, event, receivedAt))) {
+    return "stale";
+  }
   let alert = await findOpenAlert(admin, tenantId, key);
 
   if (!alert) {
     if (!opensAlert(event.kind, integration.create_on)) return "ignored";
-    const device = matchDevice(event, await loadDevices(admin, tenantId));
+    const device = await deviceOf();
     // The alert is claimed first: the partial unique index makes a second,
-    // concurrent Down for the same object fall through to the comment path.
+    // concurrent Down for the same object fall through to the update path.
     const inserted = await admin
       .from("monitoring_alerts")
       .insert({
@@ -553,118 +691,100 @@ export async function processEvent(
         asset_id: device?.assetId ?? null,
         service_id: device?.serviceIds[0] ?? null,
         service_ids: device?.serviceIds ?? [],
+        // For the availability: an outage (not only a warning), and not a test.
+        was_down: event.kind === "down",
+        simulated: event.message === SIMULATION_MESSAGE,
         state: "open",
         last_status: event.status.slice(0, 80),
         last_message: event.message,
         opened_at: now.toISOString(),
         last_event_at: now.toISOString(),
+        last_comment_at: now.toISOString(),
       })
       .select("id")
       .single();
     if (inserted.error) {
-      if (inserted.error.code !== "23505")
-        throw new Error("alert_create_failed");
+      if (inserted.error.code !== "23505") throw new Error("alert_create_failed");
       alert = await findOpenAlert(admin, tenantId, key);
       if (!alert) return "ignored";
     } else {
       const alertId = String(inserted.data.id);
-      let ticketId: string;
+      let incident: { incident: Incident; created: boolean };
       try {
-        const serviceIdentityId = await ensureServiceIdentity(admin);
-        ticketId = await createTicket(
-          admin,
-          integration,
-          event,
-          device,
-          serviceIdentityId,
-        );
+        incident = await incidentForAlert(admin, integration, event, device, key, now);
       } catch (failure) {
-        // Release the claim so the next Down message retries the ticket.
+        // Release the claim so the next message retries.
         await admin
           .from("monitoring_alerts")
           .update({ state: "resolved", resolved_at: now.toISOString() })
           .eq("id", alertId);
         throw failure;
       }
-      const statuses = integration.set_service_status
-        ? await applyServiceStatuses(
-            admin,
-            tenantId,
-            device?.serviceIds ?? [],
-            event.kind,
-            {},
-          )
+      // During maintenance the incident is recorded quietly: no service
+      // status change and no public message (the maintenance has its own).
+      const statuses = integration.set_service_status && !incident.incident.maintenance
+        ? await applyServiceStatuses(admin, tenantId, device?.serviceIds ?? [], event.kind, {})
         : {};
       await admin
         .from("monitoring_alerts")
         .update({
-          ticket_id: ticketId,
+          incident_id: incident.incident.id,
           service_statuses: statuses,
           service_status_applied: Object.values(statuses)[0] ?? null,
         })
         .eq("id", alertId);
-      return "ticket_created";
+      // Published by monitoring_publish_pending (minute job) once an agent
+      // confirms the incident or it is 10 minutes old.
+      await settleAfterDown(admin, tenantId, key, incident.incident.id, event, now);
+      return incident.created ? "incident_opened" : "incident_updated";
     }
   }
 
-  const serviceIdentityId = await ensureServiceIdentity(admin);
   if (event.kind === "up") {
-    if (alert.ticket_id) {
-      await addComment(
-        admin,
-        alert.ticket_id,
-        serviceIdentityId,
-        updateComment(event),
-      );
-    }
-    await admin
-      .from("monitoring_alerts")
-      .update({
-        state: "resolved",
-        resolved_at: now.toISOString(),
-        last_status: event.status.slice(0, 80),
-        last_message: event.message,
-        last_event_at: now.toISOString(),
-        last_comment_at: now.toISOString(),
-        event_count: alert.event_count + 1,
-      })
-      .eq("id", alert.id);
-    if (integration.auto_resolve && alert.ticket_id) {
-      await resolveTicket(admin, tenantId, alert.ticket_id, serviceIdentityId);
-    }
-    for (const serviceId of Object.keys(alertServiceStatuses(alert))) {
-      await restoreServiceStatus(admin, tenantId, serviceId, alert.id);
-    }
+    await resolveAlert(admin, tenantId, alert, event, now);
     return "resolved";
   }
 
-  const previousKind = classifyStatus(alert.last_status);
-  const comment =
-    alert.ticket_id !== null &&
-    shouldComment({
-      lastCommentAt: alert.last_comment_at,
-      openedAt: alert.opened_at,
-      previousKind,
-      kind: event.kind,
-      now: now.getTime(),
-    });
-  if (comment && alert.ticket_id) {
-    await addComment(
-      admin,
-      alert.ticket_id,
-      serviceIdentityId,
-      updateComment(event),
-    );
+  // Older open alerts without an incident get one now.
+  if (!alert.incident_id) {
+    const device = await deviceOf();
+    const incident = await incidentForAlert(admin, integration, event, device, key, now);
+    alert.incident_id = incident.incident.id;
+    await admin.from("monitoring_alerts").update({ incident_id: alert.incident_id }).eq("id", alert.id);
   }
+
+  const previousKind = classifyStatus(alert.last_status);
+  const logged = shouldComment({
+    lastCommentAt: alert.last_comment_at,
+    openedAt: alert.opened_at,
+    previousKind,
+    kind: event.kind,
+    now: now.getTime(),
+  });
+  if (logged) {
+    await addIncidentEvent(admin, tenantId, alert.incident_id, "prtg", event);
+  }
+  if (event.kind === "down" && previousKind === "warning") {
+    const { data } = await admin
+      .from("monitoring_incidents")
+      .update({ severity: "down" })
+      .eq("id", alert.incident_id)
+      .eq("severity", "warning")
+      .eq("state", "active")
+      .select(INCIDENT_COLUMNS)
+      .maybeSingle();
+    if (data) await notifyIncident(admin, data as Incident, "escalated");
+    await admin.from("monitoring_alerts").update({ was_down: true }).eq("id", alert.id);
+  }
+  await admin
+    .from("monitoring_incidents")
+    .update({ last_event_at: now.toISOString() })
+    .eq("id", alert.incident_id);
   let statuses = alertServiceStatuses(alert);
-  if (integration.set_service_status) {
-    statuses = await applyServiceStatuses(
-      admin,
-      tenantId,
-      alertServiceIds(alert),
-      event.kind,
-      statuses,
-    );
+  const quiet = await admin.from("monitoring_incidents").select("maintenance")
+    .eq("id", alert.incident_id).maybeSingle();
+  if (integration.set_service_status && quiet.data?.maintenance !== true) {
+    statuses = await applyServiceStatuses(admin, tenantId, alertServiceIds(alert), event.kind, statuses);
   }
   await admin
     .from("monitoring_alerts")
@@ -675,10 +795,10 @@ export async function processEvent(
       event_count: alert.event_count + 1,
       service_statuses: statuses,
       service_status_applied: Object.values(statuses)[0] ?? null,
-      ...(comment ? { last_comment_at: now.toISOString() } : {}),
+      ...(logged ? { last_comment_at: now.toISOString() } : {}),
     })
     .eq("id", alert.id);
-  return comment ? "comment_added" : "updated";
+  return "updated";
 }
 
 function runInBackground(work: Promise<unknown>): boolean {
@@ -694,6 +814,8 @@ function runInBackground(work: Promise<unknown>): boolean {
 const handler = withSupabase(
   { auth: "none", cors: "disabled" },
   async (request, context) => {
+    // Order of arrival decides which message is the newest per sensor.
+    const receivedAt = new Date();
     if (request.method !== "POST" && request.method !== "GET") {
       return new Response(null, {
         status: 405,
@@ -721,9 +843,7 @@ const handler = withSupabase(
     const admin = context.supabaseAdmin;
     const { data: integration, error } = await admin
       .from("monitoring_integrations")
-      .select(
-        "id, tenant_id, enabled, department_id, team_id, create_on, auto_resolve, set_service_status, priority_key",
-      )
+      .select(INTEGRATION_COLUMNS)
       .eq("token_hash", await sha256Hex(token))
       .maybeSingle();
     if (error) return reply({ ok: false, error: "unavailable" }, 503);
@@ -741,7 +861,7 @@ const handler = withSupabase(
       .update({ last_received_at: new Date().toISOString() })
       .eq("id", integration.id);
 
-    const work = processEvent(admin, integration as Integration, event).catch(
+    const work = processEvent(admin, integration as Integration, event, receivedAt).catch(
       (failure) => {
         console.error(
           "monitoring_webhook_failed",

@@ -12,6 +12,7 @@ import {
 import { hapticError, hapticSuccess } from "@/lib/mobile-haptics";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { createMobileFollowUp } from "@/lib/quick-create";
+import { tn } from "@/lib/formality";
 
 type Due = "today" | "tomorrow" | "threeDays" | "nextWeek" | "none";
 
@@ -64,7 +65,7 @@ export default function NewFollowUpScreen() {
 
   async function save() {
     if (!tenantId || !title.trim()) {
-      setError("Bitte gib einen Titel ein.");
+      setError(tn("Bitte gib einen Titel ein.", "Bitte geben Sie einen Titel ein."));
       return;
     }
     setSaving(true);
@@ -78,13 +79,15 @@ export default function NewFollowUpScreen() {
         priority,
       });
       hapticSuccess();
-      router.replace("/");
+      // Back to where the form was opened (e.g. the «Erinnerungen» page).
+      if (router.canGoBack()) router.back();
+      else router.replace("/");
     } catch (nextError) {
       hapticError();
       setError(
         nextError instanceof Error
           ? nextError.message
-          : "Die Wiedervorlage konnte nicht gespeichert werden.",
+          : "Die Erinnerung konnte nicht gespeichert werden.",
       );
     } finally {
       setSaving(false);
@@ -93,9 +96,9 @@ export default function NewFollowUpScreen() {
 
   return (
     <CreateScreen
-      heading="Woran sollen wir dich erinnern?"
-      intro="Die Wiedervorlage erscheint im Arbeitsplatz und erinnert dich zum gewählten Termin."
-      title="Wiedervorlage erfassen"
+      heading={tn("Woran sollen wir dich erinnern?", "Woran sollen wir Sie erinnern?")}
+      intro={tn("Die Erinnerung erscheint im Arbeitsplatz und erinnert dich zum gewählten Termin.", "Die Erinnerung erscheint im Arbeitsplatz und erinnert Sie zum gewählten Termin.")}
+      title="Erinnerung erfassen"
     >
       <FormCard>
         <Field
@@ -135,7 +138,7 @@ export default function NewFollowUpScreen() {
           busy={saving}
           busyLabel="Wird gespeichert …"
           disabled={!tenantId}
-          label="Wiedervorlage speichern"
+          label="Erinnerung speichern"
           onPress={() => void save()}
         />
       </FormCard>

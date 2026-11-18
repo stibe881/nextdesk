@@ -410,6 +410,21 @@
   gap: 10px;
 }
 
+.ticket-description-editor__subject {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.ticket-description-editor__subject input {
+  width: 100%;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 .ticket-description-editor textarea {
   width: 100%;
   min-height: 140px;

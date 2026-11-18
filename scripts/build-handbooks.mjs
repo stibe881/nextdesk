@@ -3,19 +3,26 @@
  * Bundles the handbooks in docs/handbooks/*.md (plus referenced screenshots
  * in docs/handbooks/images/) into docs/handbooks/handbooks.bundle.json.
  *
+ * Every handbook exists in two wordings: informal «du» (docs/handbooks/*.md,
+ * the default) and formal (docs/handbooks/sie/*.md). Both must have the
+ * same headings and screenshots; the bundle carries the formal wording in the
+ * `sie` property of each handbook (migration 0330).
+ *
  *   node scripts/build-handbooks.mjs          regenerate the bundle
  *   node scripts/build-handbooks.mjs --check  fail if the bundle is stale
  *
  * The database loads this bundle from a pinned commit
- * (public.request_handbook_sync / apply_handbook_sync, migration 0246), and
- * the handbooks Function serves it only to the roles that may read it. The
+ * (public.request_handbook_sync / apply_handbook_sync, migrations 0246 and
+ * 0330), and the handbooks Function serves it only to the roles that may read
+ * it, in the form of address of the tenant. The
  * Markdown files are the single source of truth; never edit the bundle.
  *
- * Every «### …» block in a handbook's «## Wie mache ich …?» section also
- * becomes a knowledge base article («articles» in the bundle). The same sync
- * (migration 0255, public.sync_handbook_articles) publishes them in every
- * tenant: internal for the agent, administrator and installation handbooks,
- * external for the employee handbook.
+ * Every «### Wie …?» guide in the «## Wie mache ich …?» section also becomes
+ * a knowledge base article (`articles` in the bundle, both wordings). The sync
+ * (migration 0367, public.sync_handbook_articles) publishes them in every
+ * organisation tenant in the tenant's form of address: internal for the agent,
+ * administrator and installation handbooks, external for the employee
+ * handbook.
  */
 import {
   existsSync,
@@ -29,6 +36,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceDir = join(root, "docs", "handbooks");
+const sieDir = join(sourceDir, "sie");
 const imageDir = join(sourceDir, "images");
 const target = join(sourceDir, "handbooks.bundle.json");
 
@@ -40,9 +48,8 @@ const MIME = {
   ".webp": "image/webp",
 };
 const MAX_IMAGE_BYTES = 400 * 1024;
-// Handbooks whose «Wie mache ich …?» articles are visible to employees.
+// Handbooks whose guides become articles that employees may read.
 const EXTERNAL_ARTICLE_HANDBOOKS = new Set(["mitarbeitende"]);
-const ARTICLE_SECTION = /^## Wie mache ich/;
 const MAX_ARTICLE_BODY = 60_000;
 
 function fail(message) {
@@ -67,6 +74,35 @@ function parseFrontMatter(source, file) {
   return { meta, body: source.slice(match[0].length).trim() + "\n" };
 }
 
+/** Headings outside code fences, in order. */
+function headingsOf(body) {
+  const headings = [];
+  let fenced = false;
+  for (const line of body.split("\n")) {
+    if (/^\s*```/.test(line)) fenced = !fenced;
+    else if (!fenced && /^#{1,6}\s/.test(line)) headings.push(line.trim());
+  }
+  return headings;
+}
+
+function imagesOf(label, body) {
+  const names = [];
+  for (const [, name] of body.matchAll(/\]\(images\/([^)]+)\)/g)) {
+    if (!/^[A-Za-z0-9._-]+$/.test(name))
+      fail(`${label}: ungültiger Bildname ${name}`);
+    if (!existsSync(join(imageDir, name)))
+      fail(`${label}: Bild images/${name} fehlt.`);
+    names.push(name);
+  }
+  return names;
+}
+
+function readHandbook(dir, id, label) {
+  const file = join(dir, `${id}.md`);
+  if (!existsSync(file)) fail(`${label} fehlt.`);
+  return parseFrontMatter(readFileSync(file, "utf8"), label);
+}
+
 function slugify(title) {
   return title
     .toLowerCase()
@@ -79,30 +115,32 @@ function slugify(title) {
 }
 
 /**
- * Splits the «## Wie mache ich …?» section of one handbook into articles: one
- * article per «### Titel» block. Text before the first «###» is introduction
- * for the handbook reader only. Headings inside code fences are ignored.
+ * The «### Wie …?» guides of the «## Wie mache ich …?» section, in order.
+ * Headings inside code fences are ignored; the introduction before the first
+ * guide is for the handbook reader only.
  */
-function extractArticles(id, body) {
-  const articles = [];
-  let inFence = false;
+function guidesOf(label, body) {
+  const guides = [];
+  let fenced = false;
   let inSection = false;
   let current = null;
   const flush = () => {
     if (!current) return;
-    const markdown = current.lines.join("\n").trim() + "\n";
-    articles.push({ title: current.title, markdown });
+    guides.push({
+      title: current.title,
+      markdown: current.lines.join("\n").trim() + "\n",
+    });
     current = null;
   };
   for (const line of body.split("\n")) {
-    if (/^\s*```/.test(line)) inFence = !inFence;
-    if (!inFence && /^## /.test(line)) {
+    if (/^\s*```/.test(line)) fenced = !fenced;
+    if (!fenced && /^## /.test(line)) {
       flush();
-      inSection = ARTICLE_SECTION.test(line);
+      inSection = /^## Wie mache ich/.test(line);
       continue;
     }
     if (!inSection) continue;
-    if (!inFence && /^### /.test(line)) {
+    if (!fenced && /^### /.test(line)) {
       flush();
       current = { title: line.slice(4).trim(), lines: [] };
       continue;
@@ -110,73 +148,105 @@ function extractArticles(id, body) {
     if (current) current.lines.push(line);
   }
   flush();
-
-  if (articles.length === 0) {
-    fail(`${id}.md: Abschnitt «## Wie mache ich …?» ohne «###»-Artikel.`);
+  for (const guide of guides) {
+    if (guide.title.length < 3 || guide.title.length > 240) {
+      fail(`${label}: Titel «${guide.title}» muss 3–240 Zeichen haben.`);
+    }
+    if (guide.markdown.trim().length < 20) {
+      fail(`${label}: Anleitung «${guide.title}» hat keinen Inhalt.`);
+    }
+    if (guide.markdown.length > MAX_ARTICLE_BODY) {
+      fail(`${label}: Anleitung «${guide.title}» ist zu lang.`);
+    }
+    if (/!\[[^\]]*\]\(/.test(guide.markdown)) {
+      fail(
+        `${label}: Anleitung «${guide.title}» enthält ein Bild. Bilder gehören nicht in «Wie mache ich …?», weil die Anleitungen als Wissensartikel ohne Bilddateien erscheinen.`,
+      );
+    }
   }
-  const visibility = EXTERNAL_ARTICLE_HANDBOOKS.has(id)
-    ? "external"
-    : "internal";
-  return articles.map((article) => {
-    if (article.title.length < 3 || article.title.length > 240) {
-      fail(
-        `${id}.md: Artikeltitel «${article.title}» muss 3–240 Zeichen haben.`,
-      );
-    }
-    if (article.markdown.trim().length < 20) {
-      fail(`${id}.md: Artikel «${article.title}» hat keinen Inhalt.`);
-    }
-    if (article.markdown.length > MAX_ARTICLE_BODY) {
-      fail(`${id}.md: Artikel «${article.title}» ist zu lang.`);
-    }
-    if (/!\[[^\]]*\]\(/.test(article.markdown)) {
-      fail(
-        `${id}.md: Artikel «${article.title}» enthält ein Bild. Bilder gehören in die Handbuchabschnitte, nicht in «Wie mache ich …?».`,
-      );
-    }
-    const slug = `hb-${id}-${slugify(article.title)}`
-      .slice(0, 120)
-      .replace(/-+$/, "");
-    return { slug, handbook: id, visibility, ...article };
-  });
+  return guides;
 }
 
 const handbooks = [];
 const articles = [];
 const usedImages = new Set();
 for (const id of ORDER) {
-  const file = join(sourceDir, `${id}.md`);
-  if (!existsSync(file)) fail(`docs/handbooks/${id}.md fehlt.`);
-  const { meta, body } = parseFrontMatter(
-    readFileSync(file, "utf8"),
-    `${id}.md`,
-  );
-  for (const [, name] of body.matchAll(/\]\(images\/([^)]+)\)/g)) {
-    if (!/^[A-Za-z0-9._-]+$/.test(name))
-      fail(`${id}.md: ungültiger Bildname ${name}`);
-    if (!existsSync(join(imageDir, name)))
-      fail(`${id}.md: Bild images/${name} fehlt.`);
-    usedImages.add(name);
+  const du = readHandbook(sourceDir, id, `docs/handbooks/${id}.md`);
+  const sie = readHandbook(sieDir, id, `docs/handbooks/sie/${id}.md`);
+  const duImages = imagesOf(`${id}.md`, du.body);
+  const sieImages = imagesOf(`sie/${id}.md`, sie.body);
+  if (JSON.stringify(duImages) !== JSON.stringify(sieImages)) {
+    fail(
+      `${id}: die du- und die förmliche Fassung haben nicht dieselben Bilder.`,
+    );
   }
+  const duHeadings = headingsOf(du.body);
+  const sieHeadings = headingsOf(sie.body);
+  if (JSON.stringify(duHeadings) !== JSON.stringify(sieHeadings)) {
+    const index = duHeadings.findIndex(
+      (heading, position) => heading !== sieHeadings[position],
+    );
+    fail(
+      `${id}: die du- und die förmliche Fassung haben nicht dieselben Überschriften (erste Abweichung: «${duHeadings[index] ?? "–"}» gegen «${sieHeadings[index] ?? "–"}»).`,
+    );
+  }
+  // Jedes Handbuch hat den Bereich «Wie mache ich …?» mit Anleitungen («### Wie …?»).
+  for (const [label, headings] of [
+    [`docs/handbooks/${id}.md`, duHeadings],
+    [`docs/handbooks/sie/${id}.md`, sieHeadings],
+  ]) {
+    const howTo = headings.findIndex((heading) =>
+      /^## Wie mache ich/.test(heading),
+    );
+    const guides = headings.filter((heading) => /^### Wie /.test(heading));
+    if (howTo === -1 || guides.length < 3) {
+      fail(
+        `${label}: Es fehlt der Bereich «## Wie mache ich …?» mit mindestens drei Anleitungen («### Wie …?»).`,
+      );
+    }
+    if (new Set(guides).size !== guides.length) {
+      fail(`${label}: Die Überschriften «### Wie …?» müssen eindeutig sein.`);
+    }
+  }
+  for (const name of duImages) usedImages.add(name);
   handbooks.push({
     id,
-    title: meta.title,
-    description: meta.description,
-    audienceLabel: meta.audienceLabel,
-    updatedAt: meta.updated,
-    markdown: body,
+    title: du.meta.title,
+    description: du.meta.description,
+    audienceLabel: du.meta.audienceLabel,
+    // One date per handbook: the later of both wordings.
+    updatedAt:
+      du.meta.updated >= sie.meta.updated ? du.meta.updated : sie.meta.updated,
+    markdown: du.body,
+    sie: {
+      title: sie.meta.title,
+      description: sie.meta.description,
+      audienceLabel: sie.meta.audienceLabel,
+      markdown: sie.body,
+    },
   });
-  articles.push(...extractArticles(id, body));
+
+  const duGuides = guidesOf(`docs/handbooks/${id}.md`, du.body);
+  const sieGuides = guidesOf(`docs/handbooks/sie/${id}.md`, sie.body);
+  duGuides.forEach((guide, index) => {
+    // Equal headings are enforced above, so both lists line up.
+    articles.push({
+      slug: `hb-${id}-${slugify(guide.title)}`.slice(0, 120).replace(/-+$/, ""),
+      handbook: id,
+      visibility: EXTERNAL_ARTICLE_HANDBOOKS.has(id) ? "external" : "internal",
+      title: guide.title,
+      markdown: guide.markdown,
+      markdownSie: sieGuides[index].markdown,
+    });
+  });
 }
 
 const seenSlugs = new Set();
-for (const article of articles) {
+articles.forEach((article, index) => {
   if (seenSlugs.has(article.slug)) {
-    fail(`Doppelter Artikel «${article.title}» (${article.slug}).`);
+    fail(`Doppelte Anleitung «${article.title}» (${article.slug}).`);
   }
   seenSlugs.add(article.slug);
-}
-articles.forEach((article, index) => {
   article.sortOrder = index;
 });
 
@@ -212,12 +282,12 @@ if (process.argv.includes("--check")) {
     );
   }
   console.log(
-    `Handbücher aktuell (${handbooks.length} Handbücher, ${articles.length} Artikel, ${usedImages.size} Bilder).`,
+    `Handbücher aktuell (${handbooks.length} Handbücher, ${articles.length} Anleitungen, ${usedImages.size} Bilder).`,
   );
 } else {
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, output);
   console.log(
-    `Handbücher generiert (${handbooks.length} Handbücher, ${articles.length} Artikel, ${usedImages.size} Bilder).`,
+    `Handbücher generiert (${handbooks.length} Handbücher, ${articles.length} Anleitungen, ${usedImages.size} Bilder).`,
   );
 }

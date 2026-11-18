@@ -2,7 +2,7 @@ name: Deploy nextDesk website to Hetzner
 
 # Veröffentlicht den Ordner `site/` (Start, Support, Datenschutz, Impressum)
 # auf https://nextdesk.ch. Die Web-App unter app.nextdesk.ch wird davon nicht
-# berührt: Sie hat ein eigenes Verzeichnis (HETZNER_WEB_ROOT).
+# berührt: Diese hat ein eigenes Verzeichnis (HETZNER_WEB_ROOT).
 
 on:
   workflow_dispatch:

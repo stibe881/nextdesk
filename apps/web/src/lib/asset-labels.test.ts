@@ -13,6 +13,7 @@ import {
   rackDeepLink,
   rackFromSearch,
   rackLabelItem,
+  repeatLabelItems,
 } from "./asset-labels";
 
 const ID = "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b";
@@ -36,6 +37,22 @@ describe("label formats", () => {
   it("falls back to the first format", () => {
     expect(labelFormat("unknown").id).toBe("avery-l7651");
     expect(labelFormat("roll-62x29").kind).toBe("roll");
+  });
+});
+
+describe("Avery L6009-20", () => {
+  it("48 Etiketten 45,7 × 21,2 mm passen auf A4", () => {
+    const format = labelFormat("avery-l6009");
+    expect(format.id).toBe("avery-l6009");
+    const positions = layoutLabels(format, 48);
+    expect(positions).toHaveLength(48);
+    expect(new Set(positions.map((p) => p.page))).toEqual(new Set([0]));
+    expect(positions[0]).toMatchObject({ xMm: 9.75, yMm: 21.5 });
+    const last = positions[47]!;
+    expect(last).toMatchObject({ column: 3, row: 11 });
+    expect(last.xMm + 45.7).toBeLessThanOrEqual(210);
+    expect(last.yMm + 21.2).toBeLessThanOrEqual(297);
+    expect(pageCount(format, 49)).toBe(2);
   });
 });
 
@@ -175,5 +192,21 @@ describe("buildLabelDocument", () => {
     });
     expect(html).not.toContain("onload=alert");
     expect(html).toContain("window.print");
+  });
+});
+
+describe("repeatLabelItems", () => {
+  it("wiederholt jedes Etikett und begrenzt die Anzahl", () => {
+    expect(repeatLabelItems(["a", "b"], 3)).toEqual([
+      "a",
+      "a",
+      "a",
+      "b",
+      "b",
+      "b",
+    ]);
+    expect(repeatLabelItems(["a"], 0)).toEqual(["a"]);
+    expect(repeatLabelItems(["a"], Number.NaN)).toEqual(["a"]);
+    expect(repeatLabelItems(["a"], 10_000)).toHaveLength(200);
   });
 });

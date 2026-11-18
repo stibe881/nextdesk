@@ -180,7 +180,7 @@ th{font-weight:600;width:45%}.arrow{width:30px;text-align:center;font-weight:700
       ? `<ul>${kudos
           .map(
             (entry) =>
-              `<li><span class="meta">${day(entry.createdAt)} · ${escape(entry.ticketNumber ?? "Ticket")} · ${"★".repeat(Math.max(0, Math.min(5, entry.score)))} · ${escape(kudosAuthor(entry.requesterName))}</span>${entry.comment ? `«${escape(entry.comment)}»` : "Top-Bewertung ohne Kommentar"}</li>`,
+              `<li><span class="meta">${day(entry.createdAt)} · ${escape(entry.ticketNumber ?? "Ticket")} · ${Math.max(0, Math.min(5, entry.score))} von 5 Sternen · ${escape(kudosAuthor(entry.requesterName))}</span>${entry.comment ? `«${escape(entry.comment)}»` : "Top-Bewertung ohne Kommentar"}</li>`,
           )
           .join("")}</ul>`
       : `<p class="empty">Kein Lob in den letzten sechs Monaten.</p>`

@@ -2,7 +2,7 @@
 
 ## Ziel und Grenzen
 
-Dieses Runbook beschreibt einen einmalig ausgelösten, **nur lesenden** Intune-Abgleich. Es gibt keinen zeitgesteuerten Abgleich, keine automatische Wiederholung und keine Microsoft-Schreiboperation. Verwenden Sie den Lauf nur, wenn die Intune-Assetdaten für den betroffenen Mandanten aktuell benötigt werden.
+Dieses Runbook beschreibt einen einmalig ausgelösten, **nur lesenden** Intune-Abgleich. Es gibt keinen zeitgesteuerten Abgleich, keine automatische Wiederholung und keine Microsoft-Schreiboperation. Verwende den Lauf nur, wenn die Intune-Assetdaten für den betroffenen Mandanten aktuell benötigt werden.
 
 ## Vorbedingungen
 
@@ -15,13 +15,13 @@ Dieses Runbook beschreibt einen einmalig ausgelösten, **nur lesenden** Intune-A
 
 ## Ablauf
 
-1. Öffnen Sie **Einstellungen → Funktionen → Asset-Management → Microsoft Intune**.
-2. Führen Sie zuerst «Lokalen Preflight ausführen» aus. Er darf keinen Microsoft-Kontakt auslösen.
-3. Speichern Sie die separate Freigabe «Manuellen Microsoft-Graph-Abgleich für diesen Mandanten freigeben».
-4. Wählen Sie «Datensparsame Vorschau durchführen». Prüfen Sie nur die aggregierten Zähler für Geräte, potenziell neue/aktualisierte, übersprungene und mehrdeutige Einträge.
-5. Falls die Übernahme fachlich gewünscht ist, wählen Sie «Intune-Assets abgleichen».
-6. Lesen Sie den Bestätigungstext und wählen Sie nur dann «Jetzt einmalig abgleichen», wenn die Übernahme für diesen Mandanten autorisiert ist.
-7. Prüfen Sie die Run-Historie. Keine Detaildaten aus Intune dürfen in der Oberfläche erscheinen.
+1. Öffne **Einstellungen → Funktionen → Asset-Management → Microsoft Intune**.
+2. Führe zuerst «Lokalen Preflight ausführen» aus. Er darf keinen Microsoft-Kontakt auslösen.
+3. Speichere die separate Freigabe «Manuellen Microsoft-Graph-Abgleich für diesen Mandanten freigeben».
+4. Wähle «Datensparsame Vorschau durchführen». Prüfe nur die aggregierten Zähler für Geräte, potenziell neue/aktualisierte, übersprungene und mehrdeutige Einträge.
+5. Falls die Übernahme fachlich gewünscht ist, wähle «Intune-Assets abgleichen».
+6. Lies den Bestätigungstext und wähle nur dann «Jetzt einmalig abgleichen», wenn die Übernahme für diesen Mandanten autorisiert ist.
+7. Prüfe die Run-Historie. Keine Detaildaten aus Intune dürfen in der Oberfläche erscheinen.
 
 Ein unterbrochener Lauf wird nicht automatisch wiederholt. Nach Ablauf seines zeitlich begrenzten Lease kann eine berechtigte Person bewusst einen neuen Lauf starten. nextDesk schliesst dabei den alten Lauf als `run_expired`, löscht dessen private Staging-Daten und prüft die Voraussetzungen erneut, bevor irgendein neuer Microsoft-Graph-Kontakt erfolgen kann.
 
@@ -31,7 +31,7 @@ Ein unterbrochener Lauf wird nicht automatisch wiederholt. Nach Ablauf seines ze
 - **Vorschau/Synchronisation nicht bereit:** Lokale Konfiguration und Azure-SSO-Bindung neu prüfen und speichern.
 - **Intune begrenzt den Abgleich / vorübergehend nicht verfügbar:** Erst nach kurzer Wartezeit bewusst «Wiederholen» wählen. Insgesamt sind drei Versuche pro Run-Kette erlaubt.
 - **Lauf invalidiert:** Die Konfiguration oder Berechtigung hat sich während des Laufs geändert. Ansicht neu laden und nur bei erneut erfüllten Voraussetzungen neu starten.
-- **Mehrdeutig/übersprungen:** Kein Asset wird automatisch ausgewählt, überschrieben oder entkoppelt. Prüfen Sie die Zuordnung später gezielt über die Assetverwaltung.
+- **Mehrdeutig/übersprungen:** Kein Asset wird automatisch ausgewählt, überschrieben oder entkoppelt. Prüfe die Zuordnung später gezielt über die Assetverwaltung.
 
 ## Sofortiger Stopp und Rücknahme
 

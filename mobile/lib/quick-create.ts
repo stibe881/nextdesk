@@ -26,7 +26,7 @@ function data(value: unknown): RecordValue {
   return isRecord(value) && isRecord(value.data) ? value.data : {};
 }
 
-/** Follow-up (Wiedervorlage) for the signed-in agent. */
+/** Follow-up (Erinnerung) for the signed-in agent. */
 export async function createMobileFollowUp(input: {
   tenantId: string;
   title: string;

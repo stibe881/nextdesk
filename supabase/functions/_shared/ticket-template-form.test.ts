@@ -56,7 +56,7 @@ Deno.test("conditional checklist items follow the sanitized answers", () => {
 
 Deno.test("answers are validated and appended to the description", () => {
   assertEquals(validateAnswers(fields, {}), {
-    person: "Bitte füllen Sie das Feld «Name der Person» aus.",
+    person: "Bitte das Feld «Name der Person» ausfüllen.",
   });
   assertEquals(
     appendAnswersToDescription(

@@ -22,6 +22,7 @@ const ACTIONS = [
   "markMentionRead",
   "createMentions",
   "searchRecipients",
+  "listMailCc",
   "listDelegations",
   "listDelegationAgents",
   "listManagedDelegationAgents",
@@ -283,8 +284,9 @@ async function ticket(
   const { data, error } = await admin
     .from("tickets")
     .select(
-      "id, tenant_id, department_id, requester_id, affected_user_id, assigned_agent_id, category_id, priority_id, status_id, subject, description, ticket_number, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
+      "id, tenant_id, department_id, requester_id, affected_user_id, assigned_agent_id, category_id, priority_id, status_id, subject, description, ticket_number, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at, sla_paused_at",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", tenantId)
     .eq("id", ticketId)
     .maybeSingle();
@@ -741,6 +743,61 @@ async function searchRecipients(
   }
   return reply(request, { data: { recipients: recipients.slice(0, 12) } });
 }
+/**
+ * Personen im CC der E-Mails, mit denen das Ticket eingegangen ist (neue
+ * Anfrage und Antworten). Der Absender selbst und die Postfächer des
+ * Mandanten zählen nicht. Dient der Anzeige am Ticket und als Vorschlag für
+ * «Kopie per E-Mail senden».
+ */
+async function listMailCc(
+  request: Request,
+  client: Client,
+  admin: Admin,
+  action: Action,
+): Promise<Response> {
+  const info = await ticket(admin, action.tenantId, action.ticketId);
+  await ticketPermission(client, info, "ticket.internal_notes.read");
+  const [messages, channels] = await Promise.all([
+    admin
+      .from("mail_messages")
+      .select("from_address, cc_addresses, occurred_at")
+      .eq("tenant_id", action.tenantId)
+      .eq("ticket_id", info.id as string)
+      .eq("direction", "inbound")
+      .in("kind", ["new_ticket", "reply"])
+      .order("occurred_at", { ascending: false })
+      .limit(50),
+    admin
+      .from("exchange_mail_channels")
+      .select("mailbox_address")
+      .eq("tenant_id", action.tenantId),
+  ]);
+  if (messages.error) db(messages.error);
+  if (channels.error) db(channels.error);
+  const excluded = new Set<string>();
+  for (const row of channels.data ?? []) {
+    if (typeof row.mailbox_address === "string")
+      excluded.add(row.mailbox_address.trim().toLowerCase());
+  }
+  for (const row of messages.data ?? []) {
+    if (typeof row.from_address === "string")
+      excluded.add(row.from_address.trim().toLowerCase());
+  }
+  const seen = new Set<string>();
+  const addresses: string[] = [];
+  for (const row of messages.data ?? []) {
+    for (const entry of Array.isArray(row.cc_addresses)
+      ? row.cc_addresses
+      : []) {
+      if (typeof entry !== "string") continue;
+      const email = entry.trim().toLowerCase();
+      if (!email || excluded.has(email) || seen.has(email)) continue;
+      seen.add(email);
+      addresses.push(email);
+    }
+  }
+  return reply(request, { data: { cc: addresses.slice(0, 20) } });
+}
 async function listDelegations(
   request: Request,
   client: Client,
@@ -1095,6 +1152,7 @@ async function suggestAssignees(
     const open = await admin
       .from("tickets")
       .select("id", { count: "exact", head: true })
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .eq("assigned_agent_id", userId)
       .is("closed_at", null);
@@ -1102,6 +1160,7 @@ async function suggestAssignees(
       ? await admin
           .from("tickets")
           .select("id", { count: "exact", head: true })
+          .is("deleted_at", null)
           .eq("tenant_id", action.tenantId)
           .eq("assigned_agent_id", userId)
           .eq("category_id", info.category_id as string)
@@ -1301,8 +1360,9 @@ async function myMetrics(
     admin
       .from("tickets")
       .select(
-        "id, assigned_agent_id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
+        "id, assigned_agent_id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at, sla_paused_at",
       )
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .eq("assigned_agent_id", actorId)
       .order("updated_at", { ascending: false })
@@ -1366,8 +1426,9 @@ async function myMetrics(
     const extra = await admin
       .from("tickets")
       .select(
-        "id, assigned_agent_id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
+        "id, assigned_agent_id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at, sla_paused_at",
       )
+      .is("deleted_at", null)
       .eq("tenant_id", action.tenantId)
       .in("id", extraTicketIds);
     if (extra.error) db(extra.error);
@@ -1450,7 +1511,8 @@ async function myMetrics(
       const dues = [responseDue, resolutionDue].filter(
         (value): value is number => value !== null,
       );
-      if (dues.length > 0)
+      // A paused SLA (waiting status) is not due.
+      if (dues.length > 0 && typeof entry.sla_paused_at !== "string")
         slaDueEntries.push({ id: entry.id, dueAt: Math.min(...dues) });
     }
     const resolvedByMe =
@@ -1526,7 +1588,7 @@ async function myMetrics(
         solvedToday,
         medianFirstResponseMinutes: median,
         medianResolutionMinutes: medianResolution,
-        // Bleibt für ältere App-Versionen erhalten (fällige Wiedervorlagen).
+        // Bleibt für ältere App-Versionen erhalten (fällige Erinnerungen).
         dueFollowUps: dueTicketIds.length,
         slaDue: slaDueEntries.length,
         ticketIds: {
@@ -1609,6 +1671,7 @@ async function ticketContext(
   const related = await admin
     .from("tickets")
     .select("id, ticket_number, subject, resolved_at, created_at")
+    .is("deleted_at", null)
     .eq("tenant_id", action.tenantId)
     .eq("requester_id", info.requester_id as string)
     .neq("id", info.id as string)
@@ -2075,6 +2138,8 @@ const handler = withSupabase(
         return await createMentions(request, client, admin, action, actorId);
       if (action.type === "searchRecipients")
         return await searchRecipients(request, client, admin, action);
+      if (action.type === "listMailCc")
+        return await listMailCc(request, client, admin, action);
       if (action.type === "listDelegations")
         return await listDelegations(request, client, admin, action, actorId);
       if (action.type === "listManagedDelegationAgents")

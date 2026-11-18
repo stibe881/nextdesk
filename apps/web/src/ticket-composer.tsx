@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   AlertTriangle,
@@ -27,6 +28,14 @@ import {
   type TemplateFormField,
 } from "./lib/ticket-template-form";
 import { TicketTemplateFormFields } from "./ticket-template-form-fields";
+import {
+  FormCard,
+  FormField,
+  FormGrid,
+  FormLayout,
+  FormNote,
+  FormSummary,
+} from "./form-kit";
 import {
   clearTicketComposerDraft,
   readTicketComposerDraft,
@@ -275,17 +284,35 @@ async function requesterErrorMessage(
   // Backend text is never rendered. Only known codes select our own messages.
   switch (response.error.code) {
     case "invalid_requester_query":
-      return "Bitte geben Sie einen Suchbegriff mit 2 bis 120 gültigen Zeichen ein.";
+      return tn(
+        "Bitte gib einen Suchbegriff mit 2 bis 120 gültigen Zeichen ein.",
+        "Bitte geben Sie einen Suchbegriff mit 2 bis 120 gültigen Zeichen ein.",
+      );
     case "invalid_requester_name":
-      return "Bitte geben Sie einen Namen mit 2 bis 160 gültigen Zeichen ein.";
+      return tn(
+        "Bitte gib einen Namen mit 2 bis 160 gültigen Zeichen ein.",
+        "Bitte geben Sie einen Namen mit 2 bis 160 gültigen Zeichen ein.",
+      );
     case "invalid_requester_email":
-      return "Bitte geben Sie eine gültige E-Mail-Adresse ein oder lassen Sie das Feld leer.";
+      return tn(
+        "Bitte gib eine gültige E-Mail-Adresse ein oder lass das Feld leer.",
+        "Bitte geben Sie eine gültige E-Mail-Adresse ein oder lassen Sie das Feld leer.",
+      );
     case "invalid_requester_contact":
-      return "Die ausgewählte anfragende Person ist nicht mehr gültig. Bitte wählen Sie eine Person erneut aus.";
+      return tn(
+        "Die ausgewählte anfragende Person ist nicht mehr gültig. Bitte wähle eine Person erneut aus.",
+        "Die ausgewählte anfragende Person ist nicht mehr gültig. Bitte wählen Sie eine Person erneut aus.",
+      );
     case "requester_selection_denied":
-      return "Für die gewählte Abteilung dürfen Sie kein Ticket für eine andere Person erstellen. Wählen Sie Ihre eigene Person oder eine Abteilung, für die Sie berechtigt sind.";
+      return tn(
+        "Für die gewählte Abteilung darfst du kein Ticket für eine andere Person erstellen. Wähle deine eigene Person oder eine Abteilung, für die du berechtigt bist.",
+        "Für die gewählte Abteilung dürfen Sie kein Ticket für eine andere Person erstellen. Wählen Sie Ihre eigene Person oder eine Abteilung, für die Sie berechtigt sind.",
+      );
     case "requester_permission_check_failed":
-      return "Die Berechtigung für die anfragende Person konnte nicht geprüft werden. Bitte versuchen Sie es später erneut.";
+      return tn(
+        "Die Berechtigung für die anfragende Person konnte nicht geprüft werden. Bitte versuche es später erneut.",
+        "Die Berechtigung für die anfragende Person konnte nicht geprüft werden. Bitte versuchen Sie es später erneut.",
+      );
     default:
       return fallback;
   }
@@ -1014,7 +1041,10 @@ export function TicketComposer({
           allowed: false,
           error: isPermissionDenied(requestError)
             ? ""
-            : "Die Berechtigung zur Personenauswahl konnte nicht geprüft werden. Ihre eigene Person bleibt ausgewählt.",
+            : tn(
+                "Die Berechtigung zur Personenauswahl konnte nicht geprüft werden. Deine eigene Person bleibt ausgewählt.",
+                "Die Berechtigung zur Personenauswahl konnte nicht geprüft werden. Ihre eigene Person bleibt ausgewählt.",
+              ),
         });
       });
     return () => {
@@ -1042,8 +1072,10 @@ export function TicketComposer({
         query,
         status: "error",
         requesters: [],
-        error:
+        error: tn(
+          "Bitte gib eine Suchanfrage mit 2 bis 120 gültigen Zeichen ein.",
           "Bitte geben Sie eine Suchanfrage mit 2 bis 120 gültigen Zeichen ein.",
+        ),
       });
       return;
     }
@@ -1083,13 +1115,19 @@ export function TicketComposer({
             setSelectedRequester(options.currentRequester);
             setRequesterQuery("");
             setRequesterError(
-              "Sie sind nicht berechtigt, eine andere anfragende Person auszuwählen. Ihre eigene Person ist ausgewählt.",
+              tn(
+                "Du bist nicht berechtigt, eine andere anfragende Person auszuwählen. Deine eigene Person ist ausgewählt.",
+                "Sie sind nicht berechtigt, eine andere anfragende Person auszuwählen. Ihre eigene Person ist ausgewählt.",
+              ),
             );
             return;
           }
           const message = await requesterErrorMessage(
             requestError,
-            "Die Personensuche konnte nicht ausgeführt werden. Bitte ändern Sie die Suche oder versuchen Sie es später erneut.",
+            tn(
+              "Die Personensuche konnte nicht ausgeführt werden. Bitte ändere die Suche oder versuche es später erneut.",
+              "Die Personensuche konnte nicht ausgeführt werden. Bitte ändern Sie die Suche oder versuchen Sie es später erneut.",
+            ),
           );
           if (requesterSearchRef.current !== requestId) return;
           setRequesterLookup({
@@ -1219,8 +1257,10 @@ export function TicketComposer({
           departmentId,
           status: "error",
           categories: [],
-          error:
+          error: tn(
+            "Die Kategorien konnten nicht geladen werden. Bitte versuche es später erneut.",
             "Die Kategorien konnten nicht geladen werden. Bitte versuchen Sie es später erneut.",
+          ),
         });
       });
 
@@ -1276,8 +1316,10 @@ export function TicketComposer({
           departmentId,
           status: "error",
           templates: [],
-          error:
+          error: tn(
+            "Die Ticketvorlagen konnten nicht geladen werden. Du kannst das Ticket weiterhin ohne Vorlage erfassen.",
             "Die Ticketvorlagen konnten nicht geladen werden. Sie können das Ticket weiterhin ohne Vorlage erfassen.",
+          ),
         });
       });
 
@@ -1368,7 +1410,10 @@ export function TicketComposer({
       isUuid(displayName)
     ) {
       setRequesterError(
-        "Bitte geben Sie einen Namen mit 2 bis 160 Zeichen ein, keine E-Mail-Adresse oder ID.",
+        tn(
+          "Bitte gib einen Namen mit 2 bis 160 Zeichen ein, keine E-Mail-Adresse oder ID.",
+          "Bitte geben Sie einen Namen mit 2 bis 160 Zeichen ein, keine E-Mail-Adresse oder ID.",
+        ),
       );
       return;
     }
@@ -1377,7 +1422,10 @@ export function TicketComposer({
       (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email))
     ) {
       setRequesterError(
-        "Bitte geben Sie eine gültige E-Mail-Adresse ein oder lassen Sie das Feld leer.",
+        tn(
+          "Bitte gib eine gültige E-Mail-Adresse ein oder lass das Feld leer.",
+          "Bitte geben Sie eine gültige E-Mail-Adresse ein oder lassen Sie das Feld leer.",
+        ),
       );
       return;
     }
@@ -1417,12 +1465,18 @@ export function TicketComposer({
         setSelectedRequester(options.currentRequester);
         setRequesterDraft(null);
         setRequesterError(
-          "Sie sind nicht berechtigt, anfragende Personen anzulegen. Ihre eigene Person ist ausgewählt.",
+          tn(
+            "Du bist nicht berechtigt, anfragende Personen anzulegen. Deine eigene Person ist ausgewählt.",
+            "Sie sind nicht berechtigt, anfragende Personen anzulegen. Ihre eigene Person ist ausgewählt.",
+          ),
         );
       } else {
         const message = await requesterErrorMessage(
           requestError,
-          "Die anfragende Person konnte nicht gespeichert oder bestätigt werden. Bitte prüfen Sie Name und E-Mail-Adresse und versuchen Sie es erneut.",
+          tn(
+            "Die anfragende Person konnte nicht gespeichert oder bestätigt werden. Bitte prüfe Name und E-Mail-Adresse und versuche es erneut.",
+            "Die anfragende Person konnte nicht gespeichert oder bestätigt werden. Bitte prüfen Sie Name und E-Mail-Adresse und versuchen Sie es erneut.",
+          ),
         );
         if (requesterScopeRef.current === requestId) setRequesterError(message);
       }
@@ -1454,7 +1508,10 @@ export function TicketComposer({
     const nameLength = Array.from(name).length;
     if (nameLength < 2 || nameLength > 120 || name.includes("\0")) {
       setCategoryError(
-        "Bitte geben Sie einen Namen mit 2 bis 120 Zeichen ein.",
+        tn(
+          "Bitte gib einen Namen mit 2 bis 120 Zeichen ein.",
+          "Bitte geben Sie einen Namen mit 2 bis 120 Zeichen ein.",
+        ),
       );
       return;
     }
@@ -1463,7 +1520,10 @@ export function TicketComposer({
       !rootCategories.some((category) => category.id === parentId)
     ) {
       setCategoryError(
-        "Bitte wählen Sie eine gültige übergeordnete Kategorie.",
+        tn(
+          "Bitte wähle eine gültige übergeordnete Kategorie.",
+          "Bitte wählen Sie eine gültige übergeordnete Kategorie.",
+        ),
       );
       return;
     }
@@ -1505,7 +1565,10 @@ export function TicketComposer({
     } catch {
       if (categoryRequestRef.current === requestId)
         setCategoryError(
-          "Die Kategorie konnte nicht gespeichert werden. Bitte prüfen Sie den Namen und versuchen Sie es erneut.",
+          tn(
+            "Die Kategorie konnte nicht gespeichert werden. Bitte prüfe den Namen und versuche es erneut.",
+            "Die Kategorie konnte nicht gespeichert werden. Bitte prüfen Sie den Namen und versuchen Sie es erneut.",
+          ),
         );
     } finally {
       if (categoryRequestRef.current === requestId) setCategorySaving(false);
@@ -1535,12 +1598,16 @@ export function TicketComposer({
       selectedTemplatePreview?.description ?? description
     ).trim();
     if (Array.from(draftSubject).length < 3) {
-      nextErrors.subject =
-        "Bitte beschreiben Sie Ihr Anliegen im Betreff mit mindestens 3 Zeichen.";
+      nextErrors.subject = tn(
+        "Bitte beschreibe dein Anliegen im Betreff mit mindestens 3 Zeichen.",
+        "Bitte beschreiben Sie Ihr Anliegen im Betreff mit mindestens 3 Zeichen.",
+      );
     }
     if (!draftDescription) {
-      nextErrors.description =
-        "Bitte schildern Sie kurz, was passiert ist oder was Sie benötigen.";
+      nextErrors.description = tn(
+        "Bitte schildere kurz, was passiert ist oder was du benötigst.",
+        "Bitte schildern Sie kurz, was passiert ist oder was Sie benötigen.",
+      );
     }
     setFieldErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -1576,7 +1643,12 @@ export function TicketComposer({
     const client = supabase;
     if (!client || !lookup || watcherSaving) return;
     if (watcherIds.length === 0) {
-      setWatcherNotice("Bitte wählen Sie mindestens eine Person aus.");
+      setWatcherNotice(
+        tn(
+          "Bitte wähle mindestens eine Person aus.",
+          "Bitte wählen Sie mindestens eine Person aus.",
+        ),
+      );
       return;
     }
     setWatcherSaving(true);
@@ -1619,7 +1691,10 @@ export function TicketComposer({
       }
       if (failures.length > 0) {
         setWatcherNotice(
-          "Nicht alle Personen konnten in Kopie gesetzt werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Nicht alle Personen konnten in Kopie gesetzt werden. Bitte versuche es erneut.",
+            "Nicht alle Personen konnten in Kopie gesetzt werden. Bitte versuchen Sie es erneut.",
+          ),
         );
       } else {
         setWatcherNotice(
@@ -1635,7 +1710,10 @@ export function TicketComposer({
     if (!validateTicketDraft()) return;
     if (!currentSelectedRequester) {
       setError(
-        "Bitte wählen Sie eine anfragende Person aus. Ohne ausgewählte Person kann kein Ticket erstellt werden.",
+        tn(
+          "Bitte wähle eine anfragende Person aus. Ohne ausgewählte Person kann kein Ticket erstellt werden.",
+          "Bitte wählen Sie eine anfragende Person aus. Ohne ausgewählte Person kann kein Ticket erstellt werden.",
+        ),
       );
       return;
     }
@@ -1717,7 +1795,10 @@ export function TicketComposer({
           setTemplateId("");
           setAssignedAgentId("");
           setError(
-            "Das Ticket wurde erstellt, aber die Agentenzuweisung konnte nicht gespeichert werden. Öffnen Sie das Ticket und versuchen Sie die Zuweisung erneut.",
+            tn(
+              "Das Ticket wurde erstellt, aber die Agentenzuweisung konnte nicht gespeichert werden. Öffne das Ticket und versuche die Zuweisung erneut.",
+              "Das Ticket wurde erstellt, aber die Agentenzuweisung konnte nicht gespeichert werden. Öffnen Sie das Ticket und versuchen Sie die Zuweisung erneut.",
+            ),
           );
           return;
         }
@@ -1795,7 +1876,10 @@ export function TicketComposer({
     } catch (requestError: unknown) {
       const message = await requesterErrorMessage(
         requestError,
-        "Das Ticket konnte nicht erstellt oder bestätigt werden. Bitte prüfen Sie Ihre Eingaben und versuchen Sie es erneut.",
+        tn(
+          "Das Ticket konnte nicht erstellt oder bestätigt werden. Bitte prüfe deine Eingaben und versuche es erneut.",
+          "Das Ticket konnte nicht erstellt oder bestätigt werden. Bitte prüfen Sie Ihre Eingaben und versuchen Sie es erneut.",
+        ),
       );
       if (requesterScopeRef.current === requestId) setError(message);
     } finally {
@@ -2066,38 +2150,148 @@ export function TicketComposer({
         <p className="empty-state">Erfassungsoptionen werden geladen …</p>
       ) : (
         <form
-          className="ticket-compose-form"
+          className="ticket-compose-form fk-compose"
           noValidate
           onSubmit={createTicket}
         >
-          <section
-            aria-label="Schritte für die Ticketerfassung"
-            className="ticket-compose-description"
-          >
-            <p className="data-caption">
-              <strong>In drei Schritten:</strong> Anliegen beschreiben,
-              einordnen und anschliessend erstellen. Pflichtfelder sind mit
-              einem Stern markiert.
-            </p>
-            {showPortalAssistant && !assistantOpen ? (
-              <div className="portal-assistant-entry">
-                <p className="data-caption">
-                  {assistantSessionId
-                    ? "Der Entwurf des Assistenten wurde übernommen. Bitte prüfen und erstellen Sie das Ticket."
-                    : "Vielleicht lässt sich Ihr Problem gleich lösen: Der Assistent sucht passende Anleitungen."}
-                </p>
-                {assistantSessionId ? null : (
-                  <button
-                    className="secondary-button"
-                    disabled={saving}
-                    onClick={() => setAssistantOpen(true)}
-                    type="button"
-                  >
-                    Mit dem Assistenten lösen
-                  </button>
+          <FormLayout
+            side={
+              <>
+                <FormSummary
+                  eyebrow="Neues Ticket"
+                  title={selectedTemplatePreview?.subject ?? subject}
+                  rows={[
+                    [
+                      "Anfragende Person",
+                      currentSelectedRequester?.displayName ?? "",
+                    ],
+                    [
+                      "Abteilung",
+                      options.departments.find(
+                        (department) => department.id === departmentId,
+                      )?.name ?? "",
+                    ],
+                    [
+                      "Priorität",
+                      options.priorities.find(
+                        (priority) => priority.key === effectivePriorityKey,
+                      )?.label ?? "",
+                    ],
+                    ["Kategorie", selectedCategory?.name ?? ""],
+                    ["Unterkategorie", selectedSubcategory?.name ?? ""],
+                  ]}
+                />
+                <FormNote>
+                  <strong>In drei Schritten:</strong> Anliegen beschreiben,
+                  einordnen und anschliessend erstellen. Pflichtfelder sind mit
+                  einem Stern markiert.
+                </FormNote>
+                {showPortalAssistant && !assistantOpen ? (
+                  <div className="portal-assistant-entry">
+                    <p className="data-caption">
+                      {assistantSessionId
+                        ? tn(
+                            "Der Entwurf des Assistenten wurde übernommen. Bitte prüfe und erstelle das Ticket.",
+                            "Der Entwurf des Assistenten wurde übernommen. Bitte prüfen und erstellen Sie das Ticket.",
+                          )
+                        : tn(
+                            "Vielleicht lässt sich dein Problem gleich lösen: Der Assistent sucht passende Anleitungen.",
+                            "Vielleicht lässt sich Ihr Problem gleich lösen: Der Assistent sucht passende Anleitungen.",
+                          )}
+                    </p>
+                    {assistantSessionId ? null : (
+                      <button
+                        className="secondary-button"
+                        disabled={saving}
+                        onClick={() => setAssistantOpen(true)}
+                        type="button"
+                      >
+                        Mit dem Assistenten lösen
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+                {draftRestored && (
+                  <p className="data-caption" role="status">
+                    {tn(
+                      "Dein gespeicherter Entwurf wurde wiederhergestellt.",
+                      "Ihr gespeicherter Entwurf wurde wiederhergestellt.",
+                    )}{" "}
+                    <button
+                      className="text-button"
+                      disabled={saving}
+                      onClick={discardDraft}
+                      type="button"
+                    >
+                      Entwurf verwerfen
+                    </button>
+                  </p>
                 )}
-              </div>
-            ) : null}
+                {deflectionNotice && (
+                  <p
+                    className="ticket-suggestions-confirmation ticket-compose-description"
+                    role="status"
+                  >
+                    <CheckCircle2
+                      aria-hidden="true"
+                      size={18}
+                      strokeWidth={1.8}
+                    />
+                    Schön, dass es geklappt hat – es wurde kein Ticket erstellt.
+                  </p>
+                )}
+                <FormNote>
+                  {tn(
+                    <>
+                      <strong>Für eine schnelle Lösung:</strong> Nenne im
+                      Betreff das Ziel, beschreibe den Fehler und seit wann er
+                      auftritt. Ergänze bereits versuchte Schritte sowie
+                      Meldungen oder Auswirkungen – aber keine Passwörter,
+                      Schlüssel oder andere Geheimnisse.
+                    </>,
+                    <>
+                      <strong>Für eine schnelle Lösung:</strong> Nennen Sie im
+                      Betreff das Ziel, beschreiben Sie den Fehler und seit wann
+                      er auftritt. Ergänzen Sie bereits versuchte Schritte sowie
+                      Meldungen oder Auswirkungen – aber keine Passwörter,
+                      Schlüssel oder andere Geheimnisse.
+                    </>,
+                  )}
+                </FormNote>
+                {matchingIncidentNotices.length > 0 && (
+                  <aside role="note">
+                    <p className="data-caption">
+                      <AlertTriangle
+                        aria-hidden="true"
+                        size={16}
+                        strokeWidth={2}
+                      />{" "}
+                      {tn(
+                        <>
+                          <strong>Passende aktive Störung:</strong> Prüfe vor
+                          dem Erstellen, ob dein Anliegen bereits betroffen ist.
+                          Ein Ticket kann bei Bedarf trotzdem erfasst werden.
+                        </>,
+                        <>
+                          <strong>Passende aktive Störung:</strong> Prüfen Sie
+                          vor dem Erstellen, ob Ihr Anliegen bereits betroffen
+                          ist. Ein Ticket kann bei Bedarf trotzdem erfasst
+                          werden.
+                        </>,
+                      )}
+                    </p>
+                    <ul className="data-caption">
+                      {matchingIncidentNotices.map((notice) => (
+                        <li key={notice.id}>
+                          <strong>{notice.title}:</strong> {notice.description}
+                        </li>
+                      ))}
+                    </ul>
+                  </aside>
+                )}
+              </>
+            }
+          >
             {showPortalAssistant && assistantOpen ? (
               <PortalAssistantPanel
                 departmentId={departmentId || null}
@@ -2112,413 +2306,436 @@ export function TicketComposer({
                 tenantId={tenantId}
               />
             ) : null}
-            {draftRestored && (
-              <p className="data-caption" role="status">
-                Ihr gespeicherter Entwurf wurde wiederhergestellt.{" "}
-                <button
-                  className="text-button"
-                  disabled={saving}
-                  onClick={discardDraft}
-                  type="button"
-                >
-                  Entwurf verwerfen
-                </button>
-              </p>
-            )}
-          </section>
-          <div className="ticket-compose-description ticket-compose-requester">
-            {currentRequesterManagement?.error && (
-              <div>
-                <p className="error" role="alert">
-                  {currentRequesterManagement.error}
-                </p>
-                <button
-                  className="text-button"
-                  disabled={saving}
-                  onClick={() =>
-                    setRequesterPermissionRetry((current) => current + 1)
-                  }
-                  type="button"
-                >
-                  Berechtigung erneut prüfen
-                </button>
-              </div>
-            )}
-            <div className="ticket-requester-combobox">
-              <label>
-                Anfragende Person <span aria-hidden="true">*</span>
-                <input
-                  aria-autocomplete="list"
-                  aria-controls="ticket-requester-options"
-                  aria-describedby="ticket-requester-help"
-                  aria-expanded={requesterPickerOpen}
-                  aria-invalid={!currentSelectedRequester}
-                  autoComplete="off"
-                  disabled={saving || requesterSaving || requesterFormOpen}
-                  maxLength={120}
-                  onBlur={() => {
-                    // Let a click on an option finish first.
-                    window.setTimeout(() => {
-                      setRequesterPickerOpen(false);
-                      setRequesterQuery("");
-                      setRequesterLookup(null);
-                    }, 150);
-                  }}
-                  onChange={(event) => {
-                    if (!canManageRequesters) return;
-                    // Invalidate before the effect: no old result may win a keystroke race.
-                    ++requesterSearchRef.current;
-                    setRequesterPickerOpen(true);
-                    setRequesterQuery(event.target.value);
-                    setRequesterLookup(null);
-                    setRequesterError("");
-                  }}
-                  onFocus={() => {
-                    if (canManageRequesters) setRequesterPickerOpen(true);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") event.preventDefault();
-                    if (event.key === "Escape") {
-                      setRequesterPickerOpen(false);
-                      setRequesterQuery("");
-                    }
-                  }}
-                  placeholder={
-                    canManageRequesters
-                      ? "Name eingeben, um eine Person zu suchen"
-                      : ""
-                  }
-                  readOnly={!canManageRequesters}
-                  required
-                  role="combobox"
-                  value={
-                    requesterPickerOpen
-                      ? requesterQuery
-                      : (currentSelectedRequester?.displayName ?? "")
-                  }
-                />
-              </label>
-              {canManageRequesters && requesterPickerOpen ? (
-                <div
-                  className="ticket-requester-combobox__options"
-                  id="ticket-requester-options"
-                  role="listbox"
-                >
-                  {currentSelectedRequester ? (
-                    <p className="ticket-requester-combobox__current">
-                      Ausgewählt: {currentSelectedRequester.displayName}
-                    </p>
-                  ) : null}
-                  {[...requesterQuery.trim()].length < 2 ? (
-                    <p className="data-caption">
-                      Mindestens 2 Zeichen eingeben.
-                    </p>
-                  ) : currentRequesterLookup?.status === "loading" ? (
-                    <p className="data-caption" role="status">
-                      Personen werden gesucht …
-                    </p>
-                  ) : currentRequesterLookup?.status === "error" ? (
-                    <p className="error" role="alert">
-                      {currentRequesterLookup.error}
-                    </p>
-                  ) : currentRequesterLookup?.status === "loaded" &&
-                    currentRequesterLookup.requesters.length === 0 ? (
-                    <p className="data-caption">
-                      Keine passende Person gefunden.
-                    </p>
-                  ) : null}
-                  {currentRequesterLookup?.status === "loaded"
-                    ? currentRequesterLookup.requesters.map((requester) => (
-                        <button
-                          aria-selected={
-                            currentSelectedRequester?.id === requester.id
-                          }
-                          className="ticket-requester-combobox__option"
-                          key={requester.id}
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => {
-                            selectRequester(requester);
-                            setRequesterPickerOpen(false);
-                          }}
-                          role="option"
-                          type="button"
-                        >
-                          {requester.displayName}
-                        </button>
-                      ))
-                    : null}
-                  {options.currentRequester &&
-                  currentSelectedRequester?.id !==
-                    options.currentRequester.id ? (
-                    <button
-                      className="ticket-requester-combobox__option ticket-requester-combobox__option--action"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        if (options.currentRequester)
-                          selectRequester(options.currentRequester);
-                        setRequesterPickerOpen(false);
-                      }}
-                      type="button"
-                    >
-                      Mich auswählen
-                    </button>
-                  ) : null}
+            <FormCard title="Anfrage">
+              {currentRequesterManagement?.error && (
+                <div>
+                  <p className="error" role="alert">
+                    {currentRequesterManagement.error}
+                  </p>
                   <button
-                    className="ticket-requester-combobox__option ticket-requester-combobox__option--action"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      openRequesterForm();
-                      setRequesterPickerOpen(false);
-                    }}
+                    className="text-button"
+                    disabled={saving}
+                    onClick={() =>
+                      setRequesterPermissionRetry((current) => current + 1)
+                    }
                     type="button"
                   >
-                    + Neue anfragende Person
-                    {requesterQuery.trim()
-                      ? ` «${requesterQuery.trim()}» anlegen`
-                      : " anlegen"}
+                    Berechtigung erneut prüfen
                   </button>
                 </div>
-              ) : null}
-              {!currentSelectedRequester && !requesterPickerOpen ? (
-                <p className="data-caption" id="ticket-requester-help">
-                  Eine anfragende Person muss ausgewählt sein, bevor ein Ticket
-                  erstellt werden kann.
-                </p>
-              ) : (
-                <span hidden id="ticket-requester-help" />
               )}
-            </div>
-            {canManageRequesters && (
-              <>
-                {requesterDraft && (
-                  <div
-                    aria-label="Neue anfragende Person"
-                    id="ticket-requester-form"
-                    role="group"
-                  >
-                    <label>
-                      Name
-                      <input
-                        autoComplete="off"
-                        autoFocus
-                        disabled={saving || requesterSaving}
-                        maxLength={160}
-                        minLength={2}
-                        onChange={(event) => {
-                          const name = event.target.value;
-                          setRequesterDraft((current) =>
-                            current ? { ...current, name } : null,
-                          );
-                          setRequesterError("");
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void createRequester();
-                          }
-                        }}
-                        placeholder="Vor- und Nachname"
-                        value={requesterDraft.name}
-                      />
-                    </label>
-                    <label>
-                      E-Mail (optional)
-                      <input
-                        autoComplete="off"
-                        disabled={saving || requesterSaving}
-                        maxLength={254}
-                        onChange={(event) => {
-                          const email = event.target.value;
-                          setRequesterDraft((current) =>
-                            current ? { ...current, email } : null,
-                          );
-                          setRequesterError("");
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void createRequester();
-                          }
-                        }}
-                        placeholder="E-Mail-Adresse"
-                        type="email"
-                        value={requesterDraft.email}
-                      />
-                    </label>
-                    <button
-                      className="text-button"
-                      disabled={saving || requesterSaving}
-                      onClick={() => {
-                        setRequesterDraft(null);
+              <FormGrid cols={2}>
+                <div className="ticket-requester-combobox">
+                  <FormField label="Anfragende Person" required>
+                    <input
+                      aria-autocomplete="list"
+                      aria-controls="ticket-requester-options"
+                      aria-describedby="ticket-requester-help"
+                      aria-expanded={requesterPickerOpen}
+                      aria-invalid={!currentSelectedRequester}
+                      autoComplete="off"
+                      disabled={saving || requesterSaving || requesterFormOpen}
+                      maxLength={120}
+                      onBlur={() => {
+                        // Let a click on an option finish first.
+                        window.setTimeout(() => {
+                          setRequesterPickerOpen(false);
+                          setRequesterQuery("");
+                          setRequesterLookup(null);
+                        }, 150);
+                      }}
+                      onChange={(event) => {
+                        if (!canManageRequesters) return;
+                        // Invalidate before the effect: no old result may win a keystroke race.
+                        ++requesterSearchRef.current;
+                        setRequesterPickerOpen(true);
+                        setRequesterQuery(event.target.value);
+                        setRequesterLookup(null);
                         setRequesterError("");
                       }}
-                      type="button"
-                    >
-                      Abbrechen
-                    </button>
-                    <button
-                      className="primary-button"
-                      disabled={
-                        saving || requesterSaving || !requesterDraft.name.trim()
+                      onFocus={() => {
+                        if (canManageRequesters) setRequesterPickerOpen(true);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") event.preventDefault();
+                        if (event.key === "Escape") {
+                          setRequesterPickerOpen(false);
+                          setRequesterQuery("");
+                        }
+                      }}
+                      placeholder={
+                        canManageRequesters
+                          ? "Name eingeben, um eine Person zu suchen"
+                          : ""
                       }
-                      onClick={() => void createRequester()}
-                      type="button"
+                      readOnly={!canManageRequesters}
+                      required
+                      role="combobox"
+                      value={
+                        requesterPickerOpen
+                          ? requesterQuery
+                          : (currentSelectedRequester?.displayName ?? "")
+                      }
+                    />
+                  </FormField>
+                  {canManageRequesters && requesterPickerOpen ? (
+                    <div
+                      className="ticket-requester-combobox__options"
+                      id="ticket-requester-options"
+                      role="listbox"
                     >
-                      {requesterSaving
-                        ? "Wird gespeichert …"
-                        : "Speichern und auswählen"}
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-            {requesterError && (
-              <p className="error" role="alert">
-                {requesterError}
-              </p>
-            )}
-          </div>
-          {deflectionNotice && (
-            <p
-              className="ticket-suggestions-confirmation ticket-compose-description"
-              role="status"
-            >
-              <CheckCircle2 aria-hidden="true" size={18} strokeWidth={1.8} />
-              Schön, dass es geklappt hat – es wurde kein Ticket erstellt.
-            </p>
-          )}
-          <p className="ticket-compose-hint ticket-compose-description">
-            <strong>Für eine schnelle Lösung:</strong> Nennen Sie im Betreff das
-            Ziel, beschreiben Sie den Fehler und seit wann er auftritt. Ergänzen
-            Sie bereits versuchte Schritte sowie Meldungen oder Auswirkungen –
-            aber keine Passwörter, Schlüssel oder andere Geheimnisse.
-          </p>
-          <label className="ticket-compose-subject">
-            Betreff
-            <input
-              aria-describedby={
-                selectedTemplate
-                  ? "ticket-template-preview"
-                  : fieldErrors.subject
-                    ? "ticket-subject-error"
-                    : undefined
-              }
-              aria-invalid={Boolean(fieldErrors.subject)}
-              disabled={saving || options.departments.length === 0}
-              minLength={3}
-              onChange={(event) => {
-                setSubject(event.target.value);
-                setDeflectionNotice(false);
-                setFieldErrors((current) => {
-                  const { subject: _subject, ...next } = current;
-                  return next;
-                });
-              }}
-              placeholder="Worum geht es?"
-              readOnly={selectedTemplate !== null}
-              required
-              value={selectedTemplatePreview?.subject ?? subject}
-            />
-            {fieldErrors.subject && (
-              <span className="error" id="ticket-subject-error" role="alert">
-                {fieldErrors.subject}
-              </span>
-            )}
-          </label>
-          <TicketSuggestionPanel
-            articleChoices={Object.fromEntries(
-              Object.entries(articleChoices).map(([id, value]) => [
-                id,
-                value.choice,
-              ]),
-            )}
-            disabled={saving}
-            onArticleChoice={(article, choice) =>
-              setArticleChoices((current) => {
-                const next = { ...current };
-                if (choice) next[article.id] = { choice, title: article.title };
-                else delete next[article.id];
-                return next;
-              })
-            }
-            onDeflected={finishWithArticle}
-            onOpenKnowledgeArticle={openSuggestedArticle}
-            onOpenTicket={openSuggestedTicket}
-            subject={draftSubject}
-            suggestions={suggestions}
-            tenantId={tenantId}
-          />
-          <section
-            aria-labelledby="ticket-routing-heading"
-            className="ticket-compose-routing"
-          >
-            <div className="ticket-compose-section-heading">
-              <p className="eyebrow">EINORDNUNG & ZUSTÄNDIGKEIT</p>
-              <h3 id="ticket-routing-heading">Ticket einordnen</h3>
-            </div>
-            <label>
-              Abteilung / Angebot
-              <select
-                aria-describedby={
-                  options.requesterContext.isInternal && contextDepartmentName
-                    ? "ticket-requester-department"
-                    : undefined
-                }
-                disabled={saving || options.departments.length === 0}
-                id="ticket-department-selection"
-                onChange={(event) => changeDepartment(event.target.value)}
-                ref={departmentSelectRef}
-                required
-                value={departmentId}
-              >
-                {options.departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
-              {options.requesterContext.isInternal && contextDepartmentName && (
-                <span className="data-caption" id="ticket-requester-department">
-                  Vorausgefüllt: {contextDepartmentName}
-                </span>
+                      {currentSelectedRequester ? (
+                        <p className="ticket-requester-combobox__current">
+                          Ausgewählt: {currentSelectedRequester.displayName}
+                        </p>
+                      ) : null}
+                      {[...requesterQuery.trim()].length < 2 ? (
+                        <p className="data-caption">
+                          Mindestens 2 Zeichen eingeben.
+                        </p>
+                      ) : currentRequesterLookup?.status === "loading" ? (
+                        <p className="data-caption" role="status">
+                          Personen werden gesucht …
+                        </p>
+                      ) : currentRequesterLookup?.status === "error" ? (
+                        <p className="error" role="alert">
+                          {currentRequesterLookup.error}
+                        </p>
+                      ) : currentRequesterLookup?.status === "loaded" &&
+                        currentRequesterLookup.requesters.length === 0 ? (
+                        <p className="data-caption">
+                          Keine passende Person gefunden.
+                        </p>
+                      ) : null}
+                      {currentRequesterLookup?.status === "loaded"
+                        ? currentRequesterLookup.requesters.map((requester) => (
+                            <button
+                              aria-selected={
+                                currentSelectedRequester?.id === requester.id
+                              }
+                              className="ticket-requester-combobox__option"
+                              key={requester.id}
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => {
+                                selectRequester(requester);
+                                setRequesterPickerOpen(false);
+                              }}
+                              role="option"
+                              type="button"
+                            >
+                              {requester.displayName}
+                            </button>
+                          ))
+                        : null}
+                      {options.currentRequester &&
+                      currentSelectedRequester?.id !==
+                        options.currentRequester.id ? (
+                        <button
+                          className="ticket-requester-combobox__option ticket-requester-combobox__option--action"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            if (options.currentRequester)
+                              selectRequester(options.currentRequester);
+                            setRequesterPickerOpen(false);
+                          }}
+                          type="button"
+                        >
+                          Mich auswählen
+                        </button>
+                      ) : null}
+                      <button
+                        className="ticket-requester-combobox__option ticket-requester-combobox__option--action"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          openRequesterForm();
+                          setRequesterPickerOpen(false);
+                        }}
+                        type="button"
+                      >
+                        + Neue anfragende Person
+                        {requesterQuery.trim()
+                          ? ` «${requesterQuery.trim()}» anlegen`
+                          : " anlegen"}
+                      </button>
+                    </div>
+                  ) : null}
+                  {!currentSelectedRequester && !requesterPickerOpen ? (
+                    <p className="data-caption" id="ticket-requester-help">
+                      Eine anfragende Person muss ausgewählt sein, bevor ein
+                      Ticket erstellt werden kann.
+                    </p>
+                  ) : (
+                    <span hidden id="ticket-requester-help" />
+                  )}
+                </div>
+                <FormField label="Betreff" required>
+                  <input
+                    aria-describedby={
+                      selectedTemplate
+                        ? "ticket-template-preview"
+                        : fieldErrors.subject
+                          ? "ticket-subject-error"
+                          : undefined
+                    }
+                    aria-invalid={Boolean(fieldErrors.subject)}
+                    disabled={saving || options.departments.length === 0}
+                    minLength={3}
+                    onChange={(event) => {
+                      setSubject(event.target.value);
+                      setDeflectionNotice(false);
+                      setFieldErrors((current) => {
+                        const { subject: _subject, ...next } = current;
+                        return next;
+                      });
+                    }}
+                    placeholder="Worum geht es?"
+                    readOnly={selectedTemplate !== null}
+                    required
+                    value={selectedTemplatePreview?.subject ?? subject}
+                  />
+                  {fieldErrors.subject && (
+                    <span
+                      className="error"
+                      id="ticket-subject-error"
+                      role="alert"
+                    >
+                      {fieldErrors.subject}
+                    </span>
+                  )}
+                </FormField>
+              </FormGrid>
+              {canManageRequesters && (
+                <>
+                  {requesterDraft && (
+                    <div
+                      aria-label="Neue anfragende Person"
+                      id="ticket-requester-form"
+                      role="group"
+                    >
+                      <label>
+                        Name
+                        <input
+                          autoComplete="off"
+                          autoFocus
+                          disabled={saving || requesterSaving}
+                          maxLength={160}
+                          minLength={2}
+                          onChange={(event) => {
+                            const name = event.target.value;
+                            setRequesterDraft((current) =>
+                              current ? { ...current, name } : null,
+                            );
+                            setRequesterError("");
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void createRequester();
+                            }
+                          }}
+                          placeholder="Vor- und Nachname"
+                          value={requesterDraft.name}
+                        />
+                      </label>
+                      <label>
+                        E-Mail (optional)
+                        <input
+                          autoComplete="off"
+                          disabled={saving || requesterSaving}
+                          maxLength={254}
+                          onChange={(event) => {
+                            const email = event.target.value;
+                            setRequesterDraft((current) =>
+                              current ? { ...current, email } : null,
+                            );
+                            setRequesterError("");
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void createRequester();
+                            }
+                          }}
+                          placeholder="E-Mail-Adresse"
+                          type="email"
+                          value={requesterDraft.email}
+                        />
+                      </label>
+                      <button
+                        className="text-button"
+                        disabled={saving || requesterSaving}
+                        onClick={() => {
+                          setRequesterDraft(null);
+                          setRequesterError("");
+                        }}
+                        type="button"
+                      >
+                        Abbrechen
+                      </button>
+                      <button
+                        className="primary-button"
+                        disabled={
+                          saving ||
+                          requesterSaving ||
+                          !requesterDraft.name.trim()
+                        }
+                        onClick={() => void createRequester()}
+                        type="button"
+                      >
+                        {requesterSaving
+                          ? "Wird gespeichert …"
+                          : "Speichern und auswählen"}
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
-            </label>
-            {departmentSuggestion && (
-              <ClassificationSuggestion
-                disabled={saving}
-                onApply={() => {
-                  changeDepartment(departmentSuggestion.id);
-                }}
-                vote={departmentSuggestion}
-              />
-            )}
-            <div className="ticket-compose-description ticket-compose-template">
-              <label>
-                Ticketvorlage (optional)
-                <select
-                  disabled={
-                    saving ||
-                    options.departments.length === 0 ||
-                    currentTemplateLookup?.status === "loading"
-                  }
-                  onChange={(event) => {
-                    setTemplateId(event.target.value);
-                    setFieldErrors({});
-                  }}
-                  value={selectedTemplate?.id ?? ""}
-                >
-                  <option value="">
-                    {currentTemplateLookup?.status === "loading"
-                      ? "Vorlagen werden geladen …"
-                      : "Ohne Vorlage erfassen"}
-                  </option>
-                  {availableTemplates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
+              {requesterError && (
+                <p className="error" role="alert">
+                  {requesterError}
+                </p>
+              )}
+            </FormCard>
+            <TicketSuggestionPanel
+              articleChoices={Object.fromEntries(
+                Object.entries(articleChoices).map(([id, value]) => [
+                  id,
+                  value.choice,
+                ]),
+              )}
+              disabled={saving}
+              onArticleChoice={(article, choice) =>
+                setArticleChoices((current) => {
+                  const next = { ...current };
+                  if (choice)
+                    next[article.id] = { choice, title: article.title };
+                  else delete next[article.id];
+                  return next;
+                })
+              }
+              onDeflected={finishWithArticle}
+              onOpenKnowledgeArticle={openSuggestedArticle}
+              onOpenTicket={openSuggestedTicket}
+              subject={draftSubject}
+              suggestions={suggestions}
+              tenantId={tenantId}
+            />
+            <FormCard title="Einordnung">
+              <FormGrid cols={3}>
+                <FormField label="Abteilung / Angebot" required>
+                  <select
+                    aria-describedby={
+                      options.requesterContext.isInternal &&
+                      contextDepartmentName
+                        ? "ticket-requester-department"
+                        : undefined
+                    }
+                    disabled={saving || options.departments.length === 0}
+                    id="ticket-department-selection"
+                    onChange={(event) => changeDepartment(event.target.value)}
+                    ref={departmentSelectRef}
+                    required
+                    value={departmentId}
+                  >
+                    {options.departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                  {options.requesterContext.isInternal &&
+                    contextDepartmentName && (
+                      <span
+                        className="data-caption"
+                        id="ticket-requester-department"
+                      >
+                        Vorausgefüllt: {contextDepartmentName}
+                      </span>
+                    )}
+                </FormField>
+                <FormField label="Priorität" required>
+                  <select
+                    disabled={
+                      saving ||
+                      options.priorities.length === 0 ||
+                      priorityFixedByTemplate
+                    }
+                    onChange={(event) => setPriorityKey(event.target.value)}
+                    required
+                    value={effectivePriorityKey}
+                  >
+                    {options.priorities.map((priority) => (
+                      <option key={priority.key} value={priority.key}>
+                        {priority.label}
+                      </option>
+                    ))}
+                  </select>
+                  {prioritySuggestion && (
+                    <ClassificationSuggestion
+                      disabled={saving}
+                      onApply={() => setPriorityKey(prioritySuggestion.key)}
+                      vote={prioritySuggestion}
+                    />
+                  )}
+                </FormField>
+                {agentLookupAllowed && assignableAgents.length > 0 && (
+                  <FormField label="Zugewiesener Agent">
+                    <select
+                      disabled={saving}
+                      onChange={(event) =>
+                        setAssignedAgentId(event.target.value)
+                      }
+                      value={assignedAgentId}
+                    >
+                      <option value="">Nicht zugewiesen</option>
+                      {assignableAgents.map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.displayName ?? "Aktiver Agent"}
+                          {agent.id === currentUserId ? " (Ich)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="data-caption">
+                      Alle aktiven, für diese Abteilung berechtigten Agenten des
+                      Mandanten stehen zur Auswahl.
+                    </span>
+                  </FormField>
+                )}
+                <FormField label="Ticketvorlage">
+                  <select
+                    disabled={
+                      saving ||
+                      options.departments.length === 0 ||
+                      currentTemplateLookup?.status === "loading"
+                    }
+                    onChange={(event) => {
+                      setTemplateId(event.target.value);
+                      setFieldErrors({});
+                    }}
+                    value={selectedTemplate?.id ?? ""}
+                  >
+                    <option value="">
+                      {currentTemplateLookup?.status === "loading"
+                        ? "Vorlagen werden geladen …"
+                        : "Ohne Vorlage erfassen"}
                     </option>
-                  ))}
-                </select>
-              </label>
+                    {availableTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </FormGrid>
+              {departmentSuggestion && (
+                <ClassificationSuggestion
+                  disabled={saving}
+                  onApply={() => {
+                    changeDepartment(departmentSuggestion.id);
+                  }}
+                  vote={departmentSuggestion}
+                />
+              )}
               {currentTemplateLookup?.error && (
                 <p className="error" role="alert">
                   {currentTemplateLookup.error}
@@ -2533,309 +2750,247 @@ export function TicketComposer({
                   Ticketnummer wird erst beim Erstellen vergeben.
                 </p>
               )}
-            </div>
-            {agentLookupAllowed && assignableAgents.length > 0 && (
-              <label>
-                Zugewiesener Agent
-                <select
+              {agentLookupAllowed ? (
+                <TicketAssetPicker
                   disabled={saving}
-                  onChange={(event) => setAssignedAgentId(event.target.value)}
-                  value={assignedAgentId}
-                >
-                  <option value="">Nicht zugewiesen</option>
-                  {assignableAgents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.displayName ?? "Aktiver Agent"}
-                      {agent.id === currentUserId ? " (Ich)" : ""}
-                    </option>
-                  ))}
-                </select>
-                <span className="data-caption">
-                  Alle aktiven, für diese Abteilung berechtigten Agenten des
-                  Mandanten stehen zur Auswahl.
-                </span>
-              </label>
-            )}
-            {agentLookupAllowed ? (
-              <TicketAssetPicker
-                disabled={saving}
-                onChange={setPickedAssets}
-                selected={pickedAssets}
-                tenantId={tenantId}
-              />
-            ) : null}
-            {currentCategoryLookup?.status === "loading" && (
-              <p
-                className="data-caption ticket-compose-description"
-                role="status"
-              >
-                Kategorien werden geladen …
-              </p>
-            )}
-            {currentCategoryLookup?.error && (
-              <p className="ticket-compose-description error" role="alert">
-                {currentCategoryLookup.error}
-              </p>
-            )}
-            {categoriesLoaded && (
-              <div className="ticket-compose-description ticket-compose-category">
-                <label>
-                  Kategorie
-                  <select
-                    disabled={
-                      saving || categorySaving || categoryDraft !== null
-                    }
-                    onChange={(event) => {
-                      if (event.target.value === NEW_CATEGORY_OPTION) {
-                        openCategoryForm(null);
-                        return;
-                      }
-                      setCategoryId(event.target.value);
-                      setSubcategoryId("");
-                      setCategoryError("");
-                    }}
-                    value={selectedCategory?.id ?? ""}
-                  >
-                    <option value="">Keine Auswahl</option>
-                    {rootCategories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                    <option value={NEW_CATEGORY_OPTION}>
-                      + Neue Kategorie …
-                    </option>
-                  </select>
-                  {categorySuggestion && (
-                    <ClassificationSuggestion
-                      disabled={
-                        saving || categorySaving || categoryDraft !== null
-                      }
-                      onApply={() => {
-                        setCategoryId(categorySuggestion.id);
-                        setSubcategoryId("");
-                        setCategoryError("");
-                      }}
-                      vote={categorySuggestion}
-                    />
-                  )}
-                </label>
-                {selectedCategory && (
-                  <label>
-                    Unterkategorie
-                    <select
-                      disabled={
-                        saving || categorySaving || categoryDraft !== null
-                      }
-                      onChange={(event) => {
-                        if (event.target.value === NEW_CATEGORY_OPTION) {
-                          openCategoryForm(selectedCategory.id);
-                          return;
+                  onChange={setPickedAssets}
+                  selected={pickedAssets}
+                  tenantId={tenantId}
+                />
+              ) : null}
+              {currentCategoryLookup?.status === "loading" && (
+                <p className="data-caption" role="status">
+                  Kategorien werden geladen …
+                </p>
+              )}
+              {currentCategoryLookup?.error && (
+                <p className="ticket-compose-description error" role="alert">
+                  {currentCategoryLookup.error}
+                </p>
+              )}
+              {categoriesLoaded && (
+                <>
+                  <FormGrid cols={2}>
+                    <FormField label="Kategorie">
+                      <select
+                        disabled={
+                          saving || categorySaving || categoryDraft !== null
                         }
-                        setSubcategoryId(event.target.value);
-                      }}
-                      value={selectedSubcategory?.id ?? ""}
-                    >
-                      <option value="">Keine Auswahl</option>
-                      {subcategories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                      <option value={NEW_CATEGORY_OPTION}>
-                        + Neue Unterkategorie …
-                      </option>
-                    </select>
-                  </label>
-                )}
-                {categoryDraft && (
-                  <div
-                    aria-label={
-                      draftParent ? "Neue Unterkategorie" : "Neue Kategorie"
-                    }
-                    id="ticket-category-form"
-                    role="group"
-                  >
-                    <p className="data-caption">
-                      {draftParent
-                        ? `Unterkategorie von: ${draftParent.name}`
-                        : "Neue Kategorie ohne übergeordnete Kategorie"}
-                    </p>
-                    <label>
-                      Name
-                      <input
-                        autoFocus
-                        disabled={saving || categorySaving}
                         onChange={(event) => {
-                          const name = event.target.value;
-                          setCategoryDraft((current) =>
-                            current ? { ...current, name } : null,
-                          );
+                          if (event.target.value === NEW_CATEGORY_OPTION) {
+                            openCategoryForm(null);
+                            return;
+                          }
+                          setCategoryId(event.target.value);
+                          setSubcategoryId("");
                           setCategoryError("");
                         }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void createCategory();
+                        value={selectedCategory?.id ?? ""}
+                      >
+                        <option value="">Keine Auswahl</option>
+                        {rootCategories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                        <option value={NEW_CATEGORY_OPTION}>
+                          + Neue Kategorie …
+                        </option>
+                      </select>
+                      {categorySuggestion && (
+                        <ClassificationSuggestion
+                          disabled={
+                            saving || categorySaving || categoryDraft !== null
                           }
-                        }}
-                        placeholder={
-                          draftParent
-                            ? "Name der Unterkategorie"
-                            : "Name der Kategorie"
-                        }
-                        value={categoryDraft.name}
-                      />
-                    </label>
-                    <button
-                      className="text-button"
-                      disabled={saving || categorySaving}
-                      onClick={() => {
-                        setCategoryDraft(null);
-                        setCategoryError("");
-                      }}
-                      type="button"
-                    >
-                      Abbrechen
-                    </button>
-                    <button
-                      className="primary-button"
-                      disabled={
-                        saving || categorySaving || !categoryDraft.name.trim()
+                          onApply={() => {
+                            setCategoryId(categorySuggestion.id);
+                            setSubcategoryId("");
+                            setCategoryError("");
+                          }}
+                          vote={categorySuggestion}
+                        />
+                      )}
+                    </FormField>
+                    {selectedCategory && (
+                      <FormField label="Unterkategorie">
+                        <select
+                          disabled={
+                            saving || categorySaving || categoryDraft !== null
+                          }
+                          onChange={(event) => {
+                            if (event.target.value === NEW_CATEGORY_OPTION) {
+                              openCategoryForm(selectedCategory.id);
+                              return;
+                            }
+                            setSubcategoryId(event.target.value);
+                          }}
+                          value={selectedSubcategory?.id ?? ""}
+                        >
+                          <option value="">Keine Auswahl</option>
+                          {subcategories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                          <option value={NEW_CATEGORY_OPTION}>
+                            + Neue Unterkategorie …
+                          </option>
+                        </select>
+                      </FormField>
+                    )}
+                  </FormGrid>
+                  {categoryDraft && (
+                    <div
+                      aria-label={
+                        draftParent ? "Neue Unterkategorie" : "Neue Kategorie"
                       }
-                      onClick={() => void createCategory()}
-                      type="button"
+                      id="ticket-category-form"
+                      role="group"
                     >
-                      {categorySaving ? "Wird gespeichert …" : "Speichern"}
-                    </button>
-                  </div>
-                )}
-                {categoryError && (
-                  <p className="error" role="alert">
-                    {categoryError}
-                  </p>
-                )}
-              </div>
+                      <p className="data-caption">
+                        {draftParent
+                          ? `Unterkategorie von: ${draftParent.name}`
+                          : "Neue Kategorie ohne übergeordnete Kategorie"}
+                      </p>
+                      <label>
+                        Name
+                        <input
+                          autoFocus
+                          disabled={saving || categorySaving}
+                          onChange={(event) => {
+                            const name = event.target.value;
+                            setCategoryDraft((current) =>
+                              current ? { ...current, name } : null,
+                            );
+                            setCategoryError("");
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void createCategory();
+                            }
+                          }}
+                          placeholder={
+                            draftParent
+                              ? "Name der Unterkategorie"
+                              : "Name der Kategorie"
+                          }
+                          value={categoryDraft.name}
+                        />
+                      </label>
+                      <button
+                        className="text-button"
+                        disabled={saving || categorySaving}
+                        onClick={() => {
+                          setCategoryDraft(null);
+                          setCategoryError("");
+                        }}
+                        type="button"
+                      >
+                        Abbrechen
+                      </button>
+                      <button
+                        className="primary-button"
+                        disabled={
+                          saving || categorySaving || !categoryDraft.name.trim()
+                        }
+                        onClick={() => void createCategory()}
+                        type="button"
+                      >
+                        {categorySaving ? "Wird gespeichert …" : "Speichern"}
+                      </button>
+                    </div>
+                  )}
+                  {categoryError && (
+                    <p className="error" role="alert">
+                      {categoryError}
+                    </p>
+                  )}
+                </>
+              )}
+              <FormNote>
+                <Clock3 aria-hidden="true" size={16} strokeWidth={2} /> Die
+                erwartete Reaktions- und Lösungszeit wird nach dem Erstellen für
+                die gewählte Priorität und Kategorie angezeigt.
+              </FormNote>
+            </FormCard>
+            {selectedTemplate && selectedTemplate.formFields.length > 0 && (
+              <TicketTemplateFormFields
+                answers={templateFormAnswers}
+                disabled={saving}
+                errors={templateFormErrors}
+                fields={selectedTemplate.formFields}
+                onChange={(key, value) => {
+                  const { [key]: _removed, ...remainingErrors } =
+                    templateFormErrors;
+                  setTemplateFormState({
+                    templateId: selectedTemplate.id,
+                    answers: { ...templateFormAnswers, [key]: value },
+                    errors: remainingErrors,
+                  });
+                }}
+              />
             )}
-            {matchingIncidentNotices.length > 0 && (
-              <aside className="ticket-compose-description" role="note">
-                <p className="data-caption">
-                  <AlertTriangle aria-hidden="true" size={16} strokeWidth={2} />{" "}
-                  <strong>Passende aktive Störung:</strong> Prüfen Sie vor dem
-                  Erstellen, ob Ihr Anliegen bereits betroffen ist. Ein Ticket
-                  kann bei Bedarf trotzdem erfasst werden.
-                </p>
-                <ul className="data-caption">
-                  {matchingIncidentNotices.map((notice) => (
-                    <li key={notice.id}>
-                      <strong>{notice.title}:</strong> {notice.description}
-                    </li>
-                  ))}
-                </ul>
-              </aside>
-            )}
-            <label className="ticket-compose-priority">
-              Priorität
-              <select
+            <FormCard title="Beschreibung" sub="Pflicht">
+              <FormField label="Beschreibung" required>
+                <textarea
+                  aria-describedby={
+                    selectedTemplate
+                      ? "ticket-template-preview"
+                      : fieldErrors.description
+                        ? "ticket-description-error"
+                        : undefined
+                  }
+                  aria-invalid={Boolean(fieldErrors.description)}
+                  disabled={saving || options.departments.length === 0}
+                  minLength={1}
+                  onChange={(event) => {
+                    setDescription(event.target.value);
+                    setDeflectionNotice(false);
+                    setFieldErrors((current) => {
+                      const { description: _description, ...next } = current;
+                      return next;
+                    });
+                  }}
+                  placeholder={tn(
+                    "Beschreibe das Anliegen so konkret wie möglich.",
+                    "Beschreiben Sie das Anliegen so konkret wie möglich.",
+                  )}
+                  readOnly={selectedTemplate !== null}
+                  required
+                  rows={4}
+                  value={selectedTemplatePreview?.description ?? description}
+                />
+                {fieldErrors.description && (
+                  <span
+                    className="error"
+                    id="ticket-description-error"
+                    role="alert"
+                  >
+                    {fieldErrors.description}
+                  </span>
+                )}
+              </FormField>
+            </FormCard>
+            <div className="fk-compose-actions">
+              <button
+                className="primary-button"
                 disabled={
                   saving ||
-                  options.priorities.length === 0 ||
-                  priorityFixedByTemplate
+                  !currentSelectedRequester ||
+                  requesterSaving ||
+                  requesterDraft !== null ||
+                  categorySaving ||
+                  categoryDraft !== null ||
+                  options.departments.length === 0 ||
+                  options.priorities.length === 0
                 }
-                onChange={(event) => setPriorityKey(event.target.value)}
-                required
-                value={effectivePriorityKey}
+                type="submit"
               >
-                {options.priorities.map((priority) => (
-                  <option key={priority.key} value={priority.key}>
-                    {priority.label}
-                  </option>
-                ))}
-              </select>
-              {prioritySuggestion && (
-                <ClassificationSuggestion
-                  disabled={saving}
-                  onApply={() => setPriorityKey(prioritySuggestion.key)}
-                  vote={prioritySuggestion}
-                />
-              )}
-            </label>
-            <p className="ticket-compose-description data-caption" role="note">
-              <Clock3 aria-hidden="true" size={16} strokeWidth={2} /> Die
-              erwartete Reaktions- und Lösungszeit wird nach dem Erstellen für
-              die gewählte Priorität und Kategorie angezeigt.
-            </p>
-          </section>
-          {selectedTemplate && selectedTemplate.formFields.length > 0 && (
-            <TicketTemplateFormFields
-              answers={templateFormAnswers}
-              disabled={saving}
-              errors={templateFormErrors}
-              fields={selectedTemplate.formFields}
-              onChange={(key, value) => {
-                const { [key]: _removed, ...remainingErrors } =
-                  templateFormErrors;
-                setTemplateFormState({
-                  templateId: selectedTemplate.id,
-                  answers: { ...templateFormAnswers, [key]: value },
-                  errors: remainingErrors,
-                });
-              }}
-            />
-          )}
-          <label className="ticket-compose-description">
-            Beschreibung
-            <textarea
-              aria-describedby={
-                selectedTemplate
-                  ? "ticket-template-preview"
-                  : fieldErrors.description
-                    ? "ticket-description-error"
-                    : undefined
-              }
-              aria-invalid={Boolean(fieldErrors.description)}
-              disabled={saving || options.departments.length === 0}
-              minLength={1}
-              onChange={(event) => {
-                setDescription(event.target.value);
-                setDeflectionNotice(false);
-                setFieldErrors((current) => {
-                  const { description: _description, ...next } = current;
-                  return next;
-                });
-              }}
-              placeholder="Beschreiben Sie das Anliegen so konkret wie möglich."
-              readOnly={selectedTemplate !== null}
-              required
-              rows={4}
-              value={selectedTemplatePreview?.description ?? description}
-            />
-            {fieldErrors.description && (
-              <span
-                className="error"
-                id="ticket-description-error"
-                role="alert"
-              >
-                {fieldErrors.description}
-              </span>
-            )}
-          </label>
-          <button
-            className="primary-button"
-            disabled={
-              saving ||
-              !currentSelectedRequester ||
-              requesterSaving ||
-              requesterDraft !== null ||
-              categorySaving ||
-              categoryDraft !== null ||
-              options.departments.length === 0 ||
-              options.priorities.length === 0
-            }
-            type="submit"
-          >
-            {saving ? "Ticket wird erstellt …" : "Ticket erstellen"}
-          </button>
+                {saving ? "Ticket wird erstellt …" : "Ticket erstellen"}
+              </button>
+            </div>
+          </FormLayout>
         </form>
       )}
       {error && <p className="ticket-compose-message error">{error}</p>}
@@ -2885,6 +3040,7 @@ export function TicketComposer({
             <div>
               <h3 id="ticket-watcher-title">Personen in Kopie setzen</h3>
               <p>
+                {/* formality-ok: "Sie" bezeichnet die Personen in Kopie */}
                 Personen in Kopie sehen den Verlauf dieses Tickets. Sie werden
                 nicht zugewiesen.
               </p>

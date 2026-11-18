@@ -21,6 +21,7 @@ import {
   type PhishingSubmitResult,
 } from "@/lib/phishing-report";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 /**
  * «Phishing melden» (mobile): the person pastes the headers or the text of a
@@ -143,16 +144,13 @@ export function PhishingReportSheet({
                 <View style={styles.warning}>
                   <Ionicons color={colors.warning} name="warning" size={18} />
                   <Text style={styles.warningText}>
-                    Klicke in der verdächtigen E-Mail keine Links an und öffne
-                    keine Anhänge.
+                    {tn("Klicke in der verdächtigen E-Mail keine Links an und öffne keine Anhänge.", "Klicken Sie in der verdächtigen E-Mail keine Links an und öffnen Sie keine Anhänge.")}
                   </Text>
                 </View>
                 <Text style={styles.note}>
-                  Kopiere die Kopfzeilen (in Outlook: Nachricht › Details
-                  anzeigen) oder den ganzen Text der E-Mail und füge ihn hier
-                  ein.
+                  {tn("Kopiere die Kopfzeilen (in Outlook: Nachricht › Details anzeigen) oder den ganzen Text der E-Mail und füge ihn hier ein.", "Kopieren Sie die Kopfzeilen (in Outlook: Nachricht › Details anzeigen) oder den ganzen Text der E-Mail und fügen Sie ihn hier ein.")}
                   {reportAddress
-                    ? ` Du kannst die E-Mail auch an ${reportAddress} weiterleiten.`
+                    ? tn(` Du kannst die E-Mail auch an ${reportAddress} weiterleiten.`, ` Sie können die E-Mail auch an ${reportAddress} weiterleiten.`)
                     : ""}
                 </Text>
                 <TextInput

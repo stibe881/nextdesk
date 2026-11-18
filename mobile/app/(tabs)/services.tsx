@@ -10,10 +10,12 @@ import {
 } from "react-native";
 
 import { RequesterCollaboration } from "@/components/requester-collaboration";
+import { NetworkIcon } from "@/components/section-icons";
 import { ScreenContainer } from "@/components/screen-container";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 export default function ServicesScreen() {
   const router = useRouter();
@@ -23,6 +25,7 @@ export default function ServicesScreen() {
   const checkingSession = useMobileSessionGuard();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
   const assetsEnabled = isEnabled("assets.management");
+  const monitoringEnabled = isEnabled("monitoring.native");
   const departmentViewEnabled = isEnabled("requester.department-view");
   const requesterPortalEnabled = isEnabled("requester.portal");
   const wideLayout = width >= 768;
@@ -72,7 +75,7 @@ export default function ServicesScreen() {
             <View style={styles.cardCopy}>
               <Text style={styles.primaryTitle}>Service anfragen</Text>
               <Text style={styles.primaryText}>
-                Erfasse ein Ticket mit Anliegen, Priorität und Abteilung.
+                {tn("Erfasse ein Ticket mit Anliegen, Priorität und Abteilung.", "Erfassen Sie ein Ticket mit Anliegen, Priorität und Abteilung.")}
               </Text>
             </View>
             <Ionicons color={colors.onPrimary} name="arrow-forward" size={21} />
@@ -96,7 +99,7 @@ export default function ServicesScreen() {
                 <View style={styles.cardCopy}>
                   <Text style={styles.actionTitle}>Meine Serviceanfragen</Text>
                   <Text style={styles.actionText}>
-                    Prüfe Status, Antworten und Bearbeitung deiner Tickets.
+                    {tn("Prüfe Status, Antworten und Bearbeitung deiner Tickets.", "Prüfen Sie Status, Antworten und Bearbeitung Ihrer Tickets.")}
                   </Text>
                 </View>
                 <Ionicons
@@ -114,7 +117,7 @@ export default function ServicesScreen() {
                   <View style={styles.actionPrimaryIcon}>
                     <Ionicons
                       color={colors.primaryText}
-                      name="cube-outline"
+                      name="laptop-outline"
                       size={20}
                     />
                   </View>
@@ -139,17 +142,40 @@ export default function ServicesScreen() {
                   style={styles.action}
                 >
                   <View style={styles.actionPrimaryIcon}>
-                    <Ionicons
-                      color={colors.primaryText}
-                      name="server-outline"
-                      size={20}
-                    />
+                    <NetworkIcon color={colors.primaryText} size={20} />
                   </View>
                   <View style={styles.cardCopy}>
                     <Text style={styles.actionTitle}>Infrastruktur</Text>
                     <Text style={styles.actionText}>
                       Server, Switches und Access Points mit Lebenszyklus,
                       Wartung und Fristen.
+                    </Text>
+                  </View>
+                  <Ionicons
+                    color={colors.subtle}
+                    name="chevron-forward"
+                    size={19}
+                  />
+                </Pressable>
+              ) : null}
+              {assetsEnabled && monitoringEnabled ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/monitoring" as never)}
+                  style={styles.action}
+                >
+                  <View style={styles.actionPrimaryIcon}>
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="radio-outline"
+                      size={20}
+                    />
+                  </View>
+                  <View style={styles.cardCopy}>
+                    <Text style={styles.actionTitle}>Überwachung</Text>
+                    <Text style={styles.actionText}>
+                      Zustand der überwachten Geräte, Alarme und Verlauf der
+                      Sensoren.
                     </Text>
                   </View>
                   <Ionicons

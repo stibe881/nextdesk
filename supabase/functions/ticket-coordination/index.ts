@@ -32,7 +32,7 @@ type Row = Record<string, unknown>;
 const MAX_REQUEST_BYTES = 128 * 1024;
 const TICKET_FEATURE = "ticketing.detail";
 const TICKET_COLUMNS =
-  "id, tenant_id, department_id, ticket_number, subject, status_id, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, parent_ticket_id, merged_into_ticket_id, created_at, first_responded_at, response_due_at, resolution_due_at, resolved_at, closed_at, status_changed_at, waiting_since";
+  "id, tenant_id, department_id, ticket_number, subject, status_id, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, parent_ticket_id, merged_into_ticket_id, created_at, first_responded_at, response_due_at, resolution_due_at, resolved_at, closed_at, status_changed_at, waiting_since, sla_paused_at";
 
 class HttpError extends Error {
   constructor(
@@ -60,6 +60,7 @@ type TicketRow = {
   first_responded_at: string | null;
   response_due_at: string | null;
   resolution_due_at: string | null;
+  sla_paused_at: string | null;
   resolved_at: string | null;
   closed_at: string | null;
   status_changed_at: string | null;
@@ -217,6 +218,7 @@ async function overview(
       .select(
         "id, ticket_number, subject, status_id, department_id, assigned_agent_id, created_at, resolved_at, closed_at",
       )
+      .is("deleted_at", null)
       .eq("tenant_id", ticket.tenant_id)
       .eq("parent_ticket_id", ticket.id)
       .is("merged_into_ticket_id", null)
@@ -226,6 +228,7 @@ async function overview(
       ? admin
         .from("tickets")
         .select("id, ticket_number, subject, status_id")
+        .is("deleted_at", null)
         .eq("tenant_id", ticket.tenant_id)
         .eq("id", ticket.parent_ticket_id)
         .maybeSingle()
@@ -340,6 +343,7 @@ async function overview(
         resolutionDueAt: ticket.resolution_due_at,
         resolvedAt: ticket.resolved_at,
         closedAt: ticket.closed_at,
+        slaPausedAt: ticket.sla_paused_at ?? null,
         statusChangedAt: ticket.status_changed_at,
         waitingSince: ticket.waiting_since,
       },

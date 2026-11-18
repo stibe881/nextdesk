@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -36,7 +37,9 @@ import { callTeamSupervision } from "./team-supervision-api";
 import { buildOneOnOneSheet } from "./lib/one-on-one-sheet";
 import { supabase } from "./lib/supabase";
 import "./team-supervision.css";
+import { slaPausedLabel } from "./lib/sla-pause";
 
+import { confirmDialog } from "./app-dialog";
 type Absence = {
   endsAt: string;
   delegateId: string;
@@ -78,6 +81,8 @@ type TeamTicket = {
   priorityLabel: string;
   createdAt: string;
   resolutionDueAt: string | null;
+  /** Start of a running SLA pause (waiting status). */
+  slaPausedAt?: string | null;
   overdue: boolean;
   atRisk: boolean;
   noFirstResponse: boolean;
@@ -250,8 +255,10 @@ export function TeamSupervision({
               .join(", ") || "Mein Team"}
           </h2>
           <p>
-            Auslastung, Umverteilung, Qualität und Monatsbericht Ihrer
-            Agent:innen.
+            {tn(
+              "Auslastung, Umverteilung, Qualität und Monatsbericht deiner Agent:innen.",
+              "Auslastung, Umverteilung, Qualität und Monatsbericht Ihrer Agent:innen.",
+            )}
           </p>
         </div>
       </header>
@@ -758,9 +765,11 @@ function Redistribute({
                         <span>{ticket.subject}</span>
                         <small>
                           {ticket.priorityLabel} · {ticket.statusLabel}
-                          {ticket.resolutionDueAt
-                            ? ` · SLA ${dateTime(ticket.resolutionDueAt)}`
-                            : ""}
+                          {ticket.slaPausedAt
+                            ? ` · ${slaPausedLabel(ticket.slaPausedAt) ?? "SLA pausiert"}`
+                            : ticket.resolutionDueAt
+                              ? ` · SLA ${dateTime(ticket.resolutionDueAt)}`
+                              : ""}
                         </small>
                       </button>
                     </li>
@@ -1259,7 +1268,7 @@ function Coaching({
   }
 
   async function remove(noteId: string) {
-    if (!window.confirm("Notiz löschen?")) return;
+    if (!(await confirmDialog("Notiz löschen?"))) return;
     setBusy(true);
     try {
       await call({ type: "deleteCoachingNote", tenantId, noteId });
@@ -1273,7 +1282,12 @@ function Coaching({
   async function printSheet() {
     const sheetWindow = window.open("", "_blank");
     if (!sheetWindow) {
-      setError("Bitte erlauben Sie Pop-ups, um das Gesprächsblatt zu öffnen.");
+      setError(
+        tn(
+          "Bitte erlaube Pop-ups, um das Gesprächsblatt zu öffnen.",
+          "Bitte erlauben Sie Pop-ups, um das Gesprächsblatt zu öffnen.",
+        ),
+      );
       return;
     }
     sheetWindow.document.write(
@@ -1335,8 +1349,10 @@ function Coaching({
   return (
     <div className="team-supervision__coaching">
       <p className="data-caption">
-        Private Notizen für Mitarbeitergespräche. Nur Sie sehen Ihre Notizen;
-        daneben die letzten Qualitätsprüfungen und das Lob von Kund:innen.
+        {tn(
+          "Private Notizen für Mitarbeitergespräche. Nur du siehst deine Notizen; daneben die letzten Qualitätsprüfungen und das Lob von Kund:innen.",
+          "Private Notizen für Mitarbeitergespräche. Nur Sie sehen Ihre Notizen; daneben die letzten Qualitätsprüfungen und das Lob von Kund:innen.",
+        )}
       </p>
       <div className="team-supervision__coaching-toolbar">
         <label className="team-supervision__coaching-agent">

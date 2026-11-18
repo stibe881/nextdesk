@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 
+import { BoxesIcon, NetworkIcon } from "@/components/section-icons";
 import { lookupMobileAsset } from "@/lib/asset-registry";
 import { parseScannedCode } from "@/lib/asset-qr";
 import {
@@ -86,6 +87,14 @@ export default function AssetScanScreen() {
         router.replace(`/assets/${scanned.assetId}` as never);
         return;
       }
+      if (scanned.kind === "inventory") {
+        hapticSuccess();
+        router.replace({
+          pathname: "/inventory",
+          params: { item: scanned.itemId },
+        } as never);
+        return;
+      }
       if (scanned.kind === "rack") {
         hapticSuccess();
         router.replace({
@@ -156,7 +165,7 @@ export default function AssetScanScreen() {
           onPress={() => router.replace("/inventory" as never)}
           style={styles.quickLink}
         >
-          <Ionicons color={colors.onPrimary} name="cube-outline" size={18} />
+          <BoxesIcon color={colors.onPrimary} size={18} />
           <Text style={styles.quickLinkText}>Lager</Text>
         </Pressable>
       ) : null}
@@ -166,7 +175,7 @@ export default function AssetScanScreen() {
         onPress={() => router.replace("/infrastructure" as never)}
         style={styles.quickLink}
       >
-        <Ionicons color={colors.onPrimary} name="server-outline" size={18} />
+        <NetworkIcon color={colors.onPrimary} size={18} />
         <Text style={styles.quickLinkText}>Infrastruktur</Text>
       </Pressable>
     </View>
@@ -248,7 +257,7 @@ export default function AssetScanScreen() {
               name="camera-outline"
               size={33}
             />
-            <Text style={styles.permissionTitle}>Kamera aktivieren</Text>
+            <Text style={styles.permissionTitle}>Scanner verwenden</Text>
             <Text style={styles.permissionText}>
               Die Kamera wird ausschliesslich genutzt, um den QR- oder Barcode
               eines Assets zu lesen.
@@ -258,7 +267,7 @@ export default function AssetScanScreen() {
                 onPress={() => void requestPermission()}
                 style={styles.permissionButton}
               >
-                <Text style={styles.permissionButtonText}>Kamera erlauben</Text>
+                <Text style={styles.permissionButtonText}>Weiter</Text>
               </Pressable>
             ) : null}
             {quickLinks}

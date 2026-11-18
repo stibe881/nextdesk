@@ -37,4 +37,4 @@ Danach kann der Workflow **Deploy TicketHub to Hetzner Webhosting L** über GitH
 - Der private Deploy-Schlüssel liegt nur als GitHub-Environment-Secret vor; niemals im Repository oder Browser.
 - Die Hostidentität ist als `known_hosts`-Secret fest hinterlegt; der Workflow akzeptiert keinen unbekannten SSH-Host.
 - `rsync --delete` löscht nur Inhalte im ausdrücklich gesetzten App-Zielverzeichnis. Daher darf `HETZNER_WEB_ROOT` **nicht** auf `public_html` oder den Domain-Stamm gesetzt werden.
-- Die künftige Node-Anwendung wird auf der getrennten Subdomain `api.nextdesk.ch` betrieben. Sie erhält Secrets als konsoleH-Umgebungsvariablen, nie über Vite.
+- Die künftige Node-Anwendung wird auf der getrennten Subdomain `api.nextdesk.ch` betrieben. Diese erhält Secrets als konsoleH-Umgebungsvariablen, nie über Vite.

@@ -4,6 +4,8 @@
  * child tickets) and finds the gaps where time was lost.
  */
 
+import { slaPauseEventLabel } from "./sla-pause";
+
 export type TimelineTone =
   "neutral" | "info" | "success" | "warning" | "danger" | "accent";
 
@@ -14,6 +16,7 @@ export type TimelineEntryKind =
   | "priority"
   | "department"
   | "sla_due"
+  | "sla_pause"
   | "first_response"
   | "requester_reply"
   | "agent_reply"
@@ -82,6 +85,8 @@ export type TimelineInput = {
     resolvedAt: string | null;
     closedAt: string | null;
     isClosed: boolean;
+    /** Start of a running SLA pause (waiting status, 0324). */
+    slaPausedAt?: string | null;
   };
   events: {
     id: string;
@@ -160,7 +165,22 @@ function slaEntry(
   due: number,
   doneAt: number | null,
   now: number,
+  pausedAt: number | null = null,
 ): TimelineEntry {
+  if (doneAt === null && pausedAt !== null && due > pausedAt) {
+    // Paused SLA: the stored due date is frozen; the remaining time runs
+    // again on resume, so the target lies ahead by that remaining time.
+    const remaining = due - pausedAt;
+    return {
+      id,
+      time: now + remaining,
+      kind: "sla_due",
+      title,
+      detail: `SLA pausiert, Restzeit ${formatTimelineDuration(remaining)}`,
+      tone: "neutral",
+      future: true,
+    };
+  }
   if (doneAt !== null) {
     const met = doneAt <= due;
     return {
@@ -261,6 +281,18 @@ function eventEntries(
       }
       return entries;
     }
+    case "ticket.sla.paused":
+    case "ticket.sla.resumed":
+      return [
+        {
+          ...base,
+          id: event.id,
+          kind: "sla_pause",
+          title: slaPauseEventLabel(event.type, payload) ?? "SLA",
+          detail: null,
+          tone: event.type === "ticket.sla.paused" ? "warning" : "info",
+        },
+      ];
     case "ticket.department_changed":
       return [
         {
@@ -270,6 +302,17 @@ function eventEntries(
           title: "Abteilung gewechselt",
           detail: null,
           tone: "neutral",
+        },
+      ];
+    case "ticket.phishing_suspicion":
+      return [
+        {
+          ...base,
+          id: event.id,
+          kind: "escalation",
+          title: "Spam-/Phishing-Verdacht gemeldet",
+          detail: textValue(payload.teamName),
+          tone: "warning",
         },
       ];
     case "ticket.escalation_opened":
@@ -549,6 +592,9 @@ export function buildTicketTimeline(
     time(input.ticket.resolvedAt) ?? time(input.ticket.closedAt);
   const closedAt = time(input.ticket.closedAt);
   const responseDue = time(input.ticket.responseDueAt);
+  const slaPausedAt = input.ticket.isClosed
+    ? null
+    : time(input.ticket.slaPausedAt ?? null);
   if (responseDue !== null) {
     entries.push(
       slaEntry(
@@ -557,6 +603,7 @@ export function buildTicketTimeline(
         responseDue,
         firstResponse,
         now,
+        slaPausedAt,
       ),
     );
   }
@@ -569,6 +616,7 @@ export function buildTicketTimeline(
         resolutionDue,
         input.ticket.isClosed ? resolvedAt : null,
         now,
+        slaPausedAt,
       ),
     );
   }

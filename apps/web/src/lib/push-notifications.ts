@@ -1,3 +1,4 @@
+import { tn } from "./formality";
 import { functionErrorMessage } from "./function-error";
 import { supabase } from "./supabase";
 
@@ -9,7 +10,12 @@ export const pushCategoryMeta = {
     label: "Freigaben",
   },
   assigned: {
-    description: "Wenn Ihnen ein Ticket zugewiesen wird",
+    get description() {
+      return tn(
+        "Wenn dir ein Ticket zugewiesen wird",
+        "Wenn Ihnen ein Ticket zugewiesen wird",
+      );
+    },
     label: "Zuweisungen",
   },
   escalation: {
@@ -18,8 +24,8 @@ export const pushCategoryMeta = {
   },
   follow_up: {
     description:
-      "Erinnerungen zu Wiedervorlagen und aus zeitgesteuerten Regeln",
-    label: "Wiedervorlagen",
+      "Fällige Erinnerungen und Hinweise aus zeitgesteuerten Regeln",
+    label: "Erinnerungen",
   },
   infrastructure: {
     description:
@@ -27,12 +33,26 @@ export const pushCategoryMeta = {
     label: "Infrastruktur",
   },
   inventory_low_stock: {
+    description: "Mindestbestand erreicht, Nachbestellung und fällige Inventur",
+    label: "Lager",
+  },
+  incident: {
     description:
-      "Wenn die Gesamtverfügbarkeit eines Artikels den Mindestbestand erreicht",
-    label: "Lagerunterbestand",
+      "Wenn die Überwachung oder PRTG eine Störung meldet und solange sie niemand bestätigt",
+    label: "Störungen",
+  },
+  ipam: {
+    description:
+      "Neue Funde (z. B. IP-Konflikte, volle Subnetze), Netzwerkagenten offline und ablaufende Reservierungen",
+    label: "IP-Adressverwaltung",
   },
   mention: {
-    description: "Wenn Sie in einem Ticket erwähnt werden",
+    get description() {
+      return tn(
+        "Wenn du in einem Ticket erwähnt wirst",
+        "Wenn Sie in einem Ticket erwähnt werden",
+      );
+    },
     label: "Erwähnungen",
   },
   requester_reply: {
@@ -43,8 +63,21 @@ export const pushCategoryMeta = {
     description: "Wenn ein Ticket als gelöst markiert wird",
     label: "Ticketlösungen",
   },
+  security_report: {
+    description: "Neue Phishing-Meldungen",
+    label: "Phishing-Meldungen",
+  },
+  security_case: {
+    description: "Überfällige Phishing-/Junk-Fälle, «geklickt» und Kampagnen",
+    label: "Phishing / Junk",
+  },
   shop: {
-    description: "Freigaben, Bereitstellung und Status Ihrer Bestellungen",
+    get description() {
+      return tn(
+        "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status deiner Bestellungen",
+        "Freigaben, Bereitstellung, Erinnerungen zu Ausleihen und Status Ihrer Bestellungen",
+      );
+    },
     label: "Shop",
   },
   sla: {
@@ -52,7 +85,12 @@ export const pushCategoryMeta = {
     label: "SLA-Hinweise",
   },
   support_reply: {
-    description: "Antworten des Supports zu Ihren Tickets",
+    get description() {
+      return tn(
+        "Antworten des Supports zu deinen Tickets",
+        "Antworten des Supports zu Ihren Tickets",
+      );
+    },
     label: "Support-Antworten",
   },
 } as const;
@@ -105,6 +143,11 @@ export type PushDevice = {
 
 export type PushStatus = {
   applicableCategories: PushCategory[];
+  /**
+   * Push categories delivered regardless of the personal setting (members of
+   * the phishing team always get phishing reports and security cases).
+   */
+  alwaysDeliveredCategories: PushCategory[];
   apnsConfigured: boolean;
   contentLevel: PushContentLevel;
   devices: PushDevice[];
@@ -388,6 +431,13 @@ function parseStatus(value: unknown): PushStatus {
 
   return {
     applicableCategories: knownCategories(applicableCategories),
+    alwaysDeliveredCategories: Array.isArray(value.alwaysDeliveredCategories)
+      ? knownCategories(
+          value.alwaysDeliveredCategories.filter(
+            (category): category is string => typeof category === "string",
+          ),
+        )
+      : [],
     apnsConfigured,
     contentLevel,
     devices: devices.map(parseDevice),

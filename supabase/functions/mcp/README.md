@@ -14,12 +14,12 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `wissen_suchen`, `wissensartikel_lesen` | lesen | Wissensdatenbank. Sucht bei ganzen Fragen einzeln nach Stichwörtern; gibt es zu einem Programm keinen eigenen Artikel, liefert sie den allgemeinen Weg (z. B. «Unternehmensportal») |
 | `shop_katalog_anzeigen`, `shop_bestellungen_anzeigen` | lesen | Self-Service-Shop: Katalog und eigene Bestellungen |
 | `geraet_suchen` | lesen | Geräte nach Name, Nummer, Tag oder Seriennummer |
-| `ueberall_suchen` | lesen | Gleichzeitig in Tickets, Wiedervorlagen, Wissen, Veranstaltungsräumen und Eintritten suchen |
+| `ueberall_suchen` | lesen | Gleichzeitig in Tickets, Erinnerungen, Wissen, Veranstaltungsräumen, Eintritten sowie (für Berechtigte) Störungen und Phishing-/Junk-Fällen suchen |
 | `benachrichtigungen_anzeigen` | lesen | Eigene Benachrichtigungen (standardmässig nur ungelesene) |
 | `offene_freigaben_anzeigen` | lesen | Ticketfreigaben, die auf den eigenen Entscheid warten |
 | `serviceaufgaben_anzeigen` | lesen | Serviceaufgaben: überfällig, heute, kommend (mine, team, all) |
 | `anfragende_suchen` | lesen | Anfragende Personen nach Name suchen |
-| `wiedervorlagen_anzeigen` | lesen | Eigene Wiedervorlagen (optional nur zu einem Ticket) |
+| `erinnerungen_anzeigen` | lesen | Eigene Erinnerungen (optional nur zu einem Ticket) |
 | `erwaehnungen_anzeigen` | lesen | @-Erwähnungen in Ticketnotizen |
 | `meine_kennzahlen` | lesen | Persönliche Kennzahlen (offen, heute gelöst, Reaktions- und Lösungszeit, SLA) |
 | `warteschlangen_anzeigen` | lesen | Offene Tickets je Abteilung und Team |
@@ -35,12 +35,17 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `serviceaufgabe_anzeigen`, `serviceaufgaben_kalender` | lesen | Serviceaufgabe im Detail, Monatskalender |
 | `ticketfreigaben_anzeigen` | lesen | Freigaben eines Tickets |
 | `stellvertretungen_anzeigen`, `stoerungsmeldungen_anzeigen` | lesen | Stellvertretungen, Störungsmeldungen |
+| `stoerungen_anzeigen` | lesen | Monitoring-Störungen (nur zuständiges Team) |
+| `phishing_junk_faelle_anzeigen`, `phishing_junk_fall_anzeigen` | lesen | Phishing-/Junk-Fälle mit Analyse, Kampagne, IOC-Treffern und Massnahmen (nur Phishing-Team) |
 | `zuweisung_vorschlagen`, `ticketumfeld_anzeigen`, `geraete_zum_ticket` | lesen | Zuweisungsvorschläge, Ticketumfeld, Geräte der anfragenden Person |
 | `servicebericht`, `sla_eskalationen_anzeigen`, `sla_regeln_anzeigen` | lesen | Kennzahlen, SLA-Eskalationen und -Regeln (braucht Berichtsrecht) |
 | `teamuebersicht`, `pruefliste_anzeigen`, `monatsbericht` | lesen | Teamführung (nur für Vorgesetzte) |
 | `anfragende_profil_anzeigen`, `kundenorganisationen_anzeigen` | lesen | Profil Anfragende, Kundenorganisationen |
 | `geraet_anzeigen`, `lageruebersicht`, `reservationen_anzeigen` | lesen | Gerät im Detail, Lager, Reservationen |
+| `netzwerk_fragen` | lesen | IP-Adressverwaltung in Alltagssprache: «Freie IP im VLAN 67 in Baar?», «Was hängt an SW-A2-01 Port 14?», «Welche IP hat DRU-A2-KOPIE?», «Welche Subnetze sind fast voll?» (deterministische Abfragen, nichts erfunden) |
+| `freie_ip_suchen`, `ip_nachschlagen`, `switchport_anzeigen`, `volle_subnetze_anzeigen`, `netzwerk_zum_ticket` | lesen | IPAM: freie IP im VLAN/Standort (nur Vorschlag), Host/IP/MAC nachschlagen, Switch-Port, volle Subnetze, Netzwerkangaben im Ticket (braucht `ipam.read` und das Modul IP-Adressverwaltung) |
 | `ticket_erfassen` | schreiben | Ticket erfassen, für sich selbst oder eine anfragende Person (`anfragende_person`) |
+| `ticket_fuer_mich_erfassen` | schreiben | Einfaches Ticket für die angemeldete Person: nur Betreff, Beschreibung und optional das Gerät; Standardwerte für Priorität, Abteilung, Agent, Vorlage und Kategorie; Entwurf, dann `bestaetigt=true` |
 | `interne_notiz_hinzufuegen` | schreiben | Interne Notiz an ein Ticket |
 | `ticketstatus_aendern` | schreiben | Status ändern; Lösen/Schliessen nur mit `bestaetigt=true` |
 | `prioritaet_aendern` | schreiben | Priorität ändern (low, normal, high, urgent) |
@@ -52,7 +57,7 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `benachrichtigungen_gelesen` | schreiben | Eine oder alle Benachrichtigungen als gelesen markieren |
 | `freigabe_entscheiden` | schreiben | Freigabe genehmigen oder ablehnen; nur mit `bestaetigt=true` |
 | `serviceaufgabe_erledigen` | schreiben | Serviceaufgabe erledigen (optional mit Notiz) |
-| `wiedervorlage_erstellen`, `wiedervorlage_erledigen` | schreiben | Wiedervorlage erstellen bzw. erledigen |
+| `erinnerung_erstellen`, `erinnerung_erledigen` | schreiben | Erinnerung erstellen bzw. erledigen |
 | `erwaehnung_gelesen` | schreiben | Erwähnung als gelesen markieren |
 | `uebergabe_erstellen`, `uebergabe_bestaetigen` | schreiben | Übergabe erstellen, bestätigen oder abschliessen |
 | `ticket_eskalieren` | schreiben | Ticket eskalieren; nur mit `bestaetigt=true` |
@@ -78,13 +83,24 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `ticket_bewerten`, `tickets_umverteilen` | schreiben | Teamführung: Ticket bewerten, Tickets umverteilen (nur mit `bestaetigt=true`) |
 | `lagerbewegung_buchen`, `material_reservieren`, `reservation_freigeben` | schreiben | Lagerbewegung buchen, Material reservieren, Reservation freigeben |
 | `im_shop_bestellen` | schreiben | Im Shop bestellen; nur mit `bestaetigt=true` |
+| `ip_reservieren` | schreiben | Vorgeschlagene IP reservieren; ohne `bestaetigt=true` nur Entwurf (braucht `ipam.manage`) |
+
+Nach einer Antwort aus einem Wissensartikel fragt Gemini, ob das Problem gelöst ist oder ein Ticket erfasst werden soll; dafür dient `ticket_fuer_mich_erfassen` (ohne Rückfragen zu Priorität, Abteilung, Agent, Vorlage, Kategorie).
 
 Bei IT-Fragen (Software, Geräte, Zugänge …) weist der Connector Gemini an, zuerst
 die Wissensdatenbank zu befragen und keine allgemeinen Anleitungen aus dem Web
 zu erfinden.
 
+nextDesk ist ausdrücklich die erste Anlaufstelle: Die Anweisungen des Connectors
+(`instructions`) und die Beschreibung jedes Werkzeugs (Präfix «nextDesk:»)
+sagen Gemini, bei Fragen zu Tickets, IT, Geräten, Lager, Shop, Wissen usw. zuerst
+nextDesk zu verwenden und nicht zuerst OneDrive, SharePoint, Google Drive, Gmail
+oder das Web. Die Such-Werkzeuge (`wissen_suchen`, `ueberall_suchen`,
+`tickets_suchen`, `geraet_suchen`, `shop_katalog_anzeigen`) grenzen sich in ihrer
+Beschreibung ausdrücklich gegen Dateiablagen ab.
+
 Geschriebene Texte (Ticket, interne Notiz, Zeitnotiz, Notiz zur Serviceaufgabe,
-Wiedervorlage)
+Erinnerung)
 enden mit dem Hinweis «Erfasst über den nextDesk-Connector.». Antworten an
 Anfragende werden ohne diesen Hinweis versendet.
 

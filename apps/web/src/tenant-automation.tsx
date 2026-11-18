@@ -1,8 +1,10 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useState } from "react";
 import { LoaderCircle, Play, RefreshCw } from "lucide-react";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
+import { confirmDialog } from "./app-dialog";
 type PolicyKey =
   | "follow_up"
   | "auto_close"
@@ -283,9 +285,9 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
 
   async function executeAutoClose(confirmation: AutoCloseConfirmation) {
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `${confirmation.candidateCount} in dieser Vorschau angezeigte Tickets werden jetzt geschlossen. Die Freigabe läuft in wenigen Minuten ab; alle Tickets werden unmittelbar davor erneut geprüft und der Lauf wird protokolliert. Fortfahren?`,
-      )
+      ))
     )
       return;
     setPendingKey("preview");
@@ -311,7 +313,10 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
       setMessage(
         await functionErrorMessage(
           error,
-          "Die vorgemerkten Tickets konnten nicht geschlossen werden. Bitte prüfen Sie die Vorschau erneut.",
+          tn(
+            "Die vorgemerkten Tickets konnten nicht geschlossen werden. Bitte prüfe die Vorschau erneut.",
+            "Die vorgemerkten Tickets konnten nicht geschlossen werden. Bitte prüfen Sie die Vorschau erneut.",
+          ),
         ),
       );
     } finally {

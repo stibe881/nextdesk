@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -422,7 +423,10 @@ export function AssetIntuneSettings({ tenantId }: { tenantId: string }) {
       (!configuration?.enabled || !manualConfiguration?.sso_binding_available)
     ) {
       setMessage(
-        "Speichern Sie zuerst die lokale Intune-Konfiguration mit einer aktiven tenant-spezifischen Azure-SSO-Bindung.",
+        tn(
+          "Speichere zuerst die lokale Intune-Konfiguration mit einer aktiven tenant-spezifischen Azure-SSO-Bindung.",
+          "Speichern Sie zuerst die lokale Intune-Konfiguration mit einer aktiven tenant-spezifischen Azure-SSO-Bindung.",
+        ),
       );
       return;
     }

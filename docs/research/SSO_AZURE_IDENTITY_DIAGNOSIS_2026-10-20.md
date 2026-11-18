@@ -2,7 +2,7 @@
 
 Die produktive, aktive Azure-SSO-Konfiguration verwendet einen mandantenspezifischen Microsoft-Entra-Issuer mit GUID. Die aggregierte Prüfung ergab, dass die Identitäten mit einer konfigurierten Unternehmensdomain diesen Issuer exakt bestätigen. Die gemeldete SSO-Sperre ist daher nicht durch einen fehlenden oder abweichenden Issuer der bereits zugeordneten Identitäten erklärbar.
 
-Es bestehen zudem Azure-Identitäten mit nicht zugeordneter Unternehmensdomain und abweichendem Issuer. Sie dürfen nicht automatisch Zugriff auf einen Kundenmandanten erhalten. nextDesk verlangt für sie eine explizite Mandantenzuordnung oder Einladung. Diese Prüfung ist absichtlich fail-closed und wird nicht gelockert.
+Es bestehen zudem Azure-Identitäten mit nicht zugeordneter Unternehmensdomain und abweichendem Issuer. Diese dürfen nicht automatisch Zugriff auf einen Kundenmandanten erhalten. nextDesk verlangt für sie eine explizite Mandantenzuordnung oder Einladung. Diese Prüfung ist absichtlich fail-closed und wird nicht gelockert.
 
 Supabase dokumentiert für den Azure-Provider die zentrale Tenant-URL `common` bei mehrmandantenfähigen Apps. Eine Kundenmandantenprüfung muss deshalb zusätzlich und serverseitig über die in nextDesk gespeicherte, konkrete Issuer-URL erfolgen. Supabase führt die mit einer Person verknüpften OAuth-Identitäten; ein Supabase-JWT signalisiert eine OAuth-Anmeldung über `amr`, enthält jedoch keinen vertrauenswürdigen Nachweis des aktuellen Azure-Tenants.
 

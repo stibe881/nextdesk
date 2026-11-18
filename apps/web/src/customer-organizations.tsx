@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   useCallback,
   useEffect,
@@ -5,6 +6,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { FormField, FormGrid, FormSwitch } from "./form-kit";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
@@ -359,7 +361,10 @@ function isForbiddenError(error: unknown): boolean {
 
 function errorMessage(error: unknown, fallback: string): string {
   if (isForbiddenError(error)) {
-    return "Sie haben keine Berechtigung, Kundenorganisationen für diesen Mandanten zu verwalten.";
+    return tn(
+      "Du hast keine Berechtigung, Kundenorganisationen für diesen Mandanten zu verwalten.",
+      "Sie haben keine Berechtigung, Kundenorganisationen für diesen Mandanten zu verwalten.",
+    );
   }
   return error instanceof Error && error.message.trim()
     ? error.message
@@ -614,14 +619,24 @@ export function CustomerOrganizations({
   async function setMemberAccess(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedOrganization) {
-      setError("Wählen Sie zuerst eine Kundenorganisation aus.");
+      setError(
+        tn(
+          "Wähle zuerst eine Kundenorganisation aus.",
+          "Wählen Sie zuerst eine Kundenorganisation aus.",
+        ),
+      );
       return;
     }
     const person = activeTenantUsers.find(
       (member) => member.id === memberAssignmentForm.userId,
     );
     if (!person) {
-      setError("Wählen Sie eine aktive Mandantenbenutzer*in aus.");
+      setError(
+        tn(
+          "Wähle eine aktive Mandantenbenutzer*in aus.",
+          "Wählen Sie eine aktive Mandantenbenutzer*in aus.",
+        ),
+      );
       return;
     }
 
@@ -697,8 +712,10 @@ export function CustomerOrganizations({
           <p className="customer-organizations__eyebrow">Mandantenverwaltung</p>
           <h1 id="customer-organizations-title">Kundenorganisationen</h1>
           <p>
-            Verwalten Sie Ticketzugriff und Personen für die echten
-            Kundenorganisationen dieses Mandanten.
+            {tn(
+              "Verwalte Ticketzugriff und Personen für die echten Kundenorganisationen dieses Mandanten.",
+              "Verwalten Sie Ticketzugriff und Personen für die echten Kundenorganisationen dieses Mandanten.",
+            )}
           </p>
         </div>
       </header>
@@ -855,55 +872,53 @@ export function CustomerOrganizations({
                 : "Kundenorganisation anlegen"}
             </h2>
             <form onSubmit={(event) => void saveOrganization(event)}>
-              <label>
-                Name der Kundenorganisation
-                <input
-                  disabled={controlsDisabled}
-                  maxLength={160}
-                  onChange={(event) =>
-                    setOrganizationForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  required
-                  type="text"
-                  value={organizationForm.name}
-                />
-              </label>
-              <label>
-                Ticketzugriff
-                <select
-                  disabled={controlsDisabled}
-                  onChange={(event) =>
-                    setOrganizationForm((current) => ({
-                      ...current,
-                      ticketAccess: event.target.value as TicketAccess,
-                    }))
-                  }
-                  value={organizationForm.ticketAccess}
-                >
-                  <option value="disabled">Deaktiviert</option>
-                  <option value="own">Nur eigene Tickets</option>
-                  <option value="company">
-                    Alle Tickets der Kundenorganisation
-                  </option>
-                </select>
-              </label>
-              <label>
-                <input
+              <FormGrid cols={1}>
+                <FormField label="Name der Kundenorganisation" required>
+                  <input
+                    disabled={controlsDisabled}
+                    maxLength={160}
+                    onChange={(event) =>
+                      setOrganizationForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    required
+                    type="text"
+                    value={organizationForm.name}
+                  />
+                </FormField>
+                <FormField label="Ticketzugriff">
+                  <select
+                    disabled={controlsDisabled}
+                    onChange={(event) =>
+                      setOrganizationForm((current) => ({
+                        ...current,
+                        ticketAccess: event.target.value as TicketAccess,
+                      }))
+                    }
+                    value={organizationForm.ticketAccess}
+                  >
+                    <option value="disabled">Deaktiviert</option>
+                    <option value="own">Nur eigene Tickets</option>
+                    <option value="company">
+                      Alle Tickets der Kundenorganisation
+                    </option>
+                  </select>
+                </FormField>
+                <FormSwitch
                   checked={organizationForm.active}
                   disabled={controlsDisabled}
-                  onChange={(event) =>
+                  hint="Archivierte Organisationen erhalten keinen Ticketzugriff."
+                  label="Organisation ist aktiv"
+                  onChange={(checked) =>
                     setOrganizationForm((current) => ({
                       ...current,
-                      active: event.target.checked,
+                      active: checked,
                     }))
                   }
-                  type="checkbox"
                 />
-                Organisation ist aktiv
-              </label>
+              </FormGrid>
               <p className="customer-organizations__hint">
                 Archivierte Organisationen erhalten keinen neuen aktiven
                 Ticketzugriff. Das Archivieren ist für die Standardorganisation
@@ -939,8 +954,10 @@ export function CustomerOrganizations({
             </h2>
             {!selectedOrganization ? (
               <p className="customer-organizations__empty-state">
-                Wählen Sie in der Organisationsliste eine Kundenorganisation
-                aus, um ihre Mitglieder zu verwalten.
+                {tn(
+                  "Wähle in der Organisationsliste eine Kundenorganisation aus, um ihre Mitglieder zu verwalten.",
+                  "Wählen Sie in der Organisationsliste eine Kundenorganisation aus, um ihre Mitglieder zu verwalten.",
+                )}
               </p>
             ) : (
               <>
@@ -1003,8 +1020,7 @@ export function CustomerOrganizations({
                     </p>
                   ) : (
                     <>
-                      <label>
-                        Mandantenbenutzer*in
+                      <FormField label="Mandantenbenutzer*in" required>
                         <select
                           disabled={controlsDisabled}
                           onChange={(event) =>
@@ -1031,9 +1047,8 @@ export function CustomerOrganizations({
                             </option>
                           ))}
                         </select>
-                      </label>
-                      <label>
-                        Zugriffsart
+                      </FormField>
+                      <FormField label="Zugriffsart">
                         <select
                           disabled={controlsDisabled}
                           onChange={(event) =>
@@ -1049,7 +1064,7 @@ export function CustomerOrganizations({
                             Alle Tickets der Kundenorganisation
                           </option>
                         </select>
-                      </label>
+                      </FormField>
                       <button disabled={controlsDisabled} type="submit">
                         {pendingAction?.startsWith("member:save:")
                           ? "Wird gespeichert …"

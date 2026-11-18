@@ -1,0 +1,1196 @@
+/* Überwachung: Übersicht, Gerätedetail, Dialoge. */
+
+.monitoring {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.monitoring__hero,
+.monitoring-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  background: var(--surface);
+}
+
+.monitoring__hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+/* Device page: several actions, so they sit below the title. */
+.monitoring__hero--stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.monitoring__hero h2,
+.monitoring-card h3,
+.monitoring-dialog h3 {
+  margin: 0;
+  color: var(--ink);
+}
+
+.monitoring-card h3 {
+  font-size: 16px;
+}
+
+.monitoring__hero p {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--muted);
+}
+
+.monitoring__title,
+.monitoring__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.monitoring__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+}
+
+.monitoring__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.monitoring-tile {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+
+button.monitoring-tile {
+  cursor: pointer;
+}
+
+button.monitoring-tile[aria-pressed="true"] {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.monitoring-tile strong {
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.monitoring-tile__label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.monitoring-tile--down .monitoring-tile__label {
+  color: var(--tone-danger);
+}
+.monitoring-tile--warning .monitoring-tile__label {
+  color: var(--tone-warning);
+}
+.monitoring-tile--up .monitoring-tile__label {
+  color: var(--tone-success);
+}
+
+.monitoring__notice {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: var(--tone-info-soft);
+  color: var(--tone-info);
+}
+
+.monitoring__columns {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.monitoring__columns--detail {
+  grid-template-columns: minmax(0, 3fr) minmax(240px, 1fr);
+}
+
+.monitoring__stack {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.monitoring-card--flush {
+  padding: 0;
+  gap: 0;
+}
+
+.monitoring-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.monitoring-card__head--padded {
+  padding: 16px 20px;
+}
+
+.monitoring-muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.monitoring__empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 20px;
+  color: var(--muted);
+}
+
+.monitoring-card:not(.monitoring-card--flush) .monitoring__empty {
+  padding: 4px 0;
+}
+
+.monitoring-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.monitoring-chip--down {
+  background: var(--tone-danger-soft);
+  color: var(--tone-danger);
+}
+.monitoring-chip--warning {
+  background: var(--tone-warning-soft);
+  color: var(--tone-warning);
+}
+.monitoring-chip--up {
+  background: var(--tone-success-soft);
+  color: var(--tone-success);
+}
+.monitoring-chip--unknown,
+.monitoring-chip--paused {
+  border-color: var(--border);
+  background: var(--surface-subtle);
+  color: var(--muted);
+}
+
+.monitoring-dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+.monitoring-dot--up {
+  background: var(--tone-success);
+}
+.monitoring-dot--paused {
+  background: var(--muted);
+}
+
+.monitoring-dot--down {
+  background: var(--tone-danger);
+}
+
+.monitoring-alarms,
+.monitoring-agents {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.monitoring-alarms li,
+.monitoring-agents li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+}
+
+.monitoring-alarms__main,
+.monitoring-agents__main {
+  display: grid;
+  flex: 1 1 220px;
+  gap: 1px;
+  min-width: 0;
+}
+
+.monitoring-alarms__actions {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.monitoring-alarms__actions:empty {
+  display: none;
+}
+
+.monitoring-alarms__main {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.monitoring-alarms__main span,
+.monitoring-agents__main span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.monitoring__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+}
+
+.monitoring__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 10px;
+  color: var(--muted);
+}
+
+.monitoring__search input {
+  width: 220px;
+  max-width: 100%;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+}
+
+.monitoring__scroll {
+  overflow-x: auto;
+}
+
+.monitoring-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.monitoring-table th {
+  padding: 9px 12px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.monitoring-table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.monitoring-table__sort span {
+  font-size: 10px;
+  opacity: 0.55;
+}
+
+.monitoring-table th[aria-sort="ascending"] .monitoring-table__sort,
+.monitoring-table th[aria-sort="descending"] .monitoring-table__sort {
+  color: var(--ink);
+}
+
+.monitoring-table th[aria-sort="ascending"] .monitoring-table__sort span,
+.monitoring-table th[aria-sort="descending"] .monitoring-table__sort span {
+  opacity: 1;
+}
+
+.monitoring-table td {
+  border-top: 1px solid var(--border);
+  padding: 11px 12px;
+  vertical-align: top;
+}
+
+/* Aufklappen: Pfeil vor dem Status, Sensoren in einer eigenen Zeile. */
+.monitoring-table__toggle.monitoring-table__toggle {
+  width: 36px;
+  padding-right: 0;
+}
+
+.monitoring-table__expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.monitoring-table__expand:hover,
+.monitoring-table__expand[aria-expanded="true"] {
+  background: var(--surface-subtle);
+  color: var(--ink);
+}
+
+.monitoring-table__action {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.monitoring-table__action .text-button {
+  min-height: 28px;
+  padding: 2px 6px;
+}
+
+.monitoring-table .monitoring-table__sensors > td,
+.monitoring-table .monitoring-table__sensors > td:first-child {
+  border-top: 0;
+  padding: 0 12px 12px 60px;
+  background: var(--surface-subtle);
+}
+
+.monitoring-sensor-rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.monitoring-sensor-rows li {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding: 8px 0;
+}
+
+.monitoring-sensor-rows li:first-child {
+  border-top: 0;
+}
+
+.monitoring-sensor-rows__name {
+  display: grid;
+  min-width: 0;
+}
+
+.monitoring-sensor-rows li > :not(.monitoring-sensor-rows__name) {
+  justify-self: start;
+}
+
+.monitoring-sensor-rows .text-button {
+  min-height: 28px;
+  padding: 2px 6px;
+}
+
+.monitoring-table th:first-child,
+.monitoring-table td:first-child {
+  padding-left: 20px;
+}
+
+.monitoring-table td .monitoring-muted {
+  display: block;
+}
+
+/* Doubled class: wins over the general .text-button padding, so the name
+   lines up with the line below it. */
+.monitoring-table__name.monitoring-table__name {
+  display: block;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  font-weight: 650;
+  text-align: left;
+}
+
+.monitoring-table td:nth-last-child(-n + 3),
+.monitoring-table th {
+  white-space: nowrap;
+}
+
+.monitoring-facts .text-button,
+.monitoring-alarms .text-button {
+  padding: 0;
+}
+
+.monitoring-table__row--selected td {
+  background: var(--primary-soft);
+}
+
+.monitoring-table__actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.monitoring-table__actions .icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.monitoring-table__actions .icon-button:hover:not(:disabled) {
+  border-color: var(--border);
+  color: var(--ink);
+}
+
+.monitoring-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 0;
+}
+
+.monitoring-facts dt {
+  color: var(--muted);
+}
+
+.monitoring-facts dd {
+  margin: 0;
+  color: var(--ink);
+  text-align: right;
+}
+
+.monitoring-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.monitoring-chart__grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.monitoring-chart__label {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.monitoring-chart__line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.monitoring-chart__line2 {
+  fill: none;
+  stroke: var(--tone-warning);
+  stroke-width: 1.6;
+  stroke-dasharray: 5 3;
+  stroke-linejoin: round;
+}
+
+.monitoring-legend {
+  display: flex;
+  gap: 16px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.monitoring-legend span::before {
+  display: inline-block;
+  width: 18px;
+  margin-right: 6px;
+  border-top: 2px solid var(--primary);
+  vertical-align: middle;
+  content: "";
+}
+
+.monitoring-legend .monitoring-legend__out::before {
+  border-top: 2px dashed var(--tone-warning);
+}
+
+.monitoring-field-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.monitoring-chart__band {
+  fill: var(--primary);
+  fill-opacity: 0.12;
+}
+
+.monitoring-chart__threshold {
+  stroke: var(--tone-warning);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+}
+
+.monitoring-chart__failure {
+  fill: var(--tone-danger);
+}
+
+.monitoring-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  background: var(--surface);
+  color: var(--text, var(--ink));
+  overflow-y: auto;
+}
+
+.monitoring-dialog::backdrop {
+  background: rgb(23 35 63 / 45%);
+}
+
+.monitoring-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.monitoring-form p {
+  margin: 0;
+}
+
+.monitoring-field {
+  display: grid;
+  gap: 4px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.monitoring-field input,
+.monitoring-field select {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 400;
+}
+
+.monitoring-check,
+.monitoring-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.monitoring-choices {
+  display: grid;
+  max-height: 240px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-y: auto;
+}
+
+.monitoring-choice {
+  border-top: 1px solid var(--border);
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+.monitoring-choice:first-child {
+  border-top: 0;
+}
+
+.monitoring-choice > span {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.monitoring-package {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.monitoring-package > div {
+  display: grid;
+  flex: 1 1 220px;
+  gap: 2px;
+  min-width: 0;
+  color: var(--ink);
+}
+
+.monitoring-form__all {
+  justify-self: start;
+  padding: 0;
+}
+
+.monitoring__inset {
+  margin: 0 20px 12px;
+}
+
+.monitoring-attached {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding: 12px 20px;
+  list-style: none;
+  color: var(--ink);
+}
+
+.monitoring-attached .text-button {
+  padding: 0;
+  font-weight: 650;
+}
+
+.primary-button.monitoring-danger {
+  border-color: var(--tone-danger);
+  background: var(--tone-danger);
+}
+
+.monitoring-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.monitoring-toggle button {
+  border: 0;
+  padding: 7px 14px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.monitoring-toggle button[aria-pressed="true"] {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.monitoring-matrix {
+  display: grid;
+  gap: 16px;
+  border-top: 1px solid var(--border);
+  padding: 16px 20px 20px;
+}
+
+.monitoring-matrix h4 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.monitoring-matrix__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.monitoring-matrix__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.monitoring-matrix__legend .monitoring-port {
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0;
+}
+
+/* Front panel: two rows, odd ports on top, like on the device. */
+.monitoring-matrix__panel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, 30px);
+  grid-auto-columns: 34px;
+  gap: 4px;
+  justify-content: start;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--surface-subtle);
+  overflow-x: auto;
+}
+
+.monitoring-matrix__panel--free {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.monitoring-port {
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  height: 30px;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 6px;
+  line-height: 1;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.monitoring-port--linked {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.monitoring-port--trunk {
+  border-color: var(--tone-warning);
+  background: var(--tone-warning-soft);
+  color: var(--tone-warning);
+}
+
+.monitoring-port--up {
+  border-color: var(--tone-success);
+  background: var(--tone-success-soft);
+  color: var(--tone-success);
+}
+
+.monitoring-port--down,
+.monitoring-port--unknown {
+  color: var(--muted);
+}
+
+.monitoring-port[aria-pressed="true"] {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.monitoring-matrix__detail {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--ink);
+}
+
+.monitoring-matrix__detail .text-button {
+  padding: 0;
+  font-weight: 650;
+}
+
+.monitoring-links {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.monitoring-links text {
+  fill: var(--ink);
+  font-size: 12px;
+}
+
+.monitoring-links__line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 1.5;
+  opacity: 0.55;
+}
+
+.monitoring-links__line--mac {
+  stroke: var(--tone-success);
+  stroke-dasharray: 4 3;
+}
+
+.monitoring-links__line.is-selected {
+  stroke-width: 3;
+  opacity: 1;
+}
+
+.monitoring-links__port rect,
+.monitoring-links__device rect {
+  fill: var(--surface);
+  stroke: var(--border);
+}
+
+.monitoring-links__port {
+  cursor: pointer;
+}
+
+.monitoring-links__port.is-selected rect {
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.monitoring-links__device.is-link {
+  cursor: pointer;
+}
+
+.monitoring-links__device.is-link rect {
+  stroke: var(--primary);
+}
+
+.monitoring-links__device.is-link text {
+  fill: var(--primary);
+  font-weight: 650;
+}
+
+.monitoring-services {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.monitoring-services legend {
+  padding: 0 4px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.monitoring-services__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 4px 12px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.monitoring__notice--test {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background: var(--tone-warning-soft);
+  color: var(--tone-warning);
+}
+
+.monitoring__notice--test > span {
+  flex: 1 1 320px;
+  color: var(--ink);
+}
+
+.monitoring__notice--test > .monitoring-chip {
+  flex: 0 0 auto;
+  color: var(--tone-warning);
+}
+
+.monitoring-availability__value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+}
+
+.monitoring-availability__value strong {
+  font-size: 32px;
+  line-height: 1.1;
+}
+
+.monitoring-availability__bars {
+  display: flex;
+  gap: 2px;
+}
+
+.monitoring-availability__bar {
+  flex: 1 1 0;
+  height: 26px;
+  border-radius: 3px;
+  background: var(--surface-subtle);
+}
+
+.monitoring-availability__bar--ok {
+  background: var(--tone-success);
+}
+.monitoring-availability__bar--warning {
+  background: var(--tone-warning);
+}
+.monitoring-availability__bar--down {
+  background: var(--tone-danger);
+}
+.monitoring-availability__bar--none {
+  border: 1px dashed var(--border);
+}
+
+.monitoring-availability__axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.monitoring-availability__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--border);
+  padding: 10px 0 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+.monitoring-availability__toggle svg {
+  transition: transform 0.15s ease;
+}
+
+.monitoring-availability__toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.monitoring-availability__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.monitoring-availability__list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px auto;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding: 9px 0;
+}
+
+.monitoring-availability__device {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.monitoring-availability__device > span:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.monitoring-availability__device .text-button {
+  padding: 0;
+  font-weight: 650;
+}
+
+.monitoring-service-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 8px;
+  background: var(--surface-subtle);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.monitoring-availability__meter {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+
+.monitoring-availability__meter i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--tone-success);
+}
+
+.monitoring-availability__meter i.is-warning {
+  background: var(--tone-warning);
+}
+
+.monitoring-availability__meter i.is-down {
+  background: var(--tone-danger);
+}
+
+.monitoring__columns--even {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.monitoring__columns--even > .monitoring-card {
+  align-content: start;
+}
+
+.monitoring-dot--warning {
+  background: var(--tone-warning);
+}
+
+.monitoring-events {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.monitoring-events li {
+  display: grid;
+  grid-template-columns: 76px 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding: 9px 0;
+}
+
+.monitoring-events__time {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.monitoring-events__main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.monitoring-events__main > span:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.monitoring-events__main .text-button,
+.monitoring-events li > .text-button {
+  padding: 0;
+  font-weight: 650;
+}
+
+.monitoring-events__services,
+.monitoring-alarms__services {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.monitoring-steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ink);
+}
+
+.monitoring-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .monitoring__hero,
+  .monitoring__columns,
+  .monitoring__columns--detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Pausieren mit Grund, Mehrfachauswahl. */
+.monitoring-pause-note {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.monitoring-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 20px;
+  background: var(--surface-subtle);
+}
+
+.monitoring-bulk strong {
+  margin-right: auto;
+  font-size: 13px;
+}
+
+.monitoring-table .monitoring-table__check,
+.monitoring-table .monitoring-table__check:first-child {
+  width: 36px;
+  padding-right: 0;
+}
+
+.monitoring-sensor-rows li.monitoring-sensor-rows__item--check {
+  grid-template-columns: 20px 96px minmax(0, 1fr) auto;
+}

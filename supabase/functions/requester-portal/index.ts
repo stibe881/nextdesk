@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import {
@@ -203,8 +204,9 @@ async function ownTicket(
   const result = await admin
     .from("tickets")
     .select(
-      "id, tenant_id, requester_id, affected_user_id, priority_id, category_id, response_due_at, resolution_due_at, resolved_at, closed_at, subject, ticket_number, created_at",
+      "id, tenant_id, requester_id, affected_user_id, priority_id, category_id, response_due_at, resolution_due_at, sla_paused_at, resolved_at, closed_at, subject, ticket_number, created_at",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", tenantId)
     .eq("id", ticketId)
     .maybeSingle();
@@ -346,7 +348,7 @@ async function searchColleagues(
     throw new HttpError(
       400,
       "invalid_request",
-      "Bitte geben Sie mindestens zwei gültige Zeichen ein.",
+      msg("Bitte gib mindestens zwei gültige Zeichen ein.", msg("Bitte gib mindestens zwei gültige Zeichen ein.", "Bitte geben Sie mindestens zwei gültige Zeichen ein.")),
     );
   const pattern = `%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
   const memberships = await admin
@@ -589,6 +591,7 @@ async function departmentTickets(
     .select(
       "ticket_number, subject, created_at, updated_at, ticket_statuses!inner(label)",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", item.tenantId)
     .eq("department_id", directory.data.department_id)
     .order("updated_at", { ascending: false })
@@ -635,7 +638,115 @@ async function activeIncidentNotices(
     .order("starts_at", { ascending: false })
     .limit(100);
   if (result.error) db(result.error);
-  return reply(request, { data: { notices: result.data ?? [] } });
+  const notices = (result.data ?? []) as Record<string, unknown>[];
+  // Betroffene Dienste (nur aktive) für den Banner; fehlt die Zuordnung,
+  // bleibt der Banner wie bisher.
+  const ids = notices.flatMap((notice) =>
+    isUuid(notice.id) ? [notice.id as string] : []
+  );
+  const names = new Map<string, string[]>();
+  if (ids.length) {
+    const links = await admin
+      .from("service_incident_notice_services")
+      .select("notice_id, services!inner(name, active)")
+      .eq("tenant_id", item.tenantId)
+      .eq("services.active", true)
+      .in("notice_id", ids)
+      .limit(2000);
+    for (const link of (links.data ?? []) as Record<string, unknown>[]) {
+      const service = link.services as Record<string, unknown> | null;
+      const name = typeof service?.name === "string" ? service.name : null;
+      if (!name || typeof link.notice_id !== "string") continue;
+      names.set(link.notice_id, [...(names.get(link.notice_id) ?? []), name]);
+    }
+  }
+  return reply(request, {
+    data: {
+      notices: notices.map((notice) => ({
+        ...notice,
+        service_names: (names.get(String(notice.id)) ?? []).sort((a, b) =>
+          a.localeCompare(b, "de-CH")
+        ),
+      })),
+      maintenances: await bannerMaintenances(admin, item.tenantId),
+    },
+  });
+}
+
+/** Banner lead time for an upcoming maintenance window. */
+const MAINTENANCE_BANNER_LEAD_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Maintenance windows for the banner: running ones and those starting within
+ * the next 24 hours, with their services and devices. Never fails: without
+ * them the banner shows the incidents only.
+ */
+async function bannerMaintenances(
+  admin: Admin,
+  tenantId: string,
+): Promise<Record<string, unknown>[]> {
+  const now = new Date();
+  const result = await admin
+    .from("service_status_maintenances")
+    .select("id, title, description, starts_at, ends_at, state")
+    .eq("tenant_id", tenantId)
+    .in("state", ["scheduled", "active"])
+    .gt("ends_at", now.toISOString())
+    .lte(
+      "starts_at",
+      new Date(now.getTime() + MAINTENANCE_BANNER_LEAD_MS).toISOString(),
+    )
+    .order("starts_at", { ascending: true })
+    .limit(20);
+  if (result.error) return [];
+  const rows = (result.data ?? []) as Record<string, unknown>[];
+  const ids = rows.flatMap((row) => isUuid(row.id) ? [row.id as string] : []);
+  const services = new Map<string, string[]>();
+  const devices = new Map<string, string[]>();
+  if (ids.length) {
+    const [serviceLinks, assetLinks] = await Promise.all([
+      admin.from("service_status_maintenance_services")
+        .select("maintenance_id, services!inner(name, active)")
+        .eq("tenant_id", tenantId)
+        .eq("services.active", true)
+        .in("maintenance_id", ids)
+        .limit(500),
+      admin.from("service_status_maintenance_assets")
+        .select("maintenance_id, assets!inner(name)")
+        .eq("tenant_id", tenantId)
+        .in("maintenance_id", ids)
+        .limit(500),
+    ]);
+    const collect = (
+      target: Map<string, string[]>,
+      links: Record<string, unknown>[],
+      key: "services" | "assets",
+    ) => {
+      for (const link of links) {
+        const related = link[key] as Record<string, unknown> | null;
+        const name = typeof related?.name === "string" ? related.name : null;
+        if (!name || typeof link.maintenance_id !== "string") continue;
+        target.set(link.maintenance_id, [
+          ...(target.get(link.maintenance_id) ?? []),
+          name,
+        ]);
+      }
+    };
+    collect(services, (serviceLinks.data ?? []) as Record<string, unknown>[], "services");
+    collect(devices, (assetLinks.data ?? []) as Record<string, unknown>[], "assets");
+  }
+  const sorted = (values: string[] | undefined) =>
+    [...new Set(values ?? [])].sort((a, b) => a.localeCompare(b, "de-CH"));
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    description: row.description ?? null,
+    starts_at: row.starts_at,
+    ends_at: row.ends_at,
+    running: Date.parse(String(row.starts_at)) <= now.getTime(),
+    service_names: sorted(services.get(String(row.id))),
+    device_names: sorted(devices.get(String(row.id))),
+  }));
 }
 async function myTicketTimeline(
   request: Request,
@@ -715,10 +826,13 @@ async function slaExpectation(
       expectation: {
         responseDueAt: current.response_due_at ?? null,
         resolutionDueAt: current.resolution_due_at ?? null,
-        message:
-          current.response_due_at || current.resolution_due_at
-            ? "Die angezeigten Zeiten sind Erwartungen aus den vorhandenen SLA-Daten."
-            : "Für dieses Ticket ist keine konkrete SLA-Erwartung hinterlegt.",
+        // Waiting statuses stop the SLA (0324); the due dates move on resume.
+        slaPausedAt: current.closed_at ? null : (current.sla_paused_at ?? null),
+        message: current.sla_paused_at && !current.closed_at
+          ? "Die SLA ist angehalten, solange das Ticket auf eine Rückmeldung wartet."
+          : current.response_due_at || current.resolution_due_at
+          ? "Die angezeigten Zeiten sind Erwartungen aus den vorhandenen SLA-Daten."
+          : "Für dieses Ticket ist keine konkrete SLA-Erwartung hinterlegt.",
       },
     },
   });
@@ -737,6 +851,7 @@ async function ticketProgress(
     .select(
       "status_id, first_responded_at, waiting_since, ticket_statuses!inner(key, is_closed)",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", item.tenantId)
     .eq("id", current.id as string)
     .maybeSingle();
@@ -804,7 +919,7 @@ async function ticketProgress(
 const RESPOND_ERRORS: Record<string, [number, string]> = {
   ticket_not_waiting: [
     409,
-    "Das Ticket wartet nicht mehr auf Ihre Rückmeldung.",
+    msg("Das Ticket wartet nicht mehr auf deine Rückmeldung.", msg("Das Ticket wartet nicht mehr auf deine Rückmeldung.", "Das Ticket wartet nicht mehr auf Ihre Rückmeldung.")),
   ],
   ticket_not_available: [404, "Das Ticket ist nicht verfügbar."],
   status_missing: [
@@ -851,7 +966,7 @@ async function respondToWaiting(
       throw new HttpError(
         409,
         "status_rule",
-        "Der Status kann gerade nicht geändert werden. Bitte antworten Sie mit einer Nachricht.",
+        msg("Der Status kann gerade nicht geändert werden. Bitte antworte mit einer Nachricht.", msg("Der Status kann gerade nicht geändert werden. Bitte antworte mit einer Nachricht.", "Der Status kann gerade nicht geändert werden. Bitte antworten Sie mit einer Nachricht.")),
       );
     db(result.error);
   }
@@ -1005,6 +1120,7 @@ async function exportMyData(
     .select(
       "id, ticket_number, subject, description, created_at, updated_at, resolved_at, closed_at, requester_id, affected_user_id",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", item.tenantId)
     .or(`requester_id.eq.${actorId},affected_user_id.eq.${actorId}`)
     .order("created_at", { ascending: false })

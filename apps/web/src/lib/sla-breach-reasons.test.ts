@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { setFormality } from "./formality";
 import {
   breachesWithoutReason,
   describeBreachKinds,
@@ -37,7 +38,7 @@ describe("SLA breach reasons", () => {
 
   it("validates the reason form", () => {
     expect(validateReasonDraft("", "")).toMatch(/Ursache/);
-    expect(validateReasonDraft("other", "  ")).toMatch(/beschreiben/);
+    expect(validateReasonDraft("other", "  ")).toMatch(/beschreibe/);
     expect(validateReasonDraft("other", "Stromausfall")).toBeNull();
     expect(validateReasonDraft("capacity", "")).toBeNull();
     expect(validateReasonDraft("capacity", "x".repeat(501))).toMatch(/500/);
@@ -46,10 +47,23 @@ describe("SLA breach reasons", () => {
 
 describe("customer praise", () => {
   it("renders stars and hides e-mail addresses", () => {
-    expect(scoreStars(4)).toBe("★★★★☆");
-    expect(scoreStars(9)).toBe("★★★★★");
+    expect(scoreStars(4)).toBe("4 von 5 Sternen");
+    expect(scoreStars(9)).toBe("5 von 5 Sternen");
     expect(kudosAuthor("Anna Muster")).toBe("Anna Muster");
     expect(kudosAuthor("anna@example.ch")).toBe("Meldende Person");
     expect(kudosAuthor(null)).toBe("Meldende Person");
+  });
+});
+
+describe("Anrede", () => {
+  it("liefert die Sie-Fassung nach der Umschaltung", () => {
+    setFormality("sie");
+    try {
+      expect(validateReasonDraft("", "")).toBe(
+        "Bitte wählen Sie eine Ursache.",
+      );
+    } finally {
+      setFormality("du");
+    }
   });
 });

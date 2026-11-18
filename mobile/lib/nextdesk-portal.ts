@@ -18,6 +18,18 @@ export type PortalIncidentNotice = {
   updated_at: string;
 };
 
+/** Maintenance window for the banner (running or starting within 24 h). */
+export type PortalMaintenance = {
+  id: string;
+  title: string;
+  description: string | null;
+  starts_at: string;
+  ends_at: string;
+  running: boolean;
+  service_names?: string[];
+  device_names?: string[];
+};
+
 export type AgentMention = {
   id: string;
   ticket_id: string;
@@ -310,6 +322,8 @@ export async function getMyMetrics(): Promise<{ metrics: AgentMetrics }> {
 
 export async function listActiveIncidentNotices(): Promise<{
   notices: PortalIncidentNotice[];
+  /** Missing on older servers. */
+  maintenances?: PortalMaintenance[];
 }> {
   return invokeTenantFunction("requester-portal", {
     type: "activeIncidentNotices",

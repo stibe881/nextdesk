@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
 import "./ticket-ai-triage.css";
 
+import { confirmDialog } from "./app-dialog";
 type Triage = {
   state: string;
   confidence?: number;
@@ -69,7 +70,9 @@ export function TicketAiTriage({
   async function mergeIntoDuplicate(primaryTicketId: string) {
     if (!supabase) return;
     if (
-      !window.confirm("Dieses Ticket in das bestehende Ticket zusammenführen?")
+      !(await confirmDialog(
+        "Dieses Ticket in das bestehende Ticket zusammenführen?",
+      ))
     )
       return;
     setBusy(true);

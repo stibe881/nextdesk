@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { tn } from "./lib/formality";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
 import {
   AlertCircle,
   Building2,
@@ -93,6 +102,13 @@ type TicketCoordinationProps = {
   refreshKey: string;
   onChanged: () => void;
   onOpenTicket?: ((ticketId: string) => void) | undefined;
+  /** Support level block shown at the top of the card. */
+  supportLevel?: ReactNode;
+  /**
+   * Where the «Ticket-Zeitachse» is shown (above the description). Without a
+   * host it follows the card.
+   */
+  timelineHost?: HTMLElement | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -171,6 +187,7 @@ export function parseCoordinationOverview(value: unknown): Overview | null {
         resolvedAt: str(ticket.resolvedAt),
         closedAt: str(ticket.closedAt),
         isClosed,
+        slaPausedAt: isClosed ? null : str(ticket.slaPausedAt),
       },
       events: list(data.events).map((row) => ({
         id: String(row.id),
@@ -264,14 +281,20 @@ async function coordinationError(
     case "ticket_split_parent_closed":
       return "Ein gelöstes, geschlossenes oder zusammengeführtes Ticket kann nicht aufgeteilt werden.";
     case "ticket_split_department_invalid":
-      return "Mindestens eine gewählte Abteilung ist nicht mehr aktiv. Bitte prüfen Sie die Auswahl.";
+      return tn(
+        "Mindestens eine gewählte Abteilung ist nicht mehr aktiv. Bitte prüfe die Auswahl.",
+        "Mindestens eine gewählte Abteilung ist nicht mehr aktiv. Bitte prüfen Sie die Auswahl.",
+      );
     case "ticket_split_team_invalid":
       return "Mindestens ein gewähltes Team gehört nicht zur Abteilung oder ist nicht aktiv.";
     case "assigned_agent_invalid":
     case "ticket_split_assignment_invalid":
       return "Mindestens eine gewählte Person ist für Abteilung oder Team nicht zuweisbar.";
     case "ticket_assign_denied":
-      return "Für die Zuweisung in mindestens einer Abteilung fehlt Ihnen die Berechtigung. Lassen Sie Team und Person leer.";
+      return tn(
+        "Für die Zuweisung in mindestens einer Abteilung fehlt dir die Berechtigung. Lass Team und Person leer.",
+        "Für die Zuweisung in mindestens einer Abteilung fehlt Ihnen die Berechtigung. Lassen Sie Team und Person leer.",
+      );
     case "vendor_case_exists":
       return "Für diesen Drittanbieter ist bereits ein offener Fall erfasst.";
     case "vendor_case_ticket_closed":
@@ -282,9 +305,16 @@ async function coordinationError(
       return "Der Lieferantenfall ist bereits abgeschlossen oder nicht mehr verfügbar.";
     case "ticket_update_denied":
     case "ticket_coordination_denied":
-      return "Für diese Aktion fehlt Ihnen die Berechtigung.";
+      return tn(
+        "Für diese Aktion fehlt dir die Berechtigung.",
+        "Für diese Aktion fehlt Ihnen die Berechtigung.",
+      );
   }
-  if (status === 403) return "Für diese Aktion fehlt Ihnen die Berechtigung.";
+  if (status === 403)
+    return tn(
+      "Für diese Aktion fehlt dir die Berechtigung.",
+      "Für diese Aktion fehlt Ihnen die Berechtigung.",
+    );
   return functionErrorMessage(error, fallback);
 }
 
@@ -297,6 +327,8 @@ export function TicketCoordination({
   refreshKey,
   onChanged,
   onOpenTicket,
+  supportLevel,
+  timelineHost,
 }: TicketCoordinationProps) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -391,9 +423,23 @@ export function TicketCoordination({
     }
   }
 
+  const cardHeading = (
+    <div className="ticket-detail-section-heading">
+      <div>
+        <p className="eyebrow">KOORDINATION</p>
+        <h3 id="ticket-coordination-heading">Koordination</h3>
+      </div>
+    </div>
+  );
+
   if (loading && !overview) {
     return (
-      <section className="ticket-detail-primary ticket-coordination">
+      <section
+        aria-labelledby="ticket-coordination-heading"
+        className="ticket-detail-primary ticket-coordination"
+      >
+        {cardHeading}
+        {supportLevel}
         <p className="ticket-coordination__muted">
           <LoaderCircle
             aria-hidden="true"
@@ -406,14 +452,21 @@ export function TicketCoordination({
     );
   }
   if (!overview) {
-    return error ? (
-      <section className="ticket-detail-primary ticket-coordination">
-        <p className="ticket-detail-message error" role="alert">
-          <AlertCircle aria-hidden="true" size={17} />
-          {error}
-        </p>
+    return (
+      <section
+        aria-labelledby="ticket-coordination-heading"
+        className="ticket-detail-primary ticket-coordination"
+      >
+        {cardHeading}
+        {supportLevel}
+        {error ? (
+          <p className="ticket-detail-message error" role="alert">
+            <AlertCircle aria-hidden="true" size={17} />
+            {error}
+          </p>
+        ) : null}
       </section>
-    ) : null;
+    );
   }
 
   const openCases = overview.vendorCases.filter((item) => !item.closedAt);
@@ -432,154 +485,278 @@ export function TicketCoordination({
     .filter((value): value is string => Boolean(value))
     .sort()[0];
 
+  const timeline = <TicketTimeline input={overview.timeline} now={now} />;
+
   return (
     <>
-      {hasContent ? (
-        <section
-          aria-labelledby="ticket-coordination-heading"
-          className="ticket-detail-primary ticket-coordination"
-        >
-          <div className="ticket-detail-section-heading">
-            <div>
-              <p className="eyebrow">KOORDINATION</p>
-              <h3 id="ticket-coordination-heading">
-                Teil-Tickets und Drittanbieter
-              </h3>
+      <section
+        aria-labelledby="ticket-coordination-heading"
+        className="ticket-detail-primary ticket-coordination"
+      >
+        {cardHeading}
+        {supportLevel}
+        {hasContent ? (
+          <div className="ticket-coordination__group">
+            <div className="ticket-coordination__group-heading">
+              <h4>Teil-Tickets und Drittanbieter</h4>
+              <div className="ticket-coordination__actions">
+                {overview.permissions.canSplit ? (
+                  <button
+                    className="secondary-button"
+                    disabled={busy !== null}
+                    onClick={() => setSplitOpen(true)}
+                    type="button"
+                  >
+                    <GitBranch aria-hidden="true" size={15} />
+                    Aufteilen
+                  </button>
+                ) : null}
+                {canHandOver ? (
+                  <button
+                    className="secondary-button"
+                    disabled={busy !== null}
+                    onClick={() => setVendorOpen(true)}
+                    type="button"
+                  >
+                    <Building2 aria-hidden="true" size={15} />
+                    An Drittanbieter übergeben
+                  </button>
+                ) : null}
+              </div>
             </div>
-            <div className="ticket-coordination__actions">
-              {overview.permissions.canSplit ? (
-                <button
-                  className="secondary-button"
-                  disabled={busy !== null}
-                  onClick={() => setSplitOpen(true)}
-                  type="button"
-                >
-                  <GitBranch aria-hidden="true" size={15} />
-                  Aufteilen
-                </button>
-              ) : null}
-              {canHandOver ? (
-                <button
-                  className="secondary-button"
-                  disabled={busy !== null}
-                  onClick={() => setVendorOpen(true)}
-                  type="button"
-                >
-                  <Building2 aria-hidden="true" size={15} />
-                  An Drittanbieter übergeben
-                </button>
-              ) : null}
-            </div>
-          </div>
 
-          {error ? (
-            <p className="ticket-detail-message error" role="alert">
-              <AlertCircle aria-hidden="true" size={17} />
-              {error}
-            </p>
-          ) : null}
+            {error ? (
+              <p className="ticket-detail-message error" role="alert">
+                <AlertCircle aria-hidden="true" size={17} />
+                {error}
+              </p>
+            ) : null}
 
-          {notice ? (
-            <p className="ticket-coordination__hint" role="status">
-              {notice}
-            </p>
-          ) : null}
+            {notice ? (
+              <p className="ticket-coordination__hint" role="status">
+                {notice}
+              </p>
+            ) : null}
 
-          {overview.parent ? (
-            <p className="ticket-coordination__parent">
-              Teil-Ticket von{" "}
-              {onOpenTicket && overview.parent.readable ? (
-                <button
-                  className="ticket-coordination__link"
-                  onClick={() => onOpenTicket(overview.parent!.id)}
-                  type="button"
-                >
-                  {overview.parent.ticketNumber}
-                </button>
-              ) : (
-                <strong>{overview.parent.ticketNumber}</strong>
-              )}
-              {overview.parent.subject ? ` · ${overview.parent.subject}` : ""}
-              {overview.parent.statusLabel ? (
-                <span className="tone-chip tone-chip--neutral">
-                  {overview.parent.statusLabel}
+            {overview.parent ? (
+              <p className="ticket-coordination__parent">
+                Teil-Ticket von{" "}
+                {onOpenTicket && overview.parent.readable ? (
+                  <button
+                    className="ticket-coordination__link"
+                    onClick={() => onOpenTicket(overview.parent!.id)}
+                    type="button"
+                  >
+                    {overview.parent.ticketNumber}
+                  </button>
+                ) : (
+                  <strong>{overview.parent.ticketNumber}</strong>
+                )}
+                {overview.parent.subject ? ` · ${overview.parent.subject}` : ""}
+                {overview.parent.statusLabel ? (
+                  <span className="tone-chip tone-chip--neutral">
+                    {overview.parent.statusLabel}
+                  </span>
+                ) : null}
+              </p>
+            ) : null}
+
+            {waitingSince ? (
+              <p className="ticket-coordination__clock" role="status">
+                <span className="tone-chip tone-chip--warning">
+                  Wartet auf Drittanbieter seit {since(waitingSince, now)}
                 </span>
-              ) : null}
-            </p>
-          ) : null}
+                <small>seit {formatDateTime(waitingSince)}</small>
+              </p>
+            ) : null}
 
-          {waitingSince ? (
-            <p className="ticket-coordination__clock" role="status">
-              <span className="tone-chip tone-chip--warning">
-                Wartet auf Drittanbieter seit {since(waitingSince, now)}
-              </span>
-              <small>seit {formatDateTime(waitingSince)}</small>
-            </p>
-          ) : null}
-
-          {overview.children.length > 0 ? (
-            <div className="ticket-coordination__block">
-              <h4>
-                Teil-Tickets{" "}
-                <span className="data-caption">
-                  {overview.children.length - openChildren} von{" "}
-                  {overview.children.length} erledigt
-                </span>
-              </h4>
-              {openChildren > 0 ? (
-                <p className="ticket-coordination__hint">
-                  Dieses Ticket kann erst gelöst oder geschlossen werden, wenn
-                  alle Teil-Tickets gelöst oder geschlossen sind ({openChildren}{" "}
-                  offen).
-                </p>
-              ) : null}
-              <ul className="ticket-coordination__list">
-                {overview.children.map((child) => (
-                  <li key={child.id}>
-                    <span className="ticket-coordination__item-main">
-                      {onOpenTicket && child.readable ? (
-                        <button
-                          className="ticket-coordination__link"
-                          onClick={() => onOpenTicket(child.id)}
-                          type="button"
-                        >
-                          {child.ticketNumber}
-                        </button>
-                      ) : (
-                        <strong>{child.ticketNumber}</strong>
-                      )}
-                      <span>
-                        {child.subject ?? "Teil-Ticket ohne Leseberechtigung"}
+            {overview.children.length > 0 ? (
+              <div className="ticket-coordination__block">
+                <h4>
+                  Teil-Tickets{" "}
+                  <span className="data-caption">
+                    {overview.children.length - openChildren} von{" "}
+                    {overview.children.length} erledigt
+                  </span>
+                </h4>
+                {openChildren > 0 ? (
+                  <p className="ticket-coordination__hint">
+                    Dieses Ticket kann erst gelöst oder geschlossen werden, wenn
+                    alle Teil-Tickets gelöst oder geschlossen sind (
+                    {openChildren} offen).
+                  </p>
+                ) : null}
+                <ul className="ticket-coordination__list">
+                  {overview.children.map((child) => (
+                    <li key={child.id}>
+                      <span className="ticket-coordination__item-main">
+                        {onOpenTicket && child.readable ? (
+                          <button
+                            className="ticket-coordination__link"
+                            onClick={() => onOpenTicket(child.id)}
+                            type="button"
+                          >
+                            {child.ticketNumber}
+                          </button>
+                        ) : (
+                          <strong>{child.ticketNumber}</strong>
+                        )}
+                        <span>
+                          {child.subject ?? "Teil-Ticket ohne Leseberechtigung"}
+                        </span>
                       </span>
-                    </span>
-                    <span className="ticket-coordination__item-meta">
-                      {[child.departmentName, child.assigneeName]
-                        .filter(Boolean)
-                        .join(" · ") || "Nicht zugewiesen"}
-                    </span>
-                    <span
-                      className={`tone-chip ${child.isClosed ? "tone-chip--success" : "tone-chip--info"}`}
-                    >
-                      {child.statusLabel}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+                      <span className="ticket-coordination__item-meta">
+                        {[child.departmentName, child.assigneeName]
+                          .filter(Boolean)
+                          .join(" · ") || "Nicht zugewiesen"}
+                      </span>
+                      <span
+                        className={`tone-chip ${child.isClosed ? "tone-chip--success" : "tone-chip--info"}`}
+                      >
+                        {child.statusLabel}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
-          {overview.vendorCases.length > 0 ? (
-            <div className="ticket-coordination__block">
-              <h4>Lieferantenfälle</h4>
-              <ul className="ticket-coordination__list">
-                {openCases.map((item) => {
-                  const lastContact = item.lastVendorUpdateAt ?? item.openedAt;
-                  const silentHours = lastContact
-                    ? (now - Date.parse(lastContact)) / 3_600_000
-                    : 0;
-                  const overdue = silentHours >= item.reminderAfterHours;
-                  return (
-                    <li className="ticket-coordination__case" key={item.id}>
+            {overview.vendorCases.length > 0 ? (
+              <div className="ticket-coordination__block">
+                <h4>Lieferantenfälle</h4>
+                <ul className="ticket-coordination__list">
+                  {openCases.map((item) => {
+                    const lastContact =
+                      item.lastVendorUpdateAt ?? item.openedAt;
+                    const silentHours = lastContact
+                      ? (now - Date.parse(lastContact)) / 3_600_000
+                      : 0;
+                    const overdue = silentHours >= item.reminderAfterHours;
+                    return (
+                      <li className="ticket-coordination__case" key={item.id}>
+                        <span className="ticket-coordination__item-main">
+                          <strong>{item.vendorName}</strong>
+                          <span>
+                            {item.externalCaseNumber
+                              ? `Fallnummer ${item.externalCaseNumber}`
+                              : "Ohne externe Fallnummer"}
+                          </span>
+                        </span>
+                        <span className="ticket-coordination__item-meta">
+                          Offen seit {formatDateTime(item.openedAt)} · letzte
+                          Rückmeldung{" "}
+                          {item.lastVendorUpdateAt
+                            ? formatDateTime(item.lastVendorUpdateAt)
+                            : "noch keine"}
+                          {item.contactEmail || item.contactPhone
+                            ? ` · ${[item.contactEmail, item.contactPhone].filter(Boolean).join(", ")}`
+                            : ""}
+                        </span>
+                        <span
+                          className={`tone-chip ${overdue ? "tone-chip--danger" : "tone-chip--warning"}`}
+                          title={`Erinnerung nach ${item.reminderAfterHours} Std. ohne Rückmeldung`}
+                        >
+                          {overdue
+                            ? `Seit ${since(lastContact, now)} ohne Rückmeldung`
+                            : `Erinnerung in ${formatTimelineDuration(
+                                (item.reminderAfterHours - silentHours) *
+                                  3_600_000,
+                              )}`}
+                        </span>
+                        {item.note ? (
+                          <span className="ticket-coordination__note">
+                            {item.note}
+                          </span>
+                        ) : null}
+                        {overview.permissions.canManageVendorCases ? (
+                          updateCaseId === item.id ? (
+                            <form
+                              className="ticket-coordination__case-form"
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                void vendorCaseAction(
+                                  "recordVendorUpdate",
+                                  item.id,
+                                  caseNote,
+                                );
+                              }}
+                            >
+                              <label>
+                                Was hat der Drittanbieter gemeldet?
+                                <textarea
+                                  maxLength={2000}
+                                  onChange={(event) =>
+                                    setCaseNote(event.target.value)
+                                  }
+                                  rows={2}
+                                  value={caseNote}
+                                />
+                              </label>
+                              <div className="ticket-coordination__actions">
+                                <button
+                                  className="secondary-button"
+                                  onClick={() => {
+                                    setUpdateCaseId(null);
+                                    setCaseNote("");
+                                  }}
+                                  type="button"
+                                >
+                                  Abbrechen
+                                </button>
+                                <button
+                                  className="primary-button"
+                                  disabled={busy !== null}
+                                  type="submit"
+                                >
+                                  Rückmeldung speichern
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <span className="ticket-coordination__actions">
+                              <button
+                                className="secondary-button"
+                                disabled={busy !== null}
+                                onClick={() => {
+                                  setUpdateCaseId(item.id);
+                                  setCaseNote("");
+                                }}
+                                type="button"
+                              >
+                                Rückmeldung erhalten
+                              </button>
+                              <button
+                                className="secondary-button"
+                                disabled={busy !== null}
+                                onClick={() =>
+                                  void vendorCaseAction(
+                                    "closeVendorCase",
+                                    item.id,
+                                    "",
+                                  )
+                                }
+                                type="button"
+                              >
+                                {busy === `closeVendorCase:${item.id}` ? (
+                                  <LoaderCircle
+                                    aria-hidden="true"
+                                    className="ticket-detail-spinner"
+                                    size={14}
+                                  />
+                                ) : null}
+                                Fall abschliessen
+                              </button>
+                            </span>
+                          )
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                  {closedCases.map((item) => (
+                    <li
+                      className="ticket-coordination__case ticket-coordination__case--closed"
+                      key={item.id}
+                    >
                       <span className="ticket-coordination__item-main">
                         <strong>{item.vendorName}</strong>
                         <span>
@@ -589,144 +766,22 @@ export function TicketCoordination({
                         </span>
                       </span>
                       <span className="ticket-coordination__item-meta">
-                        Offen seit {formatDateTime(item.openedAt)} · letzte
-                        Rückmeldung{" "}
-                        {item.lastVendorUpdateAt
-                          ? formatDateTime(item.lastVendorUpdateAt)
-                          : "noch keine"}
-                        {item.contactEmail || item.contactPhone
-                          ? ` · ${[item.contactEmail, item.contactPhone].filter(Boolean).join(", ")}`
-                          : ""}
+                        {formatDateTime(item.openedAt)} –{" "}
+                        {formatDateTime(item.closedAt)}
                       </span>
-                      <span
-                        className={`tone-chip ${overdue ? "tone-chip--danger" : "tone-chip--warning"}`}
-                        title={`Erinnerung nach ${item.reminderAfterHours} Std. ohne Rückmeldung`}
-                      >
-                        {overdue
-                          ? `Seit ${since(lastContact, now)} ohne Rückmeldung`
-                          : `Erinnerung in ${formatTimelineDuration(
-                              (item.reminderAfterHours - silentHours) *
-                                3_600_000,
-                            )}`}
+                      <span className="tone-chip tone-chip--success">
+                        Abgeschlossen
                       </span>
-                      {item.note ? (
-                        <span className="ticket-coordination__note">
-                          {item.note}
-                        </span>
-                      ) : null}
-                      {overview.permissions.canManageVendorCases ? (
-                        updateCaseId === item.id ? (
-                          <form
-                            className="ticket-coordination__case-form"
-                            onSubmit={(event) => {
-                              event.preventDefault();
-                              void vendorCaseAction(
-                                "recordVendorUpdate",
-                                item.id,
-                                caseNote,
-                              );
-                            }}
-                          >
-                            <label>
-                              Was hat der Drittanbieter gemeldet?
-                              <textarea
-                                maxLength={2000}
-                                onChange={(event) =>
-                                  setCaseNote(event.target.value)
-                                }
-                                rows={2}
-                                value={caseNote}
-                              />
-                            </label>
-                            <div className="ticket-coordination__actions">
-                              <button
-                                className="secondary-button"
-                                onClick={() => {
-                                  setUpdateCaseId(null);
-                                  setCaseNote("");
-                                }}
-                                type="button"
-                              >
-                                Abbrechen
-                              </button>
-                              <button
-                                className="primary-button"
-                                disabled={busy !== null}
-                                type="submit"
-                              >
-                                Rückmeldung speichern
-                              </button>
-                            </div>
-                          </form>
-                        ) : (
-                          <span className="ticket-coordination__actions">
-                            <button
-                              className="secondary-button"
-                              disabled={busy !== null}
-                              onClick={() => {
-                                setUpdateCaseId(item.id);
-                                setCaseNote("");
-                              }}
-                              type="button"
-                            >
-                              Rückmeldung erhalten
-                            </button>
-                            <button
-                              className="secondary-button"
-                              disabled={busy !== null}
-                              onClick={() =>
-                                void vendorCaseAction(
-                                  "closeVendorCase",
-                                  item.id,
-                                  "",
-                                )
-                              }
-                              type="button"
-                            >
-                              {busy === `closeVendorCase:${item.id}` ? (
-                                <LoaderCircle
-                                  aria-hidden="true"
-                                  className="ticket-detail-spinner"
-                                  size={14}
-                                />
-                              ) : null}
-                              Fall abschliessen
-                            </button>
-                          </span>
-                        )
-                      ) : null}
                     </li>
-                  );
-                })}
-                {closedCases.map((item) => (
-                  <li
-                    className="ticket-coordination__case ticket-coordination__case--closed"
-                    key={item.id}
-                  >
-                    <span className="ticket-coordination__item-main">
-                      <strong>{item.vendorName}</strong>
-                      <span>
-                        {item.externalCaseNumber
-                          ? `Fallnummer ${item.externalCaseNumber}`
-                          : "Ohne externe Fallnummer"}
-                      </span>
-                    </span>
-                    <span className="ticket-coordination__item-meta">
-                      {formatDateTime(item.openedAt)} –{" "}
-                      {formatDateTime(item.closedAt)}
-                    </span>
-                    <span className="tone-chip tone-chip--success">
-                      Abgeschlossen
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
 
-      <TicketTimeline input={overview.timeline} now={now} />
+      {timelineHost ? createPortal(timeline, timelineHost) : timeline}
 
       {splitOpen ? (
         <TicketSplitDialog
@@ -1071,8 +1126,10 @@ function TicketSplitDialog({
                 </div>
                 {department && !department.canAssign ? (
                   <small className="ticket-coordination__muted">
-                    In dieser Abteilung dürfen Sie nicht zuweisen; das
-                    Teil-Ticket landet in der Abteilungsqueue.
+                    {tn(
+                      "In dieser Abteilung darfst du nicht zuweisen; das Teil-Ticket landet in der Abteilungsqueue.",
+                      "In dieser Abteilung dürfen Sie nicht zuweisen; das Teil-Ticket landet in der Abteilungsqueue.",
+                    )}
                   </small>
                 ) : null}
               </fieldset>
@@ -1151,7 +1208,12 @@ function VendorCaseDialog({
 
   async function submit() {
     if (!vendorId) {
-      setError("Bitte wählen Sie einen Drittanbieter.");
+      setError(
+        tn(
+          "Bitte wähle einen Drittanbieter.",
+          "Bitte wählen Sie einen Drittanbieter.",
+        ),
+      );
       return;
     }
     setSaving(true);
@@ -1205,8 +1267,10 @@ function VendorCaseDialog({
             <p className="eyebrow">LIEFERANTENFALL</p>
             <h3 id="vendor-case-heading">An Drittanbieter übergeben</h3>
             <p className="ticket-coordination__muted">
-              Das Ticket wechselt auf «Wartend auf Drittanbieter». Ohne
-              Rückmeldung werden Sie automatisch erinnert.
+              {tn(
+                "Das Ticket wechselt auf «Wartend auf Drittanbieter». Ohne Rückmeldung wirst du automatisch erinnert.",
+                "Das Ticket wechselt auf «Wartend auf Drittanbieter». Ohne Rückmeldung werden Sie automatisch erinnert.",
+              )}
             </p>
           </div>
           <button
@@ -1229,8 +1293,14 @@ function VendorCaseDialog({
           <p className="ticket-coordination__hint">
             Es sind noch keine Drittanbieter erfasst.{" "}
             {canManageVendors
-              ? "Erfassen Sie Drittanbieter in den Mandanteneinstellungen unter Automationen."
-              : "Bitte wenden Sie sich an die Mandantenadministration."}
+              ? tn(
+                  "Erfasse Drittanbieter in den Mandanteneinstellungen unter Automationen.",
+                  "Erfassen Sie Drittanbieter in den Mandanteneinstellungen unter Automationen.",
+                )
+              : tn(
+                  "Bitte wende dich an die Mandantenadministration.",
+                  "Bitte wenden Sie sich an die Mandantenadministration.",
+                )}
           </p>
         ) : (
           <form

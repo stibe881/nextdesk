@@ -237,6 +237,7 @@ export async function monitoringTicketOpen(
   const { data: ticket, error } = await admin
     .from("tickets")
     .select("id, status_id, closed_at, resolved_at")
+    .is("deleted_at", null)
     .eq("tenant_id", tenantId)
     .eq("id", ticketId)
     .maybeSingle();
@@ -266,6 +267,7 @@ export async function raiseMonitoringTicketPriority(
     admin
       .from("tickets")
       .select("id, priority_id")
+      .is("deleted_at", null)
       .eq("tenant_id", tenantId)
       .eq("id", ticketId)
       .maybeSingle(),
@@ -320,6 +322,7 @@ export async function resolveMonitoringTicket(
     admin
       .from("tickets")
       .select("id, status_id, assigned_agent_id, closed_at")
+      .is("deleted_at", null)
       .eq("tenant_id", tenantId)
       .eq("id", ticketId)
       .maybeSingle(),

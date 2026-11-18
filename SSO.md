@@ -2,7 +2,7 @@
 
 ## Grundsatz
 
-Eine erfolgreiche Entra-Anmeldung beweist nur die Identität. Sie erzeugt niemals ohne weitere Prüfung eine Mitgliedschaft in einem beliebigen TicketHub-Mandanten. Die Zuordnung erfolgt über eine verifizierte Mandantenkonfiguration, erlaubte E-Mail-Domains, einen expliziten Gruppen- oder SCIM-Mapping-Entscheid und einen Audit-Eintrag.
+Eine erfolgreiche Entra-Anmeldung beweist nur die Identität. Diese erzeugt niemals ohne weitere Prüfung eine Mitgliedschaft in einem beliebigen TicketHub-Mandanten. Die Zuordnung erfolgt über eine verifizierte Mandantenkonfiguration, erlaubte E-Mail-Domains, einen expliziten Gruppen- oder SCIM-Mapping-Entscheid und einen Audit-Eintrag.
 
 ## Unterstützte Wege
 

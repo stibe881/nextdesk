@@ -90,7 +90,9 @@ export function priorityPartFromList(
     subject: clip(ticket.subject, MAX_SUBJECT_LENGTH),
     reason: ticket.reason ? clip(ticket.reason, MAX_REASON_LENGTH) : null,
   }));
+  // A paused SLA (waiting status) is not due.
   const slaDueAt = ordered
+    .filter((ticket) => !ticket.slaPausedAt)
     .map((ticket) => validTime(ticket.resolutionDueAt))
     .filter((time): time is number => time !== null)
     .sort((a, b) => a - b)

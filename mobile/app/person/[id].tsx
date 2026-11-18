@@ -3,6 +3,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Linking,
   Platform,
   Pressable,
@@ -27,6 +28,7 @@ import {
   type PersonTicket,
 } from "@/lib/person-overview";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 type Tab = "tickets" | "devices" | "licenses" | "orders" | "history";
 type TicketFilter = "all" | "open" | "closed";
@@ -283,7 +285,16 @@ export default function PersonScreen() {
             <View style={styles.card}>
               <View style={styles.headRow}>
                 <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{personInitials(name)}</Text>
+                  {data.person.photoUrl ? (
+                    <Image
+                      accessibilityIgnoresInvertColors
+                      accessibilityLabel={`Foto von ${name}`}
+                      source={{ uri: data.person.photoUrl }}
+                      style={styles.avatarPhoto}
+                    />
+                  ) : (
+                    <Text style={styles.avatarText}>{personInitials(name)}</Text>
+                  )}
                 </View>
                 <View style={styles.headCopy}>
                   <Text accessibilityRole="header" style={styles.name}>
@@ -495,8 +506,7 @@ export default function PersonScreen() {
                 />
                 <Text style={styles.noteText}>
                   Einzelne Bewertungen und Kommentare sind nicht sichtbar.
-                  nextDesk zeigt nur den Durchschnitt, erst ab{" "}
-                  {data.satisfaction.minimumRatings} Bewertungen.
+                  nextDesk zeigt nur den Durchschnitt.
                 </Text>
               </View>
             </View>
@@ -565,7 +575,7 @@ export default function PersonScreen() {
                   {tickets.length === 0 ? (
                     <Text style={styles.muted}>
                       {data.tickets.length === 0
-                        ? `${firstName} hat noch keine Tickets, die du sehen darfst.`
+                        ? tn(`${firstName} hat noch keine Tickets, die du sehen darfst.`, `${firstName} hat noch keine Tickets, die Sie sehen dürfen.`)
                         : "Keine Tickets in dieser Auswahl."}
                     </Text>
                   ) : (
@@ -793,8 +803,10 @@ const useStyles = makeThemedStyles((c) => ({
     borderRadius: 30,
     height: 60,
     justifyContent: "center",
+    overflow: "hidden",
     width: 60,
   },
+  avatarPhoto: { height: 60, width: 60 },
   avatarText: { color: c.primaryText, fontSize: 21, fontWeight: "800" },
   name: { color: c.foreground, fontSize: 22, fontWeight: "800" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },

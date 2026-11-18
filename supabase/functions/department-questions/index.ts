@@ -300,6 +300,7 @@ async function ticket(
     .select(
       "id, tenant_id, department_id, assigned_agent_id, ticket_number, subject, exchange_mail_channel_id",
     )
+    .is("deleted_at", null)
     .eq("tenant_id", tenantId)
     .eq("id", ticketId)
     .maybeSingle();

@@ -23,6 +23,7 @@ import {
   type ShopPerson,
 } from "@/lib/shop";
 import { useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 function isoDate(date: Date): string {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -410,7 +411,7 @@ export default function ShopCartScreen() {
                 <Text style={styles.hint}>
                   {forOther
                     ? "Mindestens ein Artikel braucht die Freigabe der vorgesetzten Person der bestellenden Person."
-                    : "Mindestens ein Artikel braucht die Freigabe deiner vorgesetzten Person."}
+                    : tn("Mindestens ein Artikel braucht die Freigabe deiner vorgesetzten Person.", "Mindestens ein Artikel braucht die Freigabe Ihrer vorgesetzten Person.")}
                 </Text>
               ) : null}
               {error ? <Text style={styles.error}>{error}</Text> : null}

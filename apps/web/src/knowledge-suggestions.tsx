@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { functionErrorStatus } from "./lib/function-error";
 import {
@@ -72,10 +73,11 @@ function formatDate(value: string | null): string {
 }
 
 const styles = `
-  .knowledge-suggestions { display: grid; gap: 12px; }
+  .knowledge-suggestions { display: grid; gap: 14px; padding: 22px 24px 24px; }
+  .knowledge-suggestions .eyebrow { margin: 0 0 4px; }
   .knowledge-suggestions__header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .knowledge-suggestions__header h2 { margin: 0; }
-  .knowledge-suggestions__intro { margin: 4px 0 0; color: var(--muted, #64748b); max-width: 60ch; }
+  .knowledge-suggestions__intro { margin: 6px 0 0; color: var(--muted, #64748b); max-width: 60ch; }
   .knowledge-suggestions__note { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--surface-muted, #f1f5f9); }
   .knowledge-suggestions__error { margin: 0; color: var(--danger, #b91c1c); }
   .knowledge-suggestions__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
@@ -83,9 +85,13 @@ const styles = `
   .knowledge-suggestions__item-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
   .knowledge-suggestions__item-head h3 { margin: 0; font-size: 1rem; }
   .knowledge-suggestions__meta { color: var(--muted, #64748b); font-size: 0.875rem; }
+  p.knowledge-suggestions__meta { margin: 0; }
   .knowledge-suggestions__tickets { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
   .knowledge-suggestions__ticket { background: none; border: 0; padding: 0; color: var(--accent, #075985); cursor: pointer; text-align: left; font: inherit; text-decoration: underline; }
   .knowledge-suggestions__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  @media (max-width: 760px) {
+    .knowledge-suggestions { padding: 18px 20px 20px; }
+  }
   @media (max-width: 640px) {
     .knowledge-suggestions__actions > button { flex: 1 1 100%; }
   }
@@ -176,7 +182,13 @@ export function KnowledgeSuggestions({
       const articleId = await invokeSuggestions(
         { type: "draft", tenantId, suggestionId },
         parseKnowledgeSuggestionDraft,
-        "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+        tn(
+          "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuche es erneut.",
+          tn(
+            "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuche es erneut.",
+            "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+          ),
+        ),
       );
       setList((current) =>
         current
@@ -256,10 +268,20 @@ export function KnowledgeSuggestions({
           <p className="eyebrow">Wissensdatenbank</p>
           <h2 id="knowledge-suggestions-heading">Artikelvorschläge</h2>
           <p className="knowledge-suggestions__intro">
-            Ähnliche Tickets, die in den letzten {list?.windowDays ?? 120} Tagen
-            mehrmals gleich gelöst wurden und noch keinen veröffentlichten
-            Artikel haben. Die KI schreibt einen Entwurf, den Sie prüfen und
-            freigeben.
+            {tn(
+              <>
+                Ähnliche Tickets, die in den letzten {list?.windowDays ?? 120}{" "}
+                Tagen mehrmals gleich gelöst wurden und noch keinen
+                veröffentlichten Artikel haben. Die KI schreibt einen Entwurf,
+                den du prüfst und speicherst.
+              </>,
+              <>
+                Ähnliche Tickets, die in den letzten {list?.windowDays ?? 120}{" "}
+                Tagen mehrmals gleich gelöst wurden und noch keinen
+                veröffentlichten Artikel haben. Die KI schreibt einen Entwurf,
+                den Sie prüfen und speichern.
+              </>,
+            )}
           </p>
         </div>
         <button

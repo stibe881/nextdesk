@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import { resolveTenantFeatureStates, resolveUserFeatureStates } from "../_shared/tenant-features.ts";
@@ -589,6 +590,7 @@ function deviceFromRows(
       ? (locations.get(asset.location_id) ?? null)
       : null,
     category: infra.category,
+    categoryLabel: infra.category === "other" ? (infra.category_label ?? null) : null,
     hostname: infra.hostname ?? null,
     ipAddress: infra.ip_address ?? null,
     macAddress: infra.mac_address ?? null,
@@ -631,7 +633,8 @@ async function list(request: Request, admin: Admin, tenantId: string, canManage:
     admin.from("monitoring_alerts")
       .select("asset_id, sensor_name, last_status, last_message, last_event_at")
       .eq("tenant_id", tenantId).eq("state", "open").not("asset_id", "is", null).limit(2000),
-    admin.from("asset_services").select("asset_id, service_id").eq("tenant_id", tenantId).limit(20000),
+    admin.from("asset_services").select("asset_id, service_id").eq("tenant_id", tenantId)
+      .order("position").order("created_at").order("service_id").limit(20000),
     admin.from("infrastructure_racks").select("id, name, location_id, height_units, notes")
       .eq("tenant_id", tenantId).order("name").limit(1000),
   ]);
@@ -752,6 +755,7 @@ async function detail(request: Request, admin: Admin, tenantId: string, assetId:
     ticketIds.length
       ? admin.from("tickets")
         .select("id, ticket_number, subject, closed_at, resolved_at, created_at")
+        .is("deleted_at", null)
         .eq("tenant_id", tenantId).in("id", ticketIds)
         .order("created_at", { ascending: false })
       : { data: [], error: null },
@@ -834,9 +838,9 @@ async function save(
       throw new HttpError(422, "service_invalid", "Ein Dienst ist nicht verfügbar.");
     }
   }
+  // Services are written to asset_services (source of truth); the trigger keeps
+  // assets.service_id as the first service for modules that know only one.
   const assetValues = {
-    // The first service stays the primary one for modules that know only one.
-    service_id: device.serviceIds[0] ?? null,
     name: device.name,
     kind: device.category,
     asset_tag: device.assetTag,
@@ -898,19 +902,12 @@ async function save(
     updated_at: new Date().toISOString(),
   }, { onConflict: "asset_id" });
   if (infraError) throw dbFailure();
-  const cleared = await admin.from("asset_services").delete()
-    .eq("tenant_id", tenantId).eq("asset_id", assetId);
-  if (cleared.error) throw dbFailure();
-  if (device.serviceIds.length) {
-    const linked = await admin.from("asset_services").insert(
-      device.serviceIds.map((serviceId) => ({
-        tenant_id: tenantId,
-        asset_id: assetId,
-        service_id: serviceId,
-      })),
-    );
-    if (linked.error) throw dbFailure();
-  }
+  const linked = await admin.rpc("set_asset_services", {
+    p_tenant_id: tenantId,
+    p_asset_id: assetId,
+    p_service_ids: device.serviceIds,
+  });
+  if (linked.error) throw dbFailure();
   await admin.from("audit_logs").insert({
     tenant_id: tenantId,
     actor_id: actorId,
@@ -1098,7 +1095,7 @@ async function deleteRack(
     throw new HttpError(
       409,
       "rack_not_empty",
-      `Im Rack sind noch ${members.length} Geräte. Entfernen Sie zuerst die Geräte aus dem Rack.`,
+      msg(`Im Rack sind noch ${members.length} Geräte. Entferne zuerst die Geräte aus dem Rack.`, msg(`Im Rack sind noch ${members.length} Geräte. Entferne zuerst die Geräte aus dem Rack.`, `Im Rack sind noch ${members.length} Geräte. Entfernen Sie zuerst die Geräte aus dem Rack.`)),
     );
   }
   const { error: deleteError } = await admin.from("infrastructure_racks").delete()
@@ -1182,7 +1179,7 @@ async function scheduleChecklist(
   if (!asset || !infra) throw new HttpError(404, "device_not_found", "Das Gerät ist nicht verfügbar.");
   const checklist = checklistItems(infra.maintenance_checklist).map((item) => item.label);
   if (checklist.length === 0) {
-    throw new HttpError(422, "checklist_empty", "Erfassen Sie zuerst die Punkte der Wartungscheckliste.");
+    throw new HttpError(422, "checklist_empty", msg("Erfasse zuerst die Punkte der Wartungscheckliste.", msg("Erfasse zuerst die Punkte der Wartungscheckliste.", "Erfassen Sie zuerst die Punkte der Wartungscheckliste.")));
   }
   if (action.assigneeId) {
     const { data: member, error } = await admin.from("tenant_memberships").select("user_id")
@@ -1271,11 +1268,11 @@ const handler = withSupabase(
         "assets.management",
       ]);
       if (features?.["assets.management"] !== true) {
-        throw new HttpError(403, "feature_disabled", "Die Infrastruktur ist für Sie nicht eingeschaltet.");
+        throw new HttpError(403, "feature_disabled", msg("Die Infrastruktur ist für dich nicht eingeschaltet.", msg("Die Infrastruktur ist für dich nicht eingeschaltet.", "Die Infrastruktur ist für Sie nicht eingeschaltet.")));
       }
       const access = await permissions(context.supabase, action.tenantId);
       if (!access.canRead) {
-        throw new HttpError(403, "access_denied", "Für die Infrastruktur fehlt Ihnen die Berechtigung.");
+        throw new HttpError(403, "access_denied", msg("Für die Infrastruktur fehlt dir die Berechtigung.", msg("Für die Infrastruktur fehlt dir die Berechtigung.", "Für die Infrastruktur fehlt Ihnen die Berechtigung.")));
       }
       if (action.type === "list") return await list(request, admin, action.tenantId, access.canManage);
       if (action.type === "detail") return await detail(request, admin, action.tenantId, action.assetId);

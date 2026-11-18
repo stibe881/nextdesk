@@ -236,9 +236,68 @@ async function rest(
   return payload.filter(isRecord);
 }
 
+/** Datenbankfunktion unter der Identität der angemeldeten Person. */
+async function rpcCall(
+  config: Config,
+  session: Session,
+  name: string,
+  args: Json,
+): Promise<unknown> {
+  const response = await fetch(`${config.supabaseUrl}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    headers: { ...authHeaders(config, session), Accept: "application/json" },
+    body: JSON.stringify(args),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (response.status === 401 || response.status === 403) {
+    throw new ToolError("Keine Berechtigung für diese Daten.");
+  }
+  if (!response.ok) {
+    throw new ToolError("Die Daten konnten nicht gelesen werden.");
+  }
+  return payload;
+}
+
+const SECURITY_STATE_LABELS: Json = {
+  triage: "zu beurteilen",
+  actions: "Massnahmen",
+  closed: "abgeschlossen",
+};
+
 type Workspace = { id: string; name: string; slug: string };
 
-async function listWorkspaces(
+/**
+ * Kurzer Zwischenspeicher je Person (nur im laufenden Edge-Prozess): spart bei
+ * jeder Anfrage die Abfrage der Arbeitsbereiche und bei jeder Werkzeugliste die
+ * Titelliste der Wissensartikel. Die Daten gelten nur für die Person, die sie
+ * geladen hat (Schlüssel enthält die Benutzer-ID) und verfallen nach kurzer Zeit.
+ */
+const MEMORY_CACHE = new Map<string, { at: number; value: unknown }>();
+
+async function remember<T>(
+  key: string,
+  ttlMs: number,
+  load: () => Promise<T>,
+): Promise<T> {
+  const hit = MEMORY_CACHE.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
+  const value = await load();
+  if (MEMORY_CACHE.size > 500) MEMORY_CACHE.clear();
+  MEMORY_CACHE.set(key, { at: Date.now(), value });
+  return value;
+}
+
+function listWorkspaces(
+  config: Config,
+  session: Session,
+): Promise<Workspace[]> {
+  return remember(`workspaces:${session.userId}`, 60_000, () =>
+    loadWorkspaces(config, session),
+  );
+}
+
+async function loadWorkspaces(
   config: Config,
   session: Session,
 ): Promise<Workspace[]> {
@@ -693,6 +752,23 @@ async function inventoryRefs(
   };
 }
 
+/** Adresse der Web-App; «?wissen=<ID>» öffnet einen Wissensartikel direkt. */
+const APP_URL = "https://app.nextdesk.ch/";
+
+/** Quelle als Markdown-Link: Linktext ist der Artikeltitel, kein ID oder Nummer. */
+function articleSourceLink(id: unknown, title: unknown): string | null {
+  if (typeof id !== "string" || !isUuid(id)) return null;
+  const text =
+    (typeof title === "string" ? title : "")
+      .replace(/[\[\]\r\n]+/g, " ")
+      .trim() || "Wissensartikel";
+  return `[${text}](${APP_URL}?wissen=${id})`;
+}
+
+/** Hinweis im Ergebnis von Wissensabfragen: Quelle als anklickbarer Titel, keine Marker. */
+const ANSWER_NOTE =
+  "Quellenangabe: Keine Fussnoten, Nummern oder Marker wie [0], [1] oder [ID] in den Text setzen. Am Ende der Antwort die Quelle genau einmal als Markdown-Link aus dem Feld «quelle» angeben, mit dem Artikeltitel als Linktext, z. B. «Quelle: [Titel](Adresse)». Der Link öffnet den Artikel in nextDesk. Danach genau einmal nachfragen, in genau diesem Aufbau (Anrede wie im Gespräch): eine kurze Frage, ob die Antwort geholfen hat, darunter zwei Zeilen mit den Optionen «**Gelöst**» und «**Ticket erstellen**» und der Bitte, mit einem dieser Wörter zu antworten. Antwortet die Person mit «Gelöst», freundlich verabschieden und nichts weiter anbieten. Antwortet sie mit «Ticket erstellen», KEINE Fragen nach Betreff oder Beschreibung stellen: Betreff und Beschreibung selbst aus dem bisherigen Gespräch formulieren (Thema der Frage, was die Person versucht hat, genannte Geräte oder Fehlermeldungen, Hinweis auf den gelesenen Artikel) und sofort ticket_fuer_mich_erfassen ohne bestaetigt aufrufen. Den Entwurf der Person zeigen (Betreff und Beschreibung, kurz) und fragen, ob er so erfasst werden soll oder ob sie etwas ergänzen möchte, zum Beispiel das betroffene Gerät. Erst nach ihrem Ja mit bestaetigt=true abschicken. Eine Ergänzung der Person direkt in den Entwurf einarbeiten und erneut zur Bestätigung zeigen. Nie nach Priorität, Abteilung, Agent, Ticketvorlage oder Kategorie fragen.";
+
 const CONFIRM_PROPERTY = {
   type: "boolean",
   description:
@@ -736,11 +812,23 @@ const TICKET_PROPERTY = {
   description: "Ticketnummer (z. B. ICT-2026-000011) oder ID.",
 };
 
+/**
+ * Tools renamed with «Wiedervorlage» → «Erinnerung». Clients that still call
+ * the old names keep working; the tool list shows only the new names.
+ */
+const LEGACY_TOOL_NAMES: Record<string, string> = {
+  wiedervorlagen_anzeigen: "erinnerungen_anzeigen",
+  wiedervorlage_erstellen: "erinnerung_erstellen",
+  wiedervorlage_erledigen: "erinnerung_erledigen",
+  sicherheitsfaelle_anzeigen: "phishing_junk_faelle_anzeigen",
+  sicherheitsfall_anzeigen: "phishing_junk_fall_anzeigen",
+};
+
 const TOOLS: Tool[] = [
   {
     name: "arbeitsbereiche_anzeigen",
     description:
-      "Listet die Arbeitsbereiche (Mandanten), auf die du Zugriff hast.",
+      "Listet die Arbeitsbereiche (Mandanten), auf die du Zugriff hast.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Arbeitsbereiche" },
     inputSchema: {
       type: "object",
@@ -753,7 +841,7 @@ const TOOLS: Tool[] = [
   {
     name: "tickets_suchen",
     description:
-      "Sucht Tickets. bereich: mine (mir zugewiesen), open (offen, Standard), unassigned (nicht zugewiesen), all.",
+      "Sucht Tickets im Service-Desk nextDesk (nicht in Dateiablagen oder E-Mail). bereich: mine (mir zugewiesen), open (offen, Standard), unassigned (nicht zugewiesen), all.",
     annotations: { readOnlyHint: true, title: "Tickets suchen" },
     inputSchema: {
       type: "object",
@@ -922,7 +1010,7 @@ const TOOLS: Tool[] = [
   {
     name: "wissen_suchen",
     description:
-      "Durchsucht die Wissensdatenbank (Anleitungen und Lösungen der eigenen Organisation). Bei jeder IT-Frage zuerst verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». suchbegriff: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen.",
+      "Durchsucht die Wissensdatenbank von nextDesk (Anleitungen und Lösungen der eigenen Organisation), nicht OneDrive, SharePoint oder Google Drive. Bei jeder Frage zu Software, Programmen (z. B. AbaClient), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst und vor jeder Websuche verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». suchbegriff: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen. Das erste Ergebnis enthält meist schon den ganzen Text im Feld excerpt; wissensartikel_lesen nur aufrufen, wenn der Text dort abgeschnitten ist (endet auf «…»). Als Quelle immer den Link aus dem Feld «quelle» verwenden (Artikeltitel als Linktext), nie Nummern.",
     annotations: { readOnlyHint: true, title: "Wissen durchsuchen" },
     inputSchema: {
       type: "object",
@@ -955,32 +1043,35 @@ const TOOLS: Tool[] = [
             })
           ).articles,
         );
-      let articles = await search(query);
+      // Die ganze Frage und die einzelnen Stichwörter (längste zuerst)
+      // gleichzeitig suchen: Ganze Fragen finden oft nichts, dann gelten die
+      // Treffer der Stichwörter. So braucht es keine zweite Runde.
+      const words = [
+        ...new Set(
+          query
+            .toLocaleLowerCase("de-CH")
+            .split(/[^\p{L}\p{N}]+/u)
+            .filter(
+              (word) => Array.from(word).length >= 3 && !STOP_WORDS.has(word),
+            ),
+        ),
+      ]
+        .sort((a, b) => b.length - a.length)
+        .slice(0, 4);
+      const [whole, ...byWord] = await Promise.all([
+        search(query),
+        ...words.map(search),
+      ]);
+      let articles = whole;
       let searchedFor = [query];
-      // Ganze Fragen finden oft nichts; dann einzeln nach den
-      // aussagekräftigen Stichwörtern suchen (längste zuerst).
-      if (articles.length === 0) {
-        const words = [
-          ...new Set(
-            query
-              .toLocaleLowerCase("de-CH")
-              .split(/[^\p{L}\p{N}]+/u)
-              .filter(
-                (word) => Array.from(word).length >= 3 && !STOP_WORDS.has(word),
-              ),
-          ),
-        ]
-          .sort((a, b) => b.length - a.length)
-          .slice(0, 4);
-        if (words.length > 0) {
-          searchedFor = words;
-          const seen = new Set<unknown>();
-          for (const list of await Promise.all(words.map(search))) {
-            for (const article of list) {
-              if (!seen.has(article.id)) {
-                seen.add(article.id);
-                articles.push(article);
-              }
+      if (articles.length === 0 && words.length > 0) {
+        searchedFor = words;
+        const seen = new Set<unknown>();
+        for (const list of byWord) {
+          for (const article of list) {
+            if (!seen.has(article.id)) {
+              seen.add(article.id);
+              articles.push(article);
             }
           }
         }
@@ -1003,18 +1094,22 @@ const TOOLS: Tool[] = [
       return textResult({
         count: articles.length,
         searchedFor,
+        ...(articles.length > 0 ? { hinweis_antwort: ANSWER_NOTE } : {}),
         ...(generalMatch
           ? {
               note: "Zum genannten Programm gibt es keinen eigenen Artikel. Diese Artikel beschreiben den allgemeinen Weg, Software zu beziehen; mit wissensartikel_lesen lesen und der Person danach erklären.",
             }
           : {}),
-        articles: articles.map((article) => {
+        articles: articles.map((article, index) => {
           const revision = isRecord(article.revision) ? article.revision : {};
           return {
             id: article.id,
             title: article.title,
+            quelle: articleSourceLink(article.id, article.title),
             summary: clip(article.summary ?? revision.summary, 300) || null,
-            excerpt: clip(revision.body, 600) || null,
+            // Der beste Treffer kommt (fast) vollständig mit, damit die
+            // Antwort ohne weiteren Aufruf von wissensartikel_lesen möglich ist.
+            excerpt: clip(revision.body, index === 0 ? 5000 : 600) || null,
             updatedAt: article.updated_at ?? article.updatedAt ?? null,
           };
         }),
@@ -1055,16 +1150,19 @@ const TOOLS: Tool[] = [
       const revision = isRecord(data.revision) ? data.revision : null;
       if (!article || !revision)
         throw new ToolError("Artikel nicht verfügbar.");
+      const source = articleSourceLink(article.id ?? args.id, article.title);
       return textResult({
         title: article.title,
         body: clip(revision.body, 12000),
+        ...(source ? { quelle: source } : {}),
+        hinweis_antwort: ANSWER_NOTE,
       });
     },
   },
   {
     name: "geraet_suchen",
     description:
-      "Sucht Geräte (Assets) nach Name, Inventarnummer, Asset-Tag oder Seriennummer.",
+      "Sucht Geräte (Assets) in der Inventarverwaltung von nextDesk nach Name, Inventarnummer, Asset-Tag oder Seriennummer.",
     annotations: { readOnlyHint: true, title: "Gerät suchen" },
     inputSchema: {
       type: "object",
@@ -1115,7 +1213,7 @@ const TOOLS: Tool[] = [
   {
     name: "ticket_erfassen",
     description:
-      "Erfasst ein neues Ticket, für dich selbst oder für eine anfragende Person (anfragende_person aus anfragende_suchen). Frage vorher nach, ob das Ticket wirklich erfasst werden soll. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
+      "Erfasst ein neues Ticket, für dich selbst oder für eine anfragende Person (anfragende_person aus anfragende_suchen). Frage vorher nach, ob das Ticket wirklich erfasst werden soll. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1136,7 +1234,7 @@ const TOOLS: Tool[] = [
         anfragende_person: {
           type: "string",
           description:
-            "ID der anfragenden Person aus anfragende_suchen. Ohne Angabe wird das Ticket für dich selbst erfasst.",
+            "ID der anfragenden Person aus anfragende_suchen. Ohne Angabe wird das Ticket für dich selbst erfasst.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
         },
         vorlage: {
           type: "string",
@@ -1188,7 +1286,7 @@ const TOOLS: Tool[] = [
           : null;
       if (!requesterId) {
         throw new ToolError(
-          "Für dein Konto ist keine anfragende Person hinterlegt. Gib anfragende_person an (anfragende_suchen).",
+          "Für dein Konto ist keine anfragende Person hinterlegt. Gib anfragende_person an (anfragende_suchen).", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
         );
       }
       let template: Json | null = null;
@@ -1249,21 +1347,26 @@ const TOOLS: Tool[] = [
             abteilung: department.name,
             anfragendePerson: isUuid(args.anfragende_person)
               ? args.anfragende_person
-              : (requester?.displayName ?? "du selbst"),
+              : (requester?.displayName ?? "du selbst"), // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
             betreff: subject,
             beschreibung: clip(description, 2000),
             prioritaet: priority,
             vorlage: template?.name ?? null,
           },
-          [
-            args.beschreibung === undefined &&
-              !template &&
-              "beschreibung (sonst wird der Betreff verwendet)",
-            args.prioritaet === undefined &&
-              !template &&
-              "prioritaet (Standard normal)",
-            args.abteilung === undefined && "abteilung (Standard: erste)",
-          ],
+          args.einfach === true
+            ? [
+                args.beschreibung === undefined &&
+                  "beschreibung (sonst wird der Betreff verwendet)",
+              ]
+            : [
+                args.beschreibung === undefined &&
+                  !template &&
+                  "beschreibung (sonst wird der Betreff verwendet)",
+                args.prioritaet === undefined &&
+                  !template &&
+                  "prioritaet (Standard normal)",
+                args.abteilung === undefined && "abteilung (Standard: erste)",
+              ],
         );
       }
       const created = await callFunction(config, session, "ticket-actions", {
@@ -1280,7 +1383,70 @@ const TOOLS: Tool[] = [
         created: true,
         number: created.ticketNumber ?? null,
         workspace: workspace.slug,
+        ...(args.einfach === true
+          ? {
+              hinweis:
+                "Nenne der Person die Ticketnummer und dass sich die IT melden wird.",
+            }
+          : {}),
       });
+    },
+  },
+  {
+    name: "ticket_fuer_mich_erfassen",
+    description:
+      "Erfasst ein Ticket für die angemeldete Person selbst, ohne Rückfragen zu Priorität, Abteilung, Agent, Vorlage oder Kategorie (dafür gelten die Standardwerte). Nur nach Betreff und Beschreibung fragen, dazu optional das betroffene Gerät. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf; die Person bestätigt, erst dann mit bestaetigt=true abschicken. Antwort danach mit der Ticketnummer.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "Ticket für mich erfassen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        bestaetigt: CONFIRM_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        betreff: {
+          type: "string",
+          minLength: 3,
+          maxLength: 240,
+          description: "Kurzer Betreff: Worum geht es?",
+        },
+        beschreibung: {
+          type: "string",
+          maxLength: 8000,
+          description:
+            "Was ist passiert, seit wann, welche Fehlermeldung, was wurde schon versucht?",
+        },
+        geraet: {
+          type: "string",
+          maxLength: 200,
+          description: "Betroffenes Gerät (optional), z. B. «iPhone», «NB001».",
+        },
+      },
+      required: ["betreff"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const base = TOOLS.find((entry) => entry.name === "ticket_erfassen");
+      if (!base) throw new ToolError("Werkzeug nicht verfügbar.");
+      const device =
+        typeof args.geraet === "string" && args.geraet.trim()
+          ? `Betroffenes Gerät: ${args.geraet.trim()}`
+          : "";
+      const text =
+        typeof args.beschreibung === "string" ? args.beschreibung.trim() : "";
+      const description = [text, device].filter(Boolean).join("\n\n");
+      const result = await base.run(config, session, {
+        betreff: args.betreff,
+        ...(description ? { beschreibung: description } : {}),
+        ...(typeof args.arbeitsbereich === "string"
+          ? { arbeitsbereich: args.arbeitsbereich }
+          : {}),
+        ...(args.bestaetigt === true ? { bestaetigt: true } : {}),
+        einfach: true,
+      });
+      return result;
     },
   },
   {
@@ -1388,7 +1554,7 @@ const TOOLS: Tool[] = [
   {
     name: "ticket_mir_zuweisen",
     description:
-      "Weist ein Ticket dir selbst (der angemeldeten Person) zu. Das Zuweisen an andere Personen ist nicht möglich.",
+      "Weist ein Ticket dir selbst (der angemeldeten Person) zu. Das Zuweisen an andere Personen ist nicht möglich.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1704,7 +1870,7 @@ const TOOLS: Tool[] = [
   {
     name: "ueberall_suchen",
     description:
-      "Durchsucht den Arbeitsbereich gleichzeitig nach Tickets, Wiedervorlagen, Wissensartikeln, Veranstaltungsräumen und Eintritten.",
+      "Durchsucht nextDesk (nicht OneDrive, SharePoint oder Google Drive) gleichzeitig nach Tickets, Erinnerungen, Wissensartikeln, Veranstaltungsräumen und Eintritten; für das zuständige Team auch nach Störungen und Phishing-/Junk-Fällen.",
     annotations: { readOnlyHint: true, title: "Überall suchen" },
     inputSchema: {
       type: "object",
@@ -1726,6 +1892,7 @@ const TOOLS: Tool[] = [
         args.arbeitsbereich,
       );
       const data = await callFunction(config, session, "global-search", {
+        type: "search",
         tenantId: workspace.id,
         query,
       });
@@ -1748,7 +1915,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "benachrichtigungen_anzeigen",
-    description: "Listet deine nextDesk-Benachrichtigungen (neueste zuerst).",
+    description: "Listet deine nextDesk-Benachrichtigungen (neueste zuerst).", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Benachrichtigungen" },
     inputSchema: {
       type: "object",
@@ -1836,7 +2003,7 @@ const TOOLS: Tool[] = [
   {
     name: "offene_freigaben_anzeigen",
     description:
-      "Listet Ticketfreigaben, die auf deinen Entscheid warten (Genehmigungseingang).",
+      "Listet Ticketfreigaben, die auf deinen Entscheid warten (Genehmigungseingang).", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Offene Freigaben" },
     inputSchema: {
       type: "object",
@@ -2063,19 +2230,19 @@ const TOOLS: Tool[] = [
     },
   },
 
-  // ------------------------------------------------ Wiedervorlagen
+  // ------------------------------------------------ Erinnerungen
   {
-    name: "wiedervorlagen_anzeigen",
+    name: "erinnerungen_anzeigen",
     description:
-      "Listet deine Wiedervorlagen (Erinnerungen), standardmässig nur offene. Optional nur die eines Tickets.",
-    annotations: { readOnlyHint: true, title: "Wiedervorlagen" },
+      "Listet deine Erinnerungen, standardmässig nur offene. Optional nur die eines Tickets.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
+    annotations: { readOnlyHint: true, title: "Erinnerungen" },
     inputSchema: {
       type: "object",
       properties: {
         arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: {
           ...TICKET_PROPERTY,
-          description: "Nur Wiedervorlagen dieses Tickets.",
+          description: "Nur Erinnerungen dieses Tickets.",
         },
         mit_erledigten: { type: "boolean" },
         max_anzahl: { type: "integer", minimum: 1, maximum: 100 },
@@ -2133,13 +2300,13 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "wiedervorlage_erstellen",
+    name: "erinnerung_erstellen",
     description:
-      "Erstellt eine Wiedervorlage (Erinnerung) für dich, optional zu einem Ticket. faellig als Datum/Zeit mit Zeitzone, z. B. 2026-11-10T08:00:00+01:00.",
+      "Erstellt eine Erinnerung für dich, optional zu einem Ticket. faellig als Datum/Zeit mit Zeitzone, z. B. 2026-11-10T08:00:00+01:00.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
-      title: "Wiedervorlage erstellen",
+      title: "Erinnerung erstellen",
     },
     inputSchema: {
       type: "object",
@@ -2208,20 +2375,20 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "wiedervorlage_erledigen",
+    name: "erinnerung_erledigen",
     description:
-      "Erledigt eine Wiedervorlage (id aus wiedervorlagen_anzeigen).",
+      "Erledigt eine Erinnerung (id aus erinnerungen_anzeigen).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
-      title: "Wiedervorlage erledigen",
+      title: "Erinnerung erledigen",
     },
     inputSchema: {
       type: "object",
       properties: {
         arbeitsbereich: WORKSPACE_PROPERTY,
-        id: { type: "string", description: "ID der Wiedervorlage." },
+        id: { type: "string", description: "ID der Erinnerung." },
       },
       required: ["id"],
       additionalProperties: false,
@@ -2246,7 +2413,7 @@ const TOOLS: Tool[] = [
   {
     name: "erwaehnungen_anzeigen",
     description:
-      "Listet Erwähnungen von dir in Ticketnotizen (@-Erwähnungen), standardmässig nur ungelesene.",
+      "Listet Erwähnungen von dir in Ticketnotizen (@-Erwähnungen), standardmässig nur ungelesene.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Erwähnungen" },
     inputSchema: {
       type: "object",
@@ -2327,7 +2494,7 @@ const TOOLS: Tool[] = [
   {
     name: "meine_kennzahlen",
     description:
-      "Deine persönlichen Kennzahlen: offene zugewiesene Tickets, heute gelöst, mittlere Erstreaktions- und Lösungszeit, fällige SLA.",
+      "Deine persönlichen Kennzahlen: offene zugewiesene Tickets, heute gelöst, mittlere Erstreaktions- und Lösungszeit, fällige SLA.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Meine Kennzahlen" },
     inputSchema: {
       type: "object",
@@ -2358,7 +2525,7 @@ const TOOLS: Tool[] = [
   {
     name: "warteschlangen_anzeigen",
     description:
-      "Zeigt die offenen Tickets je Abteilung und Team (Warteschlangen), die du sehen kannst.",
+      "Zeigt die offenen Tickets je Abteilung und Team (Warteschlangen), die du sehen kannst.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Warteschlangen" },
     inputSchema: {
       type: "object",
@@ -3538,7 +3705,7 @@ const TOOLS: Tool[] = [
         fuehrungsperson: { type: "string", description: "Führungsperson." },
         ict_verantwortung: {
           type: "string",
-          description: "ICT-Verantwortung. Standard: du selbst.",
+          description: "ICT-Verantwortung. Standard: du selbst.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
         },
         vorlage: {
           type: "string",
@@ -3602,7 +3769,7 @@ const TOOLS: Tool[] = [
             standort: location,
             fuehrungsperson: manager.displayName,
             ictVerantwortung:
-              "displayName" in ict ? ict.displayName : "du selbst",
+              "displayName" in ict ? ict.displayName : "du selbst", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
             vorlage: template.name,
           },
         );
@@ -4060,7 +4227,7 @@ const TOOLS: Tool[] = [
   {
     name: "ticketvorlagen_anzeigen",
     description:
-      "Listet die Ticketvorlagen einer Abteilung (Standard: alle Abteilungen, in denen du Tickets erfassen kannst). Eine Vorlage lässt sich bei ticket_erfassen mit vorlage verwenden.",
+      "Listet die Ticketvorlagen einer Abteilung (Standard: alle Abteilungen, in denen du Tickets erfassen kannst). Eine Vorlage lässt sich bei ticket_erfassen mit vorlage verwenden.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Ticketvorlagen" },
     inputSchema: {
       type: "object",
@@ -4896,7 +5063,7 @@ const TOOLS: Tool[] = [
   {
     name: "stellvertretungen_anzeigen",
     description:
-      "Zeigt deine Stellvertretungen (wer dich wann vertritt). Mit person die einer anderen Person, sofern du sie führst.",
+      "Zeigt deine Stellvertretungen (wer dich wann vertritt). Mit person die einer anderen Person, sofern du sie führst.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Stellvertretungen" },
     inputSchema: {
       type: "object",
@@ -4947,7 +5114,7 @@ const TOOLS: Tool[] = [
   {
     name: "stellvertretung_einrichten",
     description:
-      "Richtet eine Stellvertretung ein: vertretung vertritt dich (oder person, sofern du die Person führst) von beginn bis ende (ISO 8601). Frage vorher nach. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
+      "Richtet eine Stellvertretung ein: vertretung vertritt dich (oder person, sofern du die Person führst) von beginn bis ende (ISO 8601). Frage vorher nach. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -5012,7 +5179,7 @@ const TOOLS: Tool[] = [
         return draftResult(
           "Stellvertretung einrichten",
           {
-            vertretenePerson: agent ? agent.displayName : "du selbst",
+            vertretenePerson: agent ? agent.displayName : "du selbst", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
             vertretung: delegate.displayName,
             von: startsAt,
             bis: endsAt,
@@ -5210,6 +5377,192 @@ const TOOLS: Tool[] = [
     },
   },
 
+  // ------------------------------------------------ Störungen und Phishing-/Junk-Fälle
+  {
+    name: "stoerungen_anzeigen",
+    description:
+      "Listet Monitoring-Störungen (PRTG) des Arbeitsbereichs. Nur für das in den Monitoring-Einstellungen zuständige Team (ohne Team: alle Agenten).",
+    annotations: { readOnlyHint: true, title: "Störungen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        nur_offene: {
+          type: "boolean",
+          description: "Nur nicht geschlossene Störungen (Standard).",
+        },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 50 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await rpcCall(config, session, "list_operations_incidents", {
+        p_tenant_id: workspace.id,
+        p_only_open: args.nur_offene !== false,
+        p_limit: clampLimit(args.max_anzahl, 20, 50),
+      });
+      return textResult({ incidents: records(data) });
+    },
+  },
+  {
+    name: "phishing_junk_faelle_anzeigen",
+    description:
+      "Listet die Phishing-/Junk-Fälle (gemeldete Phishing-Mails). Nur für das Phishing-Team aus den Phishing-Einstellungen.",
+    annotations: { readOnlyHint: true, title: "Phishing / Junk" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        status: {
+          type: "string",
+          enum: ["triage", "actions", "closed", "all"],
+          description:
+            "triage = zu beurteilen (Standard), actions = Massnahmen offen, closed = abgeschlossen, all = alle.",
+        },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 50 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const state = ["triage", "actions", "closed", "all"].includes(
+        String(args.status),
+      )
+        ? String(args.status)
+        : "triage";
+      const data = await callFunction(config, session, "security-cases", {
+        type: "list",
+        tenantId: workspace.id,
+        state,
+      });
+      return textResult({
+        cases: records(data.cases)
+          .slice(0, clampLimit(args.max_anzahl, 20, 50))
+          .map((entry) => ({
+            id: entry.ticketId,
+            number: entry.ticketNumber,
+            subject: clip(entry.subject, 200),
+            from: entry.from,
+            state: SECURITY_STATE_LABELS[String(entry.state)] ?? entry.state,
+            verdict: entry.verdict,
+            risk: entry.riskLevel,
+            reporters: entry.reporters,
+            overdue: entry.overdue,
+            assignedTo: entry.assignedAgentName,
+            firstReportedAt: entry.firstReportedAt,
+          })),
+      });
+    },
+  },
+  {
+    name: "phishing_junk_fall_anzeigen",
+    description:
+      "Zeigt einen Phishing-/Junk-Fall mit Analyse (Links entschärft), Urteil, Massnahmen, Kampagne und IOC-Treffern. Nur für das Phishing-Team.",
+    annotations: { readOnlyHint: true, title: "Phishing-/Junk-Fall" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        fall: {
+          type: "string",
+          description: "Fallnummer (z. B. SEC-2026-0012) oder ID.",
+        },
+      },
+      required: ["fall"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const reference = str(args.fall, 1, 80);
+      if (!reference) throw new ToolError('"fall" fehlt.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      let ticketId = isUuid(reference) ? reference : null;
+      if (!ticketId) {
+        const list = await callFunction(config, session, "security-cases", {
+          type: "list",
+          tenantId: workspace.id,
+          state: "all",
+        });
+        const match = records(list.cases).find(
+          (entry) =>
+            String(entry.ticketNumber ?? "").toLowerCase() ===
+            reference.toLowerCase(),
+        );
+        if (!match || !isUuid(match.ticketId)) {
+          throw new ToolError(`Phishing-/Junk-Fall «${reference}» nicht gefunden.`);
+        }
+        ticketId = match.ticketId;
+      }
+      const data = await callFunction(config, session, "security-cases", {
+        type: "get",
+        tenantId: workspace.id,
+        ticketId,
+      });
+      const analysis = isRecord(data.analysis) ? data.analysis : {};
+      return textResult({
+        id: data.ticketId,
+        number: data.ticketNumber,
+        state: SECURITY_STATE_LABELS[String(data.state)] ?? data.state,
+        verdict: data.verdict,
+        decisionDueAt: data.decisionDueAt,
+        clickedAt: data.clickedAt,
+        assignedTo: data.assignedAgentName,
+        mail: {
+          from: analysis.from,
+          subject: analysis.subject,
+          sendingIp: analysis.sendingIp,
+          risk: analysis.level,
+          score: analysis.score,
+          auth: analysis.auth,
+          findings: records(analysis.findings)
+            .slice(0, 15)
+            .map((entry) => entry.message),
+          links: records(analysis.links)
+            .slice(0, 15)
+            .map((entry) => entry.href),
+        },
+        reporters: records(data.reporters).map((entry) => ({
+          name: entry.name,
+          answer: entry.answer,
+        })),
+        checklist: records(data.actions).map((entry) => ({
+          label: entry.label,
+          done: Boolean(entry.doneAt),
+        })),
+        measures: records(data.measures).map((entry) => ({
+          label: entry.label,
+          target: entry.target,
+          status: entry.status,
+          at: entry.createdAt,
+        })),
+        campaign: isRecord(data.campaign)
+          ? {
+              reports: data.campaign.reports,
+              reporters: data.campaign.reporters,
+              cases: data.campaign.caseCount,
+            }
+          : null,
+        iocHits: records(data.iocHits).map((entry) => ({
+          kind: entry.kind,
+          value: entry.value,
+          verdict: entry.verdict,
+        })),
+      });
+    },
+  },
+
   // ------------------------------------------------ Hilfen zum Ticket
   {
     name: "zuweisung_vorschlagen",
@@ -5367,7 +5720,7 @@ const TOOLS: Tool[] = [
   {
     name: "sla_eskalationen_anzeigen",
     description:
-      "Listet die neuesten SLA- und Ticket-Eskalationen der Abteilungen, die du sehen darfst.",
+      "Listet die neuesten SLA- und Ticket-Eskalationen der Abteilungen, die du sehen darfst.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "SLA-Eskalationen" },
     inputSchema: {
       type: "object",
@@ -6235,7 +6588,7 @@ const TOOLS: Tool[] = [
   {
     name: "shop_katalog_anzeigen",
     description:
-      "Durchsucht den Self-Service-Shop (Software, Lizenzen, Geräte, Zubehör, Ausleihartikel), den Mitarbeitende selbst bestellen können. suchbegriff: z. B. «Visio».",
+      "Durchsucht den Self-Service-Shop von nextDesk (Software, Lizenzen, Geräte, Zubehör, Ausleihartikel), den Mitarbeitende selbst bestellen können. suchbegriff: z. B. «Visio».",
     annotations: { readOnlyHint: true, title: "Shop-Katalog" },
     inputSchema: {
       type: "object",
@@ -6289,7 +6642,7 @@ const TOOLS: Tool[] = [
   {
     name: "im_shop_bestellen",
     description:
-      "Bestellt Artikel im Self-Service-Shop für dich (positionen: Name oder ID aus shop_katalog_anzeigen, mit Menge). begruendung ist Pflicht, ausser bei reinen Ausleihartikeln; bei Ausleihe ausleihe_von/ausleihe_bis (JJJJ-MM-TT) angeben. Je nach Artikel braucht es eine Freigabe. Ohne bestaetigt zeigt das Werkzeug zuerst die Bestellung als Entwurf; erst mit bestaetigt=true wird bestellt.",
+      "Bestellt Artikel im Self-Service-Shop für dich (positionen: Name oder ID aus shop_katalog_anzeigen, mit Menge). begruendung ist Pflicht, ausser bei reinen Ausleihartikeln; bei Ausleihe ausleihe_von/ausleihe_bis (JJJJ-MM-TT) angeben. Je nach Artikel braucht es eine Freigabe. Ohne bestaetigt zeigt das Werkzeug zuerst die Bestellung als Entwurf; erst mit bestaetigt=true wird bestellt.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -6433,7 +6786,7 @@ const TOOLS: Tool[] = [
   {
     name: "shop_bestellungen_anzeigen",
     description:
-      "Zeigt deine Shop-Bestellungen mit Status (bereich: mine, Standard). Mit bereich approvals die Bestellungen, die auf deine Freigabe warten.",
+      "Zeigt deine Shop-Bestellungen mit Status (bereich: mine, Standard). Mit bereich approvals die Bestellungen, die auf deine Freigabe warten.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     annotations: { readOnlyHint: true, title: "Shop-Bestellungen" },
     inputSchema: {
       type: "object",
@@ -6469,6 +6822,264 @@ const TOOLS: Tool[] = [
       });
     },
   },
+  // ------------------------------------------------ IP-Adressverwaltung (IPAM)
+  {
+    name: "netzwerk_fragen",
+    description:
+      "Beantwortet Fragen zur IP-Adressverwaltung aus den dokumentierten Daten, z. B. «Freie IP im VLAN 67 in Baar?», «Was hängt an SW-A2-01 Port 14?», «Welche IP hat DRU-A2-KOPIE?», «Welche Subnetze sind fast voll?». Die Antwort stammt aus nextDesk; nie IP-Adressen erfinden. Eine gefundene freie IP ist nur ein Vorschlag (Reservieren mit ip_reservieren).",
+    annotations: { readOnlyHint: true, title: "Netzwerk fragen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        frage: { type: "string", minLength: 2, maxLength: 500 },
+      },
+      required: ["frage"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const question = str(args.frage, 2, 500);
+      if (!question) throw new ToolError('"frage" fehlt.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "ask",
+        tenantId: workspace.id,
+        question,
+      });
+      return textResult({
+        answer: data.answer,
+        query: data.intent,
+        results: data.results,
+      });
+    },
+  },
+  {
+    name: "freie_ip_suchen",
+    description:
+      "Sucht die nächste freie IP-Adresse in den Subnetzen eines VLAN (vlan: Nummer, oder vlan_name z. B. «Drucker») und optional an einem Standort. Reserviert nichts; die Reservierung braucht ip_reservieren mit Bestätigung.",
+    annotations: { readOnlyHint: true, title: "Freie IP suchen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        vlan: { type: "integer", minimum: 1, maximum: 4094 },
+        vlan_name: { type: "string", maxLength: 60 },
+        standort: { type: "string", maxLength: 60 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const vlan = typeof args.vlan === "number" ? Math.trunc(args.vlan) : null;
+      const vlanName = str(args.vlan_name, 1, 60);
+      const site = str(args.standort, 1, 60);
+      if (vlan === null && !vlanName && !site) {
+        throw new ToolError('Gib "vlan", "vlan_name" oder "standort" an.');
+      }
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "freeAddress",
+        tenantId: workspace.id,
+        vlan,
+        vlanName,
+        site,
+      });
+      return textResult({
+        answer: data.answer,
+        free: isRecord(data.results) ? data.results.free : [],
+        next: "Zum Reservieren die Person fragen und ip_reservieren mit subnetz_id und adresse sowie bestaetigt=true aufrufen.",
+      });
+    },
+  },
+  {
+    name: "switchport_anzeigen",
+    description:
+      "Zeigt, welche dokumentierten Geräte an einem Switch-Port hängen (switch: Name wie SW-A2-01, port: z. B. 14 oder Gi1/0/14).",
+    annotations: { readOnlyHint: true, title: "Switch-Port anzeigen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        switch: { type: "string", minLength: 1, maxLength: 160 },
+        port: { type: "string", minLength: 1, maxLength: 80 },
+      },
+      required: ["switch", "port"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const switchName = str(args.switch, 1, 160);
+      const port = str(args.port, 1, 80);
+      if (!switchName || !port)
+        throw new ToolError('"switch" und "port" angeben.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "switchPort",
+        tenantId: workspace.id,
+        switchName,
+        port,
+      });
+      return textResult({ answer: data.answer, results: data.results });
+    },
+  },
+  {
+    name: "ip_nachschlagen",
+    description:
+      "Schlägt einen Hostnamen, eine IP- oder MAC-Adresse in der IP-Adressverwaltung nach: Status, Hostname, VLAN, Subnetz, Standort, Switch-Port, zuletzt gesehen, verknüpftes Gerät und offene Funde.",
+    annotations: { readOnlyHint: true, title: "IP nachschlagen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suche: { type: "string", minLength: 1, maxLength: 253 },
+      },
+      required: ["suche"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const query = str(args.suche, 1, 253);
+      if (!query) throw new ToolError('"suche" fehlt.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "hostLookup",
+        tenantId: workspace.id,
+        query,
+      });
+      return textResult({ answer: data.answer, results: data.results });
+    },
+  },
+  {
+    name: "volle_subnetze_anzeigen",
+    description:
+      "Listet Subnetze, deren Belegung (inkl. DHCP-Bereich) über der Warnschwelle liegt; optional eigene schwelle in Prozent.",
+    annotations: { readOnlyHint: true, title: "Volle Subnetze anzeigen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        schwelle: { type: "integer", minimum: 1, maximum: 100 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "fullPrefixes",
+        tenantId: workspace.id,
+        threshold:
+          typeof args.schwelle === "number" ? Math.trunc(args.schwelle) : null,
+      });
+      return textResult({ answer: data.answer, results: data.results });
+    },
+  },
+  {
+    name: "netzwerk_zum_ticket",
+    description:
+      "Erkennt IP-, MAC-Adressen und Gerätenamen im Ticket (Betreff, Beschreibung, Verlauf) und zeigt die dazu dokumentierten Netzwerkdaten.",
+    annotations: { readOnlyHint: true, title: "Netzwerk zum Ticket" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+      },
+      required: ["ticket"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const { workspace, ticketId } = await ticketContext(
+        config,
+        session,
+        args,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "ticketLookup",
+        tenantId: workspace.id,
+        ticketId,
+      });
+      return textResult({
+        detected: data.candidates,
+        addresses: data.addresses,
+        prefixes: data.prefixes,
+      });
+    },
+  },
+  {
+    name: "ip_reservieren",
+    description:
+      "Reserviert eine bestimmte IP-Adresse in einem Subnetz (subnetz_id und adresse aus freie_ip_suchen). Ohne bestaetigt zeigt das Werkzeug nur den Vorschlag; erst mit bestaetigt=true nach ausdrücklicher Zustimmung der Person wird reserviert. Braucht das Recht zur IPAM-Verwaltung.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "IP reservieren",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        subnetz_id: { type: "string" },
+        adresse: { type: "string", minLength: 2, maxLength: 45 },
+        hostname: { type: "string", maxLength: 253 },
+        beschreibung: { type: "string", maxLength: 1000 },
+        bestaetigt: {
+          type: "boolean",
+          description:
+            "Nur true, wenn die Person die Reservierung ausdrücklich bestätigt hat.",
+        },
+      },
+      required: ["subnetz_id", "adresse"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (!isUuid(args.subnetz_id))
+        throw new ToolError('"subnetz_id" fehlt (ID aus freie_ip_suchen).');
+      const address = str(args.adresse, 2, 45);
+      if (!address) throw new ToolError('"adresse" fehlt.');
+      const hostname = str(args.hostname, 1, 253);
+      const description = str(args.beschreibung, 1, 1000);
+      if (args.bestaetigt !== true) {
+        return draftResult("ip_reservieren", {
+          subnetz_id: args.subnetz_id,
+          adresse: address,
+          hostname,
+          beschreibung: description,
+        });
+      }
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const data = await callFunction(config, session, "ipam-sync", {
+        type: "reserveAddress",
+        tenantId: workspace.id,
+        prefixId: args.subnetz_id,
+        address,
+        hostname,
+        description,
+        confirmed: true,
+      });
+      return textResult({ reserved: true, reservation: data.reservation });
+    },
+  },
 ];
 
 // ---------------------------------------------------------------- Vorlagen
@@ -6500,18 +7111,18 @@ const PROMPTS: Prompt[] = [
     arguments: [
       {
         name: "frage",
-        description: "Deine Frage, z. B. «Wie bekomme ich Visio?»",
+        description: "Deine Frage, z. B. «Wie bekomme ich Visio?»", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
         required: true,
       },
     ],
     intro:
-      "Beantworte meine IT-Frage ausschliesslich mit dem Wissen aus nextDesk: zuerst wissen_suchen (und wissensartikel_lesen für den vollen Text), bei Software oder Material zusätzlich shop_katalog_anzeigen. Erfinde keine allgemeinen Anleitungen aus dem Web. Findest du nichts, sag das und biete an, mit der Vorlage ticket_erfassen ein Ticket zu erfassen.",
+      "Beantworte meine IT-Frage ausschliesslich mit dem Wissen aus nextDesk (nicht aus OneDrive, SharePoint, Google Drive oder dem Web): zuerst wissen_suchen (und wissensartikel_lesen für den vollen Text), bei Software oder Material zusätzlich shop_katalog_anzeigen. Erfinde keine allgemeinen Anleitungen aus dem Web. Findest du nichts, sag das und biete an, mit der Vorlage ticket_erfassen ein Ticket zu erfassen.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     tool: "wissen_suchen",
   },
   {
     name: "ticket_erfassen",
     title: "Ticket erfassen",
-    description: "Neues Ticket für dich oder eine andere Person erfassen.",
+    description: "Neues Ticket für dich oder eine andere Person erfassen.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     arguments: [
       { name: "betreff", description: "Kurzer Betreff", required: true },
       {
@@ -6525,7 +7136,7 @@ const PROMPTS: Prompt[] = [
       { name: "abteilung", description: "Zuständige Abteilung (Name)" },
       {
         name: "fuer_person",
-        description: "Name der anfragenden Person, falls nicht du",
+        description: "Name der anfragenden Person, falls nicht du", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
       },
       { name: "vorlage", description: "Ticketvorlage (Name)" },
     ],
@@ -6566,7 +7177,7 @@ const PROMPTS: Prompt[] = [
         description: "Name der Software, z. B. Visio",
         required: true,
       },
-      { name: "grund", description: "Wofür brauchst du sie?" },
+      { name: "grund", description: "Wofür brauchst du sie?" }, // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     ],
     intro:
       "Suche zuerst mit wissen_suchen, wie man diese Software bekommt (z. B. über das Unternehmensportal), und erkläre mir den Weg. Ist sie im Shop (shop_katalog_anzeigen) bestellbar, biete die Bestellung mit im_shop_bestellen an. Gibt es beides nicht, erfasse ein Ticket mit dem Grund.",
@@ -6641,7 +7252,7 @@ const PROMPTS: Prompt[] = [
         description: "Name der Führungsperson",
         required: true,
       },
-      { name: "ict_verantwortung", description: "Name (Standard: du)" },
+      { name: "ict_verantwortung", description: "Name (Standard: du)" }, // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
       { name: "vorlage", description: "Onboarding-Vorlage (Name)" },
     ],
     tool: "eintritt_erfassen",
@@ -7112,7 +7723,7 @@ const OUTPUT_KEYS: Record<string, string> = {
   done: "erledigt",
   draft: "entwurf",
   dueAt: "faellig",
-  dueFollowUps: "faellige_wiedervorlagen",
+  dueFollowUps: "faellige_erinnerungen",
   dueOn: "faellig_am",
   dueToday: "heute_faellig",
   employee: "mitarbeitende_person",
@@ -7131,7 +7742,7 @@ const OUTPUT_KEYS: Record<string, string> = {
   first: "erster_termin",
   firstContactResolutionRate: "erstloesungsquote",
   firstResponseSlaCompliance: "sla_einhaltung_erstreaktion",
-  followUps: "wiedervorlagen",
+  followUps: "erinnerungen",
   from: "von",
   fulfillment: "erfuellung",
   handovers: "uebergaben",
@@ -7451,6 +8062,89 @@ function rpcError(id: unknown, code: number, message: string): Json {
   return { jsonrpc: "2.0", id: id ?? null, error: { code, message } };
 }
 
+/**
+ * Titel der veröffentlichten Wissensartikel des ersten Arbeitsbereichs. Sie
+ * stehen in der Beschreibung von wissen_suchen, damit ein KI-Client sieht, zu
+ * welchen Themen die Organisation eigene Anleitungen hat, und nextDesk vor
+ * der Websuche befragt. Best effort: Bei Fehler oder Zeitüberschreitung bleibt
+ * die Beschreibung unverändert.
+ */
+async function knowledgeTitleHint(
+  config: Config,
+  session: Session,
+): Promise<string> {
+  const load = async (): Promise<string> => {
+    const [workspace] = await listWorkspaces(config, session);
+    if (!workspace) return "";
+    const articles = records(
+      (
+        await callFunction(config, session, "knowledge-base", {
+          type: "listArticles",
+          tenantId: workspace.id,
+          query: "",
+        })
+      ).articles,
+    );
+    const titles = articles
+      .filter(
+        (article) =>
+          article.status === undefined || article.status === "published",
+      )
+      .map((article) =>
+        typeof article.title === "string" ? article.title.trim() : "",
+      )
+      .filter((title) => title.length > 0)
+      .map((title) => clip(title, 60) ?? title)
+      .slice(0, 60);
+    return titles.length > 0
+      ? ` Die Organisation hat eigene Anleitungen, z. B.: ${titles.join("; ")}.`
+      : "";
+  };
+  try {
+    return await Promise.race([
+      remember(`knowledge-titles:${session.userId}`, 600_000, load),
+      new Promise<string>((resolve) => setTimeout(() => resolve(""), 2500)),
+    ]);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Betriebsprotokoll ohne Inhalte: Werkzeugname, Dauer, Fehler und bei
+ * Suchen die Zahl der Treffer. Zeigt, ob und womit ein KI-Client nextDesk
+ * befragt hat. Suchbegriffe und Antworten werden nicht protokolliert.
+ */
+function logToolCall(
+  tool: string,
+  startedAt: number,
+  result: ToolResult | null,
+  error?: unknown,
+): void {
+  let count: number | null = null;
+  try {
+    const text = result?.content[0]?.text;
+    const parsed = typeof text === "string" ? JSON.parse(text) : null;
+    if (isRecord(parsed) && typeof parsed.count === "number") {
+      count = parsed.count;
+    }
+  } catch {
+    // Kein JSON: keine Trefferzahl.
+  }
+  console.log(
+    JSON.stringify({
+      event: "mcp_tool_call",
+      tool,
+      ms: Date.now() - startedAt,
+      ok: result !== null && result.isError !== true,
+      ...(count !== null ? { count } : {}),
+      ...(error !== undefined
+        ? { error: error instanceof ToolError ? "tool_error" : "failed" }
+        : {}),
+    }),
+  );
+}
+
 export async function handleMessage(
   message: unknown,
   config: Config,
@@ -7469,8 +8163,33 @@ export async function handleMessage(
   }
   const { id, method } = message;
   const isNotification = id === undefined;
+  if (method !== "initialize") {
+    // Nur die Art der Anfrage und bei Werkzeugaufrufen der Name; keine Inhalte.
+    const calledTool =
+      method === "tools/call" &&
+      isRecord(message.params) &&
+      typeof message.params.name === "string"
+        ? message.params.name.slice(0, 80)
+        : undefined;
+    console.log(
+      JSON.stringify({
+        event: "mcp_method",
+        method: method.slice(0, 60),
+        ...(calledTool ? { tool: calledTool } : {}),
+      }),
+    );
+  }
   if (method === "initialize") {
     const params = isRecord(message.params) ? message.params : {};
+    if (isRecord(params.clientInfo)) {
+      console.log(
+        JSON.stringify({
+          event: "mcp_initialize",
+          client: String(params.clientInfo.name ?? "").slice(0, 60),
+          version: String(params.clientInfo.version ?? "").slice(0, 30),
+        }),
+      );
+    }
     const requested =
       typeof params.protocolVersion === "string" ? params.protocolVersion : "";
     const version = (SUPPORTED_PROTOCOLS as readonly string[]).includes(
@@ -7486,9 +8205,12 @@ export async function handleMessage(
       },
       serverInfo: SERVER_INFO,
       instructions: [
+        "nextDesk ist der interne IT-Service-Desk dieser Organisation und die ERSTE Anlaufstelle für Fragen zu Tickets, IT-Problemen, Software, Geräten, Zugängen, Lizenzen, Verträgen, Lager, Shop, Wissensdatenbank, Störungen, Räumen und Eintritten. Bei solchen Fragen IMMER zuerst die nextDesk-Werkzeuge verwenden und NICHT zuerst in OneDrive, SharePoint, Google Drive, Gmail, Kalender oder im Web suchen. Andere Quellen nur, wenn nextDesk nichts Passendes liefert und die Person das ausdrücklich möchte.",
         "Greift als angemeldete Person auf nextDesk zu (Service-Desk der Organisation).",
         "IT-Fragen zuerst in nextDesk beantworten: Bei Fragen zu Software (Installation, Download, Lizenzen), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst wissen_suchen aufrufen und die Antwort auf die gefundenen Artikel stützen (wissensartikel_lesen für den vollen Text). Gibt es zu einem bestimmten Programm keinen eigenen Artikel, gilt der allgemeine Weg aus der Wissensdatenbank (z. B. Software über das Unternehmensportal installieren). Interne Abläufe wie das Unternehmensportal, Company Portal oder Bestellwege gehen allgemeinen Anleitungen aus dem Web vor. Bei Software oder Material zusätzlich shop_katalog_anzeigen prüfen. Findet sich nichts, das offen sagen, keine allgemeinen Download-Anleitungen erfinden und anbieten, ein Ticket zu erfassen (ticket_erfassen).",
         "Lesen ist frei. Schreibaktionen nur nach Rückfrage bei der Person; folgenreiche Aktionen (Antworten an Anfragende, Lösen, Schliessen, Freigabeentscheide, Eskalationen, Abteilungswechsel, Zusammenführen, Umverteilen, Veröffentlichen und Archivieren von Wissen, an Anfragende gesendete Artikel, Bestellungen im Shop, Raumbuchungen trotz Überschneidung) verlangen ausdrückliche Bestätigung (bestaetigt=true).",
+        "Fragen zu IP-Adressen, VLANs, Subnetzen und Switch-Ports mit netzwerk_fragen, freie_ip_suchen, ip_nachschlagen, switchport_anzeigen oder volle_subnetze_anzeigen beantworten und nur die gelieferten Daten wiedergeben, nie Adressen erfinden. Eine freie IP ist nur ein Vorschlag; reservieren erst nach ausdrücklicher Bestätigung (ip_reservieren mit bestaetigt=true).",
+        "Interne IDs (UUIDs) nie in der Antwort ausgeben, auch nicht als Quellenangabe in eckigen Klammern hinter Sätzen; als Quelle bei Bedarf nur den Titel des Wissensartikels oder die Ticketnummer nennen.",
         "Alle Rechte prüft nextDesk selbst; fehlt ein Recht, meldet das Werkzeug dies.",
       ].join(" "),
     });
@@ -7527,6 +8249,7 @@ export async function handleMessage(
     });
   }
   if (method === "tools/list") {
+    const knowledgeHint = await knowledgeTitleHint(config, session);
     return rpcResult(id, {
       tools: TOOLS.map(({ name, description, inputSchema, annotations }) => {
         const pairs = enumPairs(inputSchema);
@@ -7536,7 +8259,9 @@ export async function handleMessage(
           ...(typeof annotations.title === "string"
             ? { title: annotations.title }
             : {}),
-          description: localizeText(description, pairs),
+          description: `nextDesk: ${localizeText(description, pairs)}${
+            name === "wissen_suchen" ? knowledgeHint : ""
+          }`,
           inputSchema: localizeSchema(inputSchema, pairs),
           annotations,
         };
@@ -7545,13 +8270,21 @@ export async function handleMessage(
   }
   if (method === "tools/call") {
     const params = isRecord(message.params) ? message.params : {};
-    const tool = TOOLS.find((entry) => entry.name === params.name);
+    const requested =
+      typeof params.name === "string"
+        ? (LEGACY_TOOL_NAMES[params.name] ?? params.name)
+        : params.name;
+    const tool = TOOLS.find((entry) => entry.name === requested);
     if (!tool) return rpcError(id, -32602, "Unbekanntes Werkzeug.");
     const raw = isRecord(params.arguments) ? params.arguments : {};
+    const startedAt = Date.now();
     try {
       const args = translateInput(tool.inputSchema, raw, "") as Json;
-      return rpcResult(id, await tool.run(config, session, args));
+      const result = await tool.run(config, session, args);
+      logToolCall(tool.name, startedAt, result);
+      return rpcResult(id, result);
     } catch (error) {
+      logToolCall(tool.name, startedAt, null, error);
       const text =
         error instanceof ToolError
           ? error.message

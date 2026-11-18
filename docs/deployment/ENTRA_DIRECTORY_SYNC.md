@@ -10,17 +10,17 @@ Die Entra-Verzeichniskonfiguration ist ausschliesslich an eine aktive, mandanten
 
 ## Einmalig für die zentrale App `nextDesk – Kunden SSO`
 
-1. Öffnen Sie **Microsoft Entra admin center → App registrations → nextDesk – Kunden SSO → API permissions**.
-2. Wählen Sie **Add a permission → Microsoft Graph → Application permissions**.
-3. Aktivieren Sie ausschliesslich **`User.Read.All`**.
-4. Erteilen Sie als berechtigte Gross-ICT-Administration den **Admin consent**.
-5. Erstellen Sie unter **Certificates & secrets** bei Bedarf ein neues Client Secret.
+1. Öffne **Microsoft Entra admin center → App registrations → nextDesk – Kunden SSO → API permissions**.
+2. Wähle **Add a permission → Microsoft Graph → Application permissions**.
+3. Aktiviere ausschliesslich **`User.Read.All`**.
+4. Erteile als berechtigte Gross-ICT-Administration den **Admin consent**.
+5. Erstelle unter **Certificates & secrets** bei Bedarf ein neues Client Secret.
 
 Die zentrale App braucht für den Verzeichnisabgleich weder `Organization.Read.All` noch Directory-Berechtigungen. Der technische Verbindungstest verwendet den personenbezugsfreien Graph-Endpunkt `GET /v1.0/users/$count` mit `ConsistencyLevel: eventual`. Die Anzahl bleibt ausschliesslich serverseitig und wird nicht an den Browser zurückgegeben.
 
 ## Secrets in Supabase
 
-Unter **Supabase → Project Settings → Edge Functions → Secrets** hinterlegen Sie:
+Unter **Supabase → Project Settings → Edge Functions → Secrets** hinterlegst du:
 
 - `ENTRA_DIRECTORY_CLIENT_ID`: Application (client) ID der zentralen App.
 - `ENTRA_DIRECTORY_CLIENT_SECRET`: Secret Value dieser App.
@@ -31,17 +31,17 @@ Diese Werte dürfen nie in Git, Browsercode, Logs oder Nachrichten erscheinen.
 
 ## Je Kundenmandant
 
-1. Aktivieren und speichern Sie unter **Einstellungen → Funktionen → SSO** eine Azure-SSO-Konfiguration mit einer tenant-spezifischen Issuer- oder Discovery-URL in der Form `https://login.microsoftonline.com/<GUID>/...`.
+1. Aktiviere und speichere unter **Einstellungen → Funktionen → SSO** eine Azure-SSO-Konfiguration mit einer tenant-spezifischen Issuer- oder Discovery-URL in der Form `https://login.microsoftonline.com/<GUID>/...`.
 2. Eine berechtigte Kundenadministration erteilt der zentralen App für genau diesen Mandanten den Graph-Admin-Consent:
 
    ```text
    https://login.microsoftonline.com/<KUNDEN-TENANT-ID>/adminconsent?client_id=<NEXTDESK-KUNDEN-SSO-CLIENT-ID>
    ```
 
-3. Öffnen Sie **Einstellungen → Personen & Agenten → Microsoft Entra-Verzeichnis**. Die aus dem aktiven SSO abgeleitete Tenant-ID wird nur lesend angezeigt.
-4. Aktivieren oder deaktivieren Sie den Connector nach Bedarf und klicken Sie auf **Konfiguration speichern**. Der Connector kann gespeichert und deaktiviert bleiben.
-5. Klicken Sie auf **Verbindung testen**. Dieser Schritt ist auch bei deaktiviertem Connector möglich und protokolliert nur Erfolg oder Fehlschlag.
-6. Erst nach erfolgreichem Test aktivieren Sie den Connector und wählen bewusst **Manuellen Abgleich starten**. Die Oberfläche zeigt nur aggregierte Zahlen, keine Graph-Antworten oder Personenlisten aus dem Test.
+3. Öffne **Einstellungen → Personen & Agenten → Microsoft Entra-Verzeichnis**. Die aus dem aktiven SSO abgeleitete Tenant-ID wird nur lesend angezeigt.
+4. Aktiviere oder deaktiviere den Connector nach Bedarf und klicke auf **Konfiguration speichern**. Der Connector kann gespeichert und deaktiviert bleiben.
+5. Klicke auf **Verbindung testen**. Dieser Schritt ist auch bei deaktiviertem Connector möglich und protokolliert nur Erfolg oder Fehlschlag.
+6. Erst nach erfolgreichem Test aktivierst du den Connector und wählst bewusst **Manuellen Abgleich starten**. Die Oberfläche zeigt nur aggregierte Zahlen, keine Graph-Antworten oder Personenlisten aus dem Test.
 
 Ein fehlender tenant-spezifischer SSO-Bezug sperrt Speichern, Test und Abgleich fail-closed. Wird der SSO-Tenant später geändert, muss die Konfiguration neu gespeichert werden.
 

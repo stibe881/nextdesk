@@ -1,3 +1,4 @@
+import { msg } from "../_shared/formality.ts";
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
 import {
@@ -125,6 +126,7 @@ const SCHEMA = {
 };
 
 const SYSTEM = [
+  // formality-ok: Anweisung an das Modell, keine Anrede der Person
   "Du ordnest ein neues IT-Support-Ticket ein. Wähle nur aus den gelieferten",
   "Listen (IDs bzw. Prioritätsschlüssel) oder null, wenn nichts passt. Gerät nur,",
   "wenn das Ticket klar ein Gerät der Person betrifft. confidence 0–1 gibt an, wie",
@@ -154,6 +156,7 @@ async function candidatesFor(admin: Admin, ticket: Row): Promise<TriageCandidate
       .is("returned_at", null).limit(30),
     admin.from("tickets")
       .select("id, ticket_number, subject, description, status:ticket_statuses!inner(is_closed)")
+      .is("deleted_at", null)
       .eq("tenant_id", ticket.tenant_id).eq("requester_id", ticket.requester_id)
       .eq("status.is_closed", false).is("merged_into_ticket_id", null)
       .neq("id", ticket.id).gte("created_at", since)
@@ -287,6 +290,7 @@ async function applySuggestion(
 async function processOne(admin: Admin, ticketId: string): Promise<void> {
   const { data: ticket, error } = await admin.from("tickets")
     .select("id, tenant_id, department_id, category_id, assigned_team_id, priority_id, requester_id, subject, description, created_at")
+    .is("deleted_at", null)
     .eq("id", ticketId).maybeSingle();
   if (error || !ticket) {
     await setState(admin, ticketId, { state: "failed", error_code: "ticket_unavailable" });
@@ -493,7 +497,7 @@ const userHandler = withSupabase(
           p_permission_code: "automation.manage",
         });
         if (allowed !== true) {
-          throw new HttpError(403, "automation_manage_required", "Dafür fehlt Ihnen die Berechtigung «Automationen verwalten».");
+          throw new HttpError(403, "automation_manage_required", msg("Dafür fehlt dir die Berechtigung «Automationen verwalten».", "Dafür fehlt Ihnen die Berechtigung «Automationen verwalten»."));
         }
         if (action.type === "saveSettings") {
           const { error } = await admin.from("ticket_triage_settings").upsert({
@@ -534,7 +538,7 @@ const userHandler = withSupabase(
           p_permission_code: "ticket.update",
         });
         if (canUpdate !== true) {
-          throw new HttpError(403, "ticket_update_denied", "Sie dürfen dieses Ticket nicht ändern.");
+          throw new HttpError(403, "ticket_update_denied", msg("Du darfst dieses Ticket nicht ändern.", "Sie dürfen dieses Ticket nicht ändern."));
         }
         if (!triage || triage.state !== "suggested") {
           throw new HttpError(409, "no_open_suggestion", "Es liegt kein offener Vorschlag vor.");

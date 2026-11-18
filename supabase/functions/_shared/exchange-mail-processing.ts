@@ -9,7 +9,7 @@ import {
   resolveInboundInlineMarkers,
 } from "./exchange-inline-media.ts";
 import {
-  corporateSignatureAnchors,
+  extractSignatureContacts,
   normalizeInboundEmailText,
 } from "./exchange-inbound-text.ts";
 import {
@@ -19,10 +19,18 @@ import {
   type CustomerTicketEmailBrand,
   type CustomerTicketEmailKind,
 } from "./customer-ticket-email-template.ts";
+import { emailTemplateDefinition } from "./email-templates.ts";
+import {
+  ensureRequesterContact,
+  nameFromAddress,
+  senderName,
+} from "./requester-name.ts";
+import { loadEmailTemplate } from "./email-templates-store.ts";
 import {
   requesterActionUrl,
   signRequesterActionToken,
 } from "./requester-action-token.ts";
+import { ratingLinks } from "./rating-link-token.ts";
 import { processEventSpaceEmailTicketIntake } from "./event-space-email-ticket-intake.ts";
 import { processOnboardingEmailTicketIntake } from "./onboarding-email-intake.ts";
 import {
@@ -30,8 +38,13 @@ import {
   processPhishingEmailReport,
 } from "./phishing-email-intake.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
+import { pickMailNotice, recordMailNotice } from "./requester-notices.ts";
 import { routeBackupEmail } from "./backup-monitoring.ts";
-import { notificationEmailText } from "./notification-email.ts";
+import { type Formality, loadFormality, tone } from "./formality.ts";
+import {
+  notificationEmailText,
+  notificationLinkUrl,
+} from "./notification-email.ts";
 
 const SERVICE_EMAIL = "exchange-mail-service@app.nextdesk.ch";
 const APP_ORIGIN = "https://app.nextdesk.ch";
@@ -57,6 +70,12 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "image/jpeg",
   "image/webp",
 ]);
+// Eingehend zusätzlich erlaubt: Outlook-Anhang «winmail.dat» (z. B. gemeldete
+// Nachrichten von «Melden»). Ausgehend bleibt die strenge Liste.
+const INBOUND_ALLOWED_CONTENT_TYPES = new Set([
+  ...ALLOWED_CONTENT_TYPES,
+  "application/ms-tnef",
+]);
 const TICKET_NUMBER_PATTERN =
   /(?:^|[^a-z0-9_-])([a-z0-9_-]{2,8}-\d{4}-\d{6})(?=$|[^a-z0-9_-])/gi;
 
@@ -71,6 +90,7 @@ type Channel = {
   mailbox_address: string;
   mailbox_object_id: string | null;
   default_department_id: string | null;
+  default_team_id?: string | null;
   send_acknowledgement: boolean;
   send_agent_replies: boolean;
   send_resolution: boolean;
@@ -93,6 +113,7 @@ type Message = {
   department_question_id: string | null;
   recipient_user_id: string | null;
   to_addresses: string[];
+  subject?: string | null;
   attempt_count: number;
   inline_media_status?: string | null;
   inline_media_attempt_count?: number | null;
@@ -111,6 +132,48 @@ type InboundAttachment = {
  * «Problem ist gelöst» / «Ich brauche noch Hilfe». Missing secrets or a
  * reminder that can no longer be answered simply send the mail without them.
  */
+/** Answer button for the «did you click?» question of a security case. */
+async function securityNoticeActions(
+  admin: any,
+  commentId: unknown,
+  recipient: string | null,
+): Promise<CustomerTicketEmailAction[]> {
+  if (typeof commentId !== "string" || !commentId || !recipient) return [];
+  const { data } = await admin
+    .from("security_click_questions")
+    .select("token, answer")
+    .eq("comment_id", commentId)
+    .eq("email", recipient.toLowerCase())
+    .maybeSingle();
+  const token = typeof data?.token === "string" ? data.token : null;
+  if (!token || data?.answer) return [];
+  return [
+    {
+      label: "Jetzt antworten",
+      url: `${APP_ORIGIN}/#sicherheit-antwort=${encodeURIComponent(token)}`,
+      primary: true,
+    },
+  ];
+}
+
+/**
+ * Star links for the «ticket resolved» e-mail. A missing secret just sends the
+ * mail without the stars.
+ */
+async function resolutionRatingLinks(
+  admin: any,
+  ticketId: string,
+  tenantId: string,
+): Promise<{ score: number; url: string }[]> {
+  try {
+    const secret = await admin.rpc("ticket_requester_action_secret");
+    if (secret.error || typeof secret.data !== "string") return [];
+    return await ratingLinks(APP_ORIGIN, ticketId, tenantId, secret.data);
+  } catch {
+    return [];
+  }
+}
+
 async function reminderEmailActions(
   admin: any,
   commentId: unknown,
@@ -166,10 +229,13 @@ export function customerTicketEmailKindForOutbound(
 ): CustomerTicketEmailKind | null {
   // Kopien einer Antwort an weitere Personen sehen aus wie die Antwort selbst.
   if (messageKind === "ticket_copy") return "agent_reply";
+  // Thanks, verdict and «did you click?» for phishing reporters.
+  if (messageKind === "security_notice") return "security_notice";
   if (
     messageKind === "agent_reply" ||
     messageKind === "acknowledgement" ||
     messageKind === "resolution" ||
+    messageKind === "rating_reminder" ||
     messageKind === "test"
   )
     return messageKind;
@@ -396,19 +462,32 @@ function emailFromPerson(value: unknown): string | null {
 }
 
 function displayNameFromAddress(address: string): string {
-  const local = address.slice(0, address.indexOf("@"));
-  const label = local
-    .normalize("NFKC")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .replace(/\s+/g, " ")
-    .slice(0, 120);
-  return label || "E-Mail-Kontakt";
+  return nameFromAddress(address);
 }
 
 function subject(value: unknown): string {
   const cleaned = cleanText(value, "E-Mail-Anfrage").replace(/\s+/g, " ");
   return cleaned.length >= 3 ? cleaned.slice(0, 240) : "E-Mail-Anfrage";
+}
+
+/**
+ * Art der Betreffzeile: «AW:/RE:» = Antwort, «WG:/FW:/Fwd:» = Weiterleitung.
+ * Weitergeleitete Mails behalten in Outlook Verlauf und Referenzen der
+ * Originalmail, sind aber eine neue Anfrage.
+ */
+export function inboundSubjectKind(
+  value: unknown,
+): "reply" | "forward" | "new" {
+  const text = typeof value === "string" ? value.trim() : "";
+  const prefix = text
+    .match(
+      /^(?:\[[^\]]{0,40}\]\s*)?(re|aw|antw|sv|vs|wg|fw|fwd|tr|wtr)\s*(?:\[\d+\])?\s*:/iu,
+    )?.[1]
+    ?.toLowerCase();
+  if (!prefix) return "new";
+  return ["wg", "fw", "fwd", "tr", "wtr"].includes(prefix)
+    ? "forward"
+    : "reply";
 }
 
 function ticketNumbers(value: string): string[] {
@@ -432,17 +511,19 @@ function escapeHtml(value: string): string {
   });
 }
 
-function internalNoticeHtmlTemplate(input: {
+export function internalNoticeHtmlTemplate(input: {
   text: string;
   ticketNumber: string;
   subject: string;
   portalName: string;
   attachmentNotice: boolean;
+  formality?: Formality;
 }): string {
+  const formality = input.formality ?? "du";
   const attachment = input.attachmentNotice
-    ? "<p>Einige Anhänge sind zu gross für den E-Mail-Versand. Bitte verwenden Sie das Portal.</p>"
+    ? `<p>${tone(formality, "Einige Anhänge sind zu gross für den E-Mail-Versand. Bitte verwende das Portal.", "Einige Anhänge sind zu gross für den E-Mail-Versand. Bitte verwenden Sie das Portal.")}</p>`
     : "";
-  return `<div style="font-family:Arial,sans-serif;line-height:1.5">${escapeHtml(input.text).replace(/\n/g, "<br>")}${attachment}<hr style="border:0;border-top:1px solid #ddd;margin:24px 0"><p style="color:#666;font-size:12px">${escapeHtml(input.ticketNumber)} · ${escapeHtml(input.subject)} · ${escapeHtml(input.portalName)}</p><p style="color:#666;font-size:12px">Antworten Sie direkt auf diese E-Mail. Bitte lassen Sie die Ticketnummer im Betreff stehen.</p></div>`;
+  return `<div style="font-family:Arial,sans-serif;line-height:1.5">${escapeHtml(input.text).replace(/\n/g, "<br>")}${attachment}<hr style="border:0;border-top:1px solid #ddd;margin:24px 0"><p style="color:#666;font-size:12px">${escapeHtml(input.ticketNumber)} · ${escapeHtml(input.subject)} · ${escapeHtml(input.portalName)}</p><p style="color:#666;font-size:12px">${tone(formality, "Antworte direkt auf diese E-Mail. Bitte lass die Ticketnummer im Betreff stehen.", "Antworten Sie direkt auf diese E-Mail. Bitte lassen Sie die Ticketnummer im Betreff stehen.")}</p></div>`;
 }
 
 function retryDelaySeconds(attempt: number, retryAfter?: number): number {
@@ -642,6 +723,52 @@ async function markProcessed(
   });
 }
 
+/**
+ * New tickets of a mailbox go to its team (Einstellungen → Funktionen →
+ * E-Mail-Kanäle). Runs after the intakes (security report, event space,
+ * onboarding), which may change the department: the team is only assigned
+ * while it is active and belongs to the ticket's department. Never throws.
+ */
+async function assignChannelTeam(
+  admin: Admin,
+  channel: Channel,
+  ticketId: string,
+): Promise<void> {
+  if (!channel.default_team_id) return;
+  try {
+    const ticket = await admin
+      .from("tickets")
+      .select("department_id, assigned_team_id")
+      .eq("id", ticketId)
+      .eq("tenant_id", channel.tenant_id)
+      .maybeSingle();
+    if (
+      ticket.error ||
+      !ticket.data ||
+      ticket.data.assigned_team_id ||
+      !ticket.data.department_id
+    )
+      return;
+    const team = await admin
+      .from("teams")
+      .select("id")
+      .eq("id", channel.default_team_id)
+      .eq("tenant_id", channel.tenant_id)
+      .eq("active", true)
+      .eq("department_id", ticket.data.department_id)
+      .maybeSingle();
+    if (team.error || !team.data) return;
+    await admin
+      .from("tickets")
+      .update({ assigned_team_id: team.data.id })
+      .eq("id", ticketId)
+      .eq("tenant_id", channel.tenant_id)
+      .is("assigned_team_id", null);
+  } catch {
+    // The ticket stays as created; the team can be assigned by hand.
+  }
+}
+
 async function audit(
   admin: Admin,
   tenantId: string,
@@ -742,27 +869,21 @@ async function requesterContact(
   admin: Admin,
   tenantId: string,
   address: string,
+  graph: Row,
 ): Promise<{ id: string; email: string }> {
-  const upsert = await admin
-    .from("ticket_requesters")
-    .upsert(
-      {
-        tenant_id: tenantId,
-        email: address,
-        display_name: displayNameFromAddress(address),
-        source: "email",
-      },
-      { onConflict: "tenant_id,email" },
-    )
-    .select("id, email")
-    .single();
-  if (
-    upsert.error ||
-    !asString(upsert.data?.id) ||
-    !emailAddress(upsert.data?.email)
-  )
+  // Keeps an existing (possibly corrected) name; see requester-name.ts.
+  const person = record(graph.from) ? graph.from : graph.sender;
+  const contact = await ensureRequesterContact(admin, {
+    tenantId,
+    address,
+    senderName:
+      record(person) && record(person.emailAddress)
+        ? senderName(person.emailAddress.name)
+        : null,
+  });
+  if (!contact || !asString(contact.id) || !emailAddress(contact.email))
     throw new Error("requester_contact_upsert_failed");
-  return { id: upsert.data.id, email: upsert.data.email };
+  return contact;
 }
 
 async function findInboundTicket(
@@ -780,7 +901,10 @@ async function findInboundTicket(
       (header) => asString(header.value)?.match(/<[^<>\r\n]{1,512}>/g) ?? [],
     )
     .slice(0, 20);
-  if (references.length) {
+  const subjectKind = inboundSubjectKind(graph.subject);
+  // Weiterleitungen sind neue Anfragen, ausser die Ticketnummer steht im
+  // Betreff (siehe unten). Tickets im Papierkorb werden nie gefunden.
+  if (references.length && subjectKind !== "forward") {
     const result = await admin
       .from("mail_messages")
       .select("ticket_id, tickets!inner(id, ticket_number)")
@@ -788,6 +912,7 @@ async function findInboundTicket(
       .eq("channel_id", channel.id)
       .in("internet_message_id", references)
       .not("ticket_id", "is", null)
+      .is("tickets.deleted_at", null)
       .limit(2);
     const candidate = result.data?.[0]?.tickets;
     if (!result.error && result.data?.length === 1 && record(candidate)) {
@@ -805,12 +930,16 @@ async function findInboundTicket(
       .eq("tenant_id", channel.tenant_id)
       .eq("exchange_mail_channel_id", channel.id)
       .eq("ticket_number", numbers[0])
+      .is("deleted_at", null)
       .maybeSingle();
     if (!byNumber.error && asString(byNumber.data?.id)) return byNumber.data;
   }
 
+  // Gleicher Outlook-Verlauf nur bei echten Antworten («AW:/RE:»): Outlook
+  // fasst auch neue Mails mit gleichem Betreff und Weiterleitungen in
+  // denselben Verlauf.
   const conversationId = asString(graph.conversationId);
-  if (conversationId) {
+  if (conversationId && subjectKind === "reply") {
     const byConversation = await admin
       .from("mail_messages")
       .select("ticket_id, tickets!inner(id, ticket_number)")
@@ -818,6 +947,7 @@ async function findInboundTicket(
       .eq("channel_id", channel.id)
       .eq("conversation_id", conversationId)
       .not("ticket_id", "is", null)
+      .is("tickets.deleted_at", null)
       .limit(2);
     const candidate = byConversation.data?.[0]?.tickets;
     if (
@@ -929,6 +1059,40 @@ async function isOtherChannelMailbox(
   return !result.error && Boolean(result.data);
 }
 
+/**
+ * Content type of a Graph file attachment: lower case, without parameters
+ * («application/pdf; name=x.pdf» → «application/pdf»); a generic
+ * «application/octet-stream» falls back to the file extension.
+ */
+export function inboundAttachmentContentType(
+  value: unknown,
+  filename?: unknown,
+): string | null {
+  const raw = asString(value)?.split(";")[0]?.trim().toLowerCase() ?? null;
+  if (raw && raw !== "application/octet-stream") {
+    return raw === "image/jpg" || raw === "image/pjpeg" ? "image/jpeg" : raw;
+  }
+  const name = asString(filename)?.toLowerCase() ?? "";
+  const extension = name.includes(".") ? name.split(".").pop() : "";
+  return (
+    (
+      {
+        pdf: "application/pdf",
+        txt: "text/plain",
+        csv: "text/csv",
+        doc: "application/msword",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        xls: "application/vnd.ms-excel",
+        xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        png: "image/png",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        webp: "image/webp",
+      } as Record<string, string>
+    )[extension ?? ""] ?? raw
+  );
+}
+
 async function readInboundAttachments(
   admin: Admin,
   channel: Channel,
@@ -941,7 +1105,11 @@ async function readInboundAttachments(
   const response = await graphRequestForChannel<Row>(
     admin,
     channel,
-    `/users/${mailbox}/messages/${encodeURIComponent(graphMessageId)}/attachments?$top=${MAX_INBOUND_ATTACHMENTS}&$select=id,name,contentType,size,contentBytes,isInline,contentId`,
+    // No $select: contentBytes/contentId exist only on file attachments, and
+    // selecting them fails the whole request with 400 BadRequest as soon as
+    // the mail carries an attached message (item attachment), e.g. a
+    // phishing report from Microsoft's Outlook «Report» button.
+    `/users/${mailbox}/messages/${encodeURIComponent(graphMessageId)}/attachments?$top=${MAX_INBOUND_ATTACHMENTS}`,
   );
   const entries = array(response.data.value).slice(0, MAX_INBOUND_ATTACHMENTS);
   const attachments: InboundAttachment[] = [];
@@ -949,18 +1117,21 @@ async function readInboundAttachments(
 
   for (const entry of entries) {
     if (entry["@odata.type"] !== "#microsoft.graph.fileAttachment") continue;
-    const contentType = asString(entry.contentType)?.toLowerCase();
+    const contentType = inboundAttachmentContentType(
+      entry.contentType,
+      entry.name,
+    );
     const filename = asString(entry.name);
     const contentBytes = asString(entry.contentBytes);
-    const size = typeof entry.size === "number" ? entry.size : 0;
+    // Graph's «size» is the size of the attachment item including metadata,
+    // not the file itself; only use it to skip oversized items early.
+    const reportedSize = typeof entry.size === "number" ? entry.size : 0;
     if (
       !contentType ||
       !filename ||
       !contentBytes ||
-      !ALLOWED_CONTENT_TYPES.has(contentType) ||
-      size < 1 ||
-      size > MAX_INBOUND_ATTACHMENT_BYTES ||
-      total + size > MAX_INBOUND_TOTAL_BYTES ||
+      !INBOUND_ALLOWED_CONTENT_TYPES.has(contentType) ||
+      reportedSize > MAX_INBOUND_ATTACHMENT_BYTES * 2 ||
       filename.length > 255 ||
       /[\u0000-\u001f\u007f/\\]/.test(filename)
     ) {
@@ -975,7 +1146,14 @@ async function readInboundAttachments(
     } catch {
       continue;
     }
-    if (bytes.byteLength !== size) continue;
+    const size = bytes.byteLength;
+    if (
+      size < 1 ||
+      size > MAX_INBOUND_ATTACHMENT_BYTES ||
+      total + size > MAX_INBOUND_TOTAL_BYTES
+    ) {
+      continue;
+    }
     total += size;
     attachments.push({
       bytes,
@@ -1111,7 +1289,7 @@ async function createNewTicket(
 ): Promise<{ id: string; ticket_number: string; contactId: string }> {
   if (!(await activeChannel(admin, channel)))
     throw new Error("channel_reconfigured");
-  const contact = await requesterContact(admin, channel.tenant_id, sender);
+  const contact = await requesterContact(admin, channel.tenant_id, sender, graph);
   const department = channel.default_department_id
     ? await admin
         .from("departments")
@@ -1220,70 +1398,90 @@ async function enqueueAcknowledgement(
   });
 }
 
+function emailDomain(address: string): string | null {
+  const at = address.lastIndexOf("@");
+  return at > 0 ? address.slice(at + 1).toLowerCase() : null;
+}
+
 /**
- * Stores the sanitised HTML signature of a new e-mail ticket. Best effort: the
- * module is loaded lazily and every failure is swallowed, so a problem with a
- * signature can never block or retry the ticket itself.
+ * Domains that belong to the tenant: the SSO domains plus the domains of its
+ * Exchange mailboxes. Subdomains count as well.
  */
-async function storeEmailSignature(
+async function tenantMailDomains(
+  admin: Admin,
+  tenantId: string,
+): Promise<Set<string>> {
+  const [sso, channels] = await Promise.all([
+    admin
+      .from("tenant_sso_allowed_domains")
+      .select("domain")
+      .eq("tenant_id", tenantId),
+    admin
+      .from("exchange_mail_channels")
+      .select("mailbox_address")
+      .eq("tenant_id", tenantId),
+  ]);
+  const domains = new Set<string>();
+  for (const row of (sso.data ?? []) as Row[]) {
+    const domain = asString(row.domain)?.toLowerCase();
+    if (domain) domains.add(domain);
+  }
+  for (const row of (channels.data ?? []) as Row[]) {
+    const address = asString(row.mailbox_address);
+    const domain = address ? emailDomain(address) : null;
+    if (domain) domains.add(domain);
+  }
+  return domains;
+}
+
+export function isTenantMailDomain(
+  address: string,
+  domains: ReadonlySet<string>,
+): boolean {
+  const domain = emailDomain(address);
+  if (!domain) return false;
+  for (const tenantDomain of domains) {
+    if (domain === tenantDomain || domain.endsWith(`.${tenantDomain}`))
+      return true;
+  }
+  return false;
+}
+
+/**
+ * The signature itself is removed from a new e-mail ticket. For external
+ * senders (not a domain of the tenant) the phone numbers and e-mail addresses
+ * of the signature are kept for the ticket overview. Best effort: a failure
+ * can never block or retry the ticket itself.
+ */
+async function storeSenderContacts(
   admin: Admin,
   input: {
-    channel: Channel;
-    graphMessageId: string;
     tenantId: string;
     ticketId: string;
+    sender: string;
     text: string | null;
-    attachments: InboundAttachment[];
   },
 ): Promise<void> {
-  if (!input.text) return;
   try {
-    // Only fetch the HTML body when the text shows a corporate signature.
-    if (!corporateSignatureAnchors(input.text)) return;
-    const mailbox = graphMailboxIdentifier(
-      input.channel.mailbox_object_id,
-      input.channel.mailbox_address,
-    );
-    const response = await graphRequestForChannel<Row>(
-      admin,
-      input.channel,
-      `/users/${mailbox}/messages/${encodeURIComponent(input.graphMessageId)}?$select=uniqueBody,body`,
-      { headers: { Prefer: 'outlook.body-content-type="html"' } },
-    );
-    const graphBody = response.data;
-    const sourceHtml = record(graphBody.uniqueBody)
-      ? asString(graphBody.uniqueBody.content)
-      : record(graphBody.body)
-        ? asString(graphBody.body.content)
-        : null;
-    if (!sourceHtml) return;
-    const { extractEmailSignatureHtml } =
-      await import("./email-signature-html.ts");
-    const html = await extractEmailSignatureHtml({
-      html: sourceHtml,
-      text: input.text,
-      inlineImages: input.attachments.flatMap((attachment) =>
-        attachment.contentId
-          ? [
-              {
-                contentId: attachment.contentId,
-                contentType: attachment.contentType,
-                bytes: attachment.bytes,
-              },
-            ]
-          : [],
-      ),
-    });
-    if (!html) return;
+    const domains = await tenantMailDomains(admin, input.tenantId);
+    if (isTenantMailDomain(input.sender, domains)) return;
+    const contacts = extractSignatureContacts(input.text);
+    const sender = input.sender.toLowerCase();
+    const emails = [
+      sender,
+      ...contacts.emails.filter((email) => email !== sender),
+    ].slice(0, 10);
     const { error } = await admin.from("ticket_email_signatures").upsert({
       ticket_id: input.ticketId,
       tenant_id: input.tenantId,
-      html,
+      html: null,
+      phones: contacts.phones.slice(0, 10),
+      emails,
     });
-    if (error) console.error("email_signature_store_failed", error.code);
+    if (error) console.error("email_sender_contacts_store_failed", error.code);
   } catch (error) {
     console.error(
-      "email_signature_extract_failed",
+      "email_sender_contacts_failed",
       error instanceof Error ? error.name : typeof error,
     );
   }
@@ -1442,7 +1640,7 @@ export async function processInboundMessage(
         sender,
       ));
     stage = "requester_contact";
-    const contact = await requesterContact(admin, channel.tenant_id, sender);
+    const contact = await requesterContact(admin, channel.tenant_id, sender, graph);
     stage = "service_identity";
     const serviceIdentityId = await ensureExchangeMailServiceIdentity(admin);
     const inboundAttachments =
@@ -1470,6 +1668,22 @@ export async function processInboundMessage(
         .filter((contentId): contentId is string => contentId !== null),
     );
     const persistedBody = resolveInboundInlineMarkers(preparedBody, new Map());
+    // Forwarded to the phishing report address: becomes a security ticket
+    // instead of an ordinary one. Decided before the commit, so the generic
+    // acknowledgement can be left out (the thank-you reply replaces it).
+    const phishingCandidate = !linkedTicket
+      ? await phishingReportSettingsFor(admin, {
+          tenantId: channel.tenant_id,
+          mailboxAddress: channel.mailbox_address,
+          subject: subject(graph.subject),
+          recipients: [
+            ...array(graph.toRecipients),
+            ...array(graph.ccRecipients),
+          ]
+            .map(emailFromPerson)
+            .filter((value): value is string => value !== null),
+        })
+      : null;
     stage = "commit_inbound";
     const committed = await admin.rpc("exchange_mail_commit_inbound", {
       p_tenant_id: channel.tenant_id,
@@ -1492,12 +1706,14 @@ export async function processInboundMessage(
       p_cc_addresses: array(graph.ccRecipients)
         .map(emailFromPerson)
         .filter((value): value is string => value !== null),
+      p_acknowledge: !(phishingCandidate && channel.send_agent_replies),
     });
     const result = Array.isArray(committed.data) ? committed.data[0] : null;
     const ticketId = asString(result?.ticket_id);
     const ticketNumber = asString(result?.ticket_number);
     const commentId = asString(result?.comment_id);
     const kind = asString(result?.kind);
+    const phishingSettings = kind === "new_ticket" ? phishingCandidate : null;
     if (committed.error || !result) throw new Error("inbound_commit_failed");
     if (result.outcome === "ignored" || result.outcome === "already_processed")
       return;
@@ -1508,22 +1724,25 @@ export async function processInboundMessage(
       (kind !== "new_ticket" && kind !== "reply")
     )
       throw new Error("inbound_commit_invalid");
-    // Forwarded to the phishing report address: becomes a security ticket
-    // instead of an ordinary one (no event space / onboarding intake).
-    const phishingSettings =
-      kind === "new_ticket"
-        ? await phishingReportSettingsFor(admin, {
-            tenantId: channel.tenant_id,
-            mailboxAddress: channel.mailbox_address,
-            subject: subject(graph.subject),
-            recipients: [
-              ...array(graph.toRecipients),
-              ...array(graph.ccRecipients),
-            ]
-              .map(emailFromPerson)
-              .filter((value): value is string => value !== null),
-          })
-        : null;
+    // Gesperrter Absender (Spam): Das Ticket wurde schon als Spam angelegt.
+    // Keine Zuteilung, Anhänge, Kontakte oder Raumplanung.
+    if (kind === "new_ticket") {
+      const spam = await admin
+        .from("tickets")
+        .select("spam_at")
+        .eq("id", ticketId)
+        .eq("tenant_id", channel.tenant_id)
+        .maybeSingle();
+      if (asString(spam.data?.spam_at)) return;
+    }
+    // Team des Postfachs sofort setzen: Die folgenden Schritte (Anhänge,
+    // Kontakte, Raumplanung) können länger dauern. Bricht die Verarbeitung
+    // dort ab, bleibt das Ticket sonst ohne Team, denn die Nachricht gilt
+    // nach dem Commit als verarbeitet und wird nicht wiederholt. Bei einer
+    // Phishing-Meldung erst am Ende, weil sie die Abteilung ändern kann.
+    if (kind === "new_ticket" && !phishingSettings) {
+      await assignChannelTeam(admin, channel, ticketId);
+    }
     if (kind === "new_ticket" && !phishingSettings) {
       await processEventSpaceEmailTicketIntake(admin, {
         tenantId: channel.tenant_id,
@@ -1533,17 +1752,15 @@ export async function processInboundMessage(
       });
     }
     if (kind === "new_ticket" && !phishingSettings) {
-      await storeEmailSignature(admin, {
-        channel,
-        graphMessageId: message.graph_message_id,
+      await storeSenderContacts(admin, {
         tenantId: channel.tenant_id,
         ticketId,
+        sender,
         text: record(graph.uniqueBody)
           ? asString(graph.uniqueBody.content)
           : record(graph.body)
             ? asString(graph.body.content)
             : null,
-        attachments: inboundAttachments,
       });
     }
     if (inboundAttachments.length > 0) {
@@ -1646,6 +1863,10 @@ export async function processInboundMessage(
         ticketNumber,
         attachments: inboundAttachments,
       });
+    }
+    if (kind === "new_ticket") {
+      // Nach den Intakes erneut (no-op, wenn schon gesetzt): deckt Phishing ab.
+      await assignChannelTeam(admin, channel, ticketId);
     }
     await audit(
       admin,
@@ -1852,6 +2073,17 @@ async function dispatchNotificationMail(
     });
   try {
     if (!(await claimMessage(admin, message.id))) return;
+    const formality = await loadFormality(admin, message.tenant_id);
+    const template = await loadEmailTemplate(
+      admin,
+      message.tenant_id,
+      "notification",
+      formality,
+    );
+    if (!template.enabled) {
+      await ignore("template_disabled");
+      return;
+    }
     const row = await admin
       .from("mail_messages")
       .select("notification_id")
@@ -1894,9 +2126,15 @@ async function dispatchNotificationMail(
       const ticket = await admin
         .from("tickets")
         .select("ticket_number, subject")
+        .is("deleted_at", null)
         .eq("id", message.ticket_id)
         .eq("tenant_id", message.tenant_id)
         .maybeSingle();
+      // Tickets im Papierkorb lösen keine Benachrichtigungen mehr aus.
+      if (!ticket.error && !ticket.data) {
+        await ignore("ticket_unavailable");
+        return;
+      }
       ticketNumber = asString(ticket.data?.ticket_number);
       ticketSubject = asString(ticket.data?.subject);
     }
@@ -1907,29 +2145,55 @@ async function dispatchNotificationMail(
       return;
     }
     const [tenant, settings] = await Promise.all([
-      admin.from("tenants").select("name").eq("id", message.tenant_id).maybeSingle(),
+      admin
+        .from("tenants")
+        .select("name")
+        .eq("id", message.tenant_id)
+        .maybeSingle(),
       admin
         .from("tenant_settings")
         .select("portal_name")
         .eq("tenant_id", message.tenant_id)
         .maybeSingle(),
     ]);
-    const portalName = asString(settings.data?.portal_name) ??
-      asString(tenant.data?.name) ?? "nextDesk";
+    const portalName =
+      asString(settings.data?.portal_name) ??
+      asString(tenant.data?.name) ??
+      "nextDesk";
     const mail = notificationEmailText({
       kind: String(notification.data.kind),
       payload: (notification.data.payload ?? {}) as Record<string, unknown>,
       ticketNumber,
       ticketSubject,
+      formality,
     });
-    const paragraphs = mail.body
-      .split("\n\n")
-      .map((paragraph) =>
-        `<p style="margin:0 0 12px">${escapeHtml(paragraph)}</p>`
-      )
-      .join("");
-    const html =
-      `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">${paragraphs}<p style="margin:16px 0"><a href="${APP_ORIGIN}" style="color:#4338ca;font-weight:bold">In ${escapeHtml(portalName)} öffnen</a></p><hr style="border:0;border-top:1px solid #ddd;margin:24px 0"><p style="color:#666;font-size:12px">${escapeHtml(portalName)} · Benachrichtigung · Bitte nicht auf diese E-Mail antworten.</p></div>`;
+    // Same branded layout as the other nextDesk mails.
+    const branding = await customerEmailBranding(
+      admin,
+      message.tenant_id,
+      portalName,
+      true,
+    );
+    const html = renderCustomerTicketEmail({
+      kind: "notification",
+      subject: ticketSubject ?? mail.title,
+      ticketNumber,
+      intro: mail.title,
+      text: mail.message,
+      eyebrow: template.text("eyebrow", { portalName }),
+      replyHint: template.text("hint", { portalName }).trim() || mail.hint,
+      actions: [
+        {
+          label: template.text("button", { portalName }),
+          // Deep link: opens exactly the object of this notification.
+          url: notificationLinkUrl(APP_ORIGIN, notificationId),
+          primary: true,
+        },
+      ],
+      branding: branding.branding,
+      attachmentNotice: false,
+      formality,
+    });
     if (!(await activeChannel(admin, channel))) {
       await ignore("channel_reconfigured");
       return;
@@ -1942,13 +2206,459 @@ async function dispatchNotificationMail(
       method: "POST",
       body: JSON.stringify({
         message: {
-          subject: `${mail.subject} – ${portalName}`.slice(0, 250),
+          subject:
+            `${mail.subject} – ${template.text("subjectSuffix", { portalName }).trim() || portalName}`.slice(
+              0,
+              250,
+            ),
           body: { contentType: "HTML", content: html },
           toRecipients: [{ emailAddress: { address: recipient } }],
           internetMessageHeaders: [
             { name: "X-nextDesk-Notification", value: notificationId },
             { name: "X-Auto-Response-Suppress", value: "All" },
           ],
+          ...(branding.logoAttachment
+            ? { attachments: [branding.logoAttachment] }
+            : {}),
+        },
+        saveToSentItems: false,
+      }),
+    });
+    await markProcessed(admin, message);
+    await admin
+      .from("exchange_mail_channels")
+      .update({ last_outbound_at: new Date().toISOString() })
+      .eq("id", channel.id);
+  } catch (error) {
+    await retryOrFail(admin, message, error);
+  }
+}
+
+const SERVICE_STATUS_LABEL: Record<string, string> = {
+  operational: "In Betrieb",
+  degraded: "Eingeschränkt",
+  partial_outage: "Teilausfall",
+  major_outage: "Ausfall",
+  maintenance: "Wartung",
+};
+
+/** Link auf die öffentliche Statusseite (optional mit Abo-Aktion). */
+export function serviceStatusPageUrl(
+  publicId: string,
+  action?: { token: string; kind: "confirm" | "unsubscribe" },
+): string {
+  const url = new URL(APP_ORIGIN);
+  url.searchParams.set("system-status", publicId);
+  if (action) {
+    url.searchParams.set("status-subscription", action.token);
+    url.searchParams.set("status-action", action.kind);
+  }
+  return url.toString();
+}
+
+/**
+ * Systemstatus-Abo: Bestätigungsmail (Double-Opt-in) und Meldung bei einer
+ * Statusänderung eines öffentlichen Dienstes, jeweils mit Abmeldelink.
+ */
+const INCIDENT_STATE_LABEL: Record<string, string> = {
+  investigating: "Wird untersucht",
+  identified: "Ursache erkannt",
+  monitoring: "Wird beobachtet",
+  resolved: "Behoben",
+};
+
+function swissDateTime(value: unknown): string {
+  const date = new Date(String(value));
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat("de-CH", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "Europe/Zurich",
+    }).format(date)
+    : "";
+}
+
+async function publicServiceNames(
+  admin: Admin,
+  tenantId: string,
+  serviceIds: string[],
+): Promise<string[]> {
+  if (serviceIds.length === 0) return [];
+  const { data } = await admin
+    .from("services")
+    .select("name")
+    .eq("tenant_id", tenantId)
+    .eq("active", true)
+    .eq("status_public", true)
+    .in("id", serviceIds.slice(0, 100));
+  return ((data ?? []) as Record<string, unknown>[])
+    .flatMap((row) => (asString(row.name) ? [asString(row.name)!] : []))
+    .sort((a, b) => a.localeCompare(b, "de-CH"));
+}
+
+type StatusMailContent = { service: string; status: string; text: string };
+
+/** Inhalt der Mail zu einem Update einer öffentlichen Störungsmeldung. */
+async function serviceIncidentMailContent(
+  admin: Admin,
+  tenantId: string,
+  updateId: string,
+): Promise<StatusMailContent | null> {
+  const update = await admin
+    .from("service_incident_notice_updates")
+    .select("notice_id, status, title, body, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("id", updateId)
+    .maybeSingle();
+  const noticeId = asString(update.data?.notice_id);
+  if (!update.data || !noticeId) return null;
+  const [notice, links] = await Promise.all([
+    admin
+      .from("service_incident_notices")
+      .select("title, public_enabled")
+      .eq("tenant_id", tenantId)
+      .eq("id", noticeId)
+      .maybeSingle(),
+    admin
+      .from("service_incident_notice_services")
+      .select("service_id")
+      .eq("tenant_id", tenantId)
+      .eq("notice_id", noticeId)
+      .limit(100),
+  ]);
+  if (notice.data?.public_enabled !== true) return null;
+  const names = await publicServiceNames(
+    admin,
+    tenantId,
+    ((links.data ?? []) as Record<string, unknown>[]).flatMap((link) =>
+      asString(link.service_id) ? [asString(link.service_id)!] : []
+    ),
+  );
+  const title = asString(notice.data?.title) ??
+    asString(update.data.title) ?? "Störung";
+  const state = INCIDENT_STATE_LABEL[String(update.data.status)] ??
+    "Aktualisiert";
+  return {
+    service: title,
+    status: state,
+    text: `${String(update.data.body ?? "").trim()}` +
+      (names.length ? `\n\nBetroffene Dienste: ${names.join(", ")}.` : "") +
+      `\n\nStand: ${state}, ${swissDateTime(update.data.created_at)}.`,
+  };
+}
+
+/** Inhalt der Mail bei Ankündigung, Beginn bzw. Ende eines öffentlichen Wartungsfensters. */
+async function serviceMaintenanceMailContent(
+  admin: Admin,
+  tenantId: string,
+  maintenanceId: string,
+  phase: "announce" | "start" | "end",
+): Promise<StatusMailContent | null> {
+  const [maintenance, links] = await Promise.all([
+    admin
+      .from("service_status_maintenances")
+      .select("title, description, starts_at, ends_at, public_enabled, state")
+      .eq("tenant_id", tenantId)
+      .eq("id", maintenanceId)
+      .maybeSingle(),
+    admin
+      .from("service_status_maintenance_services")
+      .select("service_id")
+      .eq("tenant_id", tenantId)
+      .eq("maintenance_id", maintenanceId)
+      .limit(100),
+  ]);
+  if (maintenance.data?.public_enabled !== true) return null;
+  const names = await publicServiceNames(
+    admin,
+    tenantId,
+    ((links.data ?? []) as Record<string, unknown>[]).flatMap((link) =>
+      asString(link.service_id) ? [asString(link.service_id)!] : []
+    ),
+  );
+  const title = asString(maintenance.data.title) ?? "Wartung";
+  const description = asString(maintenance.data.description);
+  const status = phase === "announce"
+    ? "Wartung geplant"
+    : phase === "start"
+    ? "Wartung begonnen"
+    : "Wartung beendet";
+  const services = names.length
+    ? `\n\nBetroffene Dienste: ${names.join(", ")}.`
+    : "";
+  if (phase === "announce" && maintenance.data.state !== "scheduled") return null;
+  const text = phase === "announce"
+    ? `Geplante Wartung «${title}»: von ${swissDateTime(maintenance.data.starts_at)} bis ${
+      swissDateTime(maintenance.data.ends_at)
+    }. In dieser Zeit können die Dienste eingeschränkt oder nicht verfügbar sein.` +
+      (description ? `\n\n${description}` : "") + services
+    : phase === "start"
+    ? `Die geplante Wartung «${title}» hat begonnen. Geplant bis ${
+      swissDateTime(maintenance.data.ends_at)
+    }.` + (description ? `\n\n${description}` : "") + services
+    : maintenance.data.state === "cancelled"
+    ? `Die Wartung «${title}» wurde vorzeitig beendet.` + services
+    : `Die Wartung «${title}» ist abgeschlossen. Die Dienste stehen wieder zur Verfügung.` +
+      services;
+  return { service: title, status, text };
+}
+
+async function dispatchServiceStatusMail(
+  admin: Admin,
+  message: Message,
+  channel: Channel,
+): Promise<void> {
+  const ignore = (reason: string) =>
+    updateMessage(admin, message.id, {
+      processing_status: "ignored",
+      ignore_reason: reason,
+    });
+  try {
+    if (!(await claimMessage(admin, message.id))) return;
+    const formality = await loadFormality(admin, message.tenant_id);
+    const template = await loadEmailTemplate(
+      admin,
+      message.tenant_id,
+      message.kind,
+      formality,
+    );
+    if (!template.enabled) {
+      await ignore("template_disabled");
+      return;
+    }
+    const row = await admin
+      .from("mail_messages")
+      .select(
+        "status_subscription_id, service_status_event_id, service_incident_update_id, service_status_maintenance_id, maintenance_phase",
+      )
+      .eq("id", message.id)
+      .maybeSingle();
+    const subscriptionId = asString(row.data?.status_subscription_id);
+    if (!subscriptionId) {
+      await ignore("status_subscription_unavailable");
+      return;
+    }
+    const [subscription, page] = await Promise.all([
+      admin
+        .from("service_status_subscriptions")
+        .select("email, token, confirmed_at")
+        .eq("id", subscriptionId)
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle(),
+      admin
+        .from("service_status_pages")
+        .select("public_id, title, public_enabled")
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle(),
+    ]);
+    const recipient = emailAddress(subscription.data?.email);
+    const token = asString(subscription.data?.token);
+    const publicId = asString(page.data?.public_id);
+    if (
+      !recipient ||
+      !token ||
+      !publicId ||
+      page.data?.public_enabled !== true
+    ) {
+      await ignore("status_subscription_unavailable");
+      return;
+    }
+    const pageTitle = asString(page.data?.title) ?? "Systemstatus";
+    const unsubscribeUrl = serviceStatusPageUrl(publicId, {
+      token,
+      kind: "unsubscribe",
+    });
+    let subject: string;
+    let intro: string;
+    let text: string;
+    let actions: { label: string; url: string; primary?: boolean }[];
+    if (message.kind === "status_confirmation") {
+      if (subscription.data?.confirmed_at) {
+        await ignore("status_subscription_already_confirmed");
+        return;
+      }
+      const values = { pageTitle };
+      subject = template.text("subject", values);
+      intro = template.text("intro", values);
+      text = template.text("text", values);
+      actions = [
+        {
+          label: template.text("button", values),
+          url: serviceStatusPageUrl(publicId, { token, kind: "confirm" }),
+          primary: true,
+        },
+      ];
+    } else {
+      if (!subscription.data?.confirmed_at) {
+        await ignore("status_subscription_not_confirmed");
+        return;
+      }
+      // Störungsmeldung (Update) oder Wartungsfenster (Beginn/Ende) statt
+      // einer einzelnen Statusänderung.
+      const incidentUpdateId = asString(row.data?.service_incident_update_id);
+      const maintenanceId = asString(row.data?.service_status_maintenance_id);
+      const extra = incidentUpdateId
+        ? await serviceIncidentMailContent(
+          admin,
+          message.tenant_id,
+          incidentUpdateId,
+        )
+        : maintenanceId
+        ? await serviceMaintenanceMailContent(
+          admin,
+          message.tenant_id,
+          maintenanceId,
+          asString(row.data?.maintenance_phase) === "end"
+            ? "end"
+            : asString(row.data?.maintenance_phase) === "announce"
+            ? "announce"
+            : "start",
+        )
+        : undefined;
+      if (extra === null) {
+        await ignore("status_event_unavailable");
+        return;
+      }
+      if (extra) {
+        const values = { service: extra.service, status: extra.status, pageTitle };
+        subject = template.text("subject", values);
+        intro = template.text("intro", values);
+        text = extra.text;
+        actions = [
+          {
+            label: template.text("button", { pageTitle }),
+            url: serviceStatusPageUrl(publicId),
+            primary: true,
+          },
+        ];
+      } else {
+      const eventId = asString(row.data?.service_status_event_id);
+      const event = eventId
+        ? await admin
+            .from("service_status_events")
+            .select("service_id, status, changed_at")
+            .eq("id", eventId)
+            .eq("tenant_id", message.tenant_id)
+            .maybeSingle()
+        : { data: null };
+      const serviceId = asString(event.data?.service_id);
+      const service = serviceId
+        ? await admin
+            .from("services")
+            .select("name, status_public, active")
+            .eq("id", serviceId)
+            .eq("tenant_id", message.tenant_id)
+            .maybeSingle()
+        : { data: null };
+      const serviceName = asString(service.data?.name);
+      if (
+        !event.data ||
+        !serviceName ||
+        service.data?.status_public !== true ||
+        service.data?.active !== true
+      ) {
+        await ignore("status_event_unavailable");
+        return;
+      }
+      const previous = await admin
+        .from("service_status_events")
+        .select("status")
+        .eq("tenant_id", message.tenant_id)
+        .eq("service_id", serviceId)
+        .lt("changed_at", event.data.changed_at)
+        .order("changed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const now = SERVICE_STATUS_LABEL[String(event.data.status)] ?? "Geändert";
+      const before = previous.data
+        ? (SERVICE_STATUS_LABEL[String(previous.data.status)] ?? null)
+        : null;
+      const changedAt = new Intl.DateTimeFormat("de-CH", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "Europe/Zurich",
+      }).format(new Date(String(event.data.changed_at)));
+      const values = { service: serviceName, status: now, pageTitle };
+      subject = template.text("subject", values);
+      intro = template.text("intro", values);
+      text =
+        (before
+          ? `Der Status von «${serviceName}» hat sich von «${before}» zu «${now}» geändert.`
+          : `Der Status von «${serviceName}» ist jetzt «${now}».`) +
+        `\n\nGeändert am ${changedAt}.`;
+      actions = [
+        {
+          label: template.text("button", { pageTitle }),
+          url: serviceStatusPageUrl(publicId),
+          primary: true,
+        },
+      ];
+      }
+    }
+    actions.push({ label: "Abmelden", url: unsubscribeUrl });
+    const [tenant, settings] = await Promise.all([
+      admin
+        .from("tenants")
+        .select("name")
+        .eq("id", message.tenant_id)
+        .maybeSingle(),
+      admin
+        .from("tenant_settings")
+        .select("portal_name")
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle(),
+    ]);
+    const portalName =
+      asString(settings.data?.portal_name) ??
+      asString(tenant.data?.name) ??
+      "nextDesk";
+    const branding = await customerEmailBranding(
+      admin,
+      message.tenant_id,
+      portalName,
+      true,
+    );
+    const html = renderCustomerTicketEmail({
+      kind: "notification",
+      subject: pageTitle,
+      ticketNumber: null,
+      intro,
+      text,
+      replyHint:
+        message.kind === "status_change"
+          ? template.text("hint", { pageTitle })
+          : tone(
+              formality,
+              "Du erhältst diese E-Mail, weil du den Systemstatus abonniert hast. Über «Abmelden» beendest du das Abo jederzeit.",
+              "Sie erhalten diese E-Mail, weil Sie den Systemstatus abonniert haben. Über «Abmelden» beenden Sie das Abo jederzeit.",
+            ),
+      actions,
+      branding: branding.branding,
+      attachmentNotice: false,
+      formality,
+    });
+    if (!(await activeChannel(admin, channel))) {
+      await ignore("channel_reconfigured");
+      return;
+    }
+    const mailbox = graphMailboxIdentifier(
+      channel.mailbox_object_id,
+      channel.mailbox_address,
+    );
+    await graphRequestForChannel(admin, channel, `/users/${mailbox}/sendMail`, {
+      method: "POST",
+      body: JSON.stringify({
+        message: {
+          subject: `${subject} – ${portalName}`.slice(0, 250),
+          body: { contentType: "HTML", content: html },
+          toRecipients: [{ emailAddress: { address: recipient } }],
+          internetMessageHeaders: [
+            { name: "X-Auto-Response-Suppress", value: "All" },
+            { name: "X-nextDesk-Status-Subscription", value: subscriptionId },
+          ],
+          ...(branding.logoAttachment
+            ? { attachments: [branding.logoAttachment] }
+            : {}),
         },
         saveToSentItems: false,
       }),
@@ -2015,6 +2725,13 @@ export async function dispatchOutboundMessage(
     await dispatchNotificationMail(admin, message, channel);
     return;
   }
+  if (
+    message.kind === "status_confirmation" ||
+    message.kind === "status_change"
+  ) {
+    await dispatchServiceStatusMail(admin, message, channel);
+    return;
+  }
   try {
     if (!(await claimMessage(admin, message.id))) return;
     let ticket: any = null;
@@ -2028,6 +2745,25 @@ export async function dispatchOutboundMessage(
       .eq("id", message.tenant_id)
       .maybeSingle();
     let portalName = asString(tenantName.data?.name) ?? "Support";
+    const formality = await loadFormality(admin, message.tenant_id);
+    const emailTemplate = emailTemplateDefinition(message.kind)
+      ? await loadEmailTemplate(admin, message.tenant_id, message.kind, formality)
+      : null;
+    if (emailTemplate && !emailTemplate.enabled) {
+      await updateMessage(admin, message.id, {
+        processing_status: "ignored",
+        ignore_reason: "template_disabled",
+      });
+      return;
+    }
+    const templateText = (field: string, fallback: string): string =>
+      emailTemplate
+        ? emailTemplate.text(field, {
+            ticketNumber: asString(ticket?.ticket_number) ?? "",
+            ticketSubject: asString(ticket?.subject) ?? "",
+            portalName,
+          })
+        : fallback;
     const internalDepartmentNotice =
       message.kind === "department_question" ||
       message.kind === "department_answer";
@@ -2094,12 +2830,23 @@ export async function dispatchOutboundMessage(
     if (message.ticket_id) {
       const ticketResult = await admin
         .from("tickets")
-        .select("id, ticket_number, subject, requester_contact_id")
+        .select(
+          "id, ticket_number, subject, requester_contact_id, is_security_case",
+        )
+        .is("deleted_at", null)
         .eq("id", message.ticket_id)
         .eq("tenant_id", message.tenant_id)
         .maybeSingle();
       ticket = ticketResult.data;
       if (ticketResult.error || !ticket) throw new Error("ticket_unavailable");
+      // Phishing reports get the thank-you note instead.
+      if (message.kind === "acknowledgement" && ticket.is_security_case) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "security_case",
+        });
+        return;
+      }
       const contact = await admin
         .from("ticket_requesters")
         .select("email")
@@ -2134,16 +2881,58 @@ export async function dispatchOutboundMessage(
           throw new Error("department_question_unavailable");
         bodyText =
           message.kind === "department_question"
-            ? `Eine Abteilungsrückfrage benötigt Ihre Antwort:\n\n${cleanText(question.data.question)}`
-            : `Die Abteilungsleitung hat auf Ihre Rückfrage geantwortet:\n\n${cleanText(question.data.answer)}`;
+            ? `${templateText("text", tone(formality, "Eine Abteilungsrückfrage benötigt deine Antwort:", "Eine Abteilungsrückfrage benötigt Ihre Antwort:"))}\n\n${cleanText(question.data.question)}`
+            : `${templateText("text", tone(formality, "Die Abteilungsleitung hat auf deine Rückfrage geantwortet:", "Die Abteilungsleitung hat auf Ihre Rückfrage geantwortet:"))}\n\n${cleanText(question.data.answer)}`;
       }
     }
     if (!recipient) throw new Error("recipient_unavailable");
     if (message.kind === "acknowledgement")
-      bodyText =
-        "Ihre Anfrage ist bei uns eingegangen und wurde als Ticket erfasst.";
+      bodyText = templateText(
+        "text",
+        tone(
+          formality,
+          "Deine Anfrage ist bei uns eingegangen und wurde als Ticket erfasst.",
+          "Ihre Anfrage ist bei uns eingegangen und wurde als Ticket erfasst.",
+        ),
+      );
     if (message.kind === "resolution")
-      bodyText = "Ihr Ticket wurde als gelöst markiert.";
+      bodyText = templateText(
+        "text",
+        tone(
+          formality,
+          "Dein Ticket wurde als gelöst markiert.",
+          "Ihr Ticket wurde als gelöst markiert.",
+        ),
+      );
+    if (message.kind === "rating_reminder") {
+      // Erinnerung nur, solange das Ticket gelöst und noch nicht bewertet ist.
+      const rated = await admin
+        .from("ticket_satisfaction")
+        .select("ticket_id")
+        .eq("ticket_id", ticket?.id ?? message.ticket_id)
+        .maybeSingle();
+      const statusRow = await admin
+        .from("tickets")
+        .select("status:ticket_statuses!inner(key, is_closed)")
+        .eq("id", ticket?.id ?? message.ticket_id)
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle();
+      const status = Array.isArray(statusRow.data?.status)
+        ? statusRow.data?.status[0]
+        : statusRow.data?.status;
+      if (rated.data || !(status?.is_closed === true || status?.key === "resolved")) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: rated.data ? "already_rated" : "not_ratable",
+        });
+        return;
+      }
+      bodyText = tone(
+        formality,
+        "Wir haben dein Ticket vor drei Tagen als gelöst markiert. Wir möchten wissen, wie zufrieden du warst. Ein Klick auf die Sterne genügt.",
+        "Wir haben Ihr Ticket vor drei Tagen als gelöst markiert. Wir möchten wissen, wie zufrieden Sie waren. Ein Klick auf die Sterne genügt.",
+      );
+    }
     if (message.kind === "test")
       bodyText = "Dies ist eine Testmail des nextDesk E-Mail-Kanals.";
     const ticketNumber = asString(ticket?.ticket_number) ?? "nextDesk-Test";
@@ -2164,6 +2953,28 @@ export async function dispatchOutboundMessage(
             supportsInlineCustomerEmailLogo(customerEmailKind),
           )
         : null;
+    const emailActions =
+      !internalDepartmentNotice && message.kind === "agent_reply"
+        ? await reminderEmailActions(admin, message.comment_id)
+        : !internalDepartmentNotice && message.kind === "security_notice"
+          ? await securityNoticeActions(admin, message.comment_id, recipient)
+          : [];
+    // Hinweis der ICT (nur normale Ticket-Mails; ein Fehler hier stoppt nie den Versand).
+    const pickedNotice =
+      !internalDepartmentNotice && ticket
+        ? await pickMailNotice(admin, {
+            tenantId: message.tenant_id as string,
+            recipient,
+            messageKind: asString(message.kind),
+            hasReminderActions: emailActions.length > 0,
+          }).catch(() => null)
+        : null;
+    const portalActionLabel =
+      message.kind === "agent_reply"
+        ? "Im Portal antworten"
+        : message.kind === "acknowledgement" || message.kind === "resolution"
+          ? "Ticket im Portal ansehen"
+          : null;
     const html = internalDepartmentNotice
       ? internalNoticeHtmlTemplate({
           text: bodyText,
@@ -2171,18 +2982,38 @@ export async function dispatchOutboundMessage(
           subject: ticketSubject,
           portalName,
           attachmentNotice: attachments.omitted,
+          formality,
         })
       : renderCustomerTicketEmail({
-          actions:
-            message.kind === "agent_reply"
-              ? await reminderEmailActions(admin, message.comment_id)
+          ratingLinks:
+            (message.kind === "resolution" ||
+              message.kind === "rating_reminder") &&
+            ticket
+              ? await resolutionRatingLinks(
+                  admin,
+                  ticket.id as string,
+                  message.tenant_id as string,
+                )
               : [],
+          actions: emailActions,
+          ...(portalActionLabel && emailActions.length === 0
+            ? { primaryAction: { label: portalActionLabel, url: `${APP_ORIGIN}/` } }
+            : {}),
+          ...(pickedNotice ? { notice: pickedNotice.notice } : {}),
           text: bodyText,
           ticketNumber,
           subject: ticketSubject,
           branding: customerBranding!.branding,
           attachmentNotice: attachments.omitted,
           kind: customerEmailKind!,
+          formality,
+          ...(emailTemplate
+            ? {
+                eyebrow: templateText("eyebrow", ""),
+                intro: templateText("intro", ""),
+                replyHint: templateText("hint", ""),
+              }
+            : {}),
         });
     const graphAttachments = [
       ...attachments.attachments,
@@ -2190,11 +3021,19 @@ export async function dispatchOutboundMessage(
         ? [customerBranding.logoAttachment]
         : []),
     ];
+    const customSubject = emailTemplate
+      ? templateText("subject", "").replace(/\s+/g, " ").trim()
+      : "";
     const graphMessage: Row = {
-      subject:
-        message.kind === "agent_reply"
-          ? `AW: [${ticketNumber}] ${ticketSubject}`
-          : `[${ticketNumber}] ${ticketSubject}`,
+      subject: customSubject
+        ? customSubject.slice(0, 250)
+        : message.kind === "security_notice" && asString(message.subject)
+          ? `[${ticketNumber}] ${asString(message.subject)}`
+          : message.kind === "agent_reply"
+            ? `AW: [${ticketNumber}] ${ticketSubject}`
+            : message.kind === "rating_reminder"
+              ? `${tone(formality, "Wie zufrieden warst du?", "Wie zufrieden waren Sie?")} [${ticketNumber}] ${ticketSubject}`
+              : `[${ticketNumber}] ${ticketSubject}`,
       body: { contentType: "HTML", content: html },
       toRecipients: [{ emailAddress: { address: recipient } }],
       internetMessageHeaders: [
@@ -2256,6 +3095,11 @@ export async function dispatchOutboundMessage(
       );
     }
     await markProcessed(admin, message);
+    if (pickedNotice) {
+      await recordMailNotice(admin, message.tenant_id as string, pickedNotice).catch(
+        () => undefined,
+      );
+    }
     await admin
       .from("exchange_mail_channels")
       .update({ last_outbound_at: new Date().toISOString() })
@@ -2369,7 +3213,7 @@ export async function maintenance(admin: Admin): Promise<void> {
   const due = await admin
     .from("mail_messages")
     .select(
-      "id, tenant_id, channel_id, exchange_configuration_version, direction, kind, graph_message_id, ticket_id, comment_id, department_question_id, recipient_user_id, to_addresses, attempt_count",
+      "id, tenant_id, channel_id, exchange_configuration_version, direction, kind, graph_message_id, ticket_id, comment_id, department_question_id, recipient_user_id, to_addresses, subject, attempt_count",
     )
     .in("processing_status", ["pending", "failed"])
     .lte("next_attempt_at", new Date().toISOString())

@@ -35,6 +35,7 @@ import {
 } from "@/lib/shop";
 import { useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { tn } from "@/lib/formality";
 
 type ShopView = "catalog" | "mine" | "approvals" | "work";
 
@@ -382,7 +383,7 @@ export default function ShopScreen() {
             {!loading && orders.length === 0 ? (
               <Text style={styles.empty}>
                 {view === "approvals"
-                  ? "Keine Bestellungen warten auf deine Freigabe."
+                  ? tn("Keine Bestellungen warten auf deine Freigabe.", "Keine Bestellungen warten auf Ihre Freigabe.")
                   : "Keine Bestellungen."}
               </Text>
             ) : null}

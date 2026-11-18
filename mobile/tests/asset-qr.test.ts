@@ -32,6 +32,16 @@ describe("parseScannedCode", () => {
     ).toEqual({ kind: "rack", rack: "R 2" });
   });
 
+  it("recognises stock article labels", () => {
+    expect(
+      parseScannedCode(`https://app.nextdesk.ch/?inventory=${ID.toUpperCase()}`),
+    ).toEqual({ kind: "inventory", itemId: ID });
+    expect(parseScannedCode(`ch.grossict.nextdesk://inventory/${ID}`)).toEqual({
+      kind: "inventory",
+      itemId: ID,
+    });
+  });
+
   it("keeps inventory numbers, serials and foreign codes as lookup codes", () => {
     expect(parseScannedCode("  INV-4711 ")).toEqual({
       kind: "code",

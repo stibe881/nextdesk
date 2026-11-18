@@ -22,7 +22,7 @@ Nicht aktiviert sind:
 3. Die angezeigte Anzahl und die bevorstehende Statusänderung prüfen.
 4. Mit **Ausführung verbindlich bestätigen** den zweiten Schritt auslösen.
 
-Beim Vorbereiten wird eine nicht browserlesbare Bestätigung für genau diese Person, diesen Mandanten, diese Regelversion und diese Ticketmenge angelegt. Ihre interne Kennung wird weder an den Browser gesendet noch vom Browser zurückgegeben. Für jede Person, jeden Mandanten und die Regel `auto_close` gibt es höchstens eine offene Bestätigung; eine neue Vorschau ersetzt die vorherige. Sie ist höchstens 15 Minuten gültig. Bei der Ausführung prüft nextDesk nochmals:
+Beim Vorbereiten wird eine nicht browserlesbare Bestätigung für genau diese Person, diesen Mandanten, diese Regelversion und diese Ticketmenge angelegt. Deren interne Kennung wird weder an den Browser gesendet noch vom Browser zurückgegeben. Für jede Person, jeden Mandanten und die Regel `auto_close` gibt es höchstens eine offene Bestätigung; eine neue Vorschau ersetzt die vorherige. Diese ist höchstens 15 Minuten gültig. Bei der Ausführung prüft nextDesk nochmals:
 
 - aktive Mitgliedschaft und mandantenweite `automation.manage`-Berechtigung;
 - aktuellen Feature-Status;

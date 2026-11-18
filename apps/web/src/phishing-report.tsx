@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import {
   CheckCircle2,
   FileUp,
@@ -22,6 +23,12 @@ import {
   type PhishingSettingsOptions,
   type PhishingSubmitResult,
 } from "./lib/phishing-report";
+import {
+  parseTemplates,
+  VERDICT_LABELS,
+  VERDICTS,
+  type SecurityVerdict,
+} from "./lib/security-cases";
 import { supabase } from "./lib/supabase";
 import "./phishing-report.css";
 
@@ -129,7 +136,12 @@ function PhishingReportDialog({
     let body: Record<string, unknown>;
     if (mode === "file") {
       if (!file) {
-        setError("Bitte wählen Sie die E-Mail-Datei aus.");
+        setError(
+          tn(
+            "Bitte wähle die E-Mail-Datei aus.",
+            "Bitte wählen Sie die E-Mail-Datei aus.",
+          ),
+        );
         return;
       }
       const invalid = validateReportFile(file.name, file.size);
@@ -146,7 +158,12 @@ function PhishingReportDialog({
       };
     } else {
       if (!pasted.trim()) {
-        setError("Bitte fügen Sie die Kopfzeilen oder den Quelltext ein.");
+        setError(
+          tn(
+            "Bitte füge die Kopfzeilen oder den Quelltext ein.",
+            "Bitte fügen Sie die Kopfzeilen oder den Quelltext ein.",
+          ),
+        );
         return;
       }
       body = { type: "submit", tenantId, channel: "portal", rawText: pasted };
@@ -206,7 +223,14 @@ function PhishingReportDialog({
             <CheckCircle2 aria-hidden="true" size={28} />
             <p>{result.message}</p>
             <p className="phishing-report__hint">
-              Ihre Meldung wurde als Ticket {result.ticketNumber} erfasst.
+              {tn(
+                <>
+                  Deine Meldung wurde als Ticket {result.ticketNumber} erfasst.
+                </>,
+                <>
+                  Ihre Meldung wurde als Ticket {result.ticketNumber} erfasst.
+                </>,
+              )}
             </p>
             <div className="phishing-report__actions">
               {onOpenTicket ? (
@@ -238,15 +262,25 @@ function PhishingReportDialog({
             }}
           >
             <p className="phishing-report__warning">
-              Klicken Sie in der verdächtigen E-Mail keine Links an und öffnen
-              Sie keine Anhänge. Wir prüfen die Nachricht, ohne Links oder
-              Anhänge zu öffnen.
+              {tn(
+                "Klicke in der verdächtigen E-Mail keine Links an und öffne keine Anhänge. Wir prüfen die Nachricht, ohne Links oder Anhänge zu öffnen.",
+                "Klicken Sie in der verdächtigen E-Mail keine Links an und öffnen Sie keine Anhänge. Wir prüfen die Nachricht, ohne Links oder Anhänge zu öffnen.",
+              )}
             </p>
             {reportAddress ? (
               <p className="phishing-report__hint">
-                Alternativ können Sie die E-Mail als Anlage an{" "}
-                <strong>{reportAddress}</strong> weiterleiten. Schreiben Sie
-                dabei «Phishing» in den Betreff.
+                {tn(
+                  <>
+                    Alternativ kannst du die E-Mail als Anlage an{" "}
+                    <strong>{reportAddress}</strong> weiterleiten. Schreibe
+                    dabei «Phishing» in den Betreff.
+                  </>,
+                  <>
+                    Alternativ können Sie die E-Mail als Anlage an{" "}
+                    <strong>{reportAddress}</strong> weiterleiten. Schreiben Sie
+                    dabei «Phishing» in den Betreff.
+                  </>,
+                )}
               </p>
             ) : null}
             <div
@@ -333,6 +367,8 @@ function PhishingReportDialog({
   );
 }
 
+const NEW_OPTION = "__new__";
+
 const PRIORITY_LABELS = {
   low: "Niedrig",
   normal: "Normal",
@@ -347,6 +383,10 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [creating, setCreating] = useState<"category" | "subcategory" | null>(
+    null,
+  );
+  const [newCategoryName, setNewCategoryName] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -409,6 +449,97 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
     options?.categories.filter(
       (category) => category.departmentId === settings?.departmentId,
     ) ?? [];
+  const subcategories =
+    options?.subcategories.filter(
+      (subcategory) => subcategory.categoryId === settings?.categoryId,
+    ) ?? [];
+
+  // Creates a category (parentId null) or a subcategory right here and
+  // selects it; saving the settings is still a separate step.
+  async function createCategory(parentId: string | null) {
+    const name = newCategoryName.trim();
+    if (!settings?.departmentId || !name || busy) return;
+    setBusy(true);
+    try {
+      const result = (await call({
+        type: "createCategory",
+        tenantId,
+        departmentId: settings.departmentId,
+        parentId,
+        name,
+      })) as { data?: { id?: unknown; options?: unknown } } | null;
+      const id = typeof result?.data?.id === "string" ? result.data.id : null;
+      const parsed = parsePhishingSettings({
+        data: { settings, options: result?.data?.options },
+      });
+      if (parsed) setOptions(parsed.options);
+      if (id) {
+        update(
+          parentId
+            ? { subcategoryId: id }
+            : { categoryId: id, subcategoryId: null },
+        );
+      }
+      setCreating(null);
+      setNewCategoryName("");
+      setMessage(
+        `${parentId ? "Unterkategorie" : "Kategorie"} «${name}» erstellt. Speichern nicht vergessen.`,
+      );
+    } catch (createError) {
+      setMessage(
+        createError instanceof Error
+          ? createError.message
+          : String(createError),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const createForm = (parentId: string | null) => (
+    <span className="phishing-report-settings__new">
+      <input
+        aria-label={parentId ? "Neue Unterkategorie" : "Neue Kategorie"}
+        autoFocus
+        maxLength={80}
+        onChange={(event) => setNewCategoryName(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void createCategory(parentId);
+          }
+          if (event.key === "Escape") {
+            setCreating(null);
+            setNewCategoryName("");
+          }
+        }}
+        placeholder={
+          parentId ? "Name der Unterkategorie" : "Name der Kategorie"
+        }
+        type="text"
+        value={newCategoryName}
+      />
+      <button
+        className="secondary-button"
+        disabled={busy || !newCategoryName.trim()}
+        onClick={() => void createCategory(parentId)}
+        type="button"
+      >
+        Erstellen
+      </button>
+      <button
+        className="text-button"
+        disabled={busy}
+        onClick={() => {
+          setCreating(null);
+          setNewCategoryName("");
+        }}
+        type="button"
+      >
+        Abbrechen
+      </button>
+    </span>
+  );
 
   return (
     <section className="tenant-automation phishing-report-settings">
@@ -420,9 +551,12 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
             Mitarbeitende melden verdächtige E-Mails mit «Phishing melden» im
             Portal und in der App oder per Weiterleitung an die Meldeadresse
             (die Adresse muss beim verbundenen Exchange-Postfach ankommen, z. B.
-            als Alias). Daraus entsteht ein Sicherheitsticket mit automatischer
-            Risikoeinschätzung (interne Notiz); Links und Anhänge werden dabei
-            nicht geöffnet. Das Sicherheitsteam erhält eine Benachrichtigung.
+            als Alias). Daraus entsteht ein Phishing-/Junk-Fall unter «Phishing
+            / Junk» mit automatischer Risikoeinschätzung; Links und Anhänge
+            werden dabei nicht geöffnet. Meldungen derselben E-Mail werden zu
+            einem Fall gebündelt. Der Fall wird dem Sicherheitsteam zugewiesen,
+            das Team erhält eine Benachrichtigung, und nach dem Urteil bekommen
+            alle Melder automatisch das Ergebnis.
           </p>
         </div>
       </div>
@@ -457,6 +591,7 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
                 update({
                   departmentId: event.target.value || null,
                   categoryId: null,
+                  subcategoryId: null,
                 })
               }
               value={settings.departmentId ?? ""}
@@ -471,20 +606,64 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
           </label>
           <label>
             Kategorie
-            <select
-              disabled={!settings.departmentId}
-              onChange={(event) =>
-                update({ categoryId: event.target.value || null })
-              }
-              value={settings.categoryId ?? ""}
-            >
-              <option value="">Keine</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
+            {creating === "category" ? (
+              createForm(null)
+            ) : (
+              <select
+                disabled={!settings.departmentId || busy}
+                onChange={(event) => {
+                  if (event.target.value === NEW_OPTION) {
+                    setNewCategoryName("");
+                    setCreating("category");
+                    return;
+                  }
+                  update({
+                    categoryId: event.target.value || null,
+                    subcategoryId: null,
+                  });
+                }}
+                value={settings.categoryId ?? ""}
+              >
+                <option value="">Keine</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+                <option value={NEW_OPTION}>+ Neue Kategorie …</option>
+              </select>
+            )}
+          </label>
+          <label>
+            Unterkategorie
+            {creating === "subcategory" && settings.categoryId ? (
+              createForm(settings.categoryId)
+            ) : (
+              <select
+                disabled={!settings.categoryId || busy}
+                onChange={(event) => {
+                  if (event.target.value === NEW_OPTION) {
+                    setNewCategoryName("");
+                    setCreating("subcategory");
+                    return;
+                  }
+                  update({ subcategoryId: event.target.value || null });
+                }}
+                value={settings.subcategoryId ?? ""}
+              >
+                <option value="">
+                  {settings.categoryId ? "Keine" : "Zuerst Kategorie wählen"}
                 </option>
-              ))}
-            </select>
+                {subcategories.map((subcategory) => (
+                  <option key={subcategory.id} value={subcategory.id}>
+                    {subcategory.name}
+                  </option>
+                ))}
+                {settings.categoryId ? (
+                  <option value={NEW_OPTION}>+ Neue Unterkategorie …</option>
+                ) : null}
+              </select>
+            )}
           </label>
           <label>
             Priorität
@@ -505,19 +684,27 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
             </select>
           </label>
           <label>
-            Sicherheitsteam (Benachrichtigung)
+            Sicherheitsteam (Zuweisung und Benachrichtigung)
             <select
               onChange={(event) =>
                 update({ notifyTeamId: event.target.value || null })
               }
               value={settings.notifyTeamId ?? ""}
             >
-              <option value="">Alle mit Zugriff auf die Zielabteilung</option>
-              {options.teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
+              <option value="">
+                Kein Team – alle mit Zugriff auf die Zielabteilung
+              </option>
+              {options.teams
+                .filter(
+                  (team) =>
+                    !team.departmentId ||
+                    team.departmentId === settings.departmentId,
+                )
+                .map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
             </select>
           </label>
           <div>
@@ -537,6 +724,132 @@ export function PhishingReportSettings({ tenantId }: { tenantId: string }) {
           {message}
         </p>
       ) : null}
+      {settings ? <SecurityChecklistSettings tenantId={tenantId} /> : null}
     </section>
   );
+}
+
+/** Checklist per verdict for security cases (one step per line). */
+function SecurityChecklistSettings({ tenantId }: { tenantId: string }) {
+  const [drafts, setDrafts] = useState<Record<SecurityVerdict, string> | null>(
+    null,
+  );
+  const [custom, setCustom] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void securityCall({ type: "getTemplates", tenantId })
+      .then((value) => {
+        const parsed = parseTemplates(value);
+        if (!active || !parsed) return;
+        setCustom(parsed.custom);
+        setDrafts(
+          Object.fromEntries(
+            VERDICTS.map((verdict) => [
+              verdict,
+              parsed.templates[verdict].join("\n"),
+            ]),
+          ) as Record<SecurityVerdict, string>,
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [tenantId]);
+
+  if (!drafts) return null;
+
+  async function save() {
+    if (!drafts || busy) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const templates = Object.fromEntries(
+        VERDICTS.map((verdict) => [
+          verdict,
+          drafts[verdict]
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .slice(0, 20),
+        ]),
+      );
+      const parsed = parseTemplates(
+        await securityCall({ type: "saveTemplates", tenantId, templates }),
+      );
+      if (parsed) setCustom(parsed.custom);
+      setMessage("Checklisten gespeichert.");
+    } catch (saveError) {
+      setMessage(
+        saveError instanceof Error ? saveError.message : String(saveError),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="phishing-report-settings__checklists">
+      <h3>Massnahmen je Urteil</h3>
+      <p>
+        Wenn das Sicherheitsteam einen Fall beurteilt, erscheinen diese Schritte
+        als Checkliste. Ein Schritt pro Zeile; eine leere Liste schliesst den
+        Fall direkt nach dem Urteil ab.
+        {custom ? "" : " Noch sind die Standard-Checklisten aktiv."}
+      </p>
+      <div className="phishing-report-settings__checklist-grid">
+        {VERDICTS.map((verdict) => (
+          <label key={verdict}>
+            {VERDICT_LABELS[verdict]}
+            <textarea
+              disabled={busy}
+              onChange={(event) =>
+                setDrafts((current) =>
+                  current
+                    ? { ...current, [verdict]: event.target.value }
+                    : current,
+                )
+              }
+              rows={6}
+              value={drafts[verdict]}
+            />
+          </label>
+        ))}
+      </div>
+      <div className="phishing-report-settings__checklist-actions">
+        <button
+          className="primary-button"
+          disabled={busy}
+          onClick={() => void save()}
+          type="button"
+        >
+          Checklisten speichern
+        </button>
+        {message ? (
+          <span className="tenant-automation__message" role="status">
+            {message}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+async function securityCall(body: Record<string, unknown>): Promise<unknown> {
+  if (!supabase) throw new Error("Die Verbindung ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("security-cases", {
+    body,
+  });
+  if (error) {
+    throw new Error(
+      await functionErrorMessage(
+        error,
+        "Die Checklisten konnten nicht gespeichert werden.",
+      ),
+    );
+  }
+  return data;
 }

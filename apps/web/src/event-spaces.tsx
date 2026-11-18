@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   CalendarDays,
@@ -23,9 +24,19 @@ import {
   matchesEventSpaceMetricFilter,
   type EventSpaceMetricFilter,
 } from "./lib/event-space-metric-filter";
+import {
+  FormCard,
+  FormChips,
+  FormField,
+  FormGrid,
+  FormLayout,
+  FormNote,
+  FormSummary,
+} from "./form-kit";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
+import { confirmDialog } from "./app-dialog";
 const EQUIPMENT = [
   ["ict_material", "ICT Material"],
   ["internet_access", "Zugang Internet"],
@@ -412,7 +423,10 @@ export function EventSpaces({
         setErrorMessage(
           await functionErrorMessage(
             error,
-            "Die Raumplanung konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+            tn(
+              "Die Raumplanung konnte nicht geladen werden. Bitte versuche es erneut.",
+              "Die Raumplanung konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+            ),
           ),
         );
       }
@@ -609,7 +623,10 @@ export function EventSpaces({
     const payload = requestPayload();
     if (!payload) {
       setErrorMessage(
-        "Bitte füllen Sie Raum, Anlass, Zeitraum und die Wiederholung vollständig aus.",
+        tn(
+          "Bitte fülle Raum, Anlass, Zeitraum und die Wiederholung vollständig aus.",
+          "Bitte füllen Sie Raum, Anlass, Zeitraum und die Wiederholung vollständig aus.",
+        ),
       );
       return;
     }
@@ -636,7 +653,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Raumplanung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Raumplanung konnte nicht geprüft werden. Bitte versuche es erneut.",
+            "Die Raumplanung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -681,7 +701,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Der Raumauftrag konnte nicht gespeichert werden. Bitte prüfen Sie die Angaben und versuchen Sie es erneut.",
+          tn(
+            "Der Raumauftrag konnte nicht gespeichert werden. Bitte prüfe die Angaben und versuche es erneut.",
+            "Der Raumauftrag konnte nicht gespeichert werden. Bitte prüfen Sie die Angaben und versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -701,7 +724,10 @@ export function EventSpaces({
         (!Number.isInteger(capacity) || capacity < 1 || capacity > 10000))
     ) {
       setErrorMessage(
-        "Bitte geben Sie einen Raumnamen und gegebenenfalls eine gültige Kapazität ein.",
+        tn(
+          "Bitte gib einen Raumnamen und gegebenenfalls eine gültige Kapazität ein.",
+          "Bitte geben Sie einen Raumnamen und gegebenenfalls eine gültige Kapazität ein.",
+        ),
       );
       return;
     }
@@ -732,7 +758,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Der Raum konnte nicht angelegt werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Der Raum konnte nicht angelegt werden. Bitte versuche es erneut.",
+            "Der Raum konnte nicht angelegt werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -756,7 +785,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Der Status konnte nicht aktualisiert werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Der Status konnte nicht aktualisiert werden. Bitte versuche es erneut.",
+            "Der Status konnte nicht aktualisiert werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -777,7 +809,10 @@ export function EventSpaces({
     const endsAt = swissWallTimeToInstant(input.endsAt);
     if (!startsAt || !endsAt || endsAt <= startsAt) {
       setErrorMessage(
-        "Bitte geben Sie einen gültigen Zeitraum in der Zeitzone Europe/Zurich an.",
+        tn(
+          "Bitte gib einen gültigen Zeitraum in der Zeitzone Europe/Zurich an.",
+          "Bitte geben Sie einen gültigen Zeitraum in der Zeitzone Europe/Zurich an.",
+        ),
       );
       return false;
     }
@@ -806,7 +841,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Raumplanungsdetails konnten nicht gespeichert werden. Bitte prüfen Sie Raum, Zeitraum und Zuweisungen.",
+          tn(
+            "Die Raumplanungsdetails konnten nicht gespeichert werden. Bitte prüfe Raum, Zeitraum und Zuweisungen.",
+            "Die Raumplanungsdetails konnten nicht gespeichert werden. Bitte prüfen Sie Raum, Zeitraum und Zuweisungen.",
+          ),
         ),
       );
       return false;
@@ -818,9 +856,9 @@ export function EventSpaces({
   async function deleteRequest(requestId: string, title: string) {
     if (!supabase) return;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Raumplanung «${title}» endgültig löschen? Zugehörige Aufgaben und Technikreservationen werden ebenfalls entfernt.`,
-      )
+      ))
     ) {
       return;
     }
@@ -842,7 +880,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Raumplanung konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Raumplanung konnte nicht gelöscht werden. Bitte versuche es erneut.",
+            "Die Raumplanung konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -876,7 +917,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Agent:in konnte nicht zugewiesen werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Agent:in konnte nicht zugewiesen werden. Bitte versuche es erneut.",
+            "Die Agent:in konnte nicht zugewiesen werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -912,7 +956,10 @@ export function EventSpaces({
     );
     if (!draft?.spaceId || !draft.responsibleUserId || !start) {
       setErrorMessage(
-        "Bitte geben Sie einen gültigen Schweizer Beginn sowie Raum und Agent:in an.",
+        tn(
+          "Bitte gib einen gültigen Schweizer Beginn sowie Raum und Agent:in an.",
+          "Bitte geben Sie einen gültigen Schweizer Beginn sowie Raum und Agent:in an.",
+        ),
       );
       return;
     }
@@ -943,7 +990,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Der Klärungsfall konnte nicht geplant werden. Bitte prüfen Sie Raum, Zeit und Technik.",
+          tn(
+            "Der Klärungsfall konnte nicht geplant werden. Bitte prüfe Raum, Zeit und Technik.",
+            "Der Klärungsfall konnte nicht geplant werden. Bitte prüfen Sie Raum, Zeit und Technik.",
+          ),
         ),
       );
     } finally {
@@ -1007,7 +1057,10 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Aufgabe konnte nicht aktualisiert werden. Bitte versuchen Sie es erneut.",
+          tn(
+            "Die Aufgabe konnte nicht aktualisiert werden. Bitte versuche es erneut.",
+            "Die Aufgabe konnte nicht aktualisiert werden. Bitte versuchen Sie es erneut.",
+          ),
         ),
       );
     } finally {
@@ -1036,8 +1089,10 @@ export function EventSpaces({
           <p className="eyebrow">Planung statt Ticket</p>
           <h2 id="event-spaces-heading">Raumplanung</h2>
           <p>
-            Planen Sie technische Einrichtungen für Aula und Sitzungszimmer. Ein
-            Ticket entsteht nur bei einem tatsächlichen Problem.
+            {tn(
+              "Plane technische Einrichtungen für Aula und Sitzungszimmer. Ein Ticket entsteht nur bei einem tatsächlichen Problem.",
+              "Planen Sie technische Einrichtungen für Aula und Sitzungszimmer. Ein Ticket entsteht nur bei einem tatsächlichen Problem.",
+            )}
           </p>
         </div>
         <div className="event-spaces__hero-actions">
@@ -1172,8 +1227,10 @@ export function EventSpaces({
               <p className="eyebrow">Neue E-Mail-Anfragen</p>
               <h3>Klärung und Übernahme erforderlich</h3>
               <p>
-                Neue Anfragen reservieren weder Raum noch Technik. Weisen Sie
-                zuerst eine Agent:in zu und ergänzen Sie danach Raum und Zeit.
+                {tn(
+                  "Neue Anfragen reservieren weder Raum noch Technik. Weise zuerst eine Agent:in zu und ergänze danach Raum und Zeit.",
+                  "Neue Anfragen reservieren weder Raum noch Technik. Weisen Sie zuerst eine Agent:in zu und ergänzen Sie danach Raum und Zeit.",
+                )}
               </p>
             </div>
             <strong>{clarifications.length}</strong>
@@ -1300,9 +1357,7 @@ export function EventSpaces({
                       }
                       type="button"
                     >
-                      {item.assignedAgent
-                        ? "Person ändern"
-                        : "Person zuweisen"}
+                      {item.assignedAgent ? "Person ändern" : "Person zuweisen"}
                     </button>
                     <label>
                       Beginn (Europe/Zurich)
@@ -1403,188 +1458,207 @@ export function EventSpaces({
           </div>
           {workspace?.rooms.length ? (
             <form onSubmit={previewRequest}>
-              <div className="event-spaces__form-grid">
-                <label>
-                  Raum
-                  <select
-                    required
-                    value={requestDraft.spaceId}
-                    onChange={(event) =>
-                      updateDraft("spaceId", event.target.value)
-                    }
-                  >
-                    <option value="">Raum auswählen …</option>
-                    {workspace.rooms.map((room) => (
-                      <option key={room.id} value={room.id}>
-                        {room.name}
-                        {room.location ? ` · ${room.location}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Anlass
-                  <input
-                    maxLength={240}
-                    minLength={3}
-                    required
-                    value={requestDraft.title}
-                    onChange={(event) =>
-                      updateDraft("title", event.target.value)
-                    }
-                    placeholder="z. B. Mitarbeitendenanlass"
-                  />
-                </label>
-                <label>
-                  Start
-                  <input
-                    required
-                    type="datetime-local"
-                    value={requestDraft.startsAt}
-                    onChange={(event) =>
-                      updateDraft("startsAt", event.target.value)
-                    }
-                  />
-                </label>
-                <label>
-                  Ende
-                  <input
-                    required
-                    type="datetime-local"
-                    value={requestDraft.endsAt}
-                    onChange={(event) =>
-                      updateDraft("endsAt", event.target.value)
-                    }
-                  />
-                </label>
-                <label>
-                  Anfragende Person
-                  <select
-                    required
-                    value={requestDraft.responsibleUserId}
-                    onChange={(event) =>
-                      updateDraft("responsibleUserId", event.target.value)
-                    }
-                  >
-                    <option value="">Person auswählen …</option>
-                    {workspace.people.map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {person.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Teilnehmende
-                  <input
-                    inputMode="numeric"
-                    max="10000"
-                    min="0"
-                    type="number"
-                    value={requestDraft.expectedParticipants}
-                    onChange={(event) =>
-                      updateDraft("expectedParticipants", event.target.value)
-                    }
-                    placeholder="Optional"
-                  />
-                </label>
-                <label>
-                  Kontakt / Organisation
-                  <input
-                    maxLength={160}
-                    value={requestDraft.organizer}
-                    onChange={(event) =>
-                      updateDraft("organizer", event.target.value)
-                    }
-                    placeholder="Optional"
-                  />
-                </label>
-                <label>
-                  Wiederholung
-                  <select
-                    value={requestDraft.recurrence}
-                    onChange={(event) => {
-                      const recurrence = event.target.value as Recurrence;
-                      updateDraft("recurrence", recurrence);
-                      if (recurrence === "none")
-                        updateDraft("occurrences", "1");
-                      else if (requestDraft.occurrences === "1")
-                        updateDraft("occurrences", "2");
-                      else if (
-                        recurrence === "monthly" &&
-                        Number(requestDraft.occurrences) > 12
-                      )
-                        updateDraft("occurrences", "12");
-                    }}
-                  >
-                    <option value="none">Einmalig</option>
-                    <option value="weekly">Wöchentlich</option>
-                    <option value="monthly">Monatlich</option>
-                  </select>
-                </label>
-                {requestDraft.recurrence !== "none" ? (
-                  <label>
-                    Anzahl Termine
-                    <input
-                      max={requestDraft.recurrence === "monthly" ? "12" : "52"}
-                      min="2"
-                      required
-                      type="number"
-                      value={requestDraft.occurrences}
-                      onChange={(event) =>
-                        updateDraft("occurrences", event.target.value)
-                      }
+              <FormLayout
+                side={
+                  <>
+                    <FormSummary
+                      eyebrow="Anfrage"
+                      title={requestDraft.title}
+                      rows={[
+                        [
+                          "Raum",
+                          workspace.rooms.find(
+                            (room) => room.id === requestDraft.spaceId,
+                          )?.name ?? "",
+                        ],
+                        [
+                          "Zeit",
+                          requestDraft.startsAt && requestDraft.endsAt
+                            ? `${requestDraft.startsAt.replace("T", " ")} – ${requestDraft.endsAt.replace("T", " ")}`
+                            : "",
+                        ],
+                        [
+                          "Termine",
+                          requestDraft.recurrence === "none"
+                            ? "1"
+                            : requestDraft.occurrences,
+                        ],
+                      ]}
                     />
-                  </label>
-                ) : null}
-              </div>
-              <fieldset className="event-spaces__equipment">
-                <legend>Benötigte Technik</legend>
-                <p>
-                  Diese Auswahl löst die standardisierten ICT-Aufgaben aus und
-                  wird auf zeitgleiche Überschneidungen geprüft.
-                </p>
-                <div>
-                  {EQUIPMENT.map(([key, label]) => (
-                    <label key={key}>
+                    <FormNote>
+                      Diese Auswahl löst die standardisierten ICT-Aufgaben aus
+                      und wird auf zeitgleiche Überschneidungen geprüft.
+                    </FormNote>
+                  </>
+                }
+              >
+                <FormCard title="Anlass">
+                  <FormGrid cols={2}>
+                    <FormField label="Raum" required>
+                      <select
+                        required
+                        value={requestDraft.spaceId}
+                        onChange={(event) =>
+                          updateDraft("spaceId", event.target.value)
+                        }
+                      >
+                        <option value="">Raum auswählen …</option>
+                        {workspace.rooms.map((room) => (
+                          <option key={room.id} value={room.id}>
+                            {room.name}
+                            {room.location ? ` · ${room.location}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+                    <FormField label="Anlass" required>
                       <input
-                        checked={requestDraft.equipment.includes(key)}
+                        maxLength={240}
+                        minLength={3}
+                        required
+                        value={requestDraft.title}
+                        onChange={(event) =>
+                          updateDraft("title", event.target.value)
+                        }
+                        placeholder="z. B. Mitarbeitendenanlass"
+                      />
+                    </FormField>
+                    <FormField label="Anfragende Person" required>
+                      <select
+                        required
+                        value={requestDraft.responsibleUserId}
+                        onChange={(event) =>
+                          updateDraft("responsibleUserId", event.target.value)
+                        }
+                      >
+                        <option value="">Person auswählen …</option>
+                        {workspace.people.map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+                    <FormField label="Teilnehmende">
+                      <input
+                        inputMode="numeric"
+                        max="10000"
+                        min="0"
+                        type="number"
+                        value={requestDraft.expectedParticipants}
                         onChange={(event) =>
                           updateDraft(
-                            "equipment",
-                            event.target.checked
-                              ? [...requestDraft.equipment, key]
-                              : requestDraft.equipment.filter(
-                                  (item) => item !== key,
-                                ),
+                            "expectedParticipants",
+                            event.target.value,
                           )
                         }
-                        type="checkbox"
                       />
-                      {label}
-                    </label>
-                  ))}
+                    </FormField>
+                    <FormField label="Kontakt / Organisation">
+                      <input
+                        maxLength={160}
+                        value={requestDraft.organizer}
+                        onChange={(event) =>
+                          updateDraft("organizer", event.target.value)
+                        }
+                      />
+                    </FormField>
+                  </FormGrid>
+                </FormCard>
+                <FormCard title="Zeit">
+                  <FormGrid cols={3}>
+                    <FormField label="Start" required>
+                      <input
+                        required
+                        type="datetime-local"
+                        value={requestDraft.startsAt}
+                        onChange={(event) =>
+                          updateDraft("startsAt", event.target.value)
+                        }
+                      />
+                    </FormField>
+                    <FormField label="Ende" required>
+                      <input
+                        required
+                        type="datetime-local"
+                        value={requestDraft.endsAt}
+                        onChange={(event) =>
+                          updateDraft("endsAt", event.target.value)
+                        }
+                      />
+                    </FormField>
+                    <FormField label="Wiederholung">
+                      <select
+                        value={requestDraft.recurrence}
+                        onChange={(event) => {
+                          const recurrence = event.target.value as Recurrence;
+                          updateDraft("recurrence", recurrence);
+                          if (recurrence === "none")
+                            updateDraft("occurrences", "1");
+                          else if (requestDraft.occurrences === "1")
+                            updateDraft("occurrences", "2");
+                          else if (
+                            recurrence === "monthly" &&
+                            Number(requestDraft.occurrences) > 12
+                          )
+                            updateDraft("occurrences", "12");
+                        }}
+                      >
+                        <option value="none">Einmalig</option>
+                        <option value="weekly">Wöchentlich</option>
+                        <option value="monthly">Monatlich</option>
+                      </select>
+                    </FormField>
+                    {requestDraft.recurrence !== "none" ? (
+                      <FormField label="Anzahl Termine" required>
+                        <input
+                          max={
+                            requestDraft.recurrence === "monthly" ? "12" : "52"
+                          }
+                          min="2"
+                          required
+                          type="number"
+                          value={requestDraft.occurrences}
+                          onChange={(event) =>
+                            updateDraft("occurrences", event.target.value)
+                          }
+                        />
+                      </FormField>
+                    ) : null}
+                  </FormGrid>
+                </FormCard>
+                <FormCard title="Benötigte Technik">
+                  <FormChips
+                    label="Benötigte Technik"
+                    multiple
+                    onChange={(next) => updateDraft("equipment", next)}
+                    options={EQUIPMENT.map(([value, label]) => ({
+                      label,
+                      value,
+                    }))}
+                    value={requestDraft.equipment}
+                  />
+                </FormCard>
+                <div className="event-spaces__form-actions">
+                  <button
+                    className="secondary-button"
+                    onClick={() => {
+                      setEditor(null);
+                      setPendingConflicts(null);
+                    }}
+                    type="button"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={pending}
+                    type="submit"
+                  >
+                    {pending ? "Wird geprüft …" : "Auftrag prüfen"}
+                  </button>
                 </div>
-              </fieldset>
-              <div className="event-spaces__form-actions">
-                <button
-                  className="secondary-button"
-                  onClick={() => {
-                    setEditor(null);
-                    setPendingConflicts(null);
-                  }}
-                  type="button"
-                >
-                  Abbrechen
-                </button>
-                <button
-                  className="primary-button"
-                  disabled={pending}
-                  type="submit"
-                >
-                  {pending ? "Wird geprüft …" : "Auftrag prüfen"}
-                </button>
-              </div>
+              </FormLayout>
             </form>
           ) : (
             <div className="event-spaces__empty-room">
@@ -1592,8 +1666,10 @@ export function EventSpaces({
               <div>
                 <strong>Noch kein Raum vorhanden</strong>
                 <p>
-                  Legen Sie zuerst einen Raum an. Danach können Sie technische
-                  Einrichtungen planen.
+                  {tn(
+                    "Lege zuerst einen Raum an. Danach kannst du technische Einrichtungen planen.",
+                    "Legen Sie zuerst einen Raum an. Danach können Sie technische Einrichtungen planen.",
+                  )}
                 </p>
               </div>
             </div>
@@ -1613,85 +1689,95 @@ export function EventSpaces({
             </div>
           </div>
           <form onSubmit={createRoom}>
-            <div className="event-spaces__form-grid">
-              <label>
-                Raumname
-                <input
-                  minLength={2}
-                  required
-                  value={roomDraft.name}
-                  onChange={(event) =>
-                    setRoomDraft((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  placeholder="z. B. Aula"
+            <FormLayout
+              side={
+                <FormSummary
+                  eyebrow="Raum"
+                  title={roomDraft.name}
+                  rows={[
+                    ["Standort", roomDraft.location],
+                    ["Kapazität", roomDraft.capacity],
+                  ]}
                 />
-              </label>
-              <label>
-                Raumart
-                <select
-                  value={roomDraft.kind}
-                  onChange={(event) =>
-                    setRoomDraft((current) => ({
-                      ...current,
-                      kind: event.target.value,
-                    }))
-                  }
+              }
+            >
+              <FormCard title="Raum">
+                <FormGrid cols={2}>
+                  <FormField label="Raumname" required>
+                    <input
+                      minLength={2}
+                      required
+                      value={roomDraft.name}
+                      onChange={(event) =>
+                        setRoomDraft((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                      placeholder="z. B. Aula"
+                    />
+                  </FormField>
+                  <FormField label="Raumart">
+                    <select
+                      value={roomDraft.kind}
+                      onChange={(event) =>
+                        setRoomDraft((current) => ({
+                          ...current,
+                          kind: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="meeting_room">Sitzungszimmer</option>
+                      <option value="event_room">Veranstaltungsraum</option>
+                      <option value="other">Anderer Raum</option>
+                    </select>
+                  </FormField>
+                  <FormField label="Standort">
+                    <input
+                      value={roomDraft.location}
+                      onChange={(event) =>
+                        setRoomDraft((current) => ({
+                          ...current,
+                          location: event.target.value,
+                        }))
+                      }
+                      placeholder="z. B. Gebäude A, Erdgeschoss"
+                    />
+                  </FormField>
+                  <FormField label="Kapazität">
+                    <input
+                      inputMode="numeric"
+                      max="10000"
+                      min="1"
+                      type="number"
+                      value={roomDraft.capacity}
+                      onChange={(event) =>
+                        setRoomDraft((current) => ({
+                          ...current,
+                          capacity: event.target.value,
+                        }))
+                      }
+                    />
+                  </FormField>
+                </FormGrid>
+              </FormCard>
+              <div className="event-spaces__form-actions">
+                <button
+                  className="secondary-button"
+                  onClick={() => setEditor("request")}
+                  type="button"
                 >
-                  <option value="meeting_room">Sitzungszimmer</option>
-                  <option value="event_room">Veranstaltungsraum</option>
-                  <option value="other">Anderer Raum</option>
-                </select>
-              </label>
-              <label>
-                Standort
-                <input
-                  value={roomDraft.location}
-                  onChange={(event) =>
-                    setRoomDraft((current) => ({
-                      ...current,
-                      location: event.target.value,
-                    }))
-                  }
-                  placeholder="z. B. Gebäude A, Erdgeschoss"
-                />
-              </label>
-              <label>
-                Kapazität
-                <input
-                  inputMode="numeric"
-                  max="10000"
-                  min="1"
-                  type="number"
-                  value={roomDraft.capacity}
-                  onChange={(event) =>
-                    setRoomDraft((current) => ({
-                      ...current,
-                      capacity: event.target.value,
-                    }))
-                  }
-                  placeholder="Optional"
-                />
-              </label>
-            </div>
-            <div className="event-spaces__form-actions">
-              <button
-                className="secondary-button"
-                onClick={() => setEditor("request")}
-                type="button"
-              >
-                Zurück
-              </button>
-              <button
-                className="primary-button"
-                disabled={pending}
-                type="submit"
-              >
-                {pending ? "Wird angelegt …" : "Raum anlegen"}
-              </button>
-            </div>
+                  Zurück
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={pending}
+                  type="submit"
+                >
+                  {pending ? "Wird angelegt …" : "Raum anlegen"}
+                </button>
+              </div>
+            </FormLayout>
           </form>
         </section>
       ) : null}
@@ -1922,8 +2008,10 @@ export function EventSpaces({
         workspace.pagination.nextOffset !== null ? (
           <div className="event-spaces__load-more">
             <p>
-              Weitere Raumaufträge im Planungsjahr sind vorhanden. Laden Sie sie
-              nach, bevor Sie in spätere Wochen wechseln.
+              {tn(
+                "Weitere Raumaufträge im Planungsjahr sind vorhanden. Lade sie nach, bevor du in spätere Wochen wechselst.",
+                "Weitere Raumaufträge im Planungsjahr sind vorhanden. Laden Sie sie nach, bevor Sie in spätere Wochen wechseln.",
+              )}
             </p>
             <button
               className="secondary-button"
@@ -1941,8 +2029,10 @@ export function EventSpaces({
 
       {!canRequest && !canManage ? (
         <p className="event-spaces__access-note">
-          Sie können die Raumplanung sehen, aber noch keine Raumaufträge
-          erfassen oder verwalten.
+          {tn(
+            "Du kannst die Raumplanung sehen, aber noch keine Raumaufträge erfassen oder verwalten.",
+            "Sie können die Raumplanung sehen, aber noch keine Raumaufträge erfassen oder verwalten.",
+          )}
         </p>
       ) : null}
     </section>
@@ -2213,8 +2303,10 @@ function RequestCard({
                 <p className="eyebrow">Raumplanung bearbeiten</p>
                 <h5>{request.title}</h5>
                 <p>
-                  Ändern Sie Raum, Zeitraum und die anfragende Person. Die
-                  Agent:innenzuweisung bleibt davon getrennt.
+                  {tn(
+                    "Ändere Raum, Zeitraum und die anfragende Person. Die Agent:innenzuweisung bleibt davon getrennt.",
+                    "Ändern Sie Raum, Zeitraum und die anfragende Person. Die Agent:innenzuweisung bleibt davon getrennt.",
+                  )}
                 </p>
               </div>
               <div className="event-spaces__form-grid">

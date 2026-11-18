@@ -1,3 +1,4 @@
+import { tn } from "./lib/formality";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, LoaderCircle } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -37,7 +38,10 @@ function invokeGetTicket(tenantId: string, ticketId: string) {
         throw new Error("Ticketvergleich konnte nicht geladen werden.");
       if (isRecord(data.error))
         throw new Error(
-          "Du hast keine Berechtigung für diesen Ticketvergleich.",
+          tn(
+            "Du hast keine Berechtigung für diesen Ticketvergleich.",
+            "Sie haben keine Berechtigung für diesen Ticketvergleich.",
+          ),
         );
       const payload = data.data;
       if (!isRecord(payload.ticket))

@@ -24,6 +24,7 @@ import type {
   AssistantTurn,
 } from "@/lib/portal-assistant";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { tn } from "@/lib/formality";
 
 /**
  * «Mit dem Assistenten lösen» (mobile): the person describes the problem,
@@ -147,8 +148,7 @@ export function PortalAssistantSheet({
           >
             {messages.length === 0 ? (
               <Text style={styles.note}>
-                Beschreibe dein Problem. Der Assistent sucht passende Artikel
-                und bereitet bei Bedarf ein Ticket für dich vor.
+                {tn("Beschreibe dein Problem. Der Assistent sucht passende Artikel und bereitet bei Bedarf ein Ticket für dich vor.", "Beschreiben Sie Ihr Problem. Der Assistent sucht passende Artikel und bereitet bei Bedarf ein Ticket für Sie vor.")}
               </Text>
             ) : null}
             {messages.map((message, index) => (
@@ -223,7 +223,7 @@ export function PortalAssistantSheet({
                 ))}
                 <View style={styles.draft}>
                   <Text style={styles.note}>
-                    Nicht gelöst? Dein Ticket ist vorbereitet:
+                    {tn("Nicht gelöst? Dein Ticket ist vorbereitet:", "Nicht gelöst? Ihr Ticket ist vorbereitet:")}
                   </Text>
                   <Text style={styles.articleTitle}>{turn.draft.subject}</Text>
                   {turn.draft.categoryName ? (
@@ -253,7 +253,7 @@ export function PortalAssistantSheet({
             <View style={styles.inputRow}>
               <TextInput
                 accessibilityLabel={
-                  turn?.question ? "Deine Antwort" : "Dein Problem"
+                  turn?.question ? tn("Deine Antwort", "Ihre Antwort") : tn("Dein Problem", "Ihr Problem")
                 }
                 editable={!busy}
                 maxLength={2000}
@@ -261,7 +261,7 @@ export function PortalAssistantSheet({
                 onChangeText={setInput}
                 placeholder={
                   turn?.question
-                    ? "Deine Antwort …"
+                    ? tn("Deine Antwort …", "Ihre Antwort …")
                     : "z. B. Mein Laptop findet das WLAN nicht."
                 }
                 placeholderTextColor={colors.subtle}

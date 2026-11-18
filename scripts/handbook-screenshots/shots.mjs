@@ -26,10 +26,10 @@ export const SHOTS = [
       await h.open();
       await h.click("Neue Erfassung öffnen");
       await h.click("Ticket erfassen", { role: "menuitem" });
-      await h.waitText("Ticket einordnen");
+      await h.waitText("Einordnung");
       const form = h.page
         .locator("form")
-        .filter({ hasText: "Ticket einordnen" })
+        .filter({ hasText: "Einordnung" })
         .first();
       await form
         .getByLabel("Betreff")
@@ -106,13 +106,9 @@ export const SHOTS = [
       await h.open();
       await h.nav("Wissensdatenbank");
       await h.page
-        .locator("article, li, div")
-        .filter({ hasText: /^.*VPN im Homeoffice einrichten/ })
-        .getByRole("button", { name: /Artikel lesen/ })
-        .first()
-        .click();
-      await h.settle();
-      await h.scrollToText("Bibliothek");
+        .getByRole("searchbox", { name: "Wissensdatenbank durchsuchen" })
+        .fill("VPN");
+      await h.settle(1200);
     },
   },
   {
@@ -148,7 +144,7 @@ export const SHOTS = [
       await h.clickText("Offene Tickets", { exact: true });
       await h.click("Kanban");
       await h.scrollToText(
-        "Ziehen Sie eine Karte in eine andere Spalte, um den Status zu ändern.",
+        "Ziehe eine Karte in eine andere Spalte, um den Status zu ändern.",
         90,
       );
     },
@@ -160,6 +156,135 @@ export const SHOTS = [
       await h.open();
       await h.nav("Tickets");
       await h.clickText("Laptop startet nach Windows-Update nicht mehr");
+    },
+  },
+  {
+    name: "ag-sicherheitsfaelle",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Phishing / Junk");
+      await h.waitText("Voicemail (24 Sekunden)");
+      await h.settle(300);
+    },
+  },
+  {
+    name: "ag-sicherheitsfall",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Phishing / Junk");
+      await h.clickText("Voicemail (24 Sekunden)");
+      await h.waitText("Befunde der Analyse");
+      await h.settle(300);
+    },
+  },
+  {
+    name: "ag-stoerungen",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Störungen");
+      await h.waitText("SW-CORE-01 – Ping");
+      await h.settle(300);
+    },
+  },
+  {
+    name: "ag-stoerung",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Störungen");
+      await h.clickText("SW-CORE-01 – Ping");
+      await h.waitText("Letzte 24 Stunden");
+      await h.settle(300);
+    },
+  },
+  {
+    name: "ag-ueberwachung",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.waitText("Aktive Alarme");
+      await h.waitText("Ereignisse anzeigen");
+      await h.click("Ereignisse anzeigen");
+      await h.settle(300);
+    },
+  },
+  {
+    name: "ag-ueberwachung-hinzufuegen",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.click("Geräte hinzufügen");
+      await h.page.getByLabel("Gerät suchen").fill("srv");
+      await h.waitText("noch kein Gerät");
+      await h.click("angezeigten auswählen");
+      await h.waitText("Geräte überwachen");
+      await h.settle(300);
+    },
+  },
+  {
+    name: "ag-ueberwachung-geraet",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.clickText("SRV-SQL-01");
+      await h.waitText("Verknüpft in nextDesk");
+      await h.settle(500);
+    },
+  },
+  {
+    name: "ag-ueberwachung-verbindungen",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.clickText("SRV-SQL-01");
+      await h.waitText("Verbunden mit");
+      await h.page
+        .getByRole("heading", { name: "Verbindungen" })
+        .scrollIntoViewIfNeeded();
+      await h.settle(500);
+    },
+  },
+  {
+    name: "ag-ueberwachung-matrix",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Überwachung");
+      await h.clickText("SRV-SQL-01");
+      await h.waitText("Verbunden mit");
+      await h.click("Matrix");
+      await h.page.getByRole("button", { name: /^Port 1\/1\/25:/ }).click();
+      await h.page
+        .getByRole("heading", { name: "Verbindungen", exact: true })
+        .scrollIntoViewIfNeeded();
+      await h.settle(500);
+    },
+  },
+  {
+    name: "ag-teams",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Teams");
+      await h.waitText("Projekt Neubau Schulhaus");
+      await h.page
+        .getByRole("button", { name: "Projekt Neubau Schulhaus" })
+        .click();
+      await h.waitText("Laufzeit verlängern");
+      await h.page.evaluate(() => {
+        window.scrollTo(0, 0);
+        document
+          .querySelectorAll("main, .workspace, .app-shell")
+          .forEach((el) => el.scrollTo?.(0, 0));
+      });
+      await h.settle(300);
     },
   },
   {
@@ -204,7 +329,7 @@ export const SHOTS = [
         .filter({ visible: true })
         .first();
       await textarea.fill(
-        "Guten Tag Herr Baumann\n\nIch habe Ihnen die neue VPN-Version 5.2 über das Unternehmensportal zugewiesen. Bitte starten Sie Ihren Laptop heute Abend neu und melden Sie sich morgen kurz, ob die Verbindung stabil bleibt.\n\nFreundliche Grüsse\nMara Keller",
+        "Hallo Reto\n\nIch habe dir die neue VPN-Version 5.2 über das Unternehmensportal zugewiesen. Bitte starte deinen Laptop heute Abend neu und melde dich morgen kurz, ob die Verbindung stabil bleibt.\n\nFreundliche Grüsse\nMara Keller",
       );
       await h.settle(400);
       await h.scrollTo(
@@ -246,10 +371,10 @@ export const SHOTS = [
       await h.open();
       await h.click("Neue Erfassung öffnen");
       await h.click("Ticket erfassen", { role: "menuitem" });
-      await h.waitText("Ticket einordnen");
+      await h.waitText("Einordnung");
       const form = h.page
         .locator("form")
-        .filter({ hasText: "Ticket einordnen" })
+        .filter({ hasText: "Einordnung" })
         .first();
       await form.getByRole("combobox").first().fill("Claudia");
       await h.page.getByRole("option", { name: "Claudia Widmer" }).click();
@@ -270,6 +395,19 @@ export const SHOTS = [
         .catch(() => undefined);
       await h.settle(800);
       await h.scrollModalToTop();
+    },
+  },
+  {
+    name: "ag-artikel",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Wissensdatenbank");
+      await h.page
+        .getByRole("button", { name: /VPN im Homeoffice einrichten/ })
+        .first()
+        .click();
+      await h.settle(900);
     },
   },
   {
@@ -340,9 +478,37 @@ SHOTS.push(
     run: (h) => openSettingsTab(h, "SLA"),
   },
   {
+    name: "ag-vertrag-lizenzen",
+    // Contracts need the «Verträge» role; the demo admin has it.
+    persona: "admin",
+    async run(h) {
+      await h.open();
+      await h.nav("Verträge");
+      await h.waitText("Microsoft Enterprise Agreement");
+      const card = h.page
+        .locator("article")
+        .filter({ hasText: "Microsoft Enterprise Agreement" })
+        .first();
+      await card.getByRole("button", { name: "Bearbeiten" }).click();
+      await h.settle(500);
+      await h.scrollToText("Verknüpfte Lizenzen", 24);
+      await h.page.locator("#contract-licenses").click();
+      await h.settle(400);
+    },
+  },
+  {
     name: "ad-module",
     persona: "admin",
     run: (h) => openSettingsTab(h, "Funktionen"),
+  },
+  {
+    name: "ad-ueberwachung",
+    persona: "admin",
+    async run(h) {
+      await openSettingsTab(h, "Monitoring");
+      await h.waitText("Installationspaket");
+      await h.settle(300);
+    },
   },
   {
     name: "ad-branding",
