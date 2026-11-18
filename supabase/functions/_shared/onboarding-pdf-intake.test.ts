@@ -163,3 +163,55 @@ Deno.test(
     }
   },
 );
+
+// Neueres Layout der Personal-App: drei Funktionen, Badge neben dem Schlüssel,
+// Standort statt Raumnummer (Koordinaten wie im echten PDF, Daten erfunden).
+const NEWER_LAYOUT: PdfTextItem[] = [
+  { page: 1, text: "Zusammmenfassung E intritt", x: 43, y: 785 },
+  { page: 1, text: "Ausgefüllt von:", x: 40, y: 759 },
+  { page: 1, text: "Petra Beispiel", x: 233, y: 759 },
+  { page: 1, text: "Arbeitnehmer: (Vor- Nachname)", x: 40, y: 737 },
+  { page: 1, text: "Max Muster", x: 233, y: 737 },
+  { page: 1, text: "Eintritt per", x: 40, y: 715 },
+  { page: 1, text: "01.01.2027", x: 233, y: 715 },
+  { page: 1, text: "unbefristet", x: 42, y: 687 },
+  { page: 1, text: "Nein", x: 116, y: 687 },
+  { page: 1, text: "befristet", x: 181, y: 687 },
+  { page: 1, text: "Ja", x: 238, y: 687 },
+  { page: 1, text: "bis", x: 282, y: 687 },
+  { page: 1, text: "31.12.2027", x: 323, y: 687 },
+  { page: 1, text: "F unktion 1", x: 43, y: 622 },
+  { page: 1, text: "Team", x: 43, y: 595 },
+  { page: 1, text: "TEAM_A", x: 141, y: 597 },
+  { page: 1, text: "Funktion", x: 43, y: 566 },
+  { page: 1, text: "Fachlehrperson", x: 141, y: 566 },
+  { page: 1, text: "F unktion 2", x: 43, y: 535 },
+  { page: 1, text: "Team", x: 43, y: 509 },
+  { page: 1, text: "F unktion 3", x: 43, y: 450 },
+  { page: 1, text: "Team", x: 43, y: 424 },
+  { page: 1, text: "Schlüssel", x: 43, y: 324 },
+  { page: 1, text: "Ja", x: 171, y: 324 },
+  { page: 1, text: "Badge", x: 218, y: 324.5 },
+  { page: 1, text: "Ja", x: 298, y: 324.5 },
+  { page: 1, text: "Standort", x: 45, y: 292 },
+  { page: 1, text: "Baar (Landhausstrasse)", x: 168, y: 293 },
+  { page: 1, text: "ICT Ausstattung", x: 43, y: 263 },
+  { page: 1, text: "Notebook", x: 166, y: 265 },
+];
+
+Deno.test("das neuere Layout mit Badge und Standort wird gelesen", () => {
+  const data = parseOnboardingPdf(NEWER_LAYOUT);
+  assertEquals(data?.employeeName, "Max Muster", "data?.employeeName");
+  assertEquals(data?.startDate, "2027-01-01", "data?.startDate");
+  assertEquals(data?.fixedTerm, true, "data?.fixedTerm");
+  assertEquals(data?.endDate, "2027-12-31", "data?.endDate");
+  assertEquals(data?.needsKey, true, "data?.needsKey");
+  assertEquals(data?.needsBadge, true, "data?.needsBadge");
+  assertEquals(data?.location, "Baar (Landhausstrasse)", "data?.location");
+  assertEquals(data?.functions, [
+    { offer: "", role: "Fachlehrperson", special: "", team: "TEAM_A" },
+  ], "data?.functions");
+  const titles = buildOnboardingTasks(data!).map((task) => task.title);
+  assertEquals(titles.includes("Badge bereitstellen: Baar (Landhausstrasse)"), true, "Badge");
+  assertEquals(titles.includes("Schlüssel bereitstellen: Baar (Landhausstrasse)"), true, "Schlüssel");
+});

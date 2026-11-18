@@ -135,7 +135,7 @@ export async function processOnboardingEmailTicketIntake(
         p_starts_on: data.startDate,
         p_organisation_unit:
           data.functions[0]?.offer || data.functions[0]?.team || null,
-        p_location: data.room,
+        p_location: data.room ?? data.location,
         p_supervisor_name: data.supervisor,
         p_details: data,
         p_extra_tasks: buildOnboardingTasks(data),
