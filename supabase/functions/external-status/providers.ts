@@ -85,7 +85,7 @@ export const SOURCES: readonly SourceDefinition[] = [
     key: "swisscom",
     label: "Swisscom",
     description:
-      "Schweizweite Störungen bei Swisscom (Internet, Festnetz, Mobilfunk; ohne regionale Störungen und TV-Sender).",
+      "Störungen bei Swisscom (Internet, Festnetz, Mobilfunk): schweizweite als Ausfall, regionale als Warnung; ohne TV-Sender.",
     statusUrl: "https://www.swisscom.ch/de/privatkunden/hilfe/netz-und-servicestatus.html",
   },
   {
@@ -267,9 +267,9 @@ export function parseInit7(html: string, rss: string | null, statusUrl: string):
 
 /**
  * Swisscom network and service status (public list behind
- * swisscom.ch/…/netz-und-servicestatus.html): current outages. Only
- * nationwide ones count; regional outages (no place given) and TV channel
- * outages would mostly be noise.
+ * swisscom.ch/…/netz-und-servicestatus.html): current outages. Nationwide
+ * outages are outages, regional ones (no place given) warnings; TV channel
+ * outages are left out.
  */
 export function parseSwisscom(value: unknown, statusUrl: string): ExternalIssue[] {
   if (!Array.isArray(value)) throw new Error("swisscom_status_invalid");
@@ -278,13 +278,16 @@ export function parseSwisscom(value: unknown, statusUrl: string): ExternalIssue[
     const services = Array.isArray(outage.services) ? outage.services.map(String) : [];
     const tvOnly = outage.category === "tv" ||
       (services.length > 0 && services.every((service) => /^TV/i.test(service)));
-    if (!id || outage.nationWide !== true || tvOnly) return [];
+    if (!id || tvOnly) return [];
     if (outage.type && outage.type !== "INCIDENT") return [];
     const title = text(outage.title, 230) ?? "Störung";
     return [{
       id,
       title: `Swisscom: ${title}`.slice(0, 250),
-      severity: outage.state === "RED" || outage.isInterrupted === true ? "down" as const : "warning" as const,
+      // Regional (no place given): a warning; nationwide: by its state.
+      severity: outage.nationWide === true && (outage.state === "RED" || outage.isInterrupted === true)
+        ? "down" as const
+        : "warning" as const,
       url: `${statusUrl}#outageId=${id}`,
       message: plain(outage.description),
       startedAt: typeof outage.startDate === "string" ? outage.startDate : null,

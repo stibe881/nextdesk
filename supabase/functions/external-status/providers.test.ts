@@ -95,7 +95,7 @@ Deno.test("Microsoft 365: nur ungelöste Vorfälle (keine Hinweise)", () => {
   assertEquals(issues.map((issue) => [issue.id, issue.title]), [["TM123", "Microsoft Teams: Users can't join meetings"]]);
 });
 
-Deno.test("Swisscom: nur schweizweite Störungen ohne TV-Sender", () => {
+Deno.test("Swisscom: schweizweit als Ausfall, regional als Warnung, ohne TV-Sender", () => {
   const outage = (extra: Record<string, unknown>) => ({
     id: 1,
     type: "INCIDENT",
@@ -116,6 +116,7 @@ Deno.test("Swisscom: nur schweizweite Störungen ohne TV-Sender", () => {
   ], "https://example.ch/status");
   assertEquals(issues.map((issue) => [issue.id, issue.title, issue.severity]), [
     ["10", "Swisscom: Internet beeinträchtigt", "down"],
+    ["11", "Swisscom: Internet beeinträchtigt", "warning"],
     ["13", "Swisscom: Mobilfunk eingeschränkt", "warning"],
   ]);
   assertEquals(issues[0].url, "https://example.ch/status#outageId=10");
