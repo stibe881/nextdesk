@@ -722,9 +722,22 @@ async function inventoryRefs(
   };
 }
 
-/** Hinweis im Ergebnis von Wissensabfragen: keine Fussnoten in der Antwort. */
+/** Adresse der Web-App; «?wissen=<ID>» öffnet einen Wissensartikel direkt. */
+const APP_URL = "https://app.nextdesk.ch/";
+
+/** Quelle als Markdown-Link: Linktext ist der Artikeltitel, kein ID oder Nummer. */
+function articleSourceLink(id: unknown, title: unknown): string | null {
+  if (typeof id !== "string" || !isUuid(id)) return null;
+  const text =
+    (typeof title === "string" ? title : "")
+      .replace(/[\[\]\r\n]+/g, " ")
+      .trim() || "Wissensartikel";
+  return `[${text}](${APP_URL}?wissen=${id})`;
+}
+
+/** Hinweis im Ergebnis von Wissensabfragen: Quelle als anklickbarer Titel, keine Marker. */
 const ANSWER_NOTE =
-  "Antwort ohne Quellenverweise im Text schreiben: keine Fussnoten oder Marker wie [0], [1] oder [ID] hinter Sätzen. Die Quelle bei Bedarf einmal am Ende mit dem Artikeltitel nennen.";
+  "Quellenangabe: Keine Fussnoten, Nummern oder Marker wie [0], [1] oder [ID] in den Text setzen. Am Ende der Antwort die Quelle genau einmal als Markdown-Link aus dem Feld «quelle» angeben, mit dem Artikeltitel als Linktext, z. B. «Quelle: [Titel](Adresse)». Der Link öffnet den Artikel in nextDesk.";
 
 const CONFIRM_PROPERTY = {
   type: "boolean",
@@ -967,7 +980,7 @@ const TOOLS: Tool[] = [
   {
     name: "wissen_suchen",
     description:
-      "Durchsucht die Wissensdatenbank von nextDesk (Anleitungen und Lösungen der eigenen Organisation), nicht OneDrive, SharePoint oder Google Drive. Bei jeder Frage zu Software, Programmen (z. B. AbaClient), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst und vor jeder Websuche verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». suchbegriff: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen.",
+      "Durchsucht die Wissensdatenbank von nextDesk (Anleitungen und Lösungen der eigenen Organisation), nicht OneDrive, SharePoint oder Google Drive. Bei jeder Frage zu Software, Programmen (z. B. AbaClient), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst und vor jeder Websuche verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». suchbegriff: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen. Als Quelle immer den Link aus dem Feld «quelle» verwenden (Artikeltitel als Linktext), nie Nummern.",
     annotations: { readOnlyHint: true, title: "Wissen durchsuchen" },
     inputSchema: {
       type: "object",
@@ -1059,6 +1072,7 @@ const TOOLS: Tool[] = [
           return {
             id: article.id,
             title: article.title,
+            quelle: articleSourceLink(article.id, article.title),
             summary: clip(article.summary ?? revision.summary, 300) || null,
             excerpt: clip(revision.body, 600) || null,
             updatedAt: article.updated_at ?? article.updatedAt ?? null,
@@ -1101,9 +1115,11 @@ const TOOLS: Tool[] = [
       const revision = isRecord(data.revision) ? data.revision : null;
       if (!article || !revision)
         throw new ToolError("Artikel nicht verfügbar.");
+      const source = articleSourceLink(article.id ?? args.id, article.title);
       return textResult({
         title: article.title,
         body: clip(revision.body, 12000),
+        ...(source ? { quelle: source } : {}),
         hinweis_antwort: ANSWER_NOTE,
       });
     },
