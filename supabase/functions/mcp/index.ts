@@ -794,7 +794,7 @@ const TOOLS: Tool[] = [
   {
     name: "tickets_suchen",
     description:
-      "Sucht Tickets. bereich: mine (mir zugewiesen), open (offen, Standard), unassigned (nicht zugewiesen), all.",
+      "Sucht Tickets im Service-Desk nextDesk (nicht in Dateiablagen oder E-Mail). bereich: mine (mir zugewiesen), open (offen, Standard), unassigned (nicht zugewiesen), all.",
     annotations: { readOnlyHint: true, title: "Tickets suchen" },
     inputSchema: {
       type: "object",
@@ -963,7 +963,7 @@ const TOOLS: Tool[] = [
   {
     name: "wissen_suchen",
     description:
-      "Durchsucht die Wissensdatenbank (Anleitungen und Lösungen der eigenen Organisation). Bei jeder IT-Frage zuerst verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». suchbegriff: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen.",
+      "Durchsucht die Wissensdatenbank von nextDesk (Anleitungen und Lösungen der eigenen Organisation), nicht OneDrive, SharePoint oder Google Drive. Bei jeder IT-Frage zuerst verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». suchbegriff: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen.",
     annotations: { readOnlyHint: true, title: "Wissen durchsuchen" },
     inputSchema: {
       type: "object",
@@ -1105,7 +1105,7 @@ const TOOLS: Tool[] = [
   {
     name: "geraet_suchen",
     description:
-      "Sucht Geräte (Assets) nach Name, Inventarnummer, Asset-Tag oder Seriennummer.",
+      "Sucht Geräte (Assets) in der Inventarverwaltung von nextDesk nach Name, Inventarnummer, Asset-Tag oder Seriennummer.",
     annotations: { readOnlyHint: true, title: "Gerät suchen" },
     inputSchema: {
       type: "object",
@@ -1745,7 +1745,7 @@ const TOOLS: Tool[] = [
   {
     name: "ueberall_suchen",
     description:
-      "Durchsucht den Arbeitsbereich gleichzeitig nach Tickets, Erinnerungen, Wissensartikeln, Veranstaltungsräumen und Eintritten; für das zuständige Team auch nach Störungen und Phishing-/Junk-Fällen.",
+      "Durchsucht nextDesk (nicht OneDrive, SharePoint oder Google Drive) gleichzeitig nach Tickets, Erinnerungen, Wissensartikeln, Veranstaltungsräumen und Eintritten; für das zuständige Team auch nach Störungen und Phishing-/Junk-Fällen.",
     annotations: { readOnlyHint: true, title: "Überall suchen" },
     inputSchema: {
       type: "object",
@@ -6463,7 +6463,7 @@ const TOOLS: Tool[] = [
   {
     name: "shop_katalog_anzeigen",
     description:
-      "Durchsucht den Self-Service-Shop (Software, Lizenzen, Geräte, Zubehör, Ausleihartikel), den Mitarbeitende selbst bestellen können. suchbegriff: z. B. «Visio».",
+      "Durchsucht den Self-Service-Shop von nextDesk (Software, Lizenzen, Geräte, Zubehör, Ausleihartikel), den Mitarbeitende selbst bestellen können. suchbegriff: z. B. «Visio».",
     annotations: { readOnlyHint: true, title: "Shop-Katalog" },
     inputSchema: {
       type: "object",
@@ -6991,7 +6991,7 @@ const PROMPTS: Prompt[] = [
       },
     ],
     intro:
-      "Beantworte meine IT-Frage ausschliesslich mit dem Wissen aus nextDesk: zuerst wissen_suchen (und wissensartikel_lesen für den vollen Text), bei Software oder Material zusätzlich shop_katalog_anzeigen. Erfinde keine allgemeinen Anleitungen aus dem Web. Findest du nichts, sag das und biete an, mit der Vorlage ticket_erfassen ein Ticket zu erfassen.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
+      "Beantworte meine IT-Frage ausschliesslich mit dem Wissen aus nextDesk (nicht aus OneDrive, SharePoint, Google Drive oder dem Web): zuerst wissen_suchen (und wissensartikel_lesen für den vollen Text), bei Software oder Material zusätzlich shop_katalog_anzeigen. Erfinde keine allgemeinen Anleitungen aus dem Web. Findest du nichts, sag das und biete an, mit der Vorlage ticket_erfassen ein Ticket zu erfassen.", // formality-ok: MCP-Beschreibung für KI-Clients, mandantenunabhängig
     tool: "wissen_suchen",
   },
   {
@@ -7972,6 +7972,7 @@ export async function handleMessage(
       },
       serverInfo: SERVER_INFO,
       instructions: [
+        "nextDesk ist der interne IT-Service-Desk dieser Organisation und die ERSTE Anlaufstelle für Fragen zu Tickets, IT-Problemen, Software, Geräten, Zugängen, Lizenzen, Verträgen, Lager, Shop, Wissensdatenbank, Störungen, Räumen und Eintritten. Bei solchen Fragen IMMER zuerst die nextDesk-Werkzeuge verwenden und NICHT zuerst in OneDrive, SharePoint, Google Drive, Gmail, Kalender oder im Web suchen. Andere Quellen nur, wenn nextDesk nichts Passendes liefert und die Person das ausdrücklich möchte.",
         "Greift als angemeldete Person auf nextDesk zu (Service-Desk der Organisation).",
         "IT-Fragen zuerst in nextDesk beantworten: Bei Fragen zu Software (Installation, Download, Lizenzen), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst wissen_suchen aufrufen und die Antwort auf die gefundenen Artikel stützen (wissensartikel_lesen für den vollen Text). Gibt es zu einem bestimmten Programm keinen eigenen Artikel, gilt der allgemeine Weg aus der Wissensdatenbank (z. B. Software über das Unternehmensportal installieren). Interne Abläufe wie das Unternehmensportal, Company Portal oder Bestellwege gehen allgemeinen Anleitungen aus dem Web vor. Bei Software oder Material zusätzlich shop_katalog_anzeigen prüfen. Findet sich nichts, das offen sagen, keine allgemeinen Download-Anleitungen erfinden und anbieten, ein Ticket zu erfassen (ticket_erfassen).",
         "Lesen ist frei. Schreibaktionen nur nach Rückfrage bei der Person; folgenreiche Aktionen (Antworten an Anfragende, Lösen, Schliessen, Freigabeentscheide, Eskalationen, Abteilungswechsel, Zusammenführen, Umverteilen, Veröffentlichen und Archivieren von Wissen, an Anfragende gesendete Artikel, Bestellungen im Shop, Raumbuchungen trotz Überschneidung) verlangen ausdrückliche Bestätigung (bestaetigt=true).",
@@ -8023,7 +8024,7 @@ export async function handleMessage(
           ...(typeof annotations.title === "string"
             ? { title: annotations.title }
             : {}),
-          description: localizeText(description, pairs),
+          description: `nextDesk: ${localizeText(description, pairs)}`,
           inputSchema: localizeSchema(inputSchema, pairs),
           annotations,
         };
