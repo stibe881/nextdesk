@@ -88,6 +88,14 @@ Bei IT-Fragen (Software, Geräte, Zugänge …) weist der Connector Gemini an, z
 die Wissensdatenbank zu befragen und keine allgemeinen Anleitungen aus dem Web
 zu erfinden.
 
+nextDesk ist ausdrücklich die erste Anlaufstelle: Die Anweisungen des Connectors
+(`instructions`) und die Beschreibung jedes Werkzeugs (Präfix «nextDesk:»)
+sagen Gemini, bei Fragen zu Tickets, IT, Geräten, Lager, Shop, Wissen usw. zuerst
+nextDesk zu verwenden und nicht zuerst OneDrive, SharePoint, Google Drive, Gmail
+oder das Web. Die Such-Werkzeuge (`wissen_suchen`, `ueberall_suchen`,
+`tickets_suchen`, `geraet_suchen`, `shop_katalog_anzeigen`) grenzen sich in ihrer
+Beschreibung ausdrücklich gegen Dateiablagen ab.
+
 Geschriebene Texte (Ticket, interne Notiz, Zeitnotiz, Notiz zur Serviceaufgabe,
 Erinnerung)
 enden mit dem Hinweis «Erfasst über den nextDesk-Connector.». Antworten an
