@@ -1448,6 +1448,15 @@ Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 
 Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 
+### Wie hake ich Aufgaben eines Eintritts ab?
+
+1. Öffnen Sie unter **Planung und Betrieb** die **Eintritte**.
+2. Die Aufgaben stehen nach Fälligkeit gruppiert: **Überfällig**, **Nächste 7 Tage** und **Später**.
+3. Klicken Sie auf das Kästchen vor einer Aufgabe, um sie als erledigt zu markieren. Ein zweiter Klick öffnet sie wieder.
+4. «In Arbeit» oder «Blockiert» wählen Sie im Feld rechts. Erledigte Aufgaben klappen Sie unter **Erledigt** auf.
+
+Mehr dazu unter «Eintritte und Austritte».
+
 ### Wie verknüpfe ich eine Lizenz mit einem Vertrag?
 
 1. Öffnen Sie den Vertrag unter **Ressourcen → Verträge**.
@@ -3065,6 +3074,25 @@ laufende Inventur, die nicht mehr gebraucht wird, entfernen Sie in der Liste mit
 Bestand bleibt unverändert, und im Audit-Protokoll steht «Inventur gelöscht».
 Abgeschlossene Inventuren lassen sich nicht löschen. Löschen dürfen alle, die
 Inventuren starten dürfen (Recht «Lagerorte und Artikelstammdaten verwalten»).
+
+
+## Eintritte und Austritte
+
+Unter **Planung und Betrieb → Eintritte** steht für jeden Eintritt bzw.
+Austritt eine Karte. Oben sehen Sie Name, Datum mit Countdown (z. B. «in
+12 Tagen»), Abteilung, Ort, Führung und ICT-Verantwortung sowie rechts den
+Fortschritt («1 / 6 Aufgaben erledigt»). Darunter stehen die Aufgaben nach
+Fälligkeit gruppiert: **Überfällig** (rot), **Nächste 7 Tage** und
+**Später**; erledigte Aufgaben sind unter **Erledigt** eingeklappt. Jede
+Zeile zeigt Fälligkeit («in 3 Tagen», «1 Tag überfällig»), die zuständige
+Abteilung bzw. Person (wenn nicht die ICT-Verantwortung) und den Status.
+Mit dem **Kästchen** haken Sie eine Aufgabe ab, im Feld rechts wählen Sie «In
+Arbeit» oder «Blockiert». Verzögert sich eine Aufgabe, verknüpfen Sie über den
+**Schraubenschlüssel** ein Ausnahmeticket; es erscheint dann unter der
+Aufgabe. Bei Eintritten aus einer Mail klappen Sie unten **Angaben aus der
+Eintrittsmeldung** auf.
+
+![Eintritt mit Aufgaben nach Fälligkeit](images/ag-eintritte.jpg)
 
 ## Lager-Automatik, Rücknahmen und Austritt
 

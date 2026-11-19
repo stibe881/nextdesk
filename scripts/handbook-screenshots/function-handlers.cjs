@@ -131,6 +131,7 @@ const ENABLED_FEATURES = new Set([
   "teams.provisioning",
   "monitoring.native",
   "contracts.management",
+  "onboarding.entries",
 ]);
 const ALL_FEATURES = [
   "monitoring.native",
@@ -3162,8 +3163,66 @@ const HANDLERS = {
     if (body.type === "listRequesters") return ok({ people: [] });
     return null;
   },
-  onboarding: (body) =>
-    body.type === "navigationSummary" ? ok({ attentionCount: 0 }) : null,
+  onboarding: (body) => {
+    if (body.type === "navigationSummary") return ok({ attentionCount: 0 });
+    if (body.type === "listDepartmentTasks") return ok({ tasks: [] });
+    if (body.type !== "listWorkspace") return null;
+    // Eintritt in 12 Tagen: Aufgaben teils überfällig, bald fällig, später
+    // und erledigt, damit die Gruppen der Karte sichtbar sind.
+    const day = (offset) => D.iso(offset * D.DAY).slice(0, 10);
+    const task = (n, title, offset, status, extra = {}) => ({
+      id: D.uid("0b0b0b0b", n),
+      title,
+      dueOn: day(offset),
+      responsibleName: "Mara Keller",
+      departmentId: null,
+      departmentName: null,
+      status,
+      canUpdate: true,
+      exception: null,
+      ...extra,
+    });
+    return ok({
+      permissions: { canRequest: true, canManage: true },
+      people: [{ id: D.uid("0c0c0c0c", 1), displayName: "Mara Keller" }],
+      templates: [
+        { id: D.uid("0d0d0d0d", 1), key: "standard", name: "Standard" },
+      ],
+      entries: [
+        {
+          id: D.uid("0e0e0e0e", 1),
+          employeeName: "Lea Brunner",
+          startsOn: day(12),
+          organisationUnit: "Finanzen",
+          location: "Zürich, 3. OG",
+          managerName: "Thomas Huber",
+          ictResponsibleName: "Mara Keller",
+          templateId: D.uid("0d0d0d0d", 1),
+          kind: "onboarding",
+          canEdit: true,
+          source: "email",
+          sourceTicketNumber: "ICT-2026-000150",
+          details: { filledBy: "Thomas Huber", functions: [] },
+          tasks: [
+            task(1, "Gerät bereitstellen", -1, "in_progress", {
+              exception: {
+                ticketNumber: "ICT-2026-000141",
+                reason: "Lieferverzögerung",
+              },
+            }),
+            task(2, "Konto und Zugriffe einrichten", 3, "open"),
+            task(3, "Gruppen und Berechtigungen zuweisen", 5, "open"),
+            task(4, "Badge bereitstellen", 9, "open", {
+              responsibleName: "Peter Meier",
+              departmentName: "Infrastruktur",
+            }),
+            task(5, "Einführung und Übergabe bestätigen", 12, "open"),
+            task(6, "Arbeitsplatz vorbereiten", -3, "completed"),
+          ],
+        },
+      ],
+    });
+  },
   "event-spaces": (body) =>
     body.type === "navigationSummary" ? fail("feature_disabled", 403) : null,
   contracts: (body) => {

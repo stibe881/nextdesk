@@ -478,6 +478,16 @@ SHOTS.push(
     run: (h) => openSettingsTab(h, "SLA"),
   },
   {
+    name: "ag-eintritte",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Eintritte");
+      await h.settle(1200);
+      await h.scrollToText("Meine sichtbaren Eintritte", 90);
+    },
+  },
+  {
     name: "ag-vertrag-lizenzen",
     // Contracts need the «Verträge» role; the demo admin has it.
     persona: "admin",

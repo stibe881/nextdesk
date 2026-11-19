@@ -4,11 +4,15 @@ import { OnboardingDepartmentTasks } from "./onboarding-department-tasks";
 import {
   BadgeCheck,
   CalendarDays,
+  Check,
   CheckCircle2,
   ClipboardList,
+  MapPin,
   Plus,
   RefreshCw,
+  TriangleAlert,
   UserRound,
+  Users,
   Wrench,
 } from "lucide-react";
 import {
@@ -746,6 +750,81 @@ function AssetReturnsPanel({
   );
 }
 
+/** Tage von heute (Zürich) bis zu einem Datum (YYYY-MM-DD); negativ = vorbei. */
+function daysUntil(value: string, today: Date = new Date()): number {
+  const local = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Zurich",
+  }).format(today);
+  return Math.round(
+    (Date.parse(`${value}T00:00:00Z`) - Date.parse(`${local}T00:00:00Z`)) /
+      86_400_000,
+  );
+}
+
+/** «heute», «morgen», «in 12 Tagen», «vor 3 Tagen». */
+export function relativeDays(days: number): string {
+  if (days === 0) return "heute";
+  if (days === 1) return "morgen";
+  if (days === -1) return "gestern";
+  return days > 0 ? `in ${days} Tagen` : `vor ${-days} Tagen`;
+}
+
+function shortDate(value: string) {
+  return new Intl.DateTimeFormat("de-CH", {
+    timeZone: "Europe/Zurich",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+type TaskGroup = { key: string; title: string; tasks: Task[] };
+
+/** Offene Aufgaben nach Fälligkeit gruppiert, erledigte am Schluss. */
+export function groupTasks(
+  tasks: Task[],
+  today: Date = new Date(),
+): TaskGroup[] {
+  const byDue = [...tasks].sort(
+    (a, b) => a.dueOn.localeCompare(b.dueOn) || a.title.localeCompare(b.title),
+  );
+  const open = byDue.filter((task) => task.status !== "completed");
+  const groups: TaskGroup[] = [
+    {
+      key: "overdue",
+      title: "Überfällig",
+      tasks: open.filter((task) => daysUntil(task.dueOn, today) < 0),
+    },
+    {
+      key: "soon",
+      title: "Nächste 7 Tage",
+      tasks: open.filter((task) => {
+        const days = daysUntil(task.dueOn, today);
+        return days >= 0 && days <= 7;
+      }),
+    },
+    {
+      key: "later",
+      title: "Später",
+      tasks: open.filter((task) => daysUntil(task.dueOn, today) > 7),
+    },
+    {
+      key: "done",
+      title: "Erledigt",
+      tasks: byDue.filter((task) => task.status === "completed"),
+    },
+  ];
+  return groups.filter((group) => group.tasks.length > 0);
+}
+
 function progress(tasks: Task[]) {
   const done = tasks.filter((task) => task.status === "completed").length;
   return {
@@ -1281,10 +1360,13 @@ export function Onboarding({
                   id={`onboarding-entry-${entry.id}`}
                   key={entry.id}
                 >
-                  <header>
-                    <div>
+                  <header className="onboarding__entry-head">
+                    <span aria-hidden="true" className="onboarding__avatar">
+                      {initials(entry.employeeName)}
+                    </span>
+                    <div className="onboarding__entry-title">
                       <h4>
-                        {entry.employeeName}{" "}
+                        {entry.employeeName}
                         <span
                           className={`onboarding__kind onboarding__kind--${entry.kind ?? "onboarding"}`}
                         >
@@ -1293,26 +1375,54 @@ export function Onboarding({
                             : "Eintritt"}
                         </span>
                       </h4>
-                      <p>
-                        {entry.kind === "offboarding" ? "Austritt" : "Eintritt"}{" "}
-                        am {dateLabel(entry.startsOn)}
-                        {entry.organisationUnit
-                          ? ` · ${entry.organisationUnit}`
-                          : ""}
-                        {entry.location ? ` · ${entry.location}` : ""}
+                      <p className="onboarding__entry-when">
+                        <CalendarDays aria-hidden="true" size={14} />
+                        {dateLabel(entry.startsOn)}
+                        <strong>
+                          {relativeDays(daysUntil(entry.startsOn))}
+                        </strong>
                       </p>
+                      <ul className="onboarding__facts">
+                        {entry.organisationUnit ? (
+                          <li>
+                            <Users aria-hidden="true" size={13} />
+                            {entry.organisationUnit}
+                          </li>
+                        ) : null}
+                        {entry.location ? (
+                          <li>
+                            <MapPin aria-hidden="true" size={13} />
+                            {entry.location}
+                          </li>
+                        ) : null}
+                        <li>
+                          <UserRound aria-hidden="true" size={13} />
+                          Führung: {entry.managerName}
+                        </li>
+                        <li>
+                          <UserRound aria-hidden="true" size={13} />
+                          ICT: {entry.ictResponsibleName}
+                        </li>
+                      </ul>
                     </div>
-                    <strong>
-                      {state.done}/{state.total} erledigt
-                    </strong>
+                    <div
+                      className={`onboarding__entry-progress${state.total > 0 && state.done === state.total ? " is-done" : ""}`}
+                    >
+                      <strong>
+                        {state.done}
+                        <span> / {state.total}</span>
+                      </strong>
+                      <small>Aufgaben erledigt</small>
+                      <div
+                        aria-label={`${state.percent}% erledigt`}
+                        className="onboarding__progress"
+                        role="img"
+                      >
+                        <span style={{ width: `${state.percent}%` }} />
+                      </div>
+                    </div>
                   </header>
-                  <div
-                    className="onboarding__progress"
-                    aria-label={`${state.percent}% erledigt`}
-                  >
-                    <span style={{ width: `${state.percent}%` }} />
-                  </div>
-                  {departmentProgress(entry.tasks).length ? (
+                  {departmentProgress(entry.tasks).length > 1 ? (
                     <ul
                       aria-label="Fortschritt pro Abteilung"
                       className="onboarding__departments"
@@ -1344,96 +1454,172 @@ export function Onboarding({
                       ))}
                     </ul>
                   ) : null}
-                  <dl>
-                    <div>
-                      <dt>Führung</dt>
-                      <dd>{entry.managerName}</dd>
-                    </div>
-                    <div>
-                      <dt>ICT</dt>
-                      <dd>{entry.ictResponsibleName}</dd>
-                    </div>
-                  </dl>
-                  {entry.source === "email" ? (
-                    <details className="onboarding__details">
-                      <summary>
-                        Angaben aus der Eintrittsmeldung
-                        {entry.sourceTicketNumber
-                          ? ` (E-Mail ${entry.sourceTicketNumber})`
-                          : ""}
-                      </summary>
-                      <dl>
-                        {entryDetailRows(entry.details).map((row) => (
-                          <div key={row.label}>
-                            <dt>{row.label}</dt>
-                            <dd>{row.value}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    </details>
-                  ) : null}
-                  <div className="onboarding__tasks">
-                    {entry.tasks.map((task) => (
-                      <div
-                        className={`onboarding__task onboarding__task--${task.status}`}
-                        key={task.id}
-                      >
-                        <div>
-                          <strong>{task.title}</strong>
-                          <span>
-                            Fällig {dateLabel(task.dueOn)} ·{" "}
-                            {task.responsibleName}
-                          </span>
-                          {task.exception ? (
-                            <small>
-                              Ausnahmeticket {task.exception.ticketNumber}{" "}
-                              verknüpft
-                            </small>
-                          ) : null}
-                        </div>
-                        {task.canUpdate ? (
-                          <label>
-                            <span className="sr-only">
-                              Status für {task.title}
-                            </span>
-                            <select
-                              value={task.status}
-                              disabled={pending}
-                              onChange={(event) =>
-                                void changeTask(
-                                  task.id,
-                                  event.target.value as TaskStatus,
-                                )
-                              }
-                            >
-                              {Object.entries(statuses).map(([key, label]) => (
-                                <option key={key} value={key}>
-                                  {label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : (
-                          <em>{statuses[task.status]}</em>
-                        )}
-                        {task.canUpdate && !task.exception ? (
-                          <button
-                            className="text-button"
-                            disabled={pending}
-                            onClick={() =>
-                              setExceptionTarget({
-                                entryId: entry.id,
-                                taskId: task.id,
-                                taskTitle: task.title,
-                              })
-                            }
-                            type="button"
-                          >
-                            Ausnahmeticket
-                          </button>
-                        ) : null}
-                      </div>
-                    ))}
+                  <div className="onboarding__task-groups">
+                    {groupTasks(entry.tasks).map((group) => {
+                      const rows = (
+                        <ul className="onboarding__tasks">
+                          {group.tasks.map((task) => {
+                            const days = daysUntil(task.dueOn);
+                            const done = task.status === "completed";
+                            const due = done
+                              ? "erledigt"
+                              : days < 0
+                                ? `${-days} ${-days === 1 ? "Tag" : "Tage"} überfällig`
+                                : relativeDays(days);
+                            const dueTone = done
+                              ? "done"
+                              : days < 0
+                                ? "overdue"
+                                : days <= 7
+                                  ? "soon"
+                                  : "later";
+                            const showResponsible =
+                              task.responsibleName !== entry.ictResponsibleName;
+                            return (
+                              <li
+                                className={`onboarding__task onboarding__task--${task.status}`}
+                                key={task.id}
+                              >
+                                {task.canUpdate ? (
+                                  <button
+                                    aria-label={
+                                      done
+                                        ? `«${task.title}» wieder öffnen`
+                                        : `«${task.title}» als erledigt markieren`
+                                    }
+                                    aria-pressed={done}
+                                    className="onboarding__check"
+                                    disabled={pending}
+                                    onClick={() =>
+                                      void changeTask(
+                                        task.id,
+                                        done ? "open" : "completed",
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    {done ? (
+                                      <Check aria-hidden="true" size={15} />
+                                    ) : null}
+                                  </button>
+                                ) : (
+                                  <span
+                                    aria-hidden="true"
+                                    className={`onboarding__check is-static${done ? " is-done" : ""}`}
+                                  >
+                                    {done ? <Check size={15} /> : null}
+                                  </span>
+                                )}
+                                <div className="onboarding__task-text">
+                                  <strong>{task.title}</strong>
+                                  {showResponsible || task.departmentName ? (
+                                    <span>
+                                      {[
+                                        task.departmentName,
+                                        showResponsible
+                                          ? task.responsibleName
+                                          : null,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" · ")}
+                                    </span>
+                                  ) : null}
+                                  {task.exception ? (
+                                    <small>
+                                      <TriangleAlert
+                                        aria-hidden="true"
+                                        size={12}
+                                      />
+                                      Ausnahmeticket{" "}
+                                      {task.exception.ticketNumber}
+                                    </small>
+                                  ) : null}
+                                </div>
+                                <span
+                                  className={`onboarding__due onboarding__due--${dueTone}`}
+                                  title={`Fällig am ${dateLabel(task.dueOn)}`}
+                                >
+                                  <span>{shortDate(task.dueOn)}</span>
+                                  <small>{due}</small>
+                                </span>
+                                {task.canUpdate ? (
+                                  <label className="onboarding__status">
+                                    <span className="sr-only">
+                                      Status für {task.title}
+                                    </span>
+                                    <select
+                                      value={task.status}
+                                      disabled={pending}
+                                      onChange={(event) =>
+                                        void changeTask(
+                                          task.id,
+                                          event.target.value as TaskStatus,
+                                        )
+                                      }
+                                    >
+                                      {Object.entries(statuses).map(
+                                        ([key, label]) => (
+                                          <option key={key} value={key}>
+                                            {label}
+                                          </option>
+                                        ),
+                                      )}
+                                    </select>
+                                  </label>
+                                ) : (
+                                  <em className="onboarding__status">
+                                    {statuses[task.status]}
+                                  </em>
+                                )}
+                                {task.canUpdate && !task.exception && !done ? (
+                                  <button
+                                    aria-label={`Ausnahmeticket für «${task.title}» verknüpfen`}
+                                    className="onboarding__exception-button"
+                                    disabled={pending}
+                                    onClick={() =>
+                                      setExceptionTarget({
+                                        entryId: entry.id,
+                                        taskId: task.id,
+                                        taskTitle: task.title,
+                                      })
+                                    }
+                                    title="Ausnahme oder Verzögerung: Ticket verknüpfen"
+                                    type="button"
+                                  >
+                                    <Wrench aria-hidden="true" size={15} />
+                                  </button>
+                                ) : (
+                                  <span aria-hidden="true" />
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      );
+                      return group.key === "done" ? (
+                        <details
+                          className="onboarding__task-group onboarding__task-group--done"
+                          key={group.key}
+                        >
+                          <summary>
+                            {group.title}
+                            <span>{group.tasks.length}</span>
+                          </summary>
+                          {rows}
+                        </details>
+                      ) : (
+                        <section
+                          className={`onboarding__task-group onboarding__task-group--${group.key}`}
+                          key={group.key}
+                        >
+                          <h5>
+                            {group.title}
+                            <span>{group.tasks.length}</span>
+                          </h5>
+                          {rows}
+                        </section>
+                      );
+                    })}
                   </div>
                   {entry.kind === "offboarding" && entry.canEdit ? (
                     <AssetReturnsPanel
@@ -1442,12 +1628,33 @@ export function Onboarding({
                       tenantId={tenantId}
                     />
                   ) : null}
-                  <p className="onboarding__exception">
-                    <Wrench size={15} /> Bei einer Ausnahme oder Verzögerung
-                    wird ein Ticket bewusst im Bereich «Tickets» erstellt und
-                    danach mit diesem Eintritt verknüpft; aus dem Onboarding
-                    entstehen nie automatisch Tickets.
-                  </p>
+                  <footer className="onboarding__entry-foot">
+                    {entry.source === "email" ? (
+                      <details className="onboarding__details">
+                        <summary>
+                          Angaben aus der Eintrittsmeldung
+                          {entry.sourceTicketNumber
+                            ? ` (E-Mail ${entry.sourceTicketNumber})`
+                            : ""}
+                        </summary>
+                        <dl>
+                          {entryDetailRows(entry.details).map((row) => (
+                            <div key={row.label}>
+                              <dt>{row.label}</dt>
+                              <dd>{row.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </details>
+                    ) : null}
+                    <p className="onboarding__exception">
+                      <Wrench aria-hidden="true" size={13} />
+                      {tn(
+                        "Verzögert sich eine Aufgabe, verknüpfst du über den Schraubenschlüssel ein Ausnahmeticket. Aus dem Onboarding entstehen nie automatisch Tickets.",
+                        "Verzögert sich eine Aufgabe, verknüpfen Sie über den Schraubenschlüssel ein Ausnahmeticket. Aus dem Onboarding entstehen nie automatisch Tickets.",
+                      )}
+                    </p>
+                  </footer>
                 </article>
               );
             })}
