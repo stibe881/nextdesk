@@ -1348,30 +1348,30 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 ### Wie lege ich ein Lager mit Standort an?
 
 1. Öffne **Lager → Lagerorte**.
-2. Klappe **Lager erfassen** auf und gib den Namen des **Lagers** ein, z. B. «Hauptlager Bern».
+2. Klicke oben rechts auf **Lager erfassen** und gib den Namen des **Lagers** ein, z. B. «Hauptlager Bern».
 3. Trage bei Bedarf den **Standort** ein, z. B. «Bern, Hauptstrasse 1».
 4. Klicke auf **Lager erfassen**.
 
-Du kannst mehrere Lager erfassen. Mit dem Stift änderst du Name und Standort, mit dem Papierkorb archivierst du ein Lager. Die Lagerplätze und ihr Bestand bleiben dabei erhalten.
+Jedes Lager erscheint als eigene Karte mit Standort und Anzahl Lagerplätze. Mit dem Stift im Kopf der Karte änderst du Name und Standort, mit dem Papierkorb archivierst du ein Lager. Die Lagerplätze und ihr Bestand bleiben dabei erhalten.
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 ### Wie erfasse ich einen Lagerplatz in einem Lager?
 
-1. Öffne **Lager → Lagerorte** und klappe **Lagerort erfassen** auf.
-2. Gib den **Lagerort** ein, z. B. «WSICT.01.02». Er steht später auf der Etikette.
-3. Wähle das **Lager**, zu dem der Lagerplatz gehört. Ohne Auswahl erscheint er unter «Ohne Lager».
+1. Öffne **Lager → Lagerorte**.
+2. Klicke in der Karte des Lagers auf **Lagerplatz**.
+3. Gib den **Lagerplatz** ein, z. B. «WSICT.01.02». Er steht später auf der Etikette.
 4. Trage bei Bedarf eine **Bemerkung** ein. Die Bemerkung dient nur als Notiz und erscheint weder auf Etiketten noch in Auswahllisten.
-5. Klicke auf **Lagerort erfassen**.
+5. Klicke auf **Lagerplatz erfassen**. Das Formular bleibt offen, damit du weitere Plätze erfassen kannst; mit **Fertig** schliesst du es.
 
-Die Lagerplätze erscheinen gruppiert nach Lager, mit dem Standort in der Überschrift.
+Die Lagerplätze stehen als Liste in der Karte ihres Lagers, sortiert nach Code. Mit **Bestand** siehst du die Artikel an einem Lagerplatz. Plätze ohne Lager stehen in der Karte «Ohne Lager»; mit dem Stift ordnest du sie einem Lager zu.
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 ### Wie drucke ich Etiketten für Lagerorte?
 
 1. Öffne **Lager → Lagerorte**.
-2. Wähle die Lagerorte mit **Für Etikett auswählen**, oder klicke auf **Alle sichtbaren**.
+2. Wähle die Lagerorte mit dem Kästchen vor dem Lagerplatz aus. **Alle für Etiketten** in der Karte wählt alle Plätze eines Lagers, **Alle sichtbaren** alle Plätze.
 3. Klicke auf **Etiketten drucken**.
 4. Wähle im Druckdialog Format, QR-Inhalt (**App** oder **Web**) und **Anzahl Etiketten** und drucke.
 
@@ -1382,7 +1382,7 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 ### Wie ändere ich einen Lagerort?
 
 1. Öffne **Lager → Lagerorte**.
-2. Klicke auf den Stift (**Bearbeiten**).
+2. Klicke in der Zeile des Lagerplatzes auf den Stift (**Bearbeiten**).
 3. Ändere **Lagerort**, **Lager** und **Bemerkung** und speichere. Der Lagerort darf Buchstaben, Ziffern, Punkte, Binde- und Unterstriche enthalten (z. B. «WSICT.01.01»).
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
@@ -3118,6 +3118,10 @@ buchst du weiterhin unter **Bewegungen**.
 Mit **Löschen** im Formular entfernst du einen Artikel endgültig (auch aus dem
 Shop). Hat er schon Bewegungen oder Reservationen, lässt er sich nicht löschen;
 nextDesk bietet dann an, ihn zu **archivieren**.
+
+Unter **Lagerorte** steht jedes Lager als eigene Karte mit Standort und Anzahl Lagerplätze; darin sind die Lagerplätze als Liste aufgeführt, sortiert nach Code. **Lager erfassen** (oben rechts) legt ein neues Lager an, **Lagerplatz** in der Karte einen neuen Platz in diesem Lager. **Bestand** zeigt die Artikel an einem Lagerplatz.
+
+![Lager als Karten mit ihren Lagerplätzen](images/ag-lagerorte.jpg)
 
 Unter **Lagerorte** änderst du Lagerort, Lager und Bemerkung mit dem Stift
 (**Bearbeiten**). Mit dem Papierkorb (**Löschen**) steht ein Lagerort nicht

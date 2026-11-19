@@ -567,6 +567,17 @@ SHOTS.push(
     run: (h) => openFeatureConfiguration(h, "Assets & Dienste"),
   },
   {
+    name: "ag-lagerorte",
+    persona: "admin",
+    async run(h) {
+      await h.open();
+      await h.nav("Lager");
+      await h.page.getByRole("tab", { name: "Lagerorte", exact: true }).click();
+      await h.waitText("Wandschrank ICT");
+      await h.scrollToText("Lager und Lagerplätze", 90);
+    },
+  },
+  {
     name: "in-verzeichnis",
     persona: "admin",
     async run(h) {

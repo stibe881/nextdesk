@@ -132,6 +132,7 @@ const ENABLED_FEATURES = new Set([
   "monitoring.native",
   "contracts.management",
   "onboarding.entries",
+  "inventory.management",
 ]);
 const ALL_FEATURES = [
   "monitoring.native",
@@ -647,6 +648,72 @@ function coordinationOverview(ticket) {
 }
 
 const HANDLERS = {
+  inventory: (body) => {
+    if (body.type === "listOpenReservations") return ok({ reservations: [] });
+    if (body.type === "listActiveCounts") return ok({ activeCounts: [] });
+    if (body.type === "listSourceReservationRules")
+      return ok({
+        canManageEventRules: false,
+        canManageOnboardingRules: false,
+        rules: [],
+        onboardingTemplateTasks: [],
+      });
+    if (body.type !== "workspace") return null;
+    const warehouses = [
+      {
+        id: "wh-ict",
+        name: "Wandschrank ICT",
+        site: "Bern, Hauptstrasse 1 · 2. OG",
+        active: true,
+      },
+      {
+        id: "wh-main",
+        name: "Hauptlager",
+        site: "Bern, Lagerstrasse 4",
+        active: true,
+      },
+      { id: "wh-new", name: "Lager Thun", site: null, active: true },
+    ];
+    const place = (id, name, warehouseId, note = null) => ({
+      id,
+      name,
+      code: name,
+      active: true,
+      note,
+      warehouseId,
+    });
+    const locations = [
+      place("loc-1", "WSICT.01.01", "wh-ict", "Oberes Fach, Kabel"),
+      place("loc-2", "WSICT.01.02", "wh-ict"),
+      place("loc-3", "WSICT.01.03", "wh-ict", "Ersatz-Netzteile"),
+      place("loc-4", "HL.A.01.1", "wh-main"),
+      place("loc-5", "HL.A.01.2", "wh-main", "Notebooks (Leihgeräte)"),
+      place("loc-6", "HL.B.02.1", "wh-main"),
+      place("loc-7", "Empfang", null, "Schublade unter dem Empfang"),
+    ];
+    return ok({
+      permissions: {
+        canRead: true,
+        canManage: true,
+        canMove: true,
+        canAdjust: true,
+        canCloseInventoryCount: true,
+        canIssue: true,
+      },
+      summary: {
+        criticalItemCount: 0,
+        openReservationCount: 0,
+        activeCountSessionCount: 0,
+      },
+      items: [],
+      locations,
+      recentEvents: [],
+      recentEventsHasMore: false,
+      lowStockItems: [],
+      departments: [],
+      warehouses,
+    });
+  },
   "entra-directory-sync": (body) => {
     if (body.type !== "listRuns") return ok({ connected: true });
     // Nächtliche Läufe plus ein manueller Abgleich.

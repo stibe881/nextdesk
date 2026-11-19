@@ -1348,30 +1348,30 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 ### Wie lege ich ein Lager mit Standort an?
 
 1. Öffnen Sie **Lager → Lagerorte**.
-2. Klappen Sie **Lager erfassen** auf und geben Sie den Namen des **Lagers** ein, z. B. «Hauptlager Bern».
+2. Klicken Sie oben rechts auf **Lager erfassen** und geben Sie den Namen des **Lagers** ein, z. B. «Hauptlager Bern».
 3. Tragen Sie bei Bedarf den **Standort** ein, z. B. «Bern, Hauptstrasse 1».
 4. Klicken Sie auf **Lager erfassen**.
 
-Sie können mehrere Lager erfassen. Mit dem Stift ändern Sie Name und Standort, mit dem Papierkorb archivieren Sie ein Lager. Die Lagerplätze und ihr Bestand bleiben dabei erhalten.
+Jedes Lager erscheint als eigene Karte mit Standort und Anzahl Lagerplätze. Mit dem Stift im Kopf der Karte ändern Sie Name und Standort, mit dem Papierkorb archivieren Sie ein Lager. Die Lagerplätze und ihr Bestand bleiben dabei erhalten.
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 ### Wie erfasse ich einen Lagerplatz in einem Lager?
 
-1. Öffnen Sie **Lager → Lagerorte** und klappen Sie **Lagerort erfassen** auf.
-2. Geben Sie den **Lagerort** ein, z. B. «WSICT.01.02». Er steht später auf der Etikette.
-3. Wählen Sie das **Lager**, zu dem der Lagerplatz gehört. Ohne Auswahl erscheint er unter «Ohne Lager».
+1. Öffnen Sie **Lager → Lagerorte**.
+2. Klicken Sie in der Karte des Lagers auf **Lagerplatz**.
+3. Geben Sie den **Lagerplatz** ein, z. B. «WSICT.01.02». Er steht später auf der Etikette.
 4. Tragen Sie bei Bedarf eine **Bemerkung** ein. Die Bemerkung dient nur als Notiz und erscheint weder auf Etiketten noch in Auswahllisten.
-5. Klicken Sie auf **Lagerort erfassen**.
+5. Klicken Sie auf **Lagerplatz erfassen**. Das Formular bleibt offen, damit Sie weitere Plätze erfassen können; mit **Fertig** schliessen Sie es.
 
-Die Lagerplätze erscheinen gruppiert nach Lager, mit dem Standort in der Überschrift.
+Die Lagerplätze stehen als Liste in der Karte ihres Lagers, sortiert nach Code. Mit **Bestand** sehen Sie die Artikel an einem Lagerplatz. Plätze ohne Lager stehen in der Karte «Ohne Lager»; mit dem Stift ordnen Sie sie einem Lager zu.
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 ### Wie drucke ich Etiketten für Lagerorte?
 
 1. Öffnen Sie **Lager → Lagerorte**.
-2. Wählen Sie die Lagerorte mit **Für Etikett auswählen**, oder klicken Sie auf **Alle sichtbaren**.
+2. Wählen Sie die Lagerorte mit dem Kästchen vor dem Lagerplatz aus. **Alle für Etiketten** in der Karte wählt alle Plätze eines Lagers, **Alle sichtbaren** alle Plätze.
 3. Klicken Sie auf **Etiketten drucken**.
 4. Wählen Sie im Druckdialog Format, QR-Inhalt (**App** oder **Web**) und **Anzahl Etiketten** und drucken Sie.
 
@@ -1382,7 +1382,7 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 ### Wie ändere ich einen Lagerort?
 
 1. Öffnen Sie **Lager → Lagerorte**.
-2. Klicken Sie auf den Stift (**Bearbeiten**).
+2. Klicken Sie in der Zeile des Lagerplatzes auf den Stift (**Bearbeiten**).
 3. Ändern Sie **Lagerort**, **Lager** und **Bemerkung** und speichern Sie. Der Lagerort darf Buchstaben, Ziffern, Punkte, Binde- und Unterstriche enthalten (z. B. «WSICT.01.01»).
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
@@ -3083,6 +3083,10 @@ buchen Sie weiterhin unter **Bewegungen**.
 Mit **Löschen** im Formular entfernen Sie einen Artikel endgültig (auch aus dem
 Shop). Hat er schon Bewegungen oder Reservationen, lässt er sich nicht löschen;
 nextDesk bietet dann an, ihn zu **archivieren**.
+
+Unter **Lagerorte** steht jedes Lager als eigene Karte mit Standort und Anzahl Lagerplätze; darin sind die Lagerplätze als Liste aufgeführt, sortiert nach Code. **Lager erfassen** (oben rechts) legt ein neues Lager an, **Lagerplatz** in der Karte einen neuen Platz in diesem Lager. **Bestand** zeigt die Artikel an einem Lagerplatz.
+
+![Lager als Karten mit ihren Lagerplätzen](images/ag-lagerorte.jpg)
 
 Unter **Lagerorte** ändern Sie Lagerort, Lager und Bemerkung mit dem Stift
 (**Bearbeiten**). Mit dem Papierkorb (**Löschen**) steht ein Lagerort nicht
