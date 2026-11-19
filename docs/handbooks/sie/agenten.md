@@ -1450,7 +1450,7 @@ Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 ### Wie stelle ich das Intervall der Inventur ein?
 
 1. Öffnen Sie **Lager → Automatik** und die Karte **Inventur**.
-2. Legen Sie pro Lagerort ein Intervall in Tagen fest. Ist es abgelaufen, erhält die Lagerverwaltung «Inventur fällig».
+2. Legen Sie pro **Lager** ein Intervall in Tagen fest. Ist es abgelaufen, erhält die Lagerverwaltung «Inventur fällig». Ein Lager gilt als fällig, sobald sein am längsten nicht gezählter Lagerplatz überfällig ist; läuft an einem Platz des Lagers gerade eine Inventur, gibt es keine Erinnerung.
 
 Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 
@@ -3000,7 +3000,7 @@ Einleitung, Abschnitte, Schritte, Hinweise). KI-Entwürfe aus Tickets erscheinen
 
 Die Bereiche des Lagers sind wie in den Einstellungen in Gruppen geordnet:
 **Bestand** (Übersicht, Artikel, Lagerorte), **Buchungen** (Bewegungen,
-Reservationen, Inventur) und **Planung** (Beschaffung, Automatik; nur für die
+Inventur) und **Planung** (Beschaffung, Automatik; nur für die
 Lagerverwaltung). Eine Meldung oben gilt für den Bereich, in dem sie entstanden
 ist, und verschwindet beim Wechsel in einen anderen Bereich.
 
@@ -3114,9 +3114,9 @@ wieder an Lager.
 - **Reservationen:** Offene Reservationen werden nach der eingestellten Zahl
   Tage automatisch freigegeben (stündliche Prüfung). Reservationen aus
   Shop-Bestellungen, Eintritten und Raumbuchungen bleiben bestehen.
-- **Inventur:** Pro Lagerort ein Intervall in Tagen. Ist es seit der letzten
-  abgeschlossenen Inventur abgelaufen, erhält die Lagerverwaltung die
-  Mitteilung «Inventur fällig».
+- **Inventur:** Pro Lager ein Intervall in Tagen. Ist es seit der letzten
+  abgeschlossenen Inventur des am längsten nicht gezählten Lagerplatzes
+  abgelaufen, erhält die Lagerverwaltung die Mitteilung «Inventur fällig».
 
 **Austritt:** Im Austritt öffnen Sie **Rückgaben und Lizenzen**. Neben den
 zugewiesenen Geräten listet nextDesk die offenen **Shop-Ausleihen** und die

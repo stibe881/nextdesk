@@ -425,7 +425,7 @@ const sectionGroups: readonly {
   { label: "Bestand", sections: ["Übersicht", "Artikel", "Lagerorte"] },
   {
     label: "Buchungen",
-    sections: ["Bewegungen", "Reservationen", "Inventur"],
+    sections: ["Bewegungen", "Inventur"],
   },
   { label: "Planung", sections: ["Beschaffung", "Automatik"] },
 ];
@@ -1593,7 +1593,10 @@ export function Inventory({
       {!loading && workspace ? (
         <div className="inventory__content" role="tabpanel">
           {activeSection === "Übersicht" ? (
-            <InventoryOverview workspace={workspace} />
+            <InventoryOverview
+              onOpen={setActiveSection}
+              workspace={workspace}
+            />
           ) : null}
           {activeSection === "Artikel" ? (
             <InventoryItems
@@ -1678,16 +1681,25 @@ export function Inventory({
   );
 }
 
-function InventoryOverview({ workspace }: { workspace: InventoryWorkspace }) {
+function InventoryOverview({
+  onOpen,
+  workspace,
+}: {
+  /** Opens a section of the stock module (the tiles are links). */
+  onOpen: (section: InventorySection) => void;
+  workspace: InventoryWorkspace;
+}) {
   return (
     <>
       <div className="inventory__metrics">
-        <article
-          className={`inventory__metric ${
+        <button
+          className={`inventory__metric inventory__metric--link ${
             workspace.summary.criticalItemCount > 0
               ? "inventory__metric--attention"
               : "inventory__metric--ok"
           }`}
+          onClick={() => onOpen("Artikel")}
+          type="button"
         >
           {workspace.summary.criticalItemCount > 0 ? (
             <AlertTriangle aria-hidden="true" size={19} />
@@ -1701,19 +1713,17 @@ function InventoryOverview({ workspace }: { workspace: InventoryWorkspace }) {
               ? "Artikel benötigen Aufmerksamkeit"
               : "Alles im grünen Bereich"}
           </small>
-        </article>
-        <article className="inventory__metric">
-          <PackageCheck aria-hidden="true" size={19} />
-          <span>Offene Reservationen</span>
-          <strong>{workspace.summary.openReservationCount}</strong>
-          <small>reduzieren den verfügbaren Bestand</small>
-        </article>
-        <article className="inventory__metric">
+        </button>
+        <button
+          className="inventory__metric inventory__metric--link"
+          onClick={() => onOpen("Inventur")}
+          type="button"
+        >
           <ClipboardList aria-hidden="true" size={19} />
           <span>Laufende Inventuren</span>
           <strong>{workspace.summary.activeCountSessionCount}</strong>
           <small>werden erst bewusst abgeschlossen</small>
-        </article>
+        </button>
       </div>
       <div className="inventory__grid">
         <section className="inventory__panel panel">

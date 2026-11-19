@@ -89,4 +89,95 @@ set note = case when lower(name) = code then null else name end,
 where note is null
   and name <> upper(code);
 
+-- Inventur-Erinnerung pro Lager statt pro Lagerplatz (Lager-Automatik). Das
+-- Intervall steht am Lager. Ein Lager ist fällig, sobald seine am längsten
+-- nicht gezählte Lagerort-Inventur (bzw. das Anlegen des Platzes) länger als
+-- das Intervall zurückliegt; läuft an einem Platz des Lagers eine Inventur,
+-- wird nicht erinnert. Das bisherige Intervall am Lagerort wird nicht mehr
+-- verwendet.
+alter table public.inventory_warehouses
+  add column if not exists count_interval_days integer,
+  add column if not exists count_reminded_at timestamptz;
+alter table public.inventory_warehouses
+  drop constraint if exists inventory_warehouses_count_interval_check;
+alter table public.inventory_warehouses
+  add constraint inventory_warehouses_count_interval_check
+  check (count_interval_days is null or count_interval_days between 7 and 730);
+
+create or replace function public.inventory_send_count_reminders(p_now timestamptz default null)
+returns integer
+language plpgsql
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+declare
+  v_now timestamptz := coalesce(p_now, now());
+  v_warehouse record;
+  v_recipient uuid;
+  v_count integer := 0;
+begin
+  for v_warehouse in
+    select warehouse.id, warehouse.tenant_id, warehouse.name, warehouse.count_interval_days,
+           (
+             select min(
+               coalesce(
+                 (select max(count.closed_at) from public.inventory_counts count
+                  where count.tenant_id = place.tenant_id and count.location_id = place.id
+                    and count.status = 'closed'),
+                 place.created_at
+               )
+             )
+             from public.inventory_locations place
+             where place.tenant_id = warehouse.tenant_id
+               and place.warehouse_id = warehouse.id
+               and place.active
+           ) as last_counted_at
+    from public.inventory_warehouses warehouse
+    where warehouse.active
+      and warehouse.count_interval_days is not null
+      and public.inventory_management_feature_enabled(warehouse.tenant_id)
+      and exists (
+        select 1 from public.inventory_locations place
+        where place.tenant_id = warehouse.tenant_id
+          and place.warehouse_id = warehouse.id and place.active
+      )
+      and not exists (
+        select 1
+        from public.inventory_counts running
+        join public.inventory_locations place
+          on place.id = running.location_id and place.tenant_id = running.tenant_id
+        where running.tenant_id = warehouse.tenant_id
+          and place.warehouse_id = warehouse.id
+          and running.status in ('draft', 'counting')
+      )
+    for update of warehouse skip locked
+  loop
+    if v_warehouse.last_counted_at + make_interval(days => v_warehouse.count_interval_days) > v_now then
+      continue;
+    end if;
+    if exists (
+      select 1 from public.inventory_warehouses reminded
+      where reminded.id = v_warehouse.id
+        and reminded.count_reminded_at is not null
+        and reminded.count_reminded_at > v_warehouse.last_counted_at
+        and reminded.count_reminded_at > v_now - make_interval(days => least(v_warehouse.count_interval_days, 30))
+    ) then
+      continue;
+    end if;
+    for v_recipient in select * from public.inventory_automation_recipients(v_warehouse.tenant_id) loop
+      insert into public.ticket_notifications (tenant_id, user_id, ticket_id, kind, payload)
+      values (v_warehouse.tenant_id, v_recipient, null, 'inventory.count_due', jsonb_build_object(
+        'inventoryWarehouseId', v_warehouse.id,
+        'locationName', v_warehouse.name,
+        'lastCountedAt', v_warehouse.last_counted_at,
+        'intervalDays', v_warehouse.count_interval_days
+      ));
+    end loop;
+    update public.inventory_warehouses set count_reminded_at = v_now where id = v_warehouse.id;
+    v_count := v_count + 1;
+  end loop;
+  return v_count;
+end;
+$$;
+
 commit;
