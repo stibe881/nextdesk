@@ -404,12 +404,16 @@ export function inventoryLabelItem(
 
 export type LabelInventoryLocation = {
   id: string;
+  /** The location itself, e.g. «WSICT.01.02»; the only large text on the label. */
   name: string;
-  /** Internal location code; shown as a second line when present. */
-  code: string | null;
+  /** Warehouse of the location, shown as a small line when present. */
+  warehouseName?: string | null;
 };
 
-/** Label of a storage location: its name and a QR code that opens it. */
+/**
+ * Label of a storage location: the location in large bold type and a QR code
+ * that opens it. The remark of a location is never printed.
+ */
 export function inventoryLocationLabelItem(
   location: LabelInventoryLocation,
   mode: LabelQrMode,
@@ -419,8 +423,9 @@ export function inventoryLocationLabelItem(
     key: `inventory-location:${location.id}`,
     title: location.name.trim() || "Lagerort",
     meta: [
-      "Lagerort",
-      present(location.code) ? location.code.trim() : null,
+      present(location.warehouseName)
+        ? `Lager: ${location.warehouseName.trim()}`
+        : null,
     ].filter(present),
     qrText:
       mode === "app"

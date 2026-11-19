@@ -26,6 +26,7 @@ const EVENT_ID = "00000000-0000-4000-8000-000000000004";
 const EVENT_LINE_ID = "00000000-0000-4000-8000-000000000005";
 const REQUEST_ID = "00000000-0000-4000-8000-000000000006";
 const COUNT_ID = "00000000-0000-4000-8000-000000000007";
+const WAREHOUSE_ID = "00000000-0000-4000-8000-0000000000c3";
 const DEPARTMENT_A = "00000000-0000-4000-8000-0000000000a1";
 const DEPARTMENT_B = "00000000-0000-4000-8000-0000000000b2";
 
@@ -115,7 +116,7 @@ Deno.test(
       type: "manageLocation",
       tenantId: TENANT_ID,
       operation: "create",
-      values: { code: "h-01", name: "Hauptlager" },
+      values: { code: "h-01" },
     };
     const item = {
       type: "manageItem",
@@ -158,7 +159,7 @@ Deno.test(
       type: "manageLocation",
       tenantId: TENANT_ID,
       operation: "create",
-      values: { code: "h-01", name: "Hauptlager" },
+      values: { code: "h-01" },
       clientRequestId: REQUEST_ID,
     });
     const itemAction = parseAction({
@@ -284,10 +285,10 @@ Deno.test(
         type: "manageLocation",
         tenantId: TENANT_ID,
         operation: "create",
-        values: { name: "Hauptlager" },
+        values: { note: "Hauptlager" },
         clientRequestId: REQUEST_ID,
       }) === null,
-      "a location create needs both code and name",
+      "a location create needs a code",
     );
     assert(
       parseAction({
@@ -1049,7 +1050,18 @@ Deno.test(
             name: "Hauptlager",
             code: "h-01",
             active: true,
+            warehouse_id: WAREHOUSE_ID,
+            note: "Wandschrank im Flur",
             private_note: "LOCATION-NOTE-SECRET",
+          },
+        ],
+        warehouses: [
+          {
+            id: WAREHOUSE_ID,
+            name: "Lager Bern",
+            site: "Bern, Hauptstrasse 1",
+            active: true,
+            private_note: "WAREHOUSE-NOTE-SECRET",
           },
         ],
         balances: [
@@ -1105,6 +1117,7 @@ Deno.test(
       "recentEvents",
       "recentEventsHasMore",
       "summary",
+      "warehouses",
     ]);
     assertEquals(sortedKeys(workspace.permissions), [
       "canAdjust",
@@ -1141,7 +1154,17 @@ Deno.test(
       "code",
       "id",
       "name",
+      "note",
+      "warehouseId",
     ]);
+    assertEquals(workspace.locations[0]?.warehouseId, WAREHOUSE_ID);
+    assertEquals(sortedKeys(workspace.warehouses[0]), [
+      "active",
+      "id",
+      "name",
+      "site",
+    ]);
+    assertEquals(workspace.warehouses[0]?.site, "Bern, Hauptstrasse 1");
     assertEquals(sortedKeys(workspace.recentEvents[0]), [
       "id",
       "itemName",
@@ -1183,6 +1206,8 @@ Deno.test(
           name: "Hauptlager",
           code: "h-01",
           active: true,
+          warehouseId: WAREHOUSE_ID,
+          note: "Wandschrank im Flur",
         },
       ],
       recentEvents: [
@@ -1217,6 +1242,14 @@ Deno.test(
         },
       ],
       departments: [],
+      warehouses: [
+        {
+          id: WAREHOUSE_ID,
+          name: "Lager Bern",
+          site: "Bern, Hauptstrasse 1",
+          active: true,
+        },
+      ],
     });
     const serialized = JSON.stringify({ data: workspace });
     for (const forbidden of [
@@ -1768,7 +1801,7 @@ Deno.test("location codes may contain dots and are stored in lower case", () => 
       type: "manageLocation",
       tenantId: TENANT_ID,
       operation: "create",
-      values: { code, name: "Wandschrank ICT" },
+      values: { code, note: "Wandschrank ICT" },
       clientRequestId: REQUEST_ID,
     });
     return action && action.type === "manageLocation" &&
@@ -1783,4 +1816,152 @@ Deno.test("location codes may contain dots and are stored in lower case", () => 
   for (const code of [".abc", "a b", "a/b", "ä1", "a,b", ""]) {
     assertEquals(parsedCode(code), null);
   }
+});
+
+Deno.test("workspace: a place may only point to a warehouse of the same workspace", () => {
+  const base = {
+    items: [],
+    balances: [],
+    events: [],
+    eventLines: [],
+    primaryImages: [],
+    recentEventsHasMore: false,
+    openReservationCount: 0,
+    activeCountSessionCount: 0,
+    departments: [],
+  };
+  const location = {
+    id: LOCATION_ID,
+    name: "Hauptlager",
+    code: "h-01",
+    active: true,
+    warehouse_id: WAREHOUSE_ID,
+  };
+  // No warehouse rows for the referenced id: the whole response is refused.
+  assertEquals(
+    toWorkspaceContract(
+      { ...base, locations: [location], warehouses: [] },
+      permissions,
+    ),
+    null,
+  );
+  // Places without a warehouse (or an old server without the column) are fine.
+  const without = toWorkspaceContract(
+    {
+      ...base,
+      locations: [{ ...location, warehouse_id: undefined }],
+      warehouses: [],
+    },
+    permissions,
+  );
+  assertEquals(without?.locations[0]?.warehouseId, null);
+});
+
+Deno.test("manageWarehouse and the warehouse of a place are parsed strictly", () => {
+  const base = { type: "manageWarehouse", tenantId: TENANT_ID };
+  const created = parseAction({
+    ...base,
+    operation: "create",
+    values: { name: " Lager Bern ", site: "Bern, Hauptstrasse 1" },
+    clientRequestId: REQUEST_ID,
+  });
+  assertEquals(
+    created &&
+      created.type === "manageWarehouse" &&
+      created.values?.name === "Lager Bern" &&
+      created.values?.site === "Bern, Hauptstrasse 1",
+    true,
+  );
+  // An empty site clears it; a warehouse needs a name; unknown keys are refused.
+  const cleared = parseAction({
+    ...base,
+    operation: "update",
+    warehouseId: WAREHOUSE_ID,
+    values: { site: "" },
+  });
+  assertEquals(
+    cleared && cleared.type === "manageWarehouse" && cleared.values?.site,
+    null,
+  );
+  assertEquals(
+    parseAction({ ...base, operation: "create", values: { site: "Bern" } }),
+    null,
+  );
+  assertEquals(
+    parseAction({
+      ...base,
+      operation: "create",
+      values: { name: "X", tenantId: TENANT_ID },
+    }),
+    null,
+  );
+  assertEquals(
+    parseAction({ ...base, operation: "update", values: { name: "X" } }),
+    null,
+  );
+  assertEquals(
+    parseAction({ ...base, operation: "archive", warehouseId: "nope" }),
+    null,
+  );
+  const archived = parseAction({
+    ...base,
+    operation: "archive",
+    warehouseId: WAREHOUSE_ID.toUpperCase(),
+  });
+  assertEquals(
+    archived && archived.type === "manageWarehouse" && archived.warehouseId,
+    WAREHOUSE_ID,
+  );
+
+  // A place: the warehouse is a uuid or null (remove), nothing else.
+  const place = (warehouseId: unknown) =>
+    parseAction({
+      type: "manageLocation",
+      tenantId: TENANT_ID,
+      operation: "create",
+      values: { code: "g10.2.1", warehouseId },
+      clientRequestId: REQUEST_ID,
+    });
+  const inWarehouse = place(WAREHOUSE_ID);
+  assertEquals(
+    inWarehouse &&
+      inWarehouse.type === "manageLocation" &&
+      inWarehouse.values?.warehouseId,
+    WAREHOUSE_ID,
+  );
+  const removed = place(null);
+  assertEquals(
+    removed &&
+      removed.type === "manageLocation" &&
+      removed.values?.warehouseId === null,
+    true,
+  );
+  assertEquals(place("not-a-uuid"), null);
+  assertEquals(place(7), null);
+});
+
+Deno.test("location: the code is the location, the former designation is an optional remark", () => {
+  const parsed = (values: Record<string, unknown>) => {
+    const action = parseAction({
+      type: "manageLocation",
+      tenantId: TENANT_ID,
+      operation: "create",
+      values,
+      clientRequestId: REQUEST_ID,
+    });
+    return action && action.type === "manageLocation" ? action.values : null;
+  };
+  // The display name follows the code as typed; the stored code is lower case.
+  const created = parsed({ code: "WSICT.01.02", note: "Wandschrank im Flur" });
+  assertEquals(created?.code, "wsict.01.02");
+  assertEquals(created?.label, "WSICT.01.02");
+  assertEquals(created?.note, "Wandschrank im Flur");
+  // The remark is optional and can be cleared; it needs no text.
+  assertEquals(parsed({ code: "a1" })?.note, undefined);
+  assertEquals(parsed({ code: "a1", note: "" })?.note, null);
+  assertEquals(parsed({ code: "a1", note: null })?.note, null);
+  // The old «name» key no longer exists, and a remark is limited to 500 chars.
+  assertEquals(parsed({ code: "a1", name: "Hauptlager" }), null);
+  assertEquals(parsed({ code: "a1", note: "x".repeat(501) }), null);
+  assertEquals(parsed({ note: "nur Bemerkung" }), null);
 });

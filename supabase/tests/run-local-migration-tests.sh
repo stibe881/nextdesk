@@ -16813,4 +16813,83 @@ $$;
 rollback;
 SQL
 
+# Lager mit Standort (Migration 0371): Lagerplätze gehören optional zu einem
+# Lager, ein Lager gehört genau einem Mandanten; aus der Bezeichnung wird die
+# Bemerkung, der Lagerort heisst wie sein Code.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_a constant uuid := 'a7100000-0000-4000-8000-000000000001';
+  v_b constant uuid := 'a7100000-0000-4000-8000-000000000002';
+  v_tenant_a uuid;
+  v_tenant_b uuid;
+  v_warehouse uuid;
+  v_foreign uuid;
+  v_location uuid;
+  v_old uuid;
+  v_name text;
+  v_note text;
+begin
+  insert into auth.users (id) values (v_a), (v_b);
+  v_tenant_a := public.provision_personal_workspace(v_a, 'lager-a@example.ch', 'Lager A');
+  v_tenant_b := public.provision_personal_workspace(v_b, 'lager-b@example.ch', 'Lager B');
+  insert into public.inventory_warehouses (tenant_id, name, site)
+  values (v_tenant_a, 'Lager Bern', 'Bern, Hauptstrasse 1') returning id into v_warehouse;
+  insert into public.inventory_warehouses (tenant_id, name)
+  values (v_tenant_b, 'Fremdes Lager') returning id into v_foreign;
+
+  -- Der Name des Lagers ist je Mandant eindeutig (ohne Gross-/Kleinschreibung).
+  begin
+    insert into public.inventory_warehouses (tenant_id, name) values (v_tenant_a, 'LAGER BERN');
+    raise exception 'duplicate warehouse name accepted';
+  exception when unique_violation then null;
+  end;
+
+  -- Ein Lagerplatz kann dem eigenen Lager zugeordnet werden, einem fremden nicht.
+  insert into public.inventory_locations (tenant_id, code, name, warehouse_id)
+  values (v_tenant_a, 'wsict.01.01', 'WSICT.01.01', v_warehouse) returning id into v_location;
+  begin
+    update public.inventory_locations set warehouse_id = v_foreign where id = v_location;
+    raise exception 'a place was assigned to the warehouse of another tenant';
+  exception when foreign_key_violation then null;
+  end;
+
+  -- Wird ein Lager gelöscht, bleiben die Plätze (ohne Lager).
+  delete from public.inventory_warehouses where id = v_warehouse;
+  if (select warehouse_id from public.inventory_locations where id = v_location) is not null then
+    raise exception 'deleting a warehouse must only detach its places';
+  end if;
+
+  -- Die Bemerkung ist optional und begrenzt.
+  update public.inventory_locations set note = 'Wandschrank im Flur' where id = v_location;
+  begin
+    update public.inventory_locations set note = repeat('x', 501) where id = v_location;
+    raise exception 'an over-long remark was accepted';
+  exception when check_violation then null;
+  end;
+
+  -- Bestehende Bezeichnungen werden zu Bemerkungen (Daten der Migration, erneut ausgeführt).
+  insert into public.inventory_locations (tenant_id, code, name)
+  values (v_tenant_a, 'wsict.01.02', 'Wandschrank ICT') returning id into v_old;
+  insert into public.inventory_locations (tenant_id, code, name)
+  values (v_tenant_a, 'h-01', 'H-01') returning id into v_location;
+  update public.inventory_locations
+  set note = case when lower(name) = code then null else name end,
+      name = upper(code)
+  where note is null and name <> upper(code) and tenant_id = v_tenant_a;
+  select name, note into v_name, v_note from public.inventory_locations where id = v_old;
+  if v_name <> 'WSICT.01.02' or v_note <> 'Wandschrank ICT' then
+    raise exception 'former designation was not turned into a remark (%, %)', v_name, v_note;
+  end if;
+  select name, note into v_name, v_note from public.inventory_locations where id = v_location;
+  if v_name <> 'H-01' or v_note is not null then
+    raise exception 'a designation equal to the code must not become a remark';
+  end if;
+  raise notice 'inventory warehouse checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

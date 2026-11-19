@@ -216,19 +216,19 @@ describe("repeatLabelItems", () => {
 });
 
 describe("storage location labels", () => {
-  it("show the location name and carry an app or web link", () => {
+  it("show only the location (and its warehouse) and carry an app or web link", () => {
     const location = {
       id: ID.toUpperCase(),
-      name: " G10.2.1 ",
-      code: "g10-2-1",
+      name: " WSICT.01.02 ",
+      warehouseName: "Lager Bern",
     };
     const web = inventoryLocationLabelItem(
       location,
       "web",
       "https://app.example.ch/app/?x=1#y",
     );
-    expect(web.title).toBe("G10.2.1");
-    expect(web.meta).toEqual(["Lagerort", "g10-2-1"]);
+    expect(web.title).toBe("WSICT.01.02");
+    expect(web.meta).toEqual(["Lager: Lager Bern"]);
     expect(web.key).toBe(`inventory-location:${ID.toUpperCase()}`);
     expect(web.qrText).toBe(
       `https://app.example.ch/app/?inventoryLocation=${ID}`,
@@ -238,13 +238,19 @@ describe("storage location labels", () => {
     expect(inventoryLocationDeepLink(ID)).toBe(app.qrText);
   });
 
-  it("omits the code line without a code", () => {
+  it("prints nothing but the location without a warehouse, and never a remark", () => {
     const item = inventoryLocationLabelItem(
-      { id: ID, name: "Wandschrank", code: null },
+      // A remark is not part of the label input at all.
+      { id: ID, name: "G10.2.1", note: "Wandschrank im Flur" } as {
+        id: string;
+        name: string;
+      },
       "web",
       "https://x.ch/",
     );
-    expect(item.meta).toEqual(["Lagerort"]);
+    expect(item.title).toBe("G10.2.1");
+    expect(item.meta).toEqual([]);
+    expect(JSON.stringify(item)).not.toContain("Wandschrank");
   });
 
   it("reads the web link back and rejects anything but a uuid", () => {

@@ -93,11 +93,25 @@ export type InventoryItemSummary = {
   unit: string;
 };
 
+/** Lagerort (Lagerplatz): heisst wie sein Code, z. B. «WSICT.01.02». */
 type InventoryLocation = {
   active: boolean;
   code: string | null;
   id: string;
+  /** Anzeigename des Lagerorts (der Code, wie eingegeben). */
   name: string;
+  /** Optionale Bemerkung; erscheint nicht auf Etiketten. */
+  note: string | null;
+  /** Lager, zu dem der Lagerort gehört; null = ohne Lager. */
+  warehouseId: string | null;
+};
+
+/** Lager mit Standort; seine Lagerplätze sind Lagerorte. */
+type InventoryWarehouse = {
+  active: boolean;
+  id: string;
+  name: string;
+  site: string | null;
 };
 
 type InventoryEvent = {
@@ -197,6 +211,7 @@ export type InventoryWorkspace = {
   locations: readonly InventoryLocation[];
   lowStockItems: readonly InventoryItemSummary[];
   permissions: InventoryPermissions;
+  warehouses: readonly InventoryWarehouse[];
   recentEvents: readonly InventoryEvent[];
   recentEventsHasMore: boolean;
   summary: InventorySummary;
@@ -234,12 +249,21 @@ type InventoryMovementType =
   | "adjustment_in"
   | "adjustment_out";
 
+/** Eingabe eines Lagerorts: der Code ist der Lagerort, die Bemerkung optional. */
+type LocationInput = {
+  code?: string;
+  /** Bemerkung; leer oder null löscht sie. */
+  note?: string | null;
+  /** Lager; null nimmt den Lagerort aus seinem Lager. */
+  warehouseId?: string | null;
+};
+
 type InventoryAction =
   | {
       type: "manageLocation";
       tenantId: string;
       operation: "create";
-      values: { code: string; name: string };
+      values: LocationInput & { code: string };
       clientRequestId: string;
     }
   | {
@@ -247,7 +271,29 @@ type InventoryAction =
       tenantId: string;
       locationId: string;
       operation: "update";
-      values: { code?: string; name?: string; active?: boolean };
+      values: LocationInput & { active?: boolean };
+      clientRequestId: string;
+    }
+  | {
+      type: "manageWarehouse";
+      tenantId: string;
+      operation: "create";
+      values: { name: string; site?: string | null };
+      clientRequestId: string;
+    }
+  | {
+      type: "manageWarehouse";
+      tenantId: string;
+      warehouseId: string;
+      operation: "update";
+      values: { name?: string; site?: string | null; active?: boolean };
+      clientRequestId: string;
+    }
+  | {
+      type: "manageWarehouse";
+      tenantId: string;
+      warehouseId: string;
+      operation: "archive";
       clientRequestId: string;
     }
   | {
@@ -494,16 +540,44 @@ function parseDepartment(value: unknown): InventoryDepartment | null {
 
 function parseLocation(value: unknown): InventoryLocation | null {
   if (!isRecord(value)) return null;
-  if (!hasOnlyKeys(value, ["id", "name", "code", "active"])) return null;
+  if (
+    !hasOnlyKeys(value, ["id", "name", "code", "active", "note", "warehouseId"])
+  )
+    return null;
   return typeof value.id === "string" &&
     typeof value.name === "string" &&
     typeof value.active === "boolean" &&
-    (typeof value.code === "string" || value.code === null)
+    (typeof value.code === "string" || value.code === null) &&
+    (value.note === undefined ||
+      value.note === null ||
+      typeof value.note === "string") &&
+    (value.warehouseId === undefined ||
+      value.warehouseId === null ||
+      typeof value.warehouseId === "string")
     ? {
         active: value.active,
         code: nullableText(value.code),
         id: value.id,
         name: value.name,
+        note: typeof value.note === "string" ? nullableText(value.note) : null,
+        warehouseId:
+          typeof value.warehouseId === "string" ? value.warehouseId : null,
+      }
+    : null;
+}
+
+function parseWarehouse(value: unknown): InventoryWarehouse | null {
+  if (!isRecord(value)) return null;
+  if (!hasOnlyKeys(value, ["id", "name", "site", "active"])) return null;
+  return typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.active === "boolean" &&
+    (typeof value.site === "string" || value.site === null)
+    ? {
+        active: value.active,
+        id: value.id,
+        name: value.name,
+        site: nullableText(value.site),
       }
     : null;
 }
@@ -1020,6 +1094,7 @@ export function parseInventoryWorkspace(
       "recentEventsHasMore",
       "lowStockItems",
       "departments",
+      "warehouses",
     ])
   )
     return null;
@@ -1066,12 +1141,25 @@ export function parseInventoryWorkspace(
     data.departments === undefined
       ? []
       : parseList(data.departments, parseDepartment);
-  if (!items || !locations || !recentEvents || !lowStockItems || !departments)
+  // Older servers do not know warehouses; then every place is «ohne Lager».
+  const warehouses =
+    data.warehouses === undefined
+      ? []
+      : parseList(data.warehouses, parseWarehouse);
+  if (
+    !items ||
+    !locations ||
+    !recentEvents ||
+    !lowStockItems ||
+    !departments ||
+    !warehouses
+  )
     return null;
   return {
     departments,
     items,
     locations,
+    warehouses,
     lowStockItems,
     permissions: {
       canAdjust: permissions.canAdjust,
@@ -1535,6 +1623,7 @@ export function Inventory({
               locations={workspace.locations}
               onChanged={onChanged}
               tenantId={tenantId}
+              warehouses={workspace.warehouses}
             />
           ) : null}
           {activeSection === "Bewegungen" ? (
@@ -2530,9 +2619,7 @@ function InventoryBookingDialog({
               <option value="">Lagerort wählen</option>
               {activeLocations.map((location) => (
                 <option key={location.id} value={location.id}>
-                  {location.code
-                    ? `${location.name} (${location.code})`
-                    : location.name}
+                  {location.name}
                 </option>
               ))}
             </select>
@@ -2877,12 +2964,14 @@ function InventoryLocations({
   locations,
   onChanged,
   tenantId,
+  warehouses,
 }: {
   canManage: boolean;
   labelBranding?: LabelBranding | undefined;
   locations: readonly InventoryLocation[];
   onChanged: InventoryChangedHandler;
   tenantId: string;
+  warehouses: readonly InventoryWarehouse[];
 }) {
   // Etiketten: ausgewählte Lagerorte und Druckdialog (wie bei den Assets).
   const [labelSelection, setLabelSelection] = useState<Set<string>>(
@@ -2893,20 +2982,67 @@ function InventoryLocations({
     (location) => location.active && labelSelection.has(location.id),
   );
   const activeLocations = locations.filter((location) => location.active);
+  const warehouseById = new Map(
+    warehouses.map((warehouse) => [warehouse.id, warehouse]),
+  );
+  const toggleLabel = (id: string, checked: boolean) =>
+    setLabelSelection((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  // Lagerorte je Lager; «Ohne Lager» zuletzt. Archivierte Lager ohne Orte entfallen.
+  const groups = [
+    ...warehouses
+      .map((warehouse) => ({
+        key: warehouse.id,
+        title: warehouse.name,
+        site: warehouse.site,
+        archived: !warehouse.active,
+        places: locations.filter(
+          (location) => location.warehouseId === warehouse.id,
+        ),
+      }))
+      .filter((group) => !group.archived || group.places.length > 0),
+    {
+      key: "none",
+      title: "Ohne Lager",
+      site: null as string | null,
+      archived: false,
+      places: locations.filter(
+        (location) =>
+          location.warehouseId === null ||
+          !warehouseById.has(location.warehouseId),
+      ),
+    },
+  ].filter((group) => group.places.length > 0 || group.key !== "none");
   return (
     <section className="inventory__panel panel">
       <div className="panel-heading">
         <div>
           <span className="eyebrow">LAGERORTE</span>
-          <h2>Orte und Fächer</h2>
-          <p>Lagerorte sind unabhängig von Assetstandorten und Raumplanung.</p>
+          <h2>Lager und Lagerplätze</h2>
+          <p>
+            Ein Lager hat einen Standort und besteht aus Lagerplätzen. Der
+            Lagerort ist die Bezeichnung des Platzes, z. B. «WSICT.01.02». Er
+            ist unabhängig von Assetstandorten und Raumplanung.
+          </p>
         </div>
         <MapPin aria-hidden="true" size={21} />
       </div>
+      <InventoryWarehouses
+        canManage={canManage}
+        locations={locations}
+        onChanged={onChanged}
+        tenantId={tenantId}
+        warehouses={warehouses}
+      />
       {canManage ? (
         <InventoryLocationCreateForm
           onChanged={onChanged}
           tenantId={tenantId}
+          warehouses={warehouses}
         />
       ) : null}
       {activeLocations.length > 0 ? (
@@ -2928,7 +3064,14 @@ function InventoryLocations({
           buildItems={(mode, baseUrl) =>
             labelLocations.map((location) =>
               inventoryLocationLabelItem(
-                { id: location.id, name: location.name, code: location.code },
+                {
+                  id: location.id,
+                  name: location.name,
+                  warehouseName:
+                    (location.warehouseId
+                      ? warehouseById.get(location.warehouseId)?.name
+                      : null) ?? null,
+                },
                 mode,
                 baseUrl,
               ),
@@ -2939,26 +3082,37 @@ function InventoryLocations({
         />
       ) : null}
       {locations.length ? (
-        <ul className="inventory__location-grid">
-          {locations.map((location) => (
-            <InventoryLocationRow
-              canManage={canManage}
-              key={location.id}
-              labelSelected={labelSelection.has(location.id)}
-              location={location}
-              onChanged={onChanged}
-              onToggleLabel={(checked) =>
-                setLabelSelection((current) => {
-                  const next = new Set(current);
-                  if (checked) next.add(location.id);
-                  else next.delete(location.id);
-                  return next;
-                })
-              }
-              tenantId={tenantId}
-            />
-          ))}
-        </ul>
+        groups.map((group) => (
+          <div className="inventory__location-group" key={group.key}>
+            <h3 className="inventory__location-group-title">
+              {group.title}
+              {group.site ? <small> · {group.site}</small> : null}
+              {group.archived ? <small> · archiviert</small> : null}
+            </h3>
+            {group.places.length > 0 ? (
+              <ul className="inventory__location-grid">
+                {group.places.map((location) => (
+                  <InventoryLocationRow
+                    canManage={canManage}
+                    key={location.id}
+                    labelSelected={labelSelection.has(location.id)}
+                    location={location}
+                    onChanged={onChanged}
+                    onToggleLabel={(checked) =>
+                      toggleLabel(location.id, checked)
+                    }
+                    tenantId={tenantId}
+                    warehouses={warehouses}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <p className="inventory__muted">
+                In diesem Lager gibt es noch keine Lagerplätze.
+              </p>
+            )}
+          </div>
+        ))
       ) : (
         <EmptyInventoryState
           text={
@@ -2972,6 +3126,317 @@ function InventoryLocations({
   );
 }
 
+/** Lager mit Standort: erfassen, ändern, archivieren. */
+function InventoryWarehouses({
+  canManage,
+  locations,
+  onChanged,
+  tenantId,
+  warehouses,
+}: {
+  canManage: boolean;
+  locations: readonly InventoryLocation[];
+  onChanged: InventoryChangedHandler;
+  tenantId: string;
+  warehouses: readonly InventoryWarehouse[];
+}) {
+  const [name, setName] = useState("");
+  const [site, setSite] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const request = useClientRequestId(tenantId, "warehouse");
+
+  const create = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    const saved = await onChanged(
+      {
+        type: "manageWarehouse",
+        tenantId,
+        operation: "create",
+        values: { name: name.trim(), site: site.trim() || null },
+        clientRequestId: request.requestId(),
+      },
+      "Das Lager wurde erfasst.",
+    );
+    setSaving(false);
+    if (saved) {
+      request.discard();
+      setName("");
+      setSite("");
+    }
+  };
+
+  if (!canManage && warehouses.length === 0) return null;
+  return (
+    <div className="inventory__warehouses">
+      {canManage ? (
+        <details className="inventory__form" open={warehouses.length === 0}>
+          <summary>Lager erfassen</summary>
+          <form
+            onChange={request.discard}
+            onSubmit={(event) => void create(event)}
+          >
+            <FormGrid cols={2}>
+              <FormField label="Lager" required>
+                <input
+                  autoComplete="off"
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="z. B. Hauptlager Bern"
+                  required
+                  value={name}
+                />
+              </FormField>
+              <FormField label="Standort" optional>
+                <input
+                  autoComplete="off"
+                  onChange={(event) => setSite(event.target.value)}
+                  placeholder="z. B. Bern, Hauptstrasse 1"
+                  value={site}
+                />
+              </FormField>
+            </FormGrid>
+            <button disabled={!name.trim() || saving} type="submit">
+              {saving ? "Lager wird erfasst …" : "Lager erfassen"}
+            </button>
+          </form>
+        </details>
+      ) : null}
+      {warehouses.length > 0 ? (
+        <ul className="inventory__warehouse-list">
+          {warehouses.map((warehouse) => (
+            <InventoryWarehouseRow
+              canManage={canManage}
+              editing={editingId === warehouse.id}
+              key={warehouse.id}
+              onChanged={onChanged}
+              onEdit={(open) => setEditingId(open ? warehouse.id : null)}
+              placeCount={
+                locations.filter(
+                  (location) =>
+                    location.active && location.warehouseId === warehouse.id,
+                ).length
+              }
+              tenantId={tenantId}
+              warehouse={warehouse}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function InventoryWarehouseRow({
+  canManage,
+  editing,
+  onChanged,
+  onEdit,
+  placeCount,
+  tenantId,
+  warehouse,
+}: {
+  canManage: boolean;
+  editing: boolean;
+  onChanged: InventoryChangedHandler;
+  onEdit: (open: boolean) => void;
+  placeCount: number;
+  tenantId: string;
+  warehouse: InventoryWarehouse;
+}) {
+  const [name, setName] = useState(warehouse.name);
+  const [site, setSite] = useState(warehouse.site ?? "");
+  const [saving, setSaving] = useState(false);
+  const request = useClientRequestId(tenantId, `warehouse-${warehouse.id}`);
+
+  const run = async (
+    body:
+      | {
+          operation: "update";
+          values: { name?: string; site?: string | null; active?: boolean };
+        }
+      | { operation: "archive" },
+    message: string,
+  ): Promise<boolean> => {
+    setSaving(true);
+    const base = {
+      type: "manageWarehouse" as const,
+      tenantId,
+      warehouseId: warehouse.id,
+      clientRequestId: request.requestId(),
+    };
+    const saved = await onChanged(
+      body.operation === "archive"
+        ? { ...base, operation: "archive" }
+        : { ...base, operation: "update", values: body.values },
+      message,
+    );
+    request.discard();
+    setSaving(false);
+    return Boolean(saved);
+  };
+
+  if (editing) {
+    return (
+      <li className="inventory__warehouse-edit">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!name.trim() || saving) return;
+            void run(
+              {
+                operation: "update",
+                values: { name: name.trim(), site: site.trim() || null },
+              },
+              "Das Lager wurde gespeichert.",
+            ).then((saved) => {
+              if (saved) onEdit(false);
+            });
+          }}
+        >
+          <FormGrid cols={2}>
+            <FormField label="Lager" required>
+              <input
+                autoComplete="off"
+                onChange={(event) => setName(event.target.value)}
+                required
+                value={name}
+              />
+            </FormField>
+            <FormField label="Standort" optional>
+              <input
+                autoComplete="off"
+                onChange={(event) => setSite(event.target.value)}
+                value={site}
+              />
+            </FormField>
+          </FormGrid>
+          <div className="inventory__location-actions">
+            <button
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => {
+                setName(warehouse.name);
+                setSite(warehouse.site ?? "");
+                onEdit(false);
+              }}
+              type="button"
+            >
+              Abbrechen
+            </button>
+            <button disabled={saving || !name.trim()} type="submit">
+              {saving ? "Wird gespeichert …" : "Speichern"}
+            </button>
+          </div>
+        </form>
+      </li>
+    );
+  }
+
+  return (
+    <li className={warehouse.active ? undefined : "is-inactive"}>
+      <div>
+        <strong>{warehouse.name}</strong>
+        <small>
+          {[
+            warehouse.site ?? "Ohne Standort",
+            `${placeCount} ${placeCount === 1 ? "Lagerplatz" : "Lagerplätze"}`,
+          ].join(" · ")}
+        </small>
+      </div>
+      {!warehouse.active ? <span>Archiviert</span> : null}
+      {canManage ? (
+        <span className="inventory__location-buttons">
+          {warehouse.active ? (
+            <>
+              <button
+                aria-label={`${warehouse.name} bearbeiten`}
+                className="icon-button"
+                disabled={saving}
+                onClick={() => onEdit(true)}
+                title="Bearbeiten"
+                type="button"
+              >
+                <Pencil aria-hidden="true" size={15} />
+              </button>
+              <button
+                aria-label={`${warehouse.name} archivieren`}
+                className="icon-button"
+                disabled={saving}
+                onClick={() =>
+                  void (async () => {
+                    if (
+                      await confirmDialog(
+                        `Lager «${warehouse.name}» archivieren? Die Lagerplätze und ihr Bestand bleiben erhalten.`,
+                      )
+                    ) {
+                      await run(
+                        { operation: "archive" },
+                        "Das Lager wurde archiviert.",
+                      );
+                    }
+                  })()
+                }
+                title="Archivieren"
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={15} />
+              </button>
+            </>
+          ) : (
+            <button
+              aria-label={`${warehouse.name} wieder aktivieren`}
+              className="icon-button"
+              disabled={saving}
+              onClick={() =>
+                void run(
+                  { operation: "update", values: { active: true } },
+                  "Das Lager ist wieder aktiv.",
+                )
+              }
+              title="Wieder aktivieren"
+              type="button"
+            >
+              <RotateCcw aria-hidden="true" size={15} />
+            </button>
+          )}
+        </span>
+      ) : null}
+    </li>
+  );
+}
+
+/** Auswahl des Lagers für einen Lagerort (nur aktive Lager). */
+function WarehouseSelect({
+  onChange,
+  value,
+  warehouses,
+}: {
+  onChange: (id: string) => void;
+  value: string;
+  warehouses: readonly InventoryWarehouse[];
+}) {
+  const options = warehouses.filter(
+    (warehouse) => warehouse.active || warehouse.id === value,
+  );
+  if (options.length === 0) return null;
+  return (
+    <FormField label="Lager" optional>
+      <select onChange={(event) => onChange(event.target.value)} value={value}>
+        <option value="">Ohne Lager</option>
+        {options.map((warehouse) => (
+          <option key={warehouse.id} value={warehouse.id}>
+            {warehouse.site
+              ? `${warehouse.name} (${warehouse.site})`
+              : warehouse.name}
+          </option>
+        ))}
+      </select>
+    </FormField>
+  );
+}
+
 /** Ein Lagerort mit Bearbeiten, Löschen (archivieren) und Reaktivieren. */
 function InventoryLocationRow({
   canManage,
@@ -2980,6 +3445,7 @@ function InventoryLocationRow({
   onChanged,
   onToggleLabel,
   tenantId,
+  warehouses,
 }: {
   canManage: boolean;
   labelSelected: boolean;
@@ -2987,19 +3453,18 @@ function InventoryLocationRow({
   onChanged: InventoryChangedHandler;
   onToggleLabel: (checked: boolean) => void;
   tenantId: string;
+  warehouses: readonly InventoryWarehouse[];
 }) {
   const [editing, setEditing] = useState(false);
-  const [code, setCode] = useState(location.code ?? "");
-  const [name, setName] = useState(location.name);
+  const [place, setPlace] = useState(location.name);
+  const [note, setNote] = useState(location.note ?? "");
+  const [warehouseId, setWarehouseId] = useState(location.warehouseId ?? "");
   const [saving, setSaving] = useState(false);
   const request = useClientRequestId(tenantId, `location-${location.id}`);
 
   const run = async (
     body:
-      | {
-          operation: "update";
-          values: { code?: string; name?: string; active?: boolean };
-        }
+      | { operation: "update"; values: LocationInput & { active?: boolean } }
       | { operation: "archive" },
     message: string,
   ): Promise<boolean> => {
@@ -3023,11 +3488,15 @@ function InventoryLocationRow({
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!code.trim() || !name.trim() || saving) return;
+    if (!place.trim() || saving) return;
     const saved = await run(
       {
         operation: "update",
-        values: { code: code.trim(), name: name.trim() },
+        values: {
+          code: place.trim(),
+          note: note.trim() || null,
+          warehouseId: warehouseId || null,
+        },
       },
       "Der Lagerort wurde gespeichert.",
     );
@@ -3055,20 +3524,25 @@ function InventoryLocationRow({
       <li className="inventory__location-edit">
         <form onSubmit={(event) => void save(event)}>
           <FormGrid cols={2}>
-            <FormField label="Ortscode" required>
+            <FormField label="Lagerort" required>
               <input
                 autoComplete="off"
-                onChange={(event) => setCode(event.target.value)}
+                onChange={(event) => setPlace(event.target.value)}
                 required
-                value={code}
+                value={place}
               />
             </FormField>
-            <FormField label="Bezeichnung" required>
+            <WarehouseSelect
+              onChange={setWarehouseId}
+              value={warehouseId}
+              warehouses={warehouses}
+            />
+            <FormField label="Bemerkung" optional>
               <input
                 autoComplete="off"
-                onChange={(event) => setName(event.target.value)}
-                required
-                value={name}
+                maxLength={500}
+                onChange={(event) => setNote(event.target.value)}
+                value={note}
               />
             </FormField>
           </FormGrid>
@@ -3077,18 +3551,16 @@ function InventoryLocationRow({
               className="secondary-button"
               disabled={saving}
               onClick={() => {
-                setCode(location.code ?? "");
-                setName(location.name);
+                setPlace(location.name);
+                setNote(location.note ?? "");
+                setWarehouseId(location.warehouseId ?? "");
                 setEditing(false);
               }}
               type="button"
             >
               Abbrechen
             </button>
-            <button
-              disabled={saving || !code.trim() || !name.trim()}
-              type="submit"
-            >
+            <button disabled={saving || !place.trim()} type="submit">
               {saving ? "Wird gespeichert …" : "Speichern"}
             </button>
           </div>
@@ -3113,8 +3585,8 @@ function InventoryLocationRow({
       ) : null}
       <MapPin aria-hidden="true" size={18} />
       <div>
-        <strong>{location.name}</strong>
-        <small>{location.code ?? "Ohne Ortscode"}</small>
+        <strong title={location.name}>{location.name}</strong>
+        {location.note ? <small>{location.note}</small> : null}
       </div>
       {!location.active ? <span>Gelöscht</span> : null}
       {canManage ? (
@@ -3159,6 +3631,8 @@ function InventoryLocationRow({
     </li>
   );
 }
+
+/** Ein Lagerort mit Bearbeiten, Löschen (archivieren) und Reaktivieren. */
 
 function InventoryEvents({
   canAdjust,
@@ -4005,15 +4479,18 @@ function InventoryActiveCountList({
 function InventoryLocationCreateForm({
   onChanged,
   tenantId,
+  warehouses,
 }: {
   onChanged: InventoryChangedHandler;
   tenantId: string;
+  warehouses: readonly InventoryWarehouse[];
 }) {
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
+  const [place, setPlace] = useState("");
+  const [note, setNote] = useState("");
+  const [warehouseId, setWarehouseId] = useState("");
   const [saving, setSaving] = useState(false);
   const clientRequest = useClientRequestId(tenantId, "location-create");
-  const complete = code.trim().length > 0 && name.trim().length > 0;
+  const complete = place.trim().length > 0;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -4024,7 +4501,11 @@ function InventoryLocationCreateForm({
         type: "manageLocation",
         tenantId,
         operation: "create",
-        values: { code, name },
+        values: {
+          code: place.trim(),
+          ...(note.trim() ? { note: note.trim() } : {}),
+          ...(warehouseId ? { warehouseId } : {}),
+        },
         clientRequestId: clientRequest.requestId(),
       },
       "Der Lagerort wurde erfasst und die Ansicht aktualisiert.",
@@ -4032,8 +4513,8 @@ function InventoryLocationCreateForm({
     setSaving(false);
     if (saved) {
       clientRequest.discard();
-      setCode("");
-      setName("");
+      setPlace("");
+      setNote("");
     }
   };
 
@@ -4045,20 +4526,29 @@ function InventoryLocationCreateForm({
         onSubmit={(event) => void submit(event)}
       >
         <FormGrid cols={2}>
-          <FormField label="Ortscode" required>
+          <FormField
+            hint="Buchstaben, Ziffern, Punkt, Binde- und Unterstrich, z. B. WSICT.01.02. Er steht auf der Etikette."
+            label="Lagerort"
+            required
+          >
             <input
               autoComplete="off"
-              onChange={(event) => setCode(event.target.value)}
+              onChange={(event) => setPlace(event.target.value)}
               required
-              value={code}
+              value={place}
             />
           </FormField>
-          <FormField label="Bezeichnung" required>
+          <WarehouseSelect
+            onChange={setWarehouseId}
+            value={warehouseId}
+            warehouses={warehouses}
+          />
+          <FormField label="Bemerkung" optional>
             <input
               autoComplete="off"
-              onChange={(event) => setName(event.target.value)}
-              required
-              value={name}
+              maxLength={500}
+              onChange={(event) => setNote(event.target.value)}
+              value={note}
             />
           </FormField>
         </FormGrid>
