@@ -23594,3 +23594,9 @@ body.app-dialog-open {
   margin-bottom: 0;
 }
 
+
+/* Verschachtelte Lager-Panels (z. B. «Regeln für künftige Quellen» unter
+   «Reservation anlegen») brauchen Abstand zum vorherigen Block. */
+.inventory__panel > .inventory__panel {
+  margin-top: 24px;
+}

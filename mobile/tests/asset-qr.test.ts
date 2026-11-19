@@ -42,6 +42,21 @@ describe("parseScannedCode", () => {
     });
   });
 
+  it("recognises storage location labels (web and app link)", () => {
+    expect(
+      parseScannedCode(
+        `https://app.nextdesk.ch/?inventoryLocation=${ID.toUpperCase()}`,
+      ),
+    ).toEqual({ kind: "inventoryLocation", locationId: ID });
+    expect(
+      parseScannedCode(`ch.grossict.nextdesk://inventory?location=${ID}`),
+    ).toEqual({ kind: "inventoryLocation", locationId: ID });
+    // Not a uuid: stays a plain code.
+    expect(
+      parseScannedCode("https://app.nextdesk.ch/?inventoryLocation=x"),
+    ).toEqual({ kind: "code", code: "https://app.nextdesk.ch/?inventoryLocation=x" });
+  });
+
   it("keeps inventory numbers, serials and foreign codes as lookup codes", () => {
     expect(parseScannedCode("  INV-4711 ")).toEqual({
       kind: "code",

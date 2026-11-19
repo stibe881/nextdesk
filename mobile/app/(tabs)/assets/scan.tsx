@@ -95,6 +95,14 @@ export default function AssetScanScreen() {
         } as never);
         return;
       }
+      if (scanned.kind === "inventoryLocation") {
+        hapticSuccess();
+        router.replace({
+          pathname: "/inventory",
+          params: { location: scanned.locationId },
+        } as never);
+        return;
+      }
       if (scanned.kind === "rack") {
         hapticSuccess();
         router.replace({

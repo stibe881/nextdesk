@@ -1345,11 +1345,22 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
+### Wie drucke ich Etiketten für Lagerorte?
+
+1. Öffne **Lager → Lagerorte**.
+2. Wähle die Lagerorte mit **Für Etikett auswählen**, oder klicke auf **Alle sichtbaren**.
+3. Klicke auf **Etiketten drucken**.
+4. Wähle im Druckdialog Format, QR-Inhalt (**App** oder **Web**) und **Anzahl Etiketten** und drucke.
+
+Auf dem Etikett stehen der Lagerort und sein QR-Code. Wer den Code scannt, sieht in der App unter **Lager** die Artikel an diesem Lagerort, im Web die gefilterte Artikelliste.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
 ### Wie ändere ich einen Lagerort?
 
 1. Öffne **Lager → Lagerorte**.
 2. Klicke auf den Stift (**Bearbeiten**).
-3. Ändere Ortscode und Bezeichnung und speichere.
+3. Ändere Ortscode und Bezeichnung und speichere. Der Ortscode darf Buchstaben, Ziffern, Punkte, Binde- und Unterstriche enthalten (z. B. «WSICT.01.01») und wird klein gespeichert.
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 

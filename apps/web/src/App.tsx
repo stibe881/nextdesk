@@ -108,6 +108,7 @@ import { createPersonalWorkspace, deleteAccount } from "./lib/account";
 import {
   assetIdFromSearch,
   inventoryIdFromSearch,
+  inventoryLocationIdFromSearch,
   rackFromSearch,
 } from "./lib/asset-labels";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
@@ -283,7 +284,12 @@ type Section =
   | "Teamführung"
   | "Einstellungen";
 type TicketScope =
-  "all" | "mine" | "unassigned" | "open" | "closed" | "delegated";
+  | "all"
+  | "mine"
+  | "unassigned"
+  | "open"
+  | "closed"
+  | "delegated";
 type MetricTicketFilter = {
   label: string;
   ticketIds: string[];
@@ -2809,17 +2815,24 @@ const LABEL_LINK_STORAGE_KEY = "nextdesk.pendingLabelLink";
 const initialAssetLabelDeepLink: {
   assetId: string | null;
   inventoryId: string | null;
+  inventoryLocationId: string | null;
   rack: string | null;
 } = (() => {
   if (typeof window === "undefined")
-    return { assetId: null, inventoryId: null, rack: null };
+    return {
+      assetId: null,
+      inventoryId: null,
+      inventoryLocationId: null,
+      rack: null,
+    };
   try {
     const url = new URL(window.location.href);
     let search = url.search;
     const hasLabelParam =
       url.searchParams.has("asset") ||
       url.searchParams.has("rack") ||
-      url.searchParams.has("inventory");
+      url.searchParams.has("inventory") ||
+      url.searchParams.has("inventoryLocation");
     if (hasLabelParam) {
       // Scanned while signed out: the sign-in redirect drops the address
       // parameters, so remember the link for this tab until it is used.
@@ -2831,6 +2844,7 @@ const initialAssetLabelDeepLink: {
       url.searchParams.delete("asset");
       url.searchParams.delete("rack");
       url.searchParams.delete("inventory");
+      url.searchParams.delete("inventoryLocation");
       window.history.replaceState(window.history.state, "", url.toString());
     } else {
       try {
@@ -2841,10 +2855,20 @@ const initialAssetLabelDeepLink: {
     }
     const assetId = assetIdFromSearch(search);
     const inventoryId = assetId ? null : inventoryIdFromSearch(search);
-    const rack = assetId || inventoryId ? null : rackFromSearch(search);
-    return { assetId, inventoryId, rack };
+    const inventoryLocationId =
+      assetId || inventoryId ? null : inventoryLocationIdFromSearch(search);
+    const rack =
+      assetId || inventoryId || inventoryLocationId
+        ? null
+        : rackFromSearch(search);
+    return { assetId, inventoryId, inventoryLocationId, rack };
   } catch {
-    return { assetId: null, inventoryId: null, rack: null };
+    return {
+      assetId: null,
+      inventoryId: null,
+      inventoryLocationId: null,
+      rack: null,
+    };
   }
 })();
 
@@ -3327,6 +3351,9 @@ function AuthenticatedApp() {
   // Device opened from a ticket: the asset list starts filtered to it.
   // Article from a printed stock label (QR link): shown once in the Lager.
   const [inventoryFocusId, setInventoryFocusId] = useState<string | null>(null);
+  const [inventoryFocusLocationId, setInventoryFocusLocationId] = useState<
+    string | null
+  >(null);
   const [assetFocusQuery, setAssetFocusQuery] = useState<{
     query: string;
     id: number;
@@ -3935,6 +3962,13 @@ function AuthenticatedApp() {
       }
       if (initialAssetLabelDeepLink.inventoryId) {
         setInventoryFocusId(initialAssetLabelDeepLink.inventoryId);
+        setSection("Lager");
+        return;
+      }
+      if (initialAssetLabelDeepLink.inventoryLocationId) {
+        setInventoryFocusLocationId(
+          initialAssetLabelDeepLink.inventoryLocationId,
+        );
         setSection("Lager");
         return;
       }
@@ -7127,7 +7161,11 @@ function AuthenticatedApp() {
           isFeatureEnabled("inventory.management") ? (
           <Inventory
             focusItemId={inventoryFocusId ?? undefined}
-            onFocusConsumed={() => setInventoryFocusId(null)}
+            focusLocationId={inventoryFocusLocationId ?? undefined}
+            onFocusConsumed={() => {
+              setInventoryFocusId(null);
+              setInventoryFocusLocationId(null);
+            }}
             labelBranding={{
               name: workspaceBrandName,
               logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
@@ -7696,10 +7734,10 @@ function AuthenticatedApp() {
                         : {})}
                       hasActiveFilters={Boolean(
                         query.trim() ||
-                        queue !== "alle" ||
-                        (canWorkTickets && ticketScope !== "all") ||
-                        metricTicketFilter ||
-                        hasTicketListRefinement,
+                          queue !== "alle" ||
+                          (canWorkTickets && ticketScope !== "all") ||
+                          metricTicketFilter ||
+                          hasTicketListRefinement,
                       )}
                       keyboardActiveTicketId={keyboardActiveTicketId}
                       loading={dashboardLoading && snapshot === null}

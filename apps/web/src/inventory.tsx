@@ -33,7 +33,10 @@ import {
   type LabelBranding,
 } from "./asset-label-dialog";
 import { FormField, FormGrid } from "./form-kit";
-import { inventoryLabelItem } from "./lib/asset-labels";
+import {
+  inventoryLabelItem,
+  inventoryLocationLabelItem,
+} from "./lib/asset-labels";
 import { filterInventoryItems } from "./lib/inventory-search";
 import { InventoryAutomation } from "./inventory-automation";
 import { InventoryProcurement } from "./inventory-procurement";
@@ -1131,6 +1134,7 @@ function deltaLabel(value: number, unit: string): string {
 export function Inventory({
   createRequestId,
   focusItemId,
+  focusLocationId,
   labelBranding,
   onCreateRequestConsumed,
   onFocusConsumed,
@@ -1139,6 +1143,8 @@ export function Inventory({
   createRequestId?: number | undefined;
   /** Opens the article list showing only this article (QR label link). */
   focusItemId?: string | undefined;
+  /** Opens the article list showing only the stock at this storage location (QR label link). */
+  focusLocationId?: string | undefined;
   /** Tenant name and logo for printed labels. */
   labelBranding?: LabelBranding | undefined;
   onCreateRequestConsumed?: (requestId: number) => void;
@@ -1340,12 +1346,29 @@ export function Inventory({
     onFocusConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusItemId]);
+  // QR label of a storage location: only the stock at this location.
+  const [focusLocation, setFocusLocation] = useState<string | undefined>(
+    focusLocationId,
+  );
+  useEffect(() => {
+    if (!focusLocationId) return;
+    setFocusLocation(focusLocationId);
+    setActiveSection("Artikel");
+    onFocusConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusLocationId]);
+  const focusedLocation = focusLocation
+    ? workspace?.locations.find((location) => location.id === focusLocation)
+    : undefined;
   const currentItems = useMemo(
     () =>
       workspace?.items.filter(
-        (item) => item.active && (!focusId || item.id === focusId),
+        (item) =>
+          item.active &&
+          (!focusId || item.id === focusId) &&
+          (!focusedLocation || item.locationName === focusedLocation.name),
       ) ?? [],
-    [focusId, workspace],
+    [focusId, focusedLocation, workspace],
   );
 
   const onChanged = useCallback<InventoryChangedHandler>(
@@ -1492,10 +1515,14 @@ export function Inventory({
               createOpenRequestId={itemCreateRequestId}
               departments={workspace.departments}
               focused={Boolean(focusId)}
+              focusedLocationName={focusedLocation?.name}
               items={currentItems}
               labelBranding={labelBranding}
               locations={workspace.locations}
-              onShowAll={() => setFocusId(undefined)}
+              onShowAll={() => {
+                setFocusId(undefined);
+                setFocusLocation(undefined);
+              }}
               onChanged={onChanged}
               onImagesChanged={load}
               tenantId={tenantId}
@@ -1504,6 +1531,7 @@ export function Inventory({
           {activeSection === "Lagerorte" ? (
             <InventoryLocations
               canManage={workspace.permissions.canManage}
+              labelBranding={labelBranding}
               locations={workspace.locations}
               onChanged={onChanged}
               tenantId={tenantId}
@@ -1768,6 +1796,7 @@ function InventoryItems({
   createOpenRequestId,
   departments,
   focused,
+  focusedLocationName,
   items,
   labelBranding,
   locations,
@@ -1786,6 +1815,8 @@ function InventoryItems({
   departments: readonly InventoryDepartment[];
   /** Only one article is shown (QR label link). */
   focused: boolean;
+  /** Only the stock at this storage location is shown (QR label link). */
+  focusedLocationName?: string | undefined;
   items: readonly InventoryItemSummary[];
   labelBranding?: LabelBranding | undefined;
   locations: readonly InventoryLocation[];
@@ -1969,6 +2000,15 @@ function InventoryItems({
       {focused ? (
         <p className="inventory__focus-note" role="status">
           Es wird nur der Artikel aus dem Etiketten-Link angezeigt.{" "}
+          <button className="text-button" onClick={onShowAll} type="button">
+            Alle Artikel anzeigen
+          </button>
+        </p>
+      ) : null}
+      {focusedLocationName ? (
+        <p className="inventory__focus-note" role="status">
+          Es werden nur die Artikel am Lagerort «{focusedLocationName}»
+          angezeigt.{" "}
           <button className="text-button" onClick={onShowAll} type="button">
             Alle Artikel anzeigen
           </button>
@@ -2833,15 +2873,26 @@ function InventoryItemImage({
 
 function InventoryLocations({
   canManage,
+  labelBranding,
   locations,
   onChanged,
   tenantId,
 }: {
   canManage: boolean;
+  labelBranding?: LabelBranding | undefined;
   locations: readonly InventoryLocation[];
   onChanged: InventoryChangedHandler;
   tenantId: string;
 }) {
+  // Etiketten: ausgewählte Lagerorte und Druckdialog (wie bei den Assets).
+  const [labelSelection, setLabelSelection] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
+  const labelLocations = locations.filter(
+    (location) => location.active && labelSelection.has(location.id),
+  );
+  const activeLocations = locations.filter((location) => location.active);
   return (
     <section className="inventory__panel panel">
       <div className="panel-heading">
@@ -2858,14 +2909,52 @@ function InventoryLocations({
           tenantId={tenantId}
         />
       ) : null}
+      {activeLocations.length > 0 ? (
+        <LabelSelectionBar
+          onClear={() => setLabelSelection(new Set())}
+          onPrint={() => setLabelDialogOpen(true)}
+          onSelectVisible={() =>
+            setLabelSelection(
+              new Set(activeLocations.map((location) => location.id)),
+            )
+          }
+          selectedCount={labelLocations.length}
+          visibleCount={activeLocations.length}
+        />
+      ) : null}
+      {labelDialogOpen ? (
+        <AssetLabelDialog
+          branding={labelBranding}
+          buildItems={(mode, baseUrl) =>
+            labelLocations.map((location) =>
+              inventoryLocationLabelItem(
+                { id: location.id, name: location.name, code: location.code },
+                mode,
+                baseUrl,
+              ),
+            )
+          }
+          count={labelLocations.length}
+          onClose={() => setLabelDialogOpen(false)}
+        />
+      ) : null}
       {locations.length ? (
         <ul className="inventory__location-grid">
           {locations.map((location) => (
             <InventoryLocationRow
               canManage={canManage}
               key={location.id}
+              labelSelected={labelSelection.has(location.id)}
               location={location}
               onChanged={onChanged}
+              onToggleLabel={(checked) =>
+                setLabelSelection((current) => {
+                  const next = new Set(current);
+                  if (checked) next.add(location.id);
+                  else next.delete(location.id);
+                  return next;
+                })
+              }
               tenantId={tenantId}
             />
           ))}
@@ -2886,13 +2975,17 @@ function InventoryLocations({
 /** Ein Lagerort mit Bearbeiten, Löschen (archivieren) und Reaktivieren. */
 function InventoryLocationRow({
   canManage,
+  labelSelected,
   location,
   onChanged,
+  onToggleLabel,
   tenantId,
 }: {
   canManage: boolean;
+  labelSelected: boolean;
   location: InventoryLocation;
   onChanged: InventoryChangedHandler;
+  onToggleLabel: (checked: boolean) => void;
   tenantId: string;
 }) {
   const [editing, setEditing] = useState(false);
@@ -3006,6 +3099,18 @@ function InventoryLocationRow({
 
   return (
     <li className={location.active ? undefined : "is-inactive"}>
+      {location.active ? (
+        <label className="inventory__check">
+          <input
+            checked={labelSelected}
+            onChange={(event) => onToggleLabel(event.target.checked)}
+            type="checkbox"
+          />
+          <span className="sr-only">
+            Für Etikett auswählen: {location.name}
+          </span>
+        </label>
+      ) : null}
       <MapPin aria-hidden="true" size={18} />
       <div>
         <strong>{location.name}</strong>

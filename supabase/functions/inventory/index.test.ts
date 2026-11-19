@@ -1761,3 +1761,26 @@ Deno.test(
     );
   },
 );
+
+Deno.test("location codes may contain dots and are stored in lower case", () => {
+  const parsedCode = (code: string) => {
+    const action = parseAction({
+      type: "manageLocation",
+      tenantId: TENANT_ID,
+      operation: "create",
+      values: { code, name: "Wandschrank ICT" },
+      clientRequestId: REQUEST_ID,
+    });
+    return action && action.type === "manageLocation" &&
+        action.operation === "create"
+      ? action.values.code
+      : null;
+  };
+  assertEquals(parsedCode("WSICT.01.01"), "wsict.01.01");
+  assertEquals(parsedCode("G10.2.1"), "g10.2.1");
+  assertEquals(parsedCode("h-01"), "h-01");
+  // Still rejected: leading dot, spaces, other characters.
+  for (const code of [".abc", "a b", "a/b", "ä1", "a,b", ""]) {
+    assertEquals(parsedCode(code), null);
+  }
+});

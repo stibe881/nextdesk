@@ -16766,4 +16766,51 @@ $$;
 rollback;
 SQL
 
+# Lagerort-Codes mit Punkt («WSICT.01.01») werden gespeichert (Tabelle und
+# Funktion), ungültige Codes bleiben abgelehnt.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'a6900000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_location uuid;
+  v_code text;
+  v_state text;
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'ortscode@example.ch', 'Ortscode');
+  v_location := public.upsert_inventory_location(v_owner, v_tenant, gen_random_uuid(), null,
+    'h-01', 'Wandschrank ICT', true);
+  -- Ändern auf einen Code mit Punkt und Grossbuchstaben: klein gespeichert.
+  perform public.upsert_inventory_location(v_owner, v_tenant, gen_random_uuid(), v_location,
+    'WSICT.01.01', 'Wandschrank ICT', true);
+  select code into v_code from public.inventory_locations where id = v_location;
+  if v_code <> 'wsict.01.01' then
+    raise exception 'location code with dots was stored as %', v_code;
+  end if;
+  -- Direkter Zugriff: derselbe Constraint.
+  update public.inventory_locations set code = 'g10.2.1' where id = v_location;
+  -- Abgelehnt: Punkt am Anfang, Leerzeichen, Sonderzeichen.
+  foreach v_code in array array['.abc', 'a b', 'a/b'] loop
+    begin
+      perform public.upsert_inventory_location(v_owner, v_tenant, gen_random_uuid(), v_location,
+        v_code, 'Wandschrank ICT', true);
+      raise exception 'location code % was accepted', v_code;
+    exception when others then
+      get stacked diagnostics v_state = returned_sqlstate;
+      if v_state <> '22023' then raise; end if;
+    end;
+  end loop;
+  begin
+    update public.inventory_locations set code = '.abc' where id = v_location;
+    raise exception 'table accepted a code starting with a dot';
+  exception when check_violation then null;
+  end;
+  raise notice 'inventory location code checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

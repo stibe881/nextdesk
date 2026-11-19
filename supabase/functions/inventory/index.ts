@@ -696,7 +696,8 @@ function parseLocationValues(value: unknown): LocationValues | null {
   const result: LocationValues = {};
   if (Object.hasOwn(value, "code")) {
     const code = validText(value.code, 1, 63)?.toLowerCase();
-    if (!code || !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(code)) return null;
+    // Punkte sind erlaubt (z. B. «WSICT.01.01»); der Code wird klein gespeichert.
+    if (!code || !/^[a-z0-9][a-z0-9._-]{0,62}$/.test(code)) return null;
     result.code = code;
   }
   if (Object.hasOwn(value, "name")) {
