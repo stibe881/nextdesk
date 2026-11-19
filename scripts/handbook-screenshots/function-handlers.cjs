@@ -647,6 +647,26 @@ function coordinationOverview(ticket) {
 }
 
 const HANDLERS = {
+  "entra-directory-sync": (body) => {
+    if (body.type !== "listRuns") return ok({ connected: true });
+    // Nächtliche Läufe plus ein manueller Abgleich.
+    const runs = [0, 1, 2, 3, 4, 5].map((index) => ({
+      id: `entra-run-${index}`,
+      trigger: index === 1 ? "manual" : "scheduled",
+      status: "succeeded",
+      started_at: D.ago(
+        index === 1 ? 26 * D.HOUR : (2 + index * 24) * D.HOUR + 3 * D.MIN,
+      ),
+      finished_at: D.ago(
+        index === 1 ? 26 * D.HOUR - D.MIN : (2 + index * 24) * D.HOUR,
+      ),
+      imported: 184 - index,
+      active: 171 - index,
+      skipped: 2,
+      error_code: null,
+    }));
+    return ok({ runs });
+  },
   "owner-access": () => fail("platform_operator_required", 403),
   "tenant-sso-access": () =>
     ok({

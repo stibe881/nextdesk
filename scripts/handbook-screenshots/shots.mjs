@@ -570,7 +570,9 @@ SHOTS.push(
     name: "in-verzeichnis",
     persona: "admin",
     async run(h) {
-      await openSettingsTab(h, "Personen");
+      await openSettingsTab(h, "Funktionen");
+      await h.waitText("Abgleichshistorie");
+      await h.scrollToText("Microsoft Entra-Verzeichnis", 12);
     },
   },
   {

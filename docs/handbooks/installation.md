@@ -130,10 +130,10 @@ Ausführlich: «Schritt 5: Exchange Online (E-Mail-Kanal)».
 
 1. Stelle sicher, dass SSO mit deiner eigenen Tenant-ID konfiguriert ist (nicht `common`).
 2. Lass die Zustimmung für die Berechtigung _User.Read.All_ erteilen (Link vom Betreiber, Aufgabe des Microsoft-Admins).
-3. Öffne **Einstellungen → Personen → Microsoft Entra-Verzeichnis**.
-4. Aktiviere den _Connector für manuelle Abgleiche_ und wähle **Konfiguration speichern**.
-5. Wähle **Verbindung testen** und danach **Manuellen Abgleich starten**.
-6. Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
+3. Öffne **Einstellungen → Funktionen → Microsoft Entra-Verzeichnis**.
+4. Aktiviere den _Connector (Abgleich jede Nacht automatisch)_ und wähle **Konfiguration speichern**.
+5. Wähle **Verbindung testen** und danach **Jetzt abgleichen**.
+6. Danach gleicht nextDesk das Verzeichnis jede Nacht automatisch ab; es werden keine Personen gelöscht. Die **Abgleichshistorie** zeigt die letzten Läufe.
 
 Ausführlich: «Microsoft-Entra-Verzeichnisabgleich».
 
@@ -486,13 +486,19 @@ dargestellt).
   (nicht `common`).
 - **[Microsoft-Admin]** Zustimmung für die Berechtigung _User.Read.All_
   erteilen (Link vom Betreiber).
-- **[Admin]** **Einstellungen → Personen → Microsoft Entra-Verzeichnis**:
-  _Connector für manuelle Abgleiche aktivieren_ → **Konfiguration speichern**
-  → **Verbindung testen** → **Manuellen Abgleich starten**.
+- **[Admin]** **Einstellungen → Funktionen → Microsoft Entra-Verzeichnis**
+  (am Ende der Seite): _Connector aktivieren (Abgleich jede Nacht
+  automatisch)_ → **Konfiguration speichern** → **Verbindung testen** →
+  **Jetzt abgleichen**.
 
-Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
+Ist der Connector aktiv, läuft der Abgleich jede Nacht automatisch (um 01:41
+UTC); **Jetzt abgleichen** startet ihn zusätzlich von Hand. Es werden keine
+Personen gelöscht. Die **Abgleichshistorie** zeigt die letzten drei Läufe mit
+_Automatischer Abgleich_ bzw. _Manueller Abgleich_, verarbeiteten und aktiven
+Personen; **Ältere Läufe anzeigen** klappt bis zu 20 Läufe auf. Die
+abgeglichenen Personen erscheinen unter **Einstellungen → Personen**.
 
-![Microsoft Entra-Verzeichnis im Register Personen](images/in-verzeichnis.jpg)
+![Microsoft Entra-Verzeichnis im Register Funktionen](images/in-verzeichnis.jpg)
 
 ### Microsoft Intune (Geräte)
 
