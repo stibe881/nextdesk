@@ -31,7 +31,8 @@ export type AutomationAction =
         departmentId: string;
         locationId: string | null;
       }[];
-      countIntervals: { locationId: string; days: number | null }[];
+      /** Inventory reminder interval per warehouse (Lager). */
+      countIntervals: { warehouseId: string; days: number | null }[];
     }
   | {
       type: "manageReorderRequest";
@@ -197,21 +198,21 @@ export function parseAutomationAction(value: unknown): AutomationAction | null {
       locationId: isUuid(row.locationId) ? row.locationId.toLowerCase() : null,
     });
   }
-  const countIntervals: { locationId: string; days: number | null }[] = [];
-  const seenLocations = new Set<string>();
+  const countIntervals: { warehouseId: string; days: number | null }[] = [];
+  const seenWarehouses = new Set<string>();
   for (const row of intervalRows) {
     if (
       !isRecord(row) ||
-      !hasOnlyKeys(row, ["locationId", "days"]) ||
-      !isUuid(row.locationId)
+      !hasOnlyKeys(row, ["warehouseId", "days"]) ||
+      !isUuid(row.warehouseId)
     ) {
       return null;
     }
     const days = optionalInteger(row.days ?? null, 7, 730);
-    const locationId = row.locationId.toLowerCase();
-    if (days === undefined || seenLocations.has(locationId)) return null;
-    seenLocations.add(locationId);
-    countIntervals.push({ locationId, days });
+    const warehouseId = row.warehouseId.toLowerCase();
+    if (days === undefined || seenWarehouses.has(warehouseId)) return null;
+    seenWarehouses.add(warehouseId);
+    countIntervals.push({ warehouseId, days });
   }
   return {
     type: "saveInventoryAutomation",
@@ -229,7 +230,7 @@ export function parseAutomationAction(value: unknown): AutomationAction | null {
   };
 }
 
-/** Nächste fällige Inventur eines Lagerorts (ISO-Datum) oder null. */
+/** Nächste fällige Inventur eines Lagers (ISO-Datum) oder null. */
 export function nextCountDue(
   lastCountedAt: string | null,
   createdAt: string,
@@ -257,8 +258,14 @@ async function rows(query: Promise<{ data: unknown; error: unknown }>) {
 }
 
 export async function loadAutomation(admin: Admin, tenantId: string) {
-  const [settingsRows, departmentRows, locationRows, departments, requests] =
-    await Promise.all([
+  const [
+    settingsRows,
+    departmentRows,
+    locationRows,
+    warehouseRows,
+    departments,
+    requests,
+  ] = await Promise.all([
       rows(
         admin
           .from("inventory_automation_settings")
@@ -278,6 +285,14 @@ export async function loadAutomation(admin: Admin, tenantId: string) {
       rows(
         admin
           .from("inventory_locations")
+          .select("id, name, active, created_at, warehouse_id")
+          .eq("tenant_id", tenantId)
+          .order("name")
+          .limit(1000),
+      ),
+      rows(
+        admin
+          .from("inventory_warehouses")
           .select("id, name, active, created_at, count_interval_days")
           .eq("tenant_id", tenantId)
           .order("name")
@@ -358,23 +373,45 @@ export async function loadAutomation(admin: Admin, tenantId: string) {
         (departmentRows.find((entry) => entry.department_id === row.id)
           ?.location_id as string | undefined) ?? null,
     })),
-    locations: locationRows.map((row) => {
+    locations: locationRows.map((row) => ({
+      id: String(row.id),
+      name: String(row.name),
+      active: row.active === true,
+    })),
+    // The inventory reminder is set per warehouse. A warehouse counts as
+    // inventoried when its least recently counted place was counted; places
+    // never counted count from the day they were created.
+    warehouses: warehouseRows.map((row) => {
       const interval =
         typeof row.count_interval_days === "number"
           ? row.count_interval_days
           : null;
-      const lastCountedAt = lastCount.get(String(row.id)) ?? null;
+      const places = locationRows.filter(
+        (place) => place.active === true && place.warehouse_id === row.id,
+      );
+      const counted = places.map((place) => lastCount.get(String(place.id)));
+      const allCounted =
+        places.length > 0 && counted.every((date) => date !== undefined);
+      const lastCountedAt = allCounted
+        ? (counted as string[]).reduce((oldest, date) =>
+            Date.parse(date) < Date.parse(oldest) ? date : oldest,
+          )
+        : null;
+      const oldestCreated = places
+        .map((place) => String(place.created_at))
+        .reduce(
+          (oldest, date) =>
+            Date.parse(date) < Date.parse(oldest) ? date : oldest,
+          places.length ? String(places[0]!.created_at) : String(row.created_at),
+        );
       return {
         id: String(row.id),
         name: String(row.name),
         active: row.active === true,
+        placeCount: places.length,
         countIntervalDays: interval,
         lastCountedAt,
-        nextCountDue: nextCountDue(
-          lastCountedAt,
-          String(row.created_at),
-          interval,
-        ),
+        nextCountDue: nextCountDue(lastCountedAt, oldestCreated, interval),
       };
     }),
     reorderRequests: requests.map((row) => {
@@ -407,7 +444,6 @@ export async function saveAutomation(
       [
         action.settings.defaultReturnLocationId,
         ...action.departmentLocations.map((row) => row.locationId),
-        ...action.countIntervals.map((row) => row.locationId),
       ].filter((id): id is string => typeof id === "string"),
     ),
   ];
@@ -425,6 +461,26 @@ export async function saveAutomation(
         422,
         "inventory_location_invalid",
         "Mindestens ein Lagerort ist nicht mehr verfügbar.",
+      );
+    }
+  }
+  const warehouseIds = [
+    ...new Set(action.countIntervals.map((row) => row.warehouseId)),
+  ];
+  if (warehouseIds.length) {
+    const known = await rows(
+      admin
+        .from("inventory_warehouses")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .in("id", warehouseIds)
+        .limit(warehouseIds.length),
+    );
+    if (known.length !== warehouseIds.length) {
+      throw new AutomationError(
+        422,
+        "inventory_warehouse_invalid",
+        "Mindestens ein Lager ist nicht mehr verfügbar.",
       );
     }
   }
@@ -492,10 +548,10 @@ export async function saveAutomation(
   }
   for (const row of action.countIntervals) {
     const { error } = await admin
-      .from("inventory_locations")
+      .from("inventory_warehouses")
       .update({ count_interval_days: row.days })
       .eq("tenant_id", tenantId)
-      .eq("id", row.locationId);
+      .eq("id", row.warehouseId);
     if (error) failure(error);
   }
   await admin.from("audit_logs").insert({

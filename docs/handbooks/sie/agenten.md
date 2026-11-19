@@ -1345,6 +1345,29 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
+### Wie lege ich ein Lager mit Standort an?
+
+1. Öffnen Sie **Lager → Lagerorte**.
+2. Klappen Sie **Lager erfassen** auf und geben Sie den Namen des **Lagers** ein, z. B. «Hauptlager Bern».
+3. Tragen Sie bei Bedarf den **Standort** ein, z. B. «Bern, Hauptstrasse 1».
+4. Klicken Sie auf **Lager erfassen**.
+
+Sie können mehrere Lager erfassen. Mit dem Stift ändern Sie Name und Standort, mit dem Papierkorb archivieren Sie ein Lager. Die Lagerplätze und ihr Bestand bleiben dabei erhalten.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
+### Wie erfasse ich einen Lagerplatz in einem Lager?
+
+1. Öffnen Sie **Lager → Lagerorte** und klappen Sie **Lagerort erfassen** auf.
+2. Geben Sie den **Lagerort** ein, z. B. «WSICT.01.02». Er steht später auf der Etikette.
+3. Wählen Sie das **Lager**, zu dem der Lagerplatz gehört. Ohne Auswahl erscheint er unter «Ohne Lager».
+4. Tragen Sie bei Bedarf eine **Bemerkung** ein. Die Bemerkung dient nur als Notiz und erscheint weder auf Etiketten noch in Auswahllisten.
+5. Klicken Sie auf **Lagerort erfassen**.
+
+Die Lagerplätze erscheinen gruppiert nach Lager, mit dem Standort in der Überschrift.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
 ### Wie drucke ich Etiketten für Lagerorte?
 
 1. Öffnen Sie **Lager → Lagerorte**.
@@ -1352,7 +1375,7 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 3. Klicken Sie auf **Etiketten drucken**.
 4. Wählen Sie im Druckdialog Format, QR-Inhalt (**App** oder **Web**) und **Anzahl Etiketten** und drucken Sie.
 
-Auf dem Etikett stehen der Lagerort und sein QR-Code. Wer den Code scannt, sieht in der App unter **Lager** die Artikel an diesem Lagerort, im Web die gefilterte Artikelliste.
+Auf dem Etikett stehen der Lagerort in grosser, fetter Schrift und sein QR-Code, auf Wunsch auch das Lager. Die Bemerkung steht nicht auf dem Etikett. Wer den Code scannt, sieht in der App unter **Lager** die Artikel an diesem Lagerort, im Web die gefilterte Artikelliste.
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
@@ -1360,7 +1383,7 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 1. Öffnen Sie **Lager → Lagerorte**.
 2. Klicken Sie auf den Stift (**Bearbeiten**).
-3. Ändern Sie Ortscode und Bezeichnung und speichern Sie. Der Ortscode darf Buchstaben, Ziffern, Punkte, Binde- und Unterstriche enthalten (z. B. «WSICT.01.01») und wird klein gespeichert.
+3. Ändern Sie **Lagerort**, **Lager** und **Bemerkung** und speichern Sie. Der Lagerort darf Buchstaben, Ziffern, Punkte, Binde- und Unterstriche enthalten (z. B. «WSICT.01.01»).
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
@@ -1427,7 +1450,7 @@ Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 ### Wie stelle ich das Intervall der Inventur ein?
 
 1. Öffnen Sie **Lager → Automatik** und die Karte **Inventur**.
-2. Legen Sie pro Lagerort ein Intervall in Tagen fest. Ist es abgelaufen, erhält die Lagerverwaltung «Inventur fällig».
+2. Legen Sie pro **Lager** ein Intervall in Tagen fest. Ist es abgelaufen, erhält die Lagerverwaltung «Inventur fällig». Ein Lager gilt als fällig, sobald sein am längsten nicht gezählter Lagerplatz überfällig ist; läuft an einem Platz des Lagers gerade eine Inventur, gibt es keine Erinnerung.
 
 Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 
@@ -2977,7 +3000,7 @@ Einleitung, Abschnitte, Schritte, Hinweise). KI-Entwürfe aus Tickets erscheinen
 
 Die Bereiche des Lagers sind wie in den Einstellungen in Gruppen geordnet:
 **Bestand** (Übersicht, Artikel, Lagerorte), **Buchungen** (Bewegungen,
-Reservationen, Inventur) und **Planung** (Beschaffung, Automatik; nur für die
+Inventur) und **Planung** (Beschaffung, Automatik; nur für die
 Lagerverwaltung). Eine Meldung oben gilt für den Bereich, in dem sie entstanden
 ist, und verschwindet beim Wechsel in einen anderen Bereich.
 
@@ -3052,7 +3075,7 @@ Mit **Löschen** im Formular entfernen Sie einen Artikel endgültig (auch aus de
 Shop). Hat er schon Bewegungen oder Reservationen, lässt er sich nicht löschen;
 nextDesk bietet dann an, ihn zu **archivieren**.
 
-Unter **Lagerorte** ändern Sie Ortscode und Bezeichnung mit dem Stift
+Unter **Lagerorte** ändern Sie Lagerort, Lager und Bemerkung mit dem Stift
 (**Bearbeiten**). Mit dem Papierkorb (**Löschen**) steht ein Lagerort nicht
 mehr zur Auswahl; bisherige Buchungen bleiben erhalten. Buchen Sie einen
 vorhandenen Bestand vorher an einen anderen Ort um. Gelöschte Lagerorte
@@ -3091,9 +3114,9 @@ wieder an Lager.
 - **Reservationen:** Offene Reservationen werden nach der eingestellten Zahl
   Tage automatisch freigegeben (stündliche Prüfung). Reservationen aus
   Shop-Bestellungen, Eintritten und Raumbuchungen bleiben bestehen.
-- **Inventur:** Pro Lagerort ein Intervall in Tagen. Ist es seit der letzten
-  abgeschlossenen Inventur abgelaufen, erhält die Lagerverwaltung die
-  Mitteilung «Inventur fällig».
+- **Inventur:** Pro Lager ein Intervall in Tagen. Ist es seit der letzten
+  abgeschlossenen Inventur des am längsten nicht gezählten Lagerplatzes
+  abgelaufen, erhält die Lagerverwaltung die Mitteilung «Inventur fällig».
 
 **Austritt:** Im Austritt öffnen Sie **Rückgaben und Lizenzen**. Neben den
 zugewiesenen Geräten listet nextDesk die offenen **Shop-Ausleihen** und die

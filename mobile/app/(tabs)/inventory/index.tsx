@@ -701,8 +701,8 @@ export default function InventoryScreen() {
                                   selected && styles.locationChipTextSelected,
                                 ]}
                               >
-                                {location.code
-                                  ? `${location.name} (${location.code})`
+                                {location.warehouseName
+                                  ? `${location.name} · ${location.warehouseName}`
                                   : location.name}
                               </Text>
                             </Pressable>

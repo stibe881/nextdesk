@@ -23600,3 +23600,103 @@ body.app-dialog-open {
 .inventory__panel > .inventory__panel {
   margin-top: 24px;
 }
+
+/* Lager mit Standort und ihre Lagerplätze (Lager → Lagerorte) */
+.inventory__warehouses {
+  display: grid;
+  gap: 12px;
+  margin-top: 17px;
+}
+
+.inventory__warehouses > .inventory__form {
+  margin-top: 0;
+}
+
+.inventory__warehouse-list {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.inventory__warehouse-list > li {
+  align-items: center;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.inventory__warehouse-list > li > div {
+  display: grid;
+  min-width: 0;
+}
+
+.inventory__warehouse-list small {
+  color: var(--muted);
+  font-size: 0.77rem;
+}
+
+.inventory__warehouse-list .inventory__location-buttons {
+  margin-left: auto;
+}
+
+.inventory__warehouse-list > li.inventory__warehouse-edit {
+  display: block;
+  grid-column: 1 / -1;
+}
+
+.inventory__location-group {
+  margin-top: 24px;
+}
+
+.inventory__location-group-title {
+  color: var(--ink);
+  font-size: 1rem;
+  margin: 0;
+}
+
+.inventory__location-group-title small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 400;
+}
+
+.inventory__location-group > .inventory__location-grid {
+  margin-top: 10px;
+}
+
+/* Kennzahlen der Lager-Übersicht sind Verknüpfungen zum jeweiligen Bereich. */
+.inventory__metrics:has(> .inventory__metric--link:nth-child(2):last-child) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+button.inventory__metric--link {
+  appearance: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+button.inventory__metric--link:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+button.inventory__metric--link:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .inventory__metrics:has(> .inventory__metric--link:nth-child(2):last-child) {
+    grid-template-columns: 1fr;
+  }
+}
