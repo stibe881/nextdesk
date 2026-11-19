@@ -23726,3 +23726,160 @@ button.inventory__metric--link:focus-visible {
 .tenant-admin-settings__directory-more {
   margin-top: 0.5rem;
 }
+
+/* Lagerorte: jedes Lager als Karte, die Lagerplätze als Liste darin. */
+.inventory__stores {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.inventory__store {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.inventory__store.is-inactive {
+  opacity: 0.7;
+}
+
+.inventory__store-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+}
+
+.inventory__store-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  flex: 0 0 auto;
+}
+
+.inventory__store-title {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.inventory__store-title h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.inventory__store-title small {
+  color: var(--muted);
+}
+
+.inventory__store-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.inventory__store-actions .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 12px;
+}
+
+.inventory__store-form {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.inventory__stores ~ .inventory__store-form,
+.panel > .inventory__store-form {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.inventory__store-form h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.inventory__store-empty {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--muted);
+}
+
+.inventory__places {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inventory__places > li {
+  display: grid;
+  grid-template-columns: 24px 20px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.inventory__places > li:first-child {
+  border-top: 0;
+}
+
+.inventory__places > li:hover {
+  background: var(--surface-subtle);
+}
+
+.inventory__places > li.is-inactive {
+  opacity: 0.6;
+}
+
+.inventory__places > li.inventory__location-edit {
+  display: block;
+}
+
+.inventory__place-icon {
+  color: var(--primary);
+}
+
+.inventory__place-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  min-width: 0;
+}
+
+.inventory__place-name strong {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.inventory__place-name small {
+  color: var(--muted);
+}
+
+.inventory__place-state {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.inventory__places .inventory__location-buttons {
+  align-items: center;
+  grid-column: -2;
+}
