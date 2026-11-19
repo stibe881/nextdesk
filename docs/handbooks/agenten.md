@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Phishing-/Junk-Fälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-18
+updated: 2026-11-19
 ---
 
 # Handbuch für Agenten
@@ -1858,6 +1858,8 @@ Mehr dazu unter «Benachrichtigungen und Erreichbarkeit».
 1. Tippe auf der Startseite der App auf die **Glocke** (mit der Anzahl ungelesener Einträge).
 2. Tippe auf einen Eintrag, um ihn zu öffnen und als gelesen zu markieren.
 3. **Alle gelesen** leert die Liste.
+
+Ein Eintrag **Wiederkehrende Ausfälle** nennt das Gerät und die Zahl der Ausfälle in 30 Tagen und öffnet das Gerät in der Überwachung; den dazu eröffneten Fall findest du in der Web-App unter «Fälle».
 
 Mehr dazu unter «Benachrichtigungen und Erreichbarkeit».
 

@@ -248,3 +248,30 @@ describe("formatInboxTime", () => {
     expect(formatInboxTime("kaputt", now)).toBe("");
   });
 });
+
+describe("wiederkehrende Ausfälle", () => {
+  const assetId = "40000000-0000-4000-8000-000000000004";
+  it("zeigt Gerät und Anzahl und öffnet das Gerät in der Überwachung", () => {
+    const notification = item("problem.recurring_detected", {
+      problemId: id,
+      assetId,
+      assetName: "SOBE-BAAR-CSW01",
+      alertCount: 7,
+    });
+    expect(inboxPresentation(notification)).toEqual({
+      title: "Wiederkehrende Ausfälle",
+      detail: "SOBE-BAAR-CSW01 · 7 Ausfälle in 30 Tagen · Fall eröffnet",
+      icon: "repeat-outline",
+    });
+    expect(inboxRoute(notification)).toEqual({
+      kind: "path",
+      path: `/monitoring/${assetId}`,
+    });
+  });
+  it("ohne Gerät: Hinweis auf die Web-App", () => {
+    const route = inboxRoute(
+      item("problem.recurring_detected", { assetName: "S108", alertCount: 4 }),
+    );
+    expect(route?.kind).toBe("message");
+  });
+});
