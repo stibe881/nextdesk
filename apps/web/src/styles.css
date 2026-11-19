@@ -23700,3 +23700,29 @@ button.inventory__metric--link:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* Entra-Verzeichnis: Abgleichshistorie (Einstellungen → Funktionen). */
+.tenant-admin-settings__directory-runs h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+.tenant-admin-settings__directory-runs ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tenant-admin-settings__directory-runs li {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+}
+.tenant-admin-settings__directory-runs li p {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+.tenant-admin-settings__directory-more {
+  margin-top: 0.5rem;
+}

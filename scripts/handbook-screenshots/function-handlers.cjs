@@ -131,6 +131,7 @@ const ENABLED_FEATURES = new Set([
   "teams.provisioning",
   "monitoring.native",
   "contracts.management",
+  "onboarding.entries",
 ]);
 const ALL_FEATURES = [
   "monitoring.native",
@@ -646,6 +647,26 @@ function coordinationOverview(ticket) {
 }
 
 const HANDLERS = {
+  "entra-directory-sync": (body) => {
+    if (body.type !== "listRuns") return ok({ connected: true });
+    // Nächtliche Läufe plus ein manueller Abgleich.
+    const runs = [0, 1, 2, 3, 4, 5].map((index) => ({
+      id: `entra-run-${index}`,
+      trigger: index === 1 ? "manual" : "scheduled",
+      status: "succeeded",
+      started_at: D.ago(
+        index === 1 ? 26 * D.HOUR : (2 + index * 24) * D.HOUR + 3 * D.MIN,
+      ),
+      finished_at: D.ago(
+        index === 1 ? 26 * D.HOUR - D.MIN : (2 + index * 24) * D.HOUR,
+      ),
+      imported: 184 - index,
+      active: 171 - index,
+      skipped: 2,
+      error_code: null,
+    }));
+    return ok({ runs });
+  },
   "owner-access": () => fail("platform_operator_required", 403),
   "tenant-sso-access": () =>
     ok({
@@ -2596,7 +2617,7 @@ const HANDLERS = {
       });
     }
     if (body.type === "listIntuneManualSyncRuns") {
-      const run = (n, mode, offset, created, updated) => ({
+      const run = (n, mode, offset, created, updated, scheduled = false) => ({
         id: D.uid("26262626", n),
         mode,
         status: "succeeded",
@@ -2615,12 +2636,15 @@ const HANDLERS = {
         retry_of_run_id: null,
         root_run_id: null,
         attempt_no: 1,
+        scheduled,
       });
       return ok({
         runs: [
-          run(1, "synchronize", 3 * D.HOUR, 2, 41),
-          run(2, "dry_run", 3 * D.HOUR + 10 * D.MIN, 0, 0),
-          run(3, "synchronize", 2 * D.DAY, 5, 18),
+          run(1, "synchronize", 3 * D.HOUR, 2, 41, true),
+          run(2, "synchronize", 5 * D.HOUR, 0, 3),
+          run(3, "dry_run", 5 * D.HOUR + 10 * D.MIN, 0, 0),
+          run(4, "synchronize", 1 * D.DAY + 3 * D.HOUR, 1, 12, true),
+          run(5, "synchronize", 2 * D.DAY + 3 * D.HOUR, 5, 18, true),
         ],
       });
     }
@@ -3162,8 +3186,66 @@ const HANDLERS = {
     if (body.type === "listRequesters") return ok({ people: [] });
     return null;
   },
-  onboarding: (body) =>
-    body.type === "navigationSummary" ? ok({ attentionCount: 0 }) : null,
+  onboarding: (body) => {
+    if (body.type === "navigationSummary") return ok({ attentionCount: 0 });
+    if (body.type === "listDepartmentTasks") return ok({ tasks: [] });
+    if (body.type !== "listWorkspace") return null;
+    // Eintritt in 12 Tagen: Aufgaben teils überfällig, bald fällig, später
+    // und erledigt, damit die Gruppen der Karte sichtbar sind.
+    const day = (offset) => D.iso(offset * D.DAY).slice(0, 10);
+    const task = (n, title, offset, status, extra = {}) => ({
+      id: D.uid("0b0b0b0b", n),
+      title,
+      dueOn: day(offset),
+      responsibleName: "Mara Keller",
+      departmentId: null,
+      departmentName: null,
+      status,
+      canUpdate: true,
+      exception: null,
+      ...extra,
+    });
+    return ok({
+      permissions: { canRequest: true, canManage: true },
+      people: [{ id: D.uid("0c0c0c0c", 1), displayName: "Mara Keller" }],
+      templates: [
+        { id: D.uid("0d0d0d0d", 1), key: "standard", name: "Standard" },
+      ],
+      entries: [
+        {
+          id: D.uid("0e0e0e0e", 1),
+          employeeName: "Lea Brunner",
+          startsOn: day(12),
+          organisationUnit: "Finanzen",
+          location: "Zürich, 3. OG",
+          managerName: "Thomas Huber",
+          ictResponsibleName: "Mara Keller",
+          templateId: D.uid("0d0d0d0d", 1),
+          kind: "onboarding",
+          canEdit: true,
+          source: "email",
+          sourceTicketNumber: "ICT-2026-000150",
+          details: { filledBy: "Thomas Huber", functions: [] },
+          tasks: [
+            task(1, "Gerät bereitstellen", -1, "in_progress", {
+              exception: {
+                ticketNumber: "ICT-2026-000141",
+                reason: "Lieferverzögerung",
+              },
+            }),
+            task(2, "Konto und Zugriffe einrichten", 3, "open"),
+            task(3, "Gruppen und Berechtigungen zuweisen", 5, "open"),
+            task(4, "Badge bereitstellen", 9, "open", {
+              responsibleName: "Peter Meier",
+              departmentName: "Infrastruktur",
+            }),
+            task(5, "Einführung und Übergabe bestätigen", 12, "open"),
+            task(6, "Arbeitsplatz vorbereiten", -3, "completed"),
+          ],
+        },
+      ],
+    });
+  },
   "event-spaces": (body) =>
     body.type === "navigationSummary" ? fail("feature_disabled", 403) : null,
   contracts: (body) => {

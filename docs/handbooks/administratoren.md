@@ -2,7 +2,7 @@
 title: Handbuch für Administratoren
 description: Mandant einrichten – Design, Funktionen, SLA, Abteilungen, Personen, Rollen, Datenschutz und Protokoll.
 audienceLabel: Administratoren
-updated: 2026-11-18
+updated: 2026-11-19
 ---
 
 # Handbuch für Administratoren
@@ -696,6 +696,15 @@ Wichtige Funktionen und ihre Konfiguration:
 | Raumplanung, Eintritte, Bestandsverwaltung, Verträge, Serviceaufgaben | Zusatzmodule für einzelne Abteilungen                                                                                   |
 | Single Sign-On                                                        | Anmeldung mit Microsoft Entra ID (siehe Installationsanleitung)                                                         |
 
+### Microsoft Entra-Verzeichnis
+
+Am Ende des Registers **Funktionen** liegt der Bereich **Microsoft
+Entra-Verzeichnis**. Ist der Connector aktiv, gleicht nextDesk die Personen
+jede Nacht automatisch mit Entra ab; **Jetzt abgleichen** startet einen
+Abgleich von Hand. Die **Abgleichshistorie** zeigt die letzten drei Läufe
+(_Automatischer_ bzw. _Manueller Abgleich_), **Ältere Läufe anzeigen** klappt
+bis zu 20 Läufe auf. Einrichtung: siehe Installationsanleitung.
+
 ### Microsoft Teams im Shop
 
 Die Funktion **Microsoft Teams im Shop** ist standardmässig aus. Schalte
@@ -1086,8 +1095,9 @@ Agentenzugang haben. Speichern mit **Person speichern**.
 
 ### Personen aus Microsoft Entra
 
-Ist der Verzeichnisabgleich eingerichtet, erscheinen Personen aus Entra in
-der Liste. Du kannst eine Person **als Agent vormerken** – Name, vorgesetzte
+Ist der Verzeichnisabgleich eingerichtet (Register **Funktionen →
+Microsoft Entra-Verzeichnis**, jede Nacht automatisch), erscheinen Personen
+aus Entra in der Liste. Du kannst eine Person **als Agent vormerken** – Name, vorgesetzte
 Person, Ticketzugriffsbereich und Team werden bei der ersten
 Microsoft-Anmeldung übernommen.
 

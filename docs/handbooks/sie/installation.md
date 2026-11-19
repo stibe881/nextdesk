@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-18
+updated: 2026-11-19
 ---
 
 # Installationsanleitung
@@ -130,10 +130,10 @@ Ausführlich: «Schritt 5: Exchange Online (E-Mail-Kanal)».
 
 1. Stellen Sie sicher, dass SSO mit Ihrer eigenen Tenant-ID konfiguriert ist (nicht `common`).
 2. Lassen Sie die Zustimmung für die Berechtigung _User.Read.All_ erteilen (Link vom Betreiber, Aufgabe des Microsoft-Admins).
-3. Öffne **Einstellungen → Personen → Microsoft Entra-Verzeichnis**.
-4. Aktivieren Sie den _Connector für manuelle Abgleiche_ und wählen Sie **Konfiguration speichern**.
-5. Wählen Sie **Verbindung testen** und danach **Manuellen Abgleich starten**.
-6. Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
+3. Öffnen Sie **Einstellungen → Funktionen → Microsoft Entra-Verzeichnis**.
+4. Aktivieren Sie den _Connector (Abgleich jede Nacht automatisch)_ und wählen Sie **Konfiguration speichern**.
+5. Wählen Sie **Verbindung testen** und danach **Jetzt abgleichen**.
+6. Danach gleicht nextDesk das Verzeichnis jede Nacht automatisch ab; es werden keine Personen gelöscht. Die **Abgleichshistorie** zeigt die letzten Läufe.
 
 Ausführlich: «Microsoft-Entra-Verzeichnisabgleich».
 
@@ -141,7 +141,7 @@ Ausführlich: «Microsoft-Entra-Verzeichnisabgleich».
 
 1. Lassen Sie die Zustimmung für die Intune-App mit _DeviceManagementManagedDevices.Read.All_ (nur lesend) erteilen (Aufgabe des Microsoft-Admins).
 2. Aktivieren Sie die Funktion **Asset-Management** und öffnen Sie **Konfigurieren**.
-3. Geben Sie den _Manuellen Microsoft-Graph-Abgleich für diesen Mandanten_ frei.
+3. Geben Sie den _Microsoft-Graph-Abgleich für diesen Mandanten_ frei.
 4. Prüfen Sie die Vorschau und wählen Sie **Übernahme ausdrücklich bestätigen**.
 5. Wählen Sie **Jetzt einmalig abgleichen**.
 6. Danach läuft der Abgleich zusätzlich jede Nacht automatisch. Geräte mit bereits vorhandener Seriennummer werden übersprungen, es wird nie etwas gelöscht.
@@ -486,20 +486,26 @@ dargestellt).
   (nicht `common`).
 - **[Microsoft-Admin]** Zustimmung für die Berechtigung _User.Read.All_
   erteilen (Link vom Betreiber).
-- **[Admin]** **Einstellungen → Personen → Microsoft Entra-Verzeichnis**:
-  _Connector für manuelle Abgleiche aktivieren_ → **Konfiguration speichern**
-  → **Verbindung testen** → **Manuellen Abgleich starten**.
+- **[Admin]** **Einstellungen → Funktionen → Microsoft Entra-Verzeichnis**
+  (am Ende der Seite): _Connector aktivieren (Abgleich jede Nacht
+  automatisch)_ → **Konfiguration speichern** → **Verbindung testen** →
+  **Jetzt abgleichen**.
 
-Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
+Ist der Connector aktiv, läuft der Abgleich jede Nacht automatisch (um 01:41
+UTC); **Jetzt abgleichen** startet ihn zusätzlich von Hand. Es werden keine
+Personen gelöscht. Die **Abgleichshistorie** zeigt die letzten drei Läufe mit
+_Automatischer Abgleich_ bzw. _Manueller Abgleich_, verarbeiteten und aktiven
+Personen; **Ältere Läufe anzeigen** klappt bis zu 20 Läufe auf. Die
+abgeglichenen Personen erscheinen unter **Einstellungen → Personen**.
 
-![Microsoft Entra-Verzeichnis im Register Personen](images/in-verzeichnis.jpg)
+![Microsoft Entra-Verzeichnis im Register Funktionen](images/in-verzeichnis.jpg)
 
 ### Microsoft Intune (Geräte)
 
 - **[Microsoft-Admin]** Zustimmung für die Intune-App mit
   _DeviceManagementManagedDevices.Read.All_ (nur lesend) erteilen.
 - **[Admin]** Funktion **Asset-Management** aktivieren →
-  **Konfigurieren** → _Manuellen Microsoft-Graph-Abgleich für diesen Mandanten
+  **Konfigurieren** → _Microsoft-Graph-Abgleich für diesen Mandanten
   freigeben_ → Vorschau prüfen → **Übernahme ausdrücklich bestätigen** →
   **Jetzt einmalig abgleichen**.
 
@@ -515,6 +521,12 @@ liefert derselbe Geräteabruf auch die MAC-Adressen; der bisherige separate
 nächtliche Intune-Abruf der IP-Adressverwaltung entfällt dann.
 Voraussetzung ist die Dispatch-Konfiguration für Cron-Aufrufe (wie bei
 PRTG/IP-Adressverwaltung).
+
+Die Historie unter dem Abgleich zeigt die letzten drei Läufe; **Ältere Läufe
+anzeigen** klappt bis zu 20 auf. Der nächtliche Lauf heisst dort
+**Automatischer Abgleich abgeschlossen** («Synchronisation (täglich,
+automatisch)»), von Hand gestartete Läufe **Manueller Abgleich
+abgeschlossen** bzw. «Synchronisation (von Hand)».
 
 ![Microsoft-Intune-Abgleich](images/in-intune.jpg)
 

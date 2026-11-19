@@ -883,14 +883,24 @@ async function listIntuneManualSyncRuns(
   const { data, error } = await admin
     .from("asset_intune_manual_sync_runs")
     .select(
-      "id, mode, status, result_code, started_at, finished_at, provider_contacted, devices_seen, assets_created, assets_updated, assets_skipped, ambiguous_devices, retry_of_run_id, root_run_id, attempt_no",
+      "id, mode, status, result_code, started_at, finished_at, provider_contacted, devices_seen, assets_created, assets_updated, assets_skipped, ambiguous_devices, retry_of_run_id, root_run_id, attempt_no, client_request_id",
     )
     .eq("tenant_id", action.tenantId)
     .order("started_at", { ascending: false })
     .order("id", { ascending: false })
-    .limit(30);
+    .limit(20);
   if (error) databaseFailure(error);
-  return response(request, { data: { runs: data ?? [] } });
+  // Der tägliche Abgleich (intune-scheduled-sync) setzt eine abgeleitete
+  // UUID der Version 5, manuelle Läufe eine zufällige (Version 4).
+  const runs = ((data ?? []) as Record<string, unknown>[]).map(
+    ({ client_request_id, ...run }) => ({
+      ...run,
+      scheduled:
+        typeof client_request_id === "string" &&
+        client_request_id.charAt(14) === "5",
+    }),
+  );
+  return response(request, { data: { runs } });
 }
 
 async function runIntuneLocalPreflight(

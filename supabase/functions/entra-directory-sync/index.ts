@@ -15,7 +15,8 @@ const UUID_PATTERN =
 
 type SyncAction =
   | { type: "syncTenant"; tenantId: string }
-  | { type: "testTenant"; tenantId: string };
+  | { type: "testTenant"; tenantId: string }
+  | { type: "listRuns"; tenantId: string };
 
 type DirectoryPerson = {
   entra_object_id: string;
@@ -67,7 +68,9 @@ function parseAction(value: unknown): SyncAction | null {
   if (
     !isRecord(value) ||
     !isUuid(value.tenantId) ||
-    (value.type !== "syncTenant" && value.type !== "testTenant")
+    (value.type !== "syncTenant" &&
+      value.type !== "testTenant" &&
+      value.type !== "listRuns")
   ) {
     return null;
   }
@@ -269,6 +272,249 @@ async function syncProfilePhotos(
   return stored;
 }
 
+// deno-lint-ignore no-explicit-any
+type AdminClient = any;
+
+export type SyncTrigger = "manual" | "scheduled";
+
+export type DirectorySyncResult =
+  | {
+      ok: true;
+      data: {
+        active: number;
+        imported: number;
+        skipped: number;
+        requesterContactsCreated: number;
+        requesterProfilesInitialized: number;
+        photosStored: number;
+      };
+    }
+  | { ok: false; code: string; status: number };
+
+// Laufhistorie (Einstellungen → Funktionen → Entra-Verzeichnis). Ein Fehler
+// beim Protokollieren darf den Abgleich selbst nicht scheitern lassen.
+async function recordRun(admin: AdminClient, row: Record<string, unknown>) {
+  const { error } = await admin
+    .from("tenant_entra_directory_sync_runs")
+    .insert(row);
+  if (error) console.error("Entra sync run not recorded", { code: error.code });
+}
+
+async function finishRun(
+  admin: AdminClient,
+  runId: string,
+  values: Record<string, unknown>,
+) {
+  const { error } = await admin
+    .from("tenant_entra_directory_sync_runs")
+    .update({ ...values, finished_at: new Date().toISOString() })
+    .eq("id", runId);
+  if (error) console.error("Entra sync run not finished", { code: error.code });
+}
+
+/** Ein Abgleich des Entra-Verzeichnisses, von Hand oder nächtlich. */
+export async function runDirectorySync(
+  admin: AdminClient,
+  actorId: string,
+  tenantId: string,
+  trigger: SyncTrigger,
+): Promise<DirectorySyncResult> {
+  const runId = crypto.randomUUID();
+  const { data: claimData, error: claimError } = await admin.rpc(
+    "claim_entra_directory_sync_run",
+    {
+      p_actor_id: actorId,
+      p_tenant_id: tenantId,
+      p_run_id: runId,
+    },
+  );
+  const claim = firstClaim(claimData);
+  if (claimError || !claim) {
+    return { ok: false, code: "directory_sync_failed", status: 502 };
+  }
+  if (claim.outcome === "in_progress") {
+    return { ok: false, code: "directory_sync_in_progress", status: 409 };
+  }
+  if (
+    claim.outcome !== "claimed" ||
+    !isUuid(claim.entra_tenant_id) ||
+    typeof claim.started_at !== "string" ||
+    typeof claim.sync_generation !== "number" ||
+    !Number.isSafeInteger(claim.sync_generation) ||
+    claim.sync_generation < 1
+  ) {
+    return { ok: false, code: "directory_sync_not_ready", status: 422 };
+  }
+
+  await recordRun(admin, {
+    id: runId,
+    tenant_id: tenantId,
+    trigger,
+    actor_id: actorId,
+    status: "running",
+  });
+
+  const startedAt = claim.started_at;
+  const syncGeneration = claim.sync_generation;
+  // Nur technische Kennzeichen (Phase, Fehlercode), nie Daten des Anbieters.
+  let stage = "token";
+  let failureCode = "";
+  try {
+    const accessToken = await graphAccessToken(claim.entra_tenant_id);
+    stage = "users";
+    const graphPeople = await graphUsers(accessToken, fetch, async () => {
+      const { data: renewed, error: renewError } = await admin.rpc(
+        "renew_entra_directory_sync_run",
+        {
+          p_actor_id: actorId,
+          p_tenant_id: tenantId,
+          p_run_id: runId,
+          p_sync_generation: syncGeneration,
+          p_entra_tenant_id: claim.entra_tenant_id,
+        },
+      );
+      if (renewError || renewed !== true) {
+        throw new Error("directory_sync_failed");
+      }
+    });
+    stage = "import";
+    const objectIds = new Set<string>();
+    const emails = new Set<string>();
+    const people: DirectoryPerson[] = [];
+    for (const graphPerson of graphPeople) {
+      const person = asDirectoryPerson(graphPerson);
+      if (
+        !person ||
+        objectIds.has(person.entra_object_id) ||
+        emails.has(person.email)
+      ) {
+        continue;
+      }
+      objectIds.add(person.entra_object_id);
+      emails.add(person.email);
+      people.push(person);
+    }
+
+    for (let offset = 0; offset < people.length; offset += 250) {
+      const batch = people.slice(offset, offset + 250);
+      const { data: imported, error } = await admin.rpc(
+        "upsert_fenced_entra_directory_people_batch",
+        {
+          p_actor_id: actorId,
+          p_tenant_id: tenantId,
+          p_run_id: runId,
+          p_sync_generation: syncGeneration,
+          p_entra_tenant_id: claim.entra_tenant_id,
+          p_started_at: startedAt,
+          p_people: batch,
+        },
+      );
+      if (error || nonNegativeInteger(imported) !== batch.length) {
+        failureCode = typeof error?.code === "string" ? error.code : "count";
+        throw new Error("directory_sync_failed");
+      }
+    }
+
+    // Managers (Graph "manager") drive approvals in the self-service shop.
+    // They are stored after the fenced people import so that both ends of a
+    // manager relation exist.
+    const managerPairs = graphPeople
+      .filter(
+        (graphPerson) =>
+          objectIds.has(String(graphPerson.id).toLowerCase()) ||
+          objectIds.has(String(graphPerson.id)),
+      )
+      .map((graphPerson) => ({
+        entra_object_id: String(graphPerson.id),
+        manager_entra_object_id: graphManagerId(graphPerson),
+      }));
+    for (let offset = 0; offset < managerPairs.length; offset += 500) {
+      const { error: managerError } = await admin.rpc(
+        "apply_entra_directory_managers",
+        {
+          p_tenant_id: tenantId,
+          p_pairs: managerPairs.slice(offset, offset + 500),
+        },
+      );
+      if (managerError) {
+        // Missing managers must not fail the directory import itself.
+        console.error("Entra manager import failed", {
+          code: managerError.code,
+        });
+        break;
+      }
+    }
+
+    stage = "finalize";
+    const { data: requesterProfileSyncData, error: requesterProfileSyncError } =
+      await admin.rpc("finalize_fenced_entra_directory_sync_run", {
+        p_actor_id: actorId,
+        p_tenant_id: tenantId,
+        p_run_id: runId,
+        p_sync_generation: syncGeneration,
+        p_entra_tenant_id: claim.entra_tenant_id,
+        p_started_at: startedAt,
+        p_imported_count: people.length,
+      });
+    if (requesterProfileSyncError) {
+      failureCode =
+        typeof requesterProfileSyncError.code === "string"
+          ? requesterProfileSyncError.code
+          : "unknown";
+      throw new Error("directory_sync_failed");
+    }
+    const requesterProfileSync = requesterProfileSyncResult(
+      requesterProfileSyncData,
+    );
+    let photosStored = 0;
+    try {
+      photosStored = await syncProfilePhotos(admin, tenantId, accessToken);
+    } catch {
+      photosStored = 0;
+    }
+
+    const data = {
+      active: people.filter((person) => person.account_enabled).length,
+      imported: people.length,
+      skipped: graphPeople.length - people.length,
+      requesterContactsCreated: requesterProfileSync.contactsCreated,
+      requesterProfilesInitialized: requesterProfileSync.profilesInitialized,
+      photosStored,
+    };
+    await finishRun(admin, runId, {
+      status: "succeeded",
+      imported: data.imported,
+      active: data.active,
+      skipped: data.skipped,
+    });
+    return { ok: true, data };
+  } catch {
+    console.error("Entra directory sync failed", { stage, failureCode });
+    await admin.rpc("fail_entra_directory_sync_run", {
+      p_actor_id: actorId,
+      p_tenant_id: tenantId,
+      p_run_id: runId,
+      p_sync_generation: syncGeneration,
+    });
+    // Kennzeichen der Phase für die Fehlersuche; keine Providerdetails.
+    await admin
+      .from("tenant_entra_directory_sync_configurations")
+      .update({
+        last_sync_error: `directory_sync_failed:${stage}${failureCode ? `:${failureCode}` : ""}`,
+      })
+      .eq("tenant_id", tenantId)
+      .eq("sync_generation", syncGeneration);
+    await finishRun(admin, runId, {
+      status: "failed",
+      error_code: `${stage}${failureCode ? `:${failureCode}` : ""}`.slice(
+        0,
+        120,
+      ),
+    });
+    return { ok: false, code: "directory_sync_failed", status: 502 };
+  }
+}
+
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (request.method !== "POST") {
     return response(request, { error: { code: "method_not_allowed" } }, 405);
@@ -286,6 +532,25 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     ))
   ) {
     return response(request, { error: { code: "tenant_admin_required" } }, 403);
+  }
+
+  if (action.type === "listRuns") {
+    const { data, error } = await context.supabaseAdmin
+      .from("tenant_entra_directory_sync_runs")
+      .select(
+        "id, trigger, status, started_at, finished_at, imported, active, skipped, error_code",
+      )
+      .eq("tenant_id", action.tenantId)
+      .order("started_at", { ascending: false })
+      .limit(20);
+    if (error) {
+      return response(
+        request,
+        { error: { code: "directory_runs_failed" } },
+        502,
+      );
+    }
+    return response(request, { data: { runs: data ?? [] } });
   }
 
   if (action.type === "testTenant") {
@@ -336,191 +601,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         );
   }
 
-  const runId = crypto.randomUUID();
-  const { data: claimData, error: claimError } =
-    await context.supabaseAdmin.rpc("claim_entra_directory_sync_run", {
-      p_actor_id: actorId,
-      p_tenant_id: action.tenantId,
-      p_run_id: runId,
-    });
-  const claim = firstClaim(claimData);
-  if (claimError || !claim) {
-    return response(request, { error: { code: "directory_sync_failed" } }, 502);
-  }
-  if (claim.outcome === "in_progress") {
-    return response(
-      request,
-      { error: { code: "directory_sync_in_progress" } },
-      409,
-    );
-  }
-  if (
-    claim.outcome !== "claimed" ||
-    !isUuid(claim.entra_tenant_id) ||
-    typeof claim.started_at !== "string" ||
-    typeof claim.sync_generation !== "number" ||
-    !Number.isSafeInteger(claim.sync_generation) ||
-    claim.sync_generation < 1
-  ) {
-    return response(
-      request,
-      { error: { code: "directory_sync_not_ready" } },
-      422,
-    );
-  }
-
-  const startedAt = claim.started_at;
-  const syncGeneration = claim.sync_generation;
-  // Nur technische Kennzeichen (Phase, Fehlercode), nie Daten des Anbieters.
-  let stage = "token";
-  let failureCode = "";
-  try {
-    const accessToken = await graphAccessToken(claim.entra_tenant_id);
-    stage = "users";
-    const graphPeople = await graphUsers(accessToken, fetch, async () => {
-      const { data: renewed, error: renewError } =
-        await context.supabaseAdmin.rpc("renew_entra_directory_sync_run", {
-          p_actor_id: actorId,
-          p_tenant_id: action.tenantId,
-          p_run_id: runId,
-          p_sync_generation: syncGeneration,
-          p_entra_tenant_id: claim.entra_tenant_id,
-        });
-      if (renewError || renewed !== true) {
-        throw new Error("directory_sync_failed");
-      }
-    });
-    stage = "import";
-    const objectIds = new Set<string>();
-    const emails = new Set<string>();
-    const people: DirectoryPerson[] = [];
-    for (const graphPerson of graphPeople) {
-      const person = asDirectoryPerson(graphPerson);
-      if (
-        !person ||
-        objectIds.has(person.entra_object_id) ||
-        emails.has(person.email)
-      ) {
-        continue;
-      }
-      objectIds.add(person.entra_object_id);
-      emails.add(person.email);
-      people.push(person);
-    }
-
-    for (let offset = 0; offset < people.length; offset += 250) {
-      const batch = people.slice(offset, offset + 250);
-      const { data: imported, error } = await context.supabaseAdmin.rpc(
-        "upsert_fenced_entra_directory_people_batch",
-        {
-          p_actor_id: actorId,
-          p_tenant_id: action.tenantId,
-          p_run_id: runId,
-          p_sync_generation: syncGeneration,
-          p_entra_tenant_id: claim.entra_tenant_id,
-          p_started_at: startedAt,
-          p_people: batch,
-        },
-      );
-      if (error || nonNegativeInteger(imported) !== batch.length) {
-        failureCode = typeof error?.code === "string" ? error.code : "count";
-        throw new Error("directory_sync_failed");
-      }
-    }
-
-    // Managers (Graph "manager") drive approvals in the self-service shop.
-    // They are stored after the fenced people import so that both ends of a
-    // manager relation exist.
-    const managerPairs = graphPeople
-      .filter(
-        (graphPerson) =>
-          objectIds.has(String(graphPerson.id).toLowerCase()) ||
-          objectIds.has(String(graphPerson.id)),
-      )
-      .map((graphPerson) => ({
-        entra_object_id: String(graphPerson.id),
-        manager_entra_object_id: graphManagerId(graphPerson),
-      }));
-    for (let offset = 0; offset < managerPairs.length; offset += 500) {
-      const { error: managerError } = await context.supabaseAdmin.rpc(
-        "apply_entra_directory_managers",
-        {
-          p_tenant_id: action.tenantId,
-          p_pairs: managerPairs.slice(offset, offset + 500),
-        },
-      );
-      if (managerError) {
-        // Missing managers must not fail the directory import itself.
-        console.error("Entra manager import failed", {
-          code: managerError.code,
-        });
-        break;
-      }
-    }
-
-    stage = "finalize";
-    const { data: requesterProfileSyncData, error: requesterProfileSyncError } =
-      await context.supabaseAdmin.rpc(
-        "finalize_fenced_entra_directory_sync_run",
-        {
-          p_actor_id: actorId,
-          p_tenant_id: action.tenantId,
-          p_run_id: runId,
-          p_sync_generation: syncGeneration,
-          p_entra_tenant_id: claim.entra_tenant_id,
-          p_started_at: startedAt,
-          p_imported_count: people.length,
-        },
-      );
-    if (requesterProfileSyncError) {
-      failureCode =
-        typeof requesterProfileSyncError.code === "string"
-          ? requesterProfileSyncError.code
-          : "unknown";
-      throw new Error("directory_sync_failed");
-    }
-    const requesterProfileSync = requesterProfileSyncResult(
-      requesterProfileSyncData,
-    );
-    let photosStored = 0;
-    try {
-      photosStored = await syncProfilePhotos(
-        context.supabaseAdmin,
-        action.tenantId,
-        accessToken,
-      );
-    } catch {
-      photosStored = 0;
-    }
-
-    return response(request, {
-      data: {
-        active: people.filter((person) => person.account_enabled).length,
-        imported: people.length,
-        skipped: graphPeople.length - people.length,
-        requesterContactsCreated: requesterProfileSync.contactsCreated,
-        requesterProfilesInitialized: requesterProfileSync.profilesInitialized,
-        photosStored,
-      },
-    });
-  } catch {
-    console.error("Entra directory sync failed", { stage, failureCode });
-    await context.supabaseAdmin.rpc("fail_entra_directory_sync_run", {
-      p_actor_id: actorId,
-      p_tenant_id: action.tenantId,
-      p_run_id: runId,
-      p_sync_generation: syncGeneration,
-    });
-    // Kennzeichen der Phase für die Fehlersuche; keine Providerdetails.
-    await context.supabaseAdmin
-      .from("tenant_entra_directory_sync_configurations")
-      .update({
-        last_sync_error: `directory_sync_failed:${stage}${failureCode ? `:${failureCode}` : ""}`,
-      })
-      .eq("tenant_id", action.tenantId)
-      .eq("sync_generation", syncGeneration);
-    return response(request, { error: { code: "directory_sync_failed" } }, 502);
-  }
+  const result = await runDirectorySync(
+    context.supabaseAdmin,
+    actorId,
+    action.tenantId,
+    "manual",
+  );
+  return result.ok
+    ? response(request, { data: result.data })
+    : response(request, { error: { code: result.code } }, result.status);
 });
 
 export default {
