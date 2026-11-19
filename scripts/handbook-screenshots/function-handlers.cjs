@@ -2597,7 +2597,7 @@ const HANDLERS = {
       });
     }
     if (body.type === "listIntuneManualSyncRuns") {
-      const run = (n, mode, offset, created, updated) => ({
+      const run = (n, mode, offset, created, updated, scheduled = false) => ({
         id: D.uid("26262626", n),
         mode,
         status: "succeeded",
@@ -2616,12 +2616,15 @@ const HANDLERS = {
         retry_of_run_id: null,
         root_run_id: null,
         attempt_no: 1,
+        scheduled,
       });
       return ok({
         runs: [
-          run(1, "synchronize", 3 * D.HOUR, 2, 41),
-          run(2, "dry_run", 3 * D.HOUR + 10 * D.MIN, 0, 0),
-          run(3, "synchronize", 2 * D.DAY, 5, 18),
+          run(1, "synchronize", 3 * D.HOUR, 2, 41, true),
+          run(2, "synchronize", 5 * D.HOUR, 0, 3),
+          run(3, "dry_run", 5 * D.HOUR + 10 * D.MIN, 0, 0),
+          run(4, "synchronize", 1 * D.DAY + 3 * D.HOUR, 1, 12, true),
+          run(5, "synchronize", 2 * D.DAY + 3 * D.HOUR, 5, 18, true),
         ],
       });
     }

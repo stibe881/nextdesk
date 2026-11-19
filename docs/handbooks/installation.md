@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-18
+updated: 2026-11-19
 ---
 
 # Installationsanleitung
@@ -141,7 +141,7 @@ Ausführlich: «Microsoft-Entra-Verzeichnisabgleich».
 
 1. Lass die Zustimmung für die Intune-App mit _DeviceManagementManagedDevices.Read.All_ (nur lesend) erteilen (Aufgabe des Microsoft-Admins).
 2. Aktiviere die Funktion **Asset-Management** und öffne **Konfigurieren**.
-3. Gib den _Manuellen Microsoft-Graph-Abgleich für diesen Mandanten_ frei.
+3. Gib den _Microsoft-Graph-Abgleich für diesen Mandanten_ frei.
 4. Prüfe die Vorschau und wähle **Übernahme ausdrücklich bestätigen**.
 5. Wähle **Jetzt einmalig abgleichen**.
 6. Danach läuft der Abgleich zusätzlich jede Nacht automatisch. Geräte mit bereits vorhandener Seriennummer werden übersprungen, es wird nie etwas gelöscht.
@@ -499,7 +499,7 @@ Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
 - **[Microsoft-Admin]** Zustimmung für die Intune-App mit
   _DeviceManagementManagedDevices.Read.All_ (nur lesend) erteilen.
 - **[Admin]** Funktion **Asset-Management** aktivieren →
-  **Konfigurieren** → _Manuellen Microsoft-Graph-Abgleich für diesen Mandanten
+  **Konfigurieren** → _Microsoft-Graph-Abgleich für diesen Mandanten
   freigeben_ → Vorschau prüfen → **Übernahme ausdrücklich bestätigen** →
   **Jetzt einmalig abgleichen**.
 
@@ -515,6 +515,12 @@ liefert derselbe Geräteabruf auch die MAC-Adressen; der bisherige separate
 nächtliche Intune-Abruf der IP-Adressverwaltung entfällt dann.
 Voraussetzung ist die Dispatch-Konfiguration für Cron-Aufrufe (wie bei
 PRTG/IP-Adressverwaltung).
+
+Die Historie unter dem Abgleich zeigt die letzten drei Läufe; **Ältere Läufe
+anzeigen** klappt bis zu 20 auf. Der nächtliche Lauf heisst dort
+**Automatischer Abgleich abgeschlossen** («Synchronisation (täglich,
+automatisch)»), von Hand gestartete Läufe **Manueller Abgleich
+abgeschlossen** bzw. «Synchronisation (von Hand)».
 
 ![Microsoft-Intune-Abgleich](images/in-intune.jpg)
 
