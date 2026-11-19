@@ -33,6 +33,7 @@ export type InboxIcon =
   | "document-text-outline"
   | "alarm-outline"
   | "checkmark-circle-outline"
+  | "repeat-outline"
   | "notifications-outline";
 
 export type InboxPresentation = {
@@ -140,6 +141,7 @@ const EXACT_PUSH_KINDS: Record<string, string> = {
   "ticket.children_done": "children_done",
   "contract.deadline": "contract_deadline",
   "infrastructure.due": "infrastructure",
+  "problem.recurring_detected": "recurring_problem",
 };
 
 /**
@@ -240,6 +242,7 @@ const titles = (): Record<string, [string, InboxIcon]> => ({
   infrastructure: ["Infrastruktur", "server-outline"],
   ipam: ["IP-Adressverwaltung", "git-network-outline"],
   incident: ["Störung", "pulse-outline"],
+  recurring_problem: ["Wiederkehrende Ausfälle", "repeat-outline"],
 });
 
 const SPECIFIC_TITLES: Record<string, string> = {
@@ -307,6 +310,16 @@ export function inboxPresentation(
       text(payload.title, 80);
   } else if (kind === "contract_deadline") {
     detail = text(payload.title, 80) ?? text(payload.contractName, 80);
+  } else if (kind === "recurring_problem") {
+    const count = typeof payload.alertCount === "number" ? payload.alertCount : null;
+    detail =
+      [
+        text(payload.assetName, 80),
+        count ? `${count} Ausfälle in 30 Tagen` : null,
+        "Fall eröffnet",
+      ]
+        .filter(Boolean)
+        .join(" · ") || null;
   }
   return { title, detail, icon };
 }

@@ -36,6 +36,7 @@ export const PUSH_PAYLOAD_KINDS = [
   "children_done",
   "kudos",
   "security_report",
+  "recurring_problem",
   "incident",
   "ipam",
   "summary",
@@ -167,6 +168,21 @@ export function pushRoute(data: PushNavigationData): PushRoute | null {
     return orderId
       ? path(`/shop/order/${orderId}`, "self_service.shop")
       : path("/shop", "self_service.shop");
+  }
+  // Wiederkehrende Ausfälle eines Geräts: Gerät in der Überwachung (der Fall
+  // selbst ist nur in der Web-App unter «Fälle»).
+  if (kind === "recurring_problem") {
+    const assetId = uuid(data.assetId);
+    return assetId
+      ? path(`/monitoring/${assetId}`)
+      : {
+          kind: "message",
+          title: "Wiederkehrende Ausfälle",
+          message: tn(
+            "Den Fall zu diesem Gerät findest du in der Web-App unter «Fälle».",
+            "Den Fall zu diesem Gerät finden Sie in der Web-App unter «Fälle».",
+          ),
+        };
   }
   if (kind === "infrastructure") {
     const assetId = uuid(data.assetId);
