@@ -14517,12 +14517,28 @@ begin
     raise exception 'automation test: reorder notification wrong';
   end if;
 
-  -- 8. Inventur-Erinnerung nach Intervall, nicht doppelt.
+  -- 8. Inventur-Erinnerung pro Lager nach Intervall, nicht doppelt.
+  insert into public.inventory_warehouses (tenant_id, name, count_interval_days)
+  values (v_tenant, 'Lager Test', 30);
+  -- Ein Intervall am Lagerort selbst löst nichts mehr aus (nur Lager erinnern).
   update public.inventory_locations set count_interval_days = 30, created_at = now() - interval '40 days'
+  where id = v_lager;
+  if public.inventory_send_count_reminders() <> 0 then
+    raise exception 'automation test: a location interval must not remind any more';
+  end if;
+  -- Ein Lager ohne Lagerplätze erinnert nicht.
+  if public.inventory_send_count_reminders() <> 0 then
+    raise exception 'automation test: a warehouse without places must not remind';
+  end if;
+  update public.inventory_locations
+  set warehouse_id = (select id from public.inventory_warehouses where tenant_id = v_tenant and name = 'Lager Test')
   where id = v_lager;
   v_count := public.inventory_send_count_reminders();
   if v_count < 1 or not exists (select 1 from public.ticket_notifications where user_id = v_owner
-      and kind = 'inventory.count_due' and payload ->> 'inventoryLocationId' = v_lager::text) then
+      and kind = 'inventory.count_due'
+      and payload ->> 'inventoryWarehouseId' = (select id::text from public.inventory_warehouses
+                                                 where tenant_id = v_tenant and name = 'Lager Test')
+      and payload ->> 'locationName' = 'Lager Test') then
     raise exception 'automation test: count reminder missing';
   end if;
   perform public.inventory_send_count_reminders();
@@ -16808,6 +16824,156 @@ begin
   exception when check_violation then null;
   end;
   raise notice 'inventory location code checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# Lager mit Standort (Migration 0371): Lagerplätze gehören optional zu einem
+# Lager, ein Lager gehört genau einem Mandanten; aus der Bezeichnung wird die
+# Bemerkung, der Lagerort heisst wie sein Code.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_a constant uuid := 'a7100000-0000-4000-8000-000000000001';
+  v_b constant uuid := 'a7100000-0000-4000-8000-000000000002';
+  v_tenant_a uuid;
+  v_tenant_b uuid;
+  v_warehouse uuid;
+  v_foreign uuid;
+  v_location uuid;
+  v_old uuid;
+  v_name text;
+  v_note text;
+begin
+  insert into auth.users (id) values (v_a), (v_b);
+  v_tenant_a := public.provision_personal_workspace(v_a, 'lager-a@example.ch', 'Lager A');
+  v_tenant_b := public.provision_personal_workspace(v_b, 'lager-b@example.ch', 'Lager B');
+  insert into public.inventory_warehouses (tenant_id, name, site)
+  values (v_tenant_a, 'Lager Bern', 'Bern, Hauptstrasse 1') returning id into v_warehouse;
+  insert into public.inventory_warehouses (tenant_id, name)
+  values (v_tenant_b, 'Fremdes Lager') returning id into v_foreign;
+
+  -- Der Name des Lagers ist je Mandant eindeutig (ohne Gross-/Kleinschreibung).
+  begin
+    insert into public.inventory_warehouses (tenant_id, name) values (v_tenant_a, 'LAGER BERN');
+    raise exception 'duplicate warehouse name accepted';
+  exception when unique_violation then null;
+  end;
+
+  -- Ein Lagerplatz kann dem eigenen Lager zugeordnet werden, einem fremden nicht.
+  insert into public.inventory_locations (tenant_id, code, name, warehouse_id)
+  values (v_tenant_a, 'wsict.01.01', 'WSICT.01.01', v_warehouse) returning id into v_location;
+  begin
+    update public.inventory_locations set warehouse_id = v_foreign where id = v_location;
+    raise exception 'a place was assigned to the warehouse of another tenant';
+  exception when foreign_key_violation then null;
+  end;
+
+  -- Wird ein Lager gelöscht, bleiben die Plätze (ohne Lager).
+  delete from public.inventory_warehouses where id = v_warehouse;
+  if (select warehouse_id from public.inventory_locations where id = v_location) is not null then
+    raise exception 'deleting a warehouse must only detach its places';
+  end if;
+
+  -- Die Bemerkung ist optional und begrenzt.
+  update public.inventory_locations set note = 'Wandschrank im Flur' where id = v_location;
+  begin
+    update public.inventory_locations set note = repeat('x', 501) where id = v_location;
+    raise exception 'an over-long remark was accepted';
+  exception when check_violation then null;
+  end;
+
+  -- Bestehende Bezeichnungen werden zu Bemerkungen (Daten der Migration, erneut ausgeführt).
+  insert into public.inventory_locations (tenant_id, code, name)
+  values (v_tenant_a, 'wsict.01.02', 'Wandschrank ICT') returning id into v_old;
+  insert into public.inventory_locations (tenant_id, code, name)
+  values (v_tenant_a, 'h-01', 'H-01') returning id into v_location;
+  update public.inventory_locations
+  set note = case when lower(name) = code then null else name end,
+      name = upper(code)
+  where note is null and name <> upper(code) and tenant_id = v_tenant_a;
+  select name, note into v_name, v_note from public.inventory_locations where id = v_old;
+  if v_name <> 'WSICT.01.02' or v_note <> 'Wandschrank ICT' then
+    raise exception 'former designation was not turned into a remark (%, %)', v_name, v_note;
+  end if;
+  select name, note into v_name, v_note from public.inventory_locations where id = v_location;
+  if v_name <> 'H-01' or v_note is not null then
+    raise exception 'a designation equal to the code must not become a remark';
+  end if;
+  raise notice 'inventory warehouse checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# Inventur-Erinnerung pro Lager (Migration 0371): fällig, sobald der am längsten
+# nicht gezählte Lagerplatz überfällig ist; keine Erinnerung während einer
+# laufenden Inventur an einem Platz des Lagers; nicht doppelt.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'a7200000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_warehouse uuid;
+  v_old uuid;
+  v_new uuid;
+  v_count integer;
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'inventur-lager@example.ch', 'Inventur Lager');
+  update public.tenant_feature_flags set enabled = true
+  where tenant_id = v_tenant and feature_key = 'inventory.management';
+  insert into public.inventory_warehouses (tenant_id, name, count_interval_days)
+  values (v_tenant, 'Lager Bern', 30) returning id into v_warehouse;
+  insert into public.inventory_locations (tenant_id, code, name, warehouse_id, created_at)
+  values (v_tenant, 'a1', 'A1', v_warehouse, now() - interval '40 days') returning id into v_old;
+  insert into public.inventory_locations (tenant_id, code, name, warehouse_id)
+  values (v_tenant, 'a2', 'A2', v_warehouse) returning id into v_new;
+
+  -- Ein Intervall am Lagerplatz selbst löst nichts mehr aus.
+  update public.inventory_locations set count_interval_days = 7 where id in (v_old, v_new);
+  update public.inventory_warehouses set count_interval_days = null where id = v_warehouse;
+  if public.inventory_send_count_reminders() <> 0 then
+    raise exception 'warehouse reminder: a location interval must not remind';
+  end if;
+
+  -- Ein Lager mit Intervall erinnert, weil sein ältester Platz überfällig ist,
+  -- auch wenn ein anderer Platz neu ist.
+  update public.inventory_warehouses set count_interval_days = 30 where id = v_warehouse;
+  v_count := public.inventory_send_count_reminders();
+  if v_count <> 1 or not exists (
+    select 1 from public.ticket_notifications
+    where tenant_id = v_tenant and kind = 'inventory.count_due'
+      and payload ->> 'inventoryWarehouseId' = v_warehouse::text
+      and payload ->> 'locationName' = 'Lager Bern'
+      and (payload ->> 'intervalDays')::integer = 30
+  ) then
+    raise exception 'warehouse reminder: warehouse was not reminded (%)', v_count;
+  end if;
+  -- Nicht doppelt.
+  if public.inventory_send_count_reminders() <> 0 then
+    raise exception 'warehouse reminder: reminded twice';
+  end if;
+
+  -- Läuft an einem Platz des Lagers eine Inventur, wird nicht erinnert.
+  update public.inventory_warehouses set count_reminded_at = null where id = v_warehouse;
+  insert into public.inventory_counts (tenant_id, location_id, status, client_request_id, started_by)
+  values (v_tenant, v_new, 'counting', gen_random_uuid(), v_owner);
+  if public.inventory_send_count_reminders() <> 0 then
+    raise exception 'warehouse reminder: reminded during a running count';
+  end if;
+  delete from public.inventory_counts where tenant_id = v_tenant;
+
+  -- Ein Lager ohne aktive Lagerplätze erinnert nicht.
+  update public.inventory_locations set active = false where warehouse_id = v_warehouse;
+  update public.inventory_warehouses set count_reminded_at = null where id = v_warehouse;
+  if public.inventory_send_count_reminders() <> 0 then
+    raise exception 'warehouse reminder: a warehouse without places reminded';
+  end if;
+  raise notice 'inventory warehouse reminder checks ran';
 end;
 $$;
 rollback;

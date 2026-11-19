@@ -20,6 +20,14 @@ export type InventoryAutomationLocation = {
   id: string;
   name: string;
   active: boolean;
+};
+
+/** Lager mit Inventur-Erinnerung (pro Lager, nicht pro Lagerplatz). */
+export type InventoryAutomationWarehouse = {
+  id: string;
+  name: string;
+  active: boolean;
+  placeCount: number;
   countIntervalDays: number | null;
   lastCountedAt: string | null;
   nextCountDue: string | null;
@@ -42,6 +50,7 @@ export type InventoryAutomation = {
   settings: InventoryAutomationSettings;
   departments: InventoryAutomationDepartment[];
   locations: InventoryAutomationLocation[];
+  warehouses: InventoryAutomationWarehouse[];
   reorderRequests: InventoryReorderRequest[];
 };
 
@@ -104,13 +113,28 @@ export function parseInventoryAutomation(
               id: row.id,
               name: row.name,
               active: row.active === true,
-              countIntervalDays: count(row.countIntervalDays),
-              lastCountedAt: text(row.lastCountedAt),
-              nextCountDue: text(row.nextCountDue),
             },
           ]
         : [],
     ),
+    // Older servers do not know warehouses; then there is nothing to remind.
+    warehouses: (Array.isArray(data.warehouses) ? data.warehouses : [])
+      .filter(isRecord)
+      .flatMap((row) =>
+        typeof row.id === "string" && typeof row.name === "string"
+          ? [
+              {
+                id: row.id,
+                name: row.name,
+                active: row.active === true,
+                placeCount: count(row.placeCount) ?? 0,
+                countIntervalDays: count(row.countIntervalDays),
+                lastCountedAt: text(row.lastCountedAt),
+                nextCountDue: text(row.nextCountDue),
+              },
+            ]
+          : [],
+      ),
     reorderRequests: data.reorderRequests.filter(isRecord).flatMap((row) =>
       typeof row.id === "string" &&
       typeof row.itemId === "string" &&
@@ -172,7 +196,7 @@ export function draftFromAutomation(
       value.departments.map((row) => [row.id, row.returnLocationId ?? ""]),
     ),
     countIntervals: Object.fromEntries(
-      value.locations.map((row) => [
+      value.warehouses.map((row) => [
         row.id,
         row.countIntervalDays === null ? "" : String(row.countIntervalDays),
       ]),
@@ -192,15 +216,15 @@ export function saveRequest(
         "Die Haltefrist für Reservationen muss zwischen 1 und 365 Tagen liegen.",
     };
   }
-  const countIntervals: { locationId: string; days: number | null }[] = [];
-  for (const [locationId, raw] of Object.entries(draft.countIntervals)) {
+  const countIntervals: { warehouseId: string; days: number | null }[] = [];
+  for (const [warehouseId, raw] of Object.entries(draft.countIntervals)) {
     const days = parseDays(raw, 7, 730);
     if (days === undefined) {
       return {
         error: "Das Inventur-Intervall muss zwischen 7 und 730 Tagen liegen.",
       };
     }
-    countIntervals.push({ locationId, days });
+    countIntervals.push({ warehouseId, days });
   }
   return {
     body: {

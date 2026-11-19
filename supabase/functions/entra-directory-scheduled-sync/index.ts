@@ -4,7 +4,7 @@ import { runDirectorySync } from "../entra-directory-sync/index.ts";
 
 /**
  * Nächtlicher Abgleich des Entra-Verzeichnisses (Cron
- * «nextdesk-entra-directory-sync», 0371).
+ * «nextdesk-entra-directory-sync», 0372).
  *
  * Für jeden Mandanten mit aktivem, gespeichertem Connector läuft derselbe
  * Abgleich wie beim manuellen Start, im Namen einer Person mit

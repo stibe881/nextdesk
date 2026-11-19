@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { functionErrorMessage } from "./lib/function-error";
+import { tn } from "./lib/formality";
 import {
   type AutomationDraft,
   type InventoryAutomation as Automation,
@@ -374,49 +375,58 @@ export function InventoryAutomation({ tenantId }: { tenantId: string }) {
 
           <Card
             Icon={ClipboardCheck}
-            text="Pro Lagerort eine Erinnerung, wenn die Inventur fällig ist."
+            text="Pro Lager eine Erinnerung, wenn die Inventur fällig ist."
             title="Inventur"
           >
-            {automation.locations.length === 0 ? (
-              <p className="inventory__empty">Noch keine Lagerorte erfasst.</p>
+            {automation.warehouses.length === 0 ? (
+              <p className="inventory__empty">
+                {tn(
+                  "Noch keine Lager erfasst. Lager legst du unter Lagerorte an.",
+                  "Noch keine Lager erfasst. Lager legen Sie unter Lagerorte an.",
+                )}
+              </p>
             ) : (
               <ul className="lager-auto__rows">
-                {automation.locations.map((location) => (
-                  <li key={location.id}>
-                    <div className="lager-auto__row-copy">
-                      <strong>{location.name}</strong>
-                      <small>
-                        {location.lastCountedAt
-                          ? `Letzte Inventur ${formatDate(location.lastCountedAt)}`
-                          : "Noch keine abgeschlossene Inventur"}
-                        {location.nextCountDue
-                          ? ` · nächste fällig ${formatDate(location.nextCountDue)}`
-                          : ""}
-                      </small>
-                    </div>
-                    <label className="lager-auto__unit">
-                      <span className="lager-auto__sr">
-                        Inventur {location.name}: alle … Tage
-                      </span>
-                      <em>alle</em>
-                      <input
-                        inputMode="numeric"
-                        onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            countIntervals: {
-                              ...draft.countIntervals,
-                              [location.id]: event.target.value,
-                            },
-                          })
-                        }
-                        placeholder="–"
-                        value={draft.countIntervals[location.id] ?? ""}
-                      />
-                      <em>Tage</em>
-                    </label>
-                  </li>
-                ))}
+                {automation.warehouses
+                  .filter((warehouse) => warehouse.active)
+                  .map((warehouse) => (
+                    <li key={warehouse.id}>
+                      <div className="lager-auto__row-copy">
+                        <strong>{warehouse.name}</strong>
+                        <small>
+                          {warehouse.placeCount === 0
+                            ? "Noch keine Lagerplätze"
+                            : warehouse.lastCountedAt
+                              ? `Letzte Inventur ${formatDate(warehouse.lastCountedAt)}`
+                              : "Noch keine abgeschlossene Inventur"}
+                          {warehouse.nextCountDue
+                            ? ` · nächste fällig ${formatDate(warehouse.nextCountDue)}`
+                            : ""}
+                        </small>
+                      </div>
+                      <label className="lager-auto__unit">
+                        <span className="lager-auto__sr">
+                          Inventur {warehouse.name}: alle … Tage
+                        </span>
+                        <em>alle</em>
+                        <input
+                          inputMode="numeric"
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              countIntervals: {
+                                ...draft.countIntervals,
+                                [warehouse.id]: event.target.value,
+                              },
+                            })
+                          }
+                          placeholder="–"
+                          value={draft.countIntervals[warehouse.id] ?? ""}
+                        />
+                        <em>Tage</em>
+                      </label>
+                    </li>
+                  ))}
               </ul>
             )}
           </Card>
