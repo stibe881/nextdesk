@@ -302,49 +302,69 @@ export type DeviceSection<T> = {
   /** Group id, or «» for devices without category. */
   key: string;
   label: string;
-  /** 0 = category, 1 = subcategory. */
+  /** 0 = category, 1 = subcategory, 2 = below that … */
   depth: number;
-  /** Devices of the section and of its subcategories. */
+  /** Ids of the categories above, outermost first. */
+  ancestors: string[];
+  /** Devices of the section and of everything below it. */
   total: number;
   devices: T[];
 };
 
 export const NO_GROUP_LABEL = "Ohne Kategorie";
 
-/** «Standort Baar → Verteiler 2. OG» for a group id. */
+/** Levels of categories: «Ort → Netzwerk → Switch → Etage». */
+export const MAX_GROUP_DEPTH = 4;
+
+/** «Standort Baar → Netzwerk → Switch» for a group id. */
 export function groupPath(
   groups: readonly MonitoringGroup[],
   groupId: string | null | undefined,
 ): string | null {
-  const group = groups.find((entry) => entry.id === groupId);
-  if (!group) return null;
-  const parent = groups.find((entry) => entry.id === group.parentId);
-  return parent ? `${parent.name} → ${group.name}` : group.name;
+  const names: string[] = [];
+  let current = groups.find((entry) => entry.id === groupId);
+  while (current && names.length < 10) {
+    names.unshift(current.name);
+    const parentId = current.parentId;
+    current = parentId
+      ? groups.find((entry) => entry.id === parentId)
+      : undefined;
+  }
+  return names.length ? names.join(" → ") : null;
 }
 
-/** Categories first, each followed by its subcategories, by name. */
+/** The tree in reading order: every category followed by what is below it. */
 export function orderedGroups(
   groups: readonly MonitoringGroup[],
-): (MonitoringGroup & { depth: number })[] {
+): (MonitoringGroup & { depth: number; ancestors: string[] })[] {
   const byName = (a: MonitoringGroup, b: MonitoringGroup) =>
     a.name.localeCompare(b.name, "de", { numeric: true, sensitivity: "base" });
-  return groups
-    .filter((group) => group.parentId === null)
-    .sort(byName)
-    .flatMap((group) => [
-      { ...group, depth: 0 },
-      ...groups
-        .filter((child) => child.parentId === group.id)
-        .sort(byName)
-        .map((child) => ({ ...child, depth: 1 })),
-    ]);
+  const known = new Set(groups.map((group) => group.id));
+  const walk = (
+    parentId: string | null,
+    ancestors: string[],
+  ): (MonitoringGroup & { depth: number; ancestors: string[] })[] =>
+    ancestors.length >= 10
+      ? []
+      : groups
+          .filter((group) =>
+            parentId === null
+              ? group.parentId === null || !known.has(group.parentId)
+              : group.parentId === parentId,
+          )
+          .sort(byName)
+          .flatMap((group) => [
+            { ...group, depth: ancestors.length, ancestors },
+            ...walk(group.id, [...ancestors, group.id]),
+          ]);
+  return walk(null, []);
 }
 
 /**
- * The device list in sections: a category with its own devices, then its
- * subcategories; devices without category last. Without any category there
- * is one section without heading. Empty sections are left out, a category
- * stays as heading when only its subcategories hold devices.
+ * The device list in sections: a category with its own devices, then the
+ * categories below it; devices without category last. Without any category
+ * there is one section without heading. Empty sections are left out, a
+ * category stays as heading when only categories below it hold devices.
  */
 export function deviceSections<T extends { groupId?: string | null }>(
   devices: readonly T[],
@@ -356,6 +376,7 @@ export function deviceSections<T extends { groupId?: string | null }>(
         key: "",
         label: "",
         depth: 0,
+        ancestors: [],
         total: devices.length,
         devices: [...devices],
       },
@@ -368,17 +389,16 @@ export function deviceSections<T extends { groupId?: string | null }>(
   for (const group of ordered) {
     const own = of(group.id);
     const total =
-      group.depth === 0
-        ? own.length +
-          ordered
-            .filter((child) => child.parentId === group.id)
-            .reduce((sum, child) => sum + of(child.id).length, 0)
-        : own.length;
+      own.length +
+      ordered
+        .filter((child) => child.ancestors.includes(group.id))
+        .reduce((sum, child) => sum + of(child.id).length, 0);
     if (!total) continue;
     sections.push({
       key: group.id,
       label: group.name,
       depth: group.depth,
+      ancestors: group.ancestors,
       total,
       devices: own,
     });
@@ -391,6 +411,7 @@ export function deviceSections<T extends { groupId?: string | null }>(
       key: "",
       label: NO_GROUP_LABEL,
       depth: 0,
+      ancestors: [],
       total: rest.length,
       devices: rest,
     });

@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
   Fragment,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -48,6 +49,8 @@ import {
   type MonitoringDeviceRow,
   type MonitoringGroup,
   NO_GROUP_LABEL,
+  MAX_GROUP_DEPTH,
+  groupPath,
   snmpProtocolLabel,
   snmpSummaryLabel,
   type MonitoringSnmpSummary,
@@ -399,8 +402,7 @@ function OverviewView({
   // A folded category also hides its subcategories.
   const sectionHidden = (section: DeviceSection<MonitoringDeviceRow>) => {
     if (section.label && sectionCollapsed(section.key)) return true;
-    const parent = groups.find((group) => group.id === section.key)?.parentId;
-    return parent ? sectionCollapsed(parent) : false;
+    return section.ancestors.some((id) => sectionCollapsed(id));
   };
   const sortHeader = (key: DeviceSortKey, label: string) => (
     <th
@@ -765,13 +767,11 @@ function OverviewView({
                   <tbody>
                     {sections.flatMap((section) => [
                       section.label &&
-                      !(
-                        section.depth === 1 &&
-                        sectionHidden({ ...section, label: "" })
-                      ) ? (
+                      !section.ancestors.some((id) => sectionCollapsed(id)) ? (
                         <tr
-                          className={`monitoring-table__group monitoring-table__group--${section.depth}`}
+                          className={`monitoring-table__group${section.depth ? " monitoring-table__group--sub" : ""}`}
                           key={`group:${section.key}`}
+                          style={depthStyle(section.depth)}
                         >
                           <td colSpan={data.canManage ? 8 : 6}>
                             <button
@@ -796,10 +796,11 @@ function OverviewView({
                             <Fragment key={device.assetId}>
                               <tr
                                 className={
-                                  section.depth === 1
+                                  section.depth > 0
                                     ? "monitoring-table__row--sub"
                                     : undefined
                                 }
+                                style={depthStyle(section.depth)}
                               >
                                 {data.canManage ? (
                                   <td className="monitoring-table__check">
@@ -911,7 +912,8 @@ function OverviewView({
                               </tr>
                               {open ? (
                                 <tr
-                                  className={`monitoring-table__sensors${section.depth === 1 ? " monitoring-table__row--sub" : ""}`}
+                                  className={`monitoring-table__sensors${section.depth > 0 ? " monitoring-table__row--sub" : ""}`}
+                                  style={depthStyle(section.depth)}
                                 >
                                   <td colSpan={data.canManage ? 8 : 6}>
                                     <DeviceSensorList
@@ -4954,6 +4956,11 @@ function RemoveAgentDialog({
 
 const NEW_GROUP = "new";
 
+/** Indentation of a category level in the device list. */
+function depthStyle(depth: number): CSSProperties {
+  return { "--monitoring-depth": depth } as CSSProperties;
+}
+
 /** Puts the chosen devices into a category or subcategory. */
 function AssignGroupDialog({
   tenantId,
@@ -4971,38 +4978,60 @@ function AssignGroupDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const tops = groups.filter((group) => group.parentId === null);
-  const current = groups.find((group) => group.id === currentGroupId) ?? null;
-  const [categoryId, setCategoryId] = useState(
-    current ? (current.parentId ?? current.id) : tops.length ? "" : NEW_GROUP,
-  );
-  const [categoryName, setCategoryName] = useState("");
-  const [subId, setSubId] = useState(current?.parentId ? current.id : "");
-  const [subName, setSubName] = useState("");
+  // One choice per level: «» = none, NEW_GROUP = create, else a group id.
+  const tree = orderedGroups(groups);
+  const [levels, setLevels] = useState<{ id: string; name: string }[]>(() => {
+    const current = tree.find((group) => group.id === currentGroupId);
+    if (current) {
+      return [...current.ancestors, current.id].map((id) => ({ id, name: "" }));
+    }
+    return [{ id: groups.length ? "" : NEW_GROUP, name: "" }];
+  });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const subs = groups.filter(
-    (group) => categoryId !== "" && group.parentId === categoryId,
-  );
+  // The chosen levels and, while there is room, one more to go deeper.
+  const last = levels[levels.length - 1];
+  const shown =
+    last && last.id !== "" && levels.length < MAX_GROUP_DEPTH
+      ? [...levels, { id: "", name: "" }]
+      : levels;
+  const setLevel = (index: number, patch: { id?: string; name?: string }) =>
+    setLevels(
+      patch.id !== undefined
+        ? [
+            ...levels.slice(0, index),
+            ...(patch.id === "" && index > 0
+              ? []
+              : [{ id: patch.id, name: "" }]),
+          ]
+        : shown
+            .slice(0, Math.max(levels.length, index + 1))
+            .map((level, position) =>
+              position === index ? { ...level, name: patch.name ?? "" } : level,
+            ),
+    );
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setError(null);
     try {
-      const create = async (name: string, parentId: string | null) =>
-        (
-          await monitoringCall<{ groupId: string }>({
-            type: "saveGroup",
-            tenantId,
-            groupId: null,
-            name,
-            parentId,
-          })
-        ).groupId;
-      let target: string | null = categoryId || null;
-      if (categoryId === NEW_GROUP) target = await create(categoryName, null);
-      if (target && subId === NEW_GROUP) target = await create(subName, target);
-      else if (target && subId) target = subId;
+      let target: string | null = null;
+      for (const level of levels) {
+        if (level.id === "") break;
+        if (level.id === NEW_GROUP) {
+          target = (
+            await monitoringCall<{ groupId: string }>({
+              type: "saveGroup",
+              tenantId,
+              groupId: null,
+              name: level.name,
+              parentId: target,
+            })
+          ).groupId;
+        } else {
+          target = level.id;
+        }
+      }
       await monitoringCall({
         type: "assignGroup",
         tenantId,
@@ -5028,68 +5057,71 @@ function AssignGroupDialog({
           einer Kategorie oder Unterkategorie zuweisen. Die Art der Geräte
           bleibt unverändert.
         </p>
-        <label className="monitoring-field">
-          <span>Kategorie</span>
-          <select
-            autoFocus
-            onChange={(event) => {
-              setCategoryId(event.target.value);
-              setSubId("");
-            }}
-            value={categoryId}
-          >
-            <option value="">{NO_GROUP_LABEL}</option>
-            {tops.map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-            <option value={NEW_GROUP}>Neue Kategorie erstellen …</option>
-          </select>
-        </label>
-        {categoryId === NEW_GROUP ? (
-          <label className="monitoring-field">
-            <span>Name der neuen Kategorie</span>
-            <input
-              maxLength={80}
-              onChange={(event) => setCategoryName(event.target.value)}
-              placeholder="z. B. Standort Baar"
-              required
-              type="text"
-              value={categoryName}
-            />
-          </label>
-        ) : null}
-        {categoryId !== "" ? (
-          <label className="monitoring-field">
-            <span>Unterkategorie (optional)</span>
-            <select
-              onChange={(event) => setSubId(event.target.value)}
-              value={subId}
-            >
-              <option value="">Keine – direkt in der Kategorie</option>
-              {subs.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-              <option value={NEW_GROUP}>Neue Unterkategorie erstellen …</option>
-            </select>
-          </label>
-        ) : null}
-        {categoryId !== "" && subId === NEW_GROUP ? (
-          <label className="monitoring-field">
-            <span>Name der neuen Unterkategorie</span>
-            <input
-              maxLength={80}
-              onChange={(event) => setSubName(event.target.value)}
-              placeholder="z. B. Verteiler 2. OG"
-              required
-              type="text"
-              value={subName}
-            />
-          </label>
-        ) : null}
+        {shown.map((level, index) => {
+          const parent = index > 0 ? shown[index - 1]!.id : null;
+          const options = groups
+            .filter((group) =>
+              index === 0
+                ? group.parentId === null
+                : parent !== NEW_GROUP && group.parentId === parent,
+            )
+            .sort((a, b) =>
+              a.name.localeCompare(b.name, "de", { numeric: true }),
+            );
+          return (
+            <Fragment key={index}>
+              <label className="monitoring-field">
+                <span>
+                  {index === 0 ? "Kategorie" : "Unterkategorie (optional)"}
+                </span>
+                <select
+                  autoFocus={index === 0}
+                  onChange={(event) =>
+                    setLevel(index, { id: event.target.value })
+                  }
+                  value={level.id}
+                >
+                  <option value="">
+                    {index === 0
+                      ? NO_GROUP_LABEL
+                      : "Keine – direkt in der Kategorie darüber"}
+                  </option>
+                  {options.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                  <option value={NEW_GROUP}>
+                    {index === 0
+                      ? "Neue Kategorie erstellen …"
+                      : "Neue Unterkategorie erstellen …"}
+                  </option>
+                </select>
+              </label>
+              {level.id === NEW_GROUP ? (
+                <label className="monitoring-field">
+                  <span>
+                    {index === 0
+                      ? "Name der neuen Kategorie"
+                      : "Name der neuen Unterkategorie"}
+                  </span>
+                  <input
+                    maxLength={80}
+                    onChange={(event) =>
+                      setLevel(index, { name: event.target.value })
+                    }
+                    placeholder={
+                      index === 0 ? "z. B. Standort Baar" : "z. B. Netzwerk"
+                    }
+                    required
+                    type="text"
+                    value={level.name}
+                  />
+                </label>
+              ) : null}
+            </Fragment>
+          );
+        })}
         {error ? (
           <p className="ticket-detail-message error" role="alert">
             {error}
@@ -5141,32 +5173,50 @@ function GroupsDialog({
       .catch((failure) => setError(message(failure)))
       .finally(() => setSaving(false));
   };
-  const count = (group: MonitoringGroup) =>
-    devices.filter(
-      (device) =>
-        device.groupId === group.id ||
-        groups.some(
-          (child) => child.parentId === group.id && child.id === device.groupId,
-        ),
+  const tree = orderedGroups(groups);
+  // A category with everything below it.
+  const within = (id: string) =>
+    new Set([
+      id,
+      ...tree
+        .filter((entry) => entry.ancestors.includes(id))
+        .map((entry) => entry.id),
+    ]);
+  const count = (group: MonitoringGroup) => {
+    const ids = within(group.id);
+    return devices.filter(
+      (device) => !!device.groupId && ids.has(device.groupId),
     ).length;
+  };
+  // Levels below a category (0 = none): limits where it can be moved to.
+  const levelsBelow = (id: string) => {
+    const own = tree.find((entry) => entry.id === id)?.depth ?? 0;
+    return Math.max(
+      0,
+      ...tree
+        .filter((entry) => entry.ancestors.includes(id))
+        .map((entry) => entry.depth - own),
+    );
+  };
   const hasChildren = (id: string | null) =>
     id !== null && groups.some((group) => group.parentId === id);
   return (
     <Dialog onClose={onClose} title="Kategorien der Geräte">
       <div className="monitoring-form">
         <p className="monitoring-muted">
-          Kategorien gliedern die Geräteliste, zum Beispiel nach Standort. Eine
-          Kategorie kann Unterkategorien haben. Zugewiesen werden Geräte in der
-          Liste über die Auswahl und «Kategorie zuweisen».
+          Kategorien gliedern die Geräteliste, zum Beispiel «Standort → Netzwerk
+          → Switch» (bis zu vier Ebenen). Zugewiesen werden Geräte in der Liste
+          über die Auswahl und «Kategorie zuweisen».
         </p>
         {groups.length === 0 ? (
           <p className="monitoring__empty">Noch keine Kategorie angelegt.</p>
         ) : (
           <ul className="monitoring-groups">
-            {orderedGroups(groups).map((group) => (
+            {tree.map((group) => (
               <li
                 className={group.depth ? "monitoring-groups__child" : undefined}
                 key={group.id}
+                style={depthStyle(group.depth)}
               >
                 <span>
                   <strong>{group.name}</strong>
@@ -5175,7 +5225,7 @@ function GroupsDialog({
                   </span>
                 </span>
                 <span className="monitoring-table__actions">
-                  {group.depth === 0 ? (
+                  {group.depth < MAX_GROUP_DEPTH - 1 ? (
                     <button
                       aria-label={`Unterkategorie zu ${group.name} hinzufügen`}
                       className="icon-button"
@@ -5283,7 +5333,7 @@ function GroupsDialog({
                 value={editing.name}
               />
             </label>
-            {hasChildren(editing.id) ? null : (
+            {
               <label className="monitoring-field">
                 <span>Unterkategorie von</span>
                 <select
@@ -5293,19 +5343,24 @@ function GroupsDialog({
                   value={editing.parentId}
                 >
                   <option value="">Keine – eigene Kategorie</option>
-                  {groups
+                  {tree
                     .filter(
                       (group) =>
-                        group.parentId === null && group.id !== editing.id,
+                        // Not below itself, and not deeper than allowed.
+                        !(editing.id && within(editing.id).has(group.id)) &&
+                        group.depth +
+                          1 +
+                          (editing.id ? levelsBelow(editing.id) : 0) <
+                          MAX_GROUP_DEPTH,
                     )
                     .map((group) => (
                       <option key={group.id} value={group.id}>
-                        {group.name}
+                        {groupPath(groups, group.id)}
                       </option>
                     ))}
                 </select>
               </label>
-            )}
+            }
             <div className="monitoring-form__actions">
               <button
                 className="secondary-button"

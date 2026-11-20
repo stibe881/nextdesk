@@ -16990,6 +16990,8 @@ declare
   v_top uuid;
   v_sub uuid;
   v_top2 uuid;
+  v_level3 uuid;
+  v_level4 uuid;
   v_failed boolean;
 begin
   select id into v_tenant from public.tenants order by created_at limit 1;
@@ -17008,19 +17010,33 @@ begin
   if not v_failed then raise exception 'device groups: duplicate name accepted'; end if;
   insert into public.monitoring_device_groups (tenant_id, parent_id, name) values (v_tenant, v_top2, 'Verteiler 2. OG');
 
-  -- Nur eine Ebene.
+  -- Bis zu vier Ebenen (Migration 0376); eine fünfte wird abgelehnt.
+  insert into public.monitoring_device_groups (tenant_id, parent_id, name)
+  values (v_tenant, v_sub, 'Ebene 3') returning id into v_level3;
+  insert into public.monitoring_device_groups (tenant_id, parent_id, name)
+  values (v_tenant, v_level3, 'Ebene 4') returning id into v_level4;
   v_failed := false;
   begin
-    insert into public.monitoring_device_groups (tenant_id, parent_id, name) values (v_tenant, v_sub, 'Zu tief');
+    insert into public.monitoring_device_groups (tenant_id, parent_id, name) values (v_tenant, v_level4, 'Zu tief');
   exception when check_violation then v_failed := true;
   end;
-  if not v_failed then raise exception 'device groups: second level accepted'; end if;
+  if not v_failed then raise exception 'device groups: fifth level accepted'; end if;
+  -- Eine Kategorie hängt nicht unter sich selbst, auch nicht über Umwege.
+  v_failed := false;
+  begin
+    update public.monitoring_device_groups set parent_id = v_level4 where id = v_top;
+  exception when check_violation then v_failed := true;
+  end;
+  if not v_failed then raise exception 'device groups: cycle accepted'; end if;
+  -- Beim Verschieben zählen die Ebenen darunter mit.
   v_failed := false;
   begin
     update public.monitoring_device_groups set parent_id = v_top2 where id = v_top;
   exception when check_violation then v_failed := true;
   end;
-  if not v_failed then raise exception 'device groups: category with subcategories became one'; end if;
+  if not v_failed then raise exception 'device groups: moved tree became too deep'; end if;
+  update public.monitoring_device_groups set parent_id = v_top2 where id = v_level4;
+  update public.monitoring_device_groups set parent_id = v_sub where id = v_level4;
 
   -- Übergeordnete Kategorie muss zum selben Mandanten gehören.
   if v_other is not null then

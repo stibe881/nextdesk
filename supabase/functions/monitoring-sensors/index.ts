@@ -1143,7 +1143,7 @@ async function saveGroup(
       throw new HttpError(409, "group_exists", "Eine Kategorie mit diesem Namen gibt es hier bereits.");
     }
     if (error.code === "23514") {
-      throw new HttpError(422, "group_depth", "Unterkategorien können keine eigenen Unterkategorien haben.");
+      throw new HttpError(422, "group_depth", "Kategorien können höchstens vier Ebenen tief sein und nicht unter sich selbst hängen.");
     }
     if (error.code === "23503") {
       throw new HttpError(422, "group_not_found", "Die übergeordnete Kategorie wurde nicht gefunden.");

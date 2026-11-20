@@ -1348,9 +1348,14 @@ const HANDLERS = {
         groups: [
           { id: D.uid("60606060", 1), name: "Hauptgebäude", parentId: null },
           {
+            id: D.uid("60606060", 4),
+            name: "Technik",
+            parentId: D.uid("60606060", 1),
+          },
+          {
             id: D.uid("60606060", 2),
             name: "Serverraum",
-            parentId: D.uid("60606060", 1),
+            parentId: D.uid("60606060", 4),
           },
           { id: D.uid("60606060", 3), name: "Aussenstelle", parentId: null },
         ],

@@ -552,6 +552,37 @@ describe("Überwachung: Gerätekategorien", () => {
     ]);
   });
 
+  it("gliedert über mehrere Ebenen und zählt alles darunter mit", () => {
+    const deep = [
+      { id: "ort", name: "Baar", parentId: null },
+      { id: "net", name: "Netzwerk", parentId: "ort" },
+      { id: "sw", name: "Switch", parentId: "net" },
+      { id: "fw", name: "Firewall", parentId: "net" },
+    ];
+    const sections = deviceSections(
+      [
+        { name: "sw1", groupId: "sw" },
+        { name: "sw2", groupId: "sw" },
+        { name: "fw1", groupId: "fw" },
+      ],
+      deep,
+    );
+    expect(
+      sections.map((section) => [
+        section.label,
+        section.depth,
+        section.total,
+        section.ancestors,
+      ]),
+    ).toEqual([
+      ["Baar", 0, 3, []],
+      ["Netzwerk", 1, 3, ["ort"]],
+      ["Firewall", 2, 1, ["ort", "net"]],
+      ["Switch", 2, 2, ["ort", "net"]],
+    ]);
+    expect(groupPath(deep, "sw")).toBe("Baar → Netzwerk → Switch");
+  });
+
   it("zeigt ohne Kategorien eine Liste ohne Überschrift", () => {
     const sections = deviceSections(devices, []);
     expect(sections).toHaveLength(1);
