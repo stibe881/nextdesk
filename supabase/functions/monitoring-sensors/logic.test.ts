@@ -464,3 +464,19 @@ Deno.test("Pausieren braucht einen Grund, Fortsetzen nicht", () => {
   );
   assertEquals(parseAction({ type: "pauseMany", tenantId: TENANT, assetIds: [], sensorIds: [], paused: false }), null);
 });
+
+Deno.test("device categories: save, delete, assign", () => {
+  assertEquals(parseAction({ type: "saveGroup", tenantId: TENANT, name: "  Standort   Baar " }), {
+    type: "saveGroup", tenantId: TENANT, groupId: null, name: "Standort Baar", parentId: null,
+  });
+  assertEquals(parseAction({ type: "saveGroup", tenantId: TENANT, name: "" }), "Bitte einen Namen für die Kategorie angeben.");
+  assertEquals(
+    parseAction({ type: "saveGroup", tenantId: TENANT, name: "x", groupId: ASSET, parentId: ASSET }),
+    "Eine Kategorie kann nicht ihre eigene Unterkategorie sein.",
+  );
+  assertEquals(parseAction({ type: "assignGroup", tenantId: TENANT, assetIds: [ASSET, ASSET], groupId: null }), {
+    type: "assignGroup", tenantId: TENANT, assetIds: [ASSET], groupId: null,
+  });
+  assertEquals(parseAction({ type: "assignGroup", tenantId: TENANT, assetIds: [] }), "Bitte mindestens ein Gerät wählen (höchstens 500).");
+  assertEquals(parseAction({ type: "deleteGroup", tenantId: TENANT, groupId: "x" }), null);
+});

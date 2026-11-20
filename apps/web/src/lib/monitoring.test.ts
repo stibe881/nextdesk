@@ -7,6 +7,8 @@ import {
   formatSince,
   categoryText,
   connectedPorts,
+  deviceSections,
+  groupPath,
   groupServiceOptions,
   eventCountsText,
   eventText,
@@ -518,5 +520,47 @@ describe("Überwachung: Dienste nach Kategorien", () => {
       "Claude AI",
     );
     expect(groupServiceOptions(services, "zzz")).toEqual([]);
+  });
+});
+
+describe("Überwachung: Gerätekategorien", () => {
+  const groups = [
+    { id: "g2", name: "Standort Zug", parentId: null },
+    { id: "g1", name: "Standort Baar", parentId: null },
+    { id: "s1", name: "Verteiler 2. OG", parentId: "g1" },
+  ];
+  const devices = [
+    { name: "a", groupId: "g1" },
+    { name: "b", groupId: "s1" },
+    { name: "c", groupId: null },
+    { name: "d", groupId: "gone" },
+  ];
+
+  it("gliedert nach Kategorie und Unterkategorie, Rest zuletzt", () => {
+    const sections = deviceSections(devices, groups);
+    expect(
+      sections.map((section) => [
+        section.label,
+        section.depth,
+        section.total,
+        section.devices.map((device) => device.name),
+      ]),
+    ).toEqual([
+      ["Standort Baar", 0, 2, ["a"]],
+      ["Verteiler 2. OG", 1, 1, ["b"]],
+      ["Ohne Kategorie", 0, 2, ["c", "d"]],
+    ]);
+  });
+
+  it("zeigt ohne Kategorien eine Liste ohne Überschrift", () => {
+    const sections = deviceSections(devices, []);
+    expect(sections).toHaveLength(1);
+    expect(sections[0]?.label).toBe("");
+  });
+
+  it("nennt den Pfad einer Unterkategorie", () => {
+    expect(groupPath(groups, "s1")).toBe("Standort Baar → Verteiler 2. OG");
+    expect(groupPath(groups, "g2")).toBe("Standort Zug");
+    expect(groupPath(groups, null)).toBeNull();
   });
 });

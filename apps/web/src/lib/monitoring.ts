@@ -63,6 +63,8 @@ export type MonitoringAgent = {
 export type MonitoringDeviceRow = {
   assetId: string;
   name: string;
+  /** Category or subcategory in the monitoring. */
+  groupId?: string | null;
   category: string | null;
   /** Own name of the kind (category «other»). */
   categoryLabel?: string | null;
@@ -97,6 +99,8 @@ export type MonitoringOverview = {
   deviceCount: number;
   sensorCount: number;
   devices: MonitoringDeviceRow[];
+  /** Categories of the devices (one level of subcategories). */
+  groups?: MonitoringGroup[];
   agents: MonitoringAgent[];
   /** Newest published installation package of the probe. */
   probePackage?: { version: string; builtAt: string; size: number } | null;
@@ -232,6 +236,113 @@ export function portLinkText(port: MonitoringPort): string {
   if (port.deviceCount > 8)
     return `${port.deviceCount} Geräte (Uplink oder Trunk)`;
   return port.deviceCount > 0 ? `${port.deviceCount} unbekannte Geräte` : "–";
+}
+
+export type MonitoringGroup = {
+  id: string;
+  name: string;
+  /** Null for a category, the category for a subcategory. */
+  parentId: string | null;
+};
+
+export type DeviceSection<T> = {
+  /** Group id, or «» for devices without category. */
+  key: string;
+  label: string;
+  /** 0 = category, 1 = subcategory. */
+  depth: number;
+  /** Devices of the section and of its subcategories. */
+  total: number;
+  devices: T[];
+};
+
+export const NO_GROUP_LABEL = "Ohne Kategorie";
+
+/** «Standort Baar → Verteiler 2. OG» for a group id. */
+export function groupPath(
+  groups: readonly MonitoringGroup[],
+  groupId: string | null | undefined,
+): string | null {
+  const group = groups.find((entry) => entry.id === groupId);
+  if (!group) return null;
+  const parent = groups.find((entry) => entry.id === group.parentId);
+  return parent ? `${parent.name} → ${group.name}` : group.name;
+}
+
+/** Categories first, each followed by its subcategories, by name. */
+export function orderedGroups(
+  groups: readonly MonitoringGroup[],
+): (MonitoringGroup & { depth: number })[] {
+  const byName = (a: MonitoringGroup, b: MonitoringGroup) =>
+    a.name.localeCompare(b.name, "de", { numeric: true, sensitivity: "base" });
+  return groups
+    .filter((group) => group.parentId === null)
+    .sort(byName)
+    .flatMap((group) => [
+      { ...group, depth: 0 },
+      ...groups
+        .filter((child) => child.parentId === group.id)
+        .sort(byName)
+        .map((child) => ({ ...child, depth: 1 })),
+    ]);
+}
+
+/**
+ * The device list in sections: a category with its own devices, then its
+ * subcategories; devices without category last. Without any category there
+ * is one section without heading. Empty sections are left out, a category
+ * stays as heading when only its subcategories hold devices.
+ */
+export function deviceSections<T extends { groupId?: string | null }>(
+  devices: readonly T[],
+  groups: readonly MonitoringGroup[],
+): DeviceSection<T>[] {
+  if (!groups.length) {
+    return [
+      {
+        key: "",
+        label: "",
+        depth: 0,
+        total: devices.length,
+        devices: [...devices],
+      },
+    ];
+  }
+  const known = new Set(groups.map((group) => group.id));
+  const of = (id: string) => devices.filter((device) => device.groupId === id);
+  const sections: DeviceSection<T>[] = [];
+  const ordered = orderedGroups(groups);
+  for (const group of ordered) {
+    const own = of(group.id);
+    const total =
+      group.depth === 0
+        ? own.length +
+          ordered
+            .filter((child) => child.parentId === group.id)
+            .reduce((sum, child) => sum + of(child.id).length, 0)
+        : own.length;
+    if (!total) continue;
+    sections.push({
+      key: group.id,
+      label: group.name,
+      depth: group.depth,
+      total,
+      devices: own,
+    });
+  }
+  const rest = devices.filter(
+    (device) => !device.groupId || !known.has(device.groupId),
+  );
+  if (rest.length) {
+    sections.push({
+      key: "",
+      label: NO_GROUP_LABEL,
+      depth: 0,
+      total: rest.length,
+      devices: rest,
+    });
+  }
+  return sections;
 }
 
 export type EventRange = "24h" | "7d";

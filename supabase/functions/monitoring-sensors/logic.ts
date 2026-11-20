@@ -85,6 +85,9 @@ export type Action =
   | { type: "interfaces"; tenantId: string; jobId: string }
   | { type: "availability"; tenantId: string; range: AvailabilityRange }
   | { type: "events"; tenantId: string; range: EventRange }
+  | { type: "saveGroup"; tenantId: string; groupId: string | null; name: string; parentId: string | null }
+  | { type: "deleteGroup"; tenantId: string; groupId: string }
+  | { type: "assignGroup"; tenantId: string; assetIds: string[]; groupId: string | null }
   | { type: "simulate"; tenantId: string; assetId: string; sensorId: string | null; minutes: number }
   | { type: "connections"; tenantId: string; assetId: string }
   | { type: "refreshConnections"; tenantId: string; assetId: string }
@@ -495,6 +498,31 @@ export function parseAction(value: unknown): Action | string | null {
     case "interfaces": {
       const jobId = uuid(value.jobId);
       return jobId ? { type: "interfaces", tenantId, jobId } : null;
+    }
+    case "saveGroup": {
+      const name = typeof value.name === "string" ? value.name.replace(/\s+/g, " ").trim() : "";
+      if (!name) return "Bitte einen Namen für die Kategorie angeben.";
+      if (name.length > 80) return "Der Name ist zu lang (höchstens 80 Zeichen).";
+      const optional = (raw: unknown) => raw === null || raw === undefined || raw === "" ? null : uuid(raw);
+      const groupId = optional(value.groupId);
+      const parentId = optional(value.parentId);
+      if ((value.groupId && !groupId) || (value.parentId && !parentId)) return null;
+      if (groupId && groupId === parentId) return "Eine Kategorie kann nicht ihre eigene Unterkategorie sein.";
+      return { type: "saveGroup", tenantId, groupId, name, parentId };
+    }
+    case "deleteGroup": {
+      const groupId = uuid(value.groupId);
+      return groupId ? { type: "deleteGroup", tenantId, groupId } : null;
+    }
+    case "assignGroup": {
+      if (!Array.isArray(value.assetIds) || value.assetIds.length === 0 || value.assetIds.length > 500) {
+        return "Bitte mindestens ein Gerät wählen (höchstens 500).";
+      }
+      const assetIds = value.assetIds.map(uuid);
+      if (assetIds.some((id) => id === null)) return null;
+      const groupId = value.groupId === null || value.groupId === undefined || value.groupId === "" ? null : uuid(value.groupId);
+      if (value.groupId && !groupId) return null;
+      return { type: "assignGroup", tenantId, assetIds: [...new Set(assetIds as string[])], groupId };
     }
     case "events": {
       const range = EVENT_RANGES.includes(value.range as EventRange) ? (value.range as EventRange) : null;

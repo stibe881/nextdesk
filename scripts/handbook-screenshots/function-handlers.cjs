@@ -1335,7 +1335,25 @@ const HANDLERS = {
         totals,
         deviceCount: devices.length,
         sensorCount: 18,
-        devices,
+        devices: devices.map((device, index) => ({
+          ...device,
+          groupId: [
+            D.uid("60606060", 1),
+            D.uid("60606060", 2),
+            D.uid("60606060", 2),
+            D.uid("60606060", 3),
+            null,
+          ][index % 5],
+        })),
+        groups: [
+          { id: D.uid("60606060", 1), name: "Hauptgebäude", parentId: null },
+          {
+            id: D.uid("60606060", 2),
+            name: "Serverraum",
+            parentId: D.uid("60606060", 1),
+          },
+          { id: D.uid("60606060", 3), name: "Aussenstelle", parentId: null },
+        ],
         agents,
         probePackage: { version: "1.1.0", builtAt: ago(7200), size: 8237661 },
         checkedAt: ago(12),
