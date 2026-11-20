@@ -1249,7 +1249,7 @@ button.monitoring-tile[aria-pressed="true"] {
   gap: 8px;
   width: 100%;
   border: 0;
-  padding: 8px 20px;
+  padding: 8px 20px 8px calc(20px + var(--monitoring-depth, 0) * 24px);
   background: none;
   color: var(--ink);
   font: inherit;
@@ -1259,21 +1259,20 @@ button.monitoring-tile[aria-pressed="true"] {
   cursor: pointer;
 }
 
-.monitoring-table__group--1 button {
-  padding-left: 44px;
+.monitoring-table__group--sub button {
   color: var(--muted);
   font-size: 13px;
 }
 
 /* Geräte einer Unterkategorie stehen auf der Höhe ihrer Überschrift. */
 .monitoring-table tr.monitoring-table__row--sub > td:first-child {
-  padding-left: 64px;
+  padding-left: calc(40px + var(--monitoring-depth, 1) * 24px);
 }
 
 .monitoring-table
   tr.monitoring-table__row--sub
   > .monitoring-table__check:first-child {
-  width: 80px;
+  width: calc(56px + var(--monitoring-depth, 1) * 24px);
 }
 
 .monitoring-table__group button svg {
@@ -1321,7 +1320,7 @@ button.monitoring-tile[aria-pressed="true"] {
 }
 
 .monitoring-groups__child {
-  padding-left: 34px !important;
+  padding-left: calc(12px + var(--monitoring-depth, 1) * 22px) !important;
 }
 
 .monitoring-groups__form {
