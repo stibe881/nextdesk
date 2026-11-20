@@ -1350,9 +1350,14 @@ const HANDLERS = {
         groups: [
           { id: D.uid("60606060", 1), name: "Hauptgebäude", parentId: null },
           {
+            id: D.uid("60606060", 4),
+            name: "Technik",
+            parentId: D.uid("60606060", 1),
+          },
+          {
             id: D.uid("60606060", 2),
             name: "Serverraum",
-            parentId: D.uid("60606060", 1),
+            parentId: D.uid("60606060", 4),
           },
           { id: D.uid("60606060", 3), name: "Aussenstelle", parentId: null },
         ],
@@ -1607,6 +1612,14 @@ const HANDLERS = {
     if (body.type === "device") {
       return ok({
         canManage: true,
+        canManageSnmp: true,
+        snmp: {
+          version: "v3",
+          user: "nextdesk-ro",
+          authProtocol: "sha256",
+          privProtocol: "aes",
+          updatedAt: "2026-11-20T08:00:00Z",
+        },
         serviceOptions: [
           { id: D.uid("31313131", 1), name: "ERP", category: "Allgemein" },
           { id: D.uid("31313131", 2), name: "E-Mail", category: "Allgemein" },

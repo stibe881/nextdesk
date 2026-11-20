@@ -1,5 +1,6 @@
 import { withSupabase } from "@supabase/server";
 import { unreadNotificationCount } from "../_shared/notification-badge.ts";
+import { pushBadgeUpdateInBackground } from "../_shared/badge-sync.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const DEFAULT_LIMIT = 50;
@@ -444,6 +445,7 @@ async function markRead(
 
   if (updateError)
     return json(request, { error: { code: "notification_read_failed" } }, 500);
+  if (updated) pushBadgeUpdateInBackground(admin, actorId);
 
   return json(request, {
     data: {
@@ -490,6 +492,7 @@ async function markTicketRead(
     .select("id");
   if (updateError)
     return json(request, { error: { code: "notification_read_failed" } }, 500);
+  if ((updated ?? []).length > 0) pushBadgeUpdateInBackground(admin, actorId);
 
   return json(request, {
     data: { ticketId, markedReadCount: (updated ?? []).length },
@@ -556,6 +559,7 @@ async function markAllRead(
   });
   if (auditError)
     return json(request, { error: { code: "notification_audit_failed" } }, 500);
+  if (markedReadCount > 0) pushBadgeUpdateInBackground(admin, actorId);
 
   return json(request, {
     data: {

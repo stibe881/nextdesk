@@ -393,6 +393,14 @@ Mehr dazu unter «Eigene Überwachung».
 
 Mehr dazu unter «Eigene Überwachung».
 
+### Wie lege ich den SNMP-Standard einer Sonde fest?
+
+1. Öffnen Sie **Einstellungen → Monitoring → Überwachung** und wählen Sie bei der Sonde den Stift.
+2. Wählen Sie bei **SNMP-Standard** **Festlegen** bzw. **Ändern**.
+3. Geben Sie Version, Benutzer, Verfahren und Schlüssel ein und speichern Sie.
+
+Der Standard gilt für alle Geräte der Sonde ohne eigene Zugangsdaten. Eigene Zugangsdaten eines Geräts setzen Sie im Gerätedetail der Überwachung über **SNMP**. Mehr dazu unter «Eigene Überwachung».
+
 ### Wie erzeuge ich einen neuen Token für eine Sonde?
 
 1. Öffnen Sie **Einstellungen → Monitoring → Überwachung** und wählen Sie bei der Sonde den Stift.
@@ -1053,7 +1061,7 @@ bleiben ohne Sonde und werden nicht mehr gemessen. Unter «Bearbeiten»
 können Sie mit **Neuen Token erzeugen** den Token ersetzen, etwa wenn er
 in falsche Hände geraten ist: Der alte gilt sofort nicht mehr, der neue wird
 einmal angezeigt und gehört auf dem Server in die `config.json` der Sonde
-(Feld `agentToken`), danach den Dienst neu starten.
+(Feld `agentToken`), danach den Dienst neu starten. Als Mandantenadministrator legen Sie dort auch den **SNMP-Standard** der Sonde fest: Zugangsdaten für alle Geräte ohne eigene Angabe, verschlüsselt gespeichert und nie wieder angezeigt (ab Sonde 1.4.0; eigene Zugangsdaten eines Geräts: Gerätedetail der Überwachung, **SNMP**).
 
 Eine hier angelegte Sonde misst nur Sensoren. Die Netzwerk-Erkennung der
 IP-Adressverwaltung (Ping-Sweep der Subnetze) ist für sie ausgeschaltet und

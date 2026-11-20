@@ -480,3 +480,45 @@ Deno.test("device categories: save, delete, assign", () => {
   assertEquals(parseAction({ type: "assignGroup", tenantId: TENANT, assetIds: [] }), "Bitte mindestens ein Gerät wählen (höchstens 500).");
   assertEquals(parseAction({ type: "deleteGroup", tenantId: TENANT, groupId: "x" }), null);
 });
+
+Deno.test("SNMP credentials are validated and secrets may be kept", () => {
+  const tenantId = "11111111-1111-4111-8111-111111111111";
+  const assetId = "22222222-2222-4222-8222-222222222222";
+  const base = { type: "saveSnmp", tenantId, assetId };
+  assertEquals(
+    parseAction({ ...base, credential: { version: "v2c", community: "" } }),
+    { type: "saveSnmp", tenantId, assetId, agentId: null, credential: { version: "v2c", community: null } },
+  );
+  assertEquals(
+    parseAction({
+      ...base,
+      credential: { version: "v3", user: " ro ", authProtocol: "sha256", authKey: "12345678", privProtocol: "", privKey: "ignored" },
+    }),
+    {
+      type: "saveSnmp",
+      tenantId,
+      assetId,
+      agentId: null,
+      credential: { version: "v3", user: "ro", authProtocol: "sha256", authKey: "12345678", privProtocol: null, privKey: null },
+    },
+  );
+  // Too short key, encryption without authentication, unknown protocol.
+  for (const credential of [
+    { version: "v3", user: "ro", authProtocol: "sha", authKey: "short" },
+    { version: "v3", user: "ro", privProtocol: "aes", privKey: "12345678" },
+    { version: "v3", user: "ro", authProtocol: "rot13", authKey: "12345678" },
+    { version: "v3", user: "" },
+    { version: "v1" },
+  ]) {
+    assertEquals(typeof parseAction({ ...base, credential }), "string");
+  }
+  // Exactly one of device and probe.
+  assertEquals(parseAction({ type: "deleteSnmp", tenantId }), null);
+  assertEquals(parseAction({ type: "deleteSnmp", tenantId, assetId, agentId: assetId }), null);
+  assertEquals(parseAction({ type: "deleteSnmp", tenantId, agentId: assetId }), {
+    type: "deleteSnmp",
+    tenantId,
+    assetId: null,
+    agentId: assetId,
+  });
+});

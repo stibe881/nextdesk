@@ -143,6 +143,33 @@ function agentConfig(agent: Agent): AgentConfig {
 
 type Modules = { ipam: boolean; monitoring: boolean };
 
+/**
+ * SNMP credentials kept in nextDesk. The probe names the revision it holds;
+ * the secrets travel only when something changed. Never fails the hello.
+ */
+async function snmpForAgent(
+  admin: Admin,
+  agent: Agent,
+  held: unknown,
+): Promise<{ snmpRevision?: string; snmp?: unknown }> {
+  try {
+    const revision = await admin.rpc("monitoring_snmp_revision", {
+      p_tenant_id: agent.tenant_id,
+      p_agent_id: agent.id,
+    });
+    if (revision.error || typeof revision.data !== "string") return {};
+    if (held === revision.data) return { snmpRevision: revision.data };
+    const credentials = await admin.rpc("monitoring_snmp_credentials_for_agent", {
+      p_tenant_id: agent.tenant_id,
+      p_agent_id: agent.id,
+    });
+    if (credentials.error || !isObject(credentials.data)) return {};
+    return { snmpRevision: revision.data, snmp: credentials.data };
+  } catch {
+    return {};
+  }
+}
+
 async function hello(
   admin: Admin,
   agent: Agent,
@@ -232,6 +259,8 @@ async function hello(
     jobs.push({ id: job.id, kind: job.kind, payload: job.payload ?? {} });
   }
 
+  const snmp = await snmpForAgent(admin, agent, body.snmpRevision);
+
   return reply({
     ok: true,
     agent: { id: agent.id, name: agent.name },
@@ -249,6 +278,7 @@ async function hello(
     jobs,
     scanEnabled: modules.ipam,
     checks,
+    ...snmp,
     pollSeconds: 60,
     serverTime: new Date().toISOString(),
     limits: {

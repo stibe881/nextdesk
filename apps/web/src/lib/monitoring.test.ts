@@ -552,6 +552,37 @@ describe("Überwachung: Gerätekategorien", () => {
     ]);
   });
 
+  it("gliedert über mehrere Ebenen und zählt alles darunter mit", () => {
+    const deep = [
+      { id: "ort", name: "Baar", parentId: null },
+      { id: "net", name: "Netzwerk", parentId: "ort" },
+      { id: "sw", name: "Switch", parentId: "net" },
+      { id: "fw", name: "Firewall", parentId: "net" },
+    ];
+    const sections = deviceSections(
+      [
+        { name: "sw1", groupId: "sw" },
+        { name: "sw2", groupId: "sw" },
+        { name: "fw1", groupId: "fw" },
+      ],
+      deep,
+    );
+    expect(
+      sections.map((section) => [
+        section.label,
+        section.depth,
+        section.total,
+        section.ancestors,
+      ]),
+    ).toEqual([
+      ["Baar", 0, 3, []],
+      ["Netzwerk", 1, 3, ["ort"]],
+      ["Firewall", 2, 1, ["ort", "net"]],
+      ["Switch", 2, 2, ["ort", "net"]],
+    ]);
+    expect(groupPath(deep, "sw")).toBe("Baar → Netzwerk → Switch");
+  });
+
   it("zeigt ohne Kategorien eine Liste ohne Überschrift", () => {
     const sections = deviceSections(devices, []);
     expect(sections).toHaveLength(1);
@@ -562,5 +593,39 @@ describe("Überwachung: Gerätekategorien", () => {
     expect(groupPath(groups, "s1")).toBe("Standort Baar → Verteiler 2. OG");
     expect(groupPath(groups, "g2")).toBe("Standort Zug");
     expect(groupPath(groups, null)).toBeNull();
+  });
+});
+
+describe("snmpSummaryLabel", () => {
+  it("describes stored credentials without secrets", async () => {
+    const { snmpSummaryLabel } = await import("./monitoring");
+    expect(snmpSummaryLabel(null)).toBe("Keine Zugangsdaten in nextDesk");
+    expect(
+      snmpSummaryLabel({
+        version: "v2c",
+        user: null,
+        authProtocol: null,
+        privProtocol: null,
+        updatedAt: null,
+      }),
+    ).toBe("SNMP v2c · Community gespeichert");
+    expect(
+      snmpSummaryLabel({
+        version: "v3",
+        user: "nextdesk",
+        authProtocol: "sha256",
+        privProtocol: "aes",
+        updatedAt: null,
+      }),
+    ).toBe("SNMP v3 · Benutzer nextdesk · SHA-256 / AES-128");
+    expect(
+      snmpSummaryLabel({
+        version: "v3",
+        user: "ro",
+        authProtocol: null,
+        privProtocol: null,
+        updatedAt: null,
+      }),
+    ).toBe("SNMP v3 · Benutzer ro · ohne Authentifizierung");
   });
 });

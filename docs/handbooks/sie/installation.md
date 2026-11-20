@@ -2,7 +2,7 @@
 title: Installationsanleitung
 description: Inbetriebnahme eines Mandanten – Checkliste, Microsoft Entra SSO, Exchange Online, Verzeichnisabgleich, Intune, Push, PRTG und Mobile-App.
 audienceLabel: Administratoren
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Installationsanleitung
@@ -237,12 +237,21 @@ Ausführlich: «Eigene Überwachung (Sonde)».
 ### Wie richte ich SNMP-Sensoren für die Sonde ein?
 
 1. Richten Sie auf den Geräten SNMP nur lesend ein.
-2. Ergänzen Sie in der `config.json` der Sonde den Block `snmp` mit den Zugangsdaten. nextDesk speichert sie nie. Den Aufbau zeigt der Abschnitt «Eigene Überwachung (Sonde)».
+2. Ergänzen Sie in der `config.json` der Sonde den Block `snmp` mit den Zugangsdaten – oder hinterlegen Sie sie in nextDesk (nächste Anleitung). Den Aufbau zeigt der Abschnitt «Eigene Überwachung (Sonde)».
 3. `default` gilt für alle Geräte, `hosts` für einzelne Geräte mit anderen Zugangsdaten.
 4. Erlauben Sie der Sonde UDP 161 zu den Geräten.
 5. Starten Sie die Sonde neu.
 
 Ausführlich: «Eigene Überwachung (Sonde)».
+
+### Wie hinterlege ich SNMP-Zugangsdaten in nextDesk?
+
+1. Öffnen Sie in der **Überwachung** das Gerät und klicken Sie auf **SNMP**. Das dürfen nur Mandantenadministratoren.
+2. Wählen Sie die Version und geben Sie Community bzw. Benutzer, Verfahren und Schlüssel ein.
+3. Speichern Sie. Die Sonde (ab Version 1.4.0) übernimmt die Angaben innert einer Minute.
+4. Für einen Standard pro Sonde: **Einstellungen → Monitoring → Überwachung**, Stift bei der Sonde, **SNMP-Standard**.
+
+Gespeicherte Schlüssel werden nie wieder angezeigt; ein leeres Schlüsselfeld behält den gespeicherten. Ausführlich: «Eigene Überwachung (Sonde)».
 
 ### Wie aktualisiere ich die Sonde?
 
@@ -707,8 +716,9 @@ Verbindungen: 1.3.0).
    dem Download- und dem Paketordner löschen.
 
 **SNMP-Sensoren** (Laufzeit, Port-Traffic, eigene OID, ab Sonde 1.2.0)
-brauchen Zugangsdaten in der `config.json` der Sonde. nextDesk speichert sie
-nie. Den Block `snmp` ergänzen und die Sonde neu starten:
+brauchen Zugangsdaten – in der `config.json` der Sonde oder in nextDesk
+(siehe unten). Für die Datei den Block `snmp` ergänzen und die Sonde neu
+starten:
 
 ```json
 "snmp": {
@@ -736,6 +746,19 @@ einen Eintrag unter `hosts`, mit der IP-Adresse wie in nextDesk. Ein `"` oder
 `\` in einem Schlüssel wird als `\"` bzw. `\\` geschrieben. SNMPv3 mit
 DES-Verschlüsselung (ältere APC-USV) funktioniert ab Sonde 1.3.2; sicherer ist
 AES auf dem Gerät.
+
+**SNMP-Zugangsdaten in nextDesk** (ab Sonde 1.4.0): Statt in der
+`config.json` lassen sich die Zugangsdaten auch in nextDesk pflegen – pro
+Gerät im Gerätedetail der Überwachung über **SNMP**, als Standard einer Sonde
+unter **Einstellungen → Monitoring → Überwachung** im Dialog der Sonde
+(**SNMP-Standard**). Das dürfen nur Mandantenadministratoren. Community und
+Schlüssel liegen verschlüsselt im Tresor der Datenbank (Supabase Vault),
+werden in nextDesk nie wieder angezeigt und gehen nur über die verschlüsselte
+Verbindung an die Sonde, die sie im Arbeitsspeicher hält. Die Sonde übernimmt
+Änderungen innert einer Minute, ohne Neustart. Reihenfolge: Eintrag des
+Geräts in nextDesk, Eintrag des Geräts unter `hosts`, Standard der Sonde in
+nextDesk, `default` der `config.json`. Wer die Zugangsdaten nicht in der
+Cloud speichern will, pflegt sie weiterhin nur in der `config.json`.
 
 **Verbindungen** (welcher Port führt zu welchem Gerät, ab Sonde 1.3.0):
 Mit denselben SNMP-Zugangsdaten liest die Sonde bei Switches, Firewalls und
@@ -827,8 +850,10 @@ erwartetem Intervall und Toleranz).
      und DNS) `tools/ipam-agent` aus dem Repository bereitstellen und
      `config.example.json` als `config.json` kopieren: Adresse
      `https://<projekt>.supabase.co/functions/v1/ipam-agent`, Token und die
-     SNMP-Zugangsdaten. **SNMP-Schlüssel stehen nur in dieser Datei**, nie in
-     nextDesk; nextDesk lehnt Einstellungen mit Zugangsdaten ab.
+     SNMP-Zugangsdaten. **SNMP-Schlüssel stehen in dieser Datei** oder,
+     ab Sonde 1.4.0, verschlüsselt in nextDesk (Überwachung → Gerät →
+     **SNMP**); die Einstellungen des Agenten selbst nehmen keine
+     Zugangsdaten an.
    - Linux: Image mit `docker build` erstellen, mit `--check` die Verbindung
      prüfen und mit `docker run -d --network host --restart unless-stopped`
      starten. Windows: `npm ci && npm run build`, danach

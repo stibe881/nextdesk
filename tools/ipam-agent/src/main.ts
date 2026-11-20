@@ -14,6 +14,7 @@ import {
   hasScanWork,
   type LocalConfig,
   loadLocalConfig,
+  parseRemoteSnmp,
   type ServerConfig,
   type Subnet,
 } from "./config.ts";
@@ -43,6 +44,10 @@ type Hello = {
   /** False when the tenant only uses monitoring (no IP address management). */
   scanEnabled?: boolean;
   checks?: unknown;
+  /** Revision of the SNMP credentials kept in nextDesk. */
+  snmpRevision?: string;
+  /** The credentials themselves; only present when the revision changed. */
+  snmp?: unknown;
   pollSeconds?: number;
   limits?: Partial<ReportLimits>;
 };
@@ -77,8 +82,9 @@ async function hello(
   client: NextdeskClient,
   local: LocalConfig,
 ): Promise<Hello> {
-  return await client.post<Hello>({
+  const state = await client.post<Hello>({
     action: "hello",
+    snmpRevision: local.snmp.remoteRevision ?? null,
     agent: {
       version: VERSION,
       hostname: hostname().slice(0, 253),
@@ -93,6 +99,19 @@ async function hello(
       },
     },
   });
+  // SNMP credentials kept in nextDesk: held in memory only, never written
+  // to disk or to the log.
+  if (state.snmp !== undefined && typeof state.snmpRevision === "string") {
+    const remote = parseRemoteSnmp(state.snmp);
+    if (remote) {
+      local.snmp.remote = remote;
+      local.snmp.remoteRevision = state.snmpRevision;
+      log.info(
+        `SNMP-Zugangsdaten aus nextDesk übernommen (${Object.keys(remote.hosts).length} Geräte${remote.default ? ", Standard" : ""})`,
+      );
+    }
+  }
+  return state;
 }
 
 async function scanAndReport(

@@ -1,4 +1,6 @@
 import * as Notifications from "expo-notifications";
+import { registerBadgePushTask } from "@/lib/badge-push";
+import { isSilentPush } from "@/lib/badge-push-model";
 import { type Href, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, AppState, Platform, type AppStateStatus } from "react-native";
@@ -54,12 +56,15 @@ if (Platform.OS === "ios") {
     },
   ]).catch(() => undefined);
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
+    handleNotification: async (notification) => {
+      const silent = isSilentPush(notification.request.content);
+      return {
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: !silent,
+        shouldShowList: !silent,
+      };
+    },
   });
 }
 
@@ -190,14 +195,18 @@ export function PushNotificationBridge() {
   useEffect(() => {
     if (Platform.OS !== "android") return;
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldPlaySound: false,
-        shouldSetBadge: false,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
+      handleNotification: async (notification) => {
+        const silent = isSilentPush(notification.request.content);
+        return {
+          shouldPlaySound: false,
+          shouldSetBadge: false,
+          shouldShowBanner: !silent,
+          shouldShowList: !silent,
+        };
+      },
     });
     void syncAppBadge();
+    void registerBadgePushTask();
     const received = Notifications.addNotificationReceivedListener(
       () => void syncAppBadge(),
     );

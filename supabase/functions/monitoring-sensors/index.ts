@@ -291,13 +291,100 @@ async function probePackage(admin: Client) {
   };
 }
 
+type SnmpSummary = {
+  version: "v2c" | "v3";
+  user: string | null;
+  authProtocol: string | null;
+  privProtocol: string | null;
+  updatedAt: string | null;
+};
+
+/** Stored SNMP credentials without secrets, by device and by probe. */
+async function snmpSummaries(admin: Client, tenantId: string, assetId?: string) {
+  let query = admin.from("monitoring_snmp_credentials")
+    .select("asset_id, agent_id, version, snmp_user, auth_protocol, priv_protocol, updated_at")
+    .eq("tenant_id", tenantId);
+  if (assetId) query = query.or(`asset_id.eq.${assetId},agent_id.not.is.null`);
+  const { data, error } = await query.limit(2000);
+  const assets = new Map<string, SnmpSummary>();
+  const agents = new Map<string, SnmpSummary>();
+  // Before the migration is applied the table is missing: no credentials.
+  if (error) return { assets, agents };
+  for (const row of (data ?? []) as Row[]) {
+    const summary: SnmpSummary = {
+      version: row.version === "v2c" ? "v2c" : "v3",
+      user: text(row.snmp_user),
+      authProtocol: text(row.auth_protocol),
+      privProtocol: text(row.priv_protocol),
+      updatedAt: text(row.updated_at),
+    };
+    if (typeof row.asset_id === "string") assets.set(row.asset_id, summary);
+    else if (typeof row.agent_id === "string") agents.set(row.agent_id, summary);
+  }
+  return { assets, agents };
+}
+
+/** SNMP credentials are secrets: only tenant administrators set them. */
+async function isTenantAdministrator(admin: Client, actorId: string, tenantId: string): Promise<boolean> {
+  const { data: role } = await admin.from("roles").select("id")
+    .eq("tenant_id", tenantId).eq("name", "Tenant administrator").eq("scope", "tenant").eq("active", true)
+    .maybeSingle();
+  if (!role?.id) return false;
+  const now = new Date().toISOString();
+  const { data: assignment } = await admin.from("user_role_assignments").select("id")
+    .eq("tenant_id", tenantId).eq("user_id", actorId).eq("role_id", role.id)
+    .lte("starts_at", now).or(`expires_at.is.null,expires_at.gt.${now}`).limit(1).maybeSingle();
+  return Boolean(assignment);
+}
+
+async function saveSnmp(
+  admin: Client,
+  actorId: string,
+  action: Extract<Action, { type: "saveSnmp" }>,
+) {
+  const credential = action.credential;
+  const secret = credential.version === "v2c"
+    ? { community: credential.community }
+    : { authKey: credential.authKey, privKey: credential.privKey };
+  const { error } = await admin.rpc("monitoring_snmp_credential_save", {
+    p_tenant_id: action.tenantId,
+    p_asset_id: action.assetId,
+    p_agent_id: action.agentId,
+    p_version: credential.version,
+    p_user: credential.version === "v3" ? credential.user : null,
+    p_auth_protocol: credential.version === "v3" ? credential.authProtocol : null,
+    p_priv_protocol: credential.version === "v3" ? credential.privProtocol : null,
+    p_secret: secret,
+    p_actor: actorId,
+  });
+  if (error) {
+    if (error.code === "22023") {
+      throw new HttpError(
+        422,
+        "snmp_secret_missing",
+        credential.version === "v2c"
+          ? "Bitte die Community angeben."
+          : "Bitte die Schlüssel angeben (je 8 bis 128 Zeichen).",
+      );
+    }
+    if (error.code === "23503") throw new HttpError(404, "not_found", "Das Gerät oder die Sonde wurde nicht gefunden.");
+    if (error.code === "0A000") {
+      throw new HttpError(503, "vault_unavailable", "Die verschlüsselte Ablage steht nicht zur Verfügung.");
+    }
+    throw unavailable();
+  }
+  return { saved: true };
+}
+
 async function loadAgents(admin: Client, tenantId: string) {
   const { data, error } = await admin.from("ipam_agents")
     .select("id, name, status, hostname, platform, version, last_seen_at")
     .eq("tenant_id", tenantId).neq("status", "revoked").order("name").limit(100);
   if (error) throw unavailable();
   const now = Date.now();
+  const snmp = (await snmpSummaries(admin, tenantId)).agents;
   return ((data ?? []) as Row[]).map((row) => ({
+    snmp: snmp.get(String(row.id)) ?? null,
     id: String(row.id),
     name: String(row.name),
     active: row.status === "active",
@@ -595,9 +682,16 @@ async function requireAsset(admin: Client, tenantId: string, assetId: string): P
   return data as Row;
 }
 
-async function device(admin: Client, tenantId: string, assetId: string, canManage: boolean) {
+async function device(
+  admin: Client,
+  tenantId: string,
+  assetId: string,
+  canManage: boolean,
+  canManageSnmp: boolean,
+) {
   const asset = await requireAsset(admin, tenantId, assetId);
-  const [sensors, agents, infra, incidents, resolved] = await Promise.all([
+  const [snmp, sensors, agents, infra, incidents, resolved] = await Promise.all([
+    snmpSummaries(admin, tenantId, assetId),
     loadSensors(admin, tenantId, assetId),
     loadAgents(admin, tenantId),
     admin.from("asset_infrastructure").select("category, category_label, hostname, ip_address, uplink_asset_id").eq("tenant_id", tenantId).eq("asset_id", assetId).maybeSingle(),
@@ -632,6 +726,8 @@ async function device(admin: Client, tenantId: string, assetId: string, canManag
     kinds: canManage ? await customKinds(admin, tenantId) : [],
     serviceOptions: await serviceOptions(admin, tenantId),
     checkedAt: new Date().toISOString(),
+    snmp: snmp.assets.get(assetId) ?? null,
+    canManageSnmp,
   };
 }
 
@@ -1047,7 +1143,7 @@ async function saveGroup(
       throw new HttpError(409, "group_exists", "Eine Kategorie mit diesem Namen gibt es hier bereits.");
     }
     if (error.code === "23514") {
-      throw new HttpError(422, "group_depth", "Unterkategorien können keine eigenen Unterkategorien haben.");
+      throw new HttpError(422, "group_depth", "Kategorien können höchstens vier Ebenen tief sein und nicht unter sich selbst hängen.");
     }
     if (error.code === "23503") {
       throw new HttpError(422, "group_not_found", "Die übergeordnete Kategorie wurde nicht gefunden.");
@@ -1523,13 +1619,37 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
   };
   switch (action.type) {
     case "overview":
-      return await overview(admin, action.tenantId, canManage);
+      return {
+        ...(await overview(admin, action.tenantId, canManage)),
+        canManageSnmp: canManage && await isTenantAdministrator(admin, actorId, action.tenantId),
+      };
     case "summary":
       return await summary(admin, action.tenantId);
     case "deviceTicket":
       return await deviceTicket(admin, client, action.tenantId, actorId, action.assetId);
     case "device":
-      return await device(admin, action.tenantId, action.assetId, canManage);
+      return await device(
+        admin,
+        action.tenantId,
+        action.assetId,
+        canManage,
+        canManage && await isTenantAdministrator(admin, actorId, action.tenantId),
+      );
+    case "saveSnmp":
+    case "deleteSnmp": {
+      manage();
+      if (!(await isTenantAdministrator(admin, actorId, action.tenantId))) {
+        throw new HttpError(403, "forbidden", "SNMP-Zugangsdaten dürfen nur Mandantenadministratoren ändern.");
+      }
+      if (action.type === "saveSnmp") return await saveSnmp(admin, actorId, action);
+      const { error } = await admin.rpc("monitoring_snmp_credential_delete", {
+        p_tenant_id: action.tenantId,
+        p_asset_id: action.assetId,
+        p_agent_id: action.agentId,
+      });
+      if (error) throw unavailable();
+      return { deleted: true };
+    }
     case "series":
       return await series(admin, action.tenantId, action.sensorId, action.range);
     case "assets":

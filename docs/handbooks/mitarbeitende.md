@@ -899,10 +899,13 @@ Neuigkeiten.
 
 Auf dem **App-Symbol** zeigt eine rote Zahl, wie viele Mitteilungen du noch nicht
 gelesen hast (alle Arbeitsbereiche zusammen). Die Zahl sinkt, sobald du Mitteilungen
-liest, das Ticket dazu öffnest oder alle als gelesen markierst. Auf dem iPhone aktualisiert sie sich auch
-bei neuen Mitteilungen, wenn die App geschlossen ist. Auf Android erscheint sie,
-wenn dein Startbildschirm Zahlen auf Symbolen unterstützt, und wird beim Öffnen
-der App aktualisiert. Auf Android erhältst du ausserdem die Push-Mitteilungen der
+liest, das Ticket dazu öffnest oder alle als gelesen markierst, auch wenn du das
+im Web tust (zum Beispiel mit **Alle gesehen** bei der Glocke): Die Zahl auf dem
+Smartphone passt sich nach wenigen Sekunden an, ohne dass du die App öffnest. Auf
+dem iPhone aktualisiert sie sich auch bei neuen Mitteilungen, wenn die App
+geschlossen ist. Auf Android erscheint sie, wenn dein Startbildschirm Zahlen auf
+Symbolen unterstützt; sind alle Mitteilungen gelesen, verschwinden auch die
+Mitteilungen von nextDesk aus der Benachrichtigungsleiste. Auf Android erhältst du ausserdem die Push-Mitteilungen der
 Administration (zum Beispiel zu Wartungen), sobald du die Benachrichtigungen der
 App erlaubt hast.
 

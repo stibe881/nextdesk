@@ -61,7 +61,7 @@ const inventoryIssueMigrationPath = new URL(
   import.meta.url,
 );
 const projectsMigrationPath = new URL(
-  "../supabase/migrations/0376_project_management.sql",
+  "../supabase/migrations/0377_project_management.sql",
   import.meta.url,
 );
 const catalog = await readFile(catalogPath, "utf8");
