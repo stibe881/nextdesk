@@ -273,6 +273,90 @@ create table if not exists public.project_members (
 create index if not exists project_members_user_idx
   on public.project_members (tenant_id, user_id);
 
+-- Einladungen für Gäste, die noch kein Konto im Mandanten haben. Beim ersten
+-- Anmelden löst claim_project_invitations sie ein: Mandantenmitgliedschaft
+-- ohne Rolle plus Projektmitgliedschaft.
+create table if not exists public.project_invitations (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  project_id uuid not null,
+  email text not null
+    check (email = lower(btrim(email)) and char_length(email) between 3 and 320),
+  role text not null default 'guest_read' check (role in ('guest_read', 'guest_comment')),
+  status text not null default 'sent' check (status in ('sent', 'accepted', 'revoked')),
+  invited_by uuid references public.user_profiles(id) on delete set null,
+  expires_at timestamptz not null default (timezone('utc', now()) + interval '14 days'),
+  accepted_at timestamptz,
+  created_at timestamptz not null default timezone('utc', now()),
+  constraint project_invitations_project_fk foreign key (project_id, tenant_id)
+    references public.projects (id, tenant_id) on delete cascade
+);
+
+create unique index if not exists project_invitations_open_unique
+  on public.project_invitations (project_id, email) where status = 'sent';
+create index if not exists project_invitations_email_idx
+  on public.project_invitations (email, status, expires_at);
+
+create or replace function public.claim_project_invitations(p_user_id uuid, p_email text)
+returns integer
+language plpgsql
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+declare
+  v_invitation public.project_invitations%rowtype;
+  v_status public.membership_status;
+  v_accepted integer := 0;
+begin
+  if p_user_id is null or p_email is null or btrim(p_email) = '' then
+    return 0;
+  end if;
+
+  for v_invitation in
+    select *
+    from public.project_invitations as invitation
+    where invitation.email = lower(btrim(p_email))
+      and invitation.status = 'sent'
+      and invitation.expires_at > timezone('utc', now())
+    for update
+  loop
+    insert into public.user_profiles (id) values (p_user_id) on conflict (id) do nothing;
+
+    select membership.status into v_status
+    from public.tenant_memberships as membership
+    where membership.tenant_id = v_invitation.tenant_id
+      and membership.user_id = p_user_id
+    for update;
+
+    if not found then
+      insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+      values (v_invitation.tenant_id, p_user_id, 'active', timezone('utc', now()));
+    elsif v_status <> 'active' then
+      -- Entfernte oder gesperrte Personen kommen nicht über ein Projekt zurück.
+      continue;
+    end if;
+
+    insert into public.project_members (project_id, tenant_id, user_id, role, invited_by)
+    values (
+      v_invitation.project_id, v_invitation.tenant_id, p_user_id,
+      v_invitation.role, v_invitation.invited_by
+    )
+    on conflict (project_id, user_id) do nothing;
+
+    update public.project_invitations
+    set status = 'accepted', accepted_at = timezone('utc', now())
+    where id = v_invitation.id;
+    v_accepted := v_accepted + 1;
+  end loop;
+
+  return v_accepted;
+end;
+$$;
+
+revoke all on function public.claim_project_invitations(uuid, text)
+  from public, anon, authenticated;
+grant execute on function public.claim_project_invitations(uuid, text) to service_role;
+
 -- ---------------------------------------------------------------------------
 -- Projektstruktur: Phase / Meilenstein -> Arbeitspaket -> Unteraufgabe
 -- ---------------------------------------------------------------------------
@@ -725,6 +809,7 @@ alter table public.project_sequences enable row level security;
 alter table public.project_templates enable row level security;
 alter table public.projects enable row level security;
 alter table public.project_members enable row level security;
+alter table public.project_invitations enable row level security;
 alter table public.project_tasks enable row level security;
 alter table public.project_task_checklist_items enable row level security;
 alter table public.project_task_dependencies enable row level security;
@@ -739,6 +824,7 @@ revoke all on table
   public.project_templates,
   public.projects,
   public.project_members,
+  public.project_invitations,
   public.project_tasks,
   public.project_task_checklist_items,
   public.project_task_dependencies,
@@ -754,6 +840,7 @@ grant select, insert, update, delete on table
   public.project_templates,
   public.projects,
   public.project_members,
+  public.project_invitations,
   public.project_tasks,
   public.project_task_checklist_items,
   public.project_task_dependencies,
@@ -833,6 +920,266 @@ join public.service_task_templates as template on template.id = occurrence.templ
 
 revoke all on table public.work_items from public, anon, authenticated;
 grant select on table public.work_items to service_role;
+
+-- ---------------------------------------------------------------------------
+-- Auswertungen und Suche für die Edge Function
+-- ---------------------------------------------------------------------------
+
+-- Kennzahlen je Projekt für das Multiprojekt-Dashboard. Fortschritt über
+-- Aufgaben ohne Unteraufgaben, gewichtet nach Schätzung (ohne Schätzung:
+-- eine Stunde). Gebuchte Zeit umfasst verknüpfte Tickets.
+create or replace function public.project_stats(p_tenant_id uuid, p_project_ids uuid[])
+returns table (
+  project_id uuid,
+  task_count integer,
+  done_count integer,
+  progress_percent integer,
+  estimated_minutes bigint,
+  booked_minutes bigint,
+  overdue_tasks integer,
+  overdue_milestones integer,
+  next_milestone_title text,
+  next_milestone_on date,
+  latest_due_on date
+)
+language sql
+stable
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+  with today as (
+    select (timezone(tenant.timezone, now()))::date as day
+    from public.tenants as tenant
+    where tenant.id = p_tenant_id
+  ),
+  scope as (
+    select project.id
+    from public.projects as project
+    where project.tenant_id = p_tenant_id
+      and (p_project_ids is null or project.id = any (p_project_ids))
+  ),
+  leaf as (
+    select task.*
+    from public.project_tasks as task
+    join scope on scope.id = task.project_id
+    where task.kind = 'task'
+      and not exists (
+        select 1 from public.project_tasks as child where child.parent_task_id = task.id
+      )
+  ),
+  leaf_stats as (
+    select
+      leaf.project_id,
+      count(*)::integer as task_count,
+      count(*) filter (where leaf.status = 'done')::integer as done_count,
+      round(
+        sum(
+          coalesce(nullif(leaf.estimated_minutes, 0), 60)
+          * case when leaf.status = 'done' then 100 else leaf.progress_percent end
+        )::numeric
+        / nullif(sum(coalesce(nullif(leaf.estimated_minutes, 0), 60)), 0)
+      )::integer as progress_percent,
+      coalesce(sum(leaf.estimated_minutes), 0)::bigint as estimated_minutes,
+      count(*) filter (
+        where leaf.status <> 'done' and leaf.due_on < (select day from today)
+      )::integer as overdue_tasks
+    from leaf
+    group by leaf.project_id
+  ),
+  milestone_stats as (
+    select
+      task.project_id,
+      count(*) filter (
+        where task.status <> 'done' and task.due_on < (select day from today)
+      )::integer as overdue_milestones
+    from public.project_tasks as task
+    join scope on scope.id = task.project_id
+    where task.kind = 'milestone'
+    group by task.project_id
+  ),
+  next_milestone as (
+    select distinct on (task.project_id) task.project_id, task.title, task.due_on
+    from public.project_tasks as task
+    join scope on scope.id = task.project_id
+    where task.kind = 'milestone' and task.status <> 'done' and task.due_on is not null
+    order by task.project_id, task.due_on, task.position
+  ),
+  latest as (
+    select task.project_id, max(coalesce(task.due_on, task.starts_on)) as latest_due_on
+    from public.project_tasks as task
+    join scope on scope.id = task.project_id
+    group by task.project_id
+  ),
+  booked as (
+    select project_id, sum(minutes)::bigint as booked_minutes
+    from (
+      select task.project_id, entry.minutes
+      from public.ticket_time_entries as entry
+      join public.project_tasks as task on task.id = entry.project_task_id
+      join scope on scope.id = task.project_id
+      union all
+      select link.project_id, entry.minutes
+      from public.project_links as link
+      join scope on scope.id = link.project_id
+      join public.ticket_time_entries as entry on entry.ticket_id = link.ticket_id
+    ) as entries
+    group by project_id
+  )
+  select
+    scope.id,
+    coalesce(leaf_stats.task_count, 0),
+    coalesce(leaf_stats.done_count, 0),
+    coalesce(leaf_stats.progress_percent, 0),
+    coalesce(leaf_stats.estimated_minutes, 0),
+    coalesce(booked.booked_minutes, 0),
+    coalesce(leaf_stats.overdue_tasks, 0),
+    coalesce(milestone_stats.overdue_milestones, 0),
+    next_milestone.title,
+    next_milestone.due_on,
+    latest.latest_due_on
+  from scope
+  left join leaf_stats on leaf_stats.project_id = scope.id
+  left join milestone_stats on milestone_stats.project_id = scope.id
+  left join next_milestone on next_milestone.project_id = scope.id
+  left join latest on latest.project_id = scope.id
+  left join booked on booked.project_id = scope.id;
+$$;
+
+-- Ziel einer Verknüpfung in lesbarer Form.
+create or replace function public.project_link_details(p_tenant_id uuid, p_project_id uuid)
+returns table (
+  link_id uuid,
+  task_id uuid,
+  target_kind text,
+  target_id uuid,
+  label text,
+  detail text,
+  state text,
+  is_closed boolean,
+  assignee_id uuid,
+  booked_minutes bigint,
+  note text,
+  created_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+  select
+    link.id,
+    link.task_id,
+    link.target_kind,
+    coalesce(
+      link.ticket_id, link.shop_order_id, link.ipam_prefix_id, link.ipam_vlan_id,
+      link.ipam_address_id, link.monitoring_sensor_id, link.asset_id
+    ),
+    case link.target_kind
+      when 'ticket' then ticket.ticket_number
+      when 'shop_order' then shop_order.order_number
+      when 'ipam_prefix' then prefix.prefix::text
+      when 'ipam_vlan' then 'VLAN ' || vlan.vlan_number::text
+      when 'ipam_address' then host(address.address)
+      when 'monitoring_sensor' then sensor.name
+      when 'asset' then asset.name
+    end,
+    case link.target_kind
+      when 'ticket' then ticket.subject
+      when 'shop_order' then null
+      when 'ipam_prefix' then prefix.description
+      when 'ipam_vlan' then vlan.name
+      when 'ipam_address' then coalesce(address.hostname, address.dns_name)
+      when 'monitoring_sensor' then sensor_asset.name
+      when 'asset' then asset.asset_tag
+    end,
+    case link.target_kind
+      when 'ticket' then status.label
+      when 'shop_order' then shop_order.status
+      when 'ipam_prefix' then prefix.status
+      when 'ipam_address' then address.status
+      when 'monitoring_sensor' then sensor.kind
+      when 'asset' then asset.status
+    end,
+    coalesce(status.is_closed, false),
+    ticket.assigned_agent_id,
+    coalesce((
+      select sum(entry.minutes) from public.ticket_time_entries as entry
+      where entry.ticket_id = link.ticket_id
+    ), 0)::bigint,
+    link.note,
+    link.created_at
+  from public.project_links as link
+  left join public.tickets as ticket on ticket.id = link.ticket_id
+  left join public.ticket_statuses as status on status.id = ticket.status_id
+  left join public.shop_orders as shop_order on shop_order.id = link.shop_order_id
+  left join public.ipam_prefixes as prefix on prefix.id = link.ipam_prefix_id
+  left join public.ipam_vlans as vlan on vlan.id = link.ipam_vlan_id
+  left join public.ipam_addresses as address on address.id = link.ipam_address_id
+  left join public.monitoring_sensors as sensor on sensor.id = link.monitoring_sensor_id
+  left join public.assets as sensor_asset on sensor_asset.id = sensor.asset_id
+  left join public.assets as asset on asset.id = link.asset_id
+  where link.tenant_id = p_tenant_id
+    and link.project_id = p_project_id
+  order by link.created_at;
+$$;
+
+-- Suche nach verknüpfbaren Einträgen (ohne Tickets; die laufen über die
+-- Ticketrechte der Person). Die Rechteprüfung je Art macht die Edge Function.
+create or replace function public.project_search_link_targets(
+  p_tenant_id uuid,
+  p_kind text,
+  p_query text
+)
+returns table (target_id uuid, label text, detail text)
+language sql
+stable
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+  with needle as (select lower(btrim(coalesce(p_query, ''))) as q)
+  select found.target_id, found.label, found.detail
+  from (
+    select shop_order.id as target_id, shop_order.order_number as label,
+           shop_order.status as detail, shop_order.created_at as sort_at
+    from public.shop_orders as shop_order
+    where p_kind = 'shop_order' and shop_order.tenant_id = p_tenant_id
+    union all
+    select prefix.id, prefix.prefix::text, prefix.description, prefix.created_at
+    from public.ipam_prefixes as prefix
+    where p_kind = 'ipam_prefix' and prefix.tenant_id = p_tenant_id
+    union all
+    select vlan.id, 'VLAN ' || vlan.vlan_number::text, vlan.name, vlan.created_at
+    from public.ipam_vlans as vlan
+    where p_kind = 'ipam_vlan' and vlan.tenant_id = p_tenant_id
+    union all
+    select address.id, host(address.address),
+           coalesce(address.hostname, address.dns_name), address.created_at
+    from public.ipam_addresses as address
+    where p_kind = 'ipam_address' and address.tenant_id = p_tenant_id
+    union all
+    select sensor.id, sensor.name, asset.name, sensor.created_at
+    from public.monitoring_sensors as sensor
+    join public.assets as asset on asset.id = sensor.asset_id
+    where p_kind = 'monitoring_sensor' and sensor.tenant_id = p_tenant_id
+    union all
+    select asset.id, asset.name, asset.asset_tag, asset.created_at
+    from public.assets as asset
+    where p_kind = 'asset' and asset.tenant_id = p_tenant_id
+  ) as found, needle
+  where needle.q = ''
+     or position(needle.q in lower(found.label)) > 0
+     or position(needle.q in lower(coalesce(found.detail, ''))) > 0
+  order by found.sort_at desc
+  limit 20;
+$$;
+
+revoke all on function public.project_stats(uuid, uuid[]) from public, anon, authenticated;
+revoke all on function public.project_link_details(uuid, uuid) from public, anon, authenticated;
+revoke all on function public.project_search_link_targets(uuid, text, text)
+  from public, anon, authenticated;
+grant execute on function public.project_stats(uuid, uuid[]) to service_role;
+grant execute on function public.project_link_details(uuid, uuid) to service_role;
+grant execute on function public.project_search_link_targets(uuid, text, text) to service_role;
 
 comment on view public.work_items is
   'Projektaufgaben, Tickets und Serviceaufgaben in einer Form (Zuweisung, Zeitraum, Aufwand). Grundlage der Auslastung; nur über Edge Functions.';
