@@ -465,6 +465,41 @@ export function storedOriginalMail(mail: ParsedMail) {
   };
 }
 
+async function closeSimulationCase(
+  admin: Admin,
+  tenantId: string,
+  ticketId: string,
+  provider: string,
+  noteAuthorId: string,
+) {
+  const now = new Date().toISOString();
+  const closed = await admin.from("security_cases").update({
+    verdict: "phishing",
+    verdict_at: now,
+    state: "closed",
+    closed_at: now,
+  }).eq("tenant_id", tenantId).eq("ticket_id", ticketId).neq("state", "closed").select("ticket_id");
+  if (closed.error || !(closed.data ?? []).length) return;
+  const status = await admin.from("ticket_statuses").select("id")
+    .eq("tenant_id", tenantId).eq("key", "closed").maybeSingle();
+  if (status.data?.id) {
+    await admin.from("tickets").update({ status_id: status.data.id })
+      .eq("id", ticketId).eq("tenant_id", tenantId);
+  }
+  await admin.from("ticket_comments").insert({
+    ticket_id: ticketId,
+    author_id: noteAuthorId,
+    visibility: "internal",
+    body: `Phishing-Simulation von ${provider} erkannt (vereinbartes Awareness-Training): automatisch als «Phishing» beurteilt und abgeschlossen, ohne Alarmierung. Keine Massnahmen nötig.`,
+  });
+  await admin.from("ticket_events").insert({
+    ticket_id: ticketId,
+    actor_id: null,
+    event_type: "ticket.security_verdict",
+    payload: { verdict: "phishing", label: "Phishing", simulation: provider },
+  });
+}
+
 export async function finalizePhishingReport(
   admin: Admin,
   input: {
@@ -529,6 +564,12 @@ export async function finalizePhishingReport(
     analysis: storedAnalysis(input.analysis),
   });
   if (input.bundled) return { previousReports };
+  // Agreed phishing simulation: no alarm, the case closes as «Phishing»
+  // (the person reported it correctly; nothing to block or clean up).
+  if (input.analysis.simulation) {
+    await closeSimulationCase(admin, input.tenantId, input.ticketId, input.analysis.simulation, input.noteAuthorId);
+    return { previousReports };
+  }
   try {
     await admin.rpc("phishing_report_notify", {
       p_tenant_id: input.tenantId,

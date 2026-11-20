@@ -2366,6 +2366,14 @@ einer fremden Domain kommen, und Links, die eine «.ch»-Adresse nur vortäusche
 innerhalb von 30 Minuten fallen, bei mittlerem innerhalb von 4 Stunden,
 sonst innerhalb eines Tages.
 
+**Phishing-Simulationen** (vereinbartes Awareness-Training, z. B. von
+Hornetsecurity) erkennt nextDesk an den Kopfzeilen des Anbieters zusammen mit
+dessen Mailserver. Solche Fälle tragen das Kennzeichen **Phishing-Simulation ·
+Anbieter**, werden automatisch als **Phishing** beurteilt und abgeschlossen,
+ohne das Team zu alarmieren; die meldende Person erhält trotzdem den Dank.
+Sperre bei Simulationen keine Absender oder Adressen, sonst stört das das
+Training.
+
 ![Phishing-/Junk-Fall mit sicherer Ansicht und Urteil](images/ag-sicherheitsfall.jpg)
 
 Unter **Zuständig** weist du den Fall einer Person zu (oder mit **Mir
