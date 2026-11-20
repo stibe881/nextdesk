@@ -1265,6 +1265,17 @@ button.monitoring-tile[aria-pressed="true"] {
   font-size: 13px;
 }
 
+/* Geräte einer Unterkategorie stehen auf der Höhe ihrer Überschrift. */
+.monitoring-table tr.monitoring-table__row--sub > td:first-child {
+  padding-left: 64px;
+}
+
+.monitoring-table
+  tr.monitoring-table__row--sub
+  > .monitoring-table__check:first-child {
+  width: 80px;
+}
+
 .monitoring-table__group button svg {
   transition: transform 0.15s ease;
 }

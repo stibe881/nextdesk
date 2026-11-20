@@ -795,7 +795,13 @@ function OverviewView({
                           const devicePaused = device.state === "paused";
                           return (
                             <Fragment key={device.assetId}>
-                              <tr>
+                              <tr
+                                className={
+                                  section.depth === 1
+                                    ? "monitoring-table__row--sub"
+                                    : undefined
+                                }
+                              >
                                 {data.canManage ? (
                                   <td className="monitoring-table__check">
                                     <input
@@ -905,7 +911,9 @@ function OverviewView({
                                 ) : null}
                               </tr>
                               {open ? (
-                                <tr className="monitoring-table__sensors">
+                                <tr
+                                  className={`monitoring-table__sensors${section.depth === 1 ? " monitoring-table__row--sub" : ""}`}
+                                >
                                   <td colSpan={data.canManage ? 8 : 6}>
                                     <DeviceSensorList
                                       assetId={device.assetId}
