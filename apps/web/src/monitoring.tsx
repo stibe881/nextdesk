@@ -8,6 +8,7 @@ import {
   LoaderCircle,
   ListPlus,
   Pause,
+  KeyRound,
   Pencil,
   Play,
   Plus,
@@ -47,6 +48,9 @@ import {
   type MonitoringDeviceRow,
   type MonitoringGroup,
   NO_GROUP_LABEL,
+  snmpProtocolLabel,
+  snmpSummaryLabel,
+  type MonitoringSnmpSummary,
   orderedGroups,
   groupServiceOptions,
   formatValue,
@@ -1661,6 +1665,7 @@ function ProbeCard({
       {editing ? (
         <AgentDialog
           agent={editing}
+          canManageSnmp={data.canManageSnmp === true}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -1767,6 +1772,7 @@ function DeviceView({
   const [draft, setDraft] = useState<SensorDraft | null>(null);
   const [addingPorts, setAddingPorts] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [snmpOpen, setSnmpOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState<Confirmation | null>(null);
   const [simulating, setSimulating] = useState(false);
@@ -1966,6 +1972,17 @@ function DeviceView({
                   <Pencil aria-hidden="true" size={16} />
                   Bearbeiten
                 </button>
+                {data.canManageSnmp ? (
+                  <button
+                    className="secondary-button"
+                    onClick={() => setSnmpOpen(true)}
+                    title={snmpSummaryLabel(data.snmp)}
+                    type="button"
+                  >
+                    <KeyRound aria-hidden="true" size={16} />
+                    SNMP
+                  </button>
+                ) : null}
                 <button
                   className="secondary-button"
                   disabled={busy}
@@ -2272,6 +2289,20 @@ function DeviceView({
             load();
           }}
           tenantId={tenantId}
+        />
+      ) : null}
+      {snmpOpen && data ? (
+        <SnmpDialog
+          current={data.snmp ?? null}
+          hint={`Zugangsdaten für «${data.device.name}», mit Vorrang vor dem Standard der Sonde und der config.json.`}
+          onClose={() => setSnmpOpen(false)}
+          onSaved={() => {
+            setSnmpOpen(false);
+            load();
+          }}
+          target={{ assetId }}
+          tenantId={tenantId}
+          title="SNMP-Zugangsdaten"
         />
       ) : null}
       {addingPorts && data ? (
@@ -4354,14 +4385,258 @@ function ConnectionsCard({
   );
 }
 
-/** Name and state of a probe, and a new token for it. */
-function AgentDialog({
+const SNMP_AUTH_OPTIONS = [
+  "sha256",
+  "sha",
+  "sha224",
+  "sha384",
+  "sha512",
+  "md5",
+];
+const SNMP_PRIV_OPTIONS = ["aes", "aes256b", "aes256r", "des"];
+
+/**
+ * SNMP credentials of a device or the default of a probe. Stored secrets are
+ * never shown: an empty key field keeps the stored key.
+ */
+function SnmpDialog({
   tenantId,
-  agent,
+  target,
+  title,
+  hint,
+  current,
   onClose,
   onSaved,
 }: {
   tenantId: string;
+  target: { assetId: string } | { agentId: string };
+  title: string;
+  hint: string;
+  current: MonitoringSnmpSummary | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [version, setVersion] = useState<"v2c" | "v3">(
+    current?.version ?? "v3",
+  );
+  const [community, setCommunity] = useState("");
+  const [user, setUser] = useState(current?.user ?? "");
+  const [authProtocol, setAuthProtocol] = useState(
+    current ? (current.authProtocol ?? "") : "sha256",
+  );
+  const [authKey, setAuthKey] = useState("");
+  const [privProtocol, setPrivProtocol] = useState(
+    current ? (current.privProtocol ?? "") : "aes",
+  );
+  const [privKey, setPrivKey] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  // A stored secret can be kept only while the version stays the same.
+  const stored = current?.version === version ? current : null;
+  const keyPlaceholder = (has: boolean) =>
+    has ? "Gespeichert – leer lassen, um ihn zu behalten" : "";
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await monitoringCall({
+        type: "saveSnmp",
+        tenantId,
+        ...target,
+        credential:
+          version === "v2c"
+            ? { version, community: community || null }
+            : {
+                version,
+                user,
+                authProtocol: authProtocol || null,
+                authKey: authProtocol ? authKey || null : null,
+                privProtocol: authProtocol ? privProtocol || null : null,
+                privKey: authProtocol && privProtocol ? privKey || null : null,
+              },
+      });
+      onSaved();
+    } catch (failure) {
+      setError(message(failure));
+      setSaving(false);
+    }
+  };
+  const remove = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await monitoringCall({ type: "deleteSnmp", tenantId, ...target });
+      onSaved();
+    } catch (failure) {
+      setError(message(failure));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog onClose={onClose} title={title}>
+      <form
+        autoComplete="off"
+        className="monitoring-form"
+        onSubmit={(event) => void submit(event)}
+      >
+        <p className="monitoring-muted">{hint}</p>
+        <p className="monitoring-muted">
+          Gespeichert: <strong>{snmpSummaryLabel(current)}</strong>
+        </p>
+        <label className="monitoring-field">
+          <span>Version</span>
+          <select
+            onChange={(event) =>
+              setVersion(event.target.value === "v2c" ? "v2c" : "v3")
+            }
+            value={version}
+          >
+            <option value="v3">SNMP v3 (empfohlen)</option>
+            <option value="v2c">SNMP v2c</option>
+          </select>
+        </label>
+        {version === "v2c" ? (
+          <label className="monitoring-field">
+            <span>Community</span>
+            <input
+              autoComplete="new-password"
+              maxLength={128}
+              onChange={(event) => setCommunity(event.target.value)}
+              placeholder={keyPlaceholder(!!stored)}
+              required={!stored}
+              type="password"
+              value={community}
+            />
+          </label>
+        ) : (
+          <>
+            <label className="monitoring-field">
+              <span>Benutzer</span>
+              <input
+                autoComplete="off"
+                maxLength={64}
+                onChange={(event) => setUser(event.target.value)}
+                required
+                type="text"
+                value={user}
+              />
+            </label>
+            <label className="monitoring-field">
+              <span>Authentifizierung</span>
+              <select
+                onChange={(event) => setAuthProtocol(event.target.value)}
+                value={authProtocol}
+              >
+                <option value="">Keine</option>
+                {SNMP_AUTH_OPTIONS.map((protocol) => (
+                  <option key={protocol} value={protocol}>
+                    {snmpProtocolLabel(protocol)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {authProtocol ? (
+              <>
+                <label className="monitoring-field">
+                  <span>Authentifizierungsschlüssel</span>
+                  <input
+                    autoComplete="new-password"
+                    maxLength={128}
+                    minLength={8}
+                    onChange={(event) => setAuthKey(event.target.value)}
+                    placeholder={keyPlaceholder(!!stored?.authProtocol)}
+                    required={!stored?.authProtocol}
+                    type="password"
+                    value={authKey}
+                  />
+                </label>
+                <label className="monitoring-field">
+                  <span>Verschlüsselung</span>
+                  <select
+                    onChange={(event) => setPrivProtocol(event.target.value)}
+                    value={privProtocol}
+                  >
+                    <option value="">Keine</option>
+                    {SNMP_PRIV_OPTIONS.map((protocol) => (
+                      <option key={protocol} value={protocol}>
+                        {snmpProtocolLabel(protocol)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {privProtocol ? (
+                  <label className="monitoring-field">
+                    <span>Verschlüsselungsschlüssel</span>
+                    <input
+                      autoComplete="new-password"
+                      maxLength={128}
+                      minLength={8}
+                      onChange={(event) => setPrivKey(event.target.value)}
+                      placeholder={keyPlaceholder(!!stored?.privProtocol)}
+                      required={!stored?.privProtocol}
+                      type="password"
+                      value={privKey}
+                    />
+                  </label>
+                ) : null}
+              </>
+            ) : null}
+          </>
+        )}
+        <p className="monitoring-muted">
+          Die Schlüssel werden verschlüsselt gespeichert und nie wieder
+          angezeigt. Die Sonde (ab Version 1.4.0) übernimmt sie innert einer
+          Minute; Einträge aus nextDesk haben Vorrang vor der config.json.
+        </p>
+        {error ? <p className="form-error">{error}</p> : null}
+        <div className="monitoring-form__actions">
+          {current ? (
+            confirmRemove ? (
+              <button
+                className="primary-button monitoring-danger"
+                disabled={saving}
+                onClick={() => void remove()}
+                type="button"
+              >
+                Wirklich entfernen
+              </button>
+            ) : (
+              <button
+                className="secondary-button"
+                disabled={saving}
+                onClick={() => setConfirmRemove(true)}
+                type="button"
+              >
+                Entfernen
+              </button>
+            )
+          ) : null}
+          <button className="secondary-button" onClick={onClose} type="button">
+            Abbrechen
+          </button>
+          <button className="primary-button" disabled={saving} type="submit">
+            Speichern
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Name and state of a probe, and a new token for it. */
+function AgentDialog({
+  tenantId,
+  agent,
+  canManageSnmp,
+  onClose,
+  onSaved,
+}: {
+  tenantId: string;
+  canManageSnmp: boolean;
   agent: MonitoringAgent;
   onClose: () => void;
   onSaved: () => void;
@@ -4373,6 +4648,7 @@ function AgentDialog({
   const [confirmToken, setConfirmToken] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [snmpOpen, setSnmpOpen] = useState(false);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -4410,6 +4686,20 @@ function AgentDialog({
     }
   };
 
+  if (snmpOpen) {
+    return (
+      <SnmpDialog
+        current={agent.snmp ?? null}
+        hint={`Standard der Sonde «${agent.name}» für alle Geräte ohne eigene Zugangsdaten.`}
+        onClose={() => setSnmpOpen(false)}
+        onSaved={onSaved}
+        target={{ agentId: agent.id }}
+        tenantId={tenantId}
+        title="SNMP-Standard der Sonde"
+      />
+    );
+  }
+
   return (
     <Dialog
       onClose={token ? onSaved : onClose}
@@ -4445,6 +4735,26 @@ function AgentDialog({
             </span>
           </span>
         </label>
+        {canManageSnmp ? (
+          <div className="monitoring-package">
+            <div>
+              <strong>SNMP-Standard</strong>
+              <span className="monitoring-muted">
+                {snmpSummaryLabel(agent.snmp)}. Gilt für alle Geräte dieser
+                Sonde ohne eigene Zugangsdaten.
+              </span>
+            </div>
+            <button
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => setSnmpOpen(true)}
+              type="button"
+            >
+              <KeyRound aria-hidden="true" size={16} />
+              {agent.snmp ? "Ändern" : "Festlegen"}
+            </button>
+          </div>
+        ) : null}
         <div className="monitoring-package">
           <div>
             <strong>Token</strong>

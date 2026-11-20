@@ -1605,6 +1605,14 @@ const HANDLERS = {
     if (body.type === "device") {
       return ok({
         canManage: true,
+        canManageSnmp: true,
+        snmp: {
+          version: "v3",
+          user: "nextdesk-ro",
+          authProtocol: "sha256",
+          privProtocol: "aes",
+          updatedAt: "2026-11-20T08:00:00Z",
+        },
         serviceOptions: [
           { id: D.uid("31313131", 1), name: "ERP", category: "Allgemein" },
           { id: D.uid("31313131", 2), name: "E-Mail", category: "Allgemein" },

@@ -6,6 +6,7 @@ import {
   type LocalConfig,
   type ServerConfig,
   snmpCredentialFor,
+  snmpCredentialOf,
 } from "./config.ts";
 import { log } from "./log.ts";
 import type { LldpNeighbor, MacTableEntry } from "./reports.ts";
@@ -40,7 +41,7 @@ function session(config: LocalConfig, target: Target): Session {
   const credential = snmpCredentialFor(config, target.host, target.version);
   if (!credential) {
     throw new Error(
-      `Keine SNMP-Zugangsdaten (${target.version}) für ${target.host} in config.json`,
+      `Keine SNMP-Zugangsdaten (${target.version}) für ${target.host} (weder in nextDesk noch in config.json)`,
     );
   }
   const options = {
@@ -82,10 +83,11 @@ function session(config: LocalConfig, target: Target): Session {
  * nextDesk does not prescribe the SNMP version.
  */
 export function openSession(config: LocalConfig, host: string): Session {
-  const credential =
-    config.snmp.hosts[host.toLowerCase()] ?? config.snmp.default;
+  const credential = snmpCredentialOf(config, host);
   if (!credential) {
-    throw new Error(`Keine SNMP-Zugangsdaten für ${host} in config.json`);
+    throw new Error(
+      `Keine SNMP-Zugangsdaten für ${host} (weder in nextDesk noch in config.json)`,
+    );
   }
   return session(config, {
     host,
@@ -105,10 +107,11 @@ export function collectLinks(
   config: LocalConfig,
   host: string,
 ): Promise<SnmpResult> {
-  const credential =
-    config.snmp.hosts[host.toLowerCase()] ?? config.snmp.default;
+  const credential = snmpCredentialOf(config, host);
   if (!credential) {
-    throw new Error(`Keine SNMP-Zugangsdaten für ${host} in config.json`);
+    throw new Error(
+      `Keine SNMP-Zugangsdaten für ${host} (weder in nextDesk noch in config.json)`,
+    );
   }
   return collectSnmp(config, {
     host,
