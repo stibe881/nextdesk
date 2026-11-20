@@ -2600,7 +2600,8 @@ Mit dem Recht «Assets verwalten» können Sie zusätzlich:
    **Betroffene Dienste** (im Sensor-Dialog): Ohne Auswahl gelten bei einem
    Ausfall die Dienste, die am Gerät in der Infrastruktur hinterlegt sind.
    Soll ein Sensor nur bestimmte Dienste betreffen (z. B. «Port 443» nur
-   den Dienst «Abacus»), wählen Sie sie hier; dann wirkt dieser Sensor nur
+   den Dienst «Abacus»), suchen Sie sie im Suchfeld und kreuzen sie an; die gewählten
+   Dienste stehen oben und lassen sich mit × wieder entfernen; dann wirkt dieser Sensor nur
    auf diese Dienste. Die Störung nennt sie, der Systemstatus der Dienste
    wechselt, und – wenn in den Einstellungen eingeschaltet – erscheint der
    Ausfall als Banner und auf der Statusseite, sobald jemand die Störung
@@ -3113,7 +3114,6 @@ laufende Inventur, die nicht mehr gebraucht wird, entfernen Sie in der Liste mit
 Bestand bleibt unverändert, und im Audit-Protokoll steht «Inventur gelöscht».
 Abgeschlossene Inventuren lassen sich nicht löschen. Löschen dürfen alle, die
 Inventuren starten dürfen (Recht «Lagerorte und Artikelstammdaten verwalten»).
-
 
 ## Eintritte und Austritte
 
