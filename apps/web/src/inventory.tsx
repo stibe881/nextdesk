@@ -2357,6 +2357,7 @@ function InventoryItems({
                   <td className="inventory__num">
                     <span
                       className={`inventory__available${
+                        item.minQuantity > 0 &&
                         item.availableQuantity <= item.minQuantity
                           ? " inventory__available--low"
                           : ""

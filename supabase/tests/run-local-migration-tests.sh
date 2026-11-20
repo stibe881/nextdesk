@@ -17305,4 +17305,51 @@ $$;
 rollback;
 SQL
 
+# Ohne Mindestbestand (0, z. B. Software) gibt es keinen Unterbestand
+# (Migration 0375): keine neue Episode, aber mit Mindestbestand weiterhin.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'a7300000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_loc uuid;
+  v_with uuid;
+  v_without uuid;
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'ohne-minimum@example.ch', 'Ohne Minimum');
+  update public.tenant_feature_flags set enabled = true
+  where tenant_id = v_tenant and feature_key in ('inventory.management', 'notifications.push');
+  insert into public.inventory_locations (tenant_id, code, name)
+  values (v_tenant, 'l1', 'L1') returning id into v_loc;
+  insert into public.inventory_items (tenant_id, article_number, name, minimum_quantity, target_quantity)
+  values (v_tenant, 'mit-minimum', 'Mit Minimum', 5, 10) returning id into v_with;
+  insert into public.inventory_items (tenant_id, article_number, name, minimum_quantity, target_quantity)
+  values (v_tenant, 'ohne-minimum', 'Software', 0, 0) returning id into v_without;
+  -- Beide Artikel: Bestand 3 eingebucht und wieder ausgebucht (landet bei 0).
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(
+      jsonb_build_object('item_id', v_with, 'location_id', v_loc, 'physical_delta', 3, 'reserved_delta', 0),
+      jsonb_build_object('item_id', v_without, 'location_id', v_loc, 'physical_delta', 3, 'reserved_delta', 0)),
+    null, null);
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_issue',
+    jsonb_build_array(
+      jsonb_build_object('item_id', v_with, 'location_id', v_loc, 'physical_delta', -3, 'reserved_delta', 0),
+      jsonb_build_object('item_id', v_without, 'location_id', v_loc, 'physical_delta', -3, 'reserved_delta', 0)),
+    null, null);
+  if not exists (select 1 from public.inventory_low_stock_episodes
+                 where tenant_id = v_tenant and item_id = v_with) then
+    raise exception 'no minimum: an article with a minimum must still open a low-stock episode';
+  end if;
+  if exists (select 1 from public.inventory_low_stock_episodes
+             where tenant_id = v_tenant and item_id = v_without) then
+    raise exception 'no minimum: an article without a minimum opened a low-stock episode';
+  end if;
+  raise notice 'inventory no-minimum checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

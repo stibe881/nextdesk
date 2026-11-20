@@ -2161,8 +2161,12 @@ export function toWorkspaceContract(
       departmentId: item.departmentId,
     };
   });
+  // Without a minimum (0; e.g. software or loan articles) an article is never low.
   const lowStockItems = publicItems.filter(
-    (item) => item.active && item.availableQuantity <= item.minQuantity,
+    (item) =>
+      item.active &&
+      item.minQuantity > 0 &&
+      item.availableQuantity <= item.minQuantity,
   );
 
   const eventById = new Map(events.map((event) => [event.id, event]));
