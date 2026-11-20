@@ -2515,7 +2515,9 @@ sonst grau.
   vier Ebenen («Standort Baar → Netzwerk → Switch»). Geräte einer
   Unterkategorie stehen eingerückt unter ihrer Überschrift; die Zahl neben
   einer Kategorie zählt alles darunter mit. Jede Überschrift zeigt die Anzahl
-  Geräte und lässt sich ein- und ausklappen; Geräte ohne Zuordnung stehen
+  Geräte und lässt sich ein- und ausklappen. Beim Öffnen der Seite sind alle
+  Kategorien eingeklappt; sobald gesucht oder nach Zustand gefiltert wird,
+  klappen sie auf, damit kein Treffer verborgen bleibt. Geräte ohne Zuordnung stehen
   unter **Ohne Kategorie**. Mit dem Recht «Assets verwalten» legst du über
   **Kategorien** neue an, benennst sie um oder löschst sie. Beim Löschen
   bleiben die Geräte überwacht und stehen wieder unter «Ohne Kategorie»;
