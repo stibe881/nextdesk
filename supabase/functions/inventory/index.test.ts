@@ -1967,3 +1967,39 @@ Deno.test("location: the code is the location, the former designation is an opti
   assertEquals(parsed({ code: "a1", note: "x".repeat(501) }), null);
   assertEquals(parsed({ note: "nur Bemerkung" }), null);
 });
+
+Deno.test("workspace: an article without a minimum (0) is never low on stock", () => {
+  const item = (id: string, minimum: string) => ({
+    id,
+    name: `Artikel ${id}`,
+    article_number: `a-${id}`,
+    unit: "each",
+    tracking_mode: "quantity",
+    minimum_quantity: minimum,
+    target_quantity: minimum,
+    active: true,
+  });
+  const ITEM_B = "00000000-0000-4000-8000-0000000000b1";
+  const workspace = toWorkspaceContract(
+    {
+      items: [item(ITEM_ID, "5.000"), item(ITEM_B, "0.000")],
+      locations: [],
+      balances: [],
+      events: [],
+      eventLines: [],
+      primaryImages: [],
+      recentEventsHasMore: false,
+      openReservationCount: 0,
+      activeCountSessionCount: 0,
+      departments: [],
+    },
+    permissions,
+  );
+  assert(workspace !== null, "workspace must map");
+  // No stock at all: only the article with a minimum counts as low.
+  assertEquals(
+    workspace.lowStockItems.map((entry) => entry.id),
+    [ITEM_ID],
+  );
+  assertEquals(workspace.summary.criticalItemCount, 1);
+});

@@ -1294,6 +1294,8 @@ Mehr dazu unter «Wissensdatenbank pflegen».
 3. Unter **Zuständige Abteilung** wählst du die Abteilung, die den Artikel betreut.
 4. Speichere den Artikel.
 
+Software (Kategorie «Software») hat keinen Lagerbestand: Ist diese Kategorie gewählt, entfallen **Mindest- und Zielbestand**, und der Artikel erscheint nie unter «Unter Mindestbestand». Dasselbe gilt für Artikel ohne Mindestbestand (0), z. B. zum Ausleihen.
+
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 ### Wie übernehme ich Artikeldaten von Brack?
