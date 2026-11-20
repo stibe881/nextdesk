@@ -35,6 +35,7 @@ export type BackupSettings = {
   tenant_id: string;
   enabled: boolean;
   department_id: string | null;
+  team_id: string | null;
   priority_key: string | null;
   warning_action: WarningAction;
   auto_resolve: boolean;
@@ -45,7 +46,7 @@ export type BackupSettings = {
 };
 
 export const BACKUP_SETTINGS_COLUMNS =
-  "tenant_id, enabled, department_id, priority_key, warning_action, auto_resolve, default_interval_hours, default_grace_hours, sender_patterns, subject_patterns";
+  "tenant_id, enabled, department_id, team_id, priority_key, warning_action, auto_resolve, default_interval_hours, default_grace_hours, sender_patterns, subject_patterns";
 
 type Job = {
   id: string;
@@ -175,6 +176,7 @@ export async function ingestBackupReport(
         const ticket = await createMonitoringTicket(admin, {
           tenantId: job.tenant_id,
           departmentIds: [job.department_id, settings.department_id],
+          teamId: settings.team_id ?? null,
           priorityKeys: decision.reason === "failed"
             ? [settings.priority_key, "high", "normal"]
             : [settings.priority_key, "normal"],
@@ -310,6 +312,7 @@ export async function checkMissingReports(admin: Admin): Promise<Record<string, 
         const ticket = await createMonitoringTicket(admin, {
           tenantId: job.tenant_id,
           departmentIds: [job.department_id, settings.department_id],
+          teamId: settings.team_id ?? null,
           priorityKeys: [settings.priority_key, "high", "normal"],
           subject: reportTicketSubject(job.name, "missing"),
           description: missingTicketDescription({
