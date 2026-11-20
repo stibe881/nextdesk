@@ -1611,6 +1611,7 @@ export function Inventory({
             <InventoryOverview
               onOpen={setActiveSection}
               onOpenItem={openItem}
+              tenantId={tenantId}
               workspace={workspace}
             />
           ) : null}
@@ -1706,14 +1707,35 @@ export function Inventory({
 function InventoryOverview({
   onOpen,
   onOpenItem,
+  tenantId,
   workspace,
 }: {
+  tenantId: string;
   /** Opens a section of the stock module (the tiles are links). */
   onOpen: (section: InventorySection) => void;
   /** Opens one article in the article list. */
   onOpenItem: (itemId: string) => void;
   workspace: InventoryWorkspace;
 }) {
+  // Wie in der Artikelliste: Hat ein Artikel kein eigenes Bild, gilt das Bild
+  // des verknüpften Shop-Artikels.
+  const [shopImages, setShopImages] = useState<ReadonlyMap<
+    string,
+    ShopLink
+  > | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchShopLinks(tenantId)
+      .then((result) => {
+        if (!cancelled) setShopImages(result.linked);
+      })
+      .catch(() => {
+        // Ohne Shop-Modul gibt es nur die eigenen Lagerbilder.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
   return (
     <>
       <div className="inventory__metrics">
@@ -1760,9 +1782,18 @@ function InventoryOverview({
             <AlertTriangle aria-hidden="true" size={20} />
           </div>
           {workspace.lowStockItems.length ? (
-            <ul className="inventory__list">
+            <ul className="inventory__list inventory__list--thumbs">
               {workspace.lowStockItems.map((item) => (
                 <li key={item.id}>
+                  <InventoryItemImage
+                    canManage={false}
+                    fallbackImageUrl={
+                      shopImages?.get(item.id)?.imageUrl ?? null
+                    }
+                    item={item}
+                    onImagesChanged={async () => true}
+                    tenantId={tenantId}
+                  />
                   <button
                     className="inventory__item-link"
                     onClick={() => onOpenItem(item.id)}
@@ -2036,23 +2067,7 @@ function InventoryItems({
   }, [canManage, createOpenRequestId, openEditor]);
   const loadShop = useCallback(async () => {
     try {
-      const context = await shopApi.context(tenantId);
-      const catalog = await shopApi.catalog(tenantId, context.canManage);
-      const linked = new Map<
-        string,
-        { name: string; active: boolean; kind: string; imageUrl: string | null }
-      >();
-      for (const entry of catalog) {
-        if (entry.inventoryItemId) {
-          linked.set(entry.inventoryItemId, {
-            name: entry.name,
-            active: entry.active,
-            kind: entry.kind,
-            imageUrl: entry.imageUrl ?? null,
-          });
-        }
-      }
-      setShop({ canManage: context.canManage, linked });
+      setShop(await fetchShopLinks(tenantId));
     } catch {
       // Ohne Shop-Modul bleibt die Spalte leer.
       setShop(null);
@@ -2759,6 +2774,33 @@ async function uploadInventoryItemImageFile(
   if (!parseInventoryItemImageCompletion(completeData, itemId)) {
     throw new Error("Ungültige Bildabschluss-Antwort.");
   }
+}
+
+type ShopLink = {
+  name: string;
+  active: boolean;
+  kind: string;
+  imageUrl: string | null;
+};
+
+/** Shop-Artikel, die mit einem Lagerartikel verknüpft sind (inkl. Shop-Bild). */
+async function fetchShopLinks(
+  tenantId: string,
+): Promise<{ canManage: boolean; linked: Map<string, ShopLink> }> {
+  const context = await shopApi.context(tenantId);
+  const catalog = await shopApi.catalog(tenantId, context.canManage);
+  const linked = new Map<string, ShopLink>();
+  for (const entry of catalog) {
+    if (entry.inventoryItemId) {
+      linked.set(entry.inventoryItemId, {
+        name: entry.name,
+        active: entry.active,
+        kind: entry.kind,
+        imageUrl: entry.imageUrl ?? null,
+      });
+    }
+  }
+  return { canManage: context.canManage, linked };
 }
 
 function InventoryItemImage({

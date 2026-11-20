@@ -23995,3 +23995,27 @@ button.inventory__metric--link:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+
+/* Unter Mindestbestand: Artikelbild vor der Bezeichnung. */
+.inventory__list--thumbs > li > .inventory__item-image {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.inventory__list--thumbs > li > .inventory__item-image img,
+.inventory__list--thumbs > li > .inventory__item-image-placeholder,
+.inventory__list--thumbs > li > .inventory__item-image .inventory__item-image-placeholder {
+  border-radius: 8px;
+  height: 48px;
+  width: 48px;
+}
+
+/* Ohne Bild bleibt eine leere Fläche statt eines Textes. */
+.inventory__list--thumbs .inventory__item-image-placeholder {
+  font-size: 0;
+  padding: 0;
+}
+
+.inventory__list--thumbs > li > .inventory__item-link {
+  flex: 1 1 auto;
+}
