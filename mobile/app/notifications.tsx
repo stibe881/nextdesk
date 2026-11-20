@@ -43,6 +43,7 @@ import {
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 import { tn } from "@/lib/formality";
+import { IncidentPushCard } from "@/components/incident-push-card";
 
 const CATEGORY_DETAILS: readonly {
   key: PushCategory;
@@ -711,6 +712,8 @@ export default function NotificationsScreen() {
               </Pressable>
             ) : null}
           </View>
+
+          <IncidentPushCard />
 
           {status?.featureEnabled && status.apnsConfigured ? (
             <>

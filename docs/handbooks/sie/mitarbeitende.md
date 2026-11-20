@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-17
+updated: 2026-11-20
 ---
 
 # Handbuch für Mitarbeitende
@@ -357,6 +357,14 @@ Mehr dazu unter «Persönliche Einstellungen und Handbücher».
 E-Mail-Benachrichtigungen gibt es, sobald Ihr Unternehmen ein
 Exchange-Postfach verbunden hat. Mehr dazu unter «Persönliche Einstellungen und
 Handbücher».
+
+### Wie erhalte ich eine Push-Mitteilung bei Störungen?
+
+1. Klicken Sie unten links auf Ihren **Namen** und öffnen Sie **Benachrichtigungen**. In der App: **Einstellungen → Benachrichtigungen**.
+2. Schalten Sie **Störungen** ein.
+3. Wählen Sie unter **Dienste**, für welche Dienste Sie informiert werden wollen. Ohne Auswahl gilt **Alle**.
+
+Die Mitteilung kommt auf iPhone und Android, sobald eine Störung gemeldet wird – dann, wenn auch der Banner erscheint. Mehr dazu unter «Persönliche Einstellungen und Handbücher».
 
 ### Wie lege ich fest, wann ich Benachrichtigungen erhalte?
 
@@ -778,6 +786,13 @@ Einstellungen** zu öffnen:
 
 ![Benachrichtigungen: Push und E-Mail pro Benachrichtigung](images/ma-benachrichtigungen.jpg)
 
+- **Störungen** (unter Benachrichtigungen) – eine Push-Mitteilung auf iPhone
+  und Android, sobald die ICT eine Störung meldet, also dann, wenn auch der
+  Banner erscheint. Nach dem Einschalten wählen Sie unter **Dienste**, für
+  welche Dienste Sie informiert werden wollen (**Alle**, **Keine** oder
+  einzelne); Störungen ohne zugeordneten Dienst werden immer gemeldet. Die
+  Mitteilung kommt sofort, unabhängig von der Benachrichtigungszeit, und
+  braucht die nextDesk-App mit erlaubten Mitteilungen.
 - **Sitzungsverwaltung** – alle anderen Geräte abmelden
 - **Abmelden** und **Konto löschen**. Melden Sie sich mit SSO Ihres
   Unternehmens an, wird Ihr Konto von Ihrem Unternehmen verwaltet und kann

@@ -1,3 +1,4 @@
+import { sendIncidentPushes } from "../_shared/incident-push.ts";
 import { withSupabase } from "@supabase/server";
 import {
   type AgentConfig,
@@ -831,7 +832,13 @@ const handler = withSupabase(
         } catch (failure) {
           console.error("monitoring_maintenance_pauses_failed", failure instanceof Error ? failure.message : "");
         }
-        return reply({ ok: true, ...watchdog, ...cloud, ...maintenance });
+        let incidentPushes: Record<string, number> = {};
+        try {
+          incidentPushes = await sendIncidentPushes(context.supabaseAdmin);
+        } catch (failure) {
+          console.error("incident_push_failed", failure instanceof Error ? failure.message : "");
+        }
+        return reply({ ok: true, ...watchdog, ...cloud, ...maintenance, ...incidentPushes });
       } catch (failure) {
         console.error("monitoring_probe_watchdog_failed", failure instanceof Error ? failure.message : "");
         return reply({ ok: false, error: "processing_failed" }, 500);

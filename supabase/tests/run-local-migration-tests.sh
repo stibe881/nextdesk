@@ -17055,4 +17055,128 @@ $$;
 rollback;
 SQL
 
+# 0374: Dienste intern/extern und Push «Störungen» für Mitarbeitende.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_all uuid := gen_random_uuid();
+  v_some uuid := gen_random_uuid();
+  v_off uuid := gen_random_uuid();
+  v_external uuid;
+  v_other uuid;
+  v_internal uuid;
+  v_notice uuid;
+  v_users uuid[];
+  v_claim jsonb;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  insert into auth.users (id) values (v_all), (v_some), (v_off);
+  insert into public.user_profiles (id, display_name)
+  values (v_all, 'Alle Dienste'), (v_some, 'Ein Dienst'), (v_off, 'Aus');
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_tenant, v_all, 'active', now()), (v_tenant, v_some, 'active', now()),
+         (v_tenant, v_off, 'active', now());
+  insert into public.services (tenant_id, name) values (v_tenant, 'E-Mail 0374') returning id into v_external;
+  insert into public.services (tenant_id, name) values (v_tenant, 'Telefonie 0374') returning id into v_other;
+  insert into public.services (tenant_id, name, audience)
+  values (v_tenant, 'Backup 0374', 'internal') returning id into v_internal;
+  if (select audience from public.services where id = v_external) <> 'external' then
+    raise exception 'incident push: services are not external by default';
+  end if;
+  insert into public.service_incident_push_subscriptions (tenant_id, user_id, enabled, service_ids)
+  values (v_tenant, v_all, true, null), (v_tenant, v_some, true, array[v_other]),
+         (v_tenant, v_off, false, null);
+
+  -- Externer Dienst: «alle» bekommt die Meldung, die Auswahl «Telefonie» nicht.
+  insert into public.service_incident_notices (tenant_id, title, description, created_by)
+  values (v_tenant, 'E-Mail gestört', 'Untersuchung läuft.', v_all) returning id into v_notice;
+  insert into public.service_incident_notice_services (tenant_id, notice_id, service_id)
+  values (v_tenant, v_notice, v_external), (v_tenant, v_notice, v_internal);
+  if not exists (select 1 from public.service_incident_push_queue where notice_id = v_notice) then
+    raise exception 'incident push: notice was not queued';
+  end if;
+  select coalesce(array_agg(u), '{}') into v_users from public.service_incident_push_recipients(v_notice) u;
+  if v_users <> array[v_all] then
+    raise exception 'incident push: wrong recipients for an external service (%)', v_users;
+  end if;
+  if public.service_incident_notice_internal_only(v_notice) then
+    raise exception 'incident push: mixed notice counted as internal';
+  end if;
+
+  -- Noch nicht fällig (15 Sekunden Wartezeit), danach genau einmal.
+  if public.service_incident_push_due()
+     or jsonb_array_length(public.service_incident_push_claim(20)) <> 0 then
+    raise exception 'incident push: claimed too early';
+  end if;
+  update public.service_incident_push_queue set created_at = created_at - interval '1 minute'
+   where notice_id = v_notice;
+  if not public.service_incident_push_due() then
+    raise exception 'incident push: not due';
+  end if;
+  v_claim := public.service_incident_push_claim(20);
+  if jsonb_array_length(v_claim) <> 1
+     or v_claim -> 0 ->> 'title' <> 'E-Mail gestört'
+     or v_claim -> 0 -> 'services' <> '["E-Mail 0374"]'::jsonb
+     or v_claim -> 0 -> 'userIds' <> to_jsonb(array[v_all]) then
+    raise exception 'incident push: wrong claim (%)', v_claim;
+  end if;
+  if jsonb_array_length(public.service_incident_push_claim(20)) <> 0 then
+    raise exception 'incident push: claimed twice';
+  end if;
+
+  -- Nur interner Dienst: niemand, und für Mitarbeitende unsichtbar.
+  insert into public.service_incident_notices (tenant_id, title, description, created_by)
+  values (v_tenant, 'Backup gestört', 'Untersuchung läuft.', v_all) returning id into v_notice;
+  insert into public.service_incident_notice_services (tenant_id, notice_id, service_id)
+  values (v_tenant, v_notice, v_internal);
+  if exists (select 1 from public.service_incident_push_recipients(v_notice))
+     or not public.service_incident_notice_internal_only(v_notice) then
+    raise exception 'incident push: internal notice reached employees';
+  end if;
+
+  -- Ohne Dienst: alle mit eingeschalteter Bestellung, auch mit Auswahl.
+  insert into public.service_incident_notices (tenant_id, title, description, created_by)
+  values (v_tenant, 'Allgemeine Störung', 'Untersuchung läuft.', v_all) returning id into v_notice;
+  if (select count(*) from public.service_incident_push_recipients(v_notice)) <> 2
+     or public.service_incident_notice_internal_only(v_notice) then
+    raise exception 'incident push: notice without services not sent to all subscribers';
+  end if;
+
+  -- Gewählter Dienst trifft; alte Meldungen werden nur abgehakt.
+  insert into public.service_incident_notices (tenant_id, title, description, created_by)
+  values (v_tenant, 'Telefonie gestört', 'Untersuchung läuft.', v_all) returning id into v_notice;
+  insert into public.service_incident_notice_services (tenant_id, notice_id, service_id)
+  values (v_tenant, v_notice, v_other);
+  if (select count(*) from public.service_incident_push_recipients(v_notice)) <> 2 then
+    raise exception 'incident push: chosen service did not match';
+  end if;
+  update public.service_incident_push_queue set created_at = created_at - interval '2 hours'
+   where processed_at is null;
+  if jsonb_array_length(public.service_incident_push_claim(20)) <> 0 then
+    raise exception 'incident push: stale notices were sent';
+  end if;
+  if exists (select 1 from public.service_incident_push_queue where processed_at is null) then
+    raise exception 'incident push: stale notices were kept';
+  end if;
+
+  -- Eine bereits behobene Meldung wird nicht eingereiht.
+  insert into public.service_incident_notices (tenant_id, title, description, status, resolved_at, created_by)
+  values (v_tenant, 'Schon behoben', 'Erledigt.', 'resolved', timezone('utc', now()), v_all)
+  returning id into v_notice;
+  if exists (select 1 from public.service_incident_push_queue where notice_id = v_notice) then
+    raise exception 'incident push: resolved notice queued';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.service_incident_push_subscriptions', 'select')
+     or has_function_privilege('authenticated', 'public.service_incident_push_claim(integer)', 'execute') then
+    raise exception 'incident push: reachable for authenticated';
+  end if;
+  raise notice 'service audience and incident push checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

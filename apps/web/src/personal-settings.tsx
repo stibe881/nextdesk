@@ -12,6 +12,7 @@ import {
 import { useEffect, useState, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 
+import { IncidentPushSettingsSection } from "./incident-push-settings";
 import { tn } from "./lib/formality";
 import { HandbookCard, HandbookViewer } from "./handbooks";
 import { deleteAccount } from "./lib/account";
@@ -902,6 +903,7 @@ export function PersonalSettings({
               </table>
             </section>
           ) : null}
+          <IncidentPushSettingsSection tenantId={tenantId} />
           {pushStatusState === "loaded" && pushStatus?.devices.length === 0 ? (
             <p className="personal-settings__hint">
               {tn(

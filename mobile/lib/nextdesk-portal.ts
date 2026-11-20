@@ -168,6 +168,13 @@ type AgentWorkbenchAction =
 
 type RequesterPortalAction =
   | { type: "activeIncidentNotices"; tenantId: string }
+  | { type: "incidentPushSettings"; tenantId: string }
+  | {
+      type: "saveIncidentPushSettings";
+      tenantId: string;
+      enabled: boolean;
+      serviceIds: string[] | null;
+    }
   | { type: "myDevices"; tenantId: string }
   | { type: "myApprovals"; tenantId: string }
   | { type: "listTicketWatchers"; tenantId: string; ticketId: string }
@@ -328,6 +335,43 @@ export async function listActiveIncidentNotices(): Promise<{
   return invokeTenantFunction("requester-portal", {
     type: "activeIncidentNotices",
   });
+}
+
+/** Bestellung der Push-Mitteilungen «Störungen». */
+export type IncidentPushSettings = {
+  enabled: boolean;
+  /** `null`: alle externen Dienste. */
+  serviceIds: string[] | null;
+  services: { id: string; name: string }[];
+};
+
+export async function getIncidentPushSettings(): Promise<IncidentPushSettings> {
+  return invokeTenantFunction("requester-portal", {
+    type: "incidentPushSettings",
+  });
+}
+
+export async function saveIncidentPushSettings(
+  settings: Pick<IncidentPushSettings, "enabled" | "serviceIds">,
+): Promise<IncidentPushSettings> {
+  return invokeTenantFunction("requester-portal", {
+    type: "saveIncidentPushSettings",
+    enabled: settings.enabled,
+    serviceIds: settings.serviceIds,
+  });
+}
+
+/** Schaltet einen Dienst um; sind danach alle gewählt, gilt wieder «alle». */
+export function toggleIncidentService(
+  settings: IncidentPushSettings,
+  serviceId: string,
+): string[] | null {
+  const all = settings.services.map((service) => service.id);
+  const current = new Set(settings.serviceIds ?? all);
+  if (current.has(serviceId)) current.delete(serviceId);
+  else current.add(serviceId);
+  const next = all.filter((id) => current.has(id));
+  return next.length === all.length ? null : next;
 }
 
 export async function listMyDevices(): Promise<{
