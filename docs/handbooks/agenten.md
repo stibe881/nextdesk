@@ -1193,6 +1193,14 @@ Mehr dazu unter «Überwachung».
 
 Mehr dazu unter «Überwachung».
 
+### Wie lege ich fest, ob ein Dienst intern oder extern ist?
+
+1. Öffne **Dienste** und bearbeite den Dienst.
+2. Schalte **Interner Dienst** ein, wenn der Dienst nur die IT betrifft. Ausgeschaltet gilt er als extern.
+3. Speichere den Dienst.
+
+Bei Störungsmeldungen, die nur interne Dienste betreffen, erhalten Mitarbeitende weder Banner noch Push-Mitteilung. Mehr dazu unter «Dienste und Systemstatus».
+
 ### Wie sehe ich die Verfügbarkeit eines Dienstes?
 
 1. Öffne **Dienste**.
@@ -3035,6 +3043,17 @@ Die Liste unter **Dienste** ist nach Kategorie gegliedert (Ort · Kategorie,
 Dienste ohne Zuordnung unter «Ohne Kategorie»). Ein Klick auf eine
 Kategorienzeile klappt deren Dienste ein und wieder aus; die Zahl daneben
 nennt die Anzahl der Dienste.
+
+**Intern oder extern**: Im Formular eines Dienstes legt der Schalter
+**Interner Dienst** fest, wen eine Störung betrifft. Neue und bestehende
+Dienste sind extern. Betrifft eine Störungsmeldung nur interne Dienste, sehen
+Mitarbeitende keinen Banner und erhalten keine Push-Mitteilung; Agenten sehen
+jede Meldung. Nennt eine Meldung interne und externe Dienste, sehen
+Mitarbeitende sie mit den externen Diensten. Für externe Dienste können sich
+alle unter **Benachrichtigungen → Störungen** eine Push-Mitteilung auf iPhone
+und Android bestellen, für alle oder einzelne Dienste; sie kommt innert rund
+einer Minute, sobald die Meldung erscheint. Meldungen ohne zugeordneten Dienst
+gehen an alle, die «Störungen» eingeschaltet haben.
 
 Unter **Dienste** öffnet **Details** bei einem Dienst die Dienstansicht:
 

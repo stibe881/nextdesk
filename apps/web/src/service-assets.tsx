@@ -72,6 +72,8 @@ type Service = {
   criticality: Criticality;
   status: ServiceStatus;
   status_public: boolean;
+  /** «internal»: nur die IT wird über Störungen informiert. */
+  audience: "internal" | "external";
   primary_responsible_id: string | null;
   secondary_responsible_id: string | null;
   service_category_id: string | null;
@@ -160,6 +162,7 @@ type ServiceForm = {
   criticality: Criticality;
   status: ServiceStatus;
   statusPublic: boolean;
+  internal: boolean;
   primaryResponsibleId: string;
   secondaryResponsibleId: string;
   categoryId: string;
@@ -278,6 +281,7 @@ type ServiceSaveRequest = {
   criticality: Criticality;
   status: ServiceStatus;
   statusPublic: boolean;
+  audience: "internal" | "external";
   primaryResponsibleId: string | null;
   secondaryResponsibleId: string | null;
   categoryId?: string | null;
@@ -401,6 +405,7 @@ const EMPTY_SERVICE_FORM: ServiceForm = {
   criticality: "medium",
   status: "operational",
   statusPublic: false,
+  internal: false,
   primaryResponsibleId: "",
   secondaryResponsibleId: "",
   categoryId: "",
@@ -653,6 +658,18 @@ function ServiceEditorFields({
                 setServiceForm((current) => ({
                   ...current,
                   statusPublic: checked,
+                }))
+              }
+            />
+            <FormSwitch
+              checked={serviceForm.internal}
+              disabled={controlsDisabled}
+              hint="Betrifft nur die IT: Mitarbeitende erhalten zu Störungen dieses Dienstes weder Banner noch Push-Mitteilung. Ausgeschaltet gilt der Dienst als extern."
+              label="Interner Dienst"
+              onChange={(checked) =>
+                setServiceForm((current) => ({
+                  ...current,
+                  internal: checked,
                 }))
               }
             />
@@ -1075,6 +1092,7 @@ function parseService(value: unknown): Service | null {
     criticality: value.criticality,
     status: value.status,
     status_public: value.status_public,
+    audience: value.audience === "internal" ? "internal" : "external",
     primary_responsible_id: primaryResponsibleId,
     secondary_responsible_id: secondaryResponsibleId,
     service_category_id: serviceCategoryId,
@@ -1782,6 +1800,7 @@ function serviceDraft(service: Service): ServiceForm {
     criticality: service.criticality,
     status: service.status,
     statusPublic: service.status_public,
+    internal: service.audience === "internal",
     primaryResponsibleId: service.primary_responsible_id ?? "",
     secondaryResponsibleId: service.secondary_responsible_id ?? "",
     categoryId: service.service_category_id ?? "",
@@ -2879,6 +2898,7 @@ export function ServiceAssets({
         criticality: serviceForm.criticality,
         status: serviceForm.status,
         statusPublic: serviceForm.statusPublic,
+        audience: serviceForm.internal ? "internal" : "external",
         primaryResponsibleId: serviceForm.primaryResponsibleId || null,
         secondaryResponsibleId: serviceForm.secondaryResponsibleId || null,
         ...(supportsServiceCategories
@@ -3007,6 +3027,7 @@ export function ServiceAssets({
         criticality: patch.criticality ?? service.criticality,
         status: service.status,
         statusPublic: service.status_public,
+        audience: service.audience,
         primaryResponsibleId: primaryResponsibleId || null,
         secondaryResponsibleId: secondaryResponsibleId || null,
         ...(supportsServiceCategories
