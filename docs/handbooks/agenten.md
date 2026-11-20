@@ -2632,7 +2632,8 @@ Mit dem Recht «Assets verwalten» kannst du zusätzlich:
    **Betroffene Dienste** (im Sensor-Dialog): Ohne Auswahl gelten bei einem
    Ausfall die Dienste, die am Gerät in der Infrastruktur hinterlegt sind.
    Soll ein Sensor nur bestimmte Dienste betreffen (z. B. «Port 443» nur
-   den Dienst «Abacus»), suchst du sie im Suchfeld und kreuzt sie an; die gewählten
+   den Dienst «Abacus»), suchst du sie im Suchfeld und kreuzt sie an; die Liste ist nach
+   Kategorie gegliedert, und die Suche findet auch Kategorien; die gewählten
    Dienste stehen oben und lassen sich mit × wieder entfernen; dann wirkt dieser Sensor nur
    auf diese Dienste. Die Störung nennt sie, der Systemstatus der Dienste
    wechselt, und – wenn in den Einstellungen eingeschaltet – erscheint der
@@ -2990,6 +2991,11 @@ Adressen, eine Adresse ihre Details.
 ![Neues Ticket als Agent erfassen](images/ag-neues-ticket.jpg)
 
 ## Dienste und Systemstatus
+
+Die Liste unter **Dienste** ist nach Kategorie gegliedert (Ort · Kategorie,
+Dienste ohne Zuordnung unter «Ohne Kategorie»). Ein Klick auf eine
+Kategorienzeile klappt deren Dienste ein und wieder aus; die Zahl daneben
+nennt die Anzahl der Dienste.
 
 Unter **Dienste** öffnet **Details** bei einem Dienst die Dienstansicht:
 

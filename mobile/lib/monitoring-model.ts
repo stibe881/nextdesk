@@ -148,7 +148,7 @@ export type MonitoringDeviceDetail = {
     incident: MonitoringIncident | null;
   };
   /** Services of the status page a sensor can be linked to. */
-  serviceOptions?: { id: string; name: string }[];
+  serviceOptions?: { id: string; name: string; category?: string | null }[];
   /** Own device kinds of the tenant (for editing). */
   kinds?: string[];
   sensors: MonitoringSensor[];
@@ -320,6 +320,39 @@ export function eventTime(iso: string, now: number): string {
   return sameDay
     ? time
     : `${at.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit" })} ${time}`;
+}
+
+/**
+ * Services under their category, filtered by a search text (name or
+ * category). Services without category come last.
+ */
+export function groupServiceOptions<
+  T extends { name: string; category?: string | null },
+>(
+  services: readonly T[],
+  search: string,
+): { category: string; services: T[] }[] {
+  const term = search.trim().toLowerCase();
+  const groups = new Map<string, T[]>();
+  for (const service of services) {
+    const category = service.category ?? "Ohne Kategorie";
+    if (
+      term &&
+      !service.name.toLowerCase().includes(term) &&
+      !category.toLowerCase().includes(term)
+    ) {
+      continue;
+    }
+    groups.set(category, [...(groups.get(category) ?? []), service]);
+  }
+  return [...groups.entries()]
+    .map(([category, entries]) => ({ category, services: entries }))
+    .sort(
+      (a, b) =>
+        Number(a.category === "Ohne Kategorie") -
+          Number(b.category === "Ohne Kategorie") ||
+        a.category.localeCompare(b.category, "de"),
+    );
 }
 
 export type AvailabilityRange = "7d" | "30d" | "1y";

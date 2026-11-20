@@ -7,6 +7,7 @@ import {
   formatSince,
   categoryText,
   connectedPorts,
+  groupServiceOptions,
   eventCountsText,
   eventText,
   type MonitoringEvent,
@@ -490,5 +491,32 @@ describe("Überwachung: Letzte Ereignisse", () => {
     expect(eventCountsText({ down: 0, warning: 0, up: 0 })).toBe(
       "keine Ereignisse",
     );
+  });
+});
+
+describe("Überwachung: Dienste nach Kategorien", () => {
+  const services = [
+    { id: "1", name: "Abacus", category: "Allgemein" },
+    { id: "2", name: "Claude AI", category: "Allgemein · KI" },
+    { id: "3", name: "Anlassbestellungen", category: "Apps" },
+    { id: "4", name: "Sonstiges", category: null },
+  ];
+
+  it("gruppiert und stellt «Ohne Kategorie» ans Ende", () => {
+    expect(
+      groupServiceOptions(services, "").map((group) => group.category),
+    ).toEqual(["Allgemein", "Allgemein · KI", "Apps", "Ohne Kategorie"]);
+  });
+
+  it("sucht in Name und Kategorie", () => {
+    expect(
+      groupServiceOptions(services, "apps").flatMap((group) =>
+        group.services.map((service) => service.name),
+      ),
+    ).toEqual(["Anlassbestellungen"]);
+    expect(groupServiceOptions(services, "ki")[0]?.services[0]?.name).toBe(
+      "Claude AI",
+    );
+    expect(groupServiceOptions(services, "zzz")).toEqual([]);
   });
 });
