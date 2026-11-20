@@ -271,6 +271,11 @@ export default function PhishingCaseScreen() {
             {detail.verdict ? (
               <Text style={styles.badge}>{VERDICT_LABELS[detail.verdict]}</Text>
             ) : null}
+            {analysis.simulation ? (
+              <Text style={[styles.badge, styles.badgeOk]}>
+                Phishing-Simulation · {analysis.simulation}
+              </Text>
+            ) : null}
           </View>
           <Text style={styles.titleSmall}>
             {detail.subject ?? analysis.subject ?? "(ohne Betreff)"}

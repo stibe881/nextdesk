@@ -6,6 +6,7 @@ import {
   claimsInternalRole,
   decodeEncodedWords,
   defang,
+  detectSimulation,
   detectLookalike,
   extractLinks,
   fakeEndingInHost,
@@ -482,4 +483,23 @@ Deno.test("Vorgetäuschte Domain-Endung im Link wird erkannt", () => {
   const link = analyzeLink("https://hr-abteilung.ch-secure.com/form.php", null);
   const hit = link.findings.find((entry) => entry.code === "fake_domain_ending");
   equal(hit?.severity, "high", "hit?.severity");
+});
+
+Deno.test("agreed phishing simulation (Hornetsecurity) is recognised only with both signals", () => {
+  const server = {
+    name: "x-forefront-antispam-report",
+    value: "CIP:94.100.132.73;CTRY:DE;SFV:NSPM;PTR:awareness-mta.hornetsecurity.com;CAT:NONE;",
+  };
+  const marker = { name: "x-itseal", value: "29441468e52c0b232a" };
+  const disclaimer = {
+    name: "x-disclaimer",
+    value: "This email was set up by Hornetsecurity GmbH to simulate phishing attacks on your company.",
+  };
+  if (detectSimulation([server, marker]) !== "Hornetsecurity") throw new Error("itseal not detected");
+  if (detectSimulation([server, disclaimer]) !== "Hornetsecurity") throw new Error("disclaimer not detected");
+  // A forged marker without the provider's server is not trusted.
+  if (detectSimulation([marker, disclaimer]) !== null) throw new Error("forged marker accepted");
+  if (detectSimulation([{ ...server, value: "PTR:mail.evil-hornetsecurity.com.example;" }, marker]) !== null) {
+    throw new Error("look-alike server accepted");
+  }
 });

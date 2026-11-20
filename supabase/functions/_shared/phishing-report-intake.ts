@@ -465,6 +465,34 @@ export function storedOriginalMail(mail: ParsedMail) {
   };
 }
 
+async function closeSimulationCase(
+  admin: Admin,
+  tenantId: string,
+  ticketId: string,
+  provider: string,
+  noteAuthorId: string,
+) {
+  // Case and ticket closed in one step; the status rule «Neu only with an
+  // assignee» allows this for simulations (migration 0378).
+  const closed = await admin.rpc("security_case_close_simulation", {
+    p_tenant_id: tenantId,
+    p_ticket_id: ticketId,
+  });
+  if (closed.error || closed.data !== true) return;
+  await admin.from("ticket_comments").insert({
+    ticket_id: ticketId,
+    author_id: noteAuthorId,
+    visibility: "internal",
+    body: `Phishing-Simulation von ${provider} erkannt (vereinbartes Awareness-Training): automatisch als «Phishing» beurteilt und abgeschlossen, ohne Alarmierung. Keine Massnahmen nötig.`,
+  });
+  await admin.from("ticket_events").insert({
+    ticket_id: ticketId,
+    actor_id: null,
+    event_type: "ticket.security_verdict",
+    payload: { verdict: "phishing", label: "Phishing", simulation: provider },
+  });
+}
+
 export async function finalizePhishingReport(
   admin: Admin,
   input: {
@@ -529,6 +557,12 @@ export async function finalizePhishingReport(
     analysis: storedAnalysis(input.analysis),
   });
   if (input.bundled) return { previousReports };
+  // Agreed phishing simulation: no alarm, the case closes as «Phishing»
+  // (the person reported it correctly; nothing to block or clean up).
+  if (input.analysis.simulation) {
+    await closeSimulationCase(admin, input.tenantId, input.ticketId, input.analysis.simulation, input.noteAuthorId);
+    return { previousReports };
+  }
   try {
     await admin.rpc("phishing_report_notify", {
       p_tenant_id: input.tenantId,

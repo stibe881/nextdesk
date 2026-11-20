@@ -633,6 +633,32 @@ Voraussetzung für Statusmeldungen per E-Mail ist ein aktives Exchange-Postfach.
 
 Mehr dazu unter «Eigenes Profil und Handbücher».
 
+### Wie schalte ich das Modul Projekte ein?
+
+1. Öffnen Sie **Einstellungen** und das Register **Funktionen**.
+2. Suchen Sie die Funktion **Projekte**.
+3. Schalten Sie sie ein. Der Menüpunkt **Projekte** erscheint danach bei allen, die Projekte sehen dürfen oder in einem Projekt mitarbeiten.
+
+Mehr dazu unter «Projekte».
+
+### Wie lege ich fest, wer Projekte sehen und anlegen darf?
+
+1. Öffnen Sie das Register **Rollen** und die Ansicht **Rollen definieren**.
+2. Öffnen Sie die Rolle und suchen Sie die Gruppe **Planung**.
+3. Setzen Sie die Rechte **Alle Projekte ansehen**, **Projekte anlegen** und **Alle Projekte und Projektvorlagen verwalten** nach Bedarf.
+4. Speichern Sie die Rolle.
+
+Mehr dazu unter «Projekte».
+
+### Wie stelle ich die Annahmen der Auslastung ein?
+
+1. Öffnen Sie **Projekte** und das Register **Auslastung**.
+2. Klicken Sie auf **Annahmen**.
+3. Tragen Sie die Pauschale je offenem Ticket in Minuten und die Arbeitszeit je Tag in Stunden ein.
+4. Klicken Sie auf **Speichern**.
+
+Mehr dazu unter «Projekte».
+
 ## Einstellungen öffnen
 
 Der Menüpunkt **Einstellungen** ist nur für Administratoren sichtbar und
@@ -1166,6 +1192,44 @@ Die Basisrollen _Requester_ (alle angemeldeten Personen) und _Support agent_
 > folgt automatisch ihren Rollen: alle Mitglieder das Handbuch für
 > Mitarbeitende, Personen mit Ticketbearbeitung zusätzlich das Handbuch für
 > Agenten, Administratoren alle Handbücher inklusive Installationsanleitung.
+
+## Projekte
+
+Das Modul **Projekte** ist für neue und bestehende Mandanten ausgeschaltet.
+Sie schalten es im Register **Funktionen** ein. Wie Projekte bedient werden,
+beschreibt das _Handbuch für Agenten_ im Abschnitt «Projekte».
+
+### Rechte
+
+| Recht                                       | Wirkung                                                                                     | Standard                |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------- |
+| Alle Projekte ansehen                       | sieht jedes Projekt und die Auslastung, ohne Mitglied zu sein                               | Administration, Agenten |
+| Projekte anlegen                            | legt Projekte an, auch aus Tickets, Bestellungen und Vorlagen                               | Administration          |
+| Alle Projekte und Projektvorlagen verwalten | bearbeitet jedes Projekt, speichert und löscht Vorlagen, ändert die Annahmen der Auslastung | Administration          |
+
+Unabhängig von diesen Rechten gilt die Mitgliedschaft im Projekt: Die
+Projektleitung fügt unter **Team & Gäste** Personen als Mitarbeit oder als
+Gast hinzu. Wer weder ein Recht noch eine Mitgliedschaft hat, sieht den
+Menüpunkt nicht.
+
+### Externe Gäste
+
+Die Projektleitung kann Personen ausserhalb des Mandanten mit ihrer
+E-Mail-Adresse in ein einzelnes Projekt einladen. Mit der ersten Anmeldung
+wird die Person Mitglied des Mandanten, erhält aber **keine Rolle**. Der Gast sieht ausschliesslich den Menüpunkt **Projekte** mit den Projekten, in die er
+eingeladen ist, und darin nur den Plan sowie Dokumente und Kommentare, die als
+«für Gäste sichtbar» markiert sind.
+
+Sie finden Gäste in der Benutzerverwaltung wie alle anderen Mitglieder. Wird
+ein Gast dort entfernt, endet sein Zugriff auf alle Projekte. Jede Einladung
+erscheint im Audit-Protokoll.
+
+### Auslastung
+
+Die Auslastung rechnet offene Tickets mit einer Pauschale ein, weil Tickets
+keinen Aufwandswert haben. Standard sind 30 Minuten je Ticket und 8 Stunden
+Arbeitszeit je Tag. Beide Werte ändern Sie unter **Projekte → Auslastung →
+Annahmen**.
 
 ## Datenschutz und Aufbewahrung
 

@@ -17,6 +17,15 @@ const PERSONAS = {
   employee: { ...D.U.lena, canWorkTickets: false, isTenantAdmin: false },
   agent: { ...D.U.mara, canWorkTickets: true, isTenantAdmin: false },
   admin: { ...D.U.daniel, canWorkTickets: true, isTenantAdmin: true },
+  // External guest of one project: no role in the tenant.
+  guest: {
+    ...D.U.lena,
+    name: "Beat Keller",
+    email: "beat.keller@elektro-keller.example",
+    canWorkTickets: false,
+    isTenantAdmin: false,
+    projectGuest: true,
+  },
 };
 
 const b64u = (value) =>
