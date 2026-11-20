@@ -28,6 +28,13 @@ export type LocalConfig = {
     hosts: Record<string, SnmpCredential>;
     timeoutMs: number;
     retries: number;
+    /**
+     * Credentials kept in nextDesk, delivered on hello and held in memory
+     * only. They take precedence over the entries of config.json.
+     */
+    remote?: RemoteSnmp;
+    /** Revision of `remote`; sent on hello so secrets travel only on change. */
+    remoteRevision?: string | null;
   };
   /** Optional overrides; normally nextDesk delivers subnets and servers. */
   scan: { subnets: string[]; reverseDns: boolean; maxHostsPerRun: number };
@@ -105,6 +112,57 @@ function credential(value: unknown, field: string): SnmpCredential {
     return result;
   }
   throw new ConfigError(`«${field}.version» muss «v2c» oder «v3» sein.`);
+}
+
+export type RemoteSnmp = {
+  default: SnmpCredential | null;
+  hosts: Record<string, SnmpCredential>;
+};
+
+/**
+ * Credentials delivered by nextDesk. Invalid entries are skipped so that one
+ * wrong entry never stops the others. null: nothing usable was delivered.
+ */
+export function parseRemoteSnmp(value: unknown): RemoteSnmp | null {
+  if (!isObject(value)) return null;
+  const read = (entry: unknown): SnmpCredential | null => {
+    try {
+      return credential(entry, "snmp");
+    } catch {
+      return null;
+    }
+  };
+  const hosts: Record<string, SnmpCredential> = {};
+  if (isObject(value.hosts)) {
+    for (const [host, entry] of Object.entries(value.hosts).slice(0, 5000)) {
+      const parsed = read(entry);
+      if (parsed) hosts[host.toLowerCase()] = parsed;
+    }
+  }
+  return {
+    default:
+      value.default === null || value.default === undefined
+        ? null
+        : read(value.default),
+    hosts,
+  };
+}
+
+/**
+ * Credential for a host. Order: device entry from nextDesk, device entry of
+ * config.json, default from nextDesk, default of config.json.
+ */
+export function snmpCredentialOf(
+  config: LocalConfig,
+  host: string,
+): SnmpCredential | null {
+  const key = host.toLowerCase();
+  return (
+    config.snmp.remote?.hosts[key] ??
+    config.snmp.hosts[key] ??
+    config.snmp.remote?.default ??
+    config.snmp.default
+  );
 }
 
 export function parseLocalConfig(
@@ -225,8 +283,7 @@ export function snmpCredentialFor(
   host: string,
   version: "v2c" | "v3",
 ): SnmpCredential | null {
-  const credentialEntry =
-    config.snmp.hosts[host.toLowerCase()] ?? config.snmp.default;
+  const credentialEntry = snmpCredentialOf(config, host);
   return credentialEntry && credentialEntry.version === version
     ? credentialEntry
     : null;

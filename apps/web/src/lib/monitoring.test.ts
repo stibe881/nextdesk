@@ -564,3 +564,37 @@ describe("Überwachung: Gerätekategorien", () => {
     expect(groupPath(groups, null)).toBeNull();
   });
 });
+
+describe("snmpSummaryLabel", () => {
+  it("describes stored credentials without secrets", async () => {
+    const { snmpSummaryLabel } = await import("./monitoring");
+    expect(snmpSummaryLabel(null)).toBe("Keine Zugangsdaten in nextDesk");
+    expect(
+      snmpSummaryLabel({
+        version: "v2c",
+        user: null,
+        authProtocol: null,
+        privProtocol: null,
+        updatedAt: null,
+      }),
+    ).toBe("SNMP v2c · Community gespeichert");
+    expect(
+      snmpSummaryLabel({
+        version: "v3",
+        user: "nextdesk",
+        authProtocol: "sha256",
+        privProtocol: "aes",
+        updatedAt: null,
+      }),
+    ).toBe("SNMP v3 · Benutzer nextdesk · SHA-256 / AES-128");
+    expect(
+      snmpSummaryLabel({
+        version: "v3",
+        user: "ro",
+        authProtocol: null,
+        privProtocol: null,
+        updatedAt: null,
+      }),
+    ).toBe("SNMP v3 · Benutzer ro · ohne Authentifizierung");
+  });
+});

@@ -46,7 +46,55 @@ export type MonitoringIncident = {
   maintenance: boolean;
 };
 
+/** Stored SNMP credentials without the secrets. */
+export type MonitoringSnmpSummary = {
+  version: "v2c" | "v3";
+  user: string | null;
+  authProtocol: string | null;
+  privProtocol: string | null;
+  updatedAt: string | null;
+};
+
+const SNMP_PROTOCOL_LABELS: Record<string, string> = {
+  md5: "MD5",
+  sha: "SHA-1",
+  sha224: "SHA-224",
+  sha256: "SHA-256",
+  sha384: "SHA-384",
+  sha512: "SHA-512",
+  des: "DES",
+  aes: "AES-128",
+  aes256b: "AES-256 (Blumenthal)",
+  aes256r: "AES-256 (Reeder)",
+};
+
+export function snmpProtocolLabel(protocol: string): string {
+  return SNMP_PROTOCOL_LABELS[protocol] ?? protocol;
+}
+
+/** «SNMP v3 · Benutzer nextdesk · SHA-256 / AES-128»; never shows a secret. */
+export function snmpSummaryLabel(
+  summary: MonitoringSnmpSummary | null | undefined,
+): string {
+  if (!summary) return "Keine Zugangsdaten in nextDesk";
+  if (summary.version === "v2c") return "SNMP v2c · Community gespeichert";
+  const parts = [`SNMP v3 · Benutzer ${summary.user ?? "?"}`];
+  if (summary.authProtocol) {
+    parts.push(
+      [summary.authProtocol, summary.privProtocol]
+        .filter((value): value is string => !!value)
+        .map(snmpProtocolLabel)
+        .join(" / "),
+    );
+  } else {
+    parts.push("ohne Authentifizierung");
+  }
+  return parts.join(" · ");
+}
+
 export type MonitoringAgent = {
+  /** Default SNMP credentials of the probe kept in nextDesk. */
+  snmp?: MonitoringSnmpSummary | null;
   id: string;
   name: string;
   active: boolean;
@@ -95,6 +143,8 @@ export type MonitoringDeviceRow = {
 
 export type MonitoringOverview = {
   canManage: boolean;
+  /** Only tenant administrators set SNMP credentials. */
+  canManageSnmp?: boolean;
   totals: Record<MonitoringState, number>;
   deviceCount: number;
   sensorCount: number;
@@ -139,6 +189,9 @@ export type MonitoringSensor = {
 
 export type MonitoringDeviceDetail = {
   canManage: boolean;
+  canManageSnmp?: boolean;
+  /** SNMP credentials of the device kept in nextDesk. */
+  snmp?: MonitoringSnmpSummary | null;
   device: {
     assetId: string;
     name: string;

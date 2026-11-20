@@ -17179,4 +17179,130 @@ $$;
 rollback;
 SQL
 
+# 0375: SNMP-Zugangsdaten pro Gerät und Sonde; Geheimnisse im Vault.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+-- Ersatz für den Supabase Vault in der lokalen Prüfung.
+create schema if not exists vault;
+create table if not exists vault.secrets (id uuid primary key default gen_random_uuid(), secret text not null);
+create or replace view vault.decrypted_secrets as select id, secret as decrypted_secret from vault.secrets;
+create or replace function vault.create_secret(new_secret text, new_name text default null, new_description text default '', new_key_id uuid default null)
+returns uuid language sql as $f$ insert into vault.secrets (secret) values (new_secret) returning id $f$;
+create or replace function vault.update_secret(secret_id uuid, new_secret text default null, new_name text default null, new_description text default null, new_key_id uuid default null)
+returns void language sql as $f$ update vault.secrets set secret = new_secret where id = secret_id $f$;
+do $$
+declare
+  v_tenant uuid;
+  v_other uuid;
+  v_asset uuid;
+  v_agent uuid;
+  v_id uuid;
+  v_revision text;
+  v_result jsonb;
+  v_failed boolean;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  select id into v_other from public.tenants where id <> v_tenant order by created_at limit 1;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'SW-0375', 'server', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address, hostname)
+  values (v_asset, v_tenant, 'switch', '10.75.0.2', 'SW-0375.example');
+  insert into public.ipam_agents (tenant_id, name, token_hash)
+  values (v_tenant, 'Sonde 0375', repeat('a', 64)) returning id into v_agent;
+
+  if public.monitoring_snmp_revision(v_tenant, v_agent) <> 'none' then
+    raise exception 'snmp: revision without credentials';
+  end if;
+
+  -- Gerät: SNMPv3 mit beiden Schlüsseln.
+  v_id := public.monitoring_snmp_credential_save(
+    v_tenant, v_asset, null, 'v3', ' nextdesk ', 'sha256', 'aes',
+    '{"authKey": "auth-key-1", "privKey": "priv-key-1"}', null);
+  v_revision := public.monitoring_snmp_revision(v_tenant, v_agent);
+  v_result := public.monitoring_snmp_credentials_for_agent(v_tenant, v_agent);
+  if v_result -> 'hosts' -> '10.75.0.2' <> '{"version":"v3","user":"nextdesk","authProtocol":"sha256","authKey":"auth-key-1","privProtocol":"aes","privKey":"priv-key-1"}'::jsonb
+     or v_result -> 'hosts' -> 'sw-0375.example' is null
+     or v_result -> 'default' <> 'null'::jsonb then
+    raise exception 'snmp: wrong credentials for the probe (%)', v_result;
+  end if;
+  -- Die Tabelle selbst enthält kein Geheimnis.
+  if exists (select 1 from public.monitoring_snmp_credentials c where to_jsonb(c)::text like '%auth-key-1%') then
+    raise exception 'snmp: secret stored in the table';
+  end if;
+
+  -- Ohne neues Geheimnis bleibt das gespeicherte; ein neuer Schlüssel ersetzt nur diesen.
+  perform pg_sleep(0.01);
+  perform public.monitoring_snmp_credential_save(
+    v_tenant, v_asset, null, 'v3', 'nextdesk', 'sha256', 'aes', '{"authKey": null, "privKey": "priv-key-2"}', null);
+  v_result := public.monitoring_snmp_credentials_for_agent(v_tenant, v_agent) -> 'hosts' -> '10.75.0.2';
+  if v_result ->> 'authKey' <> 'auth-key-1' or v_result ->> 'privKey' <> 'priv-key-2' then
+    raise exception 'snmp: stored secret not kept (%)', v_result;
+  end if;
+  if (select count(*) from public.monitoring_snmp_credentials where asset_id = v_asset) <> 1
+     or (select count(*) from vault.secrets) <> 1 then
+    raise exception 'snmp: duplicate credential or secret';
+  end if;
+
+  -- Wechsel auf v2c verlangt eine Community; alte Schlüssel werden nicht übernommen.
+  v_failed := false;
+  begin
+    perform public.monitoring_snmp_credential_save(v_tenant, v_asset, null, 'v2c', null, null, null, null, null);
+  exception when invalid_parameter_value then v_failed := true;
+  end;
+  if not v_failed then raise exception 'snmp: v2c without community accepted'; end if;
+  -- Verschlüsselung ohne Schlüssel und zu kurzer Schlüssel werden abgelehnt.
+  v_failed := false;
+  begin
+    perform public.monitoring_snmp_credential_save(
+      v_tenant, null, v_agent, 'v3', 'ro', 'sha', 'aes', '{"authKey": "long-enough"}', null);
+  exception when invalid_parameter_value then v_failed := true;
+  end;
+  if not v_failed then raise exception 'snmp: priv protocol without key accepted'; end if;
+
+  -- Standard der Sonde: v2c.
+  perform public.monitoring_snmp_credential_save(
+    v_tenant, null, v_agent, 'v2c', null, null, null, '{"community": "public-ro"}', null);
+  v_result := public.monitoring_snmp_credentials_for_agent(v_tenant, v_agent);
+  if v_result -> 'default' <> '{"version":"v2c","community":"public-ro"}'::jsonb then
+    raise exception 'snmp: wrong default (%)', v_result;
+  end if;
+  if public.monitoring_snmp_revision(v_tenant, v_agent) = v_revision then
+    raise exception 'snmp: revision did not change';
+  end if;
+
+  -- Fremder Mandant: weder speichern noch lesen.
+  if v_other is not null then
+    v_failed := false;
+    begin
+      perform public.monitoring_snmp_credential_save(
+        v_other, v_asset, null, 'v2c', null, null, null, '{"community": "x"}', null);
+    exception when foreign_key_violation then v_failed := true;
+    end;
+    if not v_failed then raise exception 'snmp: device of another tenant accepted'; end if;
+    if public.monitoring_snmp_credentials_for_agent(v_other, v_agent) -> 'hosts' <> '{}'::jsonb then
+      raise exception 'snmp: credentials visible for another tenant';
+    end if;
+  end if;
+
+  -- Löschen entfernt auch den Vault-Eintrag; ebenso das Löschen des Geräts.
+  if not public.monitoring_snmp_credential_delete(v_tenant, null, v_agent) then
+    raise exception 'snmp: default not deleted';
+  end if;
+  delete from public.assets where id = v_asset;
+  if exists (select 1 from public.monitoring_snmp_credentials where tenant_id = v_tenant)
+     or exists (select 1 from vault.secrets) then
+    raise exception 'snmp: credentials or secrets left behind';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.monitoring_snmp_credentials', 'select')
+     or has_function_privilege('authenticated', 'public.monitoring_snmp_credentials_for_agent(uuid, uuid)', 'execute')
+     or has_table_privilege('service_role', 'public.monitoring_snmp_credentials', 'insert') then
+    raise exception 'snmp: privileges too wide';
+  end if;
+  raise notice 'monitoring snmp credential checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
