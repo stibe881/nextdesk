@@ -56,7 +56,7 @@ import {
 type Admin = any;
 type Row = Record<string, unknown>;
 
-type Ctx = {
+export type Ctx = {
   admin: Admin;
   // deno-lint-ignore no-explicit-any
   userClient: any;
@@ -253,6 +253,31 @@ async function loadProject(
   // Unknown and unauthorised look the same from outside.
   if (!access) throw notFound("Das Projekt");
   return { project: data as Row, access };
+}
+
+/**
+ * Lists of people, customers, templates and linkable records are for people
+ * who work in the tenant, not for external guests: a right, a project they
+ * lead, or a membership that is not a guest role.
+ */
+async function assertInternal(ctx: Ctx) {
+  if (ctx.permissions.read || ctx.permissions.create) return;
+  const [members, led] = await Promise.all([
+    ctx.admin
+      .from("project_members")
+      .select("role")
+      .eq("tenant_id", ctx.tenantId)
+      .eq("user_id", ctx.actorId),
+    ctx.admin
+      .from("projects")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", ctx.tenantId)
+      .eq("manager_id", ctx.actorId),
+  ]);
+  const works = ((members.data ?? []) as Row[]).some(
+    (row) => row.role === "manager" || row.role === "member",
+  );
+  if (!works && (led.count ?? 0) === 0) throw forbidden();
 }
 
 async function loadTask(ctx: Ctx, taskId: unknown) {
@@ -551,14 +576,15 @@ async function visibleProjects(
   ctx: Ctx,
   includeArchived: boolean,
 ): Promise<Row[]> {
-  let query = ctx.admin
+  // Filters first: after order() or limit() the client offers no filters.
+  let filter = ctx.admin
     .from("projects")
     .select(PROJECT_SELECT)
-    .eq("tenant_id", ctx.tenantId)
+    .eq("tenant_id", ctx.tenantId);
+  if (!includeArchived) filter = filter.is("archived_at", null);
+  const { data, error } = await filter
     .order("created_at", { ascending: false })
     .limit(500);
-  if (!includeArchived) query = query.is("archived_at", null);
-  const { data, error } = await query;
   if (error) throw failed();
   const projects = (data ?? []) as Row[];
   if (ctx.permissions.read) return projects;
@@ -620,6 +646,7 @@ async function overview(ctx: Ctx, body: Row) {
 }
 
 async function options(ctx: Ctx) {
+  await assertInternal(ctx);
   const [
     members,
     teams,
@@ -752,28 +779,24 @@ async function getProject(ctx: Ctx, body: Row) {
         .order("created_at")
         .limit(5000),
       (() => {
-        let query = ctx.admin
+        let filter = ctx.admin
           .from("project_comments")
           .select(
             "id, task_id, author_id, visibility, body, edited_at, created_at",
           )
-          .eq("project_id", projectId)
-          .order("created_at")
-          .limit(1000);
-        if (guest) query = query.eq("visibility", "external");
-        return query;
+          .eq("project_id", projectId);
+        if (guest) filter = filter.eq("visibility", "external");
+        return filter.order("created_at").limit(1000);
       })(),
       (() => {
-        let query = ctx.admin
+        let filter = ctx.admin
           .from("project_documents")
           .select(
             "id, title, body, visibility, position, updated_by, updated_at, created_at",
           )
-          .eq("project_id", projectId)
-          .order("position")
-          .order("created_at");
-        if (guest) query = query.eq("visibility", "external");
-        return query;
+          .eq("project_id", projectId);
+        if (guest) filter = filter.eq("visibility", "external");
+        return filter.order("position").order("created_at");
       })(),
       ctx.admin
         .from("project_members")
@@ -1554,16 +1577,17 @@ async function createTask(ctx: Ctx, body: Row) {
   if ((count ?? 0) >= MAX_TASKS)
     throw invalid(`Ein Projekt fasst höchstens ${MAX_TASKS} Elemente.`);
   if (!has(body, "position")) {
-    let last = ctx.admin
+    const siblings = ctx.admin
       .from("project_tasks")
       .select("position")
-      .eq("project_id", projectId)
+      .eq("project_id", projectId);
+    const { data } = await (
+      fields.parent_task_id
+        ? siblings.eq("parent_task_id", fields.parent_task_id)
+        : siblings.is("parent_task_id", null)
+    )
       .order("position", { ascending: false })
       .limit(1);
-    last = fields.parent_task_id
-      ? last.eq("parent_task_id", fields.parent_task_id)
-      : last.is("parent_task_id", null);
-    const { data } = await last;
     fields.position = Number(data?.[0]?.position ?? -1) + 1;
   }
   const { data, error } = await ctx.admin
@@ -2099,36 +2123,45 @@ async function isTicketStaff(ctx: Ctx) {
 }
 
 async function assertMayUseKind(ctx: Ctx, kind: LinkKind) {
-  const allowed =
-    kind === "ticket"
-      ? true
-      : kind === "shop_order"
-        ? (await hasPermission(
-            ctx.admin,
-            ctx.actorId,
-            ctx.tenantId,
-            "shop.fulfill",
-          )) ||
-          (await hasPermission(
-            ctx.admin,
-            ctx.actorId,
-            ctx.tenantId,
-            "shop.manage",
-          ))
-        : kind.startsWith("ipam_")
-          ? (await hasPermission(
-              ctx.admin,
-              ctx.actorId,
-              ctx.tenantId,
-              "ipam.read",
-            )) ||
-            (await hasPermission(
-              ctx.admin,
-              ctx.actorId,
-              ctx.tenantId,
-              "ipam.manage",
-            ))
-          : await isTicketStaff(ctx);
+  const anyOf = async (...codes: string[]) => {
+    for (const code of codes) {
+      if (await hasPermission(ctx.admin, ctx.actorId, ctx.tenantId, code)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  let allowed: boolean;
+  switch (kind) {
+    case "ticket":
+      // Each ticket is checked against the person's own ticket rights.
+      allowed = true;
+      break;
+    case "shop_order":
+      allowed = await anyOf("shop.fulfill", "shop.manage");
+      break;
+    case "ipam_prefix":
+    case "ipam_vlan":
+    case "ipam_address":
+      allowed = await anyOf("ipam.read", "ipam.manage");
+      break;
+    case "service_task":
+      allowed = await anyOf(
+        "service_tasks.read",
+        "service_tasks.execute",
+        "service_tasks.manage",
+      );
+      break;
+    case "monitoring_incident": {
+      const { data, error } = await ctx.userClient.rpc("can_work_incidents", {
+        p_tenant_id: ctx.tenantId,
+      });
+      allowed = !error && data === true;
+      break;
+    }
+    default:
+      allowed = await isTicketStaff(ctx);
+  }
   if (!allowed) throw forbidden();
 }
 
@@ -2136,6 +2169,7 @@ async function searchLinkable(ctx: Ctx, body: Row) {
   const kind = oneOf<LinkKind>(body.targetKind, LINK_KINDS, "Die Art");
   const query =
     typeof body.query === "string" ? body.query.trim().slice(0, 80) : "";
+  await assertInternal(ctx);
   await assertMayUseKind(ctx, kind);
   if (kind === "ticket") {
     const needle = query.replace(/[%_,()\\]/g, " ").trim();
@@ -2143,14 +2177,15 @@ async function searchLinkable(ctx: Ctx, body: Row) {
       .from("tickets")
       .select("id, ticket_number, subject")
       .eq("tenant_id", ctx.tenantId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(25);
-    if (needle)
+      .is("deleted_at", null);
+    if (needle) {
       search = search.or(
         `ticket_number.ilike.%${needle}%,subject.ilike.%${needle}%`,
       );
-    const { data } = await search;
+    }
+    const { data } = await search
+      .order("created_at", { ascending: false })
+      .limit(25);
     const readable = await Promise.all(
       ((data ?? []) as Row[]).map(async (row) =>
         (await canReadTicket(ctx, row.id as string)) ? row : null,
@@ -2294,6 +2329,7 @@ async function unlinkRecord(ctx: Ctx, body: Row) {
 async function projectsForRecord(ctx: Ctx, body: Row) {
   const kind = oneOf<LinkKind>(body.targetKind, LINK_KINDS, "Die Art");
   const targetId = requiredUuid(body.targetId);
+  await assertInternal(ctx);
   const { data } = await ctx.admin
     .from("project_links")
     .select("id, project_id, task_id")
@@ -2774,18 +2810,16 @@ async function memberAction(ctx: Ctx, body: Row) {
     const userId = requiredUuid(body.userId);
     const role = oneOf<string>(body.role, MEMBER_ROLES, "Die Rolle");
     await assertTenantMember(ctx, userId);
-    const { error } = await ctx.admin
-      .from("project_members")
-      .upsert(
-        {
-          project_id: projectId,
-          tenant_id: ctx.tenantId,
-          user_id: userId,
-          role,
-          invited_by: ctx.actorId,
-        },
-        { onConflict: "project_id,user_id" },
-      );
+    const { error } = await ctx.admin.from("project_members").upsert(
+      {
+        project_id: projectId,
+        tenant_id: ctx.tenantId,
+        user_id: userId,
+        role,
+        invited_by: ctx.actorId,
+      },
+      { onConflict: "project_id,user_id" },
+    );
     if (error) throw failed();
     await logEvent(ctx, projectId, null, "member.set", { userId, role });
     return { saved: true };
@@ -3047,7 +3081,8 @@ async function accessSummary(ctx: Ctx) {
 // Verteilung
 // ---------------------------------------------------------------------------
 
-async function dispatch(ctx: Ctx, body: Row): Promise<Row> {
+/** Exported for tests; the handler below adds authentication and the module check. */
+export async function dispatch(ctx: Ctx, body: Row): Promise<Row> {
   switch (body.type) {
     case "overview":
       return await overview(ctx, body);

@@ -6,6 +6,10 @@ import {
   type ProjectOverview,
   projectsCall,
 } from "./lib/projects-api";
+import {
+  requestOpenProject,
+  useProjectsAvailable,
+} from "./lib/project-navigation";
 import { PROJECT_STATUS_LABELS } from "./lib/projects-model";
 import { HealthDot } from "./project-form";
 import "./projects.css";
@@ -17,12 +21,16 @@ import "./projects.css";
  * Bleibt unsichtbar, solange das Modul Projekte nicht verfügbar ist.
  */
 export function ProjectLinkCard({
-  onOpenProject,
+  compact = false,
+  heading,
   targetId,
   targetKind,
   tenantId,
 }: {
-  onOpenProject: (projectId: string) => void;
+  /** Überschrift über der Karte; ohne sie steht die Karte in einem eigenen Abschnitt. */
+  heading?: string;
+  /** Ohne Verknüpfung nur die Schaltfläche zeigen (für dichte Detailansichten). */
+  compact?: boolean;
   targetId: string;
   targetKind: LinkKind;
   tenantId: string;
@@ -36,9 +44,15 @@ export function ProjectLinkCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const version = useRef(0);
+  const available = useProjectsAvailable();
+  const onOpenProject = requestOpenProject;
 
   const load = useCallback(async () => {
     const current = ++version.current;
+    if (!available) {
+      setLinked(null);
+      return;
+    }
     try {
       const data = await projectsCall<{
         projects: LinkedProject[];
@@ -51,7 +65,7 @@ export function ProjectLinkCard({
       // Module off or no access: the card stays hidden.
       if (version.current === current) setLinked(null);
     }
-  }, [targetId, targetKind, tenantId]);
+  }, [available, targetId, targetKind, tenantId]);
 
   useEffect(() => {
     setChoices(null);
@@ -143,8 +157,13 @@ export function ProjectLinkCard({
 
   return (
     <div className="pj-linkcard">
+      {heading && !(compact && linked.length === 0) ? (
+        <h3 className="pj-linkcard__heading">{heading}</h3>
+      ) : null}
       {linked.length === 0 ? (
-        <p className="pj-muted">Mit keinem Projekt verknüpft.</p>
+        compact ? null : (
+          <p className="pj-muted">Mit keinem Projekt verknüpft.</p>
+        )
       ) : (
         linked.map((project) => (
           <button

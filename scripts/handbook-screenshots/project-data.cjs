@@ -718,6 +718,7 @@ function handler(body, { persona }) {
   const admin = persona.isTenantAdmin === true;
   const staff = persona.canWorkTickets === true;
   const permissions = { read: staff, create: staff, manage: admin };
+  const guest = persona.projectGuest === true;
   switch (body.type) {
     case "acceptMyInvitations":
       return ok({ accepted: 0 });
@@ -725,12 +726,19 @@ function handler(body, { persona }) {
       return ok({
         enabled: true,
         ...permissions,
-        hasProjects: staff,
-        visible: staff,
-        guestOnly: false,
+        hasProjects: staff || guest,
+        visible: staff || guest,
+        guestOnly: guest,
       });
     case "overview":
-      return ok({ permissions, projects: staff ? PROJECTS : [] });
+      return ok({
+        permissions,
+        projects: staff
+          ? PROJECTS
+          : guest
+            ? [{ ...PROJECTS[0], role: "guest_comment", budgetMinutes: null }]
+            : [],
+      });
     case "options":
       return ok(OPTIONS());
     case "getProject":

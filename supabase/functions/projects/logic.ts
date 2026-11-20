@@ -37,7 +37,9 @@ export type LinkKind =
   | "ipam_vlan"
   | "ipam_address"
   | "monitoring_sensor"
-  | "asset";
+  | "asset"
+  | "monitoring_incident"
+  | "service_task";
 
 export const LINK_COLUMNS: Record<LinkKind, string> = {
   ticket: "ticket_id",
@@ -47,6 +49,8 @@ export const LINK_COLUMNS: Record<LinkKind, string> = {
   ipam_address: "ipam_address_id",
   monitoring_sensor: "monitoring_sensor_id",
   asset: "asset_id",
+  monitoring_incident: "monitoring_incident_id",
+  service_task: "service_task_occurrence_id",
 };
 export const LINK_KINDS = new Set(Object.keys(LINK_COLUMNS));
 

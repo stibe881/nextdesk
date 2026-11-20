@@ -259,6 +259,10 @@ import {
   loadProjectModuleAccess,
   type ProjectModuleAccess,
 } from "./lib/projects-api";
+import {
+  onOpenProjectRequest,
+  setProjectsAvailable,
+} from "./lib/project-navigation";
 import { Projects } from "./projects";
 
 import { confirmDialog } from "./app-dialog";
@@ -4289,11 +4293,20 @@ function AuthenticatedApp() {
   useEffect(() => {
     if (projectGuestOnly && section !== "Projekte") setSection("Projekte");
   }, [projectGuestOnly, section]);
-  const openProject = useCallback((projectId: string) => {
-    setSelectedTicketId(null);
-    setProjectFocusId(projectId);
-    setSection("Projekte");
-  }, []);
+  useEffect(() => {
+    setProjectsAvailable(projectsVisible && !projectGuestOnly);
+    return () => setProjectsAvailable(false);
+  }, [projectGuestOnly, projectsVisible]);
+  useEffect(
+    () =>
+      // Any detail view can ask for a project; close what lies on top of it.
+      onOpenProjectRequest((projectId) => {
+        setSelectedTicketId(null);
+        setProjectFocusId(projectId);
+        setSection("Projekte");
+      }),
+    [],
+  );
 
   useEffect(() => {
     // Serviceaufgaben: visible with the module switched on and at least the
@@ -4709,6 +4722,7 @@ function AuthenticatedApp() {
       restrictedWorkspaceSections.push("Verträge", "Lizenzen");
     }
     if (reportsAvailable) restrictedWorkspaceSections.push("Berichte");
+    if (projectsVisible) restrictedWorkspaceSections.push("Projekte");
     // Employees open the read-only status from the badge in the navigation.
     if (serviceStatusReadable) restrictedWorkspaceSections.push("Systemstatus");
     if (restrictedWorkspaceSections.includes(section)) return;
@@ -4727,6 +4741,7 @@ function AuthenticatedApp() {
     tenantFeatures,
     tenantFeaturesLoading,
     ticketAccessLoading,
+    projectsVisible,
   ]);
 
   useEffect(() => {
@@ -4937,6 +4952,7 @@ function AuthenticatedApp() {
       ((nextSection === "Verträge" || nextSection === "Lizenzen") &&
         contractsAvailable) ||
       (nextSection === "Berichte" && reportsAvailable) ||
+      (nextSection === "Projekte" && projectsVisible) ||
       (nextSection === "Systemstatus" && serviceStatusReadable);
     if (
       !canWorkTickets &&
@@ -5620,12 +5636,16 @@ function AuthenticatedApp() {
   const workSections = projectGuestOnly
     ? featureSections.filter((item) => item.label === "Projekte")
     : canWorkTickets
-    ? featureSections
-    : [...requesterSections, ...restrictedWorkSections, ...shopSections].filter(
-        (item, index, list) =>
-          !employeeHiddenSections.includes(item.label) &&
-          list.findIndex((other) => other.label === item.label) === index,
-      );
+      ? featureSections
+      : [
+          ...requesterSections,
+          ...restrictedWorkSections,
+          ...shopSections,
+        ].filter(
+          (item, index, list) =>
+            !employeeHiddenSections.includes(item.label) &&
+            list.findIndex((other) => other.label === item.label) === index,
+        );
   const workSectionAvailable = (label: Section) =>
     workSections.some((item) => item.label === label);
   const quickCreateActions = quickCreateActionsForContext({
@@ -6363,7 +6383,7 @@ function AuthenticatedApp() {
         </div>
         {employeeNavigation ? (
           <>
-            {serviceStatusReadable && activeTenant ? (
+            {serviceStatusReadable && activeTenant && !projectGuestOnly ? (
               <div className="workplace-primary-navigation employee-status-navigation">
                 <NavigationStatusBadge
                   active={navSection === "Systemstatus"}
@@ -6740,7 +6760,7 @@ function AuthenticatedApp() {
                   </select>
                 </label>
               )}
-            {quickCreateActions.length > 0 && (
+            {quickCreateActions.length > 0 && !projectGuestOnly && (
               <div className="quick-create-anchor">
                 <button
                   aria-controls="quick-create-menu"
@@ -6809,7 +6829,7 @@ function AuthenticatedApp() {
                 <span>Ansicht</span>
               </button>
             )}
-            {activeTenant && (
+            {activeTenant && !projectGuestOnly && (
               <GlobalSearch
                 disabled={!isSupabaseConfigured}
                 onSelect={(result) => {
@@ -8490,9 +8510,6 @@ function AuthenticatedApp() {
                 : undefined
             }
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
-            onOpenProject={
-              projectsVisible && !projectGuestOnly ? openProject : undefined
-            }
             onOpenIncident={(incidentId) => {
               setSelectedTicketId(null);
               setIncidentFocusId(incidentId);

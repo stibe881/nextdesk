@@ -1700,3 +1700,9 @@
 .pj-gantt__milestone.is-late:hover:not(:disabled) {
   background: var(--danger);
 }
+
+.pj-linkcard__heading {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+}

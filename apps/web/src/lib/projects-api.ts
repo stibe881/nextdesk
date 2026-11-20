@@ -40,7 +40,9 @@ export type LinkKind =
   | "ipam_vlan"
   | "ipam_address"
   | "monitoring_sensor"
-  | "asset";
+  | "asset"
+  | "monitoring_incident"
+  | "service_task";
 
 export type ProjectStats = {
   taskCount: number;

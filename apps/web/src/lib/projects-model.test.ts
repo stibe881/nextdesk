@@ -8,6 +8,7 @@ import {
   ganttBar,
   ganttRange,
   hoursLabel,
+  linkStateLabel,
   loadLevel,
   monthSegments,
   parseHours,
@@ -242,6 +243,14 @@ describe("timeline", () => {
         { left: 0, width: 20, y: 50 },
       ),
     ).toBe("M60,10 H70 V24 H-10 V50 H0");
+  });
+});
+
+describe("links", () => {
+  it("translates stored states and keeps ticket labels", () => {
+    expect(linkStateLabel("active")).toBe("aktiv");
+    expect(linkStateLabel("In Bearbeitung")).toBe("In Bearbeitung");
+    expect(linkStateLabel(null)).toBeNull();
   });
 });
 

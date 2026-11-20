@@ -25,6 +25,7 @@ import {
   hoursLabel,
   LINK_KIND_LABELS,
   LINK_KINDS,
+  linkStateLabel,
   parseHours,
   PRIORITY_LABELS,
   type Rollup,
@@ -320,7 +321,7 @@ export function LinkList({
             </strong>
             <small>
               {LINK_KIND_LABELS[link.targetKind]}
-              {link.state ? ` · ${link.state}` : ""}
+              {link.state ? ` · ${linkStateLabel(link.state)}` : ""}
               {link.assigneeName ? ` · ${link.assigneeName}` : ""}
               {link.bookedMinutes
                 ? ` · ${hoursLabel(link.bookedMinutes)} gebucht`

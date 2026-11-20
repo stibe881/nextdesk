@@ -17,6 +17,7 @@ import {
   Trash2,
   Network,
 } from "lucide-react";
+import { ProjectLinkCard } from "./project-link-card";
 import {
   useCallback,
   useEffect,
@@ -3253,6 +3254,15 @@ function SensorDialog({
           <p className="ticket-detail-message error" role="alert">
             {error}
           </p>
+        ) : null}
+        {draft.id ? (
+          <ProjectLinkCard
+            compact
+            heading="Projekte"
+            targetId={draft.id}
+            targetKind="monitoring_sensor"
+            tenantId={tenantId}
+          />
         ) : null}
         <div className="monitoring-form__actions">
           <button className="secondary-button" onClick={onClose} type="button">

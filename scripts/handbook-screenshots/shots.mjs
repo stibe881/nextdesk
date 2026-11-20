@@ -252,6 +252,18 @@ export const SHOTS = [
     },
   },
   {
+    name: "ma-projekt-gast",
+    persona: "guest",
+    async run(h) {
+      await h.open();
+      await h.waitText("Netzwerk-Erneuerung Standort Bern");
+      await h.clickText("Netzwerk-Erneuerung Standort Bern");
+      await h.waitText("Alle Projekte");
+      await h.click("Zeitplan", { role: "tab" });
+      await h.waitText("Switches vorkonfigurieren");
+    },
+  },
+  {
     name: "ad-projekt-neu",
     persona: "admin",
     async run(h) {

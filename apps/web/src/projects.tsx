@@ -35,10 +35,13 @@ function errorText(error: unknown): string {
 }
 
 function Dashboard({
+  guest,
   onOpen,
   projects,
   today,
 }: {
+  /** Gäste sehen weder Stunden noch Budget. */
+  guest: boolean;
   onOpen: (projectId: string) => void;
   projects: ProjectSummary[];
   today: string;
@@ -115,15 +118,17 @@ function Dashboard({
             {critical.filter((project) => project.health === "red").length} rot
           </small>
         </article>
-        <article className="pj-card pj-kpi">
-          <p>Stundenbudget</p>
-          <strong>{hoursLabel(booked)}</strong>
-          <small>
-            {budget
-              ? `von ${hoursLabel(budget)} gebucht`
-              : "kein Budget erfasst"}
-          </small>
-        </article>
+        {guest ? null : (
+          <article className="pj-card pj-kpi">
+            <p>Stundenbudget</p>
+            <strong>{hoursLabel(booked)}</strong>
+            <small>
+              {budget
+                ? `von ${hoursLabel(budget)} gebucht`
+                : "kein Budget erfasst"}
+            </small>
+          </article>
+        )}
       </div>
 
       <div className="pj-toolbar">
@@ -173,7 +178,7 @@ function Dashboard({
                   <th>Status</th>
                   <th>Leitung</th>
                   <th>Fortschritt</th>
-                  <th>Budget</th>
+                  {guest ? null : <th>Budget</th>}
                   <th>Nächster Meilenstein</th>
                   <th>Ende</th>
                 </tr>
@@ -224,30 +229,32 @@ function Dashboard({
                           </small>
                         </div>
                       </td>
-                      <td>
-                        {project.role === "guest_read" ||
-                        project.role === "guest_comment" ? (
-                          "–"
-                        ) : (
-                          <div className="pj-meter">
-                            <ProgressBar
-                              label={
-                                used === null
-                                  ? "Kein Budget"
-                                  : `Budget zu ${used} % verbraucht`
-                              }
-                              percent={used ?? 0}
-                              tone={budgetTone(used)}
-                            />
-                            <small>
-                              {hoursLabel(project.stats.bookedMinutes)}
-                              {project.budgetMinutes
-                                ? ` von ${hoursLabel(project.budgetMinutes)}`
-                                : ""}
-                            </small>
-                          </div>
-                        )}
-                      </td>
+                      {guest ? null : (
+                        <td>
+                          {project.role === "guest_read" ||
+                          project.role === "guest_comment" ? (
+                            "–"
+                          ) : (
+                            <div className="pj-meter">
+                              <ProgressBar
+                                label={
+                                  used === null
+                                    ? "Kein Budget"
+                                    : `Budget zu ${used} % verbraucht`
+                                }
+                                percent={used ?? 0}
+                                tone={budgetTone(used)}
+                              />
+                              <small>
+                                {hoursLabel(project.stats.bookedMinutes)}
+                                {project.budgetMinutes
+                                  ? ` von ${hoursLabel(project.budgetMinutes)}`
+                                  : ""}
+                              </small>
+                            </div>
+                          )}
+                        </td>
+                      )}
                       <td>
                         {project.stats.overdueMilestones > 0 ? (
                           <span className="pj-chip pj-chip--bad">
@@ -507,6 +514,7 @@ export function Projects({
       {view === "dashboard" ? (
         data ? (
           <Dashboard
+            guest={access.guestOnly}
             onOpen={setOpenId}
             projects={data.projects}
             today={today}

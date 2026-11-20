@@ -79,6 +79,7 @@ import {
   shouldLoadTicketCatalog,
 } from "./lib/ticket-catalog-search";
 import { supabase } from "./lib/supabase";
+import { useProjectsAvailable } from "./lib/project-navigation";
 import { ProjectLinkCard } from "./project-link-card";
 import { recordRecentItem } from "./lib/recent-items";
 import { functionErrorMessage } from "./lib/function-error";
@@ -827,8 +828,6 @@ type TicketDetailProps = {
   onOpenTicket?: ((ticketId: string) => void) | undefined;
   /** Opens a monitoring incident the ticket belongs to («Störungen»). */
   onOpenIncident?: ((incidentId: string) => void) | undefined;
-  /** Module «Projekte» available: opens a project the ticket belongs to. */
-  onOpenProject?: ((projectId: string) => void) | undefined;
   /** Agents: opens the person overview of the requester. */
   onOpenPerson?:
     | ((person: {
@@ -4068,8 +4067,8 @@ export function TicketDetail({
   onOpenTicket,
   onOpenPerson,
   onOpenIncident,
-  onOpenProject,
 }: TicketDetailProps) {
+  const projectsAvailable = useProjectsAvailable();
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
   // Answers from a ticket template form (only tickets created with one).
   const [storedFormAnswers, setStoredFormAnswers] = useState<{
@@ -9554,7 +9553,7 @@ export function TicketDetail({
             </details>
           ) : null}
 
-          {!requesterView && onOpenProject ? (
+          {!requesterView && projectsAvailable ? (
             <details className="ticket-detail-disclosure">
               <summary>
                 <span className="ticket-detail-disclosure-label">
@@ -9577,7 +9576,6 @@ export function TicketDetail({
               </summary>
               <div className="ticket-detail-disclosure-content">
                 <ProjectLinkCard
-                  onOpenProject={onOpenProject}
                   targetId={ticketId}
                   targetKind="ticket"
                   tenantId={tenantId}

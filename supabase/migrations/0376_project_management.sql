@@ -594,11 +594,16 @@ create index if not exists ticket_time_entries_project_task_idx
   where project_task_id is not null;
 
 -- ---------------------------------------------------------------------------
--- Verknüpfungen zu Tickets, Shop-Bestellungen, IPAM, Monitoring und Geräten
+-- Verknüpfungen zu Tickets, Shop-Bestellungen, IPAM, Monitoring, Geräten,
+-- Störungen und Serviceaufgaben
 -- ---------------------------------------------------------------------------
 
 create unique index if not exists monitoring_sensors_tenant_id_unique
   on public.monitoring_sensors (tenant_id, id);
+create unique index if not exists monitoring_incidents_tenant_id_unique
+  on public.monitoring_incidents (tenant_id, id);
+create unique index if not exists service_task_occurrences_tenant_id_unique
+  on public.service_task_occurrences (tenant_id, id);
 
 create table if not exists public.project_links (
   id uuid primary key default gen_random_uuid(),
@@ -608,7 +613,7 @@ create table if not exists public.project_links (
   task_id uuid,
   target_kind text not null check (target_kind in (
     'ticket', 'shop_order', 'ipam_prefix', 'ipam_vlan', 'ipam_address',
-    'monitoring_sensor', 'asset'
+    'monitoring_sensor', 'asset', 'monitoring_incident', 'service_task'
   )),
   ticket_id uuid,
   shop_order_id uuid,
@@ -617,13 +622,16 @@ create table if not exists public.project_links (
   ipam_address_id uuid,
   monitoring_sensor_id uuid,
   asset_id uuid,
+  monitoring_incident_id uuid,
+  service_task_occurrence_id uuid,
   note text check (note is null or char_length(note) <= 300),
   created_by uuid references public.user_profiles(id) on delete set null,
   created_at timestamptz not null default timezone('utc', now()),
   constraint project_links_one_target check (
     num_nonnulls(
       ticket_id, shop_order_id, ipam_prefix_id, ipam_vlan_id, ipam_address_id,
-      monitoring_sensor_id, asset_id
+      monitoring_sensor_id, asset_id, monitoring_incident_id,
+      service_task_occurrence_id
     ) = 1
     and case target_kind
       when 'ticket' then ticket_id is not null
@@ -633,6 +641,8 @@ create table if not exists public.project_links (
       when 'ipam_address' then ipam_address_id is not null
       when 'monitoring_sensor' then monitoring_sensor_id is not null
       when 'asset' then asset_id is not null
+      when 'monitoring_incident' then monitoring_incident_id is not null
+      when 'service_task' then service_task_occurrence_id is not null
       else false
     end
   ),
@@ -653,7 +663,13 @@ create table if not exists public.project_links (
   constraint project_links_monitoring_sensor_fk foreign key (monitoring_sensor_id, tenant_id)
     references public.monitoring_sensors (id, tenant_id) on delete cascade,
   constraint project_links_asset_fk foreign key (asset_id, tenant_id)
-    references public.assets (id, tenant_id) on delete cascade
+    references public.assets (id, tenant_id) on delete cascade,
+  constraint project_links_monitoring_incident_fk
+    foreign key (monitoring_incident_id, tenant_id)
+    references public.monitoring_incidents (id, tenant_id) on delete cascade,
+  constraint project_links_service_task_fk
+    foreign key (service_task_occurrence_id, tenant_id)
+    references public.service_task_occurrences (id, tenant_id) on delete cascade
 );
 
 -- Ein Ticket gehört höchstens zu einem Projekt, damit seine Zeiten nicht
@@ -667,7 +683,8 @@ create unique index if not exists project_links_target_unique
     target_kind,
     coalesce(
       shop_order_id, ipam_prefix_id, ipam_vlan_id, ipam_address_id,
-      monitoring_sensor_id, asset_id
+      monitoring_sensor_id, asset_id, monitoring_incident_id,
+      service_task_occurrence_id
     )
   )
   where ticket_id is null;
@@ -685,6 +702,12 @@ create index if not exists project_links_monitoring_sensor_idx
   on public.project_links (monitoring_sensor_id) where monitoring_sensor_id is not null;
 create index if not exists project_links_asset_idx
   on public.project_links (asset_id) where asset_id is not null;
+create index if not exists project_links_monitoring_incident_idx
+  on public.project_links (monitoring_incident_id)
+  where monitoring_incident_id is not null;
+create index if not exists project_links_service_task_idx
+  on public.project_links (service_task_occurrence_id)
+  where service_task_occurrence_id is not null;
 
 -- ---------------------------------------------------------------------------
 -- Dokumentation, Kommentare, Verlauf
@@ -905,7 +928,7 @@ select
   occurrence.tenant_id,
   'service_task'::text,
   occurrence.id,
-  null::uuid,
+  task_link.project_id,
   template.department_id,
   template.title,
   coalesce(occurrence.assignee_id, template.assignee_id),
@@ -916,7 +939,14 @@ select
   0,
   occurrence.status in ('open', 'in_progress')
 from public.service_task_occurrences as occurrence
-join public.service_task_templates as template on template.id = occurrence.template_id;
+join public.service_task_templates as template on template.id = occurrence.template_id
+left join lateral (
+  select link.project_id
+  from public.project_links as link
+  where link.service_task_occurrence_id = occurrence.id
+  order by link.created_at
+  limit 1
+) as task_link on true;
 
 revoke all on table public.work_items from public, anon, authenticated;
 grant select on table public.work_items to service_role;
@@ -1072,7 +1102,8 @@ as $$
     link.target_kind,
     coalesce(
       link.ticket_id, link.shop_order_id, link.ipam_prefix_id, link.ipam_vlan_id,
-      link.ipam_address_id, link.monitoring_sensor_id, link.asset_id
+      link.ipam_address_id, link.monitoring_sensor_id, link.asset_id,
+      link.monitoring_incident_id, link.service_task_occurrence_id
     ),
     case link.target_kind
       when 'ticket' then ticket.ticket_number
@@ -1082,6 +1113,8 @@ as $$
       when 'ipam_address' then host(address.address)
       when 'monitoring_sensor' then sensor.name
       when 'asset' then asset.name
+      when 'monitoring_incident' then incident.number
+      when 'service_task' then task_template.title
     end,
     case link.target_kind
       when 'ticket' then ticket.subject
@@ -1091,6 +1124,8 @@ as $$
       when 'ipam_address' then coalesce(address.hostname, address.dns_name)
       when 'monitoring_sensor' then sensor_asset.name
       when 'asset' then asset.asset_tag
+      when 'monitoring_incident' then incident.title
+      when 'service_task' then to_char(occurrence.due_on, 'DD.MM.YYYY')
     end,
     case link.target_kind
       when 'ticket' then status.label
@@ -1099,9 +1134,19 @@ as $$
       when 'ipam_address' then address.status
       when 'monitoring_sensor' then sensor.kind
       when 'asset' then asset.status
+      when 'monitoring_incident' then incident.state
+      when 'service_task' then occurrence.status
     end,
-    coalesce(status.is_closed, false),
-    ticket.assigned_agent_id,
+    coalesce(
+      status.is_closed,
+      incident.state in ('resolved', 'closed'),
+      occurrence.status in ('done', 'skipped'),
+      false
+    ),
+    coalesce(
+      ticket.assigned_agent_id, incident.assigned_agent_id,
+      occurrence.assignee_id, task_template.assignee_id
+    ),
     coalesce((
       select sum(entry.minutes) from public.ticket_time_entries as entry
       where entry.ticket_id = link.ticket_id
@@ -1118,6 +1163,11 @@ as $$
   left join public.monitoring_sensors as sensor on sensor.id = link.monitoring_sensor_id
   left join public.assets as sensor_asset on sensor_asset.id = sensor.asset_id
   left join public.assets as asset on asset.id = link.asset_id
+  left join public.monitoring_incidents as incident on incident.id = link.monitoring_incident_id
+  left join public.service_task_occurrences as occurrence
+    on occurrence.id = link.service_task_occurrence_id
+  left join public.service_task_templates as task_template
+    on task_template.id = occurrence.template_id
   where link.tenant_id = p_tenant_id
     and link.project_id = p_project_id
   order by link.created_at;
@@ -1165,6 +1215,18 @@ as $$
     select asset.id, asset.name, asset.asset_tag, asset.created_at
     from public.assets as asset
     where p_kind = 'asset' and asset.tenant_id = p_tenant_id
+    union all
+    select incident.id, incident.number, incident.title, incident.opened_at
+    from public.monitoring_incidents as incident
+    where p_kind = 'monitoring_incident' and incident.tenant_id = p_tenant_id
+    union all
+    select occurrence.id, template.title,
+           to_char(occurrence.due_on, 'DD.MM.YYYY') || ' · ' || occurrence.status,
+           occurrence.due_at
+    from public.service_task_occurrences as occurrence
+    join public.service_task_templates as template on template.id = occurrence.template_id
+    where p_kind = 'service_task' and occurrence.tenant_id = p_tenant_id
+      and occurrence.status in ('open', 'in_progress')
   ) as found, needle
   where needle.q = ''
      or position(needle.q in lower(found.label)) > 0

@@ -69,8 +69,41 @@ export const LINK_KIND_LABELS: Record<LinkKind, string> = {
   ipam_address: "IP-Adresse",
   monitoring_sensor: "Monitoring-Sensor",
   asset: "Gerät",
+  monitoring_incident: "Störung",
+  service_task: "Serviceaufgabe",
 };
 export const LINK_KINDS = Object.keys(LINK_KIND_LABELS) as LinkKind[];
+
+const LINK_STATE_LABELS: Record<string, string> = {
+  active: "aktiv",
+  reserved: "reserviert",
+  deprecated: "veraltet",
+  container: "Container",
+  dhcp: "DHCP",
+  resolved: "behoben",
+  closed: "geschlossen",
+  open: "offen",
+  in_progress: "in Arbeit",
+  done: "erledigt",
+  skipped: "übersprungen",
+  pending_approval: "wartet auf Genehmigung",
+  submitted: "bestellt",
+  ready: "bereit",
+  issued: "ausgegeben",
+  loaned: "ausgeliehen",
+  returned: "zurückgegeben",
+  rejected: "abgelehnt",
+  cancelled: "storniert",
+  ping: "Ping",
+  tcp: "Port",
+  http: "HTTP",
+};
+
+/** Ticket states arrive as labels; the other kinds send their stored value. */
+export function linkStateLabel(state: string | null): string | null {
+  if (!state) return null;
+  return LINK_STATE_LABELS[state] ?? state;
+}
 
 // ---------------------------------------------------------------------------
 // Datum

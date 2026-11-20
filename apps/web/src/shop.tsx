@@ -1,4 +1,5 @@
 import { tn } from "./lib/formality";
+import { ProjectLinkCard } from "./project-link-card";
 import { FormChips } from "./form-kit";
 import {
   ChevronLeft,
@@ -1735,6 +1736,13 @@ function OrderDialog({
                 </div>
               ) : null}
             </dl>
+            <ProjectLinkCard
+              compact
+              heading="Projekt"
+              targetId={orderId}
+              targetKind="shop_order"
+              tenantId={tenantId}
+            />
 
             <h3>Artikel</h3>
             <ul className="shop__lines">

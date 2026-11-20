@@ -503,6 +503,23 @@ gelesen hast. Mehr dazu unter «nextDesk auf dem iPhone».
 Nenne diese Angaben dem Support, wenn du ein Problem meldest. Mehr dazu unter
 «nextDesk auf dem iPhone».
 
+### Wie arbeite ich in einem Projekt mit?
+
+1. Öffne in der Navigation **Projekte**. Der Menüpunkt erscheint, sobald du in ein Projekt aufgenommen bist.
+2. Klicke auf das Projekt.
+3. Im **Zeitplan**, im **Board** oder in der **Liste** siehst du die Aufgaben; ein Klick auf einen Titel öffnet die Aufgabe.
+4. Je nach Rolle änderst du dort Status und Checkliste oder schreibst einen Kommentar.
+
+Mehr dazu unter «Projekte».
+
+### Wie öffne ich ein Projekt, zu dem ich als Gast eingeladen bin?
+
+1. Öffne den Anmeldelink aus der Einladungs-E-Mail.
+2. Nach der Anmeldung siehst du den Menüpunkt **Projekte** mit dem Projekt.
+3. Klicke auf das Projekt. Du siehst Überblick, Zeitplan, Board, Liste und die freigegebene Dokumentation.
+
+Mehr dazu unter «Projekte».
+
 ## Anmelden
 
 Öffne `https://app.nextdesk.ch` im Browser.
@@ -536,6 +553,7 @@ Nach der Anmeldung siehst du links das Menü und rechts den Inhalt.
 - **Wissensdatenbank** – Anleitungen und Antworten auf häufige Fragen
   (falls aktiviert)
 - **Shop** – Geräte und Zubehör bestellen (falls aktiviert)
+- **Projekte** – Projekte, in denen eine Mitarbeit oder Einladung besteht
 
 Oben rechts findest du:
 
@@ -772,6 +790,29 @@ direkt in Microsoft Teams.
 Gäste erhalten eine Einladung von Microsoft und erscheinen erst nach Annahme
 im Team. Weitere Tabs wie Planner oder OneNote ergänzt das Team danach in
 Teams selbst.
+
+## Projekte
+
+Der Menüpunkt **Projekte** erscheint, wenn du in einem Projekt mitarbeitest
+oder als Gast eingeladen bist. Die Übersicht zeigt deine Projekte mit Ampel,
+Status, Leitung, Fortschritt und nächstem Meilenstein.
+
+In einem Projekt findest du:
+
+- **Überblick** – Beschreibung, Meilensteine, Eckdaten und Kommentare
+- **Zeitplan** – die Zeitleiste mit Phasen, Aufgaben, Meilensteinen und
+  Abhängigkeiten
+- **Board** – die Aufgaben nach Status
+- **Liste** – alle Elemente als Tabelle mit Filtern
+- **Dokumentation** – Konzepte und Protokolle
+
+Was du ändern darfst, hängt von deiner Rolle im Projekt ab. Als
+**Mitarbeit** bearbeitest du Aufgaben, buchst Zeit und schreibst Dokumente.
+Als **Gast** siehst du den Plan sowie Dokumente und Kommentare, die für Gäste
+freigegeben sind; mit der Rolle «kommentierend» kannst du zusätzlich
+Kommentare schreiben. Zeiten, Budget und Verknüpfungen sehen Gäste nicht.
+
+![Projekt in der Ansicht eines Gastes](images/ma-projekt-gast.jpg)
 
 ## Persönliche Einstellungen und Handbücher
 

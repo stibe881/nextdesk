@@ -31,6 +31,7 @@ import {
   isOverdue,
   LINK_KIND_LABELS,
   LINK_KINDS,
+  linkStateLabel,
   localToday,
   moneyLabel,
   PROJECT_STATUS_LABELS,
@@ -758,7 +759,7 @@ function LinksTab({
                           {link.label}
                           {link.detail ? ` · ${link.detail}` : ""}
                         </strong>
-                        <small>{link.state ?? ""}</small>
+                        <small>{linkStateLabel(link.state) ?? ""}</small>
                       </span>
                       <button
                         className="pj-plain pj-muted"
@@ -777,9 +778,10 @@ function LinksTab({
         {data.links.length === 0 ? (
           <section className="pj-card">
             <p className="pj-empty">
-              Noch nichts verknüpft. Tickets, Shop-Bestellungen, IP-Netze,
-              VLANs, IP-Adressen, Monitoring-Sensoren und Geräte lassen sich mit
-              dem Projekt oder mit einzelnen Elementen verbinden.
+              Noch nichts verknüpft. Tickets, Störungen, Serviceaufgaben,
+              Shop-Bestellungen, IP-Netze, VLANs, IP-Adressen,
+              Monitoring-Sensoren und Geräte lassen sich mit dem Projekt oder
+              mit einzelnen Elementen verbinden.
             </p>
           </section>
         ) : null}
