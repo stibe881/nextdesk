@@ -64,6 +64,7 @@ import {
   Laptop,
   ShoppingBag,
   List,
+  FolderKanban,
   ListChecks,
   Package,
   MailX,
@@ -254,11 +255,21 @@ import { nextExpandedAccordionId } from "./lib/navigation-accordion";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 import { setFormality, tn } from "./lib/formality";
 import { loadServiceTaskAccess, ServiceTasks } from "./service-tasks";
+import {
+  loadProjectModuleAccess,
+  type ProjectModuleAccess,
+} from "./lib/projects-api";
+import {
+  onOpenProjectRequest,
+  setProjectsAvailable,
+} from "./lib/project-navigation";
+import { Projects } from "./projects";
 
 import { confirmDialog } from "./app-dialog";
 type Section =
   | "Übersicht"
   | "Tickets"
+  | "Projekte"
   | "Shop"
   | "Teams"
   | "Arbeitsplatz"
@@ -416,6 +427,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
   workplaceFirstNavigation([
     { label: "Übersicht", Icon: LayoutDashboard },
     { label: "Tickets", Icon: Ticket },
+    { label: "Projekte", Icon: FolderKanban },
     { label: "Shop", Icon: ShoppingBag },
     { label: "Teams", Icon: UsersRound },
     { label: "Fälle", Icon: FileWarning },
@@ -444,7 +456,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "ARBEITSBEREICH",
     id: "navigation-category-workspace",
     navigationLabel: "Arbeitsbereich",
-    sectionLabels: ["Tickets", "Shop", "Teams", "Fälle"],
+    sectionLabels: ["Tickets", "Projekte", "Shop", "Teams", "Fälle"],
   },
   {
     heading: "SICHERHEIT & STÖRUNGEN",
@@ -3454,6 +3466,9 @@ function AuthenticatedApp() {
   const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
   const [canReadReports, setCanReadReports] = useState(false);
   const [canReadServiceTasks, setCanReadServiceTasks] = useState(false);
+  const [projectAccess, setProjectAccess] =
+    useState<ProjectModuleAccess | null>(null);
+  const [projectFocusId, setProjectFocusId] = useState<string | null>(null);
   const [serviceTaskFocusId, setServiceTaskFocusId] = useState<string | null>(
     null,
   );
@@ -4256,6 +4271,44 @@ function AuthenticatedApp() {
   }, [keyboardHelpOpen]);
 
   useEffect(() => {
+    // Projekte: the function checks module, rights and memberships itself, so
+    // guests without any role get their answer here too.
+    if (!session || !activeTenant) {
+      setProjectAccess(null);
+      return;
+    }
+    let mounted = true;
+    void loadProjectModuleAccess(activeTenant.id).then((access) => {
+      if (mounted) setProjectAccess(access);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, session, tenantFeatures]);
+
+  const projectsVisible =
+    projectAccess?.enabled === true && projectAccess.visible;
+  // An external guest has no role in the tenant: only «Projekte» is shown.
+  const projectGuestOnly = projectsVisible && projectAccess?.guestOnly === true;
+  useEffect(() => {
+    if (projectGuestOnly && section !== "Projekte") setSection("Projekte");
+  }, [projectGuestOnly, section]);
+  useEffect(() => {
+    setProjectsAvailable(projectsVisible && !projectGuestOnly);
+    return () => setProjectsAvailable(false);
+  }, [projectGuestOnly, projectsVisible]);
+  useEffect(
+    () =>
+      // Any detail view can ask for a project; close what lies on top of it.
+      onOpenProjectRequest((projectId) => {
+        setSelectedTicketId(null);
+        setProjectFocusId(projectId);
+        setSection("Projekte");
+      }),
+    [],
+  );
+
+  useEffect(() => {
     // Serviceaufgaben: visible with the module switched on and at least the
     // read permission; the function answers with the caller's rights.
     if (!session || !activeTenant || tenantFeatures["service.tasks"] !== true) {
@@ -4669,6 +4722,7 @@ function AuthenticatedApp() {
       restrictedWorkspaceSections.push("Verträge", "Lizenzen");
     }
     if (reportsAvailable) restrictedWorkspaceSections.push("Berichte");
+    if (projectsVisible) restrictedWorkspaceSections.push("Projekte");
     // Employees open the read-only status from the badge in the navigation.
     if (serviceStatusReadable) restrictedWorkspaceSections.push("Systemstatus");
     if (restrictedWorkspaceSections.includes(section)) return;
@@ -4687,6 +4741,7 @@ function AuthenticatedApp() {
     tenantFeatures,
     tenantFeaturesLoading,
     ticketAccessLoading,
+    projectsVisible,
   ]);
 
   useEffect(() => {
@@ -4897,6 +4952,7 @@ function AuthenticatedApp() {
       ((nextSection === "Verträge" || nextSection === "Lizenzen") &&
         contractsAvailable) ||
       (nextSection === "Berichte" && reportsAvailable) ||
+      (nextSection === "Projekte" && projectsVisible) ||
       (nextSection === "Systemstatus" && serviceStatusReadable);
     if (
       !canWorkTickets &&
@@ -5546,6 +5602,7 @@ function AuthenticatedApp() {
     if (item.label === "Serviceaufgaben") {
       return isFeatureEnabled("service.tasks") && canReadServiceTasks;
     }
+    if (item.label === "Projekte") return projectsVisible;
     if (item.label === "Raumplanung") return isFeatureEnabled("event.spaces");
     if (item.label === "Eintritte") {
       return isFeatureEnabled("onboarding.entries");
@@ -5560,6 +5617,7 @@ function AuthenticatedApp() {
       item.label === "Berichte" ||
       item.label === "Systemstatus" ||
       item.label === "Serviceaufgaben" ||
+      item.label === "Projekte" ||
       item.label === "Lager",
   );
   // The shop is open to everybody, also next to restricted work sections.
@@ -5575,13 +5633,19 @@ function AuthenticatedApp() {
     "Arbeitsplatz",
     "Systemstatus",
   ];
-  const workSections = canWorkTickets
-    ? featureSections
-    : [...requesterSections, ...restrictedWorkSections, ...shopSections].filter(
-        (item, index, list) =>
-          !employeeHiddenSections.includes(item.label) &&
-          list.findIndex((other) => other.label === item.label) === index,
-      );
+  const workSections = projectGuestOnly
+    ? featureSections.filter((item) => item.label === "Projekte")
+    : canWorkTickets
+      ? featureSections
+      : [
+          ...requesterSections,
+          ...restrictedWorkSections,
+          ...shopSections,
+        ].filter(
+          (item, index, list) =>
+            !employeeHiddenSections.includes(item.label) &&
+            list.findIndex((other) => other.label === item.label) === index,
+        );
   const workSectionAvailable = (label: Section) =>
     workSections.some((item) => item.label === label);
   const quickCreateActions = quickCreateActionsForContext({
@@ -6319,7 +6383,7 @@ function AuthenticatedApp() {
         </div>
         {employeeNavigation ? (
           <>
-            {serviceStatusReadable && activeTenant ? (
+            {serviceStatusReadable && activeTenant && !projectGuestOnly ? (
               <div className="workplace-primary-navigation employee-status-navigation">
                 <NavigationStatusBadge
                   active={navSection === "Systemstatus"}
@@ -6696,7 +6760,7 @@ function AuthenticatedApp() {
                   </select>
                 </label>
               )}
-            {quickCreateActions.length > 0 && (
+            {quickCreateActions.length > 0 && !projectGuestOnly && (
               <div className="quick-create-anchor">
                 <button
                   aria-controls="quick-create-menu"
@@ -6765,7 +6829,7 @@ function AuthenticatedApp() {
                 <span>Ansicht</span>
               </button>
             )}
-            {activeTenant && (
+            {activeTenant && !projectGuestOnly && (
               <GlobalSearch
                 disabled={!isSupabaseConfigured}
                 onSelect={(result) => {
@@ -7192,6 +7256,19 @@ function AuthenticatedApp() {
             key={activeTenant.id}
             tenantId={activeTenant.id}
             today={teamsManage.today}
+          />
+        ) : section === "Projekte" && activeTenant && projectAccess ? (
+          <Projects
+            access={projectAccess}
+            focusProjectId={projectFocusId}
+            key={activeTenant.id}
+            onFocusHandled={() => setProjectFocusId(null)}
+            onOpenTicket={
+              projectAccess.guestOnly
+                ? undefined
+                : (ticketId) => setSelectedTicketId(ticketId)
+            }
+            tenantId={activeTenant.id}
           />
         ) : section === "Serviceaufgaben" && activeTenant ? (
           <ServiceTasks

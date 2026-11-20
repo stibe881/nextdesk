@@ -1989,6 +1989,169 @@ Mehr dazu unter «Persönliche Einstellungen».
 
 Mehr dazu unter «Persönliche Einstellungen».
 
+### Wie lege ich ein Projekt an?
+
+1. Öffnen Sie in der Navigation **Projekte**.
+2. Klicken Sie auf **Neues Projekt**.
+3. Tragen Sie den Titel ein und wählen Sie bei Bedarf Projektleitung, Kunde, Standort, Start, Ende, Stundenbudget, Budget und Stundensatz.
+4. Klicken Sie auf **Projekt anlegen**. Das Projekt öffnet sich und erhält eine Nummer wie «P-2026-0001».
+
+Mehr dazu unter «Projekte».
+
+### Wie lege ich ein Projekt aus einer Vorlage an?
+
+1. Öffnen Sie **Projekte** und das Register **Vorlagen**.
+2. Klicken Sie bei der Vorlage auf **Projekt daraus anlegen**.
+3. Tragen Sie Titel und **Start** ein. Phasen, Aufgaben, Checklisten, Abhängigkeiten und Termine werden ab diesem Startdatum übernommen.
+4. Klicken Sie auf **Projekt anlegen**.
+
+Mehr dazu unter «Projekte».
+
+### Wie speichere ich ein Projekt als Vorlage?
+
+1. Öffnen Sie das Projekt.
+2. Klicken Sie oben rechts auf **Mehr** und wählen Sie **Als Vorlage speichern**.
+3. Geben Sie der Vorlage einen Namen und bestätigen Sie mit **Vorlage speichern**.
+
+Der Punkt erscheint nur mit dem Recht «Alle Projekte und Projektvorlagen verwalten». Mehr dazu unter «Projekte».
+
+### Wie füge ich Phasen, Meilensteine und Aufgaben hinzu?
+
+1. Öffnen Sie das Projekt und das Register **Zeitplan** oder **Liste**.
+2. Klicken Sie auf **Element hinzufügen**.
+3. Wählen Sie die Art (Aufgabe, Meilenstein oder Phase), tragen Sie den Titel ein und wählen Sie unter «Einordnen unter», wo das Element stehen soll.
+4. Klicken Sie auf **Hinzufügen**. Für Start, Termin, Schätzung und Zuständigkeit öffnen Sie das Element mit einem Klick auf seinen Titel.
+
+Eine Aufgabe unter einer Aufgabe ist eine Unteraufgabe. Mehr dazu unter «Projekte».
+
+### Wie verschiebe ich Termine im Zeitplan?
+
+1. Öffnen Sie das Projekt und das Register **Zeitplan**.
+2. Ziehen Sie den Balken einer Aufgabe nach links oder rechts, um sie zu verschieben.
+3. Ziehen Sie den rechten Rand des Balkens, um nur das Ende zu ändern.
+4. Hängen andere Elemente davon ab, rücken sie nach; ein Hinweis nennt die Zahl der nachgeführten Termine.
+
+Mehr dazu unter «Projekte».
+
+### Wie verknüpfe ich Aufgaben mit einer Abhängigkeit?
+
+1. Öffnen Sie die Aufgabe, die warten soll, mit einem Klick auf ihren Titel.
+2. Wählen Sie im Abschnitt **Abhängigkeiten** unter «Wartet auf …» den Vorgänger.
+3. Wählen Sie die Art (in der Regel «Ende → Anfang») und bei Bedarf einen Abstand in Arbeitstagen.
+4. Klicken Sie auf **Hinzufügen**. Im Zeitplan verbindet ein Pfeil die beiden Elemente.
+
+Mehr dazu unter «Projekte».
+
+### Wie arbeite ich mit dem Board eines Projekts?
+
+1. Öffnen Sie das Projekt und das Register **Board**.
+2. Ziehen Sie eine Karte in die Spalte **Offen**, **In Arbeit**, **Blockiert** oder **Erledigt**.
+3. Ein Klick auf den Titel öffnet die Aufgabe mit Checkliste, Zeit und Kommentaren.
+
+Mehr dazu unter «Projekte».
+
+### Wie ändere ich mehrere Projektaufgaben gleichzeitig?
+
+1. Öffnen Sie das Projekt und das Register **Liste**.
+2. Setzen Sie das Häkchen bei den gewünschten Elementen; mit den Filtern oben grenzen Sie die Liste vorher ein.
+3. Wählen Sie in der Leiste über der Liste Status, Zuweisung oder Priorität oder tragen Sie bei «± Tage» ein, um wie viele Tage die Termine wandern sollen.
+4. Klicken Sie auf **Anwenden**.
+
+Mehr dazu unter «Projekte».
+
+### Wie buche ich Zeit auf eine Projektaufgabe?
+
+1. Öffnen Sie die Aufgabe mit einem Klick auf ihren Titel.
+2. Tragen Sie im Abschnitt **Zeit** die Stunden ein (z. B. «1.5»), dazu eine kurze Notiz und die Verrechnung.
+3. Klicken Sie auf **Zeit buchen**.
+
+Mehr dazu unter «Projekte».
+
+### Wie vergleiche ich Soll und Ist eines Projekts?
+
+1. Öffnen Sie das Projekt und das Register **Zeiten & Budget**.
+2. Oben sehen Sie gebuchte Stunden, geplante Stunden, Ist-Kosten und Fortschritt.
+3. Die Tabelle zeigt je Phase und Aufgabe Soll, Ist, Abweichung und Verbrauch; verknüpfte Tickets zählen mit ihrer gebuchten Zeit mit.
+
+Mehr dazu unter «Projekte».
+
+### Wie setze ich Status und Ampel eines Projekts?
+
+1. Öffnen Sie das Projekt.
+2. Wählen Sie oben rechts den **Status** (Planung, Aktiv, Pausiert, Abgeschlossen).
+3. Wählen Sie die **Ampel** (Grün, Gelb, Rot). Sprechen die Zahlen für eine andere Farbe, erscheint ein Vorschlag mit Begründung, den Sie mit einem Klick übernehmen.
+
+Mehr dazu unter «Projekte».
+
+### Wie sehe ich die Auslastung der Mitarbeitenden?
+
+1. Öffnen Sie **Projekte** und das Register **Auslastung**.
+2. Wählen Sie bei Bedarf ein Team und blättern Sie mit den Pfeilen um vier Wochen.
+3. Jede Zeile zeigt eine Person mit den geplanten Stunden je Arbeitstag aus Projektaufgaben, Serviceaufgaben und offenen Tickets.
+4. Ein Klick auf den Namen zeigt, was der Person zugewiesen ist.
+
+Mehr dazu unter «Projekte».
+
+### Wie wandle ich ein Ticket in ein Projekt um?
+
+1. Öffnen Sie das Ticket.
+2. Klappen Sie rechts den Abschnitt **Projekt** auf.
+3. Klicken Sie auf **In Projekt umwandeln** und bestätigen Sie.
+4. Das neue Projekt öffnet sich. Das Ticket bleibt bestehen und ist verknüpft; seine Checklistenpunkte sind Aufgaben geworden.
+
+Mehr dazu unter «Projekte».
+
+### Wie verknüpfe ich ein Ticket mit einem Projekt?
+
+1. Öffnen Sie das Ticket und klappen Sie rechts den Abschnitt **Projekt** auf.
+2. Klicken Sie auf **Mit Projekt verknüpfen**.
+3. Wählen Sie das Projekt und klicken Sie auf **Verknüpfen**.
+
+Ein Ticket gehört höchstens zu einem Projekt. Mehr dazu unter «Projekte».
+
+### Wie wandle ich eine Shop-Bestellung in ein Projekt um?
+
+1. Öffnen Sie im **Shop** die Bestellung.
+2. Klicken Sie auf **In Projekt umwandeln** und bestätigen Sie.
+3. Das neue Projekt öffnet sich; jede Position der Bestellung ist eine Aufgabe.
+
+Mehr dazu unter «Projekte».
+
+### Wie verknüpfe ich ein IP-Netz, ein VLAN, eine IP-Adresse, einen Sensor oder ein Gerät mit einem Projekt?
+
+1. Öffnen Sie das Projekt und das Register **Verknüpfungen**.
+2. Wählen Sie rechts die Art und suchen Sie nach Nummer, Name oder Adresse.
+3. Klicken Sie beim Treffer auf **Verknüpfen**.
+4. Soll die Verknüpfung an einer einzelnen Aufgabe hängen, öffnen Sie die Aufgabe und nutzen Sie dort den Abschnitt **Verknüpfungen**.
+
+Mehr dazu unter «Projekte».
+
+### Wie dokumentiere ich ein Projekt?
+
+1. Öffnen Sie das Projekt und das Register **Dokumentation**.
+2. Klicken Sie auf **Neues Dokument**, geben Sie einen Titel ein und schreiben Sie den Inhalt in Markdown; rechts sehen Sie die Vorschau.
+3. Setzen Sie das Häkchen **Für Gäste sichtbar**, wenn eingeladene Gäste das Dokument lesen sollen.
+4. Klicken Sie auf **Speichern**. Dateien hängen Sie links unter «Dateien zum Projekt» an.
+
+Mehr dazu unter «Projekte».
+
+### Wie lade ich einen externen Gast in ein Projekt ein?
+
+1. Öffnen Sie das Projekt und das Register **Team & Gäste**.
+2. Tragen Sie unter **Externen Gast einladen** die E-Mail-Adresse ein.
+3. Wählen Sie **Lesend** oder **Kommentierend** und klicken Sie auf **Einladen**.
+4. Die Person erhält einen Anmeldelink und sieht danach nur dieses Projekt.
+
+Mehr dazu unter «Projekte».
+
+### Wie archiviere oder lösche ich ein Projekt?
+
+1. Öffnen Sie das Projekt und klicken Sie oben rechts auf **Mehr**.
+2. Wählen Sie **Archivieren**, um das Projekt aus der Übersicht zu nehmen; mit **Archiv anzeigen** finden Sie es wieder.
+3. Wählen Sie **Projekt löschen**, um es mit Plan, Zeiten, Dokumenten und Anhängen endgültig zu entfernen.
+
+Mehr dazu unter «Projekte».
+
 ## Einführungstour
 
 Beim ersten Login startet eine kurze **Einführung** (Startseite, Tickets,
@@ -2003,7 +2166,8 @@ Die linke Navigation ist gegliedert in:
 - **Übersicht** – Ihre Startseite mit Kennzahlen
 - **Arbeitsplatz** – Team-Queues, Erwähnungen, Stellvertretung, Erinnerungen
 - **Teamführung** – nur für Leitungen von Abteilungen
-- **Arbeitsbereich**: Tickets, Shop, Teams (nur mit Recht zur Shop-Verwaltung),
+- **Arbeitsbereich**: Tickets, Projekte (falls eingeschaltet), Shop, Teams
+  (nur mit Recht zur Shop-Verwaltung),
   Fälle
 - **Sicherheit und Störungen**: Phishing-/Junk-Fälle, Störungen
   (nur für das zuständige Team, siehe unten)
@@ -3008,6 +3172,199 @@ und eine Suche nach IP-Adresse, Hostname oder MAC; ein Subnetz öffnet seine
 Adressen, eine Adresse ihre Details.
 
 ![Neues Ticket als Agent erfassen](images/ag-neues-ticket.jpg)
+
+## Projekte
+
+Unter **Projekte** planen und steuern Sie Vorhaben, die über ein einzelnes Ticket
+hinausgehen: einen Standort neu vernetzen, eine Software einführen, einen
+Serverraum umziehen. Der Menüpunkt erscheint, wenn das Modul eingeschaltet ist
+und Sie Projekte sehen dürfen oder in einem Projekt mitarbeiten.
+
+Projektaufgaben nutzen dieselbe Basis wie Tickets: Zuweisung an Personen und
+Teams, Zeiterfassung, Kommentare und Anhänge. Echte Tickets, Bestellungen,
+Netze und Geräte hängen Sie an ein Projekt, statt sie zu kopieren.
+
+### Übersicht aller Projekte
+
+Die **Übersicht** zeigt alle Projekte, die Sie sehen dürfen, mit Ampel,
+Status, Leitung, Fortschritt, Budgetverbrauch, nächstem Meilenstein und Ende.
+Projekte mit roter Ampel stehen zuoberst. Die Kacheln darüber zählen laufende
+Projekte, überfällige Meilensteine, Projekte mit gelber oder roter Ampel und
+die gebuchten Stunden gegenüber dem Budget. Mit **Laufend**, **Abgeschlossen**
+und **Alle** sowie dem Suchfeld grenzen Sie die Liste ein; **Archiv anzeigen**
+blendet archivierte Projekte ein.
+
+![Übersicht aller Projekte mit Ampel, Fortschritt und Budget](images/ag-projekte.jpg)
+
+### Ein Projekt anlegen
+
+**Neues Projekt** öffnet das Formular mit Titel, Beschreibung, Projektleitung,
+Abteilung, Kunde, Standort, Start, Ende, Stundenbudget, Budget in CHF und
+Stundensatz. Mit einer **Vorlage** entsteht das Projekt samt Phasen, Aufgaben,
+Checklisten, Abhängigkeiten und Terminen ab dem Startdatum.
+
+Die **Terminplanung** legt fest, was bei Verzögerungen geschieht:
+
+- **Automatisch**: verzögert sich ein Vorgänger, rücken die Nachfolger sofort
+  nach.
+- **Manuell**: die Verschiebung wird nur vorgeschlagen. Unter **Mehr →
+  Termine prüfen** sehen Sie die Änderungen und wenden sie an.
+
+![Formular für ein neues Projekt](images/ad-projekt-neu.jpg)
+
+### Überblick eines Projekts
+
+Der Kopf zeigt Nummer, Kunde, Titel, Ampel und Fortschritt. Rechts setzen Sie
+**Status** (Planung, Aktiv, Pausiert, Abgeschlossen) und **Ampel**. Sprechen
+überfällige Meilensteine, überfällige Aufgaben oder der Budgetverbrauch für
+eine andere Farbe, schlägt nextDesk sie mit Begründung vor. Unter **Mehr**
+finden Sie «Projekt bearbeiten», «Termine prüfen», «Als Vorlage speichern»,
+«Archivieren» und «Projekt löschen».
+
+Das Register **Überblick** zeigt Beschreibung, Meilensteine, überfällige
+Aufgaben, Kommentare zum Projekt, Eckdaten und den Verlauf.
+
+![Überblick eines Projekts mit Meilensteinen und Verlauf](images/ag-projekt-ueberblick.jpg)
+
+### Zeitplan
+
+Der **Zeitplan** ist eine Zeitleiste mit allen Phasen, Meilensteinen, Aufgaben
+und Unteraufgaben. Die senkrechte Linie markiert heute, Wochenenden sind
+hinterlegt, und mit **Tage**, **Wochen** und **Monate** wählen Sie den
+Massstab.
+
+- Die Farbe eines Balkens zeigt den Status, die dunklere Füllung den
+  Fortschritt. Ein roter Rahmen bedeutet überfällig.
+- Phasen und Aufgaben mit Unteraufgaben erscheinen als schmaler Balken über
+  den Zeitraum ihrer Unterelemente.
+- Meilensteine sind Rauten.
+- Pfeile zeigen Abhängigkeiten.
+
+Balken ziehen Sie mit der Maus: der ganze Balken verschiebt die Aufgabe, der
+rechte Rand ändert ihr Ende. Hängen andere Elemente davon ab, werden sie
+nachgeführt. Dabei gilt: Nachfolger rücken nur nach hinten, die Dauer in
+Arbeitstagen bleibt erhalten, und Erledigtes bleibt stehen.
+
+![Zeitplan eines Projekts mit Abhängigkeiten](images/ag-projekt-zeitplan.jpg)
+
+### Board
+
+Das **Board** zeigt die Aufgaben in den Spalten Offen, In Arbeit, Blockiert und
+Erledigt. Eine Karte in eine andere Spalte zu ziehen, ändert ihren Status. Auf
+der Karte stehen Phase, Termin, Stand der Checkliste, hohe Priorität und die
+zuständige Person.
+
+![Board eines Projekts](images/ag-projekt-board.jpg)
+
+### Liste und Massenbearbeitung
+
+Die **Liste** zeigt alle Elemente als Tabelle mit Status, Zuständigkeit, Start,
+Termin, Priorität, Fortschritt, Soll und Ist. Sie filtern nach Titel, Status
+(auch «Nicht erledigt» und «Überfällig»), Person und Art und sortieren mit einem
+Klick auf die Spaltenüberschrift.
+
+Mit den Häkchen wählen Sie mehrere Elemente aus. Die Leiste darüber setzt
+Status, Zuweisung und Priorität, verschiebt die Termine um eine Anzahl Tage
+oder löscht die Auswahl.
+
+![Liste eines Projekts mit ausgewählten Elementen](images/ag-projekt-liste.jpg)
+
+### Ein Element bearbeiten
+
+Ein Klick auf den Titel öffnet die Seitenleiste des Elements. Dort ändern Sie
+Titel, Status, Priorität, Zuständigkeit, Team, Start, Termin, Schätzung,
+Fortschritt und die Einordnung im Plan. Darunter stehen Beschreibung,
+Checkliste, Abhängigkeiten, Zeit, Verknüpfungen, Anhänge (PDF und Bilder) und
+Kommentare.
+
+Bei Elementen mit Unterelementen ergeben sich Zeitraum, Schätzung und
+Fortschritt aus den Unterelementen. Wer ein Element löscht, löscht auch seine
+Unterelemente und die darauf gebuchten Zeiten.
+
+![Seitenleiste einer Projektaufgabe](images/ag-projekt-aufgabe.jpg)
+
+### Zeiten und Budget
+
+**Zeiten & Budget** stellt Soll und Ist gegenüber: je Aufgabe, je Phase und für
+das ganze Projekt. Soll ist die Summe der Schätzungen. Ist ist die gebuchte
+Zeit des Elements, seiner Unterelemente und der daran verknüpften Tickets. Die
+Ist-Kosten ergeben sich aus den gebuchten Stunden und dem Stundensatz des
+Projekts.
+
+![Soll-Ist-Vergleich eines Projekts](images/ag-projekt-budget.jpg)
+
+### Dokumentation
+
+Unter **Dokumentation** führen Sie Konzepte, Netzwerkpläne und Protokolle als
+Dokumente in Markdown mit Überschriften, Listen, Tabellen und Codeblöcken.
+Dateien zum Projekt (PDF und Bilder bis 25 MB) hängen Sie links an. Ein
+Dokument ist nur dann für Gäste sichtbar, wenn **Für Gäste sichtbar** gesetzt
+ist.
+
+![Dokumentation eines Projekts](images/ag-projekt-doku.jpg)
+
+### Verknüpfungen
+
+Unter **Verknüpfungen** hängen Sie an das Projekt oder an einzelne Elemente:
+
+- **Tickets** – sie erscheinen mit Status und gebuchter Zeit; ein Ticket
+  gehört höchstens zu einem Projekt
+- **Shop-Bestellungen**
+- **IP-Netze**, **VLANs** und **IP-Adressen** aus der IP-Adressverwaltung
+- **Monitoring-Sensoren** und **Geräte**
+- **Störungen** und fällige **Serviceaufgaben**
+
+Umgekehrt zeigen Ticket, Bestellung, IP-Netz, IP-Adresse und Sensor ihr
+Projekt an und führen mit einem Klick dorthin. Im Ticket und in der Bestellung
+steht zusätzlich **In Projekt umwandeln**.
+
+Welche Arten Sie verknüpfen dürfen, richtet sich nach Ihren Rechten im
+jeweiligen Modul.
+
+![Verknüpfungen eines Projekts](images/ag-projekt-verknuepfungen.jpg)
+
+### Team und Gäste
+
+Unter **Team & Gäste** legt die Projektleitung fest, wer mitarbeitet:
+
+| Rolle                | Darf                                                             |
+| -------------------- | ---------------------------------------------------------------- |
+| Projektleitung       | alles im Projekt, auch Mitglieder, Status, Ampel und Archiv      |
+| Mitarbeit            | Plan, Zeiten, Dokumente, Verknüpfungen und Kommentare bearbeiten |
+| Gast (kommentierend) | Plan und Freigegebenes lesen, für Gäste sichtbar kommentieren    |
+| Gast (lesend)        | Plan und Freigegebenes lesen                                     |
+
+**Externe Gäste** (Dienstleister, Kunden) laden Sie mit ihrer E-Mail-Adresse
+ein. Gäste sehen ausschliesslich dieses Projekt: Überblick, Zeitplan, Board,
+Liste sowie Dokumente und Kommentare, die als «für Gäste sichtbar» markiert
+sind. Zeiten, Budget, Schätzungen, Verknüpfungen, Anhänge, der Verlauf und
+alle anderen Module bleiben verborgen. Eine offene Einladung gilt 14 Tage und
+lässt sich zurückziehen.
+
+![Mitglieder und Gäste eines Projekts](images/ag-projekt-team.jpg)
+
+### Auslastung
+
+Das Register **Auslastung** zeigt je Person die geplanten Stunden pro
+Arbeitstag für vier Wochen. Eingerechnet sind:
+
+- **Projektaufgaben** mit ihrem Restaufwand (Schätzung abzüglich Fortschritt)
+- **Serviceaufgaben** mit ihrer Schätzung
+- **offene Tickets** mit einer Pauschale je Ticket
+
+Der Aufwand verteilt sich gleichmässig auf die Arbeitstage bis zum Termin;
+Überfälliges fällt auf heute. Die Farbe einer Zelle zeigt, wie voll der Tag
+ist; rot bedeutet mehr Arbeit als Arbeitszeit. Aufgaben ohne Schätzung zählen
+nicht in die Stunden und werden bei der Person ausgewiesen.
+
+![Auslastung der Mitarbeitenden über vier Wochen](images/ag-projekt-auslastung.jpg)
+
+### Vorlagen
+
+Das Register **Vorlagen** listet die gespeicherten Projektvorlagen. Eine
+Vorlage entsteht aus einem bestehenden Projekt über **Mehr → Als Vorlage
+speichern** und enthält Phasen, Aufgaben, Checklisten, Abhängigkeiten,
+Dokumente und die Termine als Abstand zum Projektstart.
 
 ## Dienste und Systemstatus
 

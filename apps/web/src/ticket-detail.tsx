@@ -29,6 +29,7 @@ import {
   Paperclip,
   Pencil,
   ChevronDown,
+  FolderKanban,
   Clock3,
   Eye,
   EyeOff,
@@ -78,6 +79,8 @@ import {
   shouldLoadTicketCatalog,
 } from "./lib/ticket-catalog-search";
 import { supabase } from "./lib/supabase";
+import { useProjectsAvailable } from "./lib/project-navigation";
+import { ProjectLinkCard } from "./project-link-card";
 import { recordRecentItem } from "./lib/recent-items";
 import { functionErrorMessage } from "./lib/function-error";
 import { TicketControlPanel } from "./ticket-control";
@@ -2382,6 +2385,9 @@ function eventLabel(
     "ticket.phishing_suspicion": "Spam-/Phishing-Verdacht gemeldet",
     "ticket.knowledge.sent":
       "Wissensartikel als externe Ticketantwort versendet",
+    "project.converted": "In ein Projekt umgewandelt",
+    "project.linked": "Mit einem Projekt verknüpft",
+    "project.unlinked": "Verknüpfung mit einem Projekt entfernt",
   };
   return (
     labels[eventType] ??
@@ -4062,6 +4068,7 @@ export function TicketDetail({
   onOpenPerson,
   onOpenIncident,
 }: TicketDetailProps) {
+  const projectsAvailable = useProjectsAvailable();
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
   // Answers from a ticket template form (only tickets created with one).
   const [storedFormAnswers, setStoredFormAnswers] = useState<{
@@ -9546,6 +9553,36 @@ export function TicketDetail({
             </details>
           ) : null}
 
+          {!requesterView && projectsAvailable ? (
+            <details className="ticket-detail-disclosure">
+              <summary>
+                <span className="ticket-detail-disclosure-label">
+                  <FolderKanban
+                    aria-hidden="true"
+                    size={17}
+                    strokeWidth={1.8}
+                  />
+                  Projekt
+                </span>
+                <span className="ticket-detail-disclosure-meta">
+                  Verknüpfen oder in ein Projekt umwandeln
+                  <ChevronDown
+                    aria-hidden="true"
+                    className="ticket-detail-disclosure-icon"
+                    size={18}
+                    strokeWidth={1.8}
+                  />
+                </span>
+              </summary>
+              <div className="ticket-detail-disclosure-content">
+                <ProjectLinkCard
+                  targetId={ticketId}
+                  targetKind="ticket"
+                  tenantId={tenantId}
+                />
+              </div>
+            </details>
+          ) : null}
           {!requesterView &&
           detail.ticketModules.timeTracking &&
           detail.canTrackTime ? (

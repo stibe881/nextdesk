@@ -22,7 +22,7 @@ const GROUPS: ReadonlyArray<{
   {
     id: "planning",
     label: "Planung",
-    prefixes: ["event", "event_space", "onboarding"],
+    prefixes: ["event", "event_space", "onboarding", "project"],
   },
   {
     id: "workplace",
@@ -128,6 +128,9 @@ const PERMISSION_HINTS: Readonly<Record<string, string>> = {
   "platform.support_access.request":
     "Erlaubt dem Plattform-Support befristet und protokolliert Zugriff.",
   "platform.tenants.manage": "Verwaltet Mandanten der gesamten Plattform.",
+  "project.create": "Legt neue Projekte an und leitet sie.",
+  "project.manage": "Bearbeitet alle Projekte und pflegt die Projektvorlagen.",
+  "project.read": "Sieht alle Projekte, auch ohne Projektmitglied zu sein.",
   "report.read": "Sieht Berichte und Auswertungen.",
   "role.manage": "Erstellt Rollen und weist sie Personen zu.",
   "service_tasks.execute": "Erledigt fällige Serviceaufgaben.",

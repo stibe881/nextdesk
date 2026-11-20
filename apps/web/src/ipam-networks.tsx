@@ -3,6 +3,7 @@
 // Subnetz-Detail mit Belegung (Heatmap, Zoom je /24, Bereichsauswahl),
 // Adressliste, Verlauf & Prognose und Funden. Brotkrumen oben im Detail.
 
+import { ProjectLinkCard } from "./project-link-card";
 import { tn } from "./lib/formality";
 import {
   Archive,
@@ -903,31 +904,42 @@ function DetailHead({
   gauge,
   prefix,
   subtitle,
+  tenantId,
 }: {
   actions: ReactNode;
   gauge: ReactNode;
   prefix: IpamPrefix;
   subtitle: string;
+  tenantId: string;
 }) {
   return (
-    <header className="ipam-dhead">
-      {gauge}
-      <div className="ipam-dhead__text">
-        <div className="ipam-dhead__title">
-          <h3 className="ipam-mono">{prefix.prefix}</h3>
-          <CopyButton label={prefix.prefix} value={prefix.prefix} />
-          <Pill tone={STATUS_TONE[prefix.status]}>
-            {prefix.status === "container" ? (
-              <Term name="Container">Container</Term>
-            ) : (
-              prefixStatusLabel(prefix.status)
-            )}
-          </Pill>
+    <>
+      <header className="ipam-dhead">
+        {gauge}
+        <div className="ipam-dhead__text">
+          <div className="ipam-dhead__title">
+            <h3 className="ipam-mono">{prefix.prefix}</h3>
+            <CopyButton label={prefix.prefix} value={prefix.prefix} />
+            <Pill tone={STATUS_TONE[prefix.status]}>
+              {prefix.status === "container" ? (
+                <Term name="Container">Container</Term>
+              ) : (
+                prefixStatusLabel(prefix.status)
+              )}
+            </Pill>
+          </div>
+          <p>{subtitle}</p>
         </div>
-        <p>{subtitle}</p>
-      </div>
-      {actions ? <div className="ipam-dhead__actions">{actions}</div> : null}
-    </header>
+        {actions ? <div className="ipam-dhead__actions">{actions}</div> : null}
+      </header>
+      <ProjectLinkCard
+        compact
+        heading="Projekte"
+        targetId={prefix.id}
+        targetKind="ipam_prefix"
+        tenantId={tenantId}
+      />
+    </>
   );
 }
 
@@ -964,6 +976,7 @@ function SupernetDetail(props: DetailProps) {
   return (
     <div className="ipam-card ipam-detail2">
       <DetailHead
+        tenantId={tenantId}
         actions={
           canManage ? (
             <>
@@ -1569,6 +1582,7 @@ function SubnetDetail(props: DetailProps) {
   return (
     <div className="ipam-card ipam-detail2">
       <DetailHead
+        tenantId={tenantId}
         actions={
           canManage ? (
             <>
