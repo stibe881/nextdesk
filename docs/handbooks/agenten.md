@@ -1032,9 +1032,9 @@ Mehr dazu unter «Überwachung».
 ### Wie ordne ich überwachte Geräte in Kategorien?
 
 1. Öffne die **Überwachung**. Dafür braucht es das Recht «Assets verwalten».
-2. Klicke auf **Kategorien** und lege mit **Kategorie hinzufügen** Kategorien an, zum Beispiel pro Standort. Das Plus neben einer Kategorie fügt eine Unterkategorie hinzu, der Stift benennt um, der Papierkorb löscht.
+2. Klicke auf **Kategorien** und lege mit **Kategorie hinzufügen** Kategorien an, zum Beispiel pro Standort. Das Plus neben einer Kategorie fügt eine Unterkategorie hinzu (bis zu vier Ebenen), der Stift benennt um, der Papierkorb löscht.
 3. Wähle in der Geräteliste über die Kästchen die Geräte aus und klicke auf **Kategorie zuweisen**.
-4. Wähle die **Kategorie** und bei Bedarf die **Unterkategorie**. Mit **Neue Kategorie erstellen …** bzw. **Neue Unterkategorie erstellen …** legst du beide direkt an. Klicke auf **Zuweisen**.
+4. Wähle die **Kategorie** und bei Bedarf die **Unterkategorie**. Mit **Neue Kategorie erstellen …** bzw. **Neue Unterkategorie erstellen …** legst du sie direkt an; nach jeder Wahl erscheint die nächste Ebene. Klicke auf **Zuweisen**.
 
 Mehr dazu unter «Überwachung».
 
@@ -2511,8 +2511,10 @@ sonst grau.
   Ein Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter kehrt die
   Reihenfolge um. Standard ist der Zustand, das Dringende zuoberst.
 - **Kategorien**: Die Geräteliste ist nach Kategorien gegliedert, sobald es
-  welche gibt – zum Beispiel pro Standort, mit einer Ebene Unterkategorien
-  («Standort Baar → Verteiler 2. OG»). Jede Überschrift zeigt die Anzahl
+  welche gibt – zum Beispiel pro Standort, mit Unterkategorien über bis zu
+  vier Ebenen («Standort Baar → Netzwerk → Switch»). Geräte einer
+  Unterkategorie stehen eingerückt unter ihrer Überschrift; die Zahl neben
+  einer Kategorie zählt alles darunter mit. Jede Überschrift zeigt die Anzahl
   Geräte und lässt sich ein- und ausklappen; Geräte ohne Zuordnung stehen
   unter **Ohne Kategorie**. Mit dem Recht «Assets verwalten» legst du über
   **Kategorien** neue an, benennst sie um oder löschst sie. Beim Löschen
