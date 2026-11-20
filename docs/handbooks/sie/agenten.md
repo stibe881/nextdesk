@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Phishing-/Junk-Fälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Handbuch für Agenten
@@ -850,8 +850,10 @@ Mehr dazu unter «Kampagnen und IOC-Liste».
 ### Wie bearbeite ich Phishing-/Junk-Fälle in der App?
 
 1. Öffnen Sie in der unteren Leiste **Phishing / Junk**.
-2. Fällen Sie das Urteil, weisen Sie den Fall zu, haken Sie Massnahmen ab, fragen Sie die Melder nach einem Klick und schliessen Sie den Fall ab.
-3. Die Massnahmen selbst (zum Beispiel Sitzungen widerrufen) lösen Sie im Web aus.
+2. Lesen Sie zuerst die **Einschätzung**. Dort steht in Klartext, was für oder gegen Phishing spricht, und welches Urteil vorgeschlagen wird.
+3. Darunter stehen die **gemeldete Mail** (Betreff, Absender, Empfänger und Text mit entschärften Links, auf Wunsch die Kopfzeilen) und die **Analyse**.
+4. Fällen Sie das Urteil (der Vorschlag ist markiert), weisen Sie den Fall zu, haken Sie Massnahmen ab, fragen Sie die Melder nach einem Klick und schliessen Sie den Fall ab.
+5. Die Massnahmen selbst (zum Beispiel Sitzungen widerrufen) lösen Sie im Web aus.
 
 Mehr dazu unter «Eskalation».
 
@@ -2143,7 +2145,10 @@ Ein Klick öffnet den Fall. Die gemeldete E-Mail steht in einer **sicheren
 Ansicht**: Links sind entschärft (`hxxps`, `[.]`) und nicht anklickbar, Bilder
 werden nicht geladen und Anhänge erscheinen nur mit Name und Grösse. Daneben
 stehen die Befunde der automatischen Analyse (SPF, DKIM, DMARC, Absender,
-Links, Anhänge) und die Risikoeinschätzung. Bei hohem Risiko soll das Urteil
+Links, Anhänge) und die Risikoeinschätzung. Die Analyse erkennt unter anderem
+Absender, die sich als interne Stelle ausgeben (z. B. «HR-Abteilung»), aber von
+einer fremden Domain kommen, und Links, die eine «.ch»-Adresse nur vortäuschen
+(z. B. `hr-abteilung.ch-secure.com`). Bei hohem Risiko soll das Urteil
 innerhalb von 30 Minuten fallen, bei mittlerem innerhalb von 4 Stunden,
 sonst innerhalb eines Tages.
 
@@ -2221,7 +2226,14 @@ Melder bekommen für Phishing-Meldungen keine Eingangsbestätigung, nur eine
 Dankesnachricht und später das Ergebnis.
 
 In der **iOS- und Android-App** heisst der Bereich ebenfalls **Phishing / Junk** (untere
-Leiste, links vom Home-Knopf). Dort fällen Sie das Urteil, weisen den Fall zu,
+Leiste, links vom Home-Knopf). Ein Fall beginnt mit der **Einschätzung**: In
+Klartext steht, was für oder gegen Phishing spricht, zum Beispiel «Gibt sich
+als interne Stelle aus, kommt aber von einer fremden Domain», «Link täuscht
+eine .ch-Adresse vor», «Indikator aus früheren Fällen» oder «SPF, DKIM und
+DMARC bestanden». Die eigene Organisation erkennt die App an den Adressen der
+Melder. Darunter folgen die **gemeldete Mail** als Text (Links entschärft und
+nicht antippbar, Kopfzeilen auf Wunsch) und die **Analyse**; erst dann das
+Urteil, bei dem der Vorschlag markiert ist. Dort fällen Sie das Urteil, weisen den Fall zu,
 haken Massnahmen ab, fragen die Melder nach einem Klick und schliessen den
 Fall ab. Ein Tipp auf eine Phishing-Mitteilung öffnet den Fall direkt. Die
 App zeigt auch Kampagne, bekannte Indikatoren und ausgeführte Massnahmen; die
