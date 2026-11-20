@@ -3,6 +3,7 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -11,6 +12,8 @@ import {
   AlertTriangle,
   Archive,
   ArrowLeftRight,
+  ChevronDown,
+  ChevronRight,
   CircleCheck,
   ClipboardList,
   MapPin,
@@ -117,6 +120,8 @@ type InventoryWarehouse = {
 
 type InventoryEvent = {
   id: string;
+  /** Article of the movement; absent on older servers. */
+  itemId: string | null;
   itemName: string;
   locationName: string | null;
   occurredAt: string;
@@ -589,6 +594,7 @@ function parseEvent(value: unknown): InventoryEvent | null {
     !hasOnlyKeys(value, [
       "id",
       "type",
+      "itemId",
       "itemName",
       "occurredAt",
       "physicalDelta",
@@ -605,9 +611,11 @@ function parseEvent(value: unknown): InventoryEvent | null {
     typeof value.occurredAt === "string" &&
     physicalDelta !== null &&
     reservedDelta !== null &&
-    (typeof value.locationName === "string" || value.locationName === null)
+    (typeof value.locationName === "string" || value.locationName === null) &&
+    (value.itemId === undefined || typeof value.itemId === "string")
     ? {
         id: value.id,
+        itemId: typeof value.itemId === "string" ? value.itemId : null,
         itemName: value.itemName,
         locationName: nullableText(value.locationName),
         occurredAt: value.occurredAt,
@@ -1449,6 +1457,12 @@ export function Inventory({
   const focusedLocation = focusLocation
     ? workspace?.locations.find((location) => location.id === focusLocation)
     : undefined;
+  // Overview and movement lists: open one article in the article list.
+  const openItem = useCallback((itemId: string) => {
+    setFocusLocation(undefined);
+    setFocusId(itemId);
+    setActiveSection("Artikel");
+  }, []);
   const currentItems = useMemo(
     () =>
       workspace?.items.filter(
@@ -1596,6 +1610,7 @@ export function Inventory({
           {activeSection === "Übersicht" ? (
             <InventoryOverview
               onOpen={setActiveSection}
+              onOpenItem={openItem}
               workspace={workspace}
             />
           ) : null}
@@ -1645,6 +1660,7 @@ export function Inventory({
               items={workspace.items}
               locations={workspace.locations}
               onChanged={onChanged}
+              onOpenItem={openItem}
               tenantId={tenantId}
             />
           ) : null}
@@ -1689,10 +1705,13 @@ export function Inventory({
 
 function InventoryOverview({
   onOpen,
+  onOpenItem,
   workspace,
 }: {
   /** Opens a section of the stock module (the tiles are links). */
   onOpen: (section: InventorySection) => void;
+  /** Opens one article in the article list. */
+  onOpenItem: (itemId: string) => void;
   workspace: InventoryWorkspace;
 }) {
   return (
@@ -1744,13 +1763,18 @@ function InventoryOverview({
             <ul className="inventory__list">
               {workspace.lowStockItems.map((item) => (
                 <li key={item.id}>
-                  <div>
+                  <button
+                    className="inventory__item-link"
+                    onClick={() => onOpenItem(item.id)}
+                    title="Artikel öffnen"
+                    type="button"
+                  >
                     <strong>{item.name}</strong>
                     <small>
                       {item.locationName ?? "Ohne Lagerort"} · Mindestbestand{" "}
                       {quantity(item.minQuantity, item.unit)}
                     </small>
-                  </div>
+                  </button>
                   <b>{quantity(item.availableQuantity, item.unit)}</b>
                 </li>
               ))}
@@ -1770,6 +1794,7 @@ function InventoryOverview({
           <InventoryEventList
             events={workspace.recentEvents.slice(0, 6)}
             items={workspace.items}
+            onOpenItem={onOpenItem}
           />
         </section>
       </div>
@@ -2104,7 +2129,7 @@ function InventoryItems({
       ) : null}
       {focused ? (
         <p className="inventory__focus-note" role="status">
-          Es wird nur der Artikel aus dem Etiketten-Link angezeigt.{" "}
+          Es wird nur dieser Artikel angezeigt.{" "}
           <button className="text-button" onClick={onShowAll} type="button">
             Alle Artikel anzeigen
           </button>
@@ -2691,7 +2716,9 @@ async function uploadInventoryItemImageFile(
     throw new Error("Die Verbindung zu nextDesk ist nicht konfiguriert.");
   }
   const contentType = file.type.trim().toLowerCase() as
-    "image/jpeg" | "image/png" | "image/webp";
+    | "image/jpeg"
+    | "image/png"
+    | "image/webp";
   const { data: createData, error: createError } =
     await supabase.functions.invoke<unknown>("inventory", {
       body: {
@@ -3162,17 +3189,23 @@ function InventoryStore({
 }) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(false);
+  // Standardmässig zugeklappt: nur der Kopf des Lagers ist sichtbar.
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
   const activePlaces = places.filter((place) => place.active);
   const allSelected =
     activePlaces.length > 0 &&
     activePlaces.every((place) => labelSelection.has(place.id));
+  const selectedCount = activePlaces.filter((place) =>
+    labelSelection.has(place.id),
+  ).length;
   const title = warehouse ? warehouse.name : "Ohne Lager";
   const canAdd = canManage && (!warehouse || warehouse.active);
 
   return (
     <section
       aria-label={title}
-      className={`inventory__store${warehouse && !warehouse.active ? " is-inactive" : ""}`}
+      className={`inventory__store${warehouse && !warehouse.active ? " is-inactive" : ""}${open ? "" : " is-collapsed"}`}
     >
       {warehouse && editing ? (
         <InventoryWarehouseEditForm
@@ -3183,21 +3216,36 @@ function InventoryStore({
         />
       ) : (
         <header className="inventory__store-head">
-          <span className="inventory__store-icon" aria-hidden="true">
-            <Warehouse size={18} />
-          </span>
-          <div className="inventory__store-title">
-            <h3>{title}</h3>
-            <small>
-              {[
-                warehouse ? (warehouse.site ?? "Ohne Standort") : null,
-                `${activePlaces.length} ${activePlaces.length === 1 ? "Lagerplatz" : "Lagerplätze"}`,
-                warehouse && !warehouse.active ? "archiviert" : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </small>
-          </div>
+          <button
+            aria-controls={panelId}
+            aria-expanded={open}
+            aria-label={`${title} ${open ? "zuklappen" : "aufklappen"}`}
+            className="inventory__store-toggle"
+            onClick={() => setOpen((current) => !current)}
+            type="button"
+          >
+            {open ? (
+              <ChevronDown aria-hidden="true" size={18} />
+            ) : (
+              <ChevronRight aria-hidden="true" size={18} />
+            )}
+            <span className="inventory__store-icon" aria-hidden="true">
+              <Warehouse size={18} />
+            </span>
+            <span className="inventory__store-title">
+              <span className="inventory__store-name">{title}</span>
+              <small>
+                {[
+                  warehouse ? (warehouse.site ?? "Ohne Standort") : null,
+                  `${activePlaces.length} ${activePlaces.length === 1 ? "Lagerplatz" : "Lagerplätze"}`,
+                  warehouse && !warehouse.active ? "archiviert" : null,
+                  selectedCount > 0 ? `${selectedCount} für Etikett` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </small>
+            </span>
+          </button>
           <div className="inventory__store-actions">
             {activePlaces.length > 0 ? (
               <button
@@ -3217,7 +3265,11 @@ function InventoryStore({
               <button
                 aria-expanded={adding}
                 className="secondary-button"
-                onClick={() => setAdding((open) => !open)}
+                onClick={() => {
+                  // Ein neuer Lagerplatz erscheint im aufgeklappten Lager.
+                  setOpen(true);
+                  setAdding((current) => !current);
+                }}
                 type="button"
               >
                 <Plus aria-hidden="true" size={15} /> Lagerplatz
@@ -3234,42 +3286,44 @@ function InventoryStore({
           </div>
         </header>
       )}
-      {adding ? (
-        <InventoryLocationCreateForm
-          onCancel={() => setAdding(false)}
-          onChanged={onChanged}
-          tenantId={tenantId}
-          warehouseId={warehouse?.id ?? null}
-        />
-      ) : null}
-      {places.length > 0 ? (
-        <ul className="inventory__places">
-          {places.map((location) => (
-            <InventoryLocationRow
-              canManage={canManage}
-              key={location.id}
-              labelSelected={labelSelection.has(location.id)}
-              location={location}
-              onChanged={onChanged}
-              onShowStock={() => onShowStock(location.id)}
-              onToggleLabel={(checked) =>
-                onToggleLabels([location.id], checked)
-              }
-              tenantId={tenantId}
-              warehouses={warehouses}
-            />
-          ))}
-        </ul>
-      ) : adding ? null : (
-        <p className="inventory__store-empty">
-          {canAdd
-            ? tn(
-                "Noch keine Lagerplätze. Mit «Lagerplatz» erfasst du den ersten.",
-                "Noch keine Lagerplätze. Mit «Lagerplatz» erfassen Sie den ersten.",
-              )
-            : "Noch keine Lagerplätze."}
-        </p>
-      )}
+      <div hidden={!open} id={panelId}>
+        {adding ? (
+          <InventoryLocationCreateForm
+            onCancel={() => setAdding(false)}
+            onChanged={onChanged}
+            tenantId={tenantId}
+            warehouseId={warehouse?.id ?? null}
+          />
+        ) : null}
+        {places.length > 0 ? (
+          <ul className="inventory__places">
+            {places.map((location) => (
+              <InventoryLocationRow
+                canManage={canManage}
+                key={location.id}
+                labelSelected={labelSelection.has(location.id)}
+                location={location}
+                onChanged={onChanged}
+                onShowStock={() => onShowStock(location.id)}
+                onToggleLabel={(checked) =>
+                  onToggleLabels([location.id], checked)
+                }
+                tenantId={tenantId}
+                warehouses={warehouses}
+              />
+            ))}
+          </ul>
+        ) : adding ? null : (
+          <p className="inventory__store-empty">
+            {canAdd
+              ? tn(
+                  "Noch keine Lagerplätze. Mit «Lagerplatz» erfasst du den ersten.",
+                  "Noch keine Lagerplätze. Mit «Lagerplatz» erfassen Sie den ersten.",
+                )
+              : "Noch keine Lagerplätze."}
+          </p>
+        )}
+      </div>
     </section>
   );
 }
@@ -3781,6 +3835,7 @@ function InventoryEvents({
   items,
   locations,
   onChanged,
+  onOpenItem,
   tenantId,
 }: {
   canAdjust: boolean;
@@ -3791,6 +3846,7 @@ function InventoryEvents({
   items: readonly InventoryItemSummary[];
   locations: readonly InventoryLocation[];
   onChanged: InventoryChangedHandler;
+  onOpenItem: (itemId: string) => void;
   tenantId: string;
 }) {
   return (
@@ -3828,7 +3884,11 @@ function InventoryEvents({
         Begrenzte Bewegungshistorie
         {hasMore ? "; weitere Bewegungen sind vorhanden." : "."}
       </p>
-      <InventoryEventList events={events} items={items} />
+      <InventoryEventList
+        events={events}
+        items={items}
+        onOpenItem={onOpenItem}
+      />
     </section>
   );
 }
@@ -3836,11 +3896,18 @@ function InventoryEvents({
 function InventoryEventList({
   events,
   items,
+  onOpenItem,
 }: {
   events: readonly InventoryEvent[];
   items: readonly InventoryItemSummary[];
+  /** Opens the article of a movement. */
+  onOpenItem: (itemId: string) => void;
 }) {
   const unitsByItemName = new Map(items.map((item) => [item.name, item.unit]));
+  // Only articles the caller can see (and that are still listed) can be opened.
+  const itemIds = new Set(
+    items.filter((item) => item.active).map((item) => item.id),
+  );
   return events.length ? (
     <ul className="inventory__list inventory__list--events">
       {events.map((event) => {
@@ -3867,7 +3934,18 @@ function InventoryEventList({
             </span>
             <div className="inventory__event-copy">
               <strong>{eventLabel(event.type)}</strong>
-              <span>{event.itemName}</span>
+              {event.itemId && itemIds.has(event.itemId) ? (
+                <button
+                  className="inventory__item-link"
+                  onClick={() => onOpenItem(event.itemId!)}
+                  title="Artikel öffnen"
+                  type="button"
+                >
+                  {event.itemName}
+                </button>
+              ) : (
+                <span>{event.itemName}</span>
+              )}
               <small>
                 {event.locationName ?? "Ohne Lagerort"} ·{" "}
                 {dateTime(event.occurredAt)}
@@ -4204,7 +4282,8 @@ function SourceReservationRuleForm({
             <select
               onChange={(event) => {
                 const nextSourceKind = event.target.value as
-                  "event_space_equipment" | "onboarding_template_task";
+                  | "event_space_equipment"
+                  | "onboarding_template_task";
                 setSourceKind(nextSourceKind);
               }}
               value={selectedSourceKind}

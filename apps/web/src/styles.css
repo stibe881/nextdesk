@@ -23922,3 +23922,76 @@ button.inventory__metric--link:focus-visible {
   align-items: center;
   grid-column: -2;
 }
+
+/* Lager als Karte: auf- und zuklappbar (standardmässig zu). */
+.inventory__store-toggle {
+  align-items: center;
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: 10px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 200px;
+  font: inherit;
+  gap: 12px;
+  margin: -6px;
+  min-width: 0;
+  padding: 6px;
+  text-align: left;
+}
+
+.inventory__store-toggle:hover {
+  background: color-mix(in srgb, var(--primary-soft) 45%, transparent);
+}
+
+.inventory__store-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.inventory__store-toggle > svg {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.inventory__store-toggle .inventory__store-title {
+  display: grid;
+}
+
+.inventory__store.is-collapsed > .inventory__store-head {
+  border-bottom: 0;
+}
+
+.inventory__store-name {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* Artikelnamen in der Lager-Übersicht und in den Bewegungen öffnen den Artikel. */
+.inventory__item-link {
+  appearance: none;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.inventory__item-link:hover,
+.inventory__item-link:hover strong {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.inventory__item-link:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

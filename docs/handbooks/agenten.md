@@ -1364,6 +1364,16 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 
+### Wie öffne ich einen Artikel direkt aus der Lager-Übersicht?
+
+1. Öffne **Lager → Übersicht**.
+2. Klicke unter **Unter Mindestbestand** oder in **Letzte Bewegungen** auf den Namen des Artikels. Dasselbe gilt für die Liste unter **Bewegungen**.
+3. Die Artikelliste zeigt nur diesen Artikel. Mit **Alle Artikel anzeigen** siehst du wieder alle.
+
+Die Kacheln oben führen ebenfalls direkt weiter: **Unterbestand** öffnet die Artikel, **Laufende Inventuren** die Inventur.
+
+Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
+
 ### Wie lege ich ein Lager mit Standort an?
 
 1. Öffne **Lager → Lagerorte**.
@@ -1371,7 +1381,7 @@ Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 3. Trage bei Bedarf den **Standort** ein, z. B. «Bern, Hauptstrasse 1».
 4. Klicke auf **Lager erfassen**.
 
-Jedes Lager erscheint als eigene Karte mit Standort und Anzahl Lagerplätze. Mit dem Stift im Kopf der Karte änderst du Name und Standort, mit dem Papierkorb archivierst du ein Lager. Die Lagerplätze und ihr Bestand bleiben dabei erhalten.
+Jedes Lager erscheint als eigene Karte mit Standort und Anzahl Lagerplätze. Die Karten sind zugeklappt: Ein Klick auf den Namen oder den Pfeil klappt ein Lager auf und wieder zu. Mit dem Stift im Kopf der Karte änderst du Name und Standort, mit dem Papierkorb archivierst du ein Lager. Die Lagerplätze und ihr Bestand bleiben dabei erhalten.
 
 Mehr dazu unter «Lager: Artikel erfassen und ausleihen».
 

@@ -1167,6 +1167,7 @@ Deno.test(
     assertEquals(workspace.warehouses[0]?.site, "Bern, Hauptstrasse 1");
     assertEquals(sortedKeys(workspace.recentEvents[0]), [
       "id",
+      "itemId",
       "itemName",
       "locationName",
       "occurredAt",
@@ -1215,6 +1216,7 @@ Deno.test(
           id: EVENT_LINE_ID,
           type: "receipt",
           occurredAt: "2026-10-28T12:00:00.000Z",
+          itemId: ITEM_ID,
           itemName: "USB-C-Adapter",
           physicalDelta: 4,
           reservedDelta: 0,
