@@ -298,11 +298,12 @@ function OverviewView({
   const [filter, setFilter] = useState<MonitoringState | "all">("all");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
-  // Categories of the devices: folded sections, assigning and managing.
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
+  // Categories of the devices: folded by default (opened ones are kept),
+  // assigning and managing. A search or state filter opens all of them.
+  const [openSections, setOpenSections] = useState<Set<string>>(
     () => new Set(),
   );
-  const toggleSection = toggleIn(setCollapsedSections);
+  const toggleSection = toggleIn(setOpenSections);
   const [assigning, setAssigning] = useState(false);
   const [managingGroups, setManagingGroups] = useState(false);
 
@@ -392,11 +393,14 @@ function OverviewView({
     () => deviceSections(devices, data?.groups ?? []),
     [devices, data],
   );
+  const filtering = search.trim() !== "" || filter !== "all";
+  const sectionCollapsed = (key: string) =>
+    !filtering && !openSections.has(key);
   // A folded category also hides its subcategories.
   const sectionHidden = (section: DeviceSection<MonitoringDeviceRow>) => {
-    if (collapsedSections.has(section.key)) return true;
+    if (section.label && sectionCollapsed(section.key)) return true;
     const parent = groups.find((group) => group.id === section.key)?.parentId;
-    return parent ? collapsedSections.has(parent) : false;
+    return parent ? sectionCollapsed(parent) : false;
   };
   const sortHeader = (key: DeviceSortKey, label: string) => (
     <th
@@ -763,10 +767,7 @@ function OverviewView({
                       section.label &&
                       !(
                         section.depth === 1 &&
-                        collapsedSections.has(
-                          groups.find((group) => group.id === section.key)
-                            ?.parentId ?? "",
-                        )
+                        sectionHidden({ ...section, label: "" })
                       ) ? (
                         <tr
                           className={`monitoring-table__group monitoring-table__group--${section.depth}`}
@@ -774,9 +775,7 @@ function OverviewView({
                         >
                           <td colSpan={data.canManage ? 8 : 6}>
                             <button
-                              aria-expanded={
-                                !collapsedSections.has(section.key)
-                              }
+                              aria-expanded={!sectionCollapsed(section.key)}
                               onClick={() => toggleSection(section.key)}
                               type="button"
                             >

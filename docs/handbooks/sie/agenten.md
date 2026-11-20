@@ -2481,7 +2481,9 @@ sonst grau.
 - **Kategorien**: Die Geräteliste ist nach Kategorien gegliedert, sobald es
   welche gibt – zum Beispiel pro Standort, mit einer Ebene Unterkategorien
   («Standort Baar → Verteiler 2. OG»). Jede Überschrift zeigt die Anzahl
-  Geräte und lässt sich ein- und ausklappen; Geräte ohne Zuordnung stehen
+  Geräte und lässt sich ein- und ausklappen. Beim Öffnen der Seite sind alle
+  Kategorien eingeklappt; sobald gesucht oder nach Zustand gefiltert wird,
+  klappen sie auf, damit kein Treffer verborgen bleibt. Geräte ohne Zuordnung stehen
   unter **Ohne Kategorie**. Mit dem Recht «Assets verwalten» legen Sie über
   **Kategorien** neue an, benennen sie um oder löschen sie. Beim Löschen
   bleiben die Geräte überwacht und stehen wieder unter «Ohne Kategorie»;
