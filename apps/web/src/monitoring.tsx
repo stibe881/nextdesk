@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  FolderTree,
   FlaskConical,
   LoaderCircle,
   ListPlus,
@@ -41,6 +42,12 @@ import {
   formatMs,
   formatSince,
   connectedPorts,
+  deviceSections,
+  type DeviceSection,
+  type MonitoringDeviceRow,
+  type MonitoringGroup,
+  NO_GROUP_LABEL,
+  orderedGroups,
   groupServiceOptions,
   formatValue,
   guessCategory,
@@ -287,6 +294,13 @@ function OverviewView({
   const [filter, setFilter] = useState<MonitoringState | "all">("all");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
+  // Categories of the devices: folded sections, assigning and managing.
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const toggleSection = toggleIn(setCollapsedSections);
+  const [assigning, setAssigning] = useState(false);
+  const [managingGroups, setManagingGroups] = useState(false);
 
   const load = useCallback(() => {
     monitoringCall<MonitoringOverview>({ type: "overview", tenantId })
@@ -369,6 +383,17 @@ function OverviewView({
       ),
     [data, filter, search, sort],
   );
+  const groups = data?.groups ?? [];
+  const sections = useMemo(
+    () => deviceSections(devices, data?.groups ?? []),
+    [devices, data],
+  );
+  // A folded category also hides its subcategories.
+  const sectionHidden = (section: DeviceSection<MonitoringDeviceRow>) => {
+    if (collapsedSections.has(section.key)) return true;
+    const parent = groups.find((group) => group.id === section.key)?.parentId;
+    return parent ? collapsedSections.has(parent) : false;
+  };
   const sortHeader = (key: DeviceSortKey, label: string) => (
     <th
       aria-sort={
@@ -413,14 +438,24 @@ function OverviewView({
           </p>
         </div>
         {data?.canManage ? (
-          <button
-            className="primary-button"
-            onClick={() => setAdding(true)}
-            type="button"
-          >
-            <Plus aria-hidden="true" size={16} />
-            Geräte hinzufügen
-          </button>
+          <div className="monitoring__actions">
+            <button
+              className="secondary-button"
+              onClick={() => setManagingGroups(true)}
+              type="button"
+            >
+              <FolderTree aria-hidden="true" size={16} />
+              Kategorien
+            </button>
+            <button
+              className="primary-button"
+              onClick={() => setAdding(true)}
+              type="button"
+            >
+              <Plus aria-hidden="true" size={16} />
+              Geräte hinzufügen
+            </button>
+          </div>
         ) : null}
       </header>
 
@@ -659,6 +694,16 @@ function OverviewView({
                     >
                       <Play aria-hidden="true" size={15} /> Fortsetzen
                     </button>
+                    {chosenDevices.size > 0 ? (
+                      <button
+                        className="secondary-button"
+                        onClick={() => setAssigning(true)}
+                        type="button"
+                      >
+                        <FolderTree aria-hidden="true" size={15} /> Kategorie
+                        zuweisen
+                      </button>
+                    ) : null}
                     <button
                       className="text-button"
                       onClick={clearChosen}
@@ -710,138 +755,183 @@ function OverviewView({
                     </tr>
                   </thead>
                   <tbody>
-                    {devices.map((device) => {
-                      const open = expanded.has(device.assetId);
-                      const devicePaused = device.state === "paused";
-                      return (
-                        <Fragment key={device.assetId}>
-                          <tr>
-                            {data.canManage ? (
-                              <td className="monitoring-table__check">
-                                <input
-                                  aria-label={`${device.name} auswählen`}
-                                  checked={chosenDevices.has(device.assetId)}
-                                  onChange={() => toggleDevice(device.assetId)}
-                                  type="checkbox"
-                                />
-                              </td>
-                            ) : null}
-                            <td className="monitoring-table__toggle">
-                              <button
-                                aria-expanded={open}
-                                aria-label={
-                                  open
-                                    ? `Sensoren von ${device.name} zuklappen`
-                                    : `Sensoren von ${device.name} aufklappen`
-                                }
-                                className="monitoring-table__expand"
-                                onClick={() => toggleExpanded(device.assetId)}
-                                type="button"
-                              >
-                                {open ? (
-                                  <ChevronDown aria-hidden="true" size={16} />
-                                ) : (
-                                  <ChevronRight aria-hidden="true" size={16} />
-                                )}
-                              </button>
-                            </td>
-                            <td>
-                              <StateChip state={device.state} />
-                            </td>
-                            <td>
-                              <button
-                                className="text-button monitoring-table__name"
-                                onClick={() => onOpenDevice(device.assetId)}
-                                type="button"
-                              >
-                                {device.name}
-                              </button>
-                              <span className="monitoring-muted">
-                                {[
-                                  categoryText(
-                                    device.category,
-                                    device.categoryLabel,
-                                  ),
-                                  device.ipAddress ?? device.hostname,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
+                    {sections.flatMap((section) => [
+                      section.label &&
+                      !(
+                        section.depth === 1 &&
+                        collapsedSections.has(
+                          groups.find((group) => group.id === section.key)
+                            ?.parentId ?? "",
+                        )
+                      ) ? (
+                        <tr
+                          className={`monitoring-table__group monitoring-table__group--${section.depth}`}
+                          key={`group:${section.key}`}
+                        >
+                          <td colSpan={data.canManage ? 8 : 6}>
+                            <button
+                              aria-expanded={
+                                !collapsedSections.has(section.key)
+                              }
+                              onClick={() => toggleSection(section.key)}
+                              type="button"
+                            >
+                              <ChevronDown aria-hidden="true" size={15} />
+                              <span>{section.label}</span>
+                              <span className="monitoring-table__group-count">
+                                {section.total}
                               </span>
-                              {devicePaused && device.pause ? (
-                                <span className="monitoring-pause-note">
-                                  {pauseText(device.pause)}
-                                </span>
-                              ) : null}
-                            </td>
-                            <td>{sensorCountsText(device.counts)}</td>
-                            <td>{formatMs(device.responseMs)}</td>
-                            <td className="monitoring-muted">
-                              {formatAgo(device.lastCheckAt, now)}
-                            </td>
-                            {data.canManage ? (
-                              <td className="monitoring-table__action">
-                                {device.sensorCount > 0 ? (
+                            </button>
+                          </td>
+                        </tr>
+                      ) : null,
+                      ...(sectionHidden(section) ? [] : section.devices).map(
+                        (device) => {
+                          const open = expanded.has(device.assetId);
+                          const devicePaused = device.state === "paused";
+                          return (
+                            <Fragment key={device.assetId}>
+                              <tr>
+                                {data.canManage ? (
+                                  <td className="monitoring-table__check">
+                                    <input
+                                      aria-label={`${device.name} auswählen`}
+                                      checked={chosenDevices.has(
+                                        device.assetId,
+                                      )}
+                                      onChange={() =>
+                                        toggleDevice(device.assetId)
+                                      }
+                                      type="checkbox"
+                                    />
+                                  </td>
+                                ) : null}
+                                <td className="monitoring-table__toggle">
                                   <button
-                                    className="text-button"
-                                    disabled={pausing !== null}
+                                    aria-expanded={open}
+                                    aria-label={
+                                      open
+                                        ? `Sensoren von ${device.name} zuklappen`
+                                        : `Sensoren von ${device.name} aufklappen`
+                                    }
+                                    className="monitoring-table__expand"
                                     onClick={() =>
-                                      void setPaused(
-                                        `device:${device.assetId}`,
-                                        {
-                                          type: "pauseDevice",
-                                          assetId: device.assetId,
-                                          paused: !devicePaused,
-                                        },
-                                        `«${device.name}»`,
-                                      )
+                                      toggleExpanded(device.assetId)
                                     }
                                     type="button"
                                   >
-                                    {devicePaused ? (
-                                      <Play aria-hidden="true" size={14} />
+                                    {open ? (
+                                      <ChevronDown
+                                        aria-hidden="true"
+                                        size={16}
+                                      />
                                     ) : (
-                                      <Pause aria-hidden="true" size={14} />
+                                      <ChevronRight
+                                        aria-hidden="true"
+                                        size={16}
+                                      />
                                     )}
-                                    {pausing === `device:${device.assetId}`
-                                      ? "…"
-                                      : devicePaused
-                                        ? "Fortsetzen"
-                                        : "Pausieren"}
                                   </button>
+                                </td>
+                                <td>
+                                  <StateChip state={device.state} />
+                                </td>
+                                <td>
+                                  <button
+                                    className="text-button monitoring-table__name"
+                                    onClick={() => onOpenDevice(device.assetId)}
+                                    type="button"
+                                  >
+                                    {device.name}
+                                  </button>
+                                  <span className="monitoring-muted">
+                                    {[
+                                      categoryText(
+                                        device.category,
+                                        device.categoryLabel,
+                                      ),
+                                      device.ipAddress ?? device.hostname,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </span>
+                                  {devicePaused && device.pause ? (
+                                    <span className="monitoring-pause-note">
+                                      {pauseText(device.pause)}
+                                    </span>
+                                  ) : null}
+                                </td>
+                                <td>{sensorCountsText(device.counts)}</td>
+                                <td>{formatMs(device.responseMs)}</td>
+                                <td className="monitoring-muted">
+                                  {formatAgo(device.lastCheckAt, now)}
+                                </td>
+                                {data.canManage ? (
+                                  <td className="monitoring-table__action">
+                                    {device.sensorCount > 0 ? (
+                                      <button
+                                        className="text-button"
+                                        disabled={pausing !== null}
+                                        onClick={() =>
+                                          void setPaused(
+                                            `device:${device.assetId}`,
+                                            {
+                                              type: "pauseDevice",
+                                              assetId: device.assetId,
+                                              paused: !devicePaused,
+                                            },
+                                            `«${device.name}»`,
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        {devicePaused ? (
+                                          <Play aria-hidden="true" size={14} />
+                                        ) : (
+                                          <Pause aria-hidden="true" size={14} />
+                                        )}
+                                        {pausing === `device:${device.assetId}`
+                                          ? "…"
+                                          : devicePaused
+                                            ? "Fortsetzen"
+                                            : "Pausieren"}
+                                      </button>
+                                    ) : null}
+                                  </td>
                                 ) : null}
-                              </td>
-                            ) : null}
-                          </tr>
-                          {open ? (
-                            <tr className="monitoring-table__sensors">
-                              <td colSpan={data.canManage ? 8 : 6}>
-                                <DeviceSensorList
-                                  assetId={device.assetId}
-                                  canManage={data.canManage}
-                                  chosen={chosenSensors}
-                                  now={now}
-                                  onChoose={toggleSensor}
-                                  onPause={(sensorId, paused, name) =>
-                                    void setPaused(
-                                      `sensor:${sensorId}`,
-                                      {
-                                        type: "pauseSensor",
-                                        sensorId,
-                                        paused,
-                                      },
-                                      `«${name}» (${device.name})`,
-                                    )
-                                  }
-                                  pausing={pausing}
-                                  revision={sensorRevision}
-                                  tenantId={tenantId}
-                                />
-                              </td>
-                            </tr>
-                          ) : null}
-                        </Fragment>
-                      );
-                    })}
+                              </tr>
+                              {open ? (
+                                <tr className="monitoring-table__sensors">
+                                  <td colSpan={data.canManage ? 8 : 6}>
+                                    <DeviceSensorList
+                                      assetId={device.assetId}
+                                      canManage={data.canManage}
+                                      chosen={chosenSensors}
+                                      now={now}
+                                      onChoose={toggleSensor}
+                                      onPause={(sensorId, paused, name) =>
+                                        void setPaused(
+                                          `sensor:${sensorId}`,
+                                          {
+                                            type: "pauseSensor",
+                                            sensorId,
+                                            paused,
+                                          },
+                                          `«${name}» (${device.name})`,
+                                        )
+                                      }
+                                      pausing={pausing}
+                                      revision={sensorRevision}
+                                      tenantId={tenantId}
+                                    />
+                                  </td>
+                                </tr>
+                              ) : null}
+                            </Fragment>
+                          );
+                        },
+                      ),
+                    ])}
                   </tbody>
                 </table>
               </div>
@@ -850,6 +940,28 @@ function OverviewView({
         </>
       ) : null}
 
+      {assigning && data ? (
+        <AssignGroupDialog
+          assetIds={[...chosenDevices]}
+          groups={groups}
+          onClose={() => setAssigning(false)}
+          onSaved={() => {
+            setAssigning(false);
+            clearChosen();
+            load();
+          }}
+          tenantId={tenantId}
+        />
+      ) : null}
+      {managingGroups && data ? (
+        <GroupsDialog
+          devices={data.devices}
+          groups={groups}
+          onChanged={load}
+          onClose={() => setManagingGroups(false)}
+          tenantId={tenantId}
+        />
+      ) : null}
       {adding && data ? (
         <AddDeviceDialog
           agents={data.agents}
@@ -4507,6 +4619,382 @@ function RemoveAgentDialog({
           >
             <Trash2 aria-hidden="true" size={16} />
             Sonde löschen
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Options of a select: categories with their subcategories indented. */
+function GroupOptions({ groups }: { groups: MonitoringGroup[] }) {
+  return (
+    <>
+      {orderedGroups(groups).map((group) => (
+        <option key={group.id} value={group.id}>
+          {group.depth ? `\u00a0\u00a0\u00a0↳ ${group.name}` : group.name}
+        </option>
+      ))}
+    </>
+  );
+}
+
+const NEW_GROUP = "new";
+
+/** Puts the chosen devices into a category or subcategory. */
+function AssignGroupDialog({
+  tenantId,
+  assetIds,
+  groups,
+  onClose,
+  onSaved,
+}: {
+  tenantId: string;
+  assetIds: string[];
+  groups: MonitoringGroup[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [groupId, setGroupId] = useState(groups.length ? "" : NEW_GROUP);
+  const [name, setName] = useState("");
+  const [parentId, setParentId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      let target: string | null = groupId || null;
+      if (groupId === NEW_GROUP) {
+        const created = await monitoringCall<{ groupId: string }>({
+          type: "saveGroup",
+          tenantId,
+          groupId: null,
+          name,
+          parentId: parentId || null,
+        });
+        target = created.groupId;
+      }
+      await monitoringCall({
+        type: "assignGroup",
+        tenantId,
+        assetIds,
+        groupId: target,
+      });
+      onSaved();
+    } catch (failure) {
+      setError(message(failure));
+      setSaving(false);
+    }
+  };
+  return (
+    <Dialog onClose={onClose} title="Kategorie zuweisen">
+      <form
+        className="monitoring-form"
+        onSubmit={(event) => void submit(event)}
+      >
+        <p className="monitoring-muted">
+          {assetIds.length === 1
+            ? "Das gewählte Gerät"
+            : `Die ${assetIds.length} gewählten Geräte`}{" "}
+          einer Kategorie oder Unterkategorie zuweisen. Die Art der Geräte
+          bleibt unverändert.
+        </p>
+        <label className="monitoring-field">
+          <span>Kategorie</span>
+          <select
+            autoFocus
+            onChange={(event) => setGroupId(event.target.value)}
+            value={groupId}
+          >
+            <option value="">{NO_GROUP_LABEL}</option>
+            <GroupOptions groups={groups} />
+            <option value={NEW_GROUP}>Neue Kategorie erstellen …</option>
+          </select>
+        </label>
+        {groupId === NEW_GROUP ? (
+          <>
+            <label className="monitoring-field">
+              <span>Name der neuen Kategorie</span>
+              <input
+                maxLength={80}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="z. B. Standort Baar"
+                required
+                type="text"
+                value={name}
+              />
+            </label>
+            <label className="monitoring-field">
+              <span>Unterkategorie von (optional)</span>
+              <select
+                onChange={(event) => setParentId(event.target.value)}
+                value={parentId}
+              >
+                <option value="">Keine – eigene Kategorie</option>
+                {groups
+                  .filter((group) => group.parentId === null)
+                  .map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </>
+        ) : null}
+        {error ? (
+          <p className="ticket-detail-message error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="monitoring-form__actions">
+          <button className="secondary-button" onClick={onClose} type="button">
+            Abbrechen
+          </button>
+          <button className="primary-button" disabled={saving} type="submit">
+            Zuweisen
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Categories and subcategories: create, rename, move and delete. */
+function GroupsDialog({
+  tenantId,
+  groups,
+  devices,
+  onChanged,
+  onClose,
+}: {
+  tenantId: string;
+  groups: MonitoringGroup[];
+  devices: MonitoringDeviceRow[];
+  onChanged: () => void;
+  onClose: () => void;
+}) {
+  const [editing, setEditing] = useState<{
+    id: string | null;
+    name: string;
+    parentId: string;
+  } | null>(null);
+  const [removing, setRemoving] = useState<MonitoringGroup | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const run = (call: Promise<unknown>, done: () => void) => {
+    setSaving(true);
+    setError(null);
+    call
+      .then(() => {
+        done();
+        onChanged();
+      })
+      .catch((failure) => setError(message(failure)))
+      .finally(() => setSaving(false));
+  };
+  const count = (group: MonitoringGroup) =>
+    devices.filter(
+      (device) =>
+        device.groupId === group.id ||
+        groups.some(
+          (child) => child.parentId === group.id && child.id === device.groupId,
+        ),
+    ).length;
+  const hasChildren = (id: string | null) =>
+    id !== null && groups.some((group) => group.parentId === id);
+  return (
+    <Dialog onClose={onClose} title="Kategorien der Geräte">
+      <div className="monitoring-form">
+        <p className="monitoring-muted">
+          Kategorien gliedern die Geräteliste, zum Beispiel nach Standort. Eine
+          Kategorie kann Unterkategorien haben. Zugewiesen werden Geräte in der
+          Liste über die Auswahl und «Kategorie zuweisen».
+        </p>
+        {groups.length === 0 ? (
+          <p className="monitoring__empty">Noch keine Kategorie angelegt.</p>
+        ) : (
+          <ul className="monitoring-groups">
+            {orderedGroups(groups).map((group) => (
+              <li
+                className={group.depth ? "monitoring-groups__child" : undefined}
+                key={group.id}
+              >
+                <span>
+                  <strong>{group.name}</strong>
+                  <span className="monitoring-muted">
+                    {count(group) === 1 ? "1 Gerät" : `${count(group)} Geräte`}
+                  </span>
+                </span>
+                <span className="monitoring-table__actions">
+                  {group.depth === 0 ? (
+                    <button
+                      aria-label={`Unterkategorie zu ${group.name} hinzufügen`}
+                      className="icon-button"
+                      onClick={() =>
+                        setEditing({ id: null, name: "", parentId: group.id })
+                      }
+                      title="Unterkategorie hinzufügen"
+                      type="button"
+                    >
+                      <Plus aria-hidden="true" size={16} />
+                    </button>
+                  ) : null}
+                  <button
+                    aria-label={`${group.name} bearbeiten`}
+                    className="icon-button"
+                    onClick={() =>
+                      setEditing({
+                        id: group.id,
+                        name: group.name,
+                        parentId: group.parentId ?? "",
+                      })
+                    }
+                    title="Bearbeiten"
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" size={16} />
+                  </button>
+                  <button
+                    aria-label={`${group.name} löschen`}
+                    className="icon-button"
+                    onClick={() => setRemoving(group)}
+                    title="Löschen"
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" size={16} />
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {removing ? (
+          <div className="ticket-detail-message error" role="alert">
+            <p>
+              «{removing.name}»
+              {hasChildren(removing.id) ? " samt Unterkategorien" : ""} löschen?
+              Die Geräte bleiben überwacht und stehen danach ohne Kategorie da.
+            </p>
+            <div className="monitoring-form__actions">
+              <button
+                className="secondary-button"
+                onClick={() => setRemoving(null)}
+                type="button"
+              >
+                Abbrechen
+              </button>
+              <button
+                className="primary-button monitoring-danger"
+                disabled={saving}
+                onClick={() =>
+                  run(
+                    monitoringCall({
+                      type: "deleteGroup",
+                      tenantId,
+                      groupId: removing.id,
+                    }),
+                    () => setRemoving(null),
+                  )
+                }
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={16} />
+                Löschen
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {editing ? (
+          <form
+            className="monitoring-groups__form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              run(
+                monitoringCall({
+                  type: "saveGroup",
+                  tenantId,
+                  groupId: editing.id,
+                  name: editing.name,
+                  parentId: editing.parentId || null,
+                }),
+                () => setEditing(null),
+              );
+            }}
+          >
+            <label className="monitoring-field">
+              <span>{editing.id ? "Name" : "Name der neuen Kategorie"}</span>
+              <input
+                autoFocus
+                maxLength={80}
+                onChange={(event) =>
+                  setEditing({ ...editing, name: event.target.value })
+                }
+                required
+                type="text"
+                value={editing.name}
+              />
+            </label>
+            {hasChildren(editing.id) ? null : (
+              <label className="monitoring-field">
+                <span>Unterkategorie von</span>
+                <select
+                  onChange={(event) =>
+                    setEditing({ ...editing, parentId: event.target.value })
+                  }
+                  value={editing.parentId}
+                >
+                  <option value="">Keine – eigene Kategorie</option>
+                  {groups
+                    .filter(
+                      (group) =>
+                        group.parentId === null && group.id !== editing.id,
+                    )
+                    .map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
+            <div className="monitoring-form__actions">
+              <button
+                className="secondary-button"
+                onClick={() => setEditing(null)}
+                type="button"
+              >
+                Abbrechen
+              </button>
+              <button
+                className="primary-button"
+                disabled={saving}
+                type="submit"
+              >
+                Speichern
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button
+            className="secondary-button monitoring-form__all"
+            onClick={() => setEditing({ id: null, name: "", parentId: "" })}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} />
+            Kategorie hinzufügen
+          </button>
+        )}
+        {error ? (
+          <p className="ticket-detail-message error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="monitoring-form__actions">
+          <button className="primary-button" onClick={onClose} type="button">
+            Fertig
           </button>
         </div>
       </div>

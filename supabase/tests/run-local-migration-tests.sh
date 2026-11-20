@@ -16979,4 +16979,80 @@ $$;
 rollback;
 SQL
 
+# 0373: Kategorien für überwachte Geräte – eine Ebene, gleicher Mandant, eindeutige Namen.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_other uuid;
+  v_asset uuid;
+  v_top uuid;
+  v_sub uuid;
+  v_top2 uuid;
+  v_failed boolean;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  select id into v_other from public.tenants where id <> v_tenant order by created_at limit 1;
+  insert into public.monitoring_device_groups (tenant_id, name) values (v_tenant, 'Standort Baar') returning id into v_top;
+  insert into public.monitoring_device_groups (tenant_id, name) values (v_tenant, 'Aussenstelle') returning id into v_top2;
+  insert into public.monitoring_device_groups (tenant_id, parent_id, name)
+  values (v_tenant, v_top, 'Verteiler 2. OG') returning id into v_sub;
+
+  -- Gleicher Name auf derselben Ebene ist nicht erlaubt, unter anderer Kategorie schon.
+  v_failed := false;
+  begin
+    insert into public.monitoring_device_groups (tenant_id, name) values (v_tenant, ' standort baar ');
+  exception when unique_violation then v_failed := true;
+  end;
+  if not v_failed then raise exception 'device groups: duplicate name accepted'; end if;
+  insert into public.monitoring_device_groups (tenant_id, parent_id, name) values (v_tenant, v_top2, 'Verteiler 2. OG');
+
+  -- Nur eine Ebene.
+  v_failed := false;
+  begin
+    insert into public.monitoring_device_groups (tenant_id, parent_id, name) values (v_tenant, v_sub, 'Zu tief');
+  exception when check_violation then v_failed := true;
+  end;
+  if not v_failed then raise exception 'device groups: second level accepted'; end if;
+  v_failed := false;
+  begin
+    update public.monitoring_device_groups set parent_id = v_top2 where id = v_top;
+  exception when check_violation then v_failed := true;
+  end;
+  if not v_failed then raise exception 'device groups: category with subcategories became one'; end if;
+
+  -- Übergeordnete Kategorie muss zum selben Mandanten gehören.
+  if v_other is not null then
+    v_failed := false;
+    begin
+      insert into public.monitoring_device_groups (tenant_id, parent_id, name) values (v_other, v_top, 'Fremd');
+    exception when foreign_key_violation then v_failed := true;
+    end;
+    if not v_failed then raise exception 'device groups: parent of another tenant accepted'; end if;
+  end if;
+
+  -- Löschen einer Kategorie entfernt die Unterkategorien; Geräte bleiben, ohne Kategorie.
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'S-0373', 'server', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address, monitoring_group_id)
+  values (v_asset, v_tenant, 'server', '10.73.0.2', v_sub);
+  delete from public.monitoring_device_groups where id = v_top;
+  if exists (select 1 from public.monitoring_device_groups where id = v_sub) then
+    raise exception 'device groups: subcategory survived';
+  end if;
+  if (select monitoring_group_id from public.asset_infrastructure where asset_id = v_asset) is not null
+     or not exists (select 1 from public.assets where id = v_asset) then
+    raise exception 'device groups: device not released';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.monitoring_device_groups', 'select') then
+    raise exception 'device groups: readable for authenticated';
+  end if;
+  raise notice 'monitoring device group checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -1029,6 +1029,23 @@ Mehr dazu unter «Überwachung».
 
 Mehr dazu unter «Überwachung».
 
+### Wie ordne ich überwachte Geräte in Kategorien?
+
+1. Öffne die **Überwachung**. Dafür braucht es das Recht «Assets verwalten».
+2. Klicke auf **Kategorien** und lege mit **Kategorie hinzufügen** Kategorien an, zum Beispiel pro Standort. Das Plus neben einer Kategorie fügt eine Unterkategorie hinzu, der Stift benennt um, der Papierkorb löscht.
+3. Wähle in der Geräteliste über die Kästchen die Geräte aus und klicke auf **Kategorie zuweisen**.
+4. Wähle die Kategorie oder Unterkategorie – oder **Neue Kategorie erstellen …** – und klicke auf **Zuweisen**.
+
+Mehr dazu unter «Überwachung».
+
+### Wie nehme ich Geräte wieder aus einer Kategorie?
+
+1. Öffne die **Überwachung** und wähle die Geräte über die Kästchen aus.
+2. Klicke auf **Kategorie zuweisen** und wähle **Ohne Kategorie**.
+3. Klicke auf **Zuweisen**. Die Geräte bleiben überwacht.
+
+Mehr dazu unter «Überwachung».
+
 ### Wie erstelle ich ein Ticket zu einem Alarm?
 
 1. Öffne die **Überwachung** und suche unter **Aktive Alarme** das Gerät.
@@ -2473,6 +2490,18 @@ sonst grau.
   Suche findet Name, IP-Adresse, Hostname und den gestörten Sensor.
   Ein Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter kehrt die
   Reihenfolge um. Standard ist der Zustand, das Dringende zuoberst.
+- **Kategorien**: Die Geräteliste ist nach Kategorien gegliedert, sobald es
+  welche gibt – zum Beispiel pro Standort, mit einer Ebene Unterkategorien
+  («Standort Baar → Verteiler 2. OG»). Jede Überschrift zeigt die Anzahl
+  Geräte und lässt sich ein- und ausklappen; Geräte ohne Zuordnung stehen
+  unter **Ohne Kategorie**. Mit dem Recht «Assets verwalten» legst du über
+  **Kategorien** neue an, benennst sie um oder löschst sie. Beim Löschen
+  bleiben die Geräte überwacht und stehen wieder unter «Ohne Kategorie»;
+  Unterkategorien werden mitgelöscht. Um Geräte zuzuordnen, wählst du sie
+  über die Kästchen aus und klickst auf **Kategorie zuweisen**; dort lässt
+  sich auch gleich eine neue Kategorie erstellen. Die **Art** eines Geräts
+  (Server, Switch …) bleibt davon unberührt. In der App erscheint die
+  Geräteliste ohne Kategorien.
 - **Aufklappen und pausieren**: Der Pfeil vor einem Gerät klappt seine
   Sensoren mit Zustand, Messwert und letzter Prüfung auf. Mit dem Recht
   «Assets verwalten» pausierst du rechts ein ganzes Gerät oder in der

@@ -1238,6 +1238,89 @@ button.monitoring-tile[aria-pressed="true"] {
   gap: 6px;
 }
 
+.monitoring-table__group td {
+  padding: 0;
+  background: var(--surface-subtle);
+}
+
+.monitoring-table__group button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  padding: 8px 20px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.monitoring-table__group--1 button {
+  padding-left: 44px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.monitoring-table__group button svg {
+  transition: transform 0.15s ease;
+}
+
+.monitoring-table__group button[aria-expanded="false"] svg {
+  transform: rotate(-90deg);
+}
+
+.monitoring-table__group-count {
+  border-radius: 999px;
+  padding: 0 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.monitoring-groups {
+  display: grid;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.monitoring-groups li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding: 6px 8px 6px 12px;
+}
+
+.monitoring-groups li:first-child {
+  border-top: 0;
+}
+
+.monitoring-groups li > span:first-child {
+  display: grid;
+  min-width: 0;
+}
+
+.monitoring-groups__child {
+  padding-left: 34px !important;
+}
+
+.monitoring-groups__form {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
 .monitoring-steps {
   display: grid;
   gap: 6px;

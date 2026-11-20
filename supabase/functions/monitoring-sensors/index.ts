@@ -341,7 +341,7 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
   const assetIds = [...new Set(sensors.map((sensor) => sensor.assetId))];
   const [assets, infrastructure, incidents] = await Promise.all([
     selectIn(admin, "assets", "id, name", tenantId, "id", assetIds),
-    selectIn(admin, "asset_infrastructure", "asset_id, category, category_label, hostname, ip_address", tenantId, "asset_id", assetIds),
+    selectIn(admin, "asset_infrastructure", "asset_id, category, category_label, hostname, ip_address, monitoring_group_id", tenantId, "asset_id", assetIds),
     activeIncidents(admin, tenantId, assetIds),
   ]);
   const infraByAsset = new Map(infrastructure.map((row) => [String(row.asset_id), row]));
@@ -366,6 +366,7 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
       name: String(asset.name),
       category: text(infra?.category),
       categoryLabel: kindLabel(infra),
+      groupId: text(infra?.monitoring_group_id),
       hostname: text(infra?.hostname),
       ipAddress: text(infra?.ip_address),
       state: deviceState(own.map((sensor) => sensor.state)),
@@ -425,6 +426,7 @@ async function overview(admin: Client, tenantId: string, canManage: boolean) {
     deviceCount: devices.length,
     sensorCount: sensors.length,
     devices,
+    groups: await deviceGroups(admin, tenantId),
     agents: agents.map((agent) => ({
       ...agent,
       sensorCount: sensorCounts.get(agent.id) ?? 0,
@@ -1021,6 +1023,71 @@ async function interfaces(admin: Client, tenantId: string, jobId: string) {
   };
 }
 
+/** Categories of the monitored devices (with one level of subcategories). */
+async function deviceGroups(admin: Client, tenantId: string) {
+  const { data, error } = await admin.from("monitoring_device_groups").select("id, name, parent_id")
+    .eq("tenant_id", tenantId).order("name").limit(1000);
+  if (error) throw unavailable();
+  return ((data ?? []) as Row[]).map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    parentId: text(row.parent_id),
+  }));
+}
+
+async function saveGroup(
+  admin: Client,
+  tenantId: string,
+  actorId: string,
+  action: Extract<Action, { type: "saveGroup" }>,
+) {
+  const failed = (error: { code?: string } | null) => {
+    if (!error) return;
+    if (error.code === "23505") {
+      throw new HttpError(409, "group_exists", "Eine Kategorie mit diesem Namen gibt es hier bereits.");
+    }
+    if (error.code === "23514") {
+      throw new HttpError(422, "group_depth", "Unterkategorien können keine eigenen Unterkategorien haben.");
+    }
+    if (error.code === "23503") {
+      throw new HttpError(422, "group_not_found", "Die übergeordnete Kategorie wurde nicht gefunden.");
+    }
+    throw unavailable();
+  };
+  if (action.groupId) {
+    const updated = await admin.from("monitoring_device_groups")
+      .update({ name: action.name, parent_id: action.parentId, updated_at: new Date().toISOString() })
+      .eq("tenant_id", tenantId).eq("id", action.groupId).select("id").maybeSingle();
+    failed(updated.error);
+    if (!updated.data) throw new HttpError(404, "group_not_found", "Die Kategorie wurde nicht gefunden.");
+    return { groupId: action.groupId };
+  }
+  const inserted = await admin.from("monitoring_device_groups")
+    .insert({ tenant_id: tenantId, name: action.name, parent_id: action.parentId, created_by: actorId })
+    .select("id").single();
+  failed(inserted.error);
+  return { groupId: String(inserted.data!.id) };
+}
+
+/** Puts devices into a category or subcategory (null: without category). */
+async function assignGroup(admin: Client, tenantId: string, assetIds: string[], groupId: string | null) {
+  if (groupId) {
+    const group = await admin.from("monitoring_device_groups").select("id")
+      .eq("tenant_id", tenantId).eq("id", groupId).maybeSingle();
+    if (group.error) throw unavailable();
+    if (!group.data) throw new HttpError(404, "group_not_found", "Die Kategorie wurde nicht gefunden.");
+  }
+  let count = 0;
+  for (const part of chunks(assetIds, 100)) {
+    const updated = await admin.from("asset_infrastructure")
+      .update({ monitoring_group_id: groupId, updated_at: new Date().toISOString() })
+      .eq("tenant_id", tenantId).in("asset_id", part).select("asset_id");
+    if (updated.error) throw unavailable();
+    count += (updated.data ?? []).length;
+  }
+  return { ok: true, devices: count };
+}
+
 /**
  * Latest events of the sensors for the overview: outages, warnings and
  * recoveries with device, services affected and incident.
@@ -1491,6 +1558,20 @@ async function handle(admin: Client, client: Client, actorId: string, action: Ac
       return await availabilityOverview(admin, action.tenantId, action.range);
     case "events":
       return await eventsOverview(admin, action.tenantId, action.range);
+    case "saveGroup":
+      manage();
+      return await saveGroup(admin, action.tenantId, actorId, action);
+    case "deleteGroup": {
+      manage();
+      // Subcategories go with it; the devices stay monitored, without category.
+      const removed = await admin.from("monitoring_device_groups").delete()
+        .eq("tenant_id", action.tenantId).eq("id", action.groupId);
+      if (removed.error) throw unavailable();
+      return { ok: true };
+    }
+    case "assignGroup":
+      manage();
+      return await assignGroup(admin, action.tenantId, action.assetIds, action.groupId);
     case "simulate":
       manage();
       return await simulate(admin, action.tenantId, action.assetId, action.sensorId, action.minutes);
