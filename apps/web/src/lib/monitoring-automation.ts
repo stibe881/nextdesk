@@ -7,6 +7,11 @@ export type BackupResult = "success" | "warning" | "failed";
 export type Tone = "success" | "warning" | "danger" | "neutral" | "info";
 
 export type Option = { id: string; name: string };
+export type TeamOption = {
+  id: string;
+  name: string;
+  departmentId: string | null;
+};
 export type PriorityOption = { key: string; label: string };
 export type AssetOption = { id: string; name: string; hostname: string | null };
 
@@ -14,6 +19,7 @@ export type ExpirySettings = {
   configured: boolean;
   enabled: boolean;
   departmentId: string | null;
+  teamId: string | null;
   priorityKey: string | null;
   reminderPriorityKey: string | null;
   warnDays: number;
@@ -115,6 +121,7 @@ export function responseData(value: unknown): Record<string, unknown> {
 
 export function parseOptions(payload: Record<string, unknown>): {
   departments: Option[];
+  teams: TeamOption[];
   priorities: PriorityOption[];
   assets: AssetOption[];
   services: Option[];
@@ -136,6 +143,18 @@ export function parseOptions(payload: Record<string, unknown>): {
       : null;
   return {
     departments: list(payload.departments, named),
+    teams: list(payload.teams, (entry) =>
+      typeof entry.id === "string" && typeof entry.name === "string"
+        ? {
+            id: entry.id,
+            name: entry.name,
+            departmentId:
+              typeof entry.departmentId === "string"
+                ? entry.departmentId
+                : null,
+          }
+        : null,
+    ),
     services: list(payload.services, named),
     priorities: list(payload.priorities, (entry) =>
       typeof entry.key === "string" && typeof entry.label === "string"
@@ -165,6 +184,7 @@ export function parseExpirySettings(value: unknown): ExpirySettings | null {
     configured: value.configured === true,
     enabled: value.enabled,
     departmentId: text(value.departmentId),
+    teamId: text(value.teamId),
     priorityKey: text(value.priorityKey),
     reminderPriorityKey: text(value.reminderPriorityKey),
     warnDays,

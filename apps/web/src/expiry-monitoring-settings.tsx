@@ -24,6 +24,7 @@ import {
   type ExpiryTarget,
   type Option,
   type PriorityOption,
+  type TeamOption,
 } from "./lib/monitoring-automation";
 import { supabase } from "./lib/supabase";
 
@@ -76,6 +77,7 @@ export function ExpiryMonitoringSettings({ tenantId }: { tenantId: string }) {
   const [settings, setSettings] = useState<ExpirySettings | null>(null);
   const [targets, setTargets] = useState<ExpiryTarget[]>([]);
   const [departments, setDepartments] = useState<Option[]>([]);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [priorities, setPriorities] = useState<PriorityOption[]>([]);
   const [assets, setAssets] = useState<AssetOption[]>([]);
   const [services, setServices] = useState<Option[]>([]);
@@ -88,6 +90,7 @@ export function ExpiryMonitoringSettings({ tenantId }: { tenantId: string }) {
 
   const [enabled, setEnabled] = useState(false);
   const [departmentId, setDepartmentId] = useState("");
+  const [teamId, setTeamId] = useState("");
   const [priorityKey, setPriorityKey] = useState("");
   const [reminderPriorityKey, setReminderPriorityKey] = useState("");
   const [warnDays, setWarnDays] = useState("30");
@@ -98,6 +101,7 @@ export function ExpiryMonitoringSettings({ tenantId }: { tenantId: string }) {
     setSettings(next);
     setEnabled(next.enabled);
     setDepartmentId(next.departmentId ?? "");
+    setTeamId(next.teamId ?? "");
     setPriorityKey(next.priorityKey ?? "");
     setReminderPriorityKey(next.reminderPriorityKey ?? "");
     setWarnDays(String(next.warnDays));
@@ -119,6 +123,7 @@ export function ExpiryMonitoringSettings({ tenantId }: { tenantId: string }) {
       setTargets(parseExpiryTargets(payload.targets));
       const options = parseOptions(payload);
       setDepartments(options.departments);
+      setTeams(options.teams);
       setPriorities(options.priorities);
       setAssets(options.assets);
       setServices(options.services);
@@ -172,6 +177,7 @@ export function ExpiryMonitoringSettings({ tenantId }: { tenantId: string }) {
         settings: {
           enabled,
           departmentId: departmentId || null,
+          teamId: teamId || null,
           priorityKey: priorityKey || null,
           reminderPriorityKey: reminderPriorityKey || null,
           warnDays: Number(warnDays),
@@ -254,7 +260,15 @@ export function ExpiryMonitoringSettings({ tenantId }: { tenantId: string }) {
                 Abteilung für Tickets
                 <select
                   disabled={disabled}
-                  onChange={(event) => setDepartmentId(event.target.value)}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setDepartmentId(next);
+                    // The team must belong to the chosen department.
+                    const team = teams.find((entry) => entry.id === teamId);
+                    if (team && next && team.departmentId !== next) {
+                      setTeamId("");
+                    }
+                  }}
                   value={departmentId}
                 >
                   <option value="">Erste aktive Abteilung</option>
@@ -263,6 +277,34 @@ export function ExpiryMonitoringSettings({ tenantId }: { tenantId: string }) {
                       {department.name}
                     </option>
                   ))}
+                </select>
+              </label>
+              <label>
+                Team für Tickets
+                <select
+                  disabled={disabled}
+                  onChange={(event) => setTeamId(event.target.value)}
+                  value={teamId}
+                >
+                  <option value="">Kein Team</option>
+                  {teams
+                    .filter(
+                      (team) =>
+                        !departmentId ||
+                        team.departmentId === departmentId ||
+                        team.id === teamId,
+                    )
+                    .map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {departmentId
+                          ? team.name
+                          : `${team.name}${
+                              team.departmentId
+                                ? ` (${departments.find((entry) => entry.id === team.departmentId)?.name ?? "andere Abteilung"})`
+                                : ""
+                            }`}
+                      </option>
+                    ))}
                 </select>
               </label>
               <label>

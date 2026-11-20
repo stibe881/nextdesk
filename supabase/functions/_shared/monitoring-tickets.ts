@@ -119,6 +119,8 @@ export type CreateMonitoringTicket = {
   departmentIds: (string | null)[];
   /** Priority keys tried in order; the first existing one wins. */
   priorityKeys: (string | null)[];
+  /** Team for the ticket; used only while active and in the ticket's department. */
+  teamId?: string | null;
   subject: string;
   description: string;
   assetId: string | null;
@@ -132,8 +134,24 @@ export async function createMonitoringTicket(
   serviceIdentityId: string,
 ): Promise<{ id: string; number: string }> {
   const tenantId = input.tenantId;
+  // The chosen team (active only); its department is the fallback when no
+  // department is set, so «team without department» still lands there.
+  const team = input.teamId
+    ? await admin
+      .from("teams")
+      .select("id, department_id")
+      .eq("tenant_id", tenantId)
+      .eq("id", input.teamId)
+      .eq("active", true)
+      .maybeSingle()
+      .then(({ data, error }: { data: Row | null; error: unknown }) =>
+        !error && data
+          ? { id: String(data.id), departmentId: asString(data.department_id) }
+          : null
+      )
+    : null;
   const [department, status, priorityId] = await Promise.all([
-    resolveDepartment(admin, tenantId, input.departmentIds),
+    resolveDepartment(admin, tenantId, [...input.departmentIds, team?.departmentId ?? null]),
     admin
       .from("ticket_statuses")
       .select("id")
@@ -144,6 +162,10 @@ export async function createMonitoringTicket(
   ]);
   if (!department || status.error || !status.data || !priorityId) {
     throw new Error("ticket_defaults_unavailable");
+  }
+  let teamId: string | null = null;
+  if (team && (!team.departmentId || team.departmentId === department.id)) {
+    teamId = team.id;
   }
   const number = await admin.rpc("reserve_ticket_number", {
     p_tenant_id: tenantId,
@@ -165,6 +187,7 @@ export async function createMonitoringTicket(
       priority_id: priorityId,
       requester_id: serviceIdentityId,
       source: "automation",
+      ...(teamId ? { assigned_team_id: teamId } : {}),
     })
     .select("id, ticket_number")
     .single();
