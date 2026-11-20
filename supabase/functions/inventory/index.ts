@@ -177,6 +177,8 @@ export type RecentEvent = {
   id: string;
   type: string;
   occurredAt: string;
+  /** Article of the movement, so the list can open it. */
+  itemId: string;
   itemName: string;
   physicalDelta: number;
   reservedDelta: number;
@@ -2175,6 +2177,7 @@ export function toWorkspaceContract(
       id: line.id,
       type,
       occurredAt: event.occurredAt,
+      itemId: item.id,
       itemName: item.name,
       physicalDelta: line.physicalDelta,
       reservedDelta: line.reservedDelta,
