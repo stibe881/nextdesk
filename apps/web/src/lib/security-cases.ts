@@ -95,6 +95,8 @@ export type SecurityCaseDetail = {
     subject: string | null;
     date: string | null;
     sendingIp: string | null;
+    /** Provider of an agreed phishing simulation (awareness training). */
+    simulation: string | null;
     auth: { spf: string; dkim: string; dmarc: string };
     findings: { severity: string; message: string }[];
     links: { href: string; text: string | null; host: string | null }[];
@@ -390,6 +392,7 @@ export function parseSecurityDetail(value: unknown): SecurityCaseDetail | null {
       subject: str(analysis.subject),
       date: str(analysis.date),
       sendingIp: str(analysis.sendingIp),
+      simulation: str(analysis.simulation),
       auth: {
         spf: str(auth.spf) ?? "unknown",
         dkim: str(auth.dkim) ?? "unknown",

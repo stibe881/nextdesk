@@ -2342,9 +2342,15 @@ haben. **Filter aufheben** führt zurück zu den Fällen, die zu beurteilen sind
 
 ![Liste der Phishing-/Junk-Fälle](images/ag-sicherheitsfaelle.jpg)
 
-Ein Klick öffnet den Fall. Die gemeldete E-Mail steht in einer **sicheren
-Ansicht**: Links sind entschärft (`hxxps`, `[.]`) und nicht anklickbar, Bilder
-werden nicht geladen und Anhänge erscheinen nur mit Name und Grösse. Daneben
+Ein Klick öffnet den Fall. Die gemeldete E-Mail steht so, wie sie beim
+Empfänger ankam, in einer **sicheren Ansicht** (Betreff, An, Cc):
+**Darstellung** zeigt die Mail mit Layout in einem abgeschotteten Rahmen,
+**Text** die Textfassung und **Kopfzeilen** alle Header (Received, Return-Path,
+Authentication-Results usw.) für die technische Beurteilung. Skripte laufen
+nicht, externe Bilder und Inhalte werden nicht geladen, Links sind ohne Ziel
+(beim Darüberfahren erscheint die entschärfte Adresse, z. B. `hxxps`, `[.]`),
+und Anhänge erscheinen nur mit Name und Grösse. Bei älteren Meldungen ist nur
+der Text gespeichert. Daneben
 stehen die Befunde der automatischen Analyse (SPF, DKIM, DMARC, Absender,
 Links, Anhänge) und die Risikoeinschätzung. Die Analyse erkennt unter anderem
 Absender, die sich als interne Stelle ausgeben (z. B. «HR-Abteilung»), aber von
@@ -2352,6 +2358,14 @@ einer fremden Domain kommen, und Links, die eine «.ch»-Adresse nur vortäusche
 (z. B. `hr-abteilung.ch-secure.com`). Bei hohem Risiko soll das Urteil
 innerhalb von 30 Minuten fallen, bei mittlerem innerhalb von 4 Stunden,
 sonst innerhalb eines Tages.
+
+**Phishing-Simulationen** (vereinbartes Awareness-Training, z. B. von
+Hornetsecurity) erkennt nextDesk an den Kopfzeilen des Anbieters zusammen mit
+dessen Mailserver. Solche Fälle tragen das Kennzeichen **Phishing-Simulation ·
+Anbieter**, werden automatisch als **Phishing** beurteilt und abgeschlossen,
+ohne das Team zu alarmieren; die meldende Person erhält trotzdem den Dank.
+Sperren Sie bei Simulationen keine Absender oder Adressen, sonst stört das das
+Training.
 
 ![Phishing-/Junk-Fall mit sicherer Ansicht und Urteil](images/ag-sicherheitsfall.jpg)
 

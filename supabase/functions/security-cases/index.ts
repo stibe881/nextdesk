@@ -464,6 +464,8 @@ function safeAnalysis(value: unknown) {
     findings,
     links,
     attachments,
+    // Agreed phishing simulation (awareness training), e.g. Hornetsecurity.
+    simulation: text(analysis.simulation),
   };
 }
 
