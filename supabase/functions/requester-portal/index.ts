@@ -1,3 +1,7 @@
+import {
+  incidentNoticeVisibility,
+  parseIncidentPushSettings,
+} from "./incident-notices.ts";
 import { msg } from "../_shared/formality.ts";
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
@@ -12,6 +16,8 @@ const DEPARTMENT_VIEW_FEATURE = "requester.department-view";
 const MAX_BYTES = 64 * 1024;
 const ACTIONS = [
   "activeIncidentNotices",
+  "incidentPushSettings",
+  "saveIncidentPushSettings",
   "myTicketTimeline",
   "slaExpectation",
   "myDevices",
@@ -623,22 +629,36 @@ async function departmentTickets(
   });
   return reply(request, { data: { tickets } });
 }
+/**
+ * Whether the caller works on tickets. Employees do not see notices that
+ * only concern internal services. A failed check counts as employee.
+ */
+async function isTicketAgent(client: Client, tenantId: string): Promise<boolean> {
+  const result = await client.rpc("is_tenant_ticket_agent", {
+    p_tenant_id: tenantId,
+  });
+  return !result.error && result.data === true;
+}
 async function activeIncidentNotices(
   request: Request,
+  client: Client,
   admin: Admin,
   item: Action,
 ): Promise<Response> {
-  const result = await admin
-    .from("service_incident_notices")
-    .select(
-      "id, title, description, status, category_id, department_id, starts_at, resolved_at, updated_at",
-    )
-    .eq("tenant_id", item.tenantId)
-    .neq("status", "resolved")
-    .order("starts_at", { ascending: false })
-    .limit(100);
+  const [result, agent] = await Promise.all([
+    admin
+      .from("service_incident_notices")
+      .select(
+        "id, title, description, status, category_id, department_id, starts_at, resolved_at, updated_at",
+      )
+      .eq("tenant_id", item.tenantId)
+      .neq("status", "resolved")
+      .order("starts_at", { ascending: false })
+      .limit(100),
+    isTicketAgent(client, item.tenantId),
+  ]);
   if (result.error) db(result.error);
-  const notices = (result.data ?? []) as Record<string, unknown>[];
+  let notices = (result.data ?? []) as Record<string, unknown>[];
   // Betroffene Dienste (nur aktive) für den Banner; fehlt die Zuordnung,
   // bleibt der Banner wie bisher.
   const ids = notices.flatMap((notice) =>
@@ -648,17 +668,27 @@ async function activeIncidentNotices(
   if (ids.length) {
     const links = await admin
       .from("service_incident_notice_services")
-      .select("notice_id, services!inner(name, active)")
+      .select("notice_id, services!inner(name, active, audience)")
       .eq("tenant_id", item.tenantId)
-      .eq("services.active", true)
       .in("notice_id", ids)
       .limit(2000);
-    for (const link of (links.data ?? []) as Record<string, unknown>[]) {
-      const service = link.services as Record<string, unknown> | null;
-      const name = typeof service?.name === "string" ? service.name : null;
-      if (!name || typeof link.notice_id !== "string") continue;
-      names.set(link.notice_id, [...(names.get(link.notice_id) ?? []), name]);
-    }
+    const visibility = incidentNoticeVisibility(
+      ((links.data ?? []) as Record<string, unknown>[]).flatMap((link) => {
+        const service = link.services as Record<string, unknown> | null;
+        if (typeof link.notice_id !== "string" || !service) return [];
+        return [{
+          noticeId: link.notice_id,
+          name: typeof service.name === "string" ? service.name : "",
+          active: service.active === true,
+          internal: service.audience === "internal",
+        }];
+      }),
+      agent,
+    );
+    notices = notices.filter((notice) =>
+      !visibility.hidden.has(String(notice.id))
+    );
+    for (const [id, list] of visibility.names) names.set(id, list);
   }
   return reply(request, {
     data: {
@@ -670,6 +700,90 @@ async function activeIncidentNotices(
       })),
       maintenances: await bannerMaintenances(admin, item.tenantId),
     },
+  });
+}
+
+/** External, active services: the ones employees can be informed about. */
+async function externalServices(
+  admin: Admin,
+  tenantId: string,
+): Promise<{ id: string; name: string }[]> {
+  const result = await admin
+    .from("services")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("active", true)
+    .eq("audience", "external")
+    .order("name")
+    .limit(1000);
+  if (result.error) db(result.error);
+  return ((result.data ?? []) as Row[]).flatMap((row) =>
+    isUuid(row.id) && typeof row.name === "string"
+      ? [{ id: row.id, name: row.name }]
+      : []
+  );
+}
+async function incidentPushSettings(
+  request: Request,
+  admin: Admin,
+  item: Action,
+  actorId: string,
+): Promise<Response> {
+  const [services, stored] = await Promise.all([
+    externalServices(admin, item.tenantId),
+    admin
+      .from("service_incident_push_subscriptions")
+      .select("enabled, service_ids")
+      .eq("tenant_id", item.tenantId)
+      .eq("user_id", actorId)
+      .maybeSingle(),
+  ]);
+  if (stored.error) db(stored.error);
+  const known = new Set(services.map((service) => service.id));
+  const selected = Array.isArray(stored.data?.service_ids)
+    ? (stored.data.service_ids as unknown[]).filter((id): id is string =>
+      typeof id === "string" && known.has(id)
+    )
+    : null;
+  return reply(request, {
+    data: {
+      enabled: stored.data?.enabled === true,
+      serviceIds: selected,
+      services,
+    },
+  });
+}
+async function saveIncidentPushSettings(
+  request: Request,
+  admin: Admin,
+  item: Action,
+  actorId: string,
+): Promise<Response> {
+  const parsed = parseIncidentPushSettings(item);
+  if (!parsed) {
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "Die Anfrage enthält ungültige oder unbekannte Felder.",
+    );
+  }
+  const services = await externalServices(admin, item.tenantId);
+  const known = new Set(services.map((service) => service.id));
+  const serviceIds = parsed.serviceIds === null
+    ? null
+    : parsed.serviceIds.filter((id) => known.has(id));
+  const saved = await admin
+    .from("service_incident_push_subscriptions")
+    .upsert({
+      tenant_id: item.tenantId,
+      user_id: actorId,
+      enabled: parsed.enabled,
+      service_ids: serviceIds,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "tenant_id,user_id" });
+  if (saved.error) db(saved.error);
+  return reply(request, {
+    data: { enabled: parsed.enabled, serviceIds, services },
   });
 }
 
@@ -1198,8 +1312,23 @@ const handler = withSupabase(
       if (item.type === "activeIncidentNotices")
         return await activeIncidentNotices(
           request,
+          context.supabase,
           context.supabaseAdmin,
           item,
+        );
+      if (item.type === "incidentPushSettings")
+        return await incidentPushSettings(
+          request,
+          context.supabaseAdmin,
+          item,
+          actorId,
+        );
+      if (item.type === "saveIncidentPushSettings")
+        return await saveIncidentPushSettings(
+          request,
+          context.supabaseAdmin,
+          item,
+          actorId,
         );
       if (item.type === "myTicketTimeline")
         return await myTicketTimeline(

@@ -3441,6 +3441,22 @@ const HANDLERS = {
   },
   "requester-portal": (body, { persona }) => {
     if (body.type === "activeIncidentNotices") return ok({ notices: [] });
+    if (
+      body.type === "incidentPushSettings" ||
+      body.type === "saveIncidentPushSettings"
+    ) {
+      return ok({
+        enabled: true,
+        serviceIds: ["svc-mail", "svc-phone"],
+        services: [
+          { id: "svc-abacus", name: "Abacus" },
+          { id: "svc-mail", name: "E-Mail" },
+          { id: "svc-intranet", name: "Intranet" },
+          { id: "svc-phone", name: "Telefonie" },
+          { id: "svc-wlan", name: "WLAN" },
+        ],
+      });
+    }
     if (body.type === "ticketProgress") {
       const ticket = visibleTickets(persona).find(
         (t) => t.id === body.ticketId,
