@@ -1034,7 +1034,7 @@ Mehr dazu unter «Überwachung».
 1. Öffnen Sie die **Überwachung**. Dafür braucht es das Recht «Assets verwalten».
 2. Klicken Sie auf **Kategorien** und legen Sie mit **Kategorie hinzufügen** Kategorien an, zum Beispiel pro Standort. Das Plus neben einer Kategorie fügt eine Unterkategorie hinzu, der Stift benennt um, der Papierkorb löscht.
 3. Wählen Sie in der Geräteliste über die Kästchen die Geräte aus und klicken Sie auf **Kategorie zuweisen**.
-4. Wählen Sie die Kategorie oder Unterkategorie – oder **Neue Kategorie erstellen …** – und klicken Sie auf **Zuweisen**.
+4. Wählen Sie die **Kategorie** und bei Bedarf die **Unterkategorie**. Mit **Neue Kategorie erstellen …** bzw. **Neue Unterkategorie erstellen …** legen Sie beide direkt an. Klicken Sie auf **Zuweisen**.
 
 Mehr dazu unter «Überwachung».
 
@@ -2487,7 +2487,8 @@ sonst grau.
   bleiben die Geräte überwacht und stehen wieder unter «Ohne Kategorie»;
   Unterkategorien werden mitgelöscht. Um Geräte zuzuordnen, wählen Sie sie
   über die Kästchen aus und klicken auf **Kategorie zuweisen**; dort lässt
-  sich auch gleich eine neue Kategorie erstellen. Die **Art** eines Geräts
+  sich auch gleich eine neue Kategorie erstellen oder eine neue
+  Unterkategorie erstellen. Die **Art** eines Geräts
   (Server, Switch …) bleibt davon unberührt. In der App erscheint die
   Geräteliste ohne Kategorien.
 - **Aufklappen und pausieren**: Der Pfeil vor einem Gerät klappt seine

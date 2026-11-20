@@ -947,6 +947,15 @@ function OverviewView({
       {assigning && data ? (
         <AssignGroupDialog
           assetIds={[...chosenDevices]}
+          currentGroupId={(() => {
+            // Vorauswahl, wenn alle gewählten Geräte dieselbe Kategorie haben.
+            const ids = new Set(
+              data.devices
+                .filter((device) => chosenDevices.has(device.assetId))
+                .map((device) => device.groupId ?? null),
+            );
+            return ids.size === 1 ? ([...ids][0] ?? null) : null;
+          })()}
           groups={groups}
           onClose={() => setAssigning(false)}
           onSaved={() => {
@@ -4936,56 +4945,57 @@ function RemoveAgentDialog({
   );
 }
 
-/** Options of a select: categories with their subcategories indented. */
-function GroupOptions({ groups }: { groups: MonitoringGroup[] }) {
-  return (
-    <>
-      {orderedGroups(groups).map((group) => (
-        <option key={group.id} value={group.id}>
-          {group.depth ? `\u00a0\u00a0\u00a0↳ ${group.name}` : group.name}
-        </option>
-      ))}
-    </>
-  );
-}
-
 const NEW_GROUP = "new";
 
 /** Puts the chosen devices into a category or subcategory. */
 function AssignGroupDialog({
   tenantId,
   assetIds,
+  currentGroupId,
   groups,
   onClose,
   onSaved,
 }: {
   tenantId: string;
   assetIds: string[];
+  /** Category all chosen devices share, if any: preselected. */
+  currentGroupId: string | null;
   groups: MonitoringGroup[];
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [groupId, setGroupId] = useState(groups.length ? "" : NEW_GROUP);
-  const [name, setName] = useState("");
-  const [parentId, setParentId] = useState("");
+  const tops = groups.filter((group) => group.parentId === null);
+  const current = groups.find((group) => group.id === currentGroupId) ?? null;
+  const [categoryId, setCategoryId] = useState(
+    current ? (current.parentId ?? current.id) : tops.length ? "" : NEW_GROUP,
+  );
+  const [categoryName, setCategoryName] = useState("");
+  const [subId, setSubId] = useState(current?.parentId ? current.id : "");
+  const [subName, setSubName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const subs = groups.filter(
+    (group) => categoryId !== "" && group.parentId === categoryId,
+  );
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setError(null);
     try {
-      let target: string | null = groupId || null;
-      if (groupId === NEW_GROUP) {
-        const created = await monitoringCall<{ groupId: string }>({
-          type: "saveGroup",
-          tenantId,
-          groupId: null,
-          name,
-          parentId: parentId || null,
-        });
-        target = created.groupId;
-      }
+      const create = async (name: string, parentId: string | null) =>
+        (
+          await monitoringCall<{ groupId: string }>({
+            type: "saveGroup",
+            tenantId,
+            groupId: null,
+            name,
+            parentId,
+          })
+        ).groupId;
+      let target: string | null = categoryId || null;
+      if (categoryId === NEW_GROUP) target = await create(categoryName, null);
+      if (target && subId === NEW_GROUP) target = await create(subName, target);
+      else if (target && subId) target = subId;
       await monitoringCall({
         type: "assignGroup",
         tenantId,
@@ -5015,44 +5025,63 @@ function AssignGroupDialog({
           <span>Kategorie</span>
           <select
             autoFocus
-            onChange={(event) => setGroupId(event.target.value)}
-            value={groupId}
+            onChange={(event) => {
+              setCategoryId(event.target.value);
+              setSubId("");
+            }}
+            value={categoryId}
           >
             <option value="">{NO_GROUP_LABEL}</option>
-            <GroupOptions groups={groups} />
+            {tops.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
             <option value={NEW_GROUP}>Neue Kategorie erstellen …</option>
           </select>
         </label>
-        {groupId === NEW_GROUP ? (
-          <>
-            <label className="monitoring-field">
-              <span>Name der neuen Kategorie</span>
-              <input
-                maxLength={80}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="z. B. Standort Baar"
-                required
-                type="text"
-                value={name}
-              />
-            </label>
-            <label className="monitoring-field">
-              <span>Unterkategorie von (optional)</span>
-              <select
-                onChange={(event) => setParentId(event.target.value)}
-                value={parentId}
-              >
-                <option value="">Keine – eigene Kategorie</option>
-                {groups
-                  .filter((group) => group.parentId === null)
-                  .map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          </>
+        {categoryId === NEW_GROUP ? (
+          <label className="monitoring-field">
+            <span>Name der neuen Kategorie</span>
+            <input
+              maxLength={80}
+              onChange={(event) => setCategoryName(event.target.value)}
+              placeholder="z. B. Standort Baar"
+              required
+              type="text"
+              value={categoryName}
+            />
+          </label>
+        ) : null}
+        {categoryId !== "" ? (
+          <label className="monitoring-field">
+            <span>Unterkategorie (optional)</span>
+            <select
+              onChange={(event) => setSubId(event.target.value)}
+              value={subId}
+            >
+              <option value="">Keine – direkt in der Kategorie</option>
+              {subs.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+              <option value={NEW_GROUP}>Neue Unterkategorie erstellen …</option>
+            </select>
+          </label>
+        ) : null}
+        {categoryId !== "" && subId === NEW_GROUP ? (
+          <label className="monitoring-field">
+            <span>Name der neuen Unterkategorie</span>
+            <input
+              maxLength={80}
+              onChange={(event) => setSubName(event.target.value)}
+              placeholder="z. B. Verteiler 2. OG"
+              required
+              type="text"
+              value={subName}
+            />
+          </label>
         ) : null}
         {error ? (
           <p className="ticket-detail-message error" role="alert">
