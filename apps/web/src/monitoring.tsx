@@ -2931,6 +2931,7 @@ function SensorDialog({
   const [draft, setDraft] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [serviceQuery, setServiceQuery] = useState("");
   const change = (patch: Partial<SensorDraft>) =>
     setDraft((current) => ({ ...current, ...patch }));
 
@@ -3043,28 +3044,83 @@ function SensorDialog({
                   ? `Ohne Auswahl gelten die Dienste des Geräts: ${deviceServices.join(", ")}.`
                   : "Ohne Auswahl ist bei einem Ausfall kein Dienst betroffen (am Gerät ist keiner hinterlegt)."}
             </p>
+            {draft.serviceIds?.length ? (
+              <ul
+                aria-label="Gewählte Dienste"
+                className="monitoring-services__chosen"
+              >
+                {services
+                  .filter((service) => draft.serviceIds!.includes(service.id))
+                  .map((service) => (
+                    <li key={service.id}>
+                      {service.name}
+                      <button
+                        aria-label={`${service.name} entfernen`}
+                        onClick={() =>
+                          change({
+                            serviceIds: draft.serviceIds!.filter(
+                              (id) => id !== service.id,
+                            ),
+                          })
+                        }
+                        type="button"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            ) : null}
+            <label className="monitoring__search monitoring-services__search">
+              <Search aria-hidden="true" size={15} />
+              <span className="sr-only">Dienst suchen</span>
+              <input
+                onChange={(event) => setServiceQuery(event.target.value)}
+                placeholder={`In ${services.length} Diensten suchen`}
+                type="search"
+                value={serviceQuery}
+              />
+            </label>
             <div className="monitoring-services__list">
-              {services.map((service) => {
-                const chosen = draft.serviceIds?.includes(service.id) ?? false;
-                return (
-                  <label className="monitoring-check" key={service.id}>
-                    <input
-                      checked={chosen}
-                      onChange={() =>
-                        change({
-                          serviceIds: chosen
-                            ? (draft.serviceIds ?? []).filter(
-                                (id) => id !== service.id,
-                              )
-                            : [...(draft.serviceIds ?? []), service.id],
-                        })
-                      }
-                      type="checkbox"
-                    />
-                    <span>{service.name}</span>
-                  </label>
-                );
-              })}
+              {services
+                .filter((service) =>
+                  service.name
+                    .toLowerCase()
+                    .includes(serviceQuery.trim().toLowerCase()),
+                )
+                .map((service) => {
+                  const chosen =
+                    draft.serviceIds?.includes(service.id) ?? false;
+                  return (
+                    <label
+                      className="monitoring-services__item"
+                      key={service.id}
+                    >
+                      <input
+                        checked={chosen}
+                        onChange={() =>
+                          change({
+                            serviceIds: chosen
+                              ? (draft.serviceIds ?? []).filter(
+                                  (id) => id !== service.id,
+                                )
+                              : [...(draft.serviceIds ?? []), service.id],
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      <span>{service.name}</span>
+                    </label>
+                  );
+                })}
+              {services.every(
+                (service) =>
+                  !service.name
+                    .toLowerCase()
+                    .includes(serviceQuery.trim().toLowerCase()),
+              ) ? (
+                <p className="monitoring-muted">Kein Dienst passt zur Suche.</p>
+              ) : null}
             </div>
           </fieldset>
         ) : null}
