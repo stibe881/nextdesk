@@ -24018,6 +24018,7 @@ button.inventory__metric--link:focus-visible {
 
 .inventory__list--thumbs > li > .inventory__item-link {
   flex: 1 1 auto;
+}
 
 .personal-settings__incident-push {
   display: grid;
