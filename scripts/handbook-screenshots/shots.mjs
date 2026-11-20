@@ -2,6 +2,14 @@
 // session is injected (null = signed out) and drives the UI the way a person
 // would: clicking navigation entries, buttons and tabs.
 
+const openDemoProject = async (h, tab) => {
+  await h.open();
+  await h.nav("Projekte");
+  await h.clickText("Netzwerk-Erneuerung Standort Bern");
+  await h.waitText("Alle Projekte");
+  if (tab) await h.click(tab, { role: "tab" });
+};
+
 export const SHOTS = [
   {
     name: "login",
@@ -147,6 +155,110 @@ export const SHOTS = [
         "Ziehe eine Karte in eine andere Spalte, um den Status zu ändern.",
         90,
       );
+    },
+  },
+  {
+    name: "ag-projekte",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Projekte");
+      await h.waitText("Netzwerk-Erneuerung Standort Bern");
+    },
+  },
+  {
+    name: "ag-projekt-ueberblick",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, null);
+      await h.waitText("Meilensteine");
+    },
+  },
+  {
+    name: "ag-projekt-zeitplan",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, "Zeitplan");
+      await h.waitText("Switches vorkonfigurieren");
+    },
+  },
+  {
+    name: "ag-projekt-board",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, "Board");
+      await h.waitText("WLAN Access Points montieren");
+    },
+  },
+  {
+    name: "ag-projekt-liste",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, "Liste");
+      await h.page.getByLabel("Switches vorkonfigurieren auswählen").check();
+      await h.page.getByLabel("Etage 1 und 2 auswählen").check();
+      await h.scrollToText("2 ausgewählt", 150);
+    },
+  },
+  {
+    name: "ag-projekt-aufgabe",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, "Liste");
+      await h.clickText("Switches vorkonfigurieren", { exact: true });
+      await h.waitText("Checkliste (2/4)");
+    },
+  },
+  {
+    name: "ag-projekt-budget",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, "Zeiten & Budget");
+      await h.waitText("Projekt gesamt");
+    },
+  },
+  {
+    name: "ag-projekt-doku",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, "Dokumentation");
+      await h.waitText("VLAN-Plan");
+    },
+  },
+  {
+    name: "ag-projekt-verknuepfungen",
+    persona: "agent",
+    async run(h) {
+      await openDemoProject(h, /Verknüpfungen/);
+      await h.waitText("Mit dem Projekt verknüpfen");
+    },
+  },
+  {
+    name: "ag-projekt-team",
+    persona: "admin",
+    async run(h) {
+      await openDemoProject(h, "Team & Gäste");
+      await h.waitText("Externen Gast einladen");
+    },
+  },
+  {
+    name: "ag-projekt-auslastung",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Projekte");
+      await h.click("Auslastung", { role: "tab" });
+      await h.waitText("überlastet");
+    },
+  },
+  {
+    name: "ad-projekt-neu",
+    persona: "admin",
+    async run(h) {
+      await h.open();
+      await h.nav("Projekte");
+      await h.click("Neues Projekt");
+      await h.waitText("Zeitraum und Budget");
     },
   },
   {

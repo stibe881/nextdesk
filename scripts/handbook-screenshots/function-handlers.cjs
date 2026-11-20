@@ -149,6 +149,7 @@ const ALL_FEATURES = [
   "contracts.management",
   "self_service.shop",
   "service.tasks",
+  "projects.management",
   "event.spaces",
   "onboarding.entries",
   "experience.workspace",
@@ -648,6 +649,7 @@ function coordinationOverview(ticket) {
 }
 
 const HANDLERS = {
+  projects: require("./project-data.cjs").handler,
   inventory: (body) => {
     if (body.type === "listOpenReservations") return ok({ reservations: [] });
     if (body.type === "listActiveCounts") return ok({ activeCounts: [] });

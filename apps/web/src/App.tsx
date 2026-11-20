@@ -64,6 +64,7 @@ import {
   Laptop,
   ShoppingBag,
   List,
+  FolderKanban,
   ListChecks,
   Package,
   MailX,
@@ -254,11 +255,17 @@ import { nextExpandedAccordionId } from "./lib/navigation-accordion";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 import { setFormality, tn } from "./lib/formality";
 import { loadServiceTaskAccess, ServiceTasks } from "./service-tasks";
+import {
+  loadProjectModuleAccess,
+  type ProjectModuleAccess,
+} from "./lib/projects-api";
+import { Projects } from "./projects";
 
 import { confirmDialog } from "./app-dialog";
 type Section =
   | "Übersicht"
   | "Tickets"
+  | "Projekte"
   | "Shop"
   | "Teams"
   | "Arbeitsplatz"
@@ -416,6 +423,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
   workplaceFirstNavigation([
     { label: "Übersicht", Icon: LayoutDashboard },
     { label: "Tickets", Icon: Ticket },
+    { label: "Projekte", Icon: FolderKanban },
     { label: "Shop", Icon: ShoppingBag },
     { label: "Teams", Icon: UsersRound },
     { label: "Fälle", Icon: FileWarning },
@@ -444,7 +452,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "ARBEITSBEREICH",
     id: "navigation-category-workspace",
     navigationLabel: "Arbeitsbereich",
-    sectionLabels: ["Tickets", "Shop", "Teams", "Fälle"],
+    sectionLabels: ["Tickets", "Projekte", "Shop", "Teams", "Fälle"],
   },
   {
     heading: "SICHERHEIT & STÖRUNGEN",
@@ -3454,6 +3462,9 @@ function AuthenticatedApp() {
   const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
   const [canReadReports, setCanReadReports] = useState(false);
   const [canReadServiceTasks, setCanReadServiceTasks] = useState(false);
+  const [projectAccess, setProjectAccess] =
+    useState<ProjectModuleAccess | null>(null);
+  const [projectFocusId, setProjectFocusId] = useState<string | null>(null);
   const [serviceTaskFocusId, setServiceTaskFocusId] = useState<string | null>(
     null,
   );
@@ -4254,6 +4265,35 @@ function AuthenticatedApp() {
     );
     return () => window.cancelAnimationFrame(frame);
   }, [keyboardHelpOpen]);
+
+  useEffect(() => {
+    // Projekte: the function checks module, rights and memberships itself, so
+    // guests without any role get their answer here too.
+    if (!session || !activeTenant) {
+      setProjectAccess(null);
+      return;
+    }
+    let mounted = true;
+    void loadProjectModuleAccess(activeTenant.id).then((access) => {
+      if (mounted) setProjectAccess(access);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, session, tenantFeatures]);
+
+  const projectsVisible =
+    projectAccess?.enabled === true && projectAccess.visible;
+  // An external guest has no role in the tenant: only «Projekte» is shown.
+  const projectGuestOnly = projectsVisible && projectAccess?.guestOnly === true;
+  useEffect(() => {
+    if (projectGuestOnly && section !== "Projekte") setSection("Projekte");
+  }, [projectGuestOnly, section]);
+  const openProject = useCallback((projectId: string) => {
+    setSelectedTicketId(null);
+    setProjectFocusId(projectId);
+    setSection("Projekte");
+  }, []);
 
   useEffect(() => {
     // Serviceaufgaben: visible with the module switched on and at least the
@@ -5546,6 +5586,7 @@ function AuthenticatedApp() {
     if (item.label === "Serviceaufgaben") {
       return isFeatureEnabled("service.tasks") && canReadServiceTasks;
     }
+    if (item.label === "Projekte") return projectsVisible;
     if (item.label === "Raumplanung") return isFeatureEnabled("event.spaces");
     if (item.label === "Eintritte") {
       return isFeatureEnabled("onboarding.entries");
@@ -5560,6 +5601,7 @@ function AuthenticatedApp() {
       item.label === "Berichte" ||
       item.label === "Systemstatus" ||
       item.label === "Serviceaufgaben" ||
+      item.label === "Projekte" ||
       item.label === "Lager",
   );
   // The shop is open to everybody, also next to restricted work sections.
@@ -5575,7 +5617,9 @@ function AuthenticatedApp() {
     "Arbeitsplatz",
     "Systemstatus",
   ];
-  const workSections = canWorkTickets
+  const workSections = projectGuestOnly
+    ? featureSections.filter((item) => item.label === "Projekte")
+    : canWorkTickets
     ? featureSections
     : [...requesterSections, ...restrictedWorkSections, ...shopSections].filter(
         (item, index, list) =>
@@ -7193,6 +7237,19 @@ function AuthenticatedApp() {
             tenantId={activeTenant.id}
             today={teamsManage.today}
           />
+        ) : section === "Projekte" && activeTenant && projectAccess ? (
+          <Projects
+            access={projectAccess}
+            focusProjectId={projectFocusId}
+            key={activeTenant.id}
+            onFocusHandled={() => setProjectFocusId(null)}
+            onOpenTicket={
+              projectAccess.guestOnly
+                ? undefined
+                : (ticketId) => setSelectedTicketId(ticketId)
+            }
+            tenantId={activeTenant.id}
+          />
         ) : section === "Serviceaufgaben" && activeTenant ? (
           <ServiceTasks
             createRequestId={
@@ -8433,6 +8490,9 @@ function AuthenticatedApp() {
                 : undefined
             }
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
+            onOpenProject={
+              projectsVisible && !projectGuestOnly ? openProject : undefined
+            }
             onOpenIncident={(incidentId) => {
               setSelectedTicketId(null);
               setIncidentFocusId(incidentId);
