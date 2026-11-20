@@ -472,20 +472,13 @@ async function closeSimulationCase(
   provider: string,
   noteAuthorId: string,
 ) {
-  const now = new Date().toISOString();
-  const closed = await admin.from("security_cases").update({
-    verdict: "phishing",
-    verdict_at: now,
-    state: "closed",
-    closed_at: now,
-  }).eq("tenant_id", tenantId).eq("ticket_id", ticketId).neq("state", "closed").select("ticket_id");
-  if (closed.error || !(closed.data ?? []).length) return;
-  const status = await admin.from("ticket_statuses").select("id")
-    .eq("tenant_id", tenantId).eq("key", "closed").maybeSingle();
-  if (status.data?.id) {
-    await admin.from("tickets").update({ status_id: status.data.id })
-      .eq("id", ticketId).eq("tenant_id", tenantId);
-  }
+  // Case and ticket closed in one step; the status rule «Neu only with an
+  // assignee» allows this for simulations (migration 0378).
+  const closed = await admin.rpc("security_case_close_simulation", {
+    p_tenant_id: tenantId,
+    p_ticket_id: ticketId,
+  });
+  if (closed.error || closed.data !== true) return;
   await admin.from("ticket_comments").insert({
     ticket_id: ticketId,
     author_id: noteAuthorId,
