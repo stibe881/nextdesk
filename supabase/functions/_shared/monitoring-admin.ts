@@ -95,19 +95,23 @@ export function optionalInteger(
 
 export type MonitoringOptions = {
   departments: { id: string; name: string }[];
+  teams: { id: string; name: string; departmentId: string | null }[];
   priorities: { key: string; label: string }[];
   assets: { id: string; name: string; hostname: string | null }[];
   services: { id: string; name: string }[];
 };
 
 export async function loadMonitoringOptions(admin: Admin, tenantId: string): Promise<MonitoringOptions> {
-  const [departments, priorities, infra, services] = await Promise.all([
+  const [departments, teams, priorities, infra, services] = await Promise.all([
     admin.from("departments").select("id, name").eq("tenant_id", tenantId).eq("active", true).order("name"),
+    admin.from("teams").select("id, name, department_id").eq("tenant_id", tenantId).eq("active", true).order("name"),
     admin.from("ticket_priorities").select("key, label, sort_order").eq("tenant_id", tenantId).order("sort_order"),
     admin.from("asset_infrastructure").select("asset_id, hostname").eq("tenant_id", tenantId).limit(2000),
     admin.from("services").select("id, name").eq("tenant_id", tenantId).eq("active", true).order("name").limit(1000),
   ]);
-  if (departments.error || priorities.error || infra.error || services.error) throw dbFailure();
+  if (departments.error || teams.error || priorities.error || infra.error || services.error) {
+    throw dbFailure();
+  }
   const infraRows = (infra.data ?? []) as Row[];
   const hostnames = new Map(infraRows.map((row) => [String(row.asset_id), row.hostname]));
   const assets = infraRows.length
@@ -121,6 +125,11 @@ export async function loadMonitoringOptions(admin: Admin, tenantId: string): Pro
   if (assets.error) throw dbFailure();
   return {
     departments: ((departments.data ?? []) as Row[]).map((row) => ({ id: String(row.id), name: String(row.name) })),
+    teams: ((teams.data ?? []) as Row[]).map((row) => ({
+      id: String(row.id),
+      name: String(row.name),
+      departmentId: typeof row.department_id === "string" ? row.department_id : null,
+    })),
     priorities: ((priorities.data ?? []) as Row[]).map((row) => ({ key: String(row.key), label: String(row.label) })),
     assets: ((assets.data ?? []) as Row[]).map((row) => {
       const hostname = hostnames.get(String(row.id));
@@ -140,6 +149,8 @@ export async function validateReferences(
   tenantId: string,
   refs: {
     departmentId?: string | null;
+    /** Must be active and belong to departmentId (when one is given). */
+    teamId?: string | null;
     priorityKeys?: (string | null)[];
     assetId?: string | null;
     serviceId?: string | null;
@@ -157,6 +168,16 @@ export async function validateReferences(
         .eq("active", true).maybeSingle(),
       "department_invalid",
       "Die Abteilung ist nicht verfügbar.",
+    ));
+  }
+  if (refs.teamId) {
+    let query = admin.from("teams").select("id").eq("tenant_id", tenantId).eq("id", refs.teamId)
+      .eq("active", true);
+    if (refs.departmentId) query = query.eq("department_id", refs.departmentId);
+    checks.push(check(
+      query.maybeSingle(),
+      "team_invalid",
+      "Das Team ist nicht verfügbar oder gehört nicht zur gewählten Abteilung.",
     ));
   }
   for (const key of refs.priorityKeys ?? []) {

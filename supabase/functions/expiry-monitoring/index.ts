@@ -65,6 +65,7 @@ const CONCURRENCY = 4;
 export type SettingsInput = {
   enabled: boolean;
   departmentId: string | null;
+  teamId: string | null;
   priorityKey: string | null;
   reminderPriorityKey: string | null;
   warnDays: number;
@@ -88,6 +89,7 @@ export type TargetInput = {
 export function parseSettingsInput(value: unknown): SettingsInput | null {
   if (!isRecord(value)) return null;
   const departmentId = optionalUuid(value.departmentId);
+  const teamId = optionalUuid(value.teamId);
   const priorityKey = optionalPriorityKey(value.priorityKey);
   const reminderPriorityKey = optionalPriorityKey(value.reminderPriorityKey);
   const warnDays = optionalInteger(value.warnDays, 1, 180);
@@ -96,6 +98,7 @@ export function parseSettingsInput(value: unknown): SettingsInput | null {
     typeof value.enabled !== "boolean" ||
     typeof value.autoResolve !== "boolean" ||
     departmentId === undefined ||
+    teamId === undefined ||
     priorityKey === undefined ||
     reminderPriorityKey === undefined ||
     typeof warnDays !== "number" ||
@@ -107,6 +110,7 @@ export function parseSettingsInput(value: unknown): SettingsInput | null {
   return {
     enabled: value.enabled,
     departmentId,
+    teamId,
     priorityKey,
     reminderPriorityKey,
     warnDays,
@@ -158,6 +162,7 @@ type Settings = {
   tenant_id: string;
   enabled: boolean;
   department_id: string | null;
+  team_id: string | null;
   priority_key: string | null;
   reminder_priority_key: string | null;
   warn_days: number;
@@ -168,6 +173,7 @@ type Settings = {
 const DEFAULT_SETTINGS: Omit<Settings, "tenant_id"> = {
   enabled: false,
   department_id: null,
+  team_id: null,
   priority_key: null,
   reminder_priority_key: null,
   warn_days: 30,
@@ -202,6 +208,7 @@ function settingsView(row: Row | null) {
     configured: row !== null,
     enabled: value.enabled === true,
     departmentId: (value.department_id as string | null) ?? null,
+    teamId: (value.team_id as string | null) ?? null,
     priorityKey: (value.priority_key as string | null) ?? null,
     reminderPriorityKey: (value.reminder_priority_key as string | null) ?? null,
     warnDays: Number(value.warn_days),
@@ -372,6 +379,7 @@ export async function processTarget(admin: Admin, settings: Settings, target: Ta
         const ticket = await createMonitoringTicket(admin, {
           tenantId: target.tenant_id,
           departmentIds: [target.department_id, settings.department_id],
+          teamId: settings.team_id ?? null,
           priorityKeys: action.stage === "reminded" ? raised : [settings.priority_key, "high", "normal"],
           subject: expiryTicketSubject(text, outcome.details.expiresAt, now),
           description: expiryTicketDescription(text, outcome.details, now, action.stage),
@@ -483,6 +491,7 @@ async function saveSettings(
 ) {
   await validateReferences(admin, tenantId, {
     departmentId: input.departmentId,
+    teamId: input.teamId,
     priorityKeys: [input.priorityKey, input.reminderPriorityKey],
   });
   const { data, error } = await admin
@@ -491,6 +500,7 @@ async function saveSettings(
       tenant_id: tenantId,
       enabled: input.enabled,
       department_id: input.departmentId,
+      team_id: input.teamId,
       priority_key: input.priorityKey,
       reminder_priority_key: input.reminderPriorityKey,
       warn_days: input.warnDays,
