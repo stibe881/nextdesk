@@ -975,6 +975,7 @@ export async function sendApns(
   environment: ApnsEnvironment,
   payload: Record<string, unknown>,
   collapseId: string,
+  options: { priority?: 5 | 10; expiresInSeconds?: number } = {},
 ): Promise<{ status: number; reason?: string }> {
   const configuration = readConfiguration();
   if (!configuration) return { status: 0, reason: "apns_not_configured" };
@@ -990,8 +991,10 @@ export async function sendApns(
         authorization: `bearer ${authorization}`,
         "apns-topic": "ch.grossict.nextdesk",
         "apns-push-type": "alert",
-        "apns-priority": "10",
-        "apns-expiration": String(Math.floor(Date.now() / 1000) + 24 * 60 * 60),
+        "apns-priority": String(options.priority ?? 10),
+        "apns-expiration": String(
+          Math.floor(Date.now() / 1000) + (options.expiresInSeconds ?? 24 * 60 * 60),
+        ),
         "apns-collapse-id": collapseId.slice(0, 64),
         "content-type": "application/json",
       },
