@@ -1588,14 +1588,26 @@ const HANDLERS = {
       return ok({
         canManage: true,
         serviceOptions: [
-          { id: D.uid("31313131", 1), name: "ERP" },
-          { id: D.uid("31313131", 2), name: "E-Mail" },
-          { id: D.uid("31313131", 3), name: "Intranet" },
-          { id: D.uid("31313131", 4), name: "Zeiterfassung" },
-          { id: D.uid("31313131", 5), name: "Büromaterialbestellungen" },
-          { id: D.uid("31313131", 6), name: "EVA / Aggressionsmeldungen" },
-          { id: D.uid("31313131", 7), name: "Telefonie" },
-          { id: D.uid("31313131", 8), name: "WLAN Hauptgebäude" },
+          { id: D.uid("31313131", 1), name: "ERP", category: "Allgemein" },
+          { id: D.uid("31313131", 2), name: "E-Mail", category: "Allgemein" },
+          { id: D.uid("31313131", 3), name: "Intranet", category: "Allgemein" },
+          { id: D.uid("31313131", 4), name: "Zeiterfassung", category: "Apps" },
+          {
+            id: D.uid("31313131", 5),
+            name: "Büromaterialbestellungen",
+            category: "Apps",
+          },
+          {
+            id: D.uid("31313131", 6),
+            name: "EVA / Aggressionsmeldungen",
+            category: "Apps",
+          },
+          { id: D.uid("31313131", 7), name: "Telefonie", category: "Netzwerk" },
+          {
+            id: D.uid("31313131", 8),
+            name: "WLAN Hauptgebäude",
+            category: "Netzwerk",
+          },
         ],
         device: {
           assetId: D.uid("49494949", 2),

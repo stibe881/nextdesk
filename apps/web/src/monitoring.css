@@ -961,7 +961,7 @@ button.monitoring-tile[aria-pressed="true"] {
 /* One service per line: long names stay readable. */
 .monitoring-services__list {
   display: grid;
-  max-height: 190px;
+  max-height: 240px;
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow-y: auto;
@@ -970,6 +970,30 @@ button.monitoring-tile[aria-pressed="true"] {
 .monitoring-services__list > p {
   margin: 0;
   padding: 10px 12px;
+}
+
+.monitoring-services__category {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding: 5px 12px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.monitoring-services__group:not(:first-child) .monitoring-services__category {
+  border-top: 1px solid var(--border);
+}
+
+.monitoring-services__group .monitoring-services__item:first-of-type {
+  border-top: 0;
 }
 
 .monitoring-services__item {

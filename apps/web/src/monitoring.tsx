@@ -41,6 +41,7 @@ import {
   formatMs,
   formatSince,
   connectedPorts,
+  groupServiceOptions,
   formatValue,
   guessCategory,
   LINK_SOURCE_LABELS,
@@ -2922,7 +2923,7 @@ function SensorDialog({
   draft: SensorDraft;
   agents: MonitoringAgent[];
   /** Services of the status page that can be linked. */
-  services: { id: string; name: string }[];
+  services: { id: string; name: string; category?: string | null }[];
   /** Names of the services linked to the device (apply without own choice). */
   deviceServices: string[];
   onClose: () => void;
@@ -2932,6 +2933,9 @@ function SensorDialog({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [serviceQuery, setServiceQuery] = useState("");
+  const serviceGroups = groupServiceOptions(services, serviceQuery);
+  // Headings only when the services have categories at all.
+  const grouped = services.some((service) => service.category);
   const change = (patch: Partial<SensorDraft>) =>
     setDraft((current) => ({ ...current, ...patch }));
 
@@ -3076,49 +3080,58 @@ function SensorDialog({
               <span className="sr-only">Dienst suchen</span>
               <input
                 onChange={(event) => setServiceQuery(event.target.value)}
-                placeholder={`In ${services.length} Diensten suchen`}
+                placeholder={`In ${services.length} Diensten suchen (Name oder Kategorie)`}
                 type="search"
                 value={serviceQuery}
               />
             </label>
             <div className="monitoring-services__list">
-              {services
-                .filter((service) =>
-                  service.name
-                    .toLowerCase()
-                    .includes(serviceQuery.trim().toLowerCase()),
-                )
-                .map((service) => {
-                  const chosen =
-                    draft.serviceIds?.includes(service.id) ?? false;
-                  return (
-                    <label
-                      className="monitoring-services__item"
-                      key={service.id}
-                    >
-                      <input
-                        checked={chosen}
-                        onChange={() =>
-                          change({
-                            serviceIds: chosen
-                              ? (draft.serviceIds ?? []).filter(
-                                  (id) => id !== service.id,
-                                )
-                              : [...(draft.serviceIds ?? []), service.id],
-                          })
-                        }
-                        type="checkbox"
-                      />
-                      <span>{service.name}</span>
-                    </label>
-                  );
-                })}
-              {services.every(
-                (service) =>
-                  !service.name
-                    .toLowerCase()
-                    .includes(serviceQuery.trim().toLowerCase()),
-              ) ? (
+              {serviceGroups.map((group) => (
+                <div
+                  className="monitoring-services__group"
+                  key={group.category}
+                >
+                  {grouped ? (
+                    <div className="monitoring-services__category">
+                      <span>{group.category}</span>
+                      <span>
+                        {
+                          group.services.filter((service) =>
+                            draft.serviceIds?.includes(service.id),
+                          ).length
+                        }{" "}
+                        / {group.services.length}
+                      </span>
+                    </div>
+                  ) : null}
+                  {group.services.map((service) => {
+                    const chosen =
+                      draft.serviceIds?.includes(service.id) ?? false;
+                    return (
+                      <label
+                        className="monitoring-services__item"
+                        key={service.id}
+                      >
+                        <input
+                          checked={chosen}
+                          onChange={() =>
+                            change({
+                              serviceIds: chosen
+                                ? (draft.serviceIds ?? []).filter(
+                                    (id) => id !== service.id,
+                                  )
+                                : [...(draft.serviceIds ?? []), service.id],
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        <span>{service.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ))}
+              {serviceGroups.length === 0 ? (
                 <p className="monitoring-muted">Kein Dienst passt zur Suche.</p>
               ) : null}
             </div>

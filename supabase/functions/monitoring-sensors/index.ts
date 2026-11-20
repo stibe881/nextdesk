@@ -639,11 +639,32 @@ function kindLabel(row: Row | null | undefined): string | null {
 }
 
 /** Services of the status page a sensor can be linked to. */
-async function serviceOptions(admin: Client, tenantId: string): Promise<{ id: string; name: string }[]> {
-  const { data, error } = await admin.from("services").select("id, name")
-    .eq("tenant_id", tenantId).eq("active", true).order("name").limit(500);
-  if (error) throw unavailable();
-  return ((data ?? []) as Row[]).map((row) => ({ id: String(row.id), name: String(row.name) }));
+async function serviceOptions(
+  admin: Client,
+  tenantId: string,
+): Promise<{ id: string; name: string; category: string | null }[]> {
+  const [services, categories] = await Promise.all([
+    admin.from("services").select("id, name, service_category_id")
+      .eq("tenant_id", tenantId).eq("active", true).order("name").limit(500),
+    admin.from("service_categories").select("id, name, parent_id").eq("tenant_id", tenantId).limit(1000),
+  ]);
+  if (services.error) throw unavailable();
+  // Category as its path («Ort · Kategorie»); without categories the list is flat.
+  const byId = new Map(((categories.data ?? []) as Row[]).map((row) => [String(row.id), row]));
+  const label = (id: unknown): string | null => {
+    const names: string[] = [];
+    let current = typeof id === "string" ? byId.get(id) : undefined;
+    for (let depth = 0; current && depth < 3; depth += 1) {
+      names.unshift(String(current.name));
+      current = typeof current.parent_id === "string" ? byId.get(current.parent_id) : undefined;
+    }
+    return names.length ? names.join(" · ") : null;
+  };
+  return ((services.data ?? []) as Row[]).map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    category: label(row.service_category_id),
+  }));
 }
 
 /** Own device kinds of the tenant, as they are used on its devices. */

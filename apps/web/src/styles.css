@@ -7456,6 +7456,43 @@ body:has(.ticket-detail) {
   row-gap: 10px;
 }
 
+.service-assets__group-heading > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 6px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 2px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.service-assets__group-heading > button::before {
+  content: "▾";
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.service-assets__group-heading > button[aria-expanded="false"]::before {
+  content: "▸";
+}
+
+.service-assets__group-count {
+  border-radius: 999px;
+  padding: 0 8px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .service-assets__services-panel > ul > li > .service-assets__service-card {
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
@@ -22842,7 +22879,10 @@ html body form:has(> .fk-layout) {
 .nav-item__badge--muted,
 .navigation-cluster__badge--muted {
   color: var(--text, var(--ink));
-  background: var(--surface-muted, color-mix(in srgb, var(--text, #334) 14%, transparent));
+  background: var(
+    --surface-muted,
+    color-mix(in srgb, var(--text, #334) 14%, transparent)
+  );
 }
 
 /* Externe Statusquellen: Dienste der Statusseite pro Quelle. */
@@ -23593,7 +23633,6 @@ body.app-dialog-open {
   margin-top: 0;
   margin-bottom: 0;
 }
-
 
 /* Verschachtelte Lager-Panels (z. B. «Regeln für künftige Quellen» unter
    «Reservation anlegen») brauchen Abstand zum vorherigen Block. */
