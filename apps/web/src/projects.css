@@ -1706,3 +1706,131 @@
   color: var(--ink);
   font-size: 13px;
 }
+
+/* Zeitleiste über alle Projekte */
+
+.pj-portfolio__row {
+  height: 46px;
+}
+
+.pj-portfolio__label {
+  padding-left: 12px;
+}
+
+.pj-portfolio__label .pj-project-link {
+  min-width: 0;
+}
+
+.pj-portfolio__label strong,
+.pj-portfolio__label small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pj-portfolio__bar {
+  position: absolute;
+  top: 11px;
+  box-sizing: border-box;
+  height: 24px;
+  min-height: 0;
+  min-width: 0;
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  overflow: hidden;
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pj-portfolio__bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgb(0 0 0 / 24%);
+}
+
+.pj-portfolio__bar span {
+  position: relative;
+  padding-left: 8px;
+  line-height: 24px;
+}
+
+.pj-portfolio__bar--green,
+.pj-portfolio__bar--green:hover:not(:disabled) {
+  background: #1f9d55;
+  color: #fff;
+}
+
+.pj-portfolio__bar--yellow,
+.pj-portfolio__bar--yellow:hover:not(:disabled) {
+  background: #c98a04;
+  color: #fff;
+}
+
+.pj-portfolio__bar--red,
+.pj-portfolio__bar--red:hover:not(:disabled) {
+  background: #d92d20;
+  color: #fff;
+}
+
+.pj-portfolio__bar:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.pj-portfolio__bar.is-done {
+  opacity: 0.6;
+}
+
+.pj-portfolio__bar.is-late {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+
+.pj-portfolio__bar:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.pj-portfolio__milestone {
+  position: absolute;
+  top: 17px;
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--surface);
+  border-radius: 2px;
+  background: var(--ink);
+  transform: rotate(45deg);
+  box-sizing: border-box;
+}
+
+.pj-portfolio__milestone.is-done {
+  background: var(--success);
+}
+
+.pj-portfolio__milestone.is-late {
+  background: var(--danger);
+}
+
+.pj-portfolio__milestone--legend {
+  position: static;
+  display: inline-block;
+}
+
+.pj-portfolio__undated {
+  position: absolute;
+  top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.pj-portfolio__label strong {
+  font-size: 13px;
+}

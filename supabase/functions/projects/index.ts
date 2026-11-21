@@ -602,9 +602,43 @@ async function visibleProjects(
   );
 }
 
+type Milestone = { id: string; title: string; dueOn: string; done: boolean };
+
+/** Dated milestones per project, for the timeline across all projects. */
+async function milestonesOf(
+  ctx: Ctx,
+  projectIds: readonly string[],
+): Promise<Map<string, Milestone[]>> {
+  const result = new Map<string, Milestone[]>();
+  for (let index = 0; index < projectIds.length; index += 80) {
+    const { data, error } = await ctx.admin
+      .from("project_tasks")
+      .select("id, project_id, title, due_on, status")
+      .eq("tenant_id", ctx.tenantId)
+      .eq("kind", "milestone")
+      .not("due_on", "is", null)
+      .in("project_id", projectIds.slice(index, index + 80))
+      .order("due_on")
+      .limit(2000);
+    if (error) throw failed();
+    for (const row of (data ?? []) as Row[]) {
+      const key = row.project_id as string;
+      const list = result.get(key) ?? [];
+      list.push({
+        id: row.id as string,
+        title: row.title as string,
+        dueOn: row.due_on as string,
+        done: row.status === "done",
+      });
+      result.set(key, list);
+    }
+  }
+  return result;
+}
+
 async function overview(ctx: Ctx, body: Row) {
   const projects = await visibleProjects(ctx, body.includeArchived === true);
-  const [stats, lookup, memberships] = await Promise.all([
+  const [stats, lookup, memberships, milestones] = await Promise.all([
     projects.length
       ? loadStats(
           ctx,
@@ -617,6 +651,10 @@ async function overview(ctx: Ctx, body: Row) {
       .select("project_id, role")
       .eq("tenant_id", ctx.tenantId)
       .eq("user_id", ctx.actorId),
+    milestonesOf(
+      ctx,
+      projects.map((p) => p.id as string),
+    ),
   ]);
   const roles = new Map<string, string>(
     (memberships.data ?? []).map((row: Row) => [
@@ -640,6 +678,7 @@ async function overview(ctx: Ctx, body: Row) {
           !!access?.isGuest,
         ),
         role: access?.role ?? "viewer",
+        milestones: milestones.get(project.id as string) ?? [],
       };
     }),
   };

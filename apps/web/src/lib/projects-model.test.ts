@@ -12,6 +12,7 @@ import {
   loadLevel,
   monthSegments,
   parseHours,
+  projectSpan,
   rollupTasks,
   sortTasks,
   startOfWeek,
@@ -243,6 +244,40 @@ describe("timeline", () => {
         { left: 0, width: 20, y: 50 },
       ),
     ).toBe("M60,10 H70 V24 H-10 V50 H0");
+  });
+});
+
+describe("timeline across projects", () => {
+  const stats = {
+    taskCount: 0,
+    doneCount: 0,
+    progressPercent: 0,
+    estimatedMinutes: 0,
+    bookedMinutes: 0,
+    overdueTasks: 0,
+    overdueMilestones: 0,
+    nextMilestone: null,
+    latestDueOn: null,
+    actualAmountCents: null,
+  };
+  it("uses the project dates and fills gaps from the plan", () => {
+    expect(
+      projectSpan({ startsOn: "2026-12-01", endsOn: "2027-01-31", stats }),
+    ).toEqual({ start: "2026-12-01", end: "2027-01-31" });
+    expect(
+      projectSpan({
+        startsOn: "2026-12-01",
+        endsOn: null,
+        stats: { ...stats, latestDueOn: "2026-12-20" },
+        milestones: [
+          { id: "m", title: "Abnahme", dueOn: "2027-01-10", done: false },
+        ],
+      }),
+    ).toEqual({ start: "2026-12-01", end: "2027-01-10" });
+    expect(projectSpan({ startsOn: null, endsOn: null, stats })).toBeNull();
+    expect(
+      projectSpan({ startsOn: "2026-12-01", endsOn: null, stats }),
+    ).toEqual({ start: "2026-12-01", end: "2026-12-01" });
   });
 });
 

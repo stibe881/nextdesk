@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Phishing-/Junk-Fälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-20
+updated: 2026-11-21
 ---
 
 # Handbuch für Agenten
@@ -2075,6 +2075,15 @@ Mehr dazu unter «Projekte».
 
 Mehr dazu unter «Projekte».
 
+### Wie sehe ich alle Projekte auf einer Zeitleiste?
+
+1. Öffne **Projekte** und das Register **Zeitplan**.
+2. Jede Zeile zeigt ein Projekt als Balken vom Start bis zum Ende, in der Farbe seiner Ampel; die Rauten sind seine Meilensteine.
+3. Wähle oben rechts **Wochen**, **Monate** oder **Quartale** und links, ob laufende, abgeschlossene oder alle Projekte erscheinen.
+4. Ein Klick auf einen Balken oder Titel öffnet das Projekt.
+
+Mehr dazu unter «Projekte».
+
 ### Wie setze ich Status und Ampel eines Projekts?
 
 1. Öffne das Projekt.
@@ -3238,6 +3247,19 @@ und **Alle** sowie dem Suchfeld grenzt du die Liste ein; **Archiv anzeigen**
 blendet archivierte Projekte ein.
 
 ![Übersicht aller Projekte mit Ampel, Fortschritt und Budget](images/ag-projekte.jpg)
+
+### Zeitleiste aller Projekte
+
+Das Register **Zeitplan** neben der Übersicht zeigt alle Projekte auf einer
+gemeinsamen Zeitleiste. Jedes Projekt ist ein Balken vom Start bis zum Ende in
+der Farbe seiner Ampel; die dunklere Füllung zeigt den Fortschritt, die Rauten
+sind die Meilensteine (grün erreicht, rot überfällig). Fehlt einem Projekt das
+Ende, reicht der Balken bis zum spätesten Termin im Plan. Die senkrechte Linie
+markiert heute, ein roter Rahmen ein Projekt, dessen Ende überschritten ist.
+Mit **Wochen**, **Monate** und **Quartale** wählst du den Massstab; ein Klick
+öffnet das Projekt.
+
+![Zeitleiste aller Projekte mit Meilensteinen](images/ag-projekte-zeitplan.jpg)
 
 ### Ein Projekt anlegen
 

@@ -690,6 +690,15 @@ Deno.test(
       (overview.projects as Row[]).map((entry) => entry.role),
       ["guest_comment"],
     );
+    // The timeline across projects needs the dated milestones.
+    assertEquals(
+      ((overview.projects as Row[])[0].milestones as Row[]).map((entry) => [
+        entry.title,
+        entry.dueOn,
+        entry.done,
+      ]),
+      [["Abnahme", "2026-12-07", false]],
+    );
   },
 );
 

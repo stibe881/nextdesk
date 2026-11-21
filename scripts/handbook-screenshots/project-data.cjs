@@ -63,9 +63,21 @@ const project = (n, fields) => ({
   ...fields,
 });
 
+const ms = (n, title, offset, done = false) => ({
+  id: D.uid("7f7f7f7f", n),
+  title,
+  dueOn: wd(offset),
+  done,
+});
+
 const PROJECTS = [
   project(1, {
     title: "Netzwerk-Erneuerung Standort Bern",
+    milestones: [
+      ms(1, "Konzept freigegeben", -3, true),
+      ms(2, "Hardware geliefert", 9),
+      ms(3, "Abnahme durch den Kunden", 31),
+    ],
     description:
       "Ablösung der Access-Switches und des WLAN am Standort Bern.\n\n- 6 Switches, 14 Access Points\n- neues Gäste-VLAN\n- Umstellung an zwei Wochenenden",
     customerName: "Muster Immobilien AG",
@@ -85,6 +97,10 @@ const PROJECTS = [
   }),
   project(2, {
     title: "Microsoft 365 Migration Verkauf",
+    milestones: [
+      ms(4, "Pilot abgeschlossen", -14, true),
+      ms(5, "Postfächer umgezogen", 4),
+    ],
     health: "yellow",
     managerId: agent(1).id,
     managerName: agent(1).name,
@@ -106,6 +122,7 @@ const PROJECTS = [
   }),
   project(3, {
     title: "Umzug Serverraum Zürich",
+    milestones: [ms(6, "Racks montiert", -3), ms(7, "Umzug abgeschlossen", 10)],
     health: "red",
     status: "active",
     customerName: "Muster Logistik GmbH",
@@ -129,6 +146,10 @@ const PROJECTS = [
   }),
   project(4, {
     title: "Einführung Passwortmanager",
+    milestones: [
+      ms(8, "Pilotgruppe gestartet", 28),
+      ms(9, "Rollout abgeschlossen", 63),
+    ],
     status: "planning",
     managerId: agent(2).id,
     managerName: agent(2).name,
