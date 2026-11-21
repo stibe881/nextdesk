@@ -815,3 +815,11 @@ button.onboarding__exception-button {
   font-size: 13px;
   font-weight: 700;
 }
+
+.onboarding__entry-foot .onboarding__document {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  font-size: 13px;
+}

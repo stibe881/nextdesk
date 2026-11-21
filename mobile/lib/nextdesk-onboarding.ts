@@ -1,10 +1,7 @@
 import { invokeNextDesk, loadCurrentTenant } from "@/lib/nextdesk-client";
 
 export type OnboardingTaskStatus =
-  | "open"
-  | "in_progress"
-  | "blocked"
-  | "completed";
+  "open" | "in_progress" | "blocked" | "completed";
 
 export type OnboardingTask = {
   canUpdate: boolean;
@@ -25,6 +22,8 @@ export type OnboardingEntry = {
   organisationUnit: string | null;
   source: "email" | "manual";
   sourceTicketNumber: string | null;
+  /** Die Eintrittsmeldung (PDF) ist beim Eintritt gespeichert. */
+  hasDocument: boolean;
   startsOn: string;
   tasks: OnboardingTask[];
 };
@@ -93,6 +92,7 @@ function entry(value: unknown): OnboardingEntry | null {
       typeof item.sourceTicketNumber === "string"
         ? item.sourceTicketNumber
         : null,
+    hasDocument: item.hasDocument === true,
     startsOn: item.startsOn,
     tasks: item.tasks.flatMap((candidate) => {
       const parsed = task(candidate);
@@ -118,6 +118,23 @@ export async function loadOnboardingEntries(): Promise<OnboardingEntry[]> {
     const parsed = entry(candidate);
     return parsed ? [parsed] : [];
   });
+}
+
+/** Kurz gültige Adresse der Eintrittsmeldung (PDF) eines Eintritts. */
+export async function onboardingDocumentUrl(entryId: string): Promise<string> {
+  const tenant = await loadCurrentTenant();
+  const body = record(
+    await invokeNextDesk<unknown>("onboarding", {
+      type: "documentUrl",
+      tenantId: tenant.id,
+      entryId,
+    }),
+  );
+  const url = record(body?.data)?.url;
+  if (typeof url !== "string") {
+    throw new Error("Die Eintrittsmeldung konnte nicht geöffnet werden.");
+  }
+  return url;
 }
 
 export async function setOnboardingTaskStatus(

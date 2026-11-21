@@ -7,6 +7,7 @@ import {
   Check,
   CheckCircle2,
   ClipboardList,
+  FileText,
   MapPin,
   Plus,
   RefreshCw,
@@ -54,6 +55,8 @@ type Entry = {
   canEdit?: boolean;
   source?: "email" | "manual";
   sourceTicketNumber?: string | null;
+  /** Die Eintrittsmeldung (PDF) ist beim Eintritt gespeichert. */
+  hasDocument?: boolean;
   details?: Record<string, unknown>;
   tasks: Task[];
 };
@@ -856,6 +859,37 @@ export function Onboarding({
   } | null>(null);
   const [ticketNumber, setTicketNumber] = useState("");
   const [exceptionReason, setExceptionReason] = useState("");
+  // Öffnet die Eintrittsmeldung (PDF) über eine kurz gültige Adresse. Das
+  // Fenster wird sofort geöffnet, damit der Browser es nicht blockiert.
+  const openDocument = async (entryId: string) => {
+    if (!supabase) return;
+    const target = window.open("", "_blank");
+    try {
+      const { data, error } = await supabase.functions.invoke("onboarding", {
+        body: { type: "documentUrl", tenantId, entryId },
+      });
+      if (error) throw error;
+      const url =
+        data && typeof data === "object" && "data" in data
+          ? (data as { data?: { url?: unknown } }).data?.url
+          : null;
+      if (typeof url !== "string") throw new Error("document_unavailable");
+      if (target) {
+        target.opener = null;
+        target.location.href = url;
+      } else {
+        window.location.assign(url);
+      }
+    } catch (nextError) {
+      target?.close();
+      setErrorMessage(
+        await functionErrorMessage(
+          nextError,
+          "Die Eintrittsmeldung konnte nicht geöffnet werden.",
+        ),
+      );
+    }
+  };
   const load = async (preserve = false) => {
     if (!supabase) return;
     setLoading(true);
@@ -1629,6 +1663,16 @@ export function Onboarding({
                     />
                   ) : null}
                   <footer className="onboarding__entry-foot">
+                    {entry.hasDocument ? (
+                      <button
+                        className="text-button onboarding__document"
+                        onClick={() => void openDocument(entry.id)}
+                        type="button"
+                      >
+                        <FileText aria-hidden="true" size={15} />
+                        Eintrittsmeldung (PDF) öffnen
+                      </button>
+                    ) : null}
                     {entry.source === "email" ? (
                       <details className="onboarding__details">
                         <summary>

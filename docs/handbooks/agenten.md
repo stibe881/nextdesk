@@ -3623,7 +3623,7 @@ Mit dem **Kästchen** hakst du eine Aufgabe ab, im Feld rechts wählst du «In
 Arbeit» oder «Blockiert». Verzögert sich eine Aufgabe, verknüpfst du über den
 **Schraubenschlüssel** ein Ausnahmeticket; es erscheint dann unter der
 Aufgabe. Bei Eintritten aus einer Mail klappst du unten **Angaben aus der
-Eintrittsmeldung** auf.
+Eintrittsmeldung** auf. Die Eintrittsmeldung selbst (PDF) öffnest du mit **Eintrittsmeldung (PDF) öffnen**; sie bleibt beim Eintritt gespeichert, auch wenn das Mail-Ticket entfällt. In der App steht auf der Startseite immer die Kachel **Eintritte**, auch ohne offene Eintritte («Keine offenen Eintritte»).
 
 ![Eintritt mit Aufgaben nach Fälligkeit](images/ag-eintritte.jpg)
 

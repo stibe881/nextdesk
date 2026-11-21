@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,6 +15,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import {
   loadOnboardingEntries,
   onboardingDetailRows,
+  onboardingDocumentUrl,
   onboardingProgress,
   setOnboardingTaskStatus,
   type OnboardingEntry,
@@ -234,6 +236,32 @@ export default function OnboardingScreen() {
                       ) : null}
                     </Pressable>
                   ))}
+                  {entry.hasDocument ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() =>
+                        void onboardingDocumentUrl(entry.id)
+                          .then((url) => WebBrowser.openBrowserAsync(url))
+                          .catch((nextError: unknown) =>
+                            setError(
+                              nextError instanceof Error
+                                ? nextError.message
+                                : "Die Eintrittsmeldung konnte nicht geöffnet werden.",
+                            ),
+                          )
+                      }
+                      style={styles.document}
+                    >
+                      <Ionicons
+                        color={colors.primaryText}
+                        name="document-text-outline"
+                        size={18}
+                      />
+                      <Text style={styles.documentText}>
+                        Eintrittsmeldung (PDF) öffnen
+                      </Text>
+                    </Pressable>
+                  ) : null}
                   {rows.length > 0 ? (
                     <View style={styles.details}>
                       <Text style={styles.detailsTitle}>
@@ -287,6 +315,13 @@ const useStyles = makeThemedStyles((c) => ({
     paddingTop: 12,
   },
   detailsTitle: { color: c.foreground, fontSize: 13, fontWeight: "900" },
+  document: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 44,
+  },
+  documentText: { color: c.primaryText, fontSize: 14, fontWeight: "800" },
   detailValue: { color: c.foreground, fontSize: 14, lineHeight: 20 },
   error: { color: c.error, fontSize: 14 },
   loader: { marginTop: 30 },
