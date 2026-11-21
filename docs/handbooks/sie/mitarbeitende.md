@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-20
+updated: 2026-11-21
 ---
 
 # Handbuch für Mitarbeitende
@@ -862,7 +862,7 @@ erstellen** eine Rückfrage dazu. Die **Home**-Seite gestalten Sie selbst: Mit d
 Fokus, Zuletzt geöffnet, Übersicht, Ticketliste, Erwähnungen, Geräte) ein oder
 aus und verschieben sie mit den Pfeilen. **Standard wiederherstellen** setzt
 alles zurück. Die Einstellung gilt nur für Sie und wird zwischen Ihren
-Geräten (iPhone, Android) abgeglichen: Die letzte Änderung gilt überall.
+Geräten (iPhone, Android) abgeglichen: Die letzte Änderung gilt überall. Die **Ticketliste** unter der Übersicht zeigt ohne gewählte Kachel die nicht zugewiesenen Tickets (gibt es keine, die offenen); ein Tipp auf _Meine Tickets_, _Offen_ oder _Nicht zugewiesen_ wechselt die Liste. Die zuletzt geöffneten Tickets stehen unter **Zuletzt angesehen**.
 Unter **Tickets** sehen Sie zuerst den Filter **Meine**: Tickets, die Sie
 angefragt haben oder die Ihnen zugewiesen sind. Mit **Alle**, **Beobachtet**,
 **Offen**, **Gelöst** oder **Nicht zugewiesen** wechseln Sie die Ansicht. Kehren
