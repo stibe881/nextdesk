@@ -7,6 +7,7 @@ import {
   Check,
   CheckCircle2,
   ClipboardList,
+  FileText,
   MapPin,
   Plus,
   RefreshCw,
@@ -54,6 +55,8 @@ type Entry = {
   canEdit?: boolean;
   source?: "email" | "manual";
   sourceTicketNumber?: string | null;
+  /** Die Eintrittsmeldung (PDF) ist beim Eintritt gespeichert. */
+  hasDocument?: boolean;
   details?: Record<string, unknown>;
   tasks: Task[];
 };
@@ -834,6 +837,49 @@ function progress(tasks: Task[]) {
   };
 }
 
+export type EntryFilter = "open" | "done" | "all";
+
+/** Ein Eintritt ist erledigt, wenn alle seine Aufgaben erledigt sind. */
+export function entryDone(tasks: readonly { status: string }[]): boolean {
+  return tasks.length > 0 && tasks.every((task) => task.status === "completed");
+}
+
+/**
+ * Filter «Offen / Erledigt / Alle» und Suche über Name, Abteilung, Ort,
+ * Führung, ICT-Verantwortung und Ticketnummer der Eintrittsmeldung.
+ */
+export function filterEntries<
+  T extends {
+    employeeName: string;
+    organisationUnit: string | null;
+    location: string | null;
+    managerName: string;
+    ictResponsibleName: string;
+    sourceTicketNumber?: string | null;
+    tasks: readonly { status: string }[];
+  },
+>(entries: readonly T[], filter: EntryFilter, query: string): T[] {
+  const words = query.toLocaleLowerCase("de-CH").split(/\s+/).filter(Boolean);
+  return entries.filter((entry) => {
+    const done = entryDone(entry.tasks);
+    if (filter === "open" && done) return false;
+    if (filter === "done" && !done) return false;
+    if (!words.length) return true;
+    const text = [
+      entry.employeeName,
+      entry.organisationUnit,
+      entry.location,
+      entry.managerName,
+      entry.ictResponsibleName,
+      entry.sourceTicketNumber,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase("de-CH");
+    return words.every((word) => text.includes(word));
+  });
+}
+
 export function Onboarding({
   focusEntryId,
   tenantId,
@@ -856,6 +902,42 @@ export function Onboarding({
   } | null>(null);
   const [ticketNumber, setTicketNumber] = useState("");
   const [exceptionReason, setExceptionReason] = useState("");
+  // Aus der globalen Suche geöffnet: alle zeigen, damit der Eintritt sichtbar ist.
+  const [entryFilter, setEntryFilter] = useState<EntryFilter>(
+    focusEntryId ? "all" : "open",
+  );
+  const [entryQuery, setEntryQuery] = useState("");
+  // Öffnet die Eintrittsmeldung (PDF) über eine kurz gültige Adresse. Das
+  // Fenster wird sofort geöffnet, damit der Browser es nicht blockiert.
+  const openDocument = async (entryId: string) => {
+    if (!supabase) return;
+    const target = window.open("", "_blank");
+    try {
+      const { data, error } = await supabase.functions.invoke("onboarding", {
+        body: { type: "documentUrl", tenantId, entryId },
+      });
+      if (error) throw error;
+      const url =
+        data && typeof data === "object" && "data" in data
+          ? (data as { data?: { url?: unknown } }).data?.url
+          : null;
+      if (typeof url !== "string") throw new Error("document_unavailable");
+      if (target) {
+        target.opener = null;
+        target.location.href = url;
+      } else {
+        window.location.assign(url);
+      }
+    } catch (nextError) {
+      target?.close();
+      setErrorMessage(
+        await functionErrorMessage(
+          nextError,
+          "Die Eintrittsmeldung konnte nicht geöffnet werden.",
+        ),
+      );
+    }
+  };
   const load = async (preserve = false) => {
     if (!supabase) return;
     setLoading(true);
@@ -1049,7 +1131,13 @@ export function Onboarding({
         <p className="empty-state">Eintritte werden geladen …</p>
       </section>
     );
-  const entries = workspace?.entries ?? [];
+  const allEntries = workspace?.entries ?? [];
+  const entries = filterEntries(allEntries, entryFilter, entryQuery);
+  const entryCounts = {
+    open: allEntries.filter((entry) => !entryDone(entry.tasks)).length,
+    done: allEntries.filter((entry) => entryDone(entry.tasks)).length,
+    all: allEntries.length,
+  };
   const canRequest = workspace?.permissions.canRequest ?? false;
   return (
     <section className="onboarding" aria-labelledby="onboarding-heading">
@@ -1350,6 +1438,39 @@ export function Onboarding({
           </div>
           <ClipboardList size={22} />
         </div>
+        <div className="onboarding__filters">
+          <div
+            aria-label="Eintritte filtern"
+            className="onboarding__filter-group"
+            role="group"
+          >
+            {(
+              [
+                ["open", "Offen"],
+                ["done", "Erledigt"],
+                ["all", "Alle"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                aria-pressed={entryFilter === key}
+                className={entryFilter === key ? "is-active" : undefined}
+                key={key}
+                onClick={() => setEntryFilter(key)}
+                type="button"
+              >
+                {label} ({entryCounts[key]})
+              </button>
+            ))}
+          </div>
+          <input
+            aria-label="Eintritte durchsuchen"
+            className="onboarding__search"
+            onChange={(event) => setEntryQuery(event.target.value)}
+            placeholder="Name, Abteilung, Ort, Ticketnummer …"
+            type="search"
+            value={entryQuery}
+          />
+        </div>
         {entries.length ? (
           <div className="onboarding__list">
             {entries.map((entry) => {
@@ -1629,6 +1750,16 @@ export function Onboarding({
                     />
                   ) : null}
                   <footer className="onboarding__entry-foot">
+                    {entry.hasDocument ? (
+                      <button
+                        className="text-button onboarding__document"
+                        onClick={() => void openDocument(entry.id)}
+                        type="button"
+                      >
+                        <FileText aria-hidden="true" size={15} />
+                        Eintrittsmeldung (PDF) öffnen
+                      </button>
+                    ) : null}
                     {entry.source === "email" ? (
                       <details className="onboarding__details">
                         <summary>
@@ -1659,6 +1790,17 @@ export function Onboarding({
               );
             })}
           </div>
+        ) : allEntries.length ? (
+          <p className="empty-state">
+            {entryQuery.trim()
+              ? "Kein Eintritt passt zur Suche."
+              : entryFilter === "open"
+                ? tn(
+                    "Keine offenen Eintritte. Erledigte findest du unter «Erledigt».",
+                    "Keine offenen Eintritte. Erledigte finden Sie unter «Erledigt».",
+                  )
+                : "Keine erledigten Eintritte."}
+          </p>
         ) : (
           <div className="onboarding__empty">
             <BadgeCheck size={25} />

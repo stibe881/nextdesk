@@ -20,6 +20,7 @@ type EntryKind = "onboarding" | "offboarding";
 type Action =
   | { type: "navigationSummary"; tenantId: string }
   | { type: "listWorkspace"; tenantId: string; focusEntryId?: string }
+  | { type: "documentUrl"; tenantId: string; entryId: string }
   | {
       type: "createEntry";
       tenantId: string;
@@ -224,6 +225,17 @@ export function parseAction(value: unknown): Action | null {
   if (value.type === "navigationSummary") {
     return isUuid(value.tenantId) && onlyKeys(value, ["type", "tenantId"])
       ? { type: value.type, tenantId: value.tenantId.toLowerCase() }
+      : null;
+  }
+  if (value.type === "documentUrl") {
+    return isUuid(value.tenantId) &&
+      isUuid(value.entryId) &&
+      onlyKeys(value, ["type", "tenantId", "entryId"])
+      ? {
+          type: value.type,
+          tenantId: value.tenantId.toLowerCase(),
+          entryId: value.entryId.toLowerCase(),
+        }
       : null;
   }
   if (value.type === "listWorkspace") {
@@ -876,6 +888,48 @@ async function deleteDepartmentTask(
     {},
   );
 }
+/**
+ * Kurz gültige Adresse der Eintrittsmeldung (PDF) eines Eintritts. Sehen darf
+ * sie, wer den Eintritt in der Übersicht sieht.
+ */
+async function documentUrl(
+  client: Client,
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  entryId: string,
+) {
+  await requireMembership(client, tenantId);
+  const { data: entry, error } = await admin
+    .from("onboarding_entries")
+    .select("id, created_by, manager_user_id, ict_responsible_user_id, source_document_path")
+    .eq("tenant_id", tenantId)
+    .eq("id", entryId)
+    .maybeSingle();
+  if (error) databaseFailure(error);
+  if (!entry || typeof entry.source_document_path !== "string") {
+    throw new HttpError(404, "document_not_found", "Zu diesem Eintritt ist keine Eintrittsmeldung gespeichert.");
+  }
+  const canManage = await hasPermission(client, tenantId, "onboarding.manage");
+  let visible = canManage ||
+    [entry.created_by, entry.manager_user_id, entry.ict_responsible_user_id].includes(actorId);
+  if (!visible) {
+    const departments = await actorDepartmentIds(admin, tenantId, actorId);
+    visible = departments.length > 0 &&
+      (await entryIdsForDepartments(admin, tenantId, departments)).includes(entryId);
+  }
+  if (!visible) {
+    throw new HttpError(403, "onboarding_forbidden", "Diese Eintrittsmeldung ist nicht freigegeben.");
+  }
+  const signed = await admin.storage
+    .from("onboarding-documents")
+    .createSignedUrl(entry.source_document_path, 120, { download: false });
+  if (signed.error || !signed.data?.signedUrl) {
+    throw new HttpError(502, "document_unavailable", "Die Eintrittsmeldung konnte nicht geöffnet werden.");
+  }
+  return { url: signed.data.signedUrl };
+}
+
 async function listWorkspace(
   client: Client,
   admin: Admin,
@@ -902,7 +956,7 @@ async function listWorkspace(
   let entriesQuery = admin
     .from("onboarding_entries")
     .select(
-      "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, kind",
+      "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind",
     )
     .eq("tenant_id", tenantId)
     .order("starts_on")
@@ -936,7 +990,7 @@ async function listWorkspace(
     const { data: focusedEntry, error: focusedEntryError } = await admin
       .from("onboarding_entries")
       .select(
-        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, kind",
+        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind",
       )
       .eq("tenant_id", tenantId)
       .eq("id", focusEntryId)
@@ -1066,6 +1120,7 @@ async function listWorkspace(
         typeof entry.source_ticket_number === "string"
           ? entry.source_ticket_number
           : null,
+      hasDocument: typeof entry.source_document_path === "string",
       details:
         typeof entry.details === "object" &&
         entry.details !== null &&
@@ -1945,6 +2000,16 @@ const handler = withSupabase(
             context.supabase,
             context.supabaseAdmin,
             action.tenantId,
+          ),
+        });
+      if (action.type === "documentUrl")
+        return json(request, {
+          data: await documentUrl(
+            context.supabase,
+            context.supabaseAdmin,
+            action.tenantId,
+            actorId,
+            action.entryId,
           ),
         });
       if (action.type === "listWorkspace")

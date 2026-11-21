@@ -11,8 +11,9 @@ import {
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 /**
- * Kompakter Hinweis auf offene Eintritte. Ohne Berechtigung, ohne Eintritte
- * oder bei einem Fehler bleibt die Karte unsichtbar.
+ * Kachel «Eintritte» auf der Startseite. Sie steht immer da, wenn die Person
+ * Eintritte sehen darf, auch ohne offene Eintritte. Ohne Berechtigung oder bei
+ * einem Fehler beim Laden bleibt sie unsichtbar.
  */
 export function OnboardingHomeCard({ tenantId }: { tenantId: string | null }) {
   const router = useRouter();
@@ -44,8 +45,8 @@ export function OnboardingHomeCard({ tenantId }: { tenantId: string | null }) {
     const progress = onboardingProgress(entry.tasks);
     return progress.total === 0 || progress.done < progress.total;
   });
-  if (open.length === 0) return null;
-  const next = open[0]!;
+  if (entries === null) return null;
+  const next = open[0];
 
   return (
     <Pressable
@@ -72,7 +73,9 @@ export function OnboardingHomeCard({ tenantId }: { tenantId: string | null }) {
           numberOfLines={1}
           style={[styles.subtitle, { color: colors.muted }]}
         >
-          {open.length} offen · nächster: {next.employeeName}
+          {next
+            ? `${open.length} offen · nächster: ${next.employeeName}`
+            : "Keine offenen Eintritte"}
         </Text>
       </View>
       <Ionicons color={colors.subtle} name="chevron-forward" size={18} />
