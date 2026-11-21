@@ -167,6 +167,16 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-projekte-zeitplan",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Projekte");
+      await h.click("Zeitplan", { role: "tab" });
+      await h.waitText("Meilenstein");
+    },
+  },
+  {
     name: "ag-projekt-ueberblick",
     persona: "agent",
     async run(h) {

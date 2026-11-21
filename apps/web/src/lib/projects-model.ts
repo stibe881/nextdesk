@@ -507,6 +507,25 @@ export function ganttRange(
   return { start, end, days: diffDays(start, end) + 1 };
 }
 
+/**
+ * Period a project covers on the timeline across all projects: its own dates,
+ * completed by the plan (latest due date, milestones) where one is missing.
+ */
+export function projectSpan(
+  project: Pick<ProjectSummary, "startsOn" | "endsOn" | "stats" | "milestones">,
+): { start: string; end: string } | null {
+  const planned = [
+    project.stats.latestDueOn,
+    ...(project.milestones ?? []).map((milestone) => milestone.dueOn),
+  ]
+    .filter((date): date is string => !!date)
+    .sort();
+  const start = project.startsOn ?? planned[0] ?? project.endsOn;
+  const end = project.endsOn ?? planned.at(-1) ?? project.startsOn;
+  if (!start || !end) return null;
+  return end < start ? { start, end: start } : { start, end };
+}
+
 export type GanttSegment = { label: string; days: number; start: string };
 
 const MONTHS = [

@@ -24,10 +24,11 @@ import {
   type ProjectFormState,
 } from "./project-form";
 import { ProjectDetail } from "./project-detail";
+import { ProjectPortfolio } from "./project-portfolio";
 import { ProjectWorkload } from "./project-workload";
 import "./projects.css";
 
-type View = "dashboard" | "workload" | "templates";
+type View = "dashboard" | "timeline" | "workload" | "templates";
 type StatusFilter = "running" | "completed" | "all";
 
 function errorText(error: unknown): string {
@@ -461,7 +462,7 @@ export function Projects({
             : "Projekte, an denen eine Beteiligung besteht."}
         </p>
         <div className="pj-actions">
-          {internal && view === "dashboard" ? (
+          {internal && (view === "dashboard" || view === "timeline") ? (
             <label className="pj-check">
               <input
                 checked={includeArchived}
@@ -488,6 +489,7 @@ export function Projects({
           {(
             [
               ["dashboard", "Übersicht"],
+              ["timeline", "Zeitplan"],
               ...(access.read ? ([["workload", "Auslastung"]] as const) : []),
               ["templates", "Vorlagen"],
             ] as readonly (readonly [View, string])[]
@@ -515,6 +517,16 @@ export function Projects({
         data ? (
           <Dashboard
             guest={access.guestOnly}
+            onOpen={setOpenId}
+            projects={data.projects}
+            today={today}
+          />
+        ) : error ? null : (
+          <p className="pj-empty">Projekte werden geladen …</p>
+        )
+      ) : view === "timeline" ? (
+        data ? (
+          <ProjectPortfolio
             onOpen={setOpenId}
             projects={data.projects}
             today={today}

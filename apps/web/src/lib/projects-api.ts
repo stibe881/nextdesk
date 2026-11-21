@@ -57,6 +57,13 @@ export type ProjectStats = {
   actualAmountCents: number | null;
 };
 
+export type ProjectMilestone = {
+  id: string;
+  title: string;
+  dueOn: string;
+  done: boolean;
+};
+
 export type ProjectSummary = {
   id: string;
   number: string;
@@ -87,6 +94,8 @@ export type ProjectSummary = {
   updatedAt: string;
   stats: ProjectStats;
   role?: ProjectRole;
+  /** Nur in der Übersicht: terminierte Meilensteine für die Zeitleiste. */
+  milestones?: ProjectMilestone[];
 };
 
 export type ChecklistItem = { id: string; description: string; done: boolean };
