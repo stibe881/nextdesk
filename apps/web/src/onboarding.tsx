@@ -837,6 +837,49 @@ function progress(tasks: Task[]) {
   };
 }
 
+export type EntryFilter = "open" | "done" | "all";
+
+/** Ein Eintritt ist erledigt, wenn alle seine Aufgaben erledigt sind. */
+export function entryDone(tasks: readonly { status: string }[]): boolean {
+  return tasks.length > 0 && tasks.every((task) => task.status === "completed");
+}
+
+/**
+ * Filter «Offen / Erledigt / Alle» und Suche über Name, Abteilung, Ort,
+ * Führung, ICT-Verantwortung und Ticketnummer der Eintrittsmeldung.
+ */
+export function filterEntries<
+  T extends {
+    employeeName: string;
+    organisationUnit: string | null;
+    location: string | null;
+    managerName: string;
+    ictResponsibleName: string;
+    sourceTicketNumber?: string | null;
+    tasks: readonly { status: string }[];
+  },
+>(entries: readonly T[], filter: EntryFilter, query: string): T[] {
+  const words = query.toLocaleLowerCase("de-CH").split(/\s+/).filter(Boolean);
+  return entries.filter((entry) => {
+    const done = entryDone(entry.tasks);
+    if (filter === "open" && done) return false;
+    if (filter === "done" && !done) return false;
+    if (!words.length) return true;
+    const text = [
+      entry.employeeName,
+      entry.organisationUnit,
+      entry.location,
+      entry.managerName,
+      entry.ictResponsibleName,
+      entry.sourceTicketNumber,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase("de-CH");
+    return words.every((word) => text.includes(word));
+  });
+}
+
 export function Onboarding({
   focusEntryId,
   tenantId,
@@ -859,6 +902,11 @@ export function Onboarding({
   } | null>(null);
   const [ticketNumber, setTicketNumber] = useState("");
   const [exceptionReason, setExceptionReason] = useState("");
+  // Aus der globalen Suche geöffnet: alle zeigen, damit der Eintritt sichtbar ist.
+  const [entryFilter, setEntryFilter] = useState<EntryFilter>(
+    focusEntryId ? "all" : "open",
+  );
+  const [entryQuery, setEntryQuery] = useState("");
   // Öffnet die Eintrittsmeldung (PDF) über eine kurz gültige Adresse. Das
   // Fenster wird sofort geöffnet, damit der Browser es nicht blockiert.
   const openDocument = async (entryId: string) => {
@@ -1083,7 +1131,13 @@ export function Onboarding({
         <p className="empty-state">Eintritte werden geladen …</p>
       </section>
     );
-  const entries = workspace?.entries ?? [];
+  const allEntries = workspace?.entries ?? [];
+  const entries = filterEntries(allEntries, entryFilter, entryQuery);
+  const entryCounts = {
+    open: allEntries.filter((entry) => !entryDone(entry.tasks)).length,
+    done: allEntries.filter((entry) => entryDone(entry.tasks)).length,
+    all: allEntries.length,
+  };
   const canRequest = workspace?.permissions.canRequest ?? false;
   return (
     <section className="onboarding" aria-labelledby="onboarding-heading">
@@ -1383,6 +1437,39 @@ export function Onboarding({
             <h3>Meine sichtbaren Eintritte</h3>
           </div>
           <ClipboardList size={22} />
+        </div>
+        <div className="onboarding__filters">
+          <div
+            aria-label="Eintritte filtern"
+            className="onboarding__filter-group"
+            role="group"
+          >
+            {(
+              [
+                ["open", "Offen"],
+                ["done", "Erledigt"],
+                ["all", "Alle"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                aria-pressed={entryFilter === key}
+                className={entryFilter === key ? "is-active" : undefined}
+                key={key}
+                onClick={() => setEntryFilter(key)}
+                type="button"
+              >
+                {label} ({entryCounts[key]})
+              </button>
+            ))}
+          </div>
+          <input
+            aria-label="Eintritte durchsuchen"
+            className="onboarding__search"
+            onChange={(event) => setEntryQuery(event.target.value)}
+            placeholder="Name, Abteilung, Ort, Ticketnummer …"
+            type="search"
+            value={entryQuery}
+          />
         </div>
         {entries.length ? (
           <div className="onboarding__list">
@@ -1703,6 +1790,17 @@ export function Onboarding({
               );
             })}
           </div>
+        ) : allEntries.length ? (
+          <p className="empty-state">
+            {entryQuery.trim()
+              ? "Kein Eintritt passt zur Suche."
+              : entryFilter === "open"
+                ? tn(
+                    "Keine offenen Eintritte. Erledigte findest du unter «Erledigt».",
+                    "Keine offenen Eintritte. Erledigte finden Sie unter «Erledigt».",
+                  )
+                : "Keine erledigten Eintritte."}
+          </p>
         ) : (
           <div className="onboarding__empty">
             <BadgeCheck size={25} />

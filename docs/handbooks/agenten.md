@@ -1520,6 +1520,14 @@ Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 
 Mehr dazu unter «Eintritte und Austritte».
 
+### Wie finde ich erledigte Eintritte wieder?
+
+1. Öffne unter **Planung und Betrieb** die **Eintritte** (in der App über die Kachel **Eintritte** auf der Startseite).
+2. Wähle über der Liste **Erledigt** (oder **Alle**). Standard ist **Offen**; die Zahl in Klammern zeigt, wie viele es sind.
+3. Im Suchfeld daneben suchst du nach Name, Abteilung, Ort, Führung oder Ticketnummer der Eintrittsmeldung.
+
+Mehr dazu unter «Eintritte und Austritte».
+
 ### Wie verknüpfe ich eine Lizenz mit einem Vertrag?
 
 1. Öffne den Vertrag unter **Ressourcen → Verträge**.
@@ -3612,7 +3620,7 @@ Inventuren starten dürfen (Recht «Lagerorte und Artikelstammdaten verwalten»)
 ## Eintritte und Austritte
 
 Unter **Planung und Betrieb → Eintritte** steht für jeden Eintritt bzw.
-Austritt eine Karte. Oben siehst du Name, Datum mit Countdown (z. B. «in
+Austritt eine Karte. Über der Liste wählst du **Offen** (Standard), **Erledigt** oder **Alle** und suchst nach Name, Abteilung, Ort, Führung oder Ticketnummer; erledigt ist ein Eintritt, wenn alle Aufgaben erledigt sind. Oben siehst du Name, Datum mit Countdown (z. B. «in
 12 Tagen»), Abteilung, Ort, Führung und ICT-Verantwortung sowie rechts den
 Fortschritt («1 / 6 Aufgaben erledigt»). Darunter stehen die Aufgaben nach
 Fälligkeit gruppiert: **Überfällig** (rot), **Nächste 7 Tage** und

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { groupTasks, relativeDays } from "./onboarding";
+import {
+  entryDone,
+  filterEntries,
+  groupTasks,
+  relativeDays,
+} from "./onboarding";
 
 const today = new Date("2026-11-19T10:00:00Z");
 const task = (id: string, dueOn: string, status = "open") => ({
@@ -46,5 +51,54 @@ describe("Eintritte: Aufgaben nach Fälligkeit", () => {
     expect(relativeDays(1)).toBe("morgen");
     expect(relativeDays(12)).toBe("in 12 Tagen");
     expect(relativeDays(-3)).toBe("vor 3 Tagen");
+  });
+});
+
+describe("Eintritte filtern und suchen", () => {
+  const entry = (
+    name: string,
+    statuses: string[],
+    extra: Record<string, unknown> = {},
+  ) => ({
+    employeeName: name,
+    organisationUnit: "ZD_GASTRO",
+    location: "Baar (Weststrasse)",
+    managerName: "Ronald Junkert",
+    ictResponsibleName: "Stefan",
+    sourceTicketNumber: null as string | null,
+    tasks: statuses.map((status) => ({ status })),
+    ...extra,
+  });
+  const list = [
+    entry("Luca Horvat", ["open", "completed"]),
+    entry("Ennio Valente", ["completed", "completed"]),
+    entry("Ohne Aufgaben", []),
+    entry("Marie-Louise Veraguth", ["completed"], {
+      sourceTicketNumber: "ICT-2026-000095",
+    }),
+  ];
+
+  it("unterscheidet offen und erledigt", () => {
+    expect(entryDone([])).toBe(false);
+    expect(filterEntries(list, "open", "").map((e) => e.employeeName)).toEqual([
+      "Luca Horvat",
+      "Ohne Aufgaben",
+    ]);
+    expect(filterEntries(list, "done", "").map((e) => e.employeeName)).toEqual([
+      "Ennio Valente",
+      "Marie-Louise Veraguth",
+    ]);
+    expect(filterEntries(list, "all", "")).toHaveLength(4);
+  });
+
+  it("sucht über Name, Führung und Ticketnummer", () => {
+    expect(
+      filterEntries(list, "all", "valente").map((e) => e.employeeName),
+    ).toEqual(["Ennio Valente"]);
+    expect(
+      filterEntries(list, "all", "000095").map((e) => e.employeeName),
+    ).toEqual(["Marie-Louise Veraguth"]);
+    expect(filterEntries(list, "done", "horvat")).toHaveLength(0);
+    expect(filterEntries(list, "all", "junkert gastro")).toHaveLength(4);
   });
 });

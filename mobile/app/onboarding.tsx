@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -22,6 +23,11 @@ import {
   type OnboardingTask,
   type OnboardingTaskStatus,
 } from "@/lib/nextdesk-onboarding";
+import {
+  filterOnboardingEntries,
+  onboardingEntryDone,
+  type OnboardingEntryFilter,
+} from "@/lib/onboarding-filter";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 function dateLabel(value: string): string {
@@ -52,13 +58,20 @@ export default function OnboardingScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [busyTask, setBusyTask] = useState<string | null>(null);
+  const [filter, setFilter] = useState<OnboardingEntryFilter>("open");
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     try {
       setError("");
       const result = await loadOnboardingEntries();
       setEntries(result);
-      setExpanded((current) => current ?? result[0]?.id ?? null);
+      setExpanded(
+        (current) =>
+          current ??
+          result.find((entry) => !onboardingEntryDone(entry))?.id ??
+          null,
+      );
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -137,149 +150,219 @@ export default function OnboardingScreen() {
         {entries === null && !error ? (
           <ActivityIndicator color={colors.primary} style={styles.loader} />
         ) : null}
-        {entries?.length === 0 ? (
-          <Text style={styles.muted}>Keine Eintritte vorhanden.</Text>
+        {entries ? (
+          <View style={styles.filters}>
+            <View accessibilityRole="tablist" style={styles.filterRow}>
+              {(
+                [
+                  ["open", "Offen"],
+                  ["done", "Erledigt"],
+                  ["all", "Alle"],
+                ] as const
+              ).map(([key, label]) => {
+                const active = filter === key;
+                const count =
+                  key === "all"
+                    ? entries.length
+                    : entries.filter(
+                        (entry) =>
+                          onboardingEntryDone(entry) === (key === "done"),
+                      ).length;
+                return (
+                  <Pressable
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: active }}
+                    key={key}
+                    onPress={() => setFilter(key)}
+                    style={[
+                      styles.filterChip,
+                      active && styles.filterChipActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterText,
+                        active && styles.filterTextActive,
+                      ]}
+                    >
+                      {label} ({count})
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <TextInput
+              accessibilityLabel="Eintritte durchsuchen"
+              autoCapitalize="none"
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+              onChangeText={setQuery}
+              placeholder="Name, Abteilung, Ort, Ticketnummer …"
+              placeholderTextColor={colors.subtle}
+              returnKeyType="search"
+              style={styles.search}
+              value={query}
+            />
+          </View>
         ) : null}
 
-        {entries?.map((entry) => {
-          const progress = onboardingProgress(entry.tasks);
-          const open = expanded === entry.id;
-          const rows =
-            entry.source === "email" ? onboardingDetailRows(entry.details) : [];
-          return (
-            <View key={entry.id} style={styles.card}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ expanded: open }}
-                onPress={() => setExpanded(open ? null : entry.id)}
-                style={styles.cardHeader}
-              >
-                <View style={styles.cardCopy}>
-                  <Text style={styles.name}>{entry.employeeName}</Text>
-                  <Text style={styles.muted}>
-                    Eintritt am {dateLabel(entry.startsOn)}
-                    {entry.organisationUnit
-                      ? ` · ${entry.organisationUnit}`
-                      : ""}
-                  </Text>
-                </View>
-                <Text style={styles.count}>
-                  {progress.done}/{progress.total}
-                </Text>
-                <Ionicons
-                  color={colors.subtle}
-                  name={open ? "chevron-up" : "chevron-down"}
-                  size={18}
-                />
-              </Pressable>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${progress.percent}%` },
-                  ]}
-                />
-              </View>
+        {entries?.length === 0 ? (
+          <Text style={styles.muted}>Keine Eintritte vorhanden.</Text>
+        ) : entries &&
+          filterOnboardingEntries(entries, filter, query).length === 0 ? (
+          <Text style={styles.muted}>
+            {query.trim()
+              ? "Kein Eintritt passt zur Suche."
+              : filter === "open"
+                ? "Keine offenen Eintritte. Erledigte stehen unter «Erledigt»."
+                : "Keine erledigten Eintritte."}
+          </Text>
+        ) : null}
 
-              {open ? (
-                <View style={styles.body}>
-                  <Text style={styles.muted}>
-                    Führung: {entry.managerName || "–"} · ICT:{" "}
-                    {entry.ictResponsibleName || "–"}
+        {(entries ? filterOnboardingEntries(entries, filter, query) : []).map(
+          (entry) => {
+            const progress = onboardingProgress(entry.tasks);
+            const open = expanded === entry.id;
+            const rows =
+              entry.source === "email"
+                ? onboardingDetailRows(entry.details)
+                : [];
+            return (
+              <View key={entry.id} style={styles.card}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: open }}
+                  onPress={() => setExpanded(open ? null : entry.id)}
+                  style={styles.cardHeader}
+                >
+                  <View style={styles.cardCopy}>
+                    <Text style={styles.name}>{entry.employeeName}</Text>
+                    <Text style={styles.muted}>
+                      Eintritt am {dateLabel(entry.startsOn)}
+                      {entry.organisationUnit
+                        ? ` · ${entry.organisationUnit}`
+                        : ""}
+                    </Text>
+                  </View>
+                  <Text style={styles.count}>
+                    {progress.done}/{progress.total}
                   </Text>
-                  {entry.tasks.map((item) => (
-                    <Pressable
-                      accessibilityRole="checkbox"
-                      accessibilityState={{
-                        checked: item.status === "completed",
-                        disabled: !item.canUpdate,
-                      }}
-                      key={item.id}
-                      onPress={() => void toggleTask(item)}
-                      style={styles.task}
-                    >
-                      <Ionicons
-                        color={
-                          item.status === "completed"
-                            ? colors.success
-                            : colors.subtle
-                        }
-                        name={
-                          item.status === "completed"
-                            ? "checkmark-circle"
-                            : "ellipse-outline"
-                        }
-                        size={24}
-                      />
-                      <View style={styles.taskCopy}>
-                        <Text
-                          style={[
-                            styles.taskTitle,
-                            item.status === "completed" && styles.taskDone,
-                          ]}
-                        >
-                          {item.title}
-                        </Text>
-                        <Text style={styles.muted}>
-                          Fällig {dateLabel(item.dueOn)} ·{" "}
-                          {item.responsibleName}
-                          {item.status !== "open" && item.status !== "completed"
-                            ? ` · ${STATUS_LABELS[item.status]}`
-                            : ""}
-                        </Text>
-                      </View>
-                      {busyTask === item.id ? (
-                        <ActivityIndicator
-                          color={colors.primary}
-                          size="small"
-                        />
-                      ) : null}
-                    </Pressable>
-                  ))}
-                  {entry.hasDocument ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() =>
-                        void onboardingDocumentUrl(entry.id)
-                          .then((url) => WebBrowser.openBrowserAsync(url))
-                          .catch((nextError: unknown) =>
-                            setError(
-                              nextError instanceof Error
-                                ? nextError.message
-                                : "Die Eintrittsmeldung konnte nicht geöffnet werden.",
-                            ),
-                          )
-                      }
-                      style={styles.document}
-                    >
-                      <Ionicons
-                        color={colors.primaryText}
-                        name="document-text-outline"
-                        size={18}
-                      />
-                      <Text style={styles.documentText}>
-                        Eintrittsmeldung (PDF) öffnen
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                  {rows.length > 0 ? (
-                    <View style={styles.details}>
-                      <Text style={styles.detailsTitle}>
-                        Angaben aus der Eintrittsmeldung
-                      </Text>
-                      {rows.map((row) => (
-                        <View key={row.label} style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>{row.label}</Text>
-                          <Text style={styles.detailValue}>{row.value}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
+                  <Ionicons
+                    color={colors.subtle}
+                    name={open ? "chevron-up" : "chevron-down"}
+                    size={18}
+                  />
+                </Pressable>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${progress.percent}%` },
+                    ]}
+                  />
                 </View>
-              ) : null}
-            </View>
-          );
-        })}
+
+                {open ? (
+                  <View style={styles.body}>
+                    <Text style={styles.muted}>
+                      Führung: {entry.managerName || "–"} · ICT:{" "}
+                      {entry.ictResponsibleName || "–"}
+                    </Text>
+                    {entry.tasks.map((item) => (
+                      <Pressable
+                        accessibilityRole="checkbox"
+                        accessibilityState={{
+                          checked: item.status === "completed",
+                          disabled: !item.canUpdate,
+                        }}
+                        key={item.id}
+                        onPress={() => void toggleTask(item)}
+                        style={styles.task}
+                      >
+                        <Ionicons
+                          color={
+                            item.status === "completed"
+                              ? colors.success
+                              : colors.subtle
+                          }
+                          name={
+                            item.status === "completed"
+                              ? "checkmark-circle"
+                              : "ellipse-outline"
+                          }
+                          size={24}
+                        />
+                        <View style={styles.taskCopy}>
+                          <Text
+                            style={[
+                              styles.taskTitle,
+                              item.status === "completed" && styles.taskDone,
+                            ]}
+                          >
+                            {item.title}
+                          </Text>
+                          <Text style={styles.muted}>
+                            Fällig {dateLabel(item.dueOn)} ·{" "}
+                            {item.responsibleName}
+                            {item.status !== "open" &&
+                            item.status !== "completed"
+                              ? ` · ${STATUS_LABELS[item.status]}`
+                              : ""}
+                          </Text>
+                        </View>
+                        {busyTask === item.id ? (
+                          <ActivityIndicator
+                            color={colors.primary}
+                            size="small"
+                          />
+                        ) : null}
+                      </Pressable>
+                    ))}
+                    {entry.hasDocument ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() =>
+                          void onboardingDocumentUrl(entry.id)
+                            .then((url) => WebBrowser.openBrowserAsync(url))
+                            .catch((nextError: unknown) =>
+                              setError(
+                                nextError instanceof Error
+                                  ? nextError.message
+                                  : "Die Eintrittsmeldung konnte nicht geöffnet werden.",
+                              ),
+                            )
+                        }
+                        style={styles.document}
+                      >
+                        <Ionicons
+                          color={colors.primaryText}
+                          name="document-text-outline"
+                          size={18}
+                        />
+                        <Text style={styles.documentText}>
+                          Eintrittsmeldung (PDF) öffnen
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                    {rows.length > 0 ? (
+                      <View style={styles.details}>
+                        <Text style={styles.detailsTitle}>
+                          Angaben aus der Eintrittsmeldung
+                        </Text>
+                        {rows.map((row) => (
+                          <View key={row.label} style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>{row.label}</Text>
+                            <Text style={styles.detailValue}>{row.value}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
+            );
+          },
+        )}
       </ScrollView>
     </ScreenContainer>
   );
@@ -315,6 +398,28 @@ const useStyles = makeThemedStyles((c) => ({
     paddingTop: 12,
   },
   detailsTitle: { color: c.foreground, fontSize: 13, fontWeight: "900" },
+  filters: { gap: 10 },
+  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  filterChip: {
+    borderColor: c.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  filterChipActive: { backgroundColor: c.primarySoft, borderColor: c.primary },
+  filterText: { color: c.muted, fontSize: 13, fontWeight: "700" },
+  filterTextActive: { color: c.primaryText },
+  search: {
+    backgroundColor: c.surface,
+    borderColor: c.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    color: c.foreground,
+    fontSize: 15,
+    minHeight: 44,
+    paddingHorizontal: 12,
+  },
   document: {
     alignItems: "center",
     flexDirection: "row",
