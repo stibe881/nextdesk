@@ -1668,6 +1668,12 @@ export async function processInboundMessage(
         .filter((contentId): contentId is string => contentId !== null),
     );
     const persistedBody = resolveInboundInlineMarkers(preparedBody, new Map());
+    // What the commit stores: without a recognised reply, the ticket text starts
+    // with «Eingegangene E-Mail von …». The inline-media update below must
+    // compare against exactly this text.
+    const committedBody = replyAuthorized
+      ? persistedBody
+      : `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${persistedBody}`;
     // Forwarded to the phishing report address: becomes a security ticket
     // instead of an ordinary one. Decided before the commit, so the generic
     // acknowledgement can be left out (the thank-you reply replaces it).
@@ -1695,9 +1701,7 @@ export async function processInboundMessage(
       p_requester_contact_id: contact.id,
       p_sender: sender,
       p_subject: subject(graph.subject),
-      p_body: replyAuthorized
-        ? persistedBody
-        : `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${persistedBody}`,
+      p_body: committedBody,
       p_internet_message_id: asString(graph.internetMessageId),
       p_conversation_id: asString(graph.conversationId),
       p_to_addresses: array(graph.toRecipients)
@@ -1791,7 +1795,7 @@ export async function processInboundMessage(
       const resolvedStoredBody = replyAuthorized
         ? resolvedBody
         : `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${resolvedBody}`;
-      if (resolvedStoredBody !== persistedBody) {
+      if (resolvedStoredBody !== committedBody) {
         let updated: { data?: Array<{ id: string }> | null; error?: unknown };
         if (kind === "reply" && commentId) {
           updated = await admin
@@ -1799,7 +1803,7 @@ export async function processInboundMessage(
             .update({ body: resolvedStoredBody })
             .eq("id", commentId)
             .eq("ticket_id", ticketId)
-            .eq("body", persistedBody)
+            .eq("body", committedBody)
             .select("id");
         } else if (kind === "new_ticket") {
           updated = await admin
@@ -1807,13 +1811,16 @@ export async function processInboundMessage(
             .update({ description: resolvedStoredBody })
             .eq("id", ticketId)
             .eq("tenant_id", channel.tenant_id)
-            .eq("description", persistedBody)
+            .eq("description", committedBody)
             .select("id");
         } else {
           updated = { data: [] };
         }
         if (updated.error) throw new Error("inline_body_update_failed");
         if (!updated.data?.length) {
+          // The text was changed meanwhile: keep it. Only the inline media
+          // stay unresolved; the intakes below (Eintritt, Phishing, team)
+          // must still run, so no early return here.
           if (hasInlineMedia)
             await updateInlineMediaStatus(
               admin,
@@ -1821,11 +1828,12 @@ export async function processInboundMessage(
               "conflict",
               "inline_body_changed",
             );
-          return;
+        } else if (hasInlineMedia) {
+          await updateInlineMediaStatus(admin, message, "completed");
         }
-      }
-      if (hasInlineMedia)
+      } else if (hasInlineMedia) {
         await updateInlineMediaStatus(admin, message, "completed");
+      }
     }
     if (kind === "new_ticket" && phishingSettings) {
       // Wirft nie; bei Fehlern bleibt das gewöhnliche Mail-Ticket bestehen.
