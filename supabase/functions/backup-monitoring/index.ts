@@ -48,6 +48,7 @@ const encoder = new TextEncoder();
 export type SettingsInput = {
   enabled: boolean;
   departmentId: string | null;
+  teamId: string | null;
   priorityKey: string | null;
   warningAction: "ignore" | "ticket";
   autoResolve: boolean;
@@ -92,6 +93,7 @@ function patternList(value: unknown, validate: (entry: string) => boolean, max: 
 export function parseSettingsInput(value: unknown): SettingsInput | null {
   if (!isRecord(value)) return null;
   const departmentId = optionalUuid(value.departmentId);
+  const teamId = optionalUuid(value.teamId);
   const priorityKey = optionalPriorityKey(value.priorityKey);
   const interval = optionalInteger(value.defaultIntervalHours, 1, 2160);
   const grace = optionalInteger(value.defaultGraceHours, 0, 336);
@@ -105,7 +107,7 @@ export function parseSettingsInput(value: unknown): SettingsInput | null {
     typeof value.enabled !== "boolean" ||
     typeof value.autoResolve !== "boolean" ||
     (value.warningAction !== "ignore" && value.warningAction !== "ticket") ||
-    departmentId === undefined || priorityKey === undefined ||
+    departmentId === undefined || teamId === undefined || priorityKey === undefined ||
     typeof interval !== "number" || typeof grace !== "number" ||
     !senderPatterns || !subjectPatterns
   ) {
@@ -114,6 +116,7 @@ export function parseSettingsInput(value: unknown): SettingsInput | null {
   return {
     enabled: value.enabled,
     departmentId,
+    teamId,
     priorityKey,
     warningAction: value.warningAction,
     autoResolve: value.autoResolve,
@@ -157,6 +160,7 @@ function settingsView(row: Row | null) {
     configured: row !== null,
     enabled: row?.enabled === true,
     departmentId: (row?.department_id as string | null) ?? null,
+    teamId: (row?.team_id as string | null) ?? null,
     priorityKey: (row?.priority_key as string | null) ?? null,
     warningAction: row?.warning_action === "ticket" ? "ticket" : "ignore",
     autoResolve: row ? row.auto_resolve === true : true,
@@ -240,11 +244,16 @@ async function audit(admin: Admin, tenantId: string, actorId: string, action: st
 }
 
 async function saveSettings(request: Request, admin: Admin, actorId: string, tenantId: string, input: SettingsInput) {
-  await validateReferences(admin, tenantId, { departmentId: input.departmentId, priorityKeys: [input.priorityKey] });
+  await validateReferences(admin, tenantId, {
+    departmentId: input.departmentId,
+    teamId: input.teamId,
+    priorityKeys: [input.priorityKey],
+  });
   const { data, error } = await admin.from("monitoring_backup_settings").upsert({
     tenant_id: tenantId,
     enabled: input.enabled,
     department_id: input.departmentId,
+    team_id: input.teamId,
     priority_key: input.priorityKey,
     warning_action: input.warningAction,
     auto_resolve: input.autoResolve,

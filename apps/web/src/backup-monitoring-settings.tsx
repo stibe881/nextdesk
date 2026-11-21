@@ -32,6 +32,7 @@ import {
   type BackupSettings,
   type Option,
   type PriorityOption,
+  type TeamOption,
 } from "./lib/monitoring-automation";
 import { supabase } from "./lib/supabase";
 
@@ -408,6 +409,7 @@ export function BackupMonitoringSettings({ tenantId }: { tenantId: string }) {
   const [settings, setSettings] = useState<BackupSettings | null>(null);
   const [jobs, setJobs] = useState<BackupJob[]>([]);
   const [departments, setDepartments] = useState<Option[]>([]);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [priorities, setPriorities] = useState<PriorityOption[]>([]);
   const [assets, setAssets] = useState<AssetOption[]>([]);
   const [services, setServices] = useState<Option[]>([]);
@@ -421,6 +423,7 @@ export function BackupMonitoringSettings({ tenantId }: { tenantId: string }) {
 
   const [enabled, setEnabled] = useState(false);
   const [departmentId, setDepartmentId] = useState("");
+  const [teamId, setTeamId] = useState("");
   const [priorityKey, setPriorityKey] = useState("");
   const [warningAction, setWarningAction] = useState<"ignore" | "ticket">(
     "ignore",
@@ -435,6 +438,7 @@ export function BackupMonitoringSettings({ tenantId }: { tenantId: string }) {
     setSettings(next);
     setEnabled(next.enabled);
     setDepartmentId(next.departmentId ?? "");
+    setTeamId(next.teamId ?? "");
     setPriorityKey(next.priorityKey ?? "");
     setWarningAction(next.warningAction);
     setAutoResolve(next.autoResolve);
@@ -458,6 +462,7 @@ export function BackupMonitoringSettings({ tenantId }: { tenantId: string }) {
       setJobs(parseBackupJobs(payload.jobs));
       const options = parseOptions(payload);
       setDepartments(options.departments);
+      setTeams(options.teams);
       setPriorities(options.priorities);
       setAssets(options.assets);
       setServices(options.services);
@@ -510,6 +515,7 @@ export function BackupMonitoringSettings({ tenantId }: { tenantId: string }) {
         settings: {
           enabled,
           departmentId: departmentId || null,
+          teamId: teamId || null,
           priorityKey: priorityKey || null,
           warningAction,
           autoResolve,
@@ -586,7 +592,15 @@ export function BackupMonitoringSettings({ tenantId }: { tenantId: string }) {
                 Abteilung für Tickets
                 <select
                   disabled={disabled}
-                  onChange={(event) => setDepartmentId(event.target.value)}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setDepartmentId(next);
+                    // The team must belong to the chosen department.
+                    const team = teams.find((entry) => entry.id === teamId);
+                    if (team && next && team.departmentId !== next) {
+                      setTeamId("");
+                    }
+                  }}
                   value={departmentId}
                 >
                   <option value="">Erste aktive Abteilung</option>
@@ -595,6 +609,34 @@ export function BackupMonitoringSettings({ tenantId }: { tenantId: string }) {
                       {department.name}
                     </option>
                   ))}
+                </select>
+              </label>
+              <label>
+                Team für Tickets
+                <select
+                  disabled={disabled}
+                  onChange={(event) => setTeamId(event.target.value)}
+                  value={teamId}
+                >
+                  <option value="">Kein Team</option>
+                  {teams
+                    .filter(
+                      (team) =>
+                        !departmentId ||
+                        team.departmentId === departmentId ||
+                        team.id === teamId,
+                    )
+                    .map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {departmentId
+                          ? team.name
+                          : `${team.name}${
+                              team.departmentId
+                                ? ` (${departments.find((entry) => entry.id === team.departmentId)?.name ?? "andere Abteilung"})`
+                                : ""
+                            }`}
+                      </option>
+                    ))}
                 </select>
               </label>
               <label>

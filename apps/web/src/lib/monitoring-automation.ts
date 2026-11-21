@@ -56,6 +56,7 @@ export type BackupSettings = {
   configured: boolean;
   enabled: boolean;
   departmentId: string | null;
+  teamId: string | null;
   priorityKey: string | null;
   warningAction: "ignore" | "ticket";
   autoResolve: boolean;
@@ -267,6 +268,7 @@ export function parseBackupSettings(value: unknown): BackupSettings | null {
     configured: value.configured === true,
     enabled: value.enabled,
     departmentId: text(value.departmentId),
+    teamId: text(value.teamId),
     priorityKey: text(value.priorityKey),
     warningAction: value.warningAction === "ticket" ? "ticket" : "ignore",
     autoResolve: value.autoResolve,

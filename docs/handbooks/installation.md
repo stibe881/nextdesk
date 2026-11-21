@@ -276,7 +276,7 @@ Ausführlich: «Externe Statusquellen (Microsoft 365, GitHub, Claude …)».
 1. Öffne das Register **Monitoring** (dasselbe Register wie bei den externen Statusquellen).
 2. Erfasse **Zertifikate und Domains**, damit nextDesk vor dem Ablauf erinnert.
    Wähle dort **Abteilung für Tickets** und **Team für Tickets**, damit die Tickets beim richtigen Team landen.
-3. Richte die **Backup-Überwachung** ein (z. B. Veeam per E-Mail oder Webhook) mit erwartetem Intervall und Toleranz.
+3. Richte die **Backup-Überwachung** ein (z. B. Veeam per E-Mail oder Webhook) mit erwartetem Intervall und Toleranz; auch hier legst du Abteilung und Team für die Tickets fest.
 
 Ausführlich: «Zertifikate, Domains und Backups».
 
@@ -834,8 +834,8 @@ Im selben Register erfasst du **Zertifikate und Domains** (Erinnerung vor
 Ablauf) und die **Backup-Überwachung** (z. B. Veeam per E-Mail oder Webhook mit
 erwartetem Intervall und Toleranz).
 
-Bei **Zertifikate und Domains** wählst du neben der **Abteilung für Tickets**
-auch das **Team für Tickets**: Die Tickets vor dem Ablauf werden diesem Team
+Bei **Zertifikate und Domains** und bei der **Backup-Überwachung** wählst du neben der **Abteilung für Tickets**
+auch das **Team für Tickets**: Die Tickets (vor dem Ablauf bzw. bei fehlgeschlagenen oder ausbleibenden Backups) werden diesem Team
 zugewiesen. Zur Auswahl stehen die aktiven Teams der gewählten Abteilung; ohne
 Abteilung landet das Ticket in der Abteilung des Teams.
 
