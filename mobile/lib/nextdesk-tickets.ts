@@ -136,6 +136,11 @@ export type MobileTicketDetail = {
   requesterName: string | null;
   requesterContact: TicketRequester | null;
   assignedAgentId: string | null;
+  /** Team the ticket is assigned to (teams of the ticket's department). */
+  assignedTeamId: string | null;
+  teamOptions: { id: string; name: string }[];
+  /** «Tickets zuweisen»: team and agent may be changed. */
+  canAssign: boolean;
   resolvedAt: string | null;
   /** Creation time; files stored with the ticket belong to the request. */
   createdAt: string | null;
@@ -748,6 +753,20 @@ export async function loadMobileTicketDetail(
       typeof record.assigned_agent_id === "string"
         ? record.assigned_agent_id
         : null,
+    assignedTeamId:
+      typeof record.assigned_team_id === "string"
+        ? record.assigned_team_id
+        : null,
+    teamOptions: Array.isArray(data.teams)
+      ? data.teams.flatMap((team: unknown) => {
+          if (typeof team !== "object" || team === null) return [];
+          const row = team as { id?: unknown; name?: unknown };
+          return typeof row.id === "string" && typeof row.name === "string"
+            ? [{ id: row.id, name: row.name }]
+            : [];
+        })
+      : [],
+    canAssign: data.canAssign === true,
     resolvedAt:
       typeof record.resolved_at === "string" ? record.resolved_at : null,
     createdAt: typeof record.created_at === "string" ? record.created_at : null,
@@ -792,6 +811,20 @@ export async function updateMobileTicket(input: {
     ...(input.requesterContactId
       ? { requesterContactId: input.requesterContactId }
       : {}),
+  });
+}
+
+/** Assigns the ticket to a team of its department (null removes the team). */
+export async function updateMobileTicketTeam(input: {
+  tenantId: string;
+  ticketId: string;
+  teamId: string | null;
+}): Promise<void> {
+  await invokeNextDesk<unknown>("ticket-operations", {
+    type: "updateTicket",
+    tenantId: input.tenantId,
+    ticketId: input.ticketId,
+    assignedTeamId: input.teamId,
   });
 }
 

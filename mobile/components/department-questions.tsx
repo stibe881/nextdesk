@@ -583,8 +583,9 @@ const styles = StyleSheet.create({
   },
   lead: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
   end: { flexDirection: "row", alignItems: "center", gap: 8, maxWidth: "54%" },
-  label: { fontSize: 18, fontWeight: "800", flexShrink: 1 },
-  summary: { fontSize: 14, textAlign: "right", flexShrink: 1 },
+  // Same size as the other rows of the ticket details (Erinnerung, 360°-Kontext).
+  label: { fontSize: 14, fontWeight: "700", flexShrink: 1 },
+  summary: { fontSize: 13, textAlign: "right", flexShrink: 1 },
   expansion: { gap: 12, paddingBottom: 10 },
   loading: {
     flexDirection: "row",
