@@ -110,7 +110,8 @@ Deno.test(
     for (const required of [
       "{ formatCorporateSignature: !replyAuthorized }",
       '{ formatCorporateSignature: message.kind !== "reply" }',
-      "p_body: replyAuthorized\n        ? persistedBody",
+      "const committedBody = replyAuthorized\n      ? persistedBody",
+      "p_body: committedBody,",
     ]) {
       if (!source.includes(required)) {
         throw new Error(
@@ -164,3 +165,27 @@ Deno.test("Betreff: Antwort, Weiterleitung oder neue Mail", () => {
   assertEquals(inboundSubjectKind("Wartung: Server"), "new");
   assertEquals(inboundSubjectKind(null), "new");
 });
+
+Deno.test(
+  "Mail mit Anhang von unbekanntem Absender: Nachbearbeitung vergleicht den gespeicherten Text und bricht die Intakes nicht ab",
+  async () => {
+    const source = await Deno.readTextFile(
+      new URL("./exchange-mail-processing.ts", import.meta.url),
+    );
+    for (const required of [
+      "if (resolvedStoredBody !== committedBody) {",
+      '.eq("description", committedBody)',
+      '.eq("body", committedBody)',
+    ]) {
+      if (!source.includes(required)) {
+        throw new Error(`Vergleich mit dem gespeicherten Text fehlt: ${required}`);
+      }
+    }
+    const start = source.indexOf("if (resolvedStoredBody !== committedBody) {");
+    const intake = source.indexOf("processOnboardingEmailTicketIntake(admin, {");
+    if (start < 0 || intake < start) throw new Error("Reihenfolge unerwartet");
+    if (/\n\s*return;\n/.test(source.slice(start, intake))) {
+      throw new Error("Ein return vor den Intakes überspringt Eintritt und Phishing");
+    }
+  },
+);

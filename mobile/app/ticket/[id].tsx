@@ -113,6 +113,7 @@ import {
   saveMobileTicketDraft,
   updateMobileTicket,
   updateMobileTicketCategory,
+  updateMobileTicketTeam,
   type MobileTicketDetail,
   type TicketRequester,
   type TicketCommentVisibility,
@@ -351,9 +352,9 @@ export default function TicketDetailScreen() {
   const [editingField, setEditingField] = useState<
     "subject" | "description" | "requester" | null
   >(null);
-  const [selection, setSelection] = useState<"status" | "priority" | null>(
-    null,
-  );
+  const [selection, setSelection] = useState<
+    "status" | "priority" | "team" | null
+  >(null);
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   const [categorySelectionStep, setCategorySelectionStep] = useState<
     "category" | "subcategory"
@@ -1095,6 +1096,40 @@ export default function TicketDetailScreen() {
         nextError instanceof Error
           ? nextError.message
           : "Das Ticket konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveTeam(teamId: string | null) {
+    if (!ticket || !tenant) return;
+    if ((ticket.assignedTeamId ?? null) === teamId) return;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await updateMobileTicketTeam({
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+        teamId,
+      });
+      setTicket({ ...ticket, assignedTeamId: teamId });
+      const name = ticket.teamOptions.find((team) => team.id === teamId)?.name;
+      setMessage(
+        name
+          ? `Das Ticket gehört jetzt zum Team ${name}.`
+          : "Das Team wurde entfernt.",
+      );
+      hapticSuccess();
+      // Assignable agents depend on the team.
+      void loadAllAssignableAgents();
+    } catch (nextError) {
+      hapticError();
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Das Team konnte nicht gespeichert werden.",
       );
     } finally {
       setSaving(false);
@@ -2091,6 +2126,47 @@ export default function TicketDetailScreen() {
                     name="chevron-forward"
                     size={18}
                   />
+                </Pressable>
+              </>
+            ) : null}
+
+            {canUseAgentWorkbench &&
+            (ticket.canAssign || ticket.assignedTeamId) ? (
+              <>
+                <View style={styles.detailsDivider} />
+                <Pressable
+                  accessibilityHint={
+                    ticket.canAssign
+                      ? "Antippen, um das Team zu ändern."
+                      : undefined
+                  }
+                  accessibilityLabel="Team"
+                  accessibilityRole={ticket.canAssign ? "button" : undefined}
+                  disabled={!ticket.canAssign || saving}
+                  onPress={() => {
+                    hapticSelection();
+                    setSelection("team");
+                  }}
+                  style={styles.detailsValueRow}
+                >
+                  <View>
+                    <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                      TEAM
+                    </Text>
+                    <Text style={styles.detailsValue}>
+                      {ticket.teamOptions.find(
+                        (team) => team.id === ticket.assignedTeamId,
+                      )?.name ??
+                        (ticket.assignedTeamId ? "Anderes Team" : "Kein Team")}
+                    </Text>
+                  </View>
+                  {ticket.canAssign ? (
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="chevron-forward"
+                      size={18}
+                    />
+                  ) : null}
                 </Pressable>
               </>
             ) : null}
@@ -3952,7 +4028,9 @@ export default function TicketDetailScreen() {
                   <Text style={styles.selectionTitle}>
                     {selection === "status"
                       ? "Status wählen"
-                      : "Priorität wählen"}
+                      : selection === "team"
+                        ? "Team wählen"
+                        : "Priorität wählen"}
                   </Text>
                 </View>
                 <Pressable
@@ -3970,12 +4048,23 @@ export default function TicketDetailScreen() {
               >
                 {(selection === "status"
                   ? editableStatuses
-                  : ticket.priorityOptions
+                  : selection === "team"
+                    ? [
+                        { id: "", key: "", label: "Kein Team" },
+                        ...ticket.teamOptions.map((team) => ({
+                          id: team.id,
+                          key: team.id,
+                          label: team.name,
+                        })),
+                      ]
+                    : ticket.priorityOptions
                 ).map((option) => {
                   const selected =
                     selection === "status"
                       ? statusKey === option.key
-                      : priorityKey === option.key;
+                      : selection === "team"
+                        ? (ticket.assignedTeamId ?? "") === option.key
+                        : priorityKey === option.key;
                   return (
                     <Pressable
                       accessibilityRole="button"
@@ -3986,6 +4075,8 @@ export default function TicketDetailScreen() {
                         setSelection(null);
                         if (field === "status") {
                           void saveChange({ statusKey: option.key });
+                        } else if (field === "team") {
+                          void saveTeam(option.key || null);
                         } else {
                           void saveChange({ priorityKey: option.key });
                         }
