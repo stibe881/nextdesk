@@ -669,26 +669,26 @@ export async function loadLiveDashboard(
   if (listedTicketIds.length > 0) {
     const [teamRowsResult, teamsResult, requesterResult, mergedResult] =
       await Promise.all([
-      client
-        .from("tickets")
-        .select("id, assigned_team_id, sla_paused_at, requester_contact_id")
-        .in("id", listedTicketIds),
-      client.functions.invoke("ticket-agent-assignment", {
-        body: { tenantId: tenant.id, type: "listTeams" },
-      }),
-      // Requester names for the ticket cards (0250); best effort.
-      client.rpc("ticket_requester_names", {
-        p_tenant_id: tenant.id,
-        p_ticket_ids: listedTicketIds,
-      }),
-      // Zusammengeführte Tickets je Haupt-Ticket für «N Personen betroffen».
-      client
-        .from("tickets")
-        .select("merged_into_ticket_id, requester_contact_id")
-        .in("merged_into_ticket_id", listedTicketIds)
-        .is("deleted_at", null)
-        .limit(500),
-    ]);
+        client
+          .from("tickets")
+          .select("id, assigned_team_id, sla_paused_at, requester_contact_id")
+          .in("id", listedTicketIds),
+        client.functions.invoke("ticket-agent-assignment", {
+          body: { tenantId: tenant.id, type: "listTeams" },
+        }),
+        // Requester names for the ticket cards (0250); best effort.
+        client.rpc("ticket_requester_names", {
+          p_tenant_id: tenant.id,
+          p_ticket_ids: listedTicketIds,
+        }),
+        // Zusammengeführte Tickets je Haupt-Ticket für «N Personen betroffen».
+        client
+          .from("tickets")
+          .select("merged_into_ticket_id, requester_contact_id")
+          .in("merged_into_ticket_id", listedTicketIds)
+          .is("deleted_at", null)
+          .limit(500),
+      ]);
     for (const row of (requesterResult.data ?? []) as {
       ticket_id: string;
       requester_name: string | null;

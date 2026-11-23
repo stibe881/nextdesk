@@ -7416,9 +7416,7 @@ export function TicketDetail({
           </p>
           <h2>{detail.ticket.subject}</h2>
           {requesterView ? null : (
-            <AffectedPeopleBadge
-              count={detail.mergeInsights.affectedPeople}
-            />
+            <AffectedPeopleBadge count={detail.mergeInsights.affectedPeople} />
           )}
         </div>
         <div className="ticket-detail-header-actions">

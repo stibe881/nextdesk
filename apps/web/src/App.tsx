@@ -8638,9 +8638,7 @@ function BulkTicketStatusActions({
   // Zusammenführen: Haupt-Ticket, in das die übrigen Tickets einfliessen.
   const [mergePrimaryId, setMergePrimaryId] = useState<string | null>(null);
   const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
-  const [mergeSuggestedId, setMergeSuggestedId] = useState<string | null>(
-    null,
-  );
+  const [mergeSuggestedId, setMergeSuggestedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
