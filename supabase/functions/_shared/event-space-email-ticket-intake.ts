@@ -320,10 +320,36 @@ async function storedTicketPdfs(
   return pdfs;
 }
 
+/** Legt die Bestellung (PDF) beim Anlass ab; ein Fehler verhindert nichts. */
+async function storeEventDocument(
+  admin: Admin,
+  tenantId: string,
+  requestId: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  try {
+    const path = `${tenantId}/${requestId}.pdf`;
+    const upload = await admin.storage
+      .from("event-space-documents")
+      .upload(path, new Uint8Array(bytes), {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+    if (upload.error) return;
+    await admin
+      .from("event_space_requests")
+      .update({ source_document_path: path })
+      .eq("tenant_id", tenantId)
+      .eq("id", requestId);
+  } catch {
+    // Die Ablage des PDFs ist eine Ergänzung.
+  }
+}
+
 /** Erstes PDF «Anlassdetails» der Anlässe-App unter den Anhängen. */
 async function eventOrderFromPdfs(
   attachments: readonly PdfAttachment[],
-): Promise<EventOrder | null> {
+): Promise<(EventOrder & { pdf: Uint8Array }) | null> {
   const pdfs = attachments
     .filter(
       (attachment) =>
@@ -334,8 +360,10 @@ async function eventOrderFromPdfs(
     .slice(0, MAX_ORDER_PDFS);
   for (const pdf of pdfs) {
     try {
-      const order = parseEventOrderPdf(await extractPdfTextItems(pdf.bytes));
-      if (order) return order;
+      const order = parseEventOrderPdf(
+        await extractPdfTextItems(new Uint8Array(pdf.bytes)),
+      );
+      if (order) return { ...order, pdf: pdf.bytes };
     } catch {
       // Ein anderes oder defektes PDF ist keine Anlass-Bestellung.
     }
@@ -352,7 +380,7 @@ async function eventOrderFromPdfs(
 async function processEventOrder(
   admin: Admin,
   input: IntakeInput,
-  order: EventOrder,
+  order: EventOrder & { pdf?: Uint8Array },
 ): Promise<EventSpaceEmailTicketIntakeOutcome> {
   const organiser = input.senderName?.trim() || order.costCenterEmail ||
     "Anlässe-App";
@@ -370,7 +398,7 @@ async function processEventOrder(
   const { data: existing } = await admin
     .from("event_space_requests")
     .select(
-      "id, remarks, requested_starts_at, expected_participants, ict_material_requested, internet_access_requested, reception_laptop_requested, requested_equipment_keys",
+      "id, remarks, requested_starts_at, expected_participants, ict_material_requested, internet_access_requested, reception_laptop_requested, requested_equipment_keys, source_document_path",
     )
     .eq("tenant_id", input.tenantId)
     .eq("source_order_number", orderNumber)
@@ -426,6 +454,9 @@ async function processEventOrder(
         { onConflict: "request_id,equipment_key", ignoreDuplicates: true },
       );
     }
+    if (order.pdf && !existing.source_document_path) {
+      await storeEventDocument(admin, input.tenantId, existing.id, order.pdf);
+    }
     await markOutbox(admin, input, "ignored", null);
     await removeSourceTicket(admin, input);
     return "processed";
@@ -469,6 +500,9 @@ async function processEventOrder(
       })
       .eq("id", createdId)
       .eq("tenant_id", input.tenantId);
+    if (order.pdf) {
+      await storeEventDocument(admin, input.tenantId, createdId, order.pdf);
+    }
   }
   await removeSourceTicket(admin, input);
   return "processed";

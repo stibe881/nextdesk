@@ -24107,3 +24107,59 @@ button.inventory__metric--link:focus-visible {
   color: var(--primary);
   font-weight: 600;
 }
+
+/* Anlass-Kopfzeile: Zusammenfassung links, PDF und Status rechts. */
+.event-spaces__request-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.event-spaces__request-head .event-spaces__request-summary {
+  grid-template-columns: minmax(104px, 0.42fr) minmax(0, 1.65fr);
+}
+
+.event-spaces__request-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 18px 0 8px;
+}
+
+.event-spaces__pill-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.event-spaces__pill-button:hover,
+.event-spaces__status-select:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.event-spaces__status-select {
+  cursor: pointer;
+  appearance: none;
+  padding-right: 22px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 12px) 52%,
+    calc(100% - 8px) 52%;
+  background-size:
+    4px 4px,
+    4px 4px;
+  background-repeat: no-repeat;
+}
+
+@media (max-width: 640px) {
+  .event-spaces__request-head {
+    grid-template-columns: 1fr;
+  }
+
+  .event-spaces__request-actions {
+    padding: 0 18px 12px;
+  }
+}

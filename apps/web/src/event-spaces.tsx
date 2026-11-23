@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   DoorOpen,
+  FileText,
   Mail,
   Plus,
   UsersRound,
@@ -88,6 +89,8 @@ type RoomRequest = {
   conflictsAcknowledged: boolean;
   roomReservationRequested: boolean;
   phoneNumber: string | null;
+  /** Bestellung (PDF) der Anlässe-App gespeichert. */
+  hasSourceDocument?: boolean;
   equipment: EquipmentKey[];
   tasks: Task[];
 };
@@ -175,11 +178,6 @@ const clarificationReasonLabels: Record<string, string> = {
   start_time_invalid: "Beginnzeit ergänzen",
   task_template_unavailable: "Aufgabenvorlage prüfen",
   unknown_field: "Angaben prüfen",
-};
-const emailIntakeStateLabels: Record<EmailIntakeRecovery["state"], string> = {
-  pending: "Ausstehend",
-  failed: "Fehlgeschlagen",
-  retrying: "Wird verarbeitet",
 };
 const equipmentLabels = new Map(EQUIPMENT);
 
@@ -1001,40 +999,33 @@ export function EventSpaces({
     }
   }
 
-  async function retryEmailTicketIntake(ticketId: string) {
+  /** Öffnet die gespeicherte Bestellung (PDF) in einem neuen Tab. */
+  async function openSourceDocument(requestId: string) {
     if (!supabase) return;
-    setPending(true);
+    // Das Fenster sofort öffnen, sonst blockiert der Browser es nach dem
+    // Warten auf die signierte Adresse.
+    const opened = window.open("", "_blank");
     setErrorMessage("");
-    setNotice("");
     try {
       const { data, error } = await supabase.functions.invoke("event-spaces", {
-        body: { type: "retryEmailTicketIntake", tenantId, ticketId },
+        body: { type: "sourceDocument", tenantId, requestId },
       });
       if (error) throw error;
-      const state =
+      const url =
         data && typeof data === "object"
-          ? (data as { data?: { state?: unknown } }).data?.state
+          ? (data as { data?: { url?: unknown } }).data?.url
           : null;
-      if (state === "processed") {
-        setNotice("Der ausgewählte E-Mail-Import wurde einmalig wiederholt.");
-      } else if (state === "failed") {
-        setErrorMessage(
-          "Der ausgewählte E-Mail-Import konnte nicht abgeschlossen werden. Der Ticketversand bleibt unverändert.",
-        );
-      } else {
-        setNotice("Der E-Mail-Import ist nicht mehr erneut verfügbar.");
-      }
-      await refresh(true);
-      onAttentionChanged();
+      if (typeof url !== "string") throw new Error("document_unavailable");
+      if (opened) opened.location.href = url;
+      else window.open(url, "_blank", "noopener");
     } catch (error) {
+      opened?.close();
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Der E-Mail-Import konnte nicht wiederholt werden. Der Ticketversand bleibt unverändert.",
+          "Die Bestellung (PDF) konnte nicht geöffnet werden.",
         ),
       );
-    } finally {
-      setPending(false);
     }
   }
 
@@ -1079,7 +1070,6 @@ export function EventSpaces({
   const canRequest = workspace?.permissions.canRequest ?? false;
   const canManage = workspace?.permissions.canManage ?? false;
   const clarifications = workspace?.clarifications ?? [];
-  const emailIntakes = workspace?.emailIntakes ?? [];
   const requests = workspace?.requests ?? [];
 
   return (
@@ -1182,43 +1172,6 @@ export function EventSpaces({
           <strong>{metrics.unassigned}</strong>
         </button>
       </div>
-
-      {canManage && emailIntakes.length ? (
-        <section className="event-spaces__email-recovery panel">
-          <div className="event-spaces__email-recovery-heading">
-            <div>
-              <p className="eyebrow">Manuelle Wiederherstellung</p>
-              <h3>E-Mail-Import erneut ausführen</h3>
-              <p>
-                Hier werden nur der Importzustand und die Anzahl bewusster
-                Wiederholungen angezeigt. Ticket- und E-Mail-Inhalte bleiben
-                ausgeblendet.
-              </p>
-            </div>
-            <strong>{emailIntakes.length}</strong>
-          </div>
-          <ul>
-            {emailIntakes.map((item) => (
-              <li key={item.ticketId}>
-                <span>
-                  <strong>{emailIntakeStateLabels[item.state]}</strong>
-                  <small>
-                    Manuelle Wiederholungen: {item.retryCount} von 3
-                  </small>
-                </span>
-                <button
-                  className="secondary-button"
-                  disabled={pending || !item.canRetry}
-                  onClick={() => void retryEmailTicketIntake(item.ticketId)}
-                  type="button"
-                >
-                  Einzelnen Import wiederholen
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
 
       {canManage && clarifications.length ? (
         <section className="event-spaces__clarifications panel">
@@ -1983,6 +1936,7 @@ export function EventSpaces({
                   onDeleteRequest={deleteRequest}
                   onChangeRequestStatus={changeRequestStatus}
                   onChangeTaskStatus={changeTaskStatus}
+                  onOpenDocument={openSourceDocument}
                   onToggle={() =>
                     setExpandedRequestId((current) =>
                       current === request.id ? null : request.id,
@@ -2048,6 +2002,7 @@ function RequestCard({
   onChangeRequestStatus,
   onChangeTaskStatus,
   onDeleteRequest,
+  onOpenDocument,
   onToggle,
   onUpdateRequestDetails,
   people,
@@ -2066,6 +2021,7 @@ function RequestCard({
     status: RequestStatus,
   ) => Promise<void>;
   onChangeTaskStatus: (task: Task) => Promise<void>;
+  onOpenDocument: (requestId: string) => Promise<void>;
   onToggle: () => void;
   onUpdateRequestDetails: (input: {
     requestId: string;
@@ -2129,42 +2085,77 @@ function RequestCard({
       className={`event-spaces__request event-spaces__status--${request.status}${focused ? " global-search-target" : ""}`}
       id={`event-space-request-${request.id}`}
     >
-      <button
-        aria-expanded={expanded}
-        className="event-spaces__request-summary"
-        onClick={onToggle}
-        type="button"
-      >
-        <time>
-          <strong>{dateLabel(request.startsAt)}</strong>
-          <span>
-            {timeLabel(request.startsAt)} – {timeLabel(request.endsAt)}
-          </span>
-        </time>
-        <div>
-          <div className="event-spaces__request-context">
-            <span className="event-spaces__request-room">
-              {room?.name ?? "Raum"}
+      <div className="event-spaces__request-head">
+        <button
+          aria-expanded={expanded}
+          className="event-spaces__request-summary"
+          onClick={onToggle}
+          type="button"
+        >
+          <time>
+            <strong>{dateLabel(request.startsAt)}</strong>
+            <span>
+              {timeLabel(request.startsAt)} – {timeLabel(request.endsAt)}
             </span>
-            {isEmailRequest ? (
-              <span className="event-spaces__email-intake-label">
-                <Mail aria-hidden="true" size={13} /> E-Mail-Auftrag
+          </time>
+          <div>
+            <div className="event-spaces__request-context">
+              <span className="event-spaces__request-room">
+                {room?.name ?? "Raum"}
               </span>
-            ) : null}
+              {isEmailRequest ? (
+                <span className="event-spaces__email-intake-label">
+                  <Mail aria-hidden="true" size={13} /> E-Mail-Auftrag
+                </span>
+              ) : null}
+            </div>
+            <h4>{request.title}</h4>
+            <p>
+              Verantwortliche Person: {requesterLabel} · Agent:in:{" "}
+              {assignedAgentLabel}
+              {request.expectedParticipants !== null
+                ? ` · ${request.expectedParticipants} Teilnehmende`
+                : ""}
+            </p>
           </div>
-          <h4>{request.title}</h4>
-          <p>
-            Verantwortliche Person: {requesterLabel} · Agent:in:{" "}
-            {assignedAgentLabel}
-            {request.expectedParticipants !== null
-              ? ` · ${request.expectedParticipants} Teilnehmende`
-              : ""}
-          </p>
+        </button>
+        <div className="event-spaces__request-actions">
+          {request.hasSourceDocument ? (
+            <button
+              aria-label={`Bestellung (PDF) zu «${request.title}» öffnen`}
+              className="event-spaces__status-label event-spaces__pill-button"
+              onClick={() => void onOpenDocument(request.id)}
+              type="button"
+            >
+              <FileText aria-hidden="true" size={13} />
+              PDF
+            </button>
+          ) : null}
+          {canManage ? (
+            <select
+              aria-label={`Auftragsstatus von «${request.title}»`}
+              className="event-spaces__status-label event-spaces__status-select"
+              onChange={(event) =>
+                void onChangeRequestStatus(
+                  request.id,
+                  event.target.value as RequestStatus,
+                )
+              }
+              value={request.status}
+            >
+              {Object.entries(statusLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="event-spaces__status-label">
+              {statusLabels[request.status]}
+            </span>
+          )}
         </div>
-        <span className="event-spaces__status-label">
-          {statusLabels[request.status]}
-        </span>
-      </button>
+      </div>
       {expanded ? (
         <div className="event-spaces__request-detail">
           <div className="event-spaces__request-detail-grid">

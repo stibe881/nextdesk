@@ -1576,6 +1576,22 @@ Mehr dazu unter «Eintritte und Austritte».
 
 Mehr dazu unter «Anlässe».
 
+### Wie öffne ich die Bestellung (PDF) eines Anlasses?
+
+1. Öffne unter **Planung und Betrieb** die **Anlässe**.
+2. Klicke rechts in der Zeile des Anlasses auf **PDF**. Die Bestellung öffnet sich in einem neuen Tab.
+3. Fehlt der Knopf, wurde zu diesem Anlass kein PDF gesendet (z. B. bei einem von Hand erfassten Anlass).
+
+Mehr dazu unter «Anlässe».
+
+### Wie ändere ich den Status eines Anlasses?
+
+1. Öffne unter **Planung und Betrieb** die **Anlässe**.
+2. Klicke rechts in der Zeile auf den Status (z. B. **Bereit**).
+3. Wähle den neuen Status. Er wird sofort gespeichert.
+
+Mehr dazu unter «Anlässe».
+
 ### Wie verknüpfe ich eine Lizenz mit einem Vertrag?
 
 1. Öffne den Vertrag unter **Ressourcen → Verträge**.
@@ -3702,6 +3718,11 @@ Bestellung ergeben einen einzigen Anlass; die Angaben zu Einrichtung, Gastro,
 Personenzahl und die Bemerkungen stehen in den **Bemerkungen** des Anlasses.
 Geplant wird der Beginn des Anlasses; fehlt etwas oder ist der Raum belegt,
 steht der Anlass mit dem Grund unter **Klärung und Übernahme erforderlich**.
+
+Rechts in der Zeile eines Anlasses öffnet **PDF** die gesendete Bestellung
+(«Anlassdetails»), sofern eine gespeichert ist. Daneben steht der
+**Auftragsstatus** (z. B. **Bereit**); ein Klick darauf ändert ihn direkt,
+ohne den Anlass aufzuklappen.
 
 ## Eintritte und Austritte
 

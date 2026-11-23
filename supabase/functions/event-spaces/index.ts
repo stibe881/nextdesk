@@ -115,6 +115,11 @@ type Action =
     ticketId: string;
   }
   | {
+    type: "sourceDocument";
+    tenantId: string;
+    requestId: string;
+  }
+  | {
     type: "updateTaskStatus";
     tenantId: string;
     taskId: string;
@@ -460,6 +465,17 @@ function parseAction(value: unknown): Action | null {
         agentId: value.agentId.toLowerCase(),
         startsAt: occurrences[0]!.startsAt,
         endsAt: occurrences[0]!.endsAt,
+      }
+      : null;
+  }
+  if (value.type === "sourceDocument") {
+    return isUuid(value.tenantId) &&
+        isUuid(value.requestId) &&
+        hasOnlyKeys(value, ["type", "tenantId", "requestId"])
+      ? {
+        type: value.type,
+        tenantId: value.tenantId.toLowerCase(),
+        requestId: value.requestId.toLowerCase(),
       }
       : null;
   }
@@ -1061,7 +1077,7 @@ async function listWorkspace(
     admin
       .from("event_space_requests")
       .select(
-        "id, space_id, title, organizer, remarks, expected_participants, starts_at, ends_at, responsible_user_id, assigned_agent_id, status, recurrence_kind, series_id, series_index, conflicts_acknowledged, intake_source, room_reservation_requested, phone_number",
+        "id, space_id, title, organizer, remarks, expected_participants, starts_at, ends_at, responsible_user_id, assigned_agent_id, status, recurrence_kind, series_id, series_index, conflicts_acknowledged, intake_source, room_reservation_requested, phone_number, source_document_path",
       )
       .eq("tenant_id", tenantId)
       .gte("starts_at", from)
@@ -1358,6 +1374,8 @@ async function listWorkspace(
       intakeSource: row.intake_source === "email_ticket"
         ? "email_ticket"
         : "manual",
+      hasSourceDocument: typeof row.source_document_path === "string" &&
+        row.source_document_path.length > 0,
       status: String(row.status),
       recurrence: String(row.recurrence_kind),
       seriesId: typeof row.series_id === "string" ? row.series_id : null,
@@ -1661,6 +1679,55 @@ async function resolveEmailIntake(
       "Der Raum oder die benötigte Technik ist im gewünschten Zeitraum nicht verfügbar.",
     );
   }
+}
+
+/** Signierte, kurz gültige Adresse der Bestellung (PDF) eines Anlasses. */
+async function sourceDocumentUrl(
+  client: CallerClient,
+  admin: AdminClient,
+  tenantId: string,
+  requestId: string,
+) {
+  await requireMembership(client, tenantId);
+  const [canRequest, canManage] = await Promise.all([
+    hasPermission(client, tenantId, "event.spaces.request"),
+    hasPermission(client, tenantId, "event.spaces.manage"),
+  ]);
+  if (!canRequest && !canManage) {
+    throw new HttpError(
+      403,
+      "event_space_permission_denied",
+      msg(
+        "Für die Anlässe fehlt dir die erforderliche Berechtigung.",
+        "Für die Anlässe fehlt Ihnen die erforderliche Berechtigung.",
+      ),
+    );
+  }
+  const { data, error } = await admin
+    .from("event_space_requests")
+    .select("source_document_path")
+    .eq("tenant_id", tenantId)
+    .eq("id", requestId)
+    .maybeSingle();
+  if (error) databaseFailure(error);
+  if (!data || typeof data.source_document_path !== "string") {
+    throw new HttpError(
+      404,
+      "document_not_found",
+      "Zu diesem Anlass ist keine Bestellung (PDF) gespeichert.",
+    );
+  }
+  const signed = await admin.storage
+    .from("event-space-documents")
+    .createSignedUrl(data.source_document_path, 120, { download: false });
+  if (signed.error || !signed.data?.signedUrl) {
+    throw new HttpError(
+      502,
+      "document_unavailable",
+      "Die Bestellung (PDF) konnte nicht geöffnet werden.",
+    );
+  }
+  return { url: signed.data.signedUrl };
 }
 
 async function retryEmailTicketIntake(
@@ -1982,6 +2049,16 @@ const handler = withSupabase(
           action.endsAt,
         );
         return json(request, { data: { resolved: true } });
+      }
+      if (action.type === "sourceDocument") {
+        return json(request, {
+          data: await sourceDocumentUrl(
+            context.supabase,
+            context.supabaseAdmin,
+            action.tenantId,
+            action.requestId,
+          ),
+        });
       }
       if (action.type === "retryEmailTicketIntake") {
         return json(request, {
