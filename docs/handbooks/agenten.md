@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Phishing-/Junk-Fälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-21
+updated: 2026-11-23
 ---
 
 # Handbuch für Agenten
@@ -655,6 +655,7 @@ Mehr dazu unter «Personen suchen und Personenübersicht».
 1. Öffne die Personenübersicht der Person.
 2. Wähle das Register **Tickets**.
 3. Filtere nach _Alle_, _Offen_ oder _Geschlossen_.
+4. Es erscheinen alle Tickets der Person, auch solche, die einem anderen Team zugewiesen sind (mit «Team …»). Tickets, die nur dieses Team öffnen darf, sind mit «nur für dieses Team zu öffnen» markiert und lassen sich nicht öffnen.
 
 Mehr dazu unter «Personen suchen und Personenübersicht».
 
