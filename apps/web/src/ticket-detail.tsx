@@ -503,6 +503,8 @@ type TicketPresencePerson = {
   photoUrl: string | null;
   editing: boolean;
   composing: "external" | "internal" | null;
+  /** «requester» = anfragende Person des Tickets. */
+  role: "agent" | "requester";
   lastSeenAt: string;
 };
 
@@ -1201,6 +1203,7 @@ function toTicketPresencePerson(value: unknown): TicketPresencePerson | null {
       person.composing === "external" || person.composing === "internal"
         ? person.composing
         : null,
+    role: person.role === "requester" ? "requester" : "agent",
     lastSeenAt: person.lastSeenAt,
   };
 }
@@ -7559,7 +7562,7 @@ export function TicketDetail({
           )}
         </div>
         <div className="ticket-detail-header-actions">
-          {!requesterView && presence.length > 0 ? (
+          {presence.length > 0 ? (
             <ul
               aria-label="Personen, die dieses Ticket gerade geöffnet haben"
               className="ticket-presence-avatars"
@@ -7572,10 +7575,11 @@ export function TicketDetail({
                       : "ticket-presence-avatar"
                   }
                   key={`${person.displayName}-${index}`}
+                  aria-label={`${person.displayName}${person.role === "requester" ? " (anfragende Person)" : ""}`}
                   title={
                     person.editing
                       ? `${person.displayName} bearbeitet gerade`
-                      : `${person.displayName} hat das Ticket geöffnet`
+                      : `${person.displayName}${person.role === "requester" ? " (anfragende Person)" : ""} schaut das Ticket gerade an`
                   }
                 >
                   {person.photoUrl ? (

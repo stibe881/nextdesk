@@ -221,7 +221,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (!ticket || !(await canReadTicket(admin, actorId, ticket))) {
     return response(request, { error: { code: "ticket_not_found" } }, 404);
   }
-  if (ticket.assigned_team_id) {
+  // Anfragende Person (bzw. betroffene Person) nimmt ebenfalls teil: sie sieht,
+  // wer das Ticket offen hat, aber keine internen Angaben (Entwürfe, Bearbeiten).
+  const callerIsRequester =
+    ticket.requester_id === actorId || ticket.affected_user_id === actorId;
+  if (ticket.assigned_team_id && !callerIsRequester) {
     const { data: teamAllowed, error: teamAllowedError } =
       await context.supabase.rpc("can_access_ticket_team", {
         p_ticket_id: ticket.id,
@@ -372,10 +376,28 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     if (!isUuid(session.user_id)) return [];
     const displayName = names.get(session.user_id);
     if (!displayName) return [];
+    const role =
+      session.user_id === ticket.requester_id ||
+      session.user_id === ticket.affected_user_id
+        ? "requester"
+        : "agent";
+    if (callerIsRequester) {
+      return [
+        {
+          displayName,
+          photoUrl: photoUrls.get(session.user_id) ?? null,
+          editing: false,
+          composing: null,
+          role,
+          lastSeenAt: session.last_seen_at,
+        },
+      ];
+    }
     return [
       {
         displayName,
         photoUrl: photoUrls.get(session.user_id) ?? null,
+        role,
         editing: session.is_editing === true,
         // A draft only counts as current while the heartbeat is recent.
         composing:

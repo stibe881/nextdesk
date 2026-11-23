@@ -659,6 +659,10 @@ Klicken Sie auf ein Ticket. Der Block **Fortschritt** zeigt die Schritte
 _Eingegangen → In Bearbeitung → Wartet auf Sie → Gelöst → Geschlossen_ mit
 Zeitpunkten.
 
+Oben im Ticket sehen Sie als kleine Profilbilder, wer das Ticket gerade
+ebenfalls offen hat (z. B. die bearbeitende Person). Fahren Sie mit der Maus
+darüber bzw. tippen Sie in der App darauf, um den Namen zu sehen.
+
 Die Beschreibung Ihres Anliegens ist eingeklappt, sobald es Nachrichten
 gibt; ein Klick darauf zeigt sie wieder ganz.
 
