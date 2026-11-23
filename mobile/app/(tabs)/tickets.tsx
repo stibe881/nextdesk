@@ -61,7 +61,18 @@ import {
   type TicketSortBy,
 } from "@/lib/ticket-list-refinement";
 import { useUndoableDelete } from "@/lib/use-undoable-delete";
-import { isNextDeskConfigured, nextDesk } from "@/lib/nextdesk-client";
+import {
+  invokeNextDesk,
+  isNextDeskConfigured,
+  nextDesk,
+} from "@/lib/nextdesk-client";
+import { personRoute } from "@/lib/person-overview";
+import {
+  MIN_SEARCH_LENGTH,
+  parseWorkspaceSearch,
+  ticketMatchesSearch,
+  type WorkspaceSearch,
+} from "@/lib/ticket-search-model";
 import {
   loadMobileDashboard,
   loadTicketFilterDirectory,
@@ -73,12 +84,7 @@ import { useThemeContext } from "@/lib/theme-provider";
 import { tn } from "@/lib/formality";
 
 type TicketScope =
-  | "all"
-  | "mine"
-  | "watched"
-  | "open"
-  | "resolved"
-  | "unassigned";
+  "all" | "mine" | "watched" | "open" | "resolved" | "unassigned";
 
 const DEFAULT_SCOPE: TicketScope = "mine";
 
@@ -214,6 +220,10 @@ export default function TicketsScreen() {
   const [watchedIds, setWatchedIds] = useState<string[]>([]);
   const watchedIdsRef = useRef<string[]>([]);
   const [query, setQuery] = useState("");
+  const [serverSearch, setServerSearch] = useState<{
+    query: string;
+    result: WorkspaceSearch;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -348,8 +358,14 @@ export default function TicketsScreen() {
       setWatchedIds(nextIds);
       setMessage(
         nextWatched
-          ? tn(`Du beobachtest «${ticket.ticketNumber}» und wirst über Änderungen benachrichtigt.`, `Sie beobachten «${ticket.ticketNumber}» und werden über Änderungen benachrichtigt.`)
-          : tn(`Du beobachtest «${ticket.ticketNumber}» nicht mehr.`, `Sie beobachten «${ticket.ticketNumber}» nicht mehr.`),
+          ? tn(
+              `Du beobachtest «${ticket.ticketNumber}» und wirst über Änderungen benachrichtigt.`,
+              `Sie beobachten «${ticket.ticketNumber}» und werden über Änderungen benachrichtigt.`,
+            )
+          : tn(
+              `Du beobachtest «${ticket.ticketNumber}» nicht mehr.`,
+              `Sie beobachten «${ticket.ticketNumber}» nicht mehr.`,
+            ),
       );
     } catch {
       setError("Das Beobachten konnte nicht gespeichert werden.");
@@ -376,9 +392,7 @@ export default function TicketsScreen() {
         priority: "normal",
         ticketId: ticket.id,
       });
-      setMessage(
-        `Erinnerung für «${ticket.ticketNumber}» für heute gesetzt.`,
-      );
+      setMessage(`Erinnerung für «${ticket.ticketNumber}» für heute gesetzt.`);
     } catch (nextError) {
       if (isExperienceUnavailableError(nextError)) {
         setWorkspaceAvailable(false);
@@ -448,7 +462,12 @@ export default function TicketsScreen() {
             : item,
         ),
       );
-      setMessage(tn(`«${ticket.ticketNumber}» wurde dir zugewiesen.`, `«${ticket.ticketNumber}» wurde Ihnen zugewiesen.`));
+      setMessage(
+        tn(
+          `«${ticket.ticketNumber}» wurde dir zugewiesen.`,
+          `«${ticket.ticketNumber}» wurde Ihnen zugewiesen.`,
+        ),
+      );
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -502,7 +521,10 @@ export default function TicketsScreen() {
       }
       return result.failed > 0
         ? `${result.succeeded} Tickets zugewiesen, ${result.failed} nicht möglich.`
-        : tn(`${result.succeeded} Tickets wurden dir zugewiesen.`, `${result.succeeded} Tickets wurden Ihnen zugewiesen.`);
+        : tn(
+            `${result.succeeded} Tickets wurden dir zugewiesen.`,
+            `${result.succeeded} Tickets wurden Ihnen zugewiesen.`,
+          );
     }, "Die Tickets konnten nicht zugewiesen werden.");
   }
 
@@ -527,7 +549,10 @@ export default function TicketsScreen() {
       setWatchedIds(nextIds);
       return succeeded < ids.length
         ? `${succeeded} Tickets werden beobachtet, ${ids.length - succeeded} nicht möglich.`
-        : tn(`Du beobachtest jetzt ${succeeded} Tickets.`, `Sie beobachten jetzt ${succeeded} Tickets.`);
+        : tn(
+            `Du beobachtest jetzt ${succeeded} Tickets.`,
+            `Sie beobachten jetzt ${succeeded} Tickets.`,
+          );
     }, "Die Tickets konnten nicht beobachtet werden.");
   }
 
@@ -621,8 +646,10 @@ export default function TicketsScreen() {
     ActionSheetIOS.showActionSheetWithOptions(
       {
         cancelButtonIndex: 0,
-        message:
-          tn("Beim Beobachten wirst du über Status, Nachrichten und Notizen benachrichtigt.", "Beim Beobachten werden Sie über Status, Nachrichten und Notizen benachrichtigt."),
+        message: tn(
+          "Beim Beobachten wirst du über Status, Nachrichten und Notizen benachrichtigt.",
+          "Beim Beobachten werden Sie über Status, Nachrichten und Notizen benachrichtigt.",
+        ),
         options: [
           "Abbrechen",
           isWatched ? "Nicht mehr beobachten" : "Beobachten",
@@ -637,9 +664,40 @@ export default function TicketsScreen() {
     );
   }
 
+  // Serversuche (Tickets und Personen), leicht verzögert beim Tippen.
+  useEffect(() => {
+    const term = query.trim().toLocaleLowerCase("de-CH");
+    if (term.length < MIN_SEARCH_LENGTH || !tenantId || isOffline) return;
+    let active = true;
+    const timer = setTimeout(() => {
+      void invokeNextDesk<unknown>("global-search", {
+        type: "search",
+        tenantId,
+        query: query.trim(),
+      })
+        .then((response) => {
+          if (active) {
+            setServerSearch({
+              query: term,
+              result: parseWorkspaceSearch(response),
+            });
+          }
+        })
+        .catch(() => undefined);
+    }, 300);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [isOffline, query, tenantId]);
+
   const normalizedQuery = query.trim().toLocaleLowerCase("de-CH");
+  // Mit Suchbegriff wird über alle Tickets gesucht: Status, Ansicht und
+  // Filter gelten dann nicht.
+  const searching = normalizedQuery.length >= MIN_SEARCH_LENGTH;
   const filteredTickets = tickets.filter((ticket) => {
     if (undoDelete.hiddenIds.has(ticket.id)) return false;
+    if (searching) return ticketMatchesSearch(ticket, normalizedQuery);
     if (!matchesStatusSelection(ticket.status, statusFilter)) return false;
     if (!matchesRefinement(ticket, refinement, currentUserId || null))
       return false;
@@ -656,21 +714,29 @@ export default function TicketsScreen() {
                 ? ticket.resolved
                 : true;
     if (!matchesScope || !normalizedQuery) return matchesScope;
-    return [
-      ticket.ticketNumber,
-      ticket.subject,
-      ticket.description,
-      ticket.status,
-      ticket.priority,
-    ].some((value) =>
-      value.toLocaleLowerCase("de-CH").includes(normalizedQuery),
-    );
+    return ticketMatchesSearch(ticket, normalizedQuery);
   });
+  // Treffer der Serversuche, die nicht in der geladenen Liste stehen (z. B.
+  // ältere oder geschlossene Tickets).
+  const loadedIds = new Set(tickets.map((ticket) => ticket.id));
+  const moreTicketHits =
+    searching && serverSearch?.query === normalizedQuery
+      ? serverSearch.result.tickets.filter(
+          (hit) => !loadedIds.has(hit.ticketId),
+        )
+      : [];
+  const peopleHits =
+    searching && serverSearch?.query === normalizedQuery
+      ? serverSearch.result.people.slice(0, 6)
+      : [];
   const agentNames = new Map(
     directory.agents.map((agent) => [agent.id, agent.displayName]),
   );
   const departmentNames = new Map(
-    directory.departments.map((department) => [department.id, department.label]),
+    directory.departments.map((department) => [
+      department.id,
+      department.label,
+    ]),
   );
   const visibleTickets = sortTickets(filteredTickets, refinement, {
     agentName: (id) => (id ? (agentNames.get(id) ?? "") : ""),
@@ -767,7 +833,11 @@ export default function TicketsScreen() {
             </Text>
             <Text style={[styles.title, tokenStyles.foreground]}>Tickets</Text>
             <Text style={[styles.subtitle, tokenStyles.muted]}>
-              {tenantName || tn("Deine autorisierten Vorgänge", "Ihre autorisierten Vorgänge")}
+              {tenantName ||
+                tn(
+                  "Deine autorisierten Vorgänge",
+                  "Ihre autorisierten Vorgänge",
+                )}
             </Text>
           </View>
           <Pressable
@@ -1128,24 +1198,83 @@ export default function TicketsScreen() {
           </View>
         ) : null}
 
+        {peopleHits.length > 0 ? (
+          <View style={styles.searchSection}>
+            <Text style={[styles.searchSectionTitle, tokenStyles.muted]}>
+              PERSONEN
+            </Text>
+            {peopleHits.map((person) => {
+              const route = personRoute(
+                person.kind === "entra"
+                  ? { entraObjectId: person.id }
+                  : { requesterContactId: person.id },
+              );
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={!route}
+                  key={`${person.kind}:${person.id}`}
+                  onPress={() => route && router.push(route as never)}
+                  style={[styles.searchRow, tokenStyles.card]}
+                >
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="person-circle-outline"
+                    size={26}
+                  />
+                  <View style={styles.searchRowCopy}>
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.searchRowTitle, tokenStyles.foreground]}
+                    >
+                      {person.displayName}
+                    </Text>
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.searchRowDetail, tokenStyles.muted]}
+                    >
+                      {[
+                        person.jobTitle,
+                        person.department,
+                        person.openTicketCount > 0
+                          ? `${person.openTicketCount} offene Tickets`
+                          : person.email,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    color={colors.subtle}
+                    name="chevron-forward"
+                    size={18}
+                  />
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+
         <View style={styles.listHeading}>
           <View>
             <Text style={[styles.listTitle, tokenStyles.foreground]}>
-              {scope === "all"
-                ? "Alle Tickets"
-                : scope === "watched"
-                  ? "Favorisierte Tickets"
-                  : scope === "mine"
-                    ? "Meine Tickets"
-                    : "Gefilterte Tickets"}
+              {searching
+                ? "Suchergebnisse"
+                : scope === "all"
+                  ? "Alle Tickets"
+                  : scope === "watched"
+                    ? "Favorisierte Tickets"
+                    : scope === "mine"
+                      ? "Meine Tickets"
+                      : "Gefilterte Tickets"}
             </Text>
             {!checkingFeatures &&
             !reducedMotion &&
             workspaceEnabled &&
             workspaceAvailable ? (
               <Text style={[styles.gestureHint, tokenStyles.muted]}>
-                Nach rechts wischen: zuweisen, beobachten oder Erinnerung.
-                Nach links: löschen.
+                Nach rechts wischen: zuweisen, beobachten oder Erinnerung. Nach
+                links: löschen.
               </Text>
             ) : null}
           </View>
@@ -1176,7 +1305,8 @@ export default function TicketsScreen() {
           </Text>
         </View>
 
-        {visibleTickets.length === 0 ? (
+        {visibleTickets.length === 0 &&
+        !(searching && (moreTicketHits.length > 0 || peopleHits.length > 0)) ? (
           <View style={[styles.empty, tokenStyles.card]}>
             <Ionicons color={colors.muted} name="ticket-outline" size={28} />
             <Text style={[styles.emptyTitle, tokenStyles.foreground]}>
@@ -1185,10 +1315,15 @@ export default function TicketsScreen() {
             <Text style={[styles.emptyText, tokenStyles.muted]}>
               {scope !== "all" || query
                 ? "Mit diesem Filter gibt es keine Treffer."
-                : tn("Hier ist noch nichts. Erfasse das erste Ticket.", "Hier ist noch nichts. Erfassen Sie das erste Ticket.")}
+                : tn(
+                    "Hier ist noch nichts. Erfasse das erste Ticket.",
+                    "Hier ist noch nichts. Erfassen Sie das erste Ticket.",
+                  )}
             </Text>
             <View style={styles.emptyActions}>
-              {scope !== "all" || query || activeRefinementCount(refinement) > 0 ? (
+              {scope !== "all" ||
+              query ||
+              activeRefinementCount(refinement) > 0 ? (
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => {
@@ -1283,6 +1418,53 @@ export default function TicketsScreen() {
             {selectionMode ? <View style={styles.selectionSpacer} /> : null}
           </View>
         )}
+        {moreTicketHits.length > 0 ? (
+          <View style={styles.searchSection}>
+            <Text style={[styles.searchSectionTitle, tokenStyles.muted]}>
+              WEITERE TICKETS
+            </Text>
+            {moreTicketHits.map((hit) => (
+              <Pressable
+                accessibilityRole="button"
+                key={hit.ticketId}
+                onPress={() =>
+                  router.push({
+                    pathname: "/ticket/[id]",
+                    params: { id: hit.ticketId },
+                  })
+                }
+                style={[styles.searchRow, tokenStyles.card]}
+              >
+                <Ionicons
+                  color={colors.primaryText}
+                  name="ticket-outline"
+                  size={22}
+                />
+                <View style={styles.searchRowCopy}>
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.searchRowTitle, tokenStyles.foreground]}
+                  >
+                    {hit.title}
+                  </Text>
+                  {hit.detail ? (
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.searchRowDetail, tokenStyles.muted]}
+                    >
+                      {hit.detail}
+                    </Text>
+                  ) : null}
+                </View>
+                <Ionicons
+                  color={colors.subtle}
+                  name="chevron-forward"
+                  size={18}
+                />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
       {selectionMode ? (
         <View
@@ -1768,6 +1950,21 @@ const useStyles = makeThemedStyles((c) => ({
     marginTop: 2,
   },
   listTitle: { fontSize: 18, fontWeight: "800" },
+  searchSection: { gap: 8, marginBottom: 16 },
+  searchSectionTitle: { fontSize: 12, fontWeight: "800", letterSpacing: 1.2 },
+  searchRow: {
+    alignItems: "center",
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 56,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  searchRowCopy: { flex: 1, gap: 2 },
+  searchRowTitle: { fontSize: 15, fontWeight: "700" },
+  searchRowDetail: { fontSize: 13 },
   loadingText: { fontSize: 14 },
   mark: { borderRadius: 2, height: 46, width: 4 },
   markActive: { backgroundColor: c.primary },

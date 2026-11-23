@@ -35,6 +35,10 @@ export type PersonTicket = {
   createdAt: string;
   updatedAt: string;
   closedAt: string | null;
+  /** Zugewiesenes Team. */
+  teamName: string | null;
+  /** false: Ticket eines anderen Teams; sichtbar, aber nicht zu öffnen. */
+  readable: boolean;
 };
 
 export type PersonDevice = {
@@ -188,6 +192,8 @@ function parseTicket(item: Record<string, unknown>): PersonTicket | null {
     createdAt,
     updatedAt: str(item.updatedAt) ?? createdAt,
     closedAt: str(item.closedAt),
+    teamName: str(item.teamName),
+    readable: item.readable !== false,
   };
 }
 

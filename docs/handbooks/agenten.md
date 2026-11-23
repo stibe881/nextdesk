@@ -2,7 +2,7 @@
 title: Handbuch für Agenten
 description: Tickets annehmen, bearbeiten und lösen – Übersicht, Arbeitsplatz, Personensuche, Ticketliste, Ticketdetail, Phishing-/Junk-Fälle, Störungen, Wissensdatenbank und Stellvertretung.
 audienceLabel: Agenten
-updated: 2026-11-21
+updated: 2026-11-23
 ---
 
 # Handbuch für Agenten
@@ -141,6 +141,15 @@ Mehr dazu unter «Ticketliste».
 2. Wähle unter **Status** einen oder mehrere Status; **Zurücksetzen** hebt die Auswahl auf.
 3. Das Filtersymbol in der Suchleiste öffnet weitere Filter: Bereich, Agent, Abteilung, Priorität, Sortierung und Reihenfolge.
 4. Ohne Auswahl zeigt die Liste **Meine** Tickets.
+
+Mehr dazu unter «Ticketliste».
+
+### Wie suche ich in der App nach Tickets und Personen?
+
+1. Öffne in der App die **Tickets**.
+2. Tippe ins Feld **Tickets durchsuchen** mindestens zwei Zeichen, zum Beispiel eine Ticketnummer, ein Stichwort oder einen Namen.
+3. Gesucht wird über alle Tickets: Status, Ansicht und Filter gelten während der Suche nicht. Die Liste heisst dann **Suchergebnisse**.
+4. Oben stehen passende **Personen**; ein Tipp öffnet die Personenübersicht mit ihren Tickets. Ältere oder geschlossene Tickets, die nicht in der Liste geladen sind, stehen unten unter **Weitere Tickets**.
 
 Mehr dazu unter «Ticketliste».
 
@@ -655,6 +664,7 @@ Mehr dazu unter «Personen suchen und Personenübersicht».
 1. Öffne die Personenübersicht der Person.
 2. Wähle das Register **Tickets**.
 3. Filtere nach _Alle_, _Offen_ oder _Geschlossen_.
+4. Es erscheinen alle Tickets der Person, auch solche, die einem anderen Team zugewiesen sind (mit «Team …»). Tickets, die nur dieses Team öffnen darf, sind mit «nur für dieses Team zu öffnen» markiert und lassen sich nicht öffnen.
 
 Mehr dazu unter «Personen suchen und Personenübersicht».
 
