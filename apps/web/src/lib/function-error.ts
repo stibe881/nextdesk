@@ -63,6 +63,16 @@ export async function functionErrorMessage(
   const status = functionErrorStatus(error);
 
   switch (code) {
+    case "ticket_merge_already_set":
+      return "Das Ticket wurde bereits in ein anderes Ticket zusammengeführt.";
+    case "merge_primary_ticket_closed":
+      return "Das Haupt-Ticket ist bereits geschlossen. Bitte ein offenes Ticket wählen.";
+    case "ticket_merge_cycle":
+      return "Diese Zusammenführung würde einen Kreis bilden und ist nicht möglich.";
+    case "ticket_merge_denied":
+      return "Für das Zusammenführen fehlt die Berechtigung.";
+    case "ticket_not_merged":
+      return "Das Ticket ist nicht (mehr) zusammengeführt.";
     case "ticket_status_new_locked":
       return "Ein Ticket kann nicht auf «Neu» zurückgesetzt werden.";
     case "ticket_assignee_required":

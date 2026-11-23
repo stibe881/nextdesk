@@ -5,6 +5,8 @@ export type CustomerTicketEmailKind =
   | "agent_reply"
   | "resolution"
   | "rating_reminder"
+  /** Ticket was merged into another one: where the request continues. */
+  | "merge_notice"
   | "test"
   /** nextDesk notification to an agent or member (no reply expected). */
   | "notification"
@@ -185,6 +187,20 @@ function presentation(
           "Ihr Ticket wurde als gelöst markiert.",
         ),
         replyHint: openHint,
+      };
+    case "merge_notice":
+      return {
+        eyebrow: "Tickets zusammengeführt",
+        intro: tone(
+          formality,
+          "Deine Anfrage wird in einem anderen Ticket weiterbearbeitet.",
+          "Ihre Anfrage wird in einem anderen Ticket weiterbearbeitet.",
+        ),
+        replyHint: tone(
+          formality,
+          "Bitte antworte bei Fragen auf eine E-Mail zum weitergeführten Ticket, damit alles an einem Ort bleibt.",
+          "Bitte antworten Sie bei Fragen auf eine E-Mail zum weitergeführten Ticket, damit alles an einem Ort bleibt.",
+        ),
       };
     case "rating_reminder":
       return {
@@ -454,6 +470,12 @@ function headline(
       );
     case "resolution":
       return tone(formality, "Dein Ticket ist gelöst", "Ihr Ticket ist gelöst");
+    case "merge_notice":
+      return tone(
+        formality,
+        "Deine Anfrage läuft unter einem anderen Ticket weiter",
+        "Ihre Anfrage läuft unter einem anderen Ticket weiter",
+      );
     case "rating_reminder":
       return tone(
         formality,

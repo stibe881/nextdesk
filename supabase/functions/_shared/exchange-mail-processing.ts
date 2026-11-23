@@ -236,6 +236,7 @@ export function customerTicketEmailKindForOutbound(
     messageKind === "acknowledgement" ||
     messageKind === "resolution" ||
     messageKind === "rating_reminder" ||
+    messageKind === "merge_notice" ||
     messageKind === "test"
   )
     return messageKind;
@@ -963,6 +964,38 @@ async function findInboundTicket(
   return null;
 }
 
+/** Folgt «zusammengeführt in» bis zum Haupt-Ticket (höchstens 5 Schritte). */
+async function followMergedTicket(
+  admin: Admin,
+  tenantId: string,
+  found: { id: string; ticket_number: string } | null,
+): Promise<{ id: string; ticket_number: string } | null> {
+  let current = found;
+  for (let step = 0; current && step < 5; step += 1) {
+    const row = await admin
+      .from("tickets")
+      .select("merged_into_ticket_id")
+      .eq("id", current.id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    const next = asString(row.data?.merged_into_ticket_id);
+    if (row.error || !next) return current;
+    const primary = await admin
+      .from("tickets")
+      .select("id, ticket_number")
+      .eq("id", next)
+      .eq("tenant_id", tenantId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (primary.error || !asString(primary.data?.id)) return current;
+    current = {
+      id: String(primary.data.id),
+      ticket_number: String(primary.data.ticket_number),
+    };
+  }
+  return current;
+}
+
 async function senderMayReply(
   admin: Admin,
   tenantId: string,
@@ -986,6 +1019,22 @@ async function senderMayReply(
       .maybeSingle();
     if (emailAddress(contact.data?.email) === sender) return true;
   }
+  // Anfragende von Tickets, die in dieses zusammengeführt wurden.
+  const mergedRequesters = await admin
+    .from("tickets")
+    .select("ticket_requesters(email)")
+    .eq("tenant_id", tenantId)
+    .eq("merged_into_ticket_id", ticketId)
+    .limit(20);
+  if (
+    ((mergedRequesters.data ?? []) as Row[]).some((row) => {
+      const requester = Array.isArray(row.ticket_requesters)
+        ? row.ticket_requesters[0]
+        : row.ticket_requesters;
+      return emailAddress(record(requester) ? requester.email : null) === sender;
+    })
+  )
+    return true;
   const participating = await admin
     .from("mail_messages")
     .select("id")
@@ -1629,7 +1678,12 @@ export async function processInboundMessage(
       });
       return;
     }
-    const linkedTicket = await findInboundTicket(admin, channel, graph);
+    // Antworten auf ein zusammengeführtes Ticket landen im Haupt-Ticket.
+    const linkedTicket = await followMergedTicket(
+      admin,
+      channel.tenant_id,
+      await findInboundTicket(admin, channel, graph),
+    );
     const replyAuthorized =
       Boolean(linkedTicket) &&
       (await senderMayReply(
@@ -1877,6 +1931,18 @@ export async function processInboundMessage(
     if (kind === "new_ticket") {
       // Nach den Intakes erneut (no-op, wenn schon gesetzt): deckt Phishing ab.
       await assignChannelTeam(admin, channel, ticketId);
+    }
+    if (kind === "new_ticket" && !phishingSettings) {
+      // Eindeutiges Duplikat (gleiche Person, gleicher Betreff, wenige
+      // Minuten): wird automatisch ins erste Ticket zusammengeführt, wenn die
+      // Einstellung aktiv ist. Ein Fehler hier ändert nichts am Ticket.
+      try {
+        await admin.rpc("ticket_auto_merge_exact_duplicate", {
+          p_ticket_id: ticketId,
+        });
+      } catch {
+        // ignore
+      }
     }
     await audit(
       admin,
@@ -2914,6 +2980,39 @@ export async function dispatchOutboundMessage(
           "Ihr Ticket wurde als gelöst markiert.",
         ),
       );
+    // Zusammengeführt: wo die Anfrage weiterläuft und weshalb es diese Mail gibt.
+    let mergePrimaryNumber: string | null = null;
+    if (message.kind === "merge_notice") {
+      const merged = await admin
+        .from("tickets")
+        .select("merged_into_ticket_id")
+        .eq("id", ticket?.id ?? message.ticket_id)
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle();
+      const primaryId = asString(merged.data?.merged_into_ticket_id);
+      const primary = primaryId
+        ? await admin
+            .from("tickets")
+            .select("ticket_number, subject")
+            .eq("id", primaryId)
+            .eq("tenant_id", message.tenant_id)
+            .maybeSingle()
+        : null;
+      mergePrimaryNumber = asString(primary?.data?.ticket_number);
+      if (!mergePrimaryNumber) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "merge_target_unavailable",
+        });
+        return;
+      }
+      const primarySubject = asString(primary?.data?.subject);
+      bodyText = tone(
+        formality,
+        `Zu deinem Anliegen wurden bei uns mehrere Tickets erstellt, zum Beispiel weil mehrere E-Mails zum selben Thema eingegangen sind. Damit nichts doppelt bearbeitet wird, haben wir sie zusammengeführt.\n\nDeine Anfrage wird unter Ticket ${mergePrimaryNumber}${primarySubject ? ` «${primarySubject}»` : ""} weiterbearbeitet. Du musst nichts tun; weitere Nachrichten erhältst du zu diesem Ticket.`,
+        `Zu Ihrem Anliegen wurden bei uns mehrere Tickets erstellt, zum Beispiel weil mehrere E-Mails zum selben Thema eingegangen sind. Damit nichts doppelt bearbeitet wird, haben wir sie zusammengeführt.\n\nIhre Anfrage wird unter Ticket ${mergePrimaryNumber}${primarySubject ? ` «${primarySubject}»` : ""} weiterbearbeitet. Sie müssen nichts tun; weitere Nachrichten erhalten Sie zu diesem Ticket.`,
+      );
+    }
     if (message.kind === "rating_reminder") {
       // Erinnerung nur, solange das Ticket gelöst und noch nicht bewertet ist.
       const rated = await admin
@@ -2982,7 +3081,9 @@ export async function dispatchOutboundMessage(
     const portalActionLabel =
       message.kind === "agent_reply"
         ? "Im Portal antworten"
-        : message.kind === "acknowledgement" || message.kind === "resolution"
+        : message.kind === "acknowledgement" ||
+            message.kind === "resolution" ||
+            message.kind === "merge_notice"
           ? "Ticket im Portal ansehen"
           : null;
     const html = internalDepartmentNotice
@@ -3043,6 +3144,8 @@ export async function dispatchOutboundMessage(
             ? `AW: [${ticketNumber}] ${ticketSubject}`
             : message.kind === "rating_reminder"
               ? `${tone(formality, "Wie zufrieden warst du?", "Wie zufrieden waren Sie?")} [${ticketNumber}] ${ticketSubject}`
+              : message.kind === "merge_notice" && mergePrimaryNumber
+                ? `[${ticketNumber}] Weiter unter ${mergePrimaryNumber}: ${ticketSubject}`
               : `[${ticketNumber}] ${ticketSubject}`,
       body: { contentType: "HTML", content: html },
       toRecipients: [{ emailAddress: { address: recipient } }],

@@ -161,6 +161,12 @@ export type MobileTicketDetail = {
   canClose: boolean;
   canWriteInternalNotes: boolean;
   canCommentExternal: boolean;
+  /** Personen über zusammengeführte Tickets (mindestens 1). */
+  affectedPeople: number;
+  /** Anzahl der in dieses Ticket zusammengeführten Tickets. */
+  mergedTicketCount: number;
+  /** Haupt-Ticket, wenn dieses Ticket zusammengeführt wurde. */
+  mergedInto: { id: string; ticketNumber: string } | null;
   drafts: MobileTicketDraft[];
 };
 
@@ -786,7 +792,25 @@ export async function loadMobileTicketDetail(
     canClose: data.canClose === true,
     canWriteInternalNotes: data.canWriteInternalNotes === true,
     canCommentExternal: data.canCommentExternal === true,
+    affectedPeople:
+      typeof data.affectedPeople === "number"
+        ? Math.max(1, data.affectedPeople)
+        : 1,
+    mergedTicketCount: Array.isArray(data.mergedTickets)
+      ? data.mergedTickets.length
+      : 0,
+    mergedInto: mergedIntoReference(data.mergedInto),
   };
+}
+
+function mergedIntoReference(
+  value: unknown,
+): { id: string; ticketNumber: string } | null {
+  if (typeof value !== "object" || value === null) return null;
+  const row = value as { id?: unknown; ticketNumber?: unknown };
+  return typeof row.id === "string" && typeof row.ticketNumber === "string"
+    ? { id: row.id, ticketNumber: row.ticketNumber }
+    : null;
 }
 
 export async function updateMobileTicket(input: {

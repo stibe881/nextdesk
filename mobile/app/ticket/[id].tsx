@@ -1964,6 +1964,43 @@ export default function TicketDetailScreen() {
             <TicketSlaPauseText pausedAt={ticket.slaPausedAt} />
           </View>
 
+          {ticket.mergedInto ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() =>
+                router.push(`/ticket/${ticket.mergedInto?.id ?? ""}`)
+              }
+              style={[styles.mergeHint, { borderColor: colors.border }]}
+            >
+              <Ionicons
+                color={colors.muted}
+                name="git-merge-outline"
+                size={16}
+              />
+              <Text
+                style={[styles.mergeHintText, { color: colors.foreground }]}
+              >
+                Zusammengeführt in {ticket.mergedInto.ticketNumber}. Die
+                Bearbeitung läuft dort weiter.
+              </Text>
+            </Pressable>
+          ) : ticket.mergedTicketCount > 0 ? (
+            <View style={[styles.mergeHint, { borderColor: colors.border }]}>
+              <Ionicons color={colors.muted} name="people-outline" size={16} />
+              <Text
+                style={[styles.mergeHintText, { color: colors.foreground }]}
+              >
+                {ticket.affectedPeople > 1
+                  ? `${ticket.affectedPeople} Personen betroffen · `
+                  : ""}
+                {ticket.mergedTicketCount}{" "}
+                {ticket.mergedTicketCount === 1
+                  ? "Ticket zusammengeführt"
+                  : "Tickets zusammengeführt"}
+              </Text>
+            </View>
+          ) : null}
+
           {canUseRequesterPortal &&
           currentUserId &&
           ticket.requesterId === currentUserId ? (
@@ -4815,6 +4852,17 @@ const useStyles = makeThemedStyles((c) => ({
   detailsRequester: { gap: 4, paddingVertical: 2 },
   requesterPressable: { gap: 3, justifyContent: "center", minHeight: 44 },
   requesterName: { color: c.foreground, fontSize: 15, fontWeight: "800" },
+  mergeHint: {
+    alignItems: "center",
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  mergeHintText: { flex: 1, fontSize: 13, lineHeight: 18 },
   requesterMeta: { color: c.muted, fontSize: 13, lineHeight: 18 },
   detailsDivider: { backgroundColor: c.border, height: 1, marginVertical: 5 },
   detailsValueRow: {

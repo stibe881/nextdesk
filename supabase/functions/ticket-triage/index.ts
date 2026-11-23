@@ -193,37 +193,16 @@ async function candidatesFor(admin: Admin, ticket: Row): Promise<TriageCandidate
 
 /** Merges a duplicate into the older open ticket (same steps as ticket-operations). */
 async function mergeDuplicate(admin: Admin, ticket: Row, primaryId: string): Promise<boolean> {
-  const { data: resolved } = await admin.from("ticket_statuses").select("id, is_closed")
-    .eq("tenant_id", ticket.tenant_id).eq("key", "resolved").maybeSingle();
-  const now = new Date().toISOString();
-  const update: Row = { merged_into_ticket_id: primaryId };
-  if (resolved?.is_closed === true) {
-    Object.assign(update, {
-      status_id: resolved.id,
-      closed_at: now,
-      resolved_at: now,
-      waiting_since: null,
-    });
-  }
-  const { data, error } = await admin.from("tickets").update(update)
-    .eq("tenant_id", ticket.tenant_id).eq("id", ticket.id).is("merged_into_ticket_id", null)
-    .select("id").maybeSingle();
-  if (error || !data) return false;
-  await admin.from("ticket_events").insert([
-    {
-      ticket_id: ticket.id,
-      actor_id: null,
-      event_type: "ticket.merged",
-      payload: { primaryTicketId: primaryId, source: "ai_triage" },
-    },
-    {
-      ticket_id: primaryId,
-      actor_id: null,
-      event_type: "ticket.merge_received",
-      payload: { mergedTicketId: ticket.id, source: "ai_triage" },
-    },
-  ]);
-  return true;
+  // Wie das Zusammenführen von Hand (0384): Übernahme ins Haupt-Ticket,
+  // Protokoll und Mail an die anfragende Person.
+  const { error } = await admin.rpc("ticket_merge_into", {
+    p_tenant_id: ticket.tenant_id,
+    p_ticket_id: ticket.id,
+    p_primary_id: primaryId,
+    p_actor_id: null,
+    p_source: "ai_triage",
+  });
+  return !error;
 }
 
 async function setState(admin: Admin, ticketId: string, values: Row) {
@@ -441,6 +420,7 @@ type Action =
     applyThreshold: number;
     sentimentEnabled: boolean;
     autoMergeDuplicates: boolean;
+    autoMergeExactDuplicates: boolean;
   };
 
 export function parseAction(value: unknown): Action | null {
@@ -466,6 +446,7 @@ export function parseAction(value: unknown): Action | null {
           applyThreshold: Math.round(value.applyThreshold * 100) / 100,
           sentimentEnabled: value.sentimentEnabled !== false,
           autoMergeDuplicates: value.autoMergeDuplicates === true,
+          autoMergeExactDuplicates: value.autoMergeExactDuplicates === true,
         }
         : null;
     default:
@@ -506,13 +487,14 @@ const userHandler = withSupabase(
             apply_threshold: action.applyThreshold,
             sentiment_enabled: action.sentimentEnabled,
             auto_merge_duplicates: action.autoMergeDuplicates,
+            auto_merge_exact_duplicates: action.autoMergeExactDuplicates,
             updated_by: actorId,
             updated_at: new Date().toISOString(),
           });
           if (error) throw new HttpError(503, "database_failure", "Die Einstellung konnte nicht gespeichert werden.");
         }
         const { data } = await admin.from("ticket_triage_settings")
-          .select("enabled, apply_threshold, sentiment_enabled, auto_merge_duplicates")
+          .select("enabled, apply_threshold, sentiment_enabled, auto_merge_duplicates, auto_merge_exact_duplicates")
           .eq("tenant_id", action.tenantId).maybeSingle();
         return json(request, {
           data: {
@@ -520,6 +502,7 @@ const userHandler = withSupabase(
             applyThreshold: Number(data?.apply_threshold ?? 0.8),
             sentimentEnabled: data?.sentiment_enabled !== false,
             autoMergeDuplicates: data?.auto_merge_duplicates === true,
+            autoMergeExactDuplicates: data?.auto_merge_exact_duplicates === true,
           },
         });
       }

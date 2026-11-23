@@ -16,6 +16,8 @@ export interface DashboardTicket {
   recordId?: string;
   /** Name of the requesting person (live data only). */
   requesterName?: string | null;
+  /** Personen über zusammengeführte Tickets (ab 2), sonst null. */
+  affectedPeople?: number | null;
   priority?: string;
   priorityOrder?: number;
   queue: QueueKey;

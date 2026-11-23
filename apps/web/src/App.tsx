@@ -136,6 +136,11 @@ import { TicketComposer } from "./ticket-composer";
 import { clearTicketComposerDraft } from "./lib/ticket-composer-draft";
 import { TicketListIncidentHint } from "./ticket-learning";
 import { TicketDetail } from "./ticket-detail";
+import {
+  loadMergePreview,
+  MergePreviewSummary,
+  type MergePreview,
+} from "./ticket-merge-insights";
 import { TenantAdminSettings } from "./tenant-admin-settings";
 import { KnowledgeBase } from "./knowledge-base";
 import { GlobalSearch, type GlobalSearchResult } from "./global-search";
@@ -3090,6 +3095,15 @@ function TicketList({
                     {ticket.requesterName}
                   </span>
                 ) : null}
+                {ticket.affectedPeople && ticket.affectedPeople > 1 ? (
+                  <span
+                    className="ticket-meta__affected"
+                    title="Personen über zusammengeführte Tickets"
+                  >
+                    <UsersRound aria-hidden="true" size={12} strokeWidth={2} />
+                    {ticket.affectedPeople} Personen betroffen
+                  </span>
+                ) : null}
                 {ticket.priority ? <span>{ticket.priority}</span> : null}
                 <span>vor {ticket.age}</span>
               </p>
@@ -3212,6 +3226,12 @@ function TicketListDetailPreview({
           <div>
             <dt>Anfragende Person</dt>
             <dd>{ticket.requesterName}</dd>
+          </div>
+        ) : null}
+        {ticket.affectedPeople && ticket.affectedPeople > 1 ? (
+          <div>
+            <dt>Betroffen</dt>
+            <dd>{ticket.affectedPeople} Personen (zusammengeführt)</dd>
           </div>
         ) : null}
         <div>
@@ -8617,6 +8637,8 @@ function BulkTicketStatusActions({
   const [spamTicketIds, setSpamTicketIds] = useState<string[] | null>(null);
   // Zusammenführen: Haupt-Ticket, in das die übrigen Tickets einfliessen.
   const [mergePrimaryId, setMergePrimaryId] = useState<string | null>(null);
+  const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
+  const [mergeSuggestedId, setMergeSuggestedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -8694,7 +8716,38 @@ function BulkTicketStatusActions({
       (a.createdAt ?? "").localeCompare(b.createdAt ?? ""),
     )[0];
     setMergePrimaryId(oldest ? ticketKey(oldest) : null);
+    setMergeSuggestedId(null);
+    // Vorschlag vom Server: meiste Aktivität, dann zugewiesen, dann ältestes.
+    const ids = mergeCandidates.map(ticketKey);
+    void loadMergePreview(tenantId, ids[0] ?? "", ids, null)
+      .then((preview) => {
+        const suggested = preview?.suggestedPrimaryId ?? null;
+        if (suggested && ids.includes(suggested)) {
+          setMergeSuggestedId(suggested);
+          setMergePrimaryId((current) => (current ? suggested : current));
+        }
+      })
+      .catch(() => {
+        // Ohne Vorschlag bleibt das älteste offene Ticket vorgewählt.
+      });
   }
+
+  useEffect(() => {
+    setMergePreview(null);
+    if (!mergePrimaryId) return;
+    let active = true;
+    const ids = mergeCandidates.map(ticketKey);
+    void loadMergePreview(tenantId, mergePrimaryId, ids, mergePrimaryId)
+      .then((preview) => {
+        if (active) setMergePreview(preview);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+    // mergeCandidates ändert sich mit der Auswahl; die Vorschau folgt dem Haupt-Ticket.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergePrimaryId, tenantId]);
 
   async function mergeTickets() {
     if (!supabase || !mergePrimaryId) return;
@@ -8716,6 +8769,7 @@ function BulkTicketStatusActions({
           tenantId,
           ticketId: id,
           primaryTicketId: mergePrimaryId,
+          source: "bulk",
         },
       });
       if (error) {
@@ -9015,10 +9069,16 @@ function BulkTicketStatusActions({
                   <span>
                     <strong>{ticket.id}</strong> {ticket.subject}
                     {ticket.isClosed ? " · geschlossen" : ""}
+                    {mergeSuggestedId === ticketKey(ticket)
+                      ? " · Vorschlag"
+                      : ""}
                   </span>
                 </label>
               ))}
             </fieldset>
+            {mergePreview && mergePreview.primaryId === mergePrimaryId ? (
+              <MergePreviewSummary preview={mergePreview} />
+            ) : null}
           </div>
           <div className="ticket-bulk-actions__confirmation-buttons">
             <button

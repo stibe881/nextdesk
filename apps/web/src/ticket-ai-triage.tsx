@@ -250,6 +250,7 @@ export function TicketTriageSettings({ tenantId }: { tenantId: string }) {
     applyThreshold: number;
     sentimentEnabled: boolean;
     autoMergeDuplicates: boolean;
+    autoMergeExactDuplicates: boolean;
   };
   const [settings, setSettings] = useState<Settings | null>(null);
   const [message, setMessage] = useState("");
@@ -354,6 +355,23 @@ export function TicketTriageSettings({ tenantId }: { tenantId: string }) {
             <span>
               Duplikate derselben Person (24 h) automatisch zusammenführen,
               sonst nur vorschlagen
+            </span>
+          </label>
+          <label className="tenant-automation__switch">
+            <input
+              checked={settings.autoMergeExactDuplicates}
+              onChange={(event) =>
+                void save({
+                  ...settings,
+                  autoMergeExactDuplicates: event.target.checked,
+                })
+              }
+              type="checkbox"
+            />
+            <span>
+              Eindeutige Duplikate automatisch zusammenführen (ohne KI): gleiche
+              Person, gleicher Betreff, innerhalb von 10 Minuten, zum Beispiel
+              doppelt gesendete Mails
             </span>
           </label>
         </div>

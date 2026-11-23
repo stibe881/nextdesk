@@ -459,3 +459,21 @@ Deno.test(
       throw new Error("Hinweis bei Benachrichtigung");
   },
 );
+
+Deno.test("Zusammengeführt: eigene Überschrift, Erklärung und keine Bewertung", () => {
+  const html = render(
+    "merge_notice",
+    "Zu Ihrem Anliegen wurden bei uns mehrere Tickets erstellt. Ihre Anfrage wird unter Ticket ICT-2026-000200 weiterbearbeitet.",
+  );
+  for (const required of [
+    "Deine Anfrage läuft unter einem anderen Ticket weiter",
+    "Tickets zusammengeführt",
+    "mehrere Tickets erstellt",
+    "ICT-2026-000200",
+  ]) {
+    if (!html.includes(required)) throw new Error(`Fehlt: ${required}`);
+  }
+  if (html.includes("Du kannst direkt auf diese E-Mail antworten")) {
+    throw new Error("Die Zusammenführungs-Mail lädt nicht zum Antworten ein");
+  }
+});

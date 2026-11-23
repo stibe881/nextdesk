@@ -183,6 +183,9 @@ type DepartmentOption = { id: string; name: string };
 type Incident = {
   windowHours: number;
   ticketCount: number;
+  /** Personen, die das Anliegen gemeldet haben (inkl. zusammengeführter Tickets). */
+  affectedPeople: number;
+  reason: "similar_tickets" | "affected_people";
   tickets: IncidentTicket[];
   departmentId: string | null;
   /** Department for "Fall erstellen" within the caller's asset scope. */
@@ -234,6 +237,12 @@ export function parseIncident(value: Row | null): Incident | null {
   return {
     windowHours: incident.windowHours,
     ticketCount: incident.ticketCount,
+    affectedPeople:
+      typeof incident.affectedPeople === "number" ? incident.affectedPeople : 1,
+    reason:
+      incident.reason === "affected_people"
+        ? "affected_people"
+        : "similar_tickets",
     tickets,
     departmentId: isUuid(incident.departmentId) ? incident.departmentId : null,
     problemDepartmentId: isUuid(incident.problemDepartmentId)
@@ -246,6 +255,9 @@ export function parseIncident(value: Row | null): Incident | null {
 }
 
 function incidentHeadline(incident: Incident): string {
+  if (incident.reason === "affected_people") {
+    return `Möglicher Störfall: ${incident.affectedPeople} Personen melden dasselbe Anliegen`;
+  }
   return `Möglicher Störfall: ${incident.ticketCount} ähnliche Tickets in den letzten ${
     incident.windowHours === 1 ? "Stunde" : `${incident.windowHours} Stunden`
   }`;

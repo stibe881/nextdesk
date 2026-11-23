@@ -2,7 +2,7 @@
 title: Handbuch für Mitarbeitende
 description: Anmelden, Anliegen melden, eigene Tickets verfolgen, Wissensdatenbank, Shop und persönliche Einstellungen.
 audienceLabel: Mitarbeitende
-updated: 2026-11-21
+updated: 2026-11-23
 ---
 
 # Handbuch für Mitarbeitende
@@ -646,6 +646,12 @@ Unter **Tickets** sehen Sie alle Ihre Anliegen mit Nummer, Betreff und Status.
 | Geschlossen     | Das Ticket ist abgeschlossen                                |
 
 ![Liste der eigenen Tickets](images/ma-meine-tickets.jpg)
+
+Wird dasselbe Anliegen mehrmals gemeldet (von Ihnen oder von mehreren
+Personen), führt der Support die Tickets zusammen. Sie erhalten dann eine
+Mail mit der Nummer, unter der Ihr Anliegen weiterläuft. Antworten des
+Supports erhalten Sie weiterhin, und antworten Sie auf eine Mail zum alten
+Ticket, kommt Ihre Nachricht trotzdem an.
 
 ## Ein Ticket öffnen und antworten
 
