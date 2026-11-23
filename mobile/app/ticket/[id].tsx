@@ -428,6 +428,12 @@ export default function TicketDetailScreen() {
   const [reopenSheetOpen, setReopenSheetOpen] = useState(false);
   // «Details» ist in der App standardmässig eingeklappt.
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // Beschreibung: aufgeklappt, solange die Unterhaltung leer ist; danach
+  // eingeklappt. Ein Tipp überschreibt das für dieses Ticket.
+  const [descriptionOpen, setDescriptionOpen] = useState<boolean | null>(null);
+  useEffect(() => {
+    setDescriptionOpen(null);
+  }, [id]);
   const [forwardOpen, setForwardOpen] = useState(false);
   const [levelHandover, setLevelHandover] = useState<{
     teamId: string;
@@ -714,6 +720,9 @@ export default function TicketDetailScreen() {
     [ticket],
   );
   const ticketIsResolved = Boolean(ticket?.resolvedAt || status?.is_closed);
+  const descriptionExpanded =
+    editingField === "description" ||
+    (descriptionOpen ?? (ticket?.comments.length ?? 0) === 0);
   const canUseRequesterPortal =
     requesterPortalEnabled && requesterPortalAvailable;
   const canUseAgentWorkbench =
@@ -3334,10 +3343,51 @@ export default function TicketDetailScreen() {
           ) : null}
 
           <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
-            <Text style={[styles.cardLabel, tokenStyles.muted]}>
-              BESCHREIBUNG
-            </Text>
-            {ticket.canUpdate && editingField === "description" ? (
+            <Pressable
+              accessibilityLabel={
+                descriptionExpanded
+                  ? "Beschreibung einklappen"
+                  : "Beschreibung aufklappen"
+              }
+              accessibilityRole="button"
+              accessibilityState={{ expanded: descriptionExpanded }}
+              disabled={editingField === "description"}
+              hitSlop={8}
+              onPress={() => {
+                hapticSelection();
+                setDescriptionOpen(!descriptionExpanded);
+              }}
+              style={styles.descriptionHeader}
+            >
+              <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                BESCHREIBUNG
+              </Text>
+              <Ionicons
+                color={colors.muted}
+                name={descriptionExpanded ? "chevron-up" : "chevron-down"}
+                size={18}
+              />
+            </Pressable>
+            {!descriptionExpanded ? (
+              <Pressable
+                accessibilityHint="Antippen, um die ganze Beschreibung zu sehen."
+                accessibilityRole="button"
+                onPress={() => {
+                  hapticSelection();
+                  setDescriptionOpen(true);
+                }}
+              >
+                <Text
+                  numberOfLines={3}
+                  style={[styles.description, tokenStyles.muted]}
+                >
+                  {withoutEmailSignature(ticket.description)
+                    .replace(/^Eingegangene E-Mail von [^\n]*\n+/u, "")
+                    .replace(/\s+/gu, " ")
+                    .trim() || "Keine Beschreibung"}
+                </Text>
+              </Pressable>
+            ) : ticket.canUpdate && editingField === "description" ? (
               <View style={styles.inlineEdit}>
                 <TextInput
                   autoCapitalize="sentences"
@@ -3383,10 +3433,12 @@ export default function TicketDetailScreen() {
                 </Text>
               </Pressable>
             )}
-            <MessageAttachmentList
-              attachments={descriptionAttachments}
-              onOpen={(attachment) => void openTicketAttachment(attachment)}
-            />
+            {descriptionExpanded ? (
+              <MessageAttachmentList
+                attachments={descriptionAttachments}
+                onOpen={(attachment) => void openTicketAttachment(attachment)}
+              />
+            ) : null}
             {ticket.canWriteInternalNotes ? (
               <Pressable
                 accessibilityHint="Leitet die ursprüngliche Mail an andere Adressen weiter, nicht an die anfragende Person."
@@ -5444,6 +5496,11 @@ const useStyles = makeThemedStyles((c) => ({
     paddingVertical: 8,
   },
   mergeHintText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  descriptionHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
   forwardButton: {
     alignItems: "center",
     alignSelf: "flex-start",

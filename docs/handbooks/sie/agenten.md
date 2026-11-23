@@ -3075,6 +3075,9 @@ Schritt eine andere Person aus, gilt diese Auswahl. Bei der Mehrfachauswahl
 Über der Beschreibung zeigt die kompakte **Ticket-Zeitachse** alle
 Ereignisse, die Reaktions- und Lösungsfrist sowie längere Lücken (orange
 als Hinweis, rot nur bei einer SLA-Verletzung in der Lücke). Darunter
+Die **Beschreibung** ist aufgeklappt, solange die Unterhaltung leer ist; sobald
+eine Nachricht oder Notiz dazukommt, ist sie eingeklappt und zeigt eine
+Vorschau. Mit dem Pfeil klappen Sie sie auf oder zu (im Web und in der App).
 folgt die **Unterhaltung** mit allen Nachrichten und Notizen. Dateien
 erscheinen direkt bei der Nachricht, zu der sie gehören – auch die Anhänge der
 E-Mail, aus der das Ticket entstanden ist (unter der Beschreibung). Bilder
