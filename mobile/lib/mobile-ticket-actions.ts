@@ -261,3 +261,34 @@ export async function setTicketWatched(input: {
     watching: input.watching,
   });
 }
+
+/**
+ * Führt Tickets in ein Haupt-Ticket zusammen (wie im Web): Die übrigen
+ * Tickets werden gelöst und verweisen auf das Haupt-Ticket. Zählt Erfolge
+ * und Fehlschläge; ein einzelner Fehler bricht nicht ab.
+ */
+export async function mergeTicketsInto(
+  tenantId: string,
+  primaryTicketId: string,
+  ticketIds: readonly string[],
+): Promise<{ merged: number; failed: number; lastError: string | null }> {
+  let merged = 0;
+  let failed = 0;
+  let lastError: string | null = null;
+  for (const ticketId of ticketIds) {
+    if (ticketId === primaryTicketId) continue;
+    try {
+      await invokeNextDesk("ticket-operations", {
+        type: "markMerged",
+        tenantId,
+        ticketId,
+        primaryTicketId,
+      });
+      merged += 1;
+    } catch (error) {
+      failed += 1;
+      lastError = error instanceof Error ? error.message : null;
+    }
+  }
+  return { merged, failed, lastError };
+}

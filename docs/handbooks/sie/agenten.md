@@ -445,6 +445,15 @@ Mehr dazu unter «Weitere Aktionen im Ticket».
 
 Mehr dazu unter «Weitere Aktionen im Ticket».
 
+### Wie führe ich mehrere Tickets aus der Liste zusammen?
+
+1. Markieren Sie in der Ticketliste zwei bis zwanzig Tickets (in der App: **Auswählen** und die Tickets antippen).
+2. Wählen Sie in der blauen Leiste **Zusammenführen** (in der App unten **Zusammenführen**).
+3. Wählen Sie das **Haupt-Ticket**; vorgeschlagen wird das älteste offene. Das Haupt-Ticket muss offen sein.
+4. Bestätigen Sie mit **Zusammenführen**. Die anderen Tickets werden gelöst, verweisen auf das Haupt-Ticket und erscheinen in dessen Verlauf.
+
+Mehr dazu unter «Ticketliste».
+
 ### Wie eröffne ich aus einem Ticket einen Fall?
 
 1. Öffnen Sie das Ticket.
@@ -2929,6 +2938,7 @@ der Übersicht, im Kanban und in der App.
   Listen-Detail-Ansicht (Liste links, Ticket rechts).
 - **Mehrfachauswahl**: mehrere Tickets markieren → **Neuer Status** →
   **Status für Auswahl setzen**.
+- **Zusammenführen**: zwei bis zwanzig Tickets markieren → **Zusammenführen** → Haupt-Ticket wählen und bestätigen (auch in der App).
 - **SLA-Anzeige**: Jede Karte zeigt die verbleibende Zeit bis zur
   Lösungsfrist; Tickets in einem wartenden Status zeigen stattdessen **«SLA
   pausiert seit …»** (siehe «SLA-Pause in wartenden Status»).
