@@ -254,17 +254,45 @@ Hinten zwei Tische plus 4 Stühle als Block.`;
 );
 
 Deno.test("Anlass mit Endzeit wird mit ganzer Dauer geplant", async () => {
-  const { eventOrderEndAt } = await import("./event-space-email-ticket-intake.ts");
+  const { eventOrderEndAt } =
+    await import("./event-space-email-ticket-intake.ts");
   assertEquals(
-    eventOrderEndAt("2026-12-10T16:00:00.000Z", { startTime: "17:00", endTime: "22:00" }),
+    eventOrderEndAt("2026-12-10T16:00:00.000Z", {
+      startTime: "17:00",
+      endTime: "22:00",
+    }),
     "2026-12-10T21:00:00.000Z",
   );
   assertEquals(
-    eventOrderEndAt("2026-12-10T16:00:00.000Z", { startTime: "17:00", endTime: null }),
+    eventOrderEndAt("2026-12-10T16:00:00.000Z", {
+      startTime: "17:00",
+      endTime: null,
+    }),
     null,
   );
   assertEquals(
-    eventOrderEndAt("2026-12-10T16:00:00.000Z", { startTime: "17:00", endTime: "16:00" }),
+    eventOrderEndAt("2026-12-10T16:00:00.000Z", {
+      startTime: "17:00",
+      endTime: "16:00",
+    }),
     null,
   );
+});
+
+Deno.test("«Anderer Ort»: der Ort darunter gilt", () => {
+  const order = parseEventOrderPdf([
+    { page: 1, x: 516, y: 783, text: "ID 233" },
+    { page: 1, x: 39, y: 755, text: "Anlassname" },
+    { page: 1, x: 288, y: 754, text: "Checkübergabe" },
+    { page: 1, x: 39, y: 569, text: "Anlassdatum:" },
+    { page: 1, x: 242, y: 568, text: "26.11.2026" },
+    { page: 1, x: 39, y: 527, text: "Ort / Örtlichkeit:" },
+    { page: 1, x: 242, y: 526, text: "Anderer Ort" },
+    { page: 1, x: 242, y: 512, text: "Office /Cafeteria Empfang" },
+    { page: 1, x: 39, y: 500, text: "Ort / Örtlichkeit Andere:" },
+    { page: 1, x: 39, y: 481, text: "Zeit Beginn Anlass:" },
+    { page: 1, x: 242, y: 480, text: "09" },
+    { page: 1, x: 288, y: 480, text: "00" },
+  ]);
+  assertEquals(order?.location, "Office /Cafeteria Empfang");
 });

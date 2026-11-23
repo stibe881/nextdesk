@@ -297,7 +297,7 @@ async function storedTicketPdfs(
   const { data } = await admin
     .from("ticket_attachments")
     .select("storage_bucket, storage_object_path, content_type, byte_size")
-    .eq("tenant_id", input.tenantId)
+    // ticket_attachments hat keine tenant_id; das Ticket gehört zum Mandanten.
     .eq("ticket_id", input.ticketId)
     .eq("content_type", "application/pdf")
     .lte("byte_size", MAX_ORDER_PDF_BYTES)
