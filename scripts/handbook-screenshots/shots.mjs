@@ -293,6 +293,18 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-ticket-weiterleiten",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.nav("Tickets");
+      await h.clickText("Laptop startet nach Windows-Update nicht mehr");
+      await h.click("Ursprüngliche Mail weiterleiten");
+      await h.waitText("An (Mailadressen, durch Komma getrennt)");
+      await h.settle(300);
+    },
+  },
+  {
     name: "ag-sicherheitsfaelle",
     persona: "agent",
     async run(h) {

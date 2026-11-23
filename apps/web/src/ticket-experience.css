@@ -573,3 +573,62 @@
   display: flex;
   gap: 0.35rem;
 }
+
+/* Weiterleiten */
+.ticket-forward-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--overlay, rgba(15, 23, 42, 0.45));
+}
+
+.ticket-forward-dialog {
+  display: grid;
+  gap: 0.75rem;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border-radius: var(--radius-card, 14px);
+  padding: 1.25rem;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.ticket-forward-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.ticket-forward-dialog__head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.ticket-forward-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+}
+
+.ticket-detail-heading-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ticket-forward-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 34px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+}

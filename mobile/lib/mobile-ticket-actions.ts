@@ -316,3 +316,53 @@ export async function loadMergePreview(
   );
   return parseMergePreview(response?.data);
 }
+
+/**
+ * Leitet die ursprüngliche Mail (oder eine Nachricht) des Tickets an
+ * beliebige Adressen weiter. Die anfragende Person erhält nichts; in der
+ * Unterhaltung erscheint eine interne Notiz «Weitergeleitet an …».
+ */
+export async function forwardTicket(input: {
+  tenantId: string;
+  ticketId: string;
+  emails: string[];
+  message: string;
+  sourceCommentId?: string | null;
+}): Promise<number> {
+  const response = await invokeNextDesk<{ data?: { forwarded?: unknown } }>(
+    "ticket-operations",
+    {
+      type: "forwardTicket",
+      tenantId: input.tenantId,
+      ticketId: input.ticketId,
+      emails: input.emails,
+      message: input.message,
+      sourceCommentId: input.sourceCommentId ?? null,
+    },
+  );
+  const count = Number(response?.data?.forwarded);
+  return Number.isFinite(count) ? count : input.emails.length;
+}
+
+const FORWARD_EMAIL = /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/;
+
+/** «a@b.ch; c@d.ch, …» → gültige und ungültige Adressen. */
+export function parseForwardRecipients(value: string): {
+  emails: string[];
+  invalid: string[];
+} {
+  const parts = value
+    .split(/[\s,;]+/)
+    .map((part) => part.trim().replace(/^<|>$/g, ""))
+    .filter(Boolean);
+  return {
+    emails: [
+      ...new Set(
+        parts
+          .filter((part) => FORWARD_EMAIL.test(part))
+          .map((part) => part.toLowerCase()),
+      ),
+    ],
+    invalid: parts.filter((part) => !FORWARD_EMAIL.test(part)),
+  };
+}

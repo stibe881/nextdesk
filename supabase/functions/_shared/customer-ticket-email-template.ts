@@ -7,6 +7,8 @@ export type CustomerTicketEmailKind =
   | "rating_reminder"
   /** Ticket was merged into another one: where the request continues. */
   | "merge_notice"
+  /** A message of the ticket forwarded to another address (e.g. a vendor). */
+  | "forward"
   | "test"
   /** nextDesk notification to an agent or member (no reply expected). */
   | "notification"
@@ -211,6 +213,20 @@ function presentation(
           "Wie zufrieden waren Sie mit dem Support?",
         ),
         replyHint: openHint,
+      };
+    case "forward":
+      return {
+        eyebrow: "Weitergeleitete Nachricht",
+        intro: tone(
+          formality,
+          "Wir leiten dir die folgende Nachricht weiter.",
+          "Wir leiten Ihnen die folgende Nachricht weiter.",
+        ),
+        replyHint: tone(
+          formality,
+          "Du kannst direkt auf diese E-Mail antworten. Bitte lass die Ticketnummer im Betreff stehen.",
+          "Sie können direkt auf diese E-Mail antworten. Bitte lassen Sie die Ticketnummer im Betreff stehen.",
+        ),
       };
     case "test":
       return {
@@ -470,6 +486,8 @@ function headline(
       );
     case "resolution":
       return tone(formality, "Dein Ticket ist gelöst", "Ihr Ticket ist gelöst");
+    case "forward":
+      return "Weitergeleitete Nachricht";
     case "merge_notice":
       return tone(
         formality,
