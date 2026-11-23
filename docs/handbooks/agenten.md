@@ -243,7 +243,7 @@ Mehr dazu unter «Ein Ticket bearbeiten».
 
 1. Öffne das Ticket.
 2. Wähle im Kopf- oder Infobereich die **Kategorie** bzw. das **Team**.
-3. In der App tippst du in der Karte **Details** auf **Kategorie** bzw. **Team** (unter «Zugewiesen an») und wählst den neuen Wert. Zur Auswahl stehen die aktiven Teams der Abteilung des Tickets.
+3. In der App klappst du die Karte **Details** auf (sie ist zu Beginn eingeklappt) und tippst auf **Kategorie** bzw. **Team** (unter «Zugewiesen an») und wählst den neuen Wert. Zur Auswahl stehen die aktiven Teams der Abteilung des Tickets.
 
 Mehr dazu unter «Ein Ticket bearbeiten».
 
@@ -506,6 +506,7 @@ Mehr dazu unter «Ein Ticket bearbeiten».
 2. Klicke in der Karte **Koordination** auf **An nächste Stufe übergeben**.
 3. Schreibe die Übergabenotiz. Die Notiz ist Pflicht.
 4. Bestätige die Übergabe. Unter **Verlauf der Stufen** siehst du die bisherigen Übergaben.
+5. Wählst du stattdessen im Feld **Team** ein Team einer anderen Supportstufe (im Web oder in der App), fragt nextDesk ebenfalls nach der Übergabenotiz. Ohne Notiz bleibt das Team unverändert.
 
 Mehr dazu unter «Ein Ticket bearbeiten».
 
@@ -1580,8 +1581,8 @@ Mehr dazu unter «Eintritte und Austritte».
 ### Wie kommen Bestellungen der Anlässe-App zu den Anlässen?
 
 1. Die Anlässe-App schickt pro Bestellung zwei Mails: «Bestellung Anlässe Essen und Einrichten für Anlass …» mit dem PDF **Anlassdetails** und «Neue Bestellung Einrichten Anlässe <Nummer>» an das ICT-Team.
-2. nextDesk liest daraus Anlass, Datum, Beginn, Ort, Technik, Einrichtung, Gastro und Bemerkungen und legt unter **Planung und Betrieb → Anlässe** einen Eintrag an. Es entsteht kein Ticket.
-3. Die zweite Mail derselben Bestellung ergänzt den Eintrag (Bemerkungen, Technik), statt einen zweiten anzulegen.
+2. nextDesk liest daraus Anlass, Datum, Zeit, Ort, Personenzahl, Technik und die Bemerkung und legt unter **Planung und Betrieb → Anlässe** einen Eintrag an. Es entsteht kein Ticket.
+3. Die zweite Mail derselben Bestellung ergänzt den Eintrag (Bemerkung, Technik), statt einen zweiten anzulegen. Gastro, Bestuhlung und Kostenstelle sind nicht für die ICT und stehen nur im PDF.
 4. Fehlen Angaben oder ist der Raum besetzt, steht der Anlass mit dem Grund unter **Klärung und Übernahme erforderlich**. Kommt eine Mail ohne lesbares PDF und ist die Bestellung noch unbekannt, bleibt ein normales Ticket stehen.
 
 Mehr dazu unter «Anlässe».
@@ -3740,8 +3741,10 @@ Unter **Planung und Betrieb → Anlässe** (früher «Raumplanung») stehen alle
 geplanten Anlässe mit Raum, Zeit, Aufgaben und Technik. Bestellungen der
 Anlässe-App werden automatisch übernommen: aus dem PDF **Anlassdetails** und
 aus der Mail «Neue Bestellung Einrichten Anlässe <Nummer>». Beide Mails einer
-Bestellung ergeben einen einzigen Anlass; die Angaben zu Einrichtung, Gastro,
-Personenzahl und die Bemerkungen stehen in den **Bemerkungen** des Anlasses.
+Bestellung ergeben einen einzigen Anlass. Übernommen werden nur die Angaben
+für die ICT: Anlass, Datum, Zeit, Ort, Personenzahl, Technik und die
+Bemerkung der Bestellung (unter **Bemerkungen**). Gastro, Bestuhlung und
+Kostenstelle stehen im PDF.
 Geplant wird der Anlass von Beginn bis Ende laut Bestellung (ohne Endzeit
 30 Minuten ab Beginn); fehlt etwas oder ist der Raum belegt,
 steht der Anlass mit dem Grund unter **Klärung und Übernahme erforderlich**.

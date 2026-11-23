@@ -3916,6 +3916,45 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
     if (
       action.assignedTeamId !== undefined &&
+      action.assignedTeamId !== (ticket.assigned_team_id ?? null) &&
+      ticket.assigned_team_id &&
+      action.assignedTeamId
+    ) {
+      // Ein Teamwechsel in eine andere Supportstufe ist eine Übergabe und
+      // braucht eine Übergabenotiz (ticket-support-levels, «handover»).
+      const { data: levelTeams } = await context.supabaseAdmin
+        .from("teams")
+        .select("id, support_level")
+        .eq("tenant_id", ticket.tenant_id)
+        .in("id", [ticket.assigned_team_id, action.assignedTeamId]);
+      const levelOf = (id: string) => {
+        const level = ((levelTeams ?? []) as any[]).find((row) => row.id === id)
+          ?.support_level;
+        return typeof level === "number" ? level : null;
+      };
+      const currentLevel = levelOf(ticket.assigned_team_id);
+      const targetLevel = levelOf(action.assignedTeamId);
+      if (
+        currentLevel !== null &&
+        targetLevel !== null &&
+        currentLevel !== targetLevel
+      )
+        return response(
+          request,
+          {
+            error: {
+              code: "support_level_handover_required",
+              message:
+                "Dieses Team gehört zu einer anderen Supportstufe. Für den Wechsel ist eine Übergabenotiz nötig.",
+              currentLevel,
+              targetLevel,
+            },
+          },
+          409,
+        );
+    }
+    if (
+      action.assignedTeamId !== undefined &&
       action.assignedTeamId !== (ticket.assigned_team_id ?? null)
     ) {
       if (action.assignedTeamId !== null) {

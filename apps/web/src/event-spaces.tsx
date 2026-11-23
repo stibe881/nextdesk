@@ -266,6 +266,15 @@ function requestOccurrences(draft: RequestDraft) {
   });
 }
 
+/** «30 Min.», «4 Std.» oder «4 Std. 30 Min.». */
+function formatPlanDuration(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${rest} Min.`;
+  return rest ? `${hours} Std. ${rest} Min.` : `${hours} Std.`;
+}
+
 /** Gewünschte Dauer eines Klärungsfalls (Ende − Beginn), sonst 30 Minuten. */
 function requestedDurationMs(item: ClarificationCase): number {
   const start = item.requestedStartsAt
@@ -1378,7 +1387,8 @@ export function EventSpaces({
                       onClick={() => void resolveClarification(item)}
                       type="button"
                     >
-                      Konfliktfrei planen (30 Min.)
+                      Konfliktfrei planen (
+                      {formatPlanDuration(requestedDurationMs(item))})
                     </button>
                     <button
                       className="secondary-button"
