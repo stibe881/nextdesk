@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
+  Image,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -124,6 +126,11 @@ import { recordRecentItem } from "@/lib/recent-items";
 import { draftRestoredLabel, pickNewestDraft } from "@/lib/recent-items-model";
 import { tn } from "@/lib/formality";
 import { mentionedAgentIds } from "@/lib/ticket-mentions";
+import {
+  presenceInitials,
+  refreshTicketPresence,
+  type TicketPresencePerson,
+} from "@/lib/ticket-presence";
 import { NextDeskRequestError } from "@/lib/nextdesk-error-messages";
 import {
   getMobileTicketSupportLevel,
@@ -429,6 +436,35 @@ export default function TicketDetailScreen() {
   const [reopenSheetOpen, setReopenSheetOpen] = useState(false);
   // «Details» ist in der App standardmässig eingeklappt.
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // Wer das Ticket gerade auch offen hat (Agenten und anfragende Person).
+  const [presence, setPresence] = useState<TicketPresencePerson[]>([]);
+  const presenceTicketId = ticket?.id ?? null;
+  const presenceTenantId = tenant?.id ?? null;
+  useEffect(() => {
+    if (!presenceTicketId || !presenceTenantId) return;
+    let active = true;
+    const refresh = () => {
+      if (AppState.currentState !== "active") return;
+      void refreshTicketPresence(presenceTenantId, presenceTicketId)
+        .then((people) => {
+          if (active) setPresence(people);
+        })
+        .catch(() => {
+          if (active) setPresence([]);
+        });
+    };
+    refresh();
+    const interval = setInterval(refresh, 20_000);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    return () => {
+      active = false;
+      clearInterval(interval);
+      subscription.remove();
+      setPresence([]);
+    };
+  }, [presenceTenantId, presenceTicketId]);
   // Beschreibung: aufgeklappt, solange die Unterhaltung leer ist; danach
   // eingeklappt. Ein Tipp überschreibt das für dieses Ticket.
   const [descriptionOpen, setDescriptionOpen] = useState<boolean | null>(null);
@@ -2030,7 +2066,73 @@ export default function TicketDetailScreen() {
           </View>
 
           <View style={styles.ticketHead}>
-            <Text style={styles.ticketId}>{ticket.ticketNumber}</Text>
+            <View style={styles.ticketIdRow}>
+              <Text style={styles.ticketId}>{ticket.ticketNumber}</Text>
+              {presence.length > 0 ? (
+                <Pressable
+                  accessibilityHint="Zeigt, wer das Ticket gerade auch anschaut."
+                  accessibilityLabel={`Schaut gerade auch: ${presence
+                    .map((person) => person.displayName)
+                    .join(", ")}`}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => {
+                    hapticSelection();
+                    Alert.alert(
+                      "Schaut gerade auch",
+                      presence
+                        .map(
+                          (person) =>
+                            `${person.displayName}${
+                              person.role === "requester"
+                                ? " (anfragende Person)"
+                                : ""
+                            }${person.editing ? " – bearbeitet gerade" : ""}`,
+                        )
+                        .join("\n"),
+                    );
+                  }}
+                  style={styles.presenceRow}
+                >
+                  {presence.slice(0, 4).map((person, index) => (
+                    <View
+                      key={`${person.displayName}-${index}`}
+                      style={[
+                        styles.presenceAvatar,
+                        {
+                          backgroundColor: colors.primarySoft,
+                          borderColor: colors.surface,
+                          marginLeft: index === 0 ? 0 : -8,
+                        },
+                      ]}
+                    >
+                      {person.photoUrl ? (
+                        <Image
+                          source={{ uri: person.photoUrl }}
+                          style={styles.presencePhoto}
+                        />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.presenceInitials,
+                            { color: colors.primaryText },
+                          ]}
+                        >
+                          {presenceInitials(person.displayName)}
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                  {presence.length > 4 ? (
+                    <Text
+                      style={[styles.presenceMore, { color: colors.muted }]}
+                    >
+                      +{presence.length - 4}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              ) : null}
+            </View>
             {ticket.canUpdate && editingField === "subject" ? (
               <View style={styles.inlineEdit}>
                 <TextInput
@@ -5528,6 +5630,25 @@ const useStyles = makeThemedStyles((c) => ({
     paddingVertical: 8,
   },
   mergeHintText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  ticketIdRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  presenceRow: { alignItems: "center", flexDirection: "row" },
+  presenceAvatar: {
+    alignItems: "center",
+    borderRadius: 16,
+    borderWidth: 2,
+    height: 32,
+    justifyContent: "center",
+    overflow: "hidden",
+    width: 32,
+  },
+  presencePhoto: { height: 32, width: 32 },
+  presenceInitials: { fontSize: 12, fontWeight: "800" },
+  presenceMore: { fontSize: 12, fontWeight: "700", marginLeft: 4 },
   descriptionHeader: {
     alignItems: "center",
     flexDirection: "row",

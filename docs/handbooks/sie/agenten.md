@@ -260,7 +260,7 @@ Mehr dazu unter «Ein Ticket bearbeiten».
 
 1. Öffnen Sie das Ticket.
 2. Oben rechts im Ticketkopf stehen runde Profilbilder (ohne Foto: Kürzel) aller, die das Ticket gerade geöffnet haben.
-3. Bewegen Sie die Maus über ein Bild, um den Namen zu sehen. Ein grüner Rand bedeutet, dass die Person gerade etwas ändert.
+3. Bewegen Sie die Maus über ein Bild, um den Namen zu sehen. In der App stehen die Bilder neben der Ticketnummer; ein Tipp darauf zeigt die Namen. Ein grüner Rand bedeutet, dass die Person gerade etwas ändert. Auch die anfragende Person erscheint, wenn sie das Ticket offen hat (mit «anfragende Person»).
 
 Mehr dazu unter «Ein Ticket bearbeiten».
 
@@ -3060,8 +3060,8 @@ Sie Betreff und Beschreibung direkt dort (**Beschreibung speichern** oder
 Strg/⌘ + Enter).
 
 Oben rechts im Ticketkopf sehen Sie als runde Profilbilder (ohne Foto: Kürzel)
-alle Kolleginnen und Kollegen, die das Ticket gerade geöffnet haben. Bewegen Sie die Maus über ein
-Bild, sehen Sie den Namen. Ein grüner Rand bedeutet, dass die Person gerade
+alle, die das Ticket gerade geöffnet haben, auch die anfragende Person. Bewegen Sie die Maus über ein
+Bild, sehen Sie den Namen; in der App tippen Sie auf die Bilder neben der Ticketnummer. Ein grüner Rand bedeutet, dass die Person gerade
 etwas ändert; so vermeiden Sie doppelte Arbeit.
 
 **Status ändern heisst Ticket übernehmen:** Wer den Status eines Tickets ändert
