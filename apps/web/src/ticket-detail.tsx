@@ -90,6 +90,7 @@ import {
 import { TicketControlPanel } from "./ticket-control";
 import { Deferred } from "./deferred";
 import { TicketForwardDialog } from "./ticket-forward";
+import { activeMentionQuery, mentionedAgentIds } from "./lib/ticket-mentions";
 import {
   AffectedPeopleBadge,
   DuplicateSuggestions,
@@ -5738,6 +5739,23 @@ export function TicketDetail({
         }) || left.id.localeCompare(right.id),
     );
   }, [assignableAgents, detail?.agents, detail?.assignedAgent]);
+  // «@» im Text: passende Agenten vorschlagen (nur Mitarbeitenden-Ansicht).
+  const mentionQuery =
+    detail?.canUseInternalNotes && !requesterView
+      ? activeMentionQuery(commentBody)
+      : null;
+  const mentionSuggestions =
+    mentionQuery === null
+      ? []
+      : visibleAssignableAgents
+          .filter(
+            (agent) =>
+              agent.id !== currentUserId &&
+              agent.displayName
+                .toLocaleLowerCase("de-CH")
+                .includes(mentionQuery.toLocaleLowerCase("de-CH")),
+          )
+          .slice(0, 6);
   const hasContentChanges = Boolean(
     detail &&
     (isEditingTicket || isEditingDescription) &&
@@ -6736,8 +6754,14 @@ export function TicketDetail({
         : commentBody,
       activeCommentImageAttachments.length,
     );
+    // Ausgewählte Personen und von Hand getippte «@Name» im Text.
     const mentionRecipients = detail?.canUseInternalNotes
-      ? mentionedUserIds.filter((userId) => userId !== currentUserId)
+      ? [
+          ...new Set([
+            ...mentionedUserIds,
+            ...mentionedAgentIds(body, visibleAssignableAgents),
+          ]),
+        ].filter((userId) => userId !== currentUserId)
       : [];
     if (!body) {
       setError(
@@ -8354,6 +8378,43 @@ export function TicketDetail({
                   value={commentBody}
                 />
               </label>
+              {mentionSuggestions.length > 0 ? (
+                <ul
+                  aria-label="Agenten erwähnen"
+                  className="ticket-mention-suggestions"
+                  role="listbox"
+                >
+                  {mentionSuggestions.map((agent) => (
+                    <li key={agent.id}>
+                      <button
+                        onClick={() => {
+                          const next = commentBody.replace(
+                            /@([^\s@]{0,30}(?: [^\s@]{0,30})?)$/u,
+                            `@${agent.displayName} `,
+                          );
+                          setCommentDrafts((current) =>
+                            updateTicketCommentDraft(
+                              current,
+                              commentVisibility,
+                              next,
+                            ),
+                          );
+                          setMentionedUserIds((current) =>
+                            current.includes(agent.id)
+                              ? current
+                              : [...current, agent.id],
+                          );
+                          commentTextareaRef.current?.focus();
+                        }}
+                        role="option"
+                        type="button"
+                      >
+                        @{agent.displayName}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               {requesterView ? null : (
                 <TicketTextRewrite
                   audience={

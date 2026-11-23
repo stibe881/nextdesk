@@ -272,7 +272,9 @@ async function notificationPayload(
     .eq("id", notificationId)
     .maybeSingle();
   const payload = notification?.payload;
-  return typeof payload === "object" && payload !== null && !Array.isArray(payload)
+  return typeof payload === "object" &&
+    payload !== null &&
+    !Array.isArray(payload)
     ? payload
     : {};
 }
@@ -296,11 +298,12 @@ export function ipamFields(
   kind: string,
   payload: Record<string, unknown>,
 ): Record<string, string> {
-  const event = kind === "ipam.agent_offline"
-    ? "agent_offline"
-    : kind === "ipam.reservation_expiring"
-    ? "reservation_expiring"
-    : "finding";
+  const event =
+    kind === "ipam.agent_offline"
+      ? "agent_offline"
+      : kind === "ipam.reservation_expiring"
+        ? "reservation_expiring"
+        : "finding";
   const fields: Record<string, string> = { ipamEvent: event };
   const title = payloadText(payload, "title");
   const number = payloadText(payload, "number", 60);
@@ -324,17 +327,19 @@ export function securityCaseFields(
   kind: string,
   payload: Record<string, unknown>,
 ): Record<string, string | number> {
-  const event = kind === "security.case_clicked"
-    ? "clicked"
-    : kind === "security.case_overdue"
-    ? "overdue"
-    : "campaign";
+  const event =
+    kind === "security.case_clicked"
+      ? "clicked"
+      : kind === "security.case_overdue"
+        ? "overdue"
+        : "campaign";
   const fields: Record<string, string | number> = { securityEvent: event };
   const count = payload.reporterCount ?? payload.count;
   if (typeof count === "number" && Number.isInteger(count) && count > 0) {
     fields.securityCount = count;
   }
-  const escalated = payload.escalated === true || payload.stage === "supervisor";
+  const escalated =
+    payload.escalated === true || payload.stage === "supervisor";
   if (event === "overdue" && escalated) fields.securityEscalated = "1";
   return fields;
 }
@@ -361,8 +366,10 @@ export function inventoryFields(
   const fields: Record<string, string> = {
     inventoryEvent: kind === "inventory.count_due" ? "count_due" : "reorder",
   };
-  const name = payloadText(payload, "itemName") ??
-    payloadText(payload, "locationName") ?? payloadText(payload, "title");
+  const name =
+    payloadText(payload, "itemName") ??
+    payloadText(payload, "locationName") ??
+    payloadText(payload, "title");
   if (name) fields.inventoryName = name;
   return fields;
 }
@@ -388,13 +395,13 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
   }
   let shop:
     | {
-      shopEvent: string;
-      orderId?: string;
-      orderNumber?: string;
-      shopEscalated?: boolean;
-      shopDeliveryMethod?: string;
-      shopDeliveryLocation?: string;
-    }
+        shopEvent: string;
+        orderId?: string;
+        orderNumber?: string;
+        shopEscalated?: boolean;
+        shopDeliveryMethod?: string;
+        shopDeliveryLocation?: string;
+      }
     | {} = {};
   if (preferenceCategory === "shop" && row.notification_id) {
     const { data: notification } = await admin
@@ -428,10 +435,10 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
   }
   let serviceTask:
     | {
-      serviceTaskEvent: string;
-      serviceTaskTitle?: string;
-      occurrenceId?: string;
-    }
+        serviceTaskEvent: string;
+        serviceTaskTitle?: string;
+        occurrenceId?: string;
+      }
     | {} = {};
   if (preferenceCategory === "service_task" && row.notification_id) {
     const { data: notification } = await admin
@@ -458,14 +465,12 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
       .eq("id", row.notification_id)
       .maybeSingle();
     const payload = notification?.payload ?? {};
-    for (
-      const [from, to] of [
-        ["assetId", "assetId"],
-        ["assetName", "assetName"],
-        ["reason", "infrastructureReason"],
-        ["dueOn", "dueOn"],
-      ]
-    ) {
+    for (const [from, to] of [
+      ["assetId", "assetId"],
+      ["assetName", "assetName"],
+      ["reason", "infrastructureReason"],
+      ["dueOn", "dueOn"],
+    ]) {
       if (typeof payload[from] === "string") infrastructure[to] = payload[from];
     }
   }
@@ -507,8 +512,10 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
       ...(typeof name === "string" && name.trim()
         ? { kudosRequesterName: name.trim() }
         : {}),
-      ...(typeof score === "number" && Number.isInteger(score) && score >= 1 &&
-          score <= 5
+      ...(typeof score === "number" &&
+      Number.isInteger(score) &&
+      score >= 1 &&
+      score <= 5
         ? { kudosScore: score }
         : {}),
     };
@@ -526,18 +533,16 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
       .eq("id", row.notification_id)
       .maybeSingle();
     const payload = notification?.payload ?? {};
-    for (
-      const [from, to] of [
-        ["number", "incidentNumber"],
-        ["title", "incidentTitle"],
-        ["reason", "incidentReason"],
-        ["severity", "incidentSeverity"],
-        ["incidentId", "incidentId"],
-        ["source", "incidentSource"],
-        ["provider", "incidentProvider"],
-        ["message", "incidentMessage"],
-      ]
-    ) {
+    for (const [from, to] of [
+      ["number", "incidentNumber"],
+      ["title", "incidentTitle"],
+      ["reason", "incidentReason"],
+      ["severity", "incidentSeverity"],
+      ["incidentId", "incidentId"],
+      ["source", "incidentSource"],
+      ["provider", "incidentProvider"],
+      ["message", "incidentMessage"],
+    ]) {
       if (typeof payload[from] === "string") incident[to] = payload[from];
     }
   }
@@ -602,8 +607,10 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
       ...(assigneeName ? { watchAssigneeName: assigneeName } : {}),
     };
   }
-  // Copies for a stand-in carry the name of the absent person.
+  // Copies for a stand-in carry the name of the absent person; mentions
+  // carry the name of the person who mentioned.
   let delegated: { delegatedFromName?: string } = {};
+  let mention: { mentionAuthorName?: string } = {};
   if (row.notification_id && row.ticket_id) {
     const { data: notification } = await admin
       .from("ticket_notifications")
@@ -614,31 +621,43 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     if (typeof name === "string" && name.trim()) {
       delegated = { delegatedFromName: name.trim() };
     }
+    const author = notification?.payload?.authorName;
+    if (
+      row.kind === "ticket.mention" &&
+      typeof author === "string" &&
+      author.trim()
+    ) {
+      mention = { mentionAuthorName: author.trim() };
+    }
   }
   const badge = await unreadNotificationCount(admin, row.user_id);
-  const payload = buildApnsPayload({
-    badge,
-    ...shop,
-    ...serviceTask,
-    ...infrastructure,
-    ...watched,
-    ...ruleReminder,
-    ...vendorReminder,
-    ...kudos,
-    ...securityEvent,
-    ...ipam,
-    ...inventory,
-    ...incident,
-    ...delegated,
-    kind: payloadKind(row.kind, preferenceCategory),
-    notificationKind: row.kind,
-    tenantId: row.tenant_id,
-    notificationId: row.notification_id ?? row.outbox_id,
-    ...(row.ticket_id ? { ticketId: row.ticket_id } : {}),
-    ...(row.contract_id ? { contractId: row.contract_id } : {}),
-    ...(row.ticket_number ? { ticketNumber: row.ticket_number } : {}),
-    subject: row.subject,
-  }, await loadFormality(admin, row.tenant_id));
+  const payload = buildApnsPayload(
+    {
+      badge,
+      ...shop,
+      ...serviceTask,
+      ...infrastructure,
+      ...watched,
+      ...ruleReminder,
+      ...vendorReminder,
+      ...kudos,
+      ...securityEvent,
+      ...ipam,
+      ...inventory,
+      ...incident,
+      ...delegated,
+      ...mention,
+      kind: payloadKind(row.kind, preferenceCategory),
+      notificationKind: row.kind,
+      tenantId: row.tenant_id,
+      notificationId: row.notification_id ?? row.outbox_id,
+      ...(row.ticket_id ? { ticketId: row.ticket_id } : {}),
+      ...(row.contract_id ? { contractId: row.contract_id } : {}),
+      ...(row.ticket_number ? { ticketNumber: row.ticket_number } : {}),
+      subject: row.subject,
+    },
+    await loadFormality(admin, row.tenant_id),
+  );
   const results = await Promise.all(
     currentDevices.map(async (device) => {
       const result = await sendApns(
@@ -717,8 +736,8 @@ const handler = withSupabase(
       return response({ error: { code: "unauthorized" } }, 401);
     }
 
-    const [ticketAuthorizationSweep, questionAuthorizationSweep] = await Promise
-      .all([
+    const [ticketAuthorizationSweep, questionAuthorizationSweep] =
+      await Promise.all([
         context.supabaseAdmin.rpc("push_skip_unauthorized_ticket_outbox"),
         context.supabaseAdmin.rpc(
           "push_skip_unauthorized_department_question_outbox",
