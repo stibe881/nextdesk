@@ -1139,6 +1139,9 @@ export default function TicketDetailScreen() {
       setEditingField(null);
       setMessage("Ticket wurde erfolgreich gespeichert.");
       hapticSuccess();
+      // Der Server kann dabei mehr ändern (z. B. automatische Zuweisung beim
+      // ersten Statuswechsel, SLA-Pause): den aktuellen Stand nachladen.
+      void load(false);
     } catch (nextError) {
       hapticError();
       setError(
@@ -1173,6 +1176,7 @@ export default function TicketDetailScreen() {
       hapticSuccess();
       // Assignable agents depend on the team.
       void loadAllAssignableAgents();
+      void load(false);
     } catch (nextError) {
       hapticError();
       setError(
