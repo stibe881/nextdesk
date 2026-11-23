@@ -403,8 +403,10 @@ async function processEventOrder(
   input: IntakeInput,
   order: EventOrder & { pdf?: Uint8Array },
 ): Promise<EventSpaceEmailTicketIntakeOutcome> {
-  const organiser = input.senderName?.trim() || order.costCenterEmail ||
-    "Anlässe-App";
+  // Die Text-Mail kommt vom Konto der App; die bestellende Person steht im
+  // Mailtext. Beim PDF ist der Absender die bestellende Person.
+  const organiser = order.organiser?.trim() || input.senderName?.trim() ||
+    order.costCenterEmail || "Anlässe-App";
   const converted = eventOrderIntakeInput(order, organiser);
   const parsed = parseEventSpaceEmailIntake({
     subject: converted.subject,
@@ -432,18 +434,8 @@ async function processEventOrder(
     .limit(1)
     .maybeSingle();
   if (existing?.id) {
-    const notes = [converted.notes];
-    if (
-      request &&
-      typeof existing.requested_starts_at === "string" &&
-      Date.parse(existing.requested_starts_at) !== Date.parse(request.startAt)
-    ) {
-      notes.push(
-        `Abweichende Angabe in einer weiteren Mail: ${order.date} ${order.startTime} Uhr, ${order.location}`,
-      );
-    }
     const previous = typeof existing.remarks === "string" ? existing.remarks : "";
-    const addition = notes.join("\n");
+    const addition = converted.notes.trim();
     const equipment = [
       ...new Set([
         ...((existing.requested_equipment_keys ?? []) as string[]),
@@ -453,8 +445,8 @@ async function processEventOrder(
     await admin
       .from("event_space_requests")
       .update({
-        remarks: previous.includes(addition)
-          ? previous
+        remarks: !addition || previous.includes(addition)
+          ? previous || null
           : [previous, addition].filter(Boolean).join("\n\n").slice(0, 8_000),
         expected_participants: existing.expected_participants ??
           (Number.isFinite(persons) && persons > 0 ? persons : null),
@@ -519,7 +511,7 @@ async function processEventOrder(
     await admin
       .from("event_space_requests")
       .update({
-        remarks: converted.notes,
+        remarks: converted.notes || null,
         expected_participants: Number.isFinite(persons) && persons > 0
           ? persons
           : null,

@@ -15,6 +15,8 @@ export type EventOrderPdf = EventOrder;
 /** Bestellung der Anlässe-App, aus dem PDF oder aus der Mail ans ICT-Team. */
 export type EventOrder = {
   orderId: string;
+  /** Bestellende Person laut Mailtext («… von Franziska Elmer»). */
+  organiser?: string | null;
   title: string;
   eventType: string | null;
   costCenterEmail: string | null;
@@ -403,30 +405,11 @@ export function eventOrderIntakeInput(
     ictDetails.push("Presenter: Ja");
   }
 
-  const notes = [
-    `${order.articles.length ? "Bestellung (PDF)" : "Bestellung"} aus der Anlässe-App (ID ${order.orderId})${
-      order.eventType ? `, ${order.eventType}` : ""
-    }`,
-    `Anlass: ${order.startTime}${order.endTime ? `–${order.endTime}` : ""} Uhr${
-      order.persons ? `, ${order.persons} Personen` : ""
-    }`,
-    order.infrastructure.length
-      ? `Infrastruktur: ${order.infrastructure.join(", ")}`
-      : "",
-    ictDetails.length ? `ICT: ${ictDetails.join(", ")}` : "",
-    order.service.length ? `Service: ${order.service.join(", ")}` : "",
-    order.articles.length
-      ? `Gastro: ${order.articles.join(", ")}${
-          order.totalCost ? ` (Total ${order.totalCost})` : ""
-        }`
-      : "",
-    order.remarks ? `Bemerkung: ${order.remarks}` : "",
-    order.costCenter || order.costCenterEmail
-      ? `Kostenstelle: ${[order.costCenter, order.costCenterEmail]
-          .filter(Boolean)
-          .join(", ")}`
-      : "",
-  ]
+  // In die Bemerkungen gehört nur das Feld «Bemerkung» der Bestellung.
+  // Anlass, Zeit, Ort und Personen stehen in eigenen Feldern, die Technik
+  // unter «Technik»; Gastro, Bestuhlung, Kostenstelle usw. sind nicht für die
+  // ICT. Einzig ICT-Angaben ohne eigenes Feld (z. B. Presenter) kommen dazu.
+  const notes = [order.remarks ?? "", ictDetails.join("\n")]
     .filter(Boolean)
     .join("\n")
     .slice(0, 4_000);
@@ -527,7 +510,8 @@ export function parseEventOrderText(
     orderId,
     title,
     eventType: null,
-    costCenterEmail: organiser,
+    costCenterEmail: null,
+    organiser,
     costCenter: null,
     date: `${date[3]}-${date[2]!.padStart(2, "0")}-${date[1]!.padStart(2, "0")}`,
     startTime,

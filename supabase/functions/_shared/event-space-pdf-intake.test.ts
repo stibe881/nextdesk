@@ -222,7 +222,7 @@ Hinten zwei Tische plus 4 Stühle als Block.`;
     assertEquals(order?.startTime, "13:00");
     assertEquals(order?.endTime, "17:00");
     assertEquals(order?.location, "A1 10 Empfang Nord");
-    assertEquals(order?.costCenterEmail, "Franziska Elmer");
+    assertEquals(order?.organiser, "Franziska Elmer");
     assertEquals(order?.infrastructure, [
       "Bestuhlung: U-Form",
       "Stühle: 14",
@@ -295,4 +295,10 @@ Deno.test("«Anderer Ort»: der Ort darunter gilt", () => {
     { page: 1, x: 288, y: 480, text: "00" },
   ]);
   assertEquals(order?.location, "Office /Cafeteria Empfang");
+});
+
+Deno.test("Bemerkungen enthalten nur die Bemerkung der Bestellung", () => {
+  const order = parseEventOrderPdf(items);
+  const input = eventOrderIntakeInput(order!, "Claudia Friedli");
+  assertEquals(input.notes, "Bitte Tische festlich decken");
 });
