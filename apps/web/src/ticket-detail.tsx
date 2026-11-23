@@ -84,6 +84,7 @@ import { ProjectLinkCard } from "./project-link-card";
 import { recordRecentItem } from "./lib/recent-items";
 import { functionErrorMessage } from "./lib/function-error";
 import { TicketControlPanel } from "./ticket-control";
+import { Deferred } from "./deferred";
 import {
   AffectedPeopleBadge,
   DuplicateSuggestions,
@@ -7552,13 +7553,15 @@ export function TicketDetail({
         </p>
       )}
 
-      {!requesterView && (
-        <TicketMonitoringIncidentHint
-          onOpenIncident={onOpenIncident}
-          tenantId={tenantId}
-          ticketId={ticketId}
-        />
-      )}
+      <Deferred mode="idle" resetKey={ticketId}>
+        {!requesterView && (
+          <TicketMonitoringIncidentHint
+            onOpenIncident={onOpenIncident}
+            tenantId={tenantId}
+            ticketId={ticketId}
+          />
+        )}
+      </Deferred>
 
       {!requesterView && (
         <MergedIntoBanner
@@ -7574,29 +7577,33 @@ export function TicketDetail({
         />
       )}
 
-      {!requesterView &&
-        detail.canMerge &&
-        !detail.mergeInsights.mergedInto && (
-          <DuplicateSuggestions
-            onChanged={async () => {
-              onChanged();
-              await loadTicket();
-            }}
-            onOpenTicket={onOpenTicket}
-            refreshKey={`${detail.ticket.id}:${detail.mergeInsights.mergedTickets.length}`}
+      <Deferred mode="idle" resetKey={ticketId}>
+        {!requesterView &&
+          detail.canMerge &&
+          !detail.mergeInsights.mergedInto && (
+            <DuplicateSuggestions
+              onChanged={async () => {
+                onChanged();
+                await loadTicket();
+              }}
+              onOpenTicket={onOpenTicket}
+              refreshKey={`${detail.ticket.id}:${detail.mergeInsights.mergedTickets.length}`}
+              tenantId={tenantId}
+              ticketId={ticketId}
+            />
+          )}
+      </Deferred>
+
+      <Deferred mode="idle" resetKey={ticketId}>
+        {detail.canUpdate && (
+          <TicketIncidentBanner
+            refreshKey={`${detail.ticket.id}:${detail.ticket.subject}:${detail.mergeInsights.affectedPeople}`}
+            subject={detail.ticket.subject}
             tenantId={tenantId}
             ticketId={ticketId}
           />
         )}
-
-      {detail.canUpdate && (
-        <TicketIncidentBanner
-          refreshKey={`${detail.ticket.id}:${detail.ticket.subject}:${detail.mergeInsights.affectedPeople}`}
-          subject={detail.ticket.subject}
-          tenantId={tenantId}
-          ticketId={ticketId}
-        />
-      )}
+      </Deferred>
 
       {undoChange && (
         <div className="ticket-workbench__undo" role="status">
@@ -9408,71 +9415,84 @@ export function TicketDetail({
             )}
           </section>
 
-          {requesterView ? null : (
-            <TicketCoordination
-              description={detail.ticket.description}
-              onChanged={() => {
-                onChanged();
-                void loadTicket();
-              }}
-              onOpenTicket={onOpenTicket}
-              refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
-              subject={detail.ticket.subject}
-              tenantId={tenantId}
-              ticketId={detail.ticket.id}
-              ticketNumber={detail.ticket.ticket_number}
-              timelineHost={timelineHost}
-              supportLevel={
-                <TicketSupportLevel
-                  embedded
-                  onChanged={() => {
-                    onChanged();
-                    void loadTicket();
-                  }}
-                  refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}|${detail.events[0]?.id ?? ""}`}
-                  tenantId={tenantId}
-                  ticketId={detail.ticket.id}
-                />
-              }
-            />
-          )}
+          <Deferred mode="idle" resetKey={ticketId}>
+            {requesterView ? null : (
+              <TicketCoordination
+                description={detail.ticket.description}
+                onChanged={() => {
+                  onChanged();
+                  void loadTicket();
+                }}
+                onOpenTicket={onOpenTicket}
+                refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
+                subject={detail.ticket.subject}
+                tenantId={tenantId}
+                ticketId={detail.ticket.id}
+                ticketNumber={detail.ticket.ticket_number}
+                timelineHost={timelineHost}
+                supportLevel={
+                  <TicketSupportLevel
+                    embedded
+                    onChanged={() => {
+                      onChanged();
+                      void loadTicket();
+                    }}
+                    refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}|${detail.events[0]?.id ?? ""}`}
+                    tenantId={tenantId}
+                    ticketId={detail.ticket.id}
+                  />
+                }
+              />
+            )}
+          </Deferred>
 
-          <TicketCustomFields
-            canUpdate={detail.canUpdate}
-            tenantId={tenantId}
-            ticketId={detail.ticket.id}
-          />
-
-          {!requesterView ? (
-            <IpamTicketPanel
+          <Deferred mode="visible" resetKey={ticketId}>
+            <TicketCustomFields
               canUpdate={detail.canUpdate}
-              comments={detail.comments.map((comment) => comment.body)}
-              description={detail.ticket.description}
-              onLinked={onChanged}
-              onOpenAsset={onOpenAsset}
-              ticketNumber={detail.ticket.ticket_number}
-              refreshKey={`${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
-              subject={detail.ticket.subject}
               tenantId={tenantId}
               ticketId={detail.ticket.id}
             />
-          ) : null}
+          </Deferred>
 
-          {!requesterView ? (
-            <TicketAiTriage
-              canUpdate={detail.canUpdate}
-              key={`triage-${detail.ticket.id}`}
-              onChanged={() => {
-                void loadTicket();
-                onChanged();
-              }}
-              tenantId={tenantId}
-              ticketId={detail.ticket.id}
-            />
-          ) : null}
-          {!requesterView ? (
-            <TicketAiSummary tenantId={tenantId} ticketId={detail.ticket.id} />
-          ) : null}
+          <Deferred mode="visible" resetKey={ticketId}>
+            {!requesterView ? (
+              <IpamTicketPanel
+                canUpdate={detail.canUpdate}
+                comments={detail.comments.map((comment) => comment.body)}
+                description={detail.ticket.description}
+                onLinked={onChanged}
+                onOpenAsset={onOpenAsset}
+                ticketNumber={detail.ticket.ticket_number}
+                refreshKey={`${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
+                subject={detail.ticket.subject}
+                tenantId={tenantId}
+                ticketId={detail.ticket.id}
+              />
+            ) : null}
+          </Deferred>
+
+          <Deferred mode="visible" resetKey={ticketId}>
+            {!requesterView ? (
+              <TicketAiTriage
+                canUpdate={detail.canUpdate}
+                key={`triage-${detail.ticket.id}`}
+                onChanged={() => {
+                  void loadTicket();
+                  onChanged();
+                }}
+                tenantId={tenantId}
+                ticketId={detail.ticket.id}
+              />
+            ) : null}
+          </Deferred>
+          <Deferred mode="visible" resetKey={ticketId}>
+            {!requesterView ? (
+              <TicketAiSummary
+                tenantId={tenantId}
+                ticketId={detail.ticket.id}
+              />
+            ) : null}
+          </Deferred>
 
           {focusMode && (
             <p className="ticket-focus-notice" role="status">

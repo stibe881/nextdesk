@@ -141,29 +141,15 @@ import {
   MergePreviewSummary,
   type MergePreview,
 } from "./ticket-merge-insights";
-import { TenantAdminSettings } from "./tenant-admin-settings";
-import { KnowledgeBase } from "./knowledge-base";
 import { GlobalSearch, type GlobalSearchResult } from "./global-search";
-import { PersonOverview } from "./person-overview";
 import type { PersonRef } from "./lib/person-overview";
-import { ServiceReporting } from "./service-reporting";
-import { TeamSupervision } from "./team-supervision";
 import { MyPrioritiesCard } from "./my-priorities";
-import { ProblemCandidates } from "./problem-insights";
 import { TicketKanban } from "./ticket-kanban";
 import { SupportLevelQueueFilter } from "./support-level-queue-filter";
 import {
   supportLevelOfFilter,
   type SupportLevelFilter,
 } from "./lib/support-levels";
-import { Infrastructure } from "./infrastructure";
-import { Ipam } from "./ipam";
-import { IpamImportWizard } from "./ipam-import";
-import { IpamApiSettings } from "./ipam-api-settings";
-import { IpamDiscoveryPanel } from "./ipam-discovery";
-import { Incidents } from "./incidents";
-import { Monitoring } from "./monitoring";
-import { SecurityCases } from "./security-cases";
 import {
   HomeLayoutEditor,
   loadHomeLayout,
@@ -171,7 +157,6 @@ import {
   type HomeLayout,
 } from "./home-layout";
 import { absenceLabel, loadActiveAbsences } from "./lib/active-absences";
-import { ServiceAssets } from "./service-assets";
 import {
   isPublicServiceStatusBadgeRequested,
   isPublicServiceStatusRequested,
@@ -181,15 +166,7 @@ import {
   ServiceStatus,
 } from "./service-status";
 import { IMPRINT_URL, PRIVACY_URL, SUPPORT_URL } from "./lib/site-links";
-import { Contracts } from "./contracts";
-import { Licenses } from "./licenses";
-import { EventSpaces } from "./event-spaces";
-import { Onboarding } from "./onboarding";
-import { Inventory } from "./inventory";
-import { Shop } from "./shop";
-import { TeamsAdmin } from "./teams-admin";
 import { teamsAdminApi } from "./lib/teams-admin";
-import { PersonalSettings } from "./personal-settings";
 import { ApprovalInboxCard } from "./approval-inbox";
 import {
   OAuthConsentScreen,
@@ -268,9 +245,73 @@ import {
   onOpenProjectRequest,
   setProjectsAvailable,
 } from "./lib/project-navigation";
-import { Projects } from "./projects";
 
 import { confirmDialog } from "./app-dialog";
+import { lazySection } from "./lazy-section";
+
+const TenantAdminSettings = lazySection(
+  () => import("./tenant-admin-settings"),
+  "TenantAdminSettings",
+);
+const ServiceAssets = lazySection(
+  () => import("./service-assets"),
+  "ServiceAssets",
+);
+const Monitoring = lazySection(() => import("./monitoring"), "Monitoring");
+const Inventory = lazySection(() => import("./inventory"), "Inventory");
+const Shop = lazySection(() => import("./shop"), "Shop");
+const KnowledgeBase = lazySection(
+  () => import("./knowledge-base"),
+  "KnowledgeBase",
+);
+const EventSpaces = lazySection(() => import("./event-spaces"), "EventSpaces");
+const Infrastructure = lazySection(
+  () => import("./infrastructure"),
+  "Infrastructure",
+);
+const Onboarding = lazySection(() => import("./onboarding"), "Onboarding");
+const Incidents = lazySection(() => import("./incidents"), "Incidents");
+const ServiceReporting = lazySection(
+  () => import("./service-reporting"),
+  "ServiceReporting",
+);
+const Contracts = lazySection(() => import("./contracts"), "Contracts");
+const IpamDiscoveryPanel = lazySection(
+  () => import("./ipam-discovery"),
+  "IpamDiscoveryPanel",
+);
+const TeamSupervision = lazySection(
+  () => import("./team-supervision"),
+  "TeamSupervision",
+);
+const Licenses = lazySection(() => import("./licenses"), "Licenses");
+const PersonalSettings = lazySection(
+  () => import("./personal-settings"),
+  "PersonalSettings",
+);
+const IpamImportWizard = lazySection(
+  () => import("./ipam-import"),
+  "IpamImportWizard",
+);
+const PersonOverview = lazySection(
+  () => import("./person-overview"),
+  "PersonOverview",
+);
+const SecurityCases = lazySection(
+  () => import("./security-cases"),
+  "SecurityCases",
+);
+const TeamsAdmin = lazySection(() => import("./teams-admin"), "TeamsAdmin");
+const Ipam = lazySection(() => import("./ipam"), "Ipam");
+const IpamApiSettings = lazySection(
+  () => import("./ipam-api-settings"),
+  "IpamApiSettings",
+);
+const Projects = lazySection(() => import("./projects"), "Projects");
+const ProblemCandidates = lazySection(
+  () => import("./problem-insights"),
+  "ProblemCandidates",
+);
 type Section =
   | "Übersicht"
   | "Tickets"
@@ -293,7 +334,7 @@ type Section =
   | "Störungen"
   | "Verträge"
   | "Lizenzen"
-  | "Raumplanung"
+  | "Anlässe"
   | "Eintritte"
   | "Wissen"
   | "Berichte"
@@ -442,7 +483,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Überwachung", Icon: Radar },
     { label: "Lager", Icon: Boxes },
     { label: "Systemstatus", Icon: CircleCheck },
-    { label: "Raumplanung", Icon: CalendarDays },
+    { label: "Anlässe", Icon: CalendarDays },
     { label: "Eintritte", Icon: ClipboardList },
     { label: "Verträge", Icon: FileText },
     { label: "Lizenzen", Icon: KeyRound },
@@ -468,7 +509,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "PLANUNG & BETRIEB",
     id: "navigation-category-operations",
     navigationLabel: "Planung und Betrieb",
-    sectionLabels: ["Raumplanung", "Eintritte", "Serviceaufgaben"],
+    sectionLabels: ["Anlässe", "Eintritte", "Serviceaufgaben"],
   },
   {
     heading: "RESSOURCEN",
@@ -5618,7 +5659,7 @@ function AuthenticatedApp() {
       return isFeatureEnabled("service.tasks") && canReadServiceTasks;
     }
     if (item.label === "Projekte") return projectsVisible;
-    if (item.label === "Raumplanung") return isFeatureEnabled("event.spaces");
+    if (item.label === "Anlässe") return isFeatureEnabled("event.spaces");
     if (item.label === "Eintritte") {
       return isFeatureEnabled("onboarding.entries");
     }
@@ -5640,7 +5681,7 @@ function AuthenticatedApp() {
   // Employees without ticket work get a flat menu without room planning,
   // inventory or workplace; the status is a badge on top of the menu.
   const employeeHiddenSections: readonly Section[] = [
-    "Raumplanung",
+    "Anlässe",
     "Infrastruktur",
     "IP-Adressen",
     "Überwachung",
@@ -6181,7 +6222,7 @@ function AuthenticatedApp() {
   );
   const navigationAttentionFor = (label: Section): number | null =>
     navigationItemAttentionCount(
-      label === "Raumplanung"
+      label === "Anlässe"
         ? eventSpaceNavigationAccess
           ? eventSpaceAttentionCount
           : null
@@ -6219,8 +6260,8 @@ function AuthenticatedApp() {
     tone: "urgent" | "muted" | null,
   ) => (tone ? `${base} ${base.split(" ")[0]}--${tone}` : base);
   const navigationAttentionDescription = (label: Section): string =>
-    label === "Raumplanung"
-      ? "Raumaufträge benötigen Zuweisung oder Klärung"
+    label === "Anlässe"
+      ? "Anlässe benötigen Zuweisung oder Klärung"
       : label === "Shop"
         ? "neue Bestellungen warten auf Bearbeitung"
         : label === "Tickets"
@@ -6851,7 +6892,7 @@ function AuthenticatedApp() {
                   if (
                     !canWorkTickets &&
                     !(
-                      sectionFromGlobalSearchResult(result) === "Raumplanung" &&
+                      sectionFromGlobalSearchResult(result) === "Anlässe" &&
                       eventSpaceNavigationAccess
                     ) &&
                     !canRequesterOpenSection(
@@ -7298,7 +7339,7 @@ function AuthenticatedApp() {
             onFocusHandled={() => setServiceTaskFocusId(null)}
             tenantId={activeTenant.id}
           />
-        ) : section === "Raumplanung" && activeTenant ? (
+        ) : section === "Anlässe" && activeTenant ? (
           <EventSpaces
             focusRequestId={
               globalSearchTarget?.resultType === "event_space"

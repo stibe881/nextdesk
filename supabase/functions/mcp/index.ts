@@ -621,7 +621,7 @@ export function seriesOccurrences(
   return result;
 }
 
-/** Liest alle Seiten der Raumplanung (je 250 Buchungen, höchstens 8 Seiten). */
+/** Liest alle Seiten der Anlässe (je 250 Buchungen, höchstens 8 Seiten). */
 async function eventWorkspace(
   config: Config,
   session: Session,

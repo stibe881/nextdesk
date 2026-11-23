@@ -324,8 +324,8 @@ export async function functionErrorMessage(
       );
     case "event_space_permission_denied":
       return tn(
-        "Für die Raumplanung fehlt dir die erforderliche Berechtigung.",
-        "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.",
+        "Für die Anlässe fehlt dir die erforderliche Berechtigung.",
+        "Für die Anlässe fehlt Ihnen die erforderliche Berechtigung.",
       );
     case "event_space_reference_invalid":
       return tn(
@@ -345,14 +345,14 @@ export async function functionErrorMessage(
     case "event_space_template_unavailable":
     case "event_space_service_unavailable":
       return tn(
-        "Die Raumplanung ist derzeit nicht verfügbar. Bitte versuche es in wenigen Minuten erneut.",
-        "Die Raumplanung ist derzeit nicht verfügbar. Bitte versuchen Sie es in wenigen Minuten erneut.",
+        "Die Anlässe sind derzeit nicht verfügbar. Bitte versuche es in wenigen Minuten erneut.",
+        "Die Anlässe sind derzeit nicht verfügbar. Bitte versuchen Sie es in wenigen Minuten erneut.",
       );
     case "event_space_request_not_found":
     case "event_space_task_not_found":
       return tn(
-        "Der Raumauftrag oder die Aufgabe ist nicht mehr verfügbar. Bitte lade die Planung neu.",
-        "Der Raumauftrag oder die Aufgabe ist nicht mehr verfügbar. Bitte laden Sie die Planung neu.",
+        "Der Anlass oder die Aufgabe ist nicht mehr verfügbar. Bitte lade die Planung neu.",
+        "Der Anlass oder die Aufgabe ist nicht mehr verfügbar. Bitte laden Sie die Planung neu.",
       );
     case "onboarding_permission_denied":
       return tn(

@@ -4,14 +4,36 @@ import {
   eventSpaceEmailIntakeSubject,
   parseEventSpaceEmailIntake,
 } from "./event-space-email-intake.ts";
+import {
+  EVENT_ORDER_NUMBER_PREFIX,
+  type EventOrder,
+  eventOrderIntakeInput,
+  eventOrderSubjectTitle,
+  parseEventOrderPdf,
+  parseEventOrderText,
+} from "./event-space-pdf-intake.ts";
+import { extractPdfTextItems } from "./onboarding-pdf-text.ts";
 
 type Admin = any;
+
+type PdfAttachment = Readonly<{
+  bytes: Uint8Array;
+  contentType: string;
+}>;
 
 type IntakeInput = Readonly<{
   description: string;
   subject: string;
   tenantId: string;
   ticketId: string;
+  /**
+   * Anhänge der Mail. Bestellungen der Anlässe-App tragen ihre Angaben im PDF
+   * «Anlassdetails». Fehlt die Liste (manuelle Wiederholung), werden die PDFs
+   * des Tickets aus dem Speicher gelesen.
+   */
+  attachments?: readonly PdfAttachment[];
+  /** Anzeigename der absendenden Person (Organisator bei PDF-Bestellungen). */
+  senderName?: string | null;
 }>;
 
 type OutboxInput = Pick<IntakeInput, "tenantId" | "ticketId">;
@@ -265,6 +287,275 @@ async function removeSourceTicket(
  * explicit later retry; this helper never introduces a scheduler or logs mail
  * data. The database operation remains the final idempotency and conflict lock.
  */
+const MAX_ORDER_PDFS = 3;
+const MAX_ORDER_PDF_BYTES = 5 * 1024 * 1024;
+
+async function storedTicketPdfs(
+  admin: Admin,
+  input: OutboxInput,
+): Promise<PdfAttachment[]> {
+  const { data } = await admin
+    .from("ticket_attachments")
+    .select("storage_bucket, storage_object_path, content_type, byte_size")
+    .eq("tenant_id", input.tenantId)
+    .eq("ticket_id", input.ticketId)
+    .eq("content_type", "application/pdf")
+    .lte("byte_size", MAX_ORDER_PDF_BYTES)
+    .limit(MAX_ORDER_PDFS);
+  const pdfs: PdfAttachment[] = [];
+  for (const row of (data ?? []) as Record<string, unknown>[]) {
+    if (
+      typeof row.storage_bucket !== "string" ||
+      typeof row.storage_object_path !== "string"
+    ) continue;
+    const download = await admin.storage
+      .from(row.storage_bucket)
+      .download(row.storage_object_path);
+    if (download.error || !download.data) continue;
+    pdfs.push({
+      bytes: new Uint8Array(await download.data.arrayBuffer()),
+      contentType: "application/pdf",
+    });
+  }
+  return pdfs;
+}
+
+/** Legt die Bestellung (PDF) beim Anlass ab; ein Fehler verhindert nichts. */
+async function storeEventDocument(
+  admin: Admin,
+  tenantId: string,
+  requestId: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  try {
+    const path = `${tenantId}/${requestId}.pdf`;
+    const upload = await admin.storage
+      .from("event-space-documents")
+      .upload(path, new Uint8Array(bytes), {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+    if (upload.error) return;
+    await admin
+      .from("event_space_requests")
+      .update({ source_document_path: path })
+      .eq("tenant_id", tenantId)
+      .eq("id", requestId);
+  } catch {
+    // Die Ablage des PDFs ist eine Ergänzung.
+  }
+}
+
+/** Erstes PDF «Anlassdetails» der Anlässe-App unter den Anhängen. */
+async function eventOrderFromPdfs(
+  attachments: readonly PdfAttachment[],
+): Promise<(EventOrder & { pdf: Uint8Array }) | null> {
+  const pdfs = attachments
+    .filter(
+      (attachment) =>
+        attachment.contentType === "application/pdf" &&
+        attachment.bytes.byteLength > 0 &&
+        attachment.bytes.byteLength <= MAX_ORDER_PDF_BYTES,
+    )
+    .slice(0, MAX_ORDER_PDFS);
+  for (const pdf of pdfs) {
+    try {
+      const order = parseEventOrderPdf(
+        await extractPdfTextItems(new Uint8Array(pdf.bytes)),
+      );
+      if (order) return { ...order, pdf: pdf.bytes };
+    } catch {
+      // Ein anderes oder defektes PDF ist keine Anlass-Bestellung.
+    }
+  }
+  return null;
+}
+
+/**
+ * Ende des Anlasses: Beginn plus Dauer laut Bestellung (gleicher Tag). Ohne
+ * gültige Endzeit bleibt der 30-Minuten-Termin.
+ */
+export function eventOrderEndAt(
+  startAt: string,
+  order: Pick<EventOrder, "startTime" | "endTime">,
+): string | null {
+  if (!order.endTime) return null;
+  const minutes = (value: string) => {
+    const [hour, minute] = value.split(":").map(Number);
+    return (hour ?? 0) * 60 + (minute ?? 0);
+  };
+  const duration = minutes(order.endTime) - minutes(order.startTime);
+  const start = Date.parse(startAt);
+  if (!Number.isFinite(start) || duration <= 0 || duration > 24 * 60) {
+    return null;
+  }
+  return new Date(start + duration * 60 * 1_000).toISOString();
+}
+
+/**
+ * Bestellung der Anlässe-App (PDF oder Mail «Neue Bestellung Einrichten
+ * Anlässe <ID>»): Jede Bestellung kommt als zwei Mails mit derselben ID. Die
+ * erste legt den Eintrag in der Anlassplanung an, die zweite ergänzt ihn
+ * (Bemerkungen, Technik). Das Ticket entfällt in beiden Fällen.
+ */
+async function processEventOrder(
+  admin: Admin,
+  input: IntakeInput,
+  order: EventOrder & { pdf?: Uint8Array },
+): Promise<EventSpaceEmailTicketIntakeOutcome> {
+  const organiser = input.senderName?.trim() || order.costCenterEmail ||
+    "Anlässe-App";
+  const converted = eventOrderIntakeInput(order, organiser);
+  const parsed = parseEventSpaceEmailIntake({
+    subject: converted.subject,
+    description: converted.description,
+  });
+  const request = parsed.status === "ready"
+    ? {
+      ...parsed.request,
+      notes: converted.notes,
+      endAt: eventOrderEndAt(parsed.request.startAt, order) ??
+        parsed.request.endAt,
+    }
+    : null;
+  const orderNumber = `${EVENT_ORDER_NUMBER_PREFIX}${order.orderId}`;
+  const persons = Number.parseInt(order.persons ?? "", 10);
+
+  const { data: existing } = await admin
+    .from("event_space_requests")
+    .select(
+      "id, remarks, requested_starts_at, expected_participants, ict_material_requested, internet_access_requested, reception_laptop_requested, requested_equipment_keys, source_document_path",
+    )
+    .eq("tenant_id", input.tenantId)
+    .eq("source_order_number", orderNumber)
+    .order("created_at")
+    .limit(1)
+    .maybeSingle();
+  if (existing?.id) {
+    const notes = [converted.notes];
+    if (
+      request &&
+      typeof existing.requested_starts_at === "string" &&
+      Date.parse(existing.requested_starts_at) !== Date.parse(request.startAt)
+    ) {
+      notes.push(
+        `Abweichende Angabe in einer weiteren Mail: ${order.date} ${order.startTime} Uhr, ${order.location}`,
+      );
+    }
+    const previous = typeof existing.remarks === "string" ? existing.remarks : "";
+    const addition = notes.join("\n");
+    const equipment = [
+      ...new Set([
+        ...((existing.requested_equipment_keys ?? []) as string[]),
+        ...(request?.equipmentKeys ?? []),
+      ]),
+    ];
+    await admin
+      .from("event_space_requests")
+      .update({
+        remarks: previous.includes(addition)
+          ? previous
+          : [previous, addition].filter(Boolean).join("\n\n").slice(0, 8_000),
+        expected_participants: existing.expected_participants ??
+          (Number.isFinite(persons) && persons > 0 ? persons : null),
+        ict_material_requested: existing.ict_material_requested === true ||
+          request?.requirements.ictMaterial === true,
+        internet_access_requested:
+          existing.internet_access_requested === true ||
+          request?.requirements.internetAccess === true,
+        reception_laptop_requested:
+          existing.reception_laptop_requested === true ||
+          request?.requirements.receptionLaptop === true,
+        requested_equipment_keys: equipment,
+      })
+      .eq("id", existing.id)
+      .eq("tenant_id", input.tenantId);
+    if (request?.equipmentKeys.length) {
+      await admin.from("event_space_request_equipment").upsert(
+        request.equipmentKeys.map((equipmentKey) => ({
+          tenant_id: input.tenantId,
+          request_id: existing.id,
+          equipment_key: equipmentKey,
+        })),
+        { onConflict: "request_id,equipment_key", ignoreDuplicates: true },
+      );
+    }
+    if (order.pdf && !existing.source_document_path) {
+      await storeEventDocument(admin, input.tenantId, existing.id, order.pdf);
+    }
+    await markOutbox(admin, input, "ignored", null);
+    await removeSourceTicket(admin, input);
+    return "processed";
+  }
+
+  const payload = rpcPayload(
+    {
+      ...input,
+      subject: converted.subject,
+      description: converted.description,
+    },
+    request,
+    clarificationCodes(parsed),
+  );
+  if (!payload) {
+    await markOutbox(admin, input, "ignored", null);
+    return "ignored";
+  }
+  if (request) {
+    payload.p_space_id = await matchingRoomId(
+      admin,
+      input.tenantId,
+      request.requestedSpaceText,
+    );
+  }
+  const { data: created, error } = await admin.rpc(
+    "create_event_space_email_ticket_request",
+    payload,
+  );
+  if (error) throw new Error("event_space_intake_persist_failed");
+  const createdId = (Array.isArray(created) ? created[0] : created)?.request_id;
+  if (typeof createdId === "string") {
+    // Bemerkungen und Personenzahl auch bei einem Klärungsfall behalten.
+    await admin
+      .from("event_space_requests")
+      .update({
+        remarks: converted.notes,
+        expected_participants: Number.isFinite(persons) && persons > 0
+          ? persons
+          : null,
+      })
+      .eq("id", createdId)
+      .eq("tenant_id", input.tenantId);
+    if (order.pdf) {
+      await storeEventDocument(admin, input.tenantId, createdId, order.pdf);
+    }
+  }
+  await removeSourceTicket(admin, input);
+  return "processed";
+}
+
+/**
+ * Mail «Bestellung Anlässe … für Anlass <Titel>» ohne lesbares PDF (z. B.
+ * Anhang fehlt): Ist dieselbe Bestellung schon eingeplant, entfällt das
+ * Ticket; sonst bleibt es zur Bearbeitung stehen.
+ */
+async function isKnownEventOrderTitle(
+  admin: Admin,
+  input: OutboxInput,
+  title: string,
+): Promise<boolean> {
+  const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await admin
+    .from("event_space_requests")
+    .select("id")
+    .eq("tenant_id", input.tenantId)
+    .like("source_order_number", `${EVENT_ORDER_NUMBER_PREFIX}%`)
+    .ilike("title", title.replace(/[%_\\]/gu, "\\$&"))
+    .gte("created_at", since)
+    .limit(1);
+  return Array.isArray(data) && data.length > 0;
+}
+
 export async function processEventSpaceEmailTicketIntake(
   admin: Admin,
   input: IntakeInput,
@@ -272,6 +563,17 @@ export async function processEventSpaceEmailTicketIntake(
   try {
     const subject = eventSpaceEmailIntakeSubject(input.subject);
     if (!subject) {
+      const order = parseEventOrderText(input.subject, input.description) ??
+        (await eventOrderFromPdfs(
+          input.attachments ?? (await storedTicketPdfs(admin, input)),
+        ));
+      if (order) return await processEventOrder(admin, input, order);
+      const orderTitle = eventOrderSubjectTitle(input.subject);
+      if (orderTitle && (await isKnownEventOrderTitle(admin, input, orderTitle))) {
+        await markOutbox(admin, input, "ignored", null);
+        await removeSourceTicket(admin, input);
+        return "processed";
+      }
       await markOutbox(admin, input, "ignored", null);
       return "ignored";
     }

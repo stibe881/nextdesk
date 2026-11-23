@@ -882,53 +882,17 @@ async function delegateCanRead(
   return !error && data === true;
 }
 
+/**
+ * Leseberechtigung in einer Datenbankabfrage (0390, ticket_read_allowed_for):
+ * dieselben Regeln wie zuvor hier (Mitgliedschaft, Rollen, Team, Kunde,
+ * Mitarbeitende, Stellvertretung), statt bis zu acht Anfragen nacheinander.
+ */
 async function canRead(admin: any, userId: string, ticket: any) {
-  if (!(await activeMember(admin, userId, ticket.tenant_id))) return false;
-  if (ticket.requester_id === userId || ticket.affected_user_id === userId)
-    return true;
-  if (
-    ticket.assigned_agent_id === userId &&
-    (await hasPermission(
-      admin,
-      userId,
-      ticket.tenant_id,
-      ticket.department_id,
-      "ticket.read.assigned",
-    )) &&
-    (await canAccessTeamTicket(admin, userId, ticket.id))
-  ) {
-    return true;
-  }
-  if (
-    (await hasPermission(
-      admin,
-      userId,
-      ticket.tenant_id,
-      ticket.department_id,
-      "ticket.read.department",
-    )) &&
-    (await canAccessTeamTicket(admin, userId, ticket.id))
-  ) {
-    return true;
-  }
-  if (ticket.customer_organization_id) {
-    const { data } = await admin
-      .from("customer_memberships")
-      .select("access, customer_organizations!inner(active, ticket_access)")
-      .eq("customer_organization_id", ticket.customer_organization_id)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (
-      data?.access === "company" &&
-      data.customer_organizations?.active &&
-      data.customer_organizations?.ticket_access !== "disabled"
-    )
-      return true;
-  }
-  // Own tickets by requester e-mail and tickets of direct reports (Entra).
-  if (await employeeCanRead(admin, userId, ticket.id)) return true;
-  if (await delegateCanRead(admin, userId, ticket.id)) return true;
-  return false;
+  const { data, error } = await admin.rpc("ticket_read_allowed_for", {
+    p_user_id: userId,
+    p_ticket_id: ticket.id,
+  });
+  return !error && data === true;
 }
 /**
  * Zusammengeführte Tickets im Haupt-Ticket: ihr Verlauf (für interne Leser

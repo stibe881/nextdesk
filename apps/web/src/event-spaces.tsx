@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   DoorOpen,
+  FileText,
   Mail,
   Plus,
   UsersRound,
@@ -88,6 +89,8 @@ type RoomRequest = {
   conflictsAcknowledged: boolean;
   roomReservationRequested: boolean;
   phoneNumber: string | null;
+  /** Bestellung (PDF) der Anlässe-App gespeichert. */
+  hasSourceDocument?: boolean;
   equipment: EquipmentKey[];
   tasks: Task[];
 };
@@ -176,11 +179,6 @@ const clarificationReasonLabels: Record<string, string> = {
   task_template_unavailable: "Aufgabenvorlage prüfen",
   unknown_field: "Angaben prüfen",
 };
-const emailIntakeStateLabels: Record<EmailIntakeRecovery["state"], string> = {
-  pending: "Ausstehend",
-  failed: "Fehlgeschlagen",
-  retrying: "Wird verarbeitet",
-};
 const equipmentLabels = new Map(EQUIPMENT);
 
 /** A placeholder such as "000 000 00 00" is not a usable number. */
@@ -266,6 +264,20 @@ function requestOccurrences(draft: RequestDraft) {
     recurrence: draft.recurrence,
     count,
   });
+}
+
+/** Gewünschte Dauer eines Klärungsfalls (Ende − Beginn), sonst 30 Minuten. */
+function requestedDurationMs(item: ClarificationCase): number {
+  const start = item.requestedStartsAt
+    ? Date.parse(item.requestedStartsAt)
+    : NaN;
+  const end = item.requestedEndsAt ? Date.parse(item.requestedEndsAt) : NaN;
+  const duration = end - start;
+  return Number.isFinite(duration) &&
+    duration > 0 &&
+    duration <= 24 * 60 * 60 * 1_000
+    ? duration
+    : 30 * 60 * 1_000;
 }
 
 function parseWorkspace(value: unknown): Workspace | null {
@@ -424,8 +436,8 @@ export function EventSpaces({
           await functionErrorMessage(
             error,
             tn(
-              "Die Raumplanung konnte nicht geladen werden. Bitte versuche es erneut.",
-              "Die Raumplanung konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+              "Die Anlässe konnten nicht geladen werden. Bitte versuche es erneut.",
+              "Die Anlässe konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
             ),
           ),
         );
@@ -654,8 +666,8 @@ export function EventSpaces({
         await functionErrorMessage(
           error,
           tn(
-            "Die Raumplanung konnte nicht geprüft werden. Bitte versuche es erneut.",
-            "Die Raumplanung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.",
+            "Die Anlässe konnten nicht geprüft werden. Bitte versuche es erneut.",
+            "Die Anlässe konnten nicht geprüft werden. Bitte versuchen Sie es erneut.",
           ),
         ),
       );
@@ -688,8 +700,8 @@ export function EventSpaces({
           : null;
       setNotice(
         typeof createdCount === "number" && createdCount > 1
-          ? `${createdCount} Raumaufträge wurden geplant.`
-          : "Der Raumauftrag wurde geplant.",
+          ? `${createdCount} Anlässe wurden geplant.`
+          : "Der Anlass wurde geplant.",
       );
       setRequestDraft(defaultDraft());
       setPendingConflicts(null);
@@ -702,8 +714,8 @@ export function EventSpaces({
         await functionErrorMessage(
           error,
           tn(
-            "Der Raumauftrag konnte nicht gespeichert werden. Bitte prüfe die Angaben und versuche es erneut.",
-            "Der Raumauftrag konnte nicht gespeichert werden. Bitte prüfen Sie die Angaben und versuchen Sie es erneut.",
+            "Der Anlass konnte nicht gespeichert werden. Bitte prüfe die Angaben und versuche es erneut.",
+            "Der Anlass konnte nicht gespeichert werden. Bitte prüfen Sie die Angaben und versuchen Sie es erneut.",
           ),
         ),
       );
@@ -778,7 +790,7 @@ export function EventSpaces({
         body: { type: "updateRequestStatus", tenantId, requestId, status },
       });
       if (error) throw error;
-      setNotice("Der Raumauftragsstatus wurde aktualisiert.");
+      setNotice("Der Status des Anlasses wurde aktualisiert.");
       await refresh(true);
       onAttentionChanged();
     } catch (error) {
@@ -833,7 +845,7 @@ export function EventSpaces({
         },
       });
       if (error) throw error;
-      setNotice("Die Raumplanungsdetails wurden aktualisiert.");
+      setNotice("Die Angaben zum Anlass wurden aktualisiert.");
       await refresh(true);
       onAttentionChanged();
       return true;
@@ -842,8 +854,8 @@ export function EventSpaces({
         await functionErrorMessage(
           error,
           tn(
-            "Die Raumplanungsdetails konnten nicht gespeichert werden. Bitte prüfe Raum, Zeitraum und Zuweisungen.",
-            "Die Raumplanungsdetails konnten nicht gespeichert werden. Bitte prüfen Sie Raum, Zeitraum und Zuweisungen.",
+            "Die Angaben zum Anlass konnten nicht gespeichert werden. Bitte prüfe Raum, Zeitraum und Zuweisungen.",
+            "Die Angaben zum Anlass konnten nicht gespeichert werden. Bitte prüfen Sie Raum, Zeitraum und Zuweisungen.",
           ),
         ),
       );
@@ -857,7 +869,7 @@ export function EventSpaces({
     if (!supabase) return;
     if (
       !(await confirmDialog(
-        `Raumplanung «${title}» endgültig löschen? Zugehörige Aufgaben und Technikreservationen werden ebenfalls entfernt.`,
+        `Anlass «${title}» endgültig löschen? Zugehörige Aufgaben und Technikreservationen werden ebenfalls entfernt.`,
       ))
     ) {
       return;
@@ -873,7 +885,7 @@ export function EventSpaces({
       setExpandedRequestId((current) =>
         current === requestId ? null : current,
       );
-      setNotice("Die Raumplanung wurde gelöscht.");
+      setNotice("Der Anlass wurde gelöscht.");
       await refresh(true);
       onAttentionChanged();
     } catch (error) {
@@ -881,8 +893,8 @@ export function EventSpaces({
         await functionErrorMessage(
           error,
           tn(
-            "Die Raumplanung konnte nicht gelöscht werden. Bitte versuche es erneut.",
-            "Die Raumplanung konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+            "Der Anlass konnte nicht gelöscht werden. Bitte versuche es erneut.",
+            "Der Anlass konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
           ),
         ),
       );
@@ -974,7 +986,10 @@ export function EventSpaces({
           spaceId: draft.spaceId,
           agentId: draft.responsibleUserId,
           startsAt: start.toISOString(),
-          endsAt: new Date(start.getTime() + 30 * 60 * 1_000).toISOString(),
+          // Dauer laut Bestellung (z. B. 17:00–22:00), sonst 30 Minuten.
+          endsAt: new Date(
+            start.getTime() + requestedDurationMs(item),
+          ).toISOString(),
         },
       });
       if (error) throw error;
@@ -1001,40 +1016,33 @@ export function EventSpaces({
     }
   }
 
-  async function retryEmailTicketIntake(ticketId: string) {
+  /** Öffnet die gespeicherte Bestellung (PDF) in einem neuen Tab. */
+  async function openSourceDocument(requestId: string) {
     if (!supabase) return;
-    setPending(true);
+    // Das Fenster sofort öffnen, sonst blockiert der Browser es nach dem
+    // Warten auf die signierte Adresse.
+    const opened = window.open("", "_blank");
     setErrorMessage("");
-    setNotice("");
     try {
       const { data, error } = await supabase.functions.invoke("event-spaces", {
-        body: { type: "retryEmailTicketIntake", tenantId, ticketId },
+        body: { type: "sourceDocument", tenantId, requestId },
       });
       if (error) throw error;
-      const state =
+      const url =
         data && typeof data === "object"
-          ? (data as { data?: { state?: unknown } }).data?.state
+          ? (data as { data?: { url?: unknown } }).data?.url
           : null;
-      if (state === "processed") {
-        setNotice("Der ausgewählte E-Mail-Import wurde einmalig wiederholt.");
-      } else if (state === "failed") {
-        setErrorMessage(
-          "Der ausgewählte E-Mail-Import konnte nicht abgeschlossen werden. Der Ticketversand bleibt unverändert.",
-        );
-      } else {
-        setNotice("Der E-Mail-Import ist nicht mehr erneut verfügbar.");
-      }
-      await refresh(true);
-      onAttentionChanged();
+      if (typeof url !== "string") throw new Error("document_unavailable");
+      if (opened) opened.location.href = url;
+      else window.open(url, "_blank", "noopener");
     } catch (error) {
+      opened?.close();
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Der E-Mail-Import konnte nicht wiederholt werden. Der Ticketversand bleibt unverändert.",
+          "Die Bestellung (PDF) konnte nicht geöffnet werden.",
         ),
       );
-    } finally {
-      setPending(false);
     }
   }
 
@@ -1071,7 +1079,7 @@ export function EventSpaces({
   if (loading && !workspace) {
     return (
       <section className="event-spaces panel" aria-busy="true">
-        <p className="empty-state">Raumplanung wird geladen …</p>
+        <p className="empty-state">Anlässe werden geladen …</p>
       </section>
     );
   }
@@ -1079,7 +1087,6 @@ export function EventSpaces({
   const canRequest = workspace?.permissions.canRequest ?? false;
   const canManage = workspace?.permissions.canManage ?? false;
   const clarifications = workspace?.clarifications ?? [];
-  const emailIntakes = workspace?.emailIntakes ?? [];
   const requests = workspace?.requests ?? [];
 
   return (
@@ -1087,7 +1094,7 @@ export function EventSpaces({
       <header className="event-spaces__hero panel">
         <div>
           <p className="eyebrow">Planung statt Ticket</p>
-          <h2 id="event-spaces-heading">Raumplanung</h2>
+          <h2 id="event-spaces-heading">Anlässe</h2>
           <p>
             {tn(
               "Plane technische Einrichtungen für Aula und Sitzungszimmer. Ein Ticket entsteht nur bei einem tatsächlichen Problem.",
@@ -1114,7 +1121,7 @@ export function EventSpaces({
               }}
               type="button"
             >
-              <Plus aria-hidden="true" size={17} /> Raumauftrag erfassen
+              <Plus aria-hidden="true" size={17} /> Anlass erfassen
             </button>
           ) : null}
         </div>
@@ -1122,7 +1129,7 @@ export function EventSpaces({
 
       <div className="event-spaces__metrics" aria-label="Planungsübersicht">
         <button
-          aria-label={`Bevorstehend: ${metrics.upcoming} Raumaufträge. Gefilterte Liste anzeigen.`}
+          aria-label={`Bevorstehend: ${metrics.upcoming} Anlässe. Gefilterte Liste anzeigen.`}
           aria-pressed={view === "list" && metricFilter === "upcoming"}
           className={
             view === "list" && metricFilter === "upcoming"
@@ -1137,7 +1144,7 @@ export function EventSpaces({
           <strong>{metrics.upcoming}</strong>
         </button>
         <button
-          aria-label={`In Vorbereitung: ${metrics.in_preparation} Raumaufträge. Gefilterte Liste anzeigen.`}
+          aria-label={`In Vorbereitung: ${metrics.in_preparation} Anlässe. Gefilterte Liste anzeigen.`}
           aria-pressed={view === "list" && metricFilter === "in_preparation"}
           className={
             view === "list" && metricFilter === "in_preparation"
@@ -1152,7 +1159,7 @@ export function EventSpaces({
           <strong>{metrics.in_preparation}</strong>
         </button>
         <button
-          aria-label={`Bereit: ${metrics.ready} Raumaufträge. Gefilterte Liste anzeigen.`}
+          aria-label={`Bereit: ${metrics.ready} Anlässe. Gefilterte Liste anzeigen.`}
           aria-pressed={view === "list" && metricFilter === "ready"}
           className={
             view === "list" && metricFilter === "ready"
@@ -1167,7 +1174,7 @@ export function EventSpaces({
           <strong>{metrics.ready}</strong>
         </button>
         <button
-          aria-label={`Nicht zugewiesen: ${metrics.unassigned} Raumaufträge. Gefilterte Liste anzeigen.`}
+          aria-label={`Nicht zugewiesen: ${metrics.unassigned} Anlässe. Gefilterte Liste anzeigen.`}
           aria-pressed={view === "list" && metricFilter === "unassigned"}
           className={
             view === "list" && metricFilter === "unassigned"
@@ -1182,43 +1189,6 @@ export function EventSpaces({
           <strong>{metrics.unassigned}</strong>
         </button>
       </div>
-
-      {canManage && emailIntakes.length ? (
-        <section className="event-spaces__email-recovery panel">
-          <div className="event-spaces__email-recovery-heading">
-            <div>
-              <p className="eyebrow">Manuelle Wiederherstellung</p>
-              <h3>E-Mail-Import erneut ausführen</h3>
-              <p>
-                Hier werden nur der Importzustand und die Anzahl bewusster
-                Wiederholungen angezeigt. Ticket- und E-Mail-Inhalte bleiben
-                ausgeblendet.
-              </p>
-            </div>
-            <strong>{emailIntakes.length}</strong>
-          </div>
-          <ul>
-            {emailIntakes.map((item) => (
-              <li key={item.ticketId}>
-                <span>
-                  <strong>{emailIntakeStateLabels[item.state]}</strong>
-                  <small>
-                    Manuelle Wiederholungen: {item.retryCount} von 3
-                  </small>
-                </span>
-                <button
-                  className="secondary-button"
-                  disabled={pending || !item.canRetry}
-                  onClick={() => void retryEmailTicketIntake(item.ticketId)}
-                  type="button"
-                >
-                  Einzelnen Import wiederholen
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
 
       {canManage && clarifications.length ? (
         <section className="event-spaces__clarifications panel">
@@ -1848,7 +1818,7 @@ export function EventSpaces({
         <div className="event-spaces__workspace-heading">
           <div>
             <p className="eyebrow">Nächste Einsätze</p>
-            <h3 id="event-space-workspace-heading">Raumplanung</h3>
+            <h3 id="event-space-workspace-heading">Anlässe</h3>
           </div>
           <div
             className="event-spaces__view-switch"
@@ -1878,7 +1848,7 @@ export function EventSpaces({
           <div className="event-spaces__active-filter" role="status">
             <span>
               Gefiltert: {eventSpaceMetricFilterLabels[metricFilter]} ·{" "}
-              {filteredRequests.length} Raumaufträge
+              {filteredRequests.length} Anlässe
             </span>
             <button
               className="text-button"
@@ -1983,6 +1953,7 @@ export function EventSpaces({
                   onDeleteRequest={deleteRequest}
                   onChangeRequestStatus={changeRequestStatus}
                   onChangeTaskStatus={changeTaskStatus}
+                  onOpenDocument={openSourceDocument}
                   onToggle={() =>
                     setExpandedRequestId((current) =>
                       current === request.id ? null : request.id,
@@ -1998,8 +1969,8 @@ export function EventSpaces({
             ) : (
               <p className="empty-state">
                 {metricFilter
-                  ? `Keine Raumaufträge mit Filter «${eventSpaceMetricFilterLabels[metricFilter]}» im sichtbaren Planungszeitraum.`
-                  : "Es sind noch keine Raumaufträge für die kommenden Monate geplant."}
+                  ? `Keine Anlässe mit Filter «${eventSpaceMetricFilterLabels[metricFilter]}» im sichtbaren Planungszeitraum.`
+                  : "Es sind noch keine Anlässe für die kommenden Monate geplant."}
               </p>
             )}
           </div>
@@ -2009,8 +1980,8 @@ export function EventSpaces({
           <div className="event-spaces__load-more">
             <p>
               {tn(
-                "Weitere Raumaufträge im Planungsjahr sind vorhanden. Lade sie nach, bevor du in spätere Wochen wechselst.",
-                "Weitere Raumaufträge im Planungsjahr sind vorhanden. Laden Sie sie nach, bevor Sie in spätere Wochen wechseln.",
+                "Weitere Anlässe im Planungsjahr sind vorhanden. Lade sie nach, bevor du in spätere Wochen wechselst.",
+                "Weitere Anlässe im Planungsjahr sind vorhanden. Laden Sie sie nach, bevor Sie in spätere Wochen wechseln.",
               )}
             </p>
             <button
@@ -2030,8 +2001,8 @@ export function EventSpaces({
       {!canRequest && !canManage ? (
         <p className="event-spaces__access-note">
           {tn(
-            "Du kannst die Raumplanung sehen, aber noch keine Raumaufträge erfassen oder verwalten.",
-            "Sie können die Raumplanung sehen, aber noch keine Raumaufträge erfassen oder verwalten.",
+            "Du kannst die Anlässe sehen, aber noch keine Anlässe erfassen oder verwalten.",
+            "Sie können die Anlässe sehen, aber noch keine Anlässe erfassen oder verwalten.",
           )}
         </p>
       ) : null}
@@ -2048,6 +2019,7 @@ function RequestCard({
   onChangeRequestStatus,
   onChangeTaskStatus,
   onDeleteRequest,
+  onOpenDocument,
   onToggle,
   onUpdateRequestDetails,
   people,
@@ -2066,6 +2038,7 @@ function RequestCard({
     status: RequestStatus,
   ) => Promise<void>;
   onChangeTaskStatus: (task: Task) => Promise<void>;
+  onOpenDocument: (requestId: string) => Promise<void>;
   onToggle: () => void;
   onUpdateRequestDetails: (input: {
     requestId: string;
@@ -2129,42 +2102,77 @@ function RequestCard({
       className={`event-spaces__request event-spaces__status--${request.status}${focused ? " global-search-target" : ""}`}
       id={`event-space-request-${request.id}`}
     >
-      <button
-        aria-expanded={expanded}
-        className="event-spaces__request-summary"
-        onClick={onToggle}
-        type="button"
-      >
-        <time>
-          <strong>{dateLabel(request.startsAt)}</strong>
-          <span>
-            {timeLabel(request.startsAt)} – {timeLabel(request.endsAt)}
-          </span>
-        </time>
-        <div>
-          <div className="event-spaces__request-context">
-            <span className="event-spaces__request-room">
-              {room?.name ?? "Raum"}
+      <div className="event-spaces__request-head">
+        <button
+          aria-expanded={expanded}
+          className="event-spaces__request-summary"
+          onClick={onToggle}
+          type="button"
+        >
+          <time>
+            <strong>{dateLabel(request.startsAt)}</strong>
+            <span>
+              {timeLabel(request.startsAt)} – {timeLabel(request.endsAt)}
             </span>
-            {isEmailRequest ? (
-              <span className="event-spaces__email-intake-label">
-                <Mail aria-hidden="true" size={13} /> E-Mail-Auftrag
+          </time>
+          <div>
+            <div className="event-spaces__request-context">
+              <span className="event-spaces__request-room">
+                {room?.name ?? "Raum"}
               </span>
-            ) : null}
+              {isEmailRequest ? (
+                <span className="event-spaces__email-intake-label">
+                  <Mail aria-hidden="true" size={13} /> E-Mail-Auftrag
+                </span>
+              ) : null}
+            </div>
+            <h4>{request.title}</h4>
+            <p>
+              Verantwortliche Person: {requesterLabel} · Agent:in:{" "}
+              {assignedAgentLabel}
+              {request.expectedParticipants !== null
+                ? ` · ${request.expectedParticipants} Teilnehmende`
+                : ""}
+            </p>
           </div>
-          <h4>{request.title}</h4>
-          <p>
-            Verantwortliche Person: {requesterLabel} · Agent:in:{" "}
-            {assignedAgentLabel}
-            {request.expectedParticipants !== null
-              ? ` · ${request.expectedParticipants} Teilnehmende`
-              : ""}
-          </p>
+        </button>
+        <div className="event-spaces__request-actions">
+          {request.hasSourceDocument ? (
+            <button
+              aria-label={`Bestellung (PDF) zu «${request.title}» öffnen`}
+              className="event-spaces__status-label event-spaces__pill-button"
+              onClick={() => void onOpenDocument(request.id)}
+              type="button"
+            >
+              <FileText aria-hidden="true" size={13} />
+              PDF
+            </button>
+          ) : null}
+          {canManage ? (
+            <select
+              aria-label={`Auftragsstatus von «${request.title}»`}
+              className="event-spaces__status-label event-spaces__status-select"
+              onChange={(event) =>
+                void onChangeRequestStatus(
+                  request.id,
+                  event.target.value as RequestStatus,
+                )
+              }
+              value={request.status}
+            >
+              {Object.entries(statusLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="event-spaces__status-label">
+              {statusLabels[request.status]}
+            </span>
+          )}
         </div>
-        <span className="event-spaces__status-label">
-          {statusLabels[request.status]}
-        </span>
-      </button>
+      </div>
       {expanded ? (
         <div className="event-spaces__request-detail">
           <div className="event-spaces__request-detail-grid">
@@ -2281,9 +2289,7 @@ function RequestCard({
                 }
                 type="button"
               >
-                {editDraft
-                  ? "Bearbeitung schliessen"
-                  : "Raumplanung bearbeiten"}
+                {editDraft ? "Bearbeitung schliessen" : "Anlass bearbeiten"}
               </button>
               <button
                 className="secondary-button"
@@ -2300,7 +2306,7 @@ function RequestCard({
               onSubmit={(event) => void saveDetails(event)}
             >
               <div>
-                <p className="eyebrow">Raumplanung bearbeiten</p>
+                <p className="eyebrow">Anlass bearbeiten</p>
                 <h5>{request.title}</h5>
                 <p>
                   {tn(

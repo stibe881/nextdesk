@@ -4,7 +4,45 @@
   <FilesMatch "\.html$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
-  <FilesMatch "\.(js|css)$">
+  <FilesMatch "\.(js|css)(\.br|\.gz)?$">
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
+</IfModule>
+
+# Komprimierung: vorkomprimierte Dateien (.br/.gz aus scripts/precompress.mjs)
+# ausliefern, wenn der Browser sie annimmt ...
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTP:Accept-Encoding} br
+  RewriteCond %{REQUEST_FILENAME}.br -f
+  RewriteRule ^(.+\.(js|css|svg|json))$ $1.br [L]
+  RewriteCond %{HTTP:Accept-Encoding} gzip
+  RewriteCond %{REQUEST_FILENAME}.gz -f
+  RewriteRule ^(.+\.(js|css|svg|json))$ $1.gz [L]
+</IfModule>
+<IfModule mod_headers.c>
+  <FilesMatch "\.(js|css|svg|json)\.br$">
+    Header set Content-Encoding br
+    Header append Vary Accept-Encoding
+  </FilesMatch>
+  <FilesMatch "\.(js|css|svg|json)\.gz$">
+    Header set Content-Encoding gzip
+    Header append Vary Accept-Encoding
+  </FilesMatch>
+</IfModule>
+# Der Inhaltstyp folgt der eigentlichen Endung (.js, .css …), nicht .br/.gz.
+<IfModule mod_mime.c>
+  RemoveType .br .gz
+  RemoveEncoding .br .gz
+</IfModule>
+<IfModule mod_setenvif.c>
+  SetEnvIfNoCase Request_URI "\.(br|gz)$" no-gzip=1 no-brotli=1
+</IfModule>
+
+# ... sonst komprimiert Apache selbst.
+<IfModule mod_brotli.c>
+  AddOutputFilterByType BROTLI_COMPRESS text/html text/css application/javascript text/javascript application/json image/svg+xml
+</IfModule>
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript text/javascript application/json image/svg+xml
 </IfModule>
