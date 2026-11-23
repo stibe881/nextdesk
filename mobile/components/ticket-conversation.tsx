@@ -17,6 +17,7 @@ import {
   type PolishLength,
 } from "@/components/dictation-controls";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { activeMentionQuery } from "@/lib/ticket-mentions";
 import {
   formatAttachmentSize,
   isImageAttachment,
@@ -43,6 +44,8 @@ type TicketConversationProps = {
   onDismissRestoredDraft?: (() => void) | undefined;
   isSending: boolean;
   onBodyChange: (body: string) => void;
+  /** Agenten, die mit «@Name» erwähnt werden können (nur Mitarbeitende). */
+  mentionCandidates?: readonly { id: string; displayName: string }[];
   onSend: () => void;
   onPolish?: ((length: PolishLength) => Promise<void>) | undefined;
   onVisibilityChange: (visibility: TicketCommentVisibility) => void;
@@ -239,6 +242,21 @@ function buildGroups(comments: MobileTicketComment[]): MessageGroup[] {
   return groups;
 }
 
+/** Passende Agenten, solange hinter «@» ein Name getippt wird. */
+function mentionSuggestions(
+  body: string,
+  candidates: readonly { id: string; displayName: string }[],
+): { id: string; displayName: string }[] {
+  const query = activeMentionQuery(body);
+  if (query === null || candidates.length === 0) return [];
+  const needle = query.toLocaleLowerCase("de-CH");
+  return candidates
+    .filter((agent) =>
+      agent.displayName.toLocaleLowerCase("de-CH").includes(needle),
+    )
+    .slice(0, 6);
+}
+
 export function TicketConversation({
   body,
   canCommentExternal,
@@ -250,6 +268,7 @@ export function TicketConversation({
   onDismissRestoredDraft,
   isSending,
   onBodyChange,
+  mentionCandidates = [],
   onSend,
   onPolish,
   onVisibilityChange,
@@ -458,6 +477,38 @@ export function TicketConversation({
                     </Pressable>
                   ) : null}
                 </View>
+              ))}
+            </View>
+          ) : null}
+          {mentionSuggestions(body, mentionCandidates).length > 0 ? (
+            <View
+              accessibilityLabel="Agenten erwähnen"
+              style={styles.mentionRow}
+            >
+              {mentionSuggestions(body, mentionCandidates).map((agent) => (
+                <Pressable
+                  accessibilityRole="button"
+                  key={agent.id}
+                  onPress={() => {
+                    hapticSelection();
+                    onBodyChange(
+                      body.replace(
+                        /@([^\s@]{0,30}(?: [^\s@]{0,30})?)$/u,
+                        `@${agent.displayName} `,
+                      ),
+                    );
+                  }}
+                  style={[styles.mentionChip, { borderColor: colors.border }]}
+                >
+                  <Text
+                    style={[
+                      styles.mentionChipText,
+                      { color: colors.primaryText },
+                    ]}
+                  >
+                    @{agent.displayName}
+                  </Text>
+                </Pressable>
               ))}
             </View>
           ) : null}
@@ -907,6 +958,19 @@ const useStyles = makeThemedStyles((c) => ({
   segmentTextExternal: { color: c.primaryText },
   segmentTextInternal: { color: c.warning },
   inputRow: { alignItems: "flex-end", flexDirection: "row", gap: 8 },
+  mentionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 8,
+  },
+  mentionChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  mentionChipText: { fontSize: 14, fontWeight: "700" },
   attachButton: {
     alignItems: "center",
     backgroundColor: c.primarySoft,

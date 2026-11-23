@@ -123,6 +123,7 @@ import {
 import { recordRecentItem } from "@/lib/recent-items";
 import { draftRestoredLabel, pickNewestDraft } from "@/lib/recent-items-model";
 import { tn } from "@/lib/formality";
+import { mentionedAgentIds } from "@/lib/ticket-mentions";
 import { NextDeskRequestError } from "@/lib/nextdesk-error-messages";
 import {
   getMobileTicketSupportLevel,
@@ -720,6 +721,24 @@ export default function TicketDetailScreen() {
     [ticket],
   );
   const ticketIsResolved = Boolean(ticket?.resolvedAt || status?.is_closed);
+  // Agenten, die in Notizen mit «@Name» erwähnt werden können.
+  const mentionCandidates = useMemo(
+    () =>
+      ticket?.canWriteInternalNotes
+        ? (assignableAgents ?? [])
+            .filter(
+              (agent) =>
+                agent.userId !== currentUserId &&
+                typeof agent.displayName === "string" &&
+                agent.displayName.trim().length > 1,
+            )
+            .map((agent) => ({
+              id: agent.userId,
+              displayName: agent.displayName!.trim(),
+            }))
+        : [],
+    [assignableAgents, currentUserId, ticket?.canWriteInternalNotes],
+  );
   const descriptionExpanded =
     editingField === "description" ||
     (descriptionOpen ?? (ticket?.comments.length ?? 0) === 0);
@@ -1383,6 +1402,15 @@ export default function TicketDetailScreen() {
   function changeComment(nextBody: string) {
     setComment(nextBody);
     setDraftDirty(true);
+    // «@» getippt: Agenten für Vorschläge laden (einmal).
+    if (
+      nextBody.includes("@") &&
+      assignableAgents === null &&
+      !assignableAgentsLoading &&
+      ticket?.canWriteInternalNotes
+    ) {
+      void loadAllAssignableAgents();
+    }
   }
 
   /** «Verwerfen»: leert den Entwurf auf allen Geräten. */
@@ -1833,6 +1861,9 @@ export default function TicketDetailScreen() {
         body,
         visibility: commentVisibility,
         attachmentIds,
+        mentionedUserIds: ticket.canWriteInternalNotes
+          ? mentionedAgentIds(body, mentionCandidates)
+          : [],
       });
       setPickedFiles([]);
       setComment("");
@@ -3534,6 +3565,7 @@ export default function TicketDetailScreen() {
               onDismissRestoredDraft={() => setRestoredDraftLabel(null)}
               isSending={sendingComment}
               onBodyChange={changeComment}
+              mentionCandidates={mentionCandidates}
               onSend={() => void sendComment()}
               onPolish={
                 tenant

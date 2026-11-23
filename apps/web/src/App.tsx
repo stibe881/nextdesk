@@ -1351,15 +1351,22 @@ function baseNotificationPresentation(
           "Erinnerung: Ihre Rückmeldung fehlt",
         ),
       };
-    case "ticket.mention":
+    case "ticket.mention": {
+      const author = notificationPayloadText(notification, "authorName", 120);
       return {
-        description: tn(
-          `Du wurdest in ${ticketLabel} erwähnt.`,
-          `Sie wurden in ${ticketLabel} erwähnt.`,
-        ),
+        description: author
+          ? tn(
+              `${author} hat dich in ${ticketLabel} erwähnt. Bitte wirf einen Blick darauf.`,
+              `${author} hat Sie in ${ticketLabel} erwähnt. Bitte werfen Sie einen Blick darauf.`,
+            )
+          : tn(
+              `Du wurdest in ${ticketLabel} erwähnt. Bitte wirf einen Blick darauf.`,
+              `Sie wurden in ${ticketLabel} erwähnt. Bitte werfen Sie einen Blick darauf.`,
+            ),
         Icon: AtSign,
         title: tn("Du wurdest erwähnt", "Sie wurden erwähnt"),
       };
+    }
     case "ticket.resolved":
       return {
         description: `${ticketLabel} wurde gelöst.`,

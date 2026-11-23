@@ -49,6 +49,8 @@ export type ApnsPayloadInput = {
   contractId?: string;
   ticketNumber?: string;
   subject?: string | null;
+  /** Person, die in einer Notiz oder Antwort erwähnt hat. */
+  mentionAuthorName?: string;
   summaryCount?: number;
   /** Zahl auf dem App-Symbol: ungelesene Mitteilungen der Person. */
   badge?: number;
@@ -292,21 +294,31 @@ function alertFor(
               `${ticketNumber} wartet auf Ihre Rückmeldung. Ist Ihr Problem gelöst?`,
             ),
       };
-    case "mention":
+    case "mention": {
+      const author = input.mentionAuthorName
+        ? truncateSubject(input.mentionAuthorName)
+        : null;
       return {
-        title: tone(formality, "Du wurdest erwähnt", "Sie wurden erwähnt"),
+        title: author
+          ? tone(
+              formality,
+              `${author} hat dich erwähnt`,
+              `${author} hat Sie erwähnt`,
+            )
+          : tone(formality, "Du wurdest erwähnt", "Sie wurden erwähnt"),
         body: subject
           ? tone(
               formality,
-              `Du wurdest in ${ticketNumber} in einer internen Notiz erwähnt: ${subject}`,
-              `Sie wurden in ${ticketNumber} in einer internen Notiz erwähnt: ${subject}`,
+              `${ticketNumber}: ${subject} – bitte wirf einen Blick darauf.`,
+              `${ticketNumber}: ${subject} – bitte werfen Sie einen Blick darauf.`,
             )
           : tone(
               formality,
-              `Du wurdest in ${ticketNumber} in einer internen Notiz erwähnt.`,
-              `Sie wurden in ${ticketNumber} in einer internen Notiz erwähnt.`,
+              `Bitte wirf einen Blick auf ${ticketNumber}.`,
+              `Bitte werfen Sie einen Blick auf ${ticketNumber}.`,
             ),
       };
+    }
     case "resolved":
       return {
         title: "Ticket gelöst",
@@ -636,7 +648,11 @@ function alertFor(
           };
         case "team_ready":
           return {
-            title: tone(formality, "Dein Team ist bereit", "Ihr Team ist bereit"),
+            title: tone(
+              formality,
+              "Dein Team ist bereit",
+              "Ihr Team ist bereit",
+            ),
             body: "Das bestellte Microsoft-Teams-Team wurde angelegt.",
           };
         case "team_failed":
@@ -993,7 +1009,8 @@ export async function sendApns(
         "apns-push-type": "alert",
         "apns-priority": String(options.priority ?? 10),
         "apns-expiration": String(
-          Math.floor(Date.now() / 1000) + (options.expiresInSeconds ?? 24 * 60 * 60),
+          Math.floor(Date.now() / 1000) +
+            (options.expiresInSeconds ?? 24 * 60 * 60),
         ),
         "apns-collapse-id": collapseId.slice(0, 64),
         "content-type": "application/json",

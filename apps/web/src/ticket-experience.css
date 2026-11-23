@@ -668,3 +668,29 @@
   font-size: 0.8rem;
   font-weight: 600;
 }
+
+/* Vorschläge beim Erwähnen mit «@» */
+.ticket-mention-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: -0.25rem 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket-mention-suggestions button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ticket-mention-suggestions button:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}

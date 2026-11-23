@@ -179,8 +179,8 @@ function ticketEvents(
       tone(formality, "Du wurdest erwähnt", "Sie wurden erwähnt"),
       tone(
         formality,
-        "Du wurdest in einem Ticket erwähnt.",
-        "Sie wurden in einem Ticket erwähnt.",
+        "Du wurdest in einem Ticket erwähnt. Bitte wirf einen Blick darauf.",
+        "Sie wurden in einem Ticket erwähnt. Bitte werfen Sie einen Blick darauf.",
       ),
     ],
     "ticket.supervisor_request": [

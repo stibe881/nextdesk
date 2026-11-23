@@ -873,6 +873,8 @@ export async function addMobileTicketComment(input: {
   visibility: TicketCommentVisibility;
   /** Files uploaded for this message (with the same visibility). */
   attachmentIds?: string[];
+  /** Mit «@Name» erwähnte Agenten: sie erhalten eine Mitteilung. */
+  mentionedUserIds?: string[];
 }): Promise<void> {
   const attachmentIds = input.attachmentIds ?? [];
   const body = messageBodyWithAttachments(input.body, attachmentIds.length);
@@ -881,14 +883,29 @@ export async function addMobileTicketComment(input: {
       "Die Nachricht muss zwischen 1 und 50'000 Zeichen lang sein.",
     );
   }
-  await invokeNextDesk<unknown>("ticket-operations", {
-    type: "addComment",
-    tenantId: input.tenantId,
-    ticketId: input.ticketId,
-    body,
-    visibility: input.visibility,
-    ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
-  });
+  const response = await invokeNextDesk<{ data?: { commentId?: unknown } }>(
+    "ticket-operations",
+    {
+      type: "addComment",
+      tenantId: input.tenantId,
+      ticketId: input.ticketId,
+      body,
+      visibility: input.visibility,
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+    },
+  );
+  const commentId = response?.data?.commentId;
+  const mentioned = input.mentionedUserIds ?? [];
+  if (typeof commentId === "string" && mentioned.length > 0) {
+    // Erwähnungen: die erwähnten Agenten erhalten eine Mitteilung.
+    await invokeNextDesk<unknown>("agent-workbench", {
+      type: "createMentions",
+      tenantId: input.tenantId,
+      ticketId: input.ticketId,
+      commentId,
+      mentionedUserIds: mentioned.slice(0, 50),
+    });
+  }
 }
 
 export async function saveMobileTicketDraft(input: {

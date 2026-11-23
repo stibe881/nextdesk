@@ -3522,7 +3522,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
     return response(
       request,
-      { data: { created: true, copiesQueued, copiesFailed } },
+      { data: { created: true, commentId: comment.id, copiesQueued, copiesFailed } },
       201,
     );
   }

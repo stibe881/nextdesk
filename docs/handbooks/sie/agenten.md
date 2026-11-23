@@ -334,8 +334,8 @@ Mehr dazu unter «Antworten und interne Notizen».
 ### Wie erwähne ich Kolleginnen und Kollegen in einer Nachricht?
 
 1. Öffnen Sie das Ticket und wählen Sie im Antwortbereich den gewünschten Modus.
-2. Tippen Sie im Text `@` und den Namen der Person.
-3. Senden Sie die Nachricht oder speichern Sie die Notiz. Die Erwähnung erscheint bei der Person im Arbeitsplatz unter **Erwähnungen**.
+2. Tippen Sie im Text `@` und die ersten Buchstaben des Namens. Unter dem Textfeld erscheinen passende Agenten; tippen bzw. klicken Sie auf den richtigen (im Web und in der App).
+3. Senden Sie die Nachricht oder speichern Sie die Notiz. Die Person erhält eine Mitteilung «… hat Sie erwähnt» (Glocke, Push und Mail je nach Einstellung) mit der Bitte, einen Blick auf das Ticket zu werfen. Die Erwähnung steht zudem im Arbeitsplatz unter **Erwähnungen**.
 
 Mehr dazu unter «Antworten und interne Notizen».
 
