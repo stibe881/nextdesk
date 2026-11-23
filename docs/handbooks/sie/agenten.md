@@ -243,7 +243,7 @@ Mehr dazu unter «Ein Ticket bearbeiten».
 
 1. Öffnen Sie das Ticket.
 2. Wählen Sie im Kopf- oder Infobereich die **Kategorie** bzw. das **Team**.
-3. In der App tippen Sie in der Karte **Details** auf **Kategorie** bzw. **Team** (unter «Zugewiesen an») und wählen den neuen Wert. Zur Auswahl stehen die aktiven Teams der Abteilung des Tickets.
+3. In der App klappen Sie die Karte **Details** auf (sie ist zu Beginn eingeklappt) und tippen auf **Kategorie** bzw. **Team** (unter «Zugewiesen an») und wählen den neuen Wert. Zur Auswahl stehen die aktiven Teams der Abteilung des Tickets.
 
 Mehr dazu unter «Ein Ticket bearbeiten».
 
