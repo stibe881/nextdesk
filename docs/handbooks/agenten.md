@@ -442,6 +442,7 @@ Mehr dazu unter «Weitere Aktionen im Ticket».
 3. Suche unter **Hauptticket suchen** das Hauptticket.
 4. Klicke beim richtigen Treffer auf **In dieses Ticket zusammenführen**.
 5. Bestätige mit **Zusammenführen bestätigen**. Das aktuelle Ticket wird als Duplikat geschlossen und im Hauptticket referenziert.
+6. Kam das Ticket per Mail, erhält die anfragende Person eine Mail mit der Nummer des Haupttickets und dem Hinweis, weshalb sie kommt (statt der «gelöst»-Mail).
 
 Mehr dazu unter «Weitere Aktionen im Ticket».
 
@@ -451,6 +452,7 @@ Mehr dazu unter «Weitere Aktionen im Ticket».
 2. Wähle in der blauen Leiste **Zusammenführen** (in der App unten **Zusammenführen**).
 3. Wähle das **Haupt-Ticket**; vorgeschlagen wird das älteste offene. Das Haupt-Ticket muss offen sein.
 4. Bestätige mit **Zusammenführen**. Die anderen Tickets werden gelöst, verweisen auf das Haupt-Ticket und erscheinen in dessen Verlauf.
+5. Kam ein zusammengeführtes Ticket per Mail, erhält die anfragende Person statt «Dein Ticket wurde gelöst» eine eigene Mail. Darin steht, dass zu ihrem Anliegen mehrere Tickets entstanden sind, und nennt die Nummer, unter der es weitergeht.
 
 Mehr dazu unter «Ticketliste».
 

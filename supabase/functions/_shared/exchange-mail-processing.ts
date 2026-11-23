@@ -236,6 +236,7 @@ export function customerTicketEmailKindForOutbound(
     messageKind === "acknowledgement" ||
     messageKind === "resolution" ||
     messageKind === "rating_reminder" ||
+    messageKind === "merge_notice" ||
     messageKind === "test"
   )
     return messageKind;
@@ -2914,6 +2915,39 @@ export async function dispatchOutboundMessage(
           "Ihr Ticket wurde als gelöst markiert.",
         ),
       );
+    // Zusammengeführt: wo die Anfrage weiterläuft und weshalb es diese Mail gibt.
+    let mergePrimaryNumber: string | null = null;
+    if (message.kind === "merge_notice") {
+      const merged = await admin
+        .from("tickets")
+        .select("merged_into_ticket_id")
+        .eq("id", ticket?.id ?? message.ticket_id)
+        .eq("tenant_id", message.tenant_id)
+        .maybeSingle();
+      const primaryId = asString(merged.data?.merged_into_ticket_id);
+      const primary = primaryId
+        ? await admin
+            .from("tickets")
+            .select("ticket_number, subject")
+            .eq("id", primaryId)
+            .eq("tenant_id", message.tenant_id)
+            .maybeSingle()
+        : null;
+      mergePrimaryNumber = asString(primary?.data?.ticket_number);
+      if (!mergePrimaryNumber) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "merge_target_unavailable",
+        });
+        return;
+      }
+      const primarySubject = asString(primary?.data?.subject);
+      bodyText = tone(
+        formality,
+        `Zu deinem Anliegen wurden bei uns mehrere Tickets erstellt, zum Beispiel weil mehrere E-Mails zum selben Thema eingegangen sind. Damit nichts doppelt bearbeitet wird, haben wir sie zusammengeführt.\n\nDeine Anfrage wird unter Ticket ${mergePrimaryNumber}${primarySubject ? ` «${primarySubject}»` : ""} weiterbearbeitet. Du musst nichts tun; weitere Nachrichten erhältst du zu diesem Ticket.`,
+        `Zu Ihrem Anliegen wurden bei uns mehrere Tickets erstellt, zum Beispiel weil mehrere E-Mails zum selben Thema eingegangen sind. Damit nichts doppelt bearbeitet wird, haben wir sie zusammengeführt.\n\nIhre Anfrage wird unter Ticket ${mergePrimaryNumber}${primarySubject ? ` «${primarySubject}»` : ""} weiterbearbeitet. Sie müssen nichts tun; weitere Nachrichten erhalten Sie zu diesem Ticket.`,
+      );
+    }
     if (message.kind === "rating_reminder") {
       // Erinnerung nur, solange das Ticket gelöst und noch nicht bewertet ist.
       const rated = await admin
@@ -2982,7 +3016,9 @@ export async function dispatchOutboundMessage(
     const portalActionLabel =
       message.kind === "agent_reply"
         ? "Im Portal antworten"
-        : message.kind === "acknowledgement" || message.kind === "resolution"
+        : message.kind === "acknowledgement" ||
+            message.kind === "resolution" ||
+            message.kind === "merge_notice"
           ? "Ticket im Portal ansehen"
           : null;
     const html = internalDepartmentNotice
@@ -3043,6 +3079,8 @@ export async function dispatchOutboundMessage(
             ? `AW: [${ticketNumber}] ${ticketSubject}`
             : message.kind === "rating_reminder"
               ? `${tone(formality, "Wie zufrieden warst du?", "Wie zufrieden waren Sie?")} [${ticketNumber}] ${ticketSubject}`
+              : message.kind === "merge_notice" && mergePrimaryNumber
+                ? `[${ticketNumber}] Weiter unter ${mergePrimaryNumber}: ${ticketSubject}`
               : `[${ticketNumber}] ${ticketSubject}`,
       body: { contentType: "HTML", content: html },
       toRecipients: [{ emailAddress: { address: recipient } }],
