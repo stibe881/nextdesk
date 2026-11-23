@@ -2,7 +2,7 @@
 title: Handbuch für Administratoren
 description: Mandant einrichten – Design, Funktionen, SLA, Abteilungen, Personen, Rollen, Datenschutz und Protokoll.
 audienceLabel: Administratoren
-updated: 2026-11-20
+updated: 2026-11-23
 ---
 
 # Handbuch für Administratoren
@@ -199,6 +199,15 @@ Mehr dazu unter «Ticket-Lebenszyklus».
 4. Legen Sie _Schliessen nach Werktagen_ fest. So lange bleibt ein Ticket auf «Gelöst».
 
 Antwortet die anfragende Person vorher, wird das Ticket wieder geöffnet. Mehr dazu unter «Ticket-Lebenszyklus».
+
+### Wie lasse ich doppelt gesendete Tickets automatisch zusammenführen?
+
+1. Öffnen Sie **Funktionen → SLA-Automatisierung → Konfigurieren**.
+2. Suchen Sie den Bereich **Neue Tickets automatisch einordnen**.
+3. Schalten Sie **Eindeutige Duplikate automatisch zusammenführen (ohne KI)** ein. Die KI-Triage muss dafür nicht eingeschaltet sein.
+4. Ab jetzt wird ein neues Ticket derselben Person mit gleichem Betreff innerhalb von 10 Minuten ins erste Ticket zusammengeführt.
+
+Mehr dazu unter «SLA-Automatisierung konfigurieren».
 
 ### Wie stelle ich eine SLA-Regel ein?
 
@@ -792,7 +801,11 @@ Unter **Funktionen → SLA-Automatisierung → Konfigurieren**:
   «Zeitgesteuert». Im Teil **Wenn …** definieren Sie Bedingungen (z. B.
   Stichworte in Betreff oder Beschreibung), im Teil **… dann** die Aktion
   (Team zuweisen, Person zuweisen, Priorität setzen). **Regel speichern**.
-- **Neue Tickets automatisch einordnen** (KI-Triage).
+- **Neue Tickets automatisch einordnen** (KI-Triage). Dort steht auch
+  **Eindeutige Duplikate automatisch zusammenführen (ohne KI)**: Schickt
+  dieselbe Person innerhalb von 10 Minuten ein Ticket mit gleichem Betreff
+  (zum Beispiel eine doppelt gesendete Mail), wird es ins erste Ticket
+  zusammengeführt.
 - **Automatisierungen**: Mit **Vorschau ausführen** prüfen Sie Regeln vor
   dem Einsatz, das **Prüfintervall in Tagen** erinnert an die regelmässige
   Kontrolle.

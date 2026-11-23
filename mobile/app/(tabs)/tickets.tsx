@@ -42,6 +42,7 @@ import {
   BULK_STATUS_OPTIONS,
   bulkDeleteTickets,
   markTicketsSpam,
+  loadMergePreview,
   mergeTicketsInto,
   bulkSetTicketStatus,
   dueToday,
@@ -83,6 +84,7 @@ import {
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 import { tn } from "@/lib/formality";
+import { mergePreviewLines } from "@/lib/ticket-merge-preview";
 
 type TicketScope =
   "all" | "mine" | "watched" | "open" | "resolved" | "unassigned";
@@ -249,6 +251,7 @@ export default function TicketsScreen() {
   });
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [mergePickerOpen, setMergePickerOpen] = useState(false);
+  const [mergeSuggestedId, setMergeSuggestedId] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [savedViews, setSavedViews] = useState<SavedTicketView[]>([]);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
@@ -495,12 +498,34 @@ export default function TicketsScreen() {
     setMergePickerOpen(false);
   }
 
-  function bulkMerge(primary: MobileTicket) {
+  // Vorschlag für das Haupt-Ticket: meiste Aktivität, dann zugewiesen,
+  // dann ältestes offenes Ticket.
+  useEffect(() => {
+    setMergeSuggestedId(null);
+    if (!mergePickerOpen || !tenantId || selectedIds.size < 2) return;
+    let active = true;
+    void loadMergePreview(tenantId, [...selectedIds], null)
+      .then((preview) => {
+        if (active) setMergeSuggestedId(preview?.suggestedPrimaryId ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [mergePickerOpen, selectedIds, tenantId]);
+
+  async function bulkMerge(primary: MobileTicket) {
     if (!tenantId || selectedIds.size < 2) return;
     const ids = [...selectedIds];
+    const preview = await loadMergePreview(tenantId, ids, primary.id).catch(
+      () => null,
+    );
+    const summary = preview ? mergePreviewLines(preview) : [];
     Alert.alert(
       "Tickets zusammenführen?",
-      `Die anderen ${ids.length - 1} Tickets werden in ${primary.ticketNumber} zusammengeführt, also gelöst und mit Verweis auf dieses Ticket.`,
+      `Die anderen ${ids.length - 1} Tickets werden in ${primary.ticketNumber} zusammengeführt, also gelöst und mit Verweis auf dieses Ticket.${
+        summary.length ? `\n\n${summary.join("\n")}` : ""
+      }`,
       [
         { style: "cancel", text: "Abbrechen" },
         {
@@ -1516,7 +1541,7 @@ export default function TicketsScreen() {
                     accessibilityRole="button"
                     disabled={ticket.resolved}
                     key={ticket.id}
-                    onPress={() => bulkMerge(ticket)}
+                    onPress={() => void bulkMerge(ticket)}
                     style={[
                       styles.filter,
                       tokenStyles.control,
@@ -1527,6 +1552,7 @@ export default function TicketsScreen() {
                       numberOfLines={1}
                       style={[styles.filterText, tokenStyles.foreground]}
                     >
+                      {mergeSuggestedId === ticket.id ? "Vorschlag · " : ""}
                       {ticket.ticketNumber} · {ticket.subject}
                     </Text>
                   </Pressable>

@@ -5,6 +5,7 @@ import {
 } from "@/lib/nextdesk-client";
 import type { MobileTicket } from "@/lib/nextdesk-tickets";
 import { tn } from "./formality";
+import { parseMergePreview, type MergePreview } from "./ticket-merge-preview";
 
 export function followUpTitle(ticket: MobileTicket): string {
   return (
@@ -283,6 +284,7 @@ export async function mergeTicketsInto(
         tenantId,
         ticketId,
         primaryTicketId,
+        source: "bulk",
       });
       merged += 1;
     } catch (error) {
@@ -291,4 +293,26 @@ export async function mergeTicketsInto(
     }
   }
   return { merged, failed, lastError };
+}
+
+/**
+ * Vorschau einer Zusammenführung: vorgeschlagenes Haupt-Ticket und was
+ * übernommen wird. Ohne Haupt-Ticket liefert der Server nur den Vorschlag.
+ */
+export async function loadMergePreview(
+  tenantId: string,
+  ticketIds: readonly string[],
+  primaryTicketId: string | null,
+): Promise<MergePreview | null> {
+  const response = await invokeNextDesk<{ data?: unknown }>(
+    "ticket-operations",
+    {
+      type: "mergePreview",
+      tenantId,
+      ticketId: primaryTicketId ?? ticketIds[0],
+      ticketIds: [...ticketIds],
+      primaryTicketId,
+    },
+  );
+  return parseMergePreview(response?.data);
 }

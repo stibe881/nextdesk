@@ -24098,3 +24098,12 @@ button.inventory__metric--link:focus-visible {
 .ticket-bulk-actions__merge-list input {
   margin-top: 3px;
 }
+
+/* «N Personen betroffen» über zusammengeführte Tickets. */
+.ticket-meta .ticket-meta__affected {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary);
+  font-weight: 600;
+}

@@ -84,6 +84,17 @@ import { ProjectLinkCard } from "./project-link-card";
 import { recordRecentItem } from "./lib/recent-items";
 import { functionErrorMessage } from "./lib/function-error";
 import { TicketControlPanel } from "./ticket-control";
+import {
+  AffectedPeopleBadge,
+  DuplicateSuggestions,
+  loadMergePreview,
+  MergedIntoBanner,
+  MergedTicketsSection,
+  MergePreviewSummary,
+  parseMergeInsights,
+  type MergeInsights,
+  type MergePreview,
+} from "./ticket-merge-insights";
 import { knowledgeErrorBackendMessage } from "./lib/knowledge-errors";
 import {
   parseKnowledgeImageUrls,
@@ -786,6 +797,8 @@ type TicketDetailData = {
   canWriteInternalNotes: boolean;
   canCommentExternal: boolean;
   canTrackTime: boolean;
+  /** Zusammengeführte Tickets, betroffene Personen und Haupt-Ticket. */
+  mergeInsights: MergeInsights;
 };
 
 /** Lange Unterhaltungen scrollen im Fenster; es startet bei der neuesten Nachricht. */
@@ -2194,6 +2207,7 @@ function parseTicketDetail(
     canWriteInternalNotes: data.canWriteInternalNotes === true,
     canCommentExternal: data.canCommentExternal === true,
     canTrackTime: data.canTrackTime === true,
+    mergeInsights: parseMergeInsights(data),
   };
 }
 
@@ -4201,6 +4215,7 @@ export function TicketDetail({
   const [mergeError, setMergeError] = useState("");
   const [mergeConfirmationTarget, setMergeConfirmationTarget] =
     useState<MergeSearchTarget | null>(null);
+  const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
   const [pendingChecklistItemId, setPendingChecklistItemId] = useState<
     string | null
   >(null);
@@ -7183,6 +7198,27 @@ export function TicketDetail({
     }
   }
 
+  useEffect(() => {
+    setMergePreview(null);
+    if (!mergeConfirmationTarget) return;
+    let active = true;
+    void loadMergePreview(
+      tenantId,
+      ticketId,
+      [ticketId, mergeConfirmationTarget.id],
+      mergeConfirmationTarget.id,
+    )
+      .then((preview) => {
+        if (active) setMergePreview(preview);
+      })
+      .catch(() => {
+        // Die Vorschau ist eine Hilfe; das Zusammenführen bleibt möglich.
+      });
+    return () => {
+      active = false;
+    };
+  }, [mergeConfirmationTarget, tenantId, ticketId]);
+
   async function markMerged(primaryTicket: MergeSearchTarget) {
     if (!detail || !detail.canMerge || busy || primaryTicket.id === ticketId) {
       return;
@@ -7379,6 +7415,11 @@ export function TicketDetail({
             {detail.ticket.ticket_number}
           </p>
           <h2>{detail.ticket.subject}</h2>
+          {requesterView ? null : (
+            <AffectedPeopleBadge
+              count={detail.mergeInsights.affectedPeople}
+            />
+          )}
         </div>
         <div className="ticket-detail-header-actions">
           {!requesterView && presence.length > 0 ? (
@@ -7521,9 +7562,38 @@ export function TicketDetail({
         />
       )}
 
+      {!requesterView && (
+        <MergedIntoBanner
+          canUnmerge={detail.canMerge}
+          mergedInto={detail.mergeInsights.mergedInto}
+          onChanged={async () => {
+            onChanged();
+            await loadTicket();
+          }}
+          onOpenTicket={onOpenTicket}
+          tenantId={tenantId}
+          ticketId={ticketId}
+        />
+      )}
+
+      {!requesterView &&
+        detail.canMerge &&
+        !detail.mergeInsights.mergedInto && (
+          <DuplicateSuggestions
+            onChanged={async () => {
+              onChanged();
+              await loadTicket();
+            }}
+            onOpenTicket={onOpenTicket}
+            refreshKey={`${detail.ticket.id}:${detail.mergeInsights.mergedTickets.length}`}
+            tenantId={tenantId}
+            ticketId={ticketId}
+          />
+        )}
+
       {detail.canUpdate && (
         <TicketIncidentBanner
-          refreshKey={`${detail.ticket.id}:${detail.ticket.subject}`}
+          refreshKey={`${detail.ticket.id}:${detail.ticket.subject}:${detail.mergeInsights.affectedPeople}`}
           subject={detail.ticket.subject}
           tenantId={tenantId}
           ticketId={ticketId}
@@ -9725,6 +9795,11 @@ export function TicketDetail({
             </details>
           ) : null}
 
+          <MergedTicketsSection
+            mergedTickets={detail.mergeInsights.mergedTickets}
+            onOpenTicket={requesterView ? undefined : onOpenTicket}
+          />
+
           {requesterView ? null : (
             <details
               className="ticket-detail-disclosure"
@@ -9845,8 +9920,14 @@ export function TicketDetail({
                                       <p className="data-caption" role="status">
                                         Bitte bestätigen: Das aktuelle Ticket
                                         wird als Duplikat geschlossen und in
-                                        diesem Hauptticket referenziert.
+                                        diesem Hauptticket weitergeführt.
                                       </p>
+                                      {mergePreview &&
+                                      mergePreview.primaryId === target.id ? (
+                                        <MergePreviewSummary
+                                          preview={mergePreview}
+                                        />
+                                      ) : null}
                                       <div className="ticket-detail-actions">
                                         <button
                                           className="primary-button"

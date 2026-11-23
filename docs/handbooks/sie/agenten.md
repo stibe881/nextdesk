@@ -441,8 +441,9 @@ Mehr dazu unter «Weitere Aktionen im Ticket».
 2. Öffnen Sie **Ticket steuern** und wählen Sie **Tickets zusammenführen**.
 3. Suchen Sie unter **Hauptticket suchen** das Hauptticket.
 4. Klicken Sie beim richtigen Treffer auf **In dieses Ticket zusammenführen**.
-5. Bestätigen Sie mit **Zusammenführen bestätigen**. Das aktuelle Ticket wird als Duplikat geschlossen und im Hauptticket referenziert.
-6. Kam das Ticket per Mail, erhält die anfragende Person eine Mail mit der Nummer des Haupttickets und dem Hinweis, weshalb sie kommt (statt der «gelöst»-Mail).
+5. Prüfen Sie die Vorschau: resultierende Priorität und Frist, Zuständigkeit, betroffene Personen, verschobene Zeiten und Checklistenpunkte sowie wer eine Info-Mail erhält.
+6. Bestätigen Sie mit **Zusammenführen bestätigen**. Das aktuelle Ticket wird gelöst und läuft im Hauptticket weiter.
+7. Kam das Ticket per Mail, erhält die anfragende Person eine Mail mit der Nummer des Haupttickets und dem Hinweis, weshalb sie kommt (statt der «gelöst»-Mail).
 
 Mehr dazu unter «Weitere Aktionen im Ticket».
 
@@ -450,11 +451,28 @@ Mehr dazu unter «Weitere Aktionen im Ticket».
 
 1. Markieren Sie in der Ticketliste zwei bis zwanzig Tickets (in der App: **Auswählen** und die Tickets antippen).
 2. Wählen Sie in der blauen Leiste **Zusammenführen** (in der App unten **Zusammenführen**).
-3. Wählen Sie das **Haupt-Ticket**; vorgeschlagen wird das älteste offene. Das Haupt-Ticket muss offen sein.
-4. Bestätigen Sie mit **Zusammenführen**. Die anderen Tickets werden gelöst, verweisen auf das Haupt-Ticket und erscheinen in dessen Verlauf.
+3. Wählen Sie das **Haupt-Ticket**. Vorgewählt ist der **Vorschlag**: das offene Ticket mit den meisten Beiträgen, sonst ein zugewiesenes, sonst das älteste. Das Haupt-Ticket muss offen sein.
+4. Prüfen Sie die Vorschau (Priorität, Frist, Zuständigkeit, betroffene Personen, Info-Mails) und bestätigen Sie mit **Zusammenführen**. Die anderen Tickets werden gelöst, verweisen auf das Haupt-Ticket und erscheinen in dessen Verlauf.
 5. Kam ein zusammengeführtes Ticket per Mail, erhält die anfragende Person statt «Ihr Ticket wurde gelöst» eine eigene Mail. Darin steht, dass zu ihrem Anliegen mehrere Tickets entstanden sind, und nennt die Nummer, unter der es weitergeht.
 
 Mehr dazu unter «Ticketliste».
+
+### Wie führe ich ein vorgeschlagenes Duplikat zusammen?
+
+1. Öffnen Sie das Ticket. Erkennt nextDesk mögliche Duplikate (gleiche Person in den letzten Tagen oder gleicher Betreff), erscheint oben der Kasten **Mögliche Duplikate**.
+2. Wählen Sie beim passenden Ticket **Hierhin zusammenführen**.
+3. Prüfen Sie die Vorschau und bestätigen Sie mit **Zusammenführen bestätigen**. Das vorgeschlagene Ticket läuft danach im geöffneten Ticket weiter.
+4. Ist es kein Duplikat, blenden Sie den Vorschlag mit **Kein Duplikat** aus.
+
+Mehr dazu unter «Tickets zusammenführen».
+
+### Wie hebe ich eine Zusammenführung auf?
+
+1. Öffnen Sie das zusammengeführte Ticket (zum Beispiel über **Zusammengeführte Tickets** im Haupt-Ticket).
+2. Wählen Sie im Hinweis «Zusammengeführt in …» **Zusammenführung aufheben** und bestätigen Sie.
+3. Das Ticket ist wieder offen. Verschobene Arbeitszeiten und Checklistenpunkte kommen zurück, beide Tickets erhalten eine interne Notiz.
+
+Mehr dazu unter «Tickets zusammenführen».
 
 ### Wie eröffne ich aus einem Ticket einen Fall?
 
@@ -2940,7 +2958,7 @@ der Übersicht, im Kanban und in der App.
   Listen-Detail-Ansicht (Liste links, Ticket rechts).
 - **Mehrfachauswahl**: mehrere Tickets markieren → **Neuer Status** →
   **Status für Auswahl setzen**.
-- **Zusammenführen**: zwei bis zwanzig Tickets markieren → **Zusammenführen** → Haupt-Ticket wählen und bestätigen (auch in der App).
+- **Zusammenführen**: zwei bis zwanzig Tickets markieren → **Zusammenführen** → vorgeschlagenes Haupt-Ticket übernehmen oder ein anderes wählen, Vorschau prüfen und bestätigen (auch in der App). Haupt-Tickets mit Duplikaten zeigen «N Personen betroffen».
 - **SLA-Anzeige**: Jede Karte zeigt die verbleibende Zeit bis zur
   Lösungsfrist; Tickets in einem wartenden Status zeigen stattdessen **«SLA
   pausiert seit …»** (siehe «SLA-Pause in wartenden Status»).
@@ -3137,6 +3155,32 @@ direkt auf die Zeile ziehen (max. 25 MiB pro Datei).
 | Arbeitszeit erfassen, Checkliste            | Aufwand und Arbeitsschritte dokumentieren               |
 | Zusammenfassen (KI)                         | Kurzfassung langer Verläufe                             |
 | Ticketakte als PDF                          | Ticket drucken oder ablegen                             |
+
+### Tickets zusammenführen
+
+Beim Zusammenführen läuft ein Duplikat im **Haupt-Ticket** weiter:
+
+- **Status**: Das Duplikat wird gelöst und verweist auf das Haupt-Ticket. Kam
+  es per Mail, erhält die anfragende Person eine Mail mit der neuen Nummer.
+- **Übernahme ins Haupt-Ticket**: die höhere Priorität und die frühere
+  Antwort- und Lösungsfrist; Team, zuständige Person, Kategorie, Assets und
+  Zusatzfelder, falls sie im Haupt-Ticket noch leer sind. Erfasste
+  Arbeitszeiten und offene Checklistenpunkte werden verschoben.
+- **Verlauf**: Im Haupt-Ticket steht eine interne Notiz «Zusammengeführt aus
+  …». Der Bereich **Zusammengeführte Tickets** zeigt die Beiträge und Anhänge
+  jedes Duplikats (aufklappbar).
+- **Antworten**: Externe Antworten im Haupt-Ticket gehen in Kopie auch an die
+  anfragenden Personen der Duplikate. Antwortet jemand per Mail auf ein
+  zusammengeführtes Ticket, landet die Antwort im Haupt-Ticket.
+- **Betroffene Personen**: Kopf des Tickets und Ticketliste zeigen «N
+  Personen betroffen». Ab drei Personen erscheint der Hinweis **Möglicher
+  Störfall** mit **Störungsmeldung veröffentlichen** und **Fall erstellen**.
+- **Aufheben**: Über **Zusammenführung aufheben** im zusammengeführten Ticket
+  wird alles zurückgestellt.
+
+Wie oft zusammengeführt wird, zeigt das Service-Reporting im Bereich
+**Zusammengeführte Tickets** (nach Eingangskanal, Art und Personen mit den
+meisten Mehrfachmeldungen).
 
 ### An Drittanbieter übergeben
 

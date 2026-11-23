@@ -64,7 +64,17 @@ type Action =
       tenantId: string;
       ticketId: string;
       primaryTicketId: string;
+      source: "manual" | "bulk";
     }
+  | { type: "unmerge"; tenantId: string; ticketId: string }
+  | {
+      type: "mergePreview";
+      tenantId: string;
+      ticketId: string;
+      ticketIds: string[];
+      primaryTicketId: string | null;
+    }
+  | { type: "duplicateCandidates"; tenantId: string; ticketId: string }
   | {
       type: "searchMergeTargets";
       tenantId: string;
@@ -262,6 +272,41 @@ function parseAction(value: unknown): Action | null {
       tenantId: value.tenantId,
       ticketId: value.ticketId,
       primaryTicketId: value.primaryTicketId,
+      source: value.source === "bulk" ? "bulk" : "manual",
+    };
+  if (
+    (value.type === "unmerge" || value.type === "duplicateCandidates") &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketId"])
+  )
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+    };
+  if (
+    value.type === "mergePreview" &&
+    hasOnlyKeys(value, [
+      "type",
+      "tenantId",
+      "ticketId",
+      "ticketIds",
+      "primaryTicketId",
+    ]) &&
+    Array.isArray(value.ticketIds) &&
+    value.ticketIds.length >= 2 &&
+    value.ticketIds.length <= 20 &&
+    value.ticketIds.every(isUuid) &&
+    (value.primaryTicketId === undefined ||
+      value.primaryTicketId === null ||
+      isUuid(value.primaryTicketId))
+  )
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+      ticketIds: [...new Set(value.ticketIds as string[])],
+      primaryTicketId:
+        typeof value.primaryTicketId === "string" ? value.primaryTicketId : null,
     };
   if (
     value.type === "searchMergeTargets" &&
@@ -885,6 +930,156 @@ async function canRead(admin: any, userId: string, ticket: any) {
   if (await delegateCanRead(admin, userId, ticket.id)) return true;
   return false;
 }
+/**
+ * Zusammengeführte Tickets im Haupt-Ticket: ihr Verlauf (für interne Leser
+ * auch interne Notizen), Anhänge und die Zahl der betroffenen Personen.
+ */
+async function mergedTicketDetails(
+  admin: any,
+  ticket: any,
+  includeInternal: boolean,
+): Promise<{
+  mergedTickets: Record<string, unknown>[];
+  affectedPeople: number;
+  mergedInto: Record<string, unknown> | null;
+}> {
+  const empty = { mergedTickets: [], affectedPeople: 1, mergedInto: null };
+  try {
+    const mergedInto = ticket.merged_into_ticket_id
+      ? await admin
+          .from("tickets")
+          .select("id, ticket_number, subject")
+          .eq("id", ticket.merged_into_ticket_id)
+          .eq("tenant_id", ticket.tenant_id)
+          .maybeSingle()
+      : { data: null };
+    const children = await admin
+      .from("tickets")
+      .select(
+        "id, ticket_number, subject, created_at, requester_contact_id, source",
+      )
+      .eq("tenant_id", ticket.tenant_id)
+      .eq("merged_into_ticket_id", ticket.id)
+      .is("deleted_at", null)
+      .order("created_at")
+      .limit(20);
+    const rows = (children.data ?? []) as any[];
+    const contactIds = [
+      ...new Set(
+        [ticket.requester_contact_id, ...rows.map((row) => row.requester_contact_id)]
+          .filter((id) => typeof id === "string"),
+      ),
+    ];
+    const contacts = contactIds.length
+      ? await admin
+          .from("ticket_requesters")
+          .select("id, display_name, email")
+          .in("id", contactIds)
+      : { data: [] };
+    const contactById = new Map(
+      ((contacts.data ?? []) as any[]).map((row) => [row.id, row]),
+    );
+    const people = new Set<string>();
+    for (const id of contactIds) {
+      const contact = contactById.get(id);
+      people.add(
+        (typeof contact?.email === "string" && contact.email.trim()
+          ? contact.email.trim().toLowerCase()
+          : String(id)),
+      );
+    }
+    if (!rows.length) {
+      return {
+        mergedTickets: [],
+        affectedPeople: Math.max(1, people.size),
+        mergedInto: mergedInto.data
+          ? {
+              id: mergedInto.data.id,
+              ticketNumber: mergedInto.data.ticket_number,
+              subject: mergedInto.data.subject,
+            }
+          : null,
+      };
+    }
+    const ids = rows.map((row) => row.id);
+    let commentQuery = admin
+      .from("ticket_comments")
+      .select("id, ticket_id, author_id, visibility, body, created_at, requester_contact_id")
+      .in("ticket_id", ids)
+      .order("created_at")
+      .limit(300);
+    if (!includeInternal) commentQuery = commentQuery.eq("visibility", "external");
+    let attachmentQuery = admin
+      .from("ticket_attachments")
+      .select("id, ticket_id, original_filename, byte_size, visibility")
+      .in("ticket_id", ids)
+      .limit(100);
+    if (!includeInternal) attachmentQuery = attachmentQuery.eq("visibility", "external");
+    const [comments, attachments, merges] = await Promise.all([
+      commentQuery,
+      attachmentQuery,
+      admin
+        .from("ticket_merges")
+        .select("ticket_id, merged_at, source")
+        .eq("primary_ticket_id", ticket.id)
+        .is("unmerged_at", null),
+    ]);
+    const commentRows = (comments.data ?? []) as any[];
+    const authorIds = [
+      ...new Set(commentRows.map((row) => row.author_id).filter(Boolean)),
+    ];
+    const authors = authorIds.length
+      ? await admin.from("user_profiles").select("id, display_name").in("id", authorIds)
+      : { data: [] };
+    const authorName = new Map(
+      ((authors.data ?? []) as any[]).map((row) => [row.id, row.display_name]),
+    );
+    const mergeByTicket = new Map(
+      ((merges.data ?? []) as any[]).map((row) => [row.ticket_id, row]),
+    );
+    return {
+      affectedPeople: Math.max(1, people.size),
+      mergedInto: null,
+      mergedTickets: rows.map((row) => {
+        const contact = contactById.get(row.requester_contact_id);
+        return {
+          id: row.id,
+          ticketNumber: row.ticket_number,
+          subject: row.subject,
+          createdAt: row.created_at,
+          source: row.source ?? null,
+          mergedAt: mergeByTicket.get(row.id)?.merged_at ?? null,
+          requesterName:
+            (typeof contact?.display_name === "string" && contact.display_name.trim()) ||
+            contact?.email ||
+            null,
+          comments: commentRows
+            .filter((comment) => comment.ticket_id === row.id)
+            .map((comment) => ({
+              id: comment.id,
+              visibility: comment.visibility,
+              body: comment.body,
+              createdAt: comment.created_at,
+              authorName: comment.requester_contact_id
+                ? ((contactById.get(comment.requester_contact_id)?.display_name as string | undefined) ??
+                  "Anfragende Person")
+                : (authorName.get(comment.author_id) ?? null),
+            })),
+          attachments: ((attachments.data ?? []) as any[])
+            .filter((attachment) => attachment.ticket_id === row.id)
+            .map((attachment) => ({
+              id: attachment.id,
+              fileName: attachment.original_filename,
+              size: attachment.byte_size,
+            })),
+        };
+      }),
+    };
+  } catch {
+    return empty;
+  }
+}
+
 async function getTicket(admin: any, tenantId: string, ticketId: string) {
   const { data } = await admin
     .from("tickets")
@@ -1435,6 +1630,86 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       403,
     );
 
+  if (action.type === "unmerge") {
+    if (
+      !(await hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.merge",
+      ))
+    )
+      return response(request, { error: { code: "ticket_merge_denied" } }, 403);
+    const { data, error } = await context.supabaseAdmin.rpc("ticket_unmerge", {
+      p_tenant_id: ticket.tenant_id,
+      p_ticket_id: ticket.id,
+      p_actor_id: actorId,
+    });
+    if (error)
+      return response(
+        request,
+        {
+          error: {
+            code: String(error.message ?? "").includes("ticket_not_merged")
+              ? "ticket_not_merged"
+              : "ticket_unmerge_failed",
+          },
+        },
+        422,
+      );
+    return response(request, { data });
+  }
+
+  if (action.type === "mergePreview") {
+    const ids = action.ticketIds.includes(ticket.id)
+      ? action.ticketIds
+      : [ticket.id, ...action.ticketIds];
+    // Alle Tickets müssen für die Person lesbar sein.
+    for (const id of ids) {
+      if (id === ticket.id) continue;
+      const other = await getTicket(context.supabaseAdmin, action.tenantId, id);
+      if (!other || !(await canRead(context.supabaseAdmin, actorId, other)))
+        return response(
+          request,
+          { error: { code: "related_ticket_access_denied" } },
+          403,
+        );
+    }
+    const { data, error } = await context.supabaseAdmin.rpc(
+      "ticket_merge_preview",
+      {
+        p_tenant_id: action.tenantId,
+        p_ticket_ids: ids,
+        p_primary_id: action.primaryTicketId,
+      },
+    );
+    if (error)
+      return response(
+        request,
+        { error: { code: "ticket_merge_preview_failed" } },
+        503,
+      );
+    return response(request, { data });
+  }
+
+  if (action.type === "duplicateCandidates") {
+    const { data, error } = await context.supabaseAdmin.rpc(
+      "ticket_duplicate_candidates",
+      { p_ticket_id: ticket.id },
+    );
+    if (error || !Array.isArray(data))
+      return response(request, { data: { candidates: [] } });
+    const candidates: Record<string, unknown>[] = [];
+    for (const row of data as Record<string, unknown>[]) {
+      if (typeof row.id !== "string") continue;
+      const other = await getTicket(context.supabaseAdmin, action.tenantId, row.id);
+      if (other && (await canRead(context.supabaseAdmin, actorId, other)))
+        candidates.push(row);
+    }
+    return response(request, { data: { candidates } });
+  }
+
   if (action.type === "getTicket") {
     const requesterContactPromise = isRequesterContactId(
       ticket.requester_contact_id,
@@ -1924,6 +2199,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         relations,
         similarTickets,
         ticketModules,
+        ...(await mergedTicketDetails(context.supabaseAdmin, ticket, internal)),
         ...(canAssign ? { agents: ticketAgents.agents } : {}),
         canUpdate,
         canMerge,
@@ -1994,8 +2270,34 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         createdAt: row.created_at,
       })),
     ];
-    if (tickets.length < INCIDENT_MIN_TICKETS)
+    // Zusammengeführte Tickets zählen mit: melden drei oder mehr Personen
+    // dasselbe Anliegen, ist es vermutlich eine Störung.
+    const mergedInfo = await mergedTicketDetails(
+      context.supabaseAdmin,
+      ticket,
+      false,
+    );
+    const known = new Set(tickets.map((item) => item.id));
+    for (const merged of mergedInfo.mergedTickets) {
+      if (typeof merged.id !== "string" || known.has(merged.id)) continue;
+      known.add(merged.id);
+      tickets.push({
+        id: merged.id,
+        ticketNumber: merged.ticketNumber,
+        subject: merged.subject,
+        createdAt: merged.createdAt,
+      });
+    }
+    const byAffectedPeople = mergedInfo.affectedPeople >= 3;
+    if (tickets.length < INCIDENT_MIN_TICKETS && !byAffectedPeople)
       return response(request, { data: { incident: null } });
+    if (!tickets.some((item) => item.id === ticket.id))
+      tickets.unshift({
+        id: ticket.id,
+        ticketNumber: ticket.ticket_number,
+        subject: ticket.subject,
+        createdAt: ticket.created_at,
+      });
     const [features, canManageProblems, canPublishNotices] = await Promise.all([
       resolveTenantFeatureStates(context.supabaseAdmin, ticket.tenant_id, [
         "assets.management",
@@ -2044,6 +2346,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         incident: {
           windowHours: INCIDENT_WINDOW_HOURS,
           ticketCount: tickets.length,
+          affectedPeople: mergedInfo.affectedPeople,
+          reason: byAffectedPeople ? "affected_people" : "similar_tickets",
           tickets,
           departmentId: ticket.department_id,
           problemDepartmentId,
@@ -2669,110 +2973,46 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "ticket_merge_already_set" } },
         409,
       );
+    // Das zusammengeführte Ticket wird gelöst: dafür braucht es das Recht zum
+    // Abschliessen.
     if (
-      await createsReferenceCycle(
+      !(await hasPermission(
         context.supabaseAdmin,
+        actorId,
         ticket.tenant_id,
-        ticket.id,
-        relatedTicket,
-        "merged_into_ticket_id",
-      )
+        ticket.department_id,
+        "ticket.close",
+      ))
     )
-      return response(request, { error: { code: "ticket_merge_cycle" } }, 422);
-    const { data: primaryStatus, error: primaryStatusError } =
-      await context.supabaseAdmin
-        .from("ticket_statuses")
-        .select("id, key, is_closed")
-        .eq("id", relatedTicket.status_id)
-        .eq("tenant_id", ticket.tenant_id)
-        .maybeSingle();
-    if (primaryStatusError || !primaryStatus)
+      return response(request, { error: { code: "ticket_close_denied" } }, 403);
+    // Zusammenführen und Übernahme ins Haupt-Ticket in einem Schritt (0384):
+    // Priorität, Frist, Zuweisung, Kategorie, Geräte, Zusatzfelder,
+    // Zeiterfassung, offene Checklistenpunkte, interne Notiz, Protokoll.
+    const { data: merged, error: mergeError } = await context.supabaseAdmin.rpc(
+      "ticket_merge_into",
+      {
+        p_tenant_id: ticket.tenant_id,
+        p_ticket_id: ticket.id,
+        p_primary_id: relatedTicket.id,
+        p_actor_id: actorId,
+        p_source: action.source,
+      },
+    );
+    if (mergeError) {
+      const message = String(mergeError.message ?? "");
+      const code = [
+        "ticket_merge_already_set",
+        "merge_primary_ticket_closed",
+        "ticket_merge_cycle",
+        "ticket_relation_self_reference",
+      ].find((candidate) => message.includes(candidate));
       return response(
         request,
-        { error: { code: "merge_primary_status_unresolved" } },
-        422,
+        { error: { code: code ?? "ticket_merge_failed" } },
+        code === "ticket_merge_already_set" ? 409 : code ? 422 : 409,
       );
-    if (primaryStatus.is_closed !== false)
-      return response(
-        request,
-        { error: { code: "merge_primary_ticket_closed" } },
-        422,
-      );
-    const { data: resolvedStatus, error: resolvedStatusError } =
-      await context.supabaseAdmin
-        .from("ticket_statuses")
-        .select("id, key, is_closed")
-        .eq("tenant_id", ticket.tenant_id)
-        .eq("key", "resolved")
-        .maybeSingle();
-    const mergedAt = new Date().toISOString();
-    const mergeUpdate: Record<string, unknown> = {
-      merged_into_ticket_id: relatedTicket.id,
-    };
-    const statusAutomaticallyUpdated =
-      !resolvedStatusError && resolvedStatus?.is_closed === true;
-    if (statusAutomaticallyUpdated) {
-      if (
-        !(await hasPermission(
-          context.supabaseAdmin,
-          actorId,
-          ticket.tenant_id,
-          ticket.department_id,
-          "ticket.close",
-        ))
-      )
-        return response(
-          request,
-          { error: { code: "ticket_close_denied" } },
-          403,
-        );
-      mergeUpdate.status_id = resolvedStatus.id;
-      mergeUpdate.closed_at = mergedAt;
-      mergeUpdate.resolved_at = mergedAt;
-      mergeUpdate.waiting_since = null;
     }
-    const { data: mergedTicket, error: mergeError } =
-      await context.supabaseAdmin
-        .from("tickets")
-        .update(mergeUpdate)
-        .eq("id", ticket.id)
-        .eq("tenant_id", ticket.tenant_id)
-        .is("merged_into_ticket_id", null)
-        .select("id")
-        .maybeSingle();
-    if (mergeError || !mergedTicket)
-      return response(request, { error: { code: "ticket_merge_failed" } }, 409);
-    const { error: eventError } = await context.supabaseAdmin
-      .from("ticket_events")
-      .insert([
-        {
-          ticket_id: ticket.id,
-          actor_id: actorId,
-          event_type: "ticket.merged",
-          payload: {
-            primaryTicketId: relatedTicket.id,
-            statusAutomaticallyUpdated,
-          },
-        },
-        {
-          ticket_id: relatedTicket.id,
-          actor_id: actorId,
-          event_type: "ticket.merge_received",
-          payload: {
-            mergedTicketId: ticket.id,
-            statusAutomaticallyUpdated,
-          },
-        },
-      ]);
-    if (eventError)
-      return response(
-        request,
-        { error: { code: "ticket_merge_event_failed" } },
-        422,
-      );
-    return response(request, {
-      data: { merged: true, statusAutomaticallyUpdated },
-    });
+    return response(request, { data: merged });
   }
 
   if (action.type === "saveDraft") {
@@ -3101,7 +3341,30 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
     let copiesQueued = 0;
     let copiesFailed = false;
-    if (action.visibility === "external" && action.copyEmails.length > 0) {
+    // Anfragende der hier zusammengeführten Tickets erhalten Antworten als
+    // Kopie: Sie haben dasselbe gemeldet und sollen informiert bleiben.
+    let copyEmails = action.copyEmails;
+    if (action.visibility === "external") {
+      const merged = await context.supabaseAdmin
+        .from("tickets")
+        .select("ticket_requesters(email)")
+        .eq("tenant_id", ticket.tenant_id)
+        .eq("merged_into_ticket_id", ticket.id)
+        .is("deleted_at", null)
+        .limit(20);
+      const mergedEmails = ((merged.data ?? []) as any[])
+        .map((row) => {
+          const requester = Array.isArray(row.ticket_requesters)
+            ? row.ticket_requesters[0]
+            : row.ticket_requesters;
+          return typeof requester?.email === "string"
+            ? requester.email.trim().toLowerCase()
+            : "";
+        })
+        .filter(Boolean);
+      copyEmails = [...new Set([...copyEmails, ...mergedEmails])].slice(0, 10);
+    }
+    if (action.visibility === "external" && copyEmails.length > 0) {
       const copies = await context.supabaseAdmin.rpc(
         "enqueue_ticket_comment_copies",
         {
@@ -3109,7 +3372,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           p_ticket_id: ticket.id,
           p_comment_id: comment.id,
           p_actor_id: actorId,
-          p_emails: action.copyEmails,
+          p_emails: copyEmails,
         },
       );
       if (copies.error || typeof copies.data !== "number") copiesFailed = true;
