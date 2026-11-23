@@ -144,6 +144,15 @@ Mehr dazu unter «Ticketliste».
 
 Mehr dazu unter «Ticketliste».
 
+### Wie suche ich in der App nach Tickets und Personen?
+
+1. Öffne in der App die **Tickets**.
+2. Tippe ins Feld **Tickets durchsuchen** mindestens zwei Zeichen, zum Beispiel eine Ticketnummer, ein Stichwort oder einen Namen.
+3. Gesucht wird über alle Tickets: Status, Ansicht und Filter gelten während der Suche nicht. Die Liste heisst dann **Suchergebnisse**.
+4. Oben stehen passende **Personen**; ein Tipp öffnet die Personenübersicht mit ihren Tickets. Ältere oder geschlossene Tickets, die nicht in der Liste geladen sind, stehen unten unter **Weitere Tickets**.
+
+Mehr dazu unter «Ticketliste».
+
 ### Wie bediene ich die Ticketliste mit Tastenkürzeln?
 
 1. Drücke `?`, um die Hilfe mit allen Kürzeln zu öffnen.
