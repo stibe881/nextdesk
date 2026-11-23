@@ -3687,7 +3687,8 @@ Anlässe-App werden automatisch übernommen: aus dem PDF **Anlassdetails** und
 aus der Mail «Neue Bestellung Einrichten Anlässe <Nummer>». Beide Mails einer
 Bestellung ergeben einen einzigen Anlass; die Angaben zu Einrichtung, Gastro,
 Personenzahl und die Bemerkungen stehen in den **Bemerkungen** des Anlasses.
-Geplant wird der Beginn des Anlasses; fehlt etwas oder ist der Raum belegt,
+Geplant wird der Anlass von Beginn bis Ende laut Bestellung (ohne Endzeit
+30 Minuten ab Beginn); fehlt etwas oder ist der Raum belegt,
 steht der Anlass mit dem Grund unter **Klärung und Übernahme erforderlich**.
 
 Rechts in der Zeile eines Anlasses öffnet **PDF** die gesendete Bestellung

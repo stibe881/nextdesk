@@ -266,6 +266,20 @@ function requestOccurrences(draft: RequestDraft) {
   });
 }
 
+/** Gewünschte Dauer eines Klärungsfalls (Ende − Beginn), sonst 30 Minuten. */
+function requestedDurationMs(item: ClarificationCase): number {
+  const start = item.requestedStartsAt
+    ? Date.parse(item.requestedStartsAt)
+    : NaN;
+  const end = item.requestedEndsAt ? Date.parse(item.requestedEndsAt) : NaN;
+  const duration = end - start;
+  return Number.isFinite(duration) &&
+    duration > 0 &&
+    duration <= 24 * 60 * 60 * 1_000
+    ? duration
+    : 30 * 60 * 1_000;
+}
+
 function parseWorkspace(value: unknown): Workspace | null {
   if (!value || typeof value !== "object") return null;
   const data = value as Record<string, unknown>;
@@ -972,7 +986,10 @@ export function EventSpaces({
           spaceId: draft.spaceId,
           agentId: draft.responsibleUserId,
           startsAt: start.toISOString(),
-          endsAt: new Date(start.getTime() + 30 * 60 * 1_000).toISOString(),
+          // Dauer laut Bestellung (z. B. 17:00–22:00), sonst 30 Minuten.
+          endsAt: new Date(
+            start.getTime() + requestedDurationMs(item),
+          ).toISOString(),
         },
       });
       if (error) throw error;

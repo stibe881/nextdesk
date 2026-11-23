@@ -445,9 +445,12 @@ function parseAction(value: unknown): Action | null {
         isUuid(value.spaceId) &&
         isUuid(value.agentId) &&
         occurrences?.length === 1 &&
+        // Ende nach dem Beginn, höchstens 24 Stunden (0391).
+        Date.parse(occurrences[0]!.endsAt) >
+          Date.parse(occurrences[0]!.startsAt) &&
         Date.parse(occurrences[0]!.endsAt) -
-              Date.parse(occurrences[0]!.startsAt) ===
-          30 * 60 * 1_000 &&
+              Date.parse(occurrences[0]!.startsAt) <=
+          24 * 60 * 60 * 1_000 &&
         hasOnlyKeys(value, [
           "type",
           "tenantId",

@@ -252,3 +252,19 @@ Hinten zwei Tische plus 4 Stühle als Block.`;
     assertEquals(parseEventOrderText("Neue Bestellung Drucker 5", body), null);
   },
 );
+
+Deno.test("Anlass mit Endzeit wird mit ganzer Dauer geplant", async () => {
+  const { eventOrderEndAt } = await import("./event-space-email-ticket-intake.ts");
+  assertEquals(
+    eventOrderEndAt("2026-12-10T16:00:00.000Z", { startTime: "17:00", endTime: "22:00" }),
+    "2026-12-10T21:00:00.000Z",
+  );
+  assertEquals(
+    eventOrderEndAt("2026-12-10T16:00:00.000Z", { startTime: "17:00", endTime: null }),
+    null,
+  );
+  assertEquals(
+    eventOrderEndAt("2026-12-10T16:00:00.000Z", { startTime: "17:00", endTime: "16:00" }),
+    null,
+  );
+});

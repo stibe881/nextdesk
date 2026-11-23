@@ -372,6 +372,27 @@ async function eventOrderFromPdfs(
 }
 
 /**
+ * Ende des Anlasses: Beginn plus Dauer laut Bestellung (gleicher Tag). Ohne
+ * gültige Endzeit bleibt der 30-Minuten-Termin.
+ */
+export function eventOrderEndAt(
+  startAt: string,
+  order: Pick<EventOrder, "startTime" | "endTime">,
+): string | null {
+  if (!order.endTime) return null;
+  const minutes = (value: string) => {
+    const [hour, minute] = value.split(":").map(Number);
+    return (hour ?? 0) * 60 + (minute ?? 0);
+  };
+  const duration = minutes(order.endTime) - minutes(order.startTime);
+  const start = Date.parse(startAt);
+  if (!Number.isFinite(start) || duration <= 0 || duration > 24 * 60) {
+    return null;
+  }
+  return new Date(start + duration * 60 * 1_000).toISOString();
+}
+
+/**
  * Bestellung der Anlässe-App (PDF oder Mail «Neue Bestellung Einrichten
  * Anlässe <ID>»): Jede Bestellung kommt als zwei Mails mit derselben ID. Die
  * erste legt den Eintrag in der Anlassplanung an, die zweite ergänzt ihn
@@ -390,7 +411,12 @@ async function processEventOrder(
     description: converted.description,
   });
   const request = parsed.status === "ready"
-    ? { ...parsed.request, notes: converted.notes }
+    ? {
+      ...parsed.request,
+      notes: converted.notes,
+      endAt: eventOrderEndAt(parsed.request.startAt, order) ??
+        parsed.request.endAt,
+    }
     : null;
   const orderNumber = `${EVENT_ORDER_NUMBER_PREFIX}${order.orderId}`;
   const persons = Number.parseInt(order.persons ?? "", 10);
