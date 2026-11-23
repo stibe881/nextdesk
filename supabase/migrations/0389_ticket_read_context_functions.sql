@@ -1,7 +1,7 @@
 begin;
 
 -- Ticketliste, Navigationszahlen, Suche und Personenübersicht prüften die
--- Leseberechtigung pro Ticket mit can_read_ticket(). Sie nutzen neu den einmal
+-- Leseberechtigung pro Ticket mit can_read_ticket(). Neu nutzen diese den einmal
 -- pro Abfrage berechneten Kontext (0388). Ersetzt wird genau der Aufruf
 -- über den Alias «ticket» der Tabelle public.tickets; die übrige Logik der
 -- Funktionen bleibt unverändert.
