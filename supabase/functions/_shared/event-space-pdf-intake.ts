@@ -163,6 +163,7 @@ export function parseEventOrderPdf(
   let inArticles = false;
   let pendingArticle: string | null = null;
   const remarks: string[] = [];
+  const otherLocation: string[] = [];
   let totalCost: string | null = null;
 
   for (const line of lines) {
@@ -263,6 +264,12 @@ export function parseEventOrderPdf(
       values.set(current, line.parts);
       continue;
     }
+    // «Ort / Örtlichkeit: Anderer Ort» – der eigentliche Ort steht in der
+    // Zeile darunter.
+    if (current === "ort / örtlichkeit") {
+      otherLocation.push(line.parts.join(" "));
+      continue;
+    }
     if (current === "zeit beginn anlass" || current === "zeit ende anlass") {
       values.set(current, [...(values.get(current) ?? []), ...line.parts]);
     }
@@ -278,8 +285,12 @@ export function parseEventOrderPdf(
     ? /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/u.exec(dateText)
     : null;
   const startTime = time(values.get("zeit beginn anlass") ?? []);
+  const chosenLocation = text("ort / örtlichkeit");
   const location =
-    text("ort / örtlichkeit andere") ?? text("ort / örtlichkeit");
+    text("ort / örtlichkeit andere") ??
+    (chosenLocation && /^anderer ort$/iu.test(chosenLocation)
+      ? otherLocation.join(" ").trim() || null
+      : chosenLocation);
   if (!orderId || !title || !date || !startTime || !location) return null;
 
   const infrastructure: string[] = [];

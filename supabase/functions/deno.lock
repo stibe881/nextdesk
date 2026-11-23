@@ -4,6 +4,7 @@
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "npm:@supabase/server@1": "1.9.2_@supabase+supabase-js@2.117.3",
+    "npm:@supabase/supabase-js@2": "2.117.3",
     "npm:linkedom@0.18.12": "0.18.12",
     "npm:unpdf@1.9.1": "1.9.1"
   },
