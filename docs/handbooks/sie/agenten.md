@@ -506,6 +506,7 @@ Mehr dazu unter «Ein Ticket bearbeiten».
 2. Klicken Sie in der Karte **Koordination** auf **An nächste Stufe übergeben**.
 3. Schreiben Sie die Übergabenotiz. Die Notiz ist Pflicht.
 4. Bestätigen Sie die Übergabe. Unter **Verlauf der Stufen** sehen Sie die bisherigen Übergaben.
+5. Wählen Sie stattdessen im Feld **Team** ein Team einer anderen Supportstufe (im Web oder in der App), fragt nextDesk ebenfalls nach der Übergabenotiz. Ohne Notiz bleibt das Team unverändert.
 
 Mehr dazu unter «Ein Ticket bearbeiten».
 

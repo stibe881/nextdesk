@@ -38,6 +38,14 @@ export async function functionErrorCode(
   return errorCode(await errorPayload(error));
 }
 
+/** Zusatzfelder des Fehlers (z. B. currentLevel), sonst null. */
+export async function functionErrorDetails(
+  error: unknown,
+): Promise<Record<string, unknown> | null> {
+  const payload = await errorPayload(error);
+  return payload && isRecord(payload.error) ? payload.error : null;
+}
+
 export function functionErrorStatus(error: unknown): number | null {
   if (!isRecord(error)) return null;
   if (typeof error.status === "number") return error.status;

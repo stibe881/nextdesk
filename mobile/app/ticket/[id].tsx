@@ -123,6 +123,12 @@ import {
 import { recordRecentItem } from "@/lib/recent-items";
 import { draftRestoredLabel, pickNewestDraft } from "@/lib/recent-items-model";
 import { tn } from "@/lib/formality";
+import { NextDeskRequestError } from "@/lib/nextdesk-error-messages";
+import {
+  getMobileTicketSupportLevel,
+  handOverMobileTicketLevel,
+  type MobileSupportLevel,
+} from "@/lib/support-levels";
 
 /** A file picked for the next message; uploaded when the message is sent. */
 type PickedMessageFile = PendingMessageAttachment & {
@@ -423,6 +429,14 @@ export default function TicketDetailScreen() {
   // «Details» ist in der App standardmässig eingeklappt.
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [forwardOpen, setForwardOpen] = useState(false);
+  const [levelHandover, setLevelHandover] = useState<{
+    teamId: string;
+    teamName: string;
+    currentLevel: MobileSupportLevel;
+  } | null>(null);
+  const [levelHandoverNote, setLevelHandoverNote] = useState("");
+  const [levelHandoverError, setLevelHandoverError] = useState("");
+  const [handingOver, setHandingOver] = useState(false);
   const [forwardRecipients, setForwardRecipients] = useState("");
   const [forwardMessage, setForwardMessage] = useState("");
   const [forwarding, setForwarding] = useState(false);
@@ -1180,6 +1194,31 @@ export default function TicketDetailScreen() {
       void loadAllAssignableAgents();
       void load(false);
     } catch (nextError) {
+      // Team einer anderen Supportstufe: Übergabe mit Pflicht-Notiz wie beim
+      // Herauf- bzw. Herunterstufen.
+      if (
+        nextError instanceof NextDeskRequestError &&
+        nextError.code === "support_level_handover_required" &&
+        teamId
+      ) {
+        try {
+          const level = await getMobileTicketSupportLevel(tenant.id, ticket.id);
+          if (level?.currentLevel) {
+            setLevelHandover({
+              teamId,
+              teamName:
+                ticket.teamOptions.find((team) => team.id === teamId)?.name ??
+                "das Team",
+              currentLevel: level.currentLevel,
+            });
+            setLevelHandoverNote("");
+            setLevelHandoverError("");
+            return;
+          }
+        } catch {
+          // Fällt auf die Fehlermeldung unten zurück.
+        }
+      }
       hapticError();
       setError(
         nextError instanceof Error
@@ -1188,6 +1227,42 @@ export default function TicketDetailScreen() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function submitLevelHandover() {
+    if (!ticket || !tenant || !levelHandover || handingOver) return;
+    const note = levelHandoverNote.trim();
+    if (Array.from(note).length < 10) {
+      setLevelHandoverError(
+        "Die Übergabenotiz ist Pflicht (mindestens 10 Zeichen).",
+      );
+      return;
+    }
+    setHandingOver(true);
+    setLevelHandoverError("");
+    try {
+      await handOverMobileTicketLevel({
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+        targetTeamId: levelHandover.teamId,
+        note,
+        expectedLevel: levelHandover.currentLevel,
+      });
+      setMessage(`Das Ticket wurde an ${levelHandover.teamName} übergeben.`);
+      setLevelHandover(null);
+      hapticSuccess();
+      void loadAllAssignableAgents();
+      void load(false);
+    } catch (nextError) {
+      hapticError();
+      setLevelHandoverError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Übergabe ist nicht gelungen.",
+      );
+    } finally {
+      setHandingOver(false);
     }
   }
 
@@ -3979,6 +4054,145 @@ export default function TicketDetailScreen() {
                     {submittingResolution
                       ? "Wird gespeichert …"
                       : "Rückmeldung speichern"}
+                  </Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        <Modal
+          animationType="slide"
+          onRequestClose={() => {
+            if (!handingOver) setLevelHandover(null);
+          }}
+          transparent
+          visible={levelHandover !== null}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.experienceSheetRoot}
+          >
+            <Pressable
+              accessibilityLabel="Übergabe abbrechen"
+              accessibilityRole="button"
+              disabled={handingOver}
+              onPress={() => setLevelHandover(null)}
+              style={StyleSheet.absoluteFill}
+            />
+            <View
+              accessibilityViewIsModal
+              style={[
+                styles.experienceSheet,
+                { backgroundColor: colors.surface },
+              ]}
+            >
+              <View style={styles.experienceSheetHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.selectionEyebrow, tokenStyles.muted]}>
+                    SUPPORTSTUFE
+                  </Text>
+                  <Text
+                    style={[
+                      styles.experienceSheetTitle,
+                      tokenStyles.foreground,
+                    ]}
+                  >
+                    An {levelHandover?.teamName ?? "Team"} übergeben
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityLabel="Übergabe abbrechen"
+                  accessibilityRole="button"
+                  disabled={handingOver}
+                  hitSlop={10}
+                  onPress={() => setLevelHandover(null)}
+                  style={[
+                    styles.selectionClose,
+                    { backgroundColor: colors.primarySoft },
+                  ]}
+                >
+                  <Ionicons color={colors.primaryText} name="close" size={22} />
+                </Pressable>
+              </View>
+              <ScrollView
+                automaticallyAdjustKeyboardInsets
+                contentContainerStyle={styles.experienceSheetContent}
+                keyboardDismissMode="interactive"
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <Text
+                  style={[styles.experienceSheetDescription, tokenStyles.muted]}
+                >
+                  Dieses Team gehört zu einer anderen Supportstufe. Für den
+                  Wechsel ist eine Übergabenotiz nötig: Was wurde bereits
+                  gemacht, was ist offen?
+                </Text>
+                <View style={styles.resolutionField}>
+                  <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                    ÜBERGABENOTIZ
+                  </Text>
+                  <TextInput
+                    autoCapitalize="sentences"
+                    maxLength={4_000}
+                    multiline
+                    onChangeText={setLevelHandoverNote}
+                    placeholder="Was wurde gemacht, was ist offen?"
+                    placeholderTextColor={colors.subtle}
+                    style={[
+                      styles.resolutionInput,
+                      {
+                        backgroundColor: colors.surfaceSubtle,
+                        borderColor: colors.border,
+                        color: colors.foreground,
+                      },
+                    ]}
+                    textAlignVertical="top"
+                    value={levelHandoverNote}
+                  />
+                </View>
+                {levelHandoverError ? (
+                  <View style={[styles.feedback, tokenStyles.error]}>
+                    <Ionicons
+                      color={colors.error}
+                      name="alert-circle-outline"
+                      size={20}
+                    />
+                    <Text
+                      style={[styles.feedbackText, { color: colors.error }]}
+                    >
+                      {levelHandoverError}
+                    </Text>
+                  </View>
+                ) : null}
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={handingOver || !levelHandoverNote.trim()}
+                  onPress={() => void submitLevelHandover()}
+                  style={[
+                    styles.experienceSaveButton,
+                    { backgroundColor: colors.primary },
+                    (handingOver || !levelHandoverNote.trim()) &&
+                      styles.disabled,
+                  ]}
+                >
+                  {handingOver ? (
+                    <ActivityIndicator color={colors.onPrimary} size="small" />
+                  ) : (
+                    <Ionicons
+                      color={colors.onPrimary}
+                      name="swap-vertical-outline"
+                      size={20}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.experienceSaveButtonText,
+                      tokenStyles.primaryText,
+                    ]}
+                  >
+                    {handingOver ? "Wird übergeben …" : "Übergeben"}
                   </Text>
                 </Pressable>
               </ScrollView>

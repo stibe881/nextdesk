@@ -83,7 +83,10 @@ import { supabase } from "./lib/supabase";
 import { useProjectsAvailable } from "./lib/project-navigation";
 import { ProjectLinkCard } from "./project-link-card";
 import { recordRecentItem } from "./lib/recent-items";
-import { functionErrorMessage } from "./lib/function-error";
+import {
+  functionErrorDetails,
+  functionErrorMessage,
+} from "./lib/function-error";
 import { TicketControlPanel } from "./ticket-control";
 import { Deferred } from "./deferred";
 import { TicketForwardDialog } from "./ticket-forward";
@@ -145,7 +148,8 @@ import {
 } from "./ticket-workbench";
 import { slaPauseEventLabel } from "./lib/sla-pause";
 
-import { confirmDialog } from "./app-dialog";
+import { confirmDialog, promptDialog } from "./app-dialog";
+import { supportLevelLabel } from "./lib/support-levels";
 type CommentVisibility = "external" | "internal";
 type BillingKind = "internal" | "billable" | "goodwill";
 type RelationType =
@@ -6428,6 +6432,25 @@ export function TicketDetail({
       if (change.assignedTeamId !== undefined) {
         setSelectedTeamId(detail.ticket.assigned_team_id ?? "");
       }
+      // Team einer anderen Supportstufe: wie «Heraufstufen/Herunterstufen»
+      // mit Pflicht-Übergabenotiz.
+      const details =
+        change.assignedTeamId && functionErrorStatus(nextError) === 409
+          ? await functionErrorDetails(nextError)
+          : null;
+      if (
+        details?.code === "support_level_handover_required" &&
+        typeof details.currentLevel === "number" &&
+        change.assignedTeamId
+      ) {
+        setPendingAction(null);
+        await handoverToTeam(
+          change.assignedTeamId,
+          details.currentLevel,
+          typeof details.targetLevel === "number" ? details.targetLevel : null,
+        );
+        return;
+      }
       if (change.assignedAgentId !== undefined) {
         setSelectedAgentId(detail.ticket.assigned_agent_id ?? "");
       }
@@ -6450,6 +6473,66 @@ export function TicketDetail({
       } else {
         setError(errorMessage(nextError));
       }
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  /** Teamwechsel in eine andere Supportstufe: Übergabe mit Notiz. */
+  async function handoverToTeam(
+    teamId: string,
+    currentLevel: number,
+    targetLevel: number | null,
+  ) {
+    const teamName =
+      detail?.teams.find((team) => team.id === teamId)?.name ?? "das Team";
+    const levelLabel = (level: number | null) =>
+      level === 1 || level === 2 || level === 3
+        ? supportLevelLabel(level)
+        : "andere Stufe";
+    const direction =
+      targetLevel !== null && targetLevel > currentLevel
+        ? "heraufgestuft"
+        : "zurückgegeben";
+    const note = await promptDialog(
+      `Das Ticket wird an ${teamName} ${direction} (${levelLabel(currentLevel)} → ${levelLabel(targetLevel)}). Bitte eine Übergabenotiz erfassen (Pflicht): Was wurde bereits gemacht, was ist offen?`,
+      { confirmLabel: "Übergeben", multiline: true },
+    );
+    if (note === null) return;
+    if (Array.from(note.trim()).length < 10) {
+      setError(
+        "Die Übergabenotiz ist Pflicht (mindestens 10 Zeichen). Das Team wurde nicht geändert.",
+      );
+      return;
+    }
+    setPendingAction("update");
+    setError("");
+    try {
+      if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+      const { error: handoverError } = await supabase.functions.invoke(
+        "ticket-support-levels",
+        {
+          body: {
+            type: "handover",
+            tenantId,
+            ticketId,
+            targetTeamId: teamId,
+            targetAgentId: null,
+            note: note.trim(),
+            expectedLevel: currentLevel,
+          },
+        },
+      );
+      if (handoverError) throw handoverError;
+      onChanged();
+      await loadTicket();
+    } catch (nextError) {
+      setError(
+        await functionErrorMessage(
+          nextError,
+          "Die Übergabe an das Team ist nicht gelungen.",
+        ),
+      );
     } finally {
       setPendingAction(null);
     }
