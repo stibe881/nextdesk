@@ -24163,3 +24163,8 @@ button.inventory__metric--link:focus-visible {
     padding: 0 18px 12px;
   }
 }
+
+/* Platzhalter für später geladene Nebenbereiche (Deferred). */
+.deferred-placeholder {
+  min-height: 1px;
+}

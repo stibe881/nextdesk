@@ -141,29 +141,15 @@ import {
   MergePreviewSummary,
   type MergePreview,
 } from "./ticket-merge-insights";
-import { TenantAdminSettings } from "./tenant-admin-settings";
-import { KnowledgeBase } from "./knowledge-base";
 import { GlobalSearch, type GlobalSearchResult } from "./global-search";
-import { PersonOverview } from "./person-overview";
 import type { PersonRef } from "./lib/person-overview";
-import { ServiceReporting } from "./service-reporting";
-import { TeamSupervision } from "./team-supervision";
 import { MyPrioritiesCard } from "./my-priorities";
-import { ProblemCandidates } from "./problem-insights";
 import { TicketKanban } from "./ticket-kanban";
 import { SupportLevelQueueFilter } from "./support-level-queue-filter";
 import {
   supportLevelOfFilter,
   type SupportLevelFilter,
 } from "./lib/support-levels";
-import { Infrastructure } from "./infrastructure";
-import { Ipam } from "./ipam";
-import { IpamImportWizard } from "./ipam-import";
-import { IpamApiSettings } from "./ipam-api-settings";
-import { IpamDiscoveryPanel } from "./ipam-discovery";
-import { Incidents } from "./incidents";
-import { Monitoring } from "./monitoring";
-import { SecurityCases } from "./security-cases";
 import {
   HomeLayoutEditor,
   loadHomeLayout,
@@ -171,7 +157,6 @@ import {
   type HomeLayout,
 } from "./home-layout";
 import { absenceLabel, loadActiveAbsences } from "./lib/active-absences";
-import { ServiceAssets } from "./service-assets";
 import {
   isPublicServiceStatusBadgeRequested,
   isPublicServiceStatusRequested,
@@ -181,15 +166,7 @@ import {
   ServiceStatus,
 } from "./service-status";
 import { IMPRINT_URL, PRIVACY_URL, SUPPORT_URL } from "./lib/site-links";
-import { Contracts } from "./contracts";
-import { Licenses } from "./licenses";
-import { EventSpaces } from "./event-spaces";
-import { Onboarding } from "./onboarding";
-import { Inventory } from "./inventory";
-import { Shop } from "./shop";
-import { TeamsAdmin } from "./teams-admin";
 import { teamsAdminApi } from "./lib/teams-admin";
-import { PersonalSettings } from "./personal-settings";
 import { ApprovalInboxCard } from "./approval-inbox";
 import {
   OAuthConsentScreen,
@@ -268,9 +245,73 @@ import {
   onOpenProjectRequest,
   setProjectsAvailable,
 } from "./lib/project-navigation";
-import { Projects } from "./projects";
 
 import { confirmDialog } from "./app-dialog";
+import { lazySection } from "./lazy-section";
+
+const TenantAdminSettings = lazySection(
+  () => import("./tenant-admin-settings"),
+  "TenantAdminSettings",
+);
+const ServiceAssets = lazySection(
+  () => import("./service-assets"),
+  "ServiceAssets",
+);
+const Monitoring = lazySection(() => import("./monitoring"), "Monitoring");
+const Inventory = lazySection(() => import("./inventory"), "Inventory");
+const Shop = lazySection(() => import("./shop"), "Shop");
+const KnowledgeBase = lazySection(
+  () => import("./knowledge-base"),
+  "KnowledgeBase",
+);
+const EventSpaces = lazySection(() => import("./event-spaces"), "EventSpaces");
+const Infrastructure = lazySection(
+  () => import("./infrastructure"),
+  "Infrastructure",
+);
+const Onboarding = lazySection(() => import("./onboarding"), "Onboarding");
+const Incidents = lazySection(() => import("./incidents"), "Incidents");
+const ServiceReporting = lazySection(
+  () => import("./service-reporting"),
+  "ServiceReporting",
+);
+const Contracts = lazySection(() => import("./contracts"), "Contracts");
+const IpamDiscoveryPanel = lazySection(
+  () => import("./ipam-discovery"),
+  "IpamDiscoveryPanel",
+);
+const TeamSupervision = lazySection(
+  () => import("./team-supervision"),
+  "TeamSupervision",
+);
+const Licenses = lazySection(() => import("./licenses"), "Licenses");
+const PersonalSettings = lazySection(
+  () => import("./personal-settings"),
+  "PersonalSettings",
+);
+const IpamImportWizard = lazySection(
+  () => import("./ipam-import"),
+  "IpamImportWizard",
+);
+const PersonOverview = lazySection(
+  () => import("./person-overview"),
+  "PersonOverview",
+);
+const SecurityCases = lazySection(
+  () => import("./security-cases"),
+  "SecurityCases",
+);
+const TeamsAdmin = lazySection(() => import("./teams-admin"), "TeamsAdmin");
+const Ipam = lazySection(() => import("./ipam"), "Ipam");
+const IpamApiSettings = lazySection(
+  () => import("./ipam-api-settings"),
+  "IpamApiSettings",
+);
+const Projects = lazySection(() => import("./projects"), "Projects");
+const ProblemCandidates = lazySection(
+  () => import("./problem-insights"),
+  "ProblemCandidates",
+);
 type Section =
   | "Übersicht"
   | "Tickets"
