@@ -3091,7 +3091,8 @@ Schritt eine andere Person aus, gilt diese Auswahl. Bei der Mehrfachauswahl
 (Sammelaktion) wird nicht automatisch zugewiesen.
 
 Über der Beschreibung zeigt die kompakte **Ticket-Zeitachse** alle
-Ereignisse, die Reaktions- und Lösungsfrist sowie längere Lücken. Darunter
+Ereignisse, die Reaktions- und Lösungsfrist sowie längere Lücken (orange
+als Hinweis, rot nur bei einer SLA-Verletzung in der Lücke). Darunter
 folgt die **Unterhaltung** mit allen Nachrichten und Notizen. Dateien
 erscheinen direkt bei der Nachricht, zu der sie gehören – auch die Anhänge der
 E-Mail, aus der das Ticket entstanden ist (unter der Beschreibung). Bilder
