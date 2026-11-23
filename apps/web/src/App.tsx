@@ -293,7 +293,7 @@ type Section =
   | "Störungen"
   | "Verträge"
   | "Lizenzen"
-  | "Raumplanung"
+  | "Anlässe"
   | "Eintritte"
   | "Wissen"
   | "Berichte"
@@ -442,7 +442,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Überwachung", Icon: Radar },
     { label: "Lager", Icon: Boxes },
     { label: "Systemstatus", Icon: CircleCheck },
-    { label: "Raumplanung", Icon: CalendarDays },
+    { label: "Anlässe", Icon: CalendarDays },
     { label: "Eintritte", Icon: ClipboardList },
     { label: "Verträge", Icon: FileText },
     { label: "Lizenzen", Icon: KeyRound },
@@ -468,7 +468,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "PLANUNG & BETRIEB",
     id: "navigation-category-operations",
     navigationLabel: "Planung und Betrieb",
-    sectionLabels: ["Raumplanung", "Eintritte", "Serviceaufgaben"],
+    sectionLabels: ["Anlässe", "Eintritte", "Serviceaufgaben"],
   },
   {
     heading: "RESSOURCEN",
@@ -5618,7 +5618,7 @@ function AuthenticatedApp() {
       return isFeatureEnabled("service.tasks") && canReadServiceTasks;
     }
     if (item.label === "Projekte") return projectsVisible;
-    if (item.label === "Raumplanung") return isFeatureEnabled("event.spaces");
+    if (item.label === "Anlässe") return isFeatureEnabled("event.spaces");
     if (item.label === "Eintritte") {
       return isFeatureEnabled("onboarding.entries");
     }
@@ -5640,7 +5640,7 @@ function AuthenticatedApp() {
   // Employees without ticket work get a flat menu without room planning,
   // inventory or workplace; the status is a badge on top of the menu.
   const employeeHiddenSections: readonly Section[] = [
-    "Raumplanung",
+    "Anlässe",
     "Infrastruktur",
     "IP-Adressen",
     "Überwachung",
@@ -6181,7 +6181,7 @@ function AuthenticatedApp() {
   );
   const navigationAttentionFor = (label: Section): number | null =>
     navigationItemAttentionCount(
-      label === "Raumplanung"
+      label === "Anlässe"
         ? eventSpaceNavigationAccess
           ? eventSpaceAttentionCount
           : null
@@ -6219,8 +6219,8 @@ function AuthenticatedApp() {
     tone: "urgent" | "muted" | null,
   ) => (tone ? `${base} ${base.split(" ")[0]}--${tone}` : base);
   const navigationAttentionDescription = (label: Section): string =>
-    label === "Raumplanung"
-      ? "Raumaufträge benötigen Zuweisung oder Klärung"
+    label === "Anlässe"
+      ? "Anlässe benötigen Zuweisung oder Klärung"
       : label === "Shop"
         ? "neue Bestellungen warten auf Bearbeitung"
         : label === "Tickets"
@@ -6851,7 +6851,7 @@ function AuthenticatedApp() {
                   if (
                     !canWorkTickets &&
                     !(
-                      sectionFromGlobalSearchResult(result) === "Raumplanung" &&
+                      sectionFromGlobalSearchResult(result) === "Anlässe" &&
                       eventSpaceNavigationAccess
                     ) &&
                     !canRequesterOpenSection(
@@ -7298,7 +7298,7 @@ function AuthenticatedApp() {
             onFocusHandled={() => setServiceTaskFocusId(null)}
             tenantId={activeTenant.id}
           />
-        ) : section === "Raumplanung" && activeTenant ? (
+        ) : section === "Anlässe" && activeTenant ? (
           <EventSpaces
             focusRequestId={
               globalSearchTarget?.resultType === "event_space"

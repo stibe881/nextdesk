@@ -109,7 +109,7 @@ const PERMISSION_HINTS: Readonly<Record<string, string>> = {
     "Richtet Ticketregeln, Triage, Lieferanten und Abläufe ein.",
   "contracts.manage": "Sieht und pflegt alle Verträge und Lizenzen.",
   "department.manage": "Legt Abteilungen an und ändert sie.",
-  "event.spaces.manage": "Verwaltet Räume und bearbeitet Raumaufträge.",
+  "event.spaces.manage": "Verwaltet Räume und bearbeitet Anlässe.",
   "event.spaces.request": "Kann Veranstaltungsräume reservieren lassen.",
   "inventory.adjust": "Korrigiert Bestände von Hand, z. B. nach Schwund.",
   "inventory.count.close":

@@ -424,8 +424,8 @@ export function EventSpaces({
           await functionErrorMessage(
             error,
             tn(
-              "Die Raumplanung konnte nicht geladen werden. Bitte versuche es erneut.",
-              "Die Raumplanung konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+              "Die Anlässe konnten nicht geladen werden. Bitte versuche es erneut.",
+              "Die Anlässe konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
             ),
           ),
         );
@@ -654,8 +654,8 @@ export function EventSpaces({
         await functionErrorMessage(
           error,
           tn(
-            "Die Raumplanung konnte nicht geprüft werden. Bitte versuche es erneut.",
-            "Die Raumplanung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.",
+            "Die Anlässe konnten nicht geprüft werden. Bitte versuche es erneut.",
+            "Die Anlässe konnten nicht geprüft werden. Bitte versuchen Sie es erneut.",
           ),
         ),
       );
@@ -688,8 +688,8 @@ export function EventSpaces({
           : null;
       setNotice(
         typeof createdCount === "number" && createdCount > 1
-          ? `${createdCount} Raumaufträge wurden geplant.`
-          : "Der Raumauftrag wurde geplant.",
+          ? `${createdCount} Anlässe wurden geplant.`
+          : "Der Anlass wurde geplant.",
       );
       setRequestDraft(defaultDraft());
       setPendingConflicts(null);
@@ -702,8 +702,8 @@ export function EventSpaces({
         await functionErrorMessage(
           error,
           tn(
-            "Der Raumauftrag konnte nicht gespeichert werden. Bitte prüfe die Angaben und versuche es erneut.",
-            "Der Raumauftrag konnte nicht gespeichert werden. Bitte prüfen Sie die Angaben und versuchen Sie es erneut.",
+            "Der Anlass konnte nicht gespeichert werden. Bitte prüfe die Angaben und versuche es erneut.",
+            "Der Anlass konnte nicht gespeichert werden. Bitte prüfen Sie die Angaben und versuchen Sie es erneut.",
           ),
         ),
       );
@@ -778,7 +778,7 @@ export function EventSpaces({
         body: { type: "updateRequestStatus", tenantId, requestId, status },
       });
       if (error) throw error;
-      setNotice("Der Raumauftragsstatus wurde aktualisiert.");
+      setNotice("Der Status des Anlasses wurde aktualisiert.");
       await refresh(true);
       onAttentionChanged();
     } catch (error) {
@@ -833,7 +833,7 @@ export function EventSpaces({
         },
       });
       if (error) throw error;
-      setNotice("Die Raumplanungsdetails wurden aktualisiert.");
+      setNotice("Die Angaben zum Anlass wurden aktualisiert.");
       await refresh(true);
       onAttentionChanged();
       return true;
@@ -842,8 +842,8 @@ export function EventSpaces({
         await functionErrorMessage(
           error,
           tn(
-            "Die Raumplanungsdetails konnten nicht gespeichert werden. Bitte prüfe Raum, Zeitraum und Zuweisungen.",
-            "Die Raumplanungsdetails konnten nicht gespeichert werden. Bitte prüfen Sie Raum, Zeitraum und Zuweisungen.",
+            "Die Angaben zum Anlass konnten nicht gespeichert werden. Bitte prüfe Raum, Zeitraum und Zuweisungen.",
+            "Die Angaben zum Anlass konnten nicht gespeichert werden. Bitte prüfen Sie Raum, Zeitraum und Zuweisungen.",
           ),
         ),
       );
@@ -857,7 +857,7 @@ export function EventSpaces({
     if (!supabase) return;
     if (
       !(await confirmDialog(
-        `Raumplanung «${title}» endgültig löschen? Zugehörige Aufgaben und Technikreservationen werden ebenfalls entfernt.`,
+        `Anlass «${title}» endgültig löschen? Zugehörige Aufgaben und Technikreservationen werden ebenfalls entfernt.`,
       ))
     ) {
       return;
@@ -873,7 +873,7 @@ export function EventSpaces({
       setExpandedRequestId((current) =>
         current === requestId ? null : current,
       );
-      setNotice("Die Raumplanung wurde gelöscht.");
+      setNotice("Der Anlass wurde gelöscht.");
       await refresh(true);
       onAttentionChanged();
     } catch (error) {
@@ -881,8 +881,8 @@ export function EventSpaces({
         await functionErrorMessage(
           error,
           tn(
-            "Die Raumplanung konnte nicht gelöscht werden. Bitte versuche es erneut.",
-            "Die Raumplanung konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+            "Der Anlass konnte nicht gelöscht werden. Bitte versuche es erneut.",
+            "Der Anlass konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
           ),
         ),
       );
@@ -1071,7 +1071,7 @@ export function EventSpaces({
   if (loading && !workspace) {
     return (
       <section className="event-spaces panel" aria-busy="true">
-        <p className="empty-state">Raumplanung wird geladen …</p>
+        <p className="empty-state">Anlässe werden geladen …</p>
       </section>
     );
   }
@@ -1087,7 +1087,7 @@ export function EventSpaces({
       <header className="event-spaces__hero panel">
         <div>
           <p className="eyebrow">Planung statt Ticket</p>
-          <h2 id="event-spaces-heading">Raumplanung</h2>
+          <h2 id="event-spaces-heading">Anlässe</h2>
           <p>
             {tn(
               "Plane technische Einrichtungen für Aula und Sitzungszimmer. Ein Ticket entsteht nur bei einem tatsächlichen Problem.",
@@ -1114,7 +1114,7 @@ export function EventSpaces({
               }}
               type="button"
             >
-              <Plus aria-hidden="true" size={17} /> Raumauftrag erfassen
+              <Plus aria-hidden="true" size={17} /> Anlass erfassen
             </button>
           ) : null}
         </div>
@@ -1122,7 +1122,7 @@ export function EventSpaces({
 
       <div className="event-spaces__metrics" aria-label="Planungsübersicht">
         <button
-          aria-label={`Bevorstehend: ${metrics.upcoming} Raumaufträge. Gefilterte Liste anzeigen.`}
+          aria-label={`Bevorstehend: ${metrics.upcoming} Anlässe. Gefilterte Liste anzeigen.`}
           aria-pressed={view === "list" && metricFilter === "upcoming"}
           className={
             view === "list" && metricFilter === "upcoming"
@@ -1137,7 +1137,7 @@ export function EventSpaces({
           <strong>{metrics.upcoming}</strong>
         </button>
         <button
-          aria-label={`In Vorbereitung: ${metrics.in_preparation} Raumaufträge. Gefilterte Liste anzeigen.`}
+          aria-label={`In Vorbereitung: ${metrics.in_preparation} Anlässe. Gefilterte Liste anzeigen.`}
           aria-pressed={view === "list" && metricFilter === "in_preparation"}
           className={
             view === "list" && metricFilter === "in_preparation"
@@ -1152,7 +1152,7 @@ export function EventSpaces({
           <strong>{metrics.in_preparation}</strong>
         </button>
         <button
-          aria-label={`Bereit: ${metrics.ready} Raumaufträge. Gefilterte Liste anzeigen.`}
+          aria-label={`Bereit: ${metrics.ready} Anlässe. Gefilterte Liste anzeigen.`}
           aria-pressed={view === "list" && metricFilter === "ready"}
           className={
             view === "list" && metricFilter === "ready"
@@ -1167,7 +1167,7 @@ export function EventSpaces({
           <strong>{metrics.ready}</strong>
         </button>
         <button
-          aria-label={`Nicht zugewiesen: ${metrics.unassigned} Raumaufträge. Gefilterte Liste anzeigen.`}
+          aria-label={`Nicht zugewiesen: ${metrics.unassigned} Anlässe. Gefilterte Liste anzeigen.`}
           aria-pressed={view === "list" && metricFilter === "unassigned"}
           className={
             view === "list" && metricFilter === "unassigned"
@@ -1848,7 +1848,7 @@ export function EventSpaces({
         <div className="event-spaces__workspace-heading">
           <div>
             <p className="eyebrow">Nächste Einsätze</p>
-            <h3 id="event-space-workspace-heading">Raumplanung</h3>
+            <h3 id="event-space-workspace-heading">Anlässe</h3>
           </div>
           <div
             className="event-spaces__view-switch"
@@ -1878,7 +1878,7 @@ export function EventSpaces({
           <div className="event-spaces__active-filter" role="status">
             <span>
               Gefiltert: {eventSpaceMetricFilterLabels[metricFilter]} ·{" "}
-              {filteredRequests.length} Raumaufträge
+              {filteredRequests.length} Anlässe
             </span>
             <button
               className="text-button"
@@ -1998,8 +1998,8 @@ export function EventSpaces({
             ) : (
               <p className="empty-state">
                 {metricFilter
-                  ? `Keine Raumaufträge mit Filter «${eventSpaceMetricFilterLabels[metricFilter]}» im sichtbaren Planungszeitraum.`
-                  : "Es sind noch keine Raumaufträge für die kommenden Monate geplant."}
+                  ? `Keine Anlässe mit Filter «${eventSpaceMetricFilterLabels[metricFilter]}» im sichtbaren Planungszeitraum.`
+                  : "Es sind noch keine Anlässe für die kommenden Monate geplant."}
               </p>
             )}
           </div>
@@ -2009,8 +2009,8 @@ export function EventSpaces({
           <div className="event-spaces__load-more">
             <p>
               {tn(
-                "Weitere Raumaufträge im Planungsjahr sind vorhanden. Lade sie nach, bevor du in spätere Wochen wechselst.",
-                "Weitere Raumaufträge im Planungsjahr sind vorhanden. Laden Sie sie nach, bevor Sie in spätere Wochen wechseln.",
+                "Weitere Anlässe im Planungsjahr sind vorhanden. Lade sie nach, bevor du in spätere Wochen wechselst.",
+                "Weitere Anlässe im Planungsjahr sind vorhanden. Laden Sie sie nach, bevor Sie in spätere Wochen wechseln.",
               )}
             </p>
             <button
@@ -2030,8 +2030,8 @@ export function EventSpaces({
       {!canRequest && !canManage ? (
         <p className="event-spaces__access-note">
           {tn(
-            "Du kannst die Raumplanung sehen, aber noch keine Raumaufträge erfassen oder verwalten.",
-            "Sie können die Raumplanung sehen, aber noch keine Raumaufträge erfassen oder verwalten.",
+            "Du kannst die Anlässe sehen, aber noch keine Anlässe erfassen oder verwalten.",
+            "Sie können die Anlässe sehen, aber noch keine Anlässe erfassen oder verwalten.",
           )}
         </p>
       ) : null}
@@ -2281,9 +2281,7 @@ function RequestCard({
                 }
                 type="button"
               >
-                {editDraft
-                  ? "Bearbeitung schliessen"
-                  : "Raumplanung bearbeiten"}
+                {editDraft ? "Bearbeitung schliessen" : "Anlass bearbeiten"}
               </button>
               <button
                 className="secondary-button"
@@ -2300,7 +2298,7 @@ function RequestCard({
               onSubmit={(event) => void saveDetails(event)}
             >
               <div>
-                <p className="eyebrow">Raumplanung bearbeiten</p>
+                <p className="eyebrow">Anlass bearbeiten</p>
                 <h5>{request.title}</h5>
                 <p>
                   {tn(

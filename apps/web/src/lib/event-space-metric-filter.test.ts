@@ -13,7 +13,7 @@ const requests = [
   { endsAt: "2026-10-29T09:30:00.000Z", status: "completed" },
 ] as const;
 
-describe("Raumplanungskennzahlen", () => {
+describe("Anlass-Kennzahlen", () => {
   it("zählt die sichtbaren Kennzahlen mit derselben Regel wie die gefilterte Liste", () => {
     expect(eventSpaceMetricCounts(requests, now)).toEqual({
       upcoming: 3,

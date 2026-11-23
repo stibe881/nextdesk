@@ -354,9 +354,9 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   // Shop
   "shop.order.submitted": "Shop-Bestellung aufgegeben",
   // Raumbuchungen & Onboarding
-  "event_spaces.request.created": "Raumanfrage erstellt",
-  "event_spaces.request.details_updated": "Raumanfrage geändert",
-  "event_spaces.email_ticket_intake.created": "Raumanfrage aus E-Mail erstellt",
+  "event_spaces.request.created": "Anlass erstellt",
+  "event_spaces.request.details_updated": "Anlass geändert",
+  "event_spaces.email_ticket_intake.created": "Anlass aus E-Mail erstellt",
   "onboarding.entry.created": "Onboarding erfasst",
 };
 

@@ -1,6 +1,6 @@
 /**
  * A collapsed navigation category shows the sum of the attention badges of
- * its menu items (e.g. Raumplanung, Eintritte, Shop). The single counts come
+ * its menu items (e.g. Anlässe, Eintritte, Shop). The single counts come
  * from server-authorised summaries; the browser grants no extra access.
  */
 export function collapsedNavigationCategoryAttentionCount(input: {

@@ -9,7 +9,7 @@ const SECTIONS_WITHOUT_PAGE_VIEW_OPTIONS = [
   "Services",
   "Assets",
   "Fälle",
-  "Raumplanung",
+  "Anlässe",
   "Eintritte",
   "Wissen",
   "Berichte",

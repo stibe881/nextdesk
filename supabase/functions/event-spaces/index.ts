@@ -570,7 +570,7 @@ function databaseFailure(error: DatabaseError): never {
       throw new HttpError(
         503,
         "event_space_service_unavailable",
-        "Die Raumplanung ist derzeit nicht verfügbar.",
+        "Die Anlässe sind derzeit nicht verfügbar.",
       );
     default:
       throw new HttpError(
@@ -903,7 +903,7 @@ async function conflictSummary(admin: AdminClient, input: RequestInput) {
     throw new HttpError(
       409,
       "event_space_conflict_check_too_broad",
-      msg("Zu viele bestehende Raumaufträge überlappen diesen Zeitraum. Bitte plane einen kürzeren Zeitraum oder eine kleinere Serie.", msg("Zu viele bestehende Raumaufträge überlappen diesen Zeitraum. Bitte plane einen kürzeren Zeitraum oder eine kleinere Serie.", "Zu viele bestehende Raumaufträge überlappen diesen Zeitraum. Bitte planen Sie einen kürzeren Zeitraum oder eine kleinere Serie.")),
+      msg("Zu viele bestehende Anlässe überlappen diesen Zeitraum. Bitte plane einen kürzeren Zeitraum oder eine kleinere Serie.", msg("Zu viele bestehende Anlässe überlappen diesen Zeitraum. Bitte plane einen kürzeren Zeitraum oder eine kleinere Serie.", "Zu viele bestehende Anlässe überlappen diesen Zeitraum. Bitte planen Sie einen kürzeren Zeitraum oder eine kleinere Serie.")),
     );
   }
   const possible = (candidates ?? []).filter(
@@ -1010,7 +1010,7 @@ async function navigationSummary(
     throw new HttpError(
       403,
       "event_space_permission_denied",
-      msg("Für die Raumplanung fehlt dir die erforderliche Berechtigung.", msg("Für die Raumplanung fehlt dir die erforderliche Berechtigung.", "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.")),
+      msg("Für die Anlässe fehlt dir die erforderliche Berechtigung.", msg("Für die Anlässe fehlt dir die erforderliche Berechtigung.", "Für die Anlässe fehlt Ihnen die erforderliche Berechtigung.")),
     );
   }
   const { count, error } = await admin
@@ -1039,7 +1039,7 @@ async function listWorkspace(
     throw new HttpError(
       403,
       "event_space_permission_denied",
-      msg("Für die Raumplanung fehlt dir die erforderliche Berechtigung.", msg("Für die Raumplanung fehlt dir die erforderliche Berechtigung.", "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.")),
+      msg("Für die Anlässe fehlt dir die erforderliche Berechtigung.", msg("Für die Anlässe fehlt dir die erforderliche Berechtigung.", "Für die Anlässe fehlt Ihnen die erforderliche Berechtigung.")),
     );
   }
   const from = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
@@ -1258,7 +1258,7 @@ async function listWorkspace(
         .filter((row: Row) => typeof row.id === "string")
         .map((row: Row) => ({
           id: String(row.id),
-          title: typeof row.title === "string" ? row.title : "Raumauftrag",
+          title: typeof row.title === "string" ? row.title : "Anlass",
           organizer: typeof row.organizer === "string" ? row.organizer : null,
           remarks: typeof row.remarks === "string" ? row.remarks : null,
           assignedAgent: typeof row.assigned_agent_id === "string"
@@ -1331,7 +1331,7 @@ async function listWorkspace(
     requests: requestRows.map((row) => ({
       id: String(row.id),
       spaceId: String(row.space_id),
-      title: typeof row.title === "string" ? row.title : "Raumauftrag",
+      title: typeof row.title === "string" ? row.title : "Anlass",
       organizer: typeof row.organizer === "string" ? row.organizer : null,
       remarks: typeof row.remarks === "string" ? row.remarks : null,
       expectedParticipants: typeof row.expected_participants === "number"
@@ -1424,7 +1424,7 @@ async function createRequest(
     throw new HttpError(
       500,
       "event_space_operation_failed",
-      "Der Raumauftrag konnte nicht vollständig erstellt werden.",
+      "Der Anlass konnte nicht vollständig erstellt werden.",
     );
   }
   if (createdCount === 0) {
@@ -1443,7 +1443,7 @@ async function createRequest(
     throw new HttpError(
       500,
       "event_space_operation_failed",
-      "Der Raumauftrag konnte nicht vollständig erstellt werden.",
+      "Der Anlass konnte nicht vollständig erstellt werden.",
     );
   }
   return { createdCount };
@@ -1469,7 +1469,7 @@ async function updateRequestStatus(
     throw new HttpError(
       404,
       "event_space_request_not_found",
-      "Der Raumauftrag ist nicht mehr verfügbar.",
+      "Der Anlass ist nicht mehr verfügbar.",
     );
   }
   await audit(
@@ -1505,7 +1505,7 @@ async function assignResponsible(
     throw new HttpError(
       404,
       "event_space_request_not_found",
-      "Der Raumauftrag ist nicht mehr verfügbar.",
+      "Der Anlass ist nicht mehr verfügbar.",
     );
   }
   await audit(
@@ -1579,7 +1579,7 @@ async function assignAgent(
     throw new HttpError(
       404,
       "event_space_request_not_found",
-      "Der Raumauftrag ist nicht mehr verfügbar.",
+      "Der Anlass ist nicht mehr verfügbar.",
     );
   }
   await audit(
@@ -1615,7 +1615,7 @@ async function deleteRequest(
     throw new HttpError(
       404,
       "event_space_request_not_found",
-      "Der Raumauftrag ist nicht mehr verfügbar.",
+      "Der Anlass ist nicht mehr verfügbar.",
     );
   }
   await audit(
@@ -1803,7 +1803,7 @@ const handler = withSupabase(
         throw new HttpError(
           403,
           "event_spaces_feature_disabled",
-          msg(msg("Die Raumplanung ist für dich nicht eingeschaltet.", "Die Raumplanung ist für Sie nicht eingeschaltet."), "Die Raumplanung ist für Sie nicht eingeschaltet."),
+          msg(msg("Die Anlässe sind für dich nicht eingeschaltet.", "Die Anlässe sind für Sie nicht eingeschaltet."), "Die Anlässe sind für Sie nicht eingeschaltet."),
         );
       }
       if (action.type === "listWorkspace") {

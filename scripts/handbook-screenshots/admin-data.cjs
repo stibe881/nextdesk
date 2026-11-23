@@ -91,8 +91,8 @@ const FEATURE_CATALOG = {
     "ticketing",
   ],
   "event.spaces": [
-    "Raumplanung",
-    "Veranstaltungsräume und Raumaufträge verwalten.",
+    "Anlässe",
+    "Anlässe planen: Räume, Einrichtung und Technik.",
     "ticketing",
   ],
   "onboarding.entries": [

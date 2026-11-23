@@ -11,7 +11,7 @@ describe("Navigation für reine Anfragende", () => {
     { label: "Shop" },
     { label: "Fälle" },
     { label: "Arbeitsplatz" },
-    { label: "Raumplanung" },
+    { label: "Anlässe" },
     { label: "Eintritte" },
     { label: "Wissen" },
     { label: "Mein Portal" },
@@ -32,7 +32,7 @@ describe("Navigation für reine Anfragende", () => {
     expect(canRequesterOpenSection("Shop", true)).toBe(true);
     expect(canRequesterOpenSection("Arbeitsplatz", true)).toBe(false);
     expect(canRequesterOpenSection("Mein Portal", true)).toBe(false);
-    expect(canRequesterOpenSection("Raumplanung", true)).toBe(false);
+    expect(canRequesterOpenSection("Anlässe", true)).toBe(false);
     expect(canRequesterOpenSection("Eintritte", true)).toBe(false);
   });
 });

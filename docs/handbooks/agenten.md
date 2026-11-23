@@ -1567,6 +1567,15 @@ Mehr dazu unter «Eintritte und Austritte».
 
 Mehr dazu unter «Eintritte und Austritte».
 
+### Wie kommen Bestellungen der Anlässe-App zu den Anlässen?
+
+1. Die Anlässe-App schickt pro Bestellung zwei Mails: «Bestellung Anlässe Essen und Einrichten für Anlass …» mit dem PDF **Anlassdetails** und «Neue Bestellung Einrichten Anlässe <Nummer>» an das ICT-Team.
+2. nextDesk liest daraus Anlass, Datum, Beginn, Ort, Technik, Einrichtung, Gastro und Bemerkungen und legt unter **Planung und Betrieb → Anlässe** einen Eintrag an. Es entsteht kein Ticket.
+3. Die zweite Mail derselben Bestellung ergänzt den Eintrag (Bemerkungen, Technik), statt einen zweiten anzulegen.
+4. Fehlen Angaben oder ist der Raum besetzt, steht der Anlass mit dem Grund unter **Klärung und Übernahme erforderlich**. Kommt eine Mail ohne lesbares PDF und ist die Bestellung noch unbekannt, bleibt ein normales Ticket stehen.
+
+Mehr dazu unter «Anlässe».
+
 ### Wie verknüpfe ich eine Lizenz mit einem Vertrag?
 
 1. Öffne den Vertrag unter **Ressourcen → Verträge**.
@@ -2228,7 +2237,7 @@ Die linke Navigation ist gegliedert in:
   Fälle
 - **Sicherheit und Störungen**: Phishing-/Junk-Fälle, Störungen
   (nur für das zuständige Team, siehe unten)
-- **Planung und Betrieb**: Raumplanung, Eintritte, Serviceaufgaben
+- **Planung und Betrieb**: Anlässe, Eintritte, Serviceaufgaben
 - **Ressourcen**: Assets, Lager, Verträge, Lizenzen
 - **Dienste und Überwachung**: Dienste, Infrastruktur, IP-Adressen,
   Überwachung, Systemstatus
@@ -2244,7 +2253,7 @@ Team gesetzt ist) – dieselbe Zahl wie in der Kachel «Nicht zugewiesene
 Tickets» –, bei
 **Phishing / Junk** alle offenen Fälle und bei **Störungen** alle aktiven
 Störungen – rot, solange davon ein Fall niemandem zugewiesen bzw. eine
-Störung nicht bestätigt ist, sonst grau –, bei **Raumplanung**, **Shop** und
+Störung nicht bestätigt ist, sonst grau –, bei **Anlässe**, **Shop** und
 **Eintritte** die offenen Anfragen. Ist eine Kategorie zugeklappt, steht die
 Summe neben ihrem Namen. Die Zahlen aktualisieren sich alle 30 Sekunden.
 
@@ -2252,7 +2261,7 @@ In der **iOS- und Android-App** zeigt die untere Leiste dieselben Zahlen als
 kleines Abzeichen am Symbol: bei **Tickets**, **Störungen** und **Phishing / Junk** sowie beim **Shop** die neuen Bestellungen, falls du
 Bestellungen bearbeitest. Wie im Web zählen **Störungen** alle aktiven
 Störungen und **Phishing / Junk** alle offenen Fälle – rot, solange etwas nicht
-bestätigt bzw. zugewiesen ist, sonst grau. Raumplanung und Eintritte gibt es
+bestätigt bzw. zugewiesen ist, sonst grau. Anlässe und Eintritte gibt es
 in der App nicht. Die Zahlen aktualisieren sich alle 30 Sekunden, beim
 Zurückkehren in die App und beim Wechsel des Tabs.
 
@@ -3683,6 +3692,17 @@ Bestand bleibt unverändert, und im Audit-Protokoll steht «Inventur gelöscht»
 Abgeschlossene Inventuren lassen sich nicht löschen. Löschen dürfen alle, die
 Inventuren starten dürfen (Recht «Lagerorte und Artikelstammdaten verwalten»).
 
+## Anlässe
+
+Unter **Planung und Betrieb → Anlässe** (früher «Raumplanung») stehen alle
+geplanten Anlässe mit Raum, Zeit, Aufgaben und Technik. Bestellungen der
+Anlässe-App werden automatisch übernommen: aus dem PDF **Anlassdetails** und
+aus der Mail «Neue Bestellung Einrichten Anlässe <Nummer>». Beide Mails einer
+Bestellung ergeben einen einzigen Anlass; die Angaben zu Einrichtung, Gastro,
+Personenzahl und die Bemerkungen stehen in den **Bemerkungen** des Anlasses.
+Geplant wird der Beginn des Anlasses; fehlt etwas oder ist der Raum belegt,
+steht der Anlass mit dem Grund unter **Klärung und Übernahme erforderlich**.
+
 ## Eintritte und Austritte
 
 Unter **Planung und Betrieb → Eintritte** steht für jeden Eintritt bzw.
@@ -3727,7 +3747,7 @@ Inventur; die beiden Optionen beim Mindestbestand schaltest du mit Schiebern:
   diesem Register: **Bestellt**, **Erledigt** oder **Verwerfen**.
 - **Reservationen:** Offene Reservationen werden nach der eingestellten Zahl
   Tage automatisch freigegeben (stündliche Prüfung). Reservationen aus
-  Shop-Bestellungen, Eintritten und Raumbuchungen bleiben bestehen.
+  Shop-Bestellungen, Eintritten und Anlässen bleiben bestehen.
 - **Inventur:** Pro Lager ein Intervall in Tagen. Ist es seit der letzten
   abgeschlossenen Inventur des am längsten nicht gezählten Lagerplatzes
   abgelaufen, erhält die Lagerverwaltung die Mitteilung «Inventur fällig».
