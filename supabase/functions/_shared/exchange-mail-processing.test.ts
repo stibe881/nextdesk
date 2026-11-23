@@ -189,3 +189,17 @@ Deno.test(
     }
   },
 );
+
+Deno.test("neue Tickets übernehmen den weitergeleiteten Teil der Mail", async () => {
+  const { inboundBodyContent } = await import("./exchange-mail-processing.ts");
+  const graph = {
+    uniqueBody: { content: "Phishing?" },
+    body: { content: "Phishing?\nVon: HR <hr@example.test>\nBitte Formular ausfüllen" },
+  };
+  const full = String(inboundBodyContent(graph, false));
+  if (!full.includes("Bitte Formular ausfüllen")) throw new Error(full);
+  if (inboundBodyContent(graph, true) !== "Phishing?")
+    throw new Error("Antworten nutzen nur den neuen Teil");
+  if (inboundBodyContent({ uniqueBody: { content: "nur neu" } }, false) !== "nur neu")
+    throw new Error("Fallback auf uniqueBody fehlt");
+});
