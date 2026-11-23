@@ -24,6 +24,7 @@ import {
   Circle,
   BookOpen,
   CircleCheck,
+  Forward,
   Clock,
   ListChecks,
   Paperclip,
@@ -85,6 +86,7 @@ import { recordRecentItem } from "./lib/recent-items";
 import { functionErrorMessage } from "./lib/function-error";
 import { TicketControlPanel } from "./ticket-control";
 import { Deferred } from "./deferred";
+import { TicketForwardDialog } from "./ticket-forward";
 import {
   AffectedPeopleBadge,
   DuplicateSuggestions,
@@ -2392,6 +2394,7 @@ function eventLabel(
     "ticket.created": "Ticket erstellt",
     "comment.external_added": "Externer Kommentar hinzugefügt",
     "comment.internal_added": "Interne Notiz hinzugefügt",
+    "ticket.forwarded": "Per Mail weitergeleitet",
     "ticket.updated": "Ticket aktualisiert",
     "ticket.closed": "Ticket abgeschlossen",
     "ticket.category_changed": "Kategorie aktualisiert",
@@ -4217,6 +4220,15 @@ export function TicketDetail({
   const [mergeConfirmationTarget, setMergeConfirmationTarget] =
     useState<MergeSearchTarget | null>(null);
   const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
+  const [forwardSource, setForwardSource] = useState<{
+    commentId: string | null;
+    label: string;
+  } | null>(null);
+  const [forwardNotice, setForwardNotice] = useState("");
+  useEffect(() => {
+    setForwardSource(null);
+    setForwardNotice("");
+  }, [ticketId]);
   const [pendingChecklistItemId, setPendingChecklistItemId] = useState<
     string | null
   >(null);
@@ -7563,6 +7575,31 @@ export function TicketDetail({
         )}
       </Deferred>
 
+      {forwardNotice ? (
+        <p className="ticket-detail-message success" role="status">
+          <CircleCheck aria-hidden="true" size={17} />
+          {forwardNotice}
+        </p>
+      ) : null}
+      {forwardSource ? (
+        <TicketForwardDialog
+          onClose={() => setForwardSource(null)}
+          onForwarded={async (count) => {
+            setForwardSource(null);
+            setForwardNotice(
+              count === 1
+                ? "Die Mail wurde weitergeleitet."
+                : `Die Mail wurde an ${count} Adressen weitergeleitet.`,
+            );
+            onChanged();
+            await loadTicket();
+          }}
+          sourceCommentId={forwardSource.commentId}
+          sourceLabel={forwardSource.label}
+          tenantId={tenantId}
+          ticketId={ticketId}
+        />
+      ) : null}
       {!requesterView && (
         <MergedIntoBanner
           canUnmerge={detail.canMerge}
@@ -7656,18 +7693,38 @@ export function TicketDetail({
                 <p className="eyebrow">ANLIEGEN</p>
                 <h3 id="ticket-description-heading">Beschreibung</h3>
               </div>
-              {detail.canUpdate && !requesterView && !isEditingDescription ? (
-                <button
-                  aria-label="Beschreibung bearbeiten"
-                  className="ticket-description-edit"
-                  disabled={busy}
-                  onClick={startDescriptionEdit}
-                  title="Beschreibung bearbeiten"
-                  type="button"
-                >
-                  <Pencil aria-hidden="true" size={16} strokeWidth={1.9} />
-                </button>
-              ) : null}
+              <div className="ticket-detail-heading-actions">
+                {detail.canWriteInternalNotes && !requesterView ? (
+                  <button
+                    aria-label="Ursprüngliche Mail weiterleiten"
+                    className="secondary-button ticket-forward-button"
+                    disabled={busy}
+                    onClick={() =>
+                      setForwardSource({
+                        commentId: null,
+                        label: "Die ursprüngliche Mail",
+                      })
+                    }
+                    title="Weiterleiten"
+                    type="button"
+                  >
+                    <Forward aria-hidden="true" size={16} strokeWidth={1.9} />
+                    Weiterleiten
+                  </button>
+                ) : null}
+                {detail.canUpdate && !requesterView && !isEditingDescription ? (
+                  <button
+                    aria-label="Beschreibung bearbeiten"
+                    className="ticket-description-edit"
+                    disabled={busy}
+                    onClick={startDescriptionEdit}
+                    title="Beschreibung bearbeiten"
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" size={16} strokeWidth={1.9} />
+                  </button>
+                ) : null}
+              </div>
             </div>
             {isEditingDescription ? (
               <form
@@ -8031,6 +8088,22 @@ export function TicketDetail({
                         <time dateTime={item.created_at}>
                           {formatDateTime(item.created_at)}
                         </time>
+                        {detail.canWriteInternalNotes && !requesterView ? (
+                          <button
+                            aria-label={`Nachricht von ${item.authorName} weiterleiten`}
+                            className="text-button ticket-forward-link"
+                            onClick={() =>
+                              setForwardSource({
+                                commentId: item.id,
+                                label: `Die Nachricht von ${item.authorName} (${formatDateTime(item.created_at)})`,
+                              })
+                            }
+                            type="button"
+                          >
+                            <Forward aria-hidden="true" size={13} />
+                            Weiterleiten
+                          </button>
+                        ) : null}
                       </div>
                       <TicketTextWithInlineImages
                         body={item.body}

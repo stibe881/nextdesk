@@ -117,6 +117,9 @@ type Message = {
   attempt_count: number;
   inline_media_status?: string | null;
   inline_media_attempt_count?: number | null;
+  /** Weiterleitung (0393): weitergeleitete Nachricht, leer = ursprüngliche Mail. */
+  forward_source_comment_id?: string | null;
+  forward_note?: string | null;
 };
 
 type InboundAttachment = {
@@ -229,6 +232,7 @@ export function customerTicketEmailKindForOutbound(
 ): CustomerTicketEmailKind | null {
   // Kopien einer Antwort an weitere Personen sehen aus wie die Antwort selbst.
   if (messageKind === "ticket_copy") return "agent_reply";
+  if (messageKind === "ticket_forward") return "forward";
   // Thanks, verdict and «did you click?» for phishing reporters.
   if (messageKind === "security_notice") return "security_notice";
   if (
@@ -2079,20 +2083,112 @@ async function recoverProcessedInlineMedia(
   }
 }
 
+const FORWARD_DATE = new Intl.DateTimeFormat("de-CH", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Europe/Zurich",
+});
+
+/**
+ * Text einer Weiterleitung: die begleitende Nachricht, darunter die
+ * weitergeleitete Nachricht mit Von, Datum und Betreff (wie im Mailprogramm).
+ * Ohne Quelle wird die ursprüngliche Mail (Ticketbeschreibung) weitergeleitet.
+ */
+async function forwardBodyText(
+  admin: Admin,
+  message: Message,
+  ticketId: string,
+): Promise<string> {
+  const ticket = await admin
+    .from("tickets")
+    .select("subject, description, created_at, requester_contact_id, requester_id")
+    .eq("id", ticketId)
+    .eq("tenant_id", message.tenant_id)
+    .maybeSingle();
+  if (ticket.error || !ticket.data) throw new Error("ticket_unavailable");
+  const sourceId = asString(message.forward_source_comment_id);
+  let from = "";
+  let sentAt = asString(ticket.data.created_at) ?? "";
+  let content = cleanText(ticket.data.description);
+  let contactId = asString(ticket.data.requester_contact_id);
+  if (sourceId) {
+    const comment = await admin
+      .from("ticket_comments")
+      .select("body, created_at, author_id, requester_contact_id")
+      .eq("id", sourceId)
+      .eq("ticket_id", ticketId)
+      .maybeSingle();
+    if (comment.error || !comment.data) throw new Error("forward_source_unavailable");
+    content = cleanText(comment.data.body);
+    sentAt = asString(comment.data.created_at) ?? sentAt;
+    contactId = asString(comment.data.requester_contact_id);
+    if (!contactId && asString(comment.data.author_id)) {
+      const author = await admin
+        .from("user_profiles")
+        .select("display_name")
+        .eq("id", comment.data.author_id)
+        .maybeSingle();
+      from = asString(author.data?.display_name) ?? "";
+    }
+  } else {
+    // «Eingegangene E-Mail von …» steht nur im Ticket, nicht in der Mail.
+    const prefix = /^Eingegangene E-Mail von ([^\r\n]{1,160})\r?\n\r?\n/u.exec(content);
+    if (prefix) {
+      content = content.slice(prefix[0].length);
+      from = prefix[1]!.trim();
+    }
+  }
+  if (contactId) {
+    const contact = await admin
+      .from("ticket_requesters")
+      .select("display_name, email")
+      .eq("id", contactId)
+      .maybeSingle();
+    const name = asString(contact.data?.display_name);
+    const email = asString(contact.data?.email);
+    if (name || email) {
+      from = name && email ? `${name} <${email}>` : (name ?? email ?? from);
+    }
+  }
+  const date = sentAt && Number.isFinite(Date.parse(sentAt))
+    ? FORWARD_DATE.format(new Date(sentAt))
+    : "";
+  const note = asString(message.forward_note)?.trim() ?? "";
+  return [
+    note,
+    "---------- Weitergeleitete Nachricht ----------",
+    [
+      from ? `Von: ${from}` : "",
+      date ? `Datum: ${date}` : "",
+      `Betreff: ${asString(ticket.data.subject) ?? ""}`,
+    ].filter(Boolean).join("\n"),
+    content,
+  ].filter(Boolean).join("\n\n");
+}
+
 async function outboundAttachments(
   admin: Admin,
   ticketId: string,
   commentId: string | null,
+  forward?: { sourceCommentId: string | null },
 ): Promise<{ attachments: Row[]; omitted: boolean }> {
-  if (!commentId) return { attachments: [], omitted: false };
-  const rows = await admin
+  if (!commentId && !forward) return { attachments: [], omitted: false };
+  let query = admin
     .from("ticket_attachments")
     .select(
       "storage_bucket, storage_object_path, original_filename, content_type, byte_size",
     )
-    .eq("ticket_id", ticketId)
-    .eq("comment_id", commentId)
-    .eq("visibility", "external")
+    .eq("ticket_id", ticketId);
+  if (forward) {
+    // Weiterleitung: Anhänge der weitergeleiteten Nachricht bzw. der
+    // ursprünglichen Mail (ohne eingebettete Bilder wie Signatur-Logos).
+    query = forward.sourceCommentId
+      ? query.eq("comment_id", forward.sourceCommentId)
+      : query.is("comment_id", null).is("inline_content_id", null);
+  } else {
+    query = query.eq("comment_id", commentId).eq("visibility", "external");
+  }
+  const rows = await query
     // No malware scanner marks uploads as clean yet; files attached to a
     // reply in nextDesk are sent while their scan is pending.
     .in("malware_status", ["clean", "pending"])
@@ -3054,9 +3150,21 @@ export async function dispatchOutboundMessage(
       bodyText = "Dies ist eine Testmail des nextDesk E-Mail-Kanals.";
     const ticketNumber = asString(ticket?.ticket_number) ?? "nextDesk-Test";
     const ticketSubject = asString(ticket?.subject) ?? "E-Mail-Kanal Test";
+    if (message.kind === "ticket_forward" && ticket) {
+      bodyText = await forwardBodyText(admin, message, ticket.id as string);
+    }
     const attachments =
       ticket && !internalDepartmentNotice
-        ? await outboundAttachments(admin, ticket.id, message.comment_id)
+        ? await outboundAttachments(
+            admin,
+            ticket.id,
+            message.comment_id,
+            message.kind === "ticket_forward"
+              ? {
+                  sourceCommentId: asString(message.forward_source_comment_id),
+                }
+              : undefined,
+          )
         : { attachments: [], omitted: false };
     const customerEmailKind = customerTicketEmailKindForOutbound(message.kind);
     if (!internalDepartmentNotice && !customerEmailKind)
@@ -3150,6 +3258,8 @@ export async function dispatchOutboundMessage(
           ? `[${ticketNumber}] ${asString(message.subject)}`
           : message.kind === "agent_reply"
             ? `AW: [${ticketNumber}] ${ticketSubject}`
+            : message.kind === "ticket_forward"
+              ? `WG: [${ticketNumber}] ${ticketSubject}`
             : message.kind === "rating_reminder"
               ? `${tone(formality, "Wie zufrieden warst du?", "Wie zufrieden waren Sie?")} [${ticketNumber}] ${ticketSubject}`
               : message.kind === "merge_notice" && mergePrimaryNumber

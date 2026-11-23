@@ -435,6 +435,16 @@ Mehr dazu unter «IP-Adressen».
 
 Mehr dazu unter «Weitere Aktionen im Ticket».
 
+### Wie leite ich eine Mail aus einem Ticket weiter?
+
+1. Öffnen Sie das Ticket.
+2. Für die ursprüngliche Mail klicken Sie bei der Beschreibung auf **Weiterleiten**, für eine einzelne Nachricht in der Unterhaltung auf **Weiterleiten** neben der Nachricht. In der App tippen Sie unter der Beschreibung auf **Weiterleiten**.
+3. Tragen Sie unter **An** eine oder mehrere Mailadressen ein (durch Komma getrennt, höchstens zehn) und optional eine **Nachricht**.
+4. Klicken Sie auf **Weiterleiten**. Die Mail geht mit den Anhängen über das Support-Postfach an die genannten Adressen, nicht an die anfragende Person.
+5. In der Unterhaltung erscheint eine interne Notiz «Weitergeleitet an …».
+
+Mehr dazu unter «Mail weiterleiten».
+
 ### Wie führe ich doppelte Tickets zusammen?
 
 1. Öffnen Sie das Ticket, das ein Duplikat ist.
@@ -3167,20 +3177,21 @@ direkt auf die Zeile ziehen (max. 25 MiB pro Datei).
 
 ### Weitere Aktionen im Ticket
 
-| Aktion                                      | Wofür                                                   |
-| ------------------------------------------- | ------------------------------------------------------- |
-| Anhang hinzufügen                           | Dateien zum Ticket ablegen                              |
-| Beobachtende hinzufügen / Personen in Kopie | Weitere Personen informieren                            |
-| Tickets zusammenführen                      | Doppelte Meldungen bündeln                              |
-| Aufteilen                                   | Ein Ticket in mehrere Aufgaben trennen                  |
-| An nächste Stufe übergeben                  | Eskalation an 2nd/3rd Level mit Übergabenotiz (Pflicht) |
-| An Drittanbieter übergeben                  | Lieferanten einbeziehen, mit Erinnerung                 |
-| Vorgesetzte Person fragen                   | Interne Rückfrage an die Abteilungsleitung              |
-| Freigabe anfordern                          | Genehmigung einholen (z. B. Kosten, Berechtigungen)     |
-| Erinnerung setzen                           | Ticket zu einem Datum wieder vorlegen                   |
-| Arbeitszeit erfassen, Checkliste            | Aufwand und Arbeitsschritte dokumentieren               |
-| Zusammenfassen (KI)                         | Kurzfassung langer Verläufe                             |
-| Ticketakte als PDF                          | Ticket drucken oder ablegen                             |
+| Aktion                                      | Wofür                                                       |
+| ------------------------------------------- | ----------------------------------------------------------- |
+| Anhang hinzufügen                           | Dateien zum Ticket ablegen                                  |
+| Beobachtende hinzufügen / Personen in Kopie | Weitere Personen informieren                                |
+| Tickets zusammenführen                      | Doppelte Meldungen bündeln                                  |
+| Weiterleiten                                | Mail an Lieferanten oder Dritte, ohne die anfragende Person |
+| Aufteilen                                   | Ein Ticket in mehrere Aufgaben trennen                      |
+| An nächste Stufe übergeben                  | Eskalation an 2nd/3rd Level mit Übergabenotiz (Pflicht)     |
+| An Drittanbieter übergeben                  | Lieferanten einbeziehen, mit Erinnerung                     |
+| Vorgesetzte Person fragen                   | Interne Rückfrage an die Abteilungsleitung                  |
+| Freigabe anfordern                          | Genehmigung einholen (z. B. Kosten, Berechtigungen)         |
+| Erinnerung setzen                           | Ticket zu einem Datum wieder vorlegen                       |
+| Arbeitszeit erfassen, Checkliste            | Aufwand und Arbeitsschritte dokumentieren                   |
+| Zusammenfassen (KI)                         | Kurzfassung langer Verläufe                                 |
+| Ticketakte als PDF                          | Ticket drucken oder ablegen                                 |
 
 ### Tickets zusammenführen
 
@@ -3207,6 +3218,20 @@ Beim Zusammenführen läuft ein Duplikat im **Haupt-Ticket** weiter:
 Wie oft zusammengeführt wird, zeigt das Service-Reporting im Bereich
 **Zusammengeführte Tickets** (nach Eingangskanal, Art und Personen mit den
 meisten Mehrfachmeldungen).
+
+### Mail weiterleiten
+
+Mit **Weiterleiten** schicken Sie die ursprüngliche Mail (bei der
+Beschreibung) oder eine einzelne Nachricht (in der Unterhaltung) an beliebige
+Mailadressen, z. B. an einen Lieferanten. Die Mail trägt den Betreff
+«WG: [Ticketnummer] …», enthält Ihre Nachricht, darunter die weitergeleitete
+Nachricht mit Absender, Datum und Betreff sowie deren Anhänge, und geht über
+das Support-Postfach. Die anfragende Person erhält nichts. In der
+Unterhaltung erscheint eine interne Notiz «Weitergeleitet an …», im Verlauf
+«Per Mail weitergeleitet». Dafür brauchen Sie das Recht für interne Notizen;
+ohne aktives Support-Postfach mit Versand ist Weiterleiten nicht möglich.
+
+![Mail weiterleiten](images/ag-ticket-weiterleiten.jpg)
 
 ### An Drittanbieter übergeben
 

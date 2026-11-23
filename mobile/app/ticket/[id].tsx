@@ -95,6 +95,8 @@ import {
 import {
   listWatchedTicketIds,
   setTicketWatched,
+  forwardTicket,
+  parseForwardRecipients,
 } from "@/lib/mobile-ticket-actions";
 import {
   hapticError,
@@ -418,6 +420,11 @@ export default function TicketDetailScreen() {
   );
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [reopenSheetOpen, setReopenSheetOpen] = useState(false);
+  const [forwardOpen, setForwardOpen] = useState(false);
+  const [forwardRecipients, setForwardRecipients] = useState("");
+  const [forwardMessage, setForwardMessage] = useState("");
+  const [forwarding, setForwarding] = useState(false);
+  const [forwardError, setForwardError] = useState("");
   const [reopenReason, setReopenReason] = useState("");
   const [reopenError, setReopenError] = useState("");
   const [requestingReopen, setRequestingReopen] = useState(false);
@@ -815,6 +822,48 @@ export default function TicketDetailScreen() {
     setReopenError("");
     setReopenSheetOpen(true);
     hapticSelection();
+  }
+
+  async function submitForward() {
+    if (!ticket || !tenant || forwarding) return;
+    const { emails, invalid } = parseForwardRecipients(forwardRecipients);
+    if (invalid.length) {
+      setForwardError(`Ungültige Adresse: ${invalid.join(", ")}`);
+      return;
+    }
+    if (!emails.length || emails.length > 10) {
+      setForwardError("Bitte 1 bis 10 Mailadressen angeben.");
+      return;
+    }
+    setForwarding(true);
+    setForwardError("");
+    try {
+      const count = await forwardTicket({
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+        emails,
+        message: forwardMessage.trim(),
+      });
+      setForwardOpen(false);
+      setForwardRecipients("");
+      setForwardMessage("");
+      setMessage(
+        count === 1
+          ? "Die Mail wurde weitergeleitet."
+          : `Die Mail wurde an ${count} Adressen weitergeleitet.`,
+      );
+      hapticSuccess();
+      void load(false);
+    } catch (nextError) {
+      hapticError();
+      setForwardError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Mail konnte nicht weitergeleitet werden.",
+      );
+    } finally {
+      setForwarding(false);
+    }
   }
 
   async function submitReopenRequest() {
@@ -3140,6 +3189,32 @@ export default function TicketDetailScreen() {
               attachments={descriptionAttachments}
               onOpen={(attachment) => void openTicketAttachment(attachment)}
             />
+            {ticket.canWriteInternalNotes ? (
+              <Pressable
+                accessibilityHint="Leitet die ursprüngliche Mail an andere Adressen weiter, nicht an die anfragende Person."
+                accessibilityRole="button"
+                onPress={() => {
+                  hapticSelection();
+                  setForwardError("");
+                  setForwardOpen(true);
+                }}
+                style={[styles.forwardButton, { borderColor: colors.border }]}
+              >
+                <Ionicons
+                  color={colors.primaryText}
+                  name="arrow-redo-outline"
+                  size={18}
+                />
+                <Text
+                  style={[
+                    styles.forwardButtonText,
+                    { color: colors.primaryText },
+                  ]}
+                >
+                  Weiterleiten
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {canUseRequesterPortal && ticketIsResolved && !reopenSubmitted ? (
@@ -3781,6 +3856,167 @@ export default function TicketDetailScreen() {
                     {submittingResolution
                       ? "Wird gespeichert …"
                       : "Rückmeldung speichern"}
+                  </Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        <Modal
+          animationType="slide"
+          onRequestClose={() => {
+            if (!forwarding) setForwardOpen(false);
+          }}
+          transparent
+          visible={forwardOpen}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.experienceSheetRoot}
+          >
+            <Pressable
+              accessibilityLabel="Weiterleiten schliessen"
+              accessibilityRole="button"
+              disabled={forwarding}
+              onPress={() => setForwardOpen(false)}
+              style={StyleSheet.absoluteFill}
+            />
+            <View
+              accessibilityViewIsModal
+              style={[
+                styles.experienceSheet,
+                { backgroundColor: colors.surface },
+              ]}
+            >
+              <View style={styles.experienceSheetHeader}>
+                <View>
+                  <Text style={[styles.selectionEyebrow, tokenStyles.muted]}>
+                    URSPRÜNGLICHE MAIL
+                  </Text>
+                  <Text
+                    style={[
+                      styles.experienceSheetTitle,
+                      tokenStyles.foreground,
+                    ]}
+                  >
+                    Weiterleiten
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityLabel="Weiterleiten schliessen"
+                  accessibilityRole="button"
+                  disabled={forwarding}
+                  hitSlop={10}
+                  onPress={() => setForwardOpen(false)}
+                  style={[
+                    styles.selectionClose,
+                    { backgroundColor: colors.primarySoft },
+                  ]}
+                >
+                  <Ionicons color={colors.primaryText} name="close" size={22} />
+                </Pressable>
+              </View>
+              <ScrollView
+                automaticallyAdjustKeyboardInsets
+                contentContainerStyle={styles.experienceSheetContent}
+                keyboardDismissMode="interactive"
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <Text
+                  style={[styles.experienceSheetDescription, tokenStyles.muted]}
+                >
+                  Die ursprüngliche Mail wird mit den Anhängen weitergeleitet.
+                  Die anfragende Person erhält nichts; in der Unterhaltung
+                  erscheint eine interne Notiz.
+                </Text>
+                <View style={styles.resolutionField}>
+                  <Text style={[styles.cardLabel, tokenStyles.muted]}>AN</Text>
+                  <TextInput
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    autoCorrect={false}
+                    inputMode="email"
+                    maxLength={2_600}
+                    onChangeText={setForwardRecipients}
+                    placeholder="adresse@firma.ch, …"
+                    placeholderTextColor={colors.subtle}
+                    style={[
+                      styles.forwardInput,
+                      {
+                        backgroundColor: colors.surfaceSubtle,
+                        borderColor: colors.border,
+                        color: colors.foreground,
+                      },
+                    ]}
+                    value={forwardRecipients}
+                  />
+                </View>
+                <View style={styles.resolutionField}>
+                  <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                    NACHRICHT (OPTIONAL)
+                  </Text>
+                  <TextInput
+                    autoCapitalize="sentences"
+                    maxLength={10_000}
+                    multiline
+                    onChangeText={setForwardMessage}
+                    placeholder="Was soll die empfangende Person tun?"
+                    placeholderTextColor={colors.subtle}
+                    style={[
+                      styles.resolutionInput,
+                      {
+                        backgroundColor: colors.surfaceSubtle,
+                        borderColor: colors.border,
+                        color: colors.foreground,
+                      },
+                    ]}
+                    textAlignVertical="top"
+                    value={forwardMessage}
+                  />
+                </View>
+                {forwardError ? (
+                  <View style={[styles.feedback, tokenStyles.error]}>
+                    <Ionicons
+                      color={colors.error}
+                      name="alert-circle-outline"
+                      size={20}
+                    />
+                    <Text
+                      style={[styles.feedbackText, { color: colors.error }]}
+                    >
+                      {forwardError}
+                    </Text>
+                  </View>
+                ) : null}
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={forwarding || !forwardRecipients.trim()}
+                  onPress={() => void submitForward()}
+                  style={[
+                    styles.experienceSaveButton,
+                    { backgroundColor: colors.primary },
+                    (forwarding || !forwardRecipients.trim()) &&
+                      styles.disabled,
+                  ]}
+                >
+                  {forwarding ? (
+                    <ActivityIndicator color={colors.onPrimary} size="small" />
+                  ) : (
+                    <Ionicons
+                      color={colors.onPrimary}
+                      name="arrow-redo-outline"
+                      size={20}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.experienceSaveButtonText,
+                      tokenStyles.primaryText,
+                    ]}
+                  >
+                    {forwarding ? "Wird weitergeleitet …" : "Weiterleiten"}
                   </Text>
                 </Pressable>
               </ScrollView>
@@ -4863,6 +5099,26 @@ const useStyles = makeThemedStyles((c) => ({
     paddingVertical: 8,
   },
   mergeHintText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  forwardButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  forwardButtonText: { fontSize: 14, fontWeight: "700" },
+  forwardInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    fontSize: 15,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   requesterMeta: { color: c.muted, fontSize: 13, lineHeight: 18 },
   detailsDivider: { backgroundColor: c.border, height: 1, marginVertical: 5 },
   detailsValueRow: {

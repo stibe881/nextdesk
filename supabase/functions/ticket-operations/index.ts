@@ -104,6 +104,15 @@ type Action =
       copyEmails: string[];
     }
   | {
+      type: "forwardTicket";
+      tenantId: string;
+      ticketId: string;
+      emails: string[];
+      message: string;
+      /** Weitergeleitete Nachricht; null = ursprüngliche Mail. */
+      sourceCommentId: string | null;
+    }
+  | {
       type: "saveDraft";
       tenantId: string;
       ticketId: string;
@@ -361,6 +370,46 @@ function parseAction(value: unknown): Action | null {
       copyEmails: rawCopies.map((entry) => entry.trim().toLowerCase()),
     };
   }
+  if (
+    value.type === "forwardTicket" &&
+    hasOnlyKeys(value, [
+      "type",
+      "tenantId",
+      "ticketId",
+      "emails",
+      "message",
+      "sourceCommentId",
+    ]) &&
+    Array.isArray(value.emails) &&
+    value.emails.length >= 1 &&
+    value.emails.length <= 10 &&
+    value.emails.every(
+      (entry) =>
+        typeof entry === "string" &&
+        entry.trim().length <= 254 &&
+        /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(entry.trim()),
+    ) &&
+    (value.message === undefined ||
+      (typeof value.message === "string" &&
+        value.message.length <= 10000 &&
+        !value.message.includes("\u0000"))) &&
+    (value.sourceCommentId === undefined ||
+      value.sourceCommentId === null ||
+      isUuid(value.sourceCommentId))
+  )
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+      emails: [
+        ...new Set(
+          (value.emails as string[]).map((entry) => entry.trim().toLowerCase()),
+        ),
+      ],
+      message: typeof value.message === "string" ? value.message.trim() : "",
+      sourceCommentId:
+        typeof value.sourceCommentId === "string" ? value.sourceCommentId : null,
+    };
   if (
     value.type === "saveDraft" &&
     typeof value.body === "string" &&
@@ -3080,6 +3129,135 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       },
     });
     return response(request, { data: { timeEntry } }, 201);
+  }
+
+  if (action.type === "forwardTicket") {
+    // Weiterleiten: Mail an die genannten Adressen über das Support-Postfach,
+    // nicht an die anfragende Person. In der Unterhaltung steht eine interne
+    // Notiz; deshalb ist das Recht für interne Notizen nötig.
+    if (
+      !(await hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.internal_notes.write",
+      ))
+    )
+      return response(
+        request,
+        {
+          error: {
+            code: "ticket_forward_denied",
+            message: msg(
+              "Du bist nicht berechtigt, Tickets weiterzuleiten.",
+              "Sie sind nicht berechtigt, Tickets weiterzuleiten.",
+            ),
+          },
+        },
+        403,
+      );
+    // Vorab prüfen, ob ein Postfach versenden kann, damit keine Notiz für
+    // eine Weiterleitung entsteht, die nie verschickt wird.
+    const { data: sendingChannel } = await context.supabaseAdmin
+      .from("exchange_mail_channels")
+      .select("id")
+      .eq("tenant_id", ticket.tenant_id)
+      .eq("status", "active")
+      .eq("access_mode", "delegated")
+      .eq("send_agent_replies", true)
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+    if (!sendingChannel)
+      return response(
+        request,
+        {
+          error: {
+            code: "forward_channel_unavailable",
+            message:
+              "Die Mail konnte nicht verschickt werden: Es ist kein aktives Support-Postfach mit Versand eingerichtet.",
+          },
+        },
+        422,
+      );
+    let sourceLabel = "die ursprüngliche Mail";
+    if (action.sourceCommentId) {
+      const { data: source } = await context.supabaseAdmin
+        .from("ticket_comments")
+        .select("id, created_at")
+        .eq("id", action.sourceCommentId)
+        .eq("ticket_id", ticket.id)
+        .maybeSingle();
+      if (!source)
+        return response(
+          request,
+          { error: { code: "forward_source_unavailable" } },
+          404,
+        );
+      const when = new Intl.DateTimeFormat("de-CH", {
+        dateStyle: "short",
+        timeStyle: "short",
+        timeZone: "Europe/Zurich",
+      }).format(new Date(source.created_at));
+      sourceLabel = `die Nachricht vom ${when}`;
+    }
+    const noteBody = [
+      `Weitergeleitet an ${action.emails.join(", ")} (${sourceLabel}).`,
+      action.message,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const { data: note, error: noteError } = await context.supabaseAdmin
+      .from("ticket_comments")
+      .insert({
+        ticket_id: ticket.id,
+        author_id: actorId,
+        visibility: "internal",
+        body: noteBody,
+      })
+      .select("id")
+      .single();
+    if (noteError || !note)
+      return response(request, { error: { code: "comment_create_failed" } }, 422);
+    const { data: queued, error: queueError } = await context.supabaseAdmin.rpc(
+      "enqueue_ticket_forward",
+      {
+        p_tenant_id: ticket.tenant_id,
+        p_ticket_id: ticket.id,
+        p_note_comment_id: note.id,
+        p_source_comment_id: action.sourceCommentId,
+        p_actor_id: actorId,
+        p_emails: action.emails,
+        p_note: action.message,
+      },
+    );
+    if (queueError || typeof queued !== "number" || queued < 1) {
+      // Ohne Versand keine Notiz: sonst stünde eine Weiterleitung in der
+      // Unterhaltung, die nie verschickt wurde.
+      await context.supabaseAdmin.from("ticket_comments").delete().eq("id", note.id);
+      return response(
+        request,
+        {
+          error: {
+            code: "forward_channel_unavailable",
+            message:
+              "Die Mail konnte nicht verschickt werden: Es ist kein aktives Support-Postfach mit Versand eingerichtet.",
+          },
+        },
+        422,
+      );
+    }
+    await context.supabaseAdmin.from("ticket_events").insert({
+      ticket_id: ticket.id,
+      actor_id: actorId,
+      event_type: "ticket.forwarded",
+      payload: {
+        recipients: queued,
+        sourceCommentId: action.sourceCommentId,
+      },
+    });
+    return response(request, { data: { forwarded: queued } });
   }
 
   if (action.type === "addComment") {
