@@ -1329,6 +1329,20 @@ async function updateInlineMediaStatus(
   }
 }
 
+/**
+ * Mailtext für die Verarbeitung. Antworten auf ein Ticket nutzen nur den neuen
+ * Teil (`uniqueBody`), damit der zitierte Verlauf nicht doppelt erscheint.
+ * Neue Tickets nutzen die ganze Mail: Bei weitergeleiteten Mails (zum Beispiel
+ * eine gemeldete Phishing-Mail) steckt das Eigentliche im weitergeleiteten
+ * Teil, den `uniqueBody` weglässt.
+ */
+export function inboundBodyContent(graph: Row, isReply: boolean): unknown {
+  const unique = record(graph.uniqueBody) ? graph.uniqueBody.content : null;
+  const full = record(graph.body) ? graph.body.content : null;
+  if (isReply) return unique ?? full;
+  return typeof full === "string" && full.trim() ? full : unique;
+}
+
 async function createNewTicket(
   admin: Admin,
   channel: Channel,
@@ -1393,7 +1407,7 @@ async function createNewTicket(
       ticket_number: number.data,
       subject: subject(graph.subject),
       description: `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${normalizeInboundEmailText(
-        record(graph.uniqueBody) ? graph.uniqueBody.content : null,
+        inboundBodyContent(graph, false),
         undefined,
         { formatCorporateSignature: true },
       )}`,
@@ -1707,11 +1721,7 @@ export async function processInboundMessage(
     if (hasInlineMedia)
       await updateInlineMediaStatus(admin, message, "pending");
     const body = normalizeInboundEmailText(
-      record(graph.uniqueBody)
-        ? graph.uniqueBody.content
-        : record(graph.body)
-          ? graph.body.content
-          : null,
+      inboundBodyContent(graph, replyAuthorized),
       undefined,
       { formatCorporateSignature: !replyAuthorized },
     );
@@ -2014,11 +2024,7 @@ async function recoverProcessedInlineMedia(
     ).filter((attachment) => attachment.contentId !== null);
     if (!attachments.length) throw new Error("inline_media_source_unavailable");
     const body = normalizeInboundEmailText(
-      record(graph.uniqueBody)
-        ? graph.uniqueBody.content
-        : record(graph.body)
-          ? graph.body.content
-          : null,
+      inboundBodyContent(graph, message.kind === "reply"),
       undefined,
       { formatCorporateSignature: message.kind !== "reply" },
     );
