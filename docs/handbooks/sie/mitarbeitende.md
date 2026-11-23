@@ -659,6 +659,9 @@ Klicken Sie auf ein Ticket. Der Block **Fortschritt** zeigt die Schritte
 _Eingegangen → In Bearbeitung → Wartet auf Sie → Gelöst → Geschlossen_ mit
 Zeitpunkten.
 
+Die Beschreibung Ihres Anliegens ist eingeklappt, sobald es Nachrichten
+gibt; ein Klick darauf zeigt sie wieder ganz.
+
 - **Antworten:** Schreiben Sie in **Ihre Nachricht** und klicken Sie auf
   **Nachricht senden**. Mit **Dateien anhängen** fügen Sie Screenshots oder Dokumente hinzu.
   Erlaubt sind u. a. PDF, Office-Dokumente, TXT, CSV, PNG und JPG.
