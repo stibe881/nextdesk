@@ -295,12 +295,7 @@ type Section =
   | "Teamführung"
   | "Einstellungen";
 type TicketScope =
-  | "all"
-  | "mine"
-  | "unassigned"
-  | "open"
-  | "closed"
-  | "delegated";
+  "all" | "mine" | "unassigned" | "open" | "closed" | "delegated";
 type MetricTicketFilter = {
   label: string;
   ticketIds: string[];
@@ -7579,8 +7574,19 @@ function AuthenticatedApp() {
                       }. Die Tickets sind über den Filter «Spam» auffindbar.`,
                     );
                   }}
+                  onMerged={(merged, failed, primaryLabel) => {
+                    clearTicketSelection();
+                    setTicketPage(0);
+                    setDashboardRevision((current) => current + 1);
+                    setTicketActionStatus(
+                      `${merged} Tickets wurden in ${primaryLabel} zusammengeführt${
+                        failed > 0 ? `, ${failed} nicht` : ""
+                      }.`,
+                    );
+                  }}
                   onClearSelection={clearTicketSelection}
                   selectedTicketIds={selectedTicketIds}
+                  selectedTickets={filteredTickets}
                   tenantId={activeTenant.id}
                 />
               )}
@@ -7811,10 +7817,10 @@ function AuthenticatedApp() {
                         : {})}
                       hasActiveFilters={Boolean(
                         query.trim() ||
-                          queue !== "alle" ||
-                          (canWorkTickets && ticketScope !== "all") ||
-                          metricTicketFilter ||
-                          hasTicketListRefinement,
+                        queue !== "alle" ||
+                        (canWorkTickets && ticketScope !== "all") ||
+                        metricTicketFilter ||
+                        hasTicketListRefinement,
                       )}
                       keyboardActiveTicketId={keyboardActiveTicketId}
                       loading={dashboardLoading && snapshot === null}
@@ -8581,16 +8587,21 @@ export function App() {
 function BulkTicketStatusActions({
   onApplied,
   onDeleted,
+  onMerged,
   onSpammed,
   onClearSelection,
   selectedTicketIds,
+  selectedTickets,
   tenantId,
 }: {
   onApplied: (updated: number, statusLabel: string) => void;
   onDeleted: (deleted: number, cleanupPending: number) => void;
+  onMerged: (merged: number, failed: number, primaryLabel: string) => void;
   onSpammed: (marked: number, blockedSenders: number) => void;
   onClearSelection: () => void;
   selectedTicketIds: ReadonlySet<string>;
+  /** Die ausgewählten Tickets der aktuellen Seite (für das Zusammenführen). */
+  selectedTickets: readonly DashboardTicket[];
   tenantId: string;
 }) {
   const [statuses, setStatuses] = useState<BulkStatusOption[]>([]);
@@ -8604,6 +8615,8 @@ function BulkTicketStatusActions({
     useState(false);
   const [deleteTicketIds, setDeleteTicketIds] = useState<string[] | null>(null);
   const [spamTicketIds, setSpamTicketIds] = useState<string[] | null>(null);
+  // Zusammenführen: Haupt-Ticket, in das die übrigen Tickets einfliessen.
+  const [mergePrimaryId, setMergePrimaryId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -8646,9 +8659,86 @@ function BulkTicketStatusActions({
   useEffect(() => {
     setDeleteConfirmationPending(false);
     setDeleteTicketIds(null);
+    setMergePrimaryId(null);
   }, [selectedTicketIds]);
 
   if (selectedTicketIds.size === 0) return null;
+
+  const ticketKey = (ticket: DashboardTicket) => ticket.recordId ?? ticket.id;
+  const mergeCandidates = selectedTickets.filter((ticket) =>
+    selectedTicketIds.has(ticketKey(ticket)),
+  );
+  // Zusammenführen geht nur mit Tickets, die auf dieser Seite stehen.
+  const canPrepareMerge =
+    mergeCandidates.length >= 2 &&
+    mergeCandidates.length === selectedTicketIds.size &&
+    mergeCandidates.length <= 20;
+
+  function prepareMerge() {
+    if (!canPrepareMerge) {
+      setErrorMessage(
+        mergeCandidates.length !== selectedTicketIds.size
+          ? "Zum Zusammenführen müssen alle ausgewählten Tickets auf dieser Seite stehen."
+          : "Zum Zusammenführen 2 bis 20 Tickets auswählen.",
+      );
+      return;
+    }
+    setCloseConfirmationPending(false);
+    setDeleteConfirmationPending(false);
+    setDeleteTicketIds(null);
+    setSpamTicketIds(null);
+    setErrorMessage("");
+    // Vorschlag: das älteste offene Ticket.
+    const open = mergeCandidates.filter((ticket) => !ticket.isClosed);
+    const oldest = [...(open.length ? open : mergeCandidates)].sort((a, b) =>
+      (a.createdAt ?? "").localeCompare(b.createdAt ?? ""),
+    )[0];
+    setMergePrimaryId(oldest ? ticketKey(oldest) : null);
+  }
+
+  async function mergeTickets() {
+    if (!supabase || !mergePrimaryId) return;
+    const primary = mergeCandidates.find(
+      (ticket) => ticketKey(ticket) === mergePrimaryId,
+    );
+    if (!primary) return;
+    setPending(true);
+    setErrorMessage("");
+    let merged = 0;
+    let failed = 0;
+    let lastError: unknown = null;
+    for (const ticket of mergeCandidates) {
+      const id = ticketKey(ticket);
+      if (id === mergePrimaryId) continue;
+      const { error } = await supabase.functions.invoke("ticket-operations", {
+        body: {
+          type: "markMerged",
+          tenantId,
+          ticketId: id,
+          primaryTicketId: mergePrimaryId,
+        },
+      });
+      if (error) {
+        failed += 1;
+        lastError = error;
+      } else {
+        merged += 1;
+      }
+    }
+    setPending(false);
+    if (merged > 0) {
+      setMergePrimaryId(null);
+      onMerged(merged, failed, `${primary.id} ${primary.subject}`.trim());
+    }
+    if (failed > 0) {
+      setErrorMessage(
+        await functionErrorMessage(
+          lastError,
+          `${failed} Tickets konnten nicht zusammengeführt werden.`,
+        ),
+      );
+    }
+  }
 
   const selectedStatus = statuses.find((status) => status.key === statusKey);
   async function updateStatus(confirmClose = false) {
@@ -8870,6 +8960,15 @@ function BulkTicketStatusActions({
               : "Status für Auswahl setzen"}
         </button>
         <button
+          className="secondary-button"
+          disabled={pending || selectedTicketIds.size < 2}
+          onClick={prepareMerge}
+          title="Ausgewählte Tickets in ein Haupt-Ticket zusammenführen"
+          type="button"
+        >
+          Zusammenführen
+        </button>
+        <button
           className="ticket-bulk-actions__delete-button"
           disabled={pending}
           onClick={prepareTicketDeletion}
@@ -8886,6 +8985,61 @@ function BulkTicketStatusActions({
           Als Spam markieren
         </button>
       </div>
+      {mergePrimaryId && (
+        <div
+          aria-labelledby="bulk-merge-confirmation-title"
+          className="ticket-bulk-actions__confirmation"
+          role="group"
+        >
+          <div>
+            <strong id="bulk-merge-confirmation-title">
+              {mergeCandidates.length} Tickets zusammenführen
+            </strong>
+            <p>
+              {tn(
+                "Wähle das Haupt-Ticket. Die anderen Tickets werden darin zusammengeführt, also gelöst, verweisen auf das Haupt-Ticket und erscheinen in dessen Verlauf. Das Haupt-Ticket muss offen sein.",
+                "Wählen Sie das Haupt-Ticket. Die anderen Tickets werden darin zusammengeführt, also gelöst, verweisen auf das Haupt-Ticket und erscheinen in dessen Verlauf. Das Haupt-Ticket muss offen sein.",
+              )}
+            </p>
+            <fieldset className="ticket-bulk-actions__merge-list">
+              <legend className="sr-only">Haupt-Ticket</legend>
+              {mergeCandidates.map((ticket) => (
+                <label key={ticketKey(ticket)}>
+                  <input
+                    checked={mergePrimaryId === ticketKey(ticket)}
+                    disabled={pending || ticket.isClosed}
+                    name="bulk-merge-primary"
+                    onChange={() => setMergePrimaryId(ticketKey(ticket))}
+                    type="radio"
+                  />
+                  <span>
+                    <strong>{ticket.id}</strong> {ticket.subject}
+                    {ticket.isClosed ? " · geschlossen" : ""}
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          </div>
+          <div className="ticket-bulk-actions__confirmation-buttons">
+            <button
+              className="primary-button"
+              disabled={pending}
+              onClick={() => void mergeTickets()}
+              type="button"
+            >
+              {pending ? "Wird zusammengeführt …" : "Zusammenführen"}
+            </button>
+            <button
+              className="secondary-button"
+              disabled={pending}
+              onClick={() => setMergePrimaryId(null)}
+              type="button"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
       {spamTicketIds && (
         <div
           aria-labelledby="bulk-spam-confirmation-title"

@@ -42,6 +42,7 @@ import {
   BULK_STATUS_OPTIONS,
   bulkDeleteTickets,
   markTicketsSpam,
+  mergeTicketsInto,
   bulkSetTicketStatus,
   dueToday,
   followUpTitle,
@@ -247,6 +248,7 @@ export default function TicketsScreen() {
     departments: [],
   });
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
+  const [mergePickerOpen, setMergePickerOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [savedViews, setSavedViews] = useState<SavedTicketView[]>([]);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
@@ -490,6 +492,35 @@ export default function TicketsScreen() {
     setSelectionMode(false);
     setSelectedIds(new Set());
     setStatusPickerOpen(false);
+    setMergePickerOpen(false);
+  }
+
+  function bulkMerge(primary: MobileTicket) {
+    if (!tenantId || selectedIds.size < 2) return;
+    const ids = [...selectedIds];
+    Alert.alert(
+      "Tickets zusammenführen?",
+      `Die anderen ${ids.length - 1} Tickets werden in ${primary.ticketNumber} zusammengeführt, also gelöst und mit Verweis auf dieses Ticket.`,
+      [
+        { style: "cancel", text: "Abbrechen" },
+        {
+          text: "Zusammenführen",
+          onPress: () =>
+            void runBulk(async () => {
+              const result = await mergeTicketsInto(tenantId, primary.id, ids);
+              if (result.merged === 0) {
+                throw new Error(
+                  result.lastError ??
+                    "Die Tickets konnten nicht zusammengeführt werden.",
+                );
+              }
+              return result.failed > 0
+                ? `${result.merged} Tickets in ${primary.ticketNumber} zusammengeführt, ${result.failed} nicht möglich.`
+                : `${result.merged} Tickets wurden in ${primary.ticketNumber} zusammengeführt.`;
+            }, "Die Tickets konnten nicht zusammengeführt werden."),
+        },
+      ],
+    );
   }
 
   async function runBulk(
@@ -1473,6 +1504,35 @@ export default function TicketsScreen() {
             { backgroundColor: colors.surface, borderColor: colors.border },
           ]}
         >
+          {mergePickerOpen ? (
+            <View style={styles.mergePicker}>
+              <Text style={[styles.selectionHint, tokenStyles.muted]}>
+                Haupt-Ticket wählen (muss offen sein):
+              </Text>
+              {tickets
+                .filter((ticket) => selectedIds.has(ticket.id))
+                .map((ticket) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={ticket.resolved}
+                    key={ticket.id}
+                    onPress={() => bulkMerge(ticket)}
+                    style={[
+                      styles.filter,
+                      tokenStyles.control,
+                      ticket.resolved && { opacity: 0.5 },
+                    ]}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.filterText, tokenStyles.foreground]}
+                    >
+                      {ticket.ticketNumber} · {ticket.subject}
+                    </Text>
+                  </Pressable>
+                ))}
+            </View>
+          ) : null}
           {statusPickerOpen ? (
             <View style={styles.statusPicker}>
               {BULK_STATUS_OPTIONS.map((option) => (
@@ -1539,7 +1599,10 @@ export default function TicketsScreen() {
                   accessibilityLabel="Status der ausgewählten Tickets ändern"
                   accessibilityRole="button"
                   disabled={selectedIds.size === 0}
-                  onPress={() => setStatusPickerOpen((open) => !open)}
+                  onPress={() => {
+                    setMergePickerOpen(false);
+                    setStatusPickerOpen((open) => !open);
+                  }}
                   style={styles.selectionAction}
                 >
                   <Ionicons
@@ -1551,6 +1614,30 @@ export default function TicketsScreen() {
                     style={[styles.selectionActionText, tokenStyles.foreground]}
                   >
                     Status
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityLabel="Ausgewählte Tickets zusammenführen"
+                  accessibilityRole="button"
+                  disabled={selectedIds.size < 2}
+                  onPress={() => {
+                    setStatusPickerOpen(false);
+                    setMergePickerOpen((open) => !open);
+                  }}
+                  style={[
+                    styles.selectionAction,
+                    selectedIds.size < 2 && { opacity: 0.4 },
+                  ]}
+                >
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="git-merge-outline"
+                    size={20}
+                  />
+                  <Text
+                    style={[styles.selectionActionText, tokenStyles.foreground]}
+                  >
+                    Zusammenführen
                   </Text>
                 </Pressable>
                 <Pressable
@@ -1845,6 +1932,7 @@ const useStyles = makeThemedStyles((c) => ({
   selectionRow: { alignItems: "center", flexDirection: "row", gap: 10 },
   selectionSpacer: { height: 96 },
   statusPicker: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  mergePicker: { gap: 8 },
   viewsLabel: {
     alignSelf: "center",
     fontSize: 11,
