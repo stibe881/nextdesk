@@ -1,4 +1,5 @@
 import { invokeNextDesk, loadCurrentTenant } from "@/lib/nextdesk-client";
+import { CHANGE_TYPES, type ChangeType } from "@/lib/onboarding-change";
 
 export type OnboardingTaskStatus =
   "open" | "in_progress" | "blocked" | "completed";
@@ -13,10 +14,19 @@ export type OnboardingTask = {
 };
 
 export type OnboardingEntry = {
+  /** Eintritt, Austritt oder Mutation. */
+  kind: "onboarding" | "offboarding" | "change";
+  /** Mutationsarten einer Mutation. */
+  changeTypes: ChangeType[];
   details: Record<string, unknown>;
   employeeName: string;
   id: string;
   ictResponsibleName: string;
+  /** ICT-Verantwortung (Agent); änderbar, wenn «canAssign». */
+  ictResponsibleUserId: string | null;
+  canAssign: boolean;
+  /** Sichtbar als Stellvertretung für diese Person. */
+  delegatedFor: string | null;
   location: string | null;
   managerName: string;
   organisationUnit: string | null;
@@ -76,6 +86,15 @@ function entry(value: unknown): OnboardingEntry | null {
     return null;
   }
   return {
+    kind:
+      item.kind === "offboarding" || item.kind === "change"
+        ? item.kind
+        : "onboarding",
+    changeTypes: Array.isArray(item.changeTypes)
+      ? item.changeTypes.filter((type): type is ChangeType =>
+          (CHANGE_TYPES as readonly unknown[]).includes(type),
+        )
+      : [],
     details: record(item.details) ?? {},
     employeeName: item.employeeName,
     id: item.id,
@@ -83,6 +102,15 @@ function entry(value: unknown): OnboardingEntry | null {
       typeof item.ictResponsibleName === "string"
         ? item.ictResponsibleName
         : "",
+    ictResponsibleUserId:
+      typeof item.ictResponsibleUserId === "string"
+        ? item.ictResponsibleUserId
+        : null,
+    canAssign: item.canAssign === true,
+    delegatedFor:
+      typeof item.delegatedFor === "string" && item.delegatedFor.trim()
+        ? item.delegatedFor
+        : null,
     location: typeof item.location === "string" ? item.location : null,
     managerName: typeof item.managerName === "string" ? item.managerName : "",
     organisationUnit:
@@ -101,8 +129,18 @@ function entry(value: unknown): OnboardingEntry | null {
   };
 }
 
+export type OnboardingAgent = { id: string; displayName: string };
+
 /** Eintritte, die diese Person sehen darf (die Prüfung erfolgt auf dem Server). */
 export async function loadOnboardingEntries(): Promise<OnboardingEntry[]> {
+  return (await loadOnboardingWorkspace()).entries;
+}
+
+/** Eintritte und die Agenten, denen sie sich zuweisen lassen. */
+export async function loadOnboardingWorkspace(): Promise<{
+  entries: OnboardingEntry[];
+  agents: OnboardingAgent[];
+}> {
   const tenant = await loadCurrentTenant();
   const body = record(
     await invokeNextDesk<unknown>("onboarding", {
@@ -114,10 +152,53 @@ export async function loadOnboardingEntries(): Promise<OnboardingEntry[]> {
   if (!data || !Array.isArray(data.entries)) {
     throw new Error("Die Eintritte konnten nicht geladen werden.");
   }
-  return data.entries.flatMap((candidate) => {
-    const parsed = entry(candidate);
-    return parsed ? [parsed] : [];
-  });
+  return {
+    entries: data.entries.flatMap((candidate) => {
+      const parsed = entry(candidate);
+      return parsed ? [parsed] : [];
+    }),
+    agents: (Array.isArray(data.agents) ? data.agents : []).flatMap(
+      (candidate) => {
+        const item = record(candidate);
+        return item &&
+          typeof item.id === "string" &&
+          typeof item.displayName === "string"
+          ? [{ id: item.id, displayName: item.displayName }]
+          : [];
+      },
+    ),
+  };
+}
+
+/**
+ * Weist einen Ein- oder Austritt einem Agenten zu. Ist die Person abwesend,
+ * geht er an ihre Stellvertretung («redirected»).
+ */
+export async function assignOnboardingEntry(
+  entryId: string,
+  userId: string,
+): Promise<{
+  assignedName: string | null;
+  redirected: boolean;
+  requestedName: string | null;
+}> {
+  const tenant = await loadCurrentTenant();
+  const body = record(
+    await invokeNextDesk<unknown>("onboarding", {
+      type: "assignEntry",
+      tenantId: tenant.id,
+      entryId,
+      userId,
+    }),
+  );
+  const data = record(body?.data) ?? {};
+  return {
+    assignedName:
+      typeof data.assignedName === "string" ? data.assignedName : null,
+    redirected: data.redirected === true,
+    requestedName:
+      typeof data.requestedName === "string" ? data.requestedName : null,
+  };
 }
 
 /** Kurz gültige Adresse der Eintrittsmeldung (PDF) eines Eintritts. */

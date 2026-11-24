@@ -86,9 +86,11 @@ export function payloadKind(
   | "children_done"
   | "kudos"
   | "project"
+  | "onboarding"
   | "security_report" {
   // Same setting as assigned tickets, but its own wording.
   if (kind.startsWith("project.")) return "project";
+  if (kind.startsWith("onboarding.")) return "onboarding";
   if (kind === "ticket.department_question.asked") {
     return "department_question_asked";
   }
@@ -481,6 +483,23 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
       project.projectTaskCount = payload.taskCount;
     }
   }
+  let onboarding: Record<string, string> = {};
+  if (row.kind.startsWith("onboarding.") && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const payload = notification?.payload ?? {};
+    for (const [from, to] of [
+      ["entryId", "onboardingEntryId"],
+      ["employeeName", "onboardingEmployeeName"],
+      ["entryKind", "onboardingEntryKind"],
+      ["delegatedFor", "onboardingDelegatedFor"],
+    ]) {
+      if (typeof payload[from] === "string") onboarding[to] = payload[from];
+    }
+  }
   let infrastructure: Record<string, string> = {};
   if (preferenceCategory === "infrastructure" && row.notification_id) {
     const { data: notification } = await admin
@@ -661,6 +680,7 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
       ...shop,
       ...serviceTask,
       ...project,
+      ...onboarding,
       ...infrastructure,
       ...watched,
       ...ruleReminder,

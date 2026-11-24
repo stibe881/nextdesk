@@ -162,6 +162,7 @@ export function pushKindForNotification(kind: string): string {
   if (IPAM_KINDS.has(kind)) return "ipam";
   if (kind.startsWith("monitoring.")) return "incident";
   if (kind.startsWith("project.")) return "project";
+  if (kind.startsWith("onboarding.")) return "onboarding";
   return "";
 }
 
@@ -198,6 +199,10 @@ export function inboxNavigationData(
     const value = payloadId(payload, source);
     if (value) data[target] = value;
   }
+  if (kind === "onboarding") {
+    const entryId = payloadId(payload, "entryId");
+    if (entryId) data.onboardingEntryId = entryId;
+  }
   if (kind === "project") {
     const projectId = payloadId(payload, "projectId");
     const taskId = payloadId(payload, "taskId");
@@ -226,15 +231,27 @@ const titles = (): Record<string, [string, InboxIcon]> => ({
   assigned: ["Ticket zugewiesen", "ticket-outline"],
   requester_reply: ["Neue Antwort", "ticket-outline"],
   support_reply: ["Antwort vom Support", "ticket-outline"],
-  requester_reminder: [tn("Wir warten auf deine Antwort", "Wir warten auf Ihre Antwort"), "ticket-outline"],
+  requester_reminder: [
+    tn("Wir warten auf deine Antwort", "Wir warten auf Ihre Antwort"),
+    "ticket-outline",
+  ],
   mention: [tn("Du wurdest erwähnt", "Sie wurden erwähnt"), "ticket-outline"],
-  supervisor_request: [tn("Anfrage an dich", "Anfrage an Sie"), "ticket-outline"],
-  supervisor_answer: [tn("Antwort auf deine Anfrage", "Antwort auf Ihre Anfrage"), "ticket-outline"],
+  supervisor_request: [
+    tn("Anfrage an dich", "Anfrage an Sie"),
+    "ticket-outline",
+  ],
+  supervisor_answer: [
+    tn("Antwort auf deine Anfrage", "Antwort auf Ihre Anfrage"),
+    "ticket-outline",
+  ],
   watched: ["Beobachtetes Ticket geändert", "ticket-outline"],
   resolved: ["Ticket gelöst", "checkmark-circle-outline"],
   kudos: ["Lob erhalten", "checkmark-circle-outline"],
   approval: ["Freigabe benötigt", "checkmark-circle-outline"],
-  department_question_asked: [tn("Rückfrage an dein Team", "Rückfrage an Ihr Team"), "ticket-outline"],
+  department_question_asked: [
+    tn("Rückfrage an dein Team", "Rückfrage an Ihr Team"),
+    "ticket-outline",
+  ],
   department_question_answered: ["Rückfrage beantwortet", "ticket-outline"],
   escalation: ["Ticket eskaliert", "alarm-outline"],
   security_report: ["Phishing / Junk", "shield-outline"],
@@ -266,6 +283,7 @@ const SPECIFIC_TITLES: Record<string, string> = {
   "service_task.overdue": "Serviceaufgabe überfällig",
   "project.member_added": "Zu einem Projekt hinzugefügt",
   "project.task_assigned": "Projektaufgabe zugewiesen",
+  "onboarding.assigned": "Eintritt zugewiesen",
   "ipam.agent_offline": "Netzwerkagent offline",
   "ipam.reservation_expiring": "Reservierung läuft ab",
   "ticket.sla.supervisor_no_response": "Team: Ticket ohne Antwort",
@@ -304,6 +322,15 @@ export function inboxPresentation(
     detail = [number, name].filter(Boolean).join(" · ") || null;
   } else if (kind === "service_task") {
     detail = text(payload.title, 80);
+  } else if (kind === "onboarding") {
+    const standIn = text(payload.delegatedFor, 80);
+    detail =
+      [
+        text(payload.employeeName, 80),
+        standIn ? `Stellvertretung für ${standIn}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || null;
   } else if (kind === "project") {
     const count =
       typeof payload.taskCount === "number" ? payload.taskCount : null;
@@ -332,7 +359,8 @@ export function inboxPresentation(
   } else if (kind === "contract_deadline") {
     detail = text(payload.title, 80) ?? text(payload.contractName, 80);
   } else if (kind === "recurring_problem") {
-    const count = typeof payload.alertCount === "number" ? payload.alertCount : null;
+    const count =
+      typeof payload.alertCount === "number" ? payload.alertCount : null;
     detail =
       [
         text(payload.assetName, 80),

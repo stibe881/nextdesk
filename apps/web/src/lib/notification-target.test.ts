@@ -120,6 +120,16 @@ describe("notificationTarget", () => {
     ).toMatchObject({ focus: { kind: "project", id, taskId: null } });
     expect(
       notificationTarget({
+        kind: "onboarding.assigned",
+        payload: { entryId: id, employeeName: "Lea Brunner" },
+        ticketId: null,
+      }),
+    ).toMatchObject({
+      section: "Eintritte",
+      focus: { kind: "onboardingEntry", id },
+    });
+    expect(
+      notificationTarget({
         kind: "infrastructure.due",
         payload: { assetId: id },
         ticketId: null,

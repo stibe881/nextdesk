@@ -11,6 +11,7 @@ import {
   FileText,
   MapPin,
   Plus,
+  Filter,
   RefreshCw,
   Trash2,
   TriangleAlert,
@@ -28,6 +29,16 @@ import {
 } from "./form-kit";
 import "./onboarding.css";
 import { confirmDialog } from "./app-dialog";
+import {
+  CHANGE_FIELDS,
+  CHANGE_TYPE_LABELS,
+  CHANGE_TYPES,
+  changeDetailsFor,
+  changeSummary,
+  missingChangeTypes,
+  type ChangeDetails,
+  type ChangeType,
+} from "./lib/onboarding-change";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
@@ -49,13 +60,22 @@ type Entry = {
   id: string;
   employeeName: string;
   startsOn: string;
+  /** Eingang der Eintrittsmeldung (Erfassung des Eintritts). */
+  createdAt?: string | null;
   organisationUnit: string | null;
   location: string | null;
   managerName: string;
   ictResponsibleName: string;
   templateId: string;
-  kind?: "onboarding" | "offboarding";
+  kind?: EntryKind;
+  /** Mutationsarten einer Mutation. */
+  changeTypes?: ChangeType[];
   canEdit?: boolean;
+  /** ICT-Verantwortung (Agent), änderbar mit «canAssign». */
+  ictResponsibleUserId?: string;
+  canAssign?: boolean;
+  /** Sichtbar als Stellvertretung für diese Person. */
+  delegatedFor?: string | null;
   source?: "email" | "manual";
   sourceTicketNumber?: string | null;
   /** Die Eintrittsmeldung (PDF) ist beim Eintritt gespeichert. */
@@ -66,6 +86,8 @@ type Entry = {
 type Workspace = {
   permissions: { canRequest: boolean; canManage: boolean };
   people: Person[];
+  /** Agenten, denen sich Eintritte zuweisen lassen. */
+  agents?: Person[];
   templates: Template[];
   entries: Entry[];
 };
@@ -85,8 +107,23 @@ const emptyDraft = () => ({
   managerUserId: "",
   ictResponsibleUserId: "",
   templateId: "",
-  kind: "onboarding" as "onboarding" | "offboarding",
+  kind: "onboarding" as EntryKind,
+  changeTypes: [] as ChangeType[],
+  changeDetails: {} as ChangeDetails,
 });
+type EntryKind = "onboarding" | "offboarding" | "change";
+/** «Eintritt», «Austritt» oder «Mutation». */
+export function entryKindLabel(kind: EntryKind | undefined): string {
+  return kind === "offboarding"
+    ? "Austritt"
+    : kind === "change"
+      ? "Mutation"
+      : "Eintritt";
+}
+/** Mit Artikel, z. B. «Der Eintritt» bzw. «Die Mutation». */
+function entryKindWithArticle(kind: EntryKind | undefined): string {
+  return `${kind === "change" ? "Die" : "Der"} ${entryKindLabel(kind)}`;
+}
 function isWorkspace(value: unknown): value is Workspace {
   return Boolean(
     value &&
@@ -842,6 +879,55 @@ function progress(tasks: Task[]) {
 
 export type EntryFilter = "open" | "done" | "all";
 
+/** Auswahl «ICT-Verantwortung»: Agenten, die aktuelle Person immer dabei. */
+export function assignOptions(
+  agents: readonly { id: string; displayName: string }[],
+  currentId: string,
+  currentName: string,
+): { id: string; displayName: string }[] {
+  return agents.some((agent) => agent.id === currentId)
+    ? [...agents]
+    : [{ id: currentId, displayName: currentName }, ...agents];
+}
+
+/** Datumsbereiche (JJJJ-MM-TT, leer = offen) für Eintrittsdatum und Meldung. */
+export type EntryDateFilter = {
+  startsFrom: string;
+  startsTo: string;
+  reportedFrom: string;
+  reportedTo: string;
+};
+export const emptyEntryDateFilter: EntryDateFilter = {
+  startsFrom: "",
+  startsTo: "",
+  reportedFrom: "",
+  reportedTo: "",
+};
+export function activeEntryDateFilters(dates: EntryDateFilter): number {
+  return (
+    (dates.startsFrom || dates.startsTo ? 1 : 0) +
+    (dates.reportedFrom || dates.reportedTo ? 1 : 0)
+  );
+}
+const zurichDay = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Zurich",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+/** Kalendertag (Zürich) eines Zeitpunkts als JJJJ-MM-TT. */
+function dayOf(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/u.test(value)) return value;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : zurichDay.format(date);
+}
+function inRange(day: string | null, from: string, to: string): boolean {
+  if (!from && !to) return true;
+  if (!day) return false;
+  return (!from || day >= from) && (!to || day <= to);
+}
+
 /** Ein Eintritt ist erledigt, wenn alle seine Aufgaben erledigt sind. */
 export function entryDone(tasks: readonly { status: string }[]): boolean {
   return tasks.length > 0 && tasks.every((task) => task.status === "completed");
@@ -859,14 +945,25 @@ export function filterEntries<
     managerName: string;
     ictResponsibleName: string;
     sourceTicketNumber?: string | null;
+    startsOn?: string;
+    createdAt?: string | null;
     tasks: readonly { status: string }[];
   },
->(entries: readonly T[], filter: EntryFilter, query: string): T[] {
+>(
+  entries: readonly T[],
+  filter: EntryFilter,
+  query: string,
+  dates: EntryDateFilter = emptyEntryDateFilter,
+): T[] {
   const words = query.toLocaleLowerCase("de-CH").split(/\s+/).filter(Boolean);
   return entries.filter((entry) => {
     const done = entryDone(entry.tasks);
     if (filter === "open" && done) return false;
     if (filter === "done" && !done) return false;
+    if (!inRange(dayOf(entry.startsOn), dates.startsFrom, dates.startsTo))
+      return false;
+    if (!inRange(dayOf(entry.createdAt), dates.reportedFrom, dates.reportedTo))
+      return false;
     if (!words.length) return true;
     const text = [
       entry.employeeName,
@@ -910,6 +1007,9 @@ export function Onboarding({
     focusEntryId ? "all" : "open",
   );
   const [entryQuery, setEntryQuery] = useState("");
+  const [entryDates, setEntryDates] =
+    useState<EntryDateFilter>(emptyEntryDateFilter);
+  const [dateFilterOpen, setDateFilterOpen] = useState(false);
   // Alle Ein- und Austritte sind eingeklappt; nur der aus der Suche geöffnete
   // ist aufgeklappt.
   const [expandedEntryIds, setExpandedEntryIds] = useState<Set<string>>(
@@ -1032,12 +1132,36 @@ export function Onboarding({
   async function createEntry(event: FormEvent) {
     event.preventDefault();
     if (!supabase) return;
+    const isChange = draft.kind === "change";
+    if (isChange) {
+      if (!draft.changeTypes.length) {
+        setErrorMessage(
+          tn(
+            "Bitte wähle mindestens eine Mutationsart.",
+            "Bitte wählen Sie mindestens eine Mutationsart.",
+          ),
+        );
+        return;
+      }
+      const missing = missingChangeTypes(
+        draft.changeTypes,
+        draft.changeDetails,
+      );
+      if (missing.length) {
+        setErrorMessage(
+          `Bitte die neue Angabe ergänzen: ${missing
+            .map((type) => CHANGE_TYPE_LABELS[type])
+            .join(", ")}.`,
+        );
+        return;
+      }
+    }
     if (
       !draft.employeeName.trim() ||
       !draft.startsOn ||
       !draft.managerUserId ||
       !draft.ictResponsibleUserId ||
-      !draft.templateId
+      (!isChange && !draft.templateId)
     ) {
       setErrorMessage(
         tn(
@@ -1060,8 +1184,16 @@ export function Onboarding({
           location: draft.location.trim() || null,
           managerUserId: draft.managerUserId,
           ictResponsibleUserId: draft.ictResponsibleUserId,
-          templateId: draft.templateId,
           kind: draft.kind,
+          ...(isChange
+            ? {
+                changeTypes: draft.changeTypes,
+                changeDetails: changeDetailsFor(
+                  draft.changeTypes,
+                  draft.changeDetails,
+                ),
+              }
+            : { templateId: draft.templateId }),
         },
       });
       if (error) throw error;
@@ -1070,7 +1202,9 @@ export function Onboarding({
       setNotice(
         draft.kind === "offboarding"
           ? "Der Austritt wurde geplant. Die Aufgaben sind relativ zum Austrittsdatum terminiert."
-          : "Der Eintritt wurde geplant. Die Aufgaben sind relativ zum Eintrittsdatum terminiert.",
+          : draft.kind === "change"
+            ? "Die Mutation wurde geplant. Die Aufgaben sind relativ zum Stichtag terminiert."
+            : "Der Eintritt wurde geplant. Die Aufgaben sind relativ zum Eintrittsdatum terminiert.",
       );
       await load(true);
     } catch (error) {
@@ -1087,13 +1221,10 @@ export function Onboarding({
       setPending(false);
     }
   }
-  async function deleteEntry(
-    entryId: string,
-    name: string,
-    kind: "onboarding" | "offboarding",
-  ) {
+  async function deleteEntry(entryId: string, name: string, kind: EntryKind) {
     if (!supabase) return;
-    const label = kind === "offboarding" ? "Austritt" : "Eintritt";
+    const label = entryKindLabel(kind);
+    const withArticle = entryKindWithArticle(kind);
     if (
       !(await confirmDialog(
         `${label} von «${name}» endgültig löschen? Alle Aufgaben, Ausnahmetickets und die gespeicherte Meldung werden ebenfalls entfernt.`,
@@ -1110,13 +1241,49 @@ export function Onboarding({
         body: { type: "deleteEntry", tenantId, entryId },
       });
       if (error) throw error;
-      setNotice(`Der ${label} von «${name}» wurde gelöscht.`);
+      setNotice(`${withArticle} von «${name}» wurde gelöscht.`);
       await load(true);
     } catch (error) {
       setErrorMessage(
         await functionErrorMessage(
           error,
-          `Der ${label} konnte nicht gelöscht werden.`,
+          `${withArticle} konnte nicht gelöscht werden.`,
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+  async function assignEntry(entry: Entry, userId: string) {
+    if (!supabase || !userId || userId === entry.ictResponsibleUserId) return;
+    const label = entryKindWithArticle(entry.kind);
+    setPending(true);
+    setErrorMessage("");
+    setNotice("");
+    try {
+      const { data, error } = await supabase.functions.invoke("onboarding", {
+        body: { type: "assignEntry", tenantId, entryId: entry.id, userId },
+      });
+      if (error) throw error;
+      const result =
+        data && typeof data === "object" && "data" in data
+          ? ((data as { data: Record<string, unknown> }).data ?? {})
+          : {};
+      const assignedName =
+        typeof result.assignedName === "string" ? result.assignedName : null;
+      const requestedName =
+        typeof result.requestedName === "string" ? result.requestedName : null;
+      setNotice(
+        result.redirected === true && assignedName
+          ? `${requestedName ?? "Die gewählte Person"} ist abwesend. ${label} von «${entry.employeeName}» ging an die Stellvertretung ${assignedName}.`
+          : `${label} von «${entry.employeeName}» ist jetzt ${assignedName ?? "der gewählten Person"} zugewiesen.`,
+      );
+      await load(true);
+    } catch (error) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          `${label} konnte nicht zugewiesen werden.`,
         ),
       );
     } finally {
@@ -1186,12 +1353,20 @@ export function Onboarding({
       </section>
     );
   const allEntries = workspace?.entries ?? [];
-  const entries = filterEntries(allEntries, entryFilter, entryQuery);
+  const entries = filterEntries(
+    allEntries,
+    entryFilter,
+    entryQuery,
+    entryDates,
+  );
+  // Die Zahlen bei «Offen / Erledigt / Alle» berücksichtigen die Datumsfilter.
+  const datedEntries = filterEntries(allEntries, "all", "", entryDates);
   const entryCounts = {
-    open: allEntries.filter((entry) => !entryDone(entry.tasks)).length,
-    done: allEntries.filter((entry) => entryDone(entry.tasks)).length,
-    all: allEntries.length,
+    open: datedEntries.filter((entry) => !entryDone(entry.tasks)).length,
+    done: datedEntries.filter((entry) => entryDone(entry.tasks)).length,
+    all: datedEntries.length,
   };
+  const activeDateFilters = activeEntryDateFilters(entryDates);
   const canRequest = workspace?.permissions.canRequest ?? false;
   return (
     <section className="onboarding" aria-labelledby="onboarding-heading">
@@ -1213,7 +1388,7 @@ export function Onboarding({
               onClick={() => setEditor(true)}
               type="button"
             >
-              <Plus size={17} /> Eintritt oder Austritt planen
+              <Plus size={17} /> Eintritt, Austritt oder Mutation planen
             </button>
           ) : null}
           {workspace?.permissions.canManage ? (
@@ -1265,33 +1440,52 @@ export function Onboarding({
       ) : null}
       {editor && canRequest ? (
         <FormDialog
-          eyebrow="Neuer Eintritt"
+          eyebrow={draft.kind === "change" ? "Neue Mutation" : "Neuer Eintritt"}
           error={errorMessage}
           onClose={() => setEditor(false)}
           onSubmit={createEntry}
           side={
             <FormSummary
-              eyebrow={draft.kind === "offboarding" ? "Austritt" : "Eintritt"}
+              eyebrow={entryKindLabel(draft.kind)}
               rows={[
                 [
-                  draft.kind === "offboarding" ? "Austrittsdatum" : "Datum",
+                  draft.kind === "offboarding"
+                    ? "Austrittsdatum"
+                    : draft.kind === "change"
+                      ? "Gültig ab"
+                      : "Datum",
                   draft.startsOn,
                 ],
                 ["Abteilung", draft.organisationUnit],
                 ["Standort", draft.location],
-                [
-                  "Vorlage",
-                  workspace?.templates.find(
-                    (template) => template.id === draft.templateId,
-                  )?.name ?? "",
-                ],
+                draft.kind === "change"
+                  ? [
+                      "Art",
+                      draft.changeTypes
+                        .map((type) => CHANGE_TYPE_LABELS[type])
+                        .join(", "),
+                    ]
+                  : [
+                      "Vorlage",
+                      workspace?.templates.find(
+                        (template) => template.id === draft.templateId,
+                      )?.name ?? "",
+                    ],
               ]}
               title={draft.employeeName}
             />
           }
-          submitLabel="Eintritt planen"
+          submitLabel={
+            draft.kind === "change"
+              ? "Mutation planen"
+              : draft.kind === "offboarding"
+                ? "Austritt planen"
+                : "Eintritt planen"
+          }
           submitting={pending}
-          title="Onboarding planen"
+          title={
+            draft.kind === "change" ? "Mutation planen" : "Onboarding planen"
+          }
         >
           <FormCard title="Person">
             <FormGrid cols={3}>
@@ -1302,14 +1496,16 @@ export function Onboarding({
                     setDraft({
                       ...draft,
                       kind:
-                        event.target.value === "offboarding"
-                          ? "offboarding"
+                        event.target.value === "offboarding" ||
+                        event.target.value === "change"
+                          ? event.target.value
                           : "onboarding",
                     })
                   }
                 >
                   <option value="onboarding">Eintritt</option>
                   <option value="offboarding">Austritt</option>
+                  <option value="change">Mutation</option>
                 </select>
               </FormField>
               <FormField label="Name" required>
@@ -1321,14 +1517,20 @@ export function Onboarding({
                   onChange={(event) =>
                     setDraft({ ...draft, employeeName: event.target.value })
                   }
-                  placeholder="Vor- und Nachname"
+                  placeholder={
+                    draft.kind === "change"
+                      ? "Bisheriger Name"
+                      : "Vor- und Nachname"
+                  }
                 />
               </FormField>
               <FormField
                 label={
                   draft.kind === "offboarding"
                     ? "Austrittsdatum"
-                    : "Eintrittsdatum"
+                    : draft.kind === "change"
+                      ? "Gültig ab"
+                      : "Eintrittsdatum"
                 }
                 required
               >
@@ -1343,7 +1545,89 @@ export function Onboarding({
               </FormField>
             </FormGrid>
           </FormCard>
-          <FormCard title="Einsatz">
+          {draft.kind === "change" ? (
+            <FormCard title="Mutation">
+              <div
+                aria-label="Mutationsarten"
+                className="onboarding__change-types"
+                role="group"
+              >
+                {CHANGE_TYPES.map((type) => {
+                  const checked = draft.changeTypes.includes(type);
+                  return (
+                    <label
+                      className={`onboarding__change-type${checked ? " is-checked" : ""}`}
+                      key={type}
+                    >
+                      <input
+                        checked={checked}
+                        onChange={() =>
+                          setDraft({
+                            ...draft,
+                            changeTypes: checked
+                              ? draft.changeTypes.filter(
+                                  (candidate) => candidate !== type,
+                                )
+                              : CHANGE_TYPES.filter(
+                                  (candidate) =>
+                                    candidate === type ||
+                                    draft.changeTypes.includes(candidate),
+                                ),
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      {CHANGE_TYPE_LABELS[type]}
+                    </label>
+                  );
+                })}
+              </div>
+              {draft.changeTypes.map((type) => (
+                <div className="onboarding__change-fields" key={type}>
+                  <h5>{CHANGE_TYPE_LABELS[type]}</h5>
+                  <FormGrid cols={CHANGE_FIELDS[type].length > 1 ? 2 : 1}>
+                    {CHANGE_FIELDS[type].map((field) => (
+                      <FormField key={field.key} label={field.label}>
+                        <input
+                          maxLength={200}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              changeDetails: {
+                                ...draft.changeDetails,
+                                [field.key]: event.target.value,
+                              },
+                            })
+                          }
+                          placeholder={field.placeholder}
+                          value={draft.changeDetails[field.key] ?? ""}
+                        />
+                      </FormField>
+                    ))}
+                  </FormGrid>
+                </div>
+              ))}
+              <FormField label="Bemerkung">
+                <textarea
+                  maxLength={1000}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      changeDetails: {
+                        ...draft.changeDetails,
+                        note: event.target.value,
+                      },
+                    })
+                  }
+                  rows={2}
+                  value={draft.changeDetails.note ?? ""}
+                />
+              </FormField>
+            </FormCard>
+          ) : null}
+          <FormCard
+            title={draft.kind === "change" ? "Aktueller Einsatz" : "Einsatz"}
+          >
             <FormGrid cols={2}>
               <FormField label="Abteilung / Angebot" required>
                 <input
@@ -1410,28 +1694,36 @@ export function Onboarding({
               </FormField>
             </FormGrid>
           </FormCard>
-          <FormCard title="Vorlage">
-            <FormField label="Onboarding-Vorlage" required>
-              <select
-                required
-                value={draft.templateId}
-                onChange={(event) =>
-                  setDraft({ ...draft, templateId: event.target.value })
-                }
-              >
-                {workspace?.templates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                  </option>
-                ))}
-              </select>
-            </FormField>
+          {draft.kind === "change" ? (
             <FormNote>
-              Die Aufgaben werden jetzt einmalig relativ zum Eintrittsdatum
-              terminiert. Es gibt keinen Scheduler und keine automatische
-              Ticketanlage.
+              Die Aufgaben kommen aus der Vorlage pro Mutationsart und aus den
+              Abteilungsaufgaben der Art «Mutation» und werden relativ zum
+              Stichtag «Gültig ab» terminiert.
             </FormNote>
-          </FormCard>
+          ) : (
+            <FormCard title="Vorlage">
+              <FormField label="Onboarding-Vorlage" required>
+                <select
+                  required
+                  value={draft.templateId}
+                  onChange={(event) =>
+                    setDraft({ ...draft, templateId: event.target.value })
+                  }
+                >
+                  {workspace?.templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormNote>
+                Die Aufgaben werden jetzt einmalig relativ zum Eintrittsdatum
+                terminiert. Es gibt keinen Scheduler und keine automatische
+                Ticketanlage.
+              </FormNote>
+            </FormCard>
+          )}
         </FormDialog>
       ) : null}
       {exceptionTarget ? (
@@ -1516,15 +1808,111 @@ export function Onboarding({
               </button>
             ))}
           </div>
-          <input
-            aria-label="Eintritte durchsuchen"
-            className="onboarding__search"
-            onChange={(event) => setEntryQuery(event.target.value)}
-            placeholder="Name, Abteilung, Ort, Ticketnummer …"
-            type="search"
-            value={entryQuery}
-          />
+          <div className="onboarding__search-wrap">
+            <input
+              aria-label="Eintritte durchsuchen"
+              className="onboarding__search"
+              onChange={(event) => setEntryQuery(event.target.value)}
+              placeholder="Name, Abteilung, Ort, Ticketnummer …"
+              type="search"
+              value={entryQuery}
+            />
+            <button
+              aria-controls="onboarding-date-filter"
+              aria-expanded={dateFilterOpen}
+              aria-label={
+                activeDateFilters
+                  ? `Datumsfilter (${activeDateFilters} aktiv)`
+                  : "Datumsfilter"
+              }
+              className={`onboarding__filter-button${activeDateFilters ? " is-active" : ""}`}
+              onClick={() => setDateFilterOpen((open) => !open)}
+              title="Nach Eintrittsdatum oder Eintrittsmeldung filtern"
+              type="button"
+            >
+              <Filter aria-hidden="true" size={16} />
+              {activeDateFilters ? (
+                <span className="onboarding__filter-count">
+                  {activeDateFilters}
+                </span>
+              ) : null}
+            </button>
+          </div>
         </div>
+        {dateFilterOpen ? (
+          <div className="onboarding__date-filter" id="onboarding-date-filter">
+            <fieldset>
+              <legend>Eintrittsdatum</legend>
+              <label>
+                <span>Von</span>
+                <input
+                  max={entryDates.startsTo || undefined}
+                  onChange={(event) =>
+                    setEntryDates((current) => ({
+                      ...current,
+                      startsFrom: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={entryDates.startsFrom}
+                />
+              </label>
+              <label>
+                <span>Bis</span>
+                <input
+                  min={entryDates.startsFrom || undefined}
+                  onChange={(event) =>
+                    setEntryDates((current) => ({
+                      ...current,
+                      startsTo: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={entryDates.startsTo}
+                />
+              </label>
+            </fieldset>
+            <fieldset>
+              <legend>Eintrittsmeldung eingegangen</legend>
+              <label>
+                <span>Von</span>
+                <input
+                  max={entryDates.reportedTo || undefined}
+                  onChange={(event) =>
+                    setEntryDates((current) => ({
+                      ...current,
+                      reportedFrom: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={entryDates.reportedFrom}
+                />
+              </label>
+              <label>
+                <span>Bis</span>
+                <input
+                  min={entryDates.reportedFrom || undefined}
+                  onChange={(event) =>
+                    setEntryDates((current) => ({
+                      ...current,
+                      reportedTo: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={entryDates.reportedTo}
+                />
+              </label>
+            </fieldset>
+            <button
+              className="text-button"
+              disabled={!activeDateFilters}
+              onClick={() => setEntryDates(emptyEntryDateFilter)}
+              type="button"
+            >
+              Filter zurücksetzen
+            </button>
+          </div>
+        ) : null}
         {entries.length ? (
           <div className="onboarding__list">
             {entries.map((entry) => {
@@ -1557,10 +1945,19 @@ export function Onboarding({
                         <span
                           className={`onboarding__kind onboarding__kind--${entry.kind ?? "onboarding"}`}
                         >
-                          {entry.kind === "offboarding"
-                            ? "Austritt"
-                            : "Eintritt"}
+                          {entryKindLabel(entry.kind)}
                         </span>
+                        {entry.delegatedFor ? (
+                          <span
+                            className="onboarding__delegated"
+                            title={tn(
+                              "Du siehst diesen Eintritt als Stellvertretung.",
+                              "Sie sehen diesen Eintritt als Stellvertretung.",
+                            )}
+                          >
+                            Stellvertretung für {entry.delegatedFor}
+                          </span>
+                        ) : null}
                       </h4>
                       <p className="onboarding__entry-when">
                         <CalendarDays aria-hidden="true" size={14} />
@@ -1591,6 +1988,23 @@ export function Onboarding({
                           ICT: {entry.ictResponsibleName}
                         </li>
                       </ul>
+                      {entry.kind === "change" && entry.changeTypes?.length ? (
+                        <ul
+                          aria-label="Mutation"
+                          className="onboarding__change-summary"
+                        >
+                          {changeSummary(
+                            entry.changeTypes,
+                            entry.details ?? {},
+                            entry.employeeName,
+                          ).map((row) => (
+                            <li key={row.type}>
+                              <strong>{row.label}</strong>
+                              {row.text ? ` ${row.text}` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
                     <div
                       className={`onboarding__entry-progress${state.total > 0 && state.done === state.total ? " is-done" : ""}`}
@@ -1833,6 +2247,28 @@ export function Onboarding({
                         />
                       ) : null}
                       <footer className="onboarding__entry-foot">
+                        {entry.canAssign && entry.ictResponsibleUserId ? (
+                          <label className="onboarding__assign">
+                            <span>ICT-Verantwortung</span>
+                            <select
+                              disabled={pending}
+                              onChange={(event) =>
+                                void assignEntry(entry, event.target.value)
+                              }
+                              value={entry.ictResponsibleUserId}
+                            >
+                              {assignOptions(
+                                workspace?.agents ?? [],
+                                entry.ictResponsibleUserId,
+                                entry.ictResponsibleName,
+                              ).map((person) => (
+                                <option key={person.id} value={person.id}>
+                                  {person.displayName}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
                         {entry.hasDocument ? (
                           <button
                             className="text-button onboarding__document"
@@ -1861,32 +2297,32 @@ export function Onboarding({
                             </dl>
                           </details>
                         ) : null}
-                        {workspace?.permissions.canManage ? (
-                          <button
-                            className="text-button onboarding__delete"
-                            disabled={pending}
-                            onClick={() =>
-                              void deleteEntry(
-                                entry.id,
-                                entry.employeeName,
-                                entry.kind ?? "onboarding",
-                              )
-                            }
-                            type="button"
-                          >
-                            <Trash2 aria-hidden="true" size={15} />
-                            {entry.kind === "offboarding"
-                              ? "Austritt löschen"
-                              : "Eintritt löschen"}
-                          </button>
-                        ) : null}
-                        <p className="onboarding__exception">
-                          <Wrench aria-hidden="true" size={13} />
-                          {tn(
-                            "Verzögert sich eine Aufgabe, verknüpfst du über den Schraubenschlüssel ein Ausnahmeticket. Aus dem Onboarding entstehen nie automatisch Tickets.",
-                            "Verzögert sich eine Aufgabe, verknüpfen Sie über den Schraubenschlüssel ein Ausnahmeticket. Aus dem Onboarding entstehen nie automatisch Tickets.",
-                          )}
-                        </p>
+                        <div className="onboarding__foot-row">
+                          <p className="onboarding__exception">
+                            <Wrench aria-hidden="true" size={13} />
+                            {tn(
+                              "Verzögert sich eine Aufgabe, verknüpfst du über den Schraubenschlüssel ein Ausnahmeticket. Aus dem Onboarding entstehen nie automatisch Tickets.",
+                              "Verzögert sich eine Aufgabe, verknüpfen Sie über den Schraubenschlüssel ein Ausnahmeticket. Aus dem Onboarding entstehen nie automatisch Tickets.",
+                            )}
+                          </p>
+                          {workspace?.permissions.canManage ? (
+                            <button
+                              className="text-button onboarding__delete"
+                              disabled={pending}
+                              onClick={() =>
+                                void deleteEntry(
+                                  entry.id,
+                                  entry.employeeName,
+                                  entry.kind ?? "onboarding",
+                                )
+                              }
+                              type="button"
+                            >
+                              <Trash2 aria-hidden="true" size={15} />
+                              {`${entryKindLabel(entry.kind)} löschen`}
+                            </button>
+                          ) : null}
+                        </div>
                       </footer>
                     </div>
                   ) : null}
@@ -1896,8 +2332,8 @@ export function Onboarding({
           </div>
         ) : allEntries.length ? (
           <p className="empty-state">
-            {entryQuery.trim()
-              ? "Kein Eintritt passt zur Suche."
+            {entryQuery.trim() || activeDateFilters
+              ? "Kein Eintritt passt zur Suche oder zu den Filtern."
               : entryFilter === "open"
                 ? tn(
                     "Keine offenen Eintritte. Erledigte findest du unter «Erledigt».",

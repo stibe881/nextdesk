@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   entryDone,
+  activeEntryDateFilters,
+  assignOptions,
+  emptyEntryDateFilter,
+  type EntryDateFilter,
   filterEntries,
   groupTasks,
   relativeDays,
@@ -100,5 +104,56 @@ describe("Eintritte filtern und suchen", () => {
     ).toEqual(["Marie-Louise Veraguth"]);
     expect(filterEntries(list, "done", "horvat")).toHaveLength(0);
     expect(filterEntries(list, "all", "junkert gastro")).toHaveLength(4);
+  });
+
+  it("filtert nach Eintrittsdatum und Eingang der Meldung", () => {
+    const dated = [
+      entry("Früh", ["open"], {
+        startsOn: "2026-12-01",
+        createdAt: "2026-11-10T08:00:00Z",
+      }),
+      entry("Spät", ["open"], {
+        startsOn: "2027-08-01",
+        // 23:30 UTC ist in Zürich bereits der 21. November.
+        createdAt: "2026-11-20T23:30:00Z",
+      }),
+      entry("Ohne Meldedatum", ["open"], { startsOn: "2027-01-01" }),
+    ];
+    const names = (dates: Partial<EntryDateFilter>) =>
+      filterEntries(dated, "all", "", {
+        ...emptyEntryDateFilter,
+        ...dates,
+      }).map((e) => e.employeeName);
+    expect(names({ startsFrom: "2027-01-01" })).toEqual([
+      "Spät",
+      "Ohne Meldedatum",
+    ]);
+    expect(names({ startsTo: "2026-12-01" })).toEqual(["Früh"]);
+    expect(names({ reportedFrom: "2026-11-21" })).toEqual(["Spät"]);
+    expect(names({ reportedTo: "2026-11-20" })).toEqual(["Früh"]);
+    expect(
+      activeEntryDateFilters({
+        ...emptyEntryDateFilter,
+        startsTo: "2027-01-01",
+      }),
+    ).toBe(1);
+  });
+});
+
+describe("Eintritte zuweisen", () => {
+  it("zeigt die Agenten und immer die aktuelle Person", () => {
+    const agents = [
+      { id: "a", displayName: "Anna" },
+      { id: "b", displayName: "Ben" },
+    ];
+    expect(assignOptions(agents, "a", "Anna").map((p) => p.id)).toEqual([
+      "a",
+      "b",
+    ]);
+    expect(assignOptions(agents, "x", "Xaver").map((p) => p.id)).toEqual([
+      "x",
+      "a",
+      "b",
+    ]);
   });
 });

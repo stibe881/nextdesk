@@ -121,6 +121,12 @@ export default function TabLayout() {
           />
         )}
       >
+        {/*
+          Unterseiten ohne eigenen Tab (Einstellungen, Dienste, Assets …) sind
+          bewusst nicht mit `href: null` ausgeblendet: Seit Expo Router 58
+          leitet der Navigator ausgeblendete Seiten auf den ersten Tab um. Die
+          eigene Tableiste zeigt ohnehin nur die Einträge aus `tabItems`.
+        */}
         <Tabs.Screen name="tickets" options={{ title: "Tickets" }} />
         <Tabs.Screen
           name="incidents"
@@ -136,12 +142,12 @@ export default function TabLayout() {
             title: "Phishing / Junk",
           }}
         />
-        <Tabs.Screen name="services" options={{ href: null }} />
-        <Tabs.Screen name="assets" options={{ href: null }} />
-        <Tabs.Screen name="inventory" options={{ href: null }} />
-        <Tabs.Screen name="infrastructure" options={{ href: null }} />
-        <Tabs.Screen name="monitoring" options={{ href: null }} />
-        <Tabs.Screen name="priorities" options={{ href: null }} />
+        <Tabs.Screen name="services" />
+        <Tabs.Screen name="assets" />
+        <Tabs.Screen name="inventory" />
+        <Tabs.Screen name="infrastructure" />
+        <Tabs.Screen name="monitoring" />
+        <Tabs.Screen name="priorities" />
         <Tabs.Screen
           name="shop"
           options={{ href: shopVisible ? undefined : null, title: "Shop" }}
@@ -154,13 +160,13 @@ export default function TabLayout() {
             title: "Wissen",
           }}
         />
-        <Tabs.Screen name="knowledge/[id]" options={{ href: null }} />
-        <Tabs.Screen name="handbook/[id]" options={{ href: null }} />
+        <Tabs.Screen name="knowledge/[id]" />
+        <Tabs.Screen name="handbook/[id]" />
         <Tabs.Screen
           name="scan"
           options={{ href: scanVisible ? undefined : null, title: "Scan" }}
         />
-        <Tabs.Screen name="settings" options={{ href: null }} />
+        <Tabs.Screen name="settings" />
       </Tabs>
       <PushCheckInPrompt />
     </>
