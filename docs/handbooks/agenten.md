@@ -3408,7 +3408,9 @@ Projekte mit roter Ampel stehen zuoberst. Die Kacheln darüber zählen laufende
 Projekte, überfällige Meilensteine, Projekte mit gelber oder roter Ampel und
 die gebuchten Stunden gegenüber den geplanten. Mit **Laufend**, **Abgeschlossen**
 und **Alle** sowie dem Suchfeld grenzt du die Liste ein; **Archiv anzeigen**
-blendet archivierte Projekte ein.
+blendet archivierte Projekte ein. Ein Klick auf eine Spaltenüberschrift
+sortiert die Tabelle nach dieser Spalte, ein zweiter Klick kehrt die
+Reihenfolge um, ein dritter stellt die Ausgangsreihenfolge wieder her.
 
 ![Übersicht aller Projekte mit Ampel, Fortschritt und Budget](images/ag-projekte.jpg)
 

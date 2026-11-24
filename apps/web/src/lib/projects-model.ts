@@ -614,6 +614,75 @@ export function sortTasks(
   return descending ? sorted.reverse() : sorted;
 }
 
+export type ProjectSortKey =
+  | "health"
+  | "title"
+  | "status"
+  | "manager"
+  | "progress"
+  | "time"
+  | "milestone"
+  | "endsOn";
+
+const HEALTH_RANK: Record<ProjectHealth, number> = {
+  red: 0,
+  yellow: 1,
+  green: 2,
+};
+const STATUS_RANK: Record<ProjectStatus, number> = {
+  active: 0,
+  planning: 1,
+  paused: 2,
+  completed: 3,
+};
+
+/**
+ * Projects for the overview. «health» is the starting order: critical
+ * projects first, then by end date. Empty values always come last.
+ */
+export function sortProjects<P extends ProjectSummary>(
+  projects: readonly P[],
+  key: ProjectSortKey,
+  descending: boolean,
+): P[] {
+  const direction = descending ? -1 : 1;
+  // Missing values stay at the bottom in both directions.
+  const text = (a: string | null, b: string | null) =>
+    a === null || b === null
+      ? Number(a === null) - Number(b === null)
+      : direction * a.localeCompare(b, "de");
+  const number = (a: number, b: number) => direction * (a - b);
+  const compare = (a: P, b: P): number => {
+    switch (key) {
+      case "title":
+        return text(a.title, b.title);
+      case "status":
+        return number(STATUS_RANK[a.status], STATUS_RANK[b.status]);
+      case "manager":
+        return text(a.managerName, b.managerName);
+      case "progress":
+        return number(a.stats.progressPercent, b.stats.progressPercent);
+      case "time":
+        return number(a.stats.bookedMinutes, b.stats.bookedMinutes);
+      case "milestone":
+        return text(
+          a.stats.nextMilestone?.on ?? null,
+          b.stats.nextMilestone?.on ?? null,
+        );
+      case "endsOn":
+        return text(a.endsOn, b.endsOn);
+      default:
+        return number(HEALTH_RANK[a.health], HEALTH_RANK[b.health]);
+    }
+  };
+  return [...projects].sort(
+    (a, b) =>
+      compare(a, b) ||
+      (a.endsOn ?? "9999").localeCompare(b.endsOn ?? "9999") ||
+      a.title.localeCompare(b.title, "de"),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Zeitleiste
 // ---------------------------------------------------------------------------

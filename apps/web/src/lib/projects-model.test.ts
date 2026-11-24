@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ProjectTask } from "./projects-api";
+import type { ProjectSummary, ProjectTask } from "./projects-api";
 import {
   applyMove,
   buildTree,
@@ -7,6 +7,7 @@ import {
   dependencyPath,
   dropPlacement,
   EMPTY_FILTER,
+  type ProjectSortKey,
   filterTasks,
   ganttBar,
   ganttRange,
@@ -18,6 +19,7 @@ import {
   parseHours,
   projectSpan,
   rollupTasks,
+  sortProjects,
   sortTasks,
   startOfWeek,
   suggestHealth,
@@ -327,6 +329,61 @@ describe("timeline across projects", () => {
     expect(
       projectSpan({ startsOn: "2026-12-01", endsOn: null, stats }),
     ).toEqual({ start: "2026-12-01", end: "2026-12-01" });
+  });
+});
+
+describe("sorting the overview", () => {
+  const stats = {
+    taskCount: 0,
+    doneCount: 0,
+    progressPercent: 0,
+    estimatedMinutes: 0,
+    bookedMinutes: 0,
+    overdueTasks: 0,
+    overdueMilestones: 0,
+    nextMilestone: null,
+    latestDueOn: null,
+    actualAmountCents: null,
+  };
+  const project = (
+    title: string,
+    extra: Partial<ProjectSummary> = {},
+  ): ProjectSummary =>
+    ({
+      id: title,
+      title,
+      status: "planning",
+      health: "green",
+      managerName: null,
+      endsOn: null,
+      stats,
+      ...extra,
+    }) as ProjectSummary;
+  const projects = [
+    project("Bern", { endsOn: "2027-01-31", managerName: "Mara" }),
+    project("Aarau", { health: "red", status: "active" }),
+    project("Chur", {
+      endsOn: "2026-12-31",
+      managerName: "Daniel",
+      stats: { ...stats, progressPercent: 60 },
+    }),
+  ];
+  const titles = (key: ProjectSortKey, descending = false) =>
+    sortProjects(projects, key, descending).map((entry) => entry.title);
+
+  it("starts with critical projects, then by end date", () => {
+    expect(titles("health")).toEqual(["Aarau", "Chur", "Bern"]);
+  });
+  it("sorts by a column in both directions", () => {
+    expect(titles("title")).toEqual(["Aarau", "Bern", "Chur"]);
+    expect(titles("title", true)).toEqual(["Chur", "Bern", "Aarau"]);
+    expect(titles("progress", true)[0]).toBe("Chur");
+    expect(titles("status")[0]).toBe("Aarau");
+  });
+  it("keeps projects without a value at the bottom", () => {
+    expect(titles("endsOn")).toEqual(["Chur", "Bern", "Aarau"]);
+    expect(titles("endsOn", true)).toEqual(["Bern", "Chur", "Aarau"]);
+    expect(titles("manager", true)).toEqual(["Bern", "Chur", "Aarau"]);
   });
 });
 
