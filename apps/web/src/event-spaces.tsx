@@ -10,6 +10,7 @@ import {
   FileText,
   Mail,
   Plus,
+  Trash2,
   UsersRound,
   UserX,
   Wrench,
@@ -2181,6 +2182,18 @@ function RequestCard({
               {statusLabels[request.status]}
             </span>
           )}
+          {canManage ? (
+            <button
+              aria-label={`Anlass «${request.title}» löschen`}
+              className="event-spaces__status-label event-spaces__pill-button"
+              onClick={() => void onDeleteRequest(request.id, request.title)}
+              title="Anlass löschen"
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={13} />
+              Löschen
+            </button>
+          ) : null}
         </div>
       </div>
       {expanded ? (

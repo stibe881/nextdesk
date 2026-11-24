@@ -141,7 +141,8 @@
 }
 .onboarding__entry-head {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) minmax(150px, 200px);
+  grid-template-columns: auto minmax(0, 1fr) minmax(150px, 200px) auto;
+  cursor: pointer;
   align-items: start;
   gap: 16px;
   padding: 18px 20px 16px;
@@ -486,7 +487,11 @@ button.onboarding__exception-button {
     padding: 19px;
   }
   .onboarding__entry-head {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .onboarding__entry-toggle {
+    grid-column: 3;
+    grid-row: 1;
   }
   .onboarding__entry-progress {
     grid-column: 1 / -1;
@@ -859,4 +864,38 @@ button.onboarding__exception-button {
 .onboarding__search {
   flex: 1 1 220px;
   min-width: 0;
+}
+
+/* Ein- und Austritte sind standardmässig eingeklappt. */
+.onboarding__entry.is-collapsed .onboarding__entry-head {
+  border-bottom: 0;
+}
+.onboarding__entry-toggle {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted, inherit);
+  cursor: pointer;
+  align-self: center;
+}
+.onboarding__entry-toggle:hover,
+.onboarding__entry-toggle:focus-visible {
+  background: var(--surface-muted, rgba(0, 0, 0, 0.04));
+}
+.onboarding__entry-toggle svg {
+  transition: transform 0.15s ease;
+}
+.onboarding__entry.is-expanded .onboarding__entry-toggle svg {
+  transform: rotate(180deg);
+}
+.onboarding__delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  color: var(--danger, #b42318);
 }
