@@ -10,6 +10,7 @@ import {
   filterTasks,
   ganttBar,
   ganttRange,
+  groupEvents,
   hoursLabel,
   linkStateLabel,
   loadLevel,
@@ -326,6 +327,31 @@ describe("timeline across projects", () => {
     expect(
       projectSpan({ startsOn: "2026-12-01", endsOn: null, stats }),
     ).toEqual({ start: "2026-12-01", end: "2026-12-01" });
+  });
+});
+
+describe("history", () => {
+  it("merges repeated entries on the same element", () => {
+    const entry = (id: string, type: string, taskId: string | null) => ({
+      id,
+      type,
+      taskId,
+      actorName: "Mara",
+    });
+    expect(
+      groupEvents([
+        entry("5", "task.updated", "a"),
+        entry("4", "task.updated", "a"),
+        entry("3", "task.updated", "b"),
+        entry("2", "task.created", "b"),
+        entry("1", "task.updated", "a"),
+      ]).map((group) => [group.event.id, group.count]),
+    ).toEqual([
+      ["5", 2],
+      ["3", 1],
+      ["2", 1],
+      ["1", 1],
+    ]);
   });
 });
 

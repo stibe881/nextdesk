@@ -28,6 +28,7 @@ import {
   buildTree,
   dateLabel,
   dateTimeLabel,
+  groupEvents,
   HEALTH_LABELS,
   hoursLabel,
   isOverdue,
@@ -65,6 +66,9 @@ type Tab =
   | "team";
 
 type Run = (body: Record<string, unknown>) => Promise<unknown>;
+
+/** Entries of the history shown before «Ältere anzeigen». */
+const HISTORY_SHORT = 6;
 
 const EVENT_LABELS: Record<string, string> = {
   "project.created": "Projekt angelegt",
@@ -146,6 +150,8 @@ function OverviewTab({
 }) {
   const { access, project } = data;
   const [description, setDescription] = useState<string | null>(null);
+  const [allHistory, setAllHistory] = useState(false);
+  const history = useMemo(() => groupEvents(data.events), [data.events]);
   const [saving, setSaving] = useState(false);
   const saveDescription = async (event: FormEvent) => {
     event.preventDefault();
@@ -344,23 +350,44 @@ function OverviewTab({
         {!access.isGuest ? (
           <section className="pj-card">
             <h3>Verlauf</h3>
-            {data.events.length === 0 ? (
+            {history.length === 0 ? (
               <p className="pj-hint">Noch keine Einträge.</p>
             ) : (
-              <ul className="pj-timeline">
-                {data.events.slice(0, 25).map((event) => (
-                  <li key={event.id}>
-                    <strong>{EVENT_LABELS[event.type] ?? event.type}</strong>
-                    {eventDetail(event.payload) ? (
-                      <span>{eventDetail(event.payload)}</span>
-                    ) : null}
-                    <small>
-                      {event.actorName ?? "System"} ·{" "}
-                      {dateTimeLabel(event.createdAt)}
-                    </small>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul
+                  className={`pj-timeline${allHistory ? " pj-timeline--scroll" : ""}`}
+                >
+                  {(allHistory ? history : history.slice(0, HISTORY_SHORT)).map(
+                    ({ event, count }) => (
+                      <li key={event.id}>
+                        <strong>
+                          {EVENT_LABELS[event.type] ?? event.type}
+                          {count > 1 ? ` (${count}×)` : ""}
+                        </strong>
+                        {eventDetail(event.payload) ? (
+                          <span>{eventDetail(event.payload)}</span>
+                        ) : null}
+                        <small>
+                          {event.actorName ?? "System"} ·{" "}
+                          {dateTimeLabel(event.createdAt)}
+                        </small>
+                      </li>
+                    ),
+                  )}
+                </ul>
+                {history.length > HISTORY_SHORT ? (
+                  <button
+                    aria-expanded={allHistory}
+                    className="pj-button pj-timeline__more"
+                    onClick={() => setAllHistory((value) => !value)}
+                    type="button"
+                  >
+                    {allHistory
+                      ? "Weniger anzeigen"
+                      : `Ältere anzeigen (${history.length - HISTORY_SHORT})`}
+                  </button>
+                ) : null}
+              </>
             )}
           </section>
         ) : null}

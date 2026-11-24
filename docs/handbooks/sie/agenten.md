@@ -3424,7 +3424,9 @@ finden Sie «Projekt bearbeiten», «Termine prüfen», «Als Vorlage speichern�
 Das Register **Überblick** zeigt Beschreibung, Meilensteine, überfällige
 Aufgaben, Kommentare zum Projekt, Eckdaten und den Verlauf. Mit dem Stift bei
 «Beschreibung» und «Eckdaten» ändert die Projektleitung den Text und die
-Projektdaten.
+Projektdaten. Der Verlauf zeigt die sechs neuesten Einträge; gleiche Änderungen
+am selben Element sind zusammengefasst, **Ältere anzeigen** klappt den Rest
+auf.
 
 ![Überblick eines Projekts mit Meilensteinen und Verlauf](images/ag-projekt-ueberblick.jpg)
 

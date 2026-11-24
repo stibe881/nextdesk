@@ -1902,3 +1902,13 @@
 .projects .pj-card__head h3 {
   margin-bottom: 0;
 }
+
+.pj-timeline--scroll {
+  max-height: 420px;
+  padding-right: 6px;
+  overflow-y: auto;
+}
+
+.pj-timeline__more {
+  margin-top: 12px;
+}

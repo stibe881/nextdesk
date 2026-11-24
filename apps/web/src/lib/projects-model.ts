@@ -447,6 +447,30 @@ export function isOverdue(task: ProjectTask, today: string): boolean {
   return task.status !== "done" && !!task.dueOn && task.dueOn < today;
 }
 
+/**
+ * History for display: entries of the same kind by the same person on the
+ * same element that directly follow each other count as one.
+ */
+export function groupEvents<
+  E extends { type: string; taskId: string | null; actorName: string | null },
+>(events: readonly E[]): { event: E; count: number }[] {
+  const groups: { event: E; count: number }[] = [];
+  for (const event of events) {
+    const last = groups.at(-1);
+    if (
+      last &&
+      last.event.type === event.type &&
+      last.event.taskId === event.taskId &&
+      last.event.actorName === event.actorName
+    ) {
+      last.count += 1;
+    } else {
+      groups.push({ event, count: 1 });
+    }
+  }
+  return groups;
+}
+
 export type HealthSuggestion = { health: ProjectHealth; reasons: string[] };
 
 /** What the figures say about the traffic light; the person decides. */
