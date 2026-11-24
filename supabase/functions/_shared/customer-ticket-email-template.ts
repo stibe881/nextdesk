@@ -7,6 +7,8 @@ export type CustomerTicketEmailKind =
   | "rating_reminder"
   /** Ticket was merged into another one: where the request continues. */
   | "merge_notice"
+  /** Ticket was split into several tickets: which ones, one ticket per request. */
+  | "split_notice"
   /** A message of the ticket forwarded to another address (e.g. a vendor). */
   | "forward"
   | "test"
@@ -202,6 +204,20 @@ function presentation(
           formality,
           "Bitte antworte bei Fragen auf eine E-Mail zum weitergeführten Ticket, damit alles an einem Ort bleibt.",
           "Bitte antworten Sie bei Fragen auf eine E-Mail zum weitergeführten Ticket, damit alles an einem Ort bleibt.",
+        ),
+      };
+    case "split_notice":
+      return {
+        eyebrow: "Ticket aufgeteilt",
+        intro: tone(
+          formality,
+          "Deine Anfrage wurde in mehrere Tickets aufgeteilt.",
+          "Ihre Anfrage wurde in mehrere Tickets aufgeteilt.",
+        ),
+        replyHint: tone(
+          formality,
+          "Bitte antworte bei Fragen auf die Mail des passenden Tickets, damit alles am richtigen Ort bleibt.",
+          "Bitte antworten Sie bei Fragen auf die Mail des passenden Tickets, damit alles am richtigen Ort bleibt.",
         ),
       };
     case "rating_reminder":
@@ -493,6 +509,12 @@ function headline(
         formality,
         "Deine Anfrage läuft unter einem anderen Ticket weiter",
         "Ihre Anfrage läuft unter einem anderen Ticket weiter",
+      );
+    case "split_notice":
+      return tone(
+        formality,
+        "Deine Anfrage wurde aufgeteilt",
+        "Ihre Anfrage wurde aufgeteilt",
       );
     case "rating_reminder":
       return tone(

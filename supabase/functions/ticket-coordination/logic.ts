@@ -378,3 +378,14 @@ export function timelineEventPayload(payload: unknown): Record<string, unknown> 
   }
   return result;
 }
+
+/** Erste Zeile der Beschreibung eines Teil-Tickets (siehe ticket-split-note.ts). */
+export function splitNote(
+  parentNumber: string,
+  part: number,
+  total: number,
+  siblings: string[],
+): string {
+  const others = siblings.length ? ` Weitere Teile: ${siblings.join(", ")}.` : "";
+  return `Aufgeteilt aus Ticket ${parentNumber} – Teil ${part} von ${total}.${others}`;
+}
