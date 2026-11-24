@@ -141,7 +141,7 @@
 }
 .onboarding__entry-head {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) minmax(150px, 200px) auto;
+  grid-template-columns: auto minmax(0, 1fr) minmax(150px, 200px) 28px;
   cursor: pointer;
   align-items: start;
   gap: 16px;
@@ -873,18 +873,23 @@ button.onboarding__exception-button {
 .onboarding__entry-toggle {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
   background: transparent;
-  color: var(--muted, inherit);
+  color: var(--muted);
   cursor: pointer;
   align-self: center;
 }
 .onboarding__entry-toggle:hover,
 .onboarding__entry-toggle:focus-visible {
-  background: var(--surface-muted, rgba(0, 0, 0, 0.04));
+  background: var(--surface-subtle);
+  color: var(--text, inherit);
+}
+.onboarding__entry-head:hover .onboarding__entry-toggle {
+  color: var(--text, inherit);
 }
 .onboarding__entry-toggle svg {
   transition: transform 0.15s ease;
