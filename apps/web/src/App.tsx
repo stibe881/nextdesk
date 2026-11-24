@@ -1816,6 +1816,31 @@ function baseNotificationPresentation(
           title: "Lizenzen zurückgewinnen",
         };
       }
+      if (notification.kind.startsWith("project.")) {
+        const project =
+          notificationPayloadText(notification, "projectTitle", 120) ??
+          "Projekt";
+        if (notification.kind === "project.member_added") {
+          const by = notificationPayloadText(notification, "actorName", 80);
+          return {
+            description: by ? `${project} · hinzugefügt von ${by}` : project,
+            Icon: FolderKanban,
+            title: "Zu einem Projekt hinzugefügt",
+          };
+        }
+        const task = notificationPayloadText(notification, "taskTitle", 120);
+        const count = isRecord(notification.payload)
+          ? Number(notification.payload.taskCount)
+          : NaN;
+        return {
+          description: task ? `${task} · ${project}` : project,
+          Icon: FolderKanban,
+          title:
+            Number.isInteger(count) && count > 1
+              ? `${count} Projektaufgaben zugewiesen`
+              : "Projektaufgabe zugewiesen",
+        };
+      }
       if (notification.kind.startsWith("service_task.")) {
         const title =
           notificationPayloadText(notification, "title", 120) ??
@@ -3532,6 +3557,9 @@ function AuthenticatedApp() {
   const [projectAccess, setProjectAccess] =
     useState<ProjectModuleAccess | null>(null);
   const [projectFocusId, setProjectFocusId] = useState<string | null>(null);
+  const [projectFocusTaskId, setProjectFocusTaskId] = useState<string | null>(
+    null,
+  );
   const [serviceTaskFocusId, setServiceTaskFocusId] = useState<string | null>(
     null,
   );
@@ -5079,6 +5107,10 @@ function AuthenticatedApp() {
     if (focus?.kind === "security") setSecurityFocusId(focus.id);
     else if (focus?.kind === "incident") setIncidentFocusId(focus.id);
     else if (focus?.kind === "serviceTask") setServiceTaskFocusId(focus.id);
+    else if (focus?.kind === "project") {
+      setProjectFocusId(focus.id);
+      setProjectFocusTaskId(focus.taskId);
+    }
     else if (focus?.kind === "inventoryItem") setInventoryFocusId(focus.id);
     else if (focus?.kind === "shopOrder") setShopFocusOrderId(focus.id);
     else if (focus?.kind === "infrastructureDevice") {
@@ -7324,8 +7356,12 @@ function AuthenticatedApp() {
           <Projects
             access={projectAccess}
             focusProjectId={projectFocusId}
+            focusTaskId={projectFocusTaskId}
             key={activeTenant.id}
-            onFocusHandled={() => setProjectFocusId(null)}
+            onFocusHandled={() => {
+              setProjectFocusId(null);
+              setProjectFocusTaskId(null);
+            }}
             onOpenTicket={
               projectAccess.guestOnly
                 ? undefined

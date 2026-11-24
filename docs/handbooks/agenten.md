@@ -2278,7 +2278,7 @@ Mehr dazu unter «Projekte».
 3. Wähle daneben die Rolle (in der Regel «Mitarbeit»).
 4. Klicke bei der Person auf **Hinzufügen**.
 
-Die Suche findet alle Personen des Mandanten, auch solche aus dem Entra-Verzeichnis, die sich noch nie angemeldet haben. Mehr dazu unter «Projekte».
+Die Person erhält eine Benachrichtigung und öffnet das Projekt mit einem Klick darauf. Die Suche findet alle Personen des Mandanten, auch solche aus dem Entra-Verzeichnis, die sich noch nie angemeldet haben. Mehr dazu unter «Projekte».
 
 ### Wie lade ich einen externen Gast in ein Projekt ein?
 
@@ -3599,6 +3599,13 @@ Personen des Mandanten nach Name, Funktion oder E-Mail-Adresse, auch solche
 aus dem Entra-Verzeichnis, die sich noch nie angemeldet haben. Für sie wird
 beim Hinzufügen ein Konto vorbereitet; mit der ersten Microsoft-Anmeldung
 sehen sie das Projekt.
+
+Wer einem Projekt hinzugefügt wird oder eine Projektaufgabe zugewiesen
+bekommt, erhält eine Benachrichtigung: in der Glocke und – je nach
+persönlicher Einstellung «Zuweisungen» (in der App «Mir zugewiesene
+Tickets») – auch per E-Mail und als Push-Mitteilung. Ein Klick auf den
+Eintrag öffnet das Projekt bzw. direkt die Aufgabe. Wer die Änderung selbst vornimmt, wird nicht benachrichtigt; bei
+einer Zuweisung mehrerer Aufgaben auf einmal kommt eine einzige Mitteilung.
 
 **Externe Gäste** (Dienstleister, Kunden) lädst du mit ihrer E-Mail-Adresse
 ein. Gäste sehen ausschliesslich dieses Projekt: Überblick, Zeitplan, Board,

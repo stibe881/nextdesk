@@ -32,6 +32,8 @@ const EXPECTED: Record<string, string | null> = {
   "ticket.assigned": "assigned",
   "infrastructure.due": "infrastructure",
   "service_task.overdue": "service_task",
+  "project.member_added": "assigned",
+  "project.task_assigned": "assigned",
   "ticket.sla.breached": "sla",
   "ipam.unknown": null,
   "security.unknown": null,
@@ -58,6 +60,7 @@ Deno.test("the database function lists the same kinds", async () => {
     if (
       EXPECTED[kind] === null || kind.startsWith("ticket.") ||
       kind.startsWith("shop.") || kind.startsWith("service_task.") ||
+      kind.startsWith("project.") ||
       kind === "infrastructure.due" || kind.startsWith("monitoring.incident")
     ) {
       continue; // covered by prefixes in SQL

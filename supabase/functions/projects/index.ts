@@ -419,6 +419,48 @@ async function logEvent(
   });
 }
 
+/**
+ * Tells people about a project: a row in the bell, and from there push and
+ * e-mail by their own settings. Nobody is told about what they did
+ * themselves; a failure never blocks the change that caused it.
+ */
+async function notify(
+  ctx: Ctx,
+  userIds: Iterable<unknown>,
+  kind: "project.member_added" | "project.task_assigned",
+  project: Row,
+  extra: Row = {},
+) {
+  const recipients = [
+    ...new Set(
+      [...userIds].filter(
+        (id): id is string => typeof id === "string" && id !== ctx.actorId,
+      ),
+    ),
+  ];
+  if (!recipients.length) return;
+  try {
+    const actorName = (await names(ctx.admin, [ctx.actorId])).get(ctx.actorId);
+    await ctx.admin.from("ticket_notifications").insert(
+      recipients.map((userId) => ({
+        tenant_id: ctx.tenantId,
+        user_id: userId,
+        ticket_id: null,
+        kind,
+        payload: {
+          projectId: project.id,
+          projectNumber: project.project_number,
+          projectTitle: project.title,
+          ...(actorName ? { actorName } : {}),
+          ...extra,
+        },
+      })),
+    );
+  } catch {
+    // The change itself has been saved.
+  }
+}
+
 async function audit(
   ctx: Ctx,
   action: string,
@@ -1681,6 +1723,10 @@ async function createTask(ctx: Ctx, body: Row) {
     title: data.title,
     kind: data.kind,
   });
+  await notify(ctx, [fields.assignee_id], "project.task_assigned", project, {
+    taskId: data.id,
+    taskTitle: data.title,
+  });
   const schedule = await settleSchedule(ctx, project);
   return {
     taskId: data.id,
@@ -1720,6 +1766,12 @@ async function updateTask(ctx: Ctx, body: Row) {
     await logEvent(ctx, projectId, task.id as string, "task.updated", {
       title: fields.title ?? task.title,
       ...changed,
+    });
+  }
+  if (changed.assignee_id) {
+    await notify(ctx, [changed.assignee_id], "project.task_assigned", project, {
+      taskId: task.id,
+      taskTitle: fields.title ?? task.title,
     });
   }
   const movesDates = [
@@ -1812,6 +1864,23 @@ async function bulkUpdateTasks(ctx: Ctx, body: Row) {
       .eq("project_id", projectId)
       .eq("id", task.id);
     if (error) throw failed();
+  }
+  if (fields.assignee_id) {
+    // One message for the whole selection, not one per task.
+    const assigned = tasks.filter(
+      (task) => task.assignee_id !== fields.assignee_id,
+    );
+    if (assigned.length) {
+      await notify(
+        ctx,
+        [fields.assignee_id],
+        "project.task_assigned",
+        project,
+        assigned.length === 1
+          ? { taskId: assigned[0].id, taskTitle: assigned[0].title }
+          : { taskCount: assigned.length },
+      );
+    }
   }
   await logEvent(ctx, projectId, null, "task.bulk_updated", {
     count: tasks.length,
@@ -3029,6 +3098,12 @@ async function memberAction(ctx: Ctx, body: Row) {
     const role = oneOf<string>(body.role, MEMBER_ROLES, "Die Rolle");
     const userId = await memberUserId(ctx, body.userId);
     await assertTenantMember(ctx, userId);
+    const { data: existing } = await ctx.admin
+      .from("project_members")
+      .select("user_id")
+      .eq("project_id", projectId)
+      .eq("user_id", userId)
+      .maybeSingle();
     const { error } = await ctx.admin.from("project_members").upsert(
       {
         project_id: projectId,
@@ -3041,6 +3116,10 @@ async function memberAction(ctx: Ctx, body: Row) {
     );
     if (error) throw failed();
     await logEvent(ctx, projectId, null, "member.set", { userId, role });
+    // Only when the person is new to the project, not on a change of role.
+    if (!existing) {
+      await notify(ctx, [userId], "project.member_added", project, { role });
+    }
     return { saved: true };
   }
 

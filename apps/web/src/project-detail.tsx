@@ -1189,6 +1189,7 @@ function TeamTab({
 // ---------------------------------------------------------------------------
 
 export function ProjectDetail({
+  initialTaskId = null,
   onBack,
   onOpenTicket,
   options,
@@ -1196,6 +1197,8 @@ export function ProjectDetail({
   projectId,
   tenantId,
 }: {
+  /** Element whose panel is open from the start. */
+  initialTaskId?: string | null;
   onBack: () => void;
   onOpenTicket?: ((ticketId: string) => void) | undefined;
   options: ProjectOptions | null;
@@ -1205,7 +1208,7 @@ export function ProjectDetail({
 }) {
   const [data, setData] = useState<ProjectDetailData | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
-  const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(initialTaskId);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);

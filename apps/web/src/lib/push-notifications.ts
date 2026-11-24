@@ -12,8 +12,8 @@ export const pushCategoryMeta = {
   assigned: {
     get description() {
       return tn(
-        "Wenn dir ein Ticket zugewiesen wird",
-        "Wenn Ihnen ein Ticket zugewiesen wird",
+        "Wenn dir ein Ticket oder eine Projektaufgabe zugewiesen wird oder du einem Projekt hinzugefügt wirst",
+        "Wenn Ihnen ein Ticket oder eine Projektaufgabe zugewiesen wird oder Sie einem Projekt hinzugefügt werden",
       );
     },
     label: "Zuweisungen",
