@@ -1603,6 +1603,14 @@ Mehr dazu unter «Anlässe».
 
 Mehr dazu unter «Anlässe».
 
+### Wie lösche ich einen Anlass?
+
+1. Öffnen Sie unter **Planung und Betrieb** die **Anlässe**.
+2. Klicken Sie rechts in der Zeile des Anlasses auf **Löschen** (auch in der geöffneten Detailansicht vorhanden).
+3. Bestätigen Sie die Rückfrage. Zugehörige Aufgaben und Technikreservationen werden ebenfalls entfernt.
+
+Mehr dazu unter «Anlässe».
+
 ### Wie verknüpfe ich eine Lizenz mit einem Vertrag?
 
 1. Öffnen Sie den Vertrag unter **Ressourcen → Verträge**.
