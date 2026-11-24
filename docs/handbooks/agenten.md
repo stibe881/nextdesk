@@ -2143,6 +2143,15 @@ Mehr dazu unter «Projekte».
 
 Mehr dazu unter «Projekte».
 
+### Wie führe ich die Checkliste einer Projektaufgabe?
+
+1. Öffne die Aufgabe mit einem Klick auf ihren Titel.
+2. Tippe unter **Checkliste** einen Punkt ein und drücke die Eingabetaste oder klicke auf **Hinzufügen**; das Feld ist sofort frei für den nächsten Punkt.
+3. Hake erledigte Punkte ab.
+4. Mit dem Stift benennst du einen Punkt um (Eingabetaste speichert, Esc bricht ab), mit dem Kreuz entfernst du ihn.
+
+Mehr dazu unter «Projekte».
+
 ### Wie buche ich Zeit auf eine Projektaufgabe?
 
 1. Öffne die Aufgabe mit einem Klick auf ihren Titel.
@@ -3479,7 +3488,8 @@ Ein Klick auf den Titel öffnet die Seitenleiste des Elements. Dort änderst du
 Titel, Status, Priorität, Zuständigkeit, Team, Start, Termin, Schätzung,
 Fortschritt und die Einordnung im Plan. Darunter stehen Beschreibung,
 Checkliste, Abhängigkeiten, Zeit, Verknüpfungen, Anhänge (PDF und Bilder) und
-Kommentare.
+Kommentare. Punkte der Checkliste erscheinen sofort und lassen sich mit dem
+Stift umbenennen.
 
 Bei Elementen mit Unterelementen ergeben sich Zeitraum, Schätzung und
 Fortschritt aus den Unterelementen. Wer ein Element löscht, löscht auch seine

@@ -1912,16 +1912,23 @@ async function checklistAction(ctx: Ctx, body: Row) {
     if (error) throw failed();
     return { deleted: true };
   }
-  const done = body.done === true;
+  // One call ticks an item, renames it, or both.
+  const update: Row = {};
+  if (has(body, "description")) {
+    update.description = requiredText(body.description, 500, "Der Punkt");
+  }
+  if (has(body, "done")) {
+    const done = body.done === true;
+    update.completed_at = done ? new Date().toISOString() : null;
+    update.completed_by = done ? ctx.actorId : null;
+  }
+  if (!Object.keys(update).length) throw invalid("Es fehlt eine Änderung.");
   const { error } = await ctx.admin
     .from("project_task_checklist_items")
-    .update({
-      completed_at: done ? new Date().toISOString() : null,
-      completed_by: done ? ctx.actorId : null,
-    })
+    .update(update)
     .eq("id", itemId);
   if (error) throw failed();
-  return { done };
+  return { saved: true };
 }
 
 // ---------------------------------------------------------------------------

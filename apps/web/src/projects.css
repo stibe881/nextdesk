@@ -1838,3 +1838,22 @@
 .pj-hint--below {
   margin: 10px 0 0;
 }
+
+.pj-checklist__actions {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+
+.pj-checklist__edit {
+  flex: 1;
+  margin-top: 0;
+}
+
+.pj-icon--neutral:hover:not(:disabled) {
+  color: var(--primary);
+}
+
+.pj-icon:disabled {
+  opacity: 0.4;
+}

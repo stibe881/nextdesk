@@ -1,4 +1,4 @@
-import { Paperclip, Trash2, X } from "lucide-react";
+import { Paperclip, Pencil, Trash2, X } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -488,7 +488,16 @@ function Section({
   );
 }
 
+/** Checklist changes show at once and are saved in the background. */
+export type ChecklistActions = {
+  add: (taskId: string, description: string) => void;
+  toggle: (taskId: string, itemId: string, done: boolean) => void;
+  rename: (taskId: string, itemId: string, description: string) => void;
+  remove: (taskId: string, itemId: string) => void;
+};
+
 export function TaskPanel({
+  checklist,
   data,
   onClose,
   onOpenTask,
@@ -501,6 +510,7 @@ export function TaskPanel({
   teams,
   tenantId,
 }: {
+  checklist: ChecklistActions;
   data: ProjectDetailData;
   onClose: () => void;
   onOpenTask: (taskId: string) => void;
@@ -519,6 +529,25 @@ export function TaskPanel({
   const [description, setDescription] = useState(task.description ?? "");
   const [estimate, setEstimate] = useState(hoursInput(task.estimatedMinutes));
   const [checkItem, setCheckItem] = useState("");
+  const [editingItem, setEditingItem] = useState<{
+    id: string;
+    text: string;
+  } | null>(null);
+  // Escape removes the field, which also blurs it; that must not save.
+  const renameCancelled = useRef(false);
+  const commitItem = () => {
+    if (renameCancelled.current) {
+      renameCancelled.current = false;
+      return;
+    }
+    if (!editingItem) return;
+    const text = editingItem.text.trim();
+    const current = task.checklist.find((item) => item.id === editingItem.id);
+    setEditingItem(null);
+    if (text && current && text !== current.description) {
+      checklist.rename(task.id, editingItem.id, text);
+    }
+  };
   const [hours, setHours] = useState("");
   const [note, setNote] = useState("");
   const [billing, setBilling] = useState("internal");
@@ -920,49 +949,99 @@ export function TaskPanel({
             <p className="pj-hint">Keine Punkte.</p>
           ) : null}
           <ul className="pj-checklist">
-            {task.checklist.map((item) => (
-              <li key={item.id}>
-                <label className={item.done ? "is-done" : undefined}>
-                  <input
-                    checked={item.done}
-                    disabled={!canEdit}
-                    onChange={(event) =>
-                      void run({
-                        type: "setChecklistItem",
-                        itemId: item.id,
-                        done: event.target.checked,
-                      })
-                    }
-                    type="checkbox"
-                  />
-                  {item.description}
-                </label>
-                {canEdit ? (
-                  <button
-                    aria-label={`${item.description} entfernen`}
-                    className="pj-icon"
-                    onClick={() =>
-                      void run({ type: "deleteChecklistItem", itemId: item.id })
-                    }
-                    type="button"
-                  >
-                    <X aria-hidden="true" size={13} />
-                  </button>
-                ) : null}
-              </li>
-            ))}
+            {task.checklist.map((item) => {
+              // Still on its way to the server: shown, but not yet editable.
+              const saving = item.id.startsWith("tmp-");
+              return (
+                <li key={item.id}>
+                  {editingItem?.id === item.id ? (
+                    <form
+                      className="pj-inline pj-checklist__edit"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        commitItem();
+                      }}
+                    >
+                      <input
+                        aria-label="Punkt umbenennen"
+                        autoFocus
+                        maxLength={500}
+                        onBlur={commitItem}
+                        onChange={(event) =>
+                          setEditingItem({
+                            id: item.id,
+                            text: event.target.value,
+                          })
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            // Keep the panel open: Escape only ends renaming.
+                            event.stopPropagation();
+                            renameCancelled.current = true;
+                            setEditingItem(null);
+                          }
+                        }}
+                        value={editingItem.text}
+                      />
+                    </form>
+                  ) : (
+                    <label className={item.done ? "is-done" : undefined}>
+                      <input
+                        checked={item.done}
+                        disabled={!canEdit || saving}
+                        onChange={(event) =>
+                          checklist.toggle(
+                            task.id,
+                            item.id,
+                            event.target.checked,
+                          )
+                        }
+                        type="checkbox"
+                      />
+                      {item.description}
+                    </label>
+                  )}
+                  {canEdit && editingItem?.id !== item.id ? (
+                    <span className="pj-checklist__actions">
+                      <button
+                        aria-label={`${item.description} umbenennen`}
+                        className="pj-icon pj-icon--neutral"
+                        disabled={saving}
+                        onClick={() =>
+                          setEditingItem({
+                            id: item.id,
+                            text: item.description,
+                          })
+                        }
+                        type="button"
+                      >
+                        <Pencil aria-hidden="true" size={13} />
+                      </button>
+                      <button
+                        aria-label={`${item.description} entfernen`}
+                        className="pj-icon"
+                        disabled={saving}
+                        onClick={() => checklist.remove(task.id, item.id)}
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={13} />
+                      </button>
+                    </span>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
           {canEdit ? (
             <form
               className="pj-inline"
               onSubmit={(event) => {
                 event.preventDefault();
-                if (!checkItem.trim()) return;
-                void run({
-                  type: "addChecklistItem",
-                  taskId: task.id,
-                  description: checkItem,
-                }).then(() => setCheckItem(""));
+                const description = checkItem.trim();
+                if (!description) return;
+                // Shown at once; the field is free for the next item.
+                checklist.add(task.id, description);
+                setCheckItem("");
               }}
             >
               <input

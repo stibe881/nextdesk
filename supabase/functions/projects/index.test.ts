@@ -804,11 +804,25 @@ Deno.test(
     const { as } = world();
     const lead = as(LEAD);
     const ids = await plan(lead);
-    await lead({
+    const { itemId } = await lead({
       type: "addChecklistItem",
       taskId: ids.first,
-      description: "Firmware",
+      description: "Firmwar",
     });
+    // An item can be renamed and ticked independently.
+    await lead({ type: "setChecklistItem", itemId, description: "Firmware" });
+    await lead({ type: "setChecklistItem", itemId, done: true });
+    const checked = await lead({
+      type: "getProject",
+      projectId: ids.projectId,
+    });
+    assertEquals(taskOf(checked, ids.first).checklist, [
+      { id: itemId, description: "Firmware", done: true },
+    ]);
+    await assertRejects(
+      () => lead({ type: "setChecklistItem", itemId }),
+      Error,
+    );
     await lead({
       type: "addDependency",
       projectId: ids.projectId,

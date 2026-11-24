@@ -11,6 +11,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { confirmDialog, promptDialog } from "./app-dialog";
 import {
+  type ChecklistItem,
   type PlannedChange,
   type ProjectDetailData,
   type ProjectDocument,
@@ -42,6 +43,7 @@ import {
 } from "./lib/projects-model";
 import { ProjectBoard, ProjectGantt, ProjectList } from "./project-plan";
 import {
+  type ChecklistActions,
   AttachmentList,
   CommentThread,
   LinkList,
@@ -1157,6 +1159,86 @@ export function ProjectDetail({
     [load, tenantId],
   );
 
+  // Checklist: the change is shown at once and saved in the background; the
+  // project is reloaded once nothing is on its way any more.
+  const pendingQuiet = useRef(0);
+  const checklist: ChecklistActions = useMemo(() => {
+    const local = (
+      taskId: string,
+      change: (items: ChecklistItem[]) => ChecklistItem[],
+    ) => {
+      // A reload that is already under way would bring back the old list.
+      version.current += 1;
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              tasks: current.tasks.map((task) =>
+                task.id === taskId
+                  ? { ...task, checklist: change(task.checklist) }
+                  : task,
+              ),
+            }
+          : current,
+      );
+    };
+    const send = async <T,>(
+      body: Record<string, unknown>,
+    ): Promise<T | undefined> => {
+      pendingQuiet.current += 1;
+      setError("");
+      let result: T | undefined;
+      try {
+        result = await projectsCall<T>({ tenantId, ...body });
+      } catch (nextError) {
+        setError(errorText(nextError));
+      }
+      pendingQuiet.current -= 1;
+      // Also brings the list back in line after a failed save.
+      if (pendingQuiet.current === 0) void load();
+      return result;
+    };
+    return {
+      add(taskId, description) {
+        const temporaryId = `tmp-${crypto.randomUUID()}`;
+        local(taskId, (items) => [
+          ...items,
+          { id: temporaryId, description, done: false },
+        ]);
+        void send<{ itemId: string }>({
+          type: "addChecklistItem",
+          taskId,
+          description,
+        }).then((result) => {
+          if (!result?.itemId) return;
+          local(taskId, (items) =>
+            items.map((item) =>
+              item.id === temporaryId ? { ...item, id: result.itemId } : item,
+            ),
+          );
+        });
+      },
+      toggle(taskId, itemId, done) {
+        local(taskId, (items) =>
+          items.map((item) => (item.id === itemId ? { ...item, done } : item)),
+        );
+        void send({ type: "setChecklistItem", itemId, done });
+      },
+      rename(taskId, itemId, description) {
+        local(taskId, (items) =>
+          items.map((item) =>
+            item.id === itemId ? { ...item, description } : item,
+          ),
+        );
+        void send({ type: "setChecklistItem", itemId, description });
+      },
+      remove(taskId, itemId) {
+        local(taskId, (items) => items.filter((item) => item.id !== itemId));
+        void send({ type: "deleteChecklistItem", itemId });
+      },
+    };
+  }, [load, tenantId]);
+
   const rollup = useMemo(
     () => (data ? rollupTasks(data.tasks, data.links) : new Map()),
     [data],
@@ -1505,6 +1587,7 @@ export function ProjectDetail({
             role="presentation"
           />
           <TaskPanel
+            checklist={checklist}
             data={data}
             onClose={() => setTaskId(null)}
             onOpenTask={setTaskId}

@@ -735,6 +735,8 @@ function detail(persona) {
   };
 }
 
+let checklistCounter = 0;
+
 /** Fake of supabase/functions/projects. */
 function handler(body, { persona }) {
   const admin = persona.isTenantAdmin === true;
@@ -786,6 +788,38 @@ function handler(body, { persona }) {
               ]
             : [],
       });
+    // The checklist is kept in memory so adding, ticking and renaming can be
+    // tried out against the demo data.
+    case "addChecklistItem": {
+      const target = TASKS.find((item) => item.id === body.taskId);
+      const itemId = D.uid("73737373", 100 + ++checklistCounter);
+      target?.checklist.push({
+        id: itemId,
+        description: body.description,
+        done: false,
+      });
+      return ok({ itemId });
+    }
+    case "setChecklistItem":
+    case "deleteChecklistItem": {
+      for (const target of TASKS) {
+        const index = target.checklist.findIndex(
+          (item) => item.id === body.itemId,
+        );
+        if (index < 0) continue;
+        if (body.type === "deleteChecklistItem") {
+          target.checklist.splice(index, 1);
+        } else {
+          if (typeof body.description === "string") {
+            target.checklist[index].description = body.description;
+          }
+          if (typeof body.done === "boolean") {
+            target.checklist[index].done = body.done;
+          }
+        }
+      }
+      return ok({ saved: true });
+    }
     case "searchPeople":
       return ok({
         results: [
