@@ -2020,32 +2020,34 @@ export function Onboarding({
                             </dl>
                           </details>
                         ) : null}
-                        {workspace?.permissions.canManage ? (
-                          <button
-                            className="text-button onboarding__delete"
-                            disabled={pending}
-                            onClick={() =>
-                              void deleteEntry(
-                                entry.id,
-                                entry.employeeName,
-                                entry.kind ?? "onboarding",
-                              )
-                            }
-                            type="button"
-                          >
-                            <Trash2 aria-hidden="true" size={15} />
-                            {entry.kind === "offboarding"
-                              ? "Austritt löschen"
-                              : "Eintritt löschen"}
-                          </button>
-                        ) : null}
-                        <p className="onboarding__exception">
-                          <Wrench aria-hidden="true" size={13} />
-                          {tn(
-                            "Verzögert sich eine Aufgabe, verknüpfst du über den Schraubenschlüssel ein Ausnahmeticket. Aus dem Onboarding entstehen nie automatisch Tickets.",
-                            "Verzögert sich eine Aufgabe, verknüpfen Sie über den Schraubenschlüssel ein Ausnahmeticket. Aus dem Onboarding entstehen nie automatisch Tickets.",
-                          )}
-                        </p>
+                        <div className="onboarding__foot-row">
+                          <p className="onboarding__exception">
+                            <Wrench aria-hidden="true" size={13} />
+                            {tn(
+                              "Verzögert sich eine Aufgabe, verknüpfst du über den Schraubenschlüssel ein Ausnahmeticket. Aus dem Onboarding entstehen nie automatisch Tickets.",
+                              "Verzögert sich eine Aufgabe, verknüpfen Sie über den Schraubenschlüssel ein Ausnahmeticket. Aus dem Onboarding entstehen nie automatisch Tickets.",
+                            )}
+                          </p>
+                          {workspace?.permissions.canManage ? (
+                            <button
+                              className="text-button onboarding__delete"
+                              disabled={pending}
+                              onClick={() =>
+                                void deleteEntry(
+                                  entry.id,
+                                  entry.employeeName,
+                                  entry.kind ?? "onboarding",
+                                )
+                              }
+                              type="button"
+                            >
+                              <Trash2 aria-hidden="true" size={15} />
+                              {entry.kind === "offboarding"
+                                ? "Austritt löschen"
+                                : "Eintritt löschen"}
+                            </button>
+                          ) : null}
+                        </div>
                       </footer>
                     </div>
                   ) : null}

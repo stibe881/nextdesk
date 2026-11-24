@@ -3341,7 +3341,15 @@ const HANDLERS = {
           canEdit: true,
           source: "email",
           sourceTicketNumber: "ICT-2026-000150",
-          details: { filledBy: "Thomas Huber", functions: [] },
+          details: {
+            filledBy: "Thomas Huber",
+            supervisor: "Thomas Huber",
+            jobTitle: "Sachbearbeiterin Finanzen",
+            needsKey: true,
+            ictEquipment: "Notebook",
+            groupMailboxes: "keine Gruppenpostfächer",
+            functions: [],
+          },
           tasks: [
             task(1, "Gerät bereitstellen", -1, "in_progress", {
               exception: {
