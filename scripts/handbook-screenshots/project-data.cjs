@@ -841,6 +841,7 @@ function handler(body, { persona }) {
       if (typeof body.description === "string") {
         PROJECTS[0].description = body.description;
       }
+      if (typeof body.title === "string") PROJECTS[0].title = body.title;
       return ok({ updated: true, shifted: 0 });
     case "searchPeople":
       return ok({

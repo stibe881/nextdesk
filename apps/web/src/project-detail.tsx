@@ -1209,6 +1209,9 @@ export function ProjectDetail({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  // Renaming in the header: Enter or leaving the field saves, Escape cancels.
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const titleCancelled = useRef(false);
   const [editing, setEditing] = useState(false);
   const [changes, setChanges] = useState<PlannedChange[] | null>(null);
   const version = useRef(0);
@@ -1344,6 +1347,25 @@ export function ProjectDetail({
       },
     };
   }, [load, tenantId]);
+
+  const commitTitle = () => {
+    if (titleCancelled.current) {
+      // Escape removed the field, which also blurs it.
+      titleCancelled.current = false;
+      return;
+    }
+    const title = titleDraft?.trim();
+    setTitleDraft(null);
+    if (!data || !title || title === data.project.title) return;
+    // Shown at once; the reload after saving confirms it.
+    version.current += 1;
+    setData((current) =>
+      current
+        ? { ...current, project: { ...current.project, title } }
+        : current,
+    );
+    void run({ type: "updateProject", projectId, title });
+  };
 
   const rollup = useMemo(
     () => (data ? rollupTasks(data.tasks, data.links) : new Map()),
@@ -1483,9 +1505,46 @@ export function ProjectDetail({
             {project.number}
             {project.archivedAt ? " · archiviert" : ""}
           </p>
-          <h2>
-            <HealthDot health={project.health} /> {project.title}
-          </h2>
+          {titleDraft !== null ? (
+            <form
+              className="pj-hero__rename"
+              onSubmit={(event) => {
+                event.preventDefault();
+                commitTitle();
+              }}
+            >
+              <HealthDot health={project.health} />
+              <input
+                aria-label="Projekttitel"
+                autoFocus
+                maxLength={200}
+                onBlur={commitTitle}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    titleCancelled.current = true;
+                    setTitleDraft(null);
+                  }
+                }}
+                value={titleDraft}
+              />
+            </form>
+          ) : (
+            <h2>
+              <HealthDot health={project.health} /> {project.title}
+              {access.canAdmin ? (
+                <button
+                  aria-label="Projekttitel bearbeiten"
+                  className="pj-icon pj-icon--neutral"
+                  onClick={() => setTitleDraft(project.title)}
+                  title="Projekttitel bearbeiten"
+                  type="button"
+                >
+                  <Pencil aria-hidden="true" size={14} />
+                </button>
+              ) : null}
+            </h2>
+          )}
           <div className="pj-meter pj-meter--wide">
             <ProgressBar
               label={`Fortschritt ${project.stats.progressPercent} %`}

@@ -2125,11 +2125,12 @@ Mehr dazu unter «Projekte».
 
 Phasen bleiben auf der obersten Ebene, Meilensteine stehen oben oder in einer Phase. Mehr dazu unter «Projekte».
 
-### Wie ändere ich Beschreibung und Eckdaten eines Projekts?
+### Wie ändere ich Titel, Beschreibung und Eckdaten eines Projekts?
 
-1. Öffne das Projekt und das Register **Überblick**.
-2. Klicke bei **Beschreibung** auf den Stift, schreibe den Text und klicke auf **Speichern**.
-3. Klicke bei **Eckdaten** auf den Stift, um Projektleitung, Zeitraum, Budget und Terminplanung im Formular zu ändern.
+1. Öffne das Projekt. Klicke neben dem Titel auf den Stift, ändere den Titel und drücke die Eingabetaste.
+2. Öffne das Register **Überblick**.
+3. Klicke bei **Beschreibung** auf den Stift, schreibe den Text und klicke auf **Speichern**.
+4. Klicke bei **Eckdaten** auf den Stift, um Projektleitung, Zeitraum, Budget und Terminplanung im Formular zu ändern.
 
 Die Stifte erscheinen nur für die Projektleitung. Mehr dazu unter «Projekte».
 
@@ -3445,7 +3446,8 @@ Die **Terminplanung** legt fest, was bei Verzögerungen geschieht:
 
 ### Überblick eines Projekts
 
-Der Kopf zeigt Nummer, Titel, Ampel und Fortschritt. Rechts setzt du
+Der Kopf zeigt Nummer, Titel, Ampel und Fortschritt. Mit dem Stift neben dem Titel
+benennt die Projektleitung das Projekt um. Rechts setzt du
 **Status** (Planung, Aktiv, Pausiert, Abgeschlossen) und **Ampel**. Sprechen
 überfällige Meilensteine, überfällige Aufgaben oder die gebuchte Zeit für
 eine andere Farbe, schlägt nextDesk sie mit Begründung vor. Unter **Mehr**
