@@ -55,8 +55,8 @@ const CATEGORY_DETAILS: readonly {
     label: "Mir zugewiesene Tickets",
     get description() {
       return tn(
-        "Wenn dir ein Ticket neu zugeteilt wird.",
-        "Wenn Ihnen ein Ticket neu zugeteilt wird.",
+        "Wenn dir ein Ticket oder eine Projektaufgabe neu zugeteilt wird oder du einem Projekt hinzugefügt wirst.",
+        "Wenn Ihnen ein Ticket oder eine Projektaufgabe neu zugeteilt wird oder Sie einem Projekt hinzugefügt werden.",
       );
     },
   },

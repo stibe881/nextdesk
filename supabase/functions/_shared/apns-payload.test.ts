@@ -457,3 +457,49 @@ Deno.test("Die Zahl auf dem App-Symbol (badge) wird nur für gültige Zahlen ges
     if ("badge" in payload.aps) throw new Error("ungültiges badge gesetzt");
   }
 });
+
+Deno.test("project pushes have their own wording and carry only ids", () => {
+  const projectId = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+  const base = {
+    kind: "project" as const,
+    tenantId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+    notificationId: "9b2e4f1a-6c3d-4e5f-8a7b-1c2d3e4f5a6b",
+    projectId,
+    projectTitle: "Netz Bern",
+  };
+  const added = buildApnsPayload({
+    ...base,
+    notificationKind: "project.member_added",
+    projectEvent: "member_added",
+  });
+  const alert = (payload: { aps: Record<string, unknown> }) =>
+    payload.aps.alert as { title: string; body: string };
+  assertEquals(alert(added), {
+    title: "Neues Projekt",
+    body: "Du arbeitest jetzt im Projekt «Netz Bern» mit.",
+  });
+  assertEquals((added.body as Record<string, unknown>).projectId, projectId);
+
+  const task = buildApnsPayload(
+    {
+      ...base,
+      notificationKind: "project.task_assigned",
+      projectEvent: "task_assigned",
+      projectTaskTitle: "Switch tauschen",
+      projectTaskId: "../x",
+    },
+    "sie",
+  );
+  assertEquals(alert(task), {
+    title: "Projektaufgabe zugewiesen",
+    body: "«Switch tauschen» im Projekt «Netz Bern» wurde Ihnen zugewiesen.",
+  });
+  assertFalse("projectTaskId" in (task.body as Record<string, unknown>));
+
+  const several = buildApnsPayload({
+    ...base,
+    projectEvent: "task_assigned",
+    projectTaskCount: 4,
+  });
+  assertEquals(alert(several).title, "Projektaufgaben zugewiesen");
+});

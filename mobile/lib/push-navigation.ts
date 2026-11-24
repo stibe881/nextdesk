@@ -39,6 +39,7 @@ export const PUSH_PAYLOAD_KINDS = [
   "recurring_problem",
   "incident",
   "ipam",
+  "project",
   "summary",
   "test",
 ] as const;
@@ -80,6 +81,8 @@ export type PushNavigationData = {
   incidentId?: string;
   ipamAddress?: string;
   ipamEvent?: string;
+  projectId?: string;
+  projectTaskId?: string;
   occurrenceId?: string;
   contractId?: string;
   inventoryItemId?: string;
@@ -113,6 +116,8 @@ const TEXT_FIELDS = [
   "incidentId",
   "ipamAddress",
   "ipamEvent",
+  "projectId",
+  "projectTaskId",
   "occurrenceId",
   "contractId",
   "inventoryItemId",
@@ -239,6 +244,19 @@ export function pushRoute(data: PushNavigationData): PushRoute | null {
             "Details zu diesem Fund finden Sie in der Web-App unter «IP-Adressen → Funde».",
           ),
     };
+  }
+  // Projektbeitritt öffnet das Projekt, eine Zuweisung die Aufgabe; mehrere
+  // Aufgaben auf einmal (ohne Aufgaben-ID) das Projekt.
+  if (kind === "project") {
+    const projectId = uuid(data.projectId);
+    const taskId = uuid(data.projectTaskId);
+    if (!projectId) return path("/projects", "projects.management");
+    return path(
+      taskId
+        ? `/projects/${projectId}/task/${taskId}`
+        : `/projects/${projectId}`,
+      "projects.management",
+    );
   }
   if (kind === "contract_deadline") {
     return {

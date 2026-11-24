@@ -24,6 +24,7 @@ export type ApnsPayloadKind =
   | "inventory_low_stock"
   | "shop"
   | "service_task"
+  | "project"
   | "infrastructure"
   | "watched"
   | "rule_reminder"
@@ -65,6 +66,13 @@ export type ApnsPayloadInput = {
   serviceTaskEvent?: string;
   serviceTaskTitle?: string;
   occurrenceId?: string;
+  /** Project: «member_added» or «task_assigned», with what it is about. */
+  projectEvent?: string;
+  projectId?: string;
+  projectTitle?: string;
+  projectTaskId?: string;
+  projectTaskTitle?: string;
+  projectTaskCount?: number;
   /** Infrastructure reminder: device, reason and due date (YYYY-MM-DD). */
   assetId?: string;
   assetName?: string;
@@ -678,6 +686,39 @@ function alertFor(
           return { title: "Shop", body: `Neuigkeit zu Bestellung${number}.` };
       }
     }
+    case "project": {
+      const project = input.projectTitle?.trim().slice(0, 80) || "ein Projekt";
+      if (input.projectEvent === "member_added") {
+        return {
+          title: "Neues Projekt",
+          body: tone(
+            formality,
+            `Du arbeitest jetzt im Projekt «${project}» mit.`,
+            `Sie arbeiten jetzt im Projekt «${project}» mit.`,
+          ),
+        };
+      }
+      const task = input.projectTaskTitle?.trim().slice(0, 80);
+      const count = input.projectTaskCount ?? 0;
+      return {
+        title:
+          count > 1
+            ? "Projektaufgaben zugewiesen"
+            : "Projektaufgabe zugewiesen",
+        body:
+          count > 1
+            ? tone(
+                formality,
+                `Dir wurden ${count} Aufgaben im Projekt «${project}» zugewiesen.`,
+                `Ihnen wurden ${count} Aufgaben im Projekt «${project}» zugewiesen.`,
+              )
+            : tone(
+                formality,
+                `${task ? `«${task}»` : "Eine Aufgabe"} im Projekt «${project}» wurde dir zugewiesen.`,
+                `${task ? `«${task}»` : "Eine Aufgabe"} im Projekt «${project}» wurde Ihnen zugewiesen.`,
+              ),
+      };
+    }
     case "service_task": {
       const title =
         input.serviceTaskTitle?.trim().slice(0, 80) || "Eine Serviceaufgabe";
@@ -902,6 +943,15 @@ export function buildApnsPayload(
   }
   if (input.kind === "service_task" && input.occurrenceId) {
     data.occurrenceId = input.occurrenceId;
+  }
+  // Project: only opaque ids, so the app can open it once it has the screen.
+  if (input.kind === "project") {
+    if (input.projectId && PAYLOAD_UUID.test(input.projectId)) {
+      data.projectId = input.projectId;
+    }
+    if (input.projectTaskId && PAYLOAD_UUID.test(input.projectTaskId)) {
+      data.projectTaskId = input.projectTaskId;
+    }
   }
   if (input.kind === "infrastructure" && input.assetId) {
     data.assetId = input.assetId;

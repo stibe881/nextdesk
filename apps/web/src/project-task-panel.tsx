@@ -1,4 +1,4 @@
-import { Paperclip, Pencil, Trash2, X } from "lucide-react";
+import { Copy, Paperclip, Pencil, Trash2, X } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -666,6 +666,13 @@ export function TaskPanel({
     }
   };
 
+  // The copy lands right below the original and opens for editing.
+  const duplicate = async () => {
+    const result = (await run({ type: "duplicateTask", taskId: task.id })) as
+      { taskId?: unknown } | undefined;
+    if (typeof result?.taskId === "string") onOpenTask(result.taskId);
+  };
+
   return (
     <aside
       aria-label={`${TASK_KIND_LABELS[task.kind]} ${task.title}`}
@@ -1321,6 +1328,19 @@ export function TaskPanel({
 
       {canEdit ? (
         <footer className="pj-panel__foot">
+          <button
+            className="pj-button"
+            onClick={() => void duplicate()}
+            title={
+              hasChildren
+                ? "Kopie samt Unterelementen direkt darunter anlegen"
+                : "Kopie direkt darunter anlegen"
+            }
+            type="button"
+          >
+            <Copy aria-hidden="true" size={14} />
+            Duplizieren
+          </button>
           <button
             className="pj-button pj-button--danger"
             onClick={() => void remove()}

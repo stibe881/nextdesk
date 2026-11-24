@@ -274,3 +274,41 @@ Deno.test("Externe Störung: Update und Behoben haben eigene Texte", () => {
   assertEquals(resolved.subject, "Externe Störung behoben: Claude");
   assertStringIncludes(resolved.body, "als behoben");
 });
+
+Deno.test(
+  "project mails name the project, the task and who added the person",
+  () => {
+    const added = notificationEmailText({
+      kind: "project.member_added",
+      payload: { projectTitle: "Netz Bern", actorName: "Lea Leitung" },
+      ticketNumber: null,
+      ticketSubject: null,
+    });
+    assertEquals(added.title, "Neues Projekt: Netz Bern");
+    assertStringIncludes(
+      added.message,
+      "Lea Leitung hat dich zum Projekt «Netz Bern» hinzugefügt.",
+    );
+
+    const task = notificationEmailText({
+      kind: "project.task_assigned",
+      payload: { projectTitle: "Netz Bern", taskTitle: "Switch tauschen" },
+      ticketNumber: null,
+      ticketSubject: null,
+      formality: "sie",
+    });
+    assertEquals(task.title, "Projektaufgabe zugewiesen: Switch tauschen");
+    assertStringIncludes(
+      task.message,
+      "«Switch tauschen» im Projekt «Netz Bern» wurde Ihnen zugewiesen.",
+    );
+
+    const several = notificationEmailText({
+      kind: "project.task_assigned",
+      payload: { projectTitle: "Netz Bern", taskCount: 3 },
+      ticketNumber: null,
+      ticketSubject: null,
+    });
+    assertEquals(several.title, "3 Projektaufgaben zugewiesen");
+  },
+);

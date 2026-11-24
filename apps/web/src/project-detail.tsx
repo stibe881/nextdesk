@@ -76,6 +76,7 @@ const EVENT_LABELS: Record<string, string> = {
   "project.archived": "Projekt archiviert",
   "project.restored": "Projekt aus dem Archiv geholt",
   "task.created": "Element angelegt",
+  "task.duplicated": "Element dupliziert",
   "task.updated": "Element geändert",
   "task.deleted": "Element gelöscht",
   "task.bulk_updated": "Mehrere Elemente geändert",
@@ -1189,6 +1190,7 @@ function TeamTab({
 // ---------------------------------------------------------------------------
 
 export function ProjectDetail({
+  initialTaskId = null,
   onBack,
   onOpenTicket,
   options,
@@ -1196,6 +1198,8 @@ export function ProjectDetail({
   projectId,
   tenantId,
 }: {
+  /** Element whose panel is open from the start. */
+  initialTaskId?: string | null;
   onBack: () => void;
   onOpenTicket?: ((ticketId: string) => void) | undefined;
   options: ProjectOptions | null;
@@ -1205,7 +1209,7 @@ export function ProjectDetail({
 }) {
   const [data, setData] = useState<ProjectDetailData | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
-  const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(initialTaskId);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);

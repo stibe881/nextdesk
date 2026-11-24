@@ -15,6 +15,7 @@ export const MOBILE_FEATURE_KEYS = [
   "service.tasks",
   "monitoring.native",
   "ipam.management",
+  "projects.management",
 ] as const;
 
 export type MobileFeatureKey = (typeof MOBILE_FEATURE_KEYS)[number];
@@ -35,6 +36,7 @@ const DISABLED_FEATURES: MobileFeatureFlags = {
   "service.tasks": false,
   "monitoring.native": false,
   "ipam.management": false,
+  "projects.management": false,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

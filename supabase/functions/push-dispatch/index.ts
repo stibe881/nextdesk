@@ -85,7 +85,10 @@ export function payloadKind(
   | "requester_reminder"
   | "children_done"
   | "kudos"
+  | "project"
   | "security_report" {
+  // Same setting as assigned tickets, but its own wording.
+  if (kind.startsWith("project.")) return "project";
   if (kind === "ticket.department_question.asked") {
     return "department_question_asked";
   }
@@ -457,6 +460,27 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
         : {}),
     };
   }
+  let project: Record<string, string | number> = {};
+  if (row.kind.startsWith("project.") && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const payload = notification?.payload ?? {};
+    project = { projectEvent: row.kind.slice("project.".length) };
+    for (const [from, to] of [
+      ["projectId", "projectId"],
+      ["projectTitle", "projectTitle"],
+      ["taskId", "projectTaskId"],
+      ["taskTitle", "projectTaskTitle"],
+    ]) {
+      if (typeof payload[from] === "string") project[to] = payload[from];
+    }
+    if (Number.isInteger(payload.taskCount)) {
+      project.projectTaskCount = payload.taskCount;
+    }
+  }
   let infrastructure: Record<string, string> = {};
   if (preferenceCategory === "infrastructure" && row.notification_id) {
     const { data: notification } = await admin
@@ -636,6 +660,7 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
       badge,
       ...shop,
       ...serviceTask,
+      ...project,
       ...infrastructure,
       ...watched,
       ...ruleReminder,

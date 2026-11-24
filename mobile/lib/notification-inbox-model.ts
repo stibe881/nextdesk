@@ -34,6 +34,7 @@ export type InboxIcon =
   | "alarm-outline"
   | "checkmark-circle-outline"
   | "repeat-outline"
+  | "albums-outline"
   | "notifications-outline";
 
 export type InboxPresentation = {
@@ -160,6 +161,7 @@ export function pushKindForNotification(kind: string): string {
   if (kind.startsWith("service_task.")) return "service_task";
   if (IPAM_KINDS.has(kind)) return "ipam";
   if (kind.startsWith("monitoring.")) return "incident";
+  if (kind.startsWith("project.")) return "project";
   return "";
 }
 
@@ -195,6 +197,12 @@ export function inboxNavigationData(
   for (const [target, source] of ids) {
     const value = payloadId(payload, source);
     if (value) data[target] = value;
+  }
+  if (kind === "project") {
+    const projectId = payloadId(payload, "projectId");
+    const taskId = payloadId(payload, "taskId");
+    if (projectId) data.projectId = projectId;
+    if (taskId) data.projectTaskId = taskId;
   }
   if (kind === "ipam") {
     data.ipamEvent =
@@ -239,6 +247,7 @@ const titles = (): Record<string, [string, InboxIcon]> => ({
   inventory_low_stock: ["Lager", "cube-outline"],
   shop: ["Shop", "bag-handle-outline"],
   service_task: ["Serviceaufgabe", "construct-outline"],
+  project: ["Projekt", "albums-outline"],
   infrastructure: ["Infrastruktur", "server-outline"],
   ipam: ["IP-Adressverwaltung", "git-network-outline"],
   incident: ["Störung", "pulse-outline"],
@@ -255,6 +264,8 @@ const SPECIFIC_TITLES: Record<string, string> = {
   "inventory.count_due": "Inventur fällig",
   "service_task.due": "Serviceaufgabe fällig",
   "service_task.overdue": "Serviceaufgabe überfällig",
+  "project.member_added": "Zu einem Projekt hinzugefügt",
+  "project.task_assigned": "Projektaufgabe zugewiesen",
   "ipam.agent_offline": "Netzwerkagent offline",
   "ipam.reservation_expiring": "Reservierung läuft ab",
   "ticket.sla.supervisor_no_response": "Team: Ticket ohne Antwort",
@@ -293,6 +304,16 @@ export function inboxPresentation(
     detail = [number, name].filter(Boolean).join(" · ") || null;
   } else if (kind === "service_task") {
     detail = text(payload.title, 80);
+  } else if (kind === "project") {
+    const count =
+      typeof payload.taskCount === "number" ? payload.taskCount : null;
+    detail =
+      [
+        text(payload.projectTitle, 80),
+        text(payload.taskTitle, 80) ?? (count ? `${count} Aufgaben` : null),
+      ]
+        .filter(Boolean)
+        .join(" · ") || null;
   } else if (kind === "infrastructure") {
     detail = text(payload.assetName, 80);
   } else if (kind === "ipam") {

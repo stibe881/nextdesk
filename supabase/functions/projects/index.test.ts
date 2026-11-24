@@ -926,6 +926,121 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "people are told when they join a project or get a task",
+  async () => {
+    const { as, db } = world();
+    const lead = as(LEAD);
+    const ids = await plan(lead);
+    const sent = () =>
+      db.rows("ticket_notifications").map((row) => {
+        const payload = row.payload as Row;
+        return [
+          row.user_id,
+          row.kind,
+          payload.taskTitle ?? payload.taskCount ?? payload.role,
+        ];
+      });
+
+    // New in the project: one message; a change of role: none.
+    await lead({
+      type: "setMember",
+      projectId: ids.projectId,
+      userId: MEMBER,
+      role: "member",
+    });
+    await lead({
+      type: "setMember",
+      projectId: ids.projectId,
+      userId: MEMBER,
+      role: "manager",
+    });
+    assertEquals(sent(), [[MEMBER, "project.member_added", "member"]]);
+    const first = db.rows("ticket_notifications")[0];
+    assertEquals(first.ticket_id, null);
+    assertEquals((first.payload as Row).projectTitle, "Netz Bern");
+    assertEquals((first.payload as Row).actorName, "Lea Leitung");
+
+    // Assigned to someone else: a message; to oneself or unchanged: none.
+    await lead({ type: "updateTask", taskId: ids.first, assigneeId: MEMBER });
+    await lead({
+      type: "updateTask",
+      taskId: ids.first,
+      assigneeId: MEMBER,
+      status: "in_progress",
+    });
+    await lead({ type: "updateTask", taskId: ids.second, assigneeId: LEAD });
+    await lead({
+      type: "createTask",
+      projectId: ids.projectId,
+      title: "Abnehmen",
+      assigneeId: READER,
+    });
+    assertEquals(sent().slice(1), [
+      [MEMBER, "project.task_assigned", "Konfigurieren"],
+      [READER, "project.task_assigned", "Abnehmen"],
+    ]);
+
+    // Several at once: a single message with the number of tasks.
+    db.tables.set("ticket_notifications", []);
+    await lead({
+      type: "bulkUpdateTasks",
+      projectId: ids.projectId,
+      taskIds: [ids.first, ids.second, ids.milestone],
+      patch: { assigneeId: MEMBER },
+    });
+    assertEquals(sent(), [[MEMBER, "project.task_assigned", 2]]);
+  },
+);
+
+Deno.test(
+  "an element is copied below the original with all it holds",
+  async () => {
+    const { as, db } = world();
+    const lead = as(LEAD);
+    const ids = await plan(lead);
+    await lead({ type: "updateTask", taskId: ids.first, status: "done" });
+    await lead({
+      type: "addChecklistItem",
+      taskId: ids.first,
+      description: "Backup",
+    });
+    await lead({
+      type: "addDependency",
+      projectId: ids.projectId,
+      predecessorId: ids.first,
+      successorId: ids.second,
+    });
+    const before = db.rows("project_task_dependencies").length;
+
+    const result = await lead({ type: "duplicateTask", taskId: ids.phase });
+    assertEquals(result.copied, 3);
+    const detail = await lead({ type: "getProject", projectId: ids.projectId });
+    const tasks = detail.tasks as Row[];
+    const top = tasks
+      .filter((task) => task.parentId === null)
+      .sort((a, b) => (a.position as number) - (b.position as number))
+      .map((task) => task.title);
+    assertEquals(top, ["Umsetzung", "Umsetzung (Kopie)", "Abnahme"]);
+    const copies = tasks.filter((task) => task.parentId === result.taskId);
+    assertEquals(copies.map((task) => task.title).sort(), [
+      "Einbauen",
+      "Konfigurieren",
+    ]);
+    // Copies start open, with the checklist unticked and the link between them.
+    assert(copies.every((task) => task.status === "todo"));
+    const configured = copies.find((task) => task.title === "Konfigurieren")!;
+    assertEquals(configured.checklist, [
+      {
+        id: (configured.checklist as Row[])[0].id,
+        description: "Backup",
+        done: false,
+      },
+    ]);
+    assertEquals(db.rows("project_task_dependencies").length, before + 1);
+  },
+);
+
 Deno.test("rows move to a new place and into or out of a phase", async () => {
   const { as } = world();
   const lead = as(LEAD);

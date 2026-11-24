@@ -1350,6 +1350,10 @@
 
 .pj-panel__foot {
   border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
   padding-top: 14px;
 }
 

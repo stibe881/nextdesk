@@ -407,12 +407,15 @@ function Templates({
 export function Projects({
   access,
   focusProjectId,
+  focusTaskId,
   onFocusHandled,
   onOpenTicket,
   tenantId,
 }: {
   access: ProjectModuleAccess;
   focusProjectId?: string | null;
+  /** Element to open inside the focused project (from a notification). */
+  focusTaskId?: string | null;
   onFocusHandled?: () => void;
   onOpenTicket?: ((ticketId: string) => void) | undefined;
   tenantId: string;
@@ -422,6 +425,7 @@ export function Projects({
   const [options, setOptions] = useState<ProjectOptions | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [form, setForm] = useState<ProjectFormState | null>(null);
   const [error, setError] = useState("");
   const version = useRef(0);
@@ -463,15 +467,18 @@ export function Projects({
   useEffect(() => {
     if (!focusProjectId) return;
     setOpenId(focusProjectId);
+    setOpenTaskId(focusTaskId ?? null);
     onFocusHandled?.();
-  }, [focusProjectId, onFocusHandled]);
+  }, [focusProjectId, focusTaskId, onFocusHandled]);
 
   if (openId) {
     return (
       <ProjectDetail
-        key={openId}
+        initialTaskId={openTaskId}
+        key={`${openId}-${openTaskId ?? ""}`}
         onBack={() => {
           setOpenId(null);
+          setOpenTaskId(null);
           void load();
           if (!access.guestOnly) void loadOptions();
         }}

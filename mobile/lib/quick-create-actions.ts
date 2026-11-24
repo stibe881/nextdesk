@@ -76,4 +76,11 @@ export const QUICK_OPEN: readonly QuickCreate[] = [
     icon: "git-network-outline",
     feature: "ipam.management",
   },
+  {
+    id: "projects",
+    title: "Projekte",
+    href: "/projects",
+    icon: "albums-outline",
+    feature: "projects.management",
+  },
 ];
