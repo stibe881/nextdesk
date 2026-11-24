@@ -695,7 +695,12 @@ function alertFor(
     case "onboarding": {
       const person = input.onboardingEmployeeName?.trim().slice(0, 80);
       const label =
-        input.onboardingEntryKind === "offboarding" ? "Austritt" : "Eintritt";
+        input.onboardingEntryKind === "offboarding"
+          ? "Austritt"
+          : input.onboardingEntryKind === "change"
+            ? "Mutation"
+            : "Eintritt";
+      const article = label === "Mutation" ? "Die" : "Der";
       const of = person ? ` von ${person}` : "";
       const standIn = input.onboardingDelegatedFor?.trim().slice(0, 80);
       return {
@@ -703,13 +708,13 @@ function alertFor(
         body: standIn
           ? tone(
               formality,
-              `Der ${label}${of} wurde dir als Stellvertretung für ${standIn} zugewiesen.`,
-              `Der ${label}${of} wurde Ihnen als Stellvertretung für ${standIn} zugewiesen.`,
+              `${article} ${label}${of} wurde dir als Stellvertretung für ${standIn} zugewiesen.`,
+              `${article} ${label}${of} wurde Ihnen als Stellvertretung für ${standIn} zugewiesen.`,
             )
           : tone(
               formality,
-              `Der ${label}${of} wurde dir zugewiesen.`,
-              `Der ${label}${of} wurde Ihnen zugewiesen.`,
+              `${article} ${label}${of} wurde dir zugewiesen.`,
+              `${article} ${label}${of} wurde Ihnen zugewiesen.`,
             ),
       };
     }

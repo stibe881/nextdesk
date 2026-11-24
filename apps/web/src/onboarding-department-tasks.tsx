@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
-type Kind = "onboarding" | "offboarding";
+type Kind = "onboarding" | "offboarding" | "change";
 type Department = { id: string; name: string };
 type DepartmentTask = {
   id: string;
@@ -19,9 +19,16 @@ type DepartmentTask = {
 const KIND_LABEL: Record<Kind, string> = {
   onboarding: "Eintritt",
   offboarding: "Austritt",
+  change: "Mutation",
 };
 
 function offsetLabel(days: number, kind: Kind) {
+  if (kind === "change") {
+    if (days === 0) return "am Stichtag der Mutation";
+    return days < 0
+      ? `${-days} Tage vor dem Stichtag`
+      : `${days} Tage nach dem Stichtag`;
+  }
   const reference = kind === "offboarding" ? "Austritt" : "Eintritt";
   if (days === 0) return `am Tag des ${reference}s`;
   return days < 0
@@ -248,7 +255,9 @@ export function OnboardingDepartmentTasks({ tenantId }: { tenantId: string }) {
             placeholder={
               kind === "offboarding"
                 ? "z. B. Schlüssel und Badge zurücknehmen"
-                : "z. B. Arbeitsplatz einrichten"
+                : kind === "change"
+                  ? "z. B. Namensschild am Büro anpassen"
+                  : "z. B. Arbeitsplatz einrichten"
             }
             required
             value={draft.title}

@@ -29,6 +29,16 @@ import {
 } from "./form-kit";
 import "./onboarding.css";
 import { confirmDialog } from "./app-dialog";
+import {
+  CHANGE_FIELDS,
+  CHANGE_TYPE_LABELS,
+  CHANGE_TYPES,
+  changeDetailsFor,
+  changeSummary,
+  missingChangeTypes,
+  type ChangeDetails,
+  type ChangeType,
+} from "./lib/onboarding-change";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
@@ -57,7 +67,9 @@ type Entry = {
   managerName: string;
   ictResponsibleName: string;
   templateId: string;
-  kind?: "onboarding" | "offboarding";
+  kind?: EntryKind;
+  /** Mutationsarten einer Mutation. */
+  changeTypes?: ChangeType[];
   canEdit?: boolean;
   /** ICT-Verantwortung (Agent), änderbar mit «canAssign». */
   ictResponsibleUserId?: string;
@@ -95,8 +107,23 @@ const emptyDraft = () => ({
   managerUserId: "",
   ictResponsibleUserId: "",
   templateId: "",
-  kind: "onboarding" as "onboarding" | "offboarding",
+  kind: "onboarding" as EntryKind,
+  changeTypes: [] as ChangeType[],
+  changeDetails: {} as ChangeDetails,
 });
+type EntryKind = "onboarding" | "offboarding" | "change";
+/** «Eintritt», «Austritt» oder «Mutation». */
+export function entryKindLabel(kind: EntryKind | undefined): string {
+  return kind === "offboarding"
+    ? "Austritt"
+    : kind === "change"
+      ? "Mutation"
+      : "Eintritt";
+}
+/** Mit Artikel, z. B. «Der Eintritt» bzw. «Die Mutation». */
+function entryKindWithArticle(kind: EntryKind | undefined): string {
+  return `${kind === "change" ? "Die" : "Der"} ${entryKindLabel(kind)}`;
+}
 function isWorkspace(value: unknown): value is Workspace {
   return Boolean(
     value &&
@@ -1105,12 +1132,36 @@ export function Onboarding({
   async function createEntry(event: FormEvent) {
     event.preventDefault();
     if (!supabase) return;
+    const isChange = draft.kind === "change";
+    if (isChange) {
+      if (!draft.changeTypes.length) {
+        setErrorMessage(
+          tn(
+            "Bitte wähle mindestens eine Mutationsart.",
+            "Bitte wählen Sie mindestens eine Mutationsart.",
+          ),
+        );
+        return;
+      }
+      const missing = missingChangeTypes(
+        draft.changeTypes,
+        draft.changeDetails,
+      );
+      if (missing.length) {
+        setErrorMessage(
+          `Bitte die neue Angabe ergänzen: ${missing
+            .map((type) => CHANGE_TYPE_LABELS[type])
+            .join(", ")}.`,
+        );
+        return;
+      }
+    }
     if (
       !draft.employeeName.trim() ||
       !draft.startsOn ||
       !draft.managerUserId ||
       !draft.ictResponsibleUserId ||
-      !draft.templateId
+      (!isChange && !draft.templateId)
     ) {
       setErrorMessage(
         tn(
@@ -1133,8 +1184,16 @@ export function Onboarding({
           location: draft.location.trim() || null,
           managerUserId: draft.managerUserId,
           ictResponsibleUserId: draft.ictResponsibleUserId,
-          templateId: draft.templateId,
           kind: draft.kind,
+          ...(isChange
+            ? {
+                changeTypes: draft.changeTypes,
+                changeDetails: changeDetailsFor(
+                  draft.changeTypes,
+                  draft.changeDetails,
+                ),
+              }
+            : { templateId: draft.templateId }),
         },
       });
       if (error) throw error;
@@ -1143,7 +1202,9 @@ export function Onboarding({
       setNotice(
         draft.kind === "offboarding"
           ? "Der Austritt wurde geplant. Die Aufgaben sind relativ zum Austrittsdatum terminiert."
-          : "Der Eintritt wurde geplant. Die Aufgaben sind relativ zum Eintrittsdatum terminiert.",
+          : draft.kind === "change"
+            ? "Die Mutation wurde geplant. Die Aufgaben sind relativ zum Stichtag terminiert."
+            : "Der Eintritt wurde geplant. Die Aufgaben sind relativ zum Eintrittsdatum terminiert.",
       );
       await load(true);
     } catch (error) {
@@ -1160,13 +1221,10 @@ export function Onboarding({
       setPending(false);
     }
   }
-  async function deleteEntry(
-    entryId: string,
-    name: string,
-    kind: "onboarding" | "offboarding",
-  ) {
+  async function deleteEntry(entryId: string, name: string, kind: EntryKind) {
     if (!supabase) return;
-    const label = kind === "offboarding" ? "Austritt" : "Eintritt";
+    const label = entryKindLabel(kind);
+    const withArticle = entryKindWithArticle(kind);
     if (
       !(await confirmDialog(
         `${label} von «${name}» endgültig löschen? Alle Aufgaben, Ausnahmetickets und die gespeicherte Meldung werden ebenfalls entfernt.`,
@@ -1183,13 +1241,13 @@ export function Onboarding({
         body: { type: "deleteEntry", tenantId, entryId },
       });
       if (error) throw error;
-      setNotice(`Der ${label} von «${name}» wurde gelöscht.`);
+      setNotice(`${withArticle} von «${name}» wurde gelöscht.`);
       await load(true);
     } catch (error) {
       setErrorMessage(
         await functionErrorMessage(
           error,
-          `Der ${label} konnte nicht gelöscht werden.`,
+          `${withArticle} konnte nicht gelöscht werden.`,
         ),
       );
     } finally {
@@ -1198,7 +1256,7 @@ export function Onboarding({
   }
   async function assignEntry(entry: Entry, userId: string) {
     if (!supabase || !userId || userId === entry.ictResponsibleUserId) return;
-    const label = entry.kind === "offboarding" ? "Austritt" : "Eintritt";
+    const label = entryKindWithArticle(entry.kind);
     setPending(true);
     setErrorMessage("");
     setNotice("");
@@ -1217,15 +1275,15 @@ export function Onboarding({
         typeof result.requestedName === "string" ? result.requestedName : null;
       setNotice(
         result.redirected === true && assignedName
-          ? `${requestedName ?? "Die gewählte Person"} ist abwesend. Der ${label} von «${entry.employeeName}» ging an die Stellvertretung ${assignedName}.`
-          : `Der ${label} von «${entry.employeeName}» ist jetzt ${assignedName ?? "der gewählten Person"} zugewiesen.`,
+          ? `${requestedName ?? "Die gewählte Person"} ist abwesend. ${label} von «${entry.employeeName}» ging an die Stellvertretung ${assignedName}.`
+          : `${label} von «${entry.employeeName}» ist jetzt ${assignedName ?? "der gewählten Person"} zugewiesen.`,
       );
       await load(true);
     } catch (error) {
       setErrorMessage(
         await functionErrorMessage(
           error,
-          `Der ${label} konnte nicht zugewiesen werden.`,
+          `${label} konnte nicht zugewiesen werden.`,
         ),
       );
     } finally {
@@ -1330,7 +1388,7 @@ export function Onboarding({
               onClick={() => setEditor(true)}
               type="button"
             >
-              <Plus size={17} /> Eintritt oder Austritt planen
+              <Plus size={17} /> Eintritt, Austritt oder Mutation planen
             </button>
           ) : null}
           {workspace?.permissions.canManage ? (
@@ -1382,33 +1440,52 @@ export function Onboarding({
       ) : null}
       {editor && canRequest ? (
         <FormDialog
-          eyebrow="Neuer Eintritt"
+          eyebrow={draft.kind === "change" ? "Neue Mutation" : "Neuer Eintritt"}
           error={errorMessage}
           onClose={() => setEditor(false)}
           onSubmit={createEntry}
           side={
             <FormSummary
-              eyebrow={draft.kind === "offboarding" ? "Austritt" : "Eintritt"}
+              eyebrow={entryKindLabel(draft.kind)}
               rows={[
                 [
-                  draft.kind === "offboarding" ? "Austrittsdatum" : "Datum",
+                  draft.kind === "offboarding"
+                    ? "Austrittsdatum"
+                    : draft.kind === "change"
+                      ? "Gültig ab"
+                      : "Datum",
                   draft.startsOn,
                 ],
                 ["Abteilung", draft.organisationUnit],
                 ["Standort", draft.location],
-                [
-                  "Vorlage",
-                  workspace?.templates.find(
-                    (template) => template.id === draft.templateId,
-                  )?.name ?? "",
-                ],
+                draft.kind === "change"
+                  ? [
+                      "Art",
+                      draft.changeTypes
+                        .map((type) => CHANGE_TYPE_LABELS[type])
+                        .join(", "),
+                    ]
+                  : [
+                      "Vorlage",
+                      workspace?.templates.find(
+                        (template) => template.id === draft.templateId,
+                      )?.name ?? "",
+                    ],
               ]}
               title={draft.employeeName}
             />
           }
-          submitLabel="Eintritt planen"
+          submitLabel={
+            draft.kind === "change"
+              ? "Mutation planen"
+              : draft.kind === "offboarding"
+                ? "Austritt planen"
+                : "Eintritt planen"
+          }
           submitting={pending}
-          title="Onboarding planen"
+          title={
+            draft.kind === "change" ? "Mutation planen" : "Onboarding planen"
+          }
         >
           <FormCard title="Person">
             <FormGrid cols={3}>
@@ -1419,14 +1496,16 @@ export function Onboarding({
                     setDraft({
                       ...draft,
                       kind:
-                        event.target.value === "offboarding"
-                          ? "offboarding"
+                        event.target.value === "offboarding" ||
+                        event.target.value === "change"
+                          ? event.target.value
                           : "onboarding",
                     })
                   }
                 >
                   <option value="onboarding">Eintritt</option>
                   <option value="offboarding">Austritt</option>
+                  <option value="change">Mutation</option>
                 </select>
               </FormField>
               <FormField label="Name" required>
@@ -1438,14 +1517,20 @@ export function Onboarding({
                   onChange={(event) =>
                     setDraft({ ...draft, employeeName: event.target.value })
                   }
-                  placeholder="Vor- und Nachname"
+                  placeholder={
+                    draft.kind === "change"
+                      ? "Bisheriger Name"
+                      : "Vor- und Nachname"
+                  }
                 />
               </FormField>
               <FormField
                 label={
                   draft.kind === "offboarding"
                     ? "Austrittsdatum"
-                    : "Eintrittsdatum"
+                    : draft.kind === "change"
+                      ? "Gültig ab"
+                      : "Eintrittsdatum"
                 }
                 required
               >
@@ -1460,7 +1545,89 @@ export function Onboarding({
               </FormField>
             </FormGrid>
           </FormCard>
-          <FormCard title="Einsatz">
+          {draft.kind === "change" ? (
+            <FormCard title="Mutation">
+              <div
+                aria-label="Mutationsarten"
+                className="onboarding__change-types"
+                role="group"
+              >
+                {CHANGE_TYPES.map((type) => {
+                  const checked = draft.changeTypes.includes(type);
+                  return (
+                    <label
+                      className={`onboarding__change-type${checked ? " is-checked" : ""}`}
+                      key={type}
+                    >
+                      <input
+                        checked={checked}
+                        onChange={() =>
+                          setDraft({
+                            ...draft,
+                            changeTypes: checked
+                              ? draft.changeTypes.filter(
+                                  (candidate) => candidate !== type,
+                                )
+                              : CHANGE_TYPES.filter(
+                                  (candidate) =>
+                                    candidate === type ||
+                                    draft.changeTypes.includes(candidate),
+                                ),
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      {CHANGE_TYPE_LABELS[type]}
+                    </label>
+                  );
+                })}
+              </div>
+              {draft.changeTypes.map((type) => (
+                <div className="onboarding__change-fields" key={type}>
+                  <h5>{CHANGE_TYPE_LABELS[type]}</h5>
+                  <FormGrid cols={CHANGE_FIELDS[type].length > 1 ? 2 : 1}>
+                    {CHANGE_FIELDS[type].map((field) => (
+                      <FormField key={field.key} label={field.label}>
+                        <input
+                          maxLength={200}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              changeDetails: {
+                                ...draft.changeDetails,
+                                [field.key]: event.target.value,
+                              },
+                            })
+                          }
+                          placeholder={field.placeholder}
+                          value={draft.changeDetails[field.key] ?? ""}
+                        />
+                      </FormField>
+                    ))}
+                  </FormGrid>
+                </div>
+              ))}
+              <FormField label="Bemerkung">
+                <textarea
+                  maxLength={1000}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      changeDetails: {
+                        ...draft.changeDetails,
+                        note: event.target.value,
+                      },
+                    })
+                  }
+                  rows={2}
+                  value={draft.changeDetails.note ?? ""}
+                />
+              </FormField>
+            </FormCard>
+          ) : null}
+          <FormCard
+            title={draft.kind === "change" ? "Aktueller Einsatz" : "Einsatz"}
+          >
             <FormGrid cols={2}>
               <FormField label="Abteilung / Angebot" required>
                 <input
@@ -1527,28 +1694,36 @@ export function Onboarding({
               </FormField>
             </FormGrid>
           </FormCard>
-          <FormCard title="Vorlage">
-            <FormField label="Onboarding-Vorlage" required>
-              <select
-                required
-                value={draft.templateId}
-                onChange={(event) =>
-                  setDraft({ ...draft, templateId: event.target.value })
-                }
-              >
-                {workspace?.templates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                  </option>
-                ))}
-              </select>
-            </FormField>
+          {draft.kind === "change" ? (
             <FormNote>
-              Die Aufgaben werden jetzt einmalig relativ zum Eintrittsdatum
-              terminiert. Es gibt keinen Scheduler und keine automatische
-              Ticketanlage.
+              Die Aufgaben kommen aus der Vorlage pro Mutationsart und aus den
+              Abteilungsaufgaben der Art «Mutation» und werden relativ zum
+              Stichtag «Gültig ab» terminiert.
             </FormNote>
-          </FormCard>
+          ) : (
+            <FormCard title="Vorlage">
+              <FormField label="Onboarding-Vorlage" required>
+                <select
+                  required
+                  value={draft.templateId}
+                  onChange={(event) =>
+                    setDraft({ ...draft, templateId: event.target.value })
+                  }
+                >
+                  {workspace?.templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormNote>
+                Die Aufgaben werden jetzt einmalig relativ zum Eintrittsdatum
+                terminiert. Es gibt keinen Scheduler und keine automatische
+                Ticketanlage.
+              </FormNote>
+            </FormCard>
+          )}
         </FormDialog>
       ) : null}
       {exceptionTarget ? (
@@ -1770,9 +1945,7 @@ export function Onboarding({
                         <span
                           className={`onboarding__kind onboarding__kind--${entry.kind ?? "onboarding"}`}
                         >
-                          {entry.kind === "offboarding"
-                            ? "Austritt"
-                            : "Eintritt"}
+                          {entryKindLabel(entry.kind)}
                         </span>
                         {entry.delegatedFor ? (
                           <span
@@ -1815,6 +1988,23 @@ export function Onboarding({
                           ICT: {entry.ictResponsibleName}
                         </li>
                       </ul>
+                      {entry.kind === "change" && entry.changeTypes?.length ? (
+                        <ul
+                          aria-label="Mutation"
+                          className="onboarding__change-summary"
+                        >
+                          {changeSummary(
+                            entry.changeTypes,
+                            entry.details ?? {},
+                            entry.employeeName,
+                          ).map((row) => (
+                            <li key={row.type}>
+                              <strong>{row.label}</strong>
+                              {row.text ? ` ${row.text}` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
                     <div
                       className={`onboarding__entry-progress${state.total > 0 && state.done === state.total ? " is-done" : ""}`}
@@ -2129,9 +2319,7 @@ export function Onboarding({
                               type="button"
                             >
                               <Trash2 aria-hidden="true" size={15} />
-                              {entry.kind === "offboarding"
-                                ? "Austritt löschen"
-                                : "Eintritt löschen"}
+                              {`${entryKindLabel(entry.kind)} löschen`}
                             </button>
                           ) : null}
                         </div>

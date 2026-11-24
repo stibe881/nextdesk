@@ -1,4 +1,5 @@
 import { invokeNextDesk, loadCurrentTenant } from "@/lib/nextdesk-client";
+import { CHANGE_TYPES, type ChangeType } from "@/lib/onboarding-change";
 
 export type OnboardingTaskStatus =
   "open" | "in_progress" | "blocked" | "completed";
@@ -13,6 +14,10 @@ export type OnboardingTask = {
 };
 
 export type OnboardingEntry = {
+  /** Eintritt, Austritt oder Mutation. */
+  kind: "onboarding" | "offboarding" | "change";
+  /** Mutationsarten einer Mutation. */
+  changeTypes: ChangeType[];
   details: Record<string, unknown>;
   employeeName: string;
   id: string;
@@ -81,6 +86,15 @@ function entry(value: unknown): OnboardingEntry | null {
     return null;
   }
   return {
+    kind:
+      item.kind === "offboarding" || item.kind === "change"
+        ? item.kind
+        : "onboarding",
+    changeTypes: Array.isArray(item.changeTypes)
+      ? item.changeTypes.filter((type): type is ChangeType =>
+          (CHANGE_TYPES as readonly unknown[]).includes(type),
+        )
+      : [],
     details: record(item.details) ?? {},
     employeeName: item.employeeName,
     id: item.id,

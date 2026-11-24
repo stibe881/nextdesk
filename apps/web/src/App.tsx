@@ -1822,9 +1822,9 @@ function baseNotificationPresentation(
           "employeeName",
           120,
         );
-        const offboarding =
-          isRecord(notification.payload) &&
-          notification.payload.entryKind === "offboarding";
+        const entryKind = isRecord(notification.payload)
+          ? notification.payload.entryKind
+          : null;
         const by = notificationPayloadText(notification, "actorName", 80);
         const standIn = notificationPayloadText(
           notification,
@@ -1840,7 +1840,12 @@ function baseNotificationPresentation(
             .filter(Boolean)
             .join(" · "),
           Icon: ClipboardList,
-          title: offboarding ? "Austritt zugewiesen" : "Eintritt zugewiesen",
+          title:
+            entryKind === "offboarding"
+              ? "Austritt zugewiesen"
+              : entryKind === "change"
+                ? "Mutation zugewiesen"
+                : "Eintritt zugewiesen",
         };
       }
       if (notification.kind.startsWith("project.")) {

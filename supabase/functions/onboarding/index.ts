@@ -16,7 +16,56 @@ type Client = SupabaseContext["supabase"];
 type Admin = SupabaseContext["supabaseAdmin"];
 type Row = Record<string, unknown>;
 type TaskStatus = "open" | "in_progress" | "blocked" | "completed";
-type EntryKind = "onboarding" | "offboarding";
+type EntryKind = "onboarding" | "offboarding" | "change";
+/** Mutationsarten einer Mutation (kind «change»). */
+const CHANGE_TYPES = ["name", "department", "function", "location_workload"] as const;
+type ChangeType = (typeof CHANGE_TYPES)[number];
+/** Bisherige und neue Werte einer Mutation (in «details»). */
+const CHANGE_DETAIL_KEYS = [
+  "newName",
+  "previousDepartment",
+  "newDepartment",
+  "previousFunction",
+  "newFunction",
+  "previousLocation",
+  "newLocation",
+  "workload",
+  "note",
+] as const;
+/** Pflichtangabe pro Mutationsart. */
+const CHANGE_REQUIRED: Record<ChangeType, readonly string[]> = {
+  name: ["newName"],
+  department: ["newDepartment"],
+  function: ["newFunction"],
+  location_workload: ["newLocation", "workload"],
+};
+function entryKindOf(value: unknown): EntryKind {
+  return value === "offboarding" || value === "change" ? value : "onboarding";
+}
+function parseChange(
+  types: unknown,
+  details: unknown,
+): { changeTypes: ChangeType[]; changeDetails: Record<string, string> } | null {
+  if (!Array.isArray(types) || types.length < 1 || types.length > 4) return null;
+  if (!types.every((type) => (CHANGE_TYPES as readonly string[]).includes(String(type))))
+    return null;
+  const changeTypes = [...new Set(types as ChangeType[])];
+  if (typeof details !== "object" || details === null || Array.isArray(details))
+    return null;
+  const changeDetails: Record<string, string> = {};
+  for (const [key, value] of Object.entries(details as Record<string, unknown>)) {
+    if (!(CHANGE_DETAIL_KEYS as readonly string[]).includes(key)) return null;
+    if (value === null || value === undefined || value === "") continue;
+    const text = safeText(value, 1, key === "note" ? 1000 : 200);
+    if (text === null) return null;
+    changeDetails[key] = text;
+  }
+  // Pro Mutationsart muss mindestens eine der Angaben vorhanden sein.
+  for (const type of changeTypes) {
+    if (!CHANGE_REQUIRED[type].some((key) => changeDetails[key])) return null;
+  }
+  return { changeTypes, changeDetails };
+}
 type Action =
   | { type: "navigationSummary"; tenantId: string }
   | { type: "listWorkspace"; tenantId: string; focusEntryId?: string }
@@ -30,8 +79,10 @@ type Action =
       location: string | null;
       managerUserId: string;
       ictResponsibleUserId: string;
-      templateId: string;
+      templateId: string | null;
       kind: EntryKind;
+      changeTypes?: ChangeType[];
+      changeDetails?: Record<string, string>;
     }
   | { type: "listDepartmentTasks"; tenantId: string }
   | {
@@ -257,6 +308,10 @@ export function parseAction(value: unknown): Action | null {
     const employeeName = safeText(value.employeeName, 2, 160);
     const organisationUnit = safeText(value.organisationUnit, 2, 160);
     const location = safeText(value.location, 2, 160);
+    const isChange = value.kind === "change";
+    const change = isChange
+      ? parseChange(value.changeTypes, value.changeDetails)
+      : null;
     return isUuid(value.tenantId) &&
       employeeName !== null &&
       validDate(value.startsOn) &&
@@ -264,7 +319,12 @@ export function parseAction(value: unknown): Action | null {
       location !== null &&
       isUuid(value.managerUserId) &&
       isUuid(value.ictResponsibleUserId) &&
-      isUuid(value.templateId) &&
+      (isChange
+        ? change !== null &&
+          (value.templateId === undefined || value.templateId === null)
+        : isUuid(value.templateId) &&
+          value.changeTypes === undefined &&
+          value.changeDetails === undefined) &&
       onlyKeys(value, [
         "type",
         "tenantId",
@@ -276,10 +336,13 @@ export function parseAction(value: unknown): Action | null {
         "ictResponsibleUserId",
         "templateId",
         "kind",
+        "changeTypes",
+        "changeDetails",
       ]) &&
       (value.kind === undefined ||
         value.kind === "onboarding" ||
-        value.kind === "offboarding")
+        value.kind === "offboarding" ||
+        value.kind === "change")
       ? {
           type: value.type,
           tenantId: value.tenantId.toLowerCase(),
@@ -289,8 +352,13 @@ export function parseAction(value: unknown): Action | null {
           location,
           managerUserId: value.managerUserId.toLowerCase(),
           ictResponsibleUserId: value.ictResponsibleUserId.toLowerCase(),
-          templateId: value.templateId.toLowerCase(),
-          kind: value.kind === "offboarding" ? "offboarding" : "onboarding",
+          templateId: isChange ? null : String(value.templateId).toLowerCase(),
+          kind: isChange
+            ? "change"
+            : value.kind === "offboarding"
+              ? "offboarding"
+              : "onboarding",
+          ...(change ? change : {}),
         }
       : null;
   }
@@ -303,7 +371,9 @@ export function parseAction(value: unknown): Action | null {
     const title = safeText(value.title, 2, 240);
     return isUuid(value.tenantId) &&
       (value.id === null || isUuid(value.id)) &&
-      (value.kind === "onboarding" || value.kind === "offboarding") &&
+      (value.kind === "onboarding" ||
+        value.kind === "offboarding" ||
+        value.kind === "change") &&
       isUuid(value.departmentId) &&
       title !== null &&
       Number.isInteger(value.dueOffsetDays) &&
@@ -823,7 +893,7 @@ async function listDepartmentTasks(
     })),
     tasks: (data ?? []).map((row: Row) => ({
       id: String(row.id),
-      kind: row.kind === "offboarding" ? "offboarding" : "onboarding",
+      kind: entryKindOf(row.kind),
       departmentId: String(row.department_id),
       title: String(row.title),
       dueOffsetDays: Number(row.due_offset_days),
@@ -1043,7 +1113,7 @@ async function assignEntry(
         payload: {
           entryId: action.entryId,
           employeeName: String(entry.employee_name),
-          entryKind: entry.kind === "offboarding" ? "offboarding" : "onboarding",
+          entryKind: entryKindOf(entry.kind),
           startsOn: String(entry.starts_on),
           actorName: people.names.get(actorId) ?? null,
           ...(result.redirected === true
@@ -1188,7 +1258,7 @@ async function listWorkspace(
   let entriesQuery = admin
     .from("onboarding_entries")
     .select(
-      "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind, created_at",
+      "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind, created_at, change_types",
     )
     .eq("tenant_id", tenantId)
     .order("starts_on")
@@ -1232,7 +1302,7 @@ async function listWorkspace(
     const { data: focusedEntry, error: focusedEntryError } = await admin
       .from("onboarding_entries")
       .select(
-        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind, created_at",
+        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind, created_at, change_types",
       )
       .eq("tenant_id", tenantId)
       .eq("id", focusEntryId)
@@ -1352,8 +1422,13 @@ async function listWorkspace(
         peopleResult.names.get(String(entry.ict_responsible_user_id)) ??
         "ICT-Verantwortung",
       templateId: String(entry.template_id),
-      kind: entry.kind === "offboarding" ? "offboarding" : "onboarding",
+      kind: entryKindOf(entry.kind),
       ictResponsibleUserId: String(entry.ict_responsible_user_id),
+      changeTypes: Array.isArray(entry.change_types)
+        ? entry.change_types.filter((type: unknown) =>
+          (CHANGE_TYPES as readonly string[]).includes(String(type))
+        )
+        : [],
       canEdit:
         canManage ||
         [
@@ -1431,7 +1506,20 @@ async function createEntry(
     typeof delegate === "string" && isUuid(delegate)
       ? delegate
       : action.ictResponsibleUserId;
-  const { data, error } = await admin.rpc("create_onboarding_entry_with_kind", {
+  const { data, error } = action.kind === "change"
+    ? await admin.rpc("create_onboarding_change", {
+      p_tenant_id: action.tenantId,
+      p_employee_name: action.employeeName,
+      p_starts_on: action.startsOn,
+      p_organisation_unit: action.organisationUnit,
+      p_location: action.location,
+      p_manager_user_id: action.managerUserId,
+      p_ict_responsible_user_id: ictResponsibleUserId,
+      p_actor_id: actorId,
+      p_change_types: action.changeTypes ?? [],
+      p_details: action.changeDetails ?? {},
+    })
+    : await admin.rpc("create_onboarding_entry_with_kind", {
     p_tenant_id: action.tenantId,
     p_employee_name: action.employeeName,
     p_starts_on: action.startsOn,

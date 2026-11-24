@@ -1564,6 +1564,16 @@ Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 
 Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 
+### Wie erfasse ich eine Mutation, z. B. eine Namensänderung?
+
+1. Öffne unter **Planung und Betrieb** die **Eintritte** und klicke auf **Eintritt, Austritt oder Mutation planen**.
+2. Wähle bei **Art** die **Mutation**, trage den bisherigen Namen und den Stichtag (**Gültig ab**) ein.
+3. Wähle eine oder mehrere Mutationsarten: **Namensänderung**, **Abteilung/Angebot**, **Funktion/Rolle** oder **Standort/Pensum**, und fülle jeweils die neue Angabe aus (bei Wechseln auch die bisherige).
+4. Ergänze den aktuellen Einsatz, die Führungsperson und die ICT-Verantwortung und klicke auf **Mutation planen**.
+5. Die Aufgaben entstehen aus der Vorlage pro Mutationsart (z. B. Konto umbenennen, Mail-Alias, Signatur) und aus den Abteilungsaufgaben der Art «Mutation»; sie sind relativ zum Stichtag terminiert.
+
+Mehr dazu unter «Eintritte und Austritte».
+
 ### Wie hake ich Aufgaben eines Eintritts ab?
 
 1. Öffne unter **Planung und Betrieb** die **Eintritte**.
@@ -3912,6 +3922,8 @@ Arbeit» oder «Blockiert». Verzögert sich eine Aufgabe, verknüpfst du über 
 **Schraubenschlüssel** ein Ausnahmeticket; es erscheint dann unter der
 Aufgabe. Bei Eintritten aus einer Mail klappst du unten **Angaben aus der
 Eintrittsmeldung** auf. Die Eintrittsmeldung selbst (PDF) öffnest du mit **Eintrittsmeldung (PDF) öffnen**. Mit dem Recht, Eintritte zu verwalten, löschst du dort mit **Eintritt löschen** bzw. **Austritt löschen** den ganzen Eintritt samt Aufgaben; sie bleibt beim Eintritt gespeichert, auch wenn das Mail-Ticket entfällt. In der App steht auf der Startseite immer die Kachel **Eintritte**, auch ohne offene Eintritte («Keine offenen Eintritte»).
+
+**Mutationen.** Mit der Art **Mutation** erfasst du Änderungen bei bestehenden Mitarbeitenden, etwa eine Namensänderung nach einer Heirat oder einen Wechsel von Abteilung/Angebot, Funktion, Standort oder Pensum. In der Liste ist die Karte mit **Mutation** markiert und zeigt bisherige und neue Werte (z. B. «Namensänderung Anna Muster → Anna Meier»). Aufgaben, Zuweisung, Stellvertretung und Löschen funktionieren wie bei Eintritten. Unter **Abteilungsaufgaben** legst du mit der Art **Mutation** zusätzliche Aufgaben für Abteilungen fest.
 
 ![Eintritt mit Aufgaben nach Fälligkeit](images/ag-eintritte.jpg)
 

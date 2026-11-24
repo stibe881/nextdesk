@@ -1048,3 +1048,68 @@ button.onboarding__exception-button {
   font-size: 11px;
   font-weight: 700;
 }
+
+/* Mutationen */
+.onboarding__kind--change {
+  background: var(--info-soft, #eff8ff);
+  color: var(--info, #175cd3);
+}
+.onboarding__change-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.onboarding__change-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.onboarding__change-type.is-checked {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.onboarding__change-type input {
+  margin: 0;
+}
+.onboarding__change-fields {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+.onboarding__change-fields h5 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.onboarding__change-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.onboarding__change-summary li {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--info-soft, #eff8ff);
+  color: var(--text);
+  font-size: 12px;
+}
+.onboarding__change-summary strong {
+  font-weight: 700;
+}

@@ -26,6 +26,7 @@ import {
   type OnboardingTask,
   type OnboardingTaskStatus,
 } from "@/lib/nextdesk-onboarding";
+import { changeSummary } from "@/lib/onboarding-change";
 import {
   filterOnboardingEntries,
   onboardingEntryDone,
@@ -282,11 +283,28 @@ export default function OnboardingScreen() {
                       </Text>
                     ) : null}
                     <Text style={styles.muted}>
-                      Eintritt am {dateLabel(entry.startsOn)}
+                      {entry.kind === "change"
+                        ? "Mutation, gültig ab"
+                        : entry.kind === "offboarding"
+                          ? "Austritt am"
+                          : "Eintritt am"}{" "}
+                      {dateLabel(entry.startsOn)}
                       {entry.organisationUnit
                         ? ` · ${entry.organisationUnit}`
                         : ""}
                     </Text>
+                    {entry.kind === "change"
+                      ? changeSummary(
+                          entry.changeTypes,
+                          entry.details,
+                          entry.employeeName,
+                        ).map((row) => (
+                          <Text key={row.type} style={styles.changeLine}>
+                            {row.label}
+                            {row.text ? `: ${row.text}` : ""}
+                          </Text>
+                        ))
+                      : null}
                   </View>
                   <Text style={styles.count}>
                     {progress.done}/{progress.total}
@@ -483,6 +501,7 @@ const useStyles = makeThemedStyles((c) => ({
   },
   assignButtonText: { color: c.primaryText, fontSize: 13, fontWeight: "800" },
   delegated: { color: c.warning, fontSize: 12, fontWeight: "800" },
+  changeLine: { color: c.info, fontSize: 12, fontWeight: "700" },
   notice: { color: c.success, fontSize: 13, fontWeight: "700" },
   sheet: {
     backgroundColor: c.surface,
