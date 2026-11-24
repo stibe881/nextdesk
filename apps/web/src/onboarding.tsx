@@ -11,6 +11,7 @@ import {
   FileText,
   MapPin,
   Plus,
+  Filter,
   RefreshCw,
   Trash2,
   TriangleAlert,
@@ -49,6 +50,8 @@ type Entry = {
   id: string;
   employeeName: string;
   startsOn: string;
+  /** Eingang der Eintrittsmeldung (Erfassung des Eintritts). */
+  createdAt?: string | null;
   organisationUnit: string | null;
   location: string | null;
   managerName: string;
@@ -842,6 +845,44 @@ function progress(tasks: Task[]) {
 
 export type EntryFilter = "open" | "done" | "all";
 
+/** Datumsbereiche (JJJJ-MM-TT, leer = offen) für Eintrittsdatum und Meldung. */
+export type EntryDateFilter = {
+  startsFrom: string;
+  startsTo: string;
+  reportedFrom: string;
+  reportedTo: string;
+};
+export const emptyEntryDateFilter: EntryDateFilter = {
+  startsFrom: "",
+  startsTo: "",
+  reportedFrom: "",
+  reportedTo: "",
+};
+export function activeEntryDateFilters(dates: EntryDateFilter): number {
+  return (
+    (dates.startsFrom || dates.startsTo ? 1 : 0) +
+    (dates.reportedFrom || dates.reportedTo ? 1 : 0)
+  );
+}
+const zurichDay = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Zurich",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+/** Kalendertag (Zürich) eines Zeitpunkts als JJJJ-MM-TT. */
+function dayOf(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/u.test(value)) return value;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : zurichDay.format(date);
+}
+function inRange(day: string | null, from: string, to: string): boolean {
+  if (!from && !to) return true;
+  if (!day) return false;
+  return (!from || day >= from) && (!to || day <= to);
+}
+
 /** Ein Eintritt ist erledigt, wenn alle seine Aufgaben erledigt sind. */
 export function entryDone(tasks: readonly { status: string }[]): boolean {
   return tasks.length > 0 && tasks.every((task) => task.status === "completed");
@@ -859,14 +900,25 @@ export function filterEntries<
     managerName: string;
     ictResponsibleName: string;
     sourceTicketNumber?: string | null;
+    startsOn?: string;
+    createdAt?: string | null;
     tasks: readonly { status: string }[];
   },
->(entries: readonly T[], filter: EntryFilter, query: string): T[] {
+>(
+  entries: readonly T[],
+  filter: EntryFilter,
+  query: string,
+  dates: EntryDateFilter = emptyEntryDateFilter,
+): T[] {
   const words = query.toLocaleLowerCase("de-CH").split(/\s+/).filter(Boolean);
   return entries.filter((entry) => {
     const done = entryDone(entry.tasks);
     if (filter === "open" && done) return false;
     if (filter === "done" && !done) return false;
+    if (!inRange(dayOf(entry.startsOn), dates.startsFrom, dates.startsTo))
+      return false;
+    if (!inRange(dayOf(entry.createdAt), dates.reportedFrom, dates.reportedTo))
+      return false;
     if (!words.length) return true;
     const text = [
       entry.employeeName,
@@ -910,6 +962,9 @@ export function Onboarding({
     focusEntryId ? "all" : "open",
   );
   const [entryQuery, setEntryQuery] = useState("");
+  const [entryDates, setEntryDates] =
+    useState<EntryDateFilter>(emptyEntryDateFilter);
+  const [dateFilterOpen, setDateFilterOpen] = useState(false);
   // Alle Ein- und Austritte sind eingeklappt; nur der aus der Suche geöffnete
   // ist aufgeklappt.
   const [expandedEntryIds, setExpandedEntryIds] = useState<Set<string>>(
@@ -1186,12 +1241,20 @@ export function Onboarding({
       </section>
     );
   const allEntries = workspace?.entries ?? [];
-  const entries = filterEntries(allEntries, entryFilter, entryQuery);
+  const entries = filterEntries(
+    allEntries,
+    entryFilter,
+    entryQuery,
+    entryDates,
+  );
+  // Die Zahlen bei «Offen / Erledigt / Alle» berücksichtigen die Datumsfilter.
+  const datedEntries = filterEntries(allEntries, "all", "", entryDates);
   const entryCounts = {
-    open: allEntries.filter((entry) => !entryDone(entry.tasks)).length,
-    done: allEntries.filter((entry) => entryDone(entry.tasks)).length,
-    all: allEntries.length,
+    open: datedEntries.filter((entry) => !entryDone(entry.tasks)).length,
+    done: datedEntries.filter((entry) => entryDone(entry.tasks)).length,
+    all: datedEntries.length,
   };
+  const activeDateFilters = activeEntryDateFilters(entryDates);
   const canRequest = workspace?.permissions.canRequest ?? false;
   return (
     <section className="onboarding" aria-labelledby="onboarding-heading">
@@ -1516,15 +1579,111 @@ export function Onboarding({
               </button>
             ))}
           </div>
-          <input
-            aria-label="Eintritte durchsuchen"
-            className="onboarding__search"
-            onChange={(event) => setEntryQuery(event.target.value)}
-            placeholder="Name, Abteilung, Ort, Ticketnummer …"
-            type="search"
-            value={entryQuery}
-          />
+          <div className="onboarding__search-wrap">
+            <input
+              aria-label="Eintritte durchsuchen"
+              className="onboarding__search"
+              onChange={(event) => setEntryQuery(event.target.value)}
+              placeholder="Name, Abteilung, Ort, Ticketnummer …"
+              type="search"
+              value={entryQuery}
+            />
+            <button
+              aria-controls="onboarding-date-filter"
+              aria-expanded={dateFilterOpen}
+              aria-label={
+                activeDateFilters
+                  ? `Datumsfilter (${activeDateFilters} aktiv)`
+                  : "Datumsfilter"
+              }
+              className={`onboarding__filter-button${activeDateFilters ? " is-active" : ""}`}
+              onClick={() => setDateFilterOpen((open) => !open)}
+              title="Nach Eintrittsdatum oder Eintrittsmeldung filtern"
+              type="button"
+            >
+              <Filter aria-hidden="true" size={16} />
+              {activeDateFilters ? (
+                <span className="onboarding__filter-count">
+                  {activeDateFilters}
+                </span>
+              ) : null}
+            </button>
+          </div>
         </div>
+        {dateFilterOpen ? (
+          <div className="onboarding__date-filter" id="onboarding-date-filter">
+            <fieldset>
+              <legend>Eintrittsdatum</legend>
+              <label>
+                <span>Von</span>
+                <input
+                  max={entryDates.startsTo || undefined}
+                  onChange={(event) =>
+                    setEntryDates((current) => ({
+                      ...current,
+                      startsFrom: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={entryDates.startsFrom}
+                />
+              </label>
+              <label>
+                <span>Bis</span>
+                <input
+                  min={entryDates.startsFrom || undefined}
+                  onChange={(event) =>
+                    setEntryDates((current) => ({
+                      ...current,
+                      startsTo: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={entryDates.startsTo}
+                />
+              </label>
+            </fieldset>
+            <fieldset>
+              <legend>Eintrittsmeldung eingegangen</legend>
+              <label>
+                <span>Von</span>
+                <input
+                  max={entryDates.reportedTo || undefined}
+                  onChange={(event) =>
+                    setEntryDates((current) => ({
+                      ...current,
+                      reportedFrom: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={entryDates.reportedFrom}
+                />
+              </label>
+              <label>
+                <span>Bis</span>
+                <input
+                  min={entryDates.reportedFrom || undefined}
+                  onChange={(event) =>
+                    setEntryDates((current) => ({
+                      ...current,
+                      reportedTo: event.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={entryDates.reportedTo}
+                />
+              </label>
+            </fieldset>
+            <button
+              className="text-button"
+              disabled={!activeDateFilters}
+              onClick={() => setEntryDates(emptyEntryDateFilter)}
+              type="button"
+            >
+              Filter zurücksetzen
+            </button>
+          </div>
+        ) : null}
         {entries.length ? (
           <div className="onboarding__list">
             {entries.map((entry) => {
@@ -1896,8 +2055,8 @@ export function Onboarding({
           </div>
         ) : allEntries.length ? (
           <p className="empty-state">
-            {entryQuery.trim()
-              ? "Kein Eintritt passt zur Suche."
+            {entryQuery.trim() || activeDateFilters
+              ? "Kein Eintritt passt zur Suche oder zu den Filtern."
               : entryFilter === "open"
                 ? tn(
                     "Keine offenen Eintritte. Erledigte findest du unter «Erledigt».",

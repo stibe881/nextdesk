@@ -861,9 +861,88 @@ button.onboarding__exception-button {
   color: var(--text);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
-.onboarding__search {
+.onboarding__search-wrap {
+  position: relative;
+  display: flex;
   flex: 1 1 220px;
   min-width: 0;
+}
+.onboarding__search {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 44px;
+}
+.onboarding__filter-button {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.onboarding__filter-button:hover,
+.onboarding__filter-button:focus-visible,
+.onboarding__filter-button[aria-expanded="true"] {
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+.onboarding__filter-button.is-active {
+  color: var(--primary);
+}
+.onboarding__filter-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.onboarding__date-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px 24px;
+  margin: -6px 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+}
+.onboarding__date-filter fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.onboarding__date-filter legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.onboarding__date-filter label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.onboarding__date-filter input {
+  min-width: 150px;
 }
 
 /* Ein- und Austritte sind standardmässig eingeklappt. */

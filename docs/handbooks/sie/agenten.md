@@ -1582,6 +1582,15 @@ Mehr dazu unter «Eintritte und Austritte».
 
 Mehr dazu unter «Eintritte und Austritte».
 
+### Wie filtere ich Eintritte nach Datum?
+
+1. Öffnen Sie unter **Planung und Betrieb** die **Eintritte**.
+2. Klicken Sie rechts im Suchfeld auf das Filter-Symbol.
+3. Wählen Sie unter **Eintrittsdatum** und/oder **Eintrittsmeldung eingegangen** ein Datum **Von** und/oder **Bis**. Die Liste und die Zahlen bei **Offen**, **Erledigt** und **Alle** passen sich sofort an; die Zahl am Filter-Symbol zeigt, wie viele Filter aktiv sind.
+4. Mit **Filter zurücksetzen** sehen Sie wieder alle Eintritte.
+
+Mehr dazu unter «Eintritte und Austritte».
+
 ### Wie finde ich erledigte Eintritte wieder?
 
 1. Öffnen Sie unter **Planung und Betrieb** die **Eintritte** (in der App über die Kachel **Eintritte** auf der Startseite).

@@ -1013,7 +1013,7 @@ async function listWorkspace(
   let entriesQuery = admin
     .from("onboarding_entries")
     .select(
-      "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind",
+      "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind, created_at",
     )
     .eq("tenant_id", tenantId)
     .order("starts_on")
@@ -1047,7 +1047,7 @@ async function listWorkspace(
     const { data: focusedEntry, error: focusedEntryError } = await admin
       .from("onboarding_entries")
       .select(
-        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind",
+        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, source_document_path, kind, created_at",
       )
       .eq("tenant_id", tenantId)
       .eq("id", focusEntryId)
@@ -1152,6 +1152,7 @@ async function listWorkspace(
       id: String(entry.id),
       employeeName: String(entry.employee_name),
       startsOn: String(entry.starts_on),
+      createdAt: typeof entry.created_at === "string" ? entry.created_at : null,
       organisationUnit:
         typeof entry.organisation_unit === "string"
           ? entry.organisation_unit
