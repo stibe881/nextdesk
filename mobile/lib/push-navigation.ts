@@ -40,6 +40,7 @@ export const PUSH_PAYLOAD_KINDS = [
   "incident",
   "ipam",
   "project",
+  "onboarding",
   "summary",
   "test",
 ] as const;
@@ -82,6 +83,8 @@ export type PushNavigationData = {
   ipamAddress?: string;
   ipamEvent?: string;
   projectId?: string;
+  /** Zugewiesener Ein- oder Austritt. */
+  onboardingEntryId?: string;
   projectTaskId?: string;
   occurrenceId?: string;
   contractId?: string;
@@ -118,6 +121,7 @@ const TEXT_FIELDS = [
   "ipamEvent",
   "projectId",
   "projectTaskId",
+  "onboardingEntryId",
   "occurrenceId",
   "contractId",
   "inventoryItemId",
@@ -212,8 +216,7 @@ export function pushRoute(data: PushNavigationData): PushRoute | null {
       : {
           kind: "message",
           title: "Serviceaufgabe",
-          message:
-            tn(
+          message: tn(
             "Diese Serviceaufgabe lässt sich nicht mehr öffnen. Deine Aufgaben findest du in der Web-App unter «Serviceaufgaben».",
             "Diese Serviceaufgabe lässt sich nicht mehr öffnen. Ihre Aufgaben finden Sie in der Web-App unter «Serviceaufgaben».",
           ),
@@ -245,6 +248,11 @@ export function pushRoute(data: PushNavigationData): PushRoute | null {
           ),
     };
   }
+  // Zugewiesener Ein- oder Austritt: Eintritte, der Eintritt aufgeklappt.
+  if (kind === "onboarding") {
+    const entryId = uuid(data.onboardingEntryId);
+    return path(entryId ? `/onboarding?entry=${entryId}` : "/onboarding");
+  }
   // Projektbeitritt öffnet das Projekt, eine Zuweisung die Aufgabe; mehrere
   // Aufgaben auf einmal (ohne Aufgaben-ID) das Projekt.
   if (kind === "project") {
@@ -262,8 +270,10 @@ export function pushRoute(data: PushNavigationData): PushRoute | null {
     return {
       kind: "message",
       title: "Vertragsfrist",
-      message:
-        tn("Verträge gibt es nur in der Web-App. Öffne dort «Verträge», um die Frist zu sehen.", "Verträge gibt es nur in der Web-App. Öffnen Sie dort «Verträge», um die Frist zu sehen."),
+      message: tn(
+        "Verträge gibt es nur in der Web-App. Öffne dort «Verträge», um die Frist zu sehen.",
+        "Verträge gibt es nur in der Web-App. Öffnen Sie dort «Verträge», um die Frist zu sehen.",
+      ),
     };
   }
   // Sammelmitteilung: kann Tickets, Shop, Störungen … enthalten. Die

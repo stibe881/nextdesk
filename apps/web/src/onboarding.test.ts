@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   entryDone,
   activeEntryDateFilters,
+  assignOptions,
   emptyEntryDateFilter,
   type EntryDateFilter,
   filterEntries,
@@ -136,5 +137,23 @@ describe("Eintritte filtern und suchen", () => {
         startsTo: "2027-01-01",
       }),
     ).toBe(1);
+  });
+});
+
+describe("Eintritte zuweisen", () => {
+  it("zeigt die Agenten und immer die aktuelle Person", () => {
+    const agents = [
+      { id: "a", displayName: "Anna" },
+      { id: "b", displayName: "Ben" },
+    ];
+    expect(assignOptions(agents, "a", "Anna").map((p) => p.id)).toEqual([
+      "a",
+      "b",
+    ]);
+    expect(assignOptions(agents, "x", "Xaver").map((p) => p.id)).toEqual([
+      "x",
+      "a",
+      "b",
+    ]);
   });
 });

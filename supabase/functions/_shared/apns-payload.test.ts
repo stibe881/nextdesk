@@ -503,3 +503,37 @@ Deno.test("project pushes have their own wording and carry only ids", () => {
   });
   assertEquals(alert(several).title, "Projektaufgaben zugewiesen");
 });
+
+Deno.test("onboarding assignment pushes name the person and carry the entry id", () => {
+  const entryId = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+  const payload = buildApnsPayload({
+    kind: "onboarding",
+    tenantId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+    notificationId: "9b2e4f1a-6c3d-4e5f-8a7b-1c2d3e4f5a6b",
+    notificationKind: "onboarding.assigned",
+    onboardingEntryId: entryId,
+    onboardingEmployeeName: "Lea Brunner",
+    onboardingEntryKind: "onboarding",
+  });
+  assertEquals((payload.aps as Record<string, unknown>).alert, {
+    title: "Eintritt zugewiesen",
+    body: "Der Eintritt von Lea Brunner wurde dir zugewiesen.",
+  });
+  assertEquals((payload.body as Record<string, unknown>).onboardingEntryId, entryId);
+
+  const standIn = buildApnsPayload(
+    {
+      kind: "onboarding",
+      tenantId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      notificationId: "9b2e4f1a-6c3d-4e5f-8a7b-1c2d3e4f5a6b",
+      onboardingEmployeeName: "Lea Brunner",
+      onboardingEntryKind: "offboarding",
+      onboardingDelegatedFor: "Mara Keller",
+    },
+    "sie",
+  );
+  assertEquals((standIn.aps as Record<string, unknown>).alert, {
+    title: "Austritt zugewiesen",
+    body: "Der Austritt von Lea Brunner wurde Ihnen als Stellvertretung für Mara Keller zugewiesen.",
+  });
+});

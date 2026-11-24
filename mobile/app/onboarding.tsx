@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,11 +15,13 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import {
-  loadOnboardingEntries,
+  assignOnboardingEntry,
+  loadOnboardingWorkspace,
   onboardingDetailRows,
   onboardingDocumentUrl,
   onboardingProgress,
   setOnboardingTaskStatus,
+  type OnboardingAgent,
   type OnboardingEntry,
   type OnboardingTask,
   type OnboardingTaskStatus,
@@ -53,7 +56,15 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const colors = useAppColors();
   const styles = useStyles();
+  // Aus einer Mitteilung geöffnet: diesen Eintritt aufklappen.
+  const params = useLocalSearchParams<{ entry?: string }>();
+  const focusEntryId = typeof params.entry === "string" ? params.entry : null;
   const [entries, setEntries] = useState<OnboardingEntry[] | null>(null);
+  const [agents, setAgents] = useState<OnboardingAgent[]>([]);
+  const [assignTarget, setAssignTarget] = useState<OnboardingEntry | null>(
+    null,
+  );
+  const [notice, setNotice] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -64,11 +75,16 @@ export default function OnboardingScreen() {
   const load = useCallback(async () => {
     try {
       setError("");
-      const result = await loadOnboardingEntries();
+      const workspace = await loadOnboardingWorkspace();
+      const result = workspace.entries;
       setEntries(result);
+      setAgents(workspace.agents);
       setExpanded(
         (current) =>
           current ??
+          (focusEntryId && result.some((entry) => entry.id === focusEntryId)
+            ? focusEntryId
+            : null) ??
           result.find((entry) => !onboardingEntryDone(entry))?.id ??
           null,
       );
@@ -81,7 +97,29 @@ export default function OnboardingScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [focusEntryId]);
+
+  async function assign(entry: OnboardingEntry, agent: OnboardingAgent) {
+    setAssignTarget(null);
+    if (agent.id === entry.ictResponsibleUserId) return;
+    setError("");
+    setNotice("");
+    try {
+      const result = await assignOnboardingEntry(entry.id, agent.id);
+      setNotice(
+        result.redirected && result.assignedName
+          ? `${result.requestedName ?? agent.displayName} ist abwesend. Der Eintritt ging an die Stellvertretung ${result.assignedName}.`
+          : `Zugewiesen an ${result.assignedName ?? agent.displayName}.`,
+      );
+      await load();
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Der Eintritt konnte nicht zugewiesen werden.",
+      );
+    }
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -147,6 +185,7 @@ export default function OnboardingScreen() {
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
+        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
         {entries === null && !error ? (
           <ActivityIndicator color={colors.primary} style={styles.loader} />
         ) : null}
@@ -237,6 +276,11 @@ export default function OnboardingScreen() {
                 >
                   <View style={styles.cardCopy}>
                     <Text style={styles.name}>{entry.employeeName}</Text>
+                    {entry.delegatedFor ? (
+                      <Text style={styles.delegated}>
+                        Stellvertretung für {entry.delegatedFor}
+                      </Text>
+                    ) : null}
                     <Text style={styles.muted}>
                       Eintritt am {dateLabel(entry.startsOn)}
                       {entry.organisationUnit
@@ -268,6 +312,23 @@ export default function OnboardingScreen() {
                       Führung: {entry.managerName || "–"} · ICT:{" "}
                       {entry.ictResponsibleName || "–"}
                     </Text>
+                    {entry.canAssign && agents.length > 0 ? (
+                      <Pressable
+                        accessibilityHint="Wählt eine andere ICT-Verantwortung."
+                        accessibilityRole="button"
+                        onPress={() => setAssignTarget(entry)}
+                        style={styles.assignButton}
+                      >
+                        <Ionicons
+                          color={colors.primaryText}
+                          name="person-add-outline"
+                          size={16}
+                        />
+                        <Text style={styles.assignButtonText}>
+                          Zuweisen an …
+                        </Text>
+                      </Pressable>
+                    ) : null}
                     {entry.tasks.map((item) => (
                       <Pressable
                         accessibilityRole="checkbox"
@@ -364,11 +425,90 @@ export default function OnboardingScreen() {
           },
         )}
       </ScrollView>
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setAssignTarget(null)}
+        transparent
+        visible={assignTarget !== null}
+      >
+        <Pressable
+          accessibilityLabel="Auswahl schliessen"
+          onPress={() => setAssignTarget(null)}
+          style={styles.sheetBackdrop}
+        >
+          <Pressable style={styles.sheet}>
+            <Text style={styles.sheetTitle}>ICT-Verantwortung wählen</Text>
+            <ScrollView style={styles.sheetList}>
+              {agents.map((agent) => {
+                const current = agent.id === assignTarget?.ictResponsibleUserId;
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: current }}
+                    key={agent.id}
+                    onPress={() =>
+                      assignTarget ? void assign(assignTarget, agent) : null
+                    }
+                    style={styles.sheetRow}
+                  >
+                    <Text style={styles.sheetRowText}>{agent.displayName}</Text>
+                    {current ? (
+                      <Ionicons
+                        color={colors.primary}
+                        name="checkmark"
+                        size={18}
+                      />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenContainer>
   );
 }
 
 const useStyles = makeThemedStyles((c) => ({
+  assignButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: c.primarySoft,
+    borderRadius: 999,
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  assignButtonText: { color: c.primaryText, fontSize: 13, fontWeight: "800" },
+  delegated: { color: c.warning, fontSize: 12, fontWeight: "800" },
+  notice: { color: c.success, fontSize: 13, fontWeight: "700" },
+  sheet: {
+    backgroundColor: c.surface,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    gap: 10,
+    maxHeight: "70%",
+    padding: 20,
+    paddingBottom: 36,
+  },
+  sheetBackdrop: {
+    backgroundColor: "rgba(0,0,0,0.35)",
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  sheetList: { flexGrow: 0 },
+  sheetRow: {
+    alignItems: "center",
+    borderBottomColor: c.border,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+  },
+  sheetRowText: { color: c.foreground, fontSize: 15, fontWeight: "600" },
+  sheetTitle: { color: c.foreground, fontSize: 17, fontWeight: "900" },
   back: {
     alignItems: "center",
     backgroundColor: c.primarySoft,

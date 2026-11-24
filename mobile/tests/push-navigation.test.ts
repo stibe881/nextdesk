@@ -10,6 +10,14 @@ const tenantId = "10000000-0000-4000-8000-000000000001";
 const id = "20000000-0000-4000-8000-000000000002";
 
 describe("pushRoute", () => {
+  it("öffnet bei zugewiesenen Eintritten die Eintritte mit dem Eintritt", () => {
+    expect(
+      pushRoute({ tenantId, kind: "onboarding", onboardingEntryId: id }),
+    ).toEqual({ kind: "path", path: `/onboarding?entry=${id}` });
+    expect(
+      pushRoute({ tenantId, kind: "onboarding", onboardingEntryId: "../x" }),
+    ).toEqual({ kind: "path", path: "/onboarding" });
+  });
   it("öffnet bei Projekt-Mitteilungen das Projekt bzw. die Aufgabe", () => {
     const taskId = "30000000-0000-4000-8000-000000000003";
     expect(pushRoute({ tenantId, kind: "project", projectId: id })).toEqual({

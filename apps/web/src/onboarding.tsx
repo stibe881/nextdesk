@@ -59,6 +59,11 @@ type Entry = {
   templateId: string;
   kind?: "onboarding" | "offboarding";
   canEdit?: boolean;
+  /** ICT-Verantwortung (Agent), änderbar mit «canAssign». */
+  ictResponsibleUserId?: string;
+  canAssign?: boolean;
+  /** Sichtbar als Stellvertretung für diese Person. */
+  delegatedFor?: string | null;
   source?: "email" | "manual";
   sourceTicketNumber?: string | null;
   /** Die Eintrittsmeldung (PDF) ist beim Eintritt gespeichert. */
@@ -69,6 +74,8 @@ type Entry = {
 type Workspace = {
   permissions: { canRequest: boolean; canManage: boolean };
   people: Person[];
+  /** Agenten, denen sich Eintritte zuweisen lassen. */
+  agents?: Person[];
   templates: Template[];
   entries: Entry[];
 };
@@ -845,6 +852,17 @@ function progress(tasks: Task[]) {
 
 export type EntryFilter = "open" | "done" | "all";
 
+/** Auswahl «ICT-Verantwortung»: Agenten, die aktuelle Person immer dabei. */
+export function assignOptions(
+  agents: readonly { id: string; displayName: string }[],
+  currentId: string,
+  currentName: string,
+): { id: string; displayName: string }[] {
+  return agents.some((agent) => agent.id === currentId)
+    ? [...agents]
+    : [{ id: currentId, displayName: currentName }, ...agents];
+}
+
 /** Datumsbereiche (JJJJ-MM-TT, leer = offen) für Eintrittsdatum und Meldung. */
 export type EntryDateFilter = {
   startsFrom: string;
@@ -1172,6 +1190,42 @@ export function Onboarding({
         await functionErrorMessage(
           error,
           `Der ${label} konnte nicht gelöscht werden.`,
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+  async function assignEntry(entry: Entry, userId: string) {
+    if (!supabase || !userId || userId === entry.ictResponsibleUserId) return;
+    const label = entry.kind === "offboarding" ? "Austritt" : "Eintritt";
+    setPending(true);
+    setErrorMessage("");
+    setNotice("");
+    try {
+      const { data, error } = await supabase.functions.invoke("onboarding", {
+        body: { type: "assignEntry", tenantId, entryId: entry.id, userId },
+      });
+      if (error) throw error;
+      const result =
+        data && typeof data === "object" && "data" in data
+          ? ((data as { data: Record<string, unknown> }).data ?? {})
+          : {};
+      const assignedName =
+        typeof result.assignedName === "string" ? result.assignedName : null;
+      const requestedName =
+        typeof result.requestedName === "string" ? result.requestedName : null;
+      setNotice(
+        result.redirected === true && assignedName
+          ? `${requestedName ?? "Die gewählte Person"} ist abwesend. Der ${label} von «${entry.employeeName}» ging an die Stellvertretung ${assignedName}.`
+          : `Der ${label} von «${entry.employeeName}» ist jetzt ${assignedName ?? "der gewählten Person"} zugewiesen.`,
+      );
+      await load(true);
+    } catch (error) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          `Der ${label} konnte nicht zugewiesen werden.`,
         ),
       );
     } finally {
@@ -1720,6 +1774,17 @@ export function Onboarding({
                             ? "Austritt"
                             : "Eintritt"}
                         </span>
+                        {entry.delegatedFor ? (
+                          <span
+                            className="onboarding__delegated"
+                            title={tn(
+                              "Du siehst diesen Eintritt als Stellvertretung.",
+                              "Sie sehen diesen Eintritt als Stellvertretung.",
+                            )}
+                          >
+                            Stellvertretung für {entry.delegatedFor}
+                          </span>
+                        ) : null}
                       </h4>
                       <p className="onboarding__entry-when">
                         <CalendarDays aria-hidden="true" size={14} />
@@ -1992,6 +2057,28 @@ export function Onboarding({
                         />
                       ) : null}
                       <footer className="onboarding__entry-foot">
+                        {entry.canAssign && entry.ictResponsibleUserId ? (
+                          <label className="onboarding__assign">
+                            <span>ICT-Verantwortung</span>
+                            <select
+                              disabled={pending}
+                              onChange={(event) =>
+                                void assignEntry(entry, event.target.value)
+                              }
+                              value={entry.ictResponsibleUserId}
+                            >
+                              {assignOptions(
+                                workspace?.agents ?? [],
+                                entry.ictResponsibleUserId,
+                                entry.ictResponsibleName,
+                              ).map((person) => (
+                                <option key={person.id} value={person.id}>
+                                  {person.displayName}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
                         {entry.hasDocument ? (
                           <button
                             className="text-button onboarding__document"

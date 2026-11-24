@@ -25,6 +25,7 @@ export type ApnsPayloadKind =
   | "shop"
   | "service_task"
   | "project"
+  | "onboarding"
   | "infrastructure"
   | "watched"
   | "rule_reminder"
@@ -73,6 +74,11 @@ export type ApnsPayloadInput = {
   projectTaskId?: string;
   projectTaskTitle?: string;
   projectTaskCount?: number;
+  /** Ein- oder Austritt zugewiesen: Eintrag, Person, Art und Vertretung. */
+  onboardingEntryId?: string;
+  onboardingEmployeeName?: string;
+  onboardingEntryKind?: string;
+  onboardingDelegatedFor?: string;
   /** Infrastructure reminder: device, reason and due date (YYYY-MM-DD). */
   assetId?: string;
   assetName?: string;
@@ -686,6 +692,27 @@ function alertFor(
           return { title: "Shop", body: `Neuigkeit zu Bestellung${number}.` };
       }
     }
+    case "onboarding": {
+      const person = input.onboardingEmployeeName?.trim().slice(0, 80);
+      const label =
+        input.onboardingEntryKind === "offboarding" ? "Austritt" : "Eintritt";
+      const of = person ? ` von ${person}` : "";
+      const standIn = input.onboardingDelegatedFor?.trim().slice(0, 80);
+      return {
+        title: `${label} zugewiesen`,
+        body: standIn
+          ? tone(
+              formality,
+              `Der ${label}${of} wurde dir als Stellvertretung für ${standIn} zugewiesen.`,
+              `Der ${label}${of} wurde Ihnen als Stellvertretung für ${standIn} zugewiesen.`,
+            )
+          : tone(
+              formality,
+              `Der ${label}${of} wurde dir zugewiesen.`,
+              `Der ${label}${of} wurde Ihnen zugewiesen.`,
+            ),
+      };
+    }
     case "project": {
       const project = input.projectTitle?.trim().slice(0, 80) || "ein Projekt";
       if (input.projectEvent === "member_added") {
@@ -952,6 +979,13 @@ export function buildApnsPayload(
     if (input.projectTaskId && PAYLOAD_UUID.test(input.projectTaskId)) {
       data.projectTaskId = input.projectTaskId;
     }
+  }
+  if (
+    input.kind === "onboarding" &&
+    input.onboardingEntryId &&
+    PAYLOAD_UUID.test(input.onboardingEntryId)
+  ) {
+    data.onboardingEntryId = input.onboardingEntryId;
   }
   if (input.kind === "infrastructure" && input.assetId) {
     data.assetId = input.assetId;

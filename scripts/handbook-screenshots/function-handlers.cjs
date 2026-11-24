@@ -3324,6 +3324,10 @@ const HANDLERS = {
     return ok({
       permissions: { canRequest: true, canManage: true },
       people: [{ id: D.uid("0c0c0c0c", 1), displayName: "Mara Keller" }],
+      agents: [
+        { id: D.uid("0c0c0c0c", 2), displayName: "Daniel Frei" },
+        { id: D.uid("0c0c0c0c", 1), displayName: "Mara Keller" },
+      ],
       templates: [
         { id: D.uid("0d0d0d0d", 1), key: "standard", name: "Standard" },
       ],
@@ -3336,9 +3340,12 @@ const HANDLERS = {
           location: "Zürich, 3. OG",
           managerName: "Thomas Huber",
           ictResponsibleName: "Mara Keller",
+          ictResponsibleUserId: D.uid("0c0c0c0c", 1),
           templateId: D.uid("0d0d0d0d", 1),
           kind: "onboarding",
           canEdit: true,
+          canAssign: true,
+          delegatedFor: null,
           source: "email",
           sourceTicketNumber: "ICT-2026-000150",
           details: {

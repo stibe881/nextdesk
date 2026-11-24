@@ -1816,6 +1816,33 @@ function baseNotificationPresentation(
           title: "Lizenzen zurückgewinnen",
         };
       }
+      if (notification.kind === "onboarding.assigned") {
+        const person = notificationPayloadText(
+          notification,
+          "employeeName",
+          120,
+        );
+        const offboarding =
+          isRecord(notification.payload) &&
+          notification.payload.entryKind === "offboarding";
+        const by = notificationPayloadText(notification, "actorName", 80);
+        const standIn = notificationPayloadText(
+          notification,
+          "delegatedFor",
+          80,
+        );
+        return {
+          description: [
+            person,
+            standIn ? `Stellvertretung für ${standIn}` : null,
+            by ? `von ${by}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          Icon: ClipboardList,
+          title: offboarding ? "Austritt zugewiesen" : "Eintritt zugewiesen",
+        };
+      }
       if (notification.kind.startsWith("project.")) {
         const project =
           notificationPayloadText(notification, "projectTitle", 120) ??
@@ -3353,6 +3380,10 @@ function AuthenticatedApp() {
   const [tourOpen, setTourOpen] = useState(false);
   const [globalSearchTarget, setGlobalSearchTarget] =
     useState<GlobalSearchResult | null>(null);
+  // Aus einer Mitteilung geöffneter Ein- oder Austritt.
+  const [onboardingFocusId, setOnboardingFocusId] = useState<string | null>(
+    null,
+  );
   const [workplaceRequestedView, setWorkplaceRequestedView] =
     useState<WorkplaceRequestedView | null>(null);
   const [period, setPeriod] = useState<Period>("Heute");
@@ -5110,8 +5141,10 @@ function AuthenticatedApp() {
     else if (focus?.kind === "project") {
       setProjectFocusId(focus.id);
       setProjectFocusTaskId(focus.taskId);
-    }
-    else if (focus?.kind === "inventoryItem") setInventoryFocusId(focus.id);
+    } else if (focus?.kind === "onboardingEntry") {
+      setGlobalSearchTarget(null);
+      setOnboardingFocusId(focus.id);
+    } else if (focus?.kind === "inventoryItem") setInventoryFocusId(focus.id);
     else if (focus?.kind === "shopOrder") setShopFocusOrderId(focus.id);
     else if (focus?.kind === "infrastructureDevice") {
       setInfrastructureFocusId(focus.id);
@@ -7399,7 +7432,7 @@ function AuthenticatedApp() {
             focusEntryId={
               globalSearchTarget?.resultType === "onboarding"
                 ? globalSearchTarget.entityId
-                : undefined
+                : (onboardingFocusId ?? undefined)
             }
             tenantId={activeTenant.id}
           />

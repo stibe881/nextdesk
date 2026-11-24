@@ -89,6 +89,8 @@ export function notificationCategory(kind: string): NotificationCategory | null 
   if (kind.startsWith("service_task.")) return "service_task";
   // Added to a project or given a project task: like an assigned ticket.
   if (kind.startsWith("project.")) return "assigned";
+  // Ein- oder Austritt zugewiesen: wie ein zugewiesenes Ticket.
+  if (kind.startsWith("onboarding.")) return "assigned";
   if (kind === "infrastructure.due") return "infrastructure";
   if (oneOf(IPAM_NOTIFICATION_KINDS, kind)) return "ipam";
   if (kind.startsWith("monitoring.")) return "incident";

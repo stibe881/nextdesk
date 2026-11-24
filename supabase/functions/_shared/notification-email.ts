@@ -406,6 +406,25 @@ export function notificationEmailText(
         ),
       ];
     }
+  } else if (kind === "onboarding.assigned") {
+    const person = text(payload.employeeName);
+    const label = payload.entryKind === "offboarding" ? "Austritt" : "Eintritt";
+    const by = text(payload.actorName, 80);
+    const standIn = text(payload.delegatedFor, 80);
+    title = `${label} zugewiesen${person ? `: ${person}` : ""}`;
+    lines = [
+      standIn
+        ? tone(
+            formality,
+            `Der ${label}${person ? ` von ${person}` : ""} wurde dir als Stellvertretung für ${standIn} zugewiesen${by ? ` (von ${by})` : ""}.`,
+            `Der ${label}${person ? ` von ${person}` : ""} wurde Ihnen als Stellvertretung für ${standIn} zugewiesen${by ? ` (von ${by})` : ""}.`,
+          )
+        : tone(
+            formality,
+            `${by ? `${by} hat dir den` : "Dir wurde der"} ${label}${person ? ` von ${person}` : ""} zugewiesen. Du bist jetzt für die ICT-Aufgaben verantwortlich.`,
+            `${by ? `${by} hat Ihnen den` : "Ihnen wurde der"} ${label}${person ? ` von ${person}` : ""} zugewiesen. Sie sind jetzt für die ICT-Aufgaben verantwortlich.`,
+          ),
+    ];
   } else if (kind === "project.member_added") {
     const project = text(payload.projectTitle) ?? "ein Projekt";
     const by = text(payload.actorName, 80);

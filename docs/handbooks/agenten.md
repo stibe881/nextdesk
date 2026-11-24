@@ -784,7 +784,7 @@ Mehr dazu unter «Arbeitsplatz».
 1. Öffne **Arbeitsplatz → Stellvertretung**.
 2. Klicke auf **Stellvertretung anlegen**.
 3. Wähle die stellvertretende Person, Beginn und Ende und schreibe eine Notiz.
-4. Klicke auf **Stellvertretung speichern**. Deine Tickets erscheinen in dieser Zeit bei der Stellvertretung.
+4. Klicke auf **Stellvertretung speichern**. Deine Tickets erscheinen in dieser Zeit bei der Stellvertretung, ebenso deine Eintritte und Austritte samt Aufgaben.
 
 Mehr dazu unter «Abwesenheit und Stellvertretung».
 
@@ -1570,6 +1570,17 @@ Mehr dazu unter «Lager-Automatik, Rücknahmen und Austritt».
 2. Klicke auf die Karte (oder den Pfeil rechts), um den Eintritt aufzuklappen; alle Eintritte sind zuerst eingeklappt. Die Aufgaben stehen nach Fälligkeit gruppiert: **Überfällig**, **Nächste 7 Tage** und **Später**.
 3. Klicke auf das Kästchen vor einer Aufgabe, um sie als erledigt zu markieren. Ein zweiter Klick öffnet sie wieder.
 4. «In Arbeit» oder «Blockiert» wählst du im Feld rechts. Erledigte Aufgaben klappst du unter **Erledigt** auf.
+
+Mehr dazu unter «Eintritte und Austritte».
+
+### Wie weise ich einen Eintritt einer anderen Person zu?
+
+1. Öffne unter **Planung und Betrieb** die **Eintritte** (in der App über die Kachel **Eintritte**).
+2. Klappe den Eintritt bzw. Austritt auf.
+3. Wähle unten unter **ICT-Verantwortung** einen anderen Agenten (in der App: **Zuweisen an …**).
+4. Die ICT-Aufgaben gehen mit, Aufgaben der Führung und der Abteilungen bleiben. Die neue Person erhält eine Mitteilung. Ist sie gerade abwesend, geht der Eintritt an ihre Stellvertretung.
+
+Zuweisen kann, wer Eintritte verwaltet, die bisherige ICT-Verantwortung und ihre Stellvertretung.
 
 Mehr dazu unter «Eintritte und Austritte».
 
@@ -2489,7 +2500,7 @@ Der **Arbeitsplatz** bündelt deine persönliche Arbeit in Registern:
 Unter **Arbeitsplatz → Stellvertretung → Stellvertretung anlegen** wählst du
 die stellvertretende Person, Beginn, Ende und eine Notiz und speicherst mit
 **Stellvertretung speichern**. Deine Tickets erscheinen in dieser Zeit bei der
-Stellvertretung.
+Stellvertretung. Auch deine Eintritte und Austritte sieht sie unter **Eintritte** (markiert mit «Stellvertretung für …») und kann Aufgaben abhaken, den Status setzen und Ausnahmetickets verknüpfen; die Zuständigkeit bleibt bei dir. Wird dir während der Abwesenheit ein Ticket, ein Eintritt oder ein Austritt neu zugewiesen, geht er direkt an die Stellvertretung.
 
 ### Phishing melden
 

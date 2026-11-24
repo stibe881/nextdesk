@@ -5,6 +5,7 @@
 export type NotificationTargetSection =
   | "Tickets"
   | "Projekte"
+  | "Eintritte"
   | "Phishing / Junk"
   | "Störungen"
   | "Shop"
@@ -30,6 +31,7 @@ export type NotificationFocus =
   | { kind: "incident"; id: string }
   | { kind: "serviceTask"; id: string }
   | { kind: "project"; id: string; taskId: string | null }
+  | { kind: "onboardingEntry"; id: string }
   | { kind: "inventoryItem"; id: string }
   | { kind: "shopOrder"; id: string }
   | { kind: "infrastructureDevice"; id: string }
@@ -148,6 +150,13 @@ export function notificationTarget(
             taskId: payloadId(payload, "taskId") ?? null,
           }
         : null,
+    );
+  }
+  if (kind.startsWith("onboarding.")) {
+    const entryId = payloadId(payload, "entryId");
+    return section(
+      "Eintritte",
+      entryId ? { kind: "onboardingEntry", id: entryId } : null,
     );
   }
   if (kind.startsWith("service_task.")) {

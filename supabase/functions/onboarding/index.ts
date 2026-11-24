@@ -46,6 +46,7 @@ type Action =
     }
   | { type: "deleteDepartmentTask"; tenantId: string; id: string }
   | { type: "deleteEntry"; tenantId: string; entryId: string }
+  | { type: "assignEntry"; tenantId: string; entryId: string; userId: string }
   | {
       type: "updateTaskStatus";
       tenantId: string;
@@ -339,6 +340,19 @@ export function parseAction(value: unknown): Action | null {
           type: value.type,
           tenantId: value.tenantId.toLowerCase(),
           id: value.id.toLowerCase(),
+        }
+      : null;
+  }
+  if (value.type === "assignEntry") {
+    return isUuid(value.tenantId) &&
+      isUuid(value.entryId) &&
+      isUuid(value.userId) &&
+      onlyKeys(value, ["type", "tenantId", "entryId", "userId"])
+      ? {
+          type: value.type,
+          tenantId: value.tenantId.toLowerCase(),
+          entryId: value.entryId.toLowerCase(),
+          userId: value.userId.toLowerCase(),
         }
       : null;
   }
@@ -900,6 +914,155 @@ async function deleteDepartmentTask(
     {},
   );
 }
+/** Einträge mit einer Aufgabe, für die eine der Personen zuständig ist. */
+async function entryIdsForResponsible(
+  admin: Admin,
+  tenantId: string,
+  userIds: string[],
+): Promise<string[]> {
+  const { data, error } = await admin
+    .from("onboarding_tasks")
+    .select("entry_id")
+    .eq("tenant_id", tenantId)
+    .in("responsible_user_id", userIds)
+    .neq("status", "completed")
+    .limit(500);
+  if (error) databaseFailure(error);
+  return [
+    ...new Set(
+      (data ?? [])
+        .map((row: Row) => row.entry_id)
+        .filter((id): id is string => typeof id === "string" && isUuid(id)),
+    ),
+  ];
+}
+
+/** Name der vertretenen Person, wenn der Eintritt nur deshalb sichtbar ist. */
+function delegatedForName(
+  entry: Row,
+  tasks: Row[],
+  delegators: string[],
+  actorId: string,
+  names: Map<string, string>,
+): string | null {
+  if (!delegators.length) return null;
+  const ict = String(entry.ict_responsible_user_id);
+  if (ict !== actorId && delegators.includes(ict)) return names.get(ict) ?? null;
+  if (
+    [entry.created_by, entry.manager_user_id, entry.ict_responsible_user_id].includes(actorId) ||
+    tasks.some((task) => task.responsible_user_id === actorId)
+  )
+    return null;
+  const task = tasks.find((candidate) =>
+    delegators.includes(String(candidate.responsible_user_id)),
+  );
+  return task ? (names.get(String(task.responsible_user_id)) ?? null) : null;
+}
+
+/**
+ * Personen, die die angemeldete Person gerade vertritt (aktive
+ * Stellvertretung). Ihre Eintritte und Aufgaben sieht und bearbeitet sie mit.
+ */
+async function delegatorsFor(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+): Promise<string[]> {
+  const { data, error } = await admin.rpc("active_delegators_for", {
+    p_tenant_id: tenantId,
+    p_user_id: actorId,
+  });
+  if (error || !Array.isArray(data)) return [];
+  return data.filter((id): id is string => typeof id === "string");
+}
+
+/**
+ * Weist einen Ein- oder Austritt einer anderen ICT-Verantwortung (Agent) zu.
+ * Erlaubt mit onboarding.manage, der bisherigen ICT-Verantwortung oder ihrer
+ * aktiven Stellvertretung. Die neue Person erhält eine Mitteilung.
+ */
+async function assignEntry(
+  client: Client,
+  admin: Admin,
+  actorId: string,
+  action: Extract<Action, { type: "assignEntry" }>,
+) {
+  await requireMembership(client, action.tenantId);
+  const [canManage, delegators] = await Promise.all([
+    hasPermission(client, action.tenantId, "onboarding.manage"),
+    delegatorsFor(admin, action.tenantId, actorId),
+  ]);
+  const { data: entry, error: entryError } = await admin
+    .from("onboarding_entries")
+    .select("id, employee_name, kind, starts_on, ict_responsible_user_id")
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.entryId)
+    .maybeSingle();
+  if (entryError) databaseFailure(entryError);
+  if (!entry)
+    throw new HttpError(
+      404,
+      "onboarding_entry_not_found",
+      "Der Eintritt ist nicht mehr verfügbar.",
+    );
+  const current = String(entry.ict_responsible_user_id);
+  if (!canManage && current !== actorId && !delegators.includes(current))
+    throw new HttpError(
+      403,
+      "onboarding_permission_denied",
+      msg(
+        "Diesen Eintritt darfst du nicht zuweisen.",
+        "Diesen Eintritt dürfen Sie nicht zuweisen.",
+      ),
+    );
+  const { data, error } = await admin.rpc("onboarding_assign_entry", {
+    p_tenant_id: action.tenantId,
+    p_entry_id: action.entryId,
+    p_user_id: action.userId,
+    p_actor_id: actorId,
+  });
+  if (error) {
+    if (String(error.message ?? "").includes("onboarding_assignee_invalid"))
+      throw new HttpError(
+        422,
+        "onboarding_assignee_invalid",
+        "Eintritte lassen sich nur Agenten zuweisen.",
+      );
+    databaseFailure(error);
+  }
+  const result = (data ?? {}) as Row;
+  const assignedTo = typeof result.assignedTo === "string" ? result.assignedTo : action.userId;
+  const people = await peopleForTenant(admin, action.tenantId);
+  if (result.changed === true && assignedTo !== actorId) {
+    try {
+      await admin.from("ticket_notifications").insert({
+        tenant_id: action.tenantId,
+        user_id: assignedTo,
+        ticket_id: null,
+        kind: "onboarding.assigned",
+        payload: {
+          entryId: action.entryId,
+          employeeName: String(entry.employee_name),
+          entryKind: entry.kind === "offboarding" ? "offboarding" : "onboarding",
+          startsOn: String(entry.starts_on),
+          actorName: people.names.get(actorId) ?? null,
+          ...(result.redirected === true
+            ? { delegatedFor: people.names.get(action.userId) ?? null }
+            : {}),
+        },
+      });
+    } catch {
+      // Die Zuweisung ist gespeichert.
+    }
+  }
+  return {
+    assignedTo,
+    assignedName: people.names.get(assignedTo) ?? null,
+    redirected: result.redirected === true,
+    requestedName: people.names.get(action.userId) ?? null,
+  };
+}
+
 /**
  * Löscht einen Ein- oder Austritt samt Aufgaben, Ausnahmetickets und
  * Rückgabeaufgaben (Fremdschlüssel mit ON DELETE CASCADE). Die gespeicherte
@@ -971,6 +1134,11 @@ async function documentUrl(
   let visible = canManage ||
     [entry.created_by, entry.manager_user_id, entry.ict_responsible_user_id].includes(actorId);
   if (!visible) {
+    visible = (await delegatorsFor(admin, tenantId, actorId)).includes(
+      String(entry.ict_responsible_user_id),
+    );
+  }
+  if (!visible) {
     const departments = await actorDepartmentIds(admin, tenantId, actorId);
     visible = departments.length > 0 &&
       (await entryIdsForDepartments(admin, tenantId, departments)).includes(entryId);
@@ -995,10 +1163,17 @@ async function listWorkspace(
   focusEntryId?: string,
 ) {
   await requireMembership(client, tenantId);
-  const [canRequest, canManage] = await Promise.all([
+  const [canRequest, canManage, delegators, agentIdsResult] = await Promise.all([
     hasPermission(client, tenantId, "onboarding.request"),
     hasPermission(client, tenantId, "onboarding.manage"),
+    delegatorsFor(admin, tenantId, actorId),
+    admin.rpc("tenant_ticket_agent_ids", { p_tenant_id: tenantId }),
   ]);
+  const agentIds = new Set(
+    Array.isArray(agentIdsResult.data)
+      ? agentIdsResult.data.filter((id): id is string => typeof id === "string")
+      : [],
+  );
   let [templatesResult, peopleResult] = await Promise.all([
     admin
       .from("onboarding_templates")
@@ -1026,11 +1201,21 @@ async function listWorkspace(
     const departmentEntryIds = myDepartments.length
       ? await entryIdsForDepartments(admin, tenantId, myDepartments)
       : [];
+    // Stellvertretung: Eintritte und Aufgaben der vertretenen Personen.
+    const delegatedEntryIds = delegators.length
+      ? await entryIdsForResponsible(admin, tenantId, delegators)
+      : [];
     entriesQuery = entriesQuery.or(
       [
         `created_by.eq.${actorId}`,
         `manager_user_id.eq.${actorId}`,
         `ict_responsible_user_id.eq.${actorId}`,
+        ...(delegators.length
+          ? [`ict_responsible_user_id.in.(${delegators.join(",")})`]
+          : []),
+        ...(delegatedEntryIds.length
+          ? [`id.in.(${delegatedEntryIds.join(",")})`]
+          : []),
         ...(departmentEntryIds.length
           ? [`id.in.(${departmentEntryIds.join(",")})`]
           : []),
@@ -1058,7 +1243,8 @@ async function listWorkspace(
       (canManage ||
         focusedEntry.created_by === actorId ||
         focusedEntry.manager_user_id === actorId ||
-        focusedEntry.ict_responsible_user_id === actorId)
+        focusedEntry.ict_responsible_user_id === actorId ||
+        delegators.includes(String(focusedEntry.ict_responsible_user_id)))
     ) {
       entries.push(focusedEntry as Row);
     }
@@ -1143,6 +1329,7 @@ async function listWorkspace(
   return {
     permissions: { canRequest, canManage },
     people: peopleResult.people,
+    agents: peopleResult.people.filter((person) => agentIds.has(person.id)),
     templates: (templatesResult.data ?? []).map((row: Row) => ({
       id: String(row.id),
       key: String(row.template_key),
@@ -1166,13 +1353,28 @@ async function listWorkspace(
         "ICT-Verantwortung",
       templateId: String(entry.template_id),
       kind: entry.kind === "offboarding" ? "offboarding" : "onboarding",
+      ictResponsibleUserId: String(entry.ict_responsible_user_id),
       canEdit:
         canManage ||
         [
           entry.created_by,
           entry.manager_user_id,
           entry.ict_responsible_user_id,
-        ].includes(actorId),
+        ].includes(actorId) ||
+        delegators.includes(String(entry.ict_responsible_user_id)),
+      canAssign:
+        canManage ||
+        entry.ict_responsible_user_id === actorId ||
+        delegators.includes(String(entry.ict_responsible_user_id)),
+      // Sichtbar, weil die angemeldete Person die ICT-Verantwortung oder eine
+      // zuständige Person gerade vertritt.
+      delegatedFor: delegatedForName(
+        entry,
+        tasksByEntry.get(String(entry.id)) ?? [],
+        delegators,
+        actorId,
+        peopleResult.names,
+      ),
       source: entry.source === "email" ? "email" : "manual",
       sourceTicketNumber:
         typeof entry.source_ticket_number === "string"
@@ -1204,6 +1406,7 @@ async function listWorkspace(
         canUpdate:
           canManage ||
           task.responsible_user_id === actorId ||
+          delegators.includes(String(task.responsible_user_id)) ||
           (typeof task.department_id === "string" &&
             myDepartments.includes(task.department_id)),
         exception: exceptionsByTask.get(String(task.id)) ?? null,
@@ -1218,6 +1421,16 @@ async function createEntry(
   action: Extract<Action, { type: "createEntry" }>,
 ) {
   await requirePermission(client, action.tenantId, "onboarding.request");
+  // Ist die gewählte ICT-Verantwortung gerade abwesend, geht der Eintritt wie
+  // ein Ticket direkt an ihre Stellvertretung.
+  const { data: delegate } = await admin.rpc("active_delegate_for", {
+    p_tenant_id: action.tenantId,
+    p_agent_id: action.ictResponsibleUserId,
+  });
+  const ictResponsibleUserId =
+    typeof delegate === "string" && isUuid(delegate)
+      ? delegate
+      : action.ictResponsibleUserId;
   const { data, error } = await admin.rpc("create_onboarding_entry_with_kind", {
     p_tenant_id: action.tenantId,
     p_employee_name: action.employeeName,
@@ -1225,7 +1438,7 @@ async function createEntry(
     p_organisation_unit: action.organisationUnit,
     p_location: action.location,
     p_manager_user_id: action.managerUserId,
-    p_ict_responsible_user_id: action.ictResponsibleUserId,
+    p_ict_responsible_user_id: ictResponsibleUserId,
     p_template_id: action.templateId,
     p_actor_id: actorId,
     p_kind: action.kind,
@@ -1269,7 +1482,19 @@ async function updateTaskStatus(
     (await actorDepartmentIds(admin, action.tenantId, actorId)).includes(
       task.department_id,
     );
-  if (!canManage && task.responsible_user_id !== actorId && !departmentMember)
+  const delegate =
+    !canManage &&
+    task.responsible_user_id !== actorId &&
+    !departmentMember &&
+    (await delegatorsFor(admin, action.tenantId, actorId)).includes(
+      String(task.responsible_user_id),
+    );
+  if (
+    !canManage &&
+    task.responsible_user_id !== actorId &&
+    !departmentMember &&
+    !delegate
+  )
     throw new HttpError(
       403,
       "onboarding_permission_denied",
@@ -1331,7 +1556,10 @@ async function linkExceptionTicket(
       entry.created_by,
       entry.manager_user_id,
       entry.ict_responsible_user_id,
-    ].includes(actorId)
+    ].includes(actorId) &&
+    !(await delegatorsFor(admin, action.tenantId, actorId)).includes(
+      String(entry.ict_responsible_user_id),
+    )
   )
     throw new HttpError(
       403,
@@ -2119,6 +2347,15 @@ const handler = withSupabase(
         );
         return json(request, { data: { deleted: true } });
       }
+      if (action.type === "assignEntry")
+        return json(request, {
+          data: await assignEntry(
+            context.supabase,
+            context.supabaseAdmin,
+            actorId,
+            action,
+          ),
+        });
       if (action.type === "deleteEntry") {
         await deleteEntry(
           context.supabase,
