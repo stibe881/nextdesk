@@ -45,6 +45,7 @@ type Action =
       active: boolean;
     }
   | { type: "deleteDepartmentTask"; tenantId: string; id: string }
+  | { type: "deleteEntry"; tenantId: string; entryId: string }
   | {
       type: "updateTaskStatus";
       tenantId: string;
@@ -338,6 +339,17 @@ export function parseAction(value: unknown): Action | null {
           type: value.type,
           tenantId: value.tenantId.toLowerCase(),
           id: value.id.toLowerCase(),
+        }
+      : null;
+  }
+  if (value.type === "deleteEntry") {
+    return isUuid(value.tenantId) &&
+      isUuid(value.entryId) &&
+      onlyKeys(value, ["type", "tenantId", "entryId"])
+      ? {
+          type: value.type,
+          tenantId: value.tenantId.toLowerCase(),
+          entryId: value.entryId.toLowerCase(),
         }
       : null;
   }
@@ -886,6 +898,51 @@ async function deleteDepartmentTask(
     "onboarding_department_task",
     action.id,
     {},
+  );
+}
+/**
+ * Löscht einen Ein- oder Austritt samt Aufgaben, Ausnahmetickets und
+ * Rückgabeaufgaben (Fremdschlüssel mit ON DELETE CASCADE). Die gespeicherte
+ * Eintrittsmeldung wird ebenfalls entfernt. Nur mit onboarding.manage.
+ */
+async function deleteEntry(
+  client: Client,
+  admin: Admin,
+  actorId: string,
+  action: Extract<Action, { type: "deleteEntry" }>,
+) {
+  await requirePermission(client, action.tenantId, "onboarding.manage");
+  const { data: entry, error: readError } = await admin
+    .from("onboarding_entries")
+    .select("id, employee_name, kind, source_document_path")
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.entryId)
+    .maybeSingle();
+  if (readError) databaseFailure(readError);
+  if (!entry) {
+    throw new HttpError(404, "onboarding_entry_not_found", "Der Eintritt wurde nicht gefunden.");
+  }
+  const { error } = await admin
+    .from("onboarding_entries")
+    .delete()
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.entryId);
+  if (error) databaseFailure(error);
+  if (typeof entry.source_document_path === "string" && entry.source_document_path) {
+    // Ein verwaistes PDF ist kein Grund, das Löschen scheitern zu lassen.
+    await admin.storage
+      .from("onboarding-documents")
+      .remove([entry.source_document_path])
+      .catch(() => undefined);
+  }
+  await audit(
+    admin,
+    action.tenantId,
+    actorId,
+    "onboarding.entry.deleted",
+    "onboarding_entry",
+    action.entryId,
+    { employeeName: entry.employee_name, kind: entry.kind },
   );
 }
 /**
@@ -2054,6 +2111,15 @@ const handler = withSupabase(
         });
       if (action.type === "deleteDepartmentTask") {
         await deleteDepartmentTask(
+          context.supabase,
+          context.supabaseAdmin,
+          actorId,
+          action,
+        );
+        return json(request, { data: { deleted: true } });
+      }
+      if (action.type === "deleteEntry") {
+        await deleteEntry(
           context.supabase,
           context.supabaseAdmin,
           actorId,
