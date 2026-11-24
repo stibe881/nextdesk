@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { ProjectTask } from "./projects-api";
+import type { ProjectSummary, ProjectTask } from "./projects-api";
 import {
+  applyMove,
   buildTree,
+  canBeChildOf,
   dependencyPath,
+  dropPlacement,
   EMPTY_FILTER,
+  type ProjectSortKey,
   filterTasks,
   ganttBar,
   ganttRange,
+  groupEvents,
   hoursLabel,
   linkStateLabel,
   loadLevel,
@@ -14,6 +19,7 @@ import {
   parseHours,
   projectSpan,
   rollupTasks,
+  sortProjects,
   sortTasks,
   startOfWeek,
   suggestHealth,
@@ -77,6 +83,55 @@ describe("project tree", () => {
 
   it("keeps elements whose parent is missing", () => {
     expect(buildTree([task("x", { parentId: "gone" })])[0]?.depth).toBe(0);
+  });
+});
+
+describe("moving rows", () => {
+  const order = (tasks: ProjectTask[]) =>
+    buildTree(tasks).map((row) => `${row.depth}:${row.task.id}`);
+
+  it("drops before and after a row among its siblings", () => {
+    const before = dropPlacement(plan, "b", "a", "before", false)!;
+    expect(before).toEqual({ parentId: "phase", beforeId: "a" });
+    expect(order(applyMove(plan, "b", before))).toEqual([
+      "0:phase",
+      "1:b",
+      "2:sub",
+      "1:a",
+      "0:ms",
+    ]);
+    // After the last top-level row: at the end.
+    expect(dropPlacement(plan, "a", "ms", "after", false)).toEqual({
+      parentId: null,
+      beforeId: null,
+    });
+  });
+
+  it("moves into a phase, as first child below an open one", () => {
+    expect(dropPlacement(plan, "ms", "phase", "into", true)).toEqual({
+      parentId: "phase",
+      beforeId: null,
+    });
+    const first = dropPlacement(plan, "ms", "phase", "after", true)!;
+    expect(first).toEqual({ parentId: "phase", beforeId: "a" });
+    expect(order(applyMove(plan, "ms", first))[1]).toBe("1:ms");
+    // A closed phase is followed by the next top-level row.
+    expect(dropPlacement(plan, "a", "phase", "after", false)).toEqual({
+      parentId: null,
+      beforeId: "ms",
+    });
+  });
+
+  it("refuses places the plan does not allow", () => {
+    // A phase stays on top, nothing goes below a milestone or itself.
+    expect(dropPlacement(plan, "phase", "a", "before", false)).toBeNull();
+    expect(dropPlacement(plan, "a", "ms", "into", false)).toBeNull();
+    expect(dropPlacement(plan, "b", "sub", "before", false)).toBeNull();
+    // No subtask of a subtask, and a task with subtasks is no subtask.
+    expect(dropPlacement(plan, "a", "sub", "into", false)).toBeNull();
+    expect(dropPlacement(plan, "b", "a", "into", false)).toBeNull();
+    expect(canBeChildOf(plan, "a", "b")).toBe(true);
+    expect(canBeChildOf(plan, "ms", "b")).toBe(false);
   });
 });
 
@@ -274,6 +329,86 @@ describe("timeline across projects", () => {
     expect(
       projectSpan({ startsOn: "2026-12-01", endsOn: null, stats }),
     ).toEqual({ start: "2026-12-01", end: "2026-12-01" });
+  });
+});
+
+describe("sorting the overview", () => {
+  const stats = {
+    taskCount: 0,
+    doneCount: 0,
+    progressPercent: 0,
+    estimatedMinutes: 0,
+    bookedMinutes: 0,
+    overdueTasks: 0,
+    overdueMilestones: 0,
+    nextMilestone: null,
+    latestDueOn: null,
+    actualAmountCents: null,
+  };
+  const project = (
+    title: string,
+    extra: Partial<ProjectSummary> = {},
+  ): ProjectSummary =>
+    ({
+      id: title,
+      title,
+      status: "planning",
+      health: "green",
+      managerName: null,
+      endsOn: null,
+      stats,
+      ...extra,
+    }) as ProjectSummary;
+  const projects = [
+    project("Bern", { endsOn: "2027-01-31", managerName: "Mara" }),
+    project("Aarau", { health: "red", status: "active" }),
+    project("Chur", {
+      endsOn: "2026-12-31",
+      managerName: "Daniel",
+      stats: { ...stats, progressPercent: 60 },
+    }),
+  ];
+  const titles = (key: ProjectSortKey, descending = false) =>
+    sortProjects(projects, key, descending).map((entry) => entry.title);
+
+  it("starts with critical projects, then by end date", () => {
+    expect(titles("health")).toEqual(["Aarau", "Chur", "Bern"]);
+  });
+  it("sorts by a column in both directions", () => {
+    expect(titles("title")).toEqual(["Aarau", "Bern", "Chur"]);
+    expect(titles("title", true)).toEqual(["Chur", "Bern", "Aarau"]);
+    expect(titles("progress", true)[0]).toBe("Chur");
+    expect(titles("status")[0]).toBe("Aarau");
+  });
+  it("keeps projects without a value at the bottom", () => {
+    expect(titles("endsOn")).toEqual(["Chur", "Bern", "Aarau"]);
+    expect(titles("endsOn", true)).toEqual(["Bern", "Chur", "Aarau"]);
+    expect(titles("manager", true)).toEqual(["Bern", "Chur", "Aarau"]);
+  });
+});
+
+describe("history", () => {
+  it("merges repeated entries on the same element", () => {
+    const entry = (id: string, type: string, taskId: string | null) => ({
+      id,
+      type,
+      taskId,
+      actorName: "Mara",
+    });
+    expect(
+      groupEvents([
+        entry("5", "task.updated", "a"),
+        entry("4", "task.updated", "a"),
+        entry("3", "task.updated", "b"),
+        entry("2", "task.created", "b"),
+        entry("1", "task.updated", "a"),
+      ]).map((group) => [group.event.id, group.count]),
+    ).toEqual([
+      ["5", 2],
+      ["3", 1],
+      ["2", 1],
+      ["1", 1],
+    ]);
   });
 });
 

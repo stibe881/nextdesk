@@ -735,6 +735,8 @@ function detail(persona) {
   };
 }
 
+let checklistCounter = 0;
+
 /** Fake of supabase/functions/projects. */
 function handler(body, { persona }) {
   const admin = persona.isTenantAdmin === true;
@@ -785,6 +787,78 @@ function handler(body, { persona }) {
                 },
               ]
             : [],
+      });
+    // The checklist is kept in memory so adding, ticking and renaming can be
+    // tried out against the demo data.
+    case "addChecklistItem": {
+      const target = TASKS.find((item) => item.id === body.taskId);
+      const itemId = D.uid("73737373", 100 + ++checklistCounter);
+      target?.checklist.push({
+        id: itemId,
+        description: body.description,
+        done: false,
+      });
+      return ok({ itemId });
+    }
+    case "setChecklistItem":
+    case "deleteChecklistItem": {
+      for (const target of TASKS) {
+        const index = target.checklist.findIndex(
+          (item) => item.id === body.itemId,
+        );
+        if (index < 0) continue;
+        if (body.type === "deleteChecklistItem") {
+          target.checklist.splice(index, 1);
+        } else {
+          if (typeof body.description === "string") {
+            target.checklist[index].description = body.description;
+          }
+          if (typeof body.done === "boolean") {
+            target.checklist[index].done = body.done;
+          }
+        }
+      }
+      return ok({ saved: true });
+    }
+    // Moving rows and editing the project are kept in memory as well.
+    case "moveTask": {
+      const moved = TASKS.find((item) => item.id === body.taskId);
+      if (!moved) return ok({ moved: false });
+      moved.parentId = body.parentId ?? null;
+      const ordered = TASKS.filter(
+        (item) => item.parentId === moved.parentId && item.id !== moved.id,
+      )
+        .sort((a, b) => a.position - b.position)
+        .map((item) => item.id);
+      const index = body.beforeId ? ordered.indexOf(body.beforeId) : -1;
+      ordered.splice(index < 0 ? ordered.length : index, 0, moved.id);
+      ordered.forEach((id, position) => {
+        TASKS.find((item) => item.id === id).position = position;
+      });
+      return ok({ moved: true, shifted: 0, pending: 0 });
+    }
+    case "updateProject":
+      if (typeof body.description === "string") {
+        PROJECTS[0].description = body.description;
+      }
+      if (typeof body.title === "string") PROJECTS[0].title = body.title;
+      return ok({ updated: true, shifted: 0 });
+    case "searchPeople":
+      return ok({
+        results: [
+          {
+            id: "entra:" + D.uid("7a7b7c7d", 1),
+            name: "Sabine Keller",
+            detail: "Leiterin Hauswirtschaft",
+            hasAccount: false,
+          },
+          {
+            id: D.uid("11111111", 92),
+            name: "Urs Kessler",
+            detail: "Technischer Dienst",
+            hasAccount: true,
+          },
+        ],
       });
     case "searchLinkable":
       return ok({

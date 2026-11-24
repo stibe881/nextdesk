@@ -594,6 +594,47 @@ Deno.test(
     // Someone who works in a project may use the selection lists.
     const options = await member({ type: "options" });
     assert(Array.isArray(options.people));
+    // The directory search marks people who have no account yet.
+    db.rows("tenant_entra_directory_people").push(
+      {
+        tenant_id: TENANT,
+        entra_object_id: "40000000-0000-4000-8000-000000000001",
+        display_name: "Nora Neu",
+        email: "nora.neu@example.org",
+        job_title: "Hauswartin",
+        local_user_id: null,
+        account_enabled: true,
+        inactive_at: null,
+      },
+      {
+        tenant_id: TENANT,
+        entra_object_id: "40000000-0000-4000-8000-000000000002",
+        display_name: "Mia Mitarbeit",
+        email: "mia@example.org",
+        job_title: null,
+        local_user_id: MEMBER,
+        account_enabled: true,
+        inactive_at: null,
+      },
+    );
+    assertEquals(
+      (await lead({ type: "searchPeople", query: "m" })).results,
+      [],
+    );
+    assertEquals((await lead({ type: "searchPeople", query: "mi" })).results, [
+      {
+        id: MEMBER,
+        name: "Mia Mitarbeit",
+        detail: "mia@example.org",
+        hasAccount: true,
+      },
+      {
+        id: "entra:40000000-0000-4000-8000-000000000001",
+        name: "Nora Neu",
+        detail: "Hauswartin",
+        hasAccount: false,
+      },
+    ]);
     // Nobody in this tenant works on tickets, so nobody can be made lead.
     assertEquals(options.agents, []);
     await assertRejects(
@@ -705,6 +746,7 @@ Deno.test(
       },
       { type: "workload" },
       { type: "options" },
+      { type: "searchPeople", query: "mia" },
       { type: "searchLinkable", targetKind: "ticket", query: "" },
       { type: "projectsForRecord", targetKind: "ticket", targetId: TICKET },
       { type: "createProject", title: "Eigenes" },
@@ -762,11 +804,25 @@ Deno.test(
     const { as } = world();
     const lead = as(LEAD);
     const ids = await plan(lead);
-    await lead({
+    const { itemId } = await lead({
       type: "addChecklistItem",
       taskId: ids.first,
-      description: "Firmware",
+      description: "Firmwar",
     });
+    // An item can be renamed and ticked independently.
+    await lead({ type: "setChecklistItem", itemId, description: "Firmware" });
+    await lead({ type: "setChecklistItem", itemId, done: true });
+    const checked = await lead({
+      type: "getProject",
+      projectId: ids.projectId,
+    });
+    assertEquals(taskOf(checked, ids.first).checklist, [
+      { id: itemId, description: "Firmware", done: true },
+    ]);
+    await assertRejects(
+      () => lead({ type: "setChecklistItem", itemId }),
+      Error,
+    );
     await lead({
       type: "addDependency",
       projectId: ids.projectId,
@@ -869,6 +925,42 @@ Deno.test(
     );
   },
 );
+
+Deno.test("rows move to a new place and into or out of a phase", async () => {
+  const { as } = world();
+  const lead = as(LEAD);
+  const ids = await plan(lead);
+  const titles = async (parentId: string | null) =>
+    (
+      (await lead({ type: "getProject", projectId: ids.projectId }))
+        .tasks as Row[]
+    )
+      .filter((task) => task.parentId === parentId)
+      .sort((a, b) => (a.position as number) - (b.position as number))
+      .map((task) => task.title);
+  const move = (
+    taskId: string,
+    parentId: string | null,
+    beforeId: string | null,
+  ) => lead({ type: "moveTask", taskId, parentId, beforeId });
+
+  // Within the phase: «Einbauen» in front of «Konfigurieren».
+  await move(ids.second, ids.phase, ids.first);
+  assertEquals(await titles(ids.phase), ["Einbauen", "Konfigurieren"]);
+
+  // Out of the phase, to the very top.
+  await move(ids.first, null, ids.phase);
+  assertEquals(await titles(null), ["Konfigurieren", "Umsetzung", "Abnahme"]);
+  assertEquals(await titles(ids.phase), ["Einbauen"]);
+
+  // Back into the phase at the end; the phase to the end of the top level.
+  await move(ids.first, ids.phase, null);
+  assertEquals(await titles(ids.phase), ["Einbauen", "Konfigurieren"]);
+  await move(ids.phase, null, null);
+  assertEquals(await titles(null), ["Abnahme", "Umsetzung"]);
+
+  await assertRejects(() => move(ids.first, ids.first, null), Error);
+});
 
 Deno.test(
   "the workload counts project work of everyone with something to do",

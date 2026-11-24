@@ -1,4 +1,10 @@
-import { ChevronDown, ChevronRight, Diamond, Plus } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Diamond,
+  GripVertical,
+  Plus,
+} from "lucide-react";
 import {
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
@@ -22,6 +28,8 @@ import {
   buildTree,
   dateLabel,
   dependencyPath,
+  dropPlacement,
+  type DropZone,
   diffDays,
   EMPTY_FILTER,
   filterTasks,
@@ -32,6 +40,7 @@ import {
   hoursLabel,
   isOverdue,
   monthSegments,
+  type Placement,
   PRIORITY_LABELS,
   type Rollup,
   sortTasks,
@@ -47,6 +56,8 @@ export type PlanProps = {
   canEdit: boolean;
   dependencies: ProjectDependency[];
   onOpenTask: (taskId: string) => void;
+  /** Moves a row to a new place in the plan. */
+  onMove: (taskId: string, placement: Placement) => void;
   /** Sends a change to the server and reloads the project. */
   run: (body: Record<string, unknown>) => Promise<unknown>;
   people: Named[];
@@ -199,6 +210,7 @@ export function ProjectGantt(props: PlanProps) {
   const {
     canEdit,
     dependencies,
+    onMove,
     onOpenTask,
     project,
     rollup,
@@ -209,6 +221,13 @@ export function ProjectGantt(props: PlanProps) {
   const [zoom, setZoom] = useState<GanttZoom>("week");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<Drag | null>(null);
+  // Reordering rows: the row being dragged and where it would land.
+  const [rowDrag, setRowDrag] = useState<string | null>(null);
+  const [rowDrop, setRowDrop] = useState<{
+    id: string;
+    zone: DropZone;
+    placement: Placement;
+  } | null>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
   const dayWidth = GANTT_DAY_WIDTH[zoom];
 
@@ -291,6 +310,34 @@ export function ProjectGantt(props: PlanProps) {
       startsOn: mode === "move" ? addDays(startsOn, deltaDays) : startsOn,
       dueOn: nextDue < startsOn && mode === "resize" ? startsOn : nextDue,
     });
+  };
+
+  const dropOn = (
+    event: React.DragEvent<HTMLDivElement>,
+    task: ProjectTask,
+    hasChildren: boolean,
+  ) => {
+    if (!rowDrag) return null;
+    const box = event.currentTarget.getBoundingClientRect();
+    const share = (event.clientY - box.top) / box.height;
+    // The middle of a row means «into it», where that is possible.
+    const zones: DropZone[] =
+      share < 0.3
+        ? ["before"]
+        : share > 0.7
+          ? ["after"]
+          : ["into", share < 0.5 ? "before" : "after"];
+    for (const zone of zones) {
+      const placement = dropPlacement(
+        tasks,
+        rowDrag,
+        task.id,
+        zone,
+        hasChildren && !collapsed.has(task.id),
+      );
+      if (placement) return { id: task.id, zone, placement };
+    }
+    return null;
   };
 
   const toggle = (id: string) =>
@@ -436,11 +483,64 @@ export function ProjectGantt(props: PlanProps) {
                   const draggable = canEdit && !hasChildren && !!bar;
                   const overdue = isOverdue(task, today);
                   return (
-                    <div className="pj-gantt__row" key={task.id}>
+                    <div
+                      className={`pj-gantt__row${rowDrag === task.id ? " is-dragging" : ""}${rowDrop?.id === task.id ? ` is-drop-${rowDrop.zone}` : ""}`}
+                      key={task.id}
+                      onDragLeave={(event) => {
+                        if (
+                          !event.currentTarget.contains(
+                            event.relatedTarget as Node | null,
+                          )
+                        ) {
+                          setRowDrop((current) =>
+                            current?.id === task.id ? null : current,
+                          );
+                        }
+                      }}
+                      onDragOver={(event) => {
+                        const next = dropOn(event, task, hasChildren);
+                        if (next) {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "move";
+                        }
+                        setRowDrop((current) =>
+                          current?.id === next?.id &&
+                          current?.zone === next?.zone
+                            ? current
+                            : next,
+                        );
+                      }}
+                      onDrop={(event) => {
+                        const next = dropOn(event, task, hasChildren);
+                        const moved = rowDrag;
+                        setRowDrag(null);
+                        setRowDrop(null);
+                        if (!next || !moved) return;
+                        event.preventDefault();
+                        onMove(moved, next.placement);
+                      }}
+                    >
                       <div
                         className="pj-gantt__label"
-                        style={{ paddingLeft: 8 + depth * 16 }}
+                        draggable={canEdit}
+                        onDragEnd={() => {
+                          setRowDrag(null);
+                          setRowDrop(null);
+                        }}
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData("text/plain", task.id);
+                          setRowDrag(task.id);
+                        }}
+                        style={{ paddingLeft: 4 + depth * 16 }}
                       >
+                        {canEdit ? (
+                          <GripVertical
+                            aria-hidden="true"
+                            className="pj-gantt__handle"
+                            size={13}
+                          />
+                        ) : null}
                         {hasChildren ? (
                           <button
                             aria-expanded={!collapsed.has(task.id)}
@@ -557,7 +657,7 @@ export function ProjectGantt(props: PlanProps) {
         <span className="pj-swatch pj-swatch--done" /> erledigt
         <span className="pj-muted">
           {canEdit
-            ? "Balken ziehen verschiebt, der rechte Rand ändert das Ende. "
+            ? "Balken ziehen verschiebt, der rechte Rand ändert das Ende. Zeilen lassen sich am Namen in eine neue Reihenfolge oder in eine Phase ziehen. "
             : ""}
           Pfeile zeigen Abhängigkeiten.
           {undated > 0 ? ` ${undated} Elemente haben noch keinen Termin.` : ""}

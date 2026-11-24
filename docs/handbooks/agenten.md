@@ -2134,6 +2134,23 @@ Eine Aufgabe unter einer Aufgabe ist eine Unteraufgabe. Mehr dazu unter «Projek
 
 Mehr dazu unter «Projekte».
 
+### Wie ändere ich die Reihenfolge im Zeitplan?
+
+1. Öffne das Projekt und das Register **Zeitplan**.
+2. Ziehe eine Zeile links am Namen nach oben oder unten; eine Linie zeigt, wo sie landet.
+3. Lasse sie auf dem oberen oder unteren Rand einer Zeile los, um sie davor oder danach einzuordnen, oder auf der Mitte einer Phase, um sie in die Phase zu legen.
+
+Phasen bleiben auf der obersten Ebene, Meilensteine stehen oben oder in einer Phase. Mehr dazu unter «Projekte».
+
+### Wie ändere ich Titel, Beschreibung und Eckdaten eines Projekts?
+
+1. Öffne das Projekt. Klicke neben dem Titel auf den Stift, ändere den Titel und drücke die Eingabetaste.
+2. Öffne das Register **Überblick**.
+3. Klicke bei **Beschreibung** auf den Stift, schreibe den Text und klicke auf **Speichern**.
+4. Klicke bei **Eckdaten** auf den Stift, um Projektleitung, Zeitraum, Budget und Terminplanung im Formular zu ändern.
+
+Die Stifte erscheinen nur für die Projektleitung. Mehr dazu unter «Projekte».
+
 ### Wie verknüpfe ich Aufgaben mit einer Abhängigkeit?
 
 1. Öffne die Aufgabe, die warten soll, mit einem Klick auf ihren Titel.
@@ -2157,6 +2174,15 @@ Mehr dazu unter «Projekte».
 2. Setze das Häkchen bei den gewünschten Elementen; mit den Filtern oben grenzt du die Liste vorher ein.
 3. Wähle in der Leiste über der Liste Status, Zuweisung oder Priorität oder trage bei «± Tage» ein, um wie viele Tage die Termine wandern sollen.
 4. Klicke auf **Anwenden**.
+
+Mehr dazu unter «Projekte».
+
+### Wie führe ich die Checkliste einer Projektaufgabe?
+
+1. Öffne die Aufgabe mit einem Klick auf ihren Titel.
+2. Tippe unter **Checkliste** einen Punkt ein und drücke die Eingabetaste oder klicke auf **Hinzufügen**; das Feld ist sofort frei für den nächsten Punkt.
+3. Hake erledigte Punkte ab.
+4. Mit dem Stift benennst du einen Punkt um (Eingabetaste speichert, Esc bricht ab), mit dem Kreuz entfernst du ihn.
 
 Mehr dazu unter «Projekte».
 
@@ -2244,6 +2270,15 @@ Mehr dazu unter «Projekte».
 4. Klicke auf **Speichern**. Dateien hängst du links unter «Dateien zum Projekt» an.
 
 Mehr dazu unter «Projekte».
+
+### Wie füge ich eine Person aus dem Mandanten zu einem Projekt hinzu?
+
+1. Öffne das Projekt und das Register **Team & Gäste**.
+2. Tippe unter **Person aus dem Mandanten hinzufügen** mindestens zwei Buchstaben des Namens, der Funktion oder der E-Mail-Adresse.
+3. Wähle daneben die Rolle (in der Regel «Mitarbeit»).
+4. Klicke bei der Person auf **Hinzufügen**.
+
+Die Suche findet alle Personen des Mandanten, auch solche aus dem Entra-Verzeichnis, die sich noch nie angemeldet haben. Mehr dazu unter «Projekte».
 
 ### Wie lade ich einen externen Gast in ein Projekt ein?
 
@@ -3391,7 +3426,9 @@ Projekte mit roter Ampel stehen zuoberst. Die Kacheln darüber zählen laufende
 Projekte, überfällige Meilensteine, Projekte mit gelber oder roter Ampel und
 die gebuchten Stunden gegenüber den geplanten. Mit **Laufend**, **Abgeschlossen**
 und **Alle** sowie dem Suchfeld grenzt du die Liste ein; **Archiv anzeigen**
-blendet archivierte Projekte ein.
+blendet archivierte Projekte ein. Ein Klick auf eine Spaltenüberschrift
+sortiert die Tabelle nach dieser Spalte, ein zweiter Klick kehrt die
+Reihenfolge um, ein dritter stellt die Ausgangsreihenfolge wieder her.
 
 ![Übersicht aller Projekte mit Ampel, Fortschritt und Budget](images/ag-projekte.jpg)
 
@@ -3426,7 +3463,8 @@ Die **Terminplanung** legt fest, was bei Verzögerungen geschieht:
 
 ### Überblick eines Projekts
 
-Der Kopf zeigt Nummer, Titel, Ampel und Fortschritt. Rechts setzt du
+Der Kopf zeigt Nummer, Titel, Ampel und Fortschritt. Mit dem Stift neben dem Titel
+benennt die Projektleitung das Projekt um. Rechts setzt du
 **Status** (Planung, Aktiv, Pausiert, Abgeschlossen) und **Ampel**. Sprechen
 überfällige Meilensteine, überfällige Aufgaben oder die gebuchte Zeit für
 eine andere Farbe, schlägt nextDesk sie mit Begründung vor. Unter **Mehr**
@@ -3434,7 +3472,11 @@ findest du «Projekt bearbeiten», «Termine prüfen», «Als Vorlage speichern�
 «Archivieren» und «Projekt löschen».
 
 Das Register **Überblick** zeigt Beschreibung, Meilensteine, überfällige
-Aufgaben, Kommentare zum Projekt, Eckdaten und den Verlauf.
+Aufgaben, Kommentare zum Projekt, Eckdaten und den Verlauf. Mit dem Stift bei
+«Beschreibung» und «Eckdaten» ändert die Projektleitung den Text und die
+Projektdaten. Der Verlauf zeigt die sechs neuesten Einträge; gleiche Änderungen
+am selben Element sind zusammengefasst, **Ältere anzeigen** klappt den Rest
+auf.
 
 ![Überblick eines Projekts mit Meilensteinen und Verlauf](images/ag-projekt-ueberblick.jpg)
 
@@ -3456,6 +3498,11 @@ Balken ziehst du mit der Maus: der ganze Balken verschiebt die Aufgabe, der
 rechte Rand ändert ihr Ende. Hängen andere Elemente davon ab, werden sie
 nachgeführt. Dabei gilt: Nachfolger rücken nur nach hinten, die Dauer in
 Arbeitstagen bleibt erhalten, und Erledigtes bleibt stehen.
+
+Die Reihenfolge der Zeilen änderst du ebenfalls mit der Maus: Eine Zeile links am
+Namen ziehen und auf dem oberen oder unteren Rand einer anderen Zeile
+loslassen. Auf der Mitte einer Phase losgelassen, wandert das Element in
+diese Phase.
 
 ![Zeitplan eines Projekts mit Abhängigkeiten](images/ag-projekt-zeitplan.jpg)
 
@@ -3487,7 +3534,8 @@ Ein Klick auf den Titel öffnet die Seitenleiste des Elements. Dort änderst du
 Titel, Status, Priorität, Zuständigkeit, Team, Start, Termin, Schätzung,
 Fortschritt und die Einordnung im Plan. Darunter stehen Beschreibung,
 Checkliste, Abhängigkeiten, Zeit, Verknüpfungen, Anhänge (PDF und Bilder) und
-Kommentare.
+Kommentare. Punkte der Checkliste erscheinen sofort und lassen sich mit dem
+Stift umbenennen.
 
 Bei Elementen mit Unterelementen ergeben sich Zeitraum, Schätzung und
 Fortschritt aus den Unterelementen. Wer ein Element löscht, löscht auch seine
@@ -3545,6 +3593,12 @@ Unter **Team & Gäste** legt die Projektleitung fest, wer mitarbeitet:
 | Mitarbeit            | Plan, Zeiten, Dokumente, Verknüpfungen und Kommentare bearbeiten |
 | Gast (kommentierend) | Plan und Freigegebenes lesen, für Gäste sichtbar kommentieren    |
 | Gast (lesend)        | Plan und Freigegebenes lesen                                     |
+
+Mit der Suche unter **Person aus dem Mandanten hinzufügen** findest du alle
+Personen des Mandanten nach Name, Funktion oder E-Mail-Adresse, auch solche
+aus dem Entra-Verzeichnis, die sich noch nie angemeldet haben. Für sie wird
+beim Hinzufügen ein Konto vorbereitet; mit der ersten Microsoft-Anmeldung
+sehen sie das Projekt.
 
 **Externe Gäste** (Dienstleister, Kunden) lädst du mit ihrer E-Mail-Adresse
 ein. Gäste sehen ausschliesslich dieses Projekt: Überblick, Zeitplan, Board,

@@ -11,6 +11,8 @@ import {
 } from "./lib/projects-api";
 import {
   plannedHoursPercent,
+  type ProjectSortKey,
+  sortProjects,
   dateLabel,
   hoursLabel,
   localToday,
@@ -49,6 +51,8 @@ function Dashboard({
 }) {
   const [status, setStatus] = useState<StatusFilter>("running");
   const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<ProjectSortKey>("health");
+  const [descending, setDescending] = useState(false);
 
   const running = projects.filter(
     (project) => project.status !== "completed" && !project.archivedAt,
@@ -69,7 +73,7 @@ function Dashboard({
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return projects
+    const matching = projects
       .filter((project) =>
         status === "all"
           ? true
@@ -83,15 +87,31 @@ function Dashboard({
           `${project.number} ${project.title} ${project.managerName ?? ""}`
             .toLowerCase()
             .includes(needle),
-      )
-      .sort((a, b) => {
-        const rank = { red: 0, yellow: 1, green: 2 } as const;
-        return (
-          rank[a.health] - rank[b.health] ||
-          (a.endsOn ?? "9999").localeCompare(b.endsOn ?? "9999")
-        );
-      });
-  }, [projects, query, status]);
+      );
+    return sortProjects(matching, sortKey, descending);
+  }, [descending, projects, query, sortKey, status]);
+
+  // First click ascending, second descending, third back to the start order.
+  const sortBy = (key: ProjectSortKey) => {
+    if (sortKey !== key) {
+      setSortKey(key);
+      setDescending(false);
+    } else if (!descending) {
+      setDescending(true);
+    } else {
+      setSortKey("health");
+      setDescending(false);
+    }
+  };
+  const columns: readonly (readonly [ProjectSortKey, string])[] = [
+    ["title", "Projekt"],
+    ["status", "Status"],
+    ["manager", "Leitung"],
+    ["progress", "Fortschritt"],
+    ...(guest ? [] : ([["time", "Zeit"]] as const)),
+    ["milestone", "Nächster Meilenstein"],
+    ["endsOn", "Ende"],
+  ];
 
   return (
     <>
@@ -175,13 +195,28 @@ function Dashboard({
             <table className="pj-table">
               <thead>
                 <tr>
-                  <th>Projekt</th>
-                  <th>Status</th>
-                  <th>Leitung</th>
-                  <th>Fortschritt</th>
-                  {guest ? null : <th>Zeit</th>}
-                  <th>Nächster Meilenstein</th>
-                  <th>Ende</th>
+                  {columns.map(([key, label]) => (
+                    <th
+                      aria-sort={
+                        sortKey === key
+                          ? descending
+                            ? "descending"
+                            : "ascending"
+                          : "none"
+                      }
+                      key={key}
+                    >
+                      <button
+                        className="pj-sort"
+                        onClick={() => sortBy(key)}
+                        title={`Nach ${label} sortieren`}
+                        type="button"
+                      >
+                        {label}
+                        {sortKey === key ? (descending ? " ↓" : " ↑") : ""}
+                      </button>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>

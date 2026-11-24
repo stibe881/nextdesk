@@ -1,4 +1,4 @@
-import { ArrowLeft, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Pencil } from "lucide-react";
 import {
   type FormEvent,
   useCallback,
@@ -11,6 +11,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { confirmDialog, promptDialog } from "./app-dialog";
 import {
+  type ChecklistItem,
   type PlannedChange,
   type ProjectDetailData,
   type ProjectDocument,
@@ -23,9 +24,11 @@ import {
   type ScheduleOutcome,
 } from "./lib/projects-api";
 import {
+  applyMove,
   buildTree,
   dateLabel,
   dateTimeLabel,
+  groupEvents,
   HEALTH_LABELS,
   hoursLabel,
   isOverdue,
@@ -34,6 +37,7 @@ import {
   linkStateLabel,
   localToday,
   moneyLabel,
+  type Placement,
   PROJECT_STATUS_LABELS,
   ROLE_LABELS,
   rollupTasks,
@@ -42,6 +46,7 @@ import {
 } from "./lib/projects-model";
 import { ProjectBoard, ProjectGantt, ProjectList } from "./project-plan";
 import {
+  type ChecklistActions,
   AttachmentList,
   CommentThread,
   LinkList,
@@ -61,6 +66,9 @@ type Tab =
   | "team";
 
 type Run = (body: Record<string, unknown>) => Promise<unknown>;
+
+/** Entries of the history shown before «Ältere anzeigen». */
+const HISTORY_SHORT = 6;
 
 const EVENT_LABELS: Record<string, string> = {
   "project.created": "Projekt angelegt",
@@ -128,16 +136,35 @@ function eventDetail(payload: Record<string, unknown>): string {
 
 function OverviewTab({
   data,
+  onEditProject,
   onOpenTask,
   run,
   today,
 }: {
   data: ProjectDetailData;
+  /** Opens the project form; absent when the person may not edit it. */
+  onEditProject?: (() => void) | undefined;
   onOpenTask: (taskId: string) => void;
   run: Run;
   today: string;
 }) {
   const { access, project } = data;
+  const [description, setDescription] = useState<string | null>(null);
+  const [allHistory, setAllHistory] = useState(false);
+  const history = useMemo(() => groupEvents(data.events), [data.events]);
+  const [saving, setSaving] = useState(false);
+  const saveDescription = async (event: FormEvent) => {
+    event.preventDefault();
+    if (description === null) return;
+    setSaving(true);
+    const result = (await run({
+      type: "updateProject",
+      projectId: project.id,
+      description,
+    })) as { updated?: boolean } | undefined;
+    setSaving(false);
+    if (result) setDescription(null);
+  };
   const milestones = data.tasks
     .filter((task) => task.kind === "milestone")
     .sort((a, b) => (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999"));
@@ -162,8 +189,55 @@ function OverviewTab({
     <div className="pj-layout">
       <div className="pj-stack">
         <section className="pj-card">
-          <h3>Beschreibung</h3>
-          {project.description ? (
+          <div className="pj-card__head">
+            <h3>Beschreibung</h3>
+            {access.canAdmin && description === null ? (
+              <button
+                aria-label="Beschreibung bearbeiten"
+                className="pj-icon pj-icon--neutral"
+                onClick={() => setDescription(project.description ?? "")}
+                title="Beschreibung bearbeiten"
+                type="button"
+              >
+                <Pencil aria-hidden="true" size={14} />
+              </button>
+            ) : null}
+          </div>
+          {description !== null ? (
+            <form
+              className="pj-compose"
+              onSubmit={(event) => void saveDescription(event)}
+            >
+              <textarea
+                aria-label="Beschreibung"
+                autoFocus
+                maxLength={20000}
+                onChange={(event) => setDescription(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setDescription(null);
+                }}
+                placeholder="Worum geht es in diesem Projekt? (Markdown möglich)"
+                rows={8}
+                value={description}
+              />
+              <div className="pj-actions">
+                <button
+                  className="pj-button"
+                  onClick={() => setDescription(null)}
+                  type="button"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  className="pj-button pj-button--primary"
+                  disabled={saving}
+                  type="submit"
+                >
+                  Speichern
+                </button>
+              </div>
+            </form>
+          ) : project.description ? (
             <div className="pj-markdown">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {project.description}
@@ -250,7 +324,20 @@ function OverviewTab({
       </div>
       <div className="pj-stack">
         <section className="pj-card">
-          <h3>Eckdaten</h3>
+          <div className="pj-card__head">
+            <h3>Eckdaten</h3>
+            {onEditProject ? (
+              <button
+                aria-label="Eckdaten bearbeiten"
+                className="pj-icon pj-icon--neutral"
+                onClick={onEditProject}
+                title="Eckdaten bearbeiten"
+                type="button"
+              >
+                <Pencil aria-hidden="true" size={14} />
+              </button>
+            ) : null}
+          </div>
           <dl className="pj-facts">
             {facts.map(([label, value]) => (
               <div key={label}>
@@ -263,23 +350,44 @@ function OverviewTab({
         {!access.isGuest ? (
           <section className="pj-card">
             <h3>Verlauf</h3>
-            {data.events.length === 0 ? (
+            {history.length === 0 ? (
               <p className="pj-hint">Noch keine Einträge.</p>
             ) : (
-              <ul className="pj-timeline">
-                {data.events.slice(0, 25).map((event) => (
-                  <li key={event.id}>
-                    <strong>{EVENT_LABELS[event.type] ?? event.type}</strong>
-                    {eventDetail(event.payload) ? (
-                      <span>{eventDetail(event.payload)}</span>
-                    ) : null}
-                    <small>
-                      {event.actorName ?? "System"} ·{" "}
-                      {dateTimeLabel(event.createdAt)}
-                    </small>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul
+                  className={`pj-timeline${allHistory ? " pj-timeline--scroll" : ""}`}
+                >
+                  {(allHistory ? history : history.slice(0, HISTORY_SHORT)).map(
+                    ({ event, count }) => (
+                      <li key={event.id}>
+                        <strong>
+                          {EVENT_LABELS[event.type] ?? event.type}
+                          {count > 1 ? ` (${count}×)` : ""}
+                        </strong>
+                        {eventDetail(event.payload) ? (
+                          <span>{eventDetail(event.payload)}</span>
+                        ) : null}
+                        <small>
+                          {event.actorName ?? "System"} ·{" "}
+                          {dateTimeLabel(event.createdAt)}
+                        </small>
+                      </li>
+                    ),
+                  )}
+                </ul>
+                {history.length > HISTORY_SHORT ? (
+                  <button
+                    aria-expanded={allHistory}
+                    className="pj-button pj-timeline__more"
+                    onClick={() => setAllHistory((value) => !value)}
+                    type="button"
+                  >
+                    {allHistory
+                      ? "Weniger anzeigen"
+                      : `Ältere anzeigen (${history.length - HISTORY_SHORT})`}
+                  </button>
+                ) : null}
+              </>
             )}
           </section>
         ) : null}
@@ -778,6 +886,13 @@ function LinksTab({
   );
 }
 
+type PersonMatch = {
+  id: string;
+  name: string;
+  detail: string;
+  hasAccount: boolean;
+};
+
 const MEMBER_ROLES: ProjectRole[] = [
   "manager",
   "member",
@@ -789,24 +904,83 @@ function TeamTab({
   data,
   options,
   run,
+  tenantId,
 }: {
   data: ProjectDetailData;
   options: ProjectOptions | null;
   run: Run;
+  tenantId: string;
 }) {
   const { access, project } = data;
-  const [userId, setUserId] = useState("");
+  const [personQuery, setPersonQuery] = useState("");
+  const [directory, setDirectory] = useState<PersonMatch[] | null>(null);
+  const [adding, setAdding] = useState<string | null>(null);
+  const searchVersion = useRef(0);
   const [role, setRole] = useState<ProjectRole>("member");
   const [email, setEmail] = useState("");
   const [guestRole, setGuestRole] = useState("guest_read");
   const [notice, setNotice] = useState("");
   const present = new Set(data.members.map((member) => member.userId));
 
-  const add = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!userId) return;
-    await run({ type: "setMember", projectId: project.id, userId, role });
-    setUserId("");
+  const needle = personQuery.trim().toLocaleLowerCase("de-CH");
+  useEffect(() => {
+    const current = ++searchVersion.current;
+    setDirectory(null);
+    if (needle.length < 2) return;
+    const timer = window.setTimeout(() => {
+      projectsCall<{ results: PersonMatch[] }>({
+        type: "searchPeople",
+        tenantId,
+        query: needle,
+      })
+        .then((result) => {
+          if (searchVersion.current === current) setDirectory(result.results);
+        })
+        .catch(() => {
+          // Members of the tenant are still found without the directory.
+          if (searchVersion.current === current) setDirectory([]);
+        });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [needle, tenantId]);
+
+  // Directory people plus members who are not in the directory.
+  const matches = useMemo(() => {
+    if (needle.length < 2 || directory === null) return null;
+    const seen = new Set(directory.map((person) => person.id));
+    const local = (options?.people ?? [])
+      .filter(
+        (person) =>
+          !seen.has(person.id) &&
+          person.name.toLocaleLowerCase("de-CH").includes(needle),
+      )
+      .map((person) => ({
+        id: person.id,
+        name: person.name,
+        detail: "",
+        hasAccount: true,
+      }));
+    return [...directory, ...local]
+      .filter((person) => !present.has(person.id))
+      .sort((a, b) => a.name.localeCompare(b.name, "de"))
+      .slice(0, 20);
+    // `present` is derived from data.members.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.members, directory, needle, options]);
+
+  const add = async (userId: string) => {
+    setAdding(userId);
+    try {
+      const result = (await run({
+        type: "setMember",
+        projectId: project.id,
+        userId,
+        role,
+      })) as { saved?: boolean } | undefined;
+      if (result?.saved) setPersonQuery("");
+    } finally {
+      setAdding(null);
+    }
   };
   const invite = async (event: FormEvent) => {
     event.preventDefault();
@@ -914,24 +1088,14 @@ function TeamTab({
         <div className="pj-stack">
           <section className="pj-card">
             <h3>Person aus dem Mandanten hinzufügen</h3>
-            <form
-              className="pj-inline pj-inline--wrap"
-              onSubmit={(event) => void add(event)}
-            >
-              <select
-                aria-label="Person"
-                onChange={(event) => setUserId(event.target.value)}
-                value={userId}
-              >
-                <option value="">Person wählen …</option>
-                {(options?.people ?? [])
-                  .filter((person) => !present.has(person.id))
-                  .map((person) => (
-                    <option key={person.id} value={person.id}>
-                      {person.name}
-                    </option>
-                  ))}
-              </select>
+            <div className="pj-inline pj-inline--wrap">
+              <input
+                aria-label="Person suchen"
+                onChange={(event) => setPersonQuery(event.target.value)}
+                placeholder="Name, Funktion oder E-Mail suchen"
+                type="search"
+                value={personQuery}
+              />
               <select
                 aria-label="Rolle"
                 onChange={(event) => setRole(event.target.value as ProjectRole)}
@@ -943,14 +1107,43 @@ function TeamTab({
                   </option>
                 ))}
               </select>
-              <button
-                className="pj-button pj-button--primary"
-                disabled={!userId}
-                type="submit"
-              >
-                Hinzufügen
-              </button>
-            </form>
+            </div>
+            {personQuery.trim().length < 2 ? (
+              <p className="pj-hint pj-hint--below">
+                Gesucht wird im ganzen Mandanten, auch unter Personen aus dem
+                Verzeichnis, die sich noch nie angemeldet haben.
+              </p>
+            ) : matches === null ? (
+              <p className="pj-hint pj-hint--below">Sucht …</p>
+            ) : matches.length === 0 ? (
+              <p className="pj-hint pj-hint--below">Keine Person gefunden.</p>
+            ) : (
+              <ul className="pj-rows pj-rows--compact">
+                {matches.map((person) => (
+                  <li key={person.id}>
+                    <span className="pj-two-line">
+                      <strong>{person.name}</strong>
+                      <small>
+                        {[
+                          person.detail,
+                          person.hasAccount ? null : "noch nie angemeldet",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </small>
+                    </span>
+                    <button
+                      className="pj-button pj-button--primary"
+                      disabled={adding !== null}
+                      onClick={() => void add(person.id)}
+                      type="button"
+                    >
+                      {adding === person.id ? "Fügt hinzu …" : "Hinzufügen"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
           <section className="pj-card">
             <h3>Externen Gast einladen</h3>
@@ -1016,6 +1209,9 @@ export function ProjectDetail({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  // Renaming in the header: Enter or leaving the field saves, Escape cancels.
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const titleCancelled = useRef(false);
   const [editing, setEditing] = useState(false);
   const [changes, setChanges] = useState<PlannedChange[] | null>(null);
   const version = useRef(0);
@@ -1072,6 +1268,105 @@ export function ProjectDetail({
     [load, tenantId],
   );
 
+  // Checklist: the change is shown at once and saved in the background; the
+  // project is reloaded once nothing is on its way any more.
+  const pendingQuiet = useRef(0);
+  const checklist: ChecklistActions = useMemo(() => {
+    const local = (
+      taskId: string,
+      change: (items: ChecklistItem[]) => ChecklistItem[],
+    ) => {
+      // A reload that is already under way would bring back the old list.
+      version.current += 1;
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              tasks: current.tasks.map((task) =>
+                task.id === taskId
+                  ? { ...task, checklist: change(task.checklist) }
+                  : task,
+              ),
+            }
+          : current,
+      );
+    };
+    const send = async <T,>(
+      body: Record<string, unknown>,
+    ): Promise<T | undefined> => {
+      pendingQuiet.current += 1;
+      setError("");
+      let result: T | undefined;
+      try {
+        result = await projectsCall<T>({ tenantId, ...body });
+      } catch (nextError) {
+        setError(errorText(nextError));
+      }
+      pendingQuiet.current -= 1;
+      // Also brings the list back in line after a failed save.
+      if (pendingQuiet.current === 0) void load();
+      return result;
+    };
+    return {
+      add(taskId, description) {
+        const temporaryId = `tmp-${crypto.randomUUID()}`;
+        local(taskId, (items) => [
+          ...items,
+          { id: temporaryId, description, done: false },
+        ]);
+        void send<{ itemId: string }>({
+          type: "addChecklistItem",
+          taskId,
+          description,
+        }).then((result) => {
+          if (!result?.itemId) return;
+          local(taskId, (items) =>
+            items.map((item) =>
+              item.id === temporaryId ? { ...item, id: result.itemId } : item,
+            ),
+          );
+        });
+      },
+      toggle(taskId, itemId, done) {
+        local(taskId, (items) =>
+          items.map((item) => (item.id === itemId ? { ...item, done } : item)),
+        );
+        void send({ type: "setChecklistItem", itemId, done });
+      },
+      rename(taskId, itemId, description) {
+        local(taskId, (items) =>
+          items.map((item) =>
+            item.id === itemId ? { ...item, description } : item,
+          ),
+        );
+        void send({ type: "setChecklistItem", itemId, description });
+      },
+      remove(taskId, itemId) {
+        local(taskId, (items) => items.filter((item) => item.id !== itemId));
+        void send({ type: "deleteChecklistItem", itemId });
+      },
+    };
+  }, [load, tenantId]);
+
+  const commitTitle = () => {
+    if (titleCancelled.current) {
+      // Escape removed the field, which also blurs it.
+      titleCancelled.current = false;
+      return;
+    }
+    const title = titleDraft?.trim();
+    setTitleDraft(null);
+    if (!data || !title || title === data.project.title) return;
+    // Shown at once; the reload after saving confirms it.
+    version.current += 1;
+    setData((current) =>
+      current
+        ? { ...current, project: { ...current.project, title } }
+        : current,
+    );
+    void run({ type: "updateProject", projectId, title });
+  };
+
   const rollup = useMemo(
     () => (data ? rollupTasks(data.tasks, data.links) : new Map()),
     [data],
@@ -1125,6 +1420,16 @@ export function ProjectDetail({
     canEdit: access.canEdit,
     dependencies: data.dependencies,
     onOpenTask: setTaskId,
+    onMove: (movedId: string, placement: Placement) => {
+      // Shown at once; the server renumbers and the reload confirms it.
+      version.current += 1;
+      setData((current) =>
+        current
+          ? { ...current, tasks: applyMove(current.tasks, movedId, placement) }
+          : current,
+      );
+      void run({ type: "moveTask", taskId: movedId, ...placement });
+    },
     people: options?.people ?? [],
     project,
     rollup,
@@ -1200,9 +1505,46 @@ export function ProjectDetail({
             {project.number}
             {project.archivedAt ? " · archiviert" : ""}
           </p>
-          <h2>
-            <HealthDot health={project.health} /> {project.title}
-          </h2>
+          {titleDraft !== null ? (
+            <form
+              className="pj-hero__rename"
+              onSubmit={(event) => {
+                event.preventDefault();
+                commitTitle();
+              }}
+            >
+              <HealthDot health={project.health} />
+              <input
+                aria-label="Projekttitel"
+                autoFocus
+                maxLength={200}
+                onBlur={commitTitle}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    titleCancelled.current = true;
+                    setTitleDraft(null);
+                  }
+                }}
+                value={titleDraft}
+              />
+            </form>
+          ) : (
+            <h2>
+              <HealthDot health={project.health} /> {project.title}
+              {access.canAdmin ? (
+                <button
+                  aria-label="Projekttitel bearbeiten"
+                  className="pj-icon pj-icon--neutral"
+                  onClick={() => setTitleDraft(project.title)}
+                  title="Projekttitel bearbeiten"
+                  type="button"
+                >
+                  <Pencil aria-hidden="true" size={14} />
+                </button>
+              ) : null}
+            </h2>
+          )}
           <div className="pj-meter pj-meter--wide">
             <ProgressBar
               label={`Fortschritt ${project.stats.progressPercent} %`}
@@ -1377,6 +1719,9 @@ export function ProjectDetail({
       {tab === "overview" ? (
         <OverviewTab
           data={data}
+          onEditProject={
+            access.canAdmin && options ? () => setEditing(true) : undefined
+          }
           onOpenTask={setTaskId}
           run={run}
           today={today}
@@ -1409,7 +1754,7 @@ export function ProjectDetail({
           tenantId={tenantId}
         />
       ) : (
-        <TeamTab data={data} options={options} run={run} />
+        <TeamTab data={data} options={options} run={run} tenantId={tenantId} />
       )}
 
       {openTask ? (
@@ -1420,6 +1765,7 @@ export function ProjectDetail({
             role="presentation"
           />
           <TaskPanel
+            checklist={checklist}
             data={data}
             onClose={() => setTaskId(null)}
             onOpenTask={setTaskId}

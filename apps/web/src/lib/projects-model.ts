@@ -226,6 +226,118 @@ export function buildTree(
   return rows;
 }
 
+// ---------------------------------------------------------------------------
+// Zeilen verschieben
+// ---------------------------------------------------------------------------
+
+export type DropZone = "before" | "after" | "into";
+export type Placement = { parentId: string | null; beforeId: string | null };
+
+function siblingsOf(
+  tasks: readonly ProjectTask[],
+  parentId: string | null,
+): ProjectTask[] {
+  const ids = new Set(tasks.map((task) => task.id));
+  return sortSiblings(
+    tasks.filter(
+      (task) =>
+        (task.parentId && ids.has(task.parentId) ? task.parentId : null) ===
+        parentId,
+    ),
+  );
+}
+
+/** Same rules as the database: phase → task → subtask, milestones in phases. */
+export function canBeChildOf(
+  tasks: readonly ProjectTask[],
+  taskId: string,
+  parentId: string | null,
+): boolean {
+  if (parentId === null) return true;
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const task = byId.get(taskId);
+  const parent = byId.get(parentId);
+  if (!task || !parent) return false;
+  // Never below itself.
+  for (
+    let current: ProjectTask | undefined = parent, depth = 0;
+    current && depth < 8;
+    current = current.parentId ? byId.get(current.parentId) : undefined,
+      depth += 1
+  ) {
+    if (current.id === taskId) return false;
+  }
+  if (task.kind === "phase" || parent.kind === "milestone") return false;
+  if (parent.kind === "phase") return true;
+  if (task.kind === "milestone") return false;
+  const parentIsSubtask =
+    !!parent.parentId && byId.get(parent.parentId)?.kind === "task";
+  const hasChildren = tasks.some((other) => other.parentId === taskId);
+  return !parentIsSubtask && !hasChildren;
+}
+
+/**
+ * Where a row lands when it is dropped on another row. «After» an open
+ * element with children means: as its first child, because that is where the
+ * line is shown. null when the place is not allowed.
+ */
+export function dropPlacement(
+  tasks: readonly ProjectTask[],
+  draggedId: string,
+  targetId: string,
+  zone: DropZone,
+  targetOpen: boolean,
+): Placement | null {
+  if (draggedId === targetId) return null;
+  const target = tasks.find((task) => task.id === targetId);
+  if (!target) return null;
+  const children = siblingsOf(tasks, target.id).filter(
+    (task) => task.id !== draggedId,
+  );
+  let placement: Placement;
+  if (zone === "into" || (zone === "after" && targetOpen && children.length)) {
+    placement = {
+      parentId: target.id,
+      beforeId: zone === "into" ? null : (children[0]?.id ?? null),
+    };
+  } else {
+    const ids = new Set(tasks.map((task) => task.id));
+    const parentId =
+      target.parentId && ids.has(target.parentId) ? target.parentId : null;
+    const siblings = siblingsOf(tasks, parentId).filter(
+      (task) => task.id !== draggedId,
+    );
+    const index = siblings.findIndex((task) => task.id === target.id);
+    placement = {
+      parentId,
+      beforeId:
+        zone === "before" ? target.id : (siblings[index + 1]?.id ?? null),
+    };
+  }
+  return canBeChildOf(tasks, draggedId, placement.parentId) ? placement : null;
+}
+
+/** The plan after a move, for showing it before the server has answered. */
+export function applyMove(
+  tasks: readonly ProjectTask[],
+  taskId: string,
+  placement: Placement,
+): ProjectTask[] {
+  const ordered = siblingsOf(tasks, placement.parentId)
+    .filter((task) => task.id !== taskId)
+    .map((task) => task.id);
+  const index = placement.beforeId ? ordered.indexOf(placement.beforeId) : -1;
+  ordered.splice(index < 0 ? ordered.length : index, 0, taskId);
+  const positions = new Map(ordered.map((id, position) => [id, position]));
+  return tasks.map((task) => {
+    const position = positions.get(task.id);
+    if (position === undefined) return task;
+    return task.id === taskId
+      ? { ...task, parentId: placement.parentId, position }
+      : { ...task, position };
+  });
+}
+
 export type Rollup = {
   estimatedMinutes: number;
   bookedMinutes: number;
@@ -333,6 +445,30 @@ export function rollupTasks(
 
 export function isOverdue(task: ProjectTask, today: string): boolean {
   return task.status !== "done" && !!task.dueOn && task.dueOn < today;
+}
+
+/**
+ * History for display: entries of the same kind by the same person on the
+ * same element that directly follow each other count as one.
+ */
+export function groupEvents<
+  E extends { type: string; taskId: string | null; actorName: string | null },
+>(events: readonly E[]): { event: E; count: number }[] {
+  const groups: { event: E; count: number }[] = [];
+  for (const event of events) {
+    const last = groups.at(-1);
+    if (
+      last &&
+      last.event.type === event.type &&
+      last.event.taskId === event.taskId &&
+      last.event.actorName === event.actorName
+    ) {
+      last.count += 1;
+    } else {
+      groups.push({ event, count: 1 });
+    }
+  }
+  return groups;
 }
 
 export type HealthSuggestion = { health: ProjectHealth; reasons: string[] };
@@ -476,6 +612,75 @@ export function sortTasks(
       compare(a, b) || (planOrder.get(a.id) ?? 0) - (planOrder.get(b.id) ?? 0),
   );
   return descending ? sorted.reverse() : sorted;
+}
+
+export type ProjectSortKey =
+  | "health"
+  | "title"
+  | "status"
+  | "manager"
+  | "progress"
+  | "time"
+  | "milestone"
+  | "endsOn";
+
+const HEALTH_RANK: Record<ProjectHealth, number> = {
+  red: 0,
+  yellow: 1,
+  green: 2,
+};
+const STATUS_RANK: Record<ProjectStatus, number> = {
+  active: 0,
+  planning: 1,
+  paused: 2,
+  completed: 3,
+};
+
+/**
+ * Projects for the overview. «health» is the starting order: critical
+ * projects first, then by end date. Empty values always come last.
+ */
+export function sortProjects<P extends ProjectSummary>(
+  projects: readonly P[],
+  key: ProjectSortKey,
+  descending: boolean,
+): P[] {
+  const direction = descending ? -1 : 1;
+  // Missing values stay at the bottom in both directions.
+  const text = (a: string | null, b: string | null) =>
+    a === null || b === null
+      ? Number(a === null) - Number(b === null)
+      : direction * a.localeCompare(b, "de");
+  const number = (a: number, b: number) => direction * (a - b);
+  const compare = (a: P, b: P): number => {
+    switch (key) {
+      case "title":
+        return text(a.title, b.title);
+      case "status":
+        return number(STATUS_RANK[a.status], STATUS_RANK[b.status]);
+      case "manager":
+        return text(a.managerName, b.managerName);
+      case "progress":
+        return number(a.stats.progressPercent, b.stats.progressPercent);
+      case "time":
+        return number(a.stats.bookedMinutes, b.stats.bookedMinutes);
+      case "milestone":
+        return text(
+          a.stats.nextMilestone?.on ?? null,
+          b.stats.nextMilestone?.on ?? null,
+        );
+      case "endsOn":
+        return text(a.endsOn, b.endsOn);
+      default:
+        return number(HEALTH_RANK[a.health], HEALTH_RANK[b.health]);
+    }
+  };
+  return [...projects].sort(
+    (a, b) =>
+      compare(a, b) ||
+      (a.endsOn ?? "9999").localeCompare(b.endsOn ?? "9999") ||
+      a.title.localeCompare(b.title, "de"),
+  );
 }
 
 // ---------------------------------------------------------------------------

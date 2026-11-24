@@ -7,6 +7,11 @@ import {
   parseJsonObject,
 } from "../_shared/http.ts";
 import { listAssignableTenantSupportAgents } from "../_shared/assignable-agents.ts";
+import {
+  ensureEntraPersonAccount,
+  ENTRA_PERSON_PREFIX,
+  EntraPersonAccountError,
+} from "../_shared/entra-person-account.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import {
   addCalendarDays,
@@ -1842,6 +1847,76 @@ async function removeTaskFiles(ctx: Ctx, taskIds: string[]) {
   if (paths.length) await ctx.admin.storage.from(BUCKET).remove(paths);
 }
 
+/**
+ * Moves an element to a place in the plan: under `parentId` (null = top
+ * level) and directly before `beforeId` (null = at the end). The siblings are
+ * renumbered so the order is unambiguous.
+ */
+async function moveTask(ctx: Ctx, body: Row) {
+  const { task, project, access } = await loadTask(ctx, body.taskId);
+  requireEdit(access);
+  const projectId = project.id as string;
+  const taskId = task.id as string;
+  const parentId = optionalUuid(body.parentId);
+  const beforeId = optionalUuid(body.beforeId);
+  if (parentId === taskId || beforeId === taskId) {
+    throw invalid(
+      "Ein Element kann nicht neben oder unter sich selbst stehen.",
+    );
+  }
+  await validateTaskReferences(
+    ctx,
+    projectId,
+    { parent_task_id: parentId },
+    taskId,
+  );
+
+  if (parentId !== ((task.parent_task_id as string | null) ?? null)) {
+    const { error } = await ctx.admin
+      .from("project_tasks")
+      .update({ parent_task_id: parentId, updated_by: ctx.actorId })
+      .eq("project_id", projectId)
+      .eq("id", taskId);
+    if (error) throw hierarchyError(error);
+  }
+
+  const siblings = (await projectTasks(ctx, projectId)).filter(
+    (other) =>
+      ((other.parent_task_id as string | null) ?? null) === parentId &&
+      other.id !== taskId,
+  );
+  const index = beforeId
+    ? siblings.findIndex((other) => other.id === beforeId)
+    : -1;
+  const ordered = siblings.map((other) => other.id as string);
+  ordered.splice(index < 0 ? ordered.length : index, 0, taskId);
+  const current = new Map(
+    [...siblings, task].map((other) => [
+      other.id as string,
+      Number(other.position),
+    ]),
+  );
+  for (const [position, id] of ordered.entries()) {
+    if (current.get(id) === position) continue;
+    const { error } = await ctx.admin
+      .from("project_tasks")
+      .update({ position })
+      .eq("project_id", projectId)
+      .eq("id", id);
+    if (error) throw failed();
+  }
+  // A new parent changes whose period the element belongs to.
+  const schedule =
+    parentId !== ((task.parent_task_id as string | null) ?? null)
+      ? await settleSchedule(ctx, project)
+      : { applied: [], pending: [] };
+  return {
+    moved: true,
+    shifted: schedule.applied.length,
+    pending: schedule.pending.length,
+  };
+}
+
 async function deleteTask(ctx: Ctx, body: Row) {
   const { task, project, access } = await loadTask(ctx, body.taskId);
   requireEdit(access);
@@ -1907,16 +1982,23 @@ async function checklistAction(ctx: Ctx, body: Row) {
     if (error) throw failed();
     return { deleted: true };
   }
-  const done = body.done === true;
+  // One call ticks an item, renames it, or both.
+  const update: Row = {};
+  if (has(body, "description")) {
+    update.description = requiredText(body.description, 500, "Der Punkt");
+  }
+  if (has(body, "done")) {
+    const done = body.done === true;
+    update.completed_at = done ? new Date().toISOString() : null;
+    update.completed_by = done ? ctx.actorId : null;
+  }
+  if (!Object.keys(update).length) throw invalid("Es fehlt eine Änderung.");
   const { error } = await ctx.admin
     .from("project_task_checklist_items")
-    .update({
-      completed_at: done ? new Date().toISOString() : null,
-      completed_by: done ? ctx.actorId : null,
-    })
+    .update(update)
     .eq("id", itemId);
   if (error) throw failed();
-  return { done };
+  return { saved: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -2871,14 +2953,81 @@ const MEMBER_ROLES = new Set([
 ]);
 const GUEST_ROLES = new Set(["guest_read", "guest_comment"]);
 
+/**
+ * People of the tenant's Entra directory, with or without an account yet.
+ * Someone without an account gets the id «entra:<object id>»; the account is
+ * prepared when the person is added to a project.
+ */
+async function searchPeople(ctx: Ctx, body: Row) {
+  await assertInternal(ctx);
+  const needle = (typeof body.query === "string" ? body.query : "")
+    .replace(/[%_,()\\*]/g, " ")
+    .trim()
+    .slice(0, 80);
+  if (needle.length < 2) return { results: [] };
+  const { data, error } = await ctx.admin
+    .from("tenant_entra_directory_people")
+    .select("entra_object_id, display_name, email, job_title, local_user_id")
+    .eq("tenant_id", ctx.tenantId)
+    .eq("account_enabled", true)
+    .is("inactive_at", null)
+    .or(
+      `display_name.ilike.%${needle}%,email.ilike.%${needle}%,job_title.ilike.%${needle}%`,
+    )
+    .order("display_name")
+    .limit(25);
+  if (error) throw failed();
+  return {
+    results: ((data ?? []) as Row[]).map((row) => ({
+      id:
+        typeof row.local_user_id === "string"
+          ? row.local_user_id
+          : ENTRA_PERSON_PREFIX + String(row.entra_object_id),
+      name: String(row.display_name),
+      detail:
+        (typeof row.job_title === "string" && row.job_title) ||
+        String(row.email ?? ""),
+      hasAccount: typeof row.local_user_id === "string",
+    })),
+  };
+}
+
+/** A member id, preparing the account of an Entra person who has none yet. */
+async function memberUserId(ctx: Ctx, value: unknown): Promise<string> {
+  if (typeof value === "string" && value.startsWith(ENTRA_PERSON_PREFIX)) {
+    const objectId = value.slice(ENTRA_PERSON_PREFIX.length);
+    if (!isUuid(objectId)) throw invalid("Die Auswahl ist ungültig.");
+    try {
+      return await ensureEntraPersonAccount(
+        ctx.admin,
+        ctx.tenantId,
+        objectId.toLowerCase(),
+        ctx.actorId,
+      );
+    } catch (error) {
+      if (error instanceof EntraPersonAccountError) {
+        throw new HttpError(
+          422,
+          error.code,
+          error.code === "entra_person_not_active"
+            ? "Die Person ist im Verzeichnis nicht mehr aktiv."
+            : "Für die Person konnte kein Konto vorbereitet werden.",
+        );
+      }
+      throw error;
+    }
+  }
+  return requiredUuid(value);
+}
+
 async function memberAction(ctx: Ctx, body: Row) {
   const { project, access } = await loadProject(ctx, body.projectId);
   requireAdmin(access);
   const projectId = project.id as string;
 
   if (body.type === "setMember") {
-    const userId = requiredUuid(body.userId);
     const role = oneOf<string>(body.role, MEMBER_ROLES, "Die Rolle");
+    const userId = await memberUserId(ctx, body.userId);
     await assertTenantMember(ctx, userId);
     const { error } = await ctx.admin.from("project_members").upsert(
       {
@@ -3174,6 +3323,8 @@ export async function dispatch(ctx: Ctx, body: Row): Promise<Row> {
       return await updateTask(ctx, body);
     case "bulkUpdateTasks":
       return await bulkUpdateTasks(ctx, body);
+    case "moveTask":
+      return await moveTask(ctx, body);
     case "deleteTask":
       return await deleteTask(ctx, body);
     case "addChecklistItem":
@@ -3226,6 +3377,8 @@ export async function dispatch(ctx: Ctx, body: Row): Promise<Row> {
     case "inviteGuest":
     case "revokeInvitation":
       return await memberAction(ctx, body);
+    case "searchPeople":
+      return await searchPeople(ctx, body);
     case "workload":
       return await workload(ctx, body);
     case "updateSettings":
