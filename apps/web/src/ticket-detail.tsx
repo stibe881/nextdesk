@@ -37,6 +37,7 @@ import {
   ImagePlus,
   LoaderCircle,
   Mail,
+  GitBranch,
   MessageSquare,
   Phone,
   Plus,
@@ -49,6 +50,10 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
+import {
+  parseTicketSplitNote,
+  type TicketSplitNote,
+} from "./lib/ticket-split-note";
 import {
   ticketCommentComposerCopy,
   ticketCommentComposerModeForTicketContext,
@@ -2391,13 +2396,50 @@ function relationActionKey(relation: TicketRelation): string {
 
 /** Kurzfassung der Beschreibung für die eingeklappte Ansicht. */
 function descriptionPreview(description: string | null | undefined): string {
-  const text = (description ?? "")
-    .replace(/^Eingegangene E-Mail von [^\n]*\n+/u, "")
+  const text = parseTicketSplitNote(description ?? "")
+    .body.replace(/^Eingegangene E-Mail von [^\n]*\n+/u, "")
     .replace(/\[[^\]\n]{1,120}\]/gu, " ")
     .replace(/\s+/gu, " ")
     .trim();
   if (!text) return "Keine Beschreibung";
   return text.length > 220 ? `${text.slice(0, 220).trimEnd()} …` : text;
+}
+
+/** Hinweis über der Beschreibung eines Teil-Tickets (Vermerk beim Aufteilen). */
+function TicketSplitNoteBanner({ note }: { note: TicketSplitNote }) {
+  return (
+    <aside className="ticket-split-note" aria-label="Aufgeteiltes Ticket">
+      <GitBranch aria-hidden="true" size={18} />
+      <div>
+        <strong>
+          {note.part && note.total
+            ? `Teil ${note.part} von ${note.total} eines aufgeteilten Tickets`
+            : "Teil eines aufgeteilten Tickets"}
+        </strong>
+        <p>
+          Dieses Ticket ist beim Aufteilen von Ticket{" "}
+          <span className="ticket-split-note__number">
+            {note.parentTicketNumber}
+          </span>{" "}
+          entstanden.
+          {note.siblingTicketNumbers.length > 0 ? (
+            <>
+              {" "}
+              {note.siblingTicketNumbers.length === 1
+                ? "Weiterer Teil:"
+                : "Weitere Teile:"}{" "}
+              {note.siblingTicketNumbers.map((number, index) => (
+                <span key={number}>
+                  {index > 0 ? ", " : ""}
+                  <span className="ticket-split-note__number">{number}</span>
+                </span>
+              ))}
+            </>
+          ) : null}
+        </p>
+      </div>
+    </aside>
+  );
 }
 
 function eventLabel(
@@ -7540,6 +7582,7 @@ export function TicketDetail({
   const watchPresentation = ticketWatchPresentation(detail.watching);
   const descriptionExpanded =
     isEditingDescription || (descriptionOpen ?? detail.comments.length === 0);
+  const splitNote = parseTicketSplitNote(detail.ticket.description ?? "").note;
 
   return (
     <section
@@ -7881,6 +7924,9 @@ export function TicketDetail({
                 ) : null}
               </div>
             </div>
+            {splitNote && !isEditingDescription ? (
+              <TicketSplitNoteBanner note={splitNote} />
+            ) : null}
             {descriptionExpanded ? (
               <>
                 {isEditingDescription ? (
@@ -7977,8 +8023,9 @@ export function TicketDetail({
                   <div className="ticket-detail-description">
                     <TicketTextWithInlineImages
                       body={
-                        splitPlainTextSignature(detail.ticket.description)
-                          .message
+                        splitPlainTextSignature(
+                          parseTicketSplitNote(detail.ticket.description).body,
+                        ).message
                       }
                       imagesByAttachmentId={inlineImagesByAttachmentId}
                       loading={inlineImagesLoading}

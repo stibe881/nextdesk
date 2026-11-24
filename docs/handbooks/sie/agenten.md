@@ -496,7 +496,9 @@ Mehr dazu unter «Ein Ticket bearbeiten».
 
 1. Öffnen Sie das Ticket.
 2. Klicken Sie in der Karte **Koordination** auf **Aufteilen**.
-3. Folgen Sie dem Formular, um Teil-Tickets anzulegen.
+3. Legen Sie im Formular die Teil-Tickets an (Betreff, Beschreibung, Abteilung, optional Team und Person) und klicken Sie auf **Teil-Tickets erstellen**.
+4. Jedes Teil-Ticket zeigt über der Beschreibung den Hinweis «Teil x von y eines aufgeteilten Tickets» mit der Nummer des ursprünglichen Tickets und den anderen Teilen.
+5. Das ursprüngliche Ticket wird danach gelöscht (90 Tage im Papierkorb wiederherstellbar), und Sie landen im ersten Teil-Ticket. Ohne Recht zum Löschen bleibt es bestehen.
 
 Mehr dazu unter «Ein Ticket bearbeiten».
 
@@ -3138,7 +3140,7 @@ werden als Vorschau gezeigt, andere Dateien öffnen Sie mit **Öffnen**.
 Rechts unter der **Übersicht** liegt die Karte **Koordination**. Sie zeigt die
 **Supportstufe** mit dem zuständigen Team (**An nächste Stufe übergeben**,
 **Verlauf der Stufen**) sowie Teil-Tickets und Drittanbieter (**Aufteilen**,
-**An Drittanbieter übergeben**).
+**An Drittanbieter übergeben**). Nach dem **Aufteilen** wird das ursprüngliche Ticket gelöscht (Papierkorb); jedes Teil-Ticket zeigt über der Beschreibung, aus welchem Ticket es stammt und welche Teile es noch gibt.
 
 ### Spam-/Phishing-Verdacht der anfragenden Person
 

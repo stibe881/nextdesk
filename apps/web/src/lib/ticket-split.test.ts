@@ -18,8 +18,10 @@ describe("Ticket-Aufteilung", () => {
   it("übernimmt Betreff und Beschreibung des Haupttickets", () => {
     const child = newSplitChild("a", parent);
     expect(child.subject).toBe("Eintritt Anna Muster");
-    expect(child.description).toContain("Teil von Ticket IT-2026-000042");
-    expect(child.description).toContain("Badge und Zugänge");
+    // Den Vermerk «Aufgeteilt aus Ticket …» setzt der Server.
+    expect(child.description).toBe(
+      "Arbeitsplatz, Badge und Zugänge vorbereiten.",
+    );
     expect(child.departmentId).toBe("");
   });
 

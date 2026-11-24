@@ -127,6 +127,10 @@ import { draftRestoredLabel, pickNewestDraft } from "@/lib/recent-items-model";
 import { tn } from "@/lib/formality";
 import { mentionedAgentIds } from "@/lib/ticket-mentions";
 import {
+  parseTicketSplitNote,
+  ticketSplitNoteText,
+} from "@/lib/ticket-split-note";
+import {
   presenceInitials,
   refreshTicketPresence,
   type TicketPresencePerson,
@@ -778,6 +782,9 @@ export default function TicketDetailScreen() {
   const descriptionExpanded =
     editingField === "description" ||
     (descriptionOpen ?? (ticket?.comments.length ?? 0) === 0);
+  const splitNote = ticket
+    ? parseTicketSplitNote(ticket.description).note
+    : null;
   const canUseRequesterPortal =
     requesterPortalEnabled && requesterPortalAvailable;
   const canUseAgentWorkbench =
@@ -3501,6 +3508,47 @@ export default function TicketDetailScreen() {
                 size={18}
               />
             </Pressable>
+            {splitNote && editingField !== "description" ? (
+              <View
+                accessibilityLabel={`${ticketSplitNoteText(splitNote)}.${
+                  splitNote.siblingTicketNumbers.length
+                    ? ` Weitere Teile: ${splitNote.siblingTicketNumbers.join(", ")}.`
+                    : ""
+                }`}
+                style={[
+                  styles.splitNote,
+                  {
+                    backgroundColor: colors.primarySoft,
+                    borderColor: colors.primary,
+                  },
+                ]}
+              >
+                <Ionicons
+                  color={colors.primaryText}
+                  name="git-branch-outline"
+                  size={18}
+                />
+                <View style={styles.splitNoteText}>
+                  <Text
+                    style={[
+                      styles.splitNoteTitle,
+                      { color: colors.primaryText },
+                    ]}
+                  >
+                    {splitNote.part && splitNote.total
+                      ? `Teil ${splitNote.part} von ${splitNote.total} eines aufgeteilten Tickets`
+                      : "Teil eines aufgeteilten Tickets"}
+                  </Text>
+                  <Text style={[styles.splitNoteBody, { color: colors.text }]}>
+                    Entstanden beim Aufteilen von Ticket{" "}
+                    {splitNote.parentTicketNumber}.
+                    {splitNote.siblingTicketNumbers.length
+                      ? ` ${splitNote.siblingTicketNumbers.length === 1 ? "Weiterer Teil" : "Weitere Teile"}: ${splitNote.siblingTicketNumbers.join(", ")}`
+                      : ""}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
             {!descriptionExpanded ? (
               <Pressable
                 accessibilityHint="Antippen, um die ganze Beschreibung zu sehen."
@@ -3514,7 +3562,9 @@ export default function TicketDetailScreen() {
                   numberOfLines={3}
                   style={[styles.description, tokenStyles.muted]}
                 >
-                  {withoutEmailSignature(ticket.description)
+                  {withoutEmailSignature(
+                    parseTicketSplitNote(ticket.description).body,
+                  )
                     .replace(/^Eingegangene E-Mail von [^\n]*\n+/u, "")
                     .replace(/\s+/gu, " ")
                     .trim() || "Keine Beschreibung"}
@@ -3562,7 +3612,9 @@ export default function TicketDetailScreen() {
                 }}
               >
                 <Text style={styles.description}>
-                  {withoutEmailSignature(ticket.description)}
+                  {withoutEmailSignature(
+                    parseTicketSplitNote(ticket.description).body,
+                  )}
                 </Text>
               </Pressable>
             )}
@@ -5649,6 +5701,28 @@ const useStyles = makeThemedStyles((c) => ({
   presencePhoto: { height: 32, width: 32 },
   presenceInitials: { fontSize: 12, fontWeight: "800" },
   presenceMore: { fontSize: 12, fontWeight: "700", marginLeft: 4 },
+  splitNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderLeftWidth: 4,
+  },
+  splitNoteText: {
+    flex: 1,
+    gap: 2,
+  },
+  splitNoteTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  splitNoteBody: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
   descriptionHeader: {
     alignItems: "center",
     flexDirection: "row",

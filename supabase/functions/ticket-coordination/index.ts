@@ -7,6 +7,7 @@ import {
   parseAction,
   rpcErrorCode,
   type SplitChild,
+  splitNote,
   timelineEventPayload,
   type VendorInput,
 } from "./logic.ts";
@@ -617,6 +618,42 @@ async function split(
     throw new HttpError(mapped.status, mapped.code);
   }
   const created = (Array.isArray(data) ? data : []) as Row[];
+  const numbers = created.map((row) => String(row.ticketNumber));
+  // Vermerk am Anfang jeder Beschreibung: Teil x von y und die anderen Teile.
+  // Web und App erkennen die erste Zeile und zeigen sie als Hinweis.
+  await Promise.all(
+    created.map(async (row, index) => {
+      const note = splitNote(
+        ticket.ticket_number,
+        index + 1,
+        created.length,
+        numbers.filter((_, other) => other !== index),
+      );
+      const body = children[index]?.description ?? "";
+      const { error: noteError } = await admin
+        .from("tickets")
+        .update({ description: `${note}\n\n${body}`.slice(0, 50000) })
+        .eq("tenant_id", ticket.tenant_id)
+        .eq("id", String(row.id));
+      if (noteError) console.error("ticket_split_note_failed", noteError.code);
+    }),
+  );
+  // Das aufgeteilte Ticket wird nicht mehr gebraucht: in den Papierkorb
+  // (90 Tage wiederherstellbar). Fehlt das Recht zum Löschen oder gilt eine
+  // Aufbewahrungssperre, bleibt es bestehen.
+  let parentDeleted = false;
+  if (created.length > 0) {
+    const { error: deleteError } = await admin.rpc("bulk_delete_tickets", {
+      p_actor_id: actorId,
+      p_tenant_id: ticket.tenant_id,
+      p_ticket_ids: [ticket.id],
+      p_confirm_delete: true,
+    });
+    parentDeleted = !deleteError;
+    if (deleteError && deleteError.code !== "42501" && deleteError.code !== "P0001") {
+      console.error("ticket_split_parent_delete_failed", deleteError.code);
+    }
+  }
   await admin.from("audit_logs").insert({
     tenant_id: ticket.tenant_id,
     actor_id: actorId,
@@ -627,6 +664,7 @@ async function split(
     metadata: {
       childTicketIds: created.map((row) => row.id),
       childCount: created.length,
+      parentDeleted,
     },
   });
   return json(
@@ -637,6 +675,7 @@ async function split(
           id: String(row.id),
           ticketNumber: String(row.ticketNumber),
         })),
+        parentDeleted,
       },
     },
     201,

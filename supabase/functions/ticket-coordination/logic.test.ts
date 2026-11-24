@@ -7,6 +7,7 @@ import {
   parseVendorInput,
   rpcErrorCode,
   splitChildErrors,
+  splitNote,
   timelineEventPayload,
 } from "./logic.ts";
 
@@ -201,4 +202,15 @@ Deno.test("timeline payload keeps only known, harmless fields", () => {
     },
   );
   assertEquals(timelineEventPayload(null), {});
+});
+
+Deno.test("splitNote names part, total and the other parts", () => {
+  assertEquals(
+    splitNote("ICT-2026-000209", 2, 3, ["ICT-2026-000210", "ICT-2026-000212"]),
+    "Aufgeteilt aus Ticket ICT-2026-000209 – Teil 2 von 3. Weitere Teile: ICT-2026-000210, ICT-2026-000212.",
+  );
+  assertEquals(
+    splitNote("ICT-2026-000209", 1, 1, []),
+    "Aufgeteilt aus Ticket ICT-2026-000209 – Teil 1 von 1.",
+  );
 });
